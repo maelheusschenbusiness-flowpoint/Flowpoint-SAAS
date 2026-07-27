@@ -310,10 +310,13 @@
     aiCreditsPack500k:    { name: '+500 000 crédits IA',       price: 19, unit: '/pack', qty: true, oneTime: true }
   };
 
+  // Canonical add-on inclusion — mirrors billing.ts, public-billing.ts, dashboard.js
+  // Standard=1 | Pro=6 (cumulative) | Ultra=10 (cumulative)
   var PLAN_INCLUDED = {
     standard: ['whiteLabel'],
-    pro:      ['whiteLabel', 'customDomain', 'advancedWebhooks', 'retention90d'],
-    ultra:    ['whiteLabel', 'customDomain', 'advancedWebhooks', 'retention90d', 'retention365d', 'agencyPacks']
+    pro:      ['whiteLabel', 'customDomain', 'advancedWebhooks', 'retention90d', 'advancedSeoLab', 'backlinkIntelligence'],
+    ultra:    ['whiteLabel', 'customDomain', 'advancedWebhooks', 'retention90d', 'advancedSeoLab', 'backlinkIntelligence',
+               'retention365d', 'keywordDomination', 'behavioralAI', 'aiForecasting']
   };
 
   /* ────────────────── Cart ────────────────── */

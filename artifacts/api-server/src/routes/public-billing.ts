@@ -117,9 +117,12 @@ const AI_CREDIT_PACKS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCre
 
 /* Add-ons included in each plan (excluded from billing) */
 const PLAN_INCLUDED_ADDONS: Record<string, Set<string>> = {
-  standard: new Set([]),
-  pro:      new Set(["whiteLabel"]),
-  ultra:    new Set(["whiteLabel", "agencyPacks"]),
+  // Canonical add-on inclusion — single source of truth (mirrors billing.ts, checkout.html, dashboard.js)
+  // Standard=1 | Pro=6 (cumulative) | Ultra=10 (cumulative)
+  standard: new Set(["whiteLabel"]),
+  pro:      new Set(["whiteLabel", "customDomain", "advancedWebhooks", "retention90d", "advancedSeoLab", "backlinkIntelligence"]),
+  ultra:    new Set(["whiteLabel", "customDomain", "advancedWebhooks", "retention90d", "advancedSeoLab", "backlinkIntelligence",
+                     "retention365d", "keywordDomination", "behavioralAI", "aiForecasting"]),
 };
 
 function buildLineItems(

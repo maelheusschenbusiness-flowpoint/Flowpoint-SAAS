@@ -1161,18 +1161,54 @@
     applyTheme(mq.matches);
   })();
 
-  /* ── White-Label add-on: plan-aware display ── */
-  function updateWhiteLabel(plan) {
-    var bottom = document.getElementById('fp-wl-bottom');
-    if (!bottom) return;
-    if (plan === 'standard' || plan === 'pro' || plan === 'ultra') {
-      var label = plan === 'standard' ? 'Standard' : plan === 'pro' ? 'Pro' : 'Ultra';
-      bottom.innerHTML = '<div class="fp-addon-price-incl">\u2713 Inclus dans ' + label + '</div>';
-    } else {
-      bottom.innerHTML = '<div class="fp-addon-price">17\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'whiteLabel\',false)">Activer \u2192</button></div>';
-    }
+  /* —— Canonical add-on inclusion (Standard=1 | Pro=6 | Ultra=10 cumulative)
+     Mirrors billing.ts, public-billing.ts, checkout.html PLAN_INCLUDED —— */
+  var PLAN_INCLUDED = {
+    standard: ['whiteLabel'],
+    pro:      ['whiteLabel', 'customDomain', 'advancedWebhooks', 'retention90d', 'advancedSeoLab', 'backlinkIntelligence'],
+    ultra:    ['whiteLabel', 'customDomain', 'advancedWebhooks', 'retention90d', 'advancedSeoLab', 'backlinkIntelligence',
+               'retention365d', 'keywordDomination', 'behavioralAI', 'aiForecasting']
+  };
+
+  /* Add-on default bottom HTML for restoring after plan deselect */
+  var ADDON_DEFAULT_BOTTOM = {
+    whiteLabel:           '<div class="fp-addon-price">17\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'whiteLabel\',false)">Activer \u2192</button></div>',
+    customDomain:         '<div class="fp-addon-price">9\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'customDomain\',false)">Activer \u2192</button></div>',
+    advancedWebhooks:     '<div class="fp-addon-price">14\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'advancedWebhooks\',false)">Activer \u2192</button></div>',
+    retention90d:         '<div class="fp-addon-price">9\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'retention90d\',false)">Activer \u2192</button></div>',
+    advancedSeoLab:       '<div class="fp-addon-price">29\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'advancedSeoLab\',false)">Activer \u2192</button></div>',
+    backlinkIntelligence: '<div class="fp-addon-price">24\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'backlinkIntelligence\',false)">Activer \u2192</button></div>',
+    retention365d:        '<div class="fp-addon-price">19\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'retention365d\',false)">Activer \u2192</button></div>',
+    keywordDomination:    '<div class="fp-addon-price">39\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'keywordDomination\',false)">Activer \u2192</button></div>',
+    behavioralAI:         '<div class="fp-addon-price">44\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'behavioralAI\',false)">Activer \u2192</button></div>',
+    aiForecasting:        '<div class="fp-addon-price">39\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'aiForecasting\',false)">Activer \u2192</button></div>'
+  };
+
+  /* Updates ALL plan-included addon bottom sections.
+     Finds each addon button by its onclick key and replaces the fp-addon-bottom
+     with an 'Inclus dans [Plan]' badge (included) or restores 'Activer' (not included). */
+  function updateIncludedAddons(plan) {
+    var included = PLAN_INCLUDED[plan] || [];
+    var planLabel = plan === 'standard' ? 'Standard' : plan === 'pro' ? 'Pro' : plan === 'ultra' ? 'Ultra' : '';
+    var inclHtml = planLabel ? '<div class="fp-addon-price-incl">\u2713 Inclus dans ' + planLabel + '</div>' : null;
+    var allKeys = Object.keys(ADDON_DEFAULT_BOTTOM);
+    allKeys.forEach(function(key) {
+      var isIncluded = included.indexOf(key) !== -1;
+      var btn = document.querySelector('button.fp-addon-btn[onclick*="\'' + key + '\'"]');
+      if (!btn) return;
+      var bottom = btn.parentElement && btn.parentElement.classList.contains('fp-addon-actions')
+                   ? btn.closest('.fp-addon-bottom') : null;
+      if (!bottom) return;
+      if (isIncluded && inclHtml) {
+        bottom.innerHTML = inclHtml;
+      } else if (!isIncluded && bottom.querySelector('.fp-addon-price-incl')) {
+        bottom.innerHTML = ADDON_DEFAULT_BOTTOM[key];
+      }
+    });
   }
-  updateWhiteLabel('');
+  /* Backward-compat alias */
+  function updateWhiteLabel(plan) { updateIncludedAddons(plan); }
+  updateIncludedAddons('');
 
   /* ── Restore cart from localStorage when redirected from dashboard ──────────
      Sets _cart data silently (plan + addons); visual state of the current plan
@@ -1540,6 +1576,9 @@
         }
       }
     });
+
+    /* Show 'Inclus dans [Plan]' badge for all plan-included add-ons */
+    updateIncludedAddons(data.plan || '');
   }
 
   /* ── Step 1: instant render from localStorage (visual cache, anti-flash) ── */
