@@ -753,7 +753,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   try {
     const { loadOrgSettings: _dupCheck } = await import("../services/org-settings.js");
     const _dup = await _dupCheck(normalizedEmail).catch(() => undefined);
-    if (_dup !== undefined && _dup !== null) {
+    if (_dup?.org_id) {
       res.status(409).json({
         error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter sur /login.html.",
         redirectTo: "/login.html",
@@ -783,7 +783,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
         // Check if the account was actually created
         const { loadOrgSettings: _orgCheck } = await import("../services/org-settings.js");
         const _org = await _orgCheck(normalizedEmail).catch(() => undefined);
-        if (_org) {
+        if (_org?.org_id) {
           // Case A: real account exists → login
           res.status(409).json({
             error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",

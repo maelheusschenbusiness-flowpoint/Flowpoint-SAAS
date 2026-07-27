@@ -74,7 +74,10 @@ export async function loadOrgSettings(
       `SELECT * FROM org_settings WHERE org_id = $1 LIMIT 1`,
       [orgId],
     );
-    if (!res.rows[0]) return null;
+    if (!res.rows[0]) {
+      logger.debug({ orgId }, "[org-settings] loadOrgSettings — no row found, returning null");
+      return null;
+    }
     const r = res.rows[0];
     return {
       orgId: r.org_id,
