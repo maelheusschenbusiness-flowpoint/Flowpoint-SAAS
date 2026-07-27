@@ -434,6 +434,13 @@ async function _persistStrict(
           { orgId, customerId, rowCount, totalMs: Date.now() - t0 },
           "[ESC][DEBUG] Step 5 — DB write confirmed — customer persisted",
         );
+        // Dual-write: mirror stripe_customer_id to organizations (fire-and-forget, non-fatal)
+        // Uses a separate connection outside this transaction.
+        import("../services/org-data.js").then(({ persistOrgData }) => {
+          persistOrgData(orgId, { stripeCustomerId: customerId }).catch(mirrorErr => {
+            logger.warn({ mirrorErr, orgId }, "[ESC] organizations stripe_customer_id mirror failed (non-fatal)");
+          });
+        }).catch(() => {/* non-fatal */});
         return;
       }
 

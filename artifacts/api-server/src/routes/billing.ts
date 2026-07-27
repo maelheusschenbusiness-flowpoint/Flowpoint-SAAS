@@ -3,7 +3,7 @@ import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS } from "../lib/plans.js";
-import { upsertOrgSettings, loadOrgSettings } from "../services/org-settings.js";
+import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient } from "../services/stripe-factory.js";
 import { ensureStripeCustomer } from "../services/ensure-stripe-customer.js";
@@ -359,15 +359,13 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
 
     const billingCtx = await loadBillingContext(orgIdVerify);
 
-    // Persist all billing state to DB — this is the authoritative write path after checkout
-    await upsertOrgSettings(orgIdVerify, {
+    // Persist billing state to organizations (new source of truth) + mirror to org_settings
+    await persistOrgData(orgIdVerify, {
       plan: planMeta,
       subscriptionStatus: "active",
       stripeCustomerId: session.customer ? String(session.customer) : (billingCtx.stripeCustomerId ?? undefined),
-      addons: { ...billingCtx.addons, ...activatedAddons },
       trialEndsAt: billingCtx.trialEndsAt ?? undefined,
-    }).catch(err => logger.error({ err }, "[Billing] Failed to persist state after checkout verify"));
-
+    }).catch(err => logger.error({ err }, "[Billing] Failed to persist billing state after checkout verify"));
     logger.info({ plan: planMeta, sessionId, orgId: orgIdVerify }, "[Billing] Checkout verified — plan activated");
 
     res.json({ ok: true, plan: planMeta });
@@ -548,7 +546,7 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
   const billingCtx = await loadBillingContext(orgId);
 
   if (!stripeKey || !billingCtx.stripeCustomerId) {
-    await upsertOrgSettings(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
+    await persistOrgData(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
     logger.warn({ orgId }, "[Billing] cancel: no Stripe key or customerId — marking canceled in DB");
     res.json({ ok: true, cancelAtPeriodEnd: atPeriodEnd, mock: true });
     return;
@@ -575,7 +573,7 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
       res.json({ ok: true, cancelAtPeriodEnd: true, cancelAt: sub.current_period_end });
     } else {
       await stripe.subscriptions.cancel(sub.id);
-      await upsertOrgSettings(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
+      await persistOrgData(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
       if (email) {
         mailer.sendSubscriptionCanceled({
           to: email, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
@@ -597,7 +595,7 @@ router.post("/billing/reactivate", ownerOnly, async (req: Request, res: Response
   const billingCtx = await loadBillingContext(orgId);
 
   if (!stripeKey || !billingCtx.stripeCustomerId) {
-    await upsertOrgSettings(orgId, { subscriptionStatus: "active" }).catch(() => {});
+    await persistOrgData(orgId, { subscriptionStatus: "active" }).catch(() => {});
     logger.warn({ orgId }, "[Billing] reactivate: no Stripe key — marking active in DB (mock)");
     res.json({ ok: true, reactivated: true, mock: true });
     return;
@@ -620,7 +618,7 @@ router.post("/billing/reactivate", ownerOnly, async (req: Request, res: Response
 
     await stripe.subscriptions.update(sub.id, { cancel_at_period_end: false });
     const newStatus = sub.status === "trialing" ? "trialing" : "active";
-    await upsertOrgSettings(orgId, { subscriptionStatus: newStatus }).catch(() => {});
+    await persistOrgData(orgId, { subscriptionStatus: newStatus }).catch(() => {});
 
     const email = billingCtx.email ?? req.orgContext?.email;
     if (email) {
@@ -647,7 +645,7 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
   const billingCtx = await loadBillingContext(orgId);
 
   if (!stripeKey || !billingCtx.stripeCustomerId) {
-    await upsertOrgSettings(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
+    await persistOrgData(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
     logger.warn({ orgId }, "[Billing] cancel-trial: no Stripe key — marking canceled in DB (mock)");
     res.json({ ok: true, mock: true });
     return;
@@ -677,7 +675,7 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
       res.json({ ok: true, cancelAtPeriodEnd: true, cancelAt: sub.trial_end });
     } else {
       await stripe.subscriptions.cancel(sub.id);
-      await upsertOrgSettings(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
+      await persistOrgData(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
       if (email) {
         mailer.sendTrialCanceled({
           to: email, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
@@ -886,7 +884,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           // Do NOT change org_settings.plan now — the subscription is still on
           // the current (higher) plan until the period end. Only store the
           // pending change so the dashboard can show the scheduled downgrade.
-          await upsertOrgSettings(orgId, { pendingPlan: plan, pendingPlanDate: effectiveDate }).catch(() => {});
+          await persistOrgData(orgId, { pendingPlan: plan, pendingPlanDate: effectiveDate }).catch(() => {});
           logger.info(
             { plan, subId: sub.id, orgId, effectiveDate, removedAddonKeys },
             "[Billing] downgrade scheduled for period end",
@@ -914,7 +912,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           proration_behavior: prorationBehavior,
           metadata: { plan },
         });
-        await upsertOrgSettings(orgId, { plan }).catch(() => {});
+        await persistOrgData(orgId, { plan }).catch(() => {});
         logger.info(
           { plan, subId: sub.id, subStatus: sub.status, isTrialing, isUpgrade, isDowngrade, prorationBehavior, removedAddonKeys, orgId },
           "[Billing] plan change applied immediately",
@@ -1001,15 +999,16 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
           const _client = await pgPool.connect();
           try {
             const newStatus = stripeCustomerId ? "incomplete" : "pending_billing";
+            // Jalon 7: write to organizations (source of truth)
             await _client.query(
-              `UPDATE org_settings
+              `UPDATE organizations
                SET    stripe_subscription_id = NULL,
                       subscription_status    = $1,
                       updated_at             = NOW()
-               WHERE  org_id = $2`,
+               WHERE  id = $2`,
               [newStatus, orgId]
             );
-            logger.info({ orgId, newStatus }, "[Billing] resource_missing: DB reconciled — subscription ID cleared");
+            logger.info({ orgId, newStatus }, "[Billing] resource_missing: DB reconciled — subscription ID cleared (organizations)");
           } finally { _client.release(); }
         } catch (cleanupErr) {
           logger.warn({ cleanupErr, orgId }, "[Billing] resource_missing: DB cleanup failed (non-fatal)");
@@ -1343,27 +1342,21 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
   logger.info({ type: event.type }, "[Webhook] Stripe event received");
 
   try {
-    const { upsertOrgSettings: upsert } = await import("../services/org-settings.js");
-
-    // Derive orgId from Stripe customer ID stored in org_settings
+    // Derive orgId from Stripe customer ID → organizations lookup (source de vérité)
     let orgId = "default";
     try {
       const stripeCustomerId =
         ((event.data.object as unknown) as Record<string, unknown>)["customer"] as string | undefined;
       if (stripeCustomerId) {
-        const { pool: rawPool } = await import("@workspace/db");
-        const orgLookup = await rawPool.query<{ org_id: string }>(
-          `SELECT org_id FROM org_settings WHERE stripe_customer_id = $1 LIMIT 1`,
-          [stripeCustomerId]
-        );
-        if (orgLookup.rows[0]) orgId = orgLookup.rows[0].org_id;
+        const resolved = await findOrgByStripeCustomer(stripeCustomerId);
+        if (resolved) orgId = resolved;
       }
     } catch (lookupErr) {
       logger.warn({ lookupErr }, "[Webhook] org lookup by stripe_customer_id failed — falling back to default");
     }
 
     // Load current DB plan for plan-fallback and event logging
-    const orgSettings = await loadOrgSettings(orgId).catch(() => null);
+    const orgSettings = await loadOrgData(orgId).catch(() => null);
 
     switch (event.type) {
       case "customer.subscription.created": {
@@ -1373,7 +1366,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null;
 
         if (plan) store.broadcastPlanUpdate(plan, orgId);
-        await upsert(orgId, {
+        await persistOrgData(orgId, {
           subscriptionStatus: status,
           plan: plan || undefined,
           trialEndsAt: trialEnd ?? undefined,
@@ -1391,7 +1384,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         const cancelAtPeriodEnd = sub.cancel_at_period_end;
 
         if (plan) store.broadcastPlanUpdate(plan, orgId);
-        await upsert(orgId, {
+        await persistOrgData(orgId, {
           subscriptionStatus: status,
           plan:               plan || undefined,
           trialEndsAt:        trialEnd ?? undefined,
@@ -1411,7 +1404,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
       case "customer.subscription.deleted": {
         const sub = event.data.object as import("stripe").Stripe.Subscription;
         store.broadcast({ type: "billing:subscription_canceled" }, orgId);
-        await upsert(orgId, { subscriptionStatus: "canceled" });
+        await persistOrgData(orgId, { subscriptionStatus: "canceled" });
         await trackBillingEvent("subscription_canceled", {
           plan: orgSettings?.plan ?? "standard",
           amount: 0, currency: "eur", subscriptionId: sub.id,
@@ -1443,7 +1436,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         const amount = (invoice.amount_paid || 0) / 100;
 
         store.broadcast({ type: "billing:payment_succeeded" }, orgId);
-        await upsert(orgId, { subscriptionStatus: "active" });
+        await persistOrgData(orgId, { subscriptionStatus: "active" });
         await trackBillingEvent("subscription_renewed", {
           plan: orgSettings?.plan ?? "standard", amount, currency: invoice.currency ?? "eur",
           invoiceId: invoice.id, subscriptionId: subId,
@@ -1455,7 +1448,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
       case "invoice.payment_failed": {
         const invoice = event.data.object as import("stripe").Stripe.Invoice;
         store.broadcast({ type: "billing:payment_failed" }, orgId);
-        await upsert(orgId, { subscriptionStatus: "past_due" });
+        await persistOrgData(orgId, { subscriptionStatus: "past_due" });
         logger.warn({ invoiceId: invoice.id, orgId }, "[Webhook] Payment failed — subscription past_due");
         break;
       }
@@ -1464,7 +1457,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         const session = event.data.object as import("stripe").Stripe.Checkout.Session;
         const plan = (session.metadata?.["plan"] || "pro").toLowerCase();
         store.broadcastPlanUpdate(plan, orgId);
-        await upsert(orgId, {
+        await persistOrgData(orgId, {
           subscriptionStatus: "active",
           plan,
           stripeCustomerId: session.customer ? String(session.customer) : undefined,

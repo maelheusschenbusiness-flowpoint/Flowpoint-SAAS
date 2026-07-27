@@ -7,8 +7,8 @@
 import type { Request, Response, NextFunction } from "express";
 import { logger } from "../lib/logger.js";
 import { getRateLimit, type RateLimits } from "../lib/config.js";
+import { pool } from "@workspace/db";
 import { store } from "../services/store.js";
-import { loadOrgSettings } from "../services/org-settings.js";
 
 interface Window {
   count: number;
@@ -49,12 +49,27 @@ function getOrgId(req: Request): string {
 }
 
 async function getPlanForOrg(orgId: string): Promise<string> {
-  if (orgId === 'default') return (store.me?.plan || 'standard').toLowerCase();
+  if (orgId === "default") return (store.me?.plan || "standard").toLowerCase();
   try {
-    const data = await loadOrgSettings(orgId);
-    return (data?.plan || store.me?.plan || 'standard').toLowerCase();
+    const client = await pool.connect();
+    try {
+      // Source primaire : organizations
+      const r = await client.query<{ plan: string }>(
+        `SELECT plan FROM organizations WHERE id = $1 LIMIT 1`,
+        [orgId],
+      );
+      if (r.rows.length > 0) return (r.rows[0].plan || "standard").toLowerCase();
+      // Fallback : org_settings
+      const legacy = await client.query<{ plan: string }>(
+        `SELECT plan FROM org_settings WHERE org_id = $1 LIMIT 1`,
+        [orgId],
+      );
+      return (legacy.rows[0]?.plan || "standard").toLowerCase();
+    } finally {
+      client.release();
+    }
   } catch {
-    return (store.me?.plan || 'standard').toLowerCase();
+    return (store.me?.plan || "standard").toLowerCase();
   }
 }
 

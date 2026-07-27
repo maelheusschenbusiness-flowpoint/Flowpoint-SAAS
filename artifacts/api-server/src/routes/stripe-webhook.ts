@@ -8,7 +8,7 @@ import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { getPlanForPriceId, getAddonForPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
 import { mailer } from "../services/mailer.js";
-import { upsertOrgSettings, loadOrgSettings } from "../services/org-settings.js";
+import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
 // If orgId cannot be resolved, the caller must NOT invoke this function.
@@ -34,30 +34,30 @@ async function persistSubscriptionMeta(opts: {
   }
 
   try {
-    const update: Parameters<typeof upsertOrgSettings>[1] = {};
-    if (subscriptionStatus)    update.subscriptionStatus    = subscriptionStatus;
-    if (stripeCustomerId)      update.stripeCustomerId      = stripeCustomerId;
-    if (stripeSubscriptionId)  update.stripeSubscriptionId  = stripeSubscriptionId;
-    if (plan)                  update.plan                  = plan;
-    if (trialEndsAt)           update.trialEndsAt           = trialEndsAt;
-    if (trialConsumedAt)       update.trialConsumedAt       = trialConsumedAt;
-    if (trialStartedAt)        update.trialStartedAt        = trialStartedAt;
+    const fields: Parameters<typeof persistOrgData>[1] = {};
+    if (subscriptionStatus)    fields.subscriptionStatus    = subscriptionStatus;
+    if (stripeCustomerId)      fields.stripeCustomerId      = stripeCustomerId;
+    if (stripeSubscriptionId)  fields.stripeSubscriptionId  = stripeSubscriptionId;
+    if (plan)                  fields.plan                  = plan;
+    if (trialEndsAt)           fields.trialEndsAt           = trialEndsAt;
+    if (trialConsumedAt)       fields.trialConsumedAt       = trialConsumedAt;
+    if (trialStartedAt)        fields.trialStartedAt        = trialStartedAt;
 
-    await upsertOrgSettings(orgId, update);
-    logger.info({ orgId, subscriptionStatus, stripeSubscriptionId, plan }, "[Webhook] Subscription meta persisted to org_settings");
+    await persistOrgData(orgId, fields);
+    logger.info({ orgId, subscriptionStatus, stripeSubscriptionId, plan }, "[Webhook] Subscription meta persisted to organizations");
   } catch (err) {
-    logger.error({ err, orgId }, "[Webhook] Failed to persist subscription meta to org_settings");
+    logger.error({ err, orgId }, "[Webhook] Failed to persist subscription meta");
   }
 }
 
-// ── P0-5: Load org email from DB — never from store.me
+// ── P0-5: Load org email from organizations — never from store.me
 async function loadOrgEmail(orgId: string): Promise<{ email: string | null; firstName: string | null; plan: string }> {
   try {
-    const settings = await loadOrgSettings(orgId);
+    const data = await loadOrgData(orgId);
     return {
-      email:     settings?.email     ?? null,
-      firstName: settings?.firstName ?? null,
-      plan:      settings?.plan      ?? "standard",
+      email:     data?.email     ?? null,
+      firstName: data?.firstName ?? null,
+      plan:      data?.plan      ?? "standard",
     };
   } catch (err) {
     logger.warn({ err, orgId }, "[Webhook] Failed to load org email from DB — email notification skipped");
@@ -172,15 +172,12 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   try {
     const { pool: pgPool } = await import("@workspace/db");
 
-    // Try 1: customer field on the event object
+    // Try 1: customer field → organizations lookup (source de vérité, fallback org_settings)
     const stripeCustomerId = (obj["customer"] as string | undefined) ?? (obj["id"] as string | undefined);
     if (stripeCustomerId && stripeCustomerId.startsWith("cus_")) {
-      const orgLookup = await pgPool.query<{ org_id: string }>(
-        `SELECT org_id FROM org_settings WHERE stripe_customer_id = $1 LIMIT 1`,
-        [stripeCustomerId]
-      );
-      if (orgLookup.rows[0]) {
-        orgId = orgLookup.rows[0].org_id;
+      const resolved = await findOrgByStripeCustomer(stripeCustomerId);
+      if (resolved) {
+        orgId = resolved;
         resolvedVia = "stripe_customer_id";
       }
     }
@@ -340,10 +337,11 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             const email = signupRow["email"] ?? orgId;
             const firstName = signupRow["first_name"] ?? "";
 
-            // ── 2. Create/update org_settings (legacy layer — backward compat) ──
+            // ── 2. Upsert org_settings for profile data only (Jalon 7: billing fields removed) ──
             const { upsertOrgSettings, loadOrgSettings: _load } = await import("../services/org-settings.js");
             const _existing = await _load(orgId).catch(() => null);
             if (!_existing) {
+              // Create profile row in org_settings — billing state lives in organizations
               await upsertOrgSettings(orgId, {
                 email,
                 name:               signupRow["company_name"] ?? "",
@@ -355,22 +353,13 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
                 postalCode:         signupRow["postal_code"]  ?? null,
                 phone:              signupRow["phone"]        ?? null,
                 vat:                signupRow["vat"]          ?? null,
-                subscriptionStatus: isTrial ? "trialing" : "active",
-                plan:               selectedPlan,
-                stripeCustomerId:   customerId,
                 locationConfigured: !!(signupRow["city"] || signupRow["address"]),
                 locationSource:     "manual",
                 _readonly_since:    new Date().toISOString(),
               });
-              logger.info({ orgId }, "[Webhook] org_settings created (legacy compat)");
-            } else {
-              // Existing row — update billing fields only
-              await upsertOrgSettings(orgId, {
-                subscriptionStatus: isTrial ? "trialing" : "active",
-                plan:               selectedPlan,
-                stripeCustomerId:   customerId ?? _existing.stripeCustomerId ?? undefined,
-              });
+              logger.info({ orgId }, "[Webhook] org_settings profile row created");
             }
+            // Existing row: no billing updates needed — organizations is the sole billing source
 
             // ── 3. Activate user in new architecture ────────────────────────────
             const activateClient = await pgPool.connect();
@@ -671,23 +660,24 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
           const { pool: pgPool } = await import("@workspace/db");
           const dbCl = await pgPool.connect();
           try {
+            // Jalon 7: clear billing refs in organizations (source of truth)
             const upd = await dbCl.query(
-              `UPDATE org_settings
+              `UPDATE organizations
                SET stripe_customer_id     = NULL,
                    stripe_subscription_id = NULL,
                    subscription_status    = 'none',
                    plan                   = 'standard',
                    updated_at             = NOW()
                WHERE stripe_customer_id = $1
-               RETURNING org_id`,
+               RETURNING id AS org_id`,
               [deletedCustomerId],
             );
             if (upd.rowCount && upd.rowCount > 0) {
               const affected = upd.rows[0]?.org_id;
-              logger.info({ customerId: deletedCustomerId, affected }, "[Webhook] customer.deleted — billing refs cleared");
+              logger.info({ customerId: deletedCustomerId, affected }, "[Webhook] customer.deleted — billing refs cleared in organizations");
               store.broadcastPlanUpdate("standard", affected ?? orgId ?? "");
             } else {
-              logger.warn({ customerId: deletedCustomerId }, "[Webhook] customer.deleted — no org matched this customer");
+              logger.warn({ customerId: deletedCustomerId }, "[Webhook] customer.deleted — no org matched this customer in organizations");
             }
           } finally { dbCl.release(); }
         } catch (err) {

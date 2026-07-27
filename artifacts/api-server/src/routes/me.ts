@@ -3,6 +3,7 @@ import { requireOrgId } from "../lib/require-org-id.js";
 import { store } from "../services/store.js";
 import { PLAN_LIMITS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
+import { loadOrgData }                         from "../services/org-data.js";
 import { normalizeSubscriptionStatus } from "../lib/subscription-state.js";
 import { logger } from "../lib/logger.js";
 
@@ -39,23 +40,36 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
   } catch { /* non-fatal */ }
 
   try {
-    const dbData = await loadOrgSettings(orgId);
+    // Jalon 4: parallel fetch — billing from organizations (source of truth) + profile from org_settings
+    const [billingData, dbData] = await Promise.all([
+      loadOrgData(orgId).catch(() => null),       // organizations first, org_settings fallback
+      loadOrgSettings(orgId).catch(() => null),   // profile fields: firstName, lastName, timezone, location…
+    ]);
 
-    if (dbData) {
-      const plan   = dbData.plan.toLowerCase();
-      const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS["standard"];
+    if (billingData ?? dbData) {
+      // Billing fields: prefer organizations (billingData) → org_settings fallback (dbData)
+      const rawPlan             = billingData?.plan ?? dbData?.plan ?? "standard";
+      const plan                = rawPlan.toLowerCase();
+      const limits              = PLAN_LIMITS[plan] ?? PLAN_LIMITS["standard"];
+      const rawSubStatus        = billingData?.subscriptionStatus ?? dbData?.subscriptionStatus ?? null;
+      const rawStripeSubId      = billingData?.stripeSubscriptionId ?? dbData?.stripeSubscriptionId ?? null;
+      const rawStripeCustomerId = billingData?.stripeCustomerId     ?? dbData?.stripeCustomerId     ?? null;
+      const rawTrialEndsAt      = billingData?.trialEndsAt          ?? dbData?.trialEndsAt          ?? null;
+      const rawTrialConsumedAt  = billingData?.trialConsumedAt      ?? dbData?.trialConsumedAt      ?? null;
 
-      const firstName = dbData.firstName ||
+      // Profile fields: org_settings (dbData) is the source for these; billingData firstName/orgName as fallback
+      const firstName = dbData?.firstName || billingData?.firstName ||
         (req.orgContext?.email?.split("@")[0] ?? "User");
 
       const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
+
       // Normalise subscription status — include trialConsumedAt for pending_billing detection
       const normStatus = normalizeSubscriptionStatus({
-        rawStatus:            dbData.subscriptionStatus,
-        stripeSubscriptionId: dbData.stripeSubscriptionId,
-        stripeCustomerId:     dbData.stripeCustomerId,
-        trialEndsAt:          dbData.trialEndsAt,
-        trialConsumedAt:      dbData.trialConsumedAt,
+        rawStatus:            rawSubStatus,
+        stripeSubscriptionId: rawStripeSubId,
+        stripeCustomerId:     rawStripeCustomerId,
+        trialEndsAt:          rawTrialEndsAt,
+        trialConsumedAt:      rawTrialConsumedAt,
       });
 
       // Read addons from org_addons table (single source of truth — Correction 8)
@@ -68,55 +82,56 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         _mergedAddons[String(row["addon_key"])] = Boolean(row["active"]);
       }
       // Merge org_settings.addons as legacy supplemental (org_addons takes precedence)
-      if (dbData.addons && typeof dbData.addons === "object") {
-        for (const [key, val] of Object.entries(dbData.addons)) {
+      const legacyAddons = dbData?.addons ?? billingData?.addons;
+      if (legacyAddons && typeof legacyAddons === "object") {
+        for (const [key, val] of Object.entries(legacyAddons)) {
           if (!(key in _mergedAddons)) _mergedAddons[key] = val as boolean | number;
         }
       }
-      const _canStartTrial = !dbData.trialConsumedAt && !dbData.stripeSubscriptionId;
+      const _canStartTrial = !rawTrialConsumedAt && !rawStripeSubId;
 
       res.json({
         firstName,
-        lastName:            dbData.lastName ?? "",
+        lastName:            dbData?.lastName ?? "",
         email:               req.orgContext?.email ?? "",
-        plan:                normPlan(dbData.plan),
+        plan:                normPlan(rawPlan),
         role:                req.orgContext?.role ?? "owner",
-        org:                 { name: dbData.orgName, website: dbData.website ?? "" },
+        org:                 { name: dbData?.orgName ?? billingData?.orgName, website: dbData?.website ?? "" },
         subscriptionStatus:  normStatus,
-        stripeSubscriptionId: dbData.stripeSubscriptionId,
-        trialEndsAt:         dbData.trialEndsAt,
-        stripeCustomerId:    dbData.stripeCustomerId,
+        stripeSubscriptionId: rawStripeSubId,
+        trialEndsAt:         rawTrialEndsAt,
+        stripeCustomerId:    rawStripeCustomerId,
         canStartTrial:       _canStartTrial,
         hasPremiumAccess:    normStatus === "active" || normStatus === "trialing",
         mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing",
-        usage:              dbData.usage,
+        usage:              dbData?.usage,
         addons:             _mergedAddons,
         limits,
         publicApiKey:       `fp_pub_${_pkHash}`,
-        createdAt:          dbData.createdAt ?? new Date().toISOString(),
-        timezone:  settingsTimezone ?? dbData.timezone  ?? null,
-        language:  dbData.language  ?? null,
-        currency:  dbData.currency  ?? null,
-        dateFormat: dbData.dateFormat ?? null,
-        timeFormat: dbData.timeFormat ?? null,
+        createdAt:          dbData?.createdAt ?? new Date().toISOString(),
+        timezone:  settingsTimezone ?? dbData?.timezone  ?? null,
+        language:  dbData?.language  ?? null,
+        currency:  dbData?.currency  ?? null,
+        dateFormat: dbData?.dateFormat ?? null,
+        timeFormat: dbData?.timeFormat ?? null,
         location: {
-          address:            dbData.address            ?? null,
-          city:               dbData.city               ?? null,
-          postalCode:         dbData.postalCode         ?? null,
-          country:            dbData.country            ?? null,
-          region:             dbData.region             ?? null,
-          phone:              dbData.phone              ?? null,
-          latitude:           dbData.latitude           ?? null,
-          longitude:          dbData.longitude          ?? null,
-          serviceArea:        dbData.serviceArea        ?? [],
-          locationConfigured: dbData.locationConfigured ?? false,
-          locationSource:     dbData.locationSource     ?? null,
+          address:            dbData?.address            ?? null,
+          city:               dbData?.city               ?? null,
+          postalCode:         dbData?.postalCode         ?? null,
+          country:            dbData?.country            ?? null,
+          region:             dbData?.region             ?? null,
+          phone:              dbData?.phone              ?? null,
+          latitude:           dbData?.latitude           ?? null,
+          longitude:          dbData?.longitude          ?? null,
+          serviceArea:        dbData?.serviceArea        ?? [],
+          locationConfigured: dbData?.locationConfigured ?? false,
+          locationSource:     dbData?.locationSource     ?? null,
         },
       });
       return;
     }
   } catch {
-    // Non-fatal — fall through to in-memory store
+    // Non-fatal — fall through to safe defaults
   }
 
   // SECURITY: never fall back to store.me (global singleton — would leak other users' data).

@@ -1,0 +1,252 @@
+/**
+ * org-data.ts — Source de vérité : table `organizations` (nouvelle architecture)
+ *
+ * Remplace org-settings pour toutes les décisions métier liées à :
+ *   - le plan (standard / pro / ultra)
+ *   - le statut d'abonnement
+ *   - le stripe_customer_id / stripe_subscription_id
+ *   - les données de facturation (trial, pending_plan, addons)
+ *
+ * Stratégie de migration :
+ *   - LECTURES  → organizations (fallback org_settings si row absente)
+ *   - ÉCRITURES → organizations EN PREMIER, puis miroir org_settings
+ *     Le miroir sera supprimé lors du Jalon 7 (drop org_settings).
+ *
+ * IMPORTANT : organizations.id = orgId (email string) — identique à org_settings.org_id.
+ * Cette égalité est garantie par le seed init-data-tables.ts et le webhook d'activation.
+ */
+
+import { pool } from "@workspace/db";
+import { logger } from "../lib/logger.js";
+
+export interface OrgBillingData {
+  /** Plan : 'standard' | 'pro' | 'ultra' */
+  plan: string;
+  /** Statut d'abonnement brut depuis organizations.subscription_status */
+  subscriptionStatus: string | null;
+  /** Stripe customer ID */
+  stripeCustomerId: string | null;
+  /** Stripe subscription ID */
+  stripeSubscriptionId: string | null;
+  /** ISO timestamp fin de trial */
+  trialEndsAt: string | null;
+  /** ISO timestamp quand le premier vrai trial Stripe a été consommé */
+  trialConsumedAt: string | null;
+  /** ISO timestamp quand le trial a démarré */
+  trialStartedAt: string | null;
+  /** Add-ons actifs (JSONB) */
+  addons: Record<string, unknown>;
+  /** Plan différé (scheduled downgrade) */
+  pendingPlan: string | null;
+  /** Date effective du plan différé */
+  pendingPlanDate: string | null;
+  /** Email du propriétaire (owner_email) */
+  email: string | null;
+  /** Prénom du propriétaire (owner_first_name) */
+  firstName: string | null;
+  /** Nom de l'organisation */
+  orgName: string | null;
+}
+
+export type PersistOrgFields = {
+  plan?: string;
+  subscriptionStatus?: string | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  trialEndsAt?: string | null;
+  trialConsumedAt?: string | null;
+  trialStartedAt?: string | null;
+  addons?: Record<string, unknown>;
+  pendingPlan?: string | null;
+  pendingPlanDate?: string | null;
+  ownerEmail?: string | null;
+  ownerFirstName?: string | null;
+  orgName?: string | null;
+};
+
+/**
+ * Charge les données de facturation depuis `organizations` (source de vérité).
+ * Fallback automatique sur `org_settings` si la row n'existe pas encore dans organizations.
+ *
+ * @returns null si aucun compte trouvé (ni organizations, ni org_settings)
+ */
+export async function loadOrgData(orgId: string): Promise<OrgBillingData | null> {
+  if (!orgId || orgId === "default") return null;
+
+  const client = await pool.connect();
+  try {
+    const r = await client.query<{
+      plan: string;
+      subscription_status: string | null;
+      stripe_customer_id: string | null;
+      stripe_subscription_id: string | null;
+      trial_ends_at: string | null;
+      trial_consumed_at: string | null;
+      trial_started_at: string | null;
+      addons: Record<string, unknown> | null;
+      pending_plan: string | null;
+      pending_plan_date: string | null;
+      owner_email: string | null;
+      owner_first_name: string | null;
+      name: string | null;
+    }>(
+      `SELECT plan, subscription_status, stripe_customer_id, stripe_subscription_id,
+              trial_ends_at, trial_consumed_at, trial_started_at,
+              addons, pending_plan, pending_plan_date,
+              owner_email, owner_first_name, name
+       FROM organizations WHERE id = $1 LIMIT 1`,
+      [orgId],
+    );
+
+    if (r.rows.length > 0) {
+      const row = r.rows[0];
+      return {
+        plan:                 (row.plan || "standard").toLowerCase(),
+        subscriptionStatus:   row.subscription_status ?? null,
+        stripeCustomerId:     row.stripe_customer_id || null,
+        stripeSubscriptionId: row.stripe_subscription_id || null,
+        trialEndsAt:          row.trial_ends_at ? new Date(row.trial_ends_at).toISOString() : null,
+        trialConsumedAt:      row.trial_consumed_at ? new Date(row.trial_consumed_at).toISOString() : null,
+        trialStartedAt:       row.trial_started_at ? new Date(row.trial_started_at).toISOString() : null,
+        addons:               (row.addons && typeof row.addons === "object") ? row.addons as Record<string, unknown> : {},
+        pendingPlan:          row.pending_plan ?? null,
+        pendingPlanDate:      row.pending_plan_date ?? null,
+        email:                row.owner_email ?? null,
+        firstName:            row.owner_first_name ?? null,
+        orgName:              row.name ?? null,
+      };
+    }
+  } finally {
+    client.release();
+  }
+
+  // Fallback : org_settings pour les comptes legacy pas encore dans organizations
+  logger.debug({ orgId }, "[OrgData] organizations row not found — fallback to org_settings");
+  try {
+    const { loadOrgSettings } = await import("./org-settings.js");
+    const legacy = await loadOrgSettings(orgId);
+    if (!legacy) return null;
+    return {
+      plan:                 (legacy.plan || "standard").toLowerCase(),
+      subscriptionStatus:   legacy.subscriptionStatus ?? null,
+      stripeCustomerId:     legacy.stripeCustomerId ?? null,
+      stripeSubscriptionId: legacy.stripeSubscriptionId ?? null,
+      trialEndsAt:          legacy.trialEndsAt ?? null,
+      trialConsumedAt:      legacy.trialConsumedAt ?? null,
+      trialStartedAt:       null,
+      addons:               (typeof legacy.addons === "object" && legacy.addons !== null) ? legacy.addons as Record<string, unknown> : {},
+      pendingPlan:          legacy.pendingPlan ?? null,
+      pendingPlanDate:      legacy.pendingPlanDate ?? null,
+      email:                legacy.email ?? null,
+      firstName:            legacy.firstName ?? null,
+      orgName:              legacy.orgName ?? null,
+    };
+  } catch (legacyErr) {
+    logger.error({ legacyErr, orgId }, "[OrgData] Both organizations and org_settings failed");
+    return null;
+  }
+}
+
+/**
+ * Dual-write : écrit dans `organizations` (source de vérité) PUIS dans `org_settings` (miroir).
+ * Le miroir sera supprimé lors du Jalon 7 (suppression d'org_settings).
+ *
+ * Guard : refuse toute écriture sur orgId vide ou "default".
+ */
+export async function persistOrgData(orgId: string, fields: PersistOrgFields): Promise<void> {
+  if (!orgId || orgId === "default") {
+    logger.error({ orgId, fields }, "[OrgData] persistOrgData: orgId invalide — écriture annulée");
+    return;
+  }
+  if (Object.keys(fields).length === 0) return;
+
+  // ── 1. Écriture principale → organizations ──────────────────────────────
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  let n = 2; // $1 = orgId
+
+  if (fields.plan !== undefined)                { sets.push(`plan = $${n++}`);                   vals.push(fields.plan ? fields.plan.toLowerCase() : "standard"); }
+  if (fields.subscriptionStatus !== undefined)   { sets.push(`subscription_status = $${n++}`);    vals.push(fields.subscriptionStatus); }
+  if (fields.stripeCustomerId !== undefined)      { sets.push(`stripe_customer_id = $${n++}`);     vals.push(fields.stripeCustomerId || null); }
+  if (fields.stripeSubscriptionId !== undefined)  { sets.push(`stripe_subscription_id = $${n++}`); vals.push(fields.stripeSubscriptionId || null); }
+  if (fields.trialEndsAt !== undefined)           { sets.push(`trial_ends_at = $${n++}`);          vals.push(fields.trialEndsAt); }
+  if (fields.trialConsumedAt !== undefined)       { sets.push(`trial_consumed_at = $${n++}`);      vals.push(fields.trialConsumedAt); }
+  if (fields.trialStartedAt !== undefined)        { sets.push(`trial_started_at = $${n++}`);       vals.push(fields.trialStartedAt); }
+  if (fields.pendingPlan !== undefined)           { sets.push(`pending_plan = $${n++}`);            vals.push(fields.pendingPlan); }
+  if (fields.pendingPlanDate !== undefined)       { sets.push(`pending_plan_date = $${n++}`);      vals.push(fields.pendingPlanDate); }
+  if (fields.ownerEmail !== undefined)            { sets.push(`owner_email = $${n++}`);            vals.push(fields.ownerEmail); }
+  if (fields.ownerFirstName !== undefined)        { sets.push(`owner_first_name = $${n++}`);       vals.push(fields.ownerFirstName); }
+  if (fields.orgName !== undefined)               { sets.push(`name = $${n++}`);                   vals.push(fields.orgName); }
+
+  if (sets.length === 0) return;
+  sets.push("updated_at = NOW()");
+
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `INSERT INTO organizations (id) VALUES ($1)
+         ON CONFLICT (id) DO UPDATE SET ${sets.join(", ")}`,
+        [orgId, ...vals],
+      );
+      logger.debug({ orgId, keys: Object.keys(fields) }, "[OrgData] organizations mis à jour");
+    } finally {
+      client.release();
+    }
+  } catch (primaryErr) {
+    logger.error({ primaryErr, orgId, fields }, "[OrgData] Échec écriture organizations");
+    throw primaryErr; // rethrow — caller should handle
+  }
+
+  // ── 2. Miroir → org_settings (non-fatal) ───────────────────────────────
+  try {
+    const { upsertOrgSettings } = await import("./org-settings.js");
+    const legacy: Record<string, unknown> = {};
+    if (fields.plan !== undefined)                legacy["plan"]                = fields.plan;
+    if (fields.subscriptionStatus !== undefined)   legacy["subscriptionStatus"]  = fields.subscriptionStatus;
+    if (fields.stripeCustomerId !== undefined)      legacy["stripeCustomerId"]    = fields.stripeCustomerId;
+    if (fields.stripeSubscriptionId !== undefined)  legacy["stripeSubscriptionId"] = fields.stripeSubscriptionId;
+    if (fields.trialEndsAt !== undefined)           legacy["trialEndsAt"]         = fields.trialEndsAt;
+    if (fields.trialConsumedAt !== undefined)       legacy["trialConsumedAt"]     = fields.trialConsumedAt;
+    if (fields.trialStartedAt !== undefined)        legacy["trialStartedAt"]      = fields.trialStartedAt;
+    if (fields.pendingPlan !== undefined)           legacy["pendingPlan"]         = fields.pendingPlan;
+    if (fields.pendingPlanDate !== undefined)       legacy["pendingPlanDate"]     = fields.pendingPlanDate;
+    if (fields.ownerEmail !== undefined)            legacy["email"]               = fields.ownerEmail;
+    if (fields.orgName !== undefined)               legacy["orgName"]             = fields.orgName;
+    if (Object.keys(legacy).length > 0) {
+      await upsertOrgSettings(orgId, legacy as Parameters<typeof upsertOrgSettings>[1]);
+    }
+  } catch (mirrorErr) {
+    // Non-fatal : organizations est la nouvelle source de vérité
+    logger.warn({ mirrorErr, orgId }, "[OrgData] Miroir org_settings échoué (non-fatal)");
+  }
+}
+
+/**
+ * Résout un orgId depuis un stripe_customer_id.
+ * Lit organizations EN PREMIER, puis org_settings en fallback.
+ *
+ * @returns orgId (= email) ou null si introuvable
+ */
+export async function findOrgByStripeCustomer(stripeCustomerId: string): Promise<string | null> {
+  if (!stripeCustomerId) return null;
+
+  const client = await pool.connect();
+  try {
+    // Lookup primaire : organizations
+    const r = await client.query<{ id: string }>(
+      `SELECT id FROM organizations WHERE stripe_customer_id = $1 LIMIT 1`,
+      [stripeCustomerId],
+    );
+    if (r.rows.length > 0) return r.rows[0].id;
+
+    // Fallback : org_settings
+    const legacy = await client.query<{ org_id: string }>(
+      `SELECT org_id FROM org_settings WHERE stripe_customer_id = $1 LIMIT 1`,
+      [stripeCustomerId],
+    );
+    return legacy.rows[0]?.org_id ?? null;
+  } finally {
+    client.release();
+  }
+}

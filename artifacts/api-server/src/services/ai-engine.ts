@@ -1,7 +1,7 @@
 import { pool, withOrgDb } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
-import { loadOrgSettings } from "./org-settings.js";
+import { loadOrgData } from "./org-data.js";
 import { PLAN_AI_CREDITS, PLAN_AI_TOKENS } from "../lib/plans.js";
 import { loadOrgAIPrefs, resolveAIModel } from "./ai-prefs.js";
 import {
@@ -59,7 +59,7 @@ export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
   tokenLimit: number;
 }> {
   const month       = currentMonth();
-  const _dbData     = await loadOrgSettings(orgId).catch(() => null);
+  const _dbData     = await loadOrgData(orgId).catch(() => null);
   const plan        = (_dbData?.plan || store.me.plan || "standard").toLowerCase();
   const creditLimit = planCreditLimit(plan);
   const tokenLimit  = PLAN_AI_TOKENS[plan] ?? PLAN_AI_TOKENS.standard;
@@ -386,7 +386,7 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
   alerts: Array<{ alertType: string; message: string; triggeredAt: Date }>;
   estimatedCostEur: number;
 }> {
-  const _dbData     = await loadOrgSettings(orgId).catch(() => null);
+  const _dbData     = await loadOrgData(orgId).catch(() => null);
   const plan        = (_dbData?.plan || store.me.plan || "standard").toLowerCase();
   const creditLimit = planCreditLimit(plan);
   const tokenLimit  = PLAN_AI_TOKENS[plan] ?? PLAN_AI_TOKENS.standard;

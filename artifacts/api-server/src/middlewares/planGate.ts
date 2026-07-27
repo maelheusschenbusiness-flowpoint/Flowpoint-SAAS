@@ -9,36 +9,50 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
+import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
-import { loadOrgSettings } from "../services/org-settings.js";
 import { planAtLeast, getFeature, getQuota, normalizePlan, type PlanTier, type FeatureFlags, type CoreQuotas } from "../lib/config.js";
 import { planRequired, quotaExceeded } from "../lib/response.js";
 
 const isProd = () => process.env["NODE_ENV"] === "production" && !process.env["REPLIT_DEV_DOMAIN"];
 
 /**
- * Resolve the current org's plan from DB.
- * Returns "standard" if org is not found (safe default — least privilege).
- * Returns null only if there is a DB error in production (caller should deny).
+ * Résout le plan depuis `organizations` (source de vérité, Jalon 1).
+ * Fallback sur `org_settings` si la row organizations est absente (comptes legacy).
+ * Retourne "standard" si l'org est introuvable (moindre privilège).
+ * Retourne null uniquement en cas d'erreur DB en production (appelant doit refuser).
  */
 async function resolvePlanFromDB(req: Request): Promise<string | null> {
   const orgId = (req as { orgId?: string }).orgId;
 
-  // No authenticated session → "standard" (anonymous / pre-auth)
   if (!orgId || orgId === "default") return "standard";
 
   try {
-    const settings = await loadOrgSettings(orgId);
-    if (!settings) {
-      // Org row doesn't exist yet (new signup in flight) → standard
+    const client = await pool.connect();
+    try {
+      // Source primaire : organizations
+      const r = await client.query<{ plan: string }>(
+        `SELECT plan FROM organizations WHERE id = $1 LIMIT 1`,
+        [orgId],
+      );
+      if (r.rows.length > 0) {
+        return (r.rows[0].plan || "standard").toLowerCase();
+      }
+      // Fallback : org_settings pour les comptes legacy
+      const legacy = await client.query<{ plan: string }>(
+        `SELECT plan FROM org_settings WHERE org_id = $1 LIMIT 1`,
+        [orgId],
+      );
+      if (legacy.rows.length > 0) {
+        return (legacy.rows[0].plan || "standard").toLowerCase();
+      }
       return "standard";
+    } finally {
+      client.release();
     }
-    return (settings.plan || "standard").toLowerCase();
   } catch (err) {
-    logger.error({ err, orgId }, "[PlanGate] Failed to load org plan from DB");
-    // In production: fail-closed — deny access rather than grant wrong plan
+    logger.error({ err, orgId }, "[PlanGate] Échec résolution plan depuis DB");
     if (isProd()) return null;
-    // In dev: fail-open with standard plan
     return "standard";
   }
 }

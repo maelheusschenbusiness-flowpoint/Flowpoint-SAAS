@@ -975,6 +975,7 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
   const { pool: pgPool } = await import("@workspace/db");
   let sessionOrgId: string;
   let sessionRole: string;
+  let sessionUserUuid: string | undefined;
 
   try {
     // Parallel fetch: user record + org membership via new architecture
@@ -1025,8 +1026,9 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
       }
       // Legacy path: create session using email as orgId (backward compat)
       logger.info({ email }, "[Auth] login-verify: legacy path (user not yet in users table)");
-      sessionOrgId = email;
-      sessionRole = "owner";
+      sessionOrgId  = email;
+      sessionRole   = "owner";
+      sessionUserUuid = undefined;
     } else {
       const user = userRow.rows[0];
 
@@ -1070,8 +1072,9 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
           });
           return;
         }
-        sessionOrgId = email;
-        sessionRole = "owner";
+        sessionOrgId    = email;
+        sessionRole     = "owner";
+        sessionUserUuid = user.id;
       } else {
         const member = memberRow.rows[0];
 
@@ -1093,8 +1096,9 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
           return;
         }
 
-        sessionOrgId = member.organization_id;
-        sessionRole = member.role;
+        sessionOrgId    = member.organization_id;
+        sessionRole     = member.role;
+        sessionUserUuid = user.id;
         logger.info({ email, orgId: sessionOrgId, role: sessionRole, subStatus: member.subscription_status },
           "[Auth] login-verify: All 6 checks passed (new architecture)");
       }
@@ -1116,6 +1120,7 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
     orgId: sessionOrgId,
     email,
     role: sessionRole,
+    userUuid: sessionUserUuid,
   });
 
   // Update last_login_at in users table (fire-and-forget)

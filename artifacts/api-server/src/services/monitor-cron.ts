@@ -13,9 +13,9 @@ export async function evaluateAlertRulesForAudit(url: string, score: number, org
     const client = await pool.connect();
     try {
       const rules = await client.query(
-        `SELECT ar.*, os.email AS org_email
+        `SELECT ar.*, o.owner_email AS org_email
          FROM alert_rules ar
-         LEFT JOIN org_settings os ON ar.org_id = os.org_id
+         LEFT JOIN organizations o ON ar.org_id = o.id
          WHERE ar.enabled = true AND ar.type = 'seo_score' AND ar.org_id = $1`,
         [orgId]
       );
@@ -96,6 +96,7 @@ export async function checkTrialEndingReminders(): Promise<void> {
   const client = await pool.connect();
   try {
     // Candidates: trialing, J-3 window, not yet notified, has email
+    // Jalon 5: read trial candidates from organizations (source of truth for billing state)
     const { rows } = await client.query<{
       org_id: string;
       email: string;
@@ -103,14 +104,14 @@ export async function checkTrialEndingReminders(): Promise<void> {
       plan: string;
       trial_ends_at: Date;
     }>(`
-      SELECT org_id, email, first_name, plan, trial_ends_at
-      FROM org_settings
+      SELECT id AS org_id, owner_email AS email, owner_first_name AS first_name, plan, trial_ends_at
+      FROM organizations
       WHERE subscription_status = 'trialing'
         AND trial_ends_at IS NOT NULL
-        AND trial_ends_at::timestamptz BETWEEN (NOW() + INTERVAL '2 days') AND (NOW() + INTERVAL '4 days')
+        AND trial_ends_at BETWEEN (NOW() + INTERVAL '2 days') AND (NOW() + INTERVAL '4 days')
         AND trial_ending_notified_at IS NULL
-        AND email IS NOT NULL
-        AND email != ''
+        AND owner_email IS NOT NULL
+        AND owner_email != ''
     `);
 
     if (rows.length === 0) {
@@ -134,8 +135,9 @@ export async function checkTrialEndingReminders(): Promise<void> {
 
         if (result.ok) {
           // Mark as notified to avoid duplicate sends
+          // Jalon 5: mark as notified on organizations (source of truth)
           await client.query(
-            `UPDATE org_settings SET trial_ending_notified_at = NOW() WHERE org_id = $1`,
+            `UPDATE organizations SET trial_ending_notified_at = NOW() WHERE id = $1`,
             [row.org_id]
           );
           logger.info(

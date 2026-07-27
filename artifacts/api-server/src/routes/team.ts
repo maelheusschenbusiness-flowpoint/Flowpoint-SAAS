@@ -70,11 +70,13 @@ function buildInviteUrl(rawToken: string, email: string): string {
   return `${base}/accept-invitation.html?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(email)}`;
 }
 
-/** Resolve plan seat limit for an org (queries org_settings via pool, non-fatal). */
+/** Resolve plan seat limit — reads from organizations (Jalon 1 source of truth), org_settings fallback. */
 async function getOrgSeatLimit(orgId: string): Promise<{ limit: number; plan: string }> {
   try {
+    // Jalon 6: read plan solely from organizations (source of truth — org_settings fallback removed)
     const r = await pool.query<{ plan: string }>(
-      `SELECT plan FROM org_settings WHERE org_id = $1 LIMIT 1`,
+      `SELECT COALESCE(NULLIF(plan,''), 'standard') AS plan
+       FROM organizations WHERE id = $1 LIMIT 1`,
       [orgId]
     );
     const plan  = (r.rows[0]?.plan ?? "standard").toLowerCase();
@@ -156,9 +158,10 @@ publicTeamRouter.get("/team/invitations/validate", async (req: Request, res: Res
     // Load org name for display
     let orgName = inv.org_id;
     try {
+      // Jalon 6: read org name from organizations (source of truth)
       const orgR = await pool.query<{ org_name: string }>(
-        `SELECT COALESCE(NULLIF(org_name,''), org_id) AS org_name
-         FROM org_settings WHERE org_id = $1 LIMIT 1`,
+        `SELECT COALESCE(NULLIF(name,''), id) AS org_name
+         FROM organizations WHERE id = $1 LIMIT 1`,
         [inv.org_id]
       );
       if (orgR.rows[0]) orgName = orgR.rows[0].org_name;
@@ -277,6 +280,17 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
     );
 
     await client.query("COMMIT");
+
+    // Jalon 3 — dual-write accepted member to organization_members (fire-and-forget)
+    pool.query(
+      `INSERT INTO organization_members
+             (id, organization_id, user_id, role, status, joined_at, created_at, updated_at)
+       SELECT gen_random_uuid(), $1, u.id, $2, 'active', NOW(), NOW(), NOW()
+       FROM users u WHERE lower(u.email) = lower($3)
+       ON CONFLICT (organization_id, user_id)
+         DO UPDATE SET role = EXCLUDED.role, status = 'active', updated_at = NOW()`,
+      [inv.org_id, inv.role, email]
+    ).catch(err => logger.warn({ err: (err as Error).message }, "[team/accept] org_members dual-write failed (non-fatal)"));
 
     // Create session for the newly accepted member
     const sessionToken = await createSession({
@@ -616,6 +630,16 @@ router.patch("/team/:id", canAdmin, async (req: Request, res: Response) => {
     );
     if (!r.rows[0]) { res.status(404).json({ ok: false, error: "Member not found" }); return; }
     const m = r.rows[0];
+
+    // Jalon 3 — dual-write role update to organization_members (fire-and-forget)
+    pool.query(
+      `UPDATE organization_members om
+       SET role = $1, updated_at = NOW()
+       FROM users u
+       WHERE u.id = om.user_id AND lower(u.email) = lower($2) AND om.organization_id = $3`,
+      [newRole, m.email as string, org]
+    ).catch(err => logger.warn({ err: (err as Error).message }, "[team/patch] org_members dual-write failed (non-fatal)"));
+
     res.json({
       ok: true,
       member: {
@@ -681,6 +705,15 @@ router.delete("/team/:id", canAdmin, async (req: Request, res: Response) => {
 
   // Revoke all sessions for this member (fire-and-forget)
   const memberEmail = member.email as string;
+
+  // Jalon 3 — dual-write removal to organization_members (fire-and-forget)
+  pool.query(
+    `UPDATE organization_members om
+     SET status = 'removed', updated_at = NOW()
+     FROM users u
+     WHERE u.id = om.user_id AND lower(u.email) = lower($1) AND om.organization_id = $2`,
+    [memberEmail, org]
+  ).catch(err => logger.warn({ err: (err as Error).message }, "[team/delete] org_members dual-write failed (non-fatal)"));
   if (memberEmail) {
     invalidateAllSessions(memberEmail).catch(err =>
       logger.warn({ err: (err as Error).message, maskedEmail: maskEmail(memberEmail) }, "[team/delete] session revocation failed")
@@ -907,7 +940,7 @@ router.post("/organizations/:id/switch", async (req: Request, res: Response) => 
   }
 
   try {
-    const [memberRes, ownerRes] = await Promise.all([
+    const [memberRes, ownerRes, orgMemberRes] = await Promise.all([
       pool.query<{ role: string }>(
         `SELECT role FROM team_members
          WHERE org_id = $1 AND lower(email) = lower($2) AND status = 'active'
@@ -918,10 +951,19 @@ router.post("/organizations/:id/switch", async (req: Request, res: Response) => 
         `SELECT plan FROM organizations WHERE id = $1 AND owner_user_id = $2 LIMIT 1`,
         [targetOrgId, callerEmail]
       ),
+      // Jalon 3: prefer organization_members as authoritative role source
+      pool.query<{ role: string }>(
+        `SELECT om.role FROM organization_members om
+         JOIN users u ON u.id = om.user_id
+         WHERE om.organization_id = $1 AND lower(u.email) = lower($2) AND om.status = 'active'
+         LIMIT 1`,
+        [targetOrgId, callerEmail]
+      ),
     ]);
 
-    const memberRole = memberRes.rows[0]?.role;
-    const isOwner    = !!ownerRes.rows[0];
+    // Prefer organization_members → team_members (legacy fallback)
+    const memberRole = orgMemberRes.rows[0]?.role ?? memberRes.rows[0]?.role;
+    const isOwner    = !!ownerRes.rows[0] || orgMemberRes.rows[0]?.role === "owner";
 
     if (!memberRole && !isOwner) {
       res.status(403).json({ ok: false, code: "ACCESS_DENIED", error: "Vous n'avez pas accès à cette organisation." });

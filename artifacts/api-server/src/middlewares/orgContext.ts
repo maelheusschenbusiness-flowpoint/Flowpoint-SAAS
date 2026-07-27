@@ -18,11 +18,13 @@ import { getSession }                            from "../services/sessions.js";
 import { logger }                                from "../lib/logger.js";
 
 export interface OrgContext {
-  orgId:   string;
-  userId?: string;
-  email?:  string;
-  role?:   string;
-  plan?:   string;
+  orgId:    string;
+  userId?:  string;
+  /** UUID from users.id — Jalon 2: present for sessions created after migration */
+  userUuid?: string;
+  email?:   string;
+  role?:    string;
+  plan?:    string;
 }
 
 declare global {
@@ -31,6 +33,8 @@ declare global {
       id?:         string;
       orgId?:      string;
       userId?:     string;
+      /** UUID from users.id — Jalon 2: present for sessions created after migration */
+      userUuid?:   string;
       orgContext?: OrgContext;
     }
   }
@@ -71,11 +75,13 @@ async function _orgContext(req: Request, _res: Response, next: NextFunction): Pr
     if (session) {
       req.orgId      = session.orgId;
       req.userId     = session.userId;
+      req.userUuid   = session.userUuid;
       req.orgContext = {
-        orgId:  session.orgId,
-        userId: session.userId,
-        email:  session.email,
-        role:   session.role,
+        orgId:    session.orgId,
+        userId:   session.userId,
+        userUuid: session.userUuid,
+        email:    session.email,
+        role:     session.role,
       };
       next();
       return;

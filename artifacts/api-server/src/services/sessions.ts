@@ -12,6 +12,8 @@ export interface SessionData {
   role: string;
   createdAt: number;
   expiresAt: number;
+  /** UUID from users.id — populated by Jalon 2 migration; may be undefined for pre-migration sessions */
+  userUuid?: string;
 }
 
 const JWT_SECRET = process.env["JWT_SECRET"] ?? "dev-secret-change-me-in-prod-min32chars";
@@ -33,6 +35,8 @@ export async function createSession(opts: {
   orgId: string;
   email: string;
   role?: string;
+  /** UUID from users.id — Jalon 2: populate for all new sessions */
+  userUuid?: string;
 }): Promise<string> {
   const token = makeToken(opts.userId, opts.orgId);
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
@@ -41,10 +45,10 @@ export async function createSession(opts: {
     const client = await pool.connect();
     try {
       await client.query(
-        `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,NOW())
+        `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2)
+         VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7)
          ON CONFLICT DO NOTHING`,
-        [token, opts.userId, opts.orgId, opts.email, opts.role ?? "member", expiresAt]
+        [token, opts.userId, opts.orgId, opts.email, opts.role ?? "member", expiresAt, opts.userUuid ?? null]
       );
     } finally {
       client.release();
@@ -62,7 +66,7 @@ export async function getSession(token: string): Promise<SessionData | null> {
     const client = await pool.connect();
     try {
       const res = await client.query(
-        `SELECT user_id, org_id, email, role, created_at, expires_at
+        `SELECT user_id, org_id, email, role, created_at, expires_at, user_id_v2
          FROM user_sessions WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
         [token]
       );
@@ -76,6 +80,7 @@ export async function getSession(token: string): Promise<SessionData | null> {
         role: row.role,
         createdAt: new Date(row.created_at).getTime(),
         expiresAt: new Date(row.expires_at).getTime(),
+        userUuid: row.user_id_v2 ?? undefined,
       };
     } finally {
       client.release();
