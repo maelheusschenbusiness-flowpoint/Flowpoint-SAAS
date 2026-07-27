@@ -36,3 +36,9 @@ id = "mJp8yqXAxRrbdgOKn9Mzv"
 uri = "file://flowpoint-full-export-20260723.zip"
 type = "unspecified"
 title = "FlowPoint — Export complet du projet (1.4 Mo)"
+
+[[outputs]]
+id = "dddUdpwuEqXxZndz7g6Lx"
+uri = "file://billing-files.zip"
+type = "unspecified"
+title = "FlowPoint billing files — 12 fichiers ZIP (624 KB)"
