@@ -693,6 +693,46 @@ async function sendAccountDeleted(opts: {
   });
 }
 
+// ── 12. Activation Magic Link (sent after Stripe validates new signup) ───────
+
+async function sendActivationMagicLink(opts: {
+  to: string;
+  name: string;
+  plan: string;
+  magicLinkUrl: string;
+  isTrial: boolean;
+}): Promise<MailResult> {
+  const planLabel = { standard: "Standard", pro: "Pro", ultra: "Ultra" }[opts.plan.toLowerCase()] ?? opts.plan;
+  const subject = opts.isTrial
+    ? `Ton essai FlowPoint ${planLabel} est prêt — accède à ton compte`
+    : `Ton compte FlowPoint ${planLabel} est activé — connecte-toi`;
+
+  const eyebrow = opts.isTrial ? "Essai gratuit 14 jours" : "Compte activé";
+  const accentColor = opts.isTrial ? "#7c3aed" : "#2563EB";
+
+  const body = opts.isTrial
+    ? `<p style="margin:0 0 16px;">Ton paiement est confirmé. Ton essai gratuit <strong>FlowPoint ${planLabel}</strong> est maintenant actif.</p>
+       <p style="margin:0 0 16px;">Clique sur le bouton ci-dessous pour accéder à ton compte. Ce lien est à usage unique et expire dans 24 heures.</p>
+       <p style="margin:0;color:#64748b;font-size:13px;">Si tu n'as pas créé ce compte, ignore cet email.</p>`
+    : `<p style="margin:0 0 16px;">Ton paiement est confirmé. Ton abonnement <strong>FlowPoint ${planLabel}</strong> est maintenant actif.</p>
+       <p style="margin:0 0 16px;">Clique sur le bouton ci-dessous pour accéder à ton compte. Ce lien est à usage unique et expire dans 24 heures.</p>
+       <p style="margin:0;color:#64748b;font-size:13px;">Si tu n'as pas créé ce compte, ignore cet email.</p>`;
+
+  return send({
+    to: opts.to,
+    subject,
+    tag: "activation_magic_link",
+    html: layout({
+      eyebrow,
+      accentColor,
+      title: `Bienvenue sur FlowPoint, ${opts.name} !`,
+      body,
+      cta: { label: "Accéder à mon compte →", url: opts.magicLinkUrl },
+      note: "Ce lien de connexion est valable 24 heures et ne peut être utilisé qu'une seule fois. Si tu rencontres un problème, réponds à cet email.",
+    }),
+  });
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export const mailer = {
@@ -712,4 +752,5 @@ export const mailer = {
   sendSubscriptionReactivated,
   sendTrialCanceled,
   sendAccountDeleted,
+  sendActivationMagicLink,
 };

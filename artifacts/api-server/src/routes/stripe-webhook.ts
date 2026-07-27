@@ -303,21 +303,28 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
       const customerId = obj["customer"] ? String(obj["customer"]) : undefined;
 
-      // ── New signup flow: create org from pending_signups if pre_register_token present ──
-      // This fires when the user hasn't called /auth/checkout-complete yet (e.g. tab closed).
-      // Idempotent: if checkout-complete already created the org, loadOrgSettings finds it.
+      // ── New signup flow: activate account + send magic link after Stripe validates ──
+      // This is the ONLY path that activates an account and sends the first login link.
+      // No session is created here — the user must click the magic link to authenticate.
+      // Idempotent: checks are guarded by ON CONFLICT DO NOTHING / IF NOT EXISTS.
       const preRegToken = meta["pre_register_token"] ?? "";
       const stripeSessionId = String(obj["id"] ?? "");
+      const selectedPlan = meta["selected_plan"] ?? planNorm ?? "standard";
+      const isTrial = meta["trial_plan"] === "true";
+
       if (preRegToken) {
         (async () => {
           try {
             const { pool: pgPool } = await import("@workspace/db");
+            const { randomBytes } = await import("crypto");
+
+            // ── 1. Load pending_signups ──────────────────────────────────────────
             const dbClient = await pgPool.connect();
             let signupRow: Record<string, string | null> | null = null;
             try {
               const r = await dbClient.query(
                 `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat
-                 FROM pending_signups WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+                 FROM pending_signups WHERE token = $1 LIMIT 1`,
                 [preRegToken]
               );
               if (r.rows.length > 0) signupRow = r.rows[0];
@@ -325,68 +332,162 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
               dbClient.release();
             }
 
-            if (signupRow) {
-              const { upsertOrgSettings, loadOrgSettings: _load } = await import("../services/org-settings.js");
-              const _existing = await _load(orgId).catch(() => null);
-              if (!_existing) {
-                await upsertOrgSettings(orgId, {
-                  email:              signupRow["email"]        ?? orgId,
-                  name:               signupRow["company_name"] ?? "",
-                  firstName:          signupRow["first_name"]   ?? "",
-                  lastName:           signupRow["last_name"]    ?? "",
-                  country:            signupRow["country"]      ?? null,
-                  city:               signupRow["city"]         ?? null,
-                  address:            signupRow["address"]      ?? null,
-                  postalCode:         signupRow["postal_code"]  ?? null,
-                  phone:              signupRow["phone"]        ?? null,
-                  vat:                signupRow["vat"]          ?? null,
-                  locationConfigured: !!(signupRow["city"] || signupRow["address"]),
-                  locationSource:     "manual",
-                });
-                logger.info({ orgId }, "[Webhook] Org created from pending_signups (webhook path)");
-
-                // Send welcome email so user can log in if they closed the tab
-                const { mailer: _mailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
-                if (_mailer && signupRow["email"]) {
-                  _mailer.sendWelcome({
-                    to:   signupRow["email"],
-                    name: signupRow["first_name"] ?? "",
-                  }).catch(() => {});
-                }
-              }
-
-              // ── Create one-time post-checkout token for auto-login ──────────────
-              // checkout-return.html exchanges stripe_session_id → SHA256 hash → FlowPoint session.
-              // SECURITY: token_hash = SHA256(stripe_session_id) stored (raw session ID not in DB).
-              // Expires in 15 min. Row is DELETED by checkout-complete after consumption.
-              try {
-                const sessionTokenHash = sha256hex(stripeSessionId);
-                const tokenClient = await pgPool.connect();
-                try {
-                  await tokenClient.query(`
-                    INSERT INTO checkout_post_tokens
-                      (token_hash, stripe_session_id, stripe_event_id, org_id, email, pre_register_token, expires_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '15 minutes')
-                    ON CONFLICT (token_hash) DO NOTHING
-                  `, [
-                    sessionTokenHash, stripeSessionId, eventId, orgId,
-                    signupRow["email"] ?? orgId, preRegToken,
-                  ]);
-                  // Mark pending_signup consumed so cleanup knows it was used
-                  await tokenClient.query(
-                    `UPDATE pending_signups SET consumed_at = NOW() WHERE token = $1 AND consumed_at IS NULL`,
-                    [preRegToken]
-                  );
-                } finally {
-                  tokenClient.release();
-                }
-                logger.info({ orgId, stripeSessionId }, "[Webhook] checkout_post_tokens entry created for auto-login");
-              } catch (tokenErr) {
-                logger.warn({ tokenErr, orgId }, "[Webhook] Failed to create checkout_post_tokens (non-fatal)");
-              }
+            if (!signupRow) {
+              logger.warn({ preRegToken, orgId }, "[Webhook] pending_signups row not found for preRegToken — skipping activation");
+              return;
             }
+
+            const email = signupRow["email"] ?? orgId;
+            const firstName = signupRow["first_name"] ?? "";
+
+            // ── 2. Create/update org_settings (legacy layer — backward compat) ──
+            const { upsertOrgSettings, loadOrgSettings: _load } = await import("../services/org-settings.js");
+            const _existing = await _load(orgId).catch(() => null);
+            if (!_existing) {
+              await upsertOrgSettings(orgId, {
+                email,
+                name:               signupRow["company_name"] ?? "",
+                firstName,
+                lastName:           signupRow["last_name"]    ?? "",
+                country:            signupRow["country"]      ?? null,
+                city:               signupRow["city"]         ?? null,
+                address:            signupRow["address"]      ?? null,
+                postalCode:         signupRow["postal_code"]  ?? null,
+                phone:              signupRow["phone"]        ?? null,
+                vat:                signupRow["vat"]          ?? null,
+                subscriptionStatus: isTrial ? "trialing" : "active",
+                plan:               selectedPlan,
+                stripeCustomerId:   customerId,
+                locationConfigured: !!(signupRow["city"] || signupRow["address"]),
+                locationSource:     "manual",
+                _readonly_since:    new Date().toISOString(),
+              });
+              logger.info({ orgId }, "[Webhook] org_settings created (legacy compat)");
+            } else {
+              // Existing row — update billing fields only
+              await upsertOrgSettings(orgId, {
+                subscriptionStatus: isTrial ? "trialing" : "active",
+                plan:               selectedPlan,
+                stripeCustomerId:   customerId ?? _existing.stripeCustomerId ?? undefined,
+              });
+            }
+
+            // ── 3. Activate user in new architecture ────────────────────────────
+            const activateClient = await pgPool.connect();
+            let newOrgId: string | null = null;
+            try {
+              await activateClient.query("BEGIN");
+
+              // Activate user (created by /auth/pre-register with status='pending')
+              // If user doesn't exist yet (pre-register not called), create it
+              const upsertUser = await activateClient.query<{ id: string }>(
+                `INSERT INTO users (email, first_name, last_name, auth_provider, email_verified, status)
+                 VALUES ($1, $2, $3, 'magic_link', TRUE, 'active')
+                 ON CONFLICT (email) DO UPDATE
+                   SET status         = 'active',
+                       email_verified = TRUE,
+                       first_name     = COALESCE(EXCLUDED.first_name, users.first_name),
+                       last_name      = COALESCE(EXCLUDED.last_name, users.last_name),
+                       updated_at     = NOW()
+                 RETURNING id`,
+                [email, firstName, signupRow["last_name"] ?? ""]
+              );
+              const userId = upsertUser.rows[0]?.id;
+
+              if (!userId) {
+                throw new Error(`Failed to upsert user for email=${email}`);
+              }
+
+              // Create organization in new architecture
+              const newOrgSlug = orgId.replace(/[^a-z0-9]/gi, "-").toLowerCase().slice(0, 60);
+              const orgInsert = await activateClient.query<{ id: string }>(
+                `INSERT INTO organizations
+                   (id, name, slug, owner_user_id, status, plan, subscription_status,
+                    owner_email, stripe_customer_id, trial_ends_at)
+                 VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9)
+                 ON CONFLICT (id) DO UPDATE
+                   SET status              = 'active',
+                       plan                = EXCLUDED.plan,
+                       subscription_status = EXCLUDED.subscription_status,
+                       stripe_customer_id  = COALESCE(EXCLUDED.stripe_customer_id, organizations.stripe_customer_id),
+                       updated_at          = NOW()
+                 RETURNING id`,
+                [
+                  orgId,
+                  signupRow["company_name"] ?? email,
+                  newOrgSlug,
+                  userId,
+                  selectedPlan,
+                  isTrial ? "trialing" : "active",
+                  email,
+                  customerId ?? null,
+                  isTrial ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() : null,
+                ]
+              );
+              newOrgId = orgInsert.rows[0]?.id ?? orgId;
+
+              // Create org membership (owner)
+              await activateClient.query(
+                `INSERT INTO organization_members (organization_id, user_id, role, status)
+                 VALUES ($1, $2, 'owner', 'active')
+                 ON CONFLICT (organization_id, user_id) DO UPDATE
+                   SET status = 'active', role = 'owner', updated_at = NOW()`,
+                [newOrgId, userId]
+              );
+
+              // Mark pending_signup consumed
+              await activateClient.query(
+                `UPDATE pending_signups SET consumed_at = NOW()
+                 WHERE token = $1 AND consumed_at IS NULL`,
+                [preRegToken]
+              );
+
+              await activateClient.query("COMMIT");
+              logger.info({ orgId: newOrgId, userId, email }, "[Webhook] User + org + membership activated");
+            } catch (activateErr) {
+              await activateClient.query("ROLLBACK").catch(() => {});
+              logger.error({ activateErr, orgId, email }, "[Webhook] Failed to activate user/org — transaction rolled back");
+              throw activateErr;
+            } finally {
+              activateClient.release();
+            }
+
+            // ── 4. Generate magic link token (24h TTL) ───────────────────────────
+            const magicToken = randomBytes(32).toString("hex");
+            const tokenClient = await pgPool.connect();
+            try {
+              await tokenClient.query(
+                `INSERT INTO magic_link_tokens (token, email, expires_at, used)
+                 VALUES ($1, $2, NOW() + INTERVAL '24 hours', FALSE)
+                 ON CONFLICT (token) DO NOTHING`,
+                [magicToken, email]
+              );
+            } finally {
+              tokenClient.release();
+            }
+
+            // ── 5. Send activation magic link email ──────────────────────────────
+            const publicUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+            const magicLinkUrl = `${publicUrl}/login-verify.html?token=${magicToken}`;
+
+            const { mailer: _mailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
+            if (_mailer) {
+              await _mailer.sendActivationMagicLink({
+                to:          email,
+                name:        firstName || email.split("@")[0],
+                plan:        selectedPlan,
+                magicLinkUrl,
+                isTrial,
+              }).catch((mailErr: unknown) => {
+                logger.error({ mailErr, email }, "[Webhook] Failed to send activation magic link email");
+              });
+              logger.info({ email, orgId }, "[Webhook] Activation magic link email sent");
+            } else {
+              logger.warn({ email }, "[Webhook] Mailer not available — magic link NOT sent");
+            }
+
           } catch (e) {
-            logger.warn({ e, orgId }, "[Webhook] Failed to create org from pending_signups (non-fatal)");
+            logger.error({ e, orgId }, "[Webhook] checkout.session.completed new-signup activation failed");
           }
         })();
       }

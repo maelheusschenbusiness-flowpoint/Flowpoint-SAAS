@@ -351,33 +351,63 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
     return;
   }
 
-  // ── Guard: reject if no registered account found for this email ─────────────
-  // This prevents magic links from being sent to emails that were never registered.
-  // Non-fatal: if the DB check itself fails, we allow the flow to continue so that
-  // existing users are never locked out by a transient DB error.
+  // ── Guard: reject if no registered account, pending activation, or blocked ──
+  // Checks both new architecture (users table) and legacy (org_settings).
+  // If either DB check fails, we return 503 — never silently allow unknown accounts.
   try {
-    const { loadOrgSettings: _checkAccount } = await import("../services/org-settings.js");
-    const _existingAccount = await _checkAccount(email).catch(() => undefined);
-    if (_existingAccount === null) {
-      // null = query succeeded, row not found
-      logger.warn({ email }, "[Auth] login-request: no account found — rejected");
-      res.status(404).json({
-        error: "Aucun compte trouvé pour cette adresse email. Créez votre compte sur /signin.html.",
-        redirectTo: "/signin.html",
-      });
-      return;
-    }
-    if (_existingAccount && _existingAccount.subscriptionStatus === "pending_billing") {
-      logger.warn({ email }, "[Auth] login-request: pending_billing account — rejected");
-      res.status(402).json({
-        error: "Votre inscription est en attente de paiement. Veuillez finaliser votre abonnement.",
-        redirectTo: "/signin.html",
-      });
-      return;
+    const { pool: _guardPool } = await import("@workspace/db");
+
+    // 1. Check new architecture — users table (authoritative for new signups)
+    const userRow = await _guardPool.query<{ status: string }>(
+      `SELECT status FROM users WHERE email = $1 LIMIT 1`,
+      [email]
+    );
+
+    if (userRow.rows.length > 0) {
+      const userStatus = userRow.rows[0].status;
+      if (userStatus === "pending") {
+        logger.warn({ email }, "[Auth] login-request: user pending activation (Stripe not completed)");
+        res.status(402).json({
+          error: "Votre compte est en attente d'activation. Vérifiez votre email après avoir finalisé votre paiement sur /signin.html, ou complétez votre inscription.",
+          redirectTo: "/signin.html",
+        });
+        return;
+      }
+      if (userStatus === "suspended") {
+        logger.warn({ email }, "[Auth] login-request: user suspended");
+        res.status(403).json({
+          error: "Votre compte a été suspendu. Contactez le support.",
+        });
+        return;
+      }
+      if (userStatus !== "active") {
+        logger.warn({ email, status: userStatus }, "[Auth] login-request: user not active");
+        res.status(403).json({ error: "Votre compte n'est plus actif. Contactez le support." });
+        return;
+      }
+      // User is active in new architecture — allow magic link
+    } else {
+      // 2. Fallback: legacy org_settings check for accounts not yet in users table
+      const { loadOrgSettings: _checkAccount } = await import("../services/org-settings.js");
+      const _existingAccount = await _checkAccount(email).catch(() => undefined);
+      if (_existingAccount === null) {
+        logger.warn({ email }, "[Auth] login-request: no account found — rejected");
+        res.status(404).json({
+          error: "Aucun compte trouvé pour cette adresse email. Créez votre compte sur /signin.html.",
+          redirectTo: "/signin.html",
+        });
+        return;
+      }
+      if (_existingAccount && _existingAccount.subscriptionStatus === "pending_billing") {
+        logger.warn({ email }, "[Auth] login-request: pending_billing account (legacy) — rejected");
+        res.status(402).json({
+          error: "Votre inscription est en attente de paiement. Veuillez finaliser votre abonnement.",
+          redirectTo: "/signin.html",
+        });
+        return;
+      }
     }
   } catch (_accountGuardErr) {
-    // DB unavailable — cannot verify account existence. Return 503 rather than
-    // silently allowing, so that unauthenticated requests never slip through.
     logger.error({ err: _accountGuardErr, email }, "[Auth] login-request: DB unreachable during account guard — 503");
     res.status(503).json({
       error: "Service temporairement indisponible. Veuillez réessayer dans quelques instants.",
@@ -775,6 +805,21 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     client.release();
   }
 
+  // Create users row with status='pending' — no session, no magic link yet.
+  // Stripe webhook is the only path that activates this account.
+  try {
+    const { pool: pgPool } = await import("@workspace/db");
+    await pgPool.query(
+      `INSERT INTO users (email, first_name, last_name, auth_provider, email_verified, status)
+       VALUES ($1, $2, $3, 'magic_link', FALSE, 'pending')
+       ON CONFLICT (email) DO NOTHING`,
+      [normalizedEmail, fn, ln]
+    );
+    logger.info({ email: normalizedEmail }, "[Auth/PreRegister] users row created (status=pending)");
+  } catch (usersErr) {
+    logger.warn({ usersErr, email: normalizedEmail }, "[Auth/PreRegister] users row creation failed (non-fatal)");
+  }
+
   logger.info({ email: normalizedEmail, company }, "[Auth/PreRegister] Pre-registration stored — awaiting plan + payment");
   res.json({ ok: true, preRegisterToken: preToken });
 });
@@ -802,87 +847,30 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
    Jamais de token de session permanent dans l'URL.
 ════════════════════════════════════════════════════════════════════════════ */
 router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
+  /*
+   * ══════════════════════════════════════════════════════════════════════════
+   * NEW FLOW (2026-07): Stripe is the sole activation gate.
+   *
+   * This endpoint verifies the Stripe payment is confirmed, then returns a
+   * "check your email" response. NO session is created here.
+   *
+   * The Stripe webhook (stripe-webhook.ts / checkout.session.completed) is
+   * the ONLY path that activates the account and sends the magic link email.
+   *
+   * Sequence:
+   *   1. User completes Stripe checkout → redirected here with ?session_id=…
+   *   2. We verify the session is paid with Stripe API
+   *   3. If already paid → webhook has fired (or will) → return { emailSent: true }
+   *   4. User receives email with magic link → clicks it → login-verify (6 checks)
+   * ══════════════════════════════════════════════════════════════════════════
+   */
   const { session_id: sessionId } = req.query as { session_id?: string };
   if (!sessionId || typeof sessionId !== "string" || sessionId.length < 8) {
     res.status(400).json({ error: "session_id manquant ou invalide." });
     return;
   }
 
-  /** Helper: emit cookie + JSON response after successful auth. */
-  async function emitSession(orgId: string): Promise<void> {
-    const sessionToken = await createSession({ userId: orgId, orgId, email: orgId, role: "owner" });
-    const isProd = isDeployedProd();
-    res.cookie("fp_token", sessionToken, {
-      httpOnly: true,
-      secure:   isProd,
-      sameSite: isProd ? "none" : "lax",
-      maxAge:   SESSION_TTL_MS,
-      path:     "/",
-    });
-    logger.info({ orgId }, "[Auth/CheckoutComplete] Auto-login successful — session created");
-    store.logActivity({
-      type: "account", label: `Compte activé après paiement : ${orgId}`,
-      targetId: orgId, targetType: "user",
-    }).catch(() => {});
-    res.json({ ok: true, redirectTo: "/dashboard.html" });
-  }
-
   try {
-    // ─────────────────────────────────────────────────────────────────────────
-    // PATH A: check checkout_post_tokens (set by webhook after org creation)
-    // SECURITY: lookup by SHA256(stripe_session_id) — raw session ID not stored in DB.
-    // Consumption: DELETE the row atomically (spec: "supprimé après consommation").
-    // ─────────────────────────────────────────────────────────────────────────
-    const tokenHash = sha256hex(sessionId);
-    const dbClient = await pool.connect();
-    let postToken: {
-      org_id: string; email: string; pre_register_token: string | null; expires_at: string;
-    } | null = null;
-    try {
-      // Look up by token_hash — do NOT select consumed_at (column removed from schema)
-      const r = await dbClient.query(
-        `SELECT org_id, email, pre_register_token, expires_at
-         FROM checkout_post_tokens WHERE token_hash = $1 LIMIT 1`,
-        [tokenHash]
-      );
-      if (r.rows.length > 0) postToken = r.rows[0];
-    } finally {
-      dbClient.release();
-    }
-
-    if (postToken) {
-      // 410: expired (should not happen if webhook respected 15 min, but guard anyway)
-      if (new Date(postToken.expires_at) < new Date()) {
-        logger.warn({ sessionId }, "[Auth/CheckoutComplete] Post-checkout token expired");
-        res.status(410).json({ error: "Session expirée. Veuillez vous connecter via le lien de bienvenue reçu par email." });
-        return;
-      }
-      // Atomically DELETE the row — if 0 rows deleted, a concurrent request consumed it first
-      const consumeClient = await pool.connect();
-      let deletedOrgId: string | null = null;
-      try {
-        const del = await consumeClient.query(
-          `DELETE FROM checkout_post_tokens WHERE token_hash = $1 AND expires_at > NOW() RETURNING org_id`,
-          [tokenHash]
-        );
-        if (del.rowCount === 0) {
-          // Row was either already deleted (consumed) or expired between SELECT and DELETE
-          logger.warn({ sessionId }, "[Auth/CheckoutComplete] Token already consumed or expired — replay blocked");
-          res.status(409).json({ error: "Session déjà utilisée.", alreadyCreated: true });
-          return;
-        }
-        deletedOrgId = del.rows[0].org_id;
-      } finally {
-        consumeClient.release();
-      }
-      logger.info({ sessionId, orgId: deletedOrgId }, "[Auth/CheckoutComplete] Token consumed + deleted (webhook path)");
-      await emitSession(deletedOrgId ?? postToken.org_id);
-      return;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // PATH B: webhook not yet fired — verify directly with Stripe API
-    // ─────────────────────────────────────────────────────────────────────────
     const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
     if (!stripeKey) {
       res.status(503).json({ error: "Service de paiement non configuré." });
@@ -898,115 +886,37 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
 
     if (!isConfirmed) {
       logger.warn({ sessionId, status: session.status, paymentStatus: session.payment_status },
-        "[Auth/CheckoutComplete] Session not yet confirmed (Stripe API fallback)");
-      res.status(402).json({ error: "Paiement non encore confirmé. Réessayez dans quelques secondes." });
+        "[Auth/CheckoutComplete] Session not yet confirmed");
+      // Transient — frontend should poll briefly
+      res.status(202).json({
+        pending: true,
+        message: "Paiement en cours de confirmation. Veuillez patienter quelques secondes.",
+      });
       return;
     }
 
     const meta = (session.metadata as Record<string, string>) ?? {};
-    const preRegisterToken = meta["pre_register_token"] ?? "";
     const orgId = meta["orgId"] ?? "";
+    const email = orgId || (session.customer_details?.email ?? "");
 
-    if (!orgId) {
-      logger.error({ sessionId }, "[Auth/CheckoutComplete] orgId missing from session metadata");
-      res.status(400).json({ error: "Session invalide — identifiant organisation manquant." });
-      return;
-    }
+    logger.info({ sessionId, orgId, email }, "[Auth/CheckoutComplete] Stripe session confirmed — awaiting webhook");
 
-    // Load pending_signups data (Stripe API path — webhook hasn't fired yet)
-    type SignupRow = {
-      email: string; first_name: string; last_name: string; company_name: string;
-      country: string | null; address: string | null; city: string | null;
-      postal_code: string | null; phone: string | null; vat: string | null;
-    };
-    let signupRow: SignupRow | null = null;
-    if (preRegisterToken) {
-      const srClient = await pool.connect();
-      try {
-        const r = await srClient.query(
-          `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat
-           FROM pending_signups WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
-          [preRegisterToken]
-        );
-        if (r.rows.length > 0) signupRow = r.rows[0] as SignupRow;
-      } finally {
-        srClient.release();
-      }
-    }
+    store.logActivity({
+      type: "account",
+      label: `Paiement confirmé — activation en cours : ${email || orgId}`,
+      targetId: orgId || email,
+      targetType: "user",
+    }).catch(() => {});
 
-    // Create org (idempotent with webhook — first writer wins)
-    const { upsertOrgSettings, loadOrgSettings: _loadExisting } = await import("../services/org-settings.js");
-    const existing = await _loadExisting(orgId).catch(() => null);
-    const customerId = session.customer ? String(session.customer) : undefined;
-
-    if (!existing && signupRow) {
-      await upsertOrgSettings(orgId, {
-        email:              signupRow.email,
-        name:               signupRow.company_name,
-        firstName:          signupRow.first_name,
-        lastName:           signupRow.last_name,
-        country:            signupRow.country,
-        city:               signupRow.city,
-        address:            signupRow.address,
-        postalCode:         signupRow.postal_code,
-        phone:              signupRow.phone ?? null,
-        vat:                signupRow.vat   ?? null,
-        subscriptionStatus: "active",
-        stripeCustomerId:   customerId,
-        locationConfigured: !!(signupRow.city || signupRow.address),
-        locationSource:     "manual",
-      });
-      logger.info({ orgId }, "[Auth/CheckoutComplete] Org created (Stripe API fallback path)");
-    } else if (existing) {
-      if (existing.subscriptionStatus !== "active" && existing.subscriptionStatus !== "trialing") {
-        await upsertOrgSettings(orgId, {
-          subscriptionStatus: "active",
-          stripeCustomerId:   customerId ?? (existing.stripeCustomerId ?? undefined),
-        });
-      }
-    } else {
-      logger.warn({ orgId, preRegisterToken }, "[Auth/CheckoutComplete] No pending_signups — creating minimal org");
-      await upsertOrgSettings(orgId, { email: orgId, subscriptionStatus: "active", stripeCustomerId: customerId });
-    }
-
-    // PATH B: if org already exists with an active subscription, this is a replay → 409.
-    // (The webhook has already processed this session and created the account.)
-    if (existing && (existing.subscriptionStatus === "active" || existing.subscriptionStatus === "trialing")) {
-      logger.warn({ orgId, status: existing.subscriptionStatus }, "[Auth/CheckoutComplete] Org already active — PATH B replay guard");
-      res.status(409).json({ error: "Compte déjà activé.", alreadyCreated: true });
-      return;
-    }
-
-    // Insert a pre-consumed checkout_post_tokens entry for audit trail.
-    // Uses token_hash PK (SHA256 of stripe_session_id). No consumed_at column in new schema —
-    // row is immediately removed (audit entry only; webhook will ON CONFLICT ignore it).
-    const insertClient = await pool.connect();
-    try {
-      await insertClient.query(`
-        INSERT INTO checkout_post_tokens
-          (token_hash, stripe_session_id, org_id, email, pre_register_token, expires_at)
-        VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '1 minute')
-        ON CONFLICT (token_hash) DO NOTHING
-      `, [tokenHash, sessionId, orgId, orgId, preRegisterToken || null]);
-      // Delete immediately — PATH B creates the session directly; row is only for idempotency
-      await insertClient.query(
-        `DELETE FROM checkout_post_tokens WHERE token_hash = $1`, [tokenHash]
-      );
-      // Also mark pending_signup consumed if it exists
-      if (preRegisterToken) {
-        await insertClient.query(
-          `UPDATE pending_signups SET consumed_at = NOW() WHERE token = $1 AND consumed_at IS NULL`,
-          [preRegisterToken]
-        );
-      }
-    } finally {
-      insertClient.release();
-    }
-
-    await emitSession(orgId);
+    // Return immediately — the webhook will send the magic link email.
+    // No session is created here.
+    res.json({
+      ok: true,
+      emailSent: true,
+      message: "Votre paiement est confirmé. Un lien de connexion vous a été envoyé par email. Vérifiez votre boîte de réception (et vos spams).",
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // Stripe API errors (invalid session_id, no such resource) → 400, not 500
     const isStripeErr = err instanceof Error && (
       (err as Record<string, unknown>)["type"] === "StripeInvalidRequestError" ||
       msg.includes("No such") || msg.includes("no such") ||
@@ -1018,7 +928,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
       return;
     }
     logger.error({ err: msg, sessionId }, "[Auth/CheckoutComplete] Error");
-    res.status(500).json({ error: "Erreur lors de la finalisation du compte. Réessayez." });
+    res.status(500).json({ error: "Erreur lors de la finalisation. Réessayez ou contactez le support." });
   }
 });
 
