@@ -311,9 +311,9 @@
   };
 
   var PLAN_INCLUDED = {
-    standard: [],
-    pro:      ['whiteLabel'],
-    ultra:    ['whiteLabel', 'agencyPacks']
+    standard: ['whiteLabel'],
+    pro:      ['whiteLabel', 'customDomain', 'advancedWebhooks', 'retention90d'],
+    ultra:    ['whiteLabel', 'customDomain', 'advancedWebhooks', 'retention90d', 'retention365d', 'agencyPacks']
   };
 
   /* ────────────────── Cart ────────────────── */
@@ -457,7 +457,7 @@
         '</div>' +
         '<div class="fp-plan-info">' +
           '<div class="fp-plan-name">' + p.name + (_fpCanStartTrial ? '<span class="fp-badge fp-badge-trial" style="margin-left:8px">14j offerts</span>' : '') + '</div>' +
-          '<div class="fp-plan-sub">Débité après la période d\'essai · annulable avant</div>' +
+          (_fpCanStartTrial ? '<div class="fp-plan-sub">Débité après la période d\'essai · annulable avant</div>' : '<div class="fp-plan-sub">Mensuel · sans engagement</div>') +
         '</div>' +
         '<div class="fp-plan-price-wrap">' +
           '<div class="fp-plan-price">' + p.price + '€</div>' +
@@ -549,7 +549,7 @@
     /* Line 2: Mensuel après essai (si plan) */
     if (hasPlanHere) {
       html += '<div class="fp-total-row">' +
-        '<span class="fp-total-label">Mensuel après 14 jours</span>' +
+        '<span class="fp-total-label">' + (_fpCanStartTrial ? 'Mensuel après 14 jours' : 'Mensuel') + '</span>' +
         '<span class="fp-total-amount secondary">' + monthlyAfterTrial + '€<span class="fp-total-unit">/mois</span></span>' +
       '</div>';
     } else if (hasMonthlyAddon) {
@@ -566,7 +566,7 @@
     /* ── Info list ── */
     var items = [];
     if (hasPlanHere) {
-      items.push('14 jours d\'essai gratuit · aucun débit si annulation avant.');
+      if (_fpCanStartTrial) items.push('14 jours d\'essai gratuit · aucun débit si annulation avant.');
     }
     if (hasMonthlyAddon) {
       items.push('Add-ons facturés aujourd\'hui · actifs immédiatement · renouvelés chaque mois.');

@@ -7472,6 +7472,30 @@ function renderBilling() {
   const healthScore = _liveUPcts.length>0 ? Math.max(0,100-Math.round(_liveUPcts.reduce((s,p)=>s+p,0)/_liveUPcts.length)) : null;
   const upgradeScore = isUltra ? 0 : (healthScore!=null ? Math.round(healthScore*0.8) : null);
 
+  // ── Billing lifecycle — defined here so Plans tab buttons always work ──────
+  window.fpUpgradeOrCheckout = window.fpUpgradeOrCheckout || async function(plan) {
+    const _ss = (typeof window.getBillingStatus === 'function' ? window.getBillingStatus()
+      : ((STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status))
+         || (STATE.me && STATE.me.subscriptionStatus) || ''));
+    if (_ss === 'active' || _ss === 'trialing') {
+      showToast('info', 'Mise à niveau en cours…');
+      try {
+        const r = await apiAction('POST', '/api/billing/upgrade', { plan });
+        if (r && r.url) { window.location.href = r.url; }
+        else if (r && r.noSubscription) {
+          window.location.href = (r.redirectTo || '/checkout.html') + '?plan=' + encodeURIComponent(plan);
+        } else if (r && r.ok) {
+          showToast('success', 'Plan mis à jour avec succès');
+          setTimeout(()=>navigateSub('plans'), 700);
+        } else if (r && r.error === 'plan_already_active') {
+          showToast('info', r.message || 'Ce plan est déjà votre plan actuel');
+        } else {
+          showToast('error', (r && (r.message || r.error)) || 'Erreur lors de la mise à niveau');
+        }
+      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'mise à niveau impossible')); }
+    } else { fpGoToPricing(plan); }
+  };
+
   // ══════════════════════════════════════════════════════════
   // SUB: PLANS & ABONNEMENTS
   // ══════════════════════════════════════════════════════════
@@ -7661,7 +7685,7 @@ function renderBilling() {
       { cat:'Conversion', name:'Revenue Leak AI',         price:'29€/mois', icon:'💸', color:'#f97316', active:false, tag:'ROI',             roi:'Détecte fuites de revenus',       includedFrom:null,    desc:'IA de détection des pertes de conversion. Prioritise les quick wins revenue.', features:['Détection automatique des fuites de revenus','Quick wins classés par impact €','Analyse abandons de panier / formulaire','Alertes dégradation conversion','ROI estimé par correction'] },
       { cat:'Conversion', name:'AB Testing IA',           price:'24€/mois', icon:'🔀', color:'#f97316', active:false, tag:'Expérimentation', roi:'+22% conversion moyenne',         includedFrom:null,    desc:'Tests A/B automatisés par IA. Hypothèses générées, variantes créées, et gagnant sélectionné automatiquement.', features:['Hypothèses A/B générées par IA','Création automatique des variantes','Sélection du gagnant statistiquement validée','Calcul de significativité en temps réel','Rapport impact par test'] },
       // ── Reporting ──
-      { cat:'Reporting',  name:'White-Label Exports',     price:'17€/mois', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Rapports à votre marque', includedFrom:'pro', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
+      { cat:'Reporting',  name:'White-Label Exports',     price:'17€/mois', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Standard inclus', roi:'Rapports à votre marque', includedFrom:'standard', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
       { cat:'Reporting',  name:'Agency Reporting Packs',  price:'49€/mois', icon:'📦', color:'#eab308', active:false, tag:'Agence',          roi:'12 templates pro inclus',         includedFrom:null,    desc:'Bibliothèque de 12 templates agence premium. Rapports Executive, KPI, et Local SEO.', features:['12 templates premium (Executive, Local, SEO…)','Personnalisation par client','Envoi automatique PDF mensuel','Rapports multi-sites consolidés','Tableau de bord client dédié'] },
       { cat:'Reporting',  name:'AI Executive Reporting',  price:'24€/mois', icon:'📊', color:'#eab308', active:false, tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',     includedFrom:null,    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'] },
       // ── IA ──
@@ -7672,14 +7696,14 @@ function renderBilling() {
       { cat:'Équipe',     name:'+5 Sièges',               price:'35€/mois', icon:'👥', color:'#06b6d4', active:me.addons?.extraSeats > 0, tag:'Collaboration', roi:'5 utilisateurs suppl.', includedFrom:null, desc:'Ajoutez 5 membres d\'équipe avec rôles et permissions granulaires.', features:['5 sièges supplémentaires immédiats','Rôles Admin / Editor / Viewer','Invitations par email en 1 clic','Permissions granulaires par workspace','Historique d\'activité par membre'] },
       { cat:'Équipe',     name:'Permissions Avancées',  price:'19€/mois', icon:'🔐', color:'#06b6d4', active:false, tag:'Sécurité',        roi:'RBAC complet',                    includedFrom:null,    desc:'Contrôle d\'accès granulaire. Rôles custom, audit log, et permissions par workspace.', features:['Rôles personnalisés créés sur mesure','Audit log complet des actions','Permissions par section et par client','SSO compatible (Google Workspace)','Rapport accès mensuel pour conformité'] },
       // ── Storage ──
-      { cat:'Storage',    name:'Rétention 90 jours',      price:'9€/mois',  icon:'🗄️', color:'#ef4444', active:false, tag:'Standard+',       roi:'3 mois d\'historique',            includedFrom:null,    desc:'Conservez 90 jours d\'historique pour tous vos audits, monitors, et rapports.', features:['90 jours d\'historique audits','Historique monitors et alertes','Export CSV de toutes les données','Comparaisons temporelles dans le dashboard','Aucune perte de données garantie'] },
-      { cat:'Storage',    name:'Rétention 365 jours',     price:'19€/mois', icon:'🗄️', color:'#ef4444', active:false, tag:'Ultra',           roi:'1 an d\'historique complet',      includedFrom:null,    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
+      { cat:'Storage',    name:'Rétention 90 jours',      price:'9€/mois',  icon:'🗄️', color:'#ef4444', active:false, tag:'Pro inclus',      roi:'3 mois d\'historique',            includedFrom:'pro',    desc:'Conservez 90 jours d\'historique pour tous vos audits, monitors, et rapports.', features:['90 jours d\'historique audits','Historique monitors et alertes','Export CSV de toutes les données','Comparaisons temporelles dans le dashboard','Aucune perte de données garantie'] },
+      { cat:'Storage',    name:'Rétention 365 jours',     price:'19€/mois', icon:'🗄️', color:'#ef4444', active:false, tag:'Ultra inclus',    roi:'1 an d\'historique complet',      includedFrom:'ultra',    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
       // ── API ──
-      { cat:'API',        name:'Webhooks Avancés',        price:'14€/mois', icon:'🔔', color:'#14b8a6', active:false, tag:'Dev',             roi:'Alertes temps réel',              includedFrom:null,    desc:'Webhooks personnalisables pour Slack, Discord, et systèmes tiers. Templates inclus.', features:['Webhooks illimités vers n\'importe quel endpoint','Templates Slack, Discord, Teams','Retry automatique en cas d\'échec','Logs de delivery en temps réel','Signatures HMAC pour la sécurité'] },
+      { cat:'API',        name:'Webhooks Avancés',        price:'14€/mois', icon:'🔔', color:'#14b8a6', active:false, tag:'Pro inclus',      roi:'Alertes temps réel',              includedFrom:'pro',    desc:'Webhooks personnalisables pour Slack, Discord, et systèmes tiers. Templates inclus.', features:['Webhooks illimités vers n\'importe quel endpoint','Templates Slack, Discord, Teams','Retry automatique en cas d\'échec','Logs de delivery en temps réel','Signatures HMAC pour la sécurité'] },
       { cat:'API',        name:'Zapier/Make Integration', price:'19€/mois', icon:'⚙️', color:'#14b8a6', active:false, tag:'No-code',         roi:'1000+ intégrations',              includedFrom:null,    desc:'Connectez FlowPoint à 1000+ applications. CRM, Slack, Notion, HubSpot, et plus.', features:['1000+ apps disponibles (Zapier + Make)','Triggers sur audits, alertes, rapports','Actions : créer tâche, envoyer email, notifier','Templates de zaps prêts à l\'emploi','Support no-code dédié'] },
       { cat:'API',        name:'CRM Intégrations',        price:'29€/mois', icon:'🏢', color:'#14b8a6', active:false, tag:'Ultra',      roi:'HubSpot, Salesforce, Pipedrive',  includedFrom:null,    desc:'Synchronisez vos données SEO avec votre CRM. Leads, opportunités, et reporting.', features:['Sync HubSpot, Salesforce, Pipedrive','Création de deals depuis les opportunités SEO','Enrichissement contacts avec data SEO','Mapping de champs personnalisable','Synchronisation bi-directionnelle en temps réel'] },
       // ── Enterprise ──
-      { cat:'Ultra', name:'Custom Domain',           price:'9€/mois',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Branding', roi:'portal.votreagence.fr', includedFrom:null, desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
+      { cat:'Ultra', name:'Custom Domain',           price:'9€/mois',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Pro inclus', roi:'portal.votreagence.fr', includedFrom:'pro', desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
       { cat:'Ultra', name:'SSO SAML',          price:'49€/mois', icon:'🔑', color:'#6366f1', active:false, tag:'Ultra',           roi:'SAML 2.0 / OIDC',                includedFrom:'ultra', desc:'Single Sign-On enterprise. Compatible SAML 2.0, OIDC, Azure AD, et Okta.', features:['SSO SAML 2.0 et OIDC natif','Compatible Azure AD, Okta, Google Workspace','Provisioning/déprovisioning automatique (SCIM)','Logs de connexion centralisés','Support dédié configuration SSO'] },
       { cat:'Ultra', name:'AI Workspace Launch',     price:'49€/mois', icon:'🤖', color:'#6366f1', active:false, tag:'IA Setup',        roi:'Workspace auto en 2 min',         includedFrom:null,    desc:'L\'IA configure automatiquement votre workspace FlowPoint : dashboards, KPIs, alertes, missions et stratégie business.', features:['Configuration complète workspace en 2 min','KPIs et alertes adaptés à votre secteur','Missions et stratégie SEO pré-configurées','Dashboards personnalisés par votre métier','Accompagnement IA en continu'], wizardFn:'openAIWorkspaceLaunch' },
     ];
@@ -7687,6 +7711,7 @@ function renderBilling() {
     const currentPlan = (me.plan || '').toLowerCase();
     const planLevel = currentPlan === 'ultra' ? 2 : currentPlan === 'pro' ? 1 : 0;
     const isIncluded = a => {
+      if (a.includedFrom === 'standard') return true;
       if (a.includedFrom === 'pro'   && planLevel >= 1) return true;
       if (a.includedFrom === 'ultra' && planLevel >= 2) return true;
       return false;
@@ -7811,6 +7836,7 @@ function renderBilling() {
       const planLvl = currentPlan === 'Ultra' ? 2 : currentPlan === 'Pro' ? 1 : 0;
       const incFn = x => {
         if (x.price === 'Inclus') return true;
+        if (x.includedFrom === 'standard') return true;
         if (x.includedFrom === 'pro'   && planLvl >= 1) return true;
         if (x.includedFrom === 'ultra' && planLvl >= 2) return true;
         return false;
@@ -8446,7 +8472,7 @@ function renderBilling() {
           </div>`).join('')}
         </div>
         <div style="display:flex;gap:8px">
-          ${btn('Changer de plan','fp-btn fp-btn-primary fp-btn-sm','','onclick="fpGoToPricing()"')}
+          ${btn('Changer de plan','fp-btn fp-btn-primary fp-btn-sm','','onclick="navigateSub(\'plans\')"')}
           ${btn('Add-ons','fp-btn fp-btn-ghost fp-btn-sm','','onclick="navigateSub(\'addons\')"')}
         </div>
       </div>
@@ -32985,6 +33011,18 @@ window.FP_AI_CREDITS_API = {
     try {
       return await apiFetch('/api/ai-credits/consume', { method: 'POST', body: JSON.stringify({ feature, metadata }) });
     } catch(e) { console.warn('[FP_AI_CREDITS_API] consume error:', e); return null; }
+  },
+
+  async buyCredits(pack) {
+    showToast('info', 'Redirection vers la page tarifs…');
+    try {
+      const _packKeyMap = { 'ai_credits_50k':'aiCreditsPack50k', 'ai_credits_200k':'aiCreditsPack200k', 'ai_credits_500k':'aiCreditsPack500k' };
+      const cartKey = _packKeyMap[pack] || pack;
+      const _cart = { plan: null, addons: {}, fromDashboard: true };
+      _cart.addons[cartKey] = 1;
+      localStorage.setItem('fp_cart', JSON.stringify(_cart));
+      window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(cartKey);
+    } catch(e) { showToast('error', String(e)); return null; }
   },
 };
 

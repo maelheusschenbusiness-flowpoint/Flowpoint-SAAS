@@ -78,3 +78,7 @@
 - [Overview insights RL + fixed credits](overview-insights-rl.md) — PG SELECT FOR UPDATE mutex; fixedCreditCost:500 bypasses gpt-4o-mini multiplier (0.4); cache hits skip slot; QA: bust in-process hot cache by changing audit score (new context hash)
 - [P0 auth isolation fixes](auth-isolation-fixes.md) — store.me global singleton causes cross-user leakage; me.ts fallback must use safe defaults; login-verify.js must purgeUserCache before redirect
 - [Billing state-machine corrections](billing-state-machine.md) — 9 structural fixes: pending_billing at signup, subscriptionStatus dual-key, canStartTrial DB-only, resource_missing DB cleanup, cart versioning, org_addons source of truth
+- [Billing addon includedFrom matrix](billing-addon-included-matrix.md) — Standard⊂White-Label; Pro⊂+customDomain+webhooks+retention90d; Ultra⊂+retention365d; isIncluded needs 'standard' guard first
+- [fpUpgradeOrCheckout scope bug](fp-upgrade-scope.md) — defined only inside if(sub==='addons'); must inject with || guard before if(sub==='plans') so Plans tab buttons work
+- [Checkout trial gate](checkout-trial-gate.md) — _fpCanStartTrial from /api/me.canStartTrial; plan-sub text + totals + bullet all must be conditioned on it
+- [pricing.html cart restoration](pricing-cart-restoration.md) — ?from=dashboard: read fp_cart, populate _cart silently, mark addons at DOMContentLoaded; do NOT call selectPlan (billing-state IIFE handles plan button)

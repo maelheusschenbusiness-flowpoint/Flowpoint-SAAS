@@ -1165,15 +1165,49 @@
   function updateWhiteLabel(plan) {
     var bottom = document.getElementById('fp-wl-bottom');
     if (!bottom) return;
-    if (plan === 'pro') {
-      bottom.innerHTML = '<div class="fp-addon-price-incl">\u2713 Inclus dans Pro</div>';
-    } else if (plan === 'ultra') {
-      bottom.innerHTML = '<div class="fp-addon-price-incl">\u2713 Inclus dans Ultra</div>';
+    if (plan === 'standard' || plan === 'pro' || plan === 'ultra') {
+      var label = plan === 'standard' ? 'Standard' : plan === 'pro' ? 'Pro' : 'Ultra';
+      bottom.innerHTML = '<div class="fp-addon-price-incl">\u2713 Inclus dans ' + label + '</div>';
     } else {
       bottom.innerHTML = '<div class="fp-addon-price">17\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'whiteLabel\',false)">Activer \u2192</button></div>';
     }
   }
   updateWhiteLabel('');
+
+  /* ── Restore cart from localStorage when redirected from dashboard ──────────
+     Sets _cart data silently (plan + addons); visual state of the current plan
+     is handled by the billing-state IIFE (applyBillingState). Add-on buttons
+     are visually marked at DOMContentLoaded.                                  */
+  (function() {
+    var _p = new URLSearchParams(window.location.search);
+    if (_p.get('from') !== 'dashboard') return;
+    var _saved = null;
+    try { _saved = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+    if (!_saved) return;
+    /* Populate internal cart so badge and checkout work */
+    if (_saved.plan) _cart.plan = _saved.plan;
+    if (_saved.addons) Object.keys(_saved.addons).forEach(function(k) { _cart.addons[k] = _saved.addons[k]; });
+    updateCartBadge();
+    /* After DOM is ready: visually mark add-on buttons as "Dans le panier" */
+    document.addEventListener('DOMContentLoaded', function() {
+      updateCartBadge();
+      var addonKeys = Object.keys(_cart.addons);
+      if (!addonKeys.length) return;
+      document.querySelectorAll('button[onclick*="addToCart"]').forEach(function(btn) {
+        var oc = btn.getAttribute('onclick') || '';
+        var m  = oc.match(/addToCart\s*\(\s*this\s*,\s*'([^']+)'/);
+        if (!m || _cart.addons[m[1]] == null) return;
+        /* Skip if billing-state already marked it as active */
+        var bs = window._fpBillingState;
+        if (bs && bs.addons && bs.addons[m[1]]) return;
+        btn.textContent = '\u2713 Dans le panier';
+        btn.style.background   = 'rgba(16,185,129,0.15)';
+        btn.style.borderColor  = 'rgba(16,185,129,0.35)';
+        btn.style.color        = '#34d399';
+      });
+    });
+  })();
+
 
   /* ── Toast ── */
   var toastTimer;
