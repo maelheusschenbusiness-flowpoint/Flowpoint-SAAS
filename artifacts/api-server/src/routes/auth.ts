@@ -351,6 +351,34 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
     return;
   }
 
+  // ── Guard: reject if no registered account found for this email ─────────────
+  // This prevents magic links from being sent to emails that were never registered.
+  // Non-fatal: if the DB check itself fails, we allow the flow to continue so that
+  // existing users are never locked out by a transient DB error.
+  try {
+    const { loadOrgSettings: _checkAccount } = await import("../services/org-settings.js");
+    const _existingAccount = await _checkAccount(email).catch(() => undefined);
+    if (_existingAccount === null) {
+      // null = query succeeded, row not found
+      logger.warn({ email }, "[Auth] login-request: no account found — rejected");
+      res.status(404).json({
+        error: "Aucun compte trouvé pour cette adresse email. Créez votre compte sur /signin.html.",
+        redirectTo: "/signin.html",
+      });
+      return;
+    }
+    if (_existingAccount && _existingAccount.subscriptionStatus === "pending_billing") {
+      logger.warn({ email }, "[Auth] login-request: pending_billing account — rejected");
+      res.status(402).json({
+        error: "Votre inscription est en attente de paiement. Veuillez finaliser votre abonnement.",
+        redirectTo: "/signin.html",
+      });
+      return;
+    }
+  } catch (_accountGuardErr) {
+    logger.warn({ err: _accountGuardErr, email }, "[Auth] login-request: org guard failed (non-fatal) — allowing");
+  }
+
   // ── Store token in PostgreSQL (survives Render restarts) ──────────────────────
   const token = generateToken();
   const publicUrl = getPublicUrl();
@@ -685,6 +713,42 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     return;
   }
 
+  // ── Guard: reject if account already exists in org_settings ─────────────────
+  try {
+    const { loadOrgSettings: _dupCheck } = await import("../services/org-settings.js");
+    const _dup = await _dupCheck(normalizedEmail).catch(() => undefined);
+    if (_dup !== undefined && _dup !== null) {
+      res.status(409).json({
+        error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter sur /login.html.",
+        redirectTo: "/login.html",
+      });
+      return;
+    }
+  } catch (_dupErr) {
+    logger.warn({ err: _dupErr, email: normalizedEmail }, "[Auth/PreRegister] duplicate check failed (non-fatal)");
+  }
+
+  // ── Guard: reject if a pending (unconsumed) checkout already exists ───────────
+  {
+    const _pendClient = await pool.connect();
+    try {
+      const _pend = await _pendClient.query(
+        `SELECT token FROM pending_signups
+         WHERE email = $1 AND expires_at > NOW() AND consumed_at IS NULL
+         LIMIT 1`,
+        [normalizedEmail]
+      );
+      if (_pend.rows.length > 0) {
+        res.status(409).json({
+          error: "Une inscription est déjà en cours pour cette adresse. Vérifiez votre email ou réessayez dans 2 heures.",
+        });
+        return;
+      }
+    } finally {
+      _pendClient.release();
+    }
+  }
+
   // Store in pending_signups (no account created yet)
   const preToken = generateToken();
   const client = await pool.connect();
@@ -879,6 +943,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
         city:               signupRow.city,
         address:            signupRow.address,
         postalCode:         signupRow.postal_code,
+        phone:              signupRow.phone ?? null,
         subscriptionStatus: "active",
         stripeCustomerId:   customerId,
         locationConfigured: !!(signupRow.city || signupRow.address),
@@ -989,6 +1054,15 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
   try {
     const { loadOrgSettings: _checkOrg } = await import("../services/org-settings.js");
     const orgCheck = await _checkOrg(entry.email).catch(() => null);
+    if (orgCheck === null) {
+      // null = DB reachable but no row found — no account
+      logger.warn({ email: entry.email }, "[Auth] login-verify: no org found — session blocked");
+      res.status(404).json({
+        error: "Aucun compte associé à cette adresse email. Créez votre compte sur /signin.html.",
+        redirectTo: "/signin.html",
+      });
+      return;
+    }
     if (orgCheck && orgCheck.subscriptionStatus === "pending_billing") {
       logger.warn({ email: entry.email }, "[Auth] login-verify: pending_billing account — session blocked");
       res.status(402).json({
