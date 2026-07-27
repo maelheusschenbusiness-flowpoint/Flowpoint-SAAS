@@ -321,7 +321,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             try {
               const r = await dbClient.query(
                 `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat
-                 FROM pending_signups WHERE token = $1 LIMIT 1`,
+                 FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
                 [preRegToken]
               );
               if (r.rows.length > 0) signupRow = r.rows[0];

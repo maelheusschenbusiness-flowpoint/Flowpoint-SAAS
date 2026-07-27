@@ -239,7 +239,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       try {
         const r = await dbClient.query(
           `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat
-           FROM pending_signups WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+           FROM pending_signups WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL LIMIT 1`,
           [preRegisterToken]
         );
         if (r.rows.length > 0) signupRow = r.rows[0];
