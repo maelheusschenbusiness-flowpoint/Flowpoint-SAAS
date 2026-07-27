@@ -342,33 +342,15 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         return;
       }
 
-      // stripe.checkout.sessions.create() in API 2026-04-22.dahlia does NOT support
-      // add_invoice_items (neither at root level nor inside subscription_data — both
-      // return parameter_unknown).  The correct approach for one-time AI credit items
-      // bundled with a subscription checkout is to pre-create pending invoice items on
-      // the Stripe Customer *before* creating the session.  They are automatically
-      // picked up on the customer's first subscription invoice (end of trial or cycle 1).
-      if (oneTimeItems.length > 0 && stripeCustomerId) {
-        await Promise.all(
-          oneTimeItems.map(item =>
-            stripe.invoiceItems.create({
-              customer:  stripeCustomerId as string,
-              price:     item.price,
-              quantity:  item.quantity,
-            })
-          )
-        );
-        logger.info(
-          { stripeCustomerId, count: oneTimeItems.length },
-          "[PublicBilling] AI credit invoice items pre-created on customer",
-        );
-      }
-      // When no stripeCustomerId (anonymous/Mode-B checkout), AI credits cannot be
-      // pre-created; they are tracked in session metadata for post-checkout webhook handling.
+      // Stripe checkout sessions support mixed line_items in mode:"subscription":
+      // recurring prices → subscription items, one-time prices → first invoice only.
+      // Do NOT use add_invoice_items (rejected by 2026-04-22.dahlia) nor
+      // invoiceItems.create() (pending items persist if checkout is abandoned).
+      const allLineItems = [...subscriptionItems, ...oneTimeItems];
 
       const sessionParams = urlOrEmbedded({
         mode: "subscription",
-        line_items: subscriptionItems,
+        line_items: allLineItems,
         subscription_data: {
           trial_period_days: 14,
           metadata,
