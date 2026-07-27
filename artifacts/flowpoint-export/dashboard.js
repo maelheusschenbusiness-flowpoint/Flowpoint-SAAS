@@ -7638,13 +7638,26 @@ function renderBilling() {
       <!-- SUBSCRIPTION MANAGEMENT -->
       ${(()=>{
         const _bs  = STATE.billing || {};
-        // Use getBillingStatus() — reads .subscriptionStatus OR .status (normalised key)
         const _ss  = (typeof window.getBillingStatus === 'function' ? window.getBillingStatus() : (_bs.subscriptionStatus || _bs.status || ''));
         const _cap = !!_bs.cancelAtPeriodEnd;
-        const _has = _ss === 'active' || _ss === 'trialing' || _cap;
-        if (!_has) return '';
         const _ca  = _bs.cancelAt ? new Date(_bs.cancelAt * 1000).toLocaleDateString('fr-FR') : null;
         const _te  = STATE.me && STATE.me.trialEndsAt ? new Date(STATE.me.trialEndsAt).toLocaleDateString('fr-FR') : null;
+
+        // ── Danger zone footer (always visible) ─────────────────────────────
+        const _dangerZone = `<div style="border-top:1px solid var(--fp-border);margin-top:14px;padding-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div style="font-size:11px;color:var(--fp-text-muted)">Zone danger — action irréversible</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.25);color:#ef4444;font-size:11px" onclick="fpDeleteAccountModal()">🗑️ Supprimer mon compte</button></div>`;
+
+        // ── Suspendu (past_due / unpaid) ─────────────────────────────────────
+        if (_ss === 'past_due' || _ss === 'unpaid') {
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #ef4444"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">🔴 Suspendu · Paiement en échec</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="background:#ef4444;border-color:#ef4444;flex-shrink:0" onclick="fpOpenStripePortal ? fpOpenStripePortal() : navigateSub('plans')">Mettre à jour le paiement</button></div><div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444">Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.</div>${_dangerZone}</div>`;
+        }
+
+        // ── Expiré (canceled / none — ancien abonné) ─────────────────────────
+        if (_ss === 'canceled' || (_ss === 'none' && _bs.hadSubscription)) {
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">⚫ Expiré · Fonctionnalités Premium désactivées</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="window.location.href='/pricing.html'">Reprendre un abonnement</button></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.</div>${_dangerZone}</div>`;
+        }
+
+        // ── États actifs ─────────────────────────────────────────────────────
+        if (!(_ss === 'active' || _ss === 'trialing' || _cap)) return '';
         const _bc  = _cap ? '#ef4444' : _ss === 'trialing' ? '#f59e0b' : '#22c55e';
         const _st  = _cap ? `⚠️ Annulation programmée · Accès jusqu'au ${_ca || '—'}` : _ss === 'trialing' ? `🎯 Essai gratuit · Expire le ${_te || '—'}` : `✅ Abonnement actif · Résiliation à tout moment`;
         const _btn = _cap
@@ -7653,7 +7666,7 @@ function renderBilling() {
             ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelTrialModal()">Terminer l'essai</button>`
             : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelSubscriptionModal()">Annuler l'abonnement</button>`;
         const _warn = _cap ? `<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444;margin-top:10px">Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur "Réactiver" pour rétablir le renouvellement automatique.</div>` : '';
-        return `<div class="fp-card" style="margin-top:16px;border-left:4px solid ${_bc}"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:${_warn ? '12px' : '0'}"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${_st}</div></div><div style="flex-shrink:0">${_btn}</div></div>${_warn}<div style="border-top:1px solid var(--fp-border);margin-top:14px;padding-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div style="font-size:11px;color:var(--fp-text-muted)">Zone danger — action irréversible</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.25);color:#ef4444;font-size:11px" onclick="fpDeleteAccountModal()">🗑️ Supprimer mon compte</button></div></div>`;
+        return `<div class="fp-card" style="margin-top:16px;border-left:4px solid ${_bc}"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:${_warn ? '12px' : '0'}"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${_st}</div></div><div style="flex-shrink:0">${_btn}</div></div>${_warn}${_dangerZone}</div>`;
       })()}
     `;
   }
@@ -14876,15 +14889,6 @@ async function init() {
 
   // Load data
   await loadData();
-
-  // ── Billing gate: block dashboard for past_due/unpaid subscriptions ─────
-  try {
-    const _gStatus = (STATE.me && (STATE.me.subscriptionStatus || STATE.me.subscription_status)) || '';
-    if (_gStatus === 'past_due' || _gStatus === 'unpaid') {
-      window.location.href = '/suspended.html';
-      return;
-    }
-  } catch(_ge) {}
 
   // Log session start once per browser session to feed activity feed + streak
   if (!sessionStorage.getItem('fp:session-logged')) {
