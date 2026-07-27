@@ -764,7 +764,12 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     logger.warn({ err: _dupErr, email: normalizedEmail }, "[Auth/PreRegister] duplicate check failed (non-fatal)");
   }
 
-  // ── Guard: reject if a pending (unconsumed) checkout already exists ───────────
+  // ── Guard: handle existing pending checkout ──────────────────────────────────
+  // Two distinct cases:
+  //   A) Account already created (org_settings exists) → redirect to login.
+  //   B) Pending signup exists but checkout was never completed (no org_settings)
+  //      → invalidate the stale token so the user can retry immediately.
+  //      This handles: browser closed mid-checkout, Stripe page didn't load, etc.
   {
     const _pendClient = await pool.connect();
     try {
@@ -775,10 +780,24 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
         [normalizedEmail]
       );
       if (_pend.rows.length > 0) {
-        res.status(409).json({
-          error: "Une inscription est déjà en cours pour cette adresse. Vérifiez votre email ou réessayez dans 2 heures.",
-        });
-        return;
+        // Check if the account was actually created
+        const { loadOrgSettings: _orgCheck } = await import("../services/org-settings.js");
+        const _org = await _orgCheck(normalizedEmail).catch(() => undefined);
+        if (_org) {
+          // Case A: real account exists → login
+          res.status(409).json({
+            error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
+            redirectTo: "/login.html",
+          });
+          return;
+        }
+        // Case B: checkout was abandoned — invalidate stale token, allow retry
+        await _pendClient.query(
+          `UPDATE pending_signups SET consumed_at = NOW()
+           WHERE email = $1 AND consumed_at IS NULL`,
+          [normalizedEmail]
+        );
+        logger.info({ email: normalizedEmail }, "[Auth/PreRegister] stale pending signup invalidated — user may retry");
       }
     } finally {
       _pendClient.release();
