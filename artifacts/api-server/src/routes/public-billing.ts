@@ -497,12 +497,31 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     immediateAmountCents += (ADDON_PRICES_EUR_CENTS[key] || 0) * qty;
   }
 
+  // Derive orgId (= email) from pending_signups so the webhook can activate the account
+  let piOrgId: string | undefined;
+  if (preRegisterToken) {
+    try {
+      const { pool: pgPool } = await import("@workspace/db");
+      const lookupClient = await pgPool.connect();
+      try {
+        const r = await lookupClient.query<{ email: string }>(
+          `SELECT email FROM pending_signups WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL LIMIT 1`,
+          [preRegisterToken]
+        );
+        if (r.rows[0]?.email) piOrgId = r.rows[0].email;
+      } finally { lookupClient.release(); }
+    } catch (e) {
+      logger.warn({ e }, "[PublicBilling] Could not resolve orgId for payment-intent metadata");
+    }
+  }
+
   const metadata: Record<string, string> = {
     source:              "checkout_payment",
     plan:                planKey,
     addons:              JSON.stringify(addons),
     flowpoint_cart:      "true",
     ...(preRegisterToken   ? { pre_register_token:    preRegisterToken            } : {}),
+    ...(piOrgId            ? { orgId:                 piOrgId                     } : {}),
     ...(trialDaysRemaining ? { trial_days_remaining:  String(trialDaysRemaining)  } : {}),
   };
 
@@ -640,26 +659,25 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     return;
   }
 
-  // ── Authentication gate FIRST — before any body validation ───────────────
-  // A Stripe PaymentIntent can only be completed for a known, verified org.
-  // Anonymous callers (no cookie) must complete signup first.
-  // Auth is checked before intentId validation so unauthenticated callers
-  // always get 401 and never learn which body fields are required.
+  // ── Authentication gate ───────────────────────────────────────────────────
+  // Two accepted paths:
+  //   A) fp_token session cookie  → existing user (upgrade / add-on flow)
+  //   B) preRegisterToken in body → new signup who just paid via checkout-payment.html;
+  //      validated against pending_signups (must exist and not yet expired).
+  //      The account may already be activated by the webhook — that's fine (idempotent).
   const _fckToken = (req.cookies as Record<string, string>)?.["fp_token"] ?? "";
+  const _preRegToken = typeof (req.body as Record<string, unknown>)?.preRegisterToken === "string"
+    ? ((req.body as Record<string, unknown>).preRegisterToken as string).trim()
+    : "";
   let _authenticatedOrgId: string | null = null;
+
   if (_fckToken) {
     try {
       const { pool: _sp } = await import("@workspace/db");
       const _sc = await _sp.connect();
       try {
-        // user_sessions hashes the token with SHA-256 (consistent with requireAuth middleware)
-        // user_sessions stores the raw token (see services/sessions.ts: INSERT token=$1)
         const _sr = await _sc.query<{ org_id: string }>(
-          `SELECT org_id
-           FROM   user_sessions
-           WHERE  token = $1
-             AND  expires_at > NOW()
-           LIMIT  1`,
+          `SELECT org_id FROM user_sessions WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
           [_fckToken]
         );
         if (_sr.rows[0]?.org_id && _sr.rows[0].org_id !== "default") {
@@ -670,26 +688,29 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       logger.warn({ sessionErr }, "[PublicBilling/finalize-checkout] Session lookup failed (non-fatal)");
     }
   }
-  // Pre-registration bypass: new users completing signup have no session cookie yet.
-  // Validate via pre_register_token — only valid (unconsumed, unexpired) tokens bypass auth.
+
+  // Path B: new signup — validate preRegisterToken against pending_signups.
+  // Accept both unconsumed AND already-consumed tokens: the webhook may have activated
+  // the account before finalize-checkout is called — this path must be idempotent.
   if (!_authenticatedOrgId && preRegisterToken) {
     try {
       const { pool: _fcBypassPool } = await import("@workspace/db");
       const _fcBypassC = await _fcBypassPool.connect();
       try {
         const _fcBypassR = await _fcBypassC.query<{ email: string }>(
-          `SELECT email FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
+          `SELECT email FROM pending_signups WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
           [preRegisterToken]
         );
         if (_fcBypassR.rows[0]?.email) {
           _authenticatedOrgId = _fcBypassR.rows[0].email;
-          logger.info({ orgId: _authenticatedOrgId }, "[PublicBilling] finalize-checkout: pre-register auth bypass");
+          logger.info({ orgId: _authenticatedOrgId }, "[PublicBilling/finalize-checkout] Authenticated via preRegisterToken (new signup)");
         }
       } finally { _fcBypassC.release(); }
     } catch (_fcBypassErr) {
-      logger.warn({ _fcBypassErr }, "[PublicBilling] finalize-checkout: pre-reg bypass lookup failed");
+      logger.warn({ _fcBypassErr }, "[PublicBilling/finalize-checkout] preRegisterToken lookup failed (non-fatal)");
     }
   }
+
   if (!_authenticatedOrgId) {
     res.status(401).json({
       error:      "auth_required",

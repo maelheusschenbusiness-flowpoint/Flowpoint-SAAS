@@ -41,35 +41,53 @@
     var setupIntentId   = params.get('setup_intent');
 
     if (paymentIntentId || setupIntentId) {
-      var intentId   = paymentIntentId || setupIntentId;
-      var intentType = paymentIntentId ? 'payment' : 'setup';
-      var cart = null;
-      try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+      var intentId        = paymentIntentId || setupIntentId;
+      var intentType      = paymentIntentId ? 'payment' : 'setup';
+      var cart            = null;
+      var preRegisterToken = '';
+      try { cart             = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+      try { preRegisterToken = sessionStorage.getItem('fp_pre_reg_token') || ''; }      catch(e) {}
       var plan   = (cart && cart.plan)   ? cart.plan   : '';
       var addons = (cart && cart.addons) ? cart.addons : {};
+      var isNewSignup = !!preRegisterToken;
 
-      var preRegTok = '';
-      try { preRegTok = sessionStorage.getItem('fp_pre_reg_token') || ''; } catch(e) {}
       var fcBody = { intentId: intentId, intentType: intentType, plan: plan, addons: addons };
-      if (preRegTok) fcBody.preRegisterToken = preRegTok;
+      if (preRegisterToken) fcBody.preRegisterToken = preRegisterToken;
       fetch('/api/public/finalize-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(fcBody)
       })
-      .then(function(r){ return r.json(); })
-      .then(function(data) {
-        if (data.success) {
+      .then(function(r){ return r.json().then(function(d){ return { status: r.status, data: d }; }); })
+      .then(function(res) {
+        if (res.data.success) {
           try { localStorage.removeItem('fp_cart'); } catch(e) {}
+          try { sessionStorage.removeItem('fp_pre_reg_token'); } catch(e) {}
           document.getElementById('fp-spinner').style.display = 'none';
-          document.getElementById('fp-title').textContent = 'Votre commande est confirmée !';
-          document.getElementById('fp-sub').innerHTML = 'Abonnement activé · 14 jours d\'essai en cours.<br>Vous allez être redirigé…';
-          setTimeout(function(){ window.location.href = '/dashboard.html'; }, 1800);
+          if (isNewSignup) {
+            /* New signup: account activated, magic link sent to email — no session yet */
+            document.getElementById('fp-title').textContent = 'Compte activé ! Vérifiez vos emails';
+            document.getElementById('fp-sub').innerHTML =
+              'Votre abonnement est confirmé.<br>' +
+              'Un <strong>lien de connexion</strong> vous a été envoyé par email.<br>' +
+              'Cliquez dessus pour accéder à votre tableau de bord.<br><br>' +
+              '<a href="/login.html" class="fp-btn">Déjà connecté ? Se connecter →</a>';
+          } else {
+            document.getElementById('fp-title').textContent = 'Votre commande est confirmée !';
+            document.getElementById('fp-sub').innerHTML = 'Abonnement activé · 14 jours d\'essai en cours.<br>Vous allez être redirigé…';
+            setTimeout(function(){ window.location.href = '/dashboard.html'; }, 1800);
+          }
+        } else if (res.status === 401) {
+          document.getElementById('fp-spinner').style.display = 'none';
+          document.getElementById('fp-title').textContent = 'Session expirée';
+          document.getElementById('fp-sub').innerHTML =
+            'Votre paiement a bien été enregistré.<br>Connectez-vous pour accéder à votre compte.' +
+            '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>';
         } else {
           document.getElementById('fp-spinner').style.display = 'none';
           document.getElementById('fp-title').textContent = 'Erreur de finalisation';
-          document.getElementById('fp-sub').textContent = data.error || 'Une erreur est survenue lors de la création de votre abonnement.';
+          document.getElementById('fp-sub').textContent = res.data.error || 'Une erreur est survenue lors de la création de votre abonnement.';
           document.getElementById('fp-sub').innerHTML += '<br><br><a href="/checkout-payment.html" class="fp-btn">Réessayer</a>';
         }
       })
