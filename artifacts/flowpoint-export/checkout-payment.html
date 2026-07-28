@@ -392,9 +392,19 @@
       ? 'Payer ' + immediateTotal + '€ →'
       : 'Démarrer l\'essai gratuit →';
 
-    stripe = Stripe(data.publishableKey);
-    var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    /* Guard: Stripe.js must be loaded (may be blocked by ad-blocker / CSP) */
+    if (typeof Stripe === 'undefined') {
+      showAlert('Stripe.js n\'a pas pu se charger. Désactivez votre bloqueur de publicités et réessayez.');
+      return;
+    }
 
+    try { stripe = Stripe(data.publishableKey); }
+    catch(e) {
+      showAlert('[S1] Clé Stripe invalide : ' + (e.message || e));
+      return;
+    }
+
+    var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
     var appearance = {
       theme: isDark ? 'night' : 'stripe',
       variables: {
@@ -414,35 +424,33 @@
       }
     };
 
-    /* Single Elements instance shared by both Address + Payment elements */
-    elements = stripe.elements({ clientSecret: data.clientSecret, appearance: appearance });
+    try { elements = stripe.elements({ clientSecret: data.clientSecret, appearance: appearance }); }
+    catch(e) {
+      showAlert('[S2] stripe.elements() : ' + (e.message || e));
+      return;
+    }
 
-    /* ── Address Element (billing mode) ──────────────────────────────────────
-       - mode: 'billing' collects name + full address (no phone)
-       - defaultValues: pre-filled from pending_signups data returned by API
-       - Stripe automatically attaches collected values to billing_details
-         when confirmPayment/confirmSetup is called
-    ─────────────────────────────────────────────────────────────────────── */
+    /* Address Element — billing mode, no phone field */
     var addrDefaultValues = {};
     if (data.defaultValues) {
       var dv = data.defaultValues;
-      if (dv.name)    addrDefaultValues.name    = dv.name;
-      if (dv.country) addrDefaultValues.address  = { country: dv.country };
+      if (dv.name)    addrDefaultValues.name   = dv.name;
+      if (dv.country) addrDefaultValues.address = { country: dv.country };
     }
 
-    var addressElement = elements.create('address', {
-      mode: 'billing',
-      fields: {
-        phone: 'never',         /* don't collect phone number */
-      },
-      validation: {
-        phone: { required: 'never' },
-      },
-      defaultValues: addrDefaultValues,
-    });
-    addressElement.mount('#fp-address-element');
+    var addressElement;
+    try {
+      addressElement = elements.create('address', {
+        mode: 'billing',
+        fields: { phone: 'never' },
+        defaultValues: addrDefaultValues,
+      });
+      addressElement.mount('#fp-address-element');
+    } catch(e) {
+      showAlert('[S3] Address Element : ' + (e.message || e));
+      return;
+    }
 
-    /* Track address completeness — button stays disabled until all required fields filled */
     addressElement.on('change', function(event) {
       _addressComplete = event.complete;
       if (!event.complete) {
@@ -452,20 +460,20 @@
       }
     });
 
-    /* ── Payment Element ──────────────────────────────────────────────────────
-       fields.billingDetails: 'never' — Address Element already collected them;
-       Stripe merges both automatically on confirmPayment/confirmSetup.
-    ─────────────────────────────────────────────────────────────────────── */
-    var paymentElement = elements.create('payment', {
-      layout: { type: 'tabs', defaultCollapsed: false },
-      wallets: { googlePay: 'never' },
-      fields: {
-        billingDetails: 'never',   /* avoids duplicate name/email/address fields */
-      },
-    });
-    paymentElement.mount('#fp-payment-element');
+    /* Payment Element — billing details suppressed (collected by Address Element above) */
+    var paymentElement;
+    try {
+      paymentElement = elements.create('payment', {
+        layout: { type: 'tabs', defaultCollapsed: false },
+        wallets: { googlePay: 'never', applePay: 'never' },
+        fields: { billingDetails: 'never' },
+      });
+      paymentElement.mount('#fp-payment-element');
+    } catch(e) {
+      showAlert('[S4] Payment Element : ' + (e.message || e));
+      return;
+    }
 
-    /* Payment element ready — enable button if address is also complete */
     paymentElement.on('ready', function() {
       _paymentReady = true;
       _tryEnablePayBtn();
@@ -497,7 +505,8 @@
   /* ── Mount Stripe immediately on page load ── */
   initStripe().catch(function(err) {
     console.error('[FlowPoint Payment] initStripe error', err);
-    showAlert('Une erreur est survenue lors du chargement du paiement. Réessayez ou revenez au récapitulatif.');
+    var msg = (err && (err.message || err.toString())) || 'erreur inconnue';
+    showAlert('Erreur de chargement : ' + msg + '. Revenez au récapitulatif et réessayez.');
   });
 
   /* ── Submit: stripe.confirmPayment/confirmSetup reads both elements automatically ── */
