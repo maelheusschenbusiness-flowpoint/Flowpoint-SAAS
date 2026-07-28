@@ -21,10 +21,11 @@ Both happen because `organization_members.organization_id` stores the email for 
 
 ### Layer 1: auth.ts `resolveOrCreateLegacyOrg` helper
 Called from S3-legacy and S6-fallback instead of `sessionOrgId = email`.
-- Step A: ensure `users` row exists (S3-legacy creates it), get UUID
-- Step B: look up `organizations WHERE owner_email = email` → use existing UUID org
-- Step C: if none found, INSERT new UUID org from `org_settings` data + INSERT `organization_members` row
+- Step A: SELECT users WHERE email first, INSERT only if not found — no ON CONFLICT
+- Step B: look up `organizations WHERE owner_email = email` → SELECT members first, INSERT only if absent — no ON CONFLICT
+- Step C: INSERT new UUID org (fresh UUID, no conflict possible) + INSERT org_members — no ON CONFLICT
 - Returns `{ orgId: UUID, userUuid: UUID }` — never an email
+- **No ON CONFLICT anywhere** — works regardless of which UNIQUE constraints exist on the target DB (avoids 42P10 on Render where constraints may differ from Supabase dev)
 
 ### Layer 2: planGate.ts UUID guard
 `UUID_RE` check at start of `resolvePlanFromDB`. Non-UUID orgId → skip `organizations` query, go directly to `org_settings`. Protects surviving pre-fix sessions.
