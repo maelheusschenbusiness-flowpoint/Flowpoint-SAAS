@@ -489,7 +489,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
       res.status(503).json({ error: "Payment service not configured." });
       return;
     }
-    res.json({ clientSecret: "seti_test_mock_secret", publishableKey: "pk_test_mock", mode: "setup", immediateAmount: 0 });
+    res.json({ clientSecret: "seti_test_mock_secret", publishableKey: "pk_test_mock", mode: "setup", immediateAmount: 0, defaultValues: null });
     return;
   }
 
@@ -541,6 +541,8 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     // ── Pre-registration: find or create Stripe Customer (1 email = 1 customer invariant) ──
     // Prevents duplicate customers when user goes back and retries checkout with same token.
     let preRegCustomerId: string | undefined;
+    /* defaultValues sent back to the frontend to pre-fill the Stripe Address Element */
+    let _piDefaultValues: { name: string; email: string; country: string } | null = null;
     if (preRegisterToken) {
       try {
         const { pool: _piPool } = await import("@workspace/db");
@@ -563,6 +565,8 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
 
           /* Build full customer identity from pending_signups + submitted billingAddress */
           const _piName = `${_piRow.first_name} ${_piRow.last_name}`.trim() || _piRow.company_name || _piEmail;
+          /* Expose to frontend for Address Element pre-fill */
+          _piDefaultValues = { name: _piName, email: _piEmail, country: _piRow.country || "FR" };
           /* Merge: submitted form address takes priority over stored address */
           const _piAddr = billingAddress?.line1 ? billingAddress : (
             (_piRow.address || _piRow.city || _piRow.country) ? {
@@ -663,7 +667,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
         metadata,
       });
       logger.info({ plan: planKey, addonCount: addonKeys.length, immediateAmountCents }, "[PublicBilling] PaymentIntent created");
-      res.json({ clientSecret: pi.client_secret, publishableKey, mode: "payment", immediateAmount: immediateAmountCents });
+      res.json({ clientSecret: pi.client_secret, publishableKey, mode: "payment", immediateAmount: immediateAmountCents, defaultValues: _piDefaultValues });
       return;
     }
 
@@ -676,7 +680,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
         metadata,
       });
       logger.info({ plan: planKey, hasCustomer: !!preRegCustomerId }, "[PublicBilling] SetupIntent created");
-      res.json({ clientSecret: si.client_secret, publishableKey, mode: "setup", immediateAmount: 0 });
+      res.json({ clientSecret: si.client_secret, publishableKey, mode: "setup", immediateAmount: 0, defaultValues: _piDefaultValues });
       return;
     }
 
@@ -924,69 +928,70 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     // Attach payment method to resolved customer (safe even if already attached)
     await stripe.paymentMethods.attach(paymentMethodId!, { customer: customerId! }).catch(() => {});
 
-    /* ── Enrich Customer with full identity/address from pending_signups ─────
-       Ensures name, email, address and locale are always set on the Customer
-       regardless of whether billing_details were filled in Stripe Elements.
+    /* ── Enrich Customer: merge Stripe Address Element data + pending_signups ──
+       Source priority:
+         • name/email   → pending_signups (signup data) > pm.billing_details
+         • address      → pm.billing_details (Stripe Address Element) > pending_signups
+       This guarantees 1 Customer with complete identity, billing address and locale.
     ─────────────────────────────────────────────────────────────────────────── */
-    const _fcPrt2 = preRegisterToken || intentMeta["pre_register_token"] || "";
-    if (_fcPrt2) {
-      try {
+    try {
+      /* 1. Retrieve PM billing_details — populated by Stripe Address Element on confirm */
+      const _fcPmFull = await stripe.paymentMethods.retrieve(paymentMethodId!).catch(() => null);
+      const _fcPmBd   = _fcPmFull?.billing_details ?? {};
+      const _fcPmAddr = _fcPmBd.address;
+
+      /* 2. Load signup row (name/email/company fallback) */
+      const _fcPrt2 = preRegisterToken || intentMeta["pre_register_token"] || "";
+      let _fcSignupName = "";
+      let _fcSignupEmail = "";
+      if (_fcPrt2) {
         const { pool: _fcEnrichPool } = await import("@workspace/db");
         const _fcEnrichC = await _fcEnrichPool.connect();
-        let _fcEnrichRow: { email: string; first_name: string; last_name: string; company_name: string; address: string | null; city: string | null; postal_code: string | null; country: string | null } | null = null;
         try {
           const _fcER = await _fcEnrichC.query(
-            `SELECT email, first_name, last_name, company_name,
-                    address, city, postal_code, country
+            `SELECT email, first_name, last_name, company_name
              FROM pending_signups WHERE token = $1 LIMIT 1`,
             [_fcPrt2]
           );
-          _fcEnrichRow = _fcER.rows[0] ?? null;
+          const _fcRow = _fcER.rows[0];
+          if (_fcRow) {
+            _fcSignupName  = `${_fcRow.first_name ?? ""} ${_fcRow.last_name ?? ""}`.trim() || _fcRow.company_name || "";
+            _fcSignupEmail = _fcRow.email || "";
+          }
         } finally { _fcEnrichC.release(); }
-
-        if (_fcEnrichRow) {
-          const _fcFullName = `${_fcEnrichRow.first_name} ${_fcEnrichRow.last_name}`.trim() || _fcEnrichRow.company_name || "";
-          const _fcHasAddr  = !!((_fcEnrichRow.address || _fcEnrichRow.city) && _fcEnrichRow.country);
-
-          /* Retrieve current customer to avoid overwriting already-present fields */
-          const _fcCurC = await stripe.customers.retrieve(customerId!).catch(() => null);
-          const _fcCurFull = _fcCurC && !(_fcCurC as { deleted?: boolean }).deleted
-            ? (_fcCurC as { name?: string | null; address?: unknown; email?: string | null })
-            : null;
-
-          const _fcEnrichUpdate: Parameters<typeof stripe.customers.update>[1] = {
-            invoice_settings: { default_payment_method: paymentMethodId! },
-            preferred_locales: ["fr"],
-            ...(!_fcCurFull?.name   && _fcFullName ? { name: _fcFullName } : {}),
-            ...(!_fcCurFull?.email  && _fcEnrichRow.email ? { email: _fcEnrichRow.email } : {}),
-            ...(!_fcCurFull?.address && _fcHasAddr ? {
-              address: {
-                line1:       _fcEnrichRow.address    ?? "",
-                city:        _fcEnrichRow.city        ?? "",
-                postal_code: _fcEnrichRow.postal_code ?? "",
-                country:     _fcEnrichRow.country     ?? "",
-              }
-            } : {}),
-          };
-          await stripe.customers.update(customerId!, _fcEnrichUpdate);
-          logger.info({ customerId, hasAddr: _fcHasAddr, hasName: !!_fcFullName }, "[PublicBilling] finalize: customer enriched with identity/address");
-        } else {
-          await stripe.customers.update(customerId!, {
-            invoice_settings: { default_payment_method: paymentMethodId! },
-            preferred_locales: ["fr"],
-          });
-        }
-      } catch (_fcEnrichErr) {
-        logger.warn({ _fcEnrichErr }, "[PublicBilling] finalize: customer enrichment non-fatal — falling back to invoice_settings only");
-        await stripe.customers.update(customerId!, {
-          invoice_settings: { default_payment_method: paymentMethodId! },
-        }).catch(() => {});
       }
-    } else {
+
+      /* 3. Merge: prefer signup for name/email, PM billing_details for address */
+      const _fcFinalName  = _fcSignupName  || _fcPmBd.name  || "";
+      const _fcFinalEmail = _fcSignupEmail || _fcPmBd.email || "";
+      const _fcHasPmAddr  = !!(_fcPmAddr?.line1 && _fcPmAddr?.country);
+
+      const _fcUpdate: Parameters<typeof stripe.customers.update>[1] = {
+        invoice_settings: { default_payment_method: paymentMethodId! },
+        preferred_locales: ["fr"],
+        ...(_fcFinalName  ? { name:  _fcFinalName  } : {}),
+        ...(_fcFinalEmail ? { email: _fcFinalEmail } : {}),
+        ...(_fcHasPmAddr  ? {
+          address: {
+            line1:       _fcPmAddr!.line1  ?? "",
+            line2:       _fcPmAddr!.line2  ?? undefined,
+            city:        _fcPmAddr!.city   ?? "",
+            postal_code: _fcPmAddr!.postal_code ?? "",
+            country:     _fcPmAddr!.country ?? "",
+          }
+        } : {}),
+      };
+
+      await stripe.customers.update(customerId!, _fcUpdate);
+      logger.info({ customerId, hasPmAddr: _fcHasPmAddr, hasName: !!_fcFinalName },
+        "[PublicBilling] finalize: customer enriched (Address Element + signup data)");
+
+    } catch (_fcEnrichErr) {
+      logger.warn({ _fcEnrichErr }, "[PublicBilling] finalize: customer enrichment non-fatal — invoice_settings only");
       await stripe.customers.update(customerId!, {
         invoice_settings: { default_payment_method: paymentMethodId! },
         preferred_locales: ["fr"],
-      });
+      }).catch(() => {});
     }
 
     /* ── 3a. Plan subscription — trial only for confirmed first-time subscribers ── */

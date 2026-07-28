@@ -98,8 +98,10 @@
     .fp-total-val.after { font-size: 15px; color: var(--green); }
     .fp-total-unit { font-size: 11px; font-weight: 400; color: var(--text-muted); margin-left: 1px; }
 
-    /* ── Stripe element ── */
+    /* ── Stripe elements ── */
+    #fp-address-element { margin-bottom: 20px; }
     #fp-payment-element { margin-bottom: 18px; }
+    .fp-elements-sep { height: 1px; background: var(--border); margin: 4px 0 20px; }
 
     /* ── Alert ── */
     .fp-alert { display: none; border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 14px; }
@@ -124,7 +126,7 @@
     .fp-loading-spinner { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--blue-light); animation: spin .7s linear infinite; }
     .fp-loading p { font-size: 14px; color: var(--text-muted); }
 
-    /* ── Security note ── */
+    /* ── Security + trial notes ── */
     .fp-secure-note { display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 11.5px; color: var(--text-muted); margin-top: 14px; }
     .fp-trial-note { text-align: center; font-size: 12.5px; color: var(--green); background: var(--green-bg); border: 1px solid var(--green-brd); border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; }
   </style>
@@ -159,15 +161,24 @@
 
   <!-- Order Summary -->
   <div class="fp-card" id="fp-summary-card">
-    <div class="fp-loading"><div class="fp-loading-spinner"></div><p>Chargement du récapitulatif…</p></div>
+    <div class="fp-loading"><div class="fp-loading-spinner"></div><p>Chargement…</p></div>
   </div>
 
-  <!-- Payment Form -->
+  <!-- Payment + Address -->
   <div class="fp-card" id="fp-payment-card">
+
+    <!-- Address Element (billing mode) -->
+    <div class="fp-card-title">Adresse de facturation</div>
+    <div id="fp-address-element"></div>
+
+    <div class="fp-elements-sep"></div>
+
+    <!-- Payment Element -->
     <div class="fp-card-title">Informations de paiement</div>
     <div id="fp-trial-note" class="fp-trial-note" style="display:none"></div>
     <div class="fp-alert fp-alert-error" id="fp-alert"></div>
     <div id="fp-payment-element" role="group" aria-label="Informations de paiement"></div>
+
     <span id="fp-pay-desc" hidden>Confirme et finalise votre abonnement FlowPoint. Paiement sécurisé par Stripe.</span>
     <button class="fp-btn fp-btn-primary" id="fp-pay-btn" disabled aria-label="Confirmer et payer" aria-describedby="fp-pay-desc">
       <span id="fp-btn-text">Chargement…</span>
@@ -236,16 +247,12 @@
   };
   var PLAN_INCLUDED = { standard: [], pro: ['whiteLabel'], ultra: ['whiteLabel', 'agencyPacks'] };
 
-  /* ── Trial days (set by checkout.html before navigating here; default 14 for new signups) ── */
+  /* ── Trial days ── */
   var _trialDaysRemaining = 14;
   try {
     var _tdRaw = sessionStorage.getItem('fp_trial_days');
     if (_tdRaw !== null) _trialDaysRemaining = Math.max(0, parseInt(_tdRaw, 10) || 0);
   } catch(e) {}
-
-  /* ── Billing address (set by checkout.html before navigating here) ── */
-  var _billingAddress = null;
-  try { _billingAddress = JSON.parse(sessionStorage.getItem('fp_billing_address') || 'null'); } catch(e) {}
 
   /* ── Cart ── */
   var cart = null;
@@ -258,7 +265,7 @@
   var addons   = cart.addons || {};
   var included = plan ? (PLAN_INCLUDED[plan] || []) : [];
 
-  /* ── Compute amounts ── */
+  /* ── Amounts ── */
   var planPrice       = plan && PLAN_INFO[plan] ? PLAN_INFO[plan].price : 0;
   var addonImmediate  = 0;
   var oneTimeTotal    = 0;
@@ -313,24 +320,6 @@
     document.getElementById('fp-summary-card').innerHTML = html;
   })();
 
-  /* ── Trial note ── */
-  function updateTrialNote() {
-    if (!hasPlan || _trialDaysRemaining <= 0) return;
-    var noteEl = document.getElementById('fp-trial-note');
-    if (!noteEl) return;
-    var daysLabel = _trialDaysRemaining === 1 ? '1\u00a0jour' : _trialDaysRemaining + '\u00a0jours';
-    var hasOnlyOneTime = immediateTotal > 0 && Object.keys(addons).length > 0 &&
-      Object.keys(addons).every(function(id) { return !ADDON_INFO[id] || ADDON_INFO[id].oneTime; });
-    if (immediateTotal === 0) {
-      noteEl.textContent = 'Aucun débit aujourd\'hui. Premier paiement après ' + daysLabel + '.';
-    } else if (hasOnlyOneTime) {
-      noteEl.textContent = 'Crédits IA facturés aujourd\'hui. Abonnement débité après ' + daysLabel + '.';
-    } else {
-      noteEl.textContent = 'Add-ons facturés aujourd\'hui. Abonnement débité après ' + daysLabel + '.';
-    }
-    noteEl.style.display = 'block';
-  }
-
   /* ── Helpers ── */
   function showAlert(msg) {
     var el = document.getElementById('fp-alert');
@@ -347,8 +336,21 @@
     if (label) txt.textContent = label;
   }
 
-  /* ── Init Stripe — called immediately on page load ── */
+  /* ── Init Stripe: Address Element + Payment Element on same Elements instance ── */
   var stripe, elements;
+
+  /* Readiness state — both must be true before pay button is enabled */
+  var _addressComplete = false;
+  var _paymentReady    = false;
+  var _payBtnLabel     = 'Confirmer →';
+  var _mode            = 'setup';
+
+  function _tryEnablePayBtn() {
+    if (_addressComplete && _paymentReady) {
+      document.getElementById('fp-btn-text').textContent = _payBtnLabel;
+      document.getElementById('fp-pay-btn').disabled = false;
+    }
+  }
 
   async function initStripe() {
     var preRegToken = '';
@@ -358,21 +360,24 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        plan: plan || '',
-        addons: addons,
-        preRegisterToken: preRegToken,
+        plan:               plan || '',
+        addons:             addons,
+        preRegisterToken:   preRegToken,
         trialDaysRemaining: _trialDaysRemaining,
-        billingAddress: _billingAddress || null,
+        billingAddress:     null,   /* address collected by Address Element, not a custom form */
       })
     });
     var data = await resp.json();
-    if (!resp.ok) {
-      showAlert(data.error || 'Erreur de chargement du paiement.');
-      return;
-    }
+    if (!resp.ok) { showAlert(data.error || 'Erreur de chargement du paiement.'); return; }
+
+    _mode = data.mode || 'setup';
+    _payBtnLabel = _mode === 'payment'
+      ? 'Payer ' + immediateTotal + '€ →'
+      : 'Démarrer l\'essai gratuit →';
 
     stripe = Stripe(data.publishableKey);
     var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+
     var appearance = {
       theme: isDark ? 'night' : 'stripe',
       variables: {
@@ -392,59 +397,122 @@
       }
     };
 
+    /* Single Elements instance shared by both Address + Payment elements */
     elements = stripe.elements({ clientSecret: data.clientSecret, appearance: appearance });
+
+    /* ── Address Element (billing mode) ──────────────────────────────────────
+       - mode: 'billing' collects name + full address (no phone)
+       - defaultValues: pre-filled from pending_signups data returned by API
+       - Stripe automatically attaches collected values to billing_details
+         when confirmPayment/confirmSetup is called
+    ─────────────────────────────────────────────────────────────────────── */
+    var addrDefaultValues = {};
+    if (data.defaultValues) {
+      var dv = data.defaultValues;
+      if (dv.name)    addrDefaultValues.name    = dv.name;
+      if (dv.country) addrDefaultValues.address  = { country: dv.country };
+    }
+
+    var addressElement = elements.create('address', {
+      mode: 'billing',
+      fields: {
+        phone: 'never',         /* don't collect phone number */
+      },
+      validation: {
+        phone: { required: 'never' },
+      },
+      defaultValues: addrDefaultValues,
+    });
+    addressElement.mount('#fp-address-element');
+
+    /* Track address completeness — button stays disabled until all required fields filled */
+    addressElement.on('change', function(event) {
+      _addressComplete = event.complete;
+      if (!event.complete) {
+        document.getElementById('fp-pay-btn').disabled = true;
+      } else {
+        _tryEnablePayBtn();
+      }
+    });
+
+    /* ── Payment Element ──────────────────────────────────────────────────────
+       fields.billingDetails: 'never' — Address Element already collected them;
+       Stripe merges both automatically on confirmPayment/confirmSetup.
+    ─────────────────────────────────────────────────────────────────────── */
     var paymentElement = elements.create('payment', {
       layout: { type: 'tabs', defaultCollapsed: false },
-      wallets: { googlePay: 'never' }
+      wallets: { googlePay: 'never' },
+      fields: {
+        billingDetails: 'never',   /* avoids duplicate name/email/address fields */
+      },
     });
     paymentElement.mount('#fp-payment-element');
 
-    var _payBtnLabel = data.mode === 'setup' ? 'Démarrer l\'essai gratuit →' : 'Payer ' + immediateTotal + '€ →';
-    var _payBtnReady = false;
-    function _enablePayBtn() {
-      if (_payBtnReady) return;
-      _payBtnReady = true;
-      document.getElementById('fp-btn-text').textContent = _payBtnLabel;
-      document.getElementById('fp-pay-btn').disabled = false;
-    }
-    paymentElement.on('ready', _enablePayBtn);
+    /* Payment element ready — enable button if address is also complete */
+    paymentElement.on('ready', function() {
+      _paymentReady = true;
+      _tryEnablePayBtn();
+    });
     paymentElement.on('loaderror', function(e) {
       console.error('[FlowPoint Payment] PaymentElement loaderror', e);
       showAlert('Impossible de charger le formulaire de paiement. Désactivez votre bloqueur de publicités et réessayez.');
     });
-    setTimeout(_enablePayBtn, 8000);
 
-    document.getElementById('fp-pay-btn').setAttribute('data-mode', data.mode);
-    updateTrialNote();
+    /* Safety fallback: enable button after 8s even if ready never fires */
+    setTimeout(function() {
+      _paymentReady = true;
+      _tryEnablePayBtn();
+    }, 8000);
+
+    document.getElementById('fp-pay-btn').setAttribute('data-mode', _mode);
+
+    /* ── Trial note ── */
+    if (hasPlan && _trialDaysRemaining > 0) {
+      var noteEl = document.getElementById('fp-trial-note');
+      var daysLabel = _trialDaysRemaining === 1 ? '1\u00a0jour' : _trialDaysRemaining + '\u00a0jours';
+      noteEl.textContent = immediateTotal === 0
+        ? 'Aucun débit aujourd\'hui. Premier paiement après ' + daysLabel + '.'
+        : 'Add-ons facturés aujourd\'hui. Abonnement débité après ' + daysLabel + '.';
+      noteEl.style.display = 'block';
+    }
   }
 
-  /* ── Mount Stripe immediately ── */
+  /* ── Mount Stripe immediately on page load ── */
   initStripe().catch(function(err) {
     console.error('[FlowPoint Payment] initStripe error', err);
     showAlert('Une erreur est survenue lors du chargement du paiement. Réessayez ou revenez au récapitulatif.');
   });
 
-  /* ── Submit ── */
+  /* ── Submit: stripe.confirmPayment/confirmSetup reads both elements automatically ── */
   document.getElementById('fp-pay-btn').addEventListener('click', async function() {
     if (this.disabled) return;
     hideAlert();
     setLoading(true, 'Vérification en cours…');
 
-    var mode = this.getAttribute('data-mode') || 'payment';
-    var returnUrl = window.location.origin + '/checkout-return.html';
+    var mode       = this.getAttribute('data-mode') || 'payment';
+    var returnUrl  = window.location.origin + '/checkout-return.html';
 
     try {
       var result;
       if (mode === 'payment') {
-        result = await stripe.confirmPayment({ elements: elements, confirmParams: { return_url: returnUrl } });
+        /* elements contains both addressElement + paymentElement;
+           Stripe merges address into billing_details automatically */
+        result = await stripe.confirmPayment({
+          elements: elements,
+          confirmParams: { return_url: returnUrl },
+        });
       } else {
-        result = await stripe.confirmSetup({ elements: elements, confirmParams: { return_url: returnUrl } });
+        result = await stripe.confirmSetup({
+          elements: elements,
+          confirmParams: { return_url: returnUrl },
+        });
       }
       if (result.error) {
         var msg = result.error.message || 'Le paiement a échoué. Vérifiez vos informations.';
         showAlert(msg);
         setLoading(false, mode === 'payment' ? 'Payer ' + immediateTotal + '€ →' : 'Démarrer l\'essai gratuit →');
       }
+      /* On success Stripe redirects to checkout-return.html automatically */
     } catch(err) {
       console.error('[FlowPoint Payment]', err);
       showAlert('Une erreur est survenue. Réessayez ou contactez le support.');
