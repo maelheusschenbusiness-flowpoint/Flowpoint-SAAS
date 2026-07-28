@@ -328,19 +328,25 @@
     /* ── OAuth click handler ── */
     document.getElementById('fp-oauth-btns').addEventListener('click', function (e) {
       var btn = e.target.closest('button[data-loginurl]');
-      if (btn) window.location.href = btn.getAttribute('data-loginurl');
+      if (!btn) return;
+      var url = btn.getAttribute('data-loginurl');
+      if (url) { window.location.href = url; }
+      else { showError('La connexion Apple n\'est pas encore disponible. Utilisez votre email ou Google.'); }
     });
 
-    /* ── Load providers — show only configured OAuth buttons ── */
+    /* ── Load providers — show configured OAuth buttons; Apple always shown ── */
     fetch('/api/auth/providers', { credentials: 'include' })
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var hasOAuth = false;
         ['google', 'apple'].forEach(function (id) {
           var p = (data.providers || []).find(function (x) { return x.id === id; });
+          var btn = document.getElementById('fp-' + id + '-btn');
           if (p && p.configured) {
-            var btn = document.getElementById('fp-' + id + '-btn');
             if (btn) { btn.classList.remove('fp-hidden'); hasOAuth = true; }
+          } else if (id === 'apple') {
+            /* Always show Apple, but clear loginurl so click shows friendly message */
+            if (btn) { btn.removeAttribute('data-loginurl'); btn.classList.remove('fp-hidden'); hasOAuth = true; }
           }
         });
         if (!hasOAuth) oauthDiv.style.display = 'none';

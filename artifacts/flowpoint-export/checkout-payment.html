@@ -302,23 +302,28 @@
     document.getElementById('fp-summary-card').innerHTML = html;
   })();
 
-  /* ── Show payment card ── */
-  document.getElementById('fp-payment-card').style.display = 'block';
-  if (hasPlan) {
+  /* ── Trial note — dynamic based on remaining days ── */
+  function updateTrialNote() {
+    if (!hasPlan) return;
     var noteEl = document.getElementById('fp-trial-note');
+    if (!noteEl) return;
+    if (_trialDaysRemaining <= 0) { noteEl.style.display = 'none'; return; }
+    var daysLabel = _trialDaysRemaining === 1 ? '1\u00a0jour' : _trialDaysRemaining + '\u00a0jours';
+    var hasOnlyOneTime = immediateTotal > 0 && Object.keys(addons).length > 0 &&
+      Object.keys(addons).every(function(id) { return !ADDON_INFO[id] || ADDON_INFO[id].oneTime; });
     if (immediateTotal === 0) {
-      noteEl.textContent = 'Aucun débit aujourd\'hui. Premier paiement après 14 jours.';
+      noteEl.textContent = 'Aucun débit aujourd\'hui. Premier paiement après ' + daysLabel + '.';
+    } else if (hasOnlyOneTime) {
+      noteEl.textContent = 'Crédits IA facturés aujourd\'hui. Abonnement débité après ' + daysLabel + '.';
     } else {
-      /* Determine if only AI credits are in the immediate charge */
-      var hasOnlyOneTime = Object.keys(addons).length > 0 && Object.keys(addons).every(function(id) {
-        return !ADDON_INFO[id] || ADDON_INFO[id].oneTime;
-      });
-      noteEl.textContent = hasOnlyOneTime
-        ? 'Crédits IA facturés aujourd\'hui. Abonnement débité après 14 jours.'
-        : 'Add-ons facturés aujourd\'hui. Abonnement débité après 14 jours.';
+      noteEl.textContent = 'Add-ons facturés aujourd\'hui. Abonnement débité après ' + daysLabel + '.';
     }
     noteEl.style.display = 'block';
   }
+
+  /* ── Show payment card ── */
+  document.getElementById('fp-payment-card').style.display = 'block';
+  updateTrialNote();
 
   /* ── Helpers ── */
   function showAlert(msg) {
@@ -345,7 +350,7 @@
     var resp = await fetch('/api/public/payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan: plan || '', addons: addons, preRegisterToken: preRegToken })
+      body: JSON.stringify({ plan: plan || '', addons: addons, preRegisterToken: preRegToken, trialDaysRemaining: _trialDaysRemaining })
     });
     var data = await resp.json();
     if (!resp.ok) { showAlert(data.error || 'Erreur de chargement du paiement.'); return; }

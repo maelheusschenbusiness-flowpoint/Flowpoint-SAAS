@@ -82,9 +82,11 @@
       cursor: pointer; transition: background .15s, border-color .15s; text-decoration: none;
     }
     .btn-oauth:hover { background: #253550; border-color: #3b5178; }
-    .btn-oauth-apple { background: #1c1c1e; color: #fff; }
-    html[data-theme="light"] .btn-oauth-apple { background: #0f172a; color: #fff; }
-    .btn-oauth-apple:hover { background: #2c2c2e !important; border-color: #3c3c3e !important; }
+    .btn-oauth + .btn-oauth { margin-top: 8px; }
+    .btn-oauth-apple { background: rgba(255,255,255,.08); color: #fff; border-color: rgba(255,255,255,.2); }
+    html[data-theme="light"] .btn-oauth-apple { background: #fff; color: #0f172a; border-color: #d1d5db; }
+    .btn-oauth-apple:hover { background: rgba(255,255,255,.14) !important; border-color: rgba(255,255,255,.35) !important; }
+    html[data-theme="light"] .btn-oauth-apple:hover { background: #f1f5f9 !important; border-color: #94a3b8 !important; }
 
     .divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; color: var(--text-muted); font-size: 12px; }
     .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
@@ -209,7 +211,7 @@
       </svg>
       Continuer avec Google
     </a>
-    <a href="/api/auth/apple/login" class="btn-oauth btn-oauth-apple" id="btn-apple-oauth">
+    <a href="#" class="btn-oauth btn-oauth-apple" id="btn-apple-oauth" onclick="return _appleOAuthClick(event)">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
         <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98l-.09.06c-.22.15-2.19 1.28-2.17 3.82.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.36 2.75M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11"/>
       </svg>
@@ -399,6 +401,15 @@
 <script>
   var _preRegisterToken = '';
   var _planBtnsLocked   = false;
+  var _appleConfigured  = false;
+
+  function _appleOAuthClick(e) {
+    e.preventDefault();
+    if (_appleConfigured) { window.location.href = '/api/auth/apple/login'; return false; }
+    var msgEl = document.getElementById('signup-msg');
+    if (msgEl) { msgEl.className = 'msg error'; msgEl.textContent = 'La connexion Apple n\'est pas encore disponible. Utilisez votre email ou Google.'; }
+    return false;
+  }
 
   /* ── Called when user clicks a plan card ── */
   function choosePlan(plan, btn) {
@@ -410,10 +421,9 @@
     }
     _planBtnsLocked = true;
 
-    // Show spinner on clicked button, disable all
+    // Disable all buttons immediately then redirect
     document.querySelectorAll('.plan-card-btn').forEach(function(b) { b.disabled = true; });
-    var spinner = btn.querySelector('.plan-card-spinner');
-    if (spinner) spinner.style.display = 'block';
+    btn.style.opacity = '0.5';
 
     // Save plan + preRegisterToken then go to checkout
     try { localStorage.setItem('fp_cart', JSON.stringify({ plan: plan, addons: {}, _v: 1, _updatedAt: Date.now() })); } catch(e) {}
@@ -531,12 +541,16 @@
   fetch('/api/auth/providers', { credentials: 'include' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      var hasOAuth = false;
+          var hasOAuth = false;
       ['google', 'apple'].forEach(function(id) {
         var p = (data.providers || []).find(function(x) { return x.id === id; });
+        var btn = document.getElementById('btn-' + id + '-oauth');
         if (p && p.configured) {
-          var btn = document.getElementById('btn-' + id + '-oauth');
           if (btn) { btn.classList.remove('fp-hidden'); hasOAuth = true; }
+          if (id === 'apple') _appleConfigured = true;
+        } else {
+          /* Apple always visible — mark as not configured so click shows message */
+          if (id === 'apple' && btn) { btn.classList.remove('fp-hidden'); hasOAuth = true; }
         }
       });
       if (hasOAuth) {
@@ -544,7 +558,11 @@
         if (div) div.classList.remove('fp-hidden');
       }
     })
-    .catch(function() {});
+    .catch(function() {
+      /* On error still show Apple as visible placeholder */
+      var aBtn = document.getElementById('btn-apple-oauth');
+      if (aBtn) aBtn.classList.remove('fp-hidden');
+    });
 
 })();
 </script>

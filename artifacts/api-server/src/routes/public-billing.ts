@@ -445,7 +445,8 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   if (plan === null) return;
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
-  const preRegisterToken = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
+  const preRegisterToken   = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
+  const trialDaysRemaining = Number.isFinite(Number(req.body?.trialDaysRemaining)) ? Math.max(0, Math.min(90, Number(req.body.trialDaysRemaining))) : 0;
   const stripeKey      = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
 
@@ -472,11 +473,12 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   }
 
   const metadata: Record<string, string> = {
-    source:         "checkout_payment",
-    plan:           planKey,
-    addons:         JSON.stringify(addons),
-    flowpoint_cart: "true",
-    ...(preRegisterToken ? { pre_register_token: preRegisterToken } : {}),
+    source:              "checkout_payment",
+    plan:                planKey,
+    addons:              JSON.stringify(addons),
+    flowpoint_cart:      "true",
+    ...(preRegisterToken   ? { pre_register_token:    preRegisterToken            } : {}),
+    ...(trialDaysRemaining ? { trial_days_remaining:  String(trialDaysRemaining)  } : {}),
   };
 
   try {
