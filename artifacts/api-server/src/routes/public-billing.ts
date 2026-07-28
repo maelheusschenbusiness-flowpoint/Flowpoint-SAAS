@@ -667,7 +667,9 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
         /* save PM for subscription after trial */
         ...(hasPlan ? { setup_future_usage: "off_session" } : {}),
         ...(preRegCustomerId ? { customer: preRegCustomerId } : {}),
-        automatic_payment_methods: { enabled: true },
+        /* allow_redirects:'never' keeps only non-redirect methods (card, SEPA);
+           removes Stripe Link and redirect-based wallets from the Payment Element */
+        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
         metadata,
       });
       logger.info({ plan: planKey, addonCount: addonKeys.length, immediateAmountCents }, "[PublicBilling] PaymentIntent created");
@@ -679,7 +681,10 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
       /* SetupIntent — collect card for trial subscription, 0€ today */
       const si = await stripe.setupIntents.create({
         ...(preRegCustomerId ? { customer: preRegCustomerId } : {}),
-        automatic_payment_methods: { enabled: true },
+        /* allow_redirects:'never' keeps only non-redirect methods (card, SEPA);
+           removes Stripe Link and redirect-based wallets (Bancontact, PayPal, Klarna)
+           which cannot be saved for future off_session charges anyway */
+        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
         usage: "off_session",
         metadata,
       });

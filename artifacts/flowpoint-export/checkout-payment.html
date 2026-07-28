@@ -99,9 +99,7 @@
     .fp-total-unit { font-size: 11px; font-weight: 400; color: var(--text-muted); margin-left: 1px; }
 
     /* ── Stripe elements ── */
-    #fp-address-element { margin-bottom: 20px; }
     #fp-payment-element { margin-bottom: 18px; }
-    .fp-elements-sep { height: 1px; background: var(--border); margin: 4px 0 20px; }
 
     /* ── Alert ── */
     .fp-alert { display: none; border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 14px; }
@@ -166,12 +164,6 @@
 
   <!-- Payment + Address -->
   <div class="fp-card" id="fp-payment-card">
-
-    <!-- Address Element (billing mode) -->
-    <div class="fp-card-title">Adresse de facturation</div>
-    <div id="fp-address-element"></div>
-
-    <div class="fp-elements-sep"></div>
 
     <!-- Payment Element -->
     <div class="fp-card-title">Informations de paiement</div>
@@ -336,17 +328,15 @@
     if (label) txt.textContent = label;
   }
 
-  /* ── Init Stripe: Address Element + Payment Element on same Elements instance ── */
+  /* ── Init Stripe: Payment Element ── */
   var stripe, elements;
 
-  /* Readiness state — both must be true before pay button is enabled */
-  var _addressComplete = false;
-  var _paymentReady    = false;
-  var _payBtnLabel     = 'Confirmer →';
-  var _mode            = 'setup';
+  var _paymentReady = false;
+  var _payBtnLabel  = 'Confirmer →';
+  var _mode         = 'setup';
 
   function _tryEnablePayBtn() {
-    if (_addressComplete && _paymentReady) {
+    if (_paymentReady) {
       document.getElementById('fp-btn-text').textContent = _payBtnLabel;
       document.getElementById('fp-pay-btn').disabled = false;
     }
@@ -430,47 +420,16 @@
       return;
     }
 
-    /* Address Element — billing mode, no phone field */
-    var addrDefaultValues = {};
-    if (data.defaultValues) {
-      var dv = data.defaultValues;
-      if (dv.name)    addrDefaultValues.name   = dv.name;
-      if (dv.country) addrDefaultValues.address = { country: dv.country };
-    }
-
-    var addressElement;
-    try {
-      addressElement = elements.create('address', {
-        mode: 'billing',
-        fields: { phone: 'never' },
-        defaultValues: addrDefaultValues,
-      });
-      addressElement.mount('#fp-address-element');
-    } catch(e) {
-      showAlert('[S3] Address Element : ' + (e.message || e));
-      return;
-    }
-
-    addressElement.on('change', function(event) {
-      _addressComplete = event.complete;
-      if (!event.complete) {
-        document.getElementById('fp-pay-btn').disabled = true;
-      } else {
-        _tryEnablePayBtn();
-      }
-    });
-
-    /* Payment Element — billing details suppressed (collected by Address Element above) */
+    /* Payment Element — card + SEPA only (allow_redirects:'never' on intent) */
     var paymentElement;
     try {
       paymentElement = elements.create('payment', {
         layout: { type: 'tabs', defaultCollapsed: false },
         wallets: { googlePay: 'never', applePay: 'never' },
-        fields: { billingDetails: 'never' },
       });
       paymentElement.mount('#fp-payment-element');
     } catch(e) {
-      showAlert('[S4] Payment Element : ' + (e.message || e));
+      showAlert('[S3] Payment Element : ' + (e.message || e));
       return;
     }
 
