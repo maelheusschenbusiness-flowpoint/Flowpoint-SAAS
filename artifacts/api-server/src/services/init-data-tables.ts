@@ -1413,6 +1413,8 @@ export async function initDataTables(): Promise<void> {
     `);
     await run(client, `CREATE INDEX IF NOT EXISTS pending_signups_email_idx   ON pending_signups(email);`);
     await run(client, `CREATE INDEX IF NOT EXISTS pending_signups_expires_idx ON pending_signups(expires_at);`);
+    await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS consumed_at      TIMESTAMPTZ`);
+    await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`);
 
     logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations, local_pack_history, overview_insights_cache, overview_insights_rl, pending_signups ready");
   } catch (err) {

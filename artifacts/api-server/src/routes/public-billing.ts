@@ -234,11 +234,12 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         email: string; first_name: string; last_name: string; company_name: string;
         country: string | null; address: string | null; city: string | null;
         postal_code: string | null; phone: string | null; vat: string | null;
+        stripe_customer_id: string | null;
       } | null = null;
 
       try {
         const r = await dbClient.query(
-          `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat
+          `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, stripe_customer_id
            FROM pending_signups WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL LIMIT 1`,
           [preRegisterToken]
         );
@@ -254,37 +255,61 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
       signupOrgId = signupRow.email; // orgId = email in FlowPoint
 
-      // Create Stripe Customer with full contact info (never empty)
-      const customerData: Parameters<typeof stripe.customers.create>[0] = {
-        email: signupRow.email,
-        name:  `${signupRow.first_name} ${signupRow.last_name}`.trim(),
-        metadata: {
-          flowpointOrgId:  signupRow.email,        // canonical orgId (= email in FlowPoint)
-          flowpointUserId: signupRow.email,         // same as orgId — owner account
-          orgId:           signupRow.email,         // legacy — kept for webhook compatibility
-          companyName:     signupRow.company_name,
-          firstName:       signupRow.first_name,
-          lastName:        signupRow.last_name,
-          signup_source:   "new_signup_flow",
-          environment:     process.env["NODE_ENV"] === "production" ? "production" : "development",
-          ...(signupRow.vat ? { vat: signupRow.vat } : {}),
-        },
-      };
-      if (signupRow.address || signupRow.city || signupRow.country) {
-        customerData.address = {
-          line1:       signupRow.address  ?? "",
-          city:        signupRow.city     ?? "",
-          postal_code: signupRow.postal_code ?? "",
-          country:     signupRow.country  ?? "",
-        };
+      // ── Idempotent customer: reuse existing if a previous attempt already created one ──
+      if (signupRow.stripe_customer_id) {
+        try {
+          const existing = await stripe.customers.retrieve(signupRow.stripe_customer_id);
+          if (!(existing as { deleted?: boolean }).deleted) {
+            stripeCustomerId = signupRow.stripe_customer_id;
+            logger.info({ customerId: stripeCustomerId }, "[PublicBilling] checkout-session: reusing Stripe Customer from pending_signups");
+          }
+        } catch { /* deleted or unreachable — fall through to create */ }
       }
-      if (signupRow.phone) customerData.phone = signupRow.phone;
 
-      const stripeCustomer = await stripe.customers.create(customerData);
-      stripeCustomerId = stripeCustomer.id;
+      if (!stripeCustomerId) {
+        // Create Stripe Customer with full contact info (never empty)
+        const customerData: Parameters<typeof stripe.customers.create>[0] = {
+          email: signupRow.email,
+          name:  `${signupRow.first_name} ${signupRow.last_name}`.trim(),
+          metadata: {
+            flowpointOrgId:     signupRow.email,
+            flowpointUserId:    signupRow.email,
+            orgId:              signupRow.email,
+            companyName:        signupRow.company_name,
+            firstName:          signupRow.first_name,
+            lastName:           signupRow.last_name,
+            pre_register_token: preRegisterToken,
+            signup_source:      "new_signup_flow",
+            environment:        process.env["NODE_ENV"] === "production" ? "production" : "development",
+            ...(signupRow.vat ? { vat: signupRow.vat } : {}),
+          },
+        };
+        if (signupRow.address || signupRow.city || signupRow.country) {
+          customerData.address = {
+            line1:       signupRow.address  ?? "",
+            city:        signupRow.city     ?? "",
+            postal_code: signupRow.postal_code ?? "",
+            country:     signupRow.country  ?? "",
+          };
+        }
+        if (signupRow.phone) customerData.phone = signupRow.phone;
 
-      logger.info({ customerId: stripeCustomerId, orgId: signupOrgId },
-        "[PublicBilling] Stripe Customer created for new signup");
+        const stripeCustomer = await stripe.customers.create(customerData);
+        stripeCustomerId = stripeCustomer.id;
+
+        // Store for idempotent reuse: prevents duplicate Stripe customers on page-back / retry
+        const { pool: _csStorePool } = await import("@workspace/db");
+        const _csStoreC = await _csStorePool.connect();
+        try {
+          await _csStoreC.query(
+            `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
+            [stripeCustomerId, preRegisterToken]
+          );
+        } finally { _csStoreC.release(); }
+
+        logger.info({ customerId: stripeCustomerId, orgId: signupOrgId },
+          "[PublicBilling] Stripe Customer created and stored in pending_signups");
+      }
     }
 
     const { subscriptionItems, oneTimeItems, checkoutType } = buildLineItems(planKey, addons);
@@ -485,6 +510,78 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
 
+    // ── Pre-registration: find or create Stripe Customer (1 email = 1 customer invariant) ──
+    // Prevents duplicate customers when user goes back and retries checkout with same token.
+    let preRegCustomerId: string | undefined;
+    if (preRegisterToken) {
+      try {
+        const { pool: _piPool } = await import("@workspace/db");
+        const _piC = await _piPool.connect();
+        let _piRow: { email: string; first_name: string; last_name: string; company_name: string; stripe_customer_id: string | null } | null = null;
+        try {
+          const _piR = await _piC.query(
+            `SELECT email, first_name, last_name, company_name, stripe_customer_id
+             FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
+            [preRegisterToken]
+          );
+          _piRow = _piR.rows[0] ?? null;
+        } finally { _piC.release(); }
+
+        if (_piRow) {
+          const _piEmail = _piRow.email;
+          metadata["orgId"]  = _piEmail;
+          metadata["org_id"] = _piEmail;
+
+          // 1. Reuse customer stored from a previous attempt (checkout-session or prior payment-intent)
+          if (_piRow.stripe_customer_id) {
+            try {
+              const _piEc = await stripe.customers.retrieve(_piRow.stripe_customer_id);
+              if (!(_piEc as { deleted?: boolean }).deleted) {
+                preRegCustomerId = _piRow.stripe_customer_id;
+                logger.info({ customerId: preRegCustomerId }, "[PublicBilling] payment-intent: reusing stored Stripe Customer");
+              }
+            } catch { /* deleted or unreachable — fall through */ }
+          }
+
+          // 2. Search Stripe by email (catches checkout-session customer not yet stored in pending_signups)
+          if (!preRegCustomerId) {
+            const _piFound = await stripe.customers.list({ email: _piEmail, limit: 5 });
+            for (const _piFoundEc of _piFound.data) {
+              if ((_piFoundEc as { deleted?: boolean }).deleted) continue;
+              preRegCustomerId = _piFoundEc.id;
+              logger.info({ customerId: preRegCustomerId, email: _piEmail }, "[PublicBilling] payment-intent: found existing customer by email");
+              break;
+            }
+          }
+
+          // 3. Create new customer if none exists — store immediately for retry idempotency
+          if (!preRegCustomerId) {
+            const _piNewC = await stripe.customers.create({
+              email: _piEmail,
+              name:  `${_piRow.first_name} ${_piRow.last_name}`.trim() || _piRow.company_name || _piEmail,
+              metadata: {
+                orgId: _piEmail, org_id: _piEmail, flowpointOrgId: _piEmail,
+                pre_register_token: preRegisterToken,
+                signup_source: "payment_intent",
+                environment: process.env["NODE_ENV"] === "production" ? "production" : "development",
+              },
+            });
+            preRegCustomerId = _piNewC.id;
+            logger.info({ customerId: preRegCustomerId }, "[PublicBilling] payment-intent: created Stripe Customer");
+          }
+
+          // Always write back so next attempt finds it immediately
+          const { pool: _piStorePool } = await import("@workspace/db");
+          const _piSc = await _piStorePool.connect();
+          try {
+            await _piSc.query(`UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`, [preRegCustomerId, preRegisterToken]);
+          } finally { _piSc.release(); }
+        }
+      } catch (_piLookupErr) {
+        logger.warn({ _piLookupErr }, "[PublicBilling] payment-intent: customer lookup failed (non-fatal — proceeding without customer)");
+      }
+    }
+
     if (immediateAmountCents > 0) {
       /* PaymentIntent — immediate charge for add-ons / credits */
       const pi = await stripe.paymentIntents.create({
@@ -492,6 +589,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
         currency: "eur",
         /* save PM for subscription after trial */
         ...(hasPlan ? { setup_future_usage: "off_session" } : {}),
+        ...(preRegCustomerId ? { customer: preRegCustomerId } : {}),
         automatic_payment_methods: { enabled: true },
         metadata,
       });
@@ -503,11 +601,12 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     if (hasPlan) {
       /* SetupIntent — collect card for trial subscription, 0€ today */
       const si = await stripe.setupIntents.create({
+        ...(preRegCustomerId ? { customer: preRegCustomerId } : {}),
         automatic_payment_methods: { enabled: true },
         usage: "off_session",
         metadata,
       });
-      logger.info({ plan: planKey }, "[PublicBilling] SetupIntent created");
+      logger.info({ plan: planKey, hasCustomer: !!preRegCustomerId }, "[PublicBilling] SetupIntent created");
       res.json({ clientSecret: si.client_secret, publishableKey, mode: "setup", immediateAmount: 0 });
       return;
     }
@@ -526,12 +625,14 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
    trial. Add-ons were already charged via the PaymentIntent.
  ───────────────────────────────────────────────────────────────────────── */
 router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Request, res: Response) => {
-  const { intentId, intentType, plan = "", addons = {} } = req.body as {
+  const { intentId, intentType, plan = "", addons = {}, preRegisterToken: _fcPreRegRaw = "" } = req.body as {
     intentId?: string;
     intentType?: string;
     plan?: string;
     addons?: AddonsMap;
+    preRegisterToken?: string;
   };
+  const preRegisterToken = typeof _fcPreRegRaw === "string" ? _fcPreRegRaw.trim() : "";
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
 
   if (!stripeKey) {
@@ -569,6 +670,26 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       logger.warn({ sessionErr }, "[PublicBilling/finalize-checkout] Session lookup failed (non-fatal)");
     }
   }
+  // Pre-registration bypass: new users completing signup have no session cookie yet.
+  // Validate via pre_register_token — only valid (unconsumed, unexpired) tokens bypass auth.
+  if (!_authenticatedOrgId && preRegisterToken) {
+    try {
+      const { pool: _fcBypassPool } = await import("@workspace/db");
+      const _fcBypassC = await _fcBypassPool.connect();
+      try {
+        const _fcBypassR = await _fcBypassC.query<{ email: string }>(
+          `SELECT email FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
+          [preRegisterToken]
+        );
+        if (_fcBypassR.rows[0]?.email) {
+          _authenticatedOrgId = _fcBypassR.rows[0].email;
+          logger.info({ orgId: _authenticatedOrgId }, "[PublicBilling] finalize-checkout: pre-register auth bypass");
+        }
+      } finally { _fcBypassC.release(); }
+    } catch (_fcBypassErr) {
+      logger.warn({ _fcBypassErr }, "[PublicBilling] finalize-checkout: pre-reg bypass lookup failed");
+    }
+  }
   if (!_authenticatedOrgId) {
     res.status(401).json({
       error:      "auth_required",
@@ -599,6 +720,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     /* ── 1. Verify intent & get payment method ── */
     let paymentMethodId: string | null = null;
     let intentMeta: Record<string, string> = {};
+    let intentCustomerId: string | null = null;
 
     if (intentType === "payment") {
       const pi = await stripe.paymentIntents.retrieve(intentId);
@@ -608,6 +730,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       }
       paymentMethodId = (typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id) ?? null;
       intentMeta = (pi.metadata || {}) as Record<string, string>;
+      const _rawPiCust = pi.customer;
+      intentCustomerId = _rawPiCust ? (typeof _rawPiCust === "string" ? _rawPiCust : (_rawPiCust as { id: string }).id) : null;
     } else {
       const si = await stripe.setupIntents.retrieve(intentId);
       if (si.status !== "succeeded") {
@@ -616,6 +740,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       }
       paymentMethodId = (typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id) ?? null;
       intentMeta = (si.metadata || {}) as Record<string, string>;
+      const _rawSiCust = si.customer;
+      intentCustomerId = _rawSiCust ? (typeof _rawSiCust === "string" ? _rawSiCust : (_rawSiCust as { id: string }).id) : null;
     }
 
     if (!paymentMethodId) {
@@ -636,49 +762,92 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       return;
     }
 
-    /* ── 2. Resolve or create Stripe customer (deduplicated by email) ── */
-    // Retrieve email from payment method to match existing customers
-    const pm    = await stripe.paymentMethods.retrieve(paymentMethodId);
-    const email = pm.billing_details?.email ?? null;
-
-    let customerId: string | null = null;
+    /* ── 2. Resolve or create Stripe customer ─────────────────────────────────
+       Priority: (a) customer already attached to the intent (set by payment-intent
+       endpoint when pre_register_token present — enforces 1 email = 1 customer)
+       > (b) email search on payment method billing details
+       > (c) pending_signups.stripe_customer_id via pre_register_token
+       > (d) last resort: create new.
+    ──────────────────────────────────────────────────────────────────────────── */
+    let customerId: string | null = intentCustomerId;
     let hasSubscriptionHistory    = false;
 
-    if (email) {
-      // Search existing customers by email — prevents duplicate customer records
-      const existingCustomers = await stripe.customers.list({ email, limit: 5 });
-      for (const ec of existingCustomers.data) {
-        if ((ec as { deleted?: boolean }).deleted) continue;
-        // Check if this customer already has subscription history (trial already used)
-        const prevSubs = await stripe.subscriptions.list({ customer: ec.id, status: "all", limit: 1 });
-        if (prevSubs.data.length > 0) {
-          customerId = ec.id;
-          hasSubscriptionHistory = true;
-          logger.info({ customerId, email }, "[PublicBilling] finalize: reusing existing Stripe customer (has history)");
-          break;
+    if (customerId) {
+      try {
+        const _fcEc = await stripe.customers.retrieve(customerId);
+        if ((_fcEc as { deleted?: boolean }).deleted) {
+          customerId = null;
+        } else {
+          const _fcPrevSubs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 });
+          hasSubscriptionHistory = _fcPrevSubs.data.length > 0;
+          logger.info({ customerId, hasSubscriptionHistory }, "[PublicBilling] finalize: using customer from intent");
         }
-        // Customer exists but no subs — prefer to reuse to avoid duplication
-        if (!customerId) customerId = ec.id;
+      } catch { customerId = null; }
+    }
+
+    if (!customerId) {
+      // (b) email from payment method billing details
+      const _fcPm    = await stripe.paymentMethods.retrieve(paymentMethodId!);
+      const _fcEmail = _fcPm.billing_details?.email ?? null;
+      if (_fcEmail) {
+        const _fcExisting = await stripe.customers.list({ email: _fcEmail, limit: 5 });
+        for (const _fcEc2 of _fcExisting.data) {
+          if ((_fcEc2 as { deleted?: boolean }).deleted) continue;
+          const _fcSubs = await stripe.subscriptions.list({ customer: _fcEc2.id, status: "all", limit: 1 });
+          if (_fcSubs.data.length > 0) {
+            customerId = _fcEc2.id; hasSubscriptionHistory = true;
+            logger.info({ customerId, email: _fcEmail }, "[PublicBilling] finalize: reusing Stripe customer (has history)");
+            break;
+          }
+          if (!customerId) customerId = _fcEc2.id;
+        }
       }
     }
 
     if (!customerId) {
-      // No existing customer — create a new one
-      const customer = await stripe.customers.create({
-        ...(email ? { email } : {}),
-        payment_method: paymentMethodId,
-        invoice_settings: { default_payment_method: paymentMethodId },
-        metadata: { source: "checkout_payment", plan: planKey },
-      });
-      customerId = customer.id;
-      logger.info({ customerId }, "[PublicBilling] finalize: new Stripe customer created");
-    } else {
-      // Attach PM to existing customer (may already be attached — ignore error)
-      await stripe.paymentMethods.attach(paymentMethodId, { customer: customerId }).catch(() => {});
-      await stripe.customers.update(customerId, {
-        invoice_settings: { default_payment_method: paymentMethodId },
-      });
+      // (c) pending_signups.stripe_customer_id via pre_register_token
+      const _fcPrt = preRegisterToken || intentMeta["pre_register_token"] || "";
+      if (_fcPrt) {
+        try {
+          const { pool: _fcPsPool } = await import("@workspace/db");
+          const _fcPsC = await _fcPsPool.connect();
+          try {
+            const _fcPsR = await _fcPsC.query(
+              `SELECT stripe_customer_id FROM pending_signups WHERE token = $1 AND consumed_at IS NULL LIMIT 1`,
+              [_fcPrt]
+            );
+            if (_fcPsR.rows[0]?.stripe_customer_id) {
+              customerId = _fcPsR.rows[0].stripe_customer_id;
+              logger.info({ customerId }, "[PublicBilling] finalize: found customer via pre_register_token");
+            }
+          } finally { _fcPsC.release(); }
+        } catch { /* non-fatal */ }
+      }
     }
+
+    if (!customerId) {
+      // (d) last resort: create new customer
+      const _fcPm2   = paymentMethodId ? await stripe.paymentMethods.retrieve(paymentMethodId).catch(() => null) : null;
+      const _fcEmail2 = _fcPm2?.billing_details?.email ?? null;
+      const _fcOrgForMeta = intentMeta["orgId"] || intentMeta["org_id"] || _authenticatedOrgId;
+      const _fcNewC = await stripe.customers.create({
+        ...(_fcEmail2 ? { email: _fcEmail2 } : {}),
+        payment_method: paymentMethodId!,
+        invoice_settings: { default_payment_method: paymentMethodId! },
+        metadata: {
+          source: "checkout_payment", plan: planKey,
+          ...(_fcOrgForMeta ? { orgId: _fcOrgForMeta, org_id: _fcOrgForMeta } : {}),
+        },
+      });
+      customerId = _fcNewC.id;
+      logger.warn({ customerId }, "[PublicBilling] finalize: new Stripe customer created (last resort — check for duplicates)");
+    }
+
+    // Attach payment method to resolved customer (safe even if already attached)
+    await stripe.paymentMethods.attach(paymentMethodId!, { customer: customerId! }).catch(() => {});
+    await stripe.customers.update(customerId!, {
+      invoice_settings: { default_payment_method: paymentMethodId! },
+    });
 
     /* ── 3a. Plan subscription — trial only for confirmed first-time subscribers ── */
     const planPriceId = PLAN_PRICE_IDS[planKey];
@@ -700,6 +869,11 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         plan:           planKey,
         source:         "checkout_payment",
         flowpoint_cart: "true",
+        org_id:         _authenticatedOrgId,
+        orgId:          _authenticatedOrgId,
+        ...(preRegisterToken || intentMeta["pre_register_token"]
+          ? { pre_register_token: preRegisterToken || intentMeta["pre_register_token"] }
+          : {}),
       },
     });
 
@@ -733,6 +907,122 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       { plan: planKey, planSubscriptionId: planSubscription.id, addonSubscriptionId, customerId },
       "[PublicBilling] finalize: subscriptions created"
     );
+    // ── Persist subscription to DB immediately (don't wait for webhook delay) ──
+    try {
+      const { persistOrgData: _fcPod } = await import("../services/org-data.js");
+      await _fcPod(_authenticatedOrgId, {
+        subscriptionStatus:   grantTrial ? "trialing" : "active",
+        stripeCustomerId:     customerId!,
+        stripeSubscriptionId: planSubscription.id,
+        plan:                 planKey,
+        ...(grantTrial ? { trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() } : {}),
+      });
+      logger.info({ orgId: _authenticatedOrgId, planKey }, "[PublicBilling] finalize: subscription persisted to DB");
+    } catch (_fcPodErr) {
+      logger.warn({ _fcPodErr }, "[PublicBilling] finalize: persistOrgData non-fatal (webhook will sync)");
+    }
+
+    // ── Pre-registration: activate new user account (fire-and-forget) ─────────
+    const _fcActToken = preRegisterToken || intentMeta["pre_register_token"] || "";
+    if (_fcActToken) {
+      (async () => {
+        try {
+          const { pool: _fcActPool } = await import("@workspace/db");
+          const { randomBytes: _fcRb } = await import("crypto");
+          const _fcActC0 = await _fcActPool.connect();
+          let _fcSignup: Record<string, string | null> | null = null;
+          try {
+            const _fcActR0 = await _fcActC0.query(
+              `SELECT email, first_name, last_name, company_name FROM pending_signups
+               WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
+              [_fcActToken]
+            );
+            _fcSignup = _fcActR0.rows[0] ?? null;
+          } finally { _fcActC0.release(); }
+
+          if (!_fcSignup) {
+            logger.info({ token: _fcActToken }, "[PublicBilling] finalize: activation skipped — token already consumed");
+            return;
+          }
+          const _fcAEmail = _fcSignup["email"] ?? _authenticatedOrgId;
+          const _fcAOrgId = _fcAEmail;
+
+          const _fcActTxC = await _fcActPool.connect();
+          try {
+            await _fcActTxC.query("BEGIN");
+            const _fcUsr = await _fcActTxC.query<{ id: string }>(
+              `INSERT INTO users (email, first_name, last_name, auth_provider, email_verified, status)
+               VALUES ($1,$2,$3,'magic_link',TRUE,'active')
+               ON CONFLICT (email) DO UPDATE
+                 SET status='active', email_verified=TRUE,
+                     first_name=COALESCE(EXCLUDED.first_name,users.first_name), updated_at=NOW()
+               RETURNING id`,
+              [_fcAEmail, _fcSignup["first_name"] ?? "", _fcSignup["last_name"] ?? ""]
+            );
+            const _fcUserId = _fcUsr.rows[0]?.id;
+            if (!_fcUserId) throw new Error("upsert user failed for " + _fcAEmail);
+            await _fcActTxC.query(
+              `INSERT INTO organizations
+                 (id,name,slug,owner_user_id,status,plan,subscription_status,owner_email,stripe_customer_id,trial_ends_at)
+               VALUES($1,$2,$3,$4,'active',$5,$6,$7,$8,$9)
+               ON CONFLICT (id) DO UPDATE
+                 SET status='active', plan=EXCLUDED.plan, subscription_status=EXCLUDED.subscription_status,
+                     stripe_customer_id=COALESCE(EXCLUDED.stripe_customer_id,organizations.stripe_customer_id),
+                     updated_at=NOW()`,
+              [
+                _fcAOrgId, _fcSignup["company_name"] ?? _fcAEmail,
+                _fcAOrgId.replace(/[^a-z0-9]/gi,"-").toLowerCase().slice(0,60),
+                _fcUserId, planKey, grantTrial ? "trialing" : "active",
+                _fcAEmail, customerId ?? null,
+                grantTrial ? new Date(Date.now()+14*24*60*60*1000).toISOString() : null,
+              ]
+            );
+            await _fcActTxC.query(
+              `INSERT INTO organization_members (organization_id,user_id,role,status)
+               VALUES($1,$2,'owner','active')
+               ON CONFLICT(organization_id,user_id) DO UPDATE SET status='active',role='owner',updated_at=NOW()`,
+              [_fcAOrgId, _fcUserId]
+            );
+            await _fcActTxC.query(
+              `UPDATE pending_signups SET consumed_at=NOW() WHERE token=$1 AND consumed_at IS NULL`,
+              [_fcActToken]
+            );
+            await _fcActTxC.query("COMMIT");
+            logger.info({ orgId: _fcAOrgId, userId: _fcUserId }, "[PublicBilling] finalize: new user/org activated");
+          } catch (_fcActErr) {
+            await _fcActTxC.query("ROLLBACK").catch(() => {});
+            logger.error({ _fcActErr }, "[PublicBilling] finalize: activation transaction failed");
+            throw _fcActErr;
+          } finally { _fcActTxC.release(); }
+
+          // Send activation magic link (24h TTL)
+          const _fcMagicToken = _fcRb(32).toString("hex");
+          const _fcTokC = await _fcActPool.connect();
+          try {
+            await _fcTokC.query(
+              `INSERT INTO magic_link_tokens(token,email,expires_at,used)
+               VALUES($1,$2,NOW()+INTERVAL '24 hours',FALSE) ON CONFLICT(token) DO NOTHING`,
+              [_fcMagicToken, _fcAEmail]
+            );
+          } finally { _fcTokC.release(); }
+          const _fcPubUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+          const { mailer: _fcMailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
+          if (_fcMailer) {
+            await _fcMailer.sendActivationMagicLink({
+              to:           _fcAEmail,
+              name:         _fcSignup["first_name"] || _fcAEmail.split("@")[0],
+              plan:         planKey,
+              magicLinkUrl: `${_fcPubUrl}/login-verify.html?token=${_fcMagicToken}`,
+              isTrial:      grantTrial,
+            }).catch((_fcMailErr: unknown) => logger.error({ _fcMailErr }, "[PublicBilling] finalize: activation email failed"));
+            logger.info({ email: _fcAEmail }, "[PublicBilling] finalize: activation magic link sent");
+          }
+        } catch (_fcActTopErr) {
+          logger.error({ _fcActTopErr }, "[PublicBilling] finalize: pre-reg activation failed (payment confirmed — manual activation may be needed)");
+        }
+      })();
+    }
+
     res.json({ success: true, subscriptionId: planSubscription.id, addonSubscriptionId });
   } catch (err) {
     logger.error({ err }, "[PublicBilling] finalize-checkout failed");

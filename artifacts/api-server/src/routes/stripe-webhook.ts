@@ -201,6 +201,28 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         resolvedVia = "subscription_metadata";
       }
     }
+
+    // Try 4: pre_register_token in metadata → lookup pending_signups (email = orgId for pre-reg users)
+    if (!orgId) {
+      const meta4 = (obj["metadata"] as Record<string, string>) ?? {};
+      const preRegTok = meta4["pre_register_token"] ?? "";
+      if (preRegTok) {
+        try {
+          const { pool: pgPool4 } = await import("@workspace/db");
+          const c4 = await pgPool4.connect();
+          try {
+            const r4 = await c4.query(
+              `SELECT email FROM pending_signups WHERE token = $1 LIMIT 1`,
+              [preRegTok]
+            );
+            if (r4.rows[0]?.email) {
+              orgId = r4.rows[0].email;
+              resolvedVia = "pre_register_token";
+            }
+          } finally { c4.release(); }
+        } catch { /* non-fatal */ }
+      }
+    }
   } catch (e) {
     logger.warn({ e }, "[Webhook] org lookup failed");
   }

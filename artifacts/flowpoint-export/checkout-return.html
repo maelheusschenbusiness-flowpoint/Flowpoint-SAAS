@@ -48,11 +48,15 @@
       var plan   = (cart && cart.plan)   ? cart.plan   : '';
       var addons = (cart && cart.addons) ? cart.addons : {};
 
+      var preRegTok = '';
+      try { preRegTok = sessionStorage.getItem('fp_pre_reg_token') || ''; } catch(e) {}
+      var fcBody = { intentId: intentId, intentType: intentType, plan: plan, addons: addons };
+      if (preRegTok) fcBody.preRegisterToken = preRegTok;
       fetch('/api/public/finalize-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ intentId: intentId, intentType: intentType, plan: plan, addons: addons })
+        body: JSON.stringify(fcBody)
       })
       .then(function(r){ return r.json(); })
       .then(function(data) {

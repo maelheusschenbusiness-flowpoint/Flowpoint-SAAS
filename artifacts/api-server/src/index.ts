@@ -94,6 +94,8 @@ async function main() {
         await client.query(`CREATE INDEX IF NOT EXISTS pending_signups_expires_idx ON pending_signups(expires_at)`);
         // consumed_at: set when webhook/checkout-complete successfully created the account
         await client.query(`ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS consumed_at TIMESTAMPTZ`);
+        // stripe_customer_id: stored after first Stripe Customer creation so retries reuse the same customer
+        await client.query(`ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`);
         // checkout_post_tokens: single-use token created by webhook after org creation.
         // SECURITY: token_hash = SHA256(stripe_session_id) — raw session ID never stored in plaintext.
         // Expiry: 15 minutes (spec requirement). Row is DELETED on consumption (not merely flagged).
