@@ -63,11 +63,13 @@ const ORG_ID_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
  *  - Returns a valid UUID orgId, NEVER an email string.
  *  - No ON CONFLICT anywhere — uses SELECT-then-INSERT for every write so the
  *    function works regardless of which UNIQUE constraints exist on the target DB.
- *  - Idempotent: each step re-checks before inserting; partial progress on a
- *    prior failed attempt is detected and reused.
+ *    Avoids 42P10 ("no unique constraint matching ON CONFLICT specification").
+ *  - Fully transactional: all writes run inside BEGIN … COMMIT on a single
+ *    dedicated client. Any DB error triggers an explicit ROLLBACK before the
+ *    client is released, leaving the DB in a clean state.
  *  - Concurrency: the S3/S6 paths are triggered only after a single-use magic
  *    link token is atomically consumed (S8), making two simultaneous calls for
- *    the same email impossible in practice. No advisory lock needed.
+ *    the same email impossible in practice.
  *
  * Throws on DB error → propagates to outer S2-S7 catch → 503.
  */
@@ -91,92 +93,105 @@ async function resolveOrCreateLegacyOrg({
   step: string;
 }): Promise<{ orgId: string; userUuid: string }> {
 
-  // ── Step A: ensure a users row exists and get its UUID ──────────────────────
-  // SELECT first — never ON CONFLICT (avoids 42P10 if users_email_unique is absent).
-  let resolvedUserUuid = userUuid;
-  if (!resolvedUserUuid) {
-    // S3-legacy path: user not in `users` — check again then insert.
-    const existingUser = await pool.query<{ id: string }>(
-      `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // ── Step A: ensure a users row exists and get its UUID ────────────────────
+    // SELECT first — no ON CONFLICT (avoids 42P10 if users_email_unique absent).
+    let resolvedUserUuid = userUuid;
+    if (!resolvedUserUuid) {
+      // S3-legacy path: user not yet in `users` — check then insert.
+      const existingUser = await client.query<{ id: string }>(
+        `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+        [email],
+      );
+      if (existingUser.rows.length > 0) {
+        resolvedUserUuid = existingUser.rows[0].id;
+      } else {
+        const freshUuid = randomUUID();
+        await client.query(
+          `INSERT INTO users (id, email, status, email_verified, auth_provider)
+           VALUES ($1::uuid, $2, 'active', true, 'magic_link')`,
+          [freshUuid, email],
+        );
+        resolvedUserUuid = freshUuid;
+      }
+      logger.info({ trace: traceId, step, resolvedUserUuid },
+        `[LV-TRACE][${traceId}] ${step} — users row ensured`);
+    }
+
+    // ── Step B: look for an existing UUID org keyed by owner_email ───────────
+    const existing = await client.query<{ id: string }>(
+      `SELECT id FROM organizations
+        WHERE owner_email = $1 AND status != 'deleted'
+        LIMIT 1`,
       [email],
     );
-    if (existingUser.rows.length > 0) {
-      resolvedUserUuid = existingUser.rows[0].id;
-    } else {
-      const freshUuid = randomUUID();
-      await pool.query(
-        `INSERT INTO users (id, email, status, email_verified, auth_provider)
-         VALUES ($1::uuid, $2, 'active', true, 'magic_link')`,
-        [freshUuid, email],
-      );
-      resolvedUserUuid = freshUuid;
-    }
-    logger.info({ trace: traceId, step, resolvedUserUuid },
-      `[LV-TRACE][${traceId}] ${step} — users row ensured`);
-  }
-
-  // ── Step B: look for an existing UUID org keyed by owner_email ─────────────
-  const existing = await pool.query<{ id: string }>(
-    `SELECT id FROM organizations
-      WHERE owner_email = $1 AND status != 'deleted'
-      LIMIT 1`,
-    [email],
-  );
-  if (existing.rows.length > 0) {
-    const orgId = existing.rows[0].id;
-    // INSERT membership only if not already present (no ON CONFLICT).
-    const existingMember = await pool.query(
-      `SELECT 1 FROM organization_members
-        WHERE organization_id = $1 AND user_id = $2::uuid
-        LIMIT 1`,
-      [orgId, resolvedUserUuid],
-    );
-    if (existingMember.rows.length === 0) {
-      await pool.query(
-        `INSERT INTO organization_members
-           (id, organization_id, user_id, role, status, joined_at)
-         VALUES (gen_random_uuid(), $1, $2::uuid, 'owner', 'active', NOW())`,
+    if (existing.rows.length > 0) {
+      const orgId = existing.rows[0].id;
+      // INSERT membership only if not already present — no ON CONFLICT.
+      const existingMember = await client.query(
+        `SELECT 1 FROM organization_members
+          WHERE organization_id = $1 AND user_id = $2::uuid
+          LIMIT 1`,
         [orgId, resolvedUserUuid],
       );
+      if (existingMember.rows.length === 0) {
+        await client.query(
+          `INSERT INTO organization_members
+             (id, organization_id, user_id, role, status, joined_at)
+           VALUES (gen_random_uuid(), $1, $2::uuid, 'owner', 'active', NOW())`,
+          [orgId, resolvedUserUuid],
+        );
+      }
+      await client.query("COMMIT");
+      logger.info({ trace: traceId, step, orgId },
+        `[LV-TRACE][${traceId}] ${step} — found UUID org by owner_email (committed)`);
+      return { orgId, userUuid: resolvedUserUuid };
     }
-    logger.info({ trace: traceId, step, orgId },
-      `[LV-TRACE][${traceId}] ${step} — found UUID org by owner_email`);
-    return { orgId, userUuid: resolvedUserUuid };
+
+    // ── Step C: create a new UUID org + membership from org_settings data ─────
+    // Fresh UUID — zero collision probability; no ON CONFLICT needed.
+    const newOrgId = randomUUID();
+    const slug = email.split("@")[0]!.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 63);
+    await client.query(
+      `INSERT INTO organizations
+         (id, name, slug, owner_user_id, owner_email, status, plan,
+          stripe_customer_id, stripe_subscription_id, subscription_status)
+       VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, $9)`,
+      [
+        newOrgId,
+        orgSettings?.orgName || slug,
+        slug,
+        resolvedUserUuid,
+        email,
+        (orgSettings?.plan || "standard").toLowerCase(),
+        orgSettings?.stripeCustomerId || null,
+        orgSettings?.stripeSubscriptionId || null,
+        orgSettings?.subscriptionStatus || "none",
+      ],
+    );
+    // Fresh org — no pre-existing membership row possible.
+    await client.query(
+      `INSERT INTO organization_members
+         (id, organization_id, user_id, role, status, joined_at)
+       VALUES (gen_random_uuid(), $1, $2::uuid, 'owner', 'active', NOW())`,
+      [newOrgId, resolvedUserUuid],
+    );
+
+    await client.query("COMMIT");
+    logger.info({ trace: traceId, step, newOrgId },
+      `[LV-TRACE][${traceId}] ${step} — created new UUID org from org_settings data (committed)`);
+    return { orgId: newOrgId, userUuid: resolvedUserUuid };
+
+  } catch (err) {
+    // Explicit ROLLBACK — leaves the DB clean if any step above failed.
+    try { await client.query("ROLLBACK"); } catch { /* ignore rollback error */ }
+    throw err; // propagates to outer S2-S7 catch → 503
+  } finally {
+    client.release();
   }
-
-  // ── Step C: create a new UUID organizations row from org_settings data ──────
-  // No ON CONFLICT — the id is a fresh UUID; collision probability is zero.
-  const newOrgId = randomUUID();
-  const slug = email.split("@")[0]!.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 63);
-  await pool.query(
-    `INSERT INTO organizations
-       (id, name, slug, owner_user_id, owner_email, status, plan,
-        stripe_customer_id, stripe_subscription_id, subscription_status)
-     VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, $9)`,
-    [
-      newOrgId,
-      orgSettings?.orgName || slug,
-      slug,
-      resolvedUserUuid,
-      email,
-      (orgSettings?.plan || "standard").toLowerCase(),
-      orgSettings?.stripeCustomerId || null,
-      orgSettings?.stripeSubscriptionId || null,
-      orgSettings?.subscriptionStatus || "none",
-    ],
-  );
-
-  // INSERT membership — fresh org, no pre-existing member row possible.
-  await pool.query(
-    `INSERT INTO organization_members
-       (id, organization_id, user_id, role, status, joined_at)
-     VALUES (gen_random_uuid(), $1, $2::uuid, 'owner', 'active', NOW())`,
-    [newOrgId, resolvedUserUuid],
-  );
-
-  logger.info({ trace: traceId, step, newOrgId },
-    `[LV-TRACE][${traceId}] ${step} — created new UUID org from org_settings data`);
-  return { orgId: newOrgId, userUuid: resolvedUserUuid };
 }
 
 /**
