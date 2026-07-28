@@ -995,27 +995,55 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
 
 /** Shared handler — called by both GET and POST /auth/login-verify */
 async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res: Response): Promise<void> {
+  // ── TRACE HELPER ─────────────────────────────────────────────────────────
+  // Every step emits a structured log line with a sequential step number so
+  // Render logs can be read in order even when interleaved with other requests.
+  const traceId = randomBytes(4).toString("hex");
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+    ?? req.socket?.remoteAddress ?? "unknown";
+  const method = req.method;
+
+  function traceErr(step: string, err: unknown): void {
+    const e = err instanceof Error ? err : new Error(String(err));
+    logger.error({
+      trace: traceId,
+      step,
+      errType: e.constructor?.name ?? "UnknownError",
+      errMsg:  e.message,
+      errStack: e.stack ?? "(no stack)",
+      errCode: (e as NodeJS.ErrnoException).code ?? undefined,
+    }, `[LV-TRACE][${traceId}] EXCEPTION @ ${step}`);
+  }
+
+  logger.info({ trace: traceId, method, ip, tokenPresent: !!tokenRaw, tokenLen: tokenRaw?.trim().length ?? 0 },
+    `[LV-TRACE][${traceId}] S0 — ENTRY`);
+
+  // ── S0: Token guard ───────────────────────────────────────────────────────
   if (!tokenRaw || typeof tokenRaw !== "string" || !tokenRaw.trim()) {
+    logger.warn({ trace: traceId }, `[LV-TRACE][${traceId}] S0 — missing token → 400`);
     res.status(400).json({ error: "Token manquant" });
     return;
   }
   const token = tokenRaw.trim();
+  const tokenPrefix = token.slice(0, 8);
+  logger.info({ trace: traceId, tokenPrefix }, `[LV-TRACE][${traceId}] S0 — token accepted`);
 
-  // ── Step 1: Peek token (read-only) ───────────────────────────────────────
-  // We verify validity WITHOUT consuming. Token is only marked used after ALL
-  // pre-session checks pass (Step 7 below). This ensures any transient failure
-  // during the checks leaves the token intact so the user can retry.
+  // ── S1: Peek token (SELECT only — no UPDATE) ──────────────────────────────
+  logger.info({ trace: traceId, tokenPrefix }, `[LV-TRACE][${traceId}] S1 — peekToken START`);
   let peeked: Awaited<ReturnType<typeof peekToken>>;
   try {
     peeked = await peekToken(token);
+    logger.info({ trace: traceId, tokenPrefix, result: peeked.ok ? "valid" : peeked.reason },
+      `[LV-TRACE][${traceId}] S1 — peekToken OK`);
   } catch (dbErr) {
-    const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
-    logger.error({ err: msg }, "[Auth] login-verify: DB error peeking token");
+    traceErr("S1-peekToken", dbErr);
     res.status(500).json({ error: "Erreur base de données. Veuillez réessayer." });
     return;
   }
 
   if (!peeked.ok) {
+    logger.warn({ trace: traceId, tokenPrefix, reason: peeked.reason },
+      `[LV-TRACE][${traceId}] S1 — token invalid → early exit`);
     switch (peeked.reason) {
       case "already_used":
         res.status(410).json({ error: "Ce lien a déjà été utilisé. Demandez un nouveau lien si nécessaire." });
@@ -1023,33 +1051,45 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
       case "expired":
         res.status(401).json({ error: "Ce lien a expiré. Demandez un nouveau lien de connexion." });
         return;
-      default: // not_found
+      default:
         res.status(401).json({ error: "Lien invalide ou expiré." });
         return;
     }
   }
 
   const email = peeked.email;
+  logger.info({ trace: traceId, tokenPrefix, email },
+    `[LV-TRACE][${traceId}] S1 — token valid, email resolved`);
 
-  // ── Steps 2-7: Six mandatory pre-session checks ───────────────────────────
-  // All six must pass before any session is created.
-  // Uses the new architecture (users + organization_members + organizations)
-  // with a graceful fallback to org_settings for legacy accounts not yet migrated.
-  // NOTE: token is NOT consumed yet — any failure here leaves it intact for retry.
+  // ── S2: DB reads (users + organization_members) ───────────────────────────
+  logger.info({ trace: traceId, email }, `[LV-TRACE][${traceId}] S2 — DB reads START`);
   let sessionOrgId: string;
   let sessionRole: string;
   let sessionUserUuid: string | undefined;
 
   try {
-    // Parallel fetch: user record + org membership via new architecture
-    const [userRow, memberRow] = await Promise.all([
-      pool.query<{
-        id: string; status: string; email_verified: boolean;
-      }>(
+    // S2a — users query
+    logger.info({ trace: traceId, email }, `[LV-TRACE][${traceId}] S2a — pool.query users START`);
+    let userRow: Awaited<ReturnType<typeof pool.query<{ id: string; status: string; email_verified: boolean }>>>;
+    try {
+      userRow = await pool.query<{ id: string; status: string; email_verified: boolean }>(
         `SELECT id, status, email_verified FROM users WHERE email = $1`,
         [email]
-      ),
-      pool.query<{
+      );
+      logger.info({ trace: traceId, email, rowCount: userRow.rows.length },
+        `[LV-TRACE][${traceId}] S2a — users query OK`);
+    } catch (qErr) {
+      traceErr("S2a-users-query", qErr);
+      throw qErr; // re-throw to outer catch → 503
+    }
+
+    // S2b — organization_members JOIN organizations query
+    logger.info({ trace: traceId, email }, `[LV-TRACE][${traceId}] S2b — pool.query org_members START`);
+    let memberRow: Awaited<ReturnType<typeof pool.query<{
+      organization_id: string; role: string; status: string; org_status: string; subscription_status: string;
+    }>>>;
+    try {
+      memberRow = await pool.query<{
         organization_id: string; role: string; status: string; org_status: string; subscription_status: string;
       }>(
         `SELECT om.organization_id, om.role, om.status AS member_status,
@@ -1062,50 +1102,66 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
          ORDER BY om.joined_at ASC
          LIMIT 1`,
         [email]
-      ),
-    ]);
+      );
+      logger.info({ trace: traceId, email, rowCount: memberRow.rows.length },
+        `[LV-TRACE][${traceId}] S2b — org_members query OK`);
+    } catch (qErr) {
+      traceErr("S2b-org_members-query", qErr);
+      throw qErr;
+    }
 
-    // Check 2: utilisateur existant
+    // ── S3: Check 2 — user existence ─────────────────────────────────────
+    logger.info({ trace: traceId, email, userFound: userRow.rows.length > 0 },
+      `[LV-TRACE][${traceId}] S3 — CHECK 2 user existence`);
+
     if (userRow.rows.length === 0) {
-      // Graceful fallback: legacy account not yet in users table
-      const orgCheck = await loadOrgSettings(email).catch(() => null);
+      // S3-legacy: user not in users table — try org_settings
+      logger.info({ trace: traceId, email }, `[LV-TRACE][${traceId}] S3-legacy — loadOrgSettings START`);
+      let orgCheck: Awaited<ReturnType<typeof loadOrgSettings>> | null;
+      try {
+        orgCheck = await loadOrgSettings(email).catch((e) => {
+          logger.warn({ trace: traceId, email, err: e instanceof Error ? e.message : String(e) },
+            `[LV-TRACE][${traceId}] S3-legacy — loadOrgSettings inner catch`);
+          return null;
+        });
+        logger.info({ trace: traceId, email, found: !!orgCheck },
+          `[LV-TRACE][${traceId}] S3-legacy — loadOrgSettings done`);
+      } catch (osErr) {
+        traceErr("S3-legacy-loadOrgSettings", osErr);
+        throw osErr;
+      }
+
       if (orgCheck === null) {
-        logger.warn({ email }, "[Auth] login-verify: CHECK 2 FAIL — no account found");
-        res.status(404).json({
-          error: "Aucun compte associé à cette adresse email.",
-          redirectTo: "/signin.html",
-        });
+        logger.warn({ trace: traceId, email }, `[LV-TRACE][${traceId}] S3 FAIL — no account found → 404`);
+        res.status(404).json({ error: "Aucun compte associé à cette adresse email.", redirectTo: "/signin.html" });
         return;
       }
-      // Legacy account exists in org_settings — apply legacy guard only
       if (orgCheck.subscriptionStatus === "pending_billing") {
-        logger.warn({ email }, "[Auth] login-verify: CHECK legacy — pending_billing blocked");
-        res.status(402).json({
-          error: "Votre compte n'est pas encore activé. Veuillez compléter votre inscription.",
-          redirectTo: "/signin.html",
-        });
+        logger.warn({ trace: traceId, email }, `[LV-TRACE][${traceId}] S3-legacy FAIL — pending_billing → 402`);
+        res.status(402).json({ error: "Votre compte n'est pas encore activé. Veuillez compléter votre inscription.", redirectTo: "/signin.html" });
         return;
       }
-      // Legacy path: create session using email as orgId (backward compat)
-      logger.info({ email }, "[Auth] login-verify: legacy path (user not yet in users table)");
-      sessionOrgId  = email;
-      sessionRole   = "owner";
+      logger.info({ trace: traceId, email }, `[LV-TRACE][${traceId}] S3-legacy OK — legacy session`);
+      sessionOrgId    = email;
+      sessionRole     = "owner";
       sessionUserUuid = undefined;
-    } else {
-      const user = userRow.rows[0];
 
-      // Check 3: email vérifié
+    } else {
+      const user = userRow.rows[0]!;
+      logger.info({ trace: traceId, email, userId: user.id, status: user.status, emailVerified: user.email_verified },
+        `[LV-TRACE][${traceId}] S3 — user row values`);
+
+      // ── S4: Check 3 — email verified ──────────────────────────────────
       if (!user.email_verified) {
-        logger.warn({ email, userId: user.id }, "[Auth] login-verify: CHECK 3 FAIL — email not verified");
-        res.status(403).json({
-          error: "Adresse email non vérifiée. Vérifiez votre boîte mail.",
-        });
+        logger.warn({ trace: traceId, email, userId: user.id }, `[LV-TRACE][${traceId}] S4 FAIL — email_verified=false → 403`);
+        res.status(403).json({ error: "Adresse email non vérifiée. Vérifiez votre boîte mail." });
         return;
       }
+      logger.info({ trace: traceId, email }, `[LV-TRACE][${traceId}] S4 OK — email verified`);
 
-      // Check 4: utilisateur actif
+      // ── S5: Check 4 — user active ─────────────────────────────────────
       if (user.status !== "active") {
-        logger.warn({ email, userId: user.id, status: user.status }, "[Auth] login-verify: CHECK 4 FAIL — user not active");
+        logger.warn({ trace: traceId, email, status: user.status }, `[LV-TRACE][${traceId}] S5 FAIL — status=${user.status} → 403`);
         res.status(403).json({
           error: user.status === "suspended"
             ? "Votre compte a été suspendu. Contactez le support."
@@ -1113,108 +1169,140 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
         });
         return;
       }
+      logger.info({ trace: traceId, email }, `[LV-TRACE][${traceId}] S5 OK — user active`);
 
-      // Check 5: appartenance à une organisation + rôle valide
+      // ── S6: Check 5 — org membership ─────────────────────────────────
+      logger.info({ trace: traceId, email, memberFound: memberRow.rows.length > 0 },
+        `[LV-TRACE][${traceId}] S6 — CHECK 5 org membership`);
+
       if (memberRow.rows.length === 0) {
-        // No membership in new table — fallback to org_settings for legacy owners
-        const orgFallback = await loadOrgSettings(email).catch(() => null);
-        if (!orgFallback) {
-          logger.warn({ email }, "[Auth] login-verify: CHECK 5 FAIL — no org membership");
-          res.status(403).json({
-            error: "Votre compte n'est associé à aucune organisation active.",
+        // S6-fallback: user exists but no org_members row — try org_settings
+        logger.info({ trace: traceId, email }, `[LV-TRACE][${traceId}] S6-fallback — loadOrgSettings START`);
+        let orgFallback: Awaited<ReturnType<typeof loadOrgSettings>> | null;
+        try {
+          orgFallback = await loadOrgSettings(email).catch((e) => {
+            logger.warn({ trace: traceId, email, err: e instanceof Error ? e.message : String(e) },
+              `[LV-TRACE][${traceId}] S6-fallback — loadOrgSettings inner catch`);
+            return null;
           });
+          logger.info({ trace: traceId, email, found: !!orgFallback },
+            `[LV-TRACE][${traceId}] S6-fallback — loadOrgSettings done`);
+        } catch (osErr) {
+          traceErr("S6-fallback-loadOrgSettings", osErr);
+          throw osErr;
+        }
+
+        if (!orgFallback) {
+          logger.warn({ trace: traceId, email }, `[LV-TRACE][${traceId}] S6 FAIL — no org membership → 403`);
+          res.status(403).json({ error: "Votre compte n'est associé à aucune organisation active." });
           return;
         }
         if (orgFallback.subscriptionStatus === "pending_billing") {
-          logger.warn({ email }, "[Auth] login-verify: CHECK 6 FAIL (fallback) — pending_billing");
-          res.status(402).json({
-            error: "Votre compte n'est pas encore activé. Veuillez compléter votre inscription.",
-            redirectTo: "/signin.html",
-          });
+          logger.warn({ trace: traceId, email }, `[LV-TRACE][${traceId}] S6-fallback FAIL — pending_billing → 402`);
+          res.status(402).json({ error: "Votre compte n'est pas encore activé. Veuillez compléter votre inscription.", redirectTo: "/signin.html" });
           return;
         }
+        logger.info({ trace: traceId, email, userId: user.id }, `[LV-TRACE][${traceId}] S6-fallback OK — legacy org session`);
         sessionOrgId    = email;
         sessionRole     = "owner";
         sessionUserUuid = user.id;
-      } else {
-        const member = memberRow.rows[0];
 
-        // Check 5b: rôle valide
+      } else {
+        const member = memberRow.rows[0]!;
+        logger.info({
+          trace: traceId, email,
+          orgId: member.organization_id,
+          role: member.role,
+          memberStatus: member.status,
+          orgStatus: member.org_status,
+          subStatus: member.subscription_status,
+        }, `[LV-TRACE][${traceId}] S6 — member row values`);
+
+        // ── S6b: role valid ───────────────────────────────────────────
         if (!["owner", "admin", "member", "viewer"].includes(member.role)) {
-          logger.warn({ email, role: member.role }, "[Auth] login-verify: CHECK 5 FAIL — invalid role");
+          logger.warn({ trace: traceId, email, role: member.role }, `[LV-TRACE][${traceId}] S6b FAIL — invalid role → 403`);
           res.status(403).json({ error: "Rôle invalide." });
           return;
         }
 
-        // Check 6: abonnement cohérent
+        // ── S7-check: subscription status ────────────────────────────
         const blockedStatuses = ["pending_billing", "canceled", "incomplete"];
         if (blockedStatuses.includes(member.subscription_status)) {
-          logger.warn({ email, subStatus: member.subscription_status }, "[Auth] login-verify: CHECK 6 FAIL — subscription blocked");
-          res.status(402).json({
-            error: "Votre abonnement n'est pas actif. Veuillez régulariser votre situation.",
-            redirectTo: "/signin.html",
-          });
+          logger.warn({ trace: traceId, email, subStatus: member.subscription_status },
+            `[LV-TRACE][${traceId}] S7-check FAIL — subscription blocked → 402`);
+          res.status(402).json({ error: "Votre abonnement n'est pas actif. Veuillez régulariser votre situation.", redirectTo: "/signin.html" });
           return;
         }
 
         sessionOrgId    = member.organization_id;
         sessionRole     = member.role;
         sessionUserUuid = user.id;
-        logger.info({ email, orgId: sessionOrgId, role: sessionRole, subStatus: member.subscription_status },
-          "[Auth] login-verify: All 6 checks passed (new architecture)");
+        logger.info({ trace: traceId, email, orgId: sessionOrgId, role: sessionRole },
+          `[LV-TRACE][${traceId}] S7-check OK — all 6 checks passed`);
       }
     }
+
   } catch (guardErr) {
-    // A transient DB/runtime error occurred AFTER the token was atomically consumed.
-    // Restore it (used=false) so the user can click the link again without being locked out.
-    // This is safe: every logical failure (account not found, suspended, wrong role, etc.)
-    // returns early above via res.status().json() — only genuine exceptions reach here.
-    // Token was NOT consumed (peekToken was read-only) — user can retry by clicking the link again
-    logger.error({ err: guardErr, email }, "[Auth] login-verify: 6-check threw — token untouched, user may retry");
+    traceErr("S2-S7-outer-catch", guardErr);
     res.status(503).json({
       error: "Erreur temporaire. Veuillez réessayer en cliquant à nouveau sur le lien de connexion.",
     });
     return;
   }
 
-  // ── Step 7: Atomic token consumption (checks all passed) ─────────────────
-  // Now that all pre-session checks have passed, consume the token atomically.
-  // Uses UPDATE … WHERE used=false to guard against concurrent requests that
-  // also passed the peek (race condition window is tiny but handled correctly).
+  // ── S8: Atomic token consumption ──────────────────────────────────────────
+  logger.info({ trace: traceId, email, orgId: sessionOrgId, role: sessionRole },
+    `[LV-TRACE][${traceId}] S8 — finalConsumeToken START`);
   try {
     const { consumed } = await finalConsumeToken(token);
     if (!consumed) {
-      // Another concurrent request consumed the token between peek and now
+      logger.warn({ trace: traceId, email }, `[LV-TRACE][${traceId}] S8 — token already consumed (race) → 410`);
       res.status(410).json({ error: "Ce lien a déjà été utilisé. Demandez un nouveau lien si nécessaire." });
       return;
     }
+    logger.info({ trace: traceId, email }, `[LV-TRACE][${traceId}] S8 — token consumed OK`);
   } catch (consumeErr) {
-    logger.error({ err: consumeErr, email }, "[Auth] login-verify: finalConsumeToken failed");
+    traceErr("S8-finalConsumeToken", consumeErr);
     res.status(503).json({ error: "Erreur temporaire. Veuillez réessayer en cliquant à nouveau sur le lien de connexion." });
     return;
   }
 
-  // ── All checks passed — create session ───────────────────────────────────
-  // Invalidate ALL existing sessions first (prevents session bleeding)
-  await invalidateAllSessions(email).catch((err) =>
-    logger.warn({ err, email }, "[Auth] login-verify: invalidateAllSessions failed (non-fatal)"),
-  );
-
-  const sessionToken = await createSession({
-    userId: sessionOrgId,   // backward compat: userId = orgId for existing session lookups
-    orgId: sessionOrgId,
-    email,
-    role: sessionRole,
-    userUuid: sessionUserUuid,
+  // ── S9: Invalidate existing sessions ─────────────────────────────────────
+  logger.info({ trace: traceId, email }, `[LV-TRACE][${traceId}] S9 — invalidateAllSessions START`);
+  await invalidateAllSessions(email).catch((err) => {
+    logger.warn({ trace: traceId, email, err: err instanceof Error ? err.message : String(err) },
+      `[LV-TRACE][${traceId}] S9 — invalidateAllSessions failed (non-fatal)`);
   });
+  logger.info({ trace: traceId, email }, `[LV-TRACE][${traceId}] S9 — invalidateAllSessions done`);
 
-  // Update last_login_at in users table (fire-and-forget)
+  // ── S10: Create session ───────────────────────────────────────────────────
+  logger.info({ trace: traceId, email, orgId: sessionOrgId, role: sessionRole },
+    `[LV-TRACE][${traceId}] S10 — createSession START`);
+  let sessionToken: string;
+  try {
+    sessionToken = await createSession({
+      userId:   sessionOrgId,
+      orgId:    sessionOrgId,
+      email,
+      role:     sessionRole,
+      userUuid: sessionUserUuid,
+    });
+    logger.info({ trace: traceId, email }, `[LV-TRACE][${traceId}] S10 — createSession OK`);
+  } catch (sessErr) {
+    traceErr("S10-createSession", sessErr);
+    res.status(503).json({ error: "Erreur temporaire. Veuillez réessayer." });
+    return;
+  }
+
+  // Update last_login_at (fire-and-forget)
   pool.query(`UPDATE users SET last_login_at = NOW() WHERE email = $1`, [email])
-    .catch((err) => logger.warn({ err, email }, "[Auth] login-verify: last_login_at update failed"));
+    .catch((err) => logger.warn({ trace: traceId, err: err instanceof Error ? err.message : String(err) },
+      `[LV-TRACE][${traceId}] S10 — last_login_at update failed`));
 
-  logger.info({ email, orgId: sessionOrgId, role: sessionRole }, "[Auth] Magic link verified — session started");
-
+  // ── S11: Set cookie ───────────────────────────────────────────────────────
   const isProd = isDeployedProd();
+  logger.info({ trace: traceId, email, isProd, sameSite: isProd ? "none" : "lax" },
+    `[LV-TRACE][${traceId}] S11 — setting fp_token cookie`);
   res.cookie("fp_token", sessionToken, {
     httpOnly: true,
     secure: isProd,
@@ -1223,22 +1311,23 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     path: "/",
   });
 
-  res.json({
-    ok: true,
-    email,
-    message: "Connexion réussie",
-  });
+  // ── S12: Send success response ────────────────────────────────────────────
+  logger.info({ trace: traceId, email, orgId: sessionOrgId, role: sessionRole },
+    `[LV-TRACE][${traceId}] S12 — sending 200 OK — COMPLETE`);
+  res.json({ ok: true, email, message: "Connexion réussie" });
 
-  // Fire-and-forget: ensure Stripe customer exists (non-blocking)
+  // Fire-and-forget: ensure Stripe customer (non-blocking, after response sent)
   (async () => {
     const stripeKey = process.env["STRIPE_LIVE_API_KEY"] ?? process.env["STRIPE_SECRET_KEY"] ?? "";
     if (!stripeKey) return;
     try {
       const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
       await ensureStripeCustomer(sessionOrgId);
-      logger.info({ email, orgId: sessionOrgId }, "[Auth] login-verify: Stripe customer ensured");
+      logger.info({ trace: traceId, email, orgId: sessionOrgId },
+        `[LV-TRACE][${traceId}] S13 — ensureStripeCustomer OK`);
     } catch (stripeErr) {
-      logger.warn({ stripeErr, email }, "[Auth] login-verify: ensureStripeCustomer failed (non-fatal)");
+      logger.warn({ trace: traceId, err: stripeErr instanceof Error ? stripeErr.message : String(stripeErr) },
+        `[LV-TRACE][${traceId}] S13 — ensureStripeCustomer failed (non-fatal)`);
     }
   })();
 }
