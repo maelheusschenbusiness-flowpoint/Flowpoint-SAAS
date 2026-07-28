@@ -224,7 +224,7 @@
       Pas encore de compte ? <a href="/">Créer mon compte →</a>
     </p>
     <p class="fp-create-link" style="margin-top:6px;">
-      <a href="/pricing.html" style="color:var(--blue);font-size:12px;">Voir les plans et tarifs</a>
+      <a href="/pricing.html" style="color:var(--blue-light);font-weight:600;font-size:12px;">Voir les plans et tarifs</a>
     </p>
 
     <div class="fp-footer">
@@ -281,10 +281,11 @@
       var e = p.get('error');
       if (!e) return;
       var msgs = {
-        google_auth_failed: '\u00C9chec de la connexion Google. R\u00E9essayez.',
-        missing_code      : 'Connexion annul\u00E9e.',
-        access_denied     : 'Acc\u00E8s refus\u00E9.',
-        github_auth_failed: '\u00C9chec de la connexion GitHub. R\u00E9essayez.',
+        google_auth_failed   : '\u00C9chec de la connexion Google. R\u00E9essayez.',
+        missing_code         : 'Connexion annul\u00E9e.',
+        access_denied        : 'Acc\u00E8s refus\u00E9.',
+        github_auth_failed   : '\u00C9chec de la connexion GitHub. R\u00E9essayez.',
+        apple_not_configured : 'La connexion Apple n\'est pas encore disponible. Utilisez votre email ou Google.',
       };
       showError(msgs[e] || 'Erreur\u00a0: ' + e.replace(/_/g, ' ') + '.');
       history.replaceState({}, '', '/login.html');

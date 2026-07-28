@@ -209,7 +209,7 @@
       </svg>
       Continuer avec Google
     </a>
-    <a href="/api/auth/apple/login" class="btn-oauth btn-oauth-apple fp-hidden" id="btn-apple-oauth">
+    <a href="/api/auth/apple/login" class="btn-oauth btn-oauth-apple" id="btn-apple-oauth">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
         <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98l-.09.06c-.22.15-2.19 1.28-2.17 3.82.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.36 2.75M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11"/>
       </svg>
@@ -415,38 +415,10 @@
     var spinner = btn.querySelector('.plan-card-spinner');
     if (spinner) spinner.style.display = 'block';
 
-    fetch('/api/public/checkout-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan: plan, addons: {}, source: 'signin_new_flow', preRegisterToken: _preRegisterToken })
-    })
-    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
-    .then(function(res) {
-      if (!res.ok || (!res.data.url && !res.data.mock)) {
-        _planBtnsLocked = false;
-        document.querySelectorAll('.plan-card-btn').forEach(function(b) { b.disabled = false; });
-        if (spinner) spinner.style.display = 'none';
-        var msgEl = document.getElementById('plan-msg');
-        if (msgEl) { msgEl.className = 'msg error'; msgEl.textContent = res.data.error || 'Erreur lors de la création de la session. Réessayez.'; }
-        return;
-      }
-      if (res.data.mock) {
-        var msgEl = document.getElementById('plan-msg');
-        if (msgEl) { msgEl.className = 'msg success'; msgEl.textContent = '[Dev] Session mock créée — Stripe non configuré. Plan : ' + plan; }
-        _planBtnsLocked = false;
-        document.querySelectorAll('.plan-card-btn').forEach(function(b) { b.disabled = false; });
-        if (spinner) spinner.style.display = 'none';
-        return;
-      }
-      window.location.href = res.data.url;
-    })
-    .catch(function() {
-      _planBtnsLocked = false;
-      document.querySelectorAll('.plan-card-btn').forEach(function(b) { b.disabled = false; });
-      if (spinner) spinner.style.display = 'none';
-      var msgEl = document.getElementById('plan-msg');
-      if (msgEl) { msgEl.className = 'msg error'; msgEl.textContent = 'Impossible de joindre le serveur. Vérifiez votre connexion.'; }
-    });
+    // Save plan + preRegisterToken then go to checkout
+    try { localStorage.setItem('fp_cart', JSON.stringify({ plan: plan, addons: {}, _v: 1, _updatedAt: Date.now() })); } catch(e) {}
+    try { sessionStorage.setItem('fp_pre_reg_token', _preRegisterToken); } catch(e) {}
+    window.location.href = '/checkout.html?plan=' + encodeURIComponent(plan);
   }
 
 (function () {

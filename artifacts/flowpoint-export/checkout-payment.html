@@ -340,10 +340,12 @@
   var stripe, elements;
 
   async function initStripe() {
+    var preRegToken = '';
+    try { preRegToken = sessionStorage.getItem('fp_pre_reg_token') || ''; } catch(e) {}
     var resp = await fetch('/api/public/payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan: plan || '', addons: addons })
+      body: JSON.stringify({ plan: plan || '', addons: addons, preRegisterToken: preRegToken })
     });
     var data = await resp.json();
     if (!resp.ok) { showAlert(data.error || 'Erreur de chargement du paiement.'); return; }

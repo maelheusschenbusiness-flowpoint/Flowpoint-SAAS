@@ -1443,7 +1443,7 @@ router.post("/auth/logout", (req: Request, res: Response) => {
 router.get("/auth/apple/login", (req: Request, res: Response) => {
   const clientId = process.env["APPLE_CLIENT_ID"] || "";
   if (!clientId) {
-    res.status(503).json({ error: "Apple Sign In not configured" });
+    res.redirect("/login.html?error=apple_not_configured");
     return;
   }
   const redirectUri =

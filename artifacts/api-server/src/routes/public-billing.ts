@@ -445,6 +445,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   if (plan === null) return;
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
+  const preRegisterToken = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
   const stripeKey      = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
 
@@ -475,6 +476,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     plan:           planKey,
     addons:         JSON.stringify(addons),
     flowpoint_cart: "true",
+    ...(preRegisterToken ? { pre_register_token: preRegisterToken } : {}),
   };
 
   try {
