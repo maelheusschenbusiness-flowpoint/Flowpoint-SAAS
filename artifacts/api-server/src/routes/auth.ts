@@ -45,28 +45,37 @@ async function storeMagicToken(token: string, email: string): Promise<void> {
   }
 }
 
-async function getMagicToken(token: string): Promise<{ email: string; used: boolean } | null> {
+/**
+ * Atomically consume a magic-link token.
+ *
+ * Uses a single `UPDATE … WHERE token=$1 AND used=false AND expires_at>NOW() RETURNING email`
+ * so that two concurrent requests for the same token cannot both succeed (TOCTOU eliminated).
+ * If the UPDATE touches 0 rows, a follow-up SELECT distinguishes the reason.
+ */
+async function atomicConsumeToken(token: string): Promise<
+  | { ok: true; email: string }
+  | { ok: false; reason: "not_found" | "already_used" | "expired" }
+> {
   const client = await pool.connect();
   try {
-    const res = await client.query(
-      `SELECT email, used FROM magic_link_tokens
-       WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+    // Step 1 — atomic consume: only marks used when token is valid AND unused AND not expired.
+    const consumed = await client.query<{ email: string }>(
+      `UPDATE magic_link_tokens
+          SET used = true
+        WHERE token = $1 AND used = false AND expires_at > NOW()
+        RETURNING email`,
       [token]
     );
-    if (!res.rows[0]) return null;
-    return { email: res.rows[0].email as string, used: res.rows[0].used as boolean };
-  } finally {
-    client.release();
-  }
-}
+    if (consumed.rows[0]) return { ok: true, email: consumed.rows[0].email as string };
 
-async function consumeMagicToken(token: string): Promise<void> {
-  const client = await pool.connect();
-  try {
-    await client.query(
-      `UPDATE magic_link_tokens SET used = true WHERE token = $1`,
+    // Step 2 — diagnose why: token may exist but be used or expired.
+    const check = await client.query<{ used: boolean }>(
+      `SELECT used FROM magic_link_tokens WHERE token = $1`,
       [token]
     );
+    if (!check.rows[0]) return { ok: false, reason: "not_found" };
+    if (check.rows[0].used) return { ok: false, reason: "already_used" };
+    return { ok: false, reason: "expired" };
   } finally {
     client.release();
   }
@@ -951,41 +960,42 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/auth/login-verify", async (req: Request, res: Response) => {
-  const { token } = req.query as { token?: string };
-  if (!token) {
+/** Shared handler — called by both GET and POST /auth/login-verify */
+async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res: Response): Promise<void> {
+  if (!tokenRaw || typeof tokenRaw !== "string" || !tokenRaw.trim()) {
     res.status(400).json({ error: "Token manquant" });
     return;
   }
+  const token = tokenRaw.trim();
 
-  // ── Step 1: Validate token ────────────────────────────────────────────────
-  let entry: { email: string; used: boolean } | null = null;
+  // ── Step 1: Atomic token consumption ─────────────────────────────────────
+  // Single UPDATE...RETURNING eliminates TOCTOU race — two concurrent requests
+  // cannot both succeed for the same token.
+  let consumed: Awaited<ReturnType<typeof atomicConsumeToken>>;
   try {
-    entry = await getMagicToken(String(token));
+    consumed = await atomicConsumeToken(token);
   } catch (dbErr) {
     const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
-    logger.error({ err: msg }, "[Auth] login-verify: DB error reading token");
+    logger.error({ err: msg }, "[Auth] login-verify: DB error consuming token");
     res.status(500).json({ error: "Erreur base de données. Veuillez réessayer." });
     return;
   }
 
-  if (!entry) {
-    res.status(401).json({ error: "Lien invalide ou expiré" });
-    return;
-  }
-  if (entry.used) {
-    res.status(401).json({ error: "Lien déjà utilisé" });
-    return;
-  }
-
-  // Consume token immediately — single-use guarantee
-  try {
-    await consumeMagicToken(String(token));
-  } catch (dbErr) {
-    logger.warn({ err: dbErr }, "[Auth] login-verify: could not mark token as used");
+  if (!consumed.ok) {
+    switch (consumed.reason) {
+      case "already_used":
+        res.status(410).json({ error: "Ce lien a déjà été utilisé. Demandez un nouveau lien si nécessaire." });
+        return;
+      case "expired":
+        res.status(401).json({ error: "Ce lien a expiré. Demandez un nouveau lien de connexion." });
+        return;
+      default: // not_found
+        res.status(401).json({ error: "Lien invalide ou expiré." });
+        return;
+    }
   }
 
-  const email = entry.email;
+  const email = consumed.email;
 
   // ── Steps 2-7: Six mandatory pre-session checks ───────────────────────────
   // All six must pass before any session is created.
@@ -1175,6 +1185,21 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
       logger.warn({ stripeErr, email }, "[Auth] login-verify: ensureStripeCustomer failed (non-fatal)");
     }
   })();
+}
+
+// GET — kept for backward compatibility (existing email links point to login-verify.html?token=...
+// which makes the AJAX call). The static HTML file does the actual AJAX — email scanners
+// pre-fetch the HTML page URL, not the API endpoint, so the risk is low.
+// New deployments of login-verify.js use POST; GET still works atomically.
+router.get("/auth/login-verify", (req: Request, res: Response) => {
+  return handleLoginVerify(req.query["token"] as string | undefined, req, res);
+});
+
+// POST — preferred path; login-verify.js sends the token in the request body so that
+// email-scanner prefetch (SafeLinks, Barracuda, etc.) cannot consume the token via GET.
+router.post("/auth/login-verify", (req: Request, res: Response) => {
+  const token = req.body?.token ?? req.query["token"];
+  return handleLoginVerify(typeof token === "string" ? token : undefined, req, res);
 });
 
 // ── Google OAuth Login (separate from GBP — for account authentication) ──────

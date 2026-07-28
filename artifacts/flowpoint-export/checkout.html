@@ -85,9 +85,9 @@
     .fp-plan-info { flex: 1; min-width: 0; }
     .fp-plan-name { font-size: 15px; font-weight: 700; }
     .fp-plan-sub  { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-    .fp-plan-price-wrap { text-align: right; flex-shrink: 0; }
-    .fp-plan-price { font-size: 18px; font-weight: 800; color: var(--text); }
-    .fp-plan-price-sub { font-size: 11px; color: var(--text-muted); }
+    .fp-plan-price-wrap { text-align: right; flex-shrink: 0; white-space: nowrap; }
+    .fp-plan-price { font-size: 18px; font-weight: 800; color: var(--text); white-space: nowrap; }
+    .fp-plan-price-sub { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 
     /* ── Addon rows ── */
     .fp-addon-list { padding: 4px 0 8px; }
@@ -355,6 +355,19 @@
     cart._v = 1;
     cart._updatedAt = Date.now();
     cart._orgId = _fpAuthOrgId;
+  }
+
+  /* P0-2: Guard — reject any plan value that is not in the known catalog.
+     Corrupted localStorage with e.g. plan:"ultramax" must not display or charge anything. */
+  if (cart && cart.plan && !PLAN_INFO[cart.plan]) {
+    cart.plan = null;
+    try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
+  }
+  /* Also guard addons — drop any key not in ADDON_INFO */
+  if (cart && cart.addons && typeof cart.addons === 'object') {
+    Object.keys(cart.addons).forEach(function(k) {
+      if (!ADDON_INFO[k]) { delete cart.addons[k]; }
+    });
   }
 
   if (!cart || (!cart.plan && !Object.keys(cart.addons || {}).length)) {

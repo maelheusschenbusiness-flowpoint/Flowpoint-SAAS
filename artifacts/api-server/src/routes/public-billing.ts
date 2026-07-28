@@ -707,13 +707,31 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
    trial. Add-ons were already charged via the PaymentIntent.
  ───────────────────────────────────────────────────────────────────────── */
 router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Request, res: Response) => {
-  const { intentId, intentType, plan = "", addons = {}, preRegisterToken: _fcPreRegRaw = "" } = req.body as {
-    intentId?: string;
-    intentType?: string;
-    plan?: string;
-    addons?: AddonsMap;
-    preRegisterToken?: string;
-  };
+  // ── P1-6: Payload validation (400 not 500 on bad input) ──────────────────
+  const body = req.body as Record<string, unknown>;
+
+  const intentId = body?.intentId;
+  if (!intentId || typeof intentId !== "string" || !intentId.trim()) {
+    res.status(400).json({ error: "intentId requis (pi_… ou seti_…)" });
+    return;
+  }
+  const intentType = body?.intentType;
+  if (!intentType || typeof intentType !== "string" ||
+      !["payment_intent", "setup_intent"].includes(intentType)) {
+    res.status(400).json({ error: 'intentType doit être "payment_intent" ou "setup_intent"' });
+    return;
+  }
+  const _rawPlan = body?.plan;
+  if (_rawPlan !== undefined && _rawPlan !== null && _rawPlan !== "" && typeof _rawPlan !== "string") {
+    const typ = Array.isArray(_rawPlan) ? "array" : typeof _rawPlan;
+    res.status(400).json({ error: `plan doit être une chaîne de caractères (reçu : ${typ})` });
+    return;
+  }
+  const plan  = typeof _rawPlan === "string" ? _rawPlan.trim().toLowerCase() : "";
+  const addons = parseAddonsPub(body?.addons ?? {}, res);
+  if (addons === null) return; // parseAddonsPub already sent 400
+
+  const _fcPreRegRaw = body?.preRegisterToken;
   const preRegisterToken = typeof _fcPreRegRaw === "string" ? _fcPreRegRaw.trim() : "";
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
 
@@ -1020,22 +1038,43 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     const trialEndUnix = grantTrial ? Math.floor(Date.now() / 1000) + intentTrialDays * 86400 : undefined;
     logger.info({ planKey, grantTrial, intentTrialDays, hasSubscriptionHistory, customerId }, "[PublicBilling] finalize: trial decision");
 
-    const planSubscription = await stripe.subscriptions.create({
-      customer:               customerId,
-      items:                  [{ price: planPriceId, quantity: 1 }],
-      ...(trialEndUnix !== undefined ? { trial_end: trialEndUnix } : {}),
-      default_payment_method: paymentMethodId,
-      metadata: {
-        plan:           planKey,
-        source:         "checkout_payment",
-        flowpoint_cart: "true",
-        org_id:         _authenticatedOrgId,
-        orgId:          _authenticatedOrgId,
-        ...(preRegisterToken || intentMeta["pre_register_token"]
-          ? { pre_register_token: preRegisterToken || intentMeta["pre_register_token"] }
-          : {}),
-      },
-    });
+    // ── P1-5: Idempotence guard — prevent duplicate subscriptions on retry/refresh ──
+    // Check whether this customer already has an active or trialing subscription for
+    // the same plan price ID before creating a new one.
+    let planSubscription: Awaited<ReturnType<typeof stripe.subscriptions.create>>;
+    {
+      const existingSubs = await stripe.subscriptions.list({
+        customer: customerId!,
+        price:    planPriceId,
+        limit:    5,
+      });
+      const reusable = existingSubs.data.find(
+        s => s.status === "active" || s.status === "trialing" || s.status === "past_due"
+      );
+      if (reusable) {
+        // Reuse — avoid duplicate subscription on page refresh / double-click
+        logger.info({ subscriptionId: reusable.id, planKey, customerId },
+          "[PublicBilling] finalize: reusing existing plan subscription (idempotent)");
+        planSubscription = reusable as typeof planSubscription;
+      } else {
+        planSubscription = await stripe.subscriptions.create({
+          customer:               customerId,
+          items:                  [{ price: planPriceId, quantity: 1 }],
+          ...(trialEndUnix !== undefined ? { trial_end: trialEndUnix } : {}),
+          default_payment_method: paymentMethodId,
+          metadata: {
+            plan:           planKey,
+            source:         "checkout_payment",
+            flowpoint_cart: "true",
+            org_id:         _authenticatedOrgId,
+            orgId:          _authenticatedOrgId,
+            ...(preRegisterToken || intentMeta["pre_register_token"]
+              ? { pre_register_token: preRegisterToken || intentMeta["pre_register_token"] }
+              : {}),
+          },
+        });
+      }
+    }
 
     /* ── 3b. Add-on subscription — independent of trial ──────────────────
        Add-ons were already charged immediately via PaymentIntent (month 1).

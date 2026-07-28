@@ -44,9 +44,13 @@
   // cannot read stale localStorage from a previously logged-in user.
   purgeUserCache();
 
-  fetch('/api/auth/login-verify?token=' + encodeURIComponent(token), {
-    method: 'GET',
+  // POST — not GET — so that email-scanner prefetch (SafeLinks, Barracuda, etc.)
+  // cannot consume the single-use token when they pre-crawl the login-verify.html URL.
+  fetch('/api/auth/login-verify', {
+    method: 'POST',
     credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: token }),
   })
   .then(function (res) {
     return res.json().then(function (data) { return { ok: res.ok, data: data }; });

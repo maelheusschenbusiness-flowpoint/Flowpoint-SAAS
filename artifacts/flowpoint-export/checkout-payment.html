@@ -420,12 +420,22 @@
       return;
     }
 
-    /* Payment Element — card + SEPA only (allow_redirects:'never' on intent) */
+    /* Payment Element — card + SEPA only (allow_redirects:'never' on intent).
+       P2-9: Pre-fill name + email from pending_signups via data.defaultValues. */
+    var _peDefaultValues = {};
+    if (data.defaultValues) {
+      var _dv = data.defaultValues;
+      var _bd = {};
+      if (_dv.name)  _bd.name  = _dv.name;
+      if (_dv.email) _bd.email = _dv.email;
+      if (Object.keys(_bd).length) _peDefaultValues = { billingDetails: _bd };
+    }
     var paymentElement;
     try {
       paymentElement = elements.create('payment', {
         layout: { type: 'tabs', defaultCollapsed: false },
         wallets: { googlePay: 'never', applePay: 'never' },
+        defaultValues: Object.keys(_peDefaultValues).length ? _peDefaultValues : undefined,
       });
       paymentElement.mount('#fp-payment-element');
     } catch(e) {
