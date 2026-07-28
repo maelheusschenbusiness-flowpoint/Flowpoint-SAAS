@@ -90,6 +90,23 @@ export async function initPhase1Users(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS org_members_role_idx   ON organization_members(role);`);
     await run(client, `CREATE INDEX IF NOT EXISTS org_members_status_idx ON organization_members(status);`);
 
+    // ── 2a. RLS for organization_members ─────────────────────────────────────
+    // Uses organization_id (not org_id) as the tenant key.
+    // FORCE ROW LEVEL SECURITY ensures policies apply even to the table owner.
+    // The four tenant_* policies mirror the standard pattern in init-rls-migration.ts
+    // but keyed on organization_id so Supabase Advisor stops flagging the table.
+    await run(client, `ALTER TABLE organization_members ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE organization_members FORCE ROW LEVEL SECURITY`);
+    // Drop stale policies before recreating (idempotent)
+    for (const op of ["select", "insert", "update", "delete"]) {
+      await run(client, `DROP POLICY IF EXISTS "tenant_${op}" ON organization_members`);
+    }
+    const GUC = `current_setting('app.current_org_id', true)`;
+    await run(client, `CREATE POLICY "tenant_select" ON organization_members FOR SELECT USING     (organization_id::text = ${GUC})`);
+    await run(client, `CREATE POLICY "tenant_insert" ON organization_members FOR INSERT WITH CHECK (organization_id::text = ${GUC})`);
+    await run(client, `CREATE POLICY "tenant_update" ON organization_members FOR UPDATE USING     (organization_id::text = ${GUC})`);
+    await run(client, `CREATE POLICY "tenant_delete" ON organization_members FOR DELETE USING     (organization_id::text = ${GUC})`);
+
     // ── 2b. Self-healing: coerce organizations.id UUID→TEXT ──────────────────
     // Some production DBs have organizations.id typed as UUID (created by an
     // older migration or the Supabase Dashboard before the TEXT primary key fix).

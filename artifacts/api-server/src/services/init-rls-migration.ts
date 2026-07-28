@@ -90,9 +90,30 @@ const NEEDS_ORG_ID: readonly string[] = [
   "review_alerts", "review_analysis", "roles", "seo_domain_metrics",
   "share_tokens",
   "sso_providers", "webhook_integrations", "worker_failures",
+  // api_keys — sensitive table; included here so org_id is ensured + tenant policies applied
+  "api_keys",
 ];
 
 const NEEDS_ORG_ID_SET = new Set(NEEDS_ORG_ID);
+
+/**
+ * Tables that are backend-only (no PostgREST/client access).
+ * RLS is ENABLED + FORCED with NO public policies → implicit deny-all for
+ * anon/authenticated roles.  The superuser pool (BYPASSRLS) is unaffected.
+ *
+ * These tables either contain sensitive tokens (pending_signups.token,
+ * checkout_post_tokens.token_hash) or use a non-standard tenant key
+ * (organization_members uses organization_id, not org_id) and are handled
+ * separately by their own init files.
+ *
+ * Adding them here ensures the catch-all loop in runRlsMigrationIfNeeded()
+ * also applies FORCE RLS on every boot, making the deny-all explicit and
+ * visible in Supabase Advisor as "protected, no client policies".
+ */
+const BACKEND_ONLY_TABLES: readonly string[] = [
+  "pending_signups",
+  "checkout_post_tokens",
+];
 
 export async function runRlsMigrationIfNeeded(): Promise<void> {
   // ── Fast sentinel (v2) ──────────────────────────────────────────────────────
@@ -233,6 +254,8 @@ export async function runRlsMigrationIfNeeded(): Promise<void> {
     `);
     const alreadyForced = new Set<string>(forcedRes.rows.map(r => r.tablename));
 
+    const backendOnlySet = new Set(BACKEND_ONLY_TABLES);
+
     let rlsEnabled = 0;
     let rlsForced  = 0;
     for (const [t, hasRls] of allTables) {
@@ -245,12 +268,19 @@ export async function runRlsMigrationIfNeeded(): Promise<void> {
         await run(`ALTER TABLE "${t}" FORCE ROW LEVEL SECURITY`);
         rlsForced++;
       }
+      // Apply FORCE to backend-only tables (deny-all for anon/authenticated).
+      // These have no org_id but still need FORCE so no future policy can slip through.
+      if (backendOnlySet.has(t) && !alreadyForced.has(t)) {
+        await run(`ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`);
+        await run(`ALTER TABLE "${t}" FORCE ROW LEVEL SECURITY`);
+        rlsForced++;
+      }
     }
     if (rlsEnabled > 0) {
       logger.info(`${LOG} Enabled RLS on ${rlsEnabled} table(s)`);
     }
     if (rlsForced > 0) {
-      logger.info(`${LOG} Applied FORCE ROW LEVEL SECURITY to ${rlsForced} tenant table(s)`);
+      logger.info(`${LOG} Applied FORCE ROW LEVEL SECURITY to ${rlsForced} tenant/backend-only table(s)`);
     }
 
     // ── 5. Snapshot: existing tenant_* policy counts per table ───────────────
@@ -306,6 +336,76 @@ export async function runRlsMigrationIfNeeded(): Promise<void> {
     await run(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon`);
     await run(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated`);
     await run(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role`);
+
+    // ── 8. Security audit — 13 sensitive tables ──────────────────────────────
+    // Log [SECURITY] warnings for any sensitive table that:
+    //   (a) does not have RLS enabled
+    //   (b) has a policy with USING (true) — open anonymous access
+    //   (c) is a tenant table with fewer than 4 tenant_* policies
+    //   (d) is a backend-only table with any client-facing policies
+    // Does NOT crash the server; gaps are visible in logs and fixed next boot.
+    const SENSITIVE_TABLES = [
+      // Core identity & billing (tenant-keyed via org_id)
+      "users", "organizations", "subscriptions", "billing",
+      "reports", "monitors", "audits", "notifications", "activity_logs",
+      // Uses organization_id key — handled by init-phase1-users.ts
+      "organization_members",
+      // Backend-only (no client policies)
+      "pending_signups", "checkout_post_tokens",
+      // api_keys — verified below; added to NEEDS_ORG_ID if org_id present
+      "api_keys",
+    ];
+
+    const auditRes = await client.query<{
+      tablename: string;
+      rowsecurity: boolean;
+      open_policies: number;
+      tenant_policies: number;
+    }>(`
+      SELECT
+        t.tablename,
+        t.rowsecurity,
+        COALESCE((
+          SELECT COUNT(*)::int FROM pg_policies p
+          WHERE p.schemaname = 'public'
+            AND p.tablename  = t.tablename
+            AND p.qual       = 'true'
+        ), 0) AS open_policies,
+        COALESCE((
+          SELECT COUNT(*)::int FROM pg_policies p
+          WHERE p.schemaname = 'public'
+            AND p.tablename  = t.tablename
+            AND p.policyname LIKE 'tenant_%'
+        ), 0) AS tenant_policies
+      FROM pg_tables t
+      WHERE t.schemaname = 'public'
+        AND t.tablename  = ANY($1)
+    `, [SENSITIVE_TABLES]);
+
+    for (const row of auditRes.rows) {
+      const isBackendOnly = backendOnlySet.has(row.tablename);
+      if (!row.rowsecurity) {
+        logger.warn(`[SECURITY] ${row.tablename}: RLS NOT ENABLED — table is unprotected`);
+      }
+      if (row.open_policies > 0) {
+        logger.warn(`[SECURITY] ${row.tablename}: has ${row.open_policies} open policy(ies) with USING(true) — anon access possible`);
+      }
+      if (!isBackendOnly && row.tablename !== "organization_members"
+          && allTables.has(row.tablename) && tablesWithOrgId.has(row.tablename)
+          && row.tenant_policies < 4) {
+        logger.warn(`[SECURITY] ${row.tablename}: only ${row.tenant_policies}/4 tenant policies present`);
+      }
+      if (isBackendOnly && row.tenant_policies > 0) {
+        logger.warn(`[SECURITY] ${row.tablename}: backend-only table has ${row.tenant_policies} client-facing policy(ies) — unexpected`);
+      }
+    }
+    // Log any sensitive table not yet created (expected on fresh DBs)
+    const auditFound = new Set(auditRes.rows.map(r => r.tablename));
+    for (const t of SENSITIVE_TABLES) {
+      if (!allTables.has(t) && !auditFound.has(t)) {
+        logger.info(`${LOG} [SECURITY-INFO] ${t}: not yet created — will be audited after first creation`);
+      }
+    }
 
     // ── Summary ──────────────────────────────────────────────────────────────
     const stateRes = await client.query<Record<string, number>>(`

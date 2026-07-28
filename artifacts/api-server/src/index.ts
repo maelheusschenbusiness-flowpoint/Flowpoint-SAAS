@@ -96,6 +96,11 @@ async function main() {
         await client.query(`ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS consumed_at TIMESTAMPTZ`);
         // stripe_customer_id: stored after first Stripe Customer creation so retries reuse the same customer
         await client.query(`ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`);
+        // SECURITY: RLS enabled with no public policies → deny-all for anon/authenticated.
+        // Backend pool.query() uses BYPASSRLS superuser and is unaffected.
+        // This prevents the `token` column from being exposed via PostgREST.
+        await client.query(`ALTER TABLE pending_signups ENABLE ROW LEVEL SECURITY`);
+        await client.query(`ALTER TABLE pending_signups FORCE ROW LEVEL SECURITY`);
         // checkout_post_tokens: single-use token created by webhook after org creation.
         // SECURITY: token_hash = SHA256(stripe_session_id) — raw session ID never stored in plaintext.
         // Expiry: 15 minutes (spec requirement). Row is DELETED on consumption (not merely flagged).
@@ -124,6 +129,11 @@ async function main() {
         `);
         await client.query(`CREATE INDEX IF NOT EXISTS cpt_org_idx     ON checkout_post_tokens(org_id)`);
         await client.query(`CREATE INDEX IF NOT EXISTS cpt_expires_idx ON checkout_post_tokens(expires_at)`);
+        // SECURITY: RLS enabled with no public policies → deny-all for anon/authenticated.
+        // Backend pool.query() uses BYPASSRLS superuser and is unaffected.
+        // token_hash (SHA256 of Stripe session ID) must never be accessible via PostgREST.
+        await client.query(`ALTER TABLE checkout_post_tokens ENABLE ROW LEVEL SECURITY`);
+        await client.query(`ALTER TABLE checkout_post_tokens FORCE ROW LEVEL SECURITY`);
         logger.info("[startup] new-signup-schema ensured (pending_signups, checkout_post_tokens, postal_code, vat)");
       } finally { client.release(); }
     }).catch((err: unknown) => {
