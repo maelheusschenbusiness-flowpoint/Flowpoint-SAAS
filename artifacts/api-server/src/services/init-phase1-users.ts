@@ -54,14 +54,38 @@ export async function initPhase1Users(): Promise<void> {
         CONSTRAINT users_email_unique UNIQUE (email)
       );
     `);
-    // ── Self-healing: drop spurious FK users_id_fkey if present ─────────────────
-    // On deployments originally exported from Supabase, public.users(id) was created
-    // with a FK to auth.users(id) (Supabase auth schema).  On Render (vanilla PG,
-    // no Supabase Auth service), auth.users does not exist, so any INSERT into
-    // public.users with a fresh UUID violates the constraint (23503).
-    // This FK has no functional purpose outside Supabase — drop it unconditionally.
-    // IF EXISTS makes this a no-op on DBs where the constraint is already absent.
-    await run(client, `ALTER TABLE users DROP CONSTRAINT IF EXISTS users_id_fkey;`);
+    // ── [SCHEMA-DIAG] Log users_id_fkey definition if present ───────────────────
+    // Render reported error 23503 on INSERT INTO public.users: the constraint
+    // users_id_fkey blocked insertion because no parent row existed.
+    // Before taking any DDL action we log the exact constraint definition so
+    // we know which table it references (hypothesis: auth.users(id)).
+    // Remove this block once confirmed and the migration 017 has been applied.
+    try {
+      const diagResult = await client.query<{
+        conname: string;
+        source_table: string;
+        definition: string;
+      }>(`
+        SELECT
+          c.conname,
+          c.conrelid::regclass AS source_table,
+          pg_get_constraintdef(c.oid, true) AS definition
+        FROM pg_constraint c
+        WHERE c.conname = 'users_id_fkey'
+      `);
+      if (diagResult.rows.length > 0) {
+        const row = diagResult.rows[0];
+        logger.warn({
+          constraintName: row.conname,
+          sourceTable:    row.source_table,
+          definition:     row.definition,
+        }, "[SCHEMA-DIAG] users_id_fkey found — review definition before applying migration 017");
+      } else {
+        logger.info("[SCHEMA-DIAG] users_id_fkey not present on this DB — no action needed");
+      }
+    } catch (diagErr) {
+      logger.warn({ diagErr }, "[SCHEMA-DIAG] Failed to query users_id_fkey — pg_constraint inaccessible?");
+    }
 
     // ── Self-healing: ensure every users column exists when the table predates this migration ──
     // CREATE TABLE IF NOT EXISTS is a no-op when the table already exists, so columns
