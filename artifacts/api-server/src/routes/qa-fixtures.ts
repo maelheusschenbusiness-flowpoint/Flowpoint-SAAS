@@ -176,6 +176,36 @@ router.post("/qa/ga4-funnel-base-url", qaGuard, (req: Request, res: Response) =>
   res.json({ ok: true, ga4FunnelBaseUrl: url });
 });
 
+// ── POST /qa/billing/activate-signup — exercise activateNewSignup end-to-end ──
+// Directly calls the shared activation helper used by stripe-webhook.ts so QA
+// tests can verify org creation, magic_link_tokens, and captured activation email
+// without needing a real Stripe payment.
+// Body: { preRegToken, orgId, customerId?, selectedPlan, isTrial? }
+router.post("/qa/billing/activate-signup", qaGuard, async (req: Request, res: Response) => {
+  const { preRegToken, orgId, customerId, selectedPlan, isTrial = false } = req.body as {
+    preRegToken?: string;
+    orgId?: string;
+    customerId?: string;
+    selectedPlan?: string;
+    isTrial?: boolean;
+  };
+  if (!preRegToken || !orgId || !selectedPlan) {
+    res.status(400).json({ error: "preRegToken, orgId, selectedPlan are required" });
+    return;
+  }
+  try {
+    const { activateNewSignup: _qaActivate } = await import("./stripe-webhook.js");
+    if (typeof _qaActivate !== "function") {
+      res.status(500).json({ error: "activateNewSignup not exported from stripe-webhook" });
+      return;
+    }
+    await _qaActivate({ preRegToken, orgId, customerId, selectedPlan, isTrial });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export { router as qaFixturesRouter };
 
 // Public subset — only the fixture probe endpoint (no auth required)

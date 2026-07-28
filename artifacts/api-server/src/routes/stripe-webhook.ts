@@ -129,7 +129,8 @@ async function persistAddonsFromSubscription(subscription: Record<string, unknow
 // ── Shared activation helper — called by checkout.session.completed AND
 //    payment_intent.succeeded / setup_intent.succeeded (new checkout-payment.html flow).
 //    Idempotent: all DB writes use ON CONFLICT DO NOTHING / DO UPDATE.
-async function activateNewSignup(opts: {
+//    Exported for QA fixture endpoint (qa-fixtures.ts /qa/billing/activate-signup).
+export async function activateNewSignup(opts: {
   preRegToken:  string;
   orgId:        string;   // email = orgId in FlowPoint
   customerId?:  string;   // Stripe customer ID (may be absent for SetupIntent path)
