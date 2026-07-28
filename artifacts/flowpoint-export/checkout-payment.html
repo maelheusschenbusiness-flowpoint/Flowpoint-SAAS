@@ -364,11 +364,28 @@
         addons:             addons,
         preRegisterToken:   preRegToken,
         trialDaysRemaining: _trialDaysRemaining,
-        billingAddress:     null,   /* address collected by Address Element, not a custom form */
+        billingAddress:     null,
       })
     });
-    var data = await resp.json();
-    if (!resp.ok) { showAlert(data.error || 'Erreur de chargement du paiement.'); return; }
+
+    /* Guard against non-JSON error responses (e.g. HTML 503 from reverse proxy) */
+    var data;
+    try { data = await resp.json(); } catch(e) {
+      showAlert('Erreur réseau (' + resp.status + '). Vérifiez votre connexion et réessayez.');
+      return;
+    }
+    if (!resp.ok) {
+      showAlert(data.error || 'Erreur ' + resp.status + ' lors de la création du paiement.');
+      return;
+    }
+    if (!data.clientSecret) {
+      showAlert('Réponse serveur invalide. Revenez au récapitulatif et réessayez.');
+      return;
+    }
+    if (!data.publishableKey) {
+      showAlert('Configuration Stripe manquante. Contactez le support.');
+      return;
+    }
 
     _mode = data.mode || 'setup';
     _payBtnLabel = _mode === 'payment'
