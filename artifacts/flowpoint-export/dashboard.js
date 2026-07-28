@@ -14620,18 +14620,8 @@ function bindGlobalEvents() {
     }, { passive: true });
     _scrollTopBtn.addEventListener('click', () => _mainPage.scrollTo({ top: 0, behavior: 'smooth' }));
   }
-  // Nav items
-  $$('.fp-nav-item, .fp-nav-ai').forEach(el => {
-    el.addEventListener('click', () => {
-      navigate(el.dataset.route);
-      if (window.innerWidth <= 768) {
-        $('#fp-sidebar')?.classList.remove('mobile-open');
-        $('#fp-mobile-overlay')?.classList.remove('show');
-        const h = $('#fp-hamburger');
-        if (h) { h.classList.remove('open'); h.setAttribute('aria-expanded','false'); }
-      }
-    });
-  });
+  // Nav items — binding moved to global document delegation below (see _navDelegation)
+  // so clicks always work even when init() is mid-flight during await loadData().
 
   // Topbar status → monitors
   $('#topbar-status')?.addEventListener('click', () => navigate('monitors'));
@@ -30850,6 +30840,25 @@ document.addEventListener('click', function(e) {
       btn.disabled = false;
       btn.textContent = '+ Mission';
     });
+});
+
+// ── Sidebar nav item clicks — global document delegation ────────────────────────
+// Registered at IIFE global scope (NOT inside init()) so it fires correctly even
+// when init() is paused at `await loadData()` or encounters an async error before
+// bindGlobalEvents() is reached. This replaces the per-element binding that used
+// to live inside bindGlobalEvents() and could silently miss clicks during load.
+document.addEventListener('click', function _navDelegation(e) {
+  var navEl = e.target && e.target.closest && e.target.closest('.fp-nav-item, .fp-nav-ai');
+  if (!navEl || !navEl.dataset || !navEl.dataset.route) return;
+  navigate(navEl.dataset.route);
+  if (window.innerWidth <= 768) {
+    var sb = document.getElementById('fp-sidebar');
+    var ov = document.getElementById('fp-mobile-overlay');
+    var hb = document.getElementById('fp-hamburger');
+    if (sb) sb.classList.remove('mobile-open');
+    if (ov) ov.classList.remove('show');
+    if (hb) { hb.classList.remove('open'); hb.setAttribute('aria-expanded', 'false'); }
+  }
 });
 
 // ── Wire analyze button after render (delegated — avoids function redeclaration hoisting conflict) ──

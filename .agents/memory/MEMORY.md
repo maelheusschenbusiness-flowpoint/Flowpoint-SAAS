@@ -1,3 +1,4 @@
+- [Nav item delegation fix](nav-delegation-fix.md) — nav + infinite-skeleton regressions share root cause: delegation must be at IIFE global scope, not inside bindGlobalEvents()
 - [FlowPoint production context](flowpoint-context.md) — 10-phase spec, full mock inventory, P0/P1/P2 blockers; read before any session
 - [org_settings → organizations migration](org-settings-migration-complete.md) — 7 jalons done; organizations is sole billing source; column name map; what still reads org_settings (profile only)
 - [Auth migration v2 — Stripe-gated signup](auth-migration-v2.md) — schema (users/org_members/orgs), 6-check login-verify, Stripe-only activation; 10/10 validated 2026-07-27
