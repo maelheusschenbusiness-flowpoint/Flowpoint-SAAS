@@ -239,14 +239,56 @@ async function peekToken(token: string): Promise<
   | { ok: true; email: string }
   | { ok: false; reason: "not_found" | "already_used" | "expired" }
 > {
-  const check = await pool.query<{ email: string; used: boolean; expires_at: Date }>(
-    `SELECT email, used, expires_at FROM magic_link_tokens WHERE token = $1`,
+  // Fetch token row + DB clock in a single round-trip so times are comparable.
+  const check = await pool.query<{
+    email: string;
+    used: boolean;
+    expires_at: unknown;   // raw — may be Date, string, or null depending on pg config
+    created_at: unknown;
+    db_now: unknown;
+    pg_tz: string;
+    is_expired_sql: boolean; // authoritative: comparison done inside PostgreSQL
+  }>(
+    `SELECT email, used, expires_at, created_at,
+            NOW()                         AS db_now,
+            current_setting('TIMEZONE')   AS pg_tz,
+            expires_at <= NOW()           AS is_expired_sql
+     FROM magic_link_tokens WHERE token = $1`,
     [token]
   );
+
   if (!check.rows[0]) return { ok: false, reason: "not_found" };
-  if (check.rows[0].used) return { ok: false, reason: "already_used" };
-  if (new Date(check.rows[0].expires_at) <= new Date()) return { ok: false, reason: "expired" };
-  return { ok: true, email: check.rows[0].email as string };
+  const row = check.rows[0];
+
+  // ── [TOKEN-TIME] diagnostic log ─────────────────────────────────────────────
+  // Kept until confirmed fixed on Render. Remove after validation.
+  const jsNow    = new Date();
+  const expiresJs = row.expires_at instanceof Date
+    ? row.expires_at
+    : new Date(row.expires_at as string);
+  const diffMs   = expiresJs.getTime() - jsNow.getTime();
+  logger.info({
+    createdAt:      row.created_at instanceof Date ? (row.created_at as Date).toISOString() : row.created_at,
+    expiresAt:      row.expires_at instanceof Date ? (row.expires_at as Date).toISOString() : row.expires_at,
+    expiresAtRaw:   String(row.expires_at),
+    dbNow:          row.db_now instanceof Date ? (row.db_now as Date).toISOString() : row.db_now,
+    jsNow:          jsNow.toISOString(),
+    differenceMs:   diffMs,
+    pgTimezone:     row.pg_tz,
+    isExpiredSql:   row.is_expired_sql,
+    isExpiredJs:    expiresJs <= jsNow,
+    mismatch:       row.is_expired_sql !== (expiresJs <= jsNow),
+  }, "[TOKEN-TIME] expiry diagnostic");
+  // ────────────────────────────────────────────────────────────────────────────
+
+  if (row.used) return { ok: false, reason: "already_used" };
+
+  // Use the SQL-side comparison as the authoritative source — immune to JS/PG
+  // timezone drift, clock skew between Node.js process and DB server, and pg
+  // driver parsing differences between TIMESTAMP and TIMESTAMPTZ columns.
+  if (row.is_expired_sql) return { ok: false, reason: "expired" };
+
+  return { ok: true, email: row.email as string };
 }
 
 /**
