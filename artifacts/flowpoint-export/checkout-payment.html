@@ -127,29 +127,6 @@
     /* ── Security note ── */
     .fp-secure-note { display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 11.5px; color: var(--text-muted); margin-top: 14px; }
     .fp-trial-note { text-align: center; font-size: 12.5px; color: var(--green); background: var(--green-bg); border: 1px solid var(--green-brd); border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; }
-
-    /* ── Billing address form ── */
-    .fp-field-group { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
-    .fp-field-row { display: flex; gap: 12px; }
-    .fp-field-row .fp-field { flex: 1; min-width: 0; }
-    .fp-field { display: flex; flex-direction: column; gap: 5px; }
-    .fp-field label { font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
-    .fp-field .fp-req { color: #f87171; margin-left: 2px; }
-    .fp-field input, .fp-field select {
-      width: 100%; padding: 11px 13px; border-radius: 9px;
-      border: 1px solid var(--border); background: var(--bg);
-      color: var(--text); font-size: 14px; outline: none;
-      transition: border-color .15s, box-shadow .15s;
-    }
-    html[data-theme="light"] .fp-field input,
-    html[data-theme="light"] .fp-field select { background: #f8faff; }
-    .fp-field input:focus, .fp-field select:focus {
-      border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.15);
-    }
-    .fp-field input.fp-invalid, .fp-field select.fp-invalid {
-      border-color: #f87171; box-shadow: 0 0 0 3px rgba(248,113,113,.15);
-    }
-    .fp-field select option { background: var(--bg2); }
   </style>
 </head>
 <body>
@@ -185,83 +162,8 @@
     <div class="fp-loading"><div class="fp-loading-spinner"></div><p>Chargement du récapitulatif…</p></div>
   </div>
 
-  <!-- Billing Address -->
-  <div class="fp-card" id="fp-billing-card">
-    <div class="fp-card-title">Informations de facturation</div>
-    <div class="fp-alert fp-alert-error" id="fp-billing-alert"></div>
-    <div class="fp-field-group">
-      <div class="fp-field">
-        <label for="fp-addr-line1">Adresse <span class="fp-req">*</span></label>
-        <input type="text" id="fp-addr-line1" placeholder="12 rue de la Paix" autocomplete="address-line1" />
-      </div>
-      <div class="fp-field">
-        <label for="fp-addr-line2">Complément d'adresse</label>
-        <input type="text" id="fp-addr-line2" placeholder="Bâtiment A, appartement 3" autocomplete="address-line2" />
-      </div>
-      <div class="fp-field-row">
-        <div class="fp-field">
-          <label for="fp-addr-postal">Code postal <span class="fp-req">*</span></label>
-          <input type="text" id="fp-addr-postal" placeholder="75001" autocomplete="postal-code" style="max-width:140px" />
-        </div>
-        <div class="fp-field">
-          <label for="fp-addr-city">Ville <span class="fp-req">*</span></label>
-          <input type="text" id="fp-addr-city" placeholder="Paris" autocomplete="address-level2" />
-        </div>
-      </div>
-      <div class="fp-field">
-        <label for="fp-addr-country">Pays <span class="fp-req">*</span></label>
-        <select id="fp-addr-country" autocomplete="country">
-          <option value="">— Sélectionnez un pays —</option>
-          <optgroup label="Europe">
-            <option value="BE">Belgique</option>
-            <option value="FR">France</option>
-            <option value="LU">Luxembourg</option>
-            <option value="CH">Suisse</option>
-            <option value="DE">Allemagne</option>
-            <option value="AT">Autriche</option>
-            <option value="NL">Pays-Bas</option>
-            <option value="ES">Espagne</option>
-            <option value="IT">Italie</option>
-            <option value="PT">Portugal</option>
-            <option value="GB">Royaume-Uni</option>
-            <option value="IE">Irlande</option>
-            <option value="DK">Danemark</option>
-            <option value="FI">Finlande</option>
-            <option value="NO">Norvège</option>
-            <option value="SE">Suède</option>
-            <option value="PL">Pologne</option>
-            <option value="CZ">République tchèque</option>
-            <option value="RO">Roumanie</option>
-            <option value="GR">Grèce</option>
-            <option value="HU">Hongrie</option>
-            <option value="SK">Slovaquie</option>
-            <option value="HR">Croatie</option>
-            <option value="BG">Bulgarie</option>
-          </optgroup>
-          <optgroup label="Monde">
-            <option value="US">États-Unis</option>
-            <option value="CA">Canada</option>
-            <option value="AU">Australie</option>
-            <option value="JP">Japon</option>
-            <option value="SG">Singapour</option>
-            <option value="AE">Émirats arabes unis</option>
-            <option value="MA">Maroc</option>
-            <option value="TN">Tunisie</option>
-            <option value="DZ">Algérie</option>
-            <option value="SN">Sénégal</option>
-            <option value="CI">Côte d'Ivoire</option>
-          </optgroup>
-        </select>
-      </div>
-    </div>
-    <button class="fp-btn fp-btn-primary" id="fp-billing-next-btn" type="button">
-      Continuer vers le paiement →
-    </button>
-    <a href="/checkout.html" class="fp-btn fp-btn-ghost">← Récapitulatif</a>
-  </div>
-
   <!-- Payment Form -->
-  <div class="fp-card" id="fp-payment-card" style="display:none">
+  <div class="fp-card" id="fp-payment-card">
     <div class="fp-card-title">Informations de paiement</div>
     <div id="fp-trial-note" class="fp-trial-note" style="display:none"></div>
     <div class="fp-alert fp-alert-error" id="fp-alert"></div>
@@ -271,7 +173,7 @@
       <span id="fp-btn-text">Chargement…</span>
       <span class="fp-spinner" id="fp-spinner" style="display:none"></span>
     </button>
-    <button type="button" class="fp-btn fp-btn-ghost" id="fp-back-to-billing">← Adresse de facturation</button>
+    <a href="/checkout.html" class="fp-btn fp-btn-ghost">← Récapitulatif</a>
     <p class="fp-secure-note">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       Paiement sécurisé · TLS · vos données ne transitent pas par nos serveurs
@@ -341,6 +243,10 @@
     if (_tdRaw !== null) _trialDaysRemaining = Math.max(0, parseInt(_tdRaw, 10) || 0);
   } catch(e) {}
 
+  /* ── Billing address (set by checkout.html before navigating here) ── */
+  var _billingAddress = null;
+  try { _billingAddress = JSON.parse(sessionStorage.getItem('fp_billing_address') || 'null'); } catch(e) {}
+
   /* ── Cart ── */
   var cart = null;
   try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
@@ -363,17 +269,18 @@
     if (info.oneTime) { oneTimeTotal += info.price * qty; }
     else              { addonImmediate += info.price * qty; }
   });
-  var immediateTotal   = addonImmediate + oneTimeTotal;
-  /* Plan only after trial — add-ons are billed independently, not linked to trial */
+  var immediateTotal    = addonImmediate + oneTimeTotal;
   var monthlyAfterTrial = planPrice;
-  var hasPlan          = !!(plan && PLAN_INFO[plan]);
+  var hasPlan           = !!(plan && PLAN_INFO[plan]);
 
   /* ── Render summary ── */
   (function renderSummary() {
     var html = '<div class="fp-card-title">Récapitulatif</div>';
     if (plan && PLAN_INFO[plan]) {
       html += '<div class="fp-sum-row">' +
-        '<span class="fp-sum-label">' + PLAN_INFO[plan].name + '<span class="fp-sum-badge fp-badge-trial">14j offerts</span></span>' +
+        '<span class="fp-sum-label">' + PLAN_INFO[plan].name +
+          (_trialDaysRemaining > 0 ? '<span class="fp-sum-badge fp-badge-trial">14j offerts</span>' : '') +
+        '</span>' +
         '<span class="fp-sum-amount">' + planPrice + '€/mois</span>' +
       '</div>';
     }
@@ -392,7 +299,6 @@
           '<span class="fp-sum-amount">' + (info.price * qty) + '€</span>' +
         '</div>';
       } else {
-        /* Monthly add-ons: billed now AND every month after — independent of trial */
         html += '<div class="fp-sum-row">' +
           '<span class="fp-sum-label">' + info.name + (qty > 1 ? ' ×' + qty : '') + '<span class="fp-sum-badge fp-badge-now">Maintenant · mensuel</span></span>' +
           '<span class="fp-sum-amount">' + (info.price * qty) + '€/mois</span>' +
@@ -407,12 +313,11 @@
     document.getElementById('fp-summary-card').innerHTML = html;
   })();
 
-  /* ── Trial note — dynamic based on remaining days ── */
+  /* ── Trial note ── */
   function updateTrialNote() {
-    if (!hasPlan) return;
+    if (!hasPlan || _trialDaysRemaining <= 0) return;
     var noteEl = document.getElementById('fp-trial-note');
     if (!noteEl) return;
-    if (_trialDaysRemaining <= 0) { noteEl.style.display = 'none'; return; }
     var daysLabel = _trialDaysRemaining === 1 ? '1\u00a0jour' : _trialDaysRemaining + '\u00a0jours';
     var hasOnlyOneTime = immediateTotal > 0 && Object.keys(addons).length > 0 &&
       Object.keys(addons).every(function(id) { return !ADDON_INFO[id] || ADDON_INFO[id].oneTime; });
@@ -426,58 +331,6 @@
     noteEl.style.display = 'block';
   }
 
-  /* ── Billing address helpers ── */
-  var _savedAddr = null;
-  try { _savedAddr = JSON.parse(sessionStorage.getItem('fp_billing_address') || 'null'); } catch(e) {}
-
-  /* Pre-fill fields from sessionStorage */
-  if (_savedAddr) {
-    var _fById = function(id) { return document.getElementById(id); };
-    if (_savedAddr.line1)       { var el = _fById('fp-addr-line1');   if(el) el.value = _savedAddr.line1; }
-    if (_savedAddr.line2)       { var el = _fById('fp-addr-line2');   if(el) el.value = _savedAddr.line2; }
-    if (_savedAddr.postal_code) { var el = _fById('fp-addr-postal');  if(el) el.value = _savedAddr.postal_code; }
-    if (_savedAddr.city)        { var el = _fById('fp-addr-city');    if(el) el.value = _savedAddr.city; }
-    if (_savedAddr.country)     { var el = _fById('fp-addr-country'); if(el) el.value = _savedAddr.country; }
-  }
-
-  function collectBillingAddress() {
-    return {
-      line1:       (document.getElementById('fp-addr-line1')   || {}).value || '',
-      line2:       (document.getElementById('fp-addr-line2')   || {}).value || '',
-      postal_code: (document.getElementById('fp-addr-postal')  || {}).value || '',
-      city:        (document.getElementById('fp-addr-city')    || {}).value || '',
-      country:     (document.getElementById('fp-addr-country') || {}).value || '',
-    };
-  }
-
-  function validateBillingAddress(addr) {
-    var missing = [];
-    if (!addr.line1.trim())       missing.push('fp-addr-line1');
-    if (!addr.postal_code.trim()) missing.push('fp-addr-postal');
-    if (!addr.city.trim())        missing.push('fp-addr-city');
-    if (!addr.country)            missing.push('fp-addr-country');
-    /* clear all invalid states first */
-    ['fp-addr-line1','fp-addr-postal','fp-addr-city','fp-addr-country'].forEach(function(id) {
-      var el = document.getElementById(id);
-      if (el) el.classList.remove('fp-invalid');
-    });
-    missing.forEach(function(id) {
-      var el = document.getElementById(id);
-      if (el) el.classList.add('fp-invalid');
-    });
-    return missing.length === 0;
-  }
-
-  function showBillingAlert(msg) {
-    var el = document.getElementById('fp-billing-alert');
-    el.textContent = msg;
-    el.classList.add('show');
-  }
-  function hideBillingAlert() {
-    var el = document.getElementById('fp-billing-alert');
-    if (el) el.classList.remove('show');
-  }
-
   /* ── Helpers ── */
   function showAlert(msg) {
     var el = document.getElementById('fp-alert');
@@ -486,20 +339,21 @@
   }
   function hideAlert() { document.getElementById('fp-alert').classList.remove('show'); }
   function setLoading(on, label) {
-    var btn = document.getElementById('fp-pay-btn');
-    var txt = document.getElementById('fp-btn-text');
+    var btn  = document.getElementById('fp-pay-btn');
+    var txt  = document.getElementById('fp-btn-text');
     var spin = document.getElementById('fp-spinner');
     btn.disabled = on;
     spin.style.display = on ? 'inline-block' : 'none';
     if (label) txt.textContent = label;
   }
 
-  /* ── Init Stripe (called after billing validated) ── */
+  /* ── Init Stripe — called immediately on page load ── */
   var stripe, elements;
 
-  async function initStripe(billingAddress) {
+  async function initStripe() {
     var preRegToken = '';
     try { preRegToken = sessionStorage.getItem('fp_pre_reg_token') || ''; } catch(e) {}
+
     var resp = await fetch('/api/public/payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -508,25 +362,28 @@
         addons: addons,
         preRegisterToken: preRegToken,
         trialDaysRemaining: _trialDaysRemaining,
-        billingAddress: billingAddress || null,
+        billingAddress: _billingAddress || null,
       })
     });
     var data = await resp.json();
-    if (!resp.ok) { showAlert(data.error || 'Erreur de chargement du paiement.'); return; }
+    if (!resp.ok) {
+      showAlert(data.error || 'Erreur de chargement du paiement.');
+      return;
+    }
 
     stripe = Stripe(data.publishableKey);
     var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
     var appearance = {
       theme: isDark ? 'night' : 'stripe',
       variables: {
-        colorPrimary:           '#2563eb',
-        colorBackground:        isDark ? '#111827' : '#ffffff',
-        colorText:              isDark ? '#f1f5f9' : '#0f172a',
-        colorTextSecondary:     isDark ? '#94a3b8' : '#475569',
-        colorDanger:            '#f87171',
-        borderRadius:           '10px',
-        fontFamily:             '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
-        fontSizeBase:           '14px',
+        colorPrimary:       '#2563eb',
+        colorBackground:    isDark ? '#111827' : '#ffffff',
+        colorText:          isDark ? '#f1f5f9' : '#0f172a',
+        colorTextSecondary: isDark ? '#94a3b8' : '#475569',
+        colorDanger:        '#f87171',
+        borderRadius:       '10px',
+        fontFamily:         '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        fontSizeBase:       '14px',
       },
       rules: {
         '.Input': { border: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.15)', padding: '12px 14px' },
@@ -541,6 +398,7 @@
       wallets: { googlePay: 'never' }
     });
     paymentElement.mount('#fp-payment-element');
+
     var _payBtnLabel = data.mode === 'setup' ? 'Démarrer l\'essai gratuit →' : 'Payer ' + immediateTotal + '€ →';
     var _payBtnReady = false;
     function _enablePayBtn() {
@@ -555,44 +413,15 @@
       showAlert('Impossible de charger le formulaire de paiement. Désactivez votre bloqueur de publicités et réessayez.');
     });
     setTimeout(_enablePayBtn, 8000);
+
     document.getElementById('fp-pay-btn').setAttribute('data-mode', data.mode);
+    updateTrialNote();
   }
 
-  /* ── "Continuer vers le paiement" button ── */
-  document.getElementById('fp-billing-next-btn').addEventListener('click', function() {
-    hideBillingAlert();
-    var addr = collectBillingAddress();
-    if (!validateBillingAddress(addr)) {
-      showBillingAlert('Veuillez remplir les champs obligatoires : adresse, code postal, ville et pays.');
-      return;
-    }
-    /* Persist to sessionStorage for retries */
-    try { sessionStorage.setItem('fp_billing_address', JSON.stringify(addr)); } catch(e) {}
-
-    /* Switch cards */
-    document.getElementById('fp-billing-card').style.display = 'none';
-    document.getElementById('fp-payment-card').style.display = 'block';
-    updateTrialNote();
-
-    /* Mount Stripe */
-    initStripe(addr).catch(function(err) {
-      console.error('[FlowPoint Payment]', err);
-      document.getElementById('fp-payment-card').style.display = 'none';
-      document.getElementById('fp-billing-card').style.display = 'block';
-      showBillingAlert('Erreur de chargement du terminal de paiement. Vérifiez votre connexion et réessayez.');
-    });
-  });
-
-  /* ── "← Adresse de facturation" back button ── */
-  document.getElementById('fp-back-to-billing').addEventListener('click', function() {
-    document.getElementById('fp-payment-card').style.display = 'none';
-    document.getElementById('fp-billing-card').style.display = 'block';
-    /* Reset Stripe elements so they can be re-mounted cleanly on next forward */
-    stripe = null; elements = null;
-    document.getElementById('fp-payment-element').innerHTML = '';
-    document.getElementById('fp-pay-btn').disabled = true;
-    document.getElementById('fp-btn-text').textContent = 'Chargement…';
-    document.getElementById('fp-pay-btn').removeAttribute('data-mode');
+  /* ── Mount Stripe immediately ── */
+  initStripe().catch(function(err) {
+    console.error('[FlowPoint Payment] initStripe error', err);
+    showAlert('Une erreur est survenue lors du chargement du paiement. Réessayez ou revenez au récapitulatif.');
   });
 
   /* ── Submit ── */

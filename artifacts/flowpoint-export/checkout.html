@@ -151,6 +151,32 @@
     .fp-empty p { font-size: 14px; color: var(--text-soft); margin-bottom: 24px; }
     .fp-empty .fp-btn-primary { max-width: 260px; margin: 0 auto; }
 
+    /* ── Billing address fields (in CTA card) ── */
+    .fp-billing-section { margin-bottom: 18px; }
+    .fp-billing-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); margin-bottom: 12px; }
+    .fp-field-group { display: flex; flex-direction: column; gap: 11px; }
+    .fp-field-row { display: flex; gap: 11px; }
+    .fp-field-row .fp-field { flex: 1; min-width: 0; }
+    .fp-field { display: flex; flex-direction: column; gap: 4px; }
+    .fp-field label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+    .fp-field .fp-req { color: #f87171; margin-left: 2px; }
+    .fp-field input, .fp-field select {
+      width: 100%; padding: 10px 12px; border-radius: 9px;
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--text); font-size: 14px; outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    html[data-theme="light"] .fp-field input,
+    html[data-theme="light"] .fp-field select { background: #f8faff; }
+    .fp-field input:focus, .fp-field select:focus {
+      border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+    }
+    .fp-field input.fp-invalid, .fp-field select.fp-invalid {
+      border-color: #f87171; box-shadow: 0 0 0 3px rgba(248,113,113,.15);
+    }
+    .fp-field select option { background: var(--bg2); }
+    .fp-billing-sep { height: 1px; background: var(--border); margin: 16px 0; }
+
     /* ── Plan selector (no plan mode) ── */
     .fp-plan-req-banner { background: rgba(234,179,8,.07); border: 1px solid rgba(234,179,8,.2); border-radius: 12px; padding: 13px 16px; font-size: 13px; color: #fbbf24; display: flex; gap: 9px; align-items: flex-start; margin-bottom: 16px; }
     .fp-plan-req-banner::before { content: '⚠'; flex-shrink: 0; font-size: 14px; }
@@ -240,6 +266,78 @@
 
   <!-- CTA card -->
   <div class="fp-cta-card" id="fp-cta-card" style="display:none">
+
+    <!-- Billing address -->
+    <div class="fp-billing-section" id="fp-billing-section">
+      <div class="fp-billing-title">Informations de facturation</div>
+      <div class="fp-field-group">
+        <div class="fp-field">
+          <label for="fp-addr-line1">Adresse <span class="fp-req">*</span></label>
+          <input type="text" id="fp-addr-line1" placeholder="12 rue de la Paix" autocomplete="address-line1"/>
+        </div>
+        <div class="fp-field">
+          <label for="fp-addr-line2">Complément d'adresse</label>
+          <input type="text" id="fp-addr-line2" placeholder="Bâtiment A, appartement 3" autocomplete="address-line2"/>
+        </div>
+        <div class="fp-field-row">
+          <div class="fp-field">
+            <label for="fp-addr-postal">Code postal <span class="fp-req">*</span></label>
+            <input type="text" id="fp-addr-postal" placeholder="75001" autocomplete="postal-code"/>
+          </div>
+          <div class="fp-field">
+            <label for="fp-addr-city">Ville <span class="fp-req">*</span></label>
+            <input type="text" id="fp-addr-city" placeholder="Paris" autocomplete="address-level2"/>
+          </div>
+        </div>
+        <div class="fp-field">
+          <label for="fp-addr-country">Pays <span class="fp-req">*</span></label>
+          <select id="fp-addr-country" autocomplete="country">
+            <option value="">— Sélectionnez un pays —</option>
+            <optgroup label="Europe">
+              <option value="BE">Belgique</option>
+              <option value="FR">France</option>
+              <option value="LU">Luxembourg</option>
+              <option value="CH">Suisse</option>
+              <option value="DE">Allemagne</option>
+              <option value="AT">Autriche</option>
+              <option value="NL">Pays-Bas</option>
+              <option value="ES">Espagne</option>
+              <option value="IT">Italie</option>
+              <option value="PT">Portugal</option>
+              <option value="GB">Royaume-Uni</option>
+              <option value="IE">Irlande</option>
+              <option value="DK">Danemark</option>
+              <option value="FI">Finlande</option>
+              <option value="NO">Norvège</option>
+              <option value="SE">Suède</option>
+              <option value="PL">Pologne</option>
+              <option value="CZ">République tchèque</option>
+              <option value="RO">Roumanie</option>
+              <option value="GR">Grèce</option>
+              <option value="HU">Hongrie</option>
+              <option value="SK">Slovaquie</option>
+              <option value="HR">Croatie</option>
+              <option value="BG">Bulgarie</option>
+            </optgroup>
+            <optgroup label="Monde">
+              <option value="US">États-Unis</option>
+              <option value="CA">Canada</option>
+              <option value="AU">Australie</option>
+              <option value="JP">Japon</option>
+              <option value="SG">Singapour</option>
+              <option value="AE">Émirats arabes unis</option>
+              <option value="MA">Maroc</option>
+              <option value="TN">Tunisie</option>
+              <option value="DZ">Algérie</option>
+              <option value="SN">Sénégal</option>
+              <option value="CI">Côte d'Ivoire</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+      <div class="fp-billing-sep"></div>
+    </div>
+
     <ul class="fp-info-list" id="fp-info-list"></ul>
     <div id="fp-alert-error2" class="fp-alert fp-alert-error" role="alert"></div>
     <button class="fp-btn fp-btn-primary" id="fp-pay-btn" onclick="startPayment()">
@@ -394,9 +492,61 @@
 
   /* ── DEFINED BEFORE any early return ── */
 
+  /* ── Billing address helpers ── */
+  function _collectAddr() {
+    return {
+      line1:       (document.getElementById('fp-addr-line1')   || {}).value || '',
+      line2:       (document.getElementById('fp-addr-line2')   || {}).value || '',
+      postal_code: (document.getElementById('fp-addr-postal')  || {}).value || '',
+      city:        (document.getElementById('fp-addr-city')    || {}).value || '',
+      country:     (document.getElementById('fp-addr-country') || {}).value || '',
+    };
+  }
+  function _validateAddr(addr) {
+    var ids = ['fp-addr-line1','fp-addr-postal','fp-addr-city','fp-addr-country'];
+    ids.forEach(function(id){ var el=document.getElementById(id); if(el) el.classList.remove('fp-invalid'); });
+    var missing = [];
+    if (!addr.line1.trim())       missing.push('fp-addr-line1');
+    if (!addr.postal_code.trim()) missing.push('fp-addr-postal');
+    if (!addr.city.trim())        missing.push('fp-addr-city');
+    if (!addr.country)            missing.push('fp-addr-country');
+    missing.forEach(function(id){ var el=document.getElementById(id); if(el) el.classList.add('fp-invalid'); });
+    return missing.length === 0;
+  }
+
+  /* Pre-fill address from sessionStorage if the user comes back */
+  (function _prefillAddr() {
+    try {
+      var saved = JSON.parse(sessionStorage.getItem('fp_billing_address') || 'null');
+      if (!saved) return;
+      var m = { 'fp-addr-line1': saved.line1, 'fp-addr-line2': saved.line2,
+                'fp-addr-postal': saved.postal_code, 'fp-addr-city': saved.city,
+                'fp-addr-country': saved.country };
+      Object.keys(m).forEach(function(id){ var el=document.getElementById(id); if(el && m[id]) el.value=m[id]; });
+    } catch(e) {}
+  })();
+
   window.startPayment = function () {
     var btn = document.getElementById('fp-pay-btn');
     if (!btn || btn.disabled) return;
+
+    /* Validate billing address */
+    var addr = _collectAddr();
+    if (!_validateAddr(addr)) {
+      var errEl = document.getElementById('fp-alert-error2');
+      if (errEl) {
+        errEl.textContent = 'Veuillez remplir les champs obligatoires : adresse, code postal, ville et pays.';
+        errEl.classList.add('show');
+        document.getElementById('fp-addr-line1').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+    var errEl2 = document.getElementById('fp-alert-error2');
+    if (errEl2) errEl2.classList.remove('show');
+
+    /* Persist address for the payment page */
+    try { sessionStorage.setItem('fp_billing_address', JSON.stringify(addr)); } catch(e) {}
+
     /* Stamp cart with version + org + timestamp before saving */
     if (cart) { cart._v = 1; cart._orgId = _fpAuthOrgId; cart._updatedAt = Date.now(); }
     try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
