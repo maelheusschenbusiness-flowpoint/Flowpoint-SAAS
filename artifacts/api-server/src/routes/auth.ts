@@ -1095,7 +1095,7 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
         `SELECT om.organization_id, om.role, om.status AS member_status,
                 o.status AS org_status, o.subscription_status
          FROM organization_members om
-         JOIN organizations o ON o.id = om.organization_id
+         JOIN organizations o ON o.id::text = om.organization_id
          WHERE om.user_id = (SELECT id FROM users WHERE email = $1 LIMIT 1)
            AND om.status = 'active'
            AND o.status != 'deleted'
