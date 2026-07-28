@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { randomBytes, createHash } from "crypto";
+import { randomBytes, createHash, createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify } from "crypto";
 
 /** SHA-256 hex digest — used to hash checkout_post_tokens before DB storage. */
 function sha256hex(s: string): string {
@@ -1458,6 +1458,194 @@ router.get("/auth/apple/login", (req: Request, res: Response) => {
   url.searchParams.set("scope", "name email");
   url.searchParams.set("state", state);
   res.redirect(url.toString());
+});
+
+// ── Apple Sign In callback (POST — Apple uses form_post response_mode) ────────
+
+/** Base64-URL encode a Buffer (no padding). */
+function b64url(buf: Buffer): string {
+  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+/**
+ * Build the ES256 client_secret JWT Apple requires for the code exchange.
+ * Uses Node's built-in crypto — no extra packages needed.
+ */
+function buildAppleClientSecret(clientId: string, teamId: string, keyId: string, rawPem: string): string {
+  const now    = Math.floor(Date.now() / 1000);
+  const hdr    = b64url(Buffer.from(JSON.stringify({ alg: "ES256", kid: keyId })));
+  const ply    = b64url(Buffer.from(JSON.stringify({
+    iss: teamId,
+    iat: now,
+    exp: now + 86_400,   // 24 h max
+    aud: "https://appleid.apple.com",
+    sub: clientId,
+  })));
+  const signingInput = Buffer.from(`${hdr}.${ply}`);
+  const privKey      = createPrivateKey({ key: rawPem, format: "pem" });
+  // ES256: SHA-256 + IEEE-P1363 (r||s) format
+  const sig = cryptoSign("SHA256", signingInput, { key: privKey, dsaEncoding: "ieee-p1363" });
+  return `${hdr}.${ply}.${b64url(sig)}`;
+}
+
+router.post("/auth/apple/callback", async (req: Request, res: Response) => {
+  const publicUrl = getPublicUrl();
+  const body      = req.body as Record<string, string | undefined>;
+  const code      = body["code"]     ?? "";
+  const idToken   = body["id_token"] ?? "";
+  // Apple only sends `user` JSON on the VERY FIRST auth for this user+app pair
+  const userJson  = body["user"]     ?? "";
+
+  if (!code) {
+    const appleError = body["error"] ?? "missing_code";
+    logger.warn({ appleError }, "[Auth] Apple callback — missing code");
+    res.redirect(`${publicUrl}/login.html?error=${encodeURIComponent(appleError)}`);
+    return;
+  }
+
+  const clientId = process.env["APPLE_CLIENT_ID"] ?? "";
+  if (!clientId) {
+    res.redirect(`${publicUrl}/login.html?error=apple_not_configured`);
+    return;
+  }
+
+  try {
+    let appleEmail: string | undefined;
+    let appleSub:   string | undefined;
+
+    // ── Step 1: verify the id_token that Apple sent in the form_post body ──────
+    if (idToken) {
+      const parts = idToken.split(".");
+      if (parts.length === 3) {
+        try {
+          const headerObj  = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as { kid?: string };
+          const payloadObj = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<string, unknown>;
+          // Fetch Apple's public JWKS
+          const jwksRes = await fetch("https://appleid.apple.com/auth/keys");
+          if (jwksRes.ok) {
+            const jwks = await jwksRes.json() as { keys: Array<JsonWebKey & { kid?: string }> };
+            const jwk  = jwks.keys.find((k) => k.kid === headerObj.kid);
+            if (jwk) {
+              const pubKey   = createPublicKey({ key: jwk as unknown as Parameters<typeof createPublicKey>[0] & object, format: "jwk" } as Parameters<typeof createPublicKey>[0]);
+              const sigInput = Buffer.from(`${parts[0]}.${parts[1]}`);
+              const valid    = cryptoVerify("SHA256", sigInput, pubKey, Buffer.from(parts[2], "base64url"));
+              if (valid && payloadObj["aud"] === clientId) {
+                appleEmail = typeof payloadObj["email"] === "string" ? payloadObj["email"] : undefined;
+                appleSub   = typeof payloadObj["sub"]   === "string" ? payloadObj["sub"]   : undefined;
+              }
+            }
+          }
+        } catch (verifyErr) {
+          logger.warn({ err: verifyErr }, "[Auth] Apple callback — id_token verify failed (non-fatal, will try code exchange)");
+        }
+      }
+    }
+
+    // ── Step 2: exchange code for tokens if we still don't have email/sub ──────
+    if (!appleEmail && !appleSub) {
+      const teamId     = process.env["APPLE_TEAM_ID"]     ?? "";
+      const keyId      = process.env["APPLE_KEY_ID"]      ?? "";
+      const rawPem     = (process.env["APPLE_PRIVATE_KEY"] ?? "").replace(/\\n/g, "\n");
+      const redirectUri = process.env["APPLE_AUTH_REDIRECT_URI"] || `${publicUrl}/api/auth/apple/callback`;
+
+      if (!teamId || !keyId || !rawPem) {
+        throw new Error("Apple credentials incomplete (TEAM_ID / KEY_ID / PRIVATE_KEY missing)");
+      }
+
+      const clientSecret = buildAppleClientSecret(clientId, teamId, keyId, rawPem);
+      const tokenRes     = await fetch("https://appleid.apple.com/auth/token", {
+        method:  "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body:    new URLSearchParams({
+          client_id:     clientId,
+          client_secret: clientSecret,
+          code,
+          grant_type:    "authorization_code",
+          redirect_uri:  redirectUri,
+        }),
+      });
+      const tokens = await tokenRes.json() as { id_token?: string; error?: string; error_description?: string };
+      if (!tokenRes.ok || !tokens.id_token) {
+        throw new Error(`Apple token exchange failed: ${tokens.error ?? "no id_token"} — ${tokens.error_description ?? ""}`);
+      }
+      // Decode payload (already issued by Apple, trust it after exchange)
+      const tp = tokens.id_token.split(".");
+      if (tp.length === 3) {
+        const pl = JSON.parse(Buffer.from(tp[1], "base64url").toString("utf8")) as Record<string, unknown>;
+        appleEmail = typeof pl["email"] === "string" ? pl["email"] : undefined;
+        appleSub   = typeof pl["sub"]   === "string" ? pl["sub"]   : undefined;
+      }
+    }
+
+    // ── Step 3: parse `user` JSON (name + email, only on first sign-in) ────────
+    let appleFirstName: string | undefined;
+    if (userJson) {
+      try {
+        const u = JSON.parse(userJson) as { name?: { firstName?: string }; email?: string };
+        appleFirstName = u.name?.firstName;
+        if (!appleEmail) appleEmail = u.email;
+      } catch { /* ignore */ }
+    }
+
+    if (!appleEmail && !appleSub) {
+      throw new Error("Could not determine Apple user identity — email and sub both missing");
+    }
+
+    // Apple private-relay addresses (privaterelay.appleid.com) are valid — accept them
+    const resolvedEmail = (appleEmail ?? `${appleSub}@apple-sub.local`).toLowerCase().trim();
+
+    if (!isEmailAllowed(resolvedEmail)) {
+      logger.warn({ email: resolvedEmail }, "[Auth] Apple login rejected — email not on allowlist");
+      res.redirect(`${publicUrl}/login.html?error=access_denied`);
+      return;
+    }
+
+    // ── Step 4: persist org settings (same pattern as Google OAuth) ─────────────
+    try {
+      const { upsertOrgSettings, loadOrgSettings: _loadAppleOrg } = await import("../services/org-settings.js");
+      const existing = await _loadAppleOrg(resolvedEmail).catch(() => null);
+      if (existing) {
+        await upsertOrgSettings(resolvedEmail, {
+          email:     resolvedEmail,
+          firstName: existing.firstName || appleFirstName,
+        });
+        logger.info({ email: resolvedEmail }, "[Auth] Apple login — existing org, billing preserved");
+      } else {
+        await upsertOrgSettings(resolvedEmail, {
+          email:              resolvedEmail,
+          firstName:          appleFirstName,
+          plan:               "standard",
+          subscriptionStatus: "pending_billing",
+        });
+        logger.info({ email: resolvedEmail }, "[Auth] Apple login — new org created with pending_billing");
+      }
+    } catch (orgErr) {
+      logger.warn({ err: orgErr }, "[Auth] Apple login — org_settings persist failed (non-fatal)");
+    }
+
+    // ── Step 5: create session ──────────────────────────────────────────────────
+    const sessionToken = await createSession({
+      userId: resolvedEmail,
+      orgId:  resolvedEmail,
+      email:  resolvedEmail,
+      role:   "owner",
+    });
+    const isProd = isDeployedProd();
+    res.cookie("fp_token", sessionToken, {
+      httpOnly: true,
+      secure:   isProd,
+      sameSite: isProd ? "none" : "lax",
+      maxAge:   SESSION_TTL_MS,
+      path:     "/",
+    });
+
+    logger.info({ email: resolvedEmail }, "[Auth] Apple login successful");
+    res.redirect(`${publicUrl}/dashboard.html?provider=apple`);
+
+  } catch (err) {
+    logger.error({ err }, "[Auth] Apple callback failed");
+    res.redirect(`${publicUrl}/login.html?error=apple_auth_failed`);
+  }
 });
 
 // ── Dev-only session endpoint (Playwright / CI auth bypass) ──────────────────
