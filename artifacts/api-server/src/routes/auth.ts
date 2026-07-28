@@ -1303,13 +1303,6 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
           return;
         }
 
-        // ── S7: subscription status ───────────────────────────────────
-        const blockedStatuses = ["pending_billing", "canceled", "incomplete"];
-        if (blockedStatuses.includes(member.subscription_status)) {
-          res.status(402).json({ error: "Votre abonnement n'est pas actif. Veuillez régulariser votre situation.", redirectTo: "/signin.html" });
-          return;
-        }
-
         sessionOrgId    = member.organization_id;
         sessionRole     = member.role;
         sessionUserUuid = user.id;
