@@ -610,7 +610,9 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
                   await stripe.customers.update(preRegCustomerId, {
                     ...(!_piEcFull.name ? { name: _piCustomerData.name } : {}),
                     preferred_locales: ["fr"],
-                    ...(_piAddr?.line1 && !_piEcFull.address ? { address: _piCustomerData.address as Parameters<typeof stripe.customers.update>[1]["address"] } : {}),
+                    ...(_piAddr?.line1 && !_piEcFull.address && _piCustomerData.address
+                      ? { address: _piCustomerData.address as import("stripe").Stripe.AddressParam }
+                      : {}),
                   }).catch(() => {});
                 }
                 logger.info({ customerId: preRegCustomerId }, "[PublicBilling] payment-intent: reusing stored Stripe Customer");
@@ -629,7 +631,9 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
               await stripe.customers.update(preRegCustomerId, {
                 ...(!_piFoundFull.name ? { name: _piCustomerData.name } : {}),
                 preferred_locales: ["fr"],
-                ...(_piAddr?.line1 && !_piFoundFull.address ? { address: _piCustomerData.address as Parameters<typeof stripe.customers.update>[1]["address"] } : {}),
+                ...(_piAddr?.line1 && !_piFoundFull.address && _piCustomerData.address
+                  ? { address: _piCustomerData.address as import("stripe").Stripe.AddressParam }
+                  : {}),
               }).catch(() => {});
               logger.info({ customerId: preRegCustomerId, email: _piEmail }, "[PublicBilling] payment-intent: found existing customer by email");
               break;
@@ -785,8 +789,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
   const _billingCtxForCheckout = _lbc ? await _lbc(_authenticatedOrgId).catch(() => null) : null;
   const _checkoutCanStartTrial = _billingCtxForCheckout?.canStartTrial ?? false;
   // Expose to the rest of the handler via locals (the handler reads from intent metadata + body)
-  (req as Record<string, unknown>)["_authenticatedOrgId"]    = _authenticatedOrgId;
-  (req as Record<string, unknown>)["_checkoutCanStartTrial"] = _checkoutCanStartTrial;
+  (req as unknown as Record<string, unknown>)["_authenticatedOrgId"]    = _authenticatedOrgId;
+  (req as unknown as Record<string, unknown>)["_checkoutCanStartTrial"] = _checkoutCanStartTrial;
 
   try {
     const { default: Stripe } = await import("stripe");
@@ -937,8 +941,12 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     try {
       /* 1. Retrieve PM billing_details — populated by Stripe Address Element on confirm */
       const _fcPmFull = await stripe.paymentMethods.retrieve(paymentMethodId!).catch(() => null);
-      const _fcPmBd   = _fcPmFull?.billing_details ?? {};
-      const _fcPmAddr = _fcPmBd.address;
+      const _fcPmBd   = (_fcPmFull?.billing_details ?? null) as {
+        name?:    string | null;
+        email?:   string | null;
+        address?: { line1?: string | null; line2?: string | null; city?: string | null; postal_code?: string | null; country?: string | null; state?: string | null } | null;
+      } | null;
+      const _fcPmAddr = _fcPmBd?.address;
 
       /* 2. Load signup row (name/email/company fallback) */
       const _fcPrt2 = preRegisterToken || intentMeta["pre_register_token"] || "";
@@ -962,8 +970,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       }
 
       /* 3. Merge: prefer signup for name/email, PM billing_details for address */
-      const _fcFinalName  = _fcSignupName  || _fcPmBd.name  || "";
-      const _fcFinalEmail = _fcSignupEmail || _fcPmBd.email || "";
+      const _fcFinalName  = _fcSignupName  || _fcPmBd?.name  || "";
+      const _fcFinalEmail = _fcSignupEmail || _fcPmBd?.email || "";
       const _fcHasPmAddr  = !!(_fcPmAddr?.line1 && _fcPmAddr?.country);
 
       const _fcUpdate: Parameters<typeof stripe.customers.update>[1] = {
