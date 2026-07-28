@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { randomBytes, createHash, createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify } from "crypto";
+import { randomBytes, randomUUID, createHash, createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify } from "crypto";
 
 /** SHA-256 hex digest — used to hash checkout_post_tokens before DB storage. */
 function sha256hex(s: string): string {
@@ -44,6 +44,123 @@ async function storeMagicToken(token: string, email: string): Promise<void> {
   } finally {
     client.release();
   }
+}
+
+/**
+ * UUID v4 format pattern — used to guard DB queries on organizations.id (UUID column in prod).
+ * Non-UUID orgIds (e.g. legacy email-as-orgId) must never reach organizations.id comparisons.
+ */
+const ORG_ID_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Resolve or create a UUID-keyed organizations row for a legacy user.
+ *
+ * Called from:
+ *   S3-legacy  — user not yet in `users` table (completely legacy)
+ *   S6-fallback — user in `users` but no active organization_members entry
+ *
+ * Guarantees:
+ *  - Returns a valid UUID orgId, NEVER an email string.
+ *  - Idempotent: ON CONFLICT DO NOTHING on every INSERT.
+ *  - All operations are individual pool.query calls (no transaction needed —
+ *    partial progress is safe: a redundant row on retry is harmless).
+ *
+ * Throws on DB error → propagates to outer S2-S7 catch → 503.
+ */
+async function resolveOrCreateLegacyOrg({
+  email,
+  userUuid,
+  orgSettings,
+  traceId,
+  step,
+}: {
+  email: string;
+  userUuid: string | undefined;
+  orgSettings: {
+    plan?: string | null;
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
+    subscriptionStatus?: string | null;
+    orgName?: string | null;
+  } | null;
+  traceId: string;
+  step: string;
+}): Promise<{ orgId: string; userUuid: string }> {
+  // ── Step A: ensure a users row exists and get its UUID ──────────────────────
+  let resolvedUserUuid = userUuid;
+  if (!resolvedUserUuid) {
+    // S3-legacy path: user not in `users` — create it now.
+    const freshUuid = randomUUID();
+    await pool.query(
+      `INSERT INTO users (id, email, status, email_verified, auth_provider)
+       VALUES ($1::uuid, $2, 'active', true, 'magic_link')
+       ON CONFLICT (email) DO NOTHING`,
+      [freshUuid, email],
+    );
+    const uRow = await pool.query<{ id: string }>(
+      `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+      [email],
+    );
+    resolvedUserUuid = uRow.rows[0]?.id ?? freshUuid;
+    logger.info({ trace: traceId, step },
+      `[LV-TRACE][${traceId}] ${step} — users row ensured`);
+  }
+
+  // ── Step B: look for an existing UUID org keyed by owner_email ─────────────
+  const existing = await pool.query<{ id: string }>(
+    `SELECT id FROM organizations
+      WHERE owner_email = $1 AND status != 'deleted'
+      LIMIT 1`,
+    [email],
+  );
+  if (existing.rows.length > 0) {
+    const orgId = existing.rows[0].id;
+    await pool.query(
+      `INSERT INTO organization_members
+         (id, organization_id, user_id, role, status, joined_at)
+       VALUES (gen_random_uuid(), $1, $2::uuid, 'owner', 'active', NOW())
+       ON CONFLICT (organization_id, user_id) DO NOTHING`,
+      [orgId, resolvedUserUuid],
+    );
+    logger.info({ trace: traceId, step },
+      `[LV-TRACE][${traceId}] ${step} — found UUID org by owner_email`);
+    return { orgId, userUuid: resolvedUserUuid };
+  }
+
+  // ── Step C: create a new UUID organizations row from org_settings data ──────
+  const newOrgId = randomUUID();
+  const slug = email.split("@")[0]!.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 63);
+  await pool.query(
+    `INSERT INTO organizations
+       (id, name, slug, owner_user_id, owner_email, status, plan,
+        stripe_customer_id, stripe_subscription_id, subscription_status)
+     VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, $9)
+     ON CONFLICT (id) DO NOTHING`,
+    [
+      newOrgId,
+      orgSettings?.orgName || slug,
+      slug,
+      resolvedUserUuid,
+      email,
+      (orgSettings?.plan || "standard").toLowerCase(),
+      orgSettings?.stripeCustomerId || null,
+      orgSettings?.stripeSubscriptionId || null,
+      orgSettings?.subscriptionStatus || "none",
+    ],
+  );
+
+  // Create the membership row
+  await pool.query(
+    `INSERT INTO organization_members
+       (id, organization_id, user_id, role, status, joined_at)
+     VALUES (gen_random_uuid(), $1, $2::uuid, 'owner', 'active', NOW())
+     ON CONFLICT (organization_id, user_id) DO NOTHING`,
+    [newOrgId, resolvedUserUuid],
+  );
+
+  logger.info({ trace: traceId, step },
+    `[LV-TRACE][${traceId}] ${step} — created new UUID org from org_settings data`);
+  return { orgId: newOrgId, userUuid: resolvedUserUuid };
 }
 
 /**
@@ -1141,10 +1258,14 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
         res.status(402).json({ error: "Votre compte n'est pas encore activé. Veuillez compléter votre inscription.", redirectTo: "/signin.html" });
         return;
       }
-      logger.info({ trace: traceId, email }, `[LV-TRACE][${traceId}] S3-legacy OK — legacy session`);
-      sessionOrgId    = email;
+      // Resolve or create a UUID org — never store email as orgId.
+      const s3Result = await resolveOrCreateLegacyOrg({
+        email, userUuid: undefined, orgSettings: orgCheck, traceId, step: "S3-legacy",
+      });
+      logger.info({ trace: traceId }, `[LV-TRACE][${traceId}] S3-legacy OK — UUID org resolved`);
+      sessionOrgId    = s3Result.orgId;
       sessionRole     = "owner";
-      sessionUserUuid = undefined;
+      sessionUserUuid = s3Result.userUuid;
 
     } else {
       const user = userRow.rows[0]!;
@@ -1202,10 +1323,14 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
           res.status(402).json({ error: "Votre compte n'est pas encore activé. Veuillez compléter votre inscription.", redirectTo: "/signin.html" });
           return;
         }
-        logger.info({ trace: traceId, email, userId: user.id }, `[LV-TRACE][${traceId}] S6-fallback OK — legacy org session`);
-        sessionOrgId    = email;
+        // Resolve or create a UUID org — never store email as orgId.
+        const s6Result = await resolveOrCreateLegacyOrg({
+          email, userUuid: user.id, orgSettings: orgFallback, traceId, step: "S6-fallback",
+        });
+        logger.info({ trace: traceId }, `[LV-TRACE][${traceId}] S6-fallback OK — UUID org resolved`);
+        sessionOrgId    = s6Result.orgId;
         sessionRole     = "owner";
-        sessionUserUuid = user.id;
+        sessionUserUuid = s6Result.userUuid;
 
       } else {
         const member = memberRow.rows[0]!;

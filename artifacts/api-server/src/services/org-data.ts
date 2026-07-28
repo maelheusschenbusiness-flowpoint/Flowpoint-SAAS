@@ -12,12 +12,19 @@
  *   - ÉCRITURES → organizations EN PREMIER, puis miroir org_settings
  *     Le miroir sera supprimé lors du Jalon 7 (drop org_settings).
  *
- * IMPORTANT : organizations.id = orgId (email string) — identique à org_settings.org_id.
- * Cette égalité est garantie par le seed init-data-tables.ts et le webhook d'activation.
+ * IMPORTANT : organizations.id est un UUID en production (colonne UUID Supabase).
+ * Ne jamais écrire un email ou une valeur non-UUID dans organizations.id.
+ * Utiliser UUID_RE pour valider orgId avant toute requête sur organizations.id.
  */
 
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+
+/**
+ * UUID v4 guard — organizations.id is a UUID column in production (Supabase).
+ * Any query using a non-UUID orgId against organizations.id causes 22P02 → 503.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface OrgBillingData {
   /** Plan : 'standard' | 'pro' | 'ultra' */
@@ -73,51 +80,57 @@ export type PersistOrgFields = {
 export async function loadOrgData(orgId: string): Promise<OrgBillingData | null> {
   if (!orgId || orgId === "default") return null;
 
-  const client = await pool.connect();
-  try {
-    const r = await client.query<{
-      plan: string;
-      subscription_status: string | null;
-      stripe_customer_id: string | null;
-      stripe_subscription_id: string | null;
-      trial_ends_at: string | null;
-      trial_consumed_at: string | null;
-      trial_started_at: string | null;
-      addons: Record<string, unknown> | null;
-      pending_plan: string | null;
-      pending_plan_date: string | null;
-      owner_email: string | null;
-      owner_first_name: string | null;
-      name: string | null;
-    }>(
-      `SELECT plan, subscription_status, stripe_customer_id, stripe_subscription_id,
-              trial_ends_at, trial_consumed_at, trial_started_at,
-              addons, pending_plan, pending_plan_date,
-              owner_email, owner_first_name, name
-       FROM organizations WHERE id = $1 LIMIT 1`,
-      [orgId],
-    );
+  // Guard: non-UUID orgId cannot match organizations.id (UUID column in prod) — skip to fallback.
+  if (UUID_RE.test(orgId)) {
+    const client = await pool.connect();
+    try {
+      const r = await client.query<{
+        plan: string;
+        subscription_status: string | null;
+        stripe_customer_id: string | null;
+        stripe_subscription_id: string | null;
+        trial_ends_at: string | null;
+        trial_consumed_at: string | null;
+        trial_started_at: string | null;
+        addons: Record<string, unknown> | null;
+        pending_plan: string | null;
+        pending_plan_date: string | null;
+        owner_email: string | null;
+        owner_first_name: string | null;
+        name: string | null;
+      }>(
+        `SELECT plan, subscription_status, stripe_customer_id, stripe_subscription_id,
+                trial_ends_at, trial_consumed_at, trial_started_at,
+                addons, pending_plan, pending_plan_date,
+                owner_email, owner_first_name, name
+         FROM organizations WHERE id = $1 LIMIT 1`,
+        [orgId],
+      );
 
-    if (r.rows.length > 0) {
-      const row = r.rows[0];
-      return {
-        plan:                 (row.plan || "standard").toLowerCase(),
-        subscriptionStatus:   row.subscription_status ?? null,
-        stripeCustomerId:     row.stripe_customer_id || null,
-        stripeSubscriptionId: row.stripe_subscription_id || null,
-        trialEndsAt:          row.trial_ends_at ? new Date(row.trial_ends_at).toISOString() : null,
-        trialConsumedAt:      row.trial_consumed_at ? new Date(row.trial_consumed_at).toISOString() : null,
-        trialStartedAt:       row.trial_started_at ? new Date(row.trial_started_at).toISOString() : null,
-        addons:               (row.addons && typeof row.addons === "object") ? row.addons as Record<string, unknown> : {},
-        pendingPlan:          row.pending_plan ?? null,
-        pendingPlanDate:      row.pending_plan_date ?? null,
-        email:                row.owner_email ?? null,
-        firstName:            row.owner_first_name ?? null,
-        orgName:              row.name ?? null,
-      };
+      if (r.rows.length > 0) {
+        const row = r.rows[0];
+        return {
+          plan:                 (row.plan || "standard").toLowerCase(),
+          subscriptionStatus:   row.subscription_status ?? null,
+          stripeCustomerId:     row.stripe_customer_id || null,
+          stripeSubscriptionId: row.stripe_subscription_id || null,
+          trialEndsAt:          row.trial_ends_at ? new Date(row.trial_ends_at).toISOString() : null,
+          trialConsumedAt:      row.trial_consumed_at ? new Date(row.trial_consumed_at).toISOString() : null,
+          trialStartedAt:       row.trial_started_at ? new Date(row.trial_started_at).toISOString() : null,
+          addons:               (row.addons && typeof row.addons === "object") ? row.addons as Record<string, unknown> : {},
+          pendingPlan:          row.pending_plan ?? null,
+          pendingPlanDate:      row.pending_plan_date ?? null,
+          email:                row.owner_email ?? null,
+          firstName:            row.owner_first_name ?? null,
+          orgName:              row.name ?? null,
+        };
+      }
+    } finally {
+      client.release();
     }
-  } finally {
-    client.release();
+  } else {
+    logger.debug({ orgIdShape: orgId.includes("@") ? "email" : "non-uuid" },
+      "[OrgData] non-UUID orgId — skipping organizations table, using org_settings directly");
   }
 
   // Fallback : org_settings pour les comptes legacy pas encore dans organizations
@@ -160,7 +173,16 @@ export async function persistOrgData(orgId: string, fields: PersistOrgFields): P
   }
   if (Object.keys(fields).length === 0) return;
 
-  // ── 1. Écriture principale → organizations ──────────────────────────────
+  // Guard: non-UUID orgId (legacy email-as-orgId in surviving sessions) cannot be
+  // used in organizations.id (UUID column in prod) — INSERT would throw 22P02.
+  // Skip the organizations write; proceed to the org_settings mirror only.
+  const orgIdIsUuid = UUID_RE.test(orgId);
+  if (!orgIdIsUuid) {
+    logger.warn({ orgIdShape: orgId.includes("@") ? "email" : "non-uuid" },
+      "[OrgData] persistOrgData: non-UUID orgId — skipping organizations write, org_settings only");
+  }
+
+  // ── 1. Écriture principale → organizations (UUID orgId only) ───────────
   const sets: string[] = [];
   const vals: unknown[] = [];
   let n = 2; // $1 = orgId
@@ -181,21 +203,23 @@ export async function persistOrgData(orgId: string, fields: PersistOrgFields): P
   if (sets.length === 0) return;
   sets.push("updated_at = NOW()");
 
-  try {
-    const client = await pool.connect();
+  if (orgIdIsUuid) {
     try {
-      await client.query(
-        `INSERT INTO organizations (id) VALUES ($1)
-         ON CONFLICT (id) DO UPDATE SET ${sets.join(", ")}`,
-        [orgId, ...vals],
-      );
-      logger.debug({ orgId, keys: Object.keys(fields) }, "[OrgData] organizations mis à jour");
-    } finally {
-      client.release();
+      const client = await pool.connect();
+      try {
+        await client.query(
+          `INSERT INTO organizations (id) VALUES ($1)
+           ON CONFLICT (id) DO UPDATE SET ${sets.join(", ")}`,
+          [orgId, ...vals],
+        );
+        logger.debug({ orgId, keys: Object.keys(fields) }, "[OrgData] organizations mis à jour");
+      } finally {
+        client.release();
+      }
+    } catch (primaryErr) {
+      logger.error({ primaryErr, orgId, fields }, "[OrgData] Échec écriture organizations");
+      throw primaryErr; // rethrow — caller should handle
     }
-  } catch (primaryErr) {
-    logger.error({ primaryErr, orgId, fields }, "[OrgData] Échec écriture organizations");
-    throw primaryErr; // rethrow — caller should handle
   }
 
   // ── 2. Miroir → org_settings (non-fatal) ───────────────────────────────

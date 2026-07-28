@@ -22,10 +22,43 @@ const isProd = () => process.env["NODE_ENV"] === "production" && !process.env["R
  * Retourne "standard" si l'org est introuvable (moindre privilège).
  * Retourne null uniquement en cas d'erreur DB en production (appelant doit refuser).
  */
+/**
+ * UUID v4 guard — organizations.id is a UUID column in production.
+ * An orgId that is not UUID-shaped (e.g. a legacy email-as-orgId) must never
+ * reach the `WHERE id = $1` query or PostgreSQL throws 22P02.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function resolvePlanFromDB(req: Request): Promise<string | null> {
   const orgId = (req as { orgId?: string }).orgId;
 
   if (!orgId || orgId === "default") return "standard";
+
+  // Guard: non-UUID orgId (legacy email-as-orgId in surviving sessions) cannot be
+  // used against organizations.id (UUID column in prod) — that produces 22P02 → 503.
+  // Route directly to org_settings to serve the request without crashing.
+  if (!UUID_RE.test(orgId)) {
+    logger.warn({ orgIdShape: orgId.includes("@") ? "email" : "non-uuid" },
+      "[PlanGate] non-UUID orgId — routing to org_settings only (legacy session)");
+    try {
+      const client = await pool.connect();
+      try {
+        const legacy = await client.query<{ plan: string }>(
+          `SELECT plan FROM org_settings WHERE org_id = $1 LIMIT 1`,
+          [orgId],
+        );
+        return legacy.rows.length > 0
+          ? (legacy.rows[0].plan || "standard").toLowerCase()
+          : "standard";
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      logger.error({ err }, "[PlanGate] org_settings fallback failed for non-UUID orgId");
+      if (isProd()) return null;
+      return "standard";
+    }
+  }
 
   try {
     const client = await pool.connect();
