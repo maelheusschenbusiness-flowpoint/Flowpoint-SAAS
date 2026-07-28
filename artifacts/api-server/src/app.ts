@@ -306,7 +306,8 @@ app.get("/.well-known/security.txt", (_req: Request, res: Response): void => {
 // ── Frontend page routes ──────────────────────────────────────────────────────
 // Landing / Signup page — public marketing & auth entry point
 app.get("/index.html", (_req: Request, res: Response) => res.redirect(301, "/signin.html"));
-app.get(["/", "/index", "/signup", "/inscription", "/signin", "/signin.html"], servePage("signin.html"));
+app.get("/", (_req: Request, res: Response) => res.redirect(301, "/signin.html"));
+app.get(["/index", "/signup", "/inscription", "/signin", "/signin.html"], servePage("signin.html"));
 // Dashboard — primary app entry point (authenticated)
 app.get(["/dashboard", "/dashboard.html", "/api/dashboard", "/api/dashboard/", "/api/dashboard/dashboard.html"], servePage("dashboard.html"));
 // Login (kept for direct link access / legacy)
