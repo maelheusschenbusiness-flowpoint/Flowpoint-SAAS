@@ -400,6 +400,8 @@
     /* Stamp cart with version + org + timestamp before saving */
     if (cart) { cart._v = 1; cart._orgId = _fpAuthOrgId; cart._updatedAt = Date.now(); }
     try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
+    /* Pass trial eligibility to the payment page */
+    try { sessionStorage.setItem('fp_trial_days', _fpCanStartTrial ? '14' : '0'); } catch(e) {}
     btn.disabled = true;
     document.getElementById('fp-btn-text').textContent = 'Redirection…';
     document.getElementById('fp-spinner').style.display = 'inline-block';

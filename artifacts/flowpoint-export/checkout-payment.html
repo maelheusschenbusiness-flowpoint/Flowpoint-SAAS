@@ -236,6 +236,13 @@
   };
   var PLAN_INCLUDED = { standard: [], pro: ['whiteLabel'], ultra: ['whiteLabel', 'agencyPacks'] };
 
+  /* ── Trial days (set by checkout.html before navigating here; default 14 for new signups) ── */
+  var _trialDaysRemaining = 14;
+  try {
+    var _tdRaw = sessionStorage.getItem('fp_trial_days');
+    if (_tdRaw !== null) _trialDaysRemaining = Math.max(0, parseInt(_tdRaw, 10) || 0);
+  } catch(e) {}
+
   /* ── Cart ── */
   var cart = null;
   try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
