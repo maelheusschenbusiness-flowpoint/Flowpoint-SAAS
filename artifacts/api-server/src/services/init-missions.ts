@@ -75,6 +75,31 @@ export async function initMissionsTables(): Promise<void> {
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'manual';
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS source_data JSONB DEFAULT '{}';
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS assigned_to TEXT;
+
+      -- Self-heal: columns added to CREATE TABLE after initial deploy may be absent
+      -- on existing Render instances. All ALTER TABLE … ADD COLUMN IF NOT EXISTS are
+      -- idempotent — safe to run on every boot via the fast-path.
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS estimated_traffic_impact  REAL DEFAULT 0;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS estimated_revenue_impact  REAL DEFAULT 0;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS estimated_seo_impact      REAL DEFAULT 0;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS estimated_conversion_impact REAL DEFAULT 0;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS difficulty_score          INTEGER DEFAULT 50;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS business_impact_score     INTEGER DEFAULT 50;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS ai_explanation            TEXT;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS ai_action_steps           JSONB DEFAULT '[]';
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS ai_quick_win              BOOLEAN DEFAULT false;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS ai_reasoning              TEXT;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS ai_summary                TEXT;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS history                   JSONB DEFAULT '[]';
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS last_refreshed_at         TIMESTAMP;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS completed_at              TIMESTAMP;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS dismissed_at              TIMESTAMP;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS due_date                  TEXT;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS steps                     JSONB DEFAULT '[]';
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS priority_score            INTEGER DEFAULT 50;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS type                      TEXT DEFAULT 'action';
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS impact                    TEXT DEFAULT 'Moyen';
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS effort                    TEXT DEFAULT '1h';
     `);
     logger.info("Missions tables initialized");
   } catch (err) {

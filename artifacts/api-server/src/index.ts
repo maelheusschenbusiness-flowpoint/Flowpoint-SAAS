@@ -140,6 +140,13 @@ async function main() {
       logger.warn({ err }, "[startup] new-signup-schema step failed (non-fatal)");
     });
 
+    // Missions schema self-heal — runs on every boot so new columns added after initial
+    // Pre-Deploy are applied to existing Render instances (all statements are idempotent).
+    await runCriticalStartupStep("init-missions", initMissionsTables)
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] init-missions step failed (non-fatal)");
+      });
+
     // Phase 1 — New user architecture (non-destructive, runs on every boot)
     await runCriticalStartupStep("phase1-users", initPhase1Users)
       .catch((err: unknown) => {
