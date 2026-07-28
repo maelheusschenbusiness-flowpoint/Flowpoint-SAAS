@@ -12,6 +12,7 @@ import { authRateLimit } from "../middlewares/rateLimiter.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { Resend } from "resend";
 import { pool } from "@workspace/db";
+import { loadOrgSettings } from "../services/org-settings.js";
 
 const router = Router();
 
@@ -79,6 +80,38 @@ async function atomicConsumeToken(token: string): Promise<
   } finally {
     client.release();
   }
+}
+
+/**
+ * Read-only token peek — checks validity WITHOUT consuming.
+ * Because the token is not marked used, any transient failure in the subsequent
+ * pre-session checks leaves it available for retry.
+ */
+async function peekToken(token: string): Promise<
+  | { ok: true; email: string }
+  | { ok: false; reason: "not_found" | "already_used" | "expired" }
+> {
+  const check = await pool.query<{ email: string; used: boolean; expires_at: Date }>(
+    `SELECT email, used, expires_at FROM magic_link_tokens WHERE token = $1`,
+    [token]
+  );
+  if (!check.rows[0]) return { ok: false, reason: "not_found" };
+  if (check.rows[0].used) return { ok: false, reason: "already_used" };
+  if (new Date(check.rows[0].expires_at) <= new Date()) return { ok: false, reason: "expired" };
+  return { ok: true, email: check.rows[0].email as string };
+}
+
+/**
+ * Atomic final consumption — called only after all pre-session checks have passed.
+ * UPDATE … WHERE used=false prevents double-consumption if two concurrent requests
+ * both survived the peek.
+ */
+async function finalConsumeToken(token: string): Promise<{ consumed: boolean }> {
+  const result = await pool.query(
+    `UPDATE magic_link_tokens SET used = true WHERE token = $1 AND used = false RETURNING email`,
+    [token]
+  );
+  return { consumed: result.rows.length > 0 };
 }
 
 /**
@@ -968,21 +1001,22 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
   }
   const token = tokenRaw.trim();
 
-  // ── Step 1: Atomic token consumption ─────────────────────────────────────
-  // Single UPDATE...RETURNING eliminates TOCTOU race — two concurrent requests
-  // cannot both succeed for the same token.
-  let consumed: Awaited<ReturnType<typeof atomicConsumeToken>>;
+  // ── Step 1: Peek token (read-only) ───────────────────────────────────────
+  // We verify validity WITHOUT consuming. Token is only marked used after ALL
+  // pre-session checks pass (Step 7 below). This ensures any transient failure
+  // during the checks leaves the token intact so the user can retry.
+  let peeked: Awaited<ReturnType<typeof peekToken>>;
   try {
-    consumed = await atomicConsumeToken(token);
+    peeked = await peekToken(token);
   } catch (dbErr) {
     const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
-    logger.error({ err: msg }, "[Auth] login-verify: DB error consuming token");
+    logger.error({ err: msg }, "[Auth] login-verify: DB error peeking token");
     res.status(500).json({ error: "Erreur base de données. Veuillez réessayer." });
     return;
   }
 
-  if (!consumed.ok) {
-    switch (consumed.reason) {
+  if (!peeked.ok) {
+    switch (peeked.reason) {
       case "already_used":
         res.status(410).json({ error: "Ce lien a déjà été utilisé. Demandez un nouveau lien si nécessaire." });
         return;
@@ -995,13 +1029,13 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     }
   }
 
-  const email = consumed.email;
+  const email = peeked.email;
 
   // ── Steps 2-7: Six mandatory pre-session checks ───────────────────────────
   // All six must pass before any session is created.
   // Uses the new architecture (users + organization_members + organizations)
   // with a graceful fallback to org_settings for legacy accounts not yet migrated.
-  const { pool: pgPool } = await import("@workspace/db");
+  // NOTE: token is NOT consumed yet — any failure here leaves it intact for retry.
   let sessionOrgId: string;
   let sessionRole: string;
   let sessionUserUuid: string | undefined;
@@ -1009,13 +1043,13 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
   try {
     // Parallel fetch: user record + org membership via new architecture
     const [userRow, memberRow] = await Promise.all([
-      pgPool.query<{
+      pool.query<{
         id: string; status: string; email_verified: boolean;
       }>(
         `SELECT id, status, email_verified FROM users WHERE email = $1`,
         [email]
       ),
-      pgPool.query<{
+      pool.query<{
         organization_id: string; role: string; status: string; org_status: string; subscription_status: string;
       }>(
         `SELECT om.organization_id, om.role, om.status AS member_status,
@@ -1034,8 +1068,7 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     // Check 2: utilisateur existant
     if (userRow.rows.length === 0) {
       // Graceful fallback: legacy account not yet in users table
-      const { loadOrgSettings: _checkOrg } = await import("../services/org-settings.js");
-      const orgCheck = await _checkOrg(email).catch(() => null);
+      const orgCheck = await loadOrgSettings(email).catch(() => null);
       if (orgCheck === null) {
         logger.warn({ email }, "[Auth] login-verify: CHECK 2 FAIL — no account found");
         res.status(404).json({
@@ -1084,8 +1117,7 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
       // Check 5: appartenance à une organisation + rôle valide
       if (memberRow.rows.length === 0) {
         // No membership in new table — fallback to org_settings for legacy owners
-        const { loadOrgSettings: _fallback } = await import("../services/org-settings.js");
-        const orgFallback = await _fallback(email).catch(() => null);
+        const orgFallback = await loadOrgSettings(email).catch(() => null);
         if (!orgFallback) {
           logger.warn({ email }, "[Auth] login-verify: CHECK 5 FAIL — no org membership");
           res.status(403).json({
@@ -1137,19 +1169,28 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     // Restore it (used=false) so the user can click the link again without being locked out.
     // This is safe: every logical failure (account not found, suspended, wrong role, etc.)
     // returns early above via res.status().json() — only genuine exceptions reach here.
-    logger.error({ err: guardErr, email }, "[Auth] login-verify: Pre-session guard threw — restoring token for retry");
-    try {
-      await pool.query(
-        `UPDATE magic_link_tokens SET used = false WHERE token = $1 AND used = true`,
-        [token]
-      );
-      logger.info({ email }, "[Auth] login-verify: token restored — user may retry");
-    } catch (restoreErr) {
-      logger.warn({ err: restoreErr, email }, "[Auth] login-verify: token restore failed (best-effort)");
-    }
+    // Token was NOT consumed (peekToken was read-only) — user can retry by clicking the link again
+    logger.error({ err: guardErr, email }, "[Auth] login-verify: 6-check threw — token untouched, user may retry");
     res.status(503).json({
       error: "Erreur temporaire. Veuillez réessayer en cliquant à nouveau sur le lien de connexion.",
     });
+    return;
+  }
+
+  // ── Step 7: Atomic token consumption (checks all passed) ─────────────────
+  // Now that all pre-session checks have passed, consume the token atomically.
+  // Uses UPDATE … WHERE used=false to guard against concurrent requests that
+  // also passed the peek (race condition window is tiny but handled correctly).
+  try {
+    const { consumed } = await finalConsumeToken(token);
+    if (!consumed) {
+      // Another concurrent request consumed the token between peek and now
+      res.status(410).json({ error: "Ce lien a déjà été utilisé. Demandez un nouveau lien si nécessaire." });
+      return;
+    }
+  } catch (consumeErr) {
+    logger.error({ err: consumeErr, email }, "[Auth] login-verify: finalConsumeToken failed");
+    res.status(503).json({ error: "Erreur temporaire. Veuillez réessayer en cliquant à nouveau sur le lien de connexion." });
     return;
   }
 
@@ -1168,7 +1209,7 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
   });
 
   // Update last_login_at in users table (fire-and-forget)
-  pgPool.query(`UPDATE users SET last_login_at = NOW() WHERE email = $1`, [email])
+  pool.query(`UPDATE users SET last_login_at = NOW() WHERE email = $1`, [email])
     .catch((err) => logger.warn({ err, email }, "[Auth] login-verify: last_login_at update failed"));
 
   logger.info({ email, orgId: sessionOrgId, role: sessionRole }, "[Auth] Magic link verified — session started");
