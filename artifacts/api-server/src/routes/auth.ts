@@ -1133,8 +1133,23 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
       }
     }
   } catch (guardErr) {
-    logger.error({ err: guardErr, email }, "[Auth] login-verify: Pre-session guard threw — session blocked");
-    res.status(500).json({ error: "Erreur de vérification. Veuillez réessayer." });
+    // A transient DB/runtime error occurred AFTER the token was atomically consumed.
+    // Restore it (used=false) so the user can click the link again without being locked out.
+    // This is safe: every logical failure (account not found, suspended, wrong role, etc.)
+    // returns early above via res.status().json() — only genuine exceptions reach here.
+    logger.error({ err: guardErr, email }, "[Auth] login-verify: Pre-session guard threw — restoring token for retry");
+    try {
+      await pool.query(
+        `UPDATE magic_link_tokens SET used = false WHERE token = $1 AND used = true`,
+        [token]
+      );
+      logger.info({ email }, "[Auth] login-verify: token restored — user may retry");
+    } catch (restoreErr) {
+      logger.warn({ err: restoreErr, email }, "[Auth] login-verify: token restore failed (best-effort)");
+    }
+    res.status(503).json({
+      error: "Erreur temporaire. Veuillez réessayer en cliquant à nouveau sur le lien de connexion.",
+    });
     return;
   }
 
