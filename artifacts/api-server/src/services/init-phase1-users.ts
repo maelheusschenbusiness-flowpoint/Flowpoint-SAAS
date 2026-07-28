@@ -54,6 +54,15 @@ export async function initPhase1Users(): Promise<void> {
         CONSTRAINT users_email_unique UNIQUE (email)
       );
     `);
+    // ── Self-healing: drop spurious FK users_id_fkey if present ─────────────────
+    // On deployments originally exported from Supabase, public.users(id) was created
+    // with a FK to auth.users(id) (Supabase auth schema).  On Render (vanilla PG,
+    // no Supabase Auth service), auth.users does not exist, so any INSERT into
+    // public.users with a fresh UUID violates the constraint (23503).
+    // This FK has no functional purpose outside Supabase — drop it unconditionally.
+    // IF EXISTS makes this a no-op on DBs where the constraint is already absent.
+    await run(client, `ALTER TABLE users DROP CONSTRAINT IF EXISTS users_id_fkey;`);
+
     // ── Self-healing: ensure every users column exists when the table predates this migration ──
     // CREATE TABLE IF NOT EXISTS is a no-op when the table already exists, so columns
     // added in later iterations of the schema definition (e.g. status, email_verified)
