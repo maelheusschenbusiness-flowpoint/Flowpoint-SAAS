@@ -776,6 +776,13 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       ? (addons as AddonsMap)
       : (() => { try { return JSON.parse(intentMeta["addons"] || "{}"); } catch { return {}; } })();
 
+    // Read trial_days_remaining from intent metadata (set by checkout-payment.html via /api/public/payment-intent).
+    // Clamped 0–90. Defaults to 14 when the field is absent (legacy intents before this field existed).
+    const _rawIntentTrialDays = intentMeta["trial_days_remaining"];
+    const intentTrialDays: number = _rawIntentTrialDays !== undefined && Number.isFinite(Number(_rawIntentTrialDays))
+      ? Math.max(0, Math.min(90, Math.round(Number(_rawIntentTrialDays))))
+      : 14;
+
     if (!PLAN_PRICE_IDS[planKey]) {
       /* AI credits only — no subscription needed */
       logger.info({ planKey }, "[PublicBilling] finalize: credits-only, no subscription");
@@ -877,14 +884,16 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       return;
     }
 
-    // Only grant 14-day trial when we have no prior subscription history on this customer
-    const grantTrial = !hasSubscriptionHistory;
-    logger.info({ planKey, grantTrial, hasSubscriptionHistory, customerId }, "[PublicBilling] finalize: trial decision");
+    // Grant trial when there is no prior subscription history AND the intent carries trial days > 0.
+    // When trial_days_remaining === 0 the user's trial has already expired — bill immediately.
+    const grantTrial = !hasSubscriptionHistory && intentTrialDays > 0;
+    const trialEndUnix = grantTrial ? Math.floor(Date.now() / 1000) + intentTrialDays * 86400 : undefined;
+    logger.info({ planKey, grantTrial, intentTrialDays, hasSubscriptionHistory, customerId }, "[PublicBilling] finalize: trial decision");
 
     const planSubscription = await stripe.subscriptions.create({
       customer:               customerId,
       items:                  [{ price: planPriceId, quantity: 1 }],
-      ...(grantTrial ? { trial_period_days: 14 } : {}),
+      ...(trialEndUnix !== undefined ? { trial_end: trialEndUnix } : {}),
       default_payment_method: paymentMethodId,
       metadata: {
         plan:           planKey,
@@ -936,7 +945,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         stripeCustomerId:     customerId!,
         stripeSubscriptionId: planSubscription.id,
         plan:                 planKey,
-        ...(grantTrial ? { trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() } : {}),
+        ...(trialEndUnix !== undefined ? { trialEndsAt: new Date(trialEndUnix * 1000).toISOString() } : {}),
       });
       logger.info({ orgId: _authenticatedOrgId, planKey }, "[PublicBilling] finalize: subscription persisted to DB");
     } catch (_fcPodErr) {
@@ -995,7 +1004,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                 _fcAOrgId.replace(/[^a-z0-9]/gi,"-").toLowerCase().slice(0,60),
                 _fcUserId, planKey, grantTrial ? "trialing" : "active",
                 _fcAEmail, customerId ?? null,
-                grantTrial ? new Date(Date.now()+14*24*60*60*1000).toISOString() : null,
+                trialEndUnix !== undefined ? new Date(trialEndUnix * 1000).toISOString() : null,
               ]
             );
             await _fcActTxC.query(
