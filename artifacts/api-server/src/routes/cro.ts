@@ -12,7 +12,9 @@ type OrgReq = Request & {
 };
 const db = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
-router.use(requireFeature("cro", "CRO AI"));
+// Gate scoped to /cro/* only — path-less router.use() would intercept every route
+// mounted after this router in index.ts (same catch-all pattern as behavioral.ts).
+router.use("/cro", requireFeature("cro", "CRO AI"));
 
 async function assertSiteOwnership(req: OrgReq, siteUrl: string, res: Response): Promise<boolean> {
   const orgId = req.orgId ?? "default";

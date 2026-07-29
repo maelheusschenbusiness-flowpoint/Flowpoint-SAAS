@@ -5,8 +5,10 @@ import { withCache } from "../middlewares/cacheControl.js";
 
 const router = Router();
 
-// All forecast endpoints require the 'forecastingAI' feature flag (Pro plan and above)
-router.use(requireFeature("forecastingAI", "AI Forecasting"));
+// All forecast endpoints require the 'forecastingAI' feature flag (Pro plan and above).
+// Gate scoped to /forecast/* only — path-less router.use() would intercept every route
+// mounted after this router in index.ts (same catch-all pattern as behavioral.ts).
+router.use("/forecast", requireFeature("forecastingAI", "AI Forecasting"));
 
 router.get("/forecast", withCache(60), async (req: Request, res: Response) => {
   // orgId is resolved server-side from the authenticated session — never trusted from client

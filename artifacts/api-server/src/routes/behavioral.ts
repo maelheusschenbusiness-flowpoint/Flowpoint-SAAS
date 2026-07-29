@@ -372,7 +372,9 @@ router.get("/behavioral/status", async (req: Request, res: Response) => {
   }
 });
 
-router.use(requireFeature("behavioralAI", "Behavioral AI"));
+// Gate scoped to /behavioral/* only — must NOT be a path-less catch-all or it intercepts
+// every unmatched route that reaches this router (26+ route files mounted after it in index.ts).
+router.use("/behavioral", requireFeature("behavioralAI", "Behavioral AI"));
 
 router.get("/behavioral/insights", async (req: Request, res: Response) => {
   try {

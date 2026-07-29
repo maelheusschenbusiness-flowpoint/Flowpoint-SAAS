@@ -1,3 +1,4 @@
+- [Router catch-all plan gate pattern](router-catchall-plangate.md) — router.use(requireFeature()) with no path prefix intercepts ALL unmatched routes; always path-scope it
 - [Nav item delegation fix](nav-delegation-fix.md) — nav + infinite-skeleton regressions share root cause: delegation must be at IIFE global scope, not inside bindGlobalEvents()
 - [FlowPoint production context](flowpoint-context.md) — 10-phase spec, full mock inventory, P0/P1/P2 blockers; read before any session
 - [org_settings → organizations migration](org-settings-migration-complete.md) — 7 jalons done; organizations is sole billing source; column name map; what still reads org_settings (profile only)
