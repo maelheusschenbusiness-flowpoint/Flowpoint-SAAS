@@ -34,7 +34,7 @@ router.post("/addons/:key/activate", async (req: Request, res: Response) => {
   }
   const ok = await activateAddon(key, orgId);
   if (ok) {
-    store.logActivity({ type: "billing", label: `Add-on activé : ${key}`, targetId: key, targetType: "addon" }).catch(err => console.warn("[logActivity]", err?.message));
+    store.logActivity({ type: "billing", label: `Add-on activé : ${key}`, targetId: key, targetType: "addon", orgId }).catch(err => console.warn("[logActivity]", err?.message));
     store.broadcast({ type: "fp:addon:activated", addonKey: key }, orgId);
     const freshAddons = await getOrgAddons(orgId);
     res.json({ ok: true, addonKey: key, addons: freshAddons });
@@ -48,7 +48,7 @@ router.post("/addons/:key/deactivate", async (req: Request, res: Response) => {
   const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
   const ok = await deactivateAddon(key, orgId);
   if (ok) {
-    store.logActivity({ type: "billing", label: `Add-on désactivé : ${key}`, targetId: key, targetType: "addon" }).catch(err => console.warn("[logActivity]", err?.message));
+    store.logActivity({ type: "billing", label: `Add-on désactivé : ${key}`, targetId: key, targetType: "addon", orgId }).catch(err => console.warn("[logActivity]", err?.message));
     store.broadcast({ type: "fp:addon:deactivated", addonKey: key }, orgId);
   }
   res.json({ ok, addonKey: key });

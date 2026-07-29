@@ -2,6 +2,7 @@ import { pool } from "@workspace/db";
 import { store } from "./store.js";
 import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
+import { loadOrgData } from "./org-data.js";
 import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
@@ -53,16 +54,16 @@ export const ADDON_CATALOG = [
 
 // ── Usage tracking ────────────────────────────────────────────────────────────
 export async function getUsageSummary(orgId = "default") {
-  const me = store.me;
-  const _dbData = await loadOrgSettings(orgId).catch(() => null);
-  const plan = (_dbData?.plan || me.plan || "standard").toLowerCase();
+  // Always read from DB — never from store.me singleton
+  const orgData = await loadOrgData(orgId).catch(() => null);
+  const plan = (orgData?.plan || "standard").toLowerCase();
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.standard;
 
-  const extraMonitors = (me.addons as Record<string, number>)["monitorsPack50"] || 0;
-  const extraSeats = (me.addons as Record<string, number>)["extraSeats"] || 0;
+  const addons = (orgData?.addons ?? {}) as Record<string, number | boolean>;
+  const extraMonitors = Number(addons["monitorsPack50"] ?? 0);
+  const extraSeats    = Number(addons["extraSeats"]    ?? 0);
 
   const client = await pool.connect();
-  const usage = (me as Record<string, unknown>).usage as Record<string, Record<string, number>> | undefined;
   try {
     const safeCount = async (query: string, params: unknown[]): Promise<number> => {
       try {
@@ -84,12 +85,12 @@ export async function getUsageSummary(orgId = "default") {
         audits:   { used: auditsUsed,   limit: limits.audits,   pct: Math.round((auditsUsed   / Math.max(limits.audits,   1)) * 100) },
         monitors: { used: monitorsUsed, limit: limits.monitors + extraMonitors * 50, pct: Math.round((monitorsUsed / Math.max(limits.monitors, 1)) * 100) },
         reports:  { used: reportsUsed,  limit: limits.reports,  pct: Math.round((reportsUsed  / Math.max(limits.reports,  1)) * 100) },
-        exports:  { used: usage?.exports?.used ?? 0, limit: limits.exports, pct: Math.round(((usage?.exports?.used ?? 0) / Math.max(limits.exports, 1)) * 100) },
+        exports:  { used: 0,            limit: limits.exports,  pct: 0 },
         seats:    { used: seatsUsed,    limit: limits.teamMembers + extraSeats, pct: Math.round((seatsUsed / Math.max(limits.teamMembers, 1)) * 100) },
       },
-      addons: me.addons,
-      subscriptionStatus: me.subscriptionStatus,
-      trialEndsAt: me.trialEndsAt,
+      addons: orgData?.addons ?? {},
+      subscriptionStatus: orgData?.subscriptionStatus ?? "inactive",
+      trialEndsAt: orgData?.trialEndsAt ?? null,
     };
   } finally {
     client.release();
@@ -221,7 +222,7 @@ export async function trackBillingEvent(type: string, data: Record<string, unkno
     await client.query(
       `INSERT INTO billing_events (org_id, type, amount, currency, plan, metadata, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,now())`,
-      [orgId, type, data.amount ?? 0, data.currency ?? "eur", data.plan ?? store.me.plan, JSON.stringify(data)]
+      [orgId, type, data.amount ?? 0, data.currency ?? "eur", String(data.plan ?? "unknown"), JSON.stringify(data)]
     );
   } catch (err) {
     logger.warn({ err }, "[Billing] Failed to track billing event");
@@ -231,6 +232,11 @@ export async function trackBillingEvent(type: string, data: Record<string, unkno
 }
 
 export async function getMRRData(orgId = "default") {
+  // Load plan from DB — never from store.me singleton
+  const orgData = await loadOrgData(orgId).catch(() => null);
+  const plan = (orgData?.plan || "standard").toLowerCase();
+  const currentMRR = PLAN_DEFINITIONS[plan]?.priceEur ?? 0;
+
   const client = await pool.connect();
   try {
     const rows = await client.query(`
@@ -245,10 +251,6 @@ export async function getMRRData(orgId = "default") {
       GROUP BY 1 ORDER BY 1 DESC LIMIT 12
     `, [orgId]);
 
-    const me = store.me;
-    const plan = (me.plan || "standard").toLowerCase();
-    const currentMRR = PLAN_DEFINITIONS[plan]?.priceEur ?? 0;
-
     return {
       currentMRR,
       arr: currentMRR * 12,
@@ -261,9 +263,6 @@ export async function getMRRData(orgId = "default") {
       })),
     };
   } catch {
-    const me = store.me;
-    const plan = (me.plan || "standard").toLowerCase();
-    const currentMRR = PLAN_DEFINITIONS[plan]?.priceEur ?? 0;
     return { currentMRR, arr: currentMRR * 12, history: [] };
   } finally {
     client.release();
@@ -271,22 +270,25 @@ export async function getMRRData(orgId = "default") {
 }
 
 export async function getSubscriptionAnalytics(orgId = "default") {
-  const mrr = await getMRRData(orgId);
-  const usage = await getUsageSummary(orgId);
-  const me = store.me;
+  // All fields sourced from DB — never from store.me singleton
+  const [mrr, usage, orgData] = await Promise.all([
+    getMRRData(orgId),
+    getUsageSummary(orgId),
+    loadOrgData(orgId).catch(() => null),
+  ]);
 
-  const trialDaysLeft = me.trialEndsAt
-    ? Math.max(0, Math.ceil((new Date(me.trialEndsAt).getTime() - Date.now()) / 86400000))
+  const trialDaysLeft = orgData?.trialEndsAt
+    ? Math.max(0, Math.ceil((new Date(orgData.trialEndsAt).getTime() - Date.now()) / 86400000))
     : null;
 
   return {
     ...mrr,
     usage,
-    plan: me.plan,
-    subscriptionStatus: me.subscriptionStatus,
+    plan: orgData?.plan ?? "standard",
+    subscriptionStatus: orgData?.subscriptionStatus ?? "inactive",
     trialDaysLeft,
-    stripeCustomerId: me.stripeCustomerId,
-    addons: me.addons,
+    stripeCustomerId: orgData?.stripeCustomerId ?? null,
+    addons: orgData?.addons ?? {},
   };
 }
 
@@ -298,9 +300,6 @@ export async function startTrial(plan: string = "pro", days: number = 14, orgId 
       throw new Error("STRIPE_LIVE_API_KEY is required in production — cannot activate trial");
     }
     const trialEnd = new Date(Date.now() + days * 86400000).toISOString();
-    store.me.plan = plan;
-    store.me.subscriptionStatus = "trialing";
-    store.me.trialEndsAt = trialEnd;
     store.broadcastPlanUpdate(plan, orgId);
     logger.info({ plan, days }, "[Billing] Trial activated (dev mode — no Stripe key)");
     return { ok: true, trialEndsAt: trialEnd, plan, mock: true };
@@ -313,9 +312,6 @@ export async function startTrial(plan: string = "pro", days: number = 14, orgId 
     const planPriceId = PLAN_PRICE_IDS[plan.toLowerCase()];
     if (!planPriceId) {
       const trialEnd = new Date(Date.now() + days * 86400000).toISOString();
-      store.me.plan = plan;
-      store.me.subscriptionStatus = "trialing";
-      store.me.trialEndsAt = trialEnd;
       store.broadcastPlanUpdate(plan, orgId);
       return { ok: true, trialEndsAt: trialEnd, plan, noPrice: true };
     }
@@ -344,9 +340,6 @@ export async function startTrial(plan: string = "pro", days: number = 14, orgId 
     });
 
     const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : new Date(Date.now() + days * 86400000).toISOString();
-    store.me.plan = plan;
-    store.me.subscriptionStatus = "trialing";
-    store.me.trialEndsAt = trialEnd;
     store.broadcastPlanUpdate(plan, orgId);
 
     logger.info({ plan, days, subId: sub.id }, "[Billing] Stripe trial started");
@@ -443,7 +436,7 @@ export const PLAN_FEATURES: Record<string, string[]> = {
 };
 
 export function hasFeature(feature: string, plan?: string): boolean {
-  const p = (plan || store.me.plan || "standard").toLowerCase();
+  const p = (plan || "standard").toLowerCase();
   const features = PLAN_FEATURES[p] || PLAN_FEATURES.standard;
   if (p === "ultra") return true;
   return features.some(f => f === feature || f.startsWith(feature + ":"));

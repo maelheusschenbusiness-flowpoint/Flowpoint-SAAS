@@ -703,10 +703,9 @@ router.delete("/team/:id", canAdmin, async (req: Request, res: Response) => {
     return;
   }
 
-  // Revoke all sessions for this member (fire-and-forget)
   const memberEmail = member.email as string;
 
-  // Jalon 3 — dual-write removal to organization_members (fire-and-forget)
+  // Jalon 3 — dual-write removal to organization_members (fire-and-forget, migration utility)
   pool.query(
     `UPDATE organization_members om
      SET status = 'removed', updated_at = NOW()
@@ -714,10 +713,17 @@ router.delete("/team/:id", canAdmin, async (req: Request, res: Response) => {
      WHERE u.id = om.user_id AND lower(u.email) = lower($1) AND om.organization_id = $2`,
     [memberEmail, org]
   ).catch(err => logger.warn({ err: (err as Error).message }, "[team/delete] org_members dual-write failed (non-fatal)"));
+
+  // Session revocation is a security operation — must be awaited, never fire-and-forget
   if (memberEmail) {
-    invalidateAllSessions(memberEmail).catch(err =>
-      logger.warn({ err: (err as Error).message, maskedEmail: maskEmail(memberEmail) }, "[team/delete] session revocation failed")
-    );
+    try {
+      await invalidateAllSessions(memberEmail);
+    } catch (err) {
+      logger.error(
+        { err: (err as Error).message, maskedEmail: maskEmail(memberEmail) },
+        "[team/delete] SECURITY: session revocation failed — member removed from DB but sessions may remain valid until expiry"
+      );
+    }
   }
 
   logger.info({ orgId: org.slice(0, 20), memberId, maskedEmail: maskEmail(memberEmail) }, "[team/delete] member soft-removed");

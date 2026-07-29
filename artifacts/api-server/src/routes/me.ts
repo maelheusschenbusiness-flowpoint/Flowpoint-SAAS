@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { requireOrgId } from "../lib/require-org-id.js";
-import { store } from "../services/store.js";
+
 import { PLAN_LIMITS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
 import { loadOrgData }                         from "../services/org-data.js";
@@ -290,29 +290,31 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
 router.put("/me/addons", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
-  const body   = req.body as Partial<typeof store.me.addons>;
+  const body = req.body as Partial<Record<string, boolean | number>>;
 
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     res.status(400).json({ ok: false, error: "Invalid addons payload — expected an object" }); return;
   }
 
-  if (typeof body.whiteLabel      === "boolean") store.me.addons.whiteLabel      = body.whiteLabel;
-  if (typeof body.prioritySupport === "boolean") store.me.addons.prioritySupport = body.prioritySupport;
-  if (typeof body.customDomain    === "boolean") store.me.addons.customDomain    = body.customDomain;
-  if (typeof body.extraSeats      === "number" && body.extraSeats     >= 0) store.me.addons.extraSeats     = Math.floor(body.extraSeats);
-  if (typeof body.monitorsPack50  === "number" && body.monitorsPack50 >= 0) store.me.addons.monitorsPack50 = Math.floor(body.monitorsPack50);
+  // Load current addons from DB — never from store.me singleton
+  const orgData = await loadOrgData(orgId).catch(() => null);
+  const currentAddons: Record<string, boolean | number> = { ...(orgData?.addons ?? {}) as Record<string, boolean | number> };
+
+  if (typeof body.whiteLabel      === "boolean") currentAddons.whiteLabel      = body.whiteLabel;
+  if (typeof body.prioritySupport === "boolean") currentAddons.prioritySupport = body.prioritySupport;
+  if (typeof body.customDomain    === "boolean") currentAddons.customDomain    = body.customDomain;
+  if (typeof body.extraSeats      === "number" && body.extraSeats     >= 0) currentAddons.extraSeats     = Math.floor(body.extraSeats);
+  if (typeof body.monitorsPack50  === "number" && body.monitorsPack50 >= 0) currentAddons.monitorsPack50 = Math.floor(body.monitorsPack50);
 
   try {
-    await upsertOrgSettings(orgId, {
-      addons: store.me.addons,
-    });
+    await upsertOrgSettings(orgId, { addons: currentAddons });
   } catch {
     res.status(500).json({ ok: false, error: "Failed to persist addons — try again" }); return;
   }
 
   const current = await loadOrgSettings(orgId);
   const limits = PLAN_LIMITS[(current?.plan ?? "standard").toLowerCase()] ?? PLAN_LIMITS["standard"];
-  res.json({ ok: true, addons: store.me.addons, limits });
+  res.json({ ok: true, addons: currentAddons, limits });
 });
 
 // ── GET /api/me/prefs ─────────────────────────────────────────────────────────

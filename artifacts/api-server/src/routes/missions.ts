@@ -360,7 +360,7 @@ router.post("/missions", canWrite, async (req: Request, res: Response) => {
     await store.logActivity({
       type: "report", label: `Mission créée : ${title}`,
       targetId: id, targetType: "mission",
-      metadata: { category, impact },
+      metadata: { category, impact }, orgId: org,
     }).catch(() => {});
 
     res.status(201).json(mission);
@@ -438,7 +438,7 @@ router.patch("/missions/:id", canWrite, async (req: Request, res: Response) => {
         await store.logActivity({
           type: "report", label: `Mission accomplie : ${prev.title}`,
           targetId: id, targetType: "mission",
-          metadata: { category: prev.category, impact: prev.impact },
+          metadata: { category: prev.category, impact: prev.impact }, orgId: org,
         }).catch(() => {});
       }
     }
@@ -467,7 +467,7 @@ router.delete("/missions/:id", canWrite, async (req: Request, res: Response) => 
     await store.logActivity({
       type: "report", label: `Mission supprimée : ${existing.rows[0].title}`,
       targetId: req.params.id, targetType: "mission",
-      metadata: { category: existing.rows[0].category },
+      metadata: { category: existing.rows[0].category }, orgId: org,
     }).catch(() => {});
 
     res.json({ ok: true });

@@ -88,7 +88,7 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
 
     store.logActivity({
       type: "audit", label: `Audit lancé : ${normalizedUrl}`,
-      targetId: auditId, targetType: "audit", metadata: { url: normalizedUrl, origin },
+      targetId: auditId, targetType: "audit", metadata: { url: normalizedUrl, origin }, orgId,
     }).catch(err => logger.error({ err }, "[audits] logActivity failed"));
 
     // Async PSI analysis — runs after response is sent.
@@ -129,6 +129,7 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
           targetId: auditId,
           targetType: "audit",
           metadata: { url: normalizedUrl, score, status },
+          orgId,
         }).catch(err => logger.error({ err }, "[audits] logActivity (complete) failed"));
       } catch {
         await pool.query(

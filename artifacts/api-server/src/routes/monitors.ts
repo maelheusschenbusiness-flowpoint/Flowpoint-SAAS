@@ -283,6 +283,7 @@ async function saveCheckResult(
           targetId: monitorId,
           targetType: "monitor",
           metadata: { url: String(mon.url), kind: notifyAfterCommit!.kind },
+          orgId,
         }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
         // Resolve recipient using the 3-tier priority chain:
@@ -621,7 +622,7 @@ router.post("/monitors", monitorCreateRateLimit, canWrite, async (req: Request, 
     const row = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
     store.logActivity({
       type: "monitor", label: `Monitor créé : ${name} (${url})`,
-      targetId: id, targetType: "monitor", metadata: { url, name },
+      targetId: id, targetType: "monitor", metadata: { url, name }, orgId,
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
     res.status(201).json(toPublic(row.rows[0]));
@@ -743,6 +744,7 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
           label: `Ping ${String(monitor["name"])} — ${newStatus.toUpperCase()} (${result.latencyMs}ms)`,
           targetId: id, targetType: "monitor",
           metadata: { url: monitor["url"], responseTime: result.latencyMs, status: newStatus },
+          orgId,
         }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
         store.broadcast({ type: "monitor:ping", monitorId: id, status: newStatus, responseTime: result.latencyMs }, orgId);
         res.json({
@@ -777,6 +779,7 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
       label: `Ping ${String(monitor["name"])} — ${newStatus.toUpperCase()} (${result.latencyMs}ms)`,
       targetId: id, targetType: "monitor",
       metadata: { url: monitor["url"], responseTime: result.latencyMs, status: newStatus },
+      orgId,
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
     store.broadcast({ type: "monitor:ping", monitorId: id, status: newStatus, responseTime: result.latencyMs }, orgId);
@@ -883,6 +886,7 @@ router.delete("/monitors/:id", canAdmin, async (req: Request, res: Response) => 
       label: `Monitor supprimé : ${String(m["name"])} (${String(m["url"])})`,
       targetId: id, targetType: "monitor",
       metadata: { url: m["url"], name: m["name"] },
+      orgId: String(m["org_id"] ?? (req as Record<string, unknown>)["orgId"] ?? "default"),
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
     res.json({ ok: true });

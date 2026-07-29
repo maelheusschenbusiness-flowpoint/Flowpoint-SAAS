@@ -3,6 +3,8 @@ import { logger } from "../lib/logger.js";
 
 export interface ActivityLog {
   id?: string;
+  /** Tenant org — required for proper isolation. Defaults to "default" if omitted. */
+  orgId?: string;
   type: string;
   label: string;
   targetId?: string;
@@ -71,7 +73,8 @@ class Store {
    * This is the single authoritative way to change the active plan.
    */
   broadcastPlanUpdate(plan: string, orgId = "default"): void {
-    this.me.plan = plan;
+    // Do NOT mutate this.me.plan — singleton contamination causes cross-tenant leakage.
+    // Plan state is authoritative in the DB; callers must use loadOrgData() to read it.
     this.broadcast({ type: "billing:plan_updated", plan }, orgId);
 
     // Persist to DB so plan survives server restarts — fire-and-forget
@@ -125,17 +128,26 @@ class Store {
     limit: number;
     offset: number;
     type?: string;
+    orgId?: string;
   }): Promise<ActivityLog[]> {
-    const { limit, offset, type } = opts;
+    const { limit, offset, type, orgId } = opts;
     try {
       const client = await pool.connect();
       try {
         const values: unknown[] = [limit, offset];
-        let where = "";
+        const conditions: string[] = [];
+
+        // Always filter by org_id — tenants must only see their own events
+        const resolvedOrg = orgId && orgId !== "default" ? orgId : "default";
+        values.push(resolvedOrg);
+        conditions.push(`org_id = $${values.length}`);
+
         if (type) {
           values.push(type);
-          where = `WHERE type = $${values.length}`;
+          conditions.push(`type = $${values.length}`);
         }
+        const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
         const r = await client.query(
           `SELECT id, type, label,
                   target_id   AS "targetId",
@@ -168,10 +180,10 @@ class Store {
       try {
         const id = `act_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         await client.query(
-          `INSERT INTO activity_logs (id, type, label, target_id, target_type, metadata, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,NOW())
+          `INSERT INTO activity_logs (id, org_id, type, label, target_id, target_type, metadata, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
            ON CONFLICT (id) DO NOTHING`,
-          [id, opts.type, opts.label, opts.targetId ?? null, opts.targetType ?? null, JSON.stringify(opts.metadata ?? {})]
+          [id, opts.orgId ?? "default", opts.type, opts.label, opts.targetId ?? null, opts.targetType ?? null, JSON.stringify(opts.metadata ?? {})]
         );
       } finally {
         client.release();

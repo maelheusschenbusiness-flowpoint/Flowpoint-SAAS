@@ -179,7 +179,7 @@ router.post("/seo/content-optimization", canWrite, withQuota(async (req, res) =>
   try {
     const data = await getContentOptimization(url, "seo local", orgId);
     await store.logActivity({
-      type: "audit", label: `Analyse de contenu : ${url}`, targetId: url, targetType: "url",
+      type: "audit", label: `Analyse de contenu : ${url}`, targetId: url, targetType: "url", orgId,
     }).catch(() => {});
     res.json(data);
   } catch (e) {

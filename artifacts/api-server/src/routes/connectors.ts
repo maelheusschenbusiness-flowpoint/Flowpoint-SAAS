@@ -98,7 +98,7 @@ router.post("/connectors/:provider/connect", requireAdmin, async (req: Request, 
         lastSync: new Date().toISOString(),
         syncStatus: "ok",
       }).where(eq(connectorsTable.provider, provider)).returning();
-      store.logActivity({ type: "team", label: `Connecteur ${provider} connecté`, targetType: "connector" }).catch(err => console.warn("[logActivity]", err?.message));
+      store.logActivity({ type: "team", label: `Connecteur ${provider} connecté`, targetType: "connector", orgId: (req as unknown as Record<string, string>)["orgId"] ?? "default" }).catch(err => console.warn("[logActivity]", err?.message));
       res.json({ ok: true, connector: { ...updated, accessToken: "••••••", webhookSecret: null } });
     } else {
       const [created] = await db.insert(connectorsTable).values({
@@ -112,7 +112,7 @@ router.post("/connectors/:provider/connect", requireAdmin, async (req: Request, 
         lastSync: new Date().toISOString(),
         syncStatus: "ok",
       }).returning();
-      store.logActivity({ type: "team", label: `Connecteur ${provider} connecté`, targetType: "connector" }).catch(err => console.warn("[logActivity]", err?.message));
+      store.logActivity({ type: "team", label: `Connecteur ${provider} connecté`, targetType: "connector", orgId: (req as unknown as Record<string, string>)["orgId"] ?? "default" }).catch(err => console.warn("[logActivity]", err?.message));
       res.status(201).json({ ok: true, connector: { ...created, accessToken: "••••••", webhookSecret: null } });
     }
   } catch (e) {
@@ -126,7 +126,7 @@ router.post("/connectors/:provider/disconnect", requireAdmin, async (req: Reques
     await db.update(connectorsTable).set({
       status: "disconnected", connected: false, accessToken: null, refreshToken: null, webhookSecret: null, syncStatus: "idle",
     }).where(eq(connectorsTable.provider, provider));
-    store.logActivity({ type: "team", label: `Connecteur ${provider} déconnecté`, targetType: "connector" }).catch(err => console.warn("[logActivity]", err?.message));
+    store.logActivity({ type: "team", label: `Connecteur ${provider} déconnecté`, targetType: "connector", orgId: (req as unknown as Record<string, string>)["orgId"] ?? "default" }).catch(err => console.warn("[logActivity]", err?.message));
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to disconnect" });
@@ -173,7 +173,7 @@ router.post("/connectors/slack/webhook", async (req: Request, res: Response) => 
   if (type === "event_callback" && event) {
     const slackOrgId = await resolveConnectorOrg("slack");
     store.broadcast({ type: "slack:message", text: event.text, user: event.user }, slackOrgId);
-    store.logActivity({ type: "team", label: `Slack: ${event.text?.slice(0, 80) || "message reçu"}`, targetType: "slack" }).catch(err => console.warn("[logActivity]", err?.message));
+    store.logActivity({ type: "team", label: `Slack: ${event.text?.slice(0, 80) || "message reçu"}`, targetType: "slack", orgId: slackOrgId }).catch(err => console.warn("[logActivity]", err?.message));
   }
   res.json({ ok: true });
 });
@@ -187,7 +187,7 @@ router.post("/connectors/github/webhook", async (req: Request, res: Response) =>
     ? `GitHub PR: ${pull_request.title?.slice(0, 60)} (${action})`
     : `GitHub ${eventType}: ${repository?.name || ""} — ${pusher?.name || ""}`;
   const githubOrgId = await resolveConnectorOrg("github");
-  store.logActivity({ type: "team", label, targetType: "github" }).catch(err => console.warn("[logActivity]", err?.message));
+  store.logActivity({ type: "team", label, targetType: "github", orgId: githubOrgId }).catch(err => console.warn("[logActivity]", err?.message));
   store.broadcast({ type: "github:event", eventType, action, repo: repository?.name }, githubOrgId);
   res.json({ ok: true });
 });
