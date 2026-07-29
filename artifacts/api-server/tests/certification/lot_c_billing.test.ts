@@ -1,5 +1,5 @@
 /**
- * Lot C — Billing runtime integration tests T1-T21
+ * Lot C — Billing runtime integration tests T1-T22
  *
  * Runs an in-process Express server with the real billing router so that
  * setStripeForTesting() can inject a fake Stripe recorder.
@@ -134,8 +134,9 @@ function makeFakeStripe(opts: FakeStripeOptions = {}) {
 
     checkout: {
       sessions: {
-        create(params: unknown) {
-          (log["checkout.sessions.create"] ??= []).push([params]);
+        create(params: unknown, opts?: unknown) {
+          // Log both the session params and the Stripe request options (idempotencyKey lives here)
+          (log["checkout.sessions.create"] ??= []).push([params, opts]);
           return Promise.resolve({
             url:  "https://checkout.stripe.com/c/pay/fake_session",
             id:   "cs_fake",
@@ -796,6 +797,65 @@ async function runTests() {
       setStripeForTesting(null);
     }
 
+    // ── T22: two concurrent calls → same idempotencyKey, same URL, no DB update ──
+    // The 30-minute bucket produces a deterministic idempotencyKey for both requests.
+    // In real Stripe the second create() with an identical key returns the cached session;
+    // the fake records both calls so we can verify the keys match and the DB stays clean.
+    console.log("[T22] Two concurrent reactivation calls → same idempotencyKey, same URL, no DB update");
+    {
+      const tag = "t22"; tags.push(tag);
+      await createFreshOrg(tag, { stripe_customer_id: "cus_t22_concurrent" });
+      const token = await makeSession(tag, "owner");
+
+      const fakeStripe = makeFakeStripe({ openReactivationSession: false });
+      setStripeForTesting(fakeStripe);
+
+      // Fire both requests concurrently
+      const [rA, rB] = await Promise.all([
+        post(base, "/billing/upgrade", token, { plan: "pro" }),
+        post(base, "/billing/upgrade", token, { plan: "pro" }),
+      ]);
+      const [bodyA, bodyB] = await Promise.all([
+        rA.json() as Promise<Record<string, unknown>>,
+        rB.json() as Promise<Record<string, unknown>>,
+      ]);
+
+      assert("T22 both status 200",           rA.status === 200 && rB.status === 200,
+             `A=${rA.status} B=${rB.status}`);
+      assert("T22 both reactivation true",    bodyA["reactivation"] === true && bodyB["reactivation"] === true,
+             `A=${bodyA["reactivation"]} B=${bodyB["reactivation"]}`);
+      assert("T22 both return same URL",      bodyA["checkoutUrl"] === bodyB["checkoutUrl"],
+             `A=${bodyA["checkoutUrl"]} B=${bodyB["checkoutUrl"]}`);
+
+      // Verify both create() calls used the same idempotencyKey
+      const createCalls = fakeStripe.log["checkout.sessions.create"] ?? [];
+      const keyA = (createCalls[0]?.[1] as Record<string, unknown> | undefined)?.["idempotencyKey"];
+      const keyB = (createCalls[1]?.[1] as Record<string, unknown> | undefined)?.["idempotencyKey"];
+      assert("T22 idempotencyKey present on call A",   typeof keyA === "string" && (keyA as string).startsWith("fp-reactivation-"),
+             `keyA=${keyA}`);
+      assert("T22 idempotencyKey A === B (same bucket)", keyA === keyB,
+             `A="${keyA}" B="${keyB}"`);
+      assert("T22 key includes orgId",  (keyA as string).includes(orgId(tag)),
+             `key=${keyA}`);
+      assert("T22 key includes plan",   (keyA as string).includes("pro"),
+             `key=${keyA}`);
+
+      // DB must be unchanged — no local activation before webhook
+      const client22 = await pool.connect();
+      let dbStatus22 = "";
+      try {
+        const result = await client22.query<{ subscription_status: string }>(
+          `SELECT subscription_status FROM org_settings WHERE org_id = $1 LIMIT 1`,
+          [orgId(tag)],
+        );
+        dbStatus22 = result.rows[0]?.subscription_status ?? "";
+      } finally { client22.release(); }
+
+      assert("T22 DB still canceled", dbStatus22 === "canceled", `dbStatus=${dbStatus22}`);
+
+      setStripeForTesting(null);
+    }
+
   } finally {
     // setStripeForTesting must be called while NODE_ENV is still "test"
     // (we set it at the top of runTests).  Restoring originalNodeEnv afterward
@@ -814,7 +874,7 @@ async function runTests() {
 runTests()
   .then(() => {
     console.log("\n══════════════════════════════════════════");
-    console.log(` Lot C Billing — T1-T21 runtime results`);
+    console.log(` Lot C Billing — T1-T22 runtime results`);
     console.log("══════════════════════════════════════════");
     results.forEach(r => console.log(r));
     console.log(`\n  ${passed} passed / ${failed} failed / ${passed + failed} total`);

@@ -788,27 +788,39 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
       // Create a new Checkout Session, reusing the existing Stripe customer.
       // metadata.plan is consumed by the checkout.session.completed webhook to
       // update the DB — no direct persistOrgData() call here.
-      const session = await stripe.checkout.sessions.create({
-        customer:    billingCtx.stripeCustomerId,
-        mode:        "subscription",
-        line_items:  [{ price: priceId, quantity: 1 }],
-        success_url: `${publicUrl}/dashboard.html?plan_activated=1&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url:  `${publicUrl}/pricing.html`,
-        metadata: {
-          plan:         targetPlan,   // consumed by checkout.session.completed webhook
-          targetPlan,                 // for idempotency lookup on subsequent calls
-          orgId,
-          reactivation: "true",
-          userId:       String(req.userId ?? ""),
-        },
-        subscription_data: {
+      //
+      // idempotencyKey: 30-minute bucket prevents duplicate sessions on concurrent
+      // requests while still allowing a fresh session after the window expires.
+      // The bucket is passed as the Stripe SDK second-argument idempotencyKey, which
+      // is enforced server-side by Stripe — the pre-flight .list() check above handles
+      // the common case; this closes the remaining race window atomically.
+      const idempotencyBucket = Math.floor(Date.now() / (30 * 60 * 1000));
+      const idempotencyKey    = `fp-reactivation-${orgId}-${targetPlan}-${idempotencyBucket}`;
+
+      const session = await stripe.checkout.sessions.create(
+        {
+          customer:    billingCtx.stripeCustomerId,
+          mode:        "subscription",
+          line_items:  [{ price: priceId, quantity: 1 }],
+          success_url: `${publicUrl}/dashboard.html?plan_activated=1&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url:  `${publicUrl}/pricing.html`,
           metadata: {
-            plan:         targetPlan,
+            plan:         targetPlan,   // consumed by checkout.session.completed webhook
+            targetPlan,                 // for idempotency lookup on subsequent calls
             orgId,
             reactivation: "true",
+            userId:       String(req.userId ?? ""),
+          },
+          subscription_data: {
+            metadata: {
+              plan:         targetPlan,
+              orgId,
+              reactivation: "true",
+            },
           },
         },
-      });
+        { idempotencyKey },
+      );
 
       logger.info(
         { sessionId: session.id, orgId, targetPlan, customerId: billingCtx.stripeCustomerId },

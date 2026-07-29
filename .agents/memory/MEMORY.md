@@ -88,4 +88,5 @@
 - [pricing.html cart restoration](pricing-cart-restoration.md) — ?from=dashboard: read fp_cart, populate _cart silently, mark addons at DOMContentLoaded; do NOT call selectPlan (billing-state IIFE handles plan button)
 - [Auth migration v2](auth-migration-v2.md) — 4-phase migration (users/org_members/organizations); login-verify 6-check flow; org_settings readonly since 2026-07-27; drop target 2026-08-27
 - [Magic link 503 fix](magic-link-503-fix.md) — dynamic import inside try/catch causes 503 loop in prod bundle; fix: static import + peek-before-consume
+- [Reactivation checkout idempotency](reactivation-checkout-idempotency.md) — canceled+stripeCustomerId → new Checkout Session; two-layer idempotency: list pre-flight + idempotencyKey 2nd arg with 30-min bucket
 - [Missions fast-path schema gap](missions-fast-path-schema.md) — initMissionsTables was absent from fast-path; missing columns caused 500 on Render; fix: add to fast-path + full ALTER TABLE self-heal
