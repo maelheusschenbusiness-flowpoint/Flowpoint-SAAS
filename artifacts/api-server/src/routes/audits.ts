@@ -123,6 +123,13 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
         );
         evaluateAlertRulesForAudit(normalizedUrl, score, orgId).catch(() => {});
         store.broadcast({ type: "audit:complete", auditId, score, status }, orgId);
+        store.logActivity({
+          type: "audit",
+          label: `Audit terminé : ${normalizedUrl} — Score ${score}/100`,
+          targetId: auditId,
+          targetType: "audit",
+          metadata: { url: normalizedUrl, score, status },
+        }).catch(err => logger.error({ err }, "[audits] logActivity (complete) failed"));
       } catch {
         await pool.query(
           `UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`,

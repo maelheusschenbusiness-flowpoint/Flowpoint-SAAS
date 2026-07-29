@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { canWrite } from "../middlewares/requireRole.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -14,8 +15,9 @@ router.get("/activity", async (req: Request, res: Response) => {
 
     const events = await store.getFilteredActivity({ limit, offset: page * limit, type });
     res.json(events);
-  } catch {
-    res.json([]);
+  } catch (err) {
+    logger.error({ err }, "[activity] GET /activity failed");
+    res.status(500).json({ error: "activity_fetch_failed" });
   }
 });
 

@@ -136,11 +136,17 @@
   <aside class="fp-sidebar" id="fp-sidebar" role="navigation" aria-label="Navigation principale">
     <!-- Brand + collapse -->
     <div class="fp-brand">
-      <!-- Flowpoint.pro logo exact -->
+      <!-- FlowPoint gradient-bolt logo -->
       <div class="fp-brand-logo" aria-hidden="true">
-        <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
-          <rect width="32" height="32" rx="8" fill="#2563EB"/>
-          <path d="M18.5 4L8 17.5h8.5L14.5 28 24 14.5h-8.5L18.5 4z" fill="white" stroke="white" stroke-width="0.5" stroke-linejoin="round"/>
+        <svg width="32" height="32" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="fp-logo-grad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#2563EB"/>
+              <stop offset="100%" stop-color="#4F46E5"/>
+            </linearGradient>
+          </defs>
+          <rect width="48" height="48" rx="10" fill="url(#fp-logo-grad)"/>
+          <polygon points="30.5,16 20,29.5 28.5,29.5 26.5,40 36,26.5 27.5,26.5 30.5,16" fill="white" stroke="white" stroke-width="0.5" stroke-linejoin="round" transform="translate(-6,-4)"/>
         </svg>
       </div>
       <div class="fp-brand-text">
@@ -308,7 +314,7 @@
       </button>
       <!-- Breadcrumb -->
       <div class="fp-topbar-breadcrumb" id="fp-topbar-breadcrumb">
-        <svg width="14" height="14" viewBox="0 0 32 32" fill="none" style="flex-shrink:0"><rect width="32" height="32" rx="7" fill="#2563EB"/><path d="M18.5 4L8 17.5h8.5L14.5 28 24 14.5h-8.5L18.5 4z" fill="white"/></svg>
+        <svg width="14" height="14" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0"><defs><linearGradient id="fp-bc-grad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/></linearGradient></defs><rect width="48" height="48" rx="10" fill="url(#fp-bc-grad)"/><polygon points="30.5,16 20,29.5 28.5,29.5 26.5,40 36,26.5 27.5,26.5 30.5,16" fill="white" stroke="white" stroke-width="0.5" stroke-linejoin="round" transform="translate(-6,-4)"/></svg>
         <span class="fp-topbar-brand">FlowPoint</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--fp-text-faint)"><polyline points="9 18 15 12 9 6"/></svg>
         <span class="fp-topbar-page-name" id="fp-topbar-page-name">Vue d'ensemble</span>

@@ -1416,7 +1416,28 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS consumed_at      TIMESTAMPTZ`);
     await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`);
 
-    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations, local_pack_history, overview_insights_cache, overview_insights_rl, pending_signups ready");
+    // ── activity_logs — event feed for dashboard activity panel ────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS activity_logs (
+        id          TEXT        PRIMARY KEY,
+        org_id      TEXT        NOT NULL DEFAULT 'default',
+        type        TEXT        NOT NULL DEFAULT 'misc',
+        label       TEXT        NOT NULL DEFAULT '',
+        target_id   TEXT,
+        target_type TEXT,
+        metadata    JSONB       NOT NULL DEFAULT '{}',
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS activity_logs_org_created_idx ON activity_logs(org_id, created_at DESC);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS activity_logs_type_idx ON activity_logs(type);`);
+    // Self-healing columns — ensure rows from older schemas are compatible
+    await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS org_id      TEXT NOT NULL DEFAULT 'default'`);
+    await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS target_id   TEXT`);
+    await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS target_type TEXT`);
+    await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS metadata    JSONB NOT NULL DEFAULT '{}'`);
+
+    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations, local_pack_history, overview_insights_cache, overview_insights_rl, pending_signups, activity_logs ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
     throw err;

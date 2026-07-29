@@ -1066,7 +1066,9 @@ body::before {
   border: 1px solid rgba(37,99,235,0.2);
   border-radius: 14px;
   box-shadow: var(--fp-shadow-xl);
-  overflow: hidden;
+  max-height: 420px;
+  overflow-y: auto;
+  overflow-x: hidden;
   z-index: 500;
   animation: fp-scale-in 0.15s var(--fp-ease-spring);
 }
@@ -1803,7 +1805,8 @@ body::before {
 .fp-sidebar.collapsed {
   width: var(--fp-sidebar-collapsed-w);
   padding: 16px 8px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .fp-layout.sidebar-collapsed {

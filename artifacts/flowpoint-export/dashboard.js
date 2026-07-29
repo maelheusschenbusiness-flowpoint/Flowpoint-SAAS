@@ -2057,27 +2057,42 @@ const CMD_ITEMS = [
   { cat:'Audits & Technique', label:'Déploiements',            icon:'upload',       route:'deployments',        shortcut:'' },
   { cat:'Audits & Technique', label:'Intégration GitHub',      icon:'activity',     route:'github-integration', shortcut:'' },
   // ── Analyse & Performance ─────────────────────────────────────────
-  { cat:'Analyse & Performance', label:'Analytique',           icon:'bar-chart',    route:'analytics',          shortcut:'' },
+  { cat:'Analyse & Performance', label:'Analytics',            icon:'bar-chart',    route:'analytics',          shortcut:'' },
+  { cat:'Analyse & Performance', label:'Trafic',               icon:'trending-up',  route:'traffic',            shortcut:'' },
+  { cat:'Analyse & Performance', label:'Funnels',              icon:'filter',       route:'funnels',            shortcut:'' },
+  { cat:'Analyse & Performance', label:'Audience',             icon:'users',        route:'audience',           shortcut:'' },
+  { cat:'Analyse & Performance', label:'Campagnes',            icon:'zap',          route:'campaigns',          shortcut:'' },
+  { cat:'Analyse & Performance', label:'Live',                 icon:'wifi',         route:'live',               shortcut:'' },
   { cat:'Analyse & Performance', label:'Performance web',      icon:'zap',          route:'performance',        shortcut:'' },
   { cat:'Analyse & Performance', label:'Conversion',           icon:'trending-up',  route:'conversion',         shortcut:'' },
   { cat:'Analyse & Performance', label:'Core Web Vitals',      icon:'activity',     route:'core-web-vitals',    shortcut:'' },
   { cat:'Analyse & Performance', label:'Search Console',       icon:'search',       route:'search-console',     shortcut:'' },
-  { cat:'Analyse & Performance', label:'Explorateur de données',icon:'search',      route:'data-explorer',      shortcut:'' },
+  { cat:'Analyse & Performance', label:'Data Explorer',        icon:'search',       route:'data-explorer',      shortcut:'' },
   // ── Marketing & Contenu ───────────────────────────────────────────
-  { cat:'Marketing & Contenu', label:'Contenu',                icon:'file',         route:'growth',             shortcut:'' },
-  { cat:'Marketing & Contenu', label:'Campagnes',              icon:'zap',          route:'campaigns',          shortcut:'' },
+  { cat:'Marketing & Contenu', label:'Croissance',             icon:'file',         route:'growth',             shortcut:'' },
   { cat:'Marketing & Contenu', label:'Concurrents',            icon:'trending-up',  route:'competitor',         shortcut:'' },
   { cat:'Marketing & Contenu', label:'Local SEO',              icon:'pin',          route:'local-seo',          shortcut:'G L' },
   { cat:'Marketing & Contenu', label:'Market Intelligence',    icon:'trending-up',  route:'market-intelligence',shortcut:'' },
   // ── Monitoring & Alertes ──────────────────────────────────────────
   { cat:'Monitoring & Alertes', label:'Monitors',              icon:'wifi',         route:'monitors',           shortcut:'G M' },
-  { cat:'Monitoring & Alertes', label:'Alertes',               icon:'alert',        route:'alerts-center',      shortcut:'' },
   { cat:'Monitoring & Alertes', label:'Centre d\'alertes',     icon:'alert',        route:'alerts-center',      shortcut:'' },
+  { cat:'Monitoring & Alertes', label:'Activité',              icon:'activity',     route:'activity-feed',      shortcut:'' },
   // ── Équipe & Admin ────────────────────────────────────────────────
   { cat:'Équipe & Admin', label:'Équipe',                      icon:'users',        route:'team',               shortcut:'G T' },
-  { cat:'Équipe & Admin', label:'CRM Hub',                     icon:'users',        route:'crm',                shortcut:'' },
+  { cat:'Équipe & Admin', label:'Équipe › Chat',               icon:'users',        route:'team',               shortcut:'',
+    fn: () => { navigate('team'); setTimeout(() => navigateSub('chat'), 150); } },
+  { cat:'Équipe & Admin', label:'Équipe › Activité',           icon:'activity',     route:'team',               shortcut:'',
+    fn: () => { navigate('team'); setTimeout(() => navigateSub('activity'), 150); } },
+  { cat:'Équipe & Admin', label:'Équipe › Fichiers',           icon:'file',         route:'team',               shortcut:'',
+    fn: () => { navigate('team'); setTimeout(() => navigateSub('files'), 150); } },
   { cat:'Équipe & Admin', label:'Mode client',                 icon:'users',        route:'client-mode',        shortcut:'' },
   { cat:'Équipe & Admin', label:'Permissions',                 icon:'shield',       route:'permissions',        shortcut:'' },
+  { cat:'Équipe & Admin', label:'Paramètres › Sécurité',       icon:'shield',       route:'settings',           shortcut:'',
+    fn: () => { navigate('settings'); setTimeout(() => { STATE.subRoute='security'; render(); }, 150); } },
+  { cat:'Équipe & Admin', label:'Paramètres › Intégrations',   icon:'activity',     route:'settings',           shortcut:'',
+    fn: () => { navigate('settings'); setTimeout(() => { STATE.subRoute='integrations'; render(); }, 150); } },
+  { cat:'Équipe & Admin', label:'Paramètres › Canaux d\'alerte',icon:'alert',      route:'settings',           shortcut:'',
+    fn: () => { navigate('settings'); setTimeout(() => { STATE.subRoute='alerts'; render(); }, 150); } },
   { cat:'Équipe & Admin', label:'SSO SAML',             icon:'shield',       route:'settings',           shortcut:'',
     fn: () => { navigate('settings'); setTimeout(() => { window._ssoTab='providers'; render(STATE.currentSection); }, 150); } },
   { cat:'Équipe & Admin', label:'Authentification SSO',       icon:'shield',       route:'settings',           shortcut:'',
@@ -2197,10 +2212,22 @@ function _cmdComputeItems() {
   const competitorMatches = (STATE.competitors || []).filter(c =>
     (c.domain||c.name||'').toLowerCase().includes(q)
   ).slice(0, 3).map(c => ({
-    cat: 'Concurrents', label: c.domain || c.name, icon: 'trending-up', route: 'competitors', shortcut: ''
+    cat: 'Concurrents', label: c.domain || c.name, icon: 'trending-up', route: 'competitor', shortcut: ''
   }));
 
-  return [...filtered, ...auditMatches, ...monitorMatches, ...missionMatches, ...reportMatches, ...kwMatches, ...competitorMatches];
+  const alertRuleMatches = (STATE.alertRules || []).filter(r =>
+    (r.name||'').toLowerCase().includes(q) || (r.type||'').toLowerCase().includes(q)
+  ).slice(0, 3).map(r => ({
+    cat: 'Alertes', label: r.name || r.type, icon: 'alert', route: 'alerts-center', shortcut: ''
+  }));
+
+  const calendarMatches = (STATE.calendarEvents || []).filter(e =>
+    (e.title||e.name||'').toLowerCase().includes(q) || (e.url||'').toLowerCase().includes(q)
+  ).slice(0, 3).map(e => ({
+    cat: 'Calendrier', label: e.title || e.name || e.url, icon: 'activity', route: 'missions', shortcut: ''
+  }));
+
+  return [...filtered, ...auditMatches, ...monitorMatches, ...missionMatches, ...reportMatches, ...kwMatches, ...competitorMatches, ...alertRuleMatches, ...calendarMatches];
 }
 
 // ── Palette: render only the results pane (input untouched) ────────────────
@@ -2479,6 +2506,12 @@ async function handleChatAttach(input) {
   const from = STATE?.me?.firstName || STATE?.me?.name?.split(' ')[0] || 'Vous';
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+  // Capture any typed text from either chat input (team page or sub-page)
+  const textInput = document.getElementById('team-chat-input');
+  const typedText = (textInput && textInput.value.trim()) ? textInput.value.trim() : '';
+  const channel = STATE.msgChannel || 'general';
+
   for (const file of files) {
     try {
       const reader = new FileReader();
@@ -2495,13 +2528,22 @@ async function handleChatAttach(input) {
         sharedBy: from,
       }).catch(() => null);
       if (r && r.ok) {
-        const msg = `📎 ${file.name}`;
-        STATE.teamChatHistory.push({ from, msg, time, fileId: r.file?.id });
-        try { await apiAction('POST', '/api/team/messages', { channel: 'general', from, text: msg, self: true }); } catch(_) {}
+        // Build message text: include typed text if provided, otherwise just file link
+        const attachMsg = typedText ? `${typedText}\n📎 ${file.name}` : `📎 ${file.name}`;
+        STATE.teamChatHistory.push({ from, msg: attachMsg, time, fileId: r.file?.id });
+        try {
+          await apiAction('POST', '/api/team/messages', { channel, from, text: attachMsg, self: true });
+        } catch(_) {}
+      } else {
+        showToast('error', `Échec de l'envoi de ${file.name}`);
       }
     } catch(e) { showToast('error', `Erreur envoi ${file.name}`); }
   }
+
+  // Clear both the file input and any typed text
   input.value = '';
+  if (textInput) textInput.value = '';
+
   if (STATE.subRoute === 'chat') {
     navigateSub('chat');
     setTimeout(() => { const msgs = document.getElementById('team-chat-msgs'); if (msgs) msgs.scrollTop = msgs.scrollHeight; }, 60);
@@ -7234,8 +7276,8 @@ function renderTeam() {
 
     <!-- TEAM STATS -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Membres actifs', (STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : STATE.team.length + '/' + (1+(me.addons.extraSeats||0))), 'seats utilisés', 'neutral')}
-      ${statCard('Messages aujourd\'hui', STATE.channelMessages ? String(Object.values(STATE.channelMessages).reduce((n,arr)=>n+(Array.isArray(arr)?arr.length:0),0)) : '—', 'messages dans les canaux', 'neutral')}
+      ${statCard('Membres actifs', (STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : (STATE.team||[]).length + '/' + (1+(me?.addons?.extraSeats||0))), 'seats utilisés', 'neutral')}
+      ${statCard('Messages aujourd\'hui', (STATE.channelMessages && typeof STATE.channelMessages === 'object') ? String(Object.values(STATE.channelMessages).reduce((n,arr)=>n+(Array.isArray(arr)?arr.length:0),0)) : '—', 'messages dans les canaux', 'neutral')}
       ${statCard('Fichiers partagés', STATE.teamFiles && STATE.teamFiles.length > 0 ? String(STATE.teamFiles.length) : '—', STATE.teamFiles && STATE.teamFiles.length > 0 ? 'fichiers partagés' : 'Aucun fichier partagé', 'neutral')}
       ${statCard('Tâches assignées', STATE.missions && STATE.missions.length > 0 ? String(STATE.missions.length) : '—', STATE.missions && STATE.missions.length > 0 ? 'missions actives' : 'Aucune mission', 'neutral')}
     </div>
@@ -7245,14 +7287,14 @@ function renderTeam() {
       <div style="display:flex;flex-direction:column">
         <div class="fp-table-wrap fp-mb-16">
           <div style="padding:14px 20px;border-bottom:1px solid var(--fp-border);display:flex;align-items:center;justify-content:space-between">
-            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Membres (${STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : STATE.team.length + '/' + (1+(me.addons.extraSeats||0))} seats)</div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.pendingInvitations.length > 0 ? STATE.pendingInvitations.length + ' invitation(s) en attente · ' : ''}${STATE.seatUsage ? STATE.seatUsage.limit - STATE.seatUsage.used : 1+(me.addons.extraSeats||0)-STATE.team.length} siège(s) libre(s)</div>
+            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Membres (${STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : (STATE.team||[]).length + '/' + (1+(me?.addons?.extraSeats||0))} seats)</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${(STATE.pendingInvitations||[]).length > 0 ? (STATE.pendingInvitations||[]).length + ' invitation(s) en attente · ' : ''}${STATE.seatUsage ? STATE.seatUsage.limit - STATE.seatUsage.used : 1+(me?.addons?.extraSeats||0)-(STATE.team||[]).length} siège(s) libre(s)</div>
           </div>
-          ${STATE.team.map((t,i)=>`
+          ${(STATE.team||[]).map((t,i)=>`
             <div class="fp-team-member-row" data-member-id="${t.id}" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:${i<STATE.team.length-1?'1px solid rgba(255,255,255,0.04)':'none'}">
-              <div style="width:36px;height:36px;border-radius:12px;background:${roleColors[t.role]||'#2563EB'}20;display:flex;align-items:center;justify-content:center;font-weight:700;color:${roleColors[t.role]||'#2563EB'};font-size:14px;flex-shrink:0">${escHtml(t.name.charAt(0))}</div>
+              <div style="width:36px;height:36px;border-radius:12px;background:${roleColors[t.role]||'#2563EB'}20;display:flex;align-items:center;justify-content:center;font-weight:700;color:${roleColors[t.role]||'#2563EB'};font-size:14px;flex-shrink:0">${escHtml((t.name||t.email||'?').charAt(0))}</div>
               <div style="flex:1;min-width:0">
-                <div style="font-size:13px;font-weight:600;color:var(--fp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.name)}</div>
+                <div style="font-size:13px;font-weight:600;color:var(--fp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.name||t.email||'')}</div>
                 <div style="font-size:11px;color:var(--fp-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.email)}</div>
               </div>
               <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
@@ -7263,8 +7305,8 @@ function renderTeam() {
             </div>
           `).join('')}
           <div style="padding:10px 20px;border-top:1px solid var(--fp-border)">
-            <div class="fp-progress-track" style="height:5px;margin-bottom:5px"><div class="fp-progress-fill" style="width:${STATE.seatUsage ? Math.min(100, STATE.seatUsage.used/STATE.seatUsage.limit*100) : STATE.team.length/(1+(me.addons.extraSeats||0))*100}%;background:#2563EB"></div></div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : STATE.team.length + '/' + (1+(me.addons.extraSeats||0))} seats · ${btn('Ajouter des sièges','fp-btn fp-btn-ghost fp-btn-sm','','style="display:inline;padding:2px 8px;font-size:10px" onclick="navigate(\'billing\')"')}</div>
+            <div class="fp-progress-track" style="height:5px;margin-bottom:5px"><div class="fp-progress-fill" style="width:${STATE.seatUsage ? Math.min(100, STATE.seatUsage.used/STATE.seatUsage.limit*100) : Math.min(100,(STATE.team||[]).length/(1+(me?.addons?.extraSeats||0))*100)}%;background:#2563EB"></div></div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : (STATE.team||[]).length + '/' + (1+(me?.addons?.extraSeats||0))} seats · ${btn('Ajouter des sièges','fp-btn fp-btn-ghost fp-btn-sm','','style="display:inline;padding:2px 8px;font-size:10px" onclick="navigate(\'billing\')"')}</div>
           </div>
         </div>
 
@@ -7306,10 +7348,10 @@ function renderTeam() {
           <div class="fp-flex-between" style="margin-bottom:12px">
             <div class="fp-card-title" style="margin-bottom:0">${svgIcon('message-square').replace('stroke="currentColor"','stroke="#2563EB"')} Chat d\'équipe</div>
             <div style="display:flex;align-items:center;gap:6px">
-              <select id="team-chat-channel" onchange="showToast('info','Canal : '+this.options[this.selectedIndex].text)" style="font-size:11px;padding:3px 8px;border-radius:8px;border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.08);color:#2563EB;cursor:pointer;font-weight:600">
-                <option value="général">#général</option>
-                <option value="seo">#seo</option>
-                <option value="rapports">#rapports</option>
+              <select id="team-chat-channel" onchange="STATE.msgChannel=this.value;showToast('info','Canal : '+this.options[this.selectedIndex].text)" style="font-size:11px;padding:3px 8px;border-radius:8px;border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.08);color:#2563EB;cursor:pointer;font-weight:600">
+                <option value="general" ${(STATE.msgChannel||'general')==='general'?'selected':''} >#général</option>
+                <option value="seo" ${STATE.msgChannel==='seo'?'selected':''} >#seo</option>
+                <option value="rapports" ${STATE.msgChannel==='rapports'?'selected':''} >#rapports</option>
               </select>
               <button onclick="openNewChannelPanel()" title="Créer ou gérer les canaux" style="font-size:11px;padding:3px 8px;border-radius:8px;border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.08);color:#2563EB;cursor:pointer;font-weight:600">+ Canal</button>
             </div>
@@ -18627,10 +18669,10 @@ function renderTeamChat() {
       </div>
       <div style="border-top:1px solid var(--fp-border);padding:8px 14px 14px">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-          <select id="team-chat-channel-main" onchange="showToast('info','Canal : '+this.options[this.selectedIndex].text)" style="font-size:11px;padding:4px 10px;border-radius:8px;border:1px solid var(--fp-border);background:var(--fp-bg-card);color:var(--fp-text);cursor:pointer;font-weight:600;flex:1">
-            <option value="général">#général</option>
-            <option value="seo">#seo</option>
-            <option value="rapports">#rapports</option>
+          <select id="team-chat-channel-main" onchange="STATE.msgChannel=this.value;showToast('info','Canal : '+this.options[this.selectedIndex].text)" style="font-size:11px;padding:4px 10px;border-radius:8px;border:1px solid var(--fp-border);background:var(--fp-bg-card);color:var(--fp-text);cursor:pointer;font-weight:600;flex:1">
+            <option value="general" ${(STATE.msgChannel||'general')==='general'?'selected':''} >#général</option>
+            <option value="seo" ${STATE.msgChannel==='seo'?'selected':''} >#seo</option>
+            <option value="rapports" ${STATE.msgChannel==='rapports'?'selected':''} >#rapports</option>
           </select>
           <button onclick="openNewChannelPanel()" class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px">+ Canal</button>
         </div>
