@@ -3,7 +3,17 @@ import { logger } from "../lib/logger.js";
 
 const GH_BASE = "https://api.github.com";
 
-export interface GitHubConnection { orgId: string; login: string; avatarUrl: string; accessToken: string; installedAt: string; }
+export interface GitHubConnection {
+  orgId:        string;
+  githubUserId: number;
+  login:        string;
+  name:         string | null;
+  email:        string | null;
+  avatarUrl:    string;
+  accessToken:  string;
+  scope:        string;
+  connectedAt:  string;
+}
 export interface RepoInfo { id: number; name: string; fullName: string; private: boolean; description: string | null; url: string; language: string | null; stars: number; forks: number; openIssues: number; pushedAt: string; }
 
 export function isGitHubConfigured(): boolean {
@@ -40,9 +50,15 @@ async function ghFetch<T>(token: string, path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function getGitHubUser(token: string): Promise<{ login: string; name: string; email: string | null; avatarUrl: string }> {
+export async function getGitHubUser(token: string): Promise<{ id: number; login: string; name: string; email: string | null; avatarUrl: string }> {
   const u = await ghFetch<Record<string, unknown>>(token, "/user");
-  return { login: String(u["login"]), name: String(u["name"] ?? u["login"]), email: u["email"] ? String(u["email"]) : null, avatarUrl: String(u["avatar_url"]) };
+  return {
+    id:       Number(u["id"]),
+    login:    String(u["login"]),
+    name:     String(u["name"] ?? u["login"]),
+    email:    u["email"] ? String(u["email"]) : null,
+    avatarUrl: String(u["avatar_url"]),
+  };
 }
 
 export async function getUserRepos(token: string): Promise<RepoInfo[]> {
@@ -108,14 +124,21 @@ export async function getAnalysis(orgId: string, repoFullName: string): Promise<
   } catch { return null; } finally { client.release(); }
 }
 
-export async function saveConnection(orgId: string, data: Omit<GitHubConnection, "orgId">): Promise<void> {
+export async function saveConnection(
+  orgId: string,
+  data: Pick<GitHubConnection, "githubUserId" | "login" | "avatarUrl" | "accessToken"> & Partial<Pick<GitHubConnection, "name" | "email" | "scope">>
+): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query(
-      `INSERT INTO github_connections (org_id, login, avatar_url, access_token, installed_at)
-       VALUES ($1,$2,$3,$4,NOW())
-       ON CONFLICT (org_id) DO UPDATE SET login=$2, avatar_url=$3, access_token=$4, installed_at=NOW()`,
-      [orgId, data.login, data.avatarUrl, data.accessToken]
+      `INSERT INTO github_connections
+         (org_id, github_user_id, login, name, email, avatar_url, access_token, scope, connected_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+       ON CONFLICT (org_id) DO UPDATE SET
+         github_user_id = $2, login = $3, name = $4, email = $5,
+         avatar_url = $6, access_token = $7, scope = $8, connected_at = NOW()`,
+      [orgId, data.githubUserId, data.login, data.name ?? null, data.email ?? null,
+       data.avatarUrl, data.accessToken, data.scope ?? ""]
     );
   } finally { client.release(); }
 }
@@ -123,8 +146,24 @@ export async function saveConnection(orgId: string, data: Omit<GitHubConnection,
 export async function getConnection(orgId: string): Promise<GitHubConnection | null> {
   const client = await pool.connect();
   try {
-    const res = await client.query(`SELECT * FROM github_connections WHERE org_id=$1 LIMIT 1`, [orgId]);
-    return res.rows[0] ?? null;
+    const res = await client.query(
+      `SELECT org_id, github_user_id, login, name, email, avatar_url, access_token, scope, connected_at
+       FROM github_connections WHERE org_id=$1 LIMIT 1`,
+      [orgId]
+    );
+    if (!res.rows[0]) return null;
+    const r = res.rows[0];
+    return {
+      orgId:        r.org_id,
+      githubUserId: Number(r.github_user_id),
+      login:        r.login,
+      name:         r.name ?? null,
+      email:        r.email ?? null,
+      avatarUrl:    r.avatar_url,
+      accessToken:  r.access_token,
+      scope:        r.scope ?? "",
+      connectedAt:  r.connected_at,
+    };
   } catch { return null; } finally { client.release(); }
 }
 

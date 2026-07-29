@@ -1,3 +1,4 @@
+- [github_connections real schema](github-service-schema.md) — github_user_id NOT NULL, connected_at not installed_at; exchangeCodeForToken returns string not object; getGitHubUser returns avatarUrl camelCase
 - [Test setup — orgDb + dbContext](test-setup-orgdb.md) — routes using req.orgDb need BOTH orgContext AND dbContext in test server; orgContext alone leaves req.orgDb undefined
 - [Router catch-all plan gate pattern](router-catchall-plangate.md) — router.use(requireFeature()) with no path prefix intercepts ALL unmatched routes; always path-scope it
 - [Nav item delegation fix](nav-delegation-fix.md) — nav + infinite-skeleton regressions share root cause: delegation must be at IIFE global scope, not inside bindGlobalEvents()

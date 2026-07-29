@@ -3,7 +3,6 @@ import { logger } from "../lib/logger.js";
 import { connectMongo } from "../lib/mongo.js";
 import { NotificationModel } from "../models/Notification.js";
 import { mailer } from "./mailer.js";
-import { store } from "./store.js";
 
 // ── SEO Alert evaluation ──────────────────────────────────────────────────────
 
@@ -60,7 +59,10 @@ export async function evaluateAlertRulesForAudit(url: string, score: number, org
             logger.warn({ err: mongoErr }, "[monitor-cron] Notification write to MongoDB failed");
           }
           const _channels: string[] = (() => { try { const v = typeof rule.channels === "string" ? JSON.parse(rule.channels) : rule.channels; return Array.isArray(v) ? v : ["email"]; } catch { return ["email"]; } })();
-          const alertEmail: string | null = _channels.includes("email") ? (rule.org_email || store.me?.email || null) : null;
+          // Recipient: per-rule org owner email from LEFT JOIN organizations.
+          // Do NOT use any in-process singleton as a fallback — that causes cross-tenant leakage.
+          // If owner_email is NULL (unmigrated org), skip the email rather than send to the wrong address.
+          const alertEmail: string | null = _channels.includes("email") ? (rule.org_email || null) : null;
           if (alertEmail) {
             mailer.sendSeoAlert({
               to: String(alertEmail),

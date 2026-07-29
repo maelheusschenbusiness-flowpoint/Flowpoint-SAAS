@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import crypto from "crypto";
 import { logger } from "../lib/logger.js";
+import { requireOrgId } from "../lib/require-org-id.js";
 import {
   isGitHubConfigured, getGitHubAuthUrl, exchangeCodeForToken, getGitHubUser,
   getUserRepos, getRepoCommits, getRepoDeployments, getRepoReleases,
@@ -9,11 +10,12 @@ import {
 } from "../services/github-service.js";
 
 const router = Router();
-const ORG_ID = "default";
 
 // GET /github/status — connection status
-router.get("/github/status", async (_req: Request, res: Response) => {
-  const conn = await getConnection(ORG_ID).catch(() => null);
+router.get("/github/status", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const conn = await getConnection(orgId).catch(() => null);
   res.json({
     connected: !!conn,
     configured: isGitHubConfigured(),
@@ -34,8 +36,11 @@ router.get("/github/auth", (req: Request, res: Response) => {
   res.json({ ok: true, url, state });
 });
 
-// GET /github/callback — OAuth callback (also accessible without auth for redirect)
+// GET /github/callback — OAuth callback (browser redirect from GitHub, user already authenticated via cookie)
 router.get("/github/callback", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+
   const { code, error: oauthError } = req.query as { code?: string; error?: string };
   const publicUrl = process.env["PUBLIC_URL"] || "";
 
@@ -49,13 +54,23 @@ router.get("/github/callback", async (req: Request, res: Response) => {
   }
 
   try {
-    const tokens = await exchangeCodeForToken(code);
-    if (!tokens.access_token) throw new Error("No access token received");
+    // exchangeCodeForToken returns the raw access token string (not an object)
+    const accessToken = await exchangeCodeForToken(code);
+    if (!accessToken) throw new Error("No access token received");
 
-    const user = await getGitHubUser(tokens.access_token);
-    await saveConnection(ORG_ID, user.id, user.login, user.name, user.email, user.avatar_url, tokens.access_token, tokens.scope || "");
+    const user = await getGitHubUser(accessToken);
+    // Pass a typed object to saveConnection — fixes prior positional-arg mismatch
+    // that caused login/avatarUrl/accessToken to be stored as NULL.
+    await saveConnection(orgId, {
+      githubUserId: user.id,
+      login:        user.login,
+      name:         user.name,
+      email:        user.email,
+      avatarUrl:    user.avatarUrl,
+      accessToken,
+    });
 
-    logger.info({ login: user.login }, "[GitHub] OAuth connection saved");
+    logger.info({ login: user.login, orgId }, "[GitHub] OAuth connection saved successfully");
     res.redirect(`${publicUrl}/dashboard.html#integrations?github_connected=1&login=${encodeURIComponent(user.login)}`);
   } catch (err) {
     logger.error({ err }, "[GitHub] OAuth callback failed");
@@ -64,8 +79,10 @@ router.get("/github/callback", async (req: Request, res: Response) => {
 });
 
 // GET /github/repos — list repos
-router.get("/github/repos", async (_req: Request, res: Response) => {
-  const conn = await getConnection(ORG_ID).catch(() => null);
+router.get("/github/repos", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const conn = await getConnection(orgId).catch(() => null);
   if (!conn) { res.status(403).json({ error: "GitHub not connected. Call /api/github/auth first." }); return; }
 
   try {
@@ -79,9 +96,11 @@ router.get("/github/repos", async (_req: Request, res: Response) => {
 
 // GET /github/commits/:owner/:repo — commit analytics
 router.get("/github/commits/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   const { owner, repo } = req.params as { owner: string; repo: string };
   const days = Number(req.query["days"] || 30);
-  const conn = await getConnection(ORG_ID).catch(() => null);
+  const conn = await getConnection(orgId).catch(() => null);
   if (!conn) { res.status(403).json({ error: "GitHub not connected" }); return; }
 
   try {
@@ -117,8 +136,10 @@ router.get("/github/commits/:owner/:repo", async (req: Request, res: Response) =
 
 // GET /github/deployments/:owner/:repo — deployment monitoring
 router.get("/github/deployments/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   const { owner, repo } = req.params as { owner: string; repo: string };
-  const conn = await getConnection(ORG_ID).catch(() => null);
+  const conn = await getConnection(orgId).catch(() => null);
   if (!conn) { res.status(403).json({ error: "GitHub not connected" }); return; }
 
   try {
@@ -141,8 +162,10 @@ router.get("/github/deployments/:owner/:repo", async (req: Request, res: Respons
 
 // POST /github/analysis/:owner/:repo — trigger full analysis
 router.post("/github/analysis/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   const { owner, repo } = req.params as { owner: string; repo: string };
-  const conn = await getConnection(ORG_ID).catch(() => null);
+  const conn = await getConnection(orgId).catch(() => null);
   if (!conn) { res.status(403).json({ error: "GitHub not connected" }); return; }
 
   try {
@@ -157,16 +180,21 @@ router.post("/github/analysis/:owner/:repo", async (req: Request, res: Response)
 
 // GET /github/analysis/:owner/:repo — get cached analysis
 router.get("/github/analysis/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   const { owner, repo } = req.params as { owner: string; repo: string };
-  const analysis = await getAnalysis(owner, repo).catch(() => null);
+  // getAnalysis(orgId, repoFullName) — repoFullName is "owner/repo"
+  const analysis = await getAnalysis(orgId, `${owner}/${repo}`).catch(() => null);
   if (!analysis) { res.status(404).json({ error: "No analysis found. POST to /api/github/analysis/:owner/:repo to run one." }); return; }
   res.json({ analysis });
 });
 
 // GET /github/issues/:owner/:repo — issues and security alerts
 router.get("/github/issues/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   const { owner, repo } = req.params as { owner: string; repo: string };
-  const conn = await getConnection(ORG_ID).catch(() => null);
+  const conn = await getConnection(orgId).catch(() => null);
   if (!conn) { res.status(403).json({ error: "GitHub not connected" }); return; }
 
   try {
@@ -192,15 +220,18 @@ router.get("/github/issues/:owner/:repo", async (req: Request, res: Response) =>
 
 // GET /github/health/:owner/:repo — health score
 router.get("/github/health/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   const { owner, repo } = req.params as { owner: string; repo: string };
-  const cached = await getAnalysis(owner, repo).catch(() => null);
+  // getAnalysis(orgId, repoFullName) — pass org-scoped cache key
+  const cached = await getAnalysis(orgId, `${owner}/${repo}`).catch(() => null);
 
   if (cached) {
     res.json({ health: cached.health, fromCache: true, analyzedAt: cached.analyzedAt });
     return;
   }
 
-  const conn = await getConnection(ORG_ID).catch(() => null);
+  const conn = await getConnection(orgId).catch(() => null);
   if (!conn) { res.status(403).json({ error: "GitHub not connected. No cached analysis available." }); return; }
 
   try {
@@ -214,8 +245,10 @@ router.get("/github/health/:owner/:repo", async (req: Request, res: Response) =>
 
 // GET /github/contributors/:owner/:repo — contributors
 router.get("/github/contributors/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   const { owner, repo } = req.params as { owner: string; repo: string };
-  const conn = await getConnection(ORG_ID).catch(() => null);
+  const conn = await getConnection(orgId).catch(() => null);
   if (!conn) { res.status(403).json({ error: "GitHub not connected" }); return; }
 
   try {
@@ -229,9 +262,11 @@ router.get("/github/contributors/:owner/:repo", async (req: Request, res: Respon
 });
 
 // POST /github/disconnect — disconnect GitHub
-router.post("/github/disconnect", async (_req: Request, res: Response) => {
-  await disconnectGitHub(ORG_ID).catch(() => {});
-  logger.info("[GitHub] Disconnected");
+router.post("/github/disconnect", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  await disconnectGitHub(orgId).catch(() => {});
+  logger.info({ orgId }, "[GitHub] Disconnected");
   res.json({ ok: true });
 });
 
