@@ -1,5 +1,5 @@
 /**
- * Lot C — Billing runtime integration tests T1-T22
+ * Lot C — Billing runtime integration tests T1-T23
  *
  * Runs an in-process Express server with the real billing router so that
  * setStripeForTesting() can inject a fake Stripe recorder.
@@ -85,6 +85,7 @@ interface FakeStripeOptions {
   addonActiveInSub?: boolean;         // addon price found in existing subscription items
   openReactivationSession?: boolean;  // checkout.sessions.list returns an open reactivation session
   allowSubUpdate?: boolean;           // subscriptions.update resolves (for upgrade-path tests)
+  orphanedCustomer?: boolean;         // checkout.sessions.list throws resource_missing (deleted customer)
 }
 
 function makeFakeStripe(opts: FakeStripeOptions = {}) {
@@ -146,6 +147,15 @@ function makeFakeStripe(opts: FakeStripeOptions = {}) {
         retrieve: rec("checkout.sessions.retrieve"),
         list(params: unknown) {
           (log["checkout.sessions.list"] ??= []).push([params]);
+          if (opts.orphanedCustomer) {
+            // Simulate Stripe resource_missing: customer was deleted from Stripe
+            const err = Object.assign(new Error("No such customer: 'cus_orphan_test'"), {
+              code:    "resource_missing",
+              type:    "invalid_request_error",
+              statusCode: 404,
+            });
+            return Promise.reject(err);
+          }
           if (opts.openReactivationSession) {
             return Promise.resolve({
               data: [{
@@ -856,6 +866,58 @@ async function runTests() {
       setStripeForTesting(null);
     }
 
+    // ── T23: orphaned stripeCustomerId (resource_missing on list) ─────────────────
+    // checkout.sessions.list() throws resource_missing → customer deleted from Stripe.
+    // Expected: 200 noSubscription (not 500), DB stripe_customer_id cleared, no create().
+    console.log("[T23] Orphaned stripeCustomerId (resource_missing) → noSubscription, DB cleared, no create()");
+    {
+      const tag = "t23"; tags.push(tag);
+      await createFreshOrg(tag, { stripe_customer_id: "cus_orphan_test" });
+      const token = await makeSession(tag, "owner");
+
+      const fakeStripe = makeFakeStripe({ orphanedCustomer: true });
+      setStripeForTesting(fakeStripe);
+
+      const r = await post(base, "/billing/upgrade", token, { plan: "pro" });
+      const body = await r.json() as Record<string, unknown>;
+
+      // Must return noSubscription — not 500, not reactivation
+      assert("T23 status 200",             r.status === 200, `got ${r.status}`);
+      assert("T23 noSubscription true",    body["noSubscription"] === true, String(body["noSubscription"]));
+      assert("T23 no reactivation key",    !body["reactivation"], `reactivation=${body["reactivation"]}`);
+      assert("T23 redirectTo checkout",    body["redirectTo"] === "/checkout.html",
+             `redirectTo=${body["redirectTo"]}`);
+
+      // checkout.sessions.list was called (the orphan check ran)
+      assert("T23 list was called",        fakeStripe.callCount("checkout.sessions.list") === 1,
+             `calls=${fakeStripe.callCount("checkout.sessions.list")}`);
+      // checkout.sessions.create must NOT have been called
+      assert("T23 no create() called",     fakeStripe.callCount("checkout.sessions.create") === 0,
+             `calls=${fakeStripe.callCount("checkout.sessions.create")}`);
+
+      // Allow async DB write (persistOrgData) to complete
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // DB stripe_customer_id must be NULL — cleaned up by the handler
+      const client23 = await pool.connect();
+      let dbCustomerId: string | null = "NOT_QUERIED";
+      try {
+        const result = await client23.query<{ stripe_customer_id: string | null }>(
+          `SELECT stripe_customer_id FROM org_settings WHERE org_id = $1 LIMIT 1`,
+          [orgId(tag)],
+        );
+        dbCustomerId = result.rows[0]?.stripe_customer_id ?? null;
+      } finally { client23.release(); }
+
+      // org_settings has a NOT NULL constraint; the schema convention is NULLIF(col,'')
+      // at read-time, so '' is the canonical "cleared" value.
+      assert("T23 DB stripe_customer_id cleared",
+             dbCustomerId === null || dbCustomerId === "",
+             `stripe_customer_id=${dbCustomerId}`);
+
+      setStripeForTesting(null);
+    }
+
   } finally {
     // setStripeForTesting must be called while NODE_ENV is still "test"
     // (we set it at the top of runTests).  Restoring originalNodeEnv afterward
@@ -874,7 +936,7 @@ async function runTests() {
 runTests()
   .then(() => {
     console.log("\n══════════════════════════════════════════");
-    console.log(` Lot C Billing — T1-T22 runtime results`);
+    console.log(` Lot C Billing — T1-T23 runtime results`);
     console.log("══════════════════════════════════════════");
     results.forEach(r => console.log(r));
     console.log(`\n  ${passed} passed / ${failed} failed / ${passed + failed} total`);

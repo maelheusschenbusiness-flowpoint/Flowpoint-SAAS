@@ -759,11 +759,48 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
 
       // Idempotency: return an existing open session if one already exists for
       // this customer + targetPlan (handles double-click / repeated calls).
-      const openSessions = await stripe.checkout.sessions.list({
-        customer: billingCtx.stripeCustomerId,
-        status:   "open",
-        limit:    5,
-      });
+      //
+      // Guard: if the customer no longer exists in Stripe (resource_missing), the
+      // stripeCustomerId stored in the DB is orphaned. Clean it up immediately and
+      // fall through to the noSubscription path so the frontend can start a fresh
+      // checkout. All other Stripe errors are re-thrown to the outer catch → 500.
+      let openSessions: { data: unknown[] };
+      try {
+        openSessions = await stripe.checkout.sessions.list({
+          customer: billingCtx.stripeCustomerId,
+          status:   "open",
+          limit:    5,
+        });
+      } catch (listErr: unknown) {
+        const stripeCode = (listErr as { code?: string })?.code;
+        if (stripeCode !== "resource_missing") throw listErr;
+
+        logger.warn(
+          { orgId, stripeCustomerId: billingCtx.stripeCustomerId },
+          "[Billing] reactivation: stripeCustomerId orphaned (resource_missing) — clearing and falling back to new checkout",
+        );
+        // persistOrgData / upsertOrgSettings skip null values in their textCols loop
+        // and would leave the stale reference in place.  Use raw SQL so NULL is
+        // written unconditionally in both tables.
+        try {
+          const { pool: cleanPool } = await import("@workspace/db");
+          // org_settings.stripe_customer_id has a NOT NULL constraint; the schema
+          // convention is NULLIF(stripe_customer_id, '') at read-time, so '' means absent.
+          await cleanPool.query(
+            `UPDATE org_settings  SET stripe_customer_id = '' WHERE org_id = $1`,
+            [orgId],
+          );
+          // organizations allows NULL; ignore UUID cast failures for non-UUID orgs
+          await cleanPool.query(
+            `UPDATE organizations SET stripe_customer_id = NULL WHERE id = $1`,
+            [orgId],
+          ).catch(() => {});
+        } catch (cleanErr: unknown) {
+          logger.error({ cleanErr, orgId }, "[Billing] failed to clear orphaned stripeCustomerId");
+        }
+        res.json({ noSubscription: true, redirectTo: "/checkout.html", plan });
+        return;
+      }
       const existingSession = (openSessions.data ?? []).find(
         (s: { metadata?: Record<string, string>; url?: string | null }) =>
           s.metadata?.["reactivation"] === "true" &&
