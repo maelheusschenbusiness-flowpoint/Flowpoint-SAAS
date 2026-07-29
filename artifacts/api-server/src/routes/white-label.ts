@@ -1,5 +1,4 @@
 import { Router, type Request, type Response } from "express";
-import { store } from "../services/store.js";
 import { promises as dns } from "node:dns";
 import https from "node:https";
 import { logger } from "../lib/logger.js";
@@ -25,7 +24,10 @@ router.get("/white-label/templates", async (req: Request, res: Response) => {
 });
 
 router.post("/white-label/templates", async (req: Request, res: Response) => {
-  if (!store.me.addons?.whiteLabel) {
+  // Feature gate — check DB, never the store.me singleton
+  const { loadOrgData } = await import("../services/org-data.js");
+  const _wlData = await loadOrgData(org(req)).catch(() => null);
+  if (!_wlData?.addons?.whiteLabel) {
     res.status(403).json({ error: "White-label add-on required" }); return;
   }
   const { name, logoUrl, primaryColor, secondaryColor, font, footerText, headerText, hideFlowpointBranding, isDefault } = req.body ?? {};
@@ -90,7 +92,10 @@ router.get("/white-label/domains", async (req: Request, res: Response) => {
 });
 
 router.post("/white-label/domains", async (req: Request, res: Response) => {
-  if (!store.me.addons?.customDomain) {
+  // Feature gate — check DB, never the store.me singleton
+  const { loadOrgData } = await import("../services/org-data.js");
+  const _cdData = await loadOrgData(org(req)).catch(() => null);
+  if (!_cdData?.addons?.customDomain) {
     res.status(403).json({ error: "Custom domain add-on required" }); return;
   }
   const { domain } = req.body ?? {};

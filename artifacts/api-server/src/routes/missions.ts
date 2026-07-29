@@ -302,16 +302,20 @@ router.post("/missions/generate", canWrite, async (req: Request, res: Response) 
     const result = await runMissionEngine(oid, "manual");
     res.json({ ok: true, ...result });
 
-    // Fire-and-forget: new missions email
+    // Fire-and-forget: new missions email — use org-scoped data, never store.me singleton
     const missions = (result as Record<string, unknown>).missions as Array<{ title: string; priority: string; impact: string }> | undefined;
-    if (missions?.length && store.me.email) {
-      const { mailer } = await import("../services/mailer.js");
-      mailer.sendNewMissions({
-        to: store.me.email as string,
-        name: (store.me.firstName || store.me.name || "Utilisateur") as string,
-        missions,
-        siteUrl: (store.me as Record<string, unknown>)["primarySite"] as string | undefined,
-      }).catch(() => {});
+    if (missions?.length) {
+      const { loadOrgData } = await import("../services/org-data.js");
+      const _orgData = await loadOrgData(oid).catch(() => null);
+      if (_orgData?.email) {
+        const { mailer } = await import("../services/mailer.js");
+        mailer.sendNewMissions({
+          to: _orgData.email,
+          name: _orgData.firstName || "Utilisateur",
+          missions,
+          siteUrl: undefined,
+        }).catch(() => {});
+      }
     }
   } catch (err) {
     logger.error({ err }, "[Missions] generate error");

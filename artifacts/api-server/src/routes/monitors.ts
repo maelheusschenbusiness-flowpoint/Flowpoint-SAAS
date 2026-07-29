@@ -255,9 +255,10 @@ async function saveCheckResult(
           ? `${String(mon.url)} est inaccessible.`
           : `${String(mon.url)} est de nouveau opérationnel (indisponible ${notifyAfterCommit!.downDurationMin ?? 0} min).`;
 
-        // Write to notifications table so the dashboard bell shows it
-        pool.connect().then(client =>
-          client.query(
+        // Write to notifications table so the dashboard bell shows it — awaited for reliability
+        const _notifClient = await pool.connect();
+        try {
+          await _notifClient.query(
             `INSERT INTO notifications (id, org_id, type, title, message, link, read, created_at)
              VALUES ($1, $2, $3, $4, $5, $6, false, NOW())`,
             [
@@ -268,10 +269,12 @@ async function saveCheckResult(
               notifMessage,
               "/monitors",
             ]
-          )
-            .catch(err => logger.error({ err, monitorId }, "[monitors] Failed to write notification to DB"))
-            .finally(() => client.release())
-        ).catch(err => logger.error({ err }, "[monitors] Pool connect failed for notification write"));
+          );
+        } catch (err) {
+          logger.error({ err, monitorId }, "[monitors] Failed to write notification to DB");
+        } finally {
+          _notifClient.release();
+        }
 
         // Log activity so the activity feed reflects the state change
         store.logActivity({
@@ -282,10 +285,10 @@ async function saveCheckResult(
           metadata: { url: String(mon.url), kind: notifyAfterCommit!.kind },
         }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
-        // BUG-3 FIX: resolve recipient using the 3-tier priority chain:
+        // Resolve recipient using the 3-tier priority chain:
         //   1. per-monitor alertEmail (stored on the monitor row)
         //   2. user-pref alertEmail (stored in user_prefs.settings.alertEmail via Settings > Canaux d'alerte)
-        //   3. account email (store.me.email fallback)
+        //   3. account owner_email from organizations (DB-scoped, never store.me singleton)
         let _orgAlertEmail: string | null = null;
         try {
           const _prefRow = await pool.query(
@@ -295,7 +298,14 @@ async function saveCheckResult(
           const _pref = (_prefRow.rows[0]?.alert_email as string | undefined)?.trim();
           if (_pref) _orgAlertEmail = _pref;
         } catch { /* non-fatal — fall through to account email */ }
-        const recipient = (mon.alert_email as string | undefined)?.trim() || _orgAlertEmail || store.me.email;
+        // Tier-3: owner_email from organizations (org-scoped, safe cross-tenant)
+        let _accountEmail: string | null = null;
+        try {
+          const { loadOrgData } = await import("../services/org-data.js");
+          const _orgData = await loadOrgData(orgId).catch(() => null);
+          _accountEmail = _orgData?.email ?? null;
+        } catch { /* non-fatal */ }
+        const recipient = (mon.alert_email as string | undefined)?.trim() || _orgAlertEmail || _accountEmail;
         if (recipient) {
           if (isDown) {
             await mailer.sendMonitorDown({

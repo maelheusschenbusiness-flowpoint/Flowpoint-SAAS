@@ -103,7 +103,9 @@ export async function getOrgAddons(orgId = "default"): Promise<Record<string, bo
     }
     return result;
   } catch {
-    return { ...store.me.addons };
+    // Never fall back to store.me (cross-tenant contamination risk).
+    // Return empty — caller can decide the safe default.
+    return {};
   }
 }
 

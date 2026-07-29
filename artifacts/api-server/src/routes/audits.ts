@@ -221,8 +221,14 @@ router.get("/audits/:id", async (req: Request, res: Response) => {
 // RLS ensures only the org's own audits can be deleted.
 
 router.delete("/audits/:id", canAdmin, async (req: Request, res: Response) => {
+  // Defense in depth: explicit org_id guard in addition to RLS (BUG-F)
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   try {
-    const r = await req.orgDb(`DELETE FROM audits WHERE id = $1 RETURNING id`, [req.params.id]);
+    const r = await req.orgDb(
+      `DELETE FROM audits WHERE id = $1 AND org_id = $2 RETURNING id`,
+      [req.params.id, orgId]
+    );
     if (!r.rows[0]) { res.status(404).json({ error: "Audit not found" }); return; }
     res.json({ ok: true });
   } catch {
@@ -303,8 +309,11 @@ async function patchSchedule(req: Request, res: Response) {
 }
 
 async function deleteSchedule(req: Request, res: Response) {
+  // Defense in depth: explicit org_id guard in addition to RLS (BUG-F)
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   try {
-    await req.orgDb(`DELETE FROM audit_schedules WHERE id = $1`, [req.params.id]);
+    await req.orgDb(`DELETE FROM audit_schedules WHERE id = $1 AND org_id = $2`, [req.params.id, orgId]);
     res.json({ ok: true });
   } catch { res.json({ ok: true }); }
 }

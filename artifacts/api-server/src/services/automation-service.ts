@@ -93,35 +93,49 @@ export async function executeWorkflow(workflowId: string): Promise<{ success: bo
 
 async function executeAction(type: string, params: Record<string, unknown>, orgId?: string): Promise<void> {
   logger.debug({ type, params }, "[Automation] Executing action");
+
+  // Lazy resolver — fetches org-scoped recipient from DB, never reads store.me singleton
+  let _recipientCache: { email: string; name: string } | null | undefined;
+  const getRecipient = async (): Promise<{ email: string; name: string } | null> => {
+    if (_recipientCache !== undefined) return _recipientCache;
+    if (!orgId) { _recipientCache = null; return null; }
+    const { loadOrgData } = await import("./org-data.js");
+    const d = await loadOrgData(orgId).catch(() => null);
+    _recipientCache = d?.email ? { email: d.email, name: d.firstName || "Utilisateur" } : null;
+    return _recipientCache;
+  };
+
   switch (type) {
     case "send_email":
     case "send_welcome_email": {
-      if (store.me.email) {
+      const recipient = await getRecipient();
+      if (recipient) {
         const { mailer } = await import("./mailer.js");
         const template = String(params["template"] || "");
         if (template === "client_weekly") {
           await mailer.sendReportGenerated({
-            to: store.me.email as string,
-            name: (store.me.firstName || store.me.name || "Utilisateur") as string,
+            to: recipient.email,
+            name: recipient.name,
             reportName: "Rapport hebdomadaire",
             reportUrl: "https://app.flowpoint.pro/reports",
           });
         } else {
           await mailer.sendWelcome({
-            to: store.me.email as string,
-            name: (store.me.firstName || store.me.name || "Utilisateur") as string,
+            to: recipient.email,
+            name: recipient.name,
           });
         }
       }
       break;
     }
     case "send_alert": {
-      if (store.me.email) {
+      const recipient = await getRecipient();
+      if (recipient) {
         const { mailer } = await import("./mailer.js");
         await mailer.sendSeoAlert({
-          to: store.me.email as string,
+          to: recipient.email,
           ruleName: "Alerte automatisation",
-          url: (store.me as Record<string, unknown>)["primarySite"] as string || "votre site",
+          url: String(params["url"] || "votre site"),
           score: 0,
           threshold: Number(params["threshold"] ?? 99.5),
           operator: "lt",
@@ -191,11 +205,12 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
           maxTokens: aiCfg.maxTokens,
         });
         logger.info({ hasAudit: true, provider: aiCfg.provider, model: aiCfg.model }, "[Automation] generate_report complete");
-        if (store.me.email) {
+        const recipient = await getRecipient();
+        if (recipient) {
           const { mailer } = await import("./mailer.js");
           await mailer.sendReportGenerated({
-            to: store.me.email,
-            name: (store.me.firstName || store.me.name || "Utilisateur") as string,
+            to: recipient.email,
+            name: recipient.name,
             reportName: "Rapport automatique",
             reportUrl: "https://app.flowpoint.pro/reports",
           });

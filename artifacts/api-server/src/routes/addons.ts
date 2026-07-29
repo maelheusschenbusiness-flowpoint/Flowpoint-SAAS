@@ -9,11 +9,13 @@ router.get("/addons", async (req: Request, res: Response) => {
   try {
     const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
     const dbData = await loadOrgData(orgId).catch(() => null);
-    const plan = (dbData?.plan || store.me.plan || "standard").toLowerCase();
+    const plan = (dbData?.plan || "standard").toLowerCase();
     const orgAddons = await getOrgAddons(orgId);
-    const quotas = getQuotaLimits(plan, store.me.addons as Record<string, boolean | number>);
+    // Use DB-sourced addons — never the store.me singleton (cross-tenant contamination risk)
+    const liveAddons = dbData?.addons ?? orgAddons ?? {};
+    const quotas = getQuotaLimits(plan, liveAddons as Record<string, boolean | number>);
     res.json({
-      addons: store.me.addons,
+      addons: liveAddons,
       orgAddons,
       definitions: ADDON_DEFINITIONS,
       quotas,
@@ -34,7 +36,8 @@ router.post("/addons/:key/activate", async (req: Request, res: Response) => {
   if (ok) {
     store.logActivity({ type: "billing", label: `Add-on activé : ${key}`, targetId: key, targetType: "addon" }).catch(err => console.warn("[logActivity]", err?.message));
     store.broadcast({ type: "fp:addon:activated", addonKey: key }, orgId);
-    res.json({ ok: true, addonKey: key, addons: store.me.addons });
+    const freshAddons = await getOrgAddons(orgId);
+    res.json({ ok: true, addonKey: key, addons: freshAddons });
   } else {
     res.status(500).json({ error: "Failed to activate addon" });
   }

@@ -90,15 +90,19 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
     store.logActivity({ type: "report", label: `Rapport généré : ${name}`, targetId: id, targetType: "report", metadata: { name, format } }).catch(err => console.warn("[logActivity]", err?.message));
     res.status(201).json(report);
 
-    // Fire-and-forget: report generated email
-    if (store.me.email) {
-      const { mailer } = await import("../services/mailer.js");
-      mailer.sendReportGenerated({
-        to: store.me.email,
-        name: store.me.firstName || store.me.name || "Utilisateur",
-        reportName: name,
-        reportUrl: `https://app.flowpoint.pro/reports`,
-      }).catch(() => {});
+    // Fire-and-forget: report generated email — use org-scoped data, never store.me singleton
+    {
+      const { loadOrgData } = await import("../services/org-data.js");
+      const _orgData = await loadOrgData(org(req)).catch(() => null);
+      if (_orgData?.email) {
+        const { mailer } = await import("../services/mailer.js");
+        mailer.sendReportGenerated({
+          to: _orgData.email,
+          name: _orgData.firstName || "Utilisateur",
+          reportName: name,
+          reportUrl: `https://app.flowpoint.pro/reports`,
+        }).catch(() => {});
+      }
     }
   } catch {
     res.status(500).json({ error: "Failed to create report" });
@@ -190,7 +194,7 @@ router.post("/reports/:id/share", canWrite, async (req: Request, res: Response) 
     }
 
     const brandingObj = {
-      agencyName:     branding?.agencyName    || store.me.org?.name || "Mon Agence",
+      agencyName:     branding?.agencyName    || "Mon Agence",
       logoUrl:        branding?.logoUrl        || "",
       primaryColor:   branding?.primaryColor   || "#2563EB",
       secondaryColor: branding?.secondaryColor || "#1d4ed8",
