@@ -839,7 +839,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           customer:    billingCtx.stripeCustomerId,
           mode:        "subscription",
           line_items:  [{ price: priceId, quantity: 1 }],
-          success_url: `${publicUrl}/dashboard.html?plan_activated=1&session_id={CHECKOUT_SESSION_ID}`,
+          success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url:  `${publicUrl}/pricing.html`,
           metadata: {
             plan:         targetPlan,   // consumed by checkout.session.completed webhook

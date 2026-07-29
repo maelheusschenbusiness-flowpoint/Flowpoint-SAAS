@@ -3,6 +3,7 @@ import { logger } from "../lib/logger.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
+import { createStripeClient } from "../services/stripe-factory.js";
 
 const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
 
@@ -220,8 +221,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
     "[PublicBilling] checkout-session requested");
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
 
     /* ── New signup flow: load pending_signups + create/find Stripe Customer ── */
     let stripeCustomerId: string | undefined;
@@ -535,8 +535,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   };
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
 
     // ── Pre-registration: find or create Stripe Customer (1 email = 1 customer invariant) ──
     // Prevents duplicate customers when user goes back and retries checkout with same token.
@@ -717,8 +716,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
   }
   const intentType = body?.intentType;
   if (!intentType || typeof intentType !== "string" ||
-      !["payment_intent", "setup_intent"].includes(intentType)) {
-    res.status(400).json({ error: 'intentType doit être "payment_intent" ou "setup_intent"' });
+      !["payment", "setup", "checkout_session"].includes(intentType)) {
+    res.status(400).json({ error: 'intentType doit être "payment", "setup" ou "checkout_session"' });
     return;
   }
   const _rawPlan = body?.plan;
@@ -816,8 +815,58 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
   (req as unknown as Record<string, unknown>)["_checkoutCanStartTrial"] = _checkoutCanStartTrial;
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
+
+    /* ── 0. checkout_session: Stripe-hosted subscription checkout (reactivation flow) ──
+         Early return — no PaymentIntent/SetupIntent involved, webhook is activation source. */
+    if (intentType === "checkout_session") {
+      try {
+        const _csSession = await stripe.checkout.sessions.retrieve(intentId);
+
+        if (_csSession.mode !== "subscription") {
+          res.status(400).json({ error: "Session de paiement non valide (mode attendu : subscription)." });
+          return;
+        }
+
+        // Verify the session belongs to the authenticated org
+        const _csMeta = (_csSession.metadata as Record<string, string> | null) ?? {};
+        const _csSessionOrgId = _csMeta["orgId"] ?? "";
+        if (_csSessionOrgId && _authenticatedOrgId && _csSessionOrgId !== _authenticatedOrgId) {
+          logger.warn({ csOrgId: _csSessionOrgId, authOrgId: _authenticatedOrgId },
+            "[PublicBilling/finalize-checkout] checkout_session orgId mismatch");
+          res.status(403).json({ error: "Cette session ne vous appartient pas." });
+          return;
+        }
+
+        // Verify payment status
+        const _csIsPaid = _csSession.payment_status === "paid" ||
+                          _csSession.payment_status === "no_payment_required";
+        if (!_csIsPaid) {
+          res.status(402).json({
+            error: "Paiement non finalisé. Réessayez dans quelques instants.",
+            awaitingWebhook: false,
+          });
+          return;
+        }
+
+        // Do NOT activate locally — the Stripe webhook is the sole activation gate.
+        const _csPlan = (_csMeta["plan"] ?? "").toLowerCase();
+        logger.info({ sessionId: intentId, orgId: _authenticatedOrgId, plan: _csPlan },
+          "[PublicBilling] checkout_session verified — awaiting webhook for activation");
+
+        res.json({ success: true, awaitingWebhook: true, plan: _csPlan });
+        return;
+      } catch (_csErr) {
+        const _csMsg = _csErr instanceof Error ? _csErr.message : String(_csErr);
+        const _csInvalid = _csMsg.includes("No such") || _csMsg.includes("resource_missing") ||
+                           _csMsg.includes("invalid_request");
+        if (_csInvalid) {
+          res.status(400).json({ error: "Session de paiement introuvable ou expirée." });
+          return;
+        }
+        throw _csErr; // let the outer catch handle unexpected errors
+      }
+    }
 
     /* ── 1. Verify intent & get payment method ── */
     let paymentMethodId: string | null = null;

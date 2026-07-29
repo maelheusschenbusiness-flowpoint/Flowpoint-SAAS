@@ -89,5 +89,6 @@
 - [Auth migration v2](auth-migration-v2.md) — 4-phase migration (users/org_members/organizations); login-verify 6-check flow; org_settings readonly since 2026-07-27; drop target 2026-08-27
 - [Magic link 503 fix](magic-link-503-fix.md) — dynamic import inside try/catch causes 503 loop in prod bundle; fix: static import + peek-before-consume
 - [Reactivation checkout idempotency](reactivation-checkout-idempotency.md) — canceled+stripeCustomerId → new Checkout Session; two-layer idempotency: list pre-flight + idempotencyKey 2nd arg with 30-min bucket
+- [finalize-checkout intentType mismatch](finalize-checkout-intenttype.md) — frontend sends "payment"/"setup"; old validation whitelisted "payment_intent"/"setup_intent"; now ["payment","setup","checkout_session"]; public-billing.ts must use createStripeClient() not new Stripe() for test injection
 - [org_settings NOT NULL stripe columns](org-settings-not-null-stripe.md) — stripe_customer_id has implicit NOT NULL; use '' (empty string) to clear, not NULL; schema uses NULLIF(col,'') at read-time
 - [Missions fast-path schema gap](missions-fast-path-schema.md) — initMissionsTables was absent from fast-path; missing columns caused 500 on Render; fix: add to fast-path + full ALTER TABLE self-heal

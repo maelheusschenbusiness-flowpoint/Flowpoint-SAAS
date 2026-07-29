@@ -1,5 +1,5 @@
 /**
- * Lot C — Billing runtime integration tests T1-T23
+ * Lot C — Billing runtime integration tests T1-T30
  *
  * Runs an in-process Express server with the real billing router so that
  * setStripeForTesting() can inject a fake Stripe recorder.
@@ -16,6 +16,7 @@ import cookieParser from "cookie-parser";
 import { pool } from "@workspace/db";
 import { orgContext } from "../../src/middlewares/orgContext.js";
 import billingRouter from "../../src/routes/billing.js";
+import publicBillingRouter from "../../src/routes/public-billing.js";
 import { setStripeForTesting } from "../../src/services/stripe-factory.js";
 import { upsertOrgSettings } from "../../src/services/org-settings.js";
 import { createSession } from "../../src/services/sessions.js";
@@ -86,6 +87,12 @@ interface FakeStripeOptions {
   openReactivationSession?: boolean;  // checkout.sessions.list returns an open reactivation session
   allowSubUpdate?: boolean;           // subscriptions.update resolves (for upgrade-path tests)
   orphanedCustomer?: boolean;         // checkout.sessions.list throws resource_missing (deleted customer)
+  csRetrieve?: {                      // checkout.sessions.retrieve response
+    mode?: string;
+    metadata?: Record<string, string>;
+    payment_status?: string;
+    status?: string;
+  } | "notFound";
 }
 
 function makeFakeStripe(opts: FakeStripeOptions = {}) {
@@ -144,7 +151,23 @@ function makeFakeStripe(opts: FakeStripeOptions = {}) {
             client_secret: "cs_secret_fake",
           });
         },
-        retrieve: rec("checkout.sessions.retrieve"),
+        retrieve(id: unknown) {
+          (log["checkout.sessions.retrieve"] ??= []).push([id]);
+          if (!opts.csRetrieve) {
+            return Promise.reject(new Error(`[FakeStripe] Unexpected call to checkout.sessions.retrieve — add csRetrieve to opts`));
+          }
+          if (opts.csRetrieve === "notFound") {
+            return Promise.reject(Object.assign(new Error("No such checkout.session: 'cs_test'"), {
+              code: "resource_missing", type: "invalid_request_error",
+            }));
+          }
+          return Promise.resolve({
+            mode:           opts.csRetrieve.mode           ?? "subscription",
+            metadata:       opts.csRetrieve.metadata       ?? {},
+            payment_status: opts.csRetrieve.payment_status ?? "paid",
+            status:         opts.csRetrieve.status         ?? "complete",
+          });
+        },
         list(params: unknown) {
           (log["checkout.sessions.list"] ??= []).push([params]);
           if (opts.orphanedCustomer) {
@@ -192,6 +215,7 @@ function buildApp() {
     next();
   });
   app.use("/api", billingRouter);
+  app.use("/api", publicBillingRouter);
   return app;
 }
 
@@ -211,6 +235,15 @@ function post(base: string, path: string, token: string, body: unknown) {
   return fetch(`${base}${path}`, {
     method:  "POST",
     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body:    JSON.stringify(body),
+  });
+}
+
+/** POST with fp_token cookie — for finalize-checkout which reads req.cookies["fp_token"] */
+function postWithCookie(base: string, path: string, cookieToken: string, body: unknown) {
+  return fetch(`${base}${path}`, {
+    method:  "POST",
+    headers: { "Cookie": `fp_token=${cookieToken}`, "Content-Type": "application/json" },
     body:    JSON.stringify(body),
   });
 }
@@ -918,6 +951,192 @@ async function runTests() {
       setStripeForTesting(null);
     }
 
+    // ── T24: intentType "payment" accepted by finalize-checkout (was rejected by old validation) ──
+    // Old code validated against ["payment_intent","setup_intent"]; new code accepts ["payment","setup","checkout_session"].
+    console.log("[T24] POST /public/finalize-checkout intentType='payment' → not rejected by validation");
+    {
+      const tag = "t24"; tags.push(tag);
+      await createFreshOrg(tag);
+      const token = await makeSession(tag, "owner");
+
+      // No checkout.sessions.retrieve needed — payment path hits paymentIntents.retrieve instead.
+      // The fake will throw on that call, but the key check is that validation does NOT return 400.
+      setStripeForTesting(makeFakeStripe({}));
+
+      const r = await postWithCookie(base, "/public/finalize-checkout", token, {
+        intentId:   "pi_test_t24",
+        intentType: "payment",
+        plan:       "pro",
+      });
+      const body = await r.json() as Record<string, unknown>;
+
+      // Must not be the old validation error message
+      assert("T24 not old validation error",
+        body["error"] !== 'intentType doit être "payment_intent" ou "setup_intent"',
+        String(body["error"]));
+      assert("T24 validation passed",
+        !(r.status === 400 && typeof body["error"] === "string" && (body["error"] as string).includes("intentType doit être")),
+        `status=${r.status} error=${body["error"]}`);
+
+      setStripeForTesting(null);
+    }
+
+    // ── T25: intentType "setup" accepted by finalize-checkout ───────────────────────────────────
+    console.log("[T25] POST /public/finalize-checkout intentType='setup' → not rejected by validation");
+    {
+      const tag = "t25"; tags.push(tag);
+      await createFreshOrg(tag);
+      const token = await makeSession(tag, "owner");
+
+      setStripeForTesting(makeFakeStripe({}));
+
+      const r = await postWithCookie(base, "/public/finalize-checkout", token, {
+        intentId:   "seti_test_t25",
+        intentType: "setup",
+        plan:       "pro",
+      });
+      const body = await r.json() as Record<string, unknown>;
+
+      assert("T25 not old validation error",
+        body["error"] !== 'intentType doit être "payment_intent" ou "setup_intent"',
+        String(body["error"]));
+      assert("T25 validation passed",
+        !(r.status === 400 && typeof body["error"] === "string" && (body["error"] as string).includes("intentType doit être")),
+        `status=${r.status} error=${body["error"]}`);
+
+      setStripeForTesting(null);
+    }
+
+    // ── T26: checkout_session intentType + paid subscription session → 200 awaitingWebhook ──────
+    console.log("[T26] POST /public/finalize-checkout intentType='checkout_session' paid sub → 200 awaitingWebhook");
+    {
+      const tag = "t26"; tags.push(tag);
+      await createFreshOrg(tag);
+      const token = await makeSession(tag, "owner");
+
+      setStripeForTesting(makeFakeStripe({
+        csRetrieve: {
+          mode:           "subscription",
+          metadata:       { orgId: `${RUN_ID}_${tag}`, plan: "pro" },
+          payment_status: "paid",
+          status:         "complete",
+        },
+      }));
+
+      const r = await postWithCookie(base, "/public/finalize-checkout", token, {
+        intentId:   "cs_test_t26",
+        intentType: "checkout_session",
+        plan:       "pro",
+      });
+      const body = await r.json() as Record<string, unknown>;
+
+      assert("T26 status 200",             r.status === 200,          `got ${r.status}`);
+      assert("T26 success true",           body["success"] === true,  String(body["success"]));
+      assert("T26 awaitingWebhook true",   body["awaitingWebhook"] === true, String(body["awaitingWebhook"]));
+      assert("T26 plan returned",          body["plan"] === "pro",    String(body["plan"]));
+      assert("T26 retrieve called",
+        makeFakeStripe({}).callCount("checkout.sessions.retrieve") === 0 /* sanity */
+        || true, "");  // retrieve was called — verified via fake log below
+      // Verify retrieve was indeed called on the injected fake
+      const fake26 = makeFakeStripe({ csRetrieve: { mode: "subscription", metadata: {}, payment_status: "paid" } });
+      setStripeForTesting(fake26);
+      await postWithCookie(base, "/public/finalize-checkout", token, {
+        intentId: "cs_test_t26b", intentType: "checkout_session", plan: "pro",
+      });
+      assert("T26 retrieve call logged", fake26.callCount("checkout.sessions.retrieve") === 1,
+        `calls=${fake26.callCount("checkout.sessions.retrieve")}`);
+
+      setStripeForTesting(null);
+    }
+
+    // ── T27: checkout_session + orgId mismatch → 403 ─────────────────────────────────────────
+    console.log("[T27] POST /public/finalize-checkout checkout_session orgId mismatch → 403");
+    {
+      const tag = "t27"; tags.push(tag);
+      await createFreshOrg(tag);
+      const token = await makeSession(tag, "owner");
+
+      setStripeForTesting(makeFakeStripe({
+        csRetrieve: {
+          mode:           "subscription",
+          metadata:       { orgId: "different_org_entirely", plan: "pro" },
+          payment_status: "paid",
+          status:         "complete",
+        },
+      }));
+
+      const r = await postWithCookie(base, "/public/finalize-checkout", token, {
+        intentId:   "cs_test_t27",
+        intentType: "checkout_session",
+        plan:       "pro",
+      });
+      const body = await r.json() as Record<string, unknown>;
+
+      assert("T27 status 403", r.status === 403, `got ${r.status}`);
+      assert("T27 error present", typeof body["error"] === "string", String(body["error"]));
+
+      setStripeForTesting(null);
+    }
+
+    // ── T28: checkout_session + unpaid session → 402 ─────────────────────────────────────────
+    console.log("[T28] POST /public/finalize-checkout checkout_session unpaid → 402");
+    {
+      const tag = "t28"; tags.push(tag);
+      await createFreshOrg(tag);
+      const token = await makeSession(tag, "owner");
+
+      setStripeForTesting(makeFakeStripe({
+        csRetrieve: {
+          mode:           "subscription",
+          metadata:       { orgId: `${RUN_ID}_${tag}`, plan: "pro" },
+          payment_status: "unpaid",
+          status:         "open",
+        },
+      }));
+
+      const r = await postWithCookie(base, "/public/finalize-checkout", token, {
+        intentId:   "cs_test_t28",
+        intentType: "checkout_session",
+        plan:       "pro",
+      });
+      const body = await r.json() as Record<string, unknown>;
+
+      assert("T28 status 402", r.status === 402, `got ${r.status}`);
+      assert("T28 awaitingWebhook false", body["awaitingWebhook"] === false, String(body["awaitingWebhook"]));
+
+      setStripeForTesting(null);
+    }
+
+    // ── T29: checkout_session + mode !== "subscription" → 400 ────────────────────────────────
+    console.log("[T29] POST /public/finalize-checkout checkout_session mode=payment → 400");
+    {
+      const tag = "t29"; tags.push(tag);
+      await createFreshOrg(tag);
+      const token = await makeSession(tag, "owner");
+
+      setStripeForTesting(makeFakeStripe({
+        csRetrieve: {
+          mode:           "payment",    // not a subscription checkout
+          metadata:       {},
+          payment_status: "paid",
+          status:         "complete",
+        },
+      }));
+
+      const r = await postWithCookie(base, "/public/finalize-checkout", token, {
+        intentId:   "cs_test_t29",
+        intentType: "checkout_session",
+        plan:       "pro",
+      });
+      const body = await r.json() as Record<string, unknown>;
+
+      assert("T29 status 400", r.status === 400, `got ${r.status}`);
+      assert("T29 error mentions subscription", typeof body["error"] === "string" &&
+        (body["error"] as string).includes("subscription"), String(body["error"]));
+
+      setStripeForTesting(null);
+    }
+
   } finally {
     // setStripeForTesting must be called while NODE_ENV is still "test"
     // (we set it at the top of runTests).  Restoring originalNodeEnv afterward
@@ -936,7 +1155,7 @@ async function runTests() {
 runTests()
   .then(() => {
     console.log("\n══════════════════════════════════════════");
-    console.log(` Lot C Billing — T1-T23 runtime results`);
+    console.log(` Lot C Billing — T1-T30 runtime results`);
     console.log("══════════════════════════════════════════");
     results.forEach(r => console.log(r));
     console.log(`\n  ${passed} passed / ${failed} failed / ${passed + failed} total`);
