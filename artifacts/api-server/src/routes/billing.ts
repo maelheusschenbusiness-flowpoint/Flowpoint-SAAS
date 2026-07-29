@@ -743,6 +743,86 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
   try {
     const stripe = await createStripeClient(stripeKey);
 
+    // ── Reactivation: canceled subscription with an existing Stripe customer ─────
+    // When subscriptionStatus === "canceled" but stripeCustomerId is set, the org
+    // already has billing history. Route through a new Checkout Session that reuses
+    // the existing customer — do NOT start a new-user checkout flow.
+    //
+    // The webhook (checkout.session.completed / customer.subscription.created) is
+    // the SOLE source of truth; no local DB state is modified here.
+    if (billingCtx.subscriptionStatus === "canceled" && billingCtx.stripeCustomerId) {
+      const priceId = PLAN_PRICE_IDS[targetPlan];
+      if (!priceId) {
+        res.status(400).json({ error: `Unknown plan: ${plan}` });
+        return;
+      }
+
+      // Idempotency: return an existing open session if one already exists for
+      // this customer + targetPlan (handles double-click / repeated calls).
+      const openSessions = await stripe.checkout.sessions.list({
+        customer: billingCtx.stripeCustomerId,
+        status:   "open",
+        limit:    5,
+      });
+      const existingSession = (openSessions.data ?? []).find(
+        (s: { metadata?: Record<string, string>; url?: string | null }) =>
+          s.metadata?.["reactivation"] === "true" &&
+          s.metadata?.["targetPlan"]   === targetPlan &&
+          s.url,
+      );
+      if (existingSession) {
+        logger.info(
+          { sessionId: existingSession.id, orgId, targetPlan },
+          "[Billing] reactivation: returning existing open session (idempotent)",
+        );
+        res.json({
+          reactivation:   true,
+          checkoutUrl:    existingSession.url,
+          customerReused: true,
+          targetPlan,
+          idempotent:     true,
+        });
+        return;
+      }
+
+      // Create a new Checkout Session, reusing the existing Stripe customer.
+      // metadata.plan is consumed by the checkout.session.completed webhook to
+      // update the DB — no direct persistOrgData() call here.
+      const session = await stripe.checkout.sessions.create({
+        customer:    billingCtx.stripeCustomerId,
+        mode:        "subscription",
+        line_items:  [{ price: priceId, quantity: 1 }],
+        success_url: `${publicUrl}/dashboard.html?plan_activated=1&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url:  `${publicUrl}/pricing.html`,
+        metadata: {
+          plan:         targetPlan,   // consumed by checkout.session.completed webhook
+          targetPlan,                 // for idempotency lookup on subsequent calls
+          orgId,
+          reactivation: "true",
+          userId:       String(req.userId ?? ""),
+        },
+        subscription_data: {
+          metadata: {
+            plan:         targetPlan,
+            orgId,
+            reactivation: "true",
+          },
+        },
+      });
+
+      logger.info(
+        { sessionId: session.id, orgId, targetPlan, customerId: billingCtx.stripeCustomerId },
+        "[Billing] reactivation checkout session created",
+      );
+      res.json({
+        reactivation:   true,
+        checkoutUrl:    session.url,
+        customerReused: true,
+        targetPlan,
+      });
+      return;
+    }
+
     // ── Try to update existing subscription first (active OR trialing) ──────────
     if (billingCtx.stripeCustomerId) {
       const [activeSubs, trialingSubs] = await Promise.all([

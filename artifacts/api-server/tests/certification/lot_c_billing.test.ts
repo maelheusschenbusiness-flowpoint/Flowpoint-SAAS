@@ -1,5 +1,5 @@
 /**
- * Lot C — Billing runtime integration tests T1-T10
+ * Lot C — Billing runtime integration tests T1-T21
  *
  * Runs an in-process Express server with the real billing router so that
  * setStripeForTesting() can inject a fake Stripe recorder.
@@ -79,10 +79,12 @@ async function cleanup(tags: string[]) {
 interface StripeCallLog { [path: string]: unknown[][] }
 
 interface FakeStripeOptions {
-  activeSubs?: boolean;        // subscriptions.list(status:'active') returns a sub
-  trialingSubs?: boolean;      // subscriptions.list(status:'trialing') returns a sub
-  subHistory?: boolean;        // subscriptions.list(status:'all') returns a sub
-  addonActiveInSub?: boolean;  // addon price found in existing subscription items
+  activeSubs?: boolean;               // subscriptions.list(status:'active') returns a sub
+  trialingSubs?: boolean;             // subscriptions.list(status:'trialing') returns a sub
+  subHistory?: boolean;               // subscriptions.list(status:'all') returns a sub
+  addonActiveInSub?: boolean;         // addon price found in existing subscription items
+  openReactivationSession?: boolean;  // checkout.sessions.list returns an open reactivation session
+  allowSubUpdate?: boolean;           // subscriptions.update resolves (for upgrade-path tests)
 }
 
 function makeFakeStripe(opts: FakeStripeOptions = {}) {
@@ -121,7 +123,12 @@ function makeFakeStripe(opts: FakeStripeOptions = {}) {
         }
         return Promise.resolve({ data: [] });
       },
-      update: rec("subscriptions.update"),
+      update: opts.allowSubUpdate
+        ? (params: unknown) => {
+            (log["subscriptions.update"] ??= []).push([params]);
+            return Promise.resolve({ id: "sub_updated", status: "active", items: { data: [] } });
+          }
+        : rec("subscriptions.update"),
       cancel: rec("subscriptions.cancel"),
     },
 
@@ -136,6 +143,19 @@ function makeFakeStripe(opts: FakeStripeOptions = {}) {
           });
         },
         retrieve: rec("checkout.sessions.retrieve"),
+        list(params: unknown) {
+          (log["checkout.sessions.list"] ??= []).push([params]);
+          if (opts.openReactivationSession) {
+            return Promise.resolve({
+              data: [{
+                id:  "cs_open_reactivation",
+                url: "https://checkout.stripe.com/c/pay/existing_session",
+                metadata: { reactivation: "true", targetPlan: "pro", plan: "pro" },
+              }],
+            });
+          }
+          return Promise.resolve({ data: [] });
+        },
       },
     },
 
@@ -148,6 +168,10 @@ function makeFakeStripe(opts: FakeStripeOptions = {}) {
 
 function buildApp() {
   const app = express();
+  // For the webhook endpoint the handler reads req.rawBody ?? req.body.
+  // express.json() parses to an object whose .toString() is "[object Object]".
+  // Using express.text() on that path makes req.body a string so JSON.parse works.
+  app.use("/api/billing/webhook", express.text({ type: "application/json" }));
   app.use(express.json());
   app.use(cookieParser());
   app.use(orgContext);
@@ -462,6 +486,316 @@ async function runTests() {
       }
     }
 
+    // ── T12: fresh account (pending_billing, no stripeCustomerId) → noSubscription ─
+    console.log("[T12] Fresh account, no stripeCustomerId → noSubscription: true");
+    {
+      const tag = "t12"; tags.push(tag);
+      // Use upsertOrgSettings to set pending_billing status (not a valid Stripe status,
+      // but represents "account created, never subscribed, no customer ID").
+      await upsertOrgSettings(orgId(tag), { subscriptionStatus: "pending_billing", plan: "standard" });
+      const token = await makeSession(tag, "owner");
+
+      const fakeStripe = makeFakeStripe({});
+      setStripeForTesting(fakeStripe);
+
+      const r = await post(base, "/billing/upgrade", token, { plan: "pro" });
+      const body = await r.json() as Record<string, unknown>;
+
+      assert("T12 status 200",              r.status === 200, `got ${r.status}`);
+      assert("T12 noSubscription true",     body["noSubscription"] === true, String(body["noSubscription"]));
+      assert("T12 no reactivation key",     !("reactivation" in body), `body=${JSON.stringify(body).slice(0, 80)}`);
+      assert("T12 no Stripe session create", fakeStripe.callCount("checkout.sessions.create") === 0,
+             `calls=${fakeStripe.callCount("checkout.sessions.create")}`);
+
+      setStripeForTesting(null);
+    }
+
+    // ── T13: active account → upgrade path taken, NOT the reactivation branch ────
+    console.log("[T13] Active account → upgrade path, reactivation branch skipped");
+    {
+      const tag = "t13"; tags.push(tag);
+      // Active subscription with stripe customer — reactivation requires "canceled",
+      // so the active upgrade path must be taken instead.
+      await createFreshOrg(tag, { subscription_status: "active", stripe_customer_id: "cus_t13_active" });
+      const token = await makeSession(tag, "owner");
+
+      // activeSubs=true → stripe.subscriptions.list returns a live sub → upgrade path
+      const fakeStripe = makeFakeStripe({ activeSubs: true, allowSubUpdate: true });
+      setStripeForTesting(fakeStripe);
+
+      const r = await post(base, "/billing/upgrade", token, { plan: "pro" });
+      const body = await r.json() as Record<string, unknown>;
+
+      assert("T13 status 200",            r.status === 200, `got ${r.status}`);
+      assert("T13 no reactivation key",   !body["reactivation"], `body=${JSON.stringify(body).slice(0, 80)}`);
+      // Active path calls subscriptions.update, not checkout.sessions.create
+      assert("T13 sub update called",     fakeStripe.callCount("subscriptions.update") === 1,
+             `calls=${fakeStripe.callCount("subscriptions.update")}`);
+      assert("T13 no session list call",  fakeStripe.callCount("checkout.sessions.list") === 0,
+             `calls=${fakeStripe.callCount("checkout.sessions.list")}`);
+
+      setStripeForTesting(null);
+    }
+
+    // ── T14: trialing account → reactivation branch NOT taken ───────────────────
+    // "trialing" without a real stripeSubscriptionId normalises to "pending_billing".
+    // The reactivation branch checks subscriptionStatus === "canceled" strictly, so
+    // a pending_billing account with a stripeCustomerId falls through to noSubscription.
+    console.log("[T14] Trialing account (→ pending_billing) → noSubscription, no reactivation");
+    {
+      const tag = "t14"; tags.push(tag);
+      await createFreshOrg(tag, { subscription_status: "trialing", stripe_customer_id: "cus_t14_trial" });
+      const token = await makeSession(tag, "owner");
+
+      // Fake returns no active/trialing subs → no sub found → noSubscription path
+      const fakeStripe = makeFakeStripe({ activeSubs: false, trialingSubs: false });
+      setStripeForTesting(fakeStripe);
+
+      const r = await post(base, "/billing/upgrade", token, { plan: "pro" });
+      const body = await r.json() as Record<string, unknown>;
+
+      assert("T14 status 200",          r.status === 200, `got ${r.status}`);
+      assert("T14 noSubscription true", body["noSubscription"] === true, String(body["noSubscription"]));
+      assert("T14 no reactivation key", !body["reactivation"], `body=${JSON.stringify(body).slice(0, 80)}`);
+
+      setStripeForTesting(null);
+    }
+
+    // ── T15: canceled + stripeCustomerId → reactivation checkout created ─────────
+    console.log("[T15] Canceled + stripeCustomerId → reactivation checkout");
+    {
+      const tag = "t15"; tags.push(tag);
+      await createFreshOrg(tag, { stripe_customer_id: "cus_t15_canceled" });
+      const token = await makeSession(tag, "owner");
+
+      const fakeStripe = makeFakeStripe({ activeSubs: false, trialingSubs: false, openReactivationSession: false });
+      setStripeForTesting(fakeStripe);
+
+      const r = await post(base, "/billing/upgrade", token, { plan: "pro" });
+      const body = await r.json() as Record<string, unknown>;
+
+      assert("T15 status 200",             r.status === 200, `got ${r.status}`);
+      assert("T15 reactivation true",      body["reactivation"] === true, String(body["reactivation"]));
+      assert("T15 customerReused true",    body["customerReused"] === true, String(body["customerReused"]));
+      assert("T15 checkoutUrl is https",   typeof body["checkoutUrl"] === "string" &&
+             (body["checkoutUrl"] as string).startsWith("https://"), String(body["checkoutUrl"]));
+      assert("T15 targetPlan is pro",      body["targetPlan"] === "pro", String(body["targetPlan"]));
+      assert("T15 not idempotent",         !body["idempotent"], `idempotent=${body["idempotent"]}`);
+      // Verify session was created and used the existing Stripe customer
+      assert("T15 session create called",  fakeStripe.callCount("checkout.sessions.create") === 1,
+             `calls=${fakeStripe.callCount("checkout.sessions.create")}`);
+      const createArg = fakeStripe.lastCallArg("checkout.sessions.create") as Record<string, unknown> | undefined;
+      assert("T15 customer reused",        createArg?.["customer"] === "cus_t15_canceled",
+             `customer=${createArg?.["customer"]}`);
+      assert("T15 mode subscription",      createArg?.["mode"] === "subscription", `mode=${createArg?.["mode"]}`);
+      const meta = createArg?.["metadata"] as Record<string, string> | undefined;
+      assert("T15 meta.plan is pro",       meta?.["plan"] === "pro", `meta.plan=${meta?.["plan"]}`);
+      assert("T15 meta.targetPlan is pro", meta?.["targetPlan"] === "pro", `meta.targetPlan=${meta?.["targetPlan"]}`);
+      assert("T15 meta.reactivation",      meta?.["reactivation"] === "true", `meta.reactivation=${meta?.["reactivation"]}`);
+      assert("T15 no sub update",          fakeStripe.callCount("subscriptions.update") === 0,
+             `calls=${fakeStripe.callCount("subscriptions.update")}`);
+
+      setStripeForTesting(null);
+    }
+
+    // ── T16: canceled WITHOUT stripeCustomerId → noSubscription: true ───────────
+    console.log("[T16] Canceled, no stripeCustomerId → noSubscription: true");
+    {
+      const tag = "t16"; tags.push(tag);
+      await createFreshOrg(tag); // canceled, no stripe_customer_id
+      const token = await makeSession(tag, "owner");
+
+      const fakeStripe = makeFakeStripe({});
+      setStripeForTesting(fakeStripe);
+
+      const r = await post(base, "/billing/upgrade", token, { plan: "pro" });
+      const body = await r.json() as Record<string, unknown>;
+
+      assert("T16 status 200",              r.status === 200, `got ${r.status}`);
+      assert("T16 noSubscription true",     body["noSubscription"] === true, String(body["noSubscription"]));
+      assert("T16 no reactivation",         !body["reactivation"], `reactivation=${body["reactivation"]}`);
+      assert("T16 no session create",       fakeStripe.callCount("checkout.sessions.create") === 0,
+             `calls=${fakeStripe.callCount("checkout.sessions.create")}`);
+
+      setStripeForTesting(null);
+    }
+
+    // ── T17: double reactivation call → idempotent (existing open session) ───────
+    console.log("[T17] Double reactivation call → idempotent, existing session returned");
+    {
+      const tag = "t17"; tags.push(tag);
+      await createFreshOrg(tag, { stripe_customer_id: "cus_t17_canceled" });
+      const token = await makeSession(tag, "owner");
+
+      // Fake has an open reactivation session already in Stripe
+      const fakeStripe = makeFakeStripe({ openReactivationSession: true });
+      setStripeForTesting(fakeStripe);
+
+      const r = await post(base, "/billing/upgrade", token, { plan: "pro" });
+      const body = await r.json() as Record<string, unknown>;
+
+      assert("T17 status 200",            r.status === 200, `got ${r.status}`);
+      assert("T17 reactivation true",     body["reactivation"] === true, String(body["reactivation"]));
+      assert("T17 idempotent true",       body["idempotent"] === true, String(body["idempotent"]));
+      assert("T17 url is existing",       body["checkoutUrl"] === "https://checkout.stripe.com/c/pay/existing_session",
+             String(body["checkoutUrl"]));
+      assert("T17 no new session create", fakeStripe.callCount("checkout.sessions.create") === 0,
+             `calls=${fakeStripe.callCount("checkout.sessions.create")}`);
+      assert("T17 session list called",   fakeStripe.callCount("checkout.sessions.list") === 1,
+             `calls=${fakeStripe.callCount("checkout.sessions.list")}`);
+
+      setStripeForTesting(null);
+    }
+
+    // ── T18: invalid plan string → 400 (parsePlan guard, before Stripe) ─────────
+    console.log("[T18] Invalid plan → 400");
+    {
+      const tag = "t18"; tags.push(tag);
+      await createFreshOrg(tag, { stripe_customer_id: "cus_t18_canceled" });
+      const token = await makeSession(tag, "owner");
+
+      // parsePlan() rejects before any Stripe call
+      setStripeForTesting(null);
+
+      const r = await post(base, "/billing/upgrade", token, { plan: "enterprise" });
+      const body = await r.json() as Record<string, unknown>;
+
+      assert("T18 status 400",           r.status === 400, `got ${r.status}`);
+      assert("T18 error mentions plan",  String(body["error"]).toLowerCase().includes("plan"), String(body["error"]));
+      assert("T18 no reactivation",      !body["reactivation"], `reactivation=${body["reactivation"]}`);
+    }
+
+    // ── T19: Stripe client throws → 500 ─────────────────────────────────────────
+    console.log("[T19] Stripe client throws on sessions.list → 500");
+    {
+      const tag = "t19"; tags.push(tag);
+      await createFreshOrg(tag, { stripe_customer_id: "cus_t19_canceled" });
+      const token = await makeSession(tag, "owner");
+
+      // A broken Stripe that always rejects
+      const brokenStripe = {
+        checkout: {
+          sessions: {
+            list:     () => Promise.reject(new Error("Stripe connection refused")),
+            create:   () => Promise.reject(new Error("Stripe connection refused")),
+            retrieve: () => Promise.reject(new Error("Stripe connection refused")),
+          },
+        },
+        subscriptions: {
+          list:   () => Promise.reject(new Error("Stripe connection refused")),
+          update: () => Promise.reject(new Error("Stripe connection refused")),
+          cancel: () => Promise.reject(new Error("Stripe connection refused")),
+        },
+        customers: { create: () => Promise.reject(new Error("Stripe connection refused")) },
+        billingPortal: { sessions: { create: () => Promise.reject(new Error("Stripe connection refused")) } },
+        webhooks: { constructEvent: () => { throw new Error("no"); } },
+      };
+      setStripeForTesting(brokenStripe as unknown as Record<string, unknown>);
+
+      const r = await post(base, "/billing/upgrade", token, { plan: "pro" });
+      const body = await r.json() as Record<string, unknown>;
+
+      assert("T19 status 500",      r.status === 500, `got ${r.status}`);
+      assert("T19 error present",   typeof body["error"] === "string", String(body["error"]));
+      assert("T19 no reactivation", !body["reactivation"], `reactivation=${body["reactivation"]}`);
+
+      setStripeForTesting(null);
+    }
+
+    // ── T20: webhook checkout.session.completed (reactivation) → DB updated ─────
+    console.log("[T20] Webhook checkout.session.completed with reactivation metadata → DB active");
+    {
+      const tag = "t20"; tags.push(tag);
+      const customerId = `cus_t20_${RUN_ID}`;
+      await createFreshOrg(tag, { stripe_customer_id: customerId });
+
+      // Clear webhook secret so the handler uses JSON.parse(body) path (dev mode)
+      const savedWebhookSecret       = process.env["STRIPE_WEBHOOK_SECRET"];
+      const savedWebhookSecretRender = process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
+      delete process.env["STRIPE_WEBHOOK_SECRET"];
+      delete process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
+
+      const webhookEvent = {
+        id:   "evt_t20_test",
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id:             "cs_t20_completed",
+            customer:       customerId,
+            metadata:       { plan: "pro", reactivation: "true", orgId: orgId(tag) },
+            payment_status: "paid",
+            status:         "complete",
+          },
+        },
+      };
+
+      const r = await fetch(`${base}/billing/webhook`, {
+        method:  "POST",
+        headers: {
+          "Content-Type":     "application/json",
+          "stripe-signature": "t=1,v1=test_placeholder",
+        },
+        body: JSON.stringify(webhookEvent),
+      });
+
+      // Restore env
+      if (savedWebhookSecret)       process.env["STRIPE_WEBHOOK_SECRET"]        = savedWebhookSecret;
+      if (savedWebhookSecretRender) process.env["STRIPE_WEBHOOK_SECRET_RENDER"]  = savedWebhookSecretRender;
+
+      assert("T20 webhook 200", r.status === 200, `got ${r.status}`);
+
+      // Allow async DB write to complete
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      const client20 = await pool.connect();
+      let dbStatus = ""; let dbPlan = "";
+      try {
+        const result = await client20.query<{ subscription_status: string; plan: string }>(
+          `SELECT subscription_status, plan FROM org_settings WHERE org_id = $1 LIMIT 1`,
+          [orgId(tag)],
+        );
+        dbStatus = result.rows[0]?.subscription_status ?? "";
+        dbPlan   = result.rows[0]?.plan ?? "";
+      } finally { client20.release(); }
+
+      assert("T20 DB status → active", dbStatus === "active", `dbStatus=${dbStatus}`);
+      assert("T20 DB plan → pro",      dbPlan   === "pro",    `dbPlan=${dbPlan}`);
+    }
+
+    // ── T21: no local DB update before webhook ───────────────────────────────────
+    console.log("[T21] POST /billing/upgrade (canceled) → DB status unchanged (webhook not fired)");
+    {
+      const tag = "t21"; tags.push(tag);
+      await createFreshOrg(tag, { stripe_customer_id: "cus_t21_canceled" });
+      const token = await makeSession(tag, "owner");
+
+      const fakeStripe = makeFakeStripe({ openReactivationSession: false });
+      setStripeForTesting(fakeStripe);
+
+      // Call upgrade — should receive a reactivation checkout URL
+      const r = await post(base, "/billing/upgrade", token, { plan: "pro" });
+      assert("T21 status 200",        r.status === 200, `got ${r.status}`);
+      const body = await r.json() as Record<string, unknown>;
+      assert("T21 reactivation true", body["reactivation"] === true, String(body["reactivation"]));
+
+      // Immediately query DB — status MUST still be "canceled" (webhook hasn't fired)
+      const client21 = await pool.connect();
+      let dbStatus21 = ""; let dbPlan21 = "";
+      try {
+        const result = await client21.query<{ subscription_status: string; plan: string }>(
+          `SELECT subscription_status, plan FROM org_settings WHERE org_id = $1 LIMIT 1`,
+          [orgId(tag)],
+        );
+        dbStatus21 = result.rows[0]?.subscription_status ?? "";
+        dbPlan21   = result.rows[0]?.plan ?? "";
+      } finally { client21.release(); }
+
+      assert("T21 DB status still canceled", dbStatus21 === "canceled", `dbStatus=${dbStatus21}`);
+      assert("T21 DB plan still standard",   dbPlan21   === "standard", `dbPlan=${dbPlan21}`);
+
+      setStripeForTesting(null);
+    }
+
   } finally {
     // setStripeForTesting must be called while NODE_ENV is still "test"
     // (we set it at the top of runTests).  Restoring originalNodeEnv afterward
@@ -480,7 +814,7 @@ async function runTests() {
 runTests()
   .then(() => {
     console.log("\n══════════════════════════════════════════");
-    console.log(` Lot C Billing — T1-T10 runtime results`);
+    console.log(` Lot C Billing — T1-T21 runtime results`);
     console.log("══════════════════════════════════════════");
     results.forEach(r => console.log(r));
     console.log(`\n  ${passed} passed / ${failed} failed / ${passed + failed} total`);
