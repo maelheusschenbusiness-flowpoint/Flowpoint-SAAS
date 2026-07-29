@@ -282,7 +282,20 @@ async function saveCheckResult(
           metadata: { url: String(mon.url), kind: notifyAfterCommit!.kind },
         }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
-        const recipient = (mon.alert_email as string | undefined)?.trim() || store.me.email;
+        // BUG-3 FIX: resolve recipient using the 3-tier priority chain:
+        //   1. per-monitor alertEmail (stored on the monitor row)
+        //   2. user-pref alertEmail (stored in user_prefs.settings.alertEmail via Settings > Canaux d'alerte)
+        //   3. account email (store.me.email fallback)
+        let _orgAlertEmail: string | null = null;
+        try {
+          const _prefRow = await pool.query(
+            `SELECT settings->>'alertEmail' AS alert_email FROM user_prefs WHERE org_id = $1`,
+            [orgId]
+          );
+          const _pref = (_prefRow.rows[0]?.alert_email as string | undefined)?.trim();
+          if (_pref) _orgAlertEmail = _pref;
+        } catch { /* non-fatal — fall through to account email */ }
+        const recipient = (mon.alert_email as string | undefined)?.trim() || _orgAlertEmail || store.me.email;
         if (recipient) {
           if (isDown) {
             await mailer.sendMonitorDown({

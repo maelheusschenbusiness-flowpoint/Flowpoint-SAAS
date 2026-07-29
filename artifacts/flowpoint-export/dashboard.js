@@ -8877,7 +8877,11 @@ function renderSettings() {
   const isStd   = planLc === 'standard';
   const isPro   = planLc === 'pro' || planLc === 'agency' || planLc === 'ultra';
   const isUltra = planLc === 'agency' || planLc === 'ultra';
-  const wlBranding = JSON.parse(localStorage.getItem('fp:wl-branding') || '{}');
+  // BUG-1 FIX: load wlBranding from server-persisted STATE.settings first (DB-backed),
+  // fall back to localStorage for offline/legacy compatibility.
+  const wlBranding = (STATE.settings && STATE.settings.wlBranding && typeof STATE.settings.wlBranding === 'object')
+    ? STATE.settings.wlBranding
+    : JSON.parse(localStorage.getItem('fp:wl-branding') || '{}');
 
   // ── Shared Toggle helper ──────────────────────────────────
   const Toggle = (key, label, desc, locked) => {
@@ -9325,7 +9329,7 @@ function renderSettings() {
         <div class="fp-card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
             <div class="fp-card-title" style="margin-bottom:0">💻 Sessions actives</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k=>localStorage.removeItem(k));sessionStorage.clear();showToast('success','Toutes les sessions fermées');setTimeout(()=>{window.location.href='/login.html'},1200)">Tout déconnecter</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="disconnectAllSessions()">Tout déconnecter</button>
           </div>
           ${sessions.map(sess => `
             <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid ${sess.current ? 'rgba(37,99,235,0.25)' : 'var(--fp-border)'};margin-bottom:6px">
@@ -14091,11 +14095,8 @@ function bindSectionEvents() {
       if (key === 'themeAuto') { STATE.theme = STATE.settings.themeAuto ? 'dark' : STATE.theme; applyTheme(); }
     }));
     $('#settings-save')?.addEventListener('click', () => { saveSettings(); showToast('success','Paramètres sauvegardés !'); });
-    $('#logout-all')?.addEventListener('click', () => {
-      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
-      sessionStorage.clear();
-      showToast('success', 'Toutes les sessions fermées');
-      setTimeout(() => { window.location.href = '/login.html'; }, 1200);
+    // BUG-2 FIX: use disconnectAllSessions() to also revoke the server-side session
+    $('#logout-all')?.addEventListener('click', () => { disconnectAllSessions(); return;
     });
     $('#renew-access')?.addEventListener('click', async () => {
       const email = STATE.me?.email;
@@ -14294,8 +14295,13 @@ function bindSectionEvents() {
         secondaryColor: $('#wl-secondary-color-hex')?.value.trim() || '#1d4ed8',
         footerMsg:      $('#wl-footer-msg')?.value.trim() || '',
       };
+      // BUG-1 FIX: persist wlBranding to DB via user_prefs.settings (server-side)
+      // in addition to localStorage (for fast local reads).
       localStorage.setItem('fp:wl-branding', JSON.stringify(branding));
-      showToast('success', 'Branding White Label sauvegardé !');
+      if (STATE.settings) STATE.settings.wlBranding = branding;
+      apiAction('PATCH', '/api/me/prefs', { settings: { wlBranding: branding } })
+        .then(() => showToast('success', 'Branding White Label sauvegardé !'))
+        .catch(() => showToast('warning', 'Branding sauvegardé localement — synchronisation serveur échouée'));
       render();
     });
   }
@@ -15075,6 +15081,25 @@ async function init() {
   window.escHtml = escHtml;
   window.applyThemeChoice = applyThemeChoice;
   window.saveSettings = saveSettings;
+
+  // ── disconnectAllSessions: revokes server session + clears all local state ──
+  // BUG-2 FIX: calls POST /api/auth/logout to invalidate the server-side session
+  // token and clear the HttpOnly fp_token cookie, THEN clears localStorage.
+  // Idempotent: API failure never prevents local logout — user is always redirected.
+  window.disconnectAllSessions = async function() {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+    } catch (_) { /* non-fatal — still clear local state */ }
+    ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user']
+      .forEach(function(k) { localStorage.removeItem(k); });
+    sessionStorage.clear();
+    showToast('success', 'Toutes les sessions fermées');
+    setTimeout(function() { window.location.href = '/login.html'; }, 1200);
+  };
 
   // ── fpSavePref: named handler for settings pill/preset buttons ──
   // Use via: onclick="fpSavePref(this)"
@@ -17934,7 +17959,7 @@ function renderMonitorsConfig() {
               <div style="width:8px;height:8px;border-radius:50%;background:${ch.active ? ch.color : '#64748b'};${ch.active ? 'box-shadow:0 0 6px ' + ch.color + '60' : ''}"></div>
             </div>
             <div style="font-size:10.5px;color:var(--fp-text-muted);margin-bottom:10px">${ch.detail}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px"${ch.active && ch.name !== 'Email' ? ' disabled title="Configuration en libre-service bientôt disponible — les alertes sont envoyées par email en attendant"' : ''} onclick="${!ch.active ? "navigate('billing')" : ch.name === 'Email' ? "openFloatPanel('Configurer les alertes Email',`<div style='padding:4px'><div class='fp-form-group'><label class='fp-form-label'>Email de réception des alertes</label><input class='fp-input' id='ch-email-input' placeholder='alerte@email.com' value='${escHtml(STATE.me?.email||'')}'/></div><div class='fp-form-group'><label class='fp-form-label'>Alertes à recevoir</label><div style='display:flex;flex-direction:column;gap:6px'><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Site DOWN</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Latence élevée</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox'/> Reprise (site UP)</label></div></div><button class='fp-btn fp-btn-primary' style='width:100%' id='ch-email-save'>Sauvegarder</button></div>`);setTimeout(()=>{document.getElementById('ch-email-save')?.addEventListener('click',async()=>{const v=document.getElementById('ch-email-input')?.value?.trim();if(!v||!/^[^@]+@[^@]+\.[^@]+$/.test(v)){showToast('warning','Email invalide');return;}try{await apiAction('PATCH','/api/me/prefs',{alertEmail:v});showToast('success','Email d\\'alerte sauvegardé');closeFloatPanel();}catch(e){showToast('error','Erreur lors de la sauvegarde');}});},50)" : ''}">
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px"${ch.active && ch.name !== 'Email' ? ' disabled title="Configuration en libre-service bientôt disponible — les alertes sont envoyées par email en attendant"' : ''} onclick="${!ch.active ? "navigate('billing')" : ch.name === 'Email' ? "openFloatPanel('Configurer les alertes Email',`<div style='padding:4px'><div class='fp-form-group'><label class='fp-form-label'>Email de réception des alertes</label><input class='fp-input' id='ch-email-input' placeholder='alerte@email.com' value='${escHtml(STATE.me?.email||'')}'/></div><div class='fp-form-group'><label class='fp-form-label'>Alertes à recevoir</label><div style='display:flex;flex-direction:column;gap:6px'><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Site DOWN</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Latence élevée</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox'/> Reprise (site UP)</label></div></div><button class='fp-btn fp-btn-primary' style='width:100%' id='ch-email-save'>Sauvegarder</button></div>`);setTimeout(()=>{document.getElementById('ch-email-save')?.addEventListener('click',async()=>{const v=document.getElementById('ch-email-input')?.value?.trim();if(!v||!/^[^@]+@[^@]+\.[^@]+$/.test(v)){showToast('warning','Email invalide');return;}try{await apiAction('PATCH','/api/me/prefs',{settings:{alertEmail:v}});showToast('success','Email d\\'alerte sauvegardé');closeFloatPanel();}catch(e){showToast('error','Erreur lors de la sauvegarde');}});},50)" : ''}">
               ${!ch.active ? `🔒 ${ch.gate} requis` : ch.name === 'Email' ? 'Configurer' : 'Bientôt disponible'}
             </button>
           </div>

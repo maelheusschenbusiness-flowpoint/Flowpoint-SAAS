@@ -1639,11 +1639,18 @@ router.get("/auth/session", async (req: Request, res: Response) => {
   });
 });
 
-router.post("/auth/logout", (req: Request, res: Response) => {
+router.post("/auth/logout", async (req: Request, res: Response) => {
+  // Resolve the session token from cookie first (primary), then Bearer header
+  // (fallback for API clients and test harnesses that cannot set HttpOnly cookies).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cookieToken: string = (req as any).cookies?.fp_token ?? "";
-  if (cookieToken) {
-    deleteSession(cookieToken);
+  const authHeader  = req.headers["authorization"] ?? "";
+  const bearerToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : "";
+  const sessionToken = cookieToken || bearerToken;
+  if (sessionToken) {
+    await deleteSession(sessionToken);   // must await — response must not return before DB delete
     logger.info("[Auth] Session revoked on logout");
   }
 

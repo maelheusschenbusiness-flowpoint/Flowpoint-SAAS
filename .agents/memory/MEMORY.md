@@ -1,3 +1,4 @@
+- [Test setup — orgDb + dbContext](test-setup-orgdb.md) — routes using req.orgDb need BOTH orgContext AND dbContext in test server; orgContext alone leaves req.orgDb undefined
 - [Router catch-all plan gate pattern](router-catchall-plangate.md) — router.use(requireFeature()) with no path prefix intercepts ALL unmatched routes; always path-scope it
 - [Nav item delegation fix](nav-delegation-fix.md) — nav + infinite-skeleton regressions share root cause: delegation must be at IIFE global scope, not inside bindGlobalEvents()
 - [FlowPoint production context](flowpoint-context.md) — 10-phase spec, full mock inventory, P0/P1/P2 blockers; read before any session
