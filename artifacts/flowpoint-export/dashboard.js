@@ -11681,7 +11681,7 @@ function renderAIMessages() {
     const dedupedChips = allChips.filter((c, i, arr) => arr.findIndex(x => x.route === c.route) === i);
 
     const _aiAvatar = isAI
-      ? `<svg width="18" height="18" viewBox="0 0 24 24" style="display:block"><rect width="24" height="24" rx="5" fill="#2563EB"/><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="none" stroke="white" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`
+      ? svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="18"').replace('height="14"','height="18"')
       : svgIcon('user').replace('stroke="currentColor"','stroke="#60a5fa"').replace('width="14"','width="12"').replace('height="14"','height="12"');
     return `<div class="fp-ai-message ${m.from}" style="margin-bottom:10px;display:flex;align-items:flex-end;gap:8px;flex-direction:${isAI ? 'row' : 'row-reverse'}">
       <div style="width:26px;height:26px;border-radius:8px;background:${isAI ? 'transparent' : 'rgba(37,99,235,0.22)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -11696,9 +11696,9 @@ function renderAIMessages() {
     </div>`;
   }).join('');
 
-  const typing = STATE.aiLoading ? `<div class="fp-ai-message ai" style="margin-bottom:10px;display:flex;align-items:flex-start;gap:8px">
+  const typing = STATE.aiLoading && !STATE.aiMessages.some(m => m.streaming) ? `<div class="fp-ai-message ai" style="margin-bottom:10px;display:flex;align-items:flex-start;gap:8px">
     <div style="width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-      <svg width="18" height="18" viewBox="0 0 24 24" style="display:block"><rect width="24" height="24" rx="5" fill="#2563EB"/><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="none" stroke="white" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>
+      ${svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="18"').replace('height="14"','height="18"')}
     </div>
     <div style="padding:9px 12px;border-radius:4px 12px 12px 12px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.07)">
       <div class="fp-ai-typing"><div class="fp-ai-typing-dot"></div><div class="fp-ai-typing-dot"></div><div class="fp-ai-typing-dot"></div></div>
@@ -27130,7 +27130,7 @@ function renderLocalSEOMap() {
       <div class="fp-card" style="padding:0;overflow:hidden;position:relative;min-height:520px">
         <!-- Loading skeleton -->
         <div id="fp-gmap-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,14,27,0.95);z-index:10;gap:12px;border-radius:var(--fp-radius-lg)">
-          <div style="width:48px;height:48px;border:3px solid rgba(37,99,235,0.2);border-top-color:#2563EB;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+          <div style="width:48px;height:48px;border:3px solid rgba(37,99,235,0.2);border-top-color:#2563EB;border-radius:50%;animation:spin 1.4s linear infinite"></div>
           <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Chargement de la carte…</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Google Maps · Places · Heatmap</div>
         </div>
@@ -27401,7 +27401,7 @@ function renderCompetitorsMap() {
       <!-- MAP -->
       <div class="fp-card" style="padding:0;overflow:hidden;position:relative;min-height:540px">
         <div id="fp-competitors-map-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,14,27,0.95);z-index:10;gap:12px;border-radius:var(--fp-radius-lg)">
-          <div style="width:48px;height:48px;border:3px solid rgba(239,68,68,0.2);border-top-color:#ef4444;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+          <div style="width:48px;height:48px;border:3px solid rgba(239,68,68,0.2);border-top-color:#ef4444;border-radius:50%;animation:spin 1.4s linear infinite"></div>
           <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Analyse concurrentielle en cours…</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Google Places API · Scoring IA</div>
         </div>
