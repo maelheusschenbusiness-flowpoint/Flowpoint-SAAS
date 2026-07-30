@@ -1259,6 +1259,9 @@ async function loadData() {
     apiFetch('/api/billing/invoices').then(r => {
       if (r && Array.isArray(r.invoices)) STATE.billing = { ...(STATE.billing || {}), invoices: r.invoices };
     }).catch(() => {}),
+    apiFetch('/api/billing/payment-methods').then(r => {
+      if (r && Array.isArray(r.paymentMethods)) STATE.billing = { ...(STATE.billing || {}), paymentMethods: r.paymentMethods };
+    }).catch(() => {}),
     apiFetch('/api/cro').then(r => {
       if (r && typeof r === 'object' && !window.FP_DATA?.cro?._fromRealData) {
         if (!window.FP_DATA) window.FP_DATA = {};
@@ -8032,8 +8035,17 @@ function renderBilling() {
           { id:'FP-2026-011', date:'01/01/2026', amount:'49.00', plan:'Standard', addons:'Aucun',                                status:'Payée',   color:'#22c55e' },
           { id:'FP-2025-121', date:'01/12/2025', amount:'49.00', plan:'Standard', addons:'Aucun',                                status:'Payée',   color:'#22c55e' },
         ] : []);
+    const _brandColors = { visa:'#1a1f71', mastercard:'#eb001b', amex:'#2e77bc', discover:'#f76010' };
     const paymentMethods = STATE.billing?.paymentMethods?.length > 0
-      ? STATE.billing.paymentMethods
+      ? STATE.billing.paymentMethods.map(pm => {
+          const brand = pm.brand || pm.type || 'card';
+          const color = pm.color || _brandColors[brand.toLowerCase()] || '#6366f1';
+          const expires = pm.expires || (pm.expMonth && pm.expYear
+            ? String(pm.expMonth).padStart(2,'0') + '/' + pm.expYear
+            : '');
+          const label = brand.charAt(0).toUpperCase() + brand.slice(1);
+          return { ...pm, type: label, last4: pm.last4, expires, default: pm.isDefault ?? pm.default ?? false, color };
+        })
       : (PREVIEW_MODE ? [
           { type:'Visa',       last4:'4242', expires:'09/2027', default:true,  color:'#1a1f71' },
           { type:'Mastercard', last4:'5555', expires:'03/2026', default:false, color:'#eb001b' },

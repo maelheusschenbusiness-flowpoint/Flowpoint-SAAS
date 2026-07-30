@@ -496,6 +496,48 @@ router.get("/billing/invoices", async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /billing/payment-methods ─────────────────────────────────────────────
+router.get("/billing/payment-methods", async (req: Request, res: Response) => {
+  const orgId = req.orgId ?? "default";
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const billingCtx = await loadBillingContext(orgId);
+  const stripeCustomerId = billingCtx.stripeCustomerId ?? undefined;
+
+  if (!stripeKey || !stripeCustomerId) {
+    res.json({ paymentMethods: [] });
+    return;
+  }
+
+  try {
+    const stripe = await createStripeClient(stripeKey);
+    const [pmList, customer] = await Promise.all([
+      stripe.paymentMethods.list({ customer: stripeCustomerId, type: "card" }),
+      stripe.customers.retrieve(stripeCustomerId),
+    ]);
+
+    const defaultPmId =
+      !customer.deleted && customer.invoice_settings?.default_payment_method
+        ? (typeof customer.invoice_settings.default_payment_method === "string"
+            ? customer.invoice_settings.default_payment_method
+            : (customer.invoice_settings.default_payment_method as { id: string }).id)
+        : null;
+
+    const paymentMethods = pmList.data.map((pm) => ({
+      id:       pm.id,
+      brand:    pm.card?.brand ?? "card",
+      last4:    pm.card?.last4 ?? "????",
+      expMonth: pm.card?.exp_month ?? 0,
+      expYear:  pm.card?.exp_year  ?? 0,
+      isDefault: pm.id === defaultPmId,
+    }));
+
+    res.json({ paymentMethods });
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to get payment methods");
+    res.status(500).json({ error: "Failed to retrieve payment methods" });
+  }
+});
+
 // ── POST /billing/trial ──────────────────────────────────────────────────────
 router.post("/billing/trial", async (req: Request, res: Response) => {
   const plan = parsePlanWithDefault(req.body?.plan, "pro", res);
