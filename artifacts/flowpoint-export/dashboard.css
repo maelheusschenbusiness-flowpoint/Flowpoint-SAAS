@@ -8842,8 +8842,32 @@ html[data-theme="light"] .fp-skel-shimmer {
   animation: fpSkeleton 1.6s infinite linear;
 }
 
-/* ══ Section-level skeleton page ═══════════════════════════════════ */
-.fp-skeleton-page { padding: 24px; animation: fp-fade-in 0.3s ease; }
+/* ══ Section-level skeleton page — spinner ══════════════════════════ */
+.fp-skeleton-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  padding: 24px;
+}
+/* Hide all skeleton block children — spinner replaces them */
+.fp-skeleton-page > * { display: none !important; }
+/* Centered spinning ring via ::before */
+.fp-skeleton-page::before {
+  content: '';
+  display: block;
+  width: 44px;
+  height: 44px;
+  border: 3.5px solid rgba(255, 255, 255, 0.08);
+  border-top-color: #2563EB;
+  border-radius: 50%;
+  animation: fpSpin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+html[data-theme="light"] .fp-skeleton-page::before {
+  border-color: rgba(0, 0, 0, 0.08);
+  border-top-color: #2563EB;
+}
 .fp-skel-block {
   border-radius: var(--fp-radius-lg);
   background: var(--fp-card, rgba(255,255,255,0.04));

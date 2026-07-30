@@ -392,7 +392,16 @@ async function apiFetch(path, opts = {}) {
     if (inflight) return inflight;
   }
   const _promise = (async () => {
-    const token = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
+    // Per-tab session isolation: sessionStorage token takes priority over shared localStorage.
+    // When two users test simultaneously in different tabs of the same browser, each tab
+    // keeps its own sessionStorage — prevents cross-user token contamination.
+    const token = (function() {
+      try {
+        var stok = sessionStorage.getItem('fp_session_token');
+        if (stok) return stok;
+      } catch(_) {}
+      return localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
+    })();
     // Cache-buster for GET to bypass CDN/browser cache
     const _path = isGet && !path.includes('?')
       ? `${path}?_cb=${Date.now()}`
@@ -408,8 +417,8 @@ async function apiFetch(path, opts = {}) {
       credentials: 'include',
     });
     if (res.status === 401) {
-      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
-      try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_tab_uid'].forEach(k => localStorage.removeItem(k));
+      try { sessionStorage.clear(); } catch(_) {}
       window.location.href = '/login.html';
       return null;
     }
@@ -3709,7 +3718,8 @@ function renderSidebarStatus() {
     const _pdfU   = _usg.pdf     || { used: 0, limit: _lims.reports   || 10  };
     const _expU   = _usg.exports || { used: 0, limit: _lims.exports   || 30  };
     const _seatsUsed  = STATE.seatUsage?.used  ?? ((STATE.team||[]).length || 1);
-    const _seatsLimit = STATE.seatUsage?.limit ?? (_lims.teamMembers ?? (1 + (me.addons?.extraSeats || 0)));
+    // Take max of seatUsage (API) and plan limits — prevents stale error-fallback (limit:1) from underreporting
+    const _seatsLimit = Math.max(STATE.seatUsage?.limit ?? 0, _lims.teamMembers ?? 0, 1 + (me.addons?.extraSeats || 0)) || 1;
     const _seatsU = { used: _seatsUsed, limit: _seatsLimit };
     const _rapU   = { used: me.usage?.reports?.used ?? 0, limit: _lims.reports ?? 30 };
     const bars = [
@@ -7434,7 +7444,7 @@ function renderTeam() {
 
     <!-- TEAM STATS -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Membres actifs', (STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : (STATE.team||[]).length + '/' + (1+(me?.addons?.extraSeats||0))), 'seats utilisés', 'neutral')}
+      ${statCard('Membres actifs', (STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : (STATE.team||[]).length + '/' + (me?.limits?.teamMembers ?? (1+(me?.addons?.extraSeats||0)))), 'seats utilisés', 'neutral')}
       ${statCard('Messages aujourd\'hui', (STATE.channelMessages && typeof STATE.channelMessages === 'object') ? String(Object.values(STATE.channelMessages).reduce((n,arr)=>n+(Array.isArray(arr)?arr.length:0),0)) : '—', 'messages dans les canaux', 'neutral')}
       ${statCard('Fichiers partagés', STATE.teamFiles && STATE.teamFiles.length > 0 ? String(STATE.teamFiles.length) : '—', STATE.teamFiles && STATE.teamFiles.length > 0 ? 'fichiers partagés' : 'Aucun fichier partagé', 'neutral')}
       ${statCard('Tâches assignées', STATE.missions && STATE.missions.length > 0 ? String(STATE.missions.length) : '—', STATE.missions && STATE.missions.length > 0 ? 'missions actives' : 'Aucune mission', 'neutral')}
@@ -7445,8 +7455,8 @@ function renderTeam() {
       <div style="display:flex;flex-direction:column">
         <div class="fp-table-wrap fp-mb-16">
           <div style="padding:14px 20px;border-bottom:1px solid var(--fp-border);display:flex;align-items:center;justify-content:space-between">
-            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Membres (${STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : (STATE.team||[]).length + '/' + (1+(me?.addons?.extraSeats||0))} seats)</div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${(STATE.pendingInvitations||[]).length > 0 ? (STATE.pendingInvitations||[]).length + ' invitation(s) en attente · ' : ''}${STATE.seatUsage ? STATE.seatUsage.limit - STATE.seatUsage.used : 1+(me?.addons?.extraSeats||0)-(STATE.team||[]).length} siège(s) libre(s)</div>
+            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Membres (${STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : (STATE.team||[]).length + '/' + (me?.limits?.teamMembers ?? (1+(me?.addons?.extraSeats||0)))} seats)</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${(STATE.pendingInvitations||[]).length > 0 ? (STATE.pendingInvitations||[]).length + ' invitation(s) en attente · ' : ''}${STATE.seatUsage ? STATE.seatUsage.limit - STATE.seatUsage.used : (me?.limits?.teamMembers ?? (1+(me?.addons?.extraSeats||0)))-(STATE.team||[]).length} siège(s) libre(s)</div>
           </div>
           ${(STATE.team||[]).map((t,i)=>`
             <div class="fp-team-member-row" data-member-id="${t.id}" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:${i<STATE.team.length-1?'1px solid rgba(255,255,255,0.04)':'none'}">
@@ -7464,7 +7474,7 @@ function renderTeam() {
           `).join('')}
           <div style="padding:10px 20px;border-top:1px solid var(--fp-border)">
             <div class="fp-progress-track" style="height:5px;margin-bottom:5px"><div class="fp-progress-fill" style="width:${STATE.seatUsage ? Math.min(100, STATE.seatUsage.used/STATE.seatUsage.limit*100) : Math.min(100,(STATE.team||[]).length/(1+(me?.addons?.extraSeats||0))*100)}%;background:#2563EB"></div></div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : (STATE.team||[]).length + '/' + (1+(me?.addons?.extraSeats||0))} seats · ${btn('Ajouter des sièges','fp-btn fp-btn-ghost fp-btn-sm','','style="display:inline;padding:2px 8px;font-size:10px" onclick="navigate(\'billing\')"')}</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : (STATE.team||[]).length + '/' + (me?.limits?.teamMembers ?? (1+(me?.addons?.extraSeats||0)))} seats · ${btn('Ajouter des sièges','fp-btn fp-btn-ghost fp-btn-sm','','style="display:inline;padding:2px 8px;font-size:10px" onclick="navigate(\'billing\')"')}</div>
           </div>
         </div>
 
@@ -12602,6 +12612,19 @@ async function fpGoToPricing(targetPlan) {
     showToast('Vous êtes déjà sur le plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + '.', 'info');
     return;
   }
+  // If user already has an active subscription → use Stripe Customer Portal for plan change
+  // (avoids re-asking for card details they already provided)
+  const subStatus   = (STATE.billing?.subscriptionStatus || STATE.me?.subscriptionStatus || '').toLowerCase();
+  const hasCustId   = !!(STATE.billing?.stripeCustomerId || STATE.me?.stripeCustomerId);
+  const isActive    = subStatus === 'active' || subStatus === 'trialing';
+  if (isActive && hasCustId) {
+    showToast('Redirection vers le portail Stripe…', 'loading');
+    try {
+      const r = await apiFetch('/api/billing/portal', { method: 'POST' });
+      if (r && r.url) { window.open(r.url, '_blank'); return; }
+    } catch(_) {}
+    // Fallback to pricing.html if portal fails
+  }
   showToast('Chargement du parcours upgrade…', 'loading');
   // Redirect to pricing.html with pre-selected plan + active addons
   const cart = { plan: plan, addons: {}, fromDashboard: true };
@@ -15359,9 +15382,9 @@ async function init() {
         headers: { 'Content-Type': 'application/json' },
       });
     } catch (_) { /* non-fatal — still clear local state */ }
-    ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user']
+    ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid']
       .forEach(function(k) { localStorage.removeItem(k); });
-    sessionStorage.clear();
+    sessionStorage.clear(); // also clears fp_session_token + fp_tab_uid
     showToast('success', 'Toutes les sessions fermées');
     setTimeout(function() { window.location.href = '/login.html'; }, 1200);
   };

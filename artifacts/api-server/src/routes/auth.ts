@@ -1366,7 +1366,10 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
   });
 
   // ── S12: Send success response ────────────────────────────────────────────
-  res.json({ ok: true, email, message: "Connexion réussie" });
+  // Return the session token in the body so the frontend can store it
+  // in sessionStorage (per-tab isolation) — prevents cross-user contamination
+  // when two accounts are tested in the same browser simultaneously.
+  res.json({ ok: true, email, message: "Connexion réussie", token: sessionToken });
 
   // Fire-and-forget: ensure Stripe customer (non-blocking, after response sent)
   (async () => {

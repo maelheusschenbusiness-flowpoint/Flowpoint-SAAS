@@ -418,7 +418,9 @@ router.get("/team", async (req: Request, res: Response) => {
     res.json({ members, pendingInvitations, seatUsage });
   } catch (err) {
     logger.error({ orgId: org.slice(0, 20), err: (err as Error).message }, "[team/get] failed");
-    res.json({ members: [], pendingInvitations: [], seatUsage: { used: 1, limit: 1, plan: "standard" } });
+    // Use real plan limit in error fallback — hardcoded limit:1 caused 1/1 seats bug for Pro/Ultra
+    const fallbackSeat = await getOrgSeatLimit(org).catch(() => ({ limit: 1, plan: "standard" }));
+    res.json({ members: [], pendingInvitations: [], seatUsage: { used: 1, limit: fallbackSeat.limit, plan: fallbackSeat.plan } });
   }
 });
 

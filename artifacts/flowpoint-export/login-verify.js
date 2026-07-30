@@ -57,6 +57,20 @@
   })
   .then(function (r) {
     if (r.ok && r.data.ok) {
+      // Store session token in sessionStorage (per-tab) so each browser tab
+      // keeps its OWN session — prevents cross-user contamination when two
+      // accounts are open simultaneously in the same browser.
+      try {
+        if (r.data.token) {
+          sessionStorage.setItem('fp_session_token', r.data.token);
+          // Also keep in localStorage for legacy fallback paths (SSE, maps, etc.)
+          // but mark it with a tab-uid so stale tabs detect the mismatch.
+          var tabUid = Math.random().toString(36).slice(2);
+          sessionStorage.setItem('fp_tab_uid', tabUid);
+          localStorage.setItem('fp_token', r.data.token);
+          localStorage.setItem('fp_tab_uid', tabUid);
+        }
+      } catch(e) { /* non-fatal */ }
       show('fp-success');
       setTimeout(function () {
         var next = '/api/dashboard/';
