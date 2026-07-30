@@ -41,9 +41,9 @@ const MATRIX: Record<AIProviderId, Record<AIIntensityMode, IntensityConfig>> = {
     Performant:   { model: "claude-opus-4-8",   maxTokens: 1400, contextDepth: "deep" },
   },
   gemini: {
-    Conservateur: { model: "gemini-3-flash-preview",  maxTokens: 500,  contextDepth: "shallow" },
-    Équilibré:    { model: "gemini-3.1-pro-preview",  maxTokens: 800,  contextDepth: "standard" },
-    Performant:   { model: "gemini-3.1-pro-preview",  maxTokens: 1400, contextDepth: "deep" },
+    Conservateur: { model: "gemini-2.5-flash",  maxTokens: 500,  contextDepth: "shallow" },
+    Équilibré:    { model: "gemini-2.5-flash",  maxTokens: 800,  contextDepth: "standard" },
+    Performant:   { model: "gemini-2.5-pro",    maxTokens: 1400, contextDepth: "deep" },
   },
 };
 

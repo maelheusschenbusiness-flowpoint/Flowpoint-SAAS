@@ -31620,10 +31620,10 @@ setTimeout(function() {
     const div = document.createElement('div');
     div.className = `fp-ai-msg fp-ai-msg--${role}`;
     div.id = id;
-    const aiAvatarSvg = `<svg width="20" height="20" viewBox="0 0 24 24" style="display:block"><rect width="24" height="24" rx="5" fill="#2563EB"/><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="none" stroke="white" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+    const aiAvatarSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><rect width="24" height="24" rx="5" fill="#2563EB" stroke="none"/><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1" fill="white" stroke="none"/></svg>`;
     div.innerHTML = `
       <div class="fp-ai-msg-avatar" style="display:flex;align-items:center;justify-content:center">${role==='user'?'V':aiAvatarSvg}</div>
-      <div class="fp-ai-msg-bubble">${streaming ? '<span class="fp-ai-cursor">▍</span>' : fpMarkdown(content)}</div>`;
+      <div class="fp-ai-msg-bubble">${fpMarkdown(content)}</div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
     return id;
@@ -31633,7 +31633,7 @@ setTimeout(function() {
     const el = document.getElementById(id);
     if (!el) return;
     const bubble = el.querySelector('.fp-ai-msg-bubble');
-    if (bubble) bubble.innerHTML = done ? fpMarkdown(content) : fpMarkdown(content) + '<span class="fp-ai-cursor" style="animation:fpTyping 1s infinite">▍</span>';
+    if (bubble) bubble.innerHTML = fpMarkdown(content);
     const container = document.getElementById('fp-ai-chat-messages');
     if (container) container.scrollTop = container.scrollHeight;
   }
