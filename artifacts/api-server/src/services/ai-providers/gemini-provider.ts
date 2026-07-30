@@ -20,7 +20,7 @@ export class GeminiProvider {
   async chat(opts: AIProviderChatOptions): Promise<AIProviderResult> {
     const start = Date.now();
     const model = opts.model ?? "gemini-2.5-flash";
-    const contents = this.buildContents(opts);
+    const { contents, systemInstruction } = this.buildContents(opts);
 
     const resp = await this.client.models.generateContent({
       model,
@@ -28,6 +28,7 @@ export class GeminiProvider {
       config: {
         maxOutputTokens: opts.maxTokens ?? 8192,
         ...(opts.json ? { responseMimeType: "application/json" } : {}),
+        ...(systemInstruction ? { systemInstruction } : {}),
       },
     });
 
@@ -50,7 +51,7 @@ export class GeminiProvider {
   async *stream(opts: AIProviderChatOptions): AsyncGenerator<AIProviderStreamChunk, AIProviderResult, unknown> {
     const start = Date.now();
     const model = opts.model ?? "gemini-2.5-flash";
-    const contents = this.buildContents(opts);
+    const { contents, systemInstruction } = this.buildContents(opts);
 
     const stream = await this.client.models.generateContentStream({
       model,
@@ -58,6 +59,7 @@ export class GeminiProvider {
       config: {
         maxOutputTokens: opts.maxTokens ?? 8192,
         ...(opts.json ? { responseMimeType: "application/json" } : {}),
+        ...(systemInstruction ? { systemInstruction } : {}),
       },
     });
 
@@ -108,22 +110,50 @@ export class GeminiProvider {
     throw new Error("Gemini image generation returned no image data");
   }
 
-  private buildContents(opts: AIProviderChatOptions): Array<{ role: "user" | "model"; parts: GeminiPart[] }> {
+  private buildContents(opts: AIProviderChatOptions): {
+    contents: Array<{ role: "user" | "model"; parts: GeminiPart[] }>;
+    systemInstruction?: string;
+  } {
     if (opts.messages) {
-      return opts.messages.map(m => {
-        const { content } = m;
-        if (typeof content !== "string") {
-          // Multimodal content — images only appear in user turns
-          return { role: "user" as const, parts: toGeminiParts(content) };
+      // Extract system message — Gemini does not support "system" role in contents.
+      // Pass it via config.systemInstruction to avoid consecutive "user" turns
+      // (which cause truncated/corrupted streaming output).
+      let systemInstruction: string | undefined;
+      const conversationMsgs = opts.messages.filter(m => {
+        if (m.role === "system") {
+          systemInstruction = typeof m.content === "string" ? m.content : systemInstruction;
+          return false;
         }
-        return {
-          role:  (m.role === "assistant" ? "model" : "user") as "user" | "model",
-          parts: [{ text: content }],
-        };
+        return true;
       });
+
+      // Merge consecutive same-role turns (Gemini requires strict user/model alternation).
+      const merged: Array<{ role: "user" | "model"; parts: GeminiPart[] }> = [];
+      for (const m of conversationMsgs) {
+        const role = (m.role === "assistant" ? "model" : "user") as "user" | "model";
+        const parts: GeminiPart[] = typeof m.content !== "string"
+          ? toGeminiParts(m.content)
+          : [{ text: m.content }];
+        const last = merged[merged.length - 1];
+        if (last && last.role === role) {
+          // Concatenate into the previous same-role turn
+          last.parts.push(...parts);
+        } else {
+          merged.push({ role, parts });
+        }
+      }
+
+      // Gemini requires the conversation to start with a "user" turn
+      if (merged.length === 0 || merged[0].role !== "user") {
+        merged.unshift({ role: "user", parts: [{ text: " " }] });
+      }
+
+      return { contents: merged, systemInstruction };
     }
-    return [
-      { role: "user", parts: [{ text: `${opts.systemPrompt}\n\n${opts.userPrompt}` }] },
-    ];
+
+    // Fallback: single-turn with system+user merged
+    return {
+      contents: [{ role: "user", parts: [{ text: `${opts.systemPrompt ?? ""}\n\n${opts.userPrompt ?? ""}` }] }],
+    };
   }
 }

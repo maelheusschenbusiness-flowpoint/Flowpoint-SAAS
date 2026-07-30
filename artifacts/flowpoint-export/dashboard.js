@@ -99,7 +99,7 @@ const STATE = {
   aiCredits: null,
   gbp: null,
   overviewInsightsText: null,
-  aiProvider: 'openai',
+  aiProvider: (function(){ try { return localStorage.getItem('fp:ai-provider') || 'openai'; } catch(_) { return 'openai'; } })(),
   checklistExtra: {},
   ctxMenu: null,
   floatPanel: null,
@@ -11544,12 +11544,12 @@ function renderAI() {
         <div class="fp-section-sub"><span style="color:#2563EB;font-weight:700">IA Performante</span> · Contexte complet workspace · Réponses &lt; 3s</div>
       </div>
       <div class="fp-section-actions">
-        <select class="fp-select" style="font-size:11px;color:#2563EB;font-weight:700;border-color:rgba(37,99,235,0.4);background:rgba(37,99,235,0.06)" onchange="(function(sel){const v=sel.options[sel.selectedIndex].value;const labels={openai:'GPT-5',anthropic:'Claude',gemini:'Gemini'};const badge=labels[v]||v;STATE.aiModel=badge;STATE.aiProvider=v;const b=document.getElementById('fp-ai-badge');if(b)b.textContent=badge;const s=document.getElementById('fp-ai-chat-model-label');if(s)s.textContent=badge+' · FlowPoint Expert';showToast('success','Modèle IA : '+badge)})(this)">
-          <option value="openai" selected>ChatGPT</option>
-          <option value="anthropic">Claude (Anthropic)</option>
-          <option value="gemini">Gemini (Google)</option>
+        <select id="fp-ai-provider-select" class="fp-select" style="font-size:11px;color:#2563EB;font-weight:700;border-color:rgba(37,99,235,0.4);background:rgba(37,99,235,0.06)" onchange="(function(sel){const v=sel.options[sel.selectedIndex].value;const labels={openai:'GPT-5',anthropic:'Claude',gemini:'Gemini'};const badge=labels[v]||v;STATE.aiModel=badge;STATE.aiProvider=v;try{localStorage.setItem('fp:ai-provider',v);}catch(_){}const b=document.getElementById('fp-ai-badge');if(b)b.textContent=badge;const s=document.getElementById('fp-ai-chat-model-label');if(s)s.textContent=badge+' · FlowPoint Expert';showToast('success','Modèle IA : '+badge)})(this)">
+          <option value="openai" ${STATE.aiProvider==='openai'||!STATE.aiProvider?'selected':''}>ChatGPT</option>
+          <option value="anthropic" ${STATE.aiProvider==='anthropic'?'selected':''}>Claude (Anthropic)</option>
+          <option value="gemini" ${STATE.aiProvider==='gemini'?'selected':''}>Gemini (Google)</option>
         </select>
-        ${btn('Nouvelle conv.','fp-btn fp-btn-ghost fp-btn-sm','','onclick="STATE.aiMessages=[];updateAIUI();render()"')}
+        ${btn('Nouvelle conv.','fp-btn fp-btn-ghost fp-btn-sm','','onclick="window.fpClearAiChat()"')}
       </div>
     </div>
 
@@ -11745,6 +11745,45 @@ async function loadAICredits() {
 function saveAIHistory() {
   try { sessionStorage.setItem(AI_SESSION_KEY, JSON.stringify(STATE.aiMessages)); } catch(e) {}
 }
+
+// Global: clears both the old (STATE.aiMessages) and new (fp-ai-chat-messages) chat UIs.
+// Called by "Nouvelle conv." button in the AI page header — works regardless of which
+// rendering path is active.
+window.fpClearAiChat = function() {
+  // Old path (STATE-based render)
+  STATE.aiMessages = [];
+  STATE.aiLoading = false;
+  try { sessionStorage.removeItem(AI_SESSION_KEY); } catch(_) {}
+  updateAIUI();
+
+  // New path (DOM-based appendMessage)
+  const container = document.getElementById('fp-ai-chat-messages');
+  if (container) {
+    container.innerHTML = `<div class="fp-ai-chat-welcome">
+      <div class="fp-ai-chat-welcome-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#2563EB"/><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="none" stroke="white" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>
+      </div>
+      <p><strong>Bonjour !</strong> Je suis votre assistant SEO FlowPoint.<br>Posez-moi des questions sur vos sites, performances, opportunités ou demandez-moi de générer un rapport.</p>
+      <div class="fp-ai-chat-chips" id="fp-ai-chat-chips">
+        <button class="fp-ai-quick-chip" data-msg="Quel est le score SEO moyen de mes sites ?">Score SEO moyen</button>
+        <button class="fp-ai-quick-chip" data-msg="Quelles sont les 3 actions prioritaires à faire cette semaine ?">Actions prioritaires</button>
+        <button class="fp-ai-quick-chip" data-msg="Analyse mes Core Web Vitals et donne-moi des recommandations.">Core Web Vitals</button>
+        <button class="fp-ai-quick-chip" data-msg="Génère un résumé exécutif de la situation SEO.">Résumé exécutif</button>
+      </div>
+    </div>`;
+    // Re-bind quick chips
+    container.querySelectorAll('.fp-ai-quick-chip').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var msg = btn.dataset.msg;
+        if (msg && window.FP_AI_CHAT_API) {
+          var inp = document.getElementById('fp-ai-chat-input');
+          if (inp) { inp.value = msg; inp.dispatchEvent(new Event('input')); }
+        }
+      });
+    });
+  }
+  if (window.FP_AI_CHAT_API) window.FP_AI_CHAT_API.history = [];
+};
 
 async function sendAIMessage(text) {
   if (!text.trim() || STATE.aiLoading) return;
