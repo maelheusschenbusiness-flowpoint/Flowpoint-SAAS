@@ -75,14 +75,13 @@
     .logo-mark {
       width: 36px;
       height: 36px;
-      background: linear-gradient(135deg, #2563eb, #7c3aed);
       border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
-    .logo-mark svg { width: 20px; height: 20px; }
+    .logo-mark svg { width: 36px; height: 36px; }
 
     .logo-text {
       font-size: 18px;
@@ -218,8 +217,15 @@
 <div class="card">
   <a href="/" class="logo">
     <div class="logo-mark">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+      <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="fp-logo-g" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#2563EB"/>
+            <stop offset="100%" stop-color="#4F46E5"/>
+          </linearGradient>
+        </defs>
+        <rect width="48" height="48" rx="10" fill="url(#fp-logo-g)"/>
+        <polygon points="13,2 3,14 12,14 11,22 21,10 12,10 13,2" fill="white"/>
       </svg>
     </div>
     <span class="logo-text">FlowPoint</span>
