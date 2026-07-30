@@ -11680,9 +11680,12 @@ function renderAIMessages() {
     const allChips  = isAI ? [...(m.chips || []).map(r => ({label:r,route:r,sub:null})), ...autoChips] : [];
     const dedupedChips = allChips.filter((c, i, arr) => arr.findIndex(x => x.route === c.route) === i);
 
+    const _aiAvatar = isAI
+      ? `<svg width="18" height="18" viewBox="0 0 24 24" style="display:block"><rect width="24" height="24" rx="5" fill="#2563EB"/><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="none" stroke="white" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`
+      : svgIcon('user').replace('stroke="currentColor"','stroke="#60a5fa"').replace('width="14"','width="12"').replace('height="14"','height="12"');
     return `<div class="fp-ai-message ${m.from}" style="margin-bottom:10px;display:flex;align-items:flex-end;gap:8px;flex-direction:${isAI ? 'row' : 'row-reverse'}">
-      <div style="width:26px;height:26px;border-radius:8px;background:${isAI ? 'rgba(37,99,235,0.15)' : 'rgba(37,99,235,0.22)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
-        ${isAI ? svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="12"').replace('height="14"','height="12"') : svgIcon('user').replace('stroke="currentColor"','stroke="#60a5fa"').replace('width="14"','width="12"').replace('height="14"','height="12"')}
+      <div style="width:26px;height:26px;border-radius:8px;background:${isAI ? 'transparent' : 'rgba(37,99,235,0.22)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        ${_aiAvatar}
       </div>
       <div style="max-width:78%;min-width:0">
         <div style="padding:9px 13px;border-radius:${isAI ? '4px 12px 12px 12px' : '12px 4px 12px 12px'};background:${isAI ? 'var(--fp-inner-card)' : '#2563EB'};border:1px solid ${isAI ? 'rgba(255,255,255,0.07)' : 'rgba(37,99,235,0.5)'};font-size:12px;color:${isAI ? 'var(--fp-text-soft)' : '#ffffff'};${isAI ? '' : 'text-shadow:0 1px 4px rgba(0,0,0,0.5);'}line-height:1.6">
@@ -11694,8 +11697,8 @@ function renderAIMessages() {
   }).join('');
 
   const typing = STATE.aiLoading ? `<div class="fp-ai-message ai" style="margin-bottom:10px;display:flex;align-items:flex-start;gap:8px">
-    <div style="width:24px;height:24px;border-radius:8px;background:rgba(37,99,235,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-      ${svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="12"').replace('height="14"','height="12"')}
+    <div style="width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <svg width="18" height="18" viewBox="0 0 24 24" style="display:block"><rect width="24" height="24" rx="5" fill="#2563EB"/><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="none" stroke="white" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>
     </div>
     <div style="padding:9px 12px;border-radius:4px 12px 12px 12px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.07)">
       <div class="fp-ai-typing"><div class="fp-ai-typing-dot"></div><div class="fp-ai-typing-dot"></div><div class="fp-ai-typing-dot"></div></div>
@@ -31590,8 +31593,9 @@ setTimeout(function() {
     const div = document.createElement('div');
     div.className = `fp-ai-msg fp-ai-msg--${role}`;
     div.id = id;
+    const aiAvatarSvg = `<svg width="20" height="20" viewBox="0 0 24 24" style="display:block"><rect width="24" height="24" rx="5" fill="#2563EB"/><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="none" stroke="white" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
     div.innerHTML = `
-      <div class="fp-ai-msg-avatar">${role==='user'?'V':'🤖'}</div>
+      <div class="fp-ai-msg-avatar" style="display:flex;align-items:center;justify-content:center">${role==='user'?'V':aiAvatarSvg}</div>
       <div class="fp-ai-msg-bubble">${streaming ? '<span class="fp-ai-cursor">▍</span>' : fpMarkdown(content)}</div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
@@ -31652,12 +31656,16 @@ setTimeout(function() {
       if (window.FP_AI_CHAT_API) {
         await window.FP_AI_CHAT_API.sendMessage(message, {
           onDelta: function(delta, full) {
-            setTyping(false);
+            // Keep typing dots until we have real content — avoids showing both
+            // the empty cursor bubble AND the dots simultaneously (double indicator).
             if (!msgId) {
-              msgId = appendMessage('assistant', '', true);
+              setTyping(false);
+              msgId = appendMessage('assistant', full, true); // create with first chunk
+            } else {
+              fullReply = full;
+              updateMessage(msgId, fullReply, false);
             }
             fullReply = full;
-            updateMessage(msgId, fullReply, false);
           },
           onDone: function(full, _ai) {
             setTyping(false);
