@@ -892,6 +892,8 @@ function applyThemeChoice(t) {
   applyTheme();
   saveSettings();
   showToast('success', 'Thème appliqué !');
+  // Re-render so the active-ring (border + colour) updates on the theme buttons.
+  render();
 }
 
 function openNewWorkflowPanel() {
@@ -9071,7 +9073,7 @@ function renderSettings() {
                   <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(item.label)}</div>
                   <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(item.desc)}</div>
                 </div>
-                <button class="fp-check-btn${on ? ' on' : ''}" data-toggle="${escHtml(item.key)}" aria-pressed="${on}" title="${on ? 'Désactiver' : 'Activer'}" onclick="STATE.settings['${item.key}']=!STATE.settings['${item.key}'];saveSettings();render()" style="width:26px;height:26px;border-radius:7px;border:2px solid ${on ? '#2563EB' : 'var(--fp-border)'};background:${on ? '#2563EB' : 'transparent'};display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all 0.15s">
+                <button class="fp-check-btn${on ? ' on' : ''}" data-pref-check="${escHtml(item.key)}" aria-pressed="${on}" title="${on ? 'Désactiver' : 'Activer'}" onclick="(function(k){STATE.settings[k]=!STATE.settings[k];saveSettings();render();}('${item.key}'))" style="width:26px;height:26px;border-radius:7px;border:2px solid ${on ? '#2563EB' : 'var(--fp-border)'};background:${on ? '#2563EB' : 'transparent'};display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all 0.15s">
                   ${on ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"><polyline points="20 6 9 17 4 12"/></svg>` : ''}
                 </button>
               </div>`;
@@ -9081,31 +9083,29 @@ function renderSettings() {
         </div>
       </div>
 
-      <!-- BRANDING WHITE LABEL -->
-      <div class="fp-card fp-mb-20" id="wl-branding-card" style="${!me?.addons?.whiteLabel ? 'opacity:0.55;pointer-events:none' : ''}">
+      <!-- BRANDING WHITE LABEL — included in ALL plans (Standard, Pro, Ultra) -->
+      <div class="fp-card fp-mb-20" id="wl-branding-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon('tag').replace('stroke="currentColor"','stroke="#2563EB"')}
             Branding White Label
           </div>
-          ${me?.addons?.whiteLabel
-            ? `<span style="font-size:10px;padding:2px 10px;border-radius:20px;background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.3)">✓ Actif</span>`
-            : `<span style="font-size:10px;padding:2px 10px;border-radius:20px;background:rgba(245,158,11,0.12);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">Pro requis</span>`}
+          <span style="font-size:10px;padding:2px 10px;border-radius:20px;background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.3)">✓ Inclus</span>
         </div>
         <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:16px">Personnalisez les rapports partagés avec vos clients — logo, couleurs et nom d\'agence.</div>
         <div class="fp-grid-2">
           <div>
             <div class="fp-form-group">
               <label class="fp-form-label">URL du logo</label>
-              <input class="fp-input" id="wl-logo-url" type="url" placeholder="https://monagence.fr/logo.png" value="${escHtml(wlBranding.logoUrl || '')}" style="width:100%" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
+              <input class="fp-input" id="wl-logo-url" type="url" placeholder="https://monagence.fr/logo.png" value="${escHtml(wlBranding.logoUrl || '')}" style="width:100%"/>
             </div>
             <div class="fp-form-group">
               <label class="fp-form-label">Nom de l\'agence</label>
-              <input class="fp-input" id="wl-agency-name" type="text" placeholder="Mon Agence SEO" value="${escHtml(wlBranding.agencyName || me?.org?.name || '')}" style="width:100%" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
+              <input class="fp-input" id="wl-agency-name" type="text" placeholder="Mon Agence SEO" value="${escHtml(wlBranding.agencyName || me?.org?.name || '')}" style="width:100%"/>
             </div>
             <div class="fp-form-group">
               <label class="fp-form-label">Pied de page</label>
-              <input class="fp-input" id="wl-footer-msg" type="text" placeholder="Rapport confidentiel — © Mon Agence SEO 2026" value="${escHtml(wlBranding.footerMsg || '')}" style="width:100%" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
+              <input class="fp-input" id="wl-footer-msg" type="text" placeholder="Rapport confidentiel — © Mon Agence SEO 2026" value="${escHtml(wlBranding.footerMsg || '')}" style="width:100%"/>
             </div>
           </div>
           <div>
@@ -9113,15 +9113,15 @@ function renderSettings() {
               <div class="fp-form-group" style="flex:1">
                 <label class="fp-form-label">Couleur principale</label>
                 <div style="display:flex;align-items:center;gap:8px">
-                  <input type="color" id="wl-primary-color" value="${wlBranding.primaryColor || '#2563EB'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
-                  <input class="fp-input" id="wl-primary-color-hex" type="text" value="${wlBranding.primaryColor || '#2563EB'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
+                  <input type="color" id="wl-primary-color" value="${wlBranding.primaryColor || '#2563EB'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px"/>
+                  <input class="fp-input" id="wl-primary-color-hex" type="text" value="${wlBranding.primaryColor || '#2563EB'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px"/>
                 </div>
               </div>
               <div class="fp-form-group" style="flex:1">
                 <label class="fp-form-label">Couleur secondaire</label>
                 <div style="display:flex;align-items:center;gap:8px">
-                  <input type="color" id="wl-secondary-color" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
-                  <input class="fp-input" id="wl-secondary-color-hex" type="text" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
+                  <input type="color" id="wl-secondary-color" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px"/>
+                  <input class="fp-input" id="wl-secondary-color-hex" type="text" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px"/>
                 </div>
               </div>
             </div>
@@ -9135,7 +9135,7 @@ function renderSettings() {
                 </div>
               </div>
             </div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" id="wl-save-branding" style="width:100%" ${!me?.addons?.whiteLabel ? 'disabled' : ''}>Sauvegarder le branding</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" id="wl-save-branding" style="width:100%">Sauvegarder le branding</button>
           </div>
         </div>
       </div>
@@ -15197,12 +15197,17 @@ async function init() {
       .catch(function() { showToast('error', 'Erreur sauvegarde'); });
   };
 
-  // ── applyLanguagePref: update document lang attribute immediately ──
+  // ── applyLanguagePref: persist preference and re-render so the select stays on the chosen value ──
   window.applyLanguagePref = function(val) {
     if (!val) return;
     var langCode = val.split('-')[0];
     document.documentElement.lang = langCode;
     if (STATE.settings) STATE.settings.language = val;
+    localStorage.setItem('fp:language', val);
+    // Re-render so the <select> keeps the correct selected option on the next render.
+    // Full UI translation (i18n) applies to AI-generated content and future text fields;
+    // the dashboard interface itself is rendered in French.
+    render();
   };
 
   // ── applyDateFormatPref: store format so formatters can read it, then re-render ──
