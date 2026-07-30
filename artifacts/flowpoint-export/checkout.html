@@ -621,6 +621,16 @@
       return;
     }
 
+    /* fromDashboard=true: existing subscriber adding add-ons only → no plan re-selection */
+    if (cart && cart.fromDashboard) {
+      renderSummary();
+      document.getElementById('fp-summary-card').style.display = 'block';
+      document.getElementById('fp-cta-card').style.display = 'block';
+      document.getElementById('fp-pay-btn').disabled = false;
+      document.getElementById('fp-btn-text').textContent = 'Continuer vers le paiement →';
+      return;
+    }
+
     /* Monthly add-ons without plan → require plan selection */
     renderPlanPicker();
     renderSummary();

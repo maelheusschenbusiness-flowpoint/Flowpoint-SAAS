@@ -556,9 +556,23 @@ function exportActivityCsv() {
   showToast('success', `CSV exporté — ${rows.length} événement${rows.length>1?'s':''}`);
 }
 
+// Formats an invoice date — handles ISO strings and Stripe unix timestamps (seconds).
+// Respects STATE.settings.dateFormat via fmtDate(); falls back to fr-FR dd/mm/yyyy.
+function _fmtInvDate(v) {
+  if (!v || v === '—') return '—';
+  try {
+    const n = Number(v);
+    // Stripe unix timestamps are ~10 digits (seconds). JS Date uses ms.
+    const d = (!isNaN(n) && n > 1e9 && n < 2e10) ? new Date(n * 1000) : new Date(v);
+    if (isNaN(d.getTime())) return String(v);
+    if (typeof fmtDate === 'function') return fmtDate(d);
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch(e) { return String(v); }
+}
+
 function exportInvoicesCsv() {
   const invoices = STATE.billing?.invoices?.length > 0
-    ? STATE.billing.invoices.map(inv => ({ id: inv.id||inv.number||'—', date: inv.date||inv.created||'—', plan: inv.plan||'—', amount: String(inv.amount||inv.total||0), status: inv.status||'—' }))
+    ? STATE.billing.invoices.map(inv => ({ id: inv.id||inv.number||'—', date: _fmtInvDate(inv.date||inv.created), plan: inv.plan||'—', amount: String(inv.amount||inv.total||0), status: inv.status||'—' }))
     : (PREVIEW_MODE ? [
         { id:'FP-2026-005', date:'01 Mai 2026', plan:'Pro', amount:'79', status:'Payée' },
         { id:'FP-2026-004', date:'01 Avr 2026', plan:'Pro', amount:'79', status:'Payée' },
@@ -7515,27 +7529,9 @@ function renderBilling() {
   const upgradeScore = isUltra ? 0 : (healthScore!=null ? Math.round(healthScore*0.8) : null);
 
   // ── Billing lifecycle — defined here so Plans tab buttons always work ──────
-  window.fpUpgradeOrCheckout = window.fpUpgradeOrCheckout || async function(plan) {
-    const _ss = (typeof window.getBillingStatus === 'function' ? window.getBillingStatus()
-      : ((STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status))
-         || (STATE.me && STATE.me.subscriptionStatus) || ''));
-    if (_ss === 'active' || _ss === 'trialing') {
-      showToast('info', 'Mise à niveau en cours…');
-      try {
-        const r = await apiAction('POST', '/api/billing/upgrade', { plan });
-        if (r && r.url) { window.location.href = r.url; }
-        else if (r && r.noSubscription) {
-          window.location.href = (r.redirectTo || '/checkout.html') + '?plan=' + encodeURIComponent(plan);
-        } else if (r && r.ok) {
-          showToast('success', 'Plan mis à jour avec succès');
-          setTimeout(()=>navigateSub('plans'), 700);
-        } else if (r && r.error === 'plan_already_active') {
-          showToast('info', r.message || 'Ce plan est déjà votre plan actuel');
-        } else {
-          showToast('error', (r && (r.message || r.error)) || 'Erreur lors de la mise à niveau');
-        }
-      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'mise à niveau impossible')); }
-    } else { fpGoToPricing(plan); }
+  // Always redirect to pricing.html — user confirms plan change in the checkout flow.
+  window.fpUpgradeOrCheckout = window.fpUpgradeOrCheckout || function(plan) {
+    fpGoToPricing(plan);
   };
 
   // ══════════════════════════════════════════════════════════
@@ -7794,14 +7790,9 @@ function renderBilling() {
 
     // ── Billing lifecycle: upgrade / cancel / reactivate ──────────────────────
     window.fpUpgradeOrCheckout = async function(plan) {
-      const _ss = (typeof window.getBillingStatus === 'function' ? window.getBillingStatus() : ((STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || ''));
-      if (_ss === 'active' || _ss === 'trialing') {
-        // Teaser buttons navigate to the plans sub-page for review, not an immediate API upgrade.
-        // Upgrade is triggered from within the plans section itself.
-        navigateSub('plans');
-      } else {
-        fpGoToPricing(plan);
-      }
+      // Always redirect to pricing.html so the user confirms the plan change in checkout.
+      // Never trigger an immediate API upgrade from a teaser button.
+      fpGoToPricing(plan);
     };
     window.fpCancelSubscriptionModal = function() {
       if (document.getElementById('fp-cancel-sub-modal')) return;
@@ -7903,7 +7894,8 @@ function renderBilling() {
       const a = window._fpAllAddons[idx];
       if (!a) return;
       const inc = isIncluded(a);
-      const planLvl = currentPlan === 'Ultra' ? 2 : currentPlan === 'Pro' ? 1 : 0;
+      // currentPlan is already lowercase (set at line ~7766); comparisons must be lowercase too
+      const planLvl = currentPlan === 'ultra' ? 2 : currentPlan === 'pro' ? 1 : 0;
       const incFn = x => {
         if (x.price === 'Inclus') return true;
         if (x.includedFrom === 'standard') return true;
@@ -8031,7 +8023,7 @@ function renderBilling() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'invoices') {
     const invoices = STATE.billing?.invoices?.length > 0
-      ? STATE.billing.invoices.map(inv => ({ id:inv.id||inv.number||'—', date:inv.date||inv.created||'—', amount:String(inv.amount||inv.total||0), plan:inv.plan||plan, addons:inv.addons||inv.description||'—', status:inv.status||'—', color:inv.status==='failed'?'#ef4444':'#22c55e', pdfUrl:inv.pdfUrl||null, hostedUrl:inv.hostedUrl||inv.hosted_invoice_url||null }))
+      ? STATE.billing.invoices.map(inv => ({ id:inv.id||inv.number||'—', date:_fmtInvDate(inv.date||inv.created), amount:String(inv.amount||inv.total||0), plan:inv.plan||plan, addons:inv.addons||inv.description||'—', status:inv.status||'—', color:inv.status==='failed'?'#ef4444':'#22c55e', pdfUrl:inv.pdfUrl||null, hostedUrl:inv.hostedUrl||inv.hosted_invoice_url||null }))
       : (PREVIEW_MODE ? [
           { id:'FP-2026-051', date:'01/05/2026', amount:'79.00', plan:'Pro', addons:'29€ Priority Support + 19€ Monitors Pack', status:'Payée',   color:'#22c55e' },
           { id:'FP-2026-041', date:'01/04/2026', amount:'79.00', plan:'Pro', addons:'29€ Priority Support + 19€ Monitors Pack', status:'Payée',   color:'#22c55e' },
@@ -8519,9 +8511,11 @@ function renderBilling() {
       <div class="fp-card" style="background:linear-gradient(135deg,rgba(37,99,235,0.08),rgba(139,92,246,0.05));border:1px solid rgba(37,99,235,0.2);position:relative;overflow:hidden">
         <div style="position:absolute;top:-20px;right:-20px;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,0.12),transparent 70%)"></div>
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;position:relative">
-          <div style="width:52px;height:52px;border-radius:14px;background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            ${svgIcon('zap').replace('width="14"','width="22"').replace('height="14"','height="22"').replace('stroke="currentColor"','stroke="#2563EB"')}
-          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="52" height="52" style="flex-shrink:0;border-radius:10px">
+            <defs><linearGradient id="fpplangrd" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/></linearGradient></defs>
+            <rect x="0" y="0" width="48" height="48" rx="10" ry="10" fill="url(#fpplangrd)"/>
+            <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></g>
+          </svg>
           <div>
             <div style="font-size:22px;font-weight:900;color:var(--fp-text);font-family:var(--fp-font-head)">Plan ${plan}</div>
             <div style="font-size:12px;color:#22c55e;display:flex;align-items:center;gap:5px;margin-top:2px">
@@ -8598,7 +8592,7 @@ function renderBilling() {
         <div style="position:relative;padding-left:20px">
           <div style="position:absolute;left:6px;top:0;bottom:0;width:1px;background:linear-gradient(to bottom,#2563EB,transparent)"></div>
           ${(()=>{ const _tlEvents = STATE.billing?.invoices?.length > 0
-            ? STATE.billing.invoices.slice(0,6).map(inv => ({ d:String(inv.date||inv.created||'—'), ev:'Facture '+(inv.status==='failed'?'échouée':'payée')+' — '+(inv.amount||inv.total||'—')+'€', c:inv.status==='failed'?'#ef4444':'#22c55e' }))
+            ? STATE.billing.invoices.slice(0,6).map(inv => ({ d:_fmtInvDate(inv.date||inv.created), ev:'Facture '+(inv.status==='failed'?'échouée':'payée')+' — '+(inv.amount||inv.total||'—')+'€', c:inv.status==='failed'?'#ef4444':'#22c55e' }))
             : (PREVIEW_MODE ? [
             { d:'01/05/2026', ev:'Facture payée — 79€',                     c:'#22c55e' },
             { d:'28/04/2026', ev:'Usage AI Crédits > 40% — seuil atteint',  c:'#f59e0b' },
