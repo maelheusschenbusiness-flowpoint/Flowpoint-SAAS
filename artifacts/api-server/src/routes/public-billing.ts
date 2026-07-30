@@ -1184,6 +1184,9 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         stripeSubscriptionId: planSubscription.id,
         plan:                 planKey,
         ...(trialEndUnix !== undefined ? { trialEndsAt: new Date(trialEndUnix * 1000).toISOString() } : {}),
+        // Mark trial consumed so canStartTrial stays definitively false even if
+        // stripeSubscriptionId is later cleared (e.g. resource_missing reconciliation).
+        trialConsumedAt: new Date().toISOString(),
       });
       logger.info({ orgId: _authenticatedOrgId, planKey }, "[PublicBilling] finalize: subscription persisted to DB");
     } catch (_fcPodErr) {

@@ -1083,8 +1083,15 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           ],
           proration_behavior: prorationBehavior,
           metadata: { plan },
+          // Explicitly pin the trial end date so Stripe never re-anchors it on plan change.
+          // Without this, some Stripe price trial settings can silently extend the period.
+          ...(isTrialing && sub.trial_end ? { trial_end: sub.trial_end } : {}),
         });
-        await persistOrgData(orgId, { plan }).catch(() => {});
+        // Mark trialConsumedAt so canStartTrial stays false even if stripeSubscriptionId is cleared.
+        await persistOrgData(orgId, {
+          plan,
+          trialConsumedAt: new Date().toISOString(),
+        }).catch(() => {});
         logger.info(
           { plan, subId: sub.id, subStatus: sub.status, isTrialing, isUpgrade, isDowngrade, prorationBehavior, removedAddonKeys, orgId },
           "[Billing] plan change applied immediately",

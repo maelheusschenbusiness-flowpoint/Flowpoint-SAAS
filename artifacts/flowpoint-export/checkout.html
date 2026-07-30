@@ -142,7 +142,7 @@
 
     /* ── Spinner ── */
     @keyframes spin { to { transform: rotate(360deg); } }
-    .fp-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; animation: spin .7s linear infinite; flex-shrink: 0; }
+    .fp-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; animation: spin 1.2s linear infinite; flex-shrink: 0; }
 
     /* ── Empty ── */
     .fp-empty { text-align: center; padding: 48px 24px; }
@@ -334,7 +334,12 @@
       .then(function(me) {
         if (!me) return;
         _fpAuthOrgId = me.email || null;
-        _fpCanStartTrial = !!me.canStartTrial;
+        /* Only show trial badge when the user genuinely hasn't started a trial yet.
+           Guard against the noSubscription redirect path offering a fresh 14-day trial
+           to someone who already has (or had) an active/trialing subscription. */
+        _fpCanStartTrial = !!me.canStartTrial
+          && me.subscriptionStatus !== 'active'
+          && me.subscriptionStatus !== 'trialing';
         /* Re-render summary with updated trial flag */
         renderSummary();
       }).catch(function(){});
