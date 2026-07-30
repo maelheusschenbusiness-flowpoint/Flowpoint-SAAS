@@ -9055,13 +9055,13 @@ function renderSettings() {
       </div>
 
       <!-- BRANDING WHITE LABEL -->
-      <div class="fp-card fp-mb-20" id="wl-branding-card" style="${!me.addons.whiteLabel ? 'opacity:0.55;pointer-events:none' : ''}">
+      <div class="fp-card fp-mb-20" id="wl-branding-card" style="${!me?.addons?.whiteLabel ? 'opacity:0.55;pointer-events:none' : ''}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon('tag').replace('stroke="currentColor"','stroke="#2563EB"')}
             Branding White Label
           </div>
-          ${me.addons.whiteLabel
+          ${me?.addons?.whiteLabel
             ? `<span style="font-size:10px;padding:2px 10px;border-radius:20px;background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.3)">✓ Actif</span>`
             : `<span style="font-size:10px;padding:2px 10px;border-radius:20px;background:rgba(245,158,11,0.12);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">Pro requis</span>`}
         </div>
@@ -9070,15 +9070,15 @@ function renderSettings() {
           <div>
             <div class="fp-form-group">
               <label class="fp-form-label">URL du logo</label>
-              <input class="fp-input" id="wl-logo-url" type="url" placeholder="https://monagence.fr/logo.png" value="${escHtml(wlBranding.logoUrl || '')}" style="width:100%" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
+              <input class="fp-input" id="wl-logo-url" type="url" placeholder="https://monagence.fr/logo.png" value="${escHtml(wlBranding.logoUrl || '')}" style="width:100%" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
             </div>
             <div class="fp-form-group">
               <label class="fp-form-label">Nom de l\'agence</label>
-              <input class="fp-input" id="wl-agency-name" type="text" placeholder="Mon Agence SEO" value="${escHtml(wlBranding.agencyName || me?.org?.name || '')}" style="width:100%" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
+              <input class="fp-input" id="wl-agency-name" type="text" placeholder="Mon Agence SEO" value="${escHtml(wlBranding.agencyName || me?.org?.name || '')}" style="width:100%" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
             </div>
             <div class="fp-form-group">
               <label class="fp-form-label">Pied de page</label>
-              <input class="fp-input" id="wl-footer-msg" type="text" placeholder="Rapport confidentiel — © Mon Agence SEO 2026" value="${escHtml(wlBranding.footerMsg || '')}" style="width:100%" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
+              <input class="fp-input" id="wl-footer-msg" type="text" placeholder="Rapport confidentiel — © Mon Agence SEO 2026" value="${escHtml(wlBranding.footerMsg || '')}" style="width:100%" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
             </div>
           </div>
           <div>
@@ -9086,15 +9086,15 @@ function renderSettings() {
               <div class="fp-form-group" style="flex:1">
                 <label class="fp-form-label">Couleur principale</label>
                 <div style="display:flex;align-items:center;gap:8px">
-                  <input type="color" id="wl-primary-color" value="${wlBranding.primaryColor || '#2563EB'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
-                  <input class="fp-input" id="wl-primary-color-hex" type="text" value="${wlBranding.primaryColor || '#2563EB'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
+                  <input type="color" id="wl-primary-color" value="${wlBranding.primaryColor || '#2563EB'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
+                  <input class="fp-input" id="wl-primary-color-hex" type="text" value="${wlBranding.primaryColor || '#2563EB'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
                 </div>
               </div>
               <div class="fp-form-group" style="flex:1">
                 <label class="fp-form-label">Couleur secondaire</label>
                 <div style="display:flex;align-items:center;gap:8px">
-                  <input type="color" id="wl-secondary-color" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
-                  <input class="fp-input" id="wl-secondary-color-hex" type="text" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
+                  <input type="color" id="wl-secondary-color" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
+                  <input class="fp-input" id="wl-secondary-color-hex" type="text" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px" ${!me?.addons?.whiteLabel ? 'disabled' : ''}/>
                 </div>
               </div>
             </div>
@@ -9108,7 +9108,7 @@ function renderSettings() {
                 </div>
               </div>
             </div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" id="wl-save-branding" style="width:100%" ${!me.addons.whiteLabel ? 'disabled' : ''}>Sauvegarder le branding</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" id="wl-save-branding" style="width:100%" ${!me?.addons?.whiteLabel ? 'disabled' : ''}>Sauvegarder le branding</button>
           </div>
         </div>
       </div>
@@ -10393,9 +10393,9 @@ function renderSettings() {
           {label:'API & Développeurs',sub:'api',          icon:'💻', desc:'Clés API et webhooks',                          status:'→',  sc:'#94a3b8'},
           {label:'IA Config Lab',     sub:'ai-config',    icon:'🤖', desc:'Modules IA et préférences',                     status:'→',  sc:'#94a3b8'},
           {label:'Données & Rétention',sub:'data',        icon:'💾', desc:'Stockage et rétention',                         status:'→',  sc:'#94a3b8'},
-          {label:'Rapports & Exports', sub:'reports',    icon:'📄', desc:_hasReports?(STATE.reports||[]).length+' rapport'+((STATE.reports||[]).length===1?'':'s')+' · Partage client':'Partage client · Planification', status:_hasReports?'✓ Actif':'→', sc:_hasReports?'#22c55e':'#94a3b8'},
+          {label:'Rapports & Exports', sub:'reports',    icon:'📄', desc:_hasReports?(STATE.reports||[]).length+' rapport'+((STATE.reports||[]).length===1?'':'s')+' · Partage client':'Partage client · Planification', status:_hasReports?'✓ Actif':'→', sc:_hasReports?'#22c55e':'#94a3b8', isRoute:true},
         ].map(n => `
-          <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
+          <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="${n.isRoute ? `navigate('${n.sub}')` : `navigateSub('${n.sub}')`}">
             <span style="font-size:16px;flex-shrink:0">${n.icon}</span>
             <div style="flex:1;min-width:0">
               <div style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(n.label)}</div>
@@ -12651,6 +12651,29 @@ function _doRender() {
     // P0.1: Validate sub-route belongs to current route before using it
     if (STATE.subRoute !== null) {
       const _validSubs = (SUB_NAVS[STATE.route] || []).map(function(s) { return s.id; }).filter(Boolean);
+      // ── P0.1 DIAGNOSTIC (temporary instrumentation — remove after root cause confirmed) ──
+      (function() {
+        var _diag = {
+          timestamp: performance.now(),
+          route: STATE.route,
+          routeJson: JSON.stringify(STATE.route),
+          subRoute: STATE.subRoute,
+          subRouteJson: JSON.stringify(STATE.subRoute),
+          subRouteType: typeof STATE.subRoute,
+          subRouteLength: typeof STATE.subRoute === 'string' ? STATE.subRoute.length : null,
+          subRouteCharCodes: typeof STATE.subRoute === 'string' ? Array.from(STATE.subRoute).map(function(c){return c.charCodeAt(0);}) : [],
+          validSubs: _validSubs.slice(),
+          includesResult: _validSubs.includes(STATE.subRoute),
+          hash: window.location.hash,
+          normalizedRoute: (function(){try{return normalizeRoute(window.location.hash);}catch(e){return null;}}()),
+          stack: (new Error()).stack
+        };
+        console.log('[FP P0.1 DIAGNOSTIC]', _diag);
+        if (_validSubs.length > 0 && !_validSubs.includes(STATE.subRoute)) {
+          console.warn('[FP P0.1 NULLIFICATION]', _diag);
+        }
+      }());
+      // ── END P0.1 DIAGNOSTIC ──
       if (_validSubs.length > 0 && !_validSubs.includes(STATE.subRoute)) {
         // Sub-route is stale from a different page — clear it silently
         STATE.subRoute = null;
