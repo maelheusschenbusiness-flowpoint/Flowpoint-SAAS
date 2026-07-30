@@ -3864,7 +3864,7 @@ function renderOverview() {
 
   const activeMonitors = (STATE.monitors||[]).filter(m => m.status !== 'down').length;
   const totalMonitors  = (STATE.monitors||[]).length;
-  const pingOk = totalMonitors > 0 ? Math.round(activeMonitors / totalMonitors * 100) : 100;
+  const pingOk = totalMonitors > 0 ? Math.round(activeMonitors / totalMonitors * 100) : null;
   // Real GA4 conversion rate (e.g. 2.31 %) — shown as-is, never normalised /100
   const conversionRate  = STATE.overview?.conversionRate ?? STATE.overview?.conversionScore ?? null;
   const localScore = STATE.overview?.localScore > 0 ? STATE.overview.localScore
