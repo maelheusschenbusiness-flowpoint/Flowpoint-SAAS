@@ -11518,7 +11518,7 @@ function renderAI() {
   const promptCats = [
     {
       cat:'🔍 SEO & Audits',
-      prompts:['Quels sont mes 3 sites les plus critiques ?','Analyser les balises title manquantes','Que faire pour passer de 74 à 85/100 ?','Comparer mon score vs mes concurrents'],
+      prompts:['Quels sont mes 3 sites les plus critiques ?','Analyser les balises title manquantes',(function(){ var s=typeof avgScore==='function'?avgScore():null; return (s!=null&&isFinite(s))?'Comment passer de '+Math.round(s)+' à '+Math.min(Math.round(s)+10,100)+'/100 ?':'Comment améliorer mon score SEO ?'; }()),'Comparer mon score vs mes concurrents'],
     },
     {
       cat:'📍 Local SEO',
@@ -12823,19 +12823,7 @@ async function fpGoToPricing(targetPlan) {
     showToast('Vous êtes déjà sur le plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + '.', 'info');
     return;
   }
-  // If user already has an active subscription → use Stripe Customer Portal for plan change
-  // (avoids re-asking for card details they already provided)
-  const subStatus   = (STATE.billing?.subscriptionStatus || STATE.me?.subscriptionStatus || '').toLowerCase();
-  const hasCustId   = !!(STATE.billing?.stripeCustomerId || STATE.me?.stripeCustomerId);
-  const isActive    = subStatus === 'active' || subStatus === 'trialing';
-  if (isActive && hasCustId) {
-    showToast('Redirection vers le portail Stripe…', 'loading');
-    try {
-      const r = await apiFetch('/api/billing/portal', { method: 'POST' });
-      if (r && r.url) { window.open(r.url, '_blank'); return; }
-    } catch(_) {}
-    // Fallback to pricing.html if portal fails
-  }
+  // Always redirect to FlowPoint pricing.html for all plan changes
   showToast('Chargement du parcours upgrade…', 'loading');
   // Redirect to pricing.html with pre-selected plan + active addons
   const cart = { plan: plan, addons: {}, fromDashboard: true };

@@ -43,7 +43,7 @@
   --fp-text-muted:    #94a3b8;
   --fp-text-faint:    #4b5e8a;
 
-  --fp-border:        rgba(255,255,255,0.07);
+  --fp-border:        rgba(255,255,255,0.05);
   --fp-border-active: rgba(37,99,235,0.40);
   --fp-border-hover:  rgba(255,255,255,0.12);
   --fp-track:         rgba(255,255,255,0.09);
@@ -535,7 +535,7 @@ body::before {
   border: 1px solid var(--fp-border);
   border-radius: var(--fp-radius-lg);
   padding: 20px 24px;
-  backdrop-filter: blur(12px);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.35);
   transition: all var(--fp-t-med);
   cursor: pointer;
   position: relative;
@@ -1340,7 +1340,7 @@ body::before {
 .fp-kanban-card-title { font-size: 12px; color: var(--fp-text-soft); line-height: 1.4; margin-bottom: 8px; }
 
 /* ── AI CHAT ── */
-.fp-ai-wrap { display: flex; flex-direction: column; gap: 12px; }
+.fp-ai-wrap { display: flex; flex-direction: column; gap: 12px; background: var(--fp-bg-card); }
 .fp-ai-message {
   display: flex;
   gap: 8px;
