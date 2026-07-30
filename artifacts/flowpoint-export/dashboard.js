@@ -6352,7 +6352,7 @@ function renderReports() {
     return `
       ${aiBlock(PREVIEW_MODE
         ? "Visibilité locale en hausse sur 3 des 4 zones. Plusieurs zones progressent fortement. Alerte : une zone recule face à la concurrence renforcée. <strong>Avis sans réponse</strong> peuvent menacer votre note moyenne."
-        : "Connectez Google Business Profile et DataForSEO pour obtenir votre rapport de visibilité locale personnalisé.",
+        : "Connectez Google Business Profile pour obtenir votre rapport de visibilité locale personnalisé.",
         ['Rapport local complet', 'Plan zones cibles', 'Répondre aux avis'])}
 
       <div class="fp-stat-row fp-mb-20">
@@ -7001,7 +7001,7 @@ function renderLocalSEO() {
 
     <!-- AI STRATEGIST -->
     ${isUltra
-      ? aiBlock('<strong>Score de domination : '+(domScore!=null?domScore+'/100':'?/100')+'</strong> · '+(domScore!=null?'Vous dominez les recherches locales dans votre zone cible. Opportunités majeures détectées — Créer des pages locales peut augmenter votre visibilité.':'Connectez DataForSEO ou Google Business Profile pour calculer votre score de domination locale.'), ['Voir les opportunités', 'Générer pages locales', 'Rapport stratégique'])
+      ? aiBlock('<strong>Score de domination : '+(domScore!=null?domScore+'/100':'?/100')+'</strong> · '+(domScore!=null?'Vous dominez les recherches locales dans votre zone cible. Opportunités majeures détectées — Créer des pages locales peut augmenter votre visibilité.':'Connectez Google Business Profile pour calculer votre score de domination locale.'), ['Voir les opportunités', 'Générer pages locales', 'Rapport stratégique'])
       : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
           <div style="font-size:24px;flex-shrink:0">🤖</div>
           <div style="flex:1">
@@ -7014,9 +7014,9 @@ function renderLocalSEO() {
 
     <!-- KPI ROW -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Score domination', displayStat(domScore!=null?domScore+'/100':null,'72/100'), PREVIEW_MODE?'+5 pts ce mois':domScore!=null?'+5 pts ce mois':'Connectez DataForSEO', domScore!=null?'up':'neutral')}
+      ${statCard('Score domination', displayStat(domScore!=null?domScore+'/100':null,'72/100'), PREVIEW_MODE?'+5 pts ce mois':domScore!=null?'+5 pts ce mois':'Analysé automatiquement', domScore!=null?'up':'neutral')}
       ${statCard('Zones dominées', displayStat(dominatedZones!=null?dominatedZones+'/'+(totalZones||8):null,'4/8'), PREVIEW_MODE?'à 70%+ couverture':dominatedZones!=null?'à 70%+ couverture':'Configurez vos zones', 'neutral')}
-      ${statCard('Opportunités détectées', displayStat(oppCount!=null?String(oppCount):null,'12'), PREVIEW_MODE?'non exploitées':oppCount!=null?'non exploitées':'Connectez DataForSEO', oppCount!=null?'down':'neutral')}
+      ${statCard('Opportunités détectées', displayStat(oppCount!=null?String(oppCount):null,'12'), PREVIEW_MODE?'non exploitées':oppCount!=null?'non exploitées':'Activez Local Pack', oppCount!=null?'down':'neutral')}
       ${statCard('Menaces actives', String(STATE.competitors && STATE.competitors.length > 0 ? STATE.competitors.length : PREVIEW_MODE ? 3 : 0), STATE.competitors && STATE.competitors.length > 0 ? 'concurrents configurés' : PREVIEW_MODE ? 'concurrents en hausse' : 'Aucun concurrent', STATE.competitors && STATE.competitors.length > 0 ? 'down' : 'neutral')}
     </div>
 
@@ -9725,21 +9725,124 @@ function renderSettings() {
     const intgData  = (window.FP_DATA && window.FP_DATA.integrations) || {};
     const intgs     = intgData.integrations || [];
     const stats     = intgData.stats || {};
-    const _defaultTemplates = [
-      {id:'t01',name:'Alerte Monitor Down → Slack',    platform:'slack',    icon:'🔴',category:'monitoring', plan_required:'Standard',trigger_event:'monitor.down',      description:'Notifie votre canal Slack immédiatement quand un monitor tombe.',popularity:95},
-      {id:'t02',name:'Monitor récupéré → Slack',       platform:'slack',    icon:'🟢',category:'monitoring', plan_required:'Standard',trigger_event:'monitor.recovered', description:'Notifie Slack quand un site revient en ligne.',popularity:91},
-      {id:'t03',name:'Audit terminé → Zapier',         platform:'zapier',   icon:'⚡',category:'seo',        plan_required:'Pro',    trigger_event:'audit.completed',   description:'Déclenche un Zap à chaque audit SEO complété avec le score.',popularity:88},
-      {id:'t04',name:'Keyword chuté → Email',          platform:'email',    icon:'📉',category:'seo',        plan_required:'Standard',trigger_event:'keyword.ranking_changed',description:'Alerte email quand un mot-clé perd 5+ positions.',popularity:80},
-      {id:'t05',name:'Mission créée → Notion',         platform:'notion',   icon:'📋',category:'productivity',plan_required:'Standard',trigger_event:'mission.created',   description:'Crée automatiquement une tâche Notion par mission FlowPoint.',popularity:72},
-      {id:'t06',name:'Rapport généré → Make',          platform:'make',     icon:'📦',category:'reporting',  plan_required:'Pro',    trigger_event:'report.generated',  description:'Envoie le lien PDF vers votre scénario Make (Integromat).',popularity:65},
-      {id:'t07',name:'Avis Google → HubSpot',          platform:'hubspot',  icon:'⭐',category:'reputation',  plan_required:'Pro',    trigger_event:'review.received',   description:'Crée un contact HubSpot pour chaque nouveau 1-2 étoiles.',popularity:58},
-      {id:'t08',name:'Backlink détecté → Airtable',    platform:'airtable', icon:'🔗',category:'seo',        plan_required:'Standard',trigger_event:'backlink.detected', description:'Log chaque nouveau backlink dans une base Airtable.',popularity:73},
-      {id:'t09',name:'Paiement échoué → HubSpot',      platform:'hubspot',  icon:'💳',category:'billing',    plan_required:'Standard',trigger_event:'payment.failed',    description:'Marque automatiquement le contact HubSpot quand un paiement échoue.',popularity:41},
-      {id:'t10',name:'Concurrent détecté → Make',      platform:'make',     icon:'👁️',category:'intelligence',plan_required:'Pro',    trigger_event:'competitor.detected',description:'Alerte Make quand un nouveau concurrent est détecté.',popularity:42},
-      {id:'t11',name:'Mission complétée → Monday',     platform:'monday',   icon:'✅',category:'productivity',plan_required:'Standard',trigger_event:'mission.completed', description:'Clôture automatiquement la tâche Monday quand la mission SEO est résolue.',popularity:54},
-      {id:'t12',name:'Insight IA → Slack',             platform:'slack',    icon:'🤖',category:'intelligence',plan_required:'Ultra',  trigger_event:'ai.insight.generated',description:'Envoie chaque recommandation IA critique dans votre canal Slack prioritaire.',popularity:67},
-    ];
-    const templates = (intgData.templates && intgData.templates.length >= 12) ? intgData.templates : _defaultTemplates;
+    // ── 96-template rotating library (8 categories × 12) ──────────────────────
+    const _allTpl = (function(){
+      const T = (id,nm,pl,ic,cat,plan,ev,desc,pop) => ({id,name:nm,platform:pl,icon:ic,category:cat,plan_required:plan,trigger_event:ev,description:desc,popularity:pop});
+      return [
+        // monitoring
+        T('m01','Monitor Down → Slack','slack','🔴','monitoring','Standard','monitor.down','Notifie votre canal Slack immédiatement quand un monitor tombe.',95),
+        T('m02','Monitor récupéré → Slack','slack','🟢','monitoring','Standard','monitor.recovered','Notifie Slack quand un site revient en ligne.',91),
+        T('m03','Monitor Down → Discord','discord','🚨','monitoring','Standard','monitor.down','Alerte Discord avec uptime et temps de réponse en cas de panne.',82),
+        T('m04','Monitor UP → Make','make','✅','monitoring','Standard','monitor.recovered','Déclenche un scénario Make à la récupération du service.',75),
+        T('m05','Latence critique → Slack','slack','⏱️','monitoring','Standard','monitor.latency_high','Alerte Slack si la latence dépasse 3 secondes.',78),
+        T('m06','Monitor Down → Email équipe','email','📧','monitoring','Standard','monitor.down','Email automatique à l\'équipe technique quand un monitor tombe.',89),
+        T('m07','Rapport uptime hebdo → Slack','slack','📊','monitoring','Standard','report.generated','Résumé uptime hebdomadaire chaque lundi dans Slack.',71),
+        T('m08','Monitor SLA → HubSpot ticket','hubspot','📋','monitoring','Pro','monitor.down','Crée automatiquement un ticket HubSpot à chaque incident.',58),
+        T('m09','Alerte SSL expirant → Slack','slack','🔒','monitoring','Standard','monitor.ssl_expiring','Alerte 30 jours avant l\'expiration du certificat SSL.',83),
+        T('m10','Incident → Monday task','monday','🚨','monitoring','Standard','monitor.down','Crée une tâche Monday à chaque incident de production.',61),
+        T('m11','Monitor → n8n escalation','n8n','🔗','monitoring','Pro','monitor.down','Workflow n8n d\'escalade multi-niveau si incident non résolu.',52),
+        T('m12','Uptime report → Notion','notion','📈','monitoring','Standard','report.generated','Met à jour le dashboard Notion uptime chaque semaine.',47),
+        // seo
+        T('s01','Audit terminé → Zapier','zapier','⚡','seo','Pro','audit.completed','Déclenche un Zap à chaque audit SEO complété avec le score.',88),
+        T('s02','Keyword chuté → Email','email','📉','seo','Standard','keyword.ranking_changed','Alerte email quand un mot-clé perd 5+ positions.',80),
+        T('s03','Score SEO < 60 → Slack','slack','⚠️','seo','Standard','audit.score_dropped','Notifie Slack quand le score SEO passe sous 60/100.',76),
+        T('s04','Backlink détecté → Airtable','airtable','🔗','seo','Standard','backlink.detected','Log chaque nouveau backlink dans une base Airtable.',73),
+        T('s05','Concurrent détecté → Make','make','👁️','seo','Pro','competitor.detected','Alerte Make quand un nouveau concurrent est détecté.',42),
+        T('s06','Backlink perdu → Slack','slack','🔴','seo','Pro','backlink.lost','Notifie Slack immédiatement quand un backlink est perdu.',69),
+        T('s07','Top 3 Google → Discord','discord','🏆','seo','Standard','keyword.ranking_changed','Célèbre chaque mot-clé qui entre dans le Top 3 Google.',55),
+        T('s08','Audit mensuel → Airtable','airtable','📅','seo','Standard','audit.completed','Log automatiquement les scores d\'audit mensuels dans Airtable.',64),
+        T('s09','Concurrent → HubSpot contact','hubspot','🎯','seo','Pro','competitor.detected','Crée un contact HubSpot pour chaque nouveau concurrent détecté.',47),
+        T('s10','Score amélioré → Zapier','zapier','📈','seo','Standard','audit.score_improved','Déclenche un Zap de célébration quand le score SEO progresse.',53),
+        T('s11','Core Web Vitals → Slack','slack','⚡','seo','Standard','audit.completed','Alerte Slack si les Core Web Vitals passent sous le seuil.',68),
+        T('s12','Audit → Notion rapport','notion','📋','seo','Standard','audit.completed','Crée une page Notion structurée pour chaque audit SEO.',57),
+        // reporting
+        T('r01','Rapport PDF → Make','make','📦','reporting','Pro','report.generated','Envoie le lien PDF vers votre scénario Make (Integromat).',65),
+        T('r02','Rapport PDF → Email client','email','📄','reporting','Standard','report.generated','Envoie automatiquement le rapport PDF au client par email.',87),
+        T('r03','Rapport hebdo → Slack','slack','📊','reporting','Standard','report.generated','Partage le résumé de rapport chaque semaine dans Slack.',74),
+        T('r04','Rapport mensuel → Zapier','zapier','⚡','reporting','Pro','report.generated','Déclenche un workflow Zapier à chaque nouveau rapport mensuel.',60),
+        T('r05','Rapport → Airtable log','airtable','📊','reporting','Standard','report.generated','Enregistre chaque rapport dans un log Airtable (date, score, URL).',58),
+        T('r06','Rapport partagé → HubSpot','hubspot','🤝','reporting','Pro','report.shared','Met à jour le contact HubSpot quand un rapport client est partagé.',44),
+        T('r07','Rapport → Monday review','monday','📋','reporting','Standard','report.generated','Crée une tâche Monday de review pour chaque nouveau rapport.',51),
+        T('r08','Rapport → Discord annonce','discord','📢','reporting','Standard','report.generated','Annonce le nouveau rapport dans votre serveur Discord équipe.',46),
+        T('r09','Rapport → n8n workflow','n8n','🔗','reporting','Pro','report.generated','Déclenche votre workflow n8n à chaque rapport SEO.',39),
+        T('r10','Rapport → Notion page','notion','📋','reporting','Standard','report.generated','Crée une page Notion structurée à chaque rapport client.',62),
+        T('r11','KPI rapport → Mailchimp','mailchimp','📧','reporting','Standard','report.generated','Envoie les KPIs du rapport en newsletter Mailchimp.',55),
+        T('r12','Rapport annuel → Make PDF','make','🗓️','reporting','Pro','report.generated','Génère le rapport annuel client via Make et Airtable.',41),
+        // productivity
+        T('p01','Mission créée → Notion','notion','📋','productivity','Standard','mission.created','Crée automatiquement une tâche Notion par mission FlowPoint.',72),
+        T('p02','Mission complétée → Monday','monday','✅','productivity','Standard','mission.completed','Clôture la tâche Monday quand la mission SEO est résolue.',54),
+        T('p03','Mission créée → Airtable','airtable','📊','productivity','Standard','mission.created','Log chaque mission dans Airtable avec priorité et catégorie.',66),
+        T('p04','Mission critique → Slack','slack','🚨','productivity','Standard','mission.created','Notifie Slack pour les missions critiques (score < 40/100).',78),
+        T('p05','Mission → HubSpot task','hubspot','🎯','productivity','Pro','mission.created','Crée une tâche HubSpot liée au contact client à chaque mission.',49),
+        T('p06','Mission complétée → Email','email','✅','productivity','Standard','mission.completed','Email de confirmation au client quand une mission est résolue.',71),
+        T('p07','Mission → Discord pin','discord','📌','productivity','Standard','mission.created','Pin les nouvelles missions critiques dans votre canal Discord.',43),
+        T('p08','Mission → n8n assignation','n8n','⚙️','productivity','Pro','mission.created','Déclenche un processus n8n d\'assignation automatique de mission.',35),
+        T('p09','Planning semaine → Slack','slack','📅','productivity','Standard','audit.completed','Résumé des missions planifiées chaque lundi dans Slack.',67),
+        T('p10','Mission urgente → Monday sprint','monday','🏃','productivity','Standard','mission.created','Ajoute automatiquement les missions urgentes au sprint Monday.',56),
+        T('p11','Mission → Zapier routing','zapier','⚡','productivity','Pro','mission.created','Route les missions vers le bon membre de l\'équipe via Zapier.',44),
+        T('p12','Récap missions → Notion weekly','notion','📊','productivity','Standard','report.generated','Résumé hebdomadaire des missions dans Notion.',59),
+        // reputation
+        T('e01','Avis Google → HubSpot CRM','hubspot','⭐','reputation','Pro','review.received','Crée un contact HubSpot pour chaque nouveau 1-2 étoiles.',58),
+        T('e02','Avis négatif → Slack urgent','slack','😡','reputation','Standard','review.received','Alerte Slack immédiate pour chaque avis 1 ou 2 étoiles.',86),
+        T('e03','Avis positif → Zapier','zapier','⭐','reputation','Standard','review.received','Déclenche un Zap de partage pour les avis 5 étoiles.',62),
+        T('e04','Avis → Airtable log','airtable','📊','reputation','Standard','review.received','Archive tous les avis Google dans une base Airtable.',57),
+        T('e05','Avis 5★ → Discord partage','discord','🌟','reputation','Standard','review.received','Partage les avis 5 étoiles dans votre canal Discord équipe.',49),
+        T('e06','Alerte réputation → Email','email','📧','reputation','Standard','review.received','Email immédiat au gérant pour chaque avis négatif.',81),
+        T('e07','Avis → n8n analyse sentiment','n8n','🔍','reputation','Pro','review.received','Analyse le sentiment de chaque avis via n8n + IA.',37),
+        T('e08','Avis → Monday tâche réponse','monday','💬','reputation','Standard','review.received','Crée une tâche Monday de réponse pour chaque avis non traité.',53),
+        T('e09','Score réputation → Notion','notion','📈','reputation','Standard','report.generated','Met à jour votre page Notion Réputation mensuellement.',44),
+        T('e10','Avis → Make réponse auto','make','💬','reputation','Pro','review.received','Génère une réponse personnalisée via Make + IA.',41),
+        T('e11','Avis → Mailchimp segment','mailchimp','📧','reputation','Pro','review.received','Segmente vos clients dans Mailchimp selon la note d\'avis.',36),
+        T('e12','Nouveau avis → Discord DM','discord','📨','reputation','Standard','review.received','DM Discord au responsable pour chaque avis entrant.',48),
+        // billing
+        T('b01','Paiement échoué → HubSpot','hubspot','💳','billing','Standard','payment.failed','Marque automatiquement le contact HubSpot quand un paiement échoue.',41),
+        T('b02','Paiement échoué → Slack','slack','🚨','billing','Standard','payment.failed','Alerte Slack immédiate pour chaque paiement client échoué.',79),
+        T('b03','Nouveau client → HubSpot deal','hubspot','🎉','billing','Standard','payment.succeeded','Crée automatiquement un deal HubSpot à chaque nouveau client.',68),
+        T('b04','Abonnement → Airtable CRM','airtable','📊','billing','Standard','payment.succeeded','Log chaque abonnement actif dans votre CRM Airtable.',55),
+        T('b05','Facture générée → Email','email','📧','billing','Standard','invoice.generated','Envoie automatiquement la facture par email au client.',84),
+        T('b06','Annulation → Make follow-up','make','💔','billing','Pro','subscription.cancelled','Déclenche un scénario Make de rétention pour les annulations.',46),
+        T('b07','Upgrade plan → Slack','slack','🎊','billing','Standard','subscription.upgraded','Annonce les upgrades de plan dans votre canal Slack ventes.',63),
+        T('b08','Essai expirant → Email relance','email','⏰','billing','Standard','trial.expiring','Email de relance 3 jours avant la fin de l\'essai gratuit.',77),
+        T('b09','Renouvellement → n8n facture','n8n','🔄','billing','Pro','payment.succeeded','Génère et archive les factures via n8n à chaque renouvellement.',38),
+        T('b10','Churn → HubSpot urgent','hubspot','⚠️','billing','Pro','subscription.at_risk','Déclenche un processus de rétention HubSpot pour les clients à risque.',52),
+        T('b11','Nouveau client → Mailchimp','mailchimp','📧','billing','Standard','payment.succeeded','Ajoute le nouveau client à votre liste Mailchimp onboarding.',67),
+        T('b12','MRR mis à jour → Notion','notion','💰','billing','Standard','payment.succeeded','Met à jour le dashboard MRR Notion à chaque paiement.',49),
+        // intelligence
+        T('i01','Insight IA → Slack prioritaire','slack','🤖','intelligence','Ultra','ai.insight.generated','Envoie chaque recommandation IA critique dans votre canal Slack.',67),
+        T('i02','Insight IA → Email digest','email','📧','intelligence','Pro','ai.insight.generated','Digest quotidien des insights IA par email chaque matin à 8h.',73),
+        T('i03','Tendance SEO → Make workflow','make','📈','intelligence','Pro','ai.trend.detected','Déclenche un scénario Make pour chaque tendance SEO détectée.',44),
+        T('i04','Recommandation IA → Notion','notion','💡','intelligence','Pro','ai.insight.generated','Archive chaque insight IA dans votre base Notion stratégie.',61),
+        T('i05','Analyse concurrentielle → Discord','discord','🔍','intelligence','Ultra','competitor.detected','Alerte Discord pour chaque mouvement détecté chez les concurrents.',49),
+        T('i06','Score prédictif → Airtable','airtable','🔮','intelligence','Ultra','ai.score.predicted','Log les prédictions IA de score SEO dans Airtable.',37),
+        T('i07','Anomalie IA → Slack','slack','⚠️','intelligence','Ultra','ai.anomaly.detected','Notifie Slack quand l\'IA détecte une anomalie de trafic.',72),
+        T('i08','Résumé IA hebdo → Make','make','📊','intelligence','Pro','ai.weekly_summary','Envoie le résumé IA hebdomadaire via Make à votre équipe.',56),
+        T('i09','Prédiction churn → HubSpot','hubspot','⚡','intelligence','Ultra','ai.churn.predicted','Déclenche une séquence HubSpot pour les clients à risque de churn.',43),
+        T('i10','Insight IA → Monday priorité','monday','🎯','intelligence','Pro','ai.insight.generated','Crée les tâches Monday priorisées depuis les recommandations IA.',58),
+        T('i11','Brief IA quotidien → Email','email','☀️','intelligence','Pro','ai.daily_brief','Brief SEO IA quotidien par email chaque matin à 8h.',82),
+        T('i12','Opportunité IA → Zapier','zapier','⚡','intelligence','Ultra','ai.opportunity.detected','Déclenche un Zap quand l\'IA détecte une opportunité SEO.',45),
+        // analytics
+        T('a01','Trafic en baisse → Slack','slack','📉','analytics','Standard','traffic.dropped','Alerte Slack quand le trafic organique chute de plus de 20%.',85),
+        T('a02','Pic de trafic → Discord','discord','🚀','analytics','Standard','traffic.spike','Notifie Discord lors d\'un pic de trafic anormal.',61),
+        T('a03','Conversion chutée → HubSpot','hubspot','📊','analytics','Pro','conversion.dropped','Crée un ticket HubSpot quand le taux de conversion baisse.',54),
+        T('a04','Objectif GA4 atteint → Slack','slack','🎯','analytics','Pro','ga4.goal_reached','Félicite l\'équipe dans Slack quand un objectif GA4 est atteint.',69),
+        T('a05','Anomalie GA4 → Email','email','⚠️','analytics','Standard','ga4.anomaly','Email immédiat quand GA4 détecte une anomalie de trafic.',77),
+        T('a06','KPI hebdo → Notion dashboard','notion','📊','analytics','Standard','report.generated','Met à jour votre dashboard Notion avec les KPIs hebdomadaires.',64),
+        T('a07','Rebond élevé → Monday tâche','monday','📋','analytics','Standard','analytics.bounce_high','Crée une tâche Monday quand le taux de rebond dépasse 80%.',51),
+        T('a08','Données analytics → n8n BI','n8n','🔗','analytics','Pro','report.generated','Pipeline n8n pour enrichir vos données analytics dans votre BI.',38),
+        T('a09','Rapport analytics → Make','make','📈','analytics','Pro','report.generated','Envoie le rapport analytics mensuel via Make.',42),
+        T('a10','Trafic milestone → Slack','slack','🏆','analytics','Standard','traffic.milestone','Célèbre les milestones de trafic (10k, 50k, 100k visites).',68),
+        T('a11','Source trafic → Airtable','airtable','🔍','analytics','Standard','traffic.new_source','Log chaque nouvelle source de trafic significative dans Airtable.',48),
+        T('a12','Engagement → Mailchimp segment','mailchimp','📊','analytics','Pro','analytics.engagement','Segmente votre audience Mailchimp par niveau d\'engagement mensuel.',45),
+      ];
+    })();
+    // 3-day rotation: deterministic shuffle changes every 3 days
+    const _rotSeed = Math.floor(Date.now() / (1000 * 60 * 60 * 24 * 3));
+    const _rotated = (function(seed, arr) {
+      const a = [...arr]; let s = (seed * 1664525 + 1013904223) | 0;
+      for (let i = a.length - 1; i > 0; i--) { s = (s * 1664525 + 1013904223) | 0; const j = Math.abs(s) % (i + 1); [a[i], a[j]] = [a[j], a[i]]; }
+      return a;
+    })(_rotSeed, _allTpl);
+    const templates = (intgData.templates && intgData.templates.length > 0) ? intgData.templates : _rotated;
     const logs      = intgData.logs || [];
     const runs      = intgData.runs || [];
     const incoming  = intgData.incomingWebhooks || [];
@@ -9935,7 +10038,7 @@ function renderSettings() {
                           <td style="text-align:center">
                             <span style="font-size:11px;color:var(--fp-text-muted)">${Array.isArray(i.events)&&i.events.length>0?i.events.length+' event'+(i.events.length>1?'s':''):'Tous'}</span>
                           </td>
-                          <td style="text-align:center;font-size:13px;font-weight:700;color:var(--fp-text)">${i.trigger_count}</td>
+                          <td style="text-align:center;font-size:13px;font-weight:700;color:var(--fp-text)">${i.trigger_count ?? 0}</td>
                           <td style="text-align:center">
                             <span style="font-size:11px;font-weight:700;color:${successRate>=90?'var(--fp-success)':successRate>=70?'var(--fp-warning)':'var(--fp-danger)'}">${successRate}%</span>
                           </td>
@@ -10040,7 +10143,7 @@ function renderSettings() {
           <div class="fp-card fp-mb-16">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
               <div class="fp-card-title" style="margin-bottom:0">📋 Historique des livraisons</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._reloadIntgData().then(()=>render(STATE.currentSection))">⟳ Actualiser</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._intgRefresh(this)">⟳ Actualiser</button>
             </div>
             ${allRuns.length===0 ? `
               <div style="text-align:center;padding:32px;color:var(--fp-text-muted);font-size:12px">Aucune livraison encore. Testez un webhook pour commencer.</div>
@@ -10105,68 +10208,7 @@ function renderSettings() {
           </div>
         `;
       }
-      // ── DATAFORSEO ─────────────────────────────────────────────────────────────
-      if (tab === 'dataforseo') {
-        // Lazily load server status; cache it in a module-level var for the session
-        const _dfsStatus = window._dfsStatusCache || { configured: false, login: '' };
-        if (!window._dfsStatusRequested) {
-          window._dfsStatusRequested = true;
-          apiFetch('/api/me/dataforseo/status').then(function(d){
-            window._dfsStatusCache = d || { configured: false, login: '' };
-            if (STATE.currentSection === 'integrations' && window._intgTab === 'dataforseo') render(STATE.currentSection);
-          }).catch(function(){});
-        }
-        const _isConfigured = !!_dfsStatus.configured;
-        return `
-          <div class="fp-card fp-mb-16">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-              <div>
-                <div class="fp-card-title" style="margin-bottom:0">🔎 DataForSEO</div>
-                <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Rankings locaux Google · SERP · Backlinks · Mots-clés</div>
-              </div>
-              <span style="font-size:11px;padding:3px 10px;border-radius:20px;font-weight:700;${_isConfigured?'background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);color:var(--fp-success)':'background:var(--fp-track);border:1px solid rgba(255,255,255,0.1);color:var(--fp-text-faint)'}">
-                ${_isConfigured ? 'Connecté ✓' : 'Non configuré'}
-              </span>
-            </div>
-
-            <div style="display:flex;flex-direction:column;gap:12px">
-              <div>
-                <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Login DataForSEO</label>
-                <input id="dfs-login" class="fp-input" type="text" placeholder="votre-login@exemple.com" value="${escHtml(_dfsStatus.login || '')}"/>
-              </div>
-              <div>
-                <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Mot de passe / Clé API</label>
-                <input id="dfs-password" class="fp-input" type="password" placeholder="••••••••••••" value=""/>
-              </div>
-              <div style="font-size:10px;color:var(--fp-text-faint);padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border:1px solid rgba(37,99,235,0.15)">
-                ℹ️ Les credentials sont stockés de manière sécurisée côté serveur uniquement. Le mot de passe n'est jamais conservé dans le navigateur. En l'absence de credentials personnels, les variables d'environnement <code>DATAFORSEO_LOGIN</code> et <code>DATAFORSEO_PASSWORD</code> sont utilisées comme fallback.
-              </div>
-              <div style="display:flex;gap:8px;justify-content:flex-end">
-                <button class="fp-btn fp-btn-ghost" onclick="apiAction('DELETE','/api/me/dataforseo/credentials').then(function(r){showToast(r&&r.ok?'info':'error',r&&r.ok?'Credentials effacés':'Erreur');delete window._dfsStatusCache;render(STATE.currentSection);}).catch(function(){showToast('error','Erreur réseau');});">Effacer</button>
-                <button class="fp-btn fp-btn-primary" onclick="(function(){var l=document.getElementById('dfs-login')?.value?.trim();var p=document.getElementById('dfs-password')?.value?.trim();if(!l||!p){showToast('warning','Renseignez login et mot de passe');return;}apiAction('POST','/api/me/dataforseo/credentials',{login:l,password:p}).then(function(r){showToast(r&&r.ok?'success':'error',r&&r.ok?'Credentials DataForSEO sauvegardés':'Erreur');delete window._dfsStatusCache;document.getElementById('dfs-password').value='';render(STATE.currentSection);}).catch(function(){showToast('error','Erreur réseau');});})();">Sauvegarder</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- DATAFORSEO STATUS / QUOTA -->
-          <div class="fp-card">
-            <div class="fp-card-title" style="margin-bottom:14px">📊 Quota & État du service</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
-              <div style="padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
-                <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:4px">Requêtes journalières</div>
-                <div style="font-size:18px;font-weight:800;color:var(--fp-text)">1 000</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">limite DataForSEO</div>
-              </div>
-              <div style="padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
-                <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:4px">Utilisées aujourd'hui</div>
-                <div style="font-size:18px;font-weight:800;color:${_isConfigured?'var(--fp-success)':'var(--fp-text-faint)'}">${_isConfigured?'0':'—'}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${_isConfigured?'synchro active':'en attente de config'}</div>
-              </div>
-            </div>
-            ${_isConfigured ? '' : '<div style="margin-top:12px;font-size:11px;color:var(--fp-warning)">⚠️ Configurez vos credentials pour activer les fonctionnalités Local SEO avancées (rankings, SERP, backlinks).</div>'}
-          </div>
-        `;
-      }
+      // DataForSEO tab removed — credentials managed server-side by admin only
 
       return '';
     }
@@ -10181,8 +10223,8 @@ function renderSettings() {
           <div class="fp-section-sub">Zapier · Make · Slack · Notion · HubSpot · Webhooks temps réel</div>
         </div>
         <div class="fp-section-actions">
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._reloadIntgData().then(()=>render(STATE.currentSection))">⟳ Actualiser</button>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showNewWebhookModal()">+ Créer une intégration</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._intgRefresh(this)">⟳ Actualiser</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._intgTab='webhooks';render(STATE.currentSection);setTimeout(()=>window._showNewWebhookModal&&window._showNewWebhookModal(),100)">+ Créer une intégration</button>
         </div>
       </div>
 
@@ -10198,9 +10240,8 @@ function renderSettings() {
         ${[
           ['hub',       '🏠 Hub',        ''],
           ['webhooks',  '🔗 Webhooks',   intgs.length > 0 ? String(intgs.length) : ''],
-          ['templates', '📦 Templates',  templates.length > 0 ? String(templates.length) : ''],
+          ['templates', '📦 Templates',  String(templates.length)],
           ['logs',      '📋 Logs',       runs.length > 0 ? String(runs.length) : ''],
-          ['dataforseo','🔎 DataForSEO',   ''],
         ].map(([id, label, cnt]) => `
           <button onclick="window._intgTab='${id}';render(STATE.currentSection)"
             style="padding:10px 18px;border:none;border-bottom:2px solid ${activeTab===id?'var(--fp-accent)':'transparent'};background:none;color:${activeTab===id?'var(--fp-accent)':'var(--fp-text-muted)'};font-size:13px;font-weight:${activeTab===id?'700':'500'};cursor:pointer;transition:all 0.15s">
@@ -15573,13 +15614,47 @@ async function init() {
   };
 
   window._deleteWebhook = async function(id) {
-    if (!confirm('Supprimer ce webhook ?')) return;
+    window.fpDarkConfirm('Êtes-vous sûr de vouloir supprimer ce webhook ? Cette action est irréversible.', async function() {
+      try {
+        await window.FP_INTEGRATIONS_API.delete(id);
+        showToast('success', 'Webhook supprimé');
+        await window._reloadIntgData();
+        render(STATE.currentSection);
+      } catch(e) { showToast('error', String(e)); }
+    }, 'Supprimer ce webhook');
+  };
+
+  window.fpDarkConfirm = function(message, onConfirm, title) {
+    const uid = 'fpdc' + Date.now();
+    const cbKey = '__fpDcCb_' + uid;
+    window[cbKey] = function() { delete window[cbKey]; if (onConfirm) onConfirm(); };
+    const el = document.createElement('div');
+    el.id = uid;
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:99999;display:flex;align-items:center;justify-content:center';
+    el.innerHTML = `<div style="background:var(--fp-card,#1e2334);border:1px solid var(--fp-border,rgba(255,255,255,0.12));border-radius:16px;padding:28px 32px;max-width:420px;width:90vw;box-shadow:0 24px 64px rgba(0,0,0,0.6)">
+      <div style="font-size:16px;font-weight:700;color:var(--fp-text,#f1f5f9);margin-bottom:10px">${title||'Confirmation'}</div>
+      <div style="font-size:13px;color:var(--fp-text-muted,#94a3b8);margin-bottom:22px;line-height:1.65">${message}</div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('${uid}').remove()">Annuler</button>
+        <button class="fp-btn fp-btn-primary" style="background:#ef4444;border-color:#ef4444"
+          onclick="document.getElementById('${uid}').remove();window['${cbKey}']&&window['${cbKey}']()">Supprimer</button>
+      </div>
+    </div>`;
+    document.body.appendChild(el);
+  };
+
+  window._intgRefresh = async function(btn) {
+    const orig = btn ? btn.textContent : '';
+    if (btn) { btn.textContent = '⏳ Chargement…'; btn.disabled = true; }
     try {
-      await window.FP_INTEGRATIONS_API.delete(id);
-      showToast('success', 'Webhook supprimé');
       await window._reloadIntgData();
       render(STATE.currentSection);
-    } catch(e) { showToast('error', String(e)); }
+      showToast('success', 'Données actualisées');
+    } catch(e) {
+      showToast('error', 'Erreur lors de l\'actualisation');
+    } finally {
+      if (btn) { btn.textContent = orig; btn.disabled = false; }
+    }
   };
 
   window._retryRun = async function(runId) {
