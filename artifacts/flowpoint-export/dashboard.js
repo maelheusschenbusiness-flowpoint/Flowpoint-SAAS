@@ -9740,11 +9740,11 @@ function renderSettings() {
     const intgData  = (window.FP_DATA && window.FP_DATA.integrations) || {};
     const intgs     = intgData.integrations || [];
     const stats     = intgData.stats || {};
-    // ── 96-template rotating library (8 categories × 12) ──────────────────────
+    // ── 288-template rotating library (12 categories × 24) ──────────────────────
     const _allTpl = (function(){
       const T = (id,nm,pl,ic,cat,plan,ev,desc,pop) => ({id,name:nm,platform:pl,icon:ic,category:cat,plan_required:plan,trigger_event:ev,description:desc,popularity:pop});
       return [
-        // monitoring
+        // ── monitoring (24) ──────────────────────────────────────────────────────
         T('m01','Monitor Down → Slack','slack','🔴','monitoring','Standard','monitor.down','Notifie votre canal Slack immédiatement quand un monitor tombe.',95),
         T('m02','Monitor récupéré → Slack','slack','🟢','monitoring','Standard','monitor.recovered','Notifie Slack quand un site revient en ligne.',91),
         T('m03','Monitor Down → Discord','discord','🚨','monitoring','Standard','monitor.down','Alerte Discord avec uptime et temps de réponse en cas de panne.',82),
@@ -9757,7 +9757,19 @@ function renderSettings() {
         T('m10','Incident → Monday task','monday','🚨','monitoring','Standard','monitor.down','Crée une tâche Monday à chaque incident de production.',61),
         T('m11','Monitor → n8n escalation','n8n','🔗','monitoring','Pro','monitor.down','Workflow n8n d\'escalade multi-niveau si incident non résolu.',52),
         T('m12','Uptime report → Notion','notion','📈','monitoring','Standard','report.generated','Met à jour le dashboard Notion uptime chaque semaine.',47),
-        // seo
+        T('m13','Monitor Down → Teams','teams','🔴','monitoring','Standard','monitor.down','Notification Microsoft Teams immédiate à chaque incident.',79),
+        T('m14','Incident → PagerDuty','pagerduty','🚨','monitoring','Pro','monitor.down','Crée un incident PagerDuty et déclenche l\'astreinte on-call.',88),
+        T('m15','SSL expirant → Email digest','email','🔒','monitoring','Standard','monitor.ssl_expiring','Digest email hebdomadaire des certificats expirant dans 30 jours.',66),
+        T('m16','Latence → n8n diagnostic','n8n','⏱️','monitoring','Pro','monitor.latency_high','Déclenche un diagnostic automatique n8n si latence > 2s.',44),
+        T('m17','Uptime 99.9% → Slack célébration','slack','🏆','monitoring','Standard','monitor.uptime_milestone','Alerte Slack quand un monitor atteint 30 jours sans interruption.',57),
+        T('m18','Incident → Pipedrive activité','pipedrive','📋','monitoring','Pro','monitor.down','Log l\'incident comme activité sur le compte client Pipedrive.',41),
+        T('m19','Monitor récupéré → Teams','teams','✅','monitoring','Standard','monitor.recovered','Notification Teams de retour en ligne avec durée d\'incident.',63),
+        T('m20','Rapport uptime → Airtable','airtable','📊','monitoring','Standard','report.generated','Archive les rapports uptime mensuels dans Airtable.',49),
+        T('m21','Alerte critique → Zapier multi-canal','zapier','⚡','monitoring','Pro','monitor.down','Route l\'alerte vers Slack + Email + SMS via Zapier multi-étapes.',72),
+        T('m22','Monitor Down → Intercom note','intercom','📝','monitoring','Pro','monitor.down','Ajoute une note interne Intercom sur le compte client affecté.',38),
+        T('m23','SLA breach → Make compensation','make','⚠️','monitoring','Ultra','monitor.sla_breach','Déclenche un scénario Make de compensation client si SLA violé.',31),
+        T('m24','Statut page → Notion live','notion','📡','monitoring','Standard','monitor.status_changed','Met à jour la page de statut Notion en temps réel.',43),
+        // ── seo (24) ─────────────────────────────────────────────────────────────
         T('s01','Audit terminé → Zapier','zapier','⚡','seo','Pro','audit.completed','Déclenche un Zap à chaque audit SEO complété avec le score.',88),
         T('s02','Keyword chuté → Email','email','📉','seo','Standard','keyword.ranking_changed','Alerte email quand un mot-clé perd 5+ positions.',80),
         T('s03','Score SEO < 60 → Slack','slack','⚠️','seo','Standard','audit.score_dropped','Notifie Slack quand le score SEO passe sous 60/100.',76),
@@ -9770,7 +9782,19 @@ function renderSettings() {
         T('s10','Score amélioré → Zapier','zapier','📈','seo','Standard','audit.score_improved','Déclenche un Zap de célébration quand le score SEO progresse.',53),
         T('s11','Core Web Vitals → Slack','slack','⚡','seo','Standard','audit.completed','Alerte Slack si les Core Web Vitals passent sous le seuil.',68),
         T('s12','Audit → Notion rapport','notion','📋','seo','Standard','audit.completed','Crée une page Notion structurée pour chaque audit SEO.',57),
-        // reporting
+        T('s13','Keyword Top 10 → Discord','discord','🥇','seo','Standard','keyword.ranking_changed','Célèbre chaque entrée dans le Top 10 Google dans Discord.',62),
+        T('s14','Audit score → Pipedrive deal','pipedrive','📈','seo','Pro','audit.completed','Met à jour le score SEO du deal Pipedrive après chaque audit.',45),
+        T('s15','Backlink toxique → Email alerte','email','☠️','seo','Pro','backlink.toxic_detected','Alerte email immédiate quand un backlink toxique est détecté.',71),
+        T('s16','Position 1 Google → Slack','slack','🥇','seo','Standard','keyword.ranking_changed','Notification Slack spéciale pour chaque mot-clé en position 1.',84),
+        T('s17','Audit hebdo → Teams résumé','teams','📊','seo','Standard','audit.completed','Résumé d\'audit hebdomadaire dans le canal Teams de l\'équipe.',58),
+        T('s18','Core Web Vitals → Make fix','make','⚡','seo','Pro','audit.cwv_failed','Déclenche un workflow Make de correction automatique CWV.',39),
+        T('s19','Backlink → n8n qualification','n8n','🔗','seo','Pro','backlink.detected','Pipeline n8n pour qualifier et scorer chaque nouveau backlink.',35),
+        T('s20','Audit → Shopify meta sync','shopify','🛍️','seo','Pro','audit.completed','Synchronise les meta SEO optimisées vers vos pages Shopify.',44),
+        T('s21','Keyword chute → Airtable log','airtable','📉','seo','Standard','keyword.ranking_changed','Log toutes les baisses de position dans Airtable pour analyse.',67),
+        T('s22','Score SEO → Klaviyo email','klaviyo','📧','seo','Pro','audit.completed','Envoie le rapport de score SEO via Klaviyo à la liste clients.',41),
+        T('s23','Concurrent nouvelles pages → Slack','slack','👁️','seo','Pro','competitor.new_page','Alerte Slack quand un concurrent publie une nouvelle page.',53),
+        T('s24','Audit → Intercom message','intercom','💬','seo','Pro','audit.completed','Envoie le résumé d\'audit en message Intercom au client.',37),
+        // ── reporting (24) ───────────────────────────────────────────────────────
         T('r01','Rapport PDF → Make','make','📦','reporting','Pro','report.generated','Envoie le lien PDF vers votre scénario Make (Integromat).',65),
         T('r02','Rapport PDF → Email client','email','📄','reporting','Standard','report.generated','Envoie automatiquement le rapport PDF au client par email.',87),
         T('r03','Rapport hebdo → Slack','slack','📊','reporting','Standard','report.generated','Partage le résumé de rapport chaque semaine dans Slack.',74),
@@ -9783,7 +9807,19 @@ function renderSettings() {
         T('r10','Rapport → Notion page','notion','📋','reporting','Standard','report.generated','Crée une page Notion structurée à chaque rapport client.',62),
         T('r11','KPI rapport → Mailchimp','mailchimp','📧','reporting','Standard','report.generated','Envoie les KPIs du rapport en newsletter Mailchimp.',55),
         T('r12','Rapport annuel → Make PDF','make','🗓️','reporting','Pro','report.generated','Génère le rapport annuel client via Make et Airtable.',41),
-        // productivity
+        T('r13','Rapport → Teams channel','teams','📊','reporting','Standard','report.generated','Publie le résumé du rapport dans le canal Teams client.',57),
+        T('r14','Rapport mensuel → Klaviyo','klaviyo','📧','reporting','Pro','report.generated','Envoie le rapport mensuel SEO via Klaviyo en email personnalisé.',43),
+        T('r15','Rapport → Pipedrive note','pipedrive','📝','reporting','Standard','report.generated','Ajoute le rapport comme note sur le deal Pipedrive du client.',49),
+        T('r16','Rapport partagé → Intercom','intercom','💬','reporting','Pro','report.shared','Notifie le client via Intercom quand son rapport est disponible.',38),
+        T('r17','Rapport → Salesforce log','salesforce','☁️','reporting','Ultra','report.generated','Log le rapport comme activité sur l\'opportunité Salesforce.',33),
+        T('r18','KPI hebdo → Zapier digest','zapier','⚡','reporting','Standard','report.generated','Compile et envoie les KPIs hebdomadaires via Zapier.',52),
+        T('r19','Rapport → Discord DM client','discord','📨','reporting','Pro','report.shared','Envoie le rapport directement en DM Discord au client.',41),
+        T('r20','Score mensuel → Airtable chart','airtable','📈','reporting','Standard','report.generated','Met à jour le graphique de progression mensuelle dans Airtable.',59),
+        T('r21','Rapport → n8n distribution','n8n','🔗','reporting','Pro','report.generated','Distribution multi-canal via n8n : email + Slack + CRM simultanément.',36),
+        T('r22','Rapport exécutif → Email CEO','email','👔','reporting','Pro','report.generated','Envoie le rapport exécutif mensuel directement au CEO.',66),
+        T('r23','Rapport → Monday board','monday','📊','reporting','Standard','report.generated','Crée une entrée dans le tableau Monday de suivi clients.',48),
+        T('r24','Rapport → HubSpot timeline','hubspot','⏱️','reporting','Pro','report.generated','Ajoute l\'événement rapport sur la timeline HubSpot du contact.',42),
+        // ── productivity (24) ────────────────────────────────────────────────────
         T('p01','Mission créée → Notion','notion','📋','productivity','Standard','mission.created','Crée automatiquement une tâche Notion par mission FlowPoint.',72),
         T('p02','Mission complétée → Monday','monday','✅','productivity','Standard','mission.completed','Clôture la tâche Monday quand la mission SEO est résolue.',54),
         T('p03','Mission créée → Airtable','airtable','📊','productivity','Standard','mission.created','Log chaque mission dans Airtable avec priorité et catégorie.',66),
@@ -9796,7 +9832,19 @@ function renderSettings() {
         T('p10','Mission urgente → Monday sprint','monday','🏃','productivity','Standard','mission.created','Ajoute automatiquement les missions urgentes au sprint Monday.',56),
         T('p11','Mission → Zapier routing','zapier','⚡','productivity','Pro','mission.created','Route les missions vers le bon membre de l\'équipe via Zapier.',44),
         T('p12','Récap missions → Notion weekly','notion','📊','productivity','Standard','report.generated','Résumé hebdomadaire des missions dans Notion.',59),
-        // reputation
+        T('p13','Mission créée → Teams','teams','📋','productivity','Standard','mission.created','Notification Teams avec détails et priorité de la mission.',68),
+        T('p14','Mission critique → PagerDuty','pagerduty','🚨','productivity','Pro','mission.created','Crée une alerte PagerDuty pour les missions critiques urgentes.',46),
+        T('p15','Mission complétée → Pipedrive','pipedrive','✅','productivity','Standard','mission.completed','Met à jour l\'étape du deal Pipedrive à la complétion.',53),
+        T('p16','Mission → Intercom message','intercom','💬','productivity','Pro','mission.completed','Informe le client via Intercom de la résolution de sa mission.',41),
+        T('p17','Backlog missions → Airtable','airtable','📊','productivity','Standard','report.generated','Synchronise le backlog de missions dans Airtable hebdomadairement.',57),
+        T('p18','Mission → Salesforce activity','salesforce','☁️','productivity','Ultra','mission.created','Log la mission comme activité sur le compte Salesforce.',32),
+        T('p19','Sprint missions → Discord','discord','🏃','productivity','Standard','mission.created','Résumé du sprint missions dans le canal Discord de l\'équipe.',47),
+        T('p20','Mission urgente → SMS Twilio','twilio','📱','productivity','Pro','mission.created','SMS d\'alerte via Twilio pour les missions de priorité critique.',39),
+        T('p21','Mission → Zapier multicanal','zapier','⚡','productivity','Pro','mission.created','Distribue la mission vers Slack + Notion + Monday via Zapier.',51),
+        T('p22','Mission résolue → Email client','email','🎉','productivity','Standard','mission.completed','Email de célébration au client pour chaque mission résolue.',74),
+        T('p23','Planning audit → Notion agenda','notion','📅','productivity','Standard','audit.scheduled','Ajoute les audits planifiés dans le calendrier Notion.',61),
+        T('p24','Mission → Make workflow complet','make','⚙️','productivity','Pro','mission.created','Pipeline Make complet : assignation, suivi, notification client.',38),
+        // ── reputation (24) ──────────────────────────────────────────────────────
         T('e01','Avis Google → HubSpot CRM','hubspot','⭐','reputation','Pro','review.received','Crée un contact HubSpot pour chaque nouveau 1-2 étoiles.',58),
         T('e02','Avis négatif → Slack urgent','slack','😡','reputation','Standard','review.received','Alerte Slack immédiate pour chaque avis 1 ou 2 étoiles.',86),
         T('e03','Avis positif → Zapier','zapier','⭐','reputation','Standard','review.received','Déclenche un Zap de partage pour les avis 5 étoiles.',62),
@@ -9809,7 +9857,19 @@ function renderSettings() {
         T('e10','Avis → Make réponse auto','make','💬','reputation','Pro','review.received','Génère une réponse personnalisée via Make + IA.',41),
         T('e11','Avis → Mailchimp segment','mailchimp','📧','reputation','Pro','review.received','Segmente vos clients dans Mailchimp selon la note d\'avis.',36),
         T('e12','Nouveau avis → Discord DM','discord','📨','reputation','Standard','review.received','DM Discord au responsable pour chaque avis entrant.',48),
-        // billing
+        T('e13','Avis négatif → Teams alerte','teams','😡','reputation','Standard','review.received','Alerte Teams immédiate pour les avis 1-2 étoiles.',77),
+        T('e14','Avis → Intercom conversation','intercom','💬','reputation','Pro','review.received','Crée une conversation Intercom pour traiter l\'avis négatif.',43),
+        T('e15','Avis 5★ → Klaviyo campagne','klaviyo','⭐','reputation','Pro','review.received','Déclenche une campagne Klaviyo de réengagement pour les promoteurs.',39),
+        T('e16','Score NPS → Airtable trend','airtable','📊','reputation','Pro','report.generated','Log l\'évolution du score NPS mensuel dans Airtable.',46),
+        T('e17','Avis → Pipedrive contact tag','pipedrive','🏷️','reputation','Standard','review.received','Tague le contact Pipedrive selon la note d\'avis reçue.',41),
+        T('e18','Critique → SMS Twilio gérant','twilio','📱','reputation','Pro','review.received','SMS immédiat au gérant via Twilio pour chaque avis 1 étoile.',68),
+        T('e19','Réponse requise → Make digest','make','📝','reputation','Standard','review.received','Compile les avis sans réponse dans un digest Make hebdomadaire.',51),
+        T('e20','Avis → n8n réponse IA','n8n','🤖','reputation','Ultra','review.received','Génère et poste automatiquement une réponse IA personnalisée.',34),
+        T('e21','Score réputation → Slack mensuel','slack','📊','reputation','Standard','report.generated','Rapport mensuel de réputation dans Slack avec évolution.',63),
+        T('e22','Avis → Salesforce case','salesforce','☁️','reputation','Ultra','review.received','Crée un case Salesforce pour chaque avis négatif critique.',29),
+        T('e23','Nouveaux avis → Email digest','email','📧','reputation','Standard','review.received','Digest email quotidien de tous les nouveaux avis reçus.',72),
+        T('e24','Score réputation → Monday','monday','⭐','reputation','Standard','report.generated','Tableau de bord Monday mis à jour avec le score de réputation.',47),
+        // ── billing (24) ─────────────────────────────────────────────────────────
         T('b01','Paiement échoué → HubSpot','hubspot','💳','billing','Standard','payment.failed','Marque automatiquement le contact HubSpot quand un paiement échoue.',41),
         T('b02','Paiement échoué → Slack','slack','🚨','billing','Standard','payment.failed','Alerte Slack immédiate pour chaque paiement client échoué.',79),
         T('b03','Nouveau client → HubSpot deal','hubspot','🎉','billing','Standard','payment.succeeded','Crée automatiquement un deal HubSpot à chaque nouveau client.',68),
@@ -9822,7 +9882,19 @@ function renderSettings() {
         T('b10','Churn → HubSpot urgent','hubspot','⚠️','billing','Pro','subscription.at_risk','Déclenche un processus de rétention HubSpot pour les clients à risque.',52),
         T('b11','Nouveau client → Mailchimp','mailchimp','📧','billing','Standard','payment.succeeded','Ajoute le nouveau client à votre liste Mailchimp onboarding.',67),
         T('b12','MRR mis à jour → Notion','notion','💰','billing','Standard','payment.succeeded','Met à jour le dashboard MRR Notion à chaque paiement.',49),
-        // intelligence
+        T('b13','Paiement échoué → Teams','teams','💳','billing','Standard','payment.failed','Alerte Teams à l\'équipe finance pour chaque échec de paiement.',71),
+        T('b14','Essai expirant → Intercom','intercom','⏰','billing','Pro','trial.expiring','Séquence de relance Intercom 7/3/1 jours avant fin d\'essai.',59),
+        T('b15','Nouveau client → Pipedrive','pipedrive','🎉','billing','Standard','payment.succeeded','Crée un contact et deal gagné dans Pipedrive à chaque inscription.',65),
+        T('b16','Churn → Klaviyo rétention','klaviyo','💔','billing','Pro','subscription.cancelled','Déclenche une séquence email Klaviyo de win-back après annulation.',53),
+        T('b17','MRR spike → Slack célébration','slack','🚀','billing','Standard','payment.succeeded','Notifie Slack quand le MRR mensuel atteint un nouveau record.',57),
+        T('b18','Facture → Salesforce opportunity','salesforce','☁️','billing','Ultra','invoice.generated','Log la facture sur l\'opportunité Salesforce correspondante.',31),
+        T('b19','Downgrade → Make rétention','make','⬇️','billing','Pro','subscription.downgraded','Scénario Make de rétention personnalisé après downgrade de plan.',44),
+        T('b20','Paiement → n8n comptabilité','n8n','🧾','billing','Pro','payment.succeeded','Pipeline n8n pour enregistrer les paiements en comptabilité.',37),
+        T('b21','Upgrade → Email félicitations','email','🎊','billing','Standard','subscription.upgraded','Email de bienvenue personnalisé après upgrade de plan.',81),
+        T('b22','LTV client → Airtable analytics','airtable','💰','billing','Standard','payment.succeeded','Calcule et log la LTV client dans Airtable automatiquement.',42),
+        T('b23','Alerte dunning → SMS Twilio','twilio','📱','billing','Pro','payment.failed','SMS de relance paiement via Twilio après 3 échecs consécutifs.',56),
+        T('b24','Abonnement → Discord annonce','discord','🎉','billing','Standard','payment.succeeded','Annonce les nouveaux abonnés dans votre serveur Discord.',48),
+        // ── intelligence (24) ────────────────────────────────────────────────────
         T('i01','Insight IA → Slack prioritaire','slack','🤖','intelligence','Ultra','ai.insight.generated','Envoie chaque recommandation IA critique dans votre canal Slack.',67),
         T('i02','Insight IA → Email digest','email','📧','intelligence','Pro','ai.insight.generated','Digest quotidien des insights IA par email chaque matin à 8h.',73),
         T('i03','Tendance SEO → Make workflow','make','📈','intelligence','Pro','ai.trend.detected','Déclenche un scénario Make pour chaque tendance SEO détectée.',44),
@@ -9835,7 +9907,19 @@ function renderSettings() {
         T('i10','Insight IA → Monday priorité','monday','🎯','intelligence','Pro','ai.insight.generated','Crée les tâches Monday priorisées depuis les recommandations IA.',58),
         T('i11','Brief IA quotidien → Email','email','☀️','intelligence','Pro','ai.daily_brief','Brief SEO IA quotidien par email chaque matin à 8h.',82),
         T('i12','Opportunité IA → Zapier','zapier','⚡','intelligence','Ultra','ai.opportunity.detected','Déclenche un Zap quand l\'IA détecte une opportunité SEO.',45),
-        // analytics
+        T('i13','Insight IA → Teams résumé','teams','🤖','intelligence','Pro','ai.insight.generated','Résumé hebdomadaire des insights IA dans Teams.',61),
+        T('i14','Anomalie → PagerDuty incident','pagerduty','⚠️','intelligence','Ultra','ai.anomaly.detected','Crée un incident PagerDuty si l\'IA détecte une anomalie critique.',42),
+        T('i15','Prédiction SEO → Airtable','airtable','🔮','intelligence','Ultra','ai.score.predicted','Tableau Airtable de prédictions SEO à 30/60/90 jours.',38),
+        T('i16','Insight IA → Pipedrive note','pipedrive','💡','intelligence','Pro','ai.insight.generated','Ajoute les insights IA comme notes sur les deals Pipedrive.',44),
+        T('i17','Brief IA → Intercom bot','intercom','🤖','intelligence','Ultra','ai.daily_brief','Publie le brief IA du jour dans le bot Intercom d\'équipe.',33),
+        T('i18','Tendance concurrentielle → Slack','slack','👁️','intelligence','Pro','competitor.detected','Alerte hebdomadaire Slack sur les tendances concurrentielles IA.',57),
+        T('i19','Recommandation IA → Notion DB','notion','💡','intelligence','Pro','ai.insight.generated','Base de données Notion enrichie automatiquement d\'insights IA.',53),
+        T('i20','Score IA prédictif → Email','email','🔮','intelligence','Ultra','ai.score.predicted','Email mensuel de prédictions SEO IA pour le client.',47),
+        T('i21','Anomalie trafic → n8n audit','n8n','🔗','intelligence','Ultra','ai.anomaly.detected','Lance un audit automatique n8n si anomalie de trafic détectée.',36),
+        T('i22','Opportunité SEO → Monday','monday','🎯','intelligence','Pro','ai.opportunity.detected','Crée une tâche Monday pour chaque opportunité IA identifiée.',62),
+        T('i23','Insight → Salesforce contact','salesforce','☁️','intelligence','Ultra','ai.insight.generated','Enregistre les insights IA sur le contact Salesforce concerné.',28),
+        T('i24','Résumé IA → Discord hebdo','discord','🤖','intelligence','Pro','ai.weekly_summary','Résumé IA hebdomadaire dans votre canal Discord stratégie.',49),
+        // ── analytics (24) ───────────────────────────────────────────────────────
         T('a01','Trafic en baisse → Slack','slack','📉','analytics','Standard','traffic.dropped','Alerte Slack quand le trafic organique chute de plus de 20%.',85),
         T('a02','Pic de trafic → Discord','discord','🚀','analytics','Standard','traffic.spike','Notifie Discord lors d\'un pic de trafic anormal.',61),
         T('a03','Conversion chutée → HubSpot','hubspot','📊','analytics','Pro','conversion.dropped','Crée un ticket HubSpot quand le taux de conversion baisse.',54),
@@ -9848,15 +9932,129 @@ function renderSettings() {
         T('a10','Trafic milestone → Slack','slack','🏆','analytics','Standard','traffic.milestone','Célèbre les milestones de trafic (10k, 50k, 100k visites).',68),
         T('a11','Source trafic → Airtable','airtable','🔍','analytics','Standard','traffic.new_source','Log chaque nouvelle source de trafic significative dans Airtable.',48),
         T('a12','Engagement → Mailchimp segment','mailchimp','📊','analytics','Pro','analytics.engagement','Segmente votre audience Mailchimp par niveau d\'engagement mensuel.',45),
+        T('a13','Trafic chute → Teams alerte','teams','📉','analytics','Standard','traffic.dropped','Alerte Teams si le trafic hebdomadaire baisse de plus de 15%.',72),
+        T('a14','Entonnoir → Pipedrive sync','pipedrive','🔄','analytics','Pro','conversion.dropped','Synchronise les étapes d\'entonnoir GA4 avec le pipeline Pipedrive.',43),
+        T('a15','Bounce rate → Email alerte','email','⬆️','analytics','Standard','analytics.bounce_high','Email d\'alerte si le taux de rebond dépasse le seuil fixé.',66),
+        T('a16','GA4 objectif → Discord célébration','discord','🎯','analytics','Standard','ga4.goal_reached','Célèbre les objectifs atteints dans le canal Discord équipe.',58),
+        T('a17','Trafic milestone → Klaviyo','klaviyo','🚀','analytics','Pro','traffic.milestone','Email Klaviyo de célébration aux clients qui franchissent un cap.',47),
+        T('a18','Analytics hebdo → Zapier','zapier','⚡','analytics','Standard','report.generated','Compile et envoie le résumé analytics via Zapier chaque semaine.',53),
+        T('a19','Chute conversion → n8n analyse','n8n','🔗','analytics','Pro','conversion.dropped','Pipeline n8n d\'analyse des causes de chute de conversion.',37),
+        T('a20','Trafic → Airtable historique','airtable','📊','analytics','Standard','report.generated','Archive l\'historique de trafic mensuel dans Airtable.',61),
+        T('a21','KPI → Notion board mensuel','notion','📊','analytics','Standard','report.generated','Tableau de bord Notion mis à jour avec tous les KPIs du mois.',69),
+        T('a22','Anomalie → Make investigation','make','🔍','analytics','Pro','ga4.anomaly','Déclenche un workflow Make d\'investigation à chaque anomalie.',41),
+        T('a23','Trafic → Salesforce dashboard','salesforce','☁️','analytics','Ultra','report.generated','Enrichit le dashboard Salesforce avec les données de trafic.',30),
+        T('a24','Source → HubSpot attribution','hubspot','🔗','analytics','Pro','traffic.new_source','Attribue les nouvelles sources de trafic aux contacts HubSpot.',50),
+        // ── crm (24) ─────────────────────────────────────────────────────────────
+        T('c01','Lead capturé → HubSpot deal','hubspot','🎯','crm','Standard','lead.captured','Crée automatiquement un deal HubSpot à chaque nouveau lead.',89),
+        T('c02','Lead qualifié → Pipedrive','pipedrive','🏆','crm','Standard','lead.qualified','Ajoute le lead qualifié dans le pipeline Pipedrive commercial.',82),
+        T('c03','Nouveau lead → Slack notif','slack','🔔','crm','Standard','lead.captured','Notifie l\'équipe commerciale dans Slack pour chaque nouveau lead.',78),
+        T('c04','Contact → Airtable CRM','airtable','📊','crm','Standard','lead.captured','Synchronise chaque nouveau contact dans votre base Airtable CRM.',71),
+        T('c05','Deal gagné → Slack célébration','slack','🎉','crm','Standard','deal.won','Annonce chaque deal gagné dans le canal Slack de l\'équipe ventes.',85),
+        T('c06','Deal perdu → Make analyse','make','📊','crm','Pro','deal.lost','Déclenche une analyse automatique Make pour chaque deal perdu.',55),
+        T('c07','Lead → Email de bienvenue','email','📧','crm','Standard','lead.captured','Envoie un email de bienvenue personnalisé à chaque nouveau lead.',87),
+        T('c08','Deal gagné → Klaviyo onboarding','klaviyo','🎉','crm','Pro','deal.won','Déclenche la séquence onboarding Klaviyo à chaque deal signé.',64),
+        T('c09','Contact inactif → Intercom','intercom','💬','crm','Pro','contact.inactive','Relance les contacts inactifs 30 jours via Intercom automatiquement.',49),
+        T('c10','Rendez-vous → Discord rappel','discord','📅','crm','Standard','appointment.scheduled','Rappel Discord 1h avant chaque rendez-vous commercial.',58),
+        T('c11','Pipeline hebdo → Notion','notion','📊','crm','Standard','report.generated','Met à jour le dashboard de pipeline dans Notion chaque semaine.',62),
+        T('c12','Lead chaud → Zapier urgence','zapier','🔥','crm','Pro','lead.hot','Route les leads chauds vers plusieurs canaux via Zapier.',72),
+        T('c13','Contact → Salesforce sync','salesforce','☁️','crm','Ultra','lead.captured','Synchronise chaque nouveau contact vers Salesforce en temps réel.',45),
+        T('c14','Deal gagné → n8n provisioning','n8n','🔗','crm','Pro','deal.won','Déclenche le provisioning automatique du service via n8n.',41),
+        T('c15','Rendez-vous manqué → Email','email','⚠️','crm','Standard','appointment.missed','Email automatique de replanification pour rendez-vous manqué.',66),
+        T('c16','Lead → Monday pipeline','monday','📋','crm','Standard','lead.captured','Ajoute le lead au tableau Monday de suivi commercial.',53),
+        T('c17','Deal en danger → Teams alerte','teams','⚠️','crm','Pro','deal.at_risk','Alerte Teams si un deal important n\'a pas eu d\'activité depuis 7j.',68),
+        T('c18','Contact anniversaire → Email','email','🎂','crm','Standard','contact.anniversary','Email de fidélisation automatique à la date d\'anniversaire client.',71),
+        T('c19','Lead → Airtable qualification','airtable','🏷️','crm','Standard','lead.captured','Pipeline de qualification automatique des leads dans Airtable.',58),
+        T('c20','Deal signé → HubSpot sequence','hubspot','✅','crm','Pro','deal.won','Lance la séquence d\'onboarding HubSpot à chaque nouveau client.',77),
+        T('c21','Relance → Pipedrive activité','pipedrive','🔄','crm','Standard','contact.inactive','Crée une activité de relance Pipedrive pour les contacts dormants.',47),
+        T('c22','Lead → Intercom qualification','intercom','💬','crm','Pro','lead.captured','Lance la qualification conversationnelle Intercom pour les nouveaux leads.',53),
+        T('c23','Deal → Klaviyo nurturing','klaviyo','📧','crm','Pro','deal.created','Enrôle le prospect dans la séquence de nurturing Klaviyo.',44),
+        T('c24','Pipeline report → Slack hebdo','slack','📊','crm','Standard','report.generated','Résumé hebdomadaire du pipeline commercial dans Slack.',79),
+        // ── e-commerce (24) ──────────────────────────────────────────────────────
+        T('ec01','Nouvelle commande → Slack','slack','🛍️','e-commerce','Standard','order.created','Notifie Slack à chaque nouvelle commande passée.',83),
+        T('ec02','Panier abandonné → Klaviyo','klaviyo','🛒','e-commerce','Pro','cart.abandoned','Séquence Klaviyo de récupération de panier abandonné en 3 emails.',91),
+        T('ec03','Commande → Airtable log','airtable','📊','e-commerce','Standard','order.created','Log chaque commande dans Airtable avec montant et produits.',69),
+        T('ec04','Stock critique → Email alerte','email','⚠️','e-commerce','Standard','inventory.low','Email d\'alerte quand le stock d\'un produit passe sous 10 unités.',78),
+        T('ec05','Commande → HubSpot contact','hubspot','🎯','e-commerce','Standard','order.created','Crée ou met à jour le contact HubSpot à chaque commande.',72),
+        T('ec06','Panier abandonné → Slack','slack','🛒','e-commerce','Standard','cart.abandoned','Alerte Slack pour les paniers abandonnés au-dessus de 100€.',61),
+        T('ec07','Commande → Shopify fulfillment','shopify','📦','e-commerce','Standard','order.created','Déclenche le workflow Shopify de fulfillment automatiquement.',86),
+        T('ec08','Nouveau client → Klaviyo welcome','klaviyo','🎉','e-commerce','Pro','order.first','Séquence d\'onboarding Klaviyo pour les premiers acheteurs.',74),
+        T('ec09','Remboursement → Slack urgent','slack','💸','e-commerce','Standard','order.refunded','Alerte Slack immédiate pour chaque demande de remboursement.',67),
+        T('ec10','Avis produit → Discord','discord','⭐','e-commerce','Standard','review.received','Partage les avis produits 5 étoiles dans Discord.',54),
+        T('ec11','Commande → n8n fulfillment','n8n','📦','e-commerce','Pro','order.created','Pipeline n8n complet de traitement et expédition de commande.',44),
+        T('ec12','Revenus hebdo → Notion','notion','💰','e-commerce','Standard','report.generated','Dashboard Notion mis à jour avec les revenus hebdomadaires.',59),
+        T('ec13','Flash sale → Klaviyo blast','klaviyo','⚡','e-commerce','Pro','promotion.started','Email blast Klaviyo automatique au démarrage d\'une vente flash.',68),
+        T('ec14','Stock épuisé → Email fournisseur','email','📦','e-commerce','Standard','inventory.out','Email automatique au fournisseur quand le stock est épuisé.',71),
+        T('ec15','Commande → Pipedrive vente','pipedrive','💰','e-commerce','Standard','order.created','Enregistre chaque vente comme deal gagné dans Pipedrive.',55),
+        T('ec16','Retour produit → Make workflow','make','🔄','e-commerce','Pro','order.returned','Workflow Make complet de gestion des retours produits.',46),
+        T('ec17','Panier abandonné → SMS Twilio','twilio','📱','e-commerce','Pro','cart.abandoned','SMS de récupération panier via Twilio après 1h d\'abandon.',63),
+        T('ec18','Top produit → Slack analytics','slack','📊','e-commerce','Standard','report.generated','Résumé hebdomadaire des produits les plus vendus dans Slack.',58),
+        T('ec19','Commande → Teams notification','teams','🛍️','e-commerce','Standard','order.created','Notification Teams à l\'équipe logistique pour chaque commande.',62),
+        T('ec20','Client VIP → Intercom sequence','intercom','👑','e-commerce','Pro','customer.vip','Séquence Intercom personnalisée pour les clients au-dessus de 500€ LTV.',49),
+        T('ec21','Produit en rupture → Monday','monday','⚠️','e-commerce','Standard','inventory.low','Crée une tâche Monday de réapprovisionnement pour chaque rupture.',53),
+        T('ec22','Revenus → Airtable analytics','airtable','💰','e-commerce','Standard','report.generated','Archive les métriques de revenus mensuels dans Airtable.',64),
+        T('ec23','Commande internationale → Zapier','zapier','🌍','e-commerce','Pro','order.created','Route les commandes internationales vers le bon entrepôt via Zapier.',41),
+        T('ec24','Promotion → HubSpot list','hubspot','🏷️','e-commerce','Pro','promotion.started','Ajoute automatiquement les acheteurs promo à une liste HubSpot.',45),
+        // ── ai-automation (24) ───────────────────────────────────────────────────
+        T('ai01','IA insight → Slack digest','slack','🤖','ai-automation','Pro','ai.insight.generated','Digest Slack quotidien de toutes les recommandations IA du jour.',76),
+        T('ai02','Contenu IA → Notion draft','notion','✍️','ai-automation','Ultra','ai.content.generated','Crée un draft Notion pour chaque contenu généré par l\'IA.',63),
+        T('ai03','Audit IA → Make optimisation','make','⚡','ai-automation','Ultra','audit.completed','Déclenche un workflow Make d\'optimisation guidé par l\'IA.',44),
+        T('ai04','IA SEO brief → Email client','email','📧','ai-automation','Pro','ai.brief.generated','Envoie le brief SEO IA mensuel au client automatiquement.',71),
+        T('ai05','IA anomalie → PagerDuty','pagerduty','🚨','ai-automation','Ultra','ai.anomaly.detected','Incident PagerDuty critique si l\'IA détecte une anomalie sévère.',48),
+        T('ai06','Contenu généré → Airtable','airtable','📊','ai-automation','Pro','ai.content.generated','Log chaque contenu IA dans Airtable avec métriques de qualité.',55),
+        T('ai07','IA recommandation → Monday','monday','🎯','ai-automation','Pro','ai.insight.generated','Tâches Monday auto-créées depuis les recommandations IA.',61),
+        T('ai08','IA résumé → Teams hebdo','teams','📊','ai-automation','Pro','ai.weekly_summary','Résumé IA hebdomadaire dans le canal Teams de l\'équipe.',57),
+        T('ai09','Contenu IA → Discord preview','discord','✍️','ai-automation','Pro','ai.content.generated','Preview du contenu IA dans Discord avant publication.',43),
+        T('ai10','IA alert → Intercom bot','intercom','🤖','ai-automation','Ultra','ai.insight.generated','Bot Intercom informé des insights IA pour réponses contextuelles.',38),
+        T('ai11','IA brief → Klaviyo sequence','klaviyo','📧','ai-automation','Ultra','ai.brief.generated','Séquence Klaviyo personnalisée basée sur le profil IA du client.',42),
+        T('ai12','IA audit → HubSpot score','hubspot','🎯','ai-automation','Ultra','audit.completed','Met à jour le score lead HubSpot basé sur les résultats IA.',54),
+        T('ai13','IA opportunité → Zapier multi','zapier','⚡','ai-automation','Ultra','ai.opportunity.detected','Distribution multi-canal Zapier de chaque opportunité détectée.',49),
+        T('ai14','Contenu IA → Shopify blog','shopify','📝','ai-automation','Ultra','ai.content.generated','Publie automatiquement le contenu IA sur le blog Shopify.',37),
+        T('ai15','IA prédiction → Airtable feed','airtable','🔮','ai-automation','Ultra','ai.score.predicted','Flux temps réel des prédictions IA dans Airtable.',44),
+        T('ai16','IA insights → n8n pipeline','n8n','🔗','ai-automation','Ultra','ai.insight.generated','Pipeline n8n complet de traitement et distribution des insights IA.',36),
+        T('ai17','IA contenu → Email newsletter','email','📧','ai-automation','Pro','ai.content.generated','Intègre le contenu IA dans la newsletter email mensuelle.',65),
+        T('ai18','IA score → Pipedrive update','pipedrive','📈','ai-automation','Ultra','ai.score.predicted','Met à jour le scoring des deals Pipedrive avec les prédictions IA.',41),
+        T('ai19','IA alerte critique → SMS','twilio','📱','ai-automation','Ultra','ai.anomaly.detected','SMS Twilio immédiat si l\'IA détecte une crise de trafic.',46),
+        T('ai20','IA brief → Monday planning','monday','📅','ai-automation','Pro','ai.daily_brief','Génère le planning de la semaine dans Monday depuis le brief IA.',58),
+        T('ai21','Contenu IA → Discord publish','discord','📢','ai-automation','Pro','ai.content.generated','Demande de validation du contenu IA dans Discord avant publication.',51),
+        T('ai22','IA trend → Salesforce report','salesforce','☁️','ai-automation','Ultra','ai.trend.detected','Rapport de tendances IA dans le tableau de bord Salesforce.',29),
+        T('ai23','IA résumé → Notion weekly','notion','📊','ai-automation','Pro','ai.weekly_summary','Page Notion enrichie automatiquement avec le résumé IA hebdomadaire.',62),
+        T('ai24','IA alerte → Make response','make','🤖','ai-automation','Ultra','ai.anomaly.detected','Workflow Make de réponse automatique aux anomalies IA critiques.',35),
+        // ── customer-success (24) ────────────────────────────────────────────────
+        T('cs01','NPS < 7 → Intercom urgent','intercom','😟','customer-success','Pro','nps.low','Ouvre une conversation Intercom immédiate pour les NPS < 7.',81),
+        T('cs02','Onboarding J+1 → Email','email','👋','customer-success','Standard','customer.onboarded','Email de bienvenue personnalisé J+1 après l\'inscription.',88),
+        T('cs03','Client inactif → Slack alerte','slack','😴','customer-success','Standard','customer.inactive','Alerte Slack si un client n\'est pas connecté depuis 14 jours.',76),
+        T('cs04','NPS positif → Klaviyo référence','klaviyo','⭐','customer-success','Pro','nps.high','Déclenche une campagne de référencement Klaviyo pour les NPS 9-10.',64),
+        T('cs05','Health score bas → HubSpot','hubspot','⚠️','customer-success','Pro','customer.health_low','Crée une tâche HubSpot d\'urgence si le health score client baisse.',71),
+        T('cs06','Onboarding complété → Slack','slack','🎉','customer-success','Standard','customer.onboarded','Célèbre chaque client qui termine son onboarding dans Slack.',67),
+        T('cs07','Client à risque → Monday','monday','🚨','customer-success','Pro','customer.at_risk','Crée une tâche Monday prioritaire pour les clients à risque churn.',72),
+        T('cs08','NPS survey → Typeform auto','zapier','📋','customer-success','Standard','customer.milestone','Envoie automatiquement le sondage NPS à J+30 via Zapier.',59),
+        T('cs09','Health score → Notion board','notion','📊','customer-success','Standard','report.generated','Dashboard Notion de santé client mis à jour hebdomadairement.',55),
+        T('cs10','Client VIP inactif → Teams','teams','👑','customer-success','Pro','customer.inactive','Alerte Teams prioritaire si un client VIP devient inactif.',68),
+        T('cs11','Milestone client → Discord','discord','🏆','customer-success','Standard','customer.milestone','Célèbre les milestones clients dans le canal Discord équipe.',49),
+        T('cs12','QBR report → Email client','email','📊','customer-success','Pro','report.generated','Envoie le rapport QBR trimestriel automatiquement au client.',74),
+        T('cs13','Churn risk → n8n playbook','n8n','🔗','customer-success','Pro','customer.at_risk','Déclenche le playbook anti-churn n8n pour les clients à risque.',43),
+        T('cs14','Client inactif → Make relance','make','🔄','customer-success','Standard','customer.inactive','Séquence Make de relance personnalisée après 7 jours d\'inactivité.',57),
+        T('cs15','NPS < 6 → Pipedrive rescue','pipedrive','🆘','customer-success','Pro','nps.low','Crée une opportunité de rescue dans Pipedrive pour les détracteurs.',47),
+        T('cs16','Usage milestone → Klaviyo','klaviyo','🚀','customer-success','Pro','customer.milestone','Email Klaviyo de félicitations à chaque milestone d\'usage atteint.',53),
+        T('cs17','Onboarding bloqué → Intercom','intercom','🆘','customer-success','Pro','customer.onboarding_stuck','Message Intercom proactif si le client n\'avance plus dans l\'onboarding.',61),
+        T('cs18','Succès client → Airtable log','airtable','🏆','customer-success','Standard','customer.milestone','Log chaque succès client dans Airtable pour les références.',48),
+        T('cs19','Renouvellement → Email préventif','email','🔄','customer-success','Standard','subscription.expiring','Email préventif 30 jours avant le renouvellement annuel.',79),
+        T('cs20','Client health → Salesforce','salesforce','☁️','customer-success','Ultra','report.generated','Met à jour le health score client dans Salesforce mensuellement.',32),
+        T('cs21','Escalade client → PagerDuty','pagerduty','🚨','customer-success','Ultra','customer.escalated','Incident PagerDuty pour les escalades clients de niveau critique.',44),
+        T('cs22','Feedback → Monday amélioration','monday','💡','customer-success','Standard','feedback.received','Transforme chaque feedback client en tâche Monday product.',56),
+        T('cs23','Alerte churn → SMS Twilio','twilio','📱','customer-success','Pro','customer.at_risk','SMS Twilio au CSM pour les clients avec score churn > 80%.',38),
+        T('cs24','Succès → Discord célébration','discord','🎊','customer-success','Standard','customer.milestone','Célèbre les wins clients dans le canal Discord de l\'équipe.',52),
       ];
     })();
-    // 3-day rotation: deterministic shuffle changes every 3 days
+    // 3-day rotation: deterministic shuffle → always show exactly 12 templates
     const _rotSeed = Math.floor(Date.now() / (1000 * 60 * 60 * 24 * 3));
-    const _rotated = (function(seed, arr) {
+    const _rotShuffle = (seed, arr) => {
       const a = [...arr]; let s = (seed * 1664525 + 1013904223) | 0;
       for (let i = a.length - 1; i > 0; i--) { s = (s * 1664525 + 1013904223) | 0; const j = Math.abs(s) % (i + 1); [a[i], a[j]] = [a[j], a[i]]; }
       return a;
-    })(_rotSeed, _allTpl);
+    };
+    const _rotated = _rotShuffle(_rotSeed, _allTpl).slice(0, 12);
+    const _tplTotal = _allTpl.length; // full library size for badge
     const templates = (intgData.templates && intgData.templates.length > 0) ? intgData.templates : _rotated;
     const logs      = intgData.logs || [];
     const runs      = intgData.runs || [];
@@ -9869,7 +10067,7 @@ function renderSettings() {
 
     const activeTab = window._intgTab || 'hub';
 
-    const platColor = p => ({zapier:'#ff6640',make:'#6d00cc',slack:'#4a154b',notion:'#ffffff',hubspot:'#ff7a59',airtable:'#18bfff',email:'#2563EB',custom:'#22c55e'})[p] || '#6b7280';
+    const platColor = p => ({zapier:'#ff6640',make:'#6d00cc',slack:'#4a154b',notion:'#ffffff',hubspot:'#ff7a59',airtable:'#18bfff',email:'#2563EB',custom:'#22c55e',pipedrive:'#22c55e',shopify:'#96bf48',monday:'#f62b54',discord:'#5865f2',n8n:'#ea5e00',mailchimp:'#ffe01b',linkedin:'#0a66c2',teams:'#5059c9',intercom:'#1f8eed',klaviyo:'#000000',twilio:'#f22f46',salesforce:'#00a1e0',zendesk:'#17494d',freshdesk:'#25c16f',pagerduty:'#06ac38'})[p] || '#6b7280';
     const platIcon  = p => ({zapier:'⚡',make:'🔄',slack:'💬',notion:'📋',hubspot:'🎯',airtable:'📊',email:'📧',custom:'🔗',webhook:'🔌'})[p] || '🔌';
     const platSvgIcon = id => {
       const ic = {
@@ -9939,7 +10137,7 @@ function renderSettings() {
             ${statCard('Taux de succès', (stats.successRate||100)+'%', 'livraisons réussies', stats.successRate<90?'down':'up')}
             ${statCard('Erreurs (24h)', String(stats.recentErrors||0), 'alertes récentes', stats.recentErrors>0?'down':'up')}
             ${statCard('Latence moy.', stats.avgDurationMs ? stats.avgDurationMs+'ms' : '—', 'livraison webhook', 'neutral')}
-            ${statCard('Templates', String(templates.length), 'prêts à utiliser', 'up')}
+            ${statCard('Templates', String(_tplTotal), 'prêts à utiliser', 'up')}
             ${statCard('Synchros réussies', String(Math.max(0,(stats.totalRuns||0)-(stats.recentErrors||0))), 'depuis 30 jours', (stats.recentErrors||0)>0?'neutral':'up')}
             ${statCard('Quota API restant', displayStat(null, '85%'), PREVIEW_MODE ? '→ 1 500 / 2 000 appels' : 'Voir usage API', 'neutral')}
           </div>
@@ -10107,21 +10305,26 @@ function renderSettings() {
 
       // ── TEMPLATES ───────────────────────────────────────────────────────────
       if (tab === 'templates') {
-        const cats = [...new Set(templates.map(t => t.category))];
+        // Derive category tabs from full library, not the visible 12
+        const cats = [...new Set(_allTpl.map(t => t.category))];
         const planOrder = {Standard:0,Pro:1,Ultra:2};
         const planColor = p => p==='Ultra'?'#8b5cf6':p==='Pro'?'#2563EB':'#22c55e';
+        // When a category filter is active, show 12 from that category (seeded shuffle)
+        const _activeCat = window._intgTemplCat || 'Tous';
+        const _visibleTpl = _activeCat === 'Tous'
+          ? templates  // already 12 rotated from full library
+          : (() => { const sub = _allTpl.filter(t => t.category === _activeCat); return sub.length <= 12 ? sub : _rotShuffle(_rotSeed, sub).slice(0, 12); })();
         return `
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
             ${['Tous',...cats].map(c => `
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._intgTemplCat='${c}';render(STATE.currentSection)"
-                style="${(window._intgTemplCat||'Tous')===c?'border-color:var(--fp-accent);color:var(--fp-accent)':''}">
+                style="${_activeCat===c?'border-color:var(--fp-accent);color:var(--fp-accent)':''}">
                 ${c}
               </button>
             `).join('')}
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
-            ${templates
-              .filter(t => !window._intgTemplCat || window._intgTemplCat==='Tous' || t.category===window._intgTemplCat)
+            ${_visibleTpl
               .map(t => `
                 <div style="padding:16px;border-radius:12px;border:1px solid rgba(255,255,255,0.07);background:var(--fp-inner-card);display:flex;flex-direction:column;gap:8px;border-top:3px solid ${platColor(t.platform)}">
                   <div style="display:flex;align-items:center;gap:8px">
@@ -10255,7 +10458,7 @@ function renderSettings() {
         ${[
           ['hub',       '🏠 Hub',        ''],
           ['webhooks',  '🔗 Webhooks',   intgs.length > 0 ? String(intgs.length) : ''],
-          ['templates', '📦 Templates',  String(templates.length)],
+          ['templates', '📦 Templates',  String(_tplTotal)],
           ['logs',      '📋 Logs',       runs.length > 0 ? String(runs.length) : ''],
         ].map(([id, label, cnt]) => `
           <button onclick="window._intgTab='${id}';render(STATE.currentSection)"
