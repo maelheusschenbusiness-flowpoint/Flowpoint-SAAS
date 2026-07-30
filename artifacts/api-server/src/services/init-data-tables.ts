@@ -438,7 +438,9 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS sender_name TEXT NOT NULL DEFAULT '';`);
     await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS content     TEXT NOT NULL DEFAULT '';`);
     await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS channel     TEXT NOT NULL DEFAULT 'general';`);
-    await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS type        TEXT NOT NULL DEFAULT 'text';`);
+    await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS type             TEXT NOT NULL DEFAULT 'text';`);
+    await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS attachment_url  TEXT;`);
+    await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS attachment_name TEXT;`);
     await run(client, `CREATE INDEX IF NOT EXISTS team_messages_org_id_idx  ON team_messages(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS team_messages_channel_idx ON team_messages(channel);`);
 

@@ -41,27 +41,96 @@ router.get("/team/messages", async (req, res) => {
     await ensureSeed(req);
     const channel = (req.query.channel as string) || "general";
     const r = await db(req)(
-      `SELECT * FROM team_messages WHERE org_id=$1 AND channel=$2 ORDER BY created_at DESC LIMIT 100`,
+      `SELECT id, org_id, channel, sender_id, sender_name, content, type, attachment_url, attachment_name, created_at
+       FROM team_messages WHERE org_id=$1 AND channel=$2 ORDER BY created_at DESC LIMIT 100`,
       [org(req), channel]
     );
-    res.json(r.rows.reverse());
+    const rows = r.rows.reverse().map(m => ({
+      id:             m.id,
+      channel:        m.channel,
+      from:           m.sender_name,
+      text:           m.content,
+      self:           false,
+      read:           true,
+      type:           m.type,
+      attachmentUrl:  m.attachment_url  ?? null,
+      attachmentName: m.attachment_name ?? null,
+      createdAt:      m.created_at,
+    }));
+    res.json(rows);
   } catch {
     res.json([]);
   }
 });
 
+// ── GET /team/messages/all  — fetch all channels in one request ───────────────
+router.get("/team/messages/all", async (req, res) => {
+  try {
+    await ensureSeed(req);
+    const channels = ["general", "seo", "rapports", "support"];
+    const results: Record<string, unknown[]> = {};
+    await Promise.all(channels.map(async ch => {
+      try {
+        const r = await db(req)(
+          `SELECT id, org_id, channel, sender_id, sender_name, content, type, attachment_url, attachment_name, created_at
+           FROM team_messages WHERE org_id=$1 AND channel=$2 ORDER BY created_at DESC LIMIT 100`,
+          [org(req), ch]
+        );
+        results[ch] = r.rows.reverse().map(m => ({
+          id:             m.id,
+          channel:        m.channel,
+          from:           m.sender_name,
+          text:           m.content,
+          self:           false,
+          read:           true,
+          type:           m.type,
+          attachmentUrl:  m.attachment_url  ?? null,
+          attachmentName: m.attachment_name ?? null,
+          createdAt:      m.created_at,
+        }));
+      } catch {
+        results[ch] = [];
+      }
+    }));
+    res.json(results);
+  } catch {
+    res.json({ general: [], seo: [], rapports: [], support: [] });
+  }
+});
+
 router.post("/team/messages", canWrite, async (req, res) => {
-  const { channel = "general", from, text } = req.body as { channel?: string; from?: string; text?: string };
-  if (!text || !from) { res.status(400).json({ error: "text and from required" }); return; }
+  const { channel = "general", from, text, attachmentUrl, attachmentName } =
+    req.body as { channel?: string; from?: string; text?: string; attachmentUrl?: string; attachmentName?: string };
+  if (!text && !attachmentUrl) { res.status(400).json({ error: "text or attachmentUrl required" }); return; }
+  if (!from) { res.status(400).json({ error: "from required" }); return; }
   const id = "msg" + Date.now();
   try {
     await db(req)(
-      `INSERT INTO team_messages (id, org_id, channel, sender_id, sender_name, content, type)
-       VALUES ($1,$2,$3,'user',$4,$5,'text')`,
-      [id, org(req), channel, from, text]
+      `INSERT INTO team_messages (id, org_id, channel, sender_id, sender_name, content, type, attachment_url, attachment_name)
+       VALUES ($1,$2,$3,'user',$4,$5,'text',$6,$7)`,
+      [id, org(req), channel, from, text ?? "", attachmentUrl ?? null, attachmentName ?? null]
     );
-    const r = await db(req)(`SELECT * FROM team_messages WHERE id=$1`, [id]);
-    const msg = r.rows[0] ?? { id, channel, senderName: from, content: text };
+    const r = await db(req)(
+      `SELECT id, channel, sender_name, content, type, attachment_url, attachment_name, created_at
+       FROM team_messages WHERE id=$1`,
+      [id]
+    );
+    const row = r.rows[0];
+    const msg = row
+      ? {
+          id:             row.id,
+          channel:        row.channel,
+          from:           row.sender_name,
+          text:           row.content,
+          self:           true,
+          read:           true,
+          type:           row.type,
+          attachmentUrl:  row.attachment_url  ?? null,
+          attachmentName: row.attachment_name ?? null,
+          createdAt:      row.created_at,
+        }
+      : { id, channel, from, text: text ?? "", self: true, read: true, type: "text",
+          attachmentUrl: attachmentUrl ?? null, attachmentName: attachmentName ?? null };
     store.broadcast({ type: "chat:message", channel, message: msg }, org(req));
     res.status(201).json(msg);
   } catch {

@@ -139,6 +139,7 @@ const STATE = {
   msgChannel: 'general',
   channelMessages: null,
   msgAttachment: null,
+  msgAttachmentFile: null,
   streak: parseInt(localStorage.getItem('fp:streak') || '0', 10),
   userScore: null, // computed from real API data in loadData
   selectedRowIndex: -1,
@@ -1120,7 +1121,7 @@ async function loadData() {
     apiFetch('/api/alert-rules'),
     apiFetch('/api/alert-events'),
     apiFetch('/api/activity'),
-    apiFetch('/api/team/messages'),
+    apiFetch('/api/team/messages/all'),
     apiFetch('/api/me/prefs'),
     apiFetch('/api/me/storage').catch(() => null),
     apiFetch('/api/overview/checklist').catch(() => null),
@@ -1137,8 +1138,27 @@ async function loadData() {
   STATE.alertRules      = (_alertRulesRes.status  === 'fulfilled' && Array.isArray(_alertRulesRes.value))                           ? _alertRulesRes.value : [];
   STATE.alertEvents     = (_alertEventsRes.status === 'fulfilled' && Array.isArray(_alertEventsRes.value))                          ? _alertEventsRes.value: [];
   STATE.activityEvents  = (_activityRes.status    === 'fulfilled' && Array.isArray(_activityRes.value))                             ? _activityRes.value   : [];
-  const _rawMsgs        = (_teamMsgsRes.status    === 'fulfilled' && Array.isArray(_teamMsgsRes.value))                             ? _teamMsgsRes.value   : [];
-  STATE.teamChatHistory = _rawMsgs.map(m => ({ from: m.from, msg: m.text, time: new Date(m.createdAt||Date.now()).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) }));
+  // Populate channelMessages from all-channels response and keep teamChatHistory in sync
+  const _allMsgs = (_teamMsgsRes.status === 'fulfilled' && _teamMsgsRes.value && typeof _teamMsgsRes.value === 'object' && !Array.isArray(_teamMsgsRes.value))
+    ? _teamMsgsRes.value : null;
+  if (_allMsgs) {
+    const _toChEntry = m => ({
+      from: m.from, text: m.text, time: new Date(m.createdAt||Date.now()).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),
+      read: true, self: !!m.self, attachmentUrl: m.attachmentUrl||null, attachmentName: m.attachmentName||null,
+    });
+    STATE.channelMessages = {
+      general:  (Array.isArray(_allMsgs.general)  ? _allMsgs.general  : []).map(_toChEntry),
+      seo:      (Array.isArray(_allMsgs.seo)       ? _allMsgs.seo      : []).map(_toChEntry),
+      rapports: (Array.isArray(_allMsgs.rapports)  ? _allMsgs.rapports : []).map(_toChEntry),
+      support:  (Array.isArray(_allMsgs.support)   ? _allMsgs.support  : []).map(_toChEntry),
+    };
+  } else if (!STATE.channelMessages) {
+    STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
+  }
+  STATE.teamChatHistory = (STATE.channelMessages[STATE.msgChannel||'general'] || []).map(m => ({
+    from: m.from, msg: m.text || (m.attachmentName ? `📎 ${m.attachmentName}` : ''),
+    time: m.time, attachmentUrl: m.attachmentUrl||null, attachmentName: m.attachmentName||null,
+  }));
   const _apiNotifs      = _notifsRes.status       === 'fulfilled' ? _notifsRes.value   : null;
   STATE.notifications   = Array.isArray(_apiNotifs) ? _apiNotifs : Array.isArray(_apiNotifs?.notifications) ? _apiNotifs.notifications : [];
   if (_domain) {
@@ -2551,11 +2571,22 @@ async function handleChatAttach(input) {
         sharedBy: from,
       }).catch(() => null);
       if (r && r.ok) {
-        // Build message text: include typed text if provided, otherwise just file link
-        const attachMsg = typedText ? `${typedText}\n📎 ${file.name}` : `📎 ${file.name}`;
-        STATE.teamChatHistory.push({ from, msg: attachMsg, time, fileId: r.file?.id });
+        const fileId = r.file?.id;
+        const attachmentUrl  = fileId ? `/api/team/files/${fileId}/content` : null;
+        const attachmentName = r.file?.name || file.name;
+        const attachMsg = typedText ? `${typedText}` : '';
+        // Sync to channelMessages (unified state)
+        if (!STATE.channelMessages) STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
+        if (!STATE.channelMessages[channel]) STATE.channelMessages[channel] = [];
+        STATE.channelMessages[channel].push({ from, text: attachMsg, time, read: true, self: true, attachmentUrl, attachmentName });
+        // Keep teamChatHistory in sync for backward compat
+        STATE.teamChatHistory.push({ from, msg: attachMsg || `📎 ${attachmentName}`, time, attachmentUrl, attachmentName });
         try {
-          await apiAction('POST', '/api/team/messages', { channel, from, text: attachMsg, self: true });
+          await apiAction('POST', '/api/team/messages', {
+            channel, from,
+            text: attachMsg || `📎 ${attachmentName}`,
+            attachmentUrl, attachmentName,
+          });
         } catch(_) {}
       } else {
         showToast('error', `Échec de l'envoi de ${file.name}`);
@@ -3446,7 +3477,10 @@ function renderMsgDropdown() {
               <div class="fp-msg-from" style="${m.self?'color:#2563EB':''}">${m.self?'Vous':escHtml(m.from)}</div>
               <div class="fp-msg-time">${escHtml(m.time)}</div>
             </div>
-            <div class="fp-msg-text" style="border-radius:${m.self?'12px 4px 12px 12px':'4px 12px 12px 12px'};background:${m.self?'rgba(37,99,235,0.15)':'var(--fp-inner-card, rgba(255,255,255,0.07))'};border-color:${m.self?'rgba(37,99,235,0.25)':'rgba(255,255,255,0.06)'};color:${m.self?'#c7d9ff':''}">${escHtml(m.text)}</div>
+            <div class="fp-msg-text" style="border-radius:${m.self?'12px 4px 12px 12px':'4px 12px 12px 12px'};background:${m.self?'rgba(37,99,235,0.15)':'var(--fp-inner-card, rgba(255,255,255,0.07))'};border-color:${m.self?'rgba(37,99,235,0.25)':'rgba(255,255,255,0.06)'};color:${m.self?'#c7d9ff':''}">
+              ${m.text ? escHtml(m.text) : ''}
+              ${m.attachmentUrl ? `${m.text?'<br>':''}<a href="${escHtml(m.attachmentUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:4px;color:${m.self?'#93c5fd':'#818cf8'};font-size:11px;text-decoration:none;margin-top:${m.text?'4px':'0'};word-break:break-all"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>${escHtml(m.attachmentName||'Fichier')}</a>` : ''}
+            </div>
           </div>
         </div>`;
       }).join('')}
@@ -3495,6 +3529,7 @@ function bindMsgPanel(dd) {
     if (f) {
       const prevText = dd.querySelector('#fp-msg-input')?.value || '';
       STATE.msgAttachment = f.name;
+      STATE.msgAttachmentFile = f;
       dd.innerHTML = renderMsgDropdown();
       bindMsgPanel(dd);
       const newInp = dd.querySelector('#fp-msg-input');
@@ -3506,6 +3541,7 @@ function bindMsgPanel(dd) {
     e.stopPropagation();
     const prevText = dd.querySelector('#fp-msg-input')?.value || '';
     STATE.msgAttachment = null;
+    STATE.msgAttachmentFile = null;
     dd.innerHTML = renderMsgDropdown();
     bindMsgPanel(dd);
     const newInp = dd.querySelector('#fp-msg-input');
@@ -3515,28 +3551,73 @@ function bindMsgPanel(dd) {
   const input = dd.querySelector('#fp-msg-input');
   const send  = dd.querySelector('#fp-msg-send');
 
-  const doSend = e => {
+  const doSend = async e => {
     if (e) e.stopPropagation();
     const val = input?.value?.trim();
     if (!val && !STATE.msgAttachment) return;
     const ch = STATE.msgChannel || 'general';
     if (!STATE.channelMessages[ch]) STATE.channelMessages[ch] = [];
+
+    // Optimistic local message
+    const from = STATE.me?.firstName || 'Vous';
     const msgObj = {
-      from: STATE.me?.firstName || 'Vous',
-      text: val || `📎 ${STATE.msgAttachment}`,
+      from,
+      text: val || '',
       time: 'À l\'instant', read: true, self: true,
+      attachmentUrl: null, attachmentName: null,
     };
+
+    // Upload attachment if present
+    let attachmentUrl = null, attachmentName = null;
+    if (STATE.msgAttachmentFile) {
+      try {
+        const file = STATE.msgAttachmentFile;
+        const b64 = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result).split(',')[1]);
+          r.onerror = reject;
+          r.readAsDataURL(file);
+        });
+        const uploadRes = await apiAction('POST', '/api/team/files', {
+          name: file.name, type: file.type || '', size: file.size,
+          content: b64, sharedBy: from,
+        }).catch(() => null);
+        if (uploadRes?.ok && uploadRes?.file?.id) {
+          attachmentUrl  = `/api/team/files/${uploadRes.file.id}/content`;
+          attachmentName = uploadRes.file.name || file.name;
+          msgObj.attachmentUrl  = attachmentUrl;
+          msgObj.attachmentName = attachmentName;
+          if (!val) msgObj.text = '';
+        } else {
+          showToast('error', 'Échec de l\'envoi du fichier');
+          return;
+        }
+      } catch(_) {
+        showToast('error', 'Erreur lors de l\'envoi du fichier');
+        return;
+      }
+    }
+
     STATE.channelMessages[ch].push(msgObj);
+    // Keep teamChatHistory in sync (team page)
+    if (!STATE.teamChatHistory) STATE.teamChatHistory = [];
+    if (ch === (STATE.msgChannel || 'general')) {
+      STATE.teamChatHistory.push({ from: msgObj.from, msg: msgObj.text || (msgObj.attachmentName ? `📎 ${msgObj.attachmentName}` : ''), time: 'À l\'instant', attachmentUrl: msgObj.attachmentUrl, attachmentName: msgObj.attachmentName });
+    }
+
     if (input) input.value = '';
     STATE.msgAttachment = null;
+    STATE.msgAttachmentFile = null;
     dd.innerHTML = renderMsgDropdown();
     bindMsgPanel(dd);
     const list = dd.querySelector('#fp-msg-list');
     if (list) list.scrollTop = list.scrollHeight;
-    // Persistance backend (best-effort)
-    if (val && typeof window.FP_CHAT_API !== 'undefined') {
-      window.FP_CHAT_API.send(ch, val).catch(() => {});
-    }
+    // Persist to backend (best-effort)
+    apiAction('POST', '/api/team/messages', {
+      channel: ch, from,
+      text: val || (attachmentName ? `📎 ${attachmentName}` : ''),
+      attachmentUrl, attachmentName,
+    }).catch(() => {});
   };
 
   send?.addEventListener('click', doSend);
@@ -7388,7 +7469,7 @@ function renderTeam() {
           <div class="fp-flex-between" style="margin-bottom:12px">
             <div class="fp-card-title" style="margin-bottom:0">${svgIcon('message-square').replace('stroke="currentColor"','stroke="#2563EB"')} Chat d\'équipe</div>
             <div style="display:flex;align-items:center;gap:6px">
-              <select id="team-chat-channel" onchange="STATE.msgChannel=this.value;showToast('info','Canal : '+this.options[this.selectedIndex].text)" style="font-size:11px;padding:3px 8px;border-radius:8px;border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.08);color:#2563EB;cursor:pointer;font-weight:600">
+              <select id="team-chat-channel" onchange="STATE.msgChannel=this.value;showToast('info','Canal : '+this.options[this.selectedIndex].text);render()" style="font-size:11px;padding:3px 8px;border-radius:8px;border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.08);color:#2563EB;cursor:pointer;font-weight:600">
                 <option value="general" ${(STATE.msgChannel||'general')==='general'?'selected':''} >#général</option>
                 <option value="seo" ${STATE.msgChannel==='seo'?'selected':''} >#seo</option>
                 <option value="rapports" ${STATE.msgChannel==='rapports'?'selected':''} >#rapports</option>
@@ -7397,15 +7478,18 @@ function renderTeam() {
             </div>
           </div>
           <div id="team-chat-msgs" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;max-height:360px;overflow-y:auto">
-            ${STATE.teamChatHistory.map(m=>`
+            ${((STATE.channelMessages&&STATE.channelMessages[STATE.msgChannel||'general'])||STATE.teamChatHistory||[]).map(m=>`
               <div style="display:flex;gap:10px;align-items:flex-start">
-                <div style="width:30px;height:30px;border-radius:9px;background:rgba(37,99,235,0.18);display:flex;align-items:center;justify-content:center;font-weight:700;color:#2563EB;font-size:12px;flex-shrink:0">${escHtml(m.from.charAt(0))}</div>
+                <div style="width:30px;height:30px;border-radius:9px;background:rgba(37,99,235,0.18);display:flex;align-items:center;justify-content:center;font-weight:700;color:#2563EB;font-size:12px;flex-shrink:0">${escHtml((m.from||'?').charAt(0))}</div>
                 <div style="flex:1">
                   <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px">
-                    <span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(m.from)}</span>
-                    <span style="font-size:10px;color:var(--fp-text-faint)">${m.time}</span>
+                    <span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(m.from||'?')}</span>
+                    <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(m.time||'')}</span>
                   </div>
-                  <div style="font-size:12px;color:var(--fp-text-soft);background:var(--fp-inner-card);border-radius:0 8px 8px 8px;padding:7px 10px;border:1px solid var(--fp-border)">${escHtml(m.msg)}</div>
+                  <div style="font-size:12px;color:var(--fp-text-soft);background:var(--fp-inner-card);border-radius:0 8px 8px 8px;padding:7px 10px;border:1px solid var(--fp-border)">
+                    ${m.msg||m.text ? escHtml(m.msg||m.text) : ''}
+                    ${m.attachmentUrl ? `${(m.msg||m.text)?'<br>':''}<a href="${escHtml(m.attachmentUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:4px;color:#818cf8;font-size:11px;text-decoration:none;margin-top:${(m.msg||m.text)?'4px':'0'}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>${escHtml(m.attachmentName||'Fichier')}</a>` : ''}
+                  </div>
                 </div>
               </div>
             `).join('')}
@@ -18680,7 +18764,8 @@ function renderReportsTemplates() {
 
 // ── TEAM SUB-PAGES ──
 function renderTeamChat() {
-  const msgs = STATE.teamChatHistory;
+  const ch = STATE.msgChannel || 'general';
+  const msgs = (STATE.channelMessages && STATE.channelMessages[ch]) || STATE.teamChatHistory || [];
   const myName = STATE.me?.name || STATE.me?.email?.split('@')[0] || 'Vous';
   return `
     <div class="fp-card" style="display:flex;flex-direction:column;height:460px">
@@ -18694,14 +18779,17 @@ function renderTeamChat() {
             <div style="width:28px;height:28px;border-radius:8px;background:${avatarBg};color:${avatarCol};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${escHtml(m.from.charAt(0))}</div>
             <div style="${isMe ? 'align-items:flex-end' : ''};display:flex;flex-direction:column;max-width:72%">
               <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:3px;${isMe ? 'text-align:right' : ''}">${isMe ? '' : escHtml(m.from) + ' · '}${escHtml(m.time)}</div>
-              <div style="font-size:12px;background:${isMe ? 'rgba(37,99,235,0.75)' : 'rgba(255,255,255,0.05)'};border:1px solid ${isMe ? 'rgba(37,99,235,0.5)' : 'var(--fp-border)'};border-radius:${isMe ? '12px 4px 12px 12px' : '4px 12px 12px 12px'};padding:8px 12px;color:${isMe ? '#ffffff' : 'var(--fp-text-soft)'};${isMe ? 'text-shadow:0 1px 3px rgba(0,0,0,0.55);' : ''}line-height:1.5">${escHtml(m.msg)}</div>
+              <div style="font-size:12px;background:${isMe ? 'rgba(37,99,235,0.75)' : 'rgba(255,255,255,0.05)'};border:1px solid ${isMe ? 'rgba(37,99,235,0.5)' : 'var(--fp-border)'};border-radius:${isMe ? '12px 4px 12px 12px' : '4px 12px 12px 12px'};padding:8px 12px;color:${isMe ? '#ffffff' : 'var(--fp-text-soft)'};${isMe ? 'text-shadow:0 1px 3px rgba(0,0,0,0.55);' : ''}line-height:1.5">
+                ${m.msg||m.text ? escHtml(m.msg||m.text) : ''}
+                ${(m.attachmentUrl) ? `${(m.msg||m.text)?'<br>':''}<a href="${escHtml(m.attachmentUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:4px;color:${isMe?'#bfdbfe':'#818cf8'};font-size:11px;text-decoration:none;margin-top:${(m.msg||m.text)?'4px':'0'}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>${escHtml(m.attachmentName||'Fichier')}</a>` : ''}
+              </div>
             </div>
           </div>`;
         }).join('')}
       </div>
       <div style="border-top:1px solid var(--fp-border);padding:8px 14px 14px">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-          <select id="team-chat-channel-main" onchange="STATE.msgChannel=this.value;showToast('info','Canal : '+this.options[this.selectedIndex].text)" style="font-size:11px;padding:4px 10px;border-radius:8px;border:1px solid var(--fp-border);background:var(--fp-bg-card);color:var(--fp-text);cursor:pointer;font-weight:600;flex:1">
+          <select id="team-chat-channel-main" onchange="STATE.msgChannel=this.value;showToast('info','Canal : '+this.options[this.selectedIndex].text);navigateSub('chat')" style="font-size:11px;padding:4px 10px;border-radius:8px;border:1px solid var(--fp-border);background:var(--fp-bg-card);color:var(--fp-text);cursor:pointer;font-weight:600;flex:1">
             <option value="general" ${(STATE.msgChannel||'general')==='general'?'selected':''} >#général</option>
             <option value="seo" ${STATE.msgChannel==='seo'?'selected':''} >#seo</option>
             <option value="rapports" ${STATE.msgChannel==='rapports'?'selected':''} >#rapports</option>
@@ -25935,7 +26023,6 @@ function renderLocalSEOGBP() {
     </div>` : ''}
 
     
-
     <!-- HEALTH GAUGE + COMPLETENESS -->
     <div class="fp-grid-2 fp-mb-20">
 
@@ -27473,11 +27560,16 @@ function bindNewRouteEvents() {
       const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
       const msg = input.value;
       const from = STATE.me?.firstName || 'Vous';
-      STATE.teamChatHistory.push({ from, msg, time });
+      const ch = STATE.msgChannel || 'general';
+      const entry = { from, msg, time, attachmentUrl: null, attachmentName: null };
+      STATE.teamChatHistory.push(entry);
+      if (!STATE.channelMessages) STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
+      if (!STATE.channelMessages[ch]) STATE.channelMessages[ch] = [];
+      STATE.channelMessages[ch].push({ from, text: msg, time, read: true, self: true, attachmentUrl: null, attachmentName: null });
       input.value = '';
       navigateSub('chat');
       setTimeout(() => { const msgs = $('#team-chat-msgs'); if(msgs) msgs.scrollTop = msgs.scrollHeight; }, 50);
-      try { await apiAction('POST', '/api/team/messages', { channel: 'general', from, text: msg, self: true }); } catch(_) {}
+      try { await apiAction('POST', '/api/team/messages', { channel: ch, from, text: msg }); } catch(_) {}
     };
     $('#team-chat-send')?.addEventListener('click', sendChat);
     $('#team-chat-input')?.addEventListener('keydown', e => { if(e.key==='Enter') sendChat(); });
