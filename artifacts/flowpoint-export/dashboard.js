@@ -7969,10 +7969,59 @@ function renderBilling() {
     window._fpAddonStripeKeys = _ADDON_STRIPE_KEYS;
 
     // ── Billing lifecycle: upgrade / cancel / reactivate ──────────────────────
+    // For active/trialing subscriptions: call /api/billing/upgrade directly — no new
+    // customer created, no card re-entry. Stripe updates the subscription immediately
+    // with prorations. Only redirect to pricing for users without an active subscription.
     window.fpUpgradeOrCheckout = async function(plan) {
-      // Always redirect to pricing.html so the user confirms the plan change in checkout.
-      // Never trigger an immediate API upgrade from a teaser button.
-      fpGoToPricing(plan);
+      const _targetPlan = (plan || 'pro').toLowerCase();
+      const _curPlan = ((STATE.billing && STATE.billing.plan) || (STATE.me && STATE.me.plan) || '').toLowerCase();
+      if (_curPlan && _curPlan === _targetPlan) {
+        showToast('info', 'Vous êtes déjà sur le plan ' + _targetPlan.charAt(0).toUpperCase() + _targetPlan.slice(1) + '.');
+        return;
+      }
+      // Active or trialing → direct upgrade, no checkout, no new customer
+      const _bStatus = (typeof getBillingStatus === 'function' ? getBillingStatus() : (STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || '');
+      if (_bStatus === 'active' || _bStatus === 'trialing') {
+        if (document.getElementById('fp-upgrade-confirm-modal')) return;
+        const _planLabel = _targetPlan.charAt(0).toUpperCase() + _targetPlan.slice(1);
+        const _isUp = (_targetPlan === 'ultra' && _curPlan !== 'ultra') || (_targetPlan === 'pro' && _curPlan === 'standard');
+        const _modal = document.createElement('div');
+        _modal.id = 'fp-upgrade-confirm-modal';
+        _modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+        _modal.innerHTML = `<div style="background:var(--fp-bg-card,#1e293b);border-radius:16px;padding:28px 24px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);border:1px solid var(--fp-border)">
+          <div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px">${_isUp ? '⬆️' : '⬇️'} Passer au plan ${_planLabel}</div>
+          <div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;line-height:1.6">Votre abonnement sera mis à jour <strong style="color:var(--fp-text)">immédiatement</strong>. ${_isUp ? 'La différence de prix sera calculée au prorata de la période restante.' : 'Le nouveau tarif s\'appliquera à partir du prochain renouvellement.'}</div>
+          <div style="display:flex;gap:8px">
+            <button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-upgrade-confirm-modal')?.remove()">Annuler</button>
+            <button class="fp-btn fp-btn-primary" style="flex:1" onclick="window._fpDoUpgrade('${_targetPlan}')">Confirmer →</button>
+          </div>
+        </div>`;
+        document.body.appendChild(_modal);
+        return;
+      }
+      // No active subscription → standard pricing/checkout flow
+      fpGoToPricing(_targetPlan);
+    };
+    window._fpDoUpgrade = async function(plan) {
+      document.getElementById('fp-upgrade-confirm-modal')?.remove();
+      showToast('info', 'Mise à jour du plan en cours…');
+      try {
+        const r = await apiAction('POST', '/api/billing/upgrade', { plan });
+        if (r && (r.upgraded || r.downgrade)) {
+          showToast('success', 'Plan mis à jour → ' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' ✓');
+          if (STATE.billing) { STATE.billing.plan = plan; STATE.billing.subscriptionStatus = 'active'; }
+          if (STATE.me) { STATE.me.plan = plan; STATE.me.subscriptionStatus = 'active'; }
+          setTimeout(function() { navigate('billing'); navigateSub('plans'); }, 900);
+          return;
+        }
+        if (r && r.reactivation && r.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
+        if (r && r.noSubscription) { fpGoToPricing(plan); return; }
+        if (r && r.error === 'plan_already_active') { showToast('info', 'Vous êtes déjà sur ce plan.'); return; }
+        showToast('error', (r && r.error) || 'Erreur lors du changement de plan.');
+      } catch (e) {
+        showToast('error', 'Erreur : ' + ((e && e.message) || 'changement impossible'));
+        fpGoToPricing(plan);
+      }
     };
     window.fpCancelSubscriptionModal = function() {
       if (document.getElementById('fp-cancel-sub-modal')) return;

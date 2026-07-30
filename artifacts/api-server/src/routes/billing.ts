@@ -300,6 +300,7 @@ router.post("/billing/checkout-embedded", async (req: Request, res: Response) =>
       const lineItems = buildLineItems(plan, addons);
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
+        ...(customerId ? { customer: customerId } : {}),
         line_items: lineItems,
         success_url: `${publicUrl}/dashboard.html?checkout=success&plan=${plan}`,
         cancel_url: `${publicUrl}/pricing.html`,

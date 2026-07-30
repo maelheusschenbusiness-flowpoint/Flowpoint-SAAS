@@ -658,6 +658,26 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
       }
     }
 
+    // For authenticated users (cookie session, no preRegisterToken): reuse the existing
+    // Stripe Customer from the org's billing context. This prevents duplicate customers
+    // when a subscriber enters the checkout flow to change plan or add an add-on.
+    if (!preRegCustomerId && !preRegisterToken) {
+      const _authOrgId = (req as Request & { orgId?: string }).orgId;
+      if (_authOrgId && _authOrgId !== "default") {
+        try {
+          const { loadBillingContext } = await import("../services/billing-context.js");
+          const _authCtx = await loadBillingContext(_authOrgId);
+          if (_authCtx.stripeCustomerId) {
+            preRegCustomerId = _authCtx.stripeCustomerId;
+            logger.info({ customerId: preRegCustomerId, orgId: _authOrgId },
+              "[PublicBilling] payment-intent: reusing existing Stripe Customer for authenticated org");
+          }
+        } catch (_authCtxErr) {
+          logger.warn({ _authCtxErr }, "[PublicBilling] payment-intent: billing-context lookup failed for authenticated org (non-fatal)");
+        }
+      }
+    }
+
     if (immediateAmountCents > 0) {
       /* PaymentIntent — immediate charge for add-ons / credits */
       const pi = await stripe.paymentIntents.create({
