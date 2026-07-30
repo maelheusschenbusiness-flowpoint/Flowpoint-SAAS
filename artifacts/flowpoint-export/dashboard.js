@@ -898,9 +898,12 @@ function applyThemeChoice(t) {
   render();
 }
 
-function openNewWorkflowPanel() {
-  openFloatPanel('Nouveau workflow', `
-    <div class="fp-form-group"><label class="fp-form-label">Nom du workflow</label><input class="fp-input" id="wf-name" placeholder="Mon workflow automatisé"/></div>
+function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
+  const prefillName = tplName || '';
+  const prefillDesc = tplDesc || '';
+  openFloatPanel((tplName ? tplIcon + ' Template : ' + tplName : 'Nouveau workflow'), `
+    <div class="fp-form-group"><label class="fp-form-label">Nom du workflow</label><input class="fp-input" id="wf-name" placeholder="Mon workflow automatisé" value="${escHtml(prefillName)}"/></div>
+    ${prefillDesc ? `<div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px;padding:8px 10px;background:var(--fp-inner-card);border-radius:8px">${escHtml(prefillDesc)}</div>` : ''}
     <div class="fp-form-group"><label class="fp-form-label">Déclencheur</label>
       <select class="fp-select" id="wf-trigger" style="width:100%">
         <option value="audit_done">Audit terminé</option>
@@ -927,7 +930,7 @@ function openNewWorkflowPanel() {
       if (!name) { showToast('warning', 'Entrez un nom pour le workflow'); return; }
       const trigger = document.getElementById('wf-trigger')?.value;
       const action = document.getElementById('wf-action')?.value;
-      const wf = { id: 'wf' + Date.now(), name, trigger, action, active: true, runs: 0, lastRun: '—', icon: '⚡', category: 'Custom', color: '#2563EB' };
+      const wf = { id: 'wf' + Date.now(), name, trigger, action, active: true, runs: 0, lastRun: '—', icon: tplIcon || '⚡', category: 'Custom', color: '#2563EB' };
       STATE.workflows = STATE.workflows || [];
       STATE.workflows.push(wf);
       showToast('success', 'Workflow créé !');
@@ -936,6 +939,7 @@ function openNewWorkflowPanel() {
     });
   }, 60);
 }
+window.openNewWorkflowPanel = openNewWorkflowPanel;
 
 function resolveIncident(incId) {
   STATE.resolvedIncidents = STATE.resolvedIncidents || {};
@@ -9706,7 +9710,7 @@ function renderSettings() {
               <div style="font-size:20px;margin-bottom:6px">${t.icon}</div>
               <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(t.name)}</div>
               <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:10px;flex:1">${escHtml(t.desc)}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px;margin-top:auto" onclick="navigate('settings');setTimeout(()=>navigateSub('automations'),50)">Utiliser ce template</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px;margin-top:auto" onclick="window.openNewWorkflowPanel('${escHtml(t.name)}','${escHtml(t.icon)}','${escHtml(t.desc)}')">Utiliser ce template</button>
             </div>
           `).join('')}
         </div>
@@ -9829,7 +9833,7 @@ function renderSettings() {
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
               ${platformCards.map(p => `
-                <div style="padding:16px;border-radius:12px;border:1px solid ${p.connected>0?platColor(p.id)+'44':'rgba(255,255,255,0.15)'};background:${p.connected>0?platColor(p.id)+'08':'rgba(15,23,42,0.95)'}">
+                <div style="padding:16px;border-radius:12px;border:1px solid ${p.connected>0?platColor(p.id)+'44':'rgba(255,255,255,0.15)'};background:${p.connected>0?platColor(p.id)+'08':'var(--fp-inner-card)'}">
                   <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
                     ${platSvgIcon(p.id)}
                     <div style="flex:1">
@@ -9857,11 +9861,11 @@ function renderSettings() {
             <div class="fp-card-title" style="margin-bottom:14px">🔍 Intégrations natives FlowPoint</div>
             <div style="display:flex;flex-direction:column;gap:0">
               ${[
-                {name:'Google Business Profile', icon:'🏢', connected:gbpConn, btn:"navigate('local-seo')", desc:'Fiches GBP, avis, posts locaux'},
+                {name:'Google Business Profile', icon:'🏢', connected:gbpConn, btn:gbpConn?"navigate('local-seo')"  :"typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.openConnect():navigate('local-seo')", desc:'Fiches GBP, avis, posts locaux'},
                 {name:'Google Analytics 4',      icon:'📈', connected:ga4Conn, btn:"navigate('analytics')",desc:'Sessions, conversions, temps réel'},
                 {name:'Google Search Console',   icon:'🔍', connected:gscConn, btn:"navigate('search-console')",desc:'Positions, impressions, CTR'},
                 {name:'GitHub',                  icon:'🐙', connected:ghConn,  btn:"navigate('github-integration')",desc:'Déploiements, commits, audits auto'},
-                {name:'Stripe',                  icon:'💳', connected:false,   btn:"navigate('billing')",         desc:'Paiements, abonnements, facturation clients'},
+                {name:'Stripe',                  icon:'💳', connected:!!(STATE.billing?.stripeCustomerId || (STATE.billing?.subscriptionStatus&&STATE.billing.subscriptionStatus!=='inactive')), btn:"navigate('billing')", desc:'Paiements, abonnements, facturation clients'},
                 {name:'Meta Ads',                icon:'📊', connected:false,   btn:"", comingSoon:true,           desc:'Campagnes Facebook & Instagram Ads'},
               ].map(n => `
                 <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
@@ -15467,7 +15471,7 @@ async function init() {
   };
 
   window._showConnectModal = function(platformId, platformName, platformIcon) {
-    const _webhookNative = ['zapier','make','discord','n8n','hubspot','mailchimp','airtable','pipedrive'];
+    const _webhookNative = ['zapier','make','slack','discord','notion','n8n','hubspot','mailchimp','airtable','pipedrive','google_ads','semrush','linkedin','shopify','monday'];
     if (_webhookNative.includes(platformId)) {
       window._currentPlatform = platformId;
       const titleEl = document.getElementById('fp-intg-modal-title');
@@ -31494,7 +31498,8 @@ window.FP_GITHUB_API = (() => {
     async connect() {
       try {
         const { url } = await _fetch('/github/auth');
-        if (url) window.open(url, '_blank', 'width=600,height=700');
+        if (url) window.location.href = url;
+        else showToast('error', 'URL OAuth GitHub introuvable');
       } catch(e) { showToast('error', 'Connexion GitHub impossible : ' + e.message); }
     },
   };
