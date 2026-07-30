@@ -1203,12 +1203,16 @@ async function loadData() {
     }
   }
 
-  // Compute streak from activity events when server prefs don't provide one
+  // Compute streak from activity events when server prefs don't provide one.
+  // If today has no events yet (partial day), skip d=0 and start from yesterday
+  // so a user with a perfect chain through yesterday still sees a non-zero streak.
   if (!STATE.streak && STATE.activityEvents.length > 0) {
     const activeDays = new Set(STATE.activityEvents.map(e => String(e.createdAt || e.created_at || '').slice(0, 10)));
+    const _todayStr = new Date(Date.now()).toISOString().slice(0, 10);
+    const _startOffset = activeDays.has(_todayStr) ? 0 : 1; // skip today if no events yet
     let _s = 0;
-    for (let _d = 0; _d < 365; _d++) {
-      if (activeDays.has(new Date(Date.now() - _d * 86400000).toISOString().slice(0, 10))) { _s++; } else if (_d > 0) break;
+    for (let _d = _startOffset; _d < 365; _d++) {
+      if (activeDays.has(new Date(Date.now() - _d * 86400000).toISOString().slice(0, 10))) { _s++; } else { break; }
     }
     if (_s > 0) { STATE.streak = _s; localStorage.setItem('fp:streak', String(_s)); }
   }
@@ -3587,24 +3591,38 @@ function renderSidebarStatus() {
   // Usage bars
   const usageEl = $('#sidebar-usage');
   if (usageEl) {
-    const _usg    = me.usage   || {};
-    const _auditU = _usg.audit   || { used: 0, limit: 100 };
-    const _monU   = _usg.monitor || { used: 0, limit: 10  };
+    const _usg  = me.usage  || {};
+    const _lims = me.limits || {};
+    const _auditU = _usg.audit   || { used: 0, limit: _lims.audits    || 30  };
+    const _monU   = _usg.monitor || { used: 0, limit: _lims.monitors  || 10  };
+    const _pdfU   = _usg.pdf     || { used: 0, limit: _lims.reports   || 10  };
+    const _expU   = _usg.exports || { used: 0, limit: _lims.exports   || 30  };
+    const _seatsUsed  = STATE.seatUsage?.used  ?? ((STATE.team||[]).length || 1);
+    const _seatsLimit = STATE.seatUsage?.limit ?? (_lims.teamMembers ?? (1 + (me.addons?.extraSeats || 0)));
+    const _seatsU = { used: _seatsUsed, limit: _seatsLimit };
+    const _rapU   = { used: me.usage?.reports?.used ?? 0, limit: _lims.reports ?? 30 };
     const bars = [
       { l:'Audits',   v:_auditU.used, max:_auditU.limit, c:'#2563EB' },
       { l:'Monitors', v:_monU.used,   max:_monU.limit,   c:'#22c55e' },
+      { l:'PDFs',     v:_pdfU.used,   max:_pdfU.limit,   c:'#8b5cf6' },
+      { l:'Exports',  v:_expU.used,   max:_expU.limit,   c:'#06b6d4' },
+      { l:'Sièges',   v:_seatsU.used, max:_seatsU.limit, c:'#f59e0b' },
+      { l:'Rapports', v:_rapU.used,   max:_rapU.limit,   c:'#22c55e' },
     ];
-    usageEl.innerHTML = bars.map(u => `
+    usageEl.innerHTML = bars.map(u => {
+      const pct = u.max > 0 ? Math.min(100, u.v / u.max * 100) : 0;
+      const fillColor = pct >= 90 ? '#ef4444' : pct >= 75 ? '#f59e0b' : u.c;
+      return `
       <div class="fp-usage-bar-item">
         <div class="fp-usage-bar-row">
           <span class="fp-usage-bar-label">${u.l}</span>
           <span class="fp-usage-bar-val">${u.v}/${u.max}</span>
         </div>
         <div class="fp-usage-bar-track">
-          <div class="fp-usage-bar-fill${u.v/u.max>0.8?' warn':''}" style="width:${(u.v/u.max*100).toFixed(1)}%;background:${u.v/u.max>0.8?'#ef4444':u.c}"></div>
+          <div class="fp-usage-bar-fill${pct>=75?' warn':''}" style="width:${pct.toFixed(1)}%;background:${fillColor}"></div>
         </div>
       </div>
-    `).join('');
+    `}).join('');
   }
 
   // User card
@@ -3626,9 +3644,9 @@ function renderSidebarStatus() {
         </div>
       </div>
       <div style="display:flex;gap:12px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.05)">
-        <span style="font-size:10px;color:var(--fp-text-faint);display:flex;align-items:center;gap:3px" title="${sitesCount} sites gérés">
+        <span style="font-size:10px;color:var(--fp-text-faint);display:flex;align-items:center;gap:3px" title="${sitesCount} URLs gérées">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-          ${sitesCount} sites
+          ${sitesCount} URLs
         </span>
         <span style="font-size:10px;color:var(--fp-text-faint);display:flex;align-items:center;gap:3px" title="${missionsActive} missions actives">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
@@ -3637,6 +3655,9 @@ function renderSidebarStatus() {
         ${streak > 0 ? `<span style="font-size:10px;color:#f59e0b;display:flex;align-items:center;gap:3px;font-weight:600" title="${streak} jours de suite"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>${streak}j</span>` : ''}
       </div>
     `;
+    // Keep the dedicated streak footer element in sync
+    const _streakCountEl = $('#fp-streak-count');
+    if (_streakCountEl) _streakCountEl.textContent = streak + 'j';
   }
 
   // Topbar status
