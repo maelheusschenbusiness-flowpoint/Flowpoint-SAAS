@@ -20,7 +20,9 @@ const VALID_OPS      = ["lt", "lte", "gt", "gte", "eq"];
 const VALID_CHANNELS = ["email", "sms"];
 
 const DEFAULT_TEMPLATES = [
-  { name: "Monitor DOWN",                   type: "monitor_down",          durationMin: 0,  channels: ["email"],          siteUrls: [] },
+  // "Monitor DOWN" removed — the monitor worker already fires this automatically.
+  // Replaced with a critical latency threshold that the worker does NOT cover by default.
+  { name: "Latence critique (> 3s)",        type: "latency",               operator: "gt", threshold: 3000, durationMin: 0,  channels: ["email"],          siteUrls: [] },
   { name: "Score SEO critique (< 50)",      type: "seo_score",             operator: "lt", threshold: 50,   durationMin: 0,  channels: ["email"],          siteUrls: [] },
   { name: "Chute ranking mot-clé (> 5 pos)",type: "keyword_ranking_drop",  operator: "gt", threshold: 5,    durationMin: 0,  channels: ["email"],          siteUrls: [] },
   { name: "Latence élevée (> 1s)",          type: "latency",               operator: "gt", threshold: 1000, durationMin: 5,  channels: ["email"],          siteUrls: [] },

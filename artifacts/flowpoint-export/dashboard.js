@@ -7626,7 +7626,7 @@ function renderBilling() {
     { l:'PDF',         icon:'file-text',  v:_usage.pdf?.used      ?? 0, max:_usage.pdf?.limit      ?? _planLimits.reports,   color:'#8b5cf6', forecast:_dynFcst(_usage.pdf?.used??0, _usage.pdf?.limit??_planLimits.reports) },
     { l:'Exports',     icon:'download',   v:_usage.exports?.used  ?? 0, max:_usage.exports?.limit  ?? _planLimits.exports,   color:'#22c55e', forecast:_dynFcst(_usage.exports?.used??0, _usage.exports?.limit??_planLimits.exports) },
     { l:'Monitors',    icon:'activity',   v:_usage.monitor?.used  ?? 0, max:_usage.monitor?.limit  ?? _planLimits.monitors,  color:'#f59e0b', forecast:_dynFcst(_usage.monitor?.used??0, _usage.monitor?.limit??_planLimits.monitors) },
-    { l:'Sièges',      icon:'users',      v:(STATE.seatUsage?.used ?? _ud.teamMembersUsed ?? 1), max:(STATE.seatUsage?.limit ?? _ud.teamMembersLimit ?? _planLimits.teamMembers ?? 1), color:'#06b6d4', forecast:_dynFcst(STATE.seatUsage?.used ?? _ud.teamMembersUsed ?? 1, STATE.seatUsage?.limit ?? _ud.teamMembersLimit ?? _planLimits.teamMembers ?? 1) },
+    { l:'Sièges',      icon:'users',      v:(STATE.seatUsage?.used ?? _ud.teamMembersUsed ?? 1), max:Math.max(STATE.seatUsage?.limit ?? 1, _ud.teamMembersLimit ?? _planLimits.teamMembers ?? 1), color:'#06b6d4', forecast:_dynFcst(STATE.seatUsage?.used ?? _ud.teamMembersUsed ?? 1, Math.max(STATE.seatUsage?.limit ?? 1, _ud.teamMembersLimit ?? _planLimits.teamMembers ?? 1)) },
     { l:'Storage',     icon:'database',   v:_ud.storageUsed,          max:10,    color:'#8b5cf6', forecast:null, unit:'GB',  na:_ud.storageUsed==null },
     { l:'API Appels',  icon:'code',       v:_ud.apiCalls,             max:10000, color:'#f59e0b', forecast:null,             na:_ud.apiCalls==null },
     { l:'Bandwidth',   icon:'wifi',       v:_ud.bandwidthUsed,        max:50,    color:'#06b6d4', forecast:null, unit:'GB',  na:_ud.bandwidthUsed==null },
@@ -8773,7 +8773,7 @@ function renderAlertRules() {
   const isUltra = ['agency','ultra'].includes((STATE.me?.plan || '').toLowerCase());
 
   const TEMPLATES = [
-    { name: 'Monitor DOWN', type: 'monitor_down', operator: 'eq', threshold: 1, durationMin: 0, channels: ['email'], siteUrls: [] },
+    { name: 'Latence critique (> 3s)', type: 'latency', operator: 'gt', threshold: 3000, durationMin: 0, channels: ['email'], siteUrls: [] },
     { name: 'Score SEO critique (< 50)', type: 'seo_score', operator: 'lt', threshold: 50, durationMin: 0, channels: ['email'], siteUrls: [] },
     { name: 'Chute ranking (> 5 positions)', type: 'keyword_ranking_drop', operator: 'gt', threshold: 5, durationMin: 0, channels: ['email'], siteUrls: [] },
     { name: 'Latence élevée (> 1s)', type: 'latency', operator: 'gt', threshold: 1000, durationMin: 5, channels: ['email'], siteUrls: [] },
@@ -8881,7 +8881,7 @@ function renderAlertRules() {
       (rules||[]).length > 0
         ? `${rules.length} règle${rules.length !== 1 ? 's' : ''} d\'alerte configurée${rules.length !== 1 ? 's' : ''} — ${(rules||[]).filter(r=>r.enabled!==false).length} active${(rules||[]).filter(r=>r.enabled!==false).length !== 1 ? 's' : ''}. ${(rules||[]).some(r=>r.status==='triggered') ? '⚠️ Une ou plusieurs alertes déclenchées — vérifiez immédiatement.' : 'Surveillance automatique de vos sites en cours.'}`
         : "Configurez vos premières règles d\'alerte pour être notifié automatiquement des incidents, chutes de score ou problèmes de monitoring.",
-      ['Créer une règle', 'Monitor DOWN', 'Score SEO critique', 'Latence élevée']
+      ['Créer une règle', 'Latence critique', 'Score SEO critique', 'Chute ranking']
     )}
     <div class="fp-card" style="margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
@@ -8971,10 +8971,10 @@ function renderAlertRules() {
 
     ${(() => {
       const hasRules = rules.length > 0;
-      const firstAccessKey = 'fp-alert-templates-first-access';
-      const hasVisited = localStorage.getItem(firstAccessKey) === 'done';
-      // Show templates on first access (no rules yet) OR when user has no rules configured
-      const showTemplates = !hasVisited || !hasRules;
+      const firstAccessKey = 'fp-alert-templates-hidden';
+      // Show templates unless user explicitly dismissed them with the "Masquer" button.
+      // Template activation alone does NOT hide the panel — other templates stay visible.
+      const showTemplates = localStorage.getItem(firstAccessKey) !== 'done';
       if (!showTemplates) return '';
       return `
     <div class="fp-card">
@@ -9312,10 +9312,19 @@ function renderSettings() {
         ['Créer un rôle custom', 'Auditer les permissions', 'IA : Inviter un membre']
       )}
 
+      ${(()=>{
+        // Seat stats — prefer live seatUsage from API; fall back to plan-derived limits.
+        // Take Math.max so a stale seatUsage (plan not yet refreshed) never underreports.
+        const _sLimPlan = isStd ? 1 : isUltra ? 10 : 5;
+        const _sLim  = Math.max(STATE.seatUsage?.limit ?? 1, _sLimPlan);
+        const _sUsed = STATE.seatUsage?.used ?? (members.length + 1);
+        const _sAvail = Math.max(0, _sLim - _sUsed);
+        return `
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Membres actifs', String(members.length), isStd ? '1/1 inclus' : !isUltra ? '3/5 inclus' : '10 max inclus', 'up')}
+        ${statCard('Membres actifs', String(members.length), _sUsed + '/' + _sLim + ' inclus', 'up')}
         ${statCard('Rôles définis', String(roles.length), '4 rôles système', 'up')}
-        ${statCard('Sièges disponibles', isStd ? '0' : !isUltra ? '2' : '0', 'inclus dans votre plan', 'neutral')}
+        ${statCard('Sièges disponibles', String(_sAvail), 'inclus dans votre plan', _sAvail > 0 ? 'up' : 'neutral')}`;
+      })()}
         ${statCard('Dernière activité', displayStat(STATE.team && STATE.team.length > 0 ? 'Récemment' : null, 'Il y a 2h'), STATE.team && STATE.team.length > 0 ? STATE.team[0].name || 'Membre actif' : PREVIEW_MODE ? 'Sophie Martin' : 'Aucun membre', STATE.team && STATE.team.length > 0 ? 'up' : 'neutral')}
       </div>
 
@@ -14413,15 +14422,15 @@ function bindSectionEvents() {
       });
 
       const TEMPLATES = [
-        { name: 'Monitor DOWN', type: 'monitor_down', durationMin: 0, channels: ['email'], siteUrls: [] },
+        { name: 'Latence critique (> 3s)', type: 'latency', operator: 'gt', threshold: 3000, durationMin: 0, channels: ['email'], siteUrls: [] },
         { name: 'Score SEO critique (< 50)', type: 'seo_score', operator: 'lt', threshold: 50, durationMin: 0, channels: ['email'], siteUrls: [] },
         { name: 'Chute ranking (> 5 positions)', type: 'keyword_ranking_drop', operator: 'gt', threshold: 5, durationMin: 0, channels: ['email'], siteUrls: [] },
         { name: 'Latence élevée (> 1s)', type: 'latency', operator: 'gt', threshold: 1000, durationMin: 5, channels: ['email'], siteUrls: [] },
         { name: 'Uptime faible (< 98%)', type: 'uptime', operator: 'lt', threshold: 98, durationMin: 10, channels: ['email', 'sms'], siteUrls: [] },
       ];
       $('#dismiss-templates')?.addEventListener('click', () => {
-        localStorage.setItem('fp:alert-templates-first-access', 'done');
-        navigateSub('alerts');
+        localStorage.setItem('fp-alert-templates-hidden', 'done');
+        render(); // Re-render in place — templates section disappears
       });
 
       // [data-apply-template] now handled by global fpApplyAlertTemplate() function
@@ -15205,7 +15214,7 @@ async function init() {
   window.exportCsv = exportCsv;
   window.fpApplyAlertTemplate = async function(idx, btn) {
     const TMPL = [
-      { name: 'Monitor DOWN', type: 'monitor_down', durationMin: 0, channels: ['email'], siteUrls: [] },
+      { name: 'Latence critique (> 3s)', type: 'latency', operator: 'gt', threshold: 3000, durationMin: 0, channels: ['email'], siteUrls: [] },
       { name: 'Score SEO critique (< 50)', type: 'seo_score', operator: 'lt', threshold: 50, durationMin: 0, channels: ['email'], siteUrls: [] },
       { name: 'Chute ranking (> 5 positions)', type: 'keyword_ranking_drop', operator: 'gt', threshold: 5, durationMin: 0, channels: ['email'], siteUrls: [] },
       { name: 'Latence élevée (> 1s)', type: 'latency', operator: 'gt', threshold: 1000, durationMin: 5, channels: ['email'], siteUrls: [] },
@@ -15219,9 +15228,10 @@ async function init() {
       if (rule && !rule.error) {
         STATE.alertRules = STATE.alertRules || [];
         STATE.alertRules.push(rule);
-        localStorage.setItem('fp:alert-templates-first-access', 'done');
+        // Do NOT set the hide key — other templates must remain visible (they show ✓ Activée).
+        // Only the "Masquer" button dismisses the template panel.
         showToast('success', 'Template "' + t.name + '" activé !');
-        navigateSub('alerts');
+        render(); // Re-render in place — activated template shows ✓, others stay visible
       } else {
         if (btn) { btn.disabled = false; btn.textContent = 'Activer'; }
         showToast('error', (rule && rule.error) ? rule.error : 'Erreur lors de l\'activation');

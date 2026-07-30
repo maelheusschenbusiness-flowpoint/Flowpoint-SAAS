@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { mailer } from "./mailer.js";
 
 // ── evaluateCondition ─────────────────────────────────────────────────────────
 // Centralised threshold comparison used for seo_score, latency, uptime rules.
@@ -80,6 +81,41 @@ export async function fireAlertEvent(opts: FireAlertEventOpts): Promise<void> {
           opts.severity, opts.message, opts.siteUrl, opts.monitorId ?? '',
         ],
       );
+    }
+    // ── Email notification ─────────────────────────────────────────────────────
+    // After the DB insert, look up the rule's channels + org owner email.
+    // Fire-and-forget: never blocks the alert pipeline.
+    try {
+      const nr = await client.query<{ channels: string; org_email: string }>(
+        `SELECT ar.channels,
+                u.email AS org_email
+         FROM   alert_rules ar
+         JOIN   org_members om ON om.org_id = ar.org_id AND om.role = 'owner'
+         JOIN   users       u  ON u.id = om.user_id
+         WHERE  ar.id = $1 AND ar.org_id = $2
+         LIMIT  1`,
+        [opts.ruleId, opts.orgId],
+      );
+      const row = nr.rows[0];
+      if (row?.org_email) {
+        let channels: string[] = ["email"];
+        try { channels = JSON.parse(String(row.channels)); } catch { /* keep default */ }
+        if (channels.includes("email")) {
+          mailer.sendAlertRule({
+            to:          row.org_email,
+            ruleName:    opts.ruleName,
+            type:        opts.type,
+            metricValue: opts.metricValue,
+            threshold:   opts.threshold,
+            operator:    opts.operator,
+            severity:    opts.severity,
+            message:     opts.message,
+            siteUrl:     opts.siteUrl,
+          }).catch(e => logger.warn({ err: e }, "[alert-events] email notification failed (non-fatal)"));
+        }
+      }
+    } catch (emailErr) {
+      logger.warn({ err: emailErr }, "[alert-events] email notification lookup failed (non-fatal)");
     }
   } catch (err) {
     logger.warn({ err }, "[alert-events] fireAlertEvent failed (non-fatal)");

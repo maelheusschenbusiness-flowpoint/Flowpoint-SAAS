@@ -70,18 +70,28 @@ function buildInviteUrl(rawToken: string, email: string): string {
   return `${base}/accept-invitation.html?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(email)}`;
 }
 
-/** Resolve plan seat limit — reads from organizations (Jalon 1 source of truth), org_settings fallback. */
+/** Resolve plan seat limit — reads from organizations (Jalon 1 source of truth).
+ *  Falls back to org_settings.plan_id when the webhook has not yet updated organizations.plan,
+ *  taking whichever source gives the higher teamMembers limit (avoids blocking invites after upgrade).
+ */
 async function getOrgSeatLimit(orgId: string): Promise<{ limit: number; plan: string }> {
   try {
-    // Jalon 6: read plan solely from organizations (source of truth — org_settings fallback removed)
-    const r = await pool.query<{ plan: string }>(
-      `SELECT COALESCE(NULLIF(plan,''), 'standard') AS plan
-       FROM organizations WHERE id = $1 LIMIT 1`,
+    const r = await pool.query<{ plan: string; legacy_plan: string }>(
+      `SELECT
+         COALESCE(NULLIF(o.plan,''), 'standard')              AS plan,
+         COALESCE(NULLIF(os.plan_id,''), '')                  AS legacy_plan
+       FROM organizations o
+       LEFT JOIN org_settings os ON os.org_id = o.id
+       WHERE o.id = $1 LIMIT 1`,
       [orgId]
     );
-    const plan  = (r.rows[0]?.plan ?? "standard").toLowerCase();
-    const limit = PLAN_LIMITS[plan]?.teamMembers ?? 1;
-    return { limit, plan };
+    const plan1  = (r.rows[0]?.plan        ?? "standard").toLowerCase();
+    const plan2  = (r.rows[0]?.legacy_plan ?? "").toLowerCase();
+    const limit1 = PLAN_LIMITS[plan1]?.teamMembers ?? 1;
+    const limit2 = PLAN_LIMITS[plan2]?.teamMembers ?? 0;
+    // Prefer whichever plan grants more seats — guards against webhook lag after upgrade.
+    if (limit2 > limit1) return { limit: limit2, plan: plan2 };
+    return { limit: limit1, plan: plan1 };
   } catch {
     return { limit: 1, plan: "standard" };
   }

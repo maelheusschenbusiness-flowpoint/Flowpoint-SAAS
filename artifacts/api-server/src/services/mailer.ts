@@ -733,6 +733,58 @@ async function sendActivationMagicLink(opts: {
   });
 }
 
+// ── 12. Alert Rule Notification ───────────────────────────────────────────────
+
+async function sendAlertRule(opts: {
+  to: string;
+  ruleName: string;
+  type: string;
+  metricValue?: number | null;
+  threshold?: number | null;
+  operator?: string | null;
+  severity: string;
+  message: string;
+  siteUrl: string;
+}): Promise<MailResult> {
+  const typeLabels: Record<string, string> = {
+    seo_score:             "Score SEO",
+    latency:               "Latence",
+    uptime:                "Uptime",
+    monitor_down:          "Monitor DOWN",
+    keyword_ranking_drop:  "Chute de ranking",
+  };
+  const opLabels: Record<string, string> = { lt: "<", lte: "≤", gt: ">", gte: "≥", eq: "=" };
+  const typeLabel    = typeLabels[opts.type] ?? opts.type;
+  const severityMap  = { critical: { label: "Critique", color: "#dc2626" }, high: { label: "Élevée", color: "#ea580c" } };
+  const sev          = severityMap[opts.severity as keyof typeof severityMap] ?? { label: "Alerte", color: "#f59e0b" };
+
+  const metricLine = opts.metricValue != null
+    ? `<p style="margin:0 0 8px;font-size:14px;color:#4a5280;">
+         <strong>Valeur&nbsp;:</strong> ${opts.metricValue}
+         ${opts.operator && opts.threshold != null ? ` (seuil&nbsp;: ${opLabels[opts.operator] ?? opts.operator} ${opts.threshold})` : ""}
+       </p>`
+    : "";
+
+  return send({
+    to: opts.to,
+    subject: `🚨 Alerte FlowPoint : ${opts.ruleName}`,
+    tag: "alert_rule",
+    html: layout({
+      eyebrow:      `Alerte ${sev.label}`,
+      accentColor:  sev.color,
+      title:        opts.ruleName,
+      body: `
+        <p style="margin:0 0 12px;font-size:14px;color:#4a5280;">${opts.message}</p>
+        ${metricLine}
+        <p style="margin:0 0 8px;font-size:14px;color:#4a5280;"><strong>Type&nbsp;:</strong> ${typeLabel}</p>
+        <p style="margin:0 0 8px;font-size:14px;color:#4a5280;"><strong>Site&nbsp;:</strong> ${opts.siteUrl || "Tous les sites"}</p>
+      `,
+      cta:  { label: "Voir les alertes →", url: "https://app.flowpoint.pro/#settings/alerts" },
+      note: "Gérez vos règles d'alerte depuis Paramètres → Notifications. Pour stopper ces emails, désactivez la règle correspondante.",
+    }),
+  });
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export const mailer = {
@@ -747,6 +799,7 @@ export const mailer = {
   sendTeamInvitation,
   sendInvitationAccepted,
   sendNewMissions,
+  sendAlertRule,
   sendSeoAlert,
   sendSubscriptionCanceled,
   sendSubscriptionReactivated,
