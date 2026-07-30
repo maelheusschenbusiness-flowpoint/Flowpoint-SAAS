@@ -2850,6 +2850,29 @@ function openActivityPanel() {
   localStorage.setItem('fp:activity-last-seen', String(STATE.activityLastSeen));
   updateActivityBadge();
   renderActivityList();
+
+  // Always refresh events on open so the list reflects recent activity.
+  // Renders immediately with cached data, then updates once the fetch resolves.
+  if (STATE.activityFilter === 'all') {
+    STATE.activityPage = 0;
+    apiFetch('/api/activity?limit=50')
+      .then(function(res) {
+        if (!Array.isArray(res)) return;
+        STATE.activityEvents = res;
+        STATE.activityHasMore = res.length >= 50;
+        if (STATE.activityPanelOpen) renderActivityList();
+      })
+      .catch(function() { /* keep existing STATE.activityEvents on error */ });
+  } else {
+    // Re-fetch the current filter so events are fresh after switching away and back
+    STATE.activityFilteredEvents = null;
+    STATE.activityFilterLoading = true;
+    renderActivityList();
+    apiFetch('/api/activity?type=' + encodeURIComponent(STATE.activityFilter) + '&limit=50')
+      .then(function(res) { STATE.activityFilteredEvents = Array.isArray(res) ? res : []; })
+      .catch(function() { STATE.activityFilteredEvents = []; })
+      .finally(function() { STATE.activityFilterLoading = false; if (STATE.activityPanelOpen) renderActivityList(); });
+  }
 }
 
 function closeActivityPanel() {
