@@ -392,15 +392,18 @@ async function apiFetch(path, opts = {}) {
     if (inflight) return inflight;
   }
   const _promise = (async () => {
-    // Per-tab session isolation: sessionStorage token takes priority over shared localStorage.
-    // When two users test simultaneously in different tabs of the same browser, each tab
-    // keeps its own sessionStorage — prevents cross-user token contamination.
+    // Auth architecture (three-tier):
+    //   Tier 1 — HttpOnly cookie: PRIMARY. Sent automatically by the browser via
+    //            credentials:'include'. No JS access needed. Covers all normal sessions.
+    //   Tier 2 — sessionStorage Bearer: per-tab OVERRIDE only. Used when two users are
+    //            testing simultaneously in the same browser — each tab has its own
+    //            sessionStorage and therefore its own identity. Middleware reads Bearer
+    //            first, so this takes priority over the shared cookie when present.
+    //   Tier 3 — localStorage token: REMOVED. Writing a token there is shared across
+    //            all tabs on the domain and was the root cause of cross-user contamination.
     const token = (function() {
-      try {
-        var stok = sessionStorage.getItem('fp_session_token');
-        if (stok) return stok;
-      } catch(_) {}
-      return localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
+      try { var t = sessionStorage.getItem('fp_session_token'); if (t) return t; } catch(_) {}
+      return ''; // No localStorage fallback — rely on HttpOnly cookie instead
     })();
     // Cache-buster for GET to bypass CDN/browser cache
     const _path = isGet && !path.includes('?')
@@ -411,6 +414,8 @@ async function apiFetch(path, opts = {}) {
       headers: {
         'Content-Type': 'application/json',
         ...(isGet ? { 'Cache-Control': 'no-cache, no-store' } : {}),
+        // Only send Authorization header when sessionStorage override is active.
+        // Otherwise the cookie handles auth silently — no token in JS memory at all.
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(opts.headers || {}),
       },

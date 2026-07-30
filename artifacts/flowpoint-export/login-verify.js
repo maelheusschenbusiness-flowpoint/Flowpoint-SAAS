@@ -62,13 +62,18 @@
       // accounts are open simultaneously in the same browser.
       try {
         if (r.data.token) {
+          // PRIMARY AUTH: HttpOnly cookie (set by server, sent automatically via credentials:'include').
+          // sessionStorage token is a per-tab override only for multi-user UAT testing
+          // (each tab keeps its own token; tabs don't share sessionStorage).
+          // localStorage tokens are intentionally NOT written — sharing across tabs is
+          // the root cause of cross-user contamination, and the cookie already covers
+          // all normal single-user sessions.
           sessionStorage.setItem('fp_session_token', r.data.token);
-          // Also keep in localStorage for legacy fallback paths (SSE, maps, etc.)
-          // but mark it with a tab-uid so stale tabs detect the mismatch.
           var tabUid = Math.random().toString(36).slice(2);
           sessionStorage.setItem('fp_tab_uid', tabUid);
-          localStorage.setItem('fp_token', r.data.token);
-          localStorage.setItem('fp_tab_uid', tabUid);
+          // Purge any legacy localStorage token so the old fallback path is dead
+          localStorage.removeItem('fp_token');
+          localStorage.removeItem('token');
         }
       } catch(e) { /* non-fatal */ }
       show('fp-success');
