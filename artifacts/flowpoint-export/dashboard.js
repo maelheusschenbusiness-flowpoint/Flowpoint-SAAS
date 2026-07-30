@@ -128,6 +128,7 @@ const STATE = {
   gTimer: null,
   searchHistory: JSON.parse(localStorage.getItem('fp:search-hist') || '[]'),
   teamChatHistory: [],
+  teamFiles: [],
   settings: JSON.parse(localStorage.getItem('fp:settings') || '{"themeAuto":true,"liveStatus":true,"hoverNotifs":true,"streaks":true,"aiTips":true,"newTab":false,"bgDashboard":false,"recentActivity":true,"confirmActions":true,"statusPageUrl":"","webhookUrl":"","smsPhone":""}'),
   checklist: null,
   overviewRange: localStorage.getItem('fp:overview-range') || '7d',
@@ -7386,6 +7387,15 @@ function renderTeam() {
       </div>
     </div>`;
   }
+  // Ensure all team-related STATE arrays are initialized
+  if (!Array.isArray(STATE.teamChatHistory))  STATE.teamChatHistory  = [];
+  if (!Array.isArray(STATE.teamFiles))        STATE.teamFiles        = [];
+  if (!Array.isArray(STATE.pendingInvitations)) STATE.pendingInvitations = [];
+  if (!Array.isArray(STATE.activityEvents))   STATE.activityEvents   = [];
+  if (!Array.isArray(STATE.missions))         STATE.missions         = [];
+  if (!Array.isArray(STATE.team))             STATE.team             = [];
+  if (!STATE.channelMessages || typeof STATE.channelMessages !== 'object') STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
+  try {
   const _teamErrBanner = _sectionErrorBanner('team');
   const me = STATE.me;
   const roleColors = { owner:'#f59e0b', manager:'#2563EB', editor:'#8b5cf6', viewer:'#94a3b8' };
@@ -7584,6 +7594,24 @@ function renderTeam() {
       </div>
     </div>
   `;
+  } catch (_teamRenderErr) {
+    console.error('[FP] renderTeam crash', _teamRenderErr);
+    return `
+      ${_sectionErrorBanner('team')}
+      <div class="fp-section-header">
+        <div><h1>Équipe & Collaboration</h1><div class="fp-section-sub">Gérez les membres, permissions, communication et tâches partagées</div></div>
+        <div class="fp-section-actions">
+          <button class="fp-btn fp-btn-primary fp-btn-sm" id="team-invite-btn">${svgIcon('plus')} Inviter un membre</button>
+        </div>
+      </div>
+      <div style="padding:32px 20px;text-align:center;color:var(--fp-text-muted);background:var(--fp-bg-card);border-radius:12px;border:1px solid var(--fp-border)">
+        <div style="font-size:28px;margin-bottom:12px">👥</div>
+        <div style="font-weight:600;margin-bottom:8px;color:var(--fp-text)">Données d'équipe en chargement</div>
+        <div style="font-size:13px;margin-bottom:16px">Les données se chargent. Réessayez dans un instant.</div>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="loadData().catch(()=>{})">↺ Recharger</button>
+      </div>
+    `;
+  }
 }
 
 /* ── BILLING ── */
@@ -12798,7 +12826,13 @@ function _doRender() {
         // Sub-route is stale from a different page — clear it silently
         STATE.subRoute = null;
       } else {
-        const subContent = renderSubPageContent(STATE.route, STATE.subRoute);
+        let subContent = null;
+        try {
+          subContent = renderSubPageContent(STATE.route, STATE.subRoute);
+        } catch (_subErr) {
+          console.error('[FP] renderSubPageContent crash', STATE.route, STATE.subRoute, _subErr);
+          subContent = `<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">Contenu indisponible — <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="render()">Réessayer</button></div>`;
+        }
         if (subContent) {
           const subNav = animated?.querySelector('.fp-sub-nav');
           if (subNav) {
@@ -18804,14 +18838,15 @@ function renderTeamChat() {
     <div class="fp-card" style="display:flex;flex-direction:column;height:460px">
       <div id="team-chat-msgs" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:14px">
         ${msgs.map(m => {
-          const isMe = m.from === myName || m.from.split(' ')[0] === myName.split(' ')[0];
+          const _mFrom = m.from || '?';
+          const isMe = _mFrom === myName || _mFrom.split(' ')[0] === myName.split(' ')[0];
           const avatarBg = isMe ? 'rgba(37,99,235,0.25)' : 'rgba(139,92,246,0.2)';
           const avatarCol = isMe ? '#2563EB' : '#8b5cf6';
           return `
           <div style="display:flex;gap:9px;align-items:flex-end;${isMe ? 'flex-direction:row-reverse' : ''}">
-            <div style="width:28px;height:28px;border-radius:8px;background:${avatarBg};color:${avatarCol};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${escHtml(m.from.charAt(0))}</div>
+            <div style="width:28px;height:28px;border-radius:8px;background:${avatarBg};color:${avatarCol};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${escHtml(_mFrom.charAt(0))}</div>
             <div style="${isMe ? 'align-items:flex-end' : ''};display:flex;flex-direction:column;max-width:72%">
-              <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:3px;${isMe ? 'text-align:right' : ''}">${isMe ? '' : escHtml(m.from) + ' · '}${escHtml(m.time)}</div>
+              <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:3px;${isMe ? 'text-align:right' : ''}">${isMe ? '' : escHtml(_mFrom) + ' · '}${escHtml(m.time)}</div>
               <div style="font-size:12px;background:${isMe ? 'rgba(37,99,235,0.75)' : 'rgba(255,255,255,0.05)'};border:1px solid ${isMe ? 'rgba(37,99,235,0.5)' : 'var(--fp-border)'};border-radius:${isMe ? '12px 4px 12px 12px' : '4px 12px 12px 12px'};padding:8px 12px;color:${isMe ? '#ffffff' : 'var(--fp-text-soft)'};${isMe ? 'text-shadow:0 1px 3px rgba(0,0,0,0.55);' : ''}line-height:1.5">
                 ${m.msg||m.text ? escHtml(m.msg||m.text) : ''}
                 ${(m.attachmentUrl) ? `${(m.msg||m.text)?'<br>':''}<a href="${escHtml(m.attachmentUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:4px;color:${isMe?'#bfdbfe':'#818cf8'};font-size:11px;text-decoration:none;margin-top:${(m.msg||m.text)?'4px':'0'}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>${escHtml(m.attachmentName||'Fichier')}</a>` : ''}
@@ -27595,6 +27630,7 @@ function bindNewRouteEvents() {
       const from = STATE.me?.firstName || 'Vous';
       const ch = STATE.msgChannel || 'general';
       const entry = { from, msg, time, attachmentUrl: null, attachmentName: null };
+      if (!STATE.teamChatHistory) STATE.teamChatHistory = [];
       STATE.teamChatHistory.push(entry);
       if (!STATE.channelMessages) STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
       if (!STATE.channelMessages[ch]) STATE.channelMessages[ch] = [];
