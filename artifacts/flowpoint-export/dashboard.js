@@ -12651,29 +12651,6 @@ function _doRender() {
     // P0.1: Validate sub-route belongs to current route before using it
     if (STATE.subRoute !== null) {
       const _validSubs = (SUB_NAVS[STATE.route] || []).map(function(s) { return s.id; }).filter(Boolean);
-      // ── P0.1 DIAGNOSTIC (temporary instrumentation — remove after root cause confirmed) ──
-      (function() {
-        var _diag = {
-          timestamp: performance.now(),
-          route: STATE.route,
-          routeJson: JSON.stringify(STATE.route),
-          subRoute: STATE.subRoute,
-          subRouteJson: JSON.stringify(STATE.subRoute),
-          subRouteType: typeof STATE.subRoute,
-          subRouteLength: typeof STATE.subRoute === 'string' ? STATE.subRoute.length : null,
-          subRouteCharCodes: typeof STATE.subRoute === 'string' ? Array.from(STATE.subRoute).map(function(c){return c.charCodeAt(0);}) : [],
-          validSubs: _validSubs.slice(),
-          includesResult: _validSubs.includes(STATE.subRoute),
-          hash: window.location.hash,
-          normalizedRoute: (function(){try{return normalizeRoute(window.location.hash);}catch(e){return null;}}()),
-          stack: (new Error()).stack
-        };
-        console.log('[FP P0.1 DIAGNOSTIC]', _diag);
-        if (_validSubs.length > 0 && !_validSubs.includes(STATE.subRoute)) {
-          console.warn('[FP P0.1 NULLIFICATION]', _diag);
-        }
-      }());
-      // ── END P0.1 DIAGNOSTIC ──
       if (_validSubs.length > 0 && !_validSubs.includes(STATE.subRoute)) {
         // Sub-route is stale from a different page — clear it silently
         STATE.subRoute = null;
