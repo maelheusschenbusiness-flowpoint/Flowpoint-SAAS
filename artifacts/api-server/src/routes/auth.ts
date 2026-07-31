@@ -1668,7 +1668,10 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
     typeof authHeader === "string" && authHeader.startsWith("Bearer ")
       ? authHeader.slice(7).trim()
       : undefined;
-  const provided = cookieToken || bearerToken;
+  // Bearer takes priority over cookie — mirrors the same order as requireAuth
+  // and orgContext so that a tab with its own Bearer token always gets its own
+  // session back, not the shared cookie's session.
+  const provided = bearerToken || cookieToken;
 
   if (!provided) {
     res.status(401).json({ error: "no_session" });
