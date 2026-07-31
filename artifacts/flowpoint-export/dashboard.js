@@ -5086,7 +5086,7 @@ function renderMonitors() {
             { icon: '📧', name: 'Email',   detail: `${monitors.filter(m => m.alertEmail).length} monitors`, color: '#22c55e',  active: true },
             { icon: '💬', name: 'Slack',   detail: isPro ? '#flowpoint-alerts' : 'Pro requis →',              color: isPro ? '#22c55e' : '#64748b', active: isPro },
             { icon: '🎮', name: 'Discord', detail: isPro ? 'Webhook configuré' : 'Pro requis →',              color: isPro ? '#8b5cf6' : '#64748b', active: isPro },
-            { icon: '📱', name: 'SMS',     detail: isUltra ? ((STATE.settings&&STATE.settings.smsPhone)||'Non configuré') : 'Ultra requis →', color: isUltra ? '#22c55e' : '#64748b', active: isUltra },
+            { icon: '📱', name: 'SMS',     detail: 'Bientôt disponible (Ultra)', color: '#f59e0b', active: false },
           ].map(ch => `
             <div style="display:flex;align-items:center;gap:8px">
               <span style="font-size:16px">${ch.icon}</span>
@@ -9313,11 +9313,12 @@ function renderSettings() {
           ${[
             {l:'Page de statut (URL publique)', k:'statusPageUrl', t:'url', ph:'https://status.votre-agence.fr', ultra:false},
             {l:"Webhook d'alerte (endpoint)",   k:'webhookUrl',    t:'url', ph:'https://hooks.slack.com/services/...', ultra:false},
-            {l:'Téléphone SMS urgence',         k:'smsPhone',      t:'tel', ph:'+33 6 00 00 00 00', ultra:true},
-          ].map(f => `<div class="fp-form-group"${f.ultra && !isUltra ? ' style="opacity:0.55"' : ''}>
-            <label class="fp-form-label">${escHtml(f.l)}${f.ultra && !isUltra ? ' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 6px;border-radius:6px">Ultra requis</span>' : ''}</label>
+            {l:'Téléphone SMS urgence',         k:'smsPhone',      t:'tel', ph:'+33 6 00 00 00 00', ultra:true, soon:true},
+          ].map(f => `<div class="fp-form-group" style="opacity:${f.soon || (f.ultra && !isUltra) ? '0.55' : '1'}">
+            <label class="fp-form-label">${escHtml(f.l)}${f.soon ? ' <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 6px;border-radius:6px">Bientôt disponible</span>' + (f.ultra ? ' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 6px;border-radius:6px">Ultra</span>' : '') : (f.ultra && !isUltra ? ' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 6px;border-radius:6px">Ultra requis</span>' : '')}</label>
             <input class="fp-input" type="${f.t}" value="${escHtml(s[f.k]||'')}" placeholder="${f.ph}"
-              ${f.ultra && !isUltra ? 'disabled title="Disponible avec le plan Ultra"' : `oninput="STATE.settings['${f.k}']=this.value;saveSettings()"`}/>
+              ${f.soon || (f.ultra && !isUltra) ? `disabled title="${f.soon ? 'Fonctionnalité bientôt disponible — réservée au plan Ultra' : 'Disponible avec le plan Ultra'}"` : `oninput="STATE.settings['${f.k}']=this.value;saveSettings()"`}/>
+            ${f.soon ? '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">Les alertes SMS par numéro de téléphone seront disponibles prochainement pour les plans Ultra.</div>' : ''}
           </div>`).join('')}
           <div style="display:flex;gap:8px;margin-top:4px">
             <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde\u2026';const profilePayload={firstName:(document.getElementById('prof-fname')?.value||'').trim(),lastName:(document.getElementById('prof-lname')?.value||'').trim(),orgName:(document.getElementById('prof-org')?.value||'').trim(),website:(document.getElementById('prof-website')?.value||'').trim()};const tzVal=(document.getElementById('prof-tz')?.value||'').trim();const locationPayload={address:(document.getElementById('prof-addr')?.value||'').trim(),city:(document.getElementById('prof-city')?.value||'').trim(),postalCode:(document.getElementById('prof-postal')?.value||'').trim(),country:(document.getElementById('prof-country')?.value||'').trim()};const hasLoc=locationPayload.address||locationPayload.city||locationPayload.postalCode||locationPayload.country;const [rMe,rTz,rLoc]=await Promise.all([apiAction('PATCH','/api/me',profilePayload).catch(e=>({_err:true,error:(e&&e.error)||'Erreur profil'})),tzVal?apiAction('PATCH','/api/me/settings',{timezone:tzVal}).catch(e=>({_err:true,error:(e&&e.error)||'Erreur fuseau'})):Promise.resolve({ok:true}),hasLoc?apiAction('PATCH','/api/location',locationPayload).catch(e=>({_err:true,error:(e&&e.error)||'Erreur localisation'})):Promise.resolve({ok:true})]);btn.disabled=false;btn.textContent='Sauvegarder';if(rMe&&rMe._err){showToast('error',rMe.error||'Erreur profil');return;}if(rTz&&rTz._err){showToast('error',rTz.error||'Erreur fuseau horaire');return;}if(hasLoc&&rLoc&&rLoc._err){showToast('error',rLoc.error||'Erreur localisation');return;}const [freshMe,freshSettings,freshLoc]=await Promise.all([fetch('/api/me',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null),fetch('/api/me/settings',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null),hasLoc?fetch('/api/location',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null):Promise.resolve(null)]);if(freshMe&&!freshMe.error){STATE.me=freshMe;}if(freshSettings&&typeof freshSettings==='object'&&!freshSettings.error){STATE.settings=Object.assign(STATE.settings||{},freshSettings);}if(freshLoc&&!freshLoc.error){if(!STATE.me)STATE.me={};STATE.me.location=freshLoc;}showToast('success','Profil sauvegard\u00e9 !');render();})()">Sauvegarder</button>
@@ -9647,6 +9648,7 @@ function renderSettings() {
         ['Activer le 2FA', 'Configurer les alertes', 'Auditer les sessions']
       )}
 
+      ${(STATE.settings && STATE.settings.secLevel) === 'enterprise' ? `<div style="padding:10px 14px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:10px;margin-bottom:16px;display:flex;align-items:center;gap:10px"><span style="font-size:18px">🔐</span><div><div style="font-size:12px;font-weight:700;color:#22c55e">Sécurité avancée activée</div><div style="font-size:11px;color:var(--fp-text-muted)">Journalisation renforcée · Alertes sur tentatives échouées · Sessions à durée réduite</div></div></div>` : ''}
       <!-- SECURITY GAUGE -->
       <div class="fp-stat-row fp-mb-20">
         <div class="fp-card" style="display:flex;align-items:center;gap:16px;grid-column:span 1">
@@ -12706,7 +12708,14 @@ function setupNewMonitorPanel() {
 
 function renderNewReportPanel() {
   const auditOptions = STATE.audits.map(a => `<option value="${a.id}">${escHtml(a.url)} (${a.score}/100)</option>`).join('');
+  const _rt = (STATE.settings && STATE.settings.reportType) || 'client';
+  const _rtMeta = { simple:{ lbl:'Simple', desc:'2–3 pages · KPIs essentiels', icon:'📄', col:'34,197,94' }, client:{ lbl:'Client', desc:'5–8 pages · standard', icon:'📊', col:'37,99,235' }, enterprise:{ lbl:'Avancé', desc:'10+ pages · analyse complète', icon:'📋', col:'139,92,246' } };
+  const _rtInfo = _rtMeta[_rt] || _rtMeta.client;
   return `
+    <div style="padding:8px 12px;background:rgba(${_rtInfo.col},0.08);border:1px solid rgba(${_rtInfo.col},0.22);border-radius:8px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px">${_rtInfo.icon}</span>
+      <div style="flex:1"><div style="font-size:11px;font-weight:700;color:rgba(${_rtInfo.col},1)">Préréglage : ${_rtInfo.lbl}</div><div style="font-size:10px;color:var(--fp-text-faint)">${_rtInfo.desc} · <span style="cursor:pointer;text-decoration:underline" onclick="navigate('settings');setTimeout(function(){navigateSub('workspace');},50);closeFloatPanel()">Modifier</span></div></div>
+    </div>
     <div class="fp-form-group">
       <label class="fp-form-label">Nom du rapport</label>
       <input class="fp-input" id="nr-name" placeholder="Rapport Mai 2026 — Boulangerie Martin"/>
@@ -12808,6 +12817,16 @@ function setupNewReportPanel() {
 
     refreshNotesPreview();
 
+    // Auto-enable notes for enterprise reportType preset
+    if ((STATE.settings && STATE.settings.reportType) === 'enterprise') {
+      const _notesBtn = $('#nr-notes');
+      if (_notesBtn && !_notesBtn.classList.contains('on')) {
+        _notesBtn.classList.add('on');
+        _notesBtn.setAttribute('aria-pressed', 'true');
+        refreshNotesPreview();
+      }
+    }
+
     startEl?.addEventListener('change', refreshNotesPreview);
     endEl?.addEventListener('change', refreshNotesPreview);
 
@@ -12839,7 +12858,19 @@ function setupNewReportPanel() {
         const meetingNotes  = includeNotes ? getNotesInRange() : [];
         const dateStart     = $('#nr-date-start')?.value || '';
         const dateEnd       = $('#nr-date-end')?.value   || '';
-        const res = await apiAction('POST', '/api/reports', { name, auditId, format, whiteLabel, meetingNotes, dateStart, dateEnd });
+        // Pass white-label branding data so reports are generated with the correct agency identity
+        const _wlbData = (STATE.settings && STATE.settings.wlBranding && typeof STATE.settings.wlBranding === 'object')
+          ? STATE.settings.wlBranding
+          : JSON.parse(localStorage.getItem('fp:wl-branding') || '{}');
+        const branding = whiteLabel ? {
+          agencyName:     _wlbData.agencyName     || (STATE.me && STATE.me.org && STATE.me.org.name) || 'Mon Agence',
+          logoUrl:        _wlbData.logoUrl        || '',
+          primaryColor:   _wlbData.primaryColor   || '#2563EB',
+          secondaryColor: _wlbData.secondaryColor || '#1d4ed8',
+          footerMsg:      _wlbData.footerMsg      || '',
+        } : null;
+        const reportType    = (STATE.settings && STATE.settings.reportType) || 'client';
+        const res = await apiAction('POST', '/api/reports', { name, auditId, format, whiteLabel, branding, reportType, meetingNotes, dateStart, dateEnd });
         const r = res || { id:'r'+Date.now(), name, type: format, date: new Date().toISOString(), pages: 0, shared: false };
         STATE.reports.unshift(r);
 
@@ -13054,16 +13085,25 @@ function renderSubNav(items) {
 
 function aiBlock(text, chips = []) {
   if (STATE.settings && STATE.settings.aiTips === false) return '';
+  // Respect iaSuggestions preset: low=1 chip/section, normal=3 (default), proactive=all chips
+  const _iaSug = (STATE.settings && STATE.settings.iaSuggestions) || 'normal';
+  const _chipMax = _iaSug === 'low' ? 1 : _iaSug === 'proactive' ? chips.length : 3;
+  const _chips = chips.slice(0, _chipMax);
   return `<div class="fp-ai-block">
     <div class="fp-ai-block-icon">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 0 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1 0-2h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg>
     </div>
     <div class="fp-ai-block-content">
-      <div class="fp-ai-block-label">Analyse IA · FlowPoint</div>
+      <div class="fp-ai-block-label">Analyse IA · FlowPoint${_iaSug === 'proactive' ? ' <span style="font-size:9px;background:rgba(34,197,94,0.15);color:#22c55e;padding:1px 5px;border-radius:5px;margin-left:4px">Proactive</span>' : _iaSug === 'low' ? ' <span style="font-size:9px;color:var(--fp-text-faint);margin-left:4px">· Silencieux</span>' : ''}</div>
       <div class="fp-ai-block-text">${text}</div>
-      ${chips.length ? `<div class="fp-ai-block-actions">${chips.map(c=>`<button class="fp-ai-chip" data-q="${escHtml(c)}" onclick="var q=this.dataset.q;navigate('ai');setTimeout(function(){var inp=document.getElementById('ai-input');if(inp){inp.value=q;inp.dispatchEvent(new Event('input'));}},120)">${escHtml(c)}</button>`).join('')}</div>` : ''}
+      ${_chips.length ? `<div class="fp-ai-block-actions">${_chips.map(c=>`<button class="fp-ai-chip" data-q="${escHtml(c)}" onclick="var q=this.dataset.q;navigate('ai');setTimeout(function(){var inp=document.getElementById('ai-input');if(inp){inp.value=q;inp.dispatchEvent(new Event('input'));}},120)">${escHtml(c)}</button>`).join('')}</div>` : ''}
     </div>
   </div>`;
+}
+// ── Local competitor cap based on localPriority preset ──────────────────────
+function _fpLocalCompLimit() {
+  var lp = (STATE.settings && STATE.settings.localPriority) || 'standard';
+  return lp === 'off' ? 0 : lp === 'aggressive' ? 50 : 5;
 }
 
 function statCard(label, value, delta, dir = 'up', sub = '') {
@@ -14566,13 +14606,15 @@ function bindSectionEvents() {
       e.stopPropagation();
       const reportId = btn.dataset.reportShare;
       const report = STATE.reports.find(r => r.id === reportId);
-      const branding = JSON.parse(localStorage.getItem('fp:wl-branding') || '{}');
+      const _wlbShare = (STATE.settings && STATE.settings.wlBranding && typeof STATE.settings.wlBranding === 'object')
+        ? STATE.settings.wlBranding
+        : JSON.parse(localStorage.getItem('fp:wl-branding') || '{}');
       const brandingPayload = {
-        agencyName:     branding.agencyName    || STATE.me?.org?.name || 'Mon Agence',
-        logoUrl:        branding.logoUrl       || '',
-        primaryColor:   branding.primaryColor  || '#2563EB',
-        secondaryColor: branding.secondaryColor|| '#1d4ed8',
-        footerMsg:      branding.footerMsg     || '',
+        agencyName:     _wlbShare.agencyName    || (STATE.me && STATE.me.org && STATE.me.org.name) || 'Mon Agence',
+        logoUrl:        _wlbShare.logoUrl       || '',
+        primaryColor:   _wlbShare.primaryColor  || '#2563EB',
+        secondaryColor: _wlbShare.secondaryColor|| '#1d4ed8',
+        footerMsg:      _wlbShare.footerMsg     || '',
       };
       try {
         const res = await apiAction('POST', `/api/reports/${reportId}/share`, {
@@ -15777,7 +15819,22 @@ async function init() {
     if (STATE.settings) STATE.settings[k] = v;
     apiAction('PATCH', '/api/me/prefs', { settings: s })
       .then(function() {
-        showToast('success', lbl || (k + ' mis à jour'));
+        // Context-aware toasts for each preset
+        var _toastMsg = lbl || (k + ' mis à jour');
+        if (k === 'localPriority') {
+          var _lpMsg = { off: 'Analyse locale désactivée — aucun concurrent affiché', standard: 'Priorité locale standard — jusqu\'à 5 concurrents analysés', aggressive: 'Mode agressif — tous les concurrents disponibles affichés' };
+          _toastMsg = _lpMsg[v] || lbl;
+        } else if (k === 'secLevel') {
+          var _slMsg = { standard: 'Sécurité standard activée', enterprise: 'Sécurité avancée — journalisation et alertes renforcées' };
+          _toastMsg = _slMsg[v] || lbl;
+        } else if (k === 'iaSuggestions') {
+          var _iaMsg = { low: 'Mode silencieux — 1 suggestion max par section', normal: 'Suggestions IA normales (jusqu\'à 3 par section)', proactive: 'Mode proactif — toutes les suggestions affichées' };
+          _toastMsg = _iaMsg[v] || lbl;
+        } else if (k === 'reportType') {
+          var _rtMsg = { simple: 'Rapports simplifiés (2–3 pages, KPIs essentiels)', client: 'Rapports client standard (5–8 pages)', enterprise: 'Rapports avancés — notes de réunion incluses par défaut' };
+          _toastMsg = _rtMsg[v] || lbl;
+        }
+        showToast('success', _toastMsg);
         btn.parentElement.querySelectorAll('button').forEach(function(b) {
           b.style.border = '1.5px solid var(--fp-border)';
           b.style.background = 'transparent';
@@ -18610,7 +18667,7 @@ function renderMonitorsConfig() {
     { icon: '📧', name: 'Email',    active: true,    detail: `${STATE.monitors.filter(m => m.alertEmail).length} monitors configurés`, color: '#22c55e', gate: null },
     { icon: '💬', name: 'Slack',    active: isPro,   detail: isPro ? '#flowpoint-alerts actif' : 'Disponible à partir de Pro', color: isPro ? '#22c55e' : '#64748b', gate: 'Pro' },
     { icon: '🎮', name: 'Discord',  active: isPro,   detail: isPro ? 'Bot FlowPoint connecté' : 'Disponible à partir de Pro', color: isPro ? '#8b5cf6' : '#64748b', gate: 'Pro' },
-    { icon: '📱', name: 'SMS',      active: isUltra, detail: isUltra ? ((STATE.settings&&STATE.settings.smsPhone)||'Non configuré') : 'Disponible Ultra', color: isUltra ? '#22c55e' : '#64748b', gate: 'Ultra' },
+    { icon: '📱', name: 'SMS',      active: false, detail: 'Bientôt disponible (Ultra)', color: '#f59e0b', gate: 'Ultra' },
     { icon: '🔗', name: 'Webhook',  active: isPro,   detail: isPro ? ((STATE.settings&&STATE.settings.webhookUrl)||'URL non configurée') : 'Disponible à partir de Pro', color: isPro ? '#2563EB' : '#64748b', gate: 'Pro' },
     { icon: '📢', name: 'PagerDuty',active: isUltra, detail: isUltra ? 'Intégration active' : 'Disponible Ultra', color: isUltra ? '#f59e0b' : '#64748b', gate: 'Ultra' },
   ];
@@ -18918,8 +18975,9 @@ function renderLocalSEOCompetitors() {
     { name: 'Concurrent D', url: 'concurrent-d.fr',  score: 60, speed: 51, gbp: true,  reviews: 201, rating: 4.7, posts: 3, photos: 62, threat: 'medium', delta: +2, keywords: 19, citations: 18 },
     { name: 'Concurrent E', url: 'concurrent-e.fr',  score: 55, speed: 38, gbp: false, reviews: 34,  rating: 3.9, posts: 0, photos: 6,  threat: 'low',    delta: 0,  keywords: 11, citations: 5  },
   ] : [];
-  const comps = _rawComps
-    ? _rawComps.map((c,i) => ({
+  const _lcLimit = typeof _fpLocalCompLimit === 'function' ? _fpLocalCompLimit() : 5;
+  const comps = _lcLimit === 0 ? [] : (_rawComps
+    ? _rawComps.slice(0, _lcLimit).map((c,i) => ({
         name: c.name || `Concurrent ${_fbLetters[i] || (i+1)}`,
         url:  (c.url||'').replace(/^https?:\/\//,''),
         score: Math.min(100, Math.round((c.domainRating||0) * 1.5)),
@@ -18929,7 +18987,7 @@ function renderLocalSEOCompetitors() {
         threat: (c.domainRating||0) > 50 ? 'high' : (c.domainRating||0) > 30 ? 'medium' : 'low',
         delta: c.delta||0, keywords: c.keywords||0, citations: 0,
       }))
-    : _previewComps;
+    : _previewComps.slice(0, _lcLimit));
   const tc = { high: '#ef4444', medium: '#f59e0b', low: '#22c55e' };
   const tl = { high: 'Menace forte', medium: 'À surveiller', low: 'Faible risque' };
 
