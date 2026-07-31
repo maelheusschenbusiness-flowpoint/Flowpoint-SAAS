@@ -20,9 +20,43 @@
 
   // ─── UTILITAIRES PARTAGÉS ────────────────────────────────────────────────────
 
+  // Dashboard sessions are isolated per browser tab. Never fall back to
+  // localStorage: it is shared by every tab and can silently authenticate this
+  // tab as the last account that logged in.
+  function _sessionToken() {
+    try {
+      return sessionStorage.getItem('fp_session_token') || '';
+    } catch (_) { return ''; }
+  }
+
+  // Bootstrap the per-tab token before any integration preload starts.
+  // fp-backend.js is loaded before dashboard.js, so its timers could otherwise
+  // call protected endpoints while dashboard.js was still restoring the token.
+  var _sessionReady = (async function () {
+    if (_sessionToken()) return true;
+    try {
+      var response = await fetch('/api/auth/session-restore', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (response.ok) {
+        var data = await response.json().catch(function () { return null; });
+        if (data && data.token) {
+          sessionStorage.setItem('fp_session_token', data.token);
+          if (!sessionStorage.getItem('fp_tab_uid')) {
+            sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
+          }
+          return true;
+        }
+      }
+    } catch (_) { /* dashboard.js will retry its own bootstrap */ }
+    return false;
+  })();
+
   function _authHeaders() {
     try {
-      var t = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
+      var t = _sessionToken();
       return t ? { 'Authorization': 'Bearer ' + t } : {};
     } catch (_) { return {}; }
   }
@@ -39,7 +73,10 @@
   var _fp401ConfirmTimer    = null;
 
   function _confirmSessionExpiredBackend() {
-    fetch('/api/me', { credentials: 'include' })
+    fetch('/api/me', {
+      credentials: _sessionToken() ? 'include' : 'omit',
+      headers: _authHeaders(),
+    })
       .then(function(r) {
         var ts = new Date().toISOString();
         if (r.status === 401) {
@@ -63,10 +100,12 @@
       ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(function(k) {
         localStorage.removeItem(k);
       });
+      sessionStorage.removeItem('fp_session_token');
+      sessionStorage.removeItem('fp_tab_uid');
     } catch (_) {}
   }
 
-  function apiFetch(path, opts) {
+  function apiFetchNow(path, opts) {
     var isGet = !opts || !opts.method || opts.method === 'GET';
 
     // ── GET cache (30 s TTL, same as dashboard.js) ────────────────────────────
@@ -91,8 +130,10 @@
       (opts && opts.headers) || {}
     );
 
+    // If this tab has no session token, do not send the shared HttpOnly cookie.
+    // Sending it would make a fresh tab display whichever account logged in last.
     var fetchOpts = Object.assign({}, opts || {}, {
-      credentials: 'include',
+      credentials: _sessionToken() ? 'include' : 'omit',
       headers: headers,
     });
 
@@ -137,6 +178,14 @@
 
     if (isGet) _fpInFlight[path] = promise;
     return promise;
+  }
+
+  // Every backend integration call waits for session bootstrap. This prevents
+  // an early 401 from being mistaken for an expired session during page load.
+  function apiFetch(path, opts) {
+    return _sessionReady.then(function () {
+      return apiFetchNow(path, opts);
+    });
   }
 
   // apiAction: exponential backoff, 2 retries max — identical to dashboard.js apiAction
@@ -2064,7 +2113,7 @@
         var resp = await fetch(base + '/api/ai/chat', {
           method: 'POST',
           headers: Object.assign({ 'Content-Type': 'application/json' }, _authHeaders()),
-          credentials: 'include',
+          credentials: _sessionToken() ? 'include' : 'omit',
           body: JSON.stringify({
             message: message,
             history: this.history.slice(-10),
@@ -2266,7 +2315,7 @@
     function connect() {
       if (_sse) { try { _sse.close(); } catch(e){} }
       try {
-        var _sseTok = (function(){ try { return localStorage.getItem('token') || localStorage.getItem('fp_token') || ''; } catch(_){ return ''; } })();
+        var _sseTok = _sessionToken();
         _sse = new EventSource('/api/events' + (_sseTok ? '?token=' + encodeURIComponent(_sseTok) : ''));
 
         _sse.onopen = function() {

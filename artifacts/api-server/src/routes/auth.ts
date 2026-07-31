@@ -1704,7 +1704,9 @@ router.post("/auth/logout", async (req: Request, res: Response) => {
   const bearerToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
     ? authHeader.slice(7).trim()
     : "";
-  const sessionToken = cookieToken || bearerToken;
+  // Prefer the per-tab Bearer token. The HttpOnly cookie is shared by all tabs,
+  // while Bearer is the session selected by this specific dashboard tab.
+  const sessionToken = bearerToken || cookieToken;
   if (sessionToken) {
     await deleteSession(sessionToken);   // must await — response must not return before DB delete
     logger.info("[Auth] Session revoked on logout");

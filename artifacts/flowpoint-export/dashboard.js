@@ -383,6 +383,22 @@ const _apiFetchInFlight = new Map();
 const _apiFetchCache    = new Map();
 const _API_CACHE_TTL    = 30_000;
 
+function _fpCurrentSessionToken() {
+  try { return sessionStorage.getItem('fp_session_token') || ''; } catch(_) { return ''; }
+}
+
+function _fpSessionFetchOptions(options = {}) {
+  const token = _fpCurrentSessionToken();
+  return {
+    ...options,
+    credentials: token ? 'include' : 'omit',
+    headers: {
+      ...(options.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  };
+}
+
 // ── Session-reset debounce guard ──────────────────────────────────────────────
 // A single transient 401 from a background poll (audit, activity, GA4 live)
 // must NOT immediately destroy the session.  We count background 401s and only
@@ -392,7 +408,7 @@ var _401ConfirmTimer    = null;
 
 function _confirmSessionExpired() {
   // Use plain fetch (not apiFetch) to avoid recursion through this handler.
-  fetch('/api/me', { credentials: 'include' })
+  fetch('/api/me', _fpSessionFetchOptions())
     .then(function(r) {
       var ts = new Date().toISOString();
       if (r.status === 401) {
@@ -452,7 +468,10 @@ async function apiFetch(path, opts = {}) {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(opts.headers || {}),
       },
-      credentials: 'include',
+      // Never fall back to the shared HttpOnly cookie. It belongs to the last
+      // account that logged in anywhere in this browser, not necessarily this
+      // dashboard tab. A tab without its own token must go back through login.
+      credentials: token ? 'include' : 'omit',
     });
     if (res.status === 401) {
       const _ts = new Date().toISOString();
@@ -562,11 +581,8 @@ async function downloadReportPdf(reportId, name, triggerEl) {
   const filename = (name || 'rapport') + '.pdf';
   if (triggerEl) { triggerEl.disabled = true; triggerEl.dataset._origText = triggerEl.textContent; triggerEl.textContent = '…'; }
   try {
-    const token = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
-    const res = await fetch(`/api/reports/${reportId}/download`, {
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), 'Cache-Control': 'no-cache' },
-      credentials: 'include',
-    });
+    const res = await fetch(`/api/reports/${reportId}/download`,
+      _fpSessionFetchOptions({ headers: { 'Cache-Control': 'no-cache' } }));
     if (!res.ok) {
       const msg = res.status === 401 ? 'Session expirée — reconnectez-vous'
                 : res.status === 403 ? 'Accès refusé à ce rapport'
@@ -2586,18 +2602,17 @@ function openFloatPanel(title, content) {
         let resp;
         try {
           console.debug('[team-invite] POST start', { attachId, email: maskedEmail, role });
-          resp = await fetch('/api/team/invite', {
+          resp = await fetch('/api/team/invite', _fpSessionFetchOptions({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({ email, role }),
-          });
+          }));
           console.debug('[team-invite] POST end', { attachId, status: resp.status });
           const data = await resp.json().catch(() => ({}));
           if (resp.status === 201 && data.ok) {
             closeFloatPanel && closeFloatPanel();
             showToast('success', 'Invitation envoy\u00e9e \u00e0 ' + escHtml(email) + ' !');
-            const t = await fetch('/api/team', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null);
+            const t = await fetch('/api/team', _fpSessionFetchOptions()).then(r => r.ok ? r.json() : null).catch(() => null);
             if (t) { STATE.team = normArr(t,'members') || []; STATE.pendingInvitations = t.pendingInvitations||[]; STATE.seatUsage = t.seatUsage||null; render(); }
           } else if (resp.status === 409) {
             showToast('warning', 'Une invitation est d\u00e9j\u00e0 en attente pour cette adresse.');
@@ -2606,7 +2621,7 @@ function openFloatPanel(title, content) {
           } else if (resp.status === 502) {
             showToast('warning', 'L\'invitation a \u00e9t\u00e9 cr\u00e9\u00e9e, mais l\'e-mail n\'a pas pu \u00eatre envoy\u00e9.');
             closeFloatPanel && closeFloatPanel();
-            const t = await fetch('/api/team', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null);
+            const t = await fetch('/api/team', _fpSessionFetchOptions()).then(r => r.ok ? r.json() : null).catch(() => null);
             if (t) { STATE.team = normArr(t,'members') || []; STATE.pendingInvitations = t.pendingInvitations||[]; STATE.seatUsage = t.seatUsage||null; render(); }
           } else {
             showToast('error', data.error || 'Erreur lors de l\'invitation');
@@ -3352,8 +3367,7 @@ let _gmapsLoading = false;
 async function _fetchGmapsKey() {
   if (_gmapsKey !== null) return _gmapsKey;
   try {
-    const _tk = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
-    const r = await fetch('/api/maps/config', { credentials: 'include', headers: _tk ? { 'Authorization': 'Bearer ' + _tk } : {} });
+    const r = await fetch('/api/maps/config', _fpSessionFetchOptions());
     if (r.ok) { const d = await r.json(); _gmapsKey = d.apiKey || ''; }
     else { _gmapsKey = ''; }
   } catch (_) { _gmapsKey = ''; }
@@ -12055,12 +12069,11 @@ async function sendAIMessage(text) {
     .map(m => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }));
 
   try {
-    const resp = await fetch('/api/ai/chat', {
+    const resp = await fetch('/api/ai/chat', _fpSessionFetchOptions({
       method: 'POST',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, context, stream: true, history, provider: STATE.aiProvider || 'openai' }),
-    });
+    }));
 
     if (!resp.ok || !resp.body) {
       const err = await resp.json().catch(() => ({}));
@@ -15723,7 +15736,7 @@ async function init() {
     let _sseBackoff = 1000;
     function _sseConnect() {
       try {
-        const _sseToken = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
+        const _sseToken = _fpCurrentSessionToken();
         const es = new EventSource('/api/billing/events' + (_sseToken ? '?token=' + encodeURIComponent(_sseToken) : ''));
         es.onmessage = (e) => {
           _sseBackoff = 1000; // reset backoff on successful message
@@ -15842,11 +15855,10 @@ async function init() {
   // Idempotent: API failure never prevents local logout — user is always redirected.
   window.disconnectAllSessions = async function() {
     try {
-      await fetch('/api/auth/logout', {
+      await fetch('/api/auth/logout', _fpSessionFetchOptions({
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-      });
+      }));
     } catch (_) { /* non-fatal — still clear local state */ }
     ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid']
       .forEach(function(k) { localStorage.removeItem(k); });
@@ -19571,7 +19583,7 @@ async function deleteTeamFile(id) {
 }
 async function downloadFileAssetById(id) {
   try {
-    const res = await fetch(`/api/team/files/${id}/content`, { credentials: 'include' });
+    const res = await fetch(`/api/team/files/${id}/content`, _fpSessionFetchOptions());
     if (!res.ok) throw new Error('Not found');
     const blob = await res.blob();
     const fn = res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] || 'fichier';
@@ -28548,12 +28560,12 @@ function _awlResults(name, niche, loc, url) {
     competitors: (document.getElementById('awl-comp')?.value||'').split(',').map(s=>s.trim()).filter(Boolean),
     priorities: [...(document.querySelectorAll('#fp-awl-overlay input[value*="SEO"]:checked,#fp-awl-overlay input[value*="Conversion"]:checked') || [])].map(i=>i.value),
   };
-  const tok = localStorage.getItem('fp_token') || '';
-  fetch('/api/ai-workspace-launch', {
+  const tok = _fpCurrentSessionToken();
+  fetch('/api/ai-workspace-launch', _fpSessionFetchOptions({
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(tok ? { 'Authorization': 'Bearer ' + tok } : {}) },
     body: JSON.stringify(payload),
-  }).catch(() => {});
+  })).catch(() => {});
 }
 
 window.openAIWorkspaceLaunch  = openAIWorkspaceLaunch;
@@ -31629,17 +31641,12 @@ async function fpAnalyzePSI() {
     // BUG-W1-V32-001+002: Always use raw fetch — FP_PAGESPEED_API.analyze() stores
     // raw data (mobile.metrics.*) without normalizing to mobile.cwv.*, and returns
     // null on error making status codes (409/402/4xx) invisible to the caller.
-    const _psiToken = localStorage.getItem('fp_token') || localStorage.getItem('token') || '';
     const _psiBase = window.__FP_BACKEND_URL || '';
-    const resp = await fetch(_psiBase + '/api/pagespeed/analyze', {
+    const resp = await fetch(_psiBase + '/api/pagespeed/analyze', _fpSessionFetchOptions({
       method: 'POST',
-      headers: Object.assign(
-        { 'Content-Type': 'application/json' },
-        _psiToken ? { Authorization: 'Bearer ' + _psiToken } : {}
-      ),
-      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: url, force: true }),
-    });
+    }));
     if (resp.ok) {
       const raw = await resp.json();
       if (raw && (raw.mobile || raw.desktop)) {
@@ -32083,11 +32090,11 @@ window.FP_GITHUB_API = (() => {
   const base = (typeof window.FP_BASE_URL !== 'undefined' ? window.FP_BASE_URL : '') + '/api';
 
   async function _fetch(path, opts = {}) {
-    const token = localStorage.getItem('fp_token') || (typeof window.FP_API_TOKEN !== 'undefined' ? window.FP_API_TOKEN : '');
-    const res = await fetch(`${base}${path}`, {
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    const token = _fpCurrentSessionToken();
+    const res = await fetch(`${base}${path}`, _fpSessionFetchOptions({
       ...opts,
-    });
+      headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    }));
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
     return res.json();
   }
@@ -35678,7 +35685,7 @@ window._fpDataExplorerAPI = {
     const st = window._fpDEState;
     const params = new URLSearchParams({ source: st.source || 'audits', days: String(st.days || 30), format: format || 'csv' });
     if (st.filter) params.set('filter', st.filter);
-    const token = (window.STATE && STATE.token) ? STATE.token : (localStorage.getItem('fp_token') || '');
+    const token = _fpCurrentSessionToken();
     const a = document.createElement('a');
     a.href = '/api/data-explorer/export?' + params.toString();
     a.download = 'data-explorer-' + st.source + '.' + (format || 'csv');
@@ -35737,12 +35744,21 @@ window._fpReportsAPI = {
     } catch(e) { showToast('error', 'Erreur partage'); return null; }
   },
   downloadPdf(id, name) {
-    const token = (window.STATE && STATE.token) ? STATE.token : (localStorage.getItem('fp_token') || '');
-    const a = document.createElement('a');
-    a.href = '/api/reports/' + id + '/download';
-    a.download = (name || 'rapport') + '.pdf';
-    a.click();
-    showToast('info', 'Téléchargement PDF…');
+    const token = _fpCurrentSessionToken();
+    fetch('/api/reports/' + id + '/download', _fpSessionFetchOptions())
+      .then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.blob();
+      })
+      .then(function(blob) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = (name || 'rapport') + '.pdf';
+        a.click();
+        setTimeout(function() { URL.revokeObjectURL(a.href); }, 1000);
+        showToast('info', 'Téléchargement PDF…');
+      })
+      .catch(function() { showToast('error', 'Téléchargement impossible'); });
   },
   refresh() { return this.load(); },
 };

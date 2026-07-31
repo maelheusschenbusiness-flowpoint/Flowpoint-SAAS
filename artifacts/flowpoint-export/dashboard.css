@@ -6506,7 +6506,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
 .fp-psi-spinner {
   width: 48px; height: 48px; border-radius: 50%;
   border: 3px solid var(--fp-border); border-top-color: var(--fp-accent);
-  animation: fpSpin 1.2s linear infinite;
+  animation: fpSpin 2.8s linear infinite;
   will-change: transform;
   transform: translateZ(0);
   transition: none;
@@ -8869,7 +8869,7 @@ html[data-theme="light"] .fp-skel-shimmer {
   border: 3.5px solid rgba(255, 255, 255, 0.08);
   border-top-color: #2563EB;
   border-radius: 50%;
-  animation: fpSpin 1.2s linear infinite;
+  animation: fpSpin 2.8s linear infinite;
   will-change: transform;
   transform: translateZ(0);
   transition: none;

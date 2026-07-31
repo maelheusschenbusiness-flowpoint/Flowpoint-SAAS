@@ -96,3 +96,4 @@
 - [org_settings NOT NULL stripe columns](org-settings-not-null-stripe.md) — stripe_customer_id has implicit NOT NULL; use '' (empty string) to clear, not NULL; schema uses NULLIF(col,'') at read-time
 - [Missions fast-path schema gap](missions-fast-path-schema.md) — initMissionsTables was absent from fast-path; missing columns caused 500 on Render; fix: add to fast-path + full ALTER TABLE self-heal
 - [Real data feed isolation](real-data-feed-isolation.md) — notifications, activity, and team chat are separate org-scoped persisted feeds; no seed or cross-feed fallback
+- [Per-tab session bootstrap](per-tab-session-bootstrap.md) — fp-backend loads before dashboard; protected preloads must await sessionStorage token restoration before using auth
