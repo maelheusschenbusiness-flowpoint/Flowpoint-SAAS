@@ -11796,9 +11796,10 @@ function renderAI() {
 function renderAIMessages() {
   if (STATE.aiMessages.length === 0) {
     const _wAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
+    const _wSites = STATE.audits.length;
     const _wTxt = _wAvg !== null
-      ? 'Bonjour\u00a0! Je suis votre co-pilote FlowPoint IA. Votre score SEO moyen est de\u00a0<strong>' + _wAvg + '/100</strong> sur ' + STATE.audits.length + '\u00a0site(s) audité(s). Par où commençons-nous\u00a0?'
-      : 'Bonjour\u00a0! Je suis votre co-pilote FlowPoint IA. Je peux analyser vos audits, monitors, alertes et métriques lorsqu\'ils sont disponibles. Par où commençons-nous\u00a0?';
+      ? 'Bonjour\u00a0! Je suis votre co-pilote FlowPoint IA.\nVotre score SEO moyen est de **' + _wAvg + '\u00a0/\u00a0100** sur ' + _wSites + '\u00a0site' + (_wSites > 1 ? 's audités' : ' audité') + '. Par où commençons-nous\u00a0?'
+      : 'Bonjour\u00a0! Je suis votre co-pilote FlowPoint IA.\nJe peux analyser vos audits, monitors, alertes et métriques lorsqu\'ils sont disponibles. Par où commençons-nous\u00a0?';
     STATE.aiMessages = [{ from:'ai', text:_wTxt, chips:['audits','monitors'] }];
   }
 
@@ -31961,6 +31962,8 @@ setTimeout(function() {
                 }
               }
             }
+            // Refresh credit counter immediately after each reply — no page reload needed
+            if (typeof loadAICredits === 'function') loadAICredits().catch(function(){});
             setSendEnabled(true);
           },
         });
