@@ -1124,9 +1124,19 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
       }
     }
 
-    // No existing sub — tell the frontend to use our embedded checkout pages
-    // (checkout.html → checkout-payment.html → checkout-return.html).
-    // Never redirect to Stripe-hosted checkout from this endpoint.
+    // No existing sub:
+    // — Downgrade (e.g. Pro trial → Standard): there is no Stripe billing cycle to
+    //   honour, so just update the plan in the DB immediately and return the same
+    //   shape the frontend expects for a direct upgrade.
+    // — Upgrade or same level: route through embedded checkout as before.
+    if (isDowngrade) {
+      await persistOrgData(orgId, { plan }).catch(() => {});
+      logger.info({ plan, orgId, currentPlan }, "[Billing] no-sub downgrade — plan updated in DB immediately");
+      res.json({ ok: true, plan, upgraded: true, effective: "now", noSubDowngrade: true });
+      return;
+    }
+
+    // No existing sub and not a downgrade — tell the frontend to use embedded checkout.
     logger.info({ plan, orgId }, "[Billing] upgrade: no active subscription — redirecting to embedded checkout");
     res.json({ noSubscription: true, redirectTo: "/checkout.html", plan });
   } catch (err) {

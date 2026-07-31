@@ -8142,17 +8142,31 @@ function renderBilling() {
           const _date = r.effectiveDate || 'la prochaine échéance';
           const _when = r.trialDowngrade ? 'à la fin de votre essai' : 'à la prochaine échéance';
           showToast('success', 'Downgrade programmé ' + _when + ' (' + _date + ')');
-          // Keep the current plan/status locally. The lower plan is not active
-          // until Stripe reaches the scheduled phase.
+          // Persist pending state locally so the banner renders immediately,
+          // then reload from the server so billing data is authoritative.
           if (STATE.billing) {
             STATE.billing.pendingPlan = plan;
             STATE.billing.pendingPlanDate = _date;
           }
-          setTimeout(function() { navigate('billing'); navigateSub('plans'); }, 900);
+          try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+          _apiFetchCache.clear();
+          _apiFetchInFlight.clear();
+          loadData().then(function() {
+            navigate('billing');
+            navigateSub('plans');
+          }).catch(function() {
+            navigate('billing');
+            navigateSub('plans');
+          });
           return;
         }
         if (r && r.upgraded) {
-          showToast('success', 'Plan mis à jour → ' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' ✓');
+          const _planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
+          // noSubDowngrade = immediate DB-only downgrade (trial, no Stripe sub)
+          const _msg = r.noSubDowngrade
+            ? 'Plan changé vers ' + _planLabel + ' ✓'
+            : 'Plan mis à jour → ' + _planLabel + ' ✓';
+          showToast('success', _msg);
           // Purge ALL caches so the next render uses fresh server data only,
           // never stale data from another session that might still be in memory.
           try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
@@ -11839,91 +11853,26 @@ function renderAI() {
 }
 
 function _buildAIWelcome() {
-  // ── Collect all available context ────────────────────────────────────────
   const firstName = STATE.me?.firstName || STATE.me?.name || '';
   const greeting  = firstName ? 'Bonjour ' + firstName + ' 👋' : 'Bonjour 👋';
 
-  const audits       = STATE.audits   || [];
-  const monitors     = STATE.monitors || [];
-  const missions     = STATE.missions || [];
-  const competitors  = STATE.competitors || [];
-  const keywords     = STATE.keywords   || [];
-  const alertEvents  = STATE.alertEvents || [];
+  // One-line opener that gives a single most-urgent signal, then invites.
+  const audits  = STATE.audits  || [];
+  const monitors = STATE.monitors || [];
+  const monDown = monitors.filter(function(m) { return m.status === 'down'; }).length;
 
-  const nbSites      = audits.length;
-  const avgScore     = nbSites > 0 ? Math.round(audits.reduce((s,a) => s + (a.score||0), 0) / nbSites) : null;
-  const criticalSites = audits.filter(a => (a.score||0) < 40).length;
-
-  const monDown  = monitors.filter(m => m.status === 'down').length;
-  const monTotal = monitors.length;
-
-  const now = Date.now();
-  const missPending = missions.filter(m => m.status !== 'done' && !m.done).length;
-  const missLate    = missions.filter(m => m.status !== 'done' && !m.done && m.dueDate && new Date(m.dueDate).getTime() < now).length;
-
-  const recentAlerts = alertEvents.filter(a => {
-    const d = new Date(a.triggeredAt || a.createdAt || a.created_at || 0);
-    return now - d.getTime() < 48 * 3600 * 1000;
-  }).length;
-
-  const nbCompetitors = competitors.length;
-  const nbKeywords    = keywords.length;
-  const gscConnected  = !!(STATE.gsc && STATE.gsc.connected);
-
-  // ── Build contextual bullets (only from real data) ────────────────────────
-  const bullets = [];
-
-  if (avgScore !== null && nbSites > 0) {
-    const lvl = avgScore >= 80 ? 'excellent' : avgScore >= 60 ? 'bon' : avgScore >= 40 ? 'à améliorer' : 'critique';
-    bullets.push('Votre score SEO moyen est de **' + avgScore + '/100** sur **' + nbSites + ' site' + (nbSites > 1 ? 's' : '') + '** — niveau ' + lvl + '.');
-  }
-  if (criticalSites > 0) {
-    bullets.push('**' + criticalSites + ' site' + (criticalSites > 1 ? 's' : '') + '** ont un score critique (< 40/100) — optimisation urgente recommandée.');
-  }
+  let hook = '';
   if (monDown > 0) {
-    bullets.push('**' + monDown + ' monitor' + (monDown > 1 ? 's' : '') + ' DOWN** en ce moment — intervention requise.');
-  } else if (monTotal > 0) {
-    bullets.push('**' + monTotal + ' monitor' + (monTotal > 1 ? 's' : '') + '** surveillé' + (monTotal > 1 ? 's' : '') + ' — tous opérationnels ✓');
-  }
-  if (missLate > 0) {
-    bullets.push('**' + missLate + ' mission' + (missLate > 1 ? 's' : '') + ' en retard** — priorité immédiate.');
-  } else if (missPending > 0) {
-    bullets.push('**' + missPending + ' mission' + (missPending > 1 ? 's' : '') + '** en attente d\'action.');
-  }
-  if (recentAlerts > 0) {
-    bullets.push('**' + recentAlerts + ' alerte' + (recentAlerts > 1 ? 's' : '') + '** déclenchée' + (recentAlerts > 1 ? 's' : '') + ' ces 48 dernières heures.');
-  }
-  if (nbCompetitors > 0) {
-    bullets.push('**' + nbCompetitors + ' concurrent' + (nbCompetitors > 1 ? 's' : '') + '** suivi' + (nbCompetitors > 1 ? 's' : '') + ' — analyse comparative disponible.');
-  }
-  if (nbKeywords > 0 && gscConnected) {
-    bullets.push('**' + nbKeywords + ' mot' + (nbKeywords > 1 ? 's' : '') + '-clé' + (nbKeywords > 1 ? 's' : '') + '** tracké' + (nbKeywords > 1 ? 's' : '') + ' via Google Search Console.');
-  }
-
-  // ── Compose message ───────────────────────────────────────────────────────
-  let text = greeting + '\n\n';
-
-  if (bullets.length >= 2) {
-    text += 'J\'ai analysé votre espace FlowPoint — voici les points clés :\n\n';
-    text += bullets.map(b => '• ' + b).join('\n');
-    text += '\n\nJe peux vous aider à :\n';
-    text += '• identifier et prioriser vos actions SEO\n';
-    text += '• analyser vos concurrents et opportunités\n';
-    text += '• interpréter vos audits et diagnostiquer les blocages\n';
-    text += '• améliorer votre référencement local\n';
-    text += '• créer un plan d\'action sur-mesure\n';
-    text += '\nQuel sujet voulez-vous approfondir en premier ?';
-  } else if (bullets.length === 1) {
-    text += 'J\'ai analysé votre espace FlowPoint.\n\n• ' + bullets[0] + '\n\n';
-    text += 'Je peux analyser vos audits, monitors, concurrents et missions pour vous guider.\nPar quel sujet souhaitez-vous commencer ?';
+    hook = monDown === 1 ? ' Un monitor est **DOWN** en ce moment.' : ' **' + monDown + ' monitors DOWN** en ce moment.';
   } else {
-    // No data available yet
-    text += 'Je suis votre assistant FlowPoint.\n\n';
-    text += 'Vos données sont en cours de chargement. Dès qu\'elles seront disponibles, je pourrai analyser vos audits SEO, monitors, missions et concurrents pour vous proposer des recommandations personnalisées.\n\n';
-    text += 'En attendant, posez-moi une question ou décrivez votre objectif principal.';
+    const nbSites = audits.length;
+    const avgScore = nbSites > 0 ? Math.round(audits.reduce(function(s, a) { return s + (a.score || 0); }, 0) / nbSites) : null;
+    if (avgScore !== null) {
+      hook = ' Score SEO moyen : **' + avgScore + '/100**.';
+    }
   }
 
-  return text;
+  return greeting + hook + ' Sur quoi puis-je vous aider ?';
 }
 
 function renderAIMessages() {
@@ -15797,6 +15746,22 @@ async function init() {
   applyTheme();
   // Remove no-transition style after first render so transitions work normally
   requestAnimationFrame(() => { const el = document.getElementById('fp-no-trans'); if (el) el.remove(); });
+  // Inject global keyframe animations that dashboard components reference by name.
+  // These are not in style.css (avoids flash-of-unstyled-content) so they live here,
+  // injected once at startup after the no-transition guard is lifted.
+  (function() {
+    if (document.getElementById('fp-global-anims')) return;
+    const _s = document.createElement('style');
+    _s.id = 'fp-global-anims';
+    _s.textContent = [
+      '@keyframes spin { to { transform: rotate(360deg); } }',
+      '@keyframes fp-fade-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }',
+      '@keyframes fp-skel { 0%,100%{opacity:.45} 50%{opacity:.9} }',
+      '.fp-skel-shimmer { background: linear-gradient(90deg,rgba(255,255,255,0.04) 0%,rgba(255,255,255,0.12) 50%,rgba(255,255,255,0.04) 100%); background-size:200% 100%; animation: fp-skel-slide 1.4s linear infinite; }',
+      '@keyframes fp-skel-slide { 0%{background-position:200% 0} 100%{background-position:-200% 0} }',
+    ].join('\n');
+    document.head.appendChild(_s);
+  }());
 
   // Bind global events
   bindGlobalEvents();

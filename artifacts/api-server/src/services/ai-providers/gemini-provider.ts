@@ -77,7 +77,18 @@ export class GeminiProvider {
     let totalTokens = 0;
 
     for await (const chunk of stream) {
-      const text = chunk.text ?? "";
+      // chunk.text getter can return "" when thinking tokens are present in parts
+      // (happens even with thinkingBudget:0 on some Gemini 2.5 versions).
+      // Fall back to manual extraction that filters out thought parts explicitly.
+      const rawParts = (chunk.candidates?.[0]?.content?.parts ?? []) as Array<{
+        thought?: boolean;
+        text?: string;
+      }>;
+      const text =
+        (rawParts.length > 0
+          ? rawParts.filter(p => !p.thought).map(p => p.text ?? "").join("")
+          : null) ??
+        (chunk.text ?? "");
       if (text) {
         fullText += text;
         yield { content: text, usage: undefined };
