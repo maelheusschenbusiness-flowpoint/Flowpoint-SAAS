@@ -1757,6 +1757,7 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
       targetId: sessionId,
       targetType: "billing",
       metadata: { addonKey },
+      orgId,
     }).catch(() => {});
 
     res.json({ url: session.url });

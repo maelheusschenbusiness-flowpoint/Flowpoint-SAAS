@@ -242,6 +242,7 @@ RÈGLES IMPORTANTES :
       targetId: profileId,
       targetType: "ai_workspace",
       metadata: { niche, location, missionsCount: missionTemplates.length, aiGenerated: aiGenerationSucceeded },
+      orgId,
     });
 
     res.json({

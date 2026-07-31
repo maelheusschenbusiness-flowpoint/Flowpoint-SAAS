@@ -1222,7 +1222,10 @@ async function loadData() {
     ? _teamMsgsRes.value : null;
   if (_allMsgs) {
     const _toChEntry = m => ({
-      from: m.from, text: m.text, time: new Date(m.createdAt||Date.now()).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),
+      id: m.id || null,
+      from: m.from, text: m.text,
+      time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '',
+      createdAt: m.createdAt || null,
       read: true, self: !!m.self, attachmentUrl: m.attachmentUrl||null, attachmentName: m.attachmentName||null,
     });
     STATE.channelMessages = {
@@ -1235,8 +1238,8 @@ async function loadData() {
     STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
   }
   STATE.teamChatHistory = (STATE.channelMessages[STATE.msgChannel||'general'] || []).map(m => ({
-    from: m.from, msg: m.text || (m.attachmentName ? `📎 ${m.attachmentName}` : ''),
-    time: m.time, attachmentUrl: m.attachmentUrl||null, attachmentName: m.attachmentName||null,
+    id: m.id || null, from: m.from, msg: m.text || (m.attachmentName ? `📎 ${m.attachmentName}` : ''),
+    time: m.time, createdAt: m.createdAt || null, attachmentUrl: m.attachmentUrl||null, attachmentName: m.attachmentName||null,
   }));
   const _apiNotifs      = _notifsRes.status       === 'fulfilled' ? _notifsRes.value   : null;
   STATE.notifications   = Array.isArray(_apiNotifs) ? _apiNotifs : Array.isArray(_apiNotifs?.notifications) ? _apiNotifs.notifications : [];
@@ -3700,6 +3703,7 @@ function bindMsgPanel(dd) {
       }
     }
 
+    msgObj.id = 'optimistic_' + Date.now();
     STATE.channelMessages[ch].push(msgObj);
     // Keep teamChatHistory in sync (team page)
     if (!STATE.teamChatHistory) STATE.teamChatHistory = [];
@@ -3719,6 +3723,11 @@ function bindMsgPanel(dd) {
       channel: ch, from,
       text: val || (attachmentName ? `📎 ${attachmentName}` : ''),
       attachmentUrl, attachmentName,
+    }).then(function(serverMsg) {
+      if (serverMsg && serverMsg.id) {
+        const local = STATE.channelMessages[ch].find(m => m.id === msgObj.id);
+        if (local) { local.id = serverMsg.id; local.createdAt = serverMsg.createdAt || null; }
+      }
     }).catch(() => {});
   };
 
@@ -15504,12 +15513,6 @@ async function init() {
 
   // Load data
   await loadData();
-
-  // Log session start once per browser session to feed activity feed + streak
-  if (!sessionStorage.getItem('fp:session-logged')) {
-    sessionStorage.setItem('fp:session-logged', '1');
-    logActivityEvent('misc', 'Session démarrée', { page: 'overview' });
-  }
 
   // Missions rotation automatique toutes les 3 jours
   (() => {
@@ -28063,16 +28066,39 @@ function bindNewRouteEvents() {
       const msg = input.value;
       const from = STATE.me?.firstName || 'Vous';
       const ch = STATE.msgChannel || 'general';
-      const entry = { from, msg, time, attachmentUrl: null, attachmentName: null };
-      if (!STATE.teamChatHistory) STATE.teamChatHistory = [];
-      STATE.teamChatHistory.push(entry);
-      if (!STATE.channelMessages) STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
-      if (!STATE.channelMessages[ch]) STATE.channelMessages[ch] = [];
-      STATE.channelMessages[ch].push({ from, text: msg, time, read: true, self: true, attachmentUrl: null, attachmentName: null });
       input.value = '';
-      navigateSub('chat');
-      setTimeout(() => { const msgs = $('#team-chat-msgs'); if(msgs) msgs.scrollTop = msgs.scrollHeight; }, 50);
-      try { await apiAction('POST', '/api/team/messages', { channel: ch, from, text: msg }); } catch(_) {}
+       try {
+         const serverMsg = await apiAction('POST', '/api/team/messages', { channel: ch, text: msg });
+         const entry = {
+           id: serverMsg?.id || null,
+           from: serverMsg?.from || from,
+           msg: serverMsg?.text || msg,
+           text: serverMsg?.text || msg,
+           time: serverMsg?.createdAt ? new Date(serverMsg.createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : time,
+           createdAt: serverMsg?.createdAt || null,
+           attachmentUrl: serverMsg?.attachmentUrl || null,
+           attachmentName: serverMsg?.attachmentName || null,
+         };
+         if (!STATE.teamChatHistory) STATE.teamChatHistory = [];
+         if (!STATE.channelMessages) STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
+         if (!STATE.channelMessages[ch]) STATE.channelMessages[ch] = [];
+         const existing = STATE.channelMessages[ch].findIndex(m => m.id === entry.id ||
+           (m.id && String(m.id).indexOf('optimistic_') === 0 && m.text === entry.text));
+         if (existing >= 0) {
+           STATE.channelMessages[ch][existing] = {...STATE.channelMessages[ch][existing], ...entry, self: true, read: true};
+         } else {
+           STATE.channelMessages[ch].push({...entry, self: true, read: true});
+         }
+         STATE.teamChatHistory = STATE.channelMessages[ch].map(m => ({
+           id: m.id || null, from: m.from, msg: m.text || m.msg || '',
+           time: m.time, createdAt: m.createdAt || null,
+           attachmentUrl: m.attachmentUrl || null, attachmentName: m.attachmentName || null,
+         }));
+         navigateSub('chat');
+         setTimeout(() => { const msgs = $('#team-chat-msgs'); if(msgs) msgs.scrollTop = msgs.scrollHeight; }, 50);
+       } catch(_) {
+         showToast('error', 'Échec de l’envoi du message');
+       }
     };
     $('#team-chat-send')?.addEventListener('click', sendChat);
     $('#team-chat-input')?.addEventListener('keydown', e => { if(e.key==='Enter') sendChat(); });

@@ -76,6 +76,7 @@ router.post("/competitors", reportRateLimit, canWrite, async (req, res) => {
     store.logActivity({
       type: "alert", label: `Concurrent ajouté : ${name}`,
       targetId: id, targetType: "competitor",
+      orgId,
     }).catch(() => {});
     res.status(201).json(toPublic(result.rows[0]));
   } catch (err) {

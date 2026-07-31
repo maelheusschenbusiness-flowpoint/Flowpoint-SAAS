@@ -148,7 +148,7 @@ class Store {
         }
         const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-        const r = await client.query(
+         const r = await client.query(
           `SELECT id, type, label,
                   target_id   AS "targetId",
                   target_type AS "targetType",
@@ -156,6 +156,10 @@ class Store {
                   created_at  AS "createdAt"
            FROM activity_logs
            ${where}
+              AND created_at >= COALESCE(
+                (SELECT created_at FROM organizations WHERE id = $3),
+                '-infinity'::timestamptz
+              )
            ORDER BY created_at DESC, id DESC
            LIMIT $1 OFFSET $2`,
           values

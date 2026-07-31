@@ -311,6 +311,7 @@ export async function initDataTables(): Promise<void> {
     await run(client, `
       CREATE TABLE IF NOT EXISTS notifications (
         id         TEXT PRIMARY KEY,
+        org_id     TEXT NOT NULL DEFAULT 'default',
         type       TEXT NOT NULL DEFAULT 'info',
         title      TEXT NOT NULL,
         message    TEXT NOT NULL,
@@ -319,8 +320,10 @@ export async function initDataTables(): Promise<void> {
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `);
+    await run(client, `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
     await run(client, `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS link TEXT;`);
     await run(client, `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read BOOLEAN NOT NULL DEFAULT false;`);
+    await run(client, `CREATE INDEX IF NOT EXISTS notifications_org_id_idx ON notifications(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS notifications_created_at_idx ON notifications(created_at);`);
     await run(client, `CREATE INDEX IF NOT EXISTS notifications_read_idx ON notifications(read);`);
 

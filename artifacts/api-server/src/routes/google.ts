@@ -134,6 +134,7 @@ async function handleGoogleCallback(req: Request, res: Response): Promise<void> 
       type: "team",
       label: `Google connecté — ${userInfo.email ?? ""}`,
       targetType: "connector",
+      orgId,
     });
 
     // Reflect Google connection in the connectors table (used by the Connectors UI)
@@ -230,7 +231,7 @@ router.post("/google/disconnect", async (req: Request, res: Response) => {
       client.query(`DELETE FROM google_accounts WHERE org_id=$1`, [orgId]),
       client.query(`DELETE FROM google_tokens   WHERE org_id=$1`, [orgId]),
     ]);
-    store.logActivity({ type: "team", label: "Google déconnecté", targetType: "connector" });
+    store.logActivity({ type: "team", label: "Google déconnecté", targetType: "connector", orgId });
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to disconnect" });
@@ -402,7 +403,7 @@ router.post("/google/post", async (req: Request, res: Response) => {
         ? { actionType: callToActionType, url: callToActionUrl }
         : undefined,
     });
-    store.logActivity({ type: "ai", label: `Post GBP publié : "${text.slice(0, 60)}…"`, targetType: "google_business" });
+    store.logActivity({ type: "ai", label: `Post GBP publié : "${text.slice(0, 60)}…"`, targetType: "google_business", orgId });
     res.json(result);
   } catch (e: any) {
     logger.error({ e }, "[GBP] post failed");
@@ -464,7 +465,7 @@ router.post("/google/reply", async (req: Request, res: Response) => {
        WHERE review_id=$2 AND org_id=$3`,
       [finalComment, reviewId, orgId]
     );
-    store.logActivity({ type: "team", label: `Réponse GBP publiée — avis ${reviewId}`, targetType: "google_business" });
+    store.logActivity({ type: "team", label: `Réponse GBP publiée — avis ${reviewId}`, targetType: "google_business", orgId });
     res.json({ ok: true, reply: finalComment });
   } catch (e: any) {
     logger.error({ e }, "[GBP] reply failed");
@@ -532,7 +533,7 @@ router.post("/google/posts", async (req: Request, res: Response) => {
         ? { actionType: callToActionType, url: callToActionUrl }
         : undefined,
     });
-    store.logActivity({ type: "ai", label: `Post GBP : "${postText.slice(0, 60)}"`, targetType: "google_business" });
+    store.logActivity({ type: "ai", label: `Post GBP : "${postText.slice(0, 60)}"`, targetType: "google_business", orgId });
     res.json(result);
   } catch (e: any) {
     logger.error({ e }, "[GBP] posts alias failed");

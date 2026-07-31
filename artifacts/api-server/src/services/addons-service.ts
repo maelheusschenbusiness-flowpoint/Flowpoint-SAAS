@@ -64,7 +64,7 @@ export async function activateAddon(addonKey: string, orgId = "default"): Promis
 
     applyAddonToStore(addonKey, true);
     store.broadcast({ type: "addon:activated", addonKey }, orgId);
-    store.logActivity({ type: "team", label: `Add-on activé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`, metadata: { addonKey } }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
+    store.logActivity({ type: "team", label: `Add-on activé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`, metadata: { addonKey }, orgId }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
 
     logger.info({ addonKey, orgId }, "[Addons] Addon activated");
     return true;

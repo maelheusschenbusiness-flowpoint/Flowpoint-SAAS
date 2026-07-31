@@ -803,6 +803,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
     targetId: normalizedEmail,
     targetType: "user",
     metadata: { country: country ?? null, companySize: companySize ?? null, objective: objective ?? null },
+      orgId,
   }).catch(err => logger.error({ err }, "[auth] logActivity failed"));
 
   logger.info(
@@ -1117,6 +1118,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
       label: `Paiement confirmé — activation en cours : ${email || orgId}`,
       targetId: orgId || email,
       targetType: "user",
+      orgId: orgId || undefined,
     }).catch(() => {});
 
     // Return immediately — the webhook will send the magic link email.

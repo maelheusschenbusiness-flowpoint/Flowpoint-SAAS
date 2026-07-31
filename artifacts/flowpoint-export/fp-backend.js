@@ -310,23 +310,9 @@
         });
       } catch (e) {
         console.warn('[FP] notifications load error:', e.message);
-        // Fallback: essayer l'activité
-        try {
-          var events = await apiFetch('/api/activity');
-          if (!Array.isArray(events)) return null;
-          return events.slice(0, 20).map(function (ev, i) {
-            return {
-              id: ev.id || 'n' + i,
-              type: activityTypeToNotifType(ev.type),
-              title: ev.label || 'Événement',
-              desc: (ev.metadata && (ev.metadata.url || ev.metadata.auditId)) || '',
-              time: timeAgo(ev.createdAt),
-              read: false,
-            };
-          });
-        } catch (e2) {
-          return null;
-        }
+        // Notifications and activity are different domain objects. Never turn
+        // activity rows into fake notifications when the notification API fails.
+        return [];
       }
     },
 
@@ -591,19 +577,11 @@
     document.addEventListener('fp:activity:new', function (e) {
       var data = e.detail;
       if (!data || !window.STATE) return;
-      var notif = {
-        id: data.id || 'n' + Date.now(),
-        type: activityTypeToNotifType(data.type),
-        title: data.label || 'Événement',
-        desc: (data.metadata && data.metadata.url) || '',
-        time: 'À l\'instant',
-        read: false,
-      };
-      if (!window.STATE.notifications) window.STATE.notifications = [];
-      window.STATE.notifications.unshift(notif);
-      if (window.STATE.notifications.length > 50) window.STATE.notifications.pop();
       if (!window.STATE.activityEvents) window.STATE.activityEvents = [];
-      window.STATE.activityEvents.unshift(data);
+       var known = window.STATE.activityEvents.some(function (event) {
+         return data.id && event.id === data.id;
+       });
+       if (!known) window.STATE.activityEvents.unshift(data);
       if (typeof window.render === 'function') window.render();
     });
 
@@ -627,10 +605,28 @@
       if (!window.STATE.channelMessages) window.STATE.channelMessages = {};
       if (!window.STATE.channelMessages[ch]) window.STATE.channelMessages[ch] = [];
       var isSelf = data.from === (window.STATE.me && (window.STATE.me.firstName || window.STATE.me.name));
+      var legacyId = data.id;
+      var legacyExisting = window.STATE.channelMessages[ch].findIndex(function (m) {
+        return (legacyId && m.id === legacyId) ||
+          (!legacyId && m.id && String(m.id).indexOf('optimistic_') === 0 && m.text === (data.text || ''));
+      });
+      if (legacyExisting >= 0) {
+        window.STATE.channelMessages[ch][legacyExisting] = Object.assign({}, window.STATE.channelMessages[ch][legacyExisting], {
+          id: legacyId || window.STATE.channelMessages[ch][legacyExisting].id,
+          from: data.from || 'Équipe',
+          text: data.text || '',
+          createdAt: data.createdAt || null,
+          time: data.createdAt ? new Date(data.createdAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : 'À l\'instant',
+        });
+        if (typeof window.render === 'function') window.render();
+        return;
+      }
       window.STATE.channelMessages[ch].unshift({
+        id: data.id,
         from: data.from || 'Équipe',
         text: data.text || '',
         time: 'À l\'instant',
+        createdAt: data.createdAt || null,
         read: isSelf,
         self: isSelf,
       });
@@ -646,13 +642,27 @@
       if (!window.STATE.channelMessages) window.STATE.channelMessages = {};
       if (!window.STATE.channelMessages[ch]) window.STATE.channelMessages[ch] = [];
       var isSelf = msgData.self || false;
-      window.STATE.channelMessages[ch].unshift({
-        id: msgData.id,
+      var serverId = msgData.id;
+      var existingIndex = window.STATE.channelMessages[ch].findIndex(function (m) {
+        return (serverId && m.id === serverId) ||
+          (isSelf && m.id && String(m.id).indexOf('optimistic_') === 0 && m.text === (msgData.text || ''));
+      });
+      var normalizedMessage = {
+        id: serverId,
         from: msgData.from || 'Équipe',
         text: msgData.text || '',
-        time: 'À l\'instant',
+        time: msgData.createdAt ? new Date(msgData.createdAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : 'À l\'instant',
+        createdAt: msgData.createdAt || null,
         read: isSelf,
         self: isSelf,
+      };
+      if (existingIndex >= 0) {
+        window.STATE.channelMessages[ch][existingIndex] = Object.assign({}, window.STATE.channelMessages[ch][existingIndex], normalizedMessage);
+        if (window.STATE.route === 'team' && typeof window.render === 'function') window.render();
+        return;
+      }
+      window.STATE.channelMessages[ch].unshift({
+        ...normalizedMessage,
       });
       if (window.STATE.route === 'team' && typeof window.render === 'function') window.render();
     });

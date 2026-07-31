@@ -15,7 +15,14 @@ function getOrg(req: Request): string {
 router.get("/notifications", async (req: Request, res: Response) => {
   try {
     const result = await (req as OrgReq).orgDb(
-      `SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50`,
+      `SELECT * FROM notifications
+         WHERE org_id = $1
+           AND created_at >= COALESCE(
+             (SELECT created_at FROM organizations WHERE id = $1),
+             '-infinity'::timestamptz
+           )
+       ORDER BY created_at DESC LIMIT 50`,
+      [getOrg(req)],
     );
     res.json(result.rows.map(n => ({
       id:        n.id,
@@ -65,8 +72,8 @@ router.post("/notifications", canAdmin, async (req: Request, res: Response) => {
 router.patch("/notifications/:id/read", async (req: Request, res: Response) => {
   try {
     const result = await (req as OrgReq).orgDb(
-      `UPDATE notifications SET read = true WHERE id = $1 RETURNING *`,
-      [req.params.id],
+      `UPDATE notifications SET read = true WHERE id = $1 AND org_id = $2 RETURNING *`,
+      [req.params.id, getOrg(req)],
     );
     const n = result.rows[0];
     res.json(n
@@ -82,7 +89,7 @@ router.patch("/notifications/:id/read", async (req: Request, res: Response) => {
 
 router.patch("/notifications/read-all", async (req: Request, res: Response) => {
   try {
-    await (req as OrgReq).orgDb(`UPDATE notifications SET read = true`);
+    await (req as OrgReq).orgDb(`UPDATE notifications SET read = true WHERE org_id = $1`, [getOrg(req)]);
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "[notifications] PATCH read-all failed");
