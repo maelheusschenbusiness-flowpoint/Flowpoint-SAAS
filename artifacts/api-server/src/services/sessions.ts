@@ -37,6 +37,10 @@ export async function createSession(opts: {
   role?: string;
   /** UUID from users.id — Jalon 2: populate for all new sessions */
   userUuid?: string;
+  /** Client IP address — stored for login history */
+  ipAddress?: string;
+  /** User-Agent string — stored for login history */
+  userAgent?: string;
 }): Promise<string> {
   const token = makeToken(opts.userId, opts.orgId);
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
@@ -45,10 +49,11 @@ export async function createSession(opts: {
     const client = await pool.connect();
     try {
       await client.query(
-        `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2)
-         VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7)
+        `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2, ip_address, user_agent)
+         VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7,$8,$9)
          ON CONFLICT DO NOTHING`,
-        [token, opts.userId, opts.orgId, opts.email, opts.role ?? "member", expiresAt, opts.userUuid ?? null]
+        [token, opts.userId, opts.orgId, opts.email, opts.role ?? "member", expiresAt,
+         opts.userUuid ?? null, opts.ipAddress ?? null, opts.userAgent ?? null]
       );
     } finally {
       client.release();

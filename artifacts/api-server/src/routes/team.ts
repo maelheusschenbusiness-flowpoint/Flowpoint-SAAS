@@ -304,10 +304,12 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
 
     // Create session for the newly accepted member
     const sessionToken = await createSession({
-      userId: email,
-      orgId:  inv.org_id,
+      userId:    email,
+      orgId:     inv.org_id,
       email,
-      role:   inv.role,
+      role:      inv.role,
+      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
 
     // Notify the inviter asynchronously (fire-and-forget)
@@ -991,10 +993,12 @@ router.post("/organizations/:id/switch", async (req: Request, res: Response) => 
     const role = isOwner ? "owner" : memberRole;
 
     const sessionToken = await createSession({
-      userId: callerEmail,
-      orgId:  targetOrgId,
-      email:  callerEmail,
+      userId:    callerEmail,
+      orgId:     targetOrgId,
+      email:     callerEmail,
       role,
+      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
 
     logger.info(

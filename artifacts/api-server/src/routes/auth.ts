@@ -1341,11 +1341,13 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
   let sessionToken: string;
   try {
     sessionToken = await createSession({
-      userId:   sessionOrgId,
-      orgId:    sessionOrgId,
+      userId:    sessionOrgId,
+      orgId:     sessionOrgId,
       email,
-      role:     sessionRole,
-      userUuid: sessionUserUuid,
+      role:      sessionRole,
+      userUuid:  sessionUserUuid,
+      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
   } catch (sessErr) {
     logger.error({ err: sessErr instanceof Error ? sessErr.message : String(sessErr) }, "login-verify: createSession error");
@@ -1520,7 +1522,11 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
 
     // Issue a unique per-session token and set it as an HttpOnly cookie.
     // Direct OAuth login = org creator → owner role.
-    const sessionToken = await createSession({ userId: resolvedEmail, orgId: resolvedEmail, email: resolvedEmail, role: "owner" });
+    const sessionToken = await createSession({
+      userId: resolvedEmail, orgId: resolvedEmail, email: resolvedEmail, role: "owner",
+      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
+    });
     const isProd = isDeployedProd();
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
@@ -1611,7 +1617,11 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
 
     // Issue a unique per-session token and set it as an HttpOnly cookie.
     // Direct OAuth login = org creator → owner role.
-    const sessionToken = await createSession({ userId: resolvedEmail, orgId: resolvedEmail, email: resolvedEmail, role: "owner" });
+    const sessionToken = await createSession({
+      userId: resolvedEmail, orgId: resolvedEmail, email: resolvedEmail, role: "owner",
+      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
+    });
     const isProd = isDeployedProd();
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
@@ -1897,10 +1907,12 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
 
     // ── Step 5: create session ──────────────────────────────────────────────────
     const sessionToken = await createSession({
-      userId: resolvedEmail,
-      orgId:  resolvedEmail,
-      email:  resolvedEmail,
-      role:   "owner",
+      userId:    resolvedEmail,
+      orgId:     resolvedEmail,
+      email:     resolvedEmail,
+      role:      "owner",
+      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
     const isProd = isDeployedProd();
     res.cookie("fp_token", sessionToken, {
@@ -1936,7 +1948,11 @@ router.post("/auth/dev-session", async (req: Request, res: Response) => {
   }
   const { email = "test@flowpoint.pro", orgId = "default", role = "admin" } = (req.body as { email?: string; orgId?: string; role?: string }) || {};
   try {
-    const token = await createSession({ userId: email, orgId, email, role });
+    const token = await createSession({
+      userId: email, orgId, email, role,
+      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
+    });
     const isProd = isDeployedProd();
     res.cookie("fp_token", token, {
       httpOnly: true,
@@ -1968,7 +1984,11 @@ router.get("/auth/dev-login", async (req: Request, res: Response) => {
   const role     = (req.query["role"]   as string) || "admin";
   const redirect = (req.query["redirect"] as string) || "/api/dashboard/";
   try {
-    const token = await createSession({ userId: email, orgId, email, role });
+    const token = await createSession({
+      userId: email, orgId, email, role,
+      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
+    });
     res.cookie("fp_token", token, {
       httpOnly: true, secure: false, sameSite: "lax",
       maxAge: SESSION_TTL_MS, path: "/",

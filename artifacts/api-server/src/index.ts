@@ -59,7 +59,10 @@ async function main() {
       try {
         await client.query(`ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_consumed_at TIMESTAMPTZ`);
         await client.query(`ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_started_at  TIMESTAMPTZ`);
-        logger.info("[startup] billing trial columns ensured (trial_consumed_at, trial_started_at)");
+        // user_sessions: ip_address + user_agent needed for login history feature
+        await client.query(`ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS ip_address TEXT`);
+        await client.query(`ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_agent TEXT`);
+        logger.info("[startup] billing trial columns + user_sessions(ip+ua) ensured");
       } finally { client.release(); }
     }).catch((err: unknown) => {
       logger.warn({ err }, "[startup] billing-trial-columns step failed (non-fatal — columns may already exist)");

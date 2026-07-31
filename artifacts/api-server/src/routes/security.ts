@@ -38,40 +38,62 @@ router.get("/security/score", async (req: Request, res: Response): Promise<void>
   }
 });
 
-// ── GET /api/sessions — active sessions for current org ───────────────────────
+// ── GET /api/sessions — login history for current org ────────────────────────
 router.get("/sessions", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   try {
-    // Real session data from login audit log (if available)
+    // Resolve the current token from cookie or Authorization header.
+    // The auth system uses the cookie name "fp_token".
+    const currentToken: string =
+      ((req as unknown as { cookies?: Record<string, string> }).cookies?.["fp_token"]) ??
+      ((req.headers["authorization"] as string | undefined)?.replace(/^Bearer\s+/i, "") ?? "");
+
     const r = await orgDb(req)(
-      `SELECT id, email, provider, ip_address, user_agent, created_at, success
-       FROM sso_login_audits WHERE org_id=$1 AND success=true ORDER BY created_at DESC LIMIT 10`,
+      `SELECT token, email, ip_address, user_agent, created_at, expires_at
+       FROM user_sessions
+       WHERE org_id = $1
+       ORDER BY created_at DESC
+       LIMIT 15`,
       [orgId]
     ).catch(() => ({ rows: [] }));
 
-    const sessions = r.rows.map((row) => ({
-      id:        row.id,
-      device:    String(row.user_agent ?? "Appareil inconnu").slice(0, 60),
-      ip:        row.ip_address ? String(row.ip_address).replace(/\.\d+$/, ".***") : "IP inconnue",
-      date:      row.created_at ? new Date(String(row.created_at)).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—",
-      current:   false,
-      provider:  row.provider,
-    }));
-
-    // Always prepend the current session
-    sessions.unshift({
-      id:       "current",
-      device:   req.headers["user-agent"]?.slice(0, 60) ?? "Navigateur actuel",
-      ip:       "***",
-      date:     "Maintenant",
-      current:  true,
-      provider: "bearer",
+    const sessions = r.rows.map((row) => {
+      const rowToken = row["token"] as string | null | undefined;
+      const isCurrent = currentToken.length > 0 && !!rowToken && rowToken === currentToken;
+      const rawUa = String(row["user_agent"] ?? "");
+      const rawIp = String(row["ip_address"] ?? "");
+      const createdAt = row["created_at"] ? new Date(String(row["created_at"])) : null;
+      return {
+        id:       String(row["token"]).slice(0, 16),  // safe partial token as ID
+        event:    "Connexion réussie",
+        device:   rawUa ? rawUa.slice(0, 80) : "Appareil inconnu",
+        ip:       rawIp ? rawIp.replace(/(\d+)$/, "***") : "IP inconnue",
+        date:     createdAt ? createdAt.toISOString() : null,
+        isCurrent,
+        success:  true,
+      };
     });
+
+    // If current session is not already in the list (e.g. no ip/ua stored), prepend it
+    if (!sessions.some(s => s.isCurrent)) {
+      sessions.unshift({
+        id:       "current",
+        event:    "Session actuelle",
+        device:   req.headers["user-agent"]?.slice(0, 80) ?? "Navigateur actuel",
+        ip:       "***",
+        date:     new Date().toISOString(),
+        isCurrent: true,
+        success:  true,
+      });
+    }
 
     res.json({ sessions, count: sessions.length });
   } catch {
-    res.json({ sessions: [{ id: "current", device: "Appareil actuel", ip: "***", date: "Maintenant", current: true }], count: 1 });
+    res.json({
+      sessions: [{ id: "current", event: "Session actuelle", device: "Appareil actuel", ip: "***", date: new Date().toISOString(), isCurrent: true, success: true }],
+      count: 1,
+    });
   }
 });
 

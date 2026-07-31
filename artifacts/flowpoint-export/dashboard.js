@@ -1345,7 +1345,12 @@ async function loadData() {
     for (let _d = _startOffset; _d < 365; _d++) {
       if (activeDays.has(new Date(Date.now() - _d * 86400000).toISOString().slice(0, 10))) { _s++; } else { break; }
     }
-    if (_s > 0) { STATE.streak = _s; localStorage.setItem('fp:streak', String(_s)); }
+    if (_s > 0) {
+      STATE.streak = _s;
+      localStorage.setItem('fp:streak', String(_s));
+      // Persist computed streak to the server so it survives fresh browser sessions
+      apiAction('PATCH', '/api/me/prefs', { streak: _s }).catch(function() {});
+    }
   }
 
   // ── Phase 5: API module data — all parallel ───────────────────────────────────
@@ -1416,6 +1421,12 @@ async function loadData() {
       if (Array.isArray(r)) STATE.teamFiles = r;
       else if (r && Array.isArray(r.files)) STATE.teamFiles = r.files;
     }).catch(() => {}),
+    // Login history — real data from user_sessions (replaces empty sso_login_audits)
+    apiFetch('/api/sessions').then(function(r) {
+      if (r && Array.isArray(r.sessions) && r.sessions.length > 0) {
+        STATE.loginHistory = r.sessions;
+      }
+    }).catch(function() {}),
   ]);
 
   STATE.growthObjectives = await apiFetch('/api/growth/objectives').then(r => Array.isArray(r) ? r : []).catch(() => []);
@@ -9655,13 +9666,22 @@ function renderSettings() {
       {label:'API keys sécurisées',        done:true,     weight:15, desc:'Clé publique en lecture seule'},
     ]);
     const secScore = _secRaw?.score != null ? _secRaw.score : Math.round(secItems.reduce((s,i) => i.done ? s + i.weight : s, 0));
-    const sessions = [
-      {device:STATE.me?.user?.device||'Appareil actuel · Navigateur',   location:STATE.me?.location?.city?STATE.me.location.city+', '+( STATE.me?.location?.country||''):'Localisation inconnue', ip:'***.***.***.***', date:'Maintenant',   current:true  },
-      ...(PREVIEW_MODE ? [{device:'Autre appareil · Navigateur', location:STATE.me?.location?.city||'Localisation inconnue', ip:'***.***.***.***', date:'Il y a 6h', current:false}] : []),
-    ];
+    // Build sessions panel from real loginHistory when available, falling back to a safe default
     const _lhRaw = STATE.loginHistory || STATE.securityLogs || null;
-    const loginHistory = _lhRaw && Array.isArray(_lhRaw) && _lhRaw.length > 0
-      ? _lhRaw.map(l => ({ event: l.event||l.type||'Connexion', device: l.device||l.userAgent||'Appareil inconnu', ip: l.ip||'***.***.***.***', date: l.date||l.timestamp ? new Date(l.date||l.timestamp).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—', success: l.success !== false }))
+    const _lhList = _lhRaw && Array.isArray(_lhRaw) && _lhRaw.length > 0 ? _lhRaw : null;
+    const sessions = _lhList
+      ? _lhList.map(function(l) {
+          var isCur = !!(l.isCurrent || l.current);
+          var rawDate = l.date || l.timestamp || null;
+          var dateStr = isCur ? 'Maintenant' : (rawDate ? new Date(rawDate).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—');
+          return { device: l.device||l.userAgent||'Appareil inconnu', location: 'Localisation inconnue', ip: l.ip||'***.***.***.***', date: dateStr, current: isCur };
+        })
+      : [
+          {device:STATE.me?.user?.device||'Appareil actuel · Navigateur', location:STATE.me?.location?.city?STATE.me.location.city+', '+(STATE.me?.location?.country||''):'Localisation inconnue', ip:'***.***.***.***', date:'Maintenant', current:true},
+          ...(PREVIEW_MODE ? [{device:'Autre appareil · Navigateur', location:STATE.me?.location?.city||'Localisation inconnue', ip:'***.***.***.***', date:'Il y a 6h', current:false}] : []),
+        ];
+    const loginHistory = _lhList
+      ? _lhList.map(l => ({ event: l.event||l.type||'Connexion', device: l.device||l.userAgent||'Appareil inconnu', ip: l.ip||'***.***.***.***', date: (l.date||l.timestamp) ? new Date(l.date||l.timestamp).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—', success: l.success !== false, current: !!(l.isCurrent||l.current) }))
       : (PREVIEW_MODE ? [
           {event:'Connexion réussie',  device:'MacBook Pro · Chrome', ip:'82.65.xxx.xxx', date:'09/05 · 09h14', success:true  },
           {event:'Connexion réussie',  device:'iPhone 15 · Safari',   ip:'92.140.xxx.xxx',date:'08/05 · 18h42', success:true  },

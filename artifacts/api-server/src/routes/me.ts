@@ -323,11 +323,57 @@ router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
   if (!orgId) return;
   try {
     const r = await orgDb(req)(`SELECT streak, pinned, checklist, settings FROM user_prefs WHERE org_id=$1`, [orgId]);
-    if (r.rows[0]) {
-      res.json(r.rows[0]);
-    } else {
-      res.json({ streak: 0, pinned: {}, checklist: null, settings: null });
+    const row = r.rows[0] ?? { streak: 0, pinned: {}, checklist: null, settings: null };
+
+    // Compute streak server-side from activity_logs so the value is accurate
+    // even on a fresh browser session. Walk backward from today; if today has no
+    // events yet, start from yesterday so a perfect chain through yesterday still
+    // shows a non-zero streak.
+    // IMPORTANT: when the query succeeds, the computed value is authoritative (even
+    // if 0 — a missed day correctly resets the streak). Only fall back to the stored
+    // value when the query itself throws (DB unavailable, table missing, etc.).
+    let finalStreak: number;
+    let querySucceeded = false;
+    let computedStreak = 0;
+    try {
+      const actRes = await orgDb(req)(
+        `SELECT DISTINCT DATE(created_at AT TIME ZONE 'UTC') AS d
+         FROM activity_logs
+         WHERE org_id = $1
+           AND created_at >= NOW() - INTERVAL '365 days'
+         ORDER BY d DESC`,
+        [orgId]
+      );
+      querySucceeded = true;
+      if (actRes.rows.length > 0) {
+        const activeDays = new Set(actRes.rows.map((r2: Record<string, unknown>) => String(r2["d"]).slice(0, 10)));
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const startOffset = activeDays.has(todayStr) ? 0 : 1;
+        let s = 0;
+        for (let d = startOffset; d < 365; d++) {
+          const dayStr = new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10);
+          if (activeDays.has(dayStr)) { s++; } else { break; }
+        }
+        computedStreak = s;
+      }
+      finalStreak = computedStreak;
+    } catch {
+      // Query failed — fall back to stored value so UI is not broken during outages
+      finalStreak = typeof row["streak"] === "number" ? (row["streak"] as number) : 0;
     }
+
+    const storedStreak = typeof row["streak"] === "number" ? (row["streak"] as number) : 0;
+    if (querySucceeded && computedStreak !== storedStreak) {
+      // Persist the corrected value asynchronously — non-fatal if it fails
+      orgDb(req)(
+        `INSERT INTO user_prefs (org_id, streak, updated_at)
+         VALUES ($1, $2, now())
+         ON CONFLICT (org_id) DO UPDATE SET streak = $2, updated_at = now()`,
+        [orgId, finalStreak]
+      ).catch(() => {});
+    }
+
+    res.json({ ...row, streak: finalStreak });
   } catch {
     res.json({ streak: 0, pinned: {}, checklist: null, settings: null });
   }

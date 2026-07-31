@@ -1442,7 +1442,13 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS target_type TEXT`);
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS metadata    JSONB NOT NULL DEFAULT '{}'`);
 
-    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations, local_pack_history, overview_insights_cache, overview_insights_rl, pending_signups, activity_logs ready");
+    // ── user_sessions — self-heal ip_address + user_agent columns ──────────────
+    // These columns may not exist on older deployments (table was created before
+    // login history feature). Add idempotently so the INSERT in sessions.ts works.
+    await run(client, `ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS ip_address TEXT`);
+    await run(client, `ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_agent TEXT`);
+
+    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations, local_pack_history, overview_insights_cache, overview_insights_rl, pending_signups, activity_logs, user_sessions(ip+ua) ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
     throw err;
