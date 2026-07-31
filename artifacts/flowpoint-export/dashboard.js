@@ -8170,8 +8170,12 @@ function renderBilling() {
             ? 'Plan changé vers ' + _planLabel + ' ✓'
             : 'Plan mis à jour → ' + _planLabel + ' ✓';
           showToast('success', _msg);
-          // Purge ALL caches so the next render uses fresh server data only,
-          // never stale data from another session that might still be in memory.
+          // ── Immediate optimistic STATE update (before loadData completes) ──
+          // Prevents a flash of the old plan while the API round-trip is in flight.
+          if (STATE.me)      STATE.me.plan      = _planLabel;
+          if (STATE.billing) STATE.billing.plan = plan.toLowerCase();
+          render();
+          // ── Purge ALL caches so loadData fetches fresh server data only ──
           try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
           _apiFetchCache.clear();
           _apiFetchInFlight.clear();

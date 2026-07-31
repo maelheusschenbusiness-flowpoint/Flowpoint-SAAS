@@ -27,7 +27,12 @@ export interface IntensityConfig {
  *
  * OpenAI    : Conservateur = gpt-5-mini, Équilibré = gpt-5, Performant = gpt-5 (budget élargi)
  * Anthropic : Conservateur = claude-haiku-4-5, Équilibré = claude-sonnet-4-6, Performant = claude-opus-4-8
- * Gemini    : Conservateur = gemini-3-flash-preview, Équilibré = gemini-3.1-pro-preview, Performant = gemini-3.1-pro-preview
+ * Gemini    : Conservateur = gemini-3-flash-preview, Équilibré = gemini-3-flash-preview, Performant = gemini-3.1-pro-preview
+ *
+ * Gemini Flash strategy (2026-07-31 bench — 3 questions, direct SDK):
+ *   gemini-3-flash-preview : avgTTFT=2773ms avgTotal=3023ms  ← FASTEST flash
+ *   gemini-3.5-flash       : avgTTFT=3865ms avgTotal=4156ms  ← slightly slower
+ *   gemini-3.1-pro-preview : avgTTFT=7351ms avgTotal=7937ms  ← thinking model, Performant only
  */
 const MATRIX: Record<AIProviderId, Record<AIIntensityMode, IntensityConfig>> = {
   openai: {
@@ -41,9 +46,11 @@ const MATRIX: Record<AIProviderId, Record<AIIntensityMode, IntensityConfig>> = {
     Performant:   { model: "claude-opus-4-8",   maxTokens: 1400, contextDepth: "deep" },
   },
   gemini: {
-    Conservateur: { model: "gemini-3-flash-preview",   maxTokens: 500,  contextDepth: "shallow" },
-    Équilibré:    { model: "gemini-3.1-pro-preview",   maxTokens: 800,  contextDepth: "standard" },
-    Performant:   { model: "gemini-3.1-pro-preview",   maxTokens: 1400, contextDepth: "deep" },
+    // gemini-3-flash-preview wins on latency: TTFT ~2.8s, full ~3s on simple questions.
+    // gemini-3.1-pro-preview reserved for Performant: thinking model, TTFT ~7-10s.
+    Conservateur: { model: "gemini-3-flash-preview",  maxTokens: 500,  contextDepth: "shallow" },
+    Équilibré:    { model: "gemini-3-flash-preview",  maxTokens: 900,  contextDepth: "standard" },
+    Performant:   { model: "gemini-3.1-pro-preview",  maxTokens: 1400, contextDepth: "deep" },
   },
 };
 

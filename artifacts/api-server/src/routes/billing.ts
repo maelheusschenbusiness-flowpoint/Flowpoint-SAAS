@@ -1102,10 +1102,16 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         });
         // Mark trialConsumedAt so canStartTrial stays false even if the
         // subscription ID is later cleared.
-        await persistOrgData(orgId, {
-          plan,
-          trialConsumedAt: new Date().toISOString(),
-        }).catch(() => {});
+        try {
+          await persistOrgData(orgId, {
+            plan,
+            trialConsumedAt: new Date().toISOString(),
+          });
+        } catch (persistErr) {
+          // Non-fatal for Stripe-backed subs: Stripe is source of truth;
+          // the webhook will reconcile. Log and continue.
+          logger.error({ persistErr, orgId, plan }, "[Billing] persistOrgData failed after Stripe sub update (non-fatal)");
+        }
         logger.info(
           { plan, subId: sub.id, subStatus: sub.status, isTrialing, isUpgrade, isDowngrade, prorationBehavior, removedAddonKeys, orgId },
           "[Billing] plan change applied immediately",
@@ -1130,7 +1136,13 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
     //   shape the frontend expects for a direct upgrade.
     // — Upgrade or same level: route through embedded checkout as before.
     if (isDowngrade) {
-      await persistOrgData(orgId, { plan }).catch(() => {});
+      try {
+        await persistOrgData(orgId, { plan });
+      } catch (persistErr) {
+        logger.error({ persistErr, orgId, plan, currentPlan }, "[Billing] no-sub downgrade: persistOrgData failed");
+        res.status(500).json({ error: "Échec de la mise à jour du plan — veuillez réessayer." });
+        return;
+      }
       logger.info({ plan, orgId, currentPlan }, "[Billing] no-sub downgrade — plan updated in DB immediately");
       res.json({ ok: true, plan, upgraded: true, effective: "now", noSubDowngrade: true });
       return;

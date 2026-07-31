@@ -6512,6 +6512,8 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   transition: none;
 }
 @keyframes fpSpin { to { transform: rotate(360deg); } }
+/* Alias used by inline SVG spinners (animation:spin) — must live in CSS, not JS-injected */
+@keyframes spin { to { transform: rotate(360deg); } }
 .fp-psi-sparkline { display: inline-block; vertical-align: middle; }
 .fp-psi-history-chart { width: 100%; height: 120px; }
 

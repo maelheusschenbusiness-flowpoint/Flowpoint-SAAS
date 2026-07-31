@@ -108,7 +108,7 @@ export const PROVIDER_CAPABILITIES: Record<AIProviderId, ProviderCapabilities> =
   gemini: {
     id: "gemini",
     name: "Gemini",
-    defaultModel: "gemini-3.1-pro-preview",
+    defaultModel: "gemini-3-flash-preview",
     models: [
       "gemini-3.1-pro-preview",
       "gemini-3-flash-preview",
