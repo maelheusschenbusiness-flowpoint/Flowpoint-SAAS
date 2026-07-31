@@ -28504,7 +28504,11 @@ function renderSettingsAPI() {
         <div class="fp-card-title" style="margin-bottom:6px">Webhooks</div>
         <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:14px">Recevez des événements FlowPoint dans vos outils (Zapier, Make, n8n, Slack…)</div>
         ${[
-          ...(STATE.settings?.webhooks && Array.isArray(STATE.settings.webhooks) && STATE.settings.webhooks.length > 0
+          ...((()=>{
+            // Load saved webhooks from Integration Hub data (FP_DATA) if available
+            const _savedWH = (window.FP_DATA?.integrations?.integrations||[]).filter(i=>i.platform==='webhook'&&i.type==='outgoing');
+            return _savedWH.length > 0 ? _savedWH.map(i=>({event:(i.events&&i.events[0])||'*', url:i.endpoint_url||'', active:!!i.active})) : null;
+          })() || (STATE.settings?.webhooks && Array.isArray(STATE.settings.webhooks) && STATE.settings.webhooks.length > 0
             ? STATE.settings.webhooks
             : (PREVIEW_MODE
               ? [

@@ -253,6 +253,20 @@ router.post("/integrations/dispatch", requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
+// ── GET /api/integrations/webhooks ─ list saved outgoing webhooks ───────────────
+router.get("/integrations/webhooks", requireAdmin, async (req, res) => {
+  try {
+    const r = await db(req)(
+      `SELECT id, name, endpoint_url as url, events, active, created_at, updated_at
+       FROM automation_integrations
+       WHERE org_id=$1 AND type='outgoing' AND platform='webhook'
+       ORDER BY created_at DESC`,
+      [org(req)]
+    );
+    res.json({ webhooks: r.rows, count: r.rows.length });
+  } catch { res.json({ webhooks: [], count: 0 }); }
+});
+
 // ── POST /api/integrations/webhooks ─ save outgoing webhook ──────────────────
 router.post("/integrations/webhooks", requireAdmin, async (req, res) => {
   const { url, events = ["*"], headers = {} } = req.body as { url?: string; events?: string[]; headers?: Record<string, string> };

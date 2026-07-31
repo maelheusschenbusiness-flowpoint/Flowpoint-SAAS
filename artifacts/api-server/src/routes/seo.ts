@@ -203,6 +203,33 @@ router.post("/seo/generate-missions", canWrite, async (req, res) => {
 
 // ── GET /api/seo/llm-visibility ───────────────────────────────────────────────
 
+// ── GET /local-seo/status ────────────────────────────────────────────────────────
+router.get("/local-seo/status", async (req, res) => {
+  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  try {
+    // Check if GBP/GMB data or location is configured
+    const db = (req as Record<string, unknown>)["orgDb"] as ((sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>) | undefined;
+    if (!db) { res.json({ configured: false, source: "none" }); return; }
+    const locRow = await db(
+      `SELECT address, city, latitude, longitude FROM organizations WHERE id=$1`, [orgId]
+    ).catch(() => ({ rows: [] }));
+    const loc = locRow.rows[0] as Record<string, unknown> | undefined;
+    const hasLocation = !!(loc?.latitude || loc?.address);
+    // Check GBP tokens
+    const gbpRow = await db(
+      `SELECT COUNT(*) AS cnt FROM google_tokens WHERE org_id=$1`, [orgId]
+    ).catch(() => ({ rows: [{ cnt: 0 }] }));
+    const hasGBP = Number((gbpRow.rows[0] as Record<string, unknown>)?.cnt ?? 0) > 0;
+    res.json({
+      ok: true,
+      configured: hasLocation || hasGBP,
+      hasLocation,
+      hasGBP,
+      source: hasGBP ? "gbp" : hasLocation ? "manual" : "none",
+    });
+  } catch { res.json({ ok: false, configured: false, source: "error" }); }
+});
+
 // ── GET /local-seo/citations ──────────────────────────────────────────────────
 // Returns citation health data — structured from DataForSEO backlinks or fallback
 router.get("/local-seo/citations", async (req, res) => {
