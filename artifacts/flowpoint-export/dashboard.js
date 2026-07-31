@@ -8149,12 +8149,19 @@ function renderBilling() {
         }
         if (r && r.upgraded) {
           showToast('success', 'Plan mis à jour → ' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' ✓');
-          // Upgrade is immediate, but a trial remains a trial with its original
-          // trial_end. Reload from the authoritative API instead of fabricating
-          // an "active" status in the browser.
-          if (STATE.billing) { STATE.billing.plan = plan; }
-          if (STATE.me) { STATE.me.plan = plan; }
-          setTimeout(function() { navigate('billing'); navigateSub('plans'); }, 900);
+          // Purge ALL caches so the next render uses fresh server data only,
+          // never stale data from another session that might still be in memory.
+          try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+          _apiFetchCache.clear();
+          _apiFetchInFlight.clear();
+          // Reload from the server (authoritative), then navigate to plans sub-page.
+          loadData().then(function() {
+            navigate('billing');
+            navigateSub('plans');
+          }).catch(function() {
+            navigate('billing');
+            navigateSub('plans');
+          });
           return;
         }
         if (r && r.reactivation && r.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
