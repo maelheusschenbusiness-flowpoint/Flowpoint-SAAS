@@ -746,13 +746,16 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       const recipientName = orgData.firstName || orgData.email.split("@")[0] || "Utilisateur";
 
       if (billingReason === "subscription_update") {
-        // Plan changed → send plan-change specific email, not generic "payment confirmed"
+        // Plan changed → send plan-change specific email, not generic "payment confirmed".
+        // If amount_paid = 0 the user is on a trial — adjust message accordingly.
+        const isBillingTrial = amountCents === 0;
         mailer.sendPlanChanged({
           to:        orgData.email,
           name:      recipientName,
           plan:      orgData.plan,
           amountEur: amountCents > 0 ? Math.round(amountCents / 100) : undefined,
           periodEnd,
+          isTrial:   isBillingTrial,
         }).catch(err => logger.warn({ err, orgId }, "[Webhook] sendPlanChanged email failed"));
       } else {
         // subscription_cycle (renewal) or manual (add-on) → standard payment confirmed

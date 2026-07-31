@@ -361,23 +361,42 @@ async function sendPlanChanged(opts: {
   plan: string;
   amountEur?: number;
   periodEnd?: string;
+  /** true when amount_paid = 0 (user is on a trial — no charge occurred) */
+  isTrial?: boolean;
 }): Promise<MailResult> {
   const planLabel = { standard: "Standard", pro: "Pro", ultra: "Ultra" }[opts.plan.toLowerCase()] ?? opts.plan;
   const amount = opts.amountEur ? `${opts.amountEur}€` : "";
   const period = opts.periodEnd
     ? new Date(opts.periodEnd).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
     : "";
+  const isTrial = !!opts.isTrial;
+
+  const eyebrow      = isTrial ? "Essai mis à jour" : "Plan mis à jour";
+  const accentColor  = isTrial ? "#7c3aed" : "#2563EB";
+  const subject      = isTrial
+    ? `🔄 Ton essai FlowPoint a été mis à jour — plan ${planLabel}`
+    : `✅ Ton abonnement FlowPoint ${planLabel} est actif`;
+  const title        = isTrial
+    ? `Ton essai passe en ${planLabel}`
+    : `Ton plan ${planLabel} est actif`;
+  const body         = isTrial
+    ? `<p style="margin:0 0 16px;">Bonjour ${opts.name} ! Ton essai FlowPoint a été mis à jour vers le plan <strong>${planLabel}</strong>.</p>
+       <p style="margin:0 0 16px;">Aucun paiement n'a été prélevé — tu continues ton essai gratuit avec les fonctionnalités ${planLabel}.</p>
+       ${period ? `<p style="margin:0 0 16px;">Fin de l'essai prévue le : <strong>${period}</strong>.</p>` : ""}
+       <p style="margin:0;">Pour activer ton abonnement définitif, rends-toi dans la section Facturation de ton dashboard.</p>`
+    : `<p style="margin:0 0 16px;">Merci ${opts.name} ! Ton abonnement <strong>FlowPoint ${planLabel}</strong>${amount ? ` (${amount}/mois)` : ""} est maintenant actif.</p>
+       ${period ? `<p style="margin:0 0 16px;">Prochaine facturation : <strong>${period}</strong>.</p>` : ""}
+       <p style="margin:0;">Tu peux gérer ta facturation et tes options depuis le portail client.</p>`;
+
   return send({
     to: opts.to,
-    subject: `✅ Ton abonnement FlowPoint ${planLabel} est actif`,
+    subject,
     tag: "plan_changed",
     html: layout({
-      eyebrow: "Plan mis à jour",
-      accentColor: "#2563EB",
-      title: `Ton plan ${planLabel} est actif`,
-      body: `<p style="margin:0 0 16px;">Merci ${opts.name} ! Ton abonnement <strong>FlowPoint ${planLabel}</strong>${amount ? ` (${amount}/mois)` : ""} est maintenant actif.</p>
-             ${period ? `<p style="margin:0 0 16px;">Prochaine facturation : <strong>${period}</strong>.</p>` : ""}
-             <p style="margin:0;">Tu peux gérer ta facturation et tes options depuis le portail client.</p>`,
+      eyebrow,
+      accentColor,
+      title,
+      body,
       cta: { label: "Accéder à mon dashboard →", url: "https://app.flowpoint.pro" },
     }),
   });

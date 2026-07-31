@@ -4258,7 +4258,7 @@ function renderOverview() {
             <div style="font-size:13px;font-weight:700;margin-bottom:3px">IA Executive Summary — Pro requis</div>
             <div style="font-size:12px;color:var(--fp-text-muted)">Obtenez des analyses stratégiques IA, des prévisions d\'usage et des recommandations personnalisées.</div>
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button>
         </div>`
     }
 
@@ -4785,7 +4785,7 @@ function renderAudits() {
           <div class="fp-quota-track"><div class="fp-quota-fill" style="width:${mPct}%;background:var(--fp-accent)"></div></div>
           <div class="fp-quota-val">${mUsed} / ${mLimit===999?'∞':mLimit}</div>
         </div>
-        ${isStarter?`<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;padding:6px 12px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.22);border-radius:8px;font-size:11.5px;color:var(--fp-accent);cursor:pointer;white-space:nowrap" onclick="fpUpgradeOrCheckout('pro')" ">🚀 Passer Pro → +300 audits · IA Insights</div>`:''}
+        ${isStarter?`<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;padding:6px 12px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.22);border-radius:8px;font-size:11.5px;color:var(--fp-accent);cursor:pointer;white-space:nowrap" onclick="navigateSub('plans')">🚀 Passer Pro → +300 audits · IA Insights</div>`:''}
       </div>`;
     })()}
 
@@ -5180,7 +5180,7 @@ function renderMonitors() {
           <div style="text-align:center;padding:16px 0">
             <div style="font-size:28px;margin-bottom:8px">🔮</div>
             <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Anticipez les pannes avant qu\'elles arrivent</div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra →</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra →</button>
           </div>
         `}
       </div>
@@ -6197,7 +6197,7 @@ function renderReports() {
               ? "Votre business affiche une trajectoire positive sur 4 mois : score SEO +12 pts, santé business +14 pts. <strong>Point critique</strong> : la conversion reste votre maillon faible. Action recommandée : corriger le formulaire mobile en priorité."
               : "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.",
             ['Rapport complet PDF', 'Plan actions prioritaires', 'Partager au client'])
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📈</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Rapports Executive — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Synthèses business IA, recommandations stratégiques et analyse de performance executive.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📈</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Rapports Executive — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Synthèses business IA, recommandations stratégiques et analyse de performance executive.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -6816,7 +6816,7 @@ function renderReports() {
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🤖</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA Reporting Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports narratifs IA, previsions avancees, detection d\'anomalies et recommandations strategiques.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
           </div>`
       }
 
@@ -6902,7 +6902,7 @@ function renderReports() {
       : `<div style="padding:14px 16px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
           <div style="font-size:22px">📋</div>
           <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Synthèses IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports narratifs automatiques, analyse business et recommandations stratégiques générées par IA.</div></div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
         </div>`
     }
 
@@ -7144,7 +7144,7 @@ function renderLocalSEO() {
             <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">Stratège IA Local — Plan Ultra requis</div>
             <div style="font-size:12px;color:var(--fp-text-muted)">Accédez aux recommandations IA personnalisées, aux prévisions de croissance et à la détection automatique des opportunités locales non exploitées.</div>
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="navigateSub('plans')">Passer Ultra</button>
         </div>`
     }
 
@@ -8517,7 +8517,7 @@ function renderBilling() {
           })(),
           ['Ajouter des crédits', 'Voir prévisions 30j', 'Rapport usage complet']
           )
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Usage Analytics avancé — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions, alertes de seuil et analytics d\'utilisation détaillés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Usage Analytics avancé — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions, alertes de seuil et analytics d\'utilisation détaillés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -8835,7 +8835,7 @@ function renderBilling() {
                 <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${f.active ? '#22c55e' : 'rgba(255,255,255,0.12)'};${f.active ? 'box-shadow:0 0 6px rgba(34,197,94,0.4)' : ''}"></div>
               </div>
               <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.4;margin-bottom:8px">${escHtml(f.desc)}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="${f.locked ? `fpUpgradeOrCheckout('ultra')` : f.active ? `navigate('settings')` : `navigateSub('addons')`}">
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="${f.locked ? `navigateSub('plans')` : f.active ? `navigate('settings')` : `navigateSub('addons')`}">
                 ${f.locked ? '🔒 Ultra requis' : f.active ? '✓ Configurer' : 'Activer →'}
               </button>
             </div>
@@ -8875,7 +8875,7 @@ function renderBilling() {
             : "Usage sain — toutes les ressources sont sous contrôle. <strong>3 add-ons IA recommandés</strong> pour maximiser l\'efficacité de votre agence. Sans engagement, résiliable à tout moment.",
           ['Optimiser mon plan', 'Voir les add-ons IA', 'Comparer les plans']
         )
-      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">💡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Billing Insights — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Recommandations IA, prévisions d\'usage et optimisation de coûts automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>`
+      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">💡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Billing Insights — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Recommandations IA, prévisions d\'usage et optimisation de coûts automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
     }
 
     <!-- HERO KPI ROW -->
@@ -9880,7 +9880,7 @@ function renderSettings() {
             (()=>{ const _act=workflows.filter(w=>w.active).length; return _act>0 ? `${_act} automation${_act>1?'s':''} active${_act>1?'s':''}. Consultez les statistiques d'exécution ci-dessous ou créez un nouveau workflow à partir d'un template.` : 'Aucune automation active pour le moment. Créez votre premier workflow à partir d\'un template pour automatiser rapports, alertes et audits.'; })(),
             ['Créer un workflow', 'Voir les templates']
           )
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Automatisations avancées — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Workflows multi-étapes, IA automation et triggers intelligents.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Automatisations avancées — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Workflows multi-étapes, IA automation et triggers intelligents.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -11475,7 +11475,7 @@ function renderAI() {
         <div style="font-size:28px;margin-bottom:8px">🧠</div>
         <div style="font-size:15px;font-weight:800;margin-bottom:6px">IA Stratégiste — Plan Ultra requis</div>
         <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:14px">Analyse stratégique complète, plans d\'action ROI et intelligence prédictive.</div>
-        <button class="fp-btn fp-btn-primary" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra — 149€/mois →</button>
+        <button class="fp-btn fp-btn-primary" onclick="navigateSub('plans')">Passer Ultra — 149€/mois →</button>
       </div>` : ''}
 
       <div style="${!isUltra ? 'opacity:0.55;pointer-events:none' : ''}">
@@ -12295,7 +12295,7 @@ function renderAuditDetailPanel(audit) {
                 <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:7px">${issue.insight}</div>
                 ${isPro
                   ? `<div class="fp-audit-fix-box" style="margin-bottom:7px"><div style="font-size:10px;font-weight:700;color:#2563EB;margin-bottom:2px">✦ Fix IA</div><div style="font-size:11px;color:var(--fp-text-soft)">${issue.fix}</div></div>`
-                  : `<div style="padding:6px 8px;background:rgba(139,92,246,0.08);border:1px dashed rgba(139,92,246,0.3);border-radius:6px;font-size:10.5px;color:var(--fp-text-muted);margin-bottom:7px;cursor:pointer" onclick="fpUpgradeOrCheckout('pro')" ">🔒 Fix IA — plan Pro</div>`}
+                  : `<div style="padding:6px 8px;background:rgba(139,92,246,0.08);border:1px dashed rgba(139,92,246,0.3);border-radius:6px;font-size:10.5px;color:var(--fp-text-muted);margin-bottom:7px;cursor:pointer" onclick="navigateSub('plans')">🔒 Fix IA — plan Pro</div>`}
                 <div style="display:flex;gap:5px;flex-wrap:wrap">
                   <span class="fp-audit-meta-chip">📊 ${issue.impact}</span>
                   <span class="fp-audit-meta-chip">⏱ ${issue.time}</span>
@@ -18488,7 +18488,7 @@ function renderMonitorsPerformance() {
           <div style="text-align:center;padding:20px">
             <div style="font-size:32px;margin-bottom:10px">🌍</div>
             <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Monitoring depuis 6 régions mondiales</div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Activer Pro →</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Activer Pro →</button>
           </div>
         `}
       </div>
@@ -21192,7 +21192,7 @@ function renderCompetitor() {
           </div>
         </div>
       </div>
-      ` : `<div class="fp-upsell-banner fp-upsell-banner--blue"><div class="fp-upsell-text"><strong>Analyse qualité contenu</strong> disponible en Pro</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>`}
+      ` : `<div class="fp-upsell-banner fp-upsell-banner--blue"><div class="fp-upsell-text"><strong>Analyse qualité contenu</strong> disponible en Pro</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`}
     `;
   }
 
@@ -21486,7 +21486,7 @@ function renderCompetitor() {
         : `<div style="padding:14px 16px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🤖</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Analyse IA des menaces — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Détection automatique des menaces, forecasting et recommandations stratégiques.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
           </div>`
       }
 
@@ -21607,7 +21607,7 @@ function renderCompetitor() {
       : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
           <div style="font-size:24px">🤖</div>
           <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Stratège IA Concurrentiel — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Plans de bataille, forecasting, alertes menaces en temps réel et recommandations stratégiques personnalisées.</div></div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
         </div>`
     }
 
@@ -22018,7 +22018,7 @@ function renderConversion() {
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🔬</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">UX & Friction Lab — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rage clicks, dead clicks, heatmaps de friction et analyse comportementale avancée.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button>
           </div>`
       }
 
@@ -22185,7 +22185,7 @@ function renderConversion() {
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🎯</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">CTA Intelligence — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse de visibilité, CTR par CTA, performance mobile et suggestions IA.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button>
           </div>`
       }
 
@@ -22434,7 +22434,7 @@ function renderConversion() {
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🤖</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Stratège CRO IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Plans de bataille CRO personnalisés, forecasting, expériences intelligentes et recommandations stratégiques.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
           </div>`
       }
 
@@ -22591,7 +22591,7 @@ function renderConversion() {
       : `<div style="background:linear-gradient(135deg,rgba(37,99,235,0.08),rgba(139,92,246,0.06));border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
           <div style="font-size:24px">🤖</div>
           <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Stratège CRO IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Plans de conversion personnalisés, forecasting et recommandations business chaque semaine.</div></div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
         </div>`
     }
 
@@ -22953,7 +22953,7 @@ function renderAlertsCenter() {
               ? '<strong>' + incidents.length + ' incident' + (incidents.length > 1 ? 's' : '') + ' actif' + (incidents.length > 1 ? 's' : '') + '</strong> — action requise. ' + incidents.filter(i=>i.sev==='critical').length + ' critique' + (incidents.filter(i=>i.sev==='critical').length > 1 ? 's' : '') + ' en cours de traitement.'
               : 'Aucun incident actif — tous les sites sont opérationnels.',
             ['Plan de résolution IA', 'Rapport incident PDF', 'Alerter équipe'])
-        : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🚨</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Incident Response — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA des incidents, root cause analysis et plans de résolution automatiques.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🚨</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Incident Response — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA des incidents, root cause analysis et plans de résolution automatiques.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -23133,7 +23133,7 @@ function renderAlertsCenter() {
                 : `Performance surveillée sur ${monPerf.length} site${monPerf.length > 1 ? 's' : ''}.`,
             ['Diagnostiquer les performances', 'Optimiser Core Web Vitals', 'Rapport SLA']
           )
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Performance Alerts — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA des performances, alertes Core Web Vitals et monitoring SLA avancé.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Performance Alerts — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA des performances, alertes Core Web Vitals et monitoring SLA avancé.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -23419,7 +23419,7 @@ function renderAlertsCenter() {
             ? "Alerte concurrentielle" + (_lead&&_lead.sev==='critical'?' critique':'') + " : <strong>" + escHtml(_lead?.name||'Un concurrent') + " accélère fortement</strong> (+" + (_lead?.gain||0) + " positions). Risque perte Local Pack dans <strong>4-6 semaines</strong> sans contre-mesures. Action recommandée : renforcer GBP + publier contenu local immédiatement."
             : "Aucun concurrent configuré. Ajoutez des concurrents pour activer l'intelligence concurrentielle."),
             ['Plan contre-offensive IA', 'Ajouter un concurrent', 'Renforcer GBP'])
-        : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🎯</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Intelligence concurrentielle — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Alertes IA sur les mouvements concurrents, backlinks, contenu et local SEO.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🎯</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Intelligence concurrentielle — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Alertes IA sur les mouvements concurrents, backlinks, contenu et local SEO.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -23493,7 +23493,7 @@ function renderAlertsCenter() {
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🔮</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA Threat Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prédictions de risques, analyse de vulnérabilités business et alertes anticipées par IA.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
           </div>`
       }
 
@@ -23600,7 +23600,7 @@ function renderAlertsCenter() {
       : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
           <div style="font-size:22px">🛡️</div>
           <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">IA Alert Intelligence — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA des menaces, prédictions d\'incidents et plans de résolution automatiques.</div></div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
         </div>`
     }
 
@@ -23813,7 +23813,7 @@ function renderActivityFeed() {
       ${isPro
         ? aiBlock('Équipe active. <strong>' + _topMember + '</strong> · ' + _totalActs + ' événement(s) ce mois. Score SEO moyen : ' + (STATE.overview ? (STATE.overview.seoScore||STATE.overview.avgScore||0) : 0) + '/100.',
             ['Rapport équipe complet', 'Assigner des missions', 'Planifier une réunion'])
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">👥</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Analytics équipe — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Scores de productivité, contributions par membre et IA collaboration.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">👥</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Analytics équipe — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Scores de productivité, contributions par membre et IA collaboration.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -24114,7 +24114,7 @@ function renderActivityFeed() {
       ${isUltra
         ? aiBlock("Automations actives ce mois : <strong>28 mises à jour GBP exécutées</strong> sans intervention manuelle. " + aiInsights.length + " plans IA appliqués — résultats mesurables sur <strong>" + (STATE.audits||[]).length + " site" + ((STATE.audits||[]).length !== 1 ? 's' : '') + "</strong> du portfolio.",
             ['Créer une automatisation', 'Rapport IA complet', 'Voir les prévisions'])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🤖</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA & Automations — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Logs complets des actions IA, automatisations avancées et plans exécutés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🤖</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA & Automations — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Logs complets des actions IA, automatisations avancées et plans exécutés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -24308,7 +24308,7 @@ function renderActivityFeed() {
                 ? STATE.competitors.length + " concurrent" + (STATE.competitors.length > 1 ? "s" : "") + " suivi" + (STATE.competitors.length > 1 ? "s" : "") + " — les mouvements détectés apparaîtront ici au fil de la veille."
                 : "Aucun concurrent configuré. Ajoutez des concurrents pour activer la veille concurrentielle.")),
             ['Plan contre-offensive', 'Surveiller les backlinks', 'Rapport concurrent'])
-        : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🎯</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Veille concurrentielle — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Timeline des mouvements concurrents, alertes backlinks et opportunités marché.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🎯</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Veille concurrentielle — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Timeline des mouvements concurrents, alertes backlinks et opportunités marché.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -24395,7 +24395,7 @@ function renderActivityFeed() {
             ? "Performance opérationnelle solide — score global 71/100. <strong>Momentum en hausse</strong> depuis 3 semaines consécutives (+13 pts). Productivité équipe : " + (STATE.team&&STATE.team.length>0?escHtml(STATE.team[0].name||'Équipe')+' en tête':'activité en hausse') + ". Prévision : activité SEO +18% M+1."
             : "Les scores opérationnels et les prévisions seront calculés à partir de votre activité réelle (audits, monitors, missions).",
             ['Rapport ops complet', 'Optimiser la productivité', 'Voir les prévisions'])
-        : `<div style="background:linear-gradient(135deg,rgba(6,182,212,0.08),rgba(37,99,235,0.06));border:1px solid rgba(6,182,212,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🔬</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Ops Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions opérationnelles, scoring de productivité et intelligence stratégique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(6,182,212,0.08),rgba(37,99,235,0.06));border:1px solid rgba(6,182,212,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🔬</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Ops Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions opérationnelles, scoring de productivité et intelligence stratégique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -24526,7 +24526,7 @@ function renderActivityFeed() {
     ${isPro
       ? aiBlock((PREVIEW_MODE ? "Activité opérationnelle soutenue cette semaine — <strong>momentum en hausse +13 pts</strong>. " : "") + (STATE.audits&&STATE.audits.length>0?'Meilleur score portfolio : <strong>' + Math.max(...STATE.audits.map(a=>a.score||0)) + '/100</strong> sur ' + ((STATE.audits.reduce((b,a)=>(a.score||0)>(b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')) + '. ':(PREVIEW_MODE ? '' : 'Lancez vos premiers audits pour alimenter le fil d\'activité. ')) + (PREVIEW_MODE ? "Alerte concurrentielle active. <strong>38% des actions automatisées</strong> — objectif 60%." : liveFeed.length + " événement" + (liveFeed.length > 1 ? "s" : "") + " enregistré" + (liveFeed.length > 1 ? "s" : "") + " dans le workspace."),
           ['Rapport activité complet', 'Analyser la productivité', 'Voir les tendances'])
-      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">IA Activité Intelligence — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA de l\'activité, insights productivité et corrélations opérationnelles.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>`
+      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">IA Activité Intelligence — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA de l\'activité, insights productivité et corrélations opérationnelles.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
     }
 
     <!-- KPI CARDS -->
@@ -24828,7 +24828,7 @@ function renderDataExplorer() {
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🧬</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">User Behavior Lab — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Segmentation comportementale, flux utilisateur, scoring engagement et analyse de friction.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button>
           </div>`
       }
 
@@ -24944,7 +24944,7 @@ function renderDataExplorer() {
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">📊</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Dashboards personnalisés — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Créez et partagez des dashboards sur-mesure avec vos KPIs, vos widgets et votre branding.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button>
           </div>`
       }
 
@@ -25035,7 +25035,7 @@ function renderDataExplorer() {
         : `<div style="padding:14px 16px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🤖</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">IA Insights Center — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Insights stratégiques générés automatiquement, détection d\'anomalies et recommandations business.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
           </div>`
       }
 
@@ -25116,7 +25116,7 @@ function renderDataExplorer() {
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🔮</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Forecasting Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions trafic, conversion, revenue et ranking basées sur l\'IA et vos données historiques.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
           </div>`
       }
 
@@ -25218,7 +25218,7 @@ function renderDataExplorer() {
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">📋</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Exports avancés — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports PDF brandés, exports planifiés, white-label et générateur de rapports client.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button>
           </div>`
       }
 
@@ -25320,7 +25320,7 @@ function renderDataExplorer() {
       : `<div style="background:linear-gradient(135deg,rgba(6,182,212,0.07),rgba(37,99,235,0.06));border:1px solid rgba(6,182,212,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
           <div style="font-size:24px">🧠</div>
           <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA Business Intelligence — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Insights stratégiques automatiques, corrélations inter-métriques, anomalies et prévisions business.</div></div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
         </div>`
     }
 
@@ -25624,7 +25624,7 @@ function renderClientMode() {
       ${isPro
         ? aiBlock((()=>{const _nr=reports.filter(r=>r.status==='Non lu'||r.status==='non lu');const _np=reports.filter(r=>r.shared).length;if(!reports.length)return 'Aucun rapport généré ce mois. Créez votre premier rapport pour partager la progression avec vos clients.';return reports.length+' rapport(s) générés ce mois — <strong>'+_np+' partagés'+(_nr.length?' · '+_nr.length+' non lu(s)':'')+' </strong>.'+ (_nr.length ? ' Envoyez une mise à jour aux clients n\'ayant pas consulté leur rapport.' : ' Bonne progression — tous les rapports ont été consultés.');})(),
             ['Générer un rapport', 'Envoyer mise à jour', 'Planifier envoi auto'])
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📄</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Reporting avancé — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports white-label, envois automatiques et tracking d\'engagement client.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📄</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Reporting avancé — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports white-label, envois automatiques et tracking d\'engagement client.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -25937,7 +25937,7 @@ function renderClientMode() {
       ${isUltra
         ? aiBlock((()=>{const _highRisk=engagementData.sort((a,b)=>(b.churnRisk||0)-(a.churnRisk||0))[0];const _topEngage=engagementData.sort((a,b)=>(b.engScore||0)-(a.engScore||0))[0];if(!engagementData.length)return 'Ajoutez des clients pour activer l\'analyse engagement IA.';return 'Analyse engagement client IA. '+(_highRisk&&_highRisk.churnRisk>40?'<strong>'+escHtml(_highRisk.name||_highRisk.client||'Client')+' — risque churn '+(_highRisk.churnRisk||'?')+'%</strong> : action urgente. ':'')+(_topEngage&&_topEngage.churnRisk<20?escHtml(_topEngage.name||_topEngage.client||'Client')+' : engagement exemplaire '+(_topEngage.engScore||'?')+'%.':'');})(),
             ['Plan rétention', 'Rapport engagement', 'Stratégie satisfaction'])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Analytics & Engagement — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Détection churn IA, scoring engagement client et analyse relationnelle avancée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Analytics & Engagement — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Détection churn IA, scoring engagement client et analyse relationnelle avancée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -26040,7 +26040,7 @@ function renderClientMode() {
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:14px">
               ${['🎨 Branding white-label','🌐 Domaine personnalisé','📄 Templates agence','👥 Gestion multi-clients','🤖 IA relationnelle','📊 Analytics agence'].map(f => `<div style="font-size:11px;padding:8px 12px;background:var(--fp-inner-card);border-radius:8px;border:1px solid rgba(255,255,255,0.07);color:var(--fp-text-soft)">${f}</div>`).join('')}
             </div>
-            <button class="fp-btn fp-btn-primary" onclick="fpUpgradeOrCheckout('ultra')" " style="width:100%">Débloquer Agency Lab — Passer Ultra →</button>
+            <button class="fp-btn fp-btn-primary" onclick="navigateSub('plans')" style="width:100%">Débloquer Agency Lab — Passer Ultra →</button>
           </div>`
       }
 
@@ -26070,7 +26070,7 @@ function renderClientMode() {
             <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:4px">${f.icon} ${escHtml(f.label)}</div>
             <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:6px">${escHtml(f.val)}</div>
             ${f.locked
-              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="fpUpgradeOrCheckout('ultra')" ">🔒 Ultra</button>`
+              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="navigateSub('plans')">🔒 Ultra</button>`
               : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;width:100%;opacity:0.55;cursor:not-allowed" title="Personnalisation bientôt disponible">Modifier (bientôt)</button>`}
           </div>`).join('')}
         </div>
@@ -26135,7 +26135,7 @@ function renderClientMode() {
     ${isUltra
       ? aiBlock((()=>{if(!clients.length)return 'Aucun client configuré. Ajoutez vos clients pour accéder à l\'intelligence client IA.';const _sat=Math.round(clients.reduce((s,c)=>s+(c.satisfaction||c.seoScore||0),0)/clients.length);const _risk=clients.filter(c=>c.health==='critique'||c.health==='attention');return clients.length+' client(s) actif(s). Score satisfaction global <strong>'+_sat+'/100</strong>.'+(_risk.length?'Alerte : <strong>'+escHtml(_risk[0].name)+'</strong> nécessite une action immédiate.':'Tous les clients sont en bonne santé.')})(),
           ['Plan rétention clients', 'Rapport agence complet', 'Générer rapport executive'])
-      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🤝</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Client Intelligence IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse satisfaction, détection churn IA et stratégie relationnelle automatique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra</button></div>`
+      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🤝</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Client Intelligence IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse satisfaction, détection churn IA et stratégie relationnelle automatique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button></div>`
     }
 
     <!-- KPI CARDS -->
@@ -26338,7 +26338,7 @@ function renderMonitorsSLA() {
           <div style="text-align:center;padding:20px">
             <div style="font-size:32px;margin-bottom:10px">🔮</div>
             <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Anticipez les violations SLA avant qu\'elles surviennent</div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer Ultra →</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra →</button>
           </div>
         `}
       </div>
@@ -26466,7 +26466,7 @@ function renderMonitorsSLA() {
         <div style="text-align:center;padding:20px">
           <div style="font-size:32px;margin-bottom:10px">🤖</div>
           <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Testez automatiquement login, checkout, formulaires — 24/7</div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Activer Ultra →</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Activer Ultra →</button>
         </div>
       `}
     </div>
@@ -27804,7 +27804,7 @@ function renderConversionHeatmap() {
     <div class="fp-section-header">
       <div><h1>Heatmap & Analyse UX</h1><div class="fp-section-sub">Comportement visiteurs · Sessions enregistrées · Zones de friction</div></div>
       <div class="fp-section-actions">
-        <button class="fp-upgrade-btn ultra" onclick="fpUpgradeOrCheckout('ultra')" ">Ultra : Heatmap live</button>
+        <button class="fp-upgrade-btn ultra" onclick="navigateSub('plans')">Ultra : Heatmap live</button>
       </div>
     </div>
     ${aiBlock(PREVIEW_MODE ? '<strong>68% des visiteurs quittent la page avant le CTA</strong>. La zone la plus cliquée : votre numéro de téléphone. Recommandation : remonter le CTA d\'appel au-dessus de la ligne de flottaison.' : 'Connectez vos analytics et vos heatmaps pour analyser le comportement visiteurs et détecter les zones de friction.',['Créer la mission CTA','Analyser le parcours'])}
@@ -27866,7 +27866,7 @@ function renderConversionHeatmap() {
         Visualisez en temps réel où cliquent vos visiteurs, leurs mouvements de souris et zones de friction — page par page.
       </div>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('ultra')" ">Passer à Ultra</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer à Ultra</button>
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="localStorage.setItem('fp:notify-heatmap','1');this.disabled=true;this.style.opacity='0.6';this.textContent='✓ Vous serez notifié'">Me notifier</button>
       </div>
     </div>
@@ -34543,7 +34543,7 @@ function renderPermissions() {
       ${isUltra ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showCreateRoleModal()">+ Créer un rôle</button>` : ''}
     </div>
 
-    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Permissions avancées — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rôles personnalisés, matrice de permissions et audit de sécurité.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>` : ''}
+    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Permissions avancées — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rôles personnalisés, matrice de permissions et audit de sécurité.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>` : ''}
 
     ${aiBlock(
       `${stats.totalRoles||0} rôles configurés dont ${stats.customRoles||0} personnalisés. ${stats.securityAlerts>0?`<strong>${stats.securityAlerts} alerte${stats.securityAlerts>1?'s':''} sécurité</strong> dans les 24h.`:' Aucune alerte sécurité. Accès nominal.'}`,
@@ -35310,7 +35310,7 @@ function renderSettingsSSO() {
       ${isUltra ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showSSOProviderModal()">+ Configurer SSO</button>` : ''}
     </div>
 
-    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">SSO SAML — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Authentification Google Workspace (Pro) et SAML/Okta/Azure (Ultra).</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>` : ''}
+    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">SSO SAML — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Authentification Google Workspace (Pro) et SAML/Okta/Azure (Ultra).</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>` : ''}
 
     ${aiBlock(
       `${stats.activeProviders || 0} provider${(stats.activeProviders || 0) > 1 ? 's' : ''} SSO actif${(stats.activeProviders || 0) > 1 ? 's' : ''}. ${stats.failedLogins || 0} tentative${(stats.failedLogins || 0) > 1 ? 's' : ''} échouée${(stats.failedLogins || 0) > 1 ? 's' : ''} détectée${(stats.failedLogins || 0) > 1 ? 's' : ''} (dernière heure). ${stats.suspiciousLogins > 0 ? '<strong>⚠️ ' + stats.suspiciousLogins + ' connexion(s) suspecte(s)</strong>' : 'Aucune activité suspecte.'}`,
