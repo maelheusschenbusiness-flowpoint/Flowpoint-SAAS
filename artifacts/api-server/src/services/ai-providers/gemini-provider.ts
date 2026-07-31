@@ -29,10 +29,16 @@ export class GeminiProvider {
         maxOutputTokens: opts.maxTokens ?? 8192,
         ...(opts.json ? { responseMimeType: "application/json" } : {}),
         ...(systemInstruction ? { systemInstruction } : {}),
+        // Disable thinking mode on gemini-2.5+ to avoid empty text responses
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 
-    const text = resp.text ?? "";
+    // Fallback: extract text from parts when resp.text() returns empty (thinking mode)
+    const text = resp.text || resp.candidates?.[0]?.content?.parts
+      ?.filter((p: { thought?: boolean; text?: string }) => !p.thought)
+      .map((p: { text?: string }) => p.text ?? "")
+      .join("") || "";
     const usage = resp.usageMetadata ?? { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 };
 
     return {
@@ -60,6 +66,8 @@ export class GeminiProvider {
         maxOutputTokens: opts.maxTokens ?? 8192,
         ...(opts.json ? { responseMimeType: "application/json" } : {}),
         ...(systemInstruction ? { systemInstruction } : {}),
+        // Disable thinking mode on gemini-2.5+ to avoid empty delta chunks
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 

@@ -1720,7 +1720,7 @@ function svgIcon(name) {
     edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
     zap: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
     send: '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
-    bot: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/>',
+    bot: '<path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 0 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1 0-2h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/>',
     check: '<polyline points="20 6 9 17 4 12"/>',
     x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
     search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
@@ -11519,7 +11519,7 @@ function renderAI() {
         </h1>
         <div class="fp-section-sub">Plan ${plan} · Réinitialisation le ${resetDate} · ${isUnlimited ? '10 000 000 AI Credits/mois (prioritaire)' : fmtNum(remaining) + ' AI Credits restants'}</div></div>
         <div class="fp-section-actions">
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpGoToPricing()">Upgrader le plan →</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing');setTimeout(function(){navigateSub('plans');},50)">Upgrader le plan →</button>
         </div>
       </div>
 
@@ -11602,7 +11602,7 @@ function renderAI() {
           </div>
           <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);text-align:center">
             <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">Ou passer au plan supérieur pour plus d\'AI Credits inclus</div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%" onclick="fpGoToPricing()" ${isUltra ? 'disabled' : ''}>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%" onclick="navigate('billing');setTimeout(function(){navigateSub('plans');},50)" ${isUltra ? 'disabled' : ''}>
               ${isUltra ? '✓ Ultra — 10 000 000 AI Credits/mois' : plan === 'Pro' ? 'Passer Ultra — 10 M AI Credits/mois →' : 'Passer Pro — 500k AI Credits/mois →'}
             </button>
           </div>
@@ -12074,6 +12074,10 @@ async function sendAIMessage(text) {
   STATE.aiLoading = false;
   saveAIHistory();
   updateAIUI();
+  // Refresh AI credit counter after each completed chat so usage % stays live
+  loadAICredits().then(function() {
+    if (STATE.currentSection === 'ai' && STATE.subRoute === 'usage') render();
+  }).catch(function(){});
 }
 
 function updateAIUI() {
