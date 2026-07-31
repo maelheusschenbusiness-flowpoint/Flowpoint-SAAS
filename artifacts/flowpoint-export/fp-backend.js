@@ -34,6 +34,30 @@
   var _fpInFlight = {};       // GET dedup: path → Promise (mirrors _apiFetchInFlight)
   var _fpCache    = {};       // GET cache: path → { data, ts } (mirrors _apiFetchCache)
 
+  // ── Session-reset debounce guard (mirrors dashboard.js) ─────────────────────
+  var _fp401BackgroundCount = 0;
+  var _fp401ConfirmTimer    = null;
+
+  function _confirmSessionExpiredBackend() {
+    fetch('/api/me', { credentials: 'include' })
+      .then(function(r) {
+        var ts = new Date().toISOString();
+        if (r.status === 401) {
+          console.warn('[FP-BACKEND-AUTH]', ts, 'Confirmation /api/me → 401. Session expired. Redirecting.');
+          _fp401BackgroundCount = 0;
+          _clearAuth();
+          window.location.href = '/login.html';
+        } else {
+          console.warn('[FP-BACKEND-AUTH]', ts, 'Confirmation /api/me →', r.status, '— session still valid, ignoring background 401.');
+          _fp401BackgroundCount = 0;
+        }
+      })
+      .catch(function(e) {
+        console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Confirmation /api/me network error:', e.message, '— treating as transient.');
+        _fp401BackgroundCount = 0;
+      });
+  }
+
   function _clearAuth() {
     try {
       ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(function(k) {
@@ -75,10 +99,27 @@
     var promise = fetch(_path, fetchOpts)
       .then(function (res) {
         if (res.status === 401) {
+          var _ts = new Date().toISOString();
+          if (opts && opts.backgroundPoll) {
+            _fp401BackgroundCount++;
+            console.warn('[FP-BACKEND-AUTH]', _ts, 'Background poll 401 on', path,
+              '— count:', _fp401BackgroundCount, '— scheduling confirmation in 3s.');
+            if (!_fp401ConfirmTimer) {
+              _fp401ConfirmTimer = setTimeout(function() {
+                _fp401ConfirmTimer = null;
+                _confirmSessionExpiredBackend();
+              }, 3000);
+            }
+            return null;
+          }
+          console.warn('[FP-BACKEND-AUTH]', _ts, 'Foreground 401 on', path, '— clearing session and redirecting.');
+          _fp401BackgroundCount = 0;
+          if (_fp401ConfirmTimer) { clearTimeout(_fp401ConfirmTimer); _fp401ConfirmTimer = null; }
           _clearAuth();
           window.location.href = '/login.html';
           return null;
         }
+        if (!(opts && opts.backgroundPoll)) { _fp401BackgroundCount = 0; }
         if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
         return res.json();
       })

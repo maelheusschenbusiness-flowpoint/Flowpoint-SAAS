@@ -382,6 +382,39 @@ function getOverviewApiPath() {
 const _apiFetchInFlight = new Map();
 const _apiFetchCache    = new Map();
 const _API_CACHE_TTL    = 30_000;
+
+// ── Session-reset debounce guard ──────────────────────────────────────────────
+// A single transient 401 from a background poll (audit, activity, GA4 live)
+// must NOT immediately destroy the session.  We count background 401s and only
+// redirect after a confirmation fetch to /api/me also returns 401.
+var _401BackgroundCount = 0;
+var _401ConfirmTimer    = null;
+
+function _confirmSessionExpired() {
+  // Use plain fetch (not apiFetch) to avoid recursion through this handler.
+  fetch('/api/me', { credentials: 'include' })
+    .then(function(r) {
+      var ts = new Date().toISOString();
+      if (r.status === 401) {
+        console.warn('[FP-AUTH]', ts, 'Confirmation /api/me → 401. Session truly expired. Redirecting.');
+        _401BackgroundCount = 0;
+        ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_tab_uid'].forEach(function(k) {
+          try { localStorage.removeItem(k); } catch(_) {}
+        });
+        try { sessionStorage.clear(); } catch(_) {}
+        window.location.href = '/login.html';
+      } else {
+        console.warn('[FP-AUTH]', ts, 'Confirmation /api/me →', r.status, '— session still valid, ignoring background 401.');
+        _401BackgroundCount = 0;
+      }
+    })
+    .catch(function(e) {
+      // Network error on confirmation — session likely valid; reset counter.
+      console.warn('[FP-AUTH]', new Date().toISOString(), 'Confirmation /api/me network error:', e.message, '— treating as transient.');
+      _401BackgroundCount = 0;
+    });
+}
+
 async function apiFetch(path, opts = {}) {
   const isGet = !opts.method || opts.method === 'GET';
   if (isGet && opts.force) { _apiFetchCache.delete(path); _apiFetchInFlight.delete(path); }
@@ -422,11 +455,33 @@ async function apiFetch(path, opts = {}) {
       credentials: 'include',
     });
     if (res.status === 401) {
+      const _ts = new Date().toISOString();
+      if (opts.backgroundPoll) {
+        // Background poll 401 — do NOT redirect immediately.
+        // A single transient 401 (network hiccup, rolling deploy, JWT clock drift)
+        // must not destroy a valid session.  Confirm via /api/me before acting.
+        _401BackgroundCount++;
+        console.warn('[FP-AUTH]', _ts, 'Background poll 401 on', path,
+          '— count:', _401BackgroundCount, '— scheduling confirmation fetch in 3s.');
+        if (!_401ConfirmTimer) {
+          _401ConfirmTimer = setTimeout(function() {
+            _401ConfirmTimer = null;
+            _confirmSessionExpired();
+          }, 3000);
+        }
+        return null;
+      }
+      // Foreground 401 — session is definitively invalid; clear and redirect.
+      console.warn('[FP-AUTH]', _ts, 'Foreground 401 on', path, '— clearing session and redirecting.');
+      _401BackgroundCount = 0;
+      if (_401ConfirmTimer) { clearTimeout(_401ConfirmTimer); _401ConfirmTimer = null; }
       ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_tab_uid'].forEach(k => localStorage.removeItem(k));
       try { sessionStorage.clear(); } catch(_) {}
       window.location.href = '/login.html';
       return null;
     }
+    // Any successful foreground response resets the background 401 counter.
+    if (!opts.backgroundPoll) { _401BackgroundCount = 0; }
     if (!res.ok) {
       if (isGet) _apiFetchInFlight.delete(path);
       throw new Error(`HTTP ${res.status}`);
@@ -1045,6 +1100,8 @@ async function loadData() {
         if (_cp.ga4Status)     { STATE.ga4Status = _cp.ga4Status; if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.ga4 = _cp.ga4Status; }
         if (_cp.gsc)             STATE.gsc             = _cp.gsc;
         if (_cp.googleConnected) STATE.googleConnected = _cp.googleConnected;
+        // Mark cache as restored so the 401 handler knows stale state is present.
+        STATE._cacheRestored = true;
         // Cache restores partial STATE — do NOT render yet; wait for full live data
         // (keywords, competitors, missions, connectors, activityEvents are not in cache)
       }
@@ -1054,6 +1111,9 @@ async function loadData() {
   let me = null, overview = null, audits = null, monitors = null, reports = null, team = null;
   try {
     me = await apiFetch('/api/me');
+    // /api/me succeeded — clear the stale-cache flag and reset background 401 counter.
+    STATE._cacheRestored = false;
+    _401BackgroundCount = 0;
   } catch (e) {
     if (PREVIEW_MODE) {
       console.warn('[FP] Preview mode: using mock /api/me', e);
@@ -15574,8 +15634,8 @@ async function init() {
     setInterval(async function _activityPoll() {
       try {
         const [actRes, notifRes] = await Promise.allSettled([
-          apiFetch('/api/activity'),
-          apiFetch('/api/notifications'),
+          apiFetch('/api/activity',      { backgroundPoll: true }),
+          apiFetch('/api/notifications', { backgroundPoll: true }),
         ]);
         if (actRes.status === 'fulfilled' && Array.isArray(actRes.value)) {
           // Merge new events from server (prepend anything newer than latest known)
@@ -28537,7 +28597,7 @@ window._fpLiveAPI = {
     if (window.STATE?.subRoute !== 'live') { this.stopPolling(); return; }
     window._fpLiveState = { loading: !window._fpLiveState.loaded, loaded: window._fpLiveState.loaded, data: window._fpLiveState.data || null, error: null };
     try {
-      const res = await apiFetch('/api/live/realtime');
+      const res = await apiFetch('/api/live/realtime', { backgroundPoll: true });
       if (!res?.ok) throw new Error(res?.error || 'Erreur realtime');
       const rtData = res.realtime || { activeUsers: 0, rows: [] };
       window._fpLiveState = { loading: false, loaded: true, data: { realtime: rtData, connected: res.connected, source: 'ga4' }, error: null };
@@ -31565,7 +31625,7 @@ async function pollAudits() {
   if (auditPolling.inFlight) return;
   auditPolling.inFlight = true;
   try {
-    var fresh = await apiFetch('/api/audits', { force: true });
+    var fresh = await apiFetch('/api/audits', { force: true, backgroundPoll: true });
     if (!Array.isArray(fresh)) return;
     var prev = Array.isArray(STATE && STATE.audits) ? STATE.audits : [];
     var changed = fresh.some(function(a) {
