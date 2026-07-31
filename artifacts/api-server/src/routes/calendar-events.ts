@@ -33,6 +33,26 @@ router.get("/calendar-events", async (req: Request, res: Response) => {
   }
 });
 
+router.get("/calendar-events/:id", async (req: Request, res: Response) => {
+  try {
+    const r = await (req as OrgReq).orgDb(
+      `SELECT id, title, site, type, date, start_time, duration, notes, created_at
+       FROM calendar_events WHERE id=$1 LIMIT 1`,
+      [req.params.id]
+    );
+    if (!r.rows[0]) { res.status(404).json({ error: "Event not found" }); return; }
+    const row = r.rows[0];
+    res.json({
+      id: row.id, title: row.title, site: row.site || "",
+      type: row.type || "Autre", date: row.date || "",
+      startTime: row.start_time || "", duration: row.duration || 60,
+      notes: row.notes || "",
+    });
+  } catch {
+    res.status(500).json({ error: "Failed to fetch event" });
+  }
+});
+
 router.post("/calendar-events", canWrite, async (req: Request, res: Response) => {
   const { title, site, type, date, startTime, duration, notes } = req.body as {
     title?: string; site?: string; type?: string; date?: string;

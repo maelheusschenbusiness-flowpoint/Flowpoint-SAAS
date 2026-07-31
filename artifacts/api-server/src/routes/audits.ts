@@ -218,6 +218,31 @@ router.get("/audits/:id", async (req: Request, res: Response) => {
   }
 });
 
+// ── PATCH /audits/:id ─────────────────────────────────────────────────────────
+router.patch("/audits/:id", canWrite, async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const { name, notes } = req.body as { name?: string; notes?: string };
+  try {
+    const updates: string[] = [];
+    const params: unknown[] = [];
+    if (name !== undefined)  { params.push(name);  updates.push(`name=$${params.length}`); }
+    if (notes !== undefined) { params.push(notes); updates.push(`notes=$${params.length}`); }
+    if (updates.length === 0) { res.json({ ok: true }); return; }
+    params.push(req.params.id);
+    params.push(orgId);
+    const r = await req.orgDb(
+      `UPDATE audits SET ${updates.join(", ")} WHERE id=$${params.length - 1} AND org_id=$${params.length} RETURNING *`,
+      params
+    );
+    if (!r.rows[0]) { res.status(404).json({ error: "Audit not found" }); return; }
+    res.json(auditToPublic(r.rows[0]));
+  } catch (err) {
+    logger.error({ err }, "[audits] PATCH failed");
+    res.status(500).json({ error: "Failed to update audit" });
+  }
+});
+
 // ── DELETE /audits/:id ────────────────────────────────────────────────────────
 // RLS ensures only the org's own audits can be deleted.
 
