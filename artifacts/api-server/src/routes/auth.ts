@@ -1644,6 +1644,47 @@ router.get("/auth/session", async (req: Request, res: Response) => {
   });
 });
 
+// ── Session restore ────────────────────────────────────────────────────────────
+// Returns the raw fp_token from the cookie so the browser client can write it
+// into sessionStorage (per-tab isolation).  Needed when the user opens a new
+// dashboard tab (bookmark / address-bar navigation) where sessionStorage is empty
+// but the HttpOnly cookie already carries a valid session.
+// No requireAuth wrapper — this IS the auth-bootstrap call.
+router.post("/auth/session-restore", async (req: Request, res: Response) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cookieToken: string | undefined = (req as any).cookies?.fp_token;
+  const authHeader = req.headers["authorization"] ?? "";
+  const bearerToken =
+    typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7).trim()
+      : undefined;
+  const provided = cookieToken || bearerToken;
+
+  if (!provided) {
+    res.status(401).json({ error: "no_session" });
+    return;
+  }
+  const session = await getSession(provided);
+  if (!session) {
+    // Stale / expired — clear the cookie so the browser doesn't keep retrying
+    const isProd = isDeployedProd();
+    if (cookieToken) {
+      res.clearCookie("fp_token", {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? "none" : "lax",
+        path: "/",
+      });
+    }
+    res.status(401).json({ error: "session_expired" });
+    return;
+  }
+  // Return the token so the client can store it in sessionStorage.
+  // The cookie remains the primary auth mechanism; sessionStorage is a per-tab
+  // override that takes priority over the shared cookie in apiFetch().
+  res.json({ token: provided, email: session.email, orgId: session.orgId });
+});
+
 router.post("/auth/logout", async (req: Request, res: Response) => {
   // Resolve the session token from cookie first (primary), then Bearer header
   // (fallback for API clients and test harnesses that cannot set HttpOnly cookies).

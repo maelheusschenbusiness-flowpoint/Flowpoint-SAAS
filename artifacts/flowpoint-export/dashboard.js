@@ -1107,6 +1107,33 @@ async function loadData() {
       }
     }
   } catch(_) {}
+  // ── Phase 0.5: Session restore — per-tab token bootstrap ────────────────────
+  // When a tab is opened by typing the URL, from a bookmark, or by duplicating
+  // a tab in some browsers, sessionStorage is empty.  Without a per-tab token
+  // apiFetch() falls back to the shared HttpOnly cookie, which always reflects
+  // the LAST account that logged in — causing all tabs to show the same user.
+  // Fix: ask the server to echo back the cookie's token so we can store it in
+  // sessionStorage.  Each tab then sends its OWN Bearer and stays on its own
+  // account across refreshes.
+  if (!sessionStorage.getItem('fp_session_token')) {
+    try {
+      const _sr = await fetch('/api/auth/session-restore', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (_sr.ok) {
+        const _srData = await _sr.json().catch(() => null);
+        if (_srData && _srData.token) {
+          sessionStorage.setItem('fp_session_token', _srData.token);
+          if (!sessionStorage.getItem('fp_tab_uid')) {
+            sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
+          }
+        }
+      }
+    } catch(_srErr) { /* non-fatal — cookie auth continues as before */ }
+  }
+
   // ── Phase 1: Critical identity — /api/me is mandatory; everything else is resilient ──
   let me = null, overview = null, audits = null, monitors = null, reports = null, team = null;
   try {
@@ -3833,7 +3860,7 @@ function renderSidebarStatus() {
           <div class="fp-user-name" style="font-size:14px;font-weight:700">${escHtml(me.firstName)} ${escHtml(me.lastName||'H.')}</div>
           <div style="font-size:10px;color:var(--fp-text-faint);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(me.email||'')}</div>
           <div style="display:flex;align-items:center;gap:5px;margin-top:4px;flex-wrap:wrap">
-            <span style="font-size:10px;padding:2px 8px;border-radius:100px;background:rgba(37,99,235,0.18);color:#4f8ef7;font-weight:700;letter-spacing:0.02em">Plan ${escHtml(me.plan)}</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:100px;font-weight:700;letter-spacing:0.02em;${(me.plan||'').toLowerCase()==='ultra'?'background:rgba(245,158,11,0.18);color:#f59e0b':(me.plan||'').toLowerCase()==='pro'?'background:rgba(139,92,246,0.18);color:#a78bfa':'background:rgba(37,99,235,0.18);color:#4f8ef7'}">Plan ${escHtml(me.plan)}</span>
             <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(me.role)}</span>
           </div>
         </div>
