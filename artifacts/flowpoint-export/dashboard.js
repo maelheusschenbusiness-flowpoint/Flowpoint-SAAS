@@ -11795,7 +11795,7 @@ window.fpClearAiChat = function() {
   if (container) {
     container.innerHTML = `<div class="fp-ai-chat-welcome">
       <div class="fp-ai-chat-welcome-icon">
-        <svg width="32" height="32" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#2563EB"/><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="none" stroke="white" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 0 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1 0-2h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg>
       </div>
       <p><strong>Bonjour !</strong> Je suis votre assistant SEO FlowPoint.<br>Posez-moi des questions sur vos sites, performances, opportunités ou demandez-moi de générer un rapport.</p>
       <div class="fp-ai-chat-chips" id="fp-ai-chat-chips">
@@ -31654,7 +31654,7 @@ setTimeout(function() {
     const div = document.createElement('div');
     div.className = `fp-ai-msg fp-ai-msg--${role}`;
     div.id = id;
-    const aiAvatarSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1" fill="white" stroke="none"/></svg>`;
+    const aiAvatarSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 0 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1 0-2h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/><circle cx="9" cy="14" r="1" fill="white" stroke="none"/><circle cx="15" cy="14" r="1" fill="white" stroke="none"/></svg>`;
     div.innerHTML = `
       <div class="fp-ai-msg-avatar" style="display:flex;align-items:center;justify-content:center">${role==='user'?'V':aiAvatarSvg}</div>
       <div class="fp-ai-msg-bubble">${fpMarkdown(content)}</div>`;
