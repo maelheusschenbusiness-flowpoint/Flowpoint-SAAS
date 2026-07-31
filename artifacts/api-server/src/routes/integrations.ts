@@ -7,6 +7,7 @@ import {
   processIncomingWebhook, getIntegrationLimit, SUPPORTED_EVENTS,
 } from "../services/integrations-service.js";
 import { logger } from "../lib/logger.js";
+import { pool } from "@workspace/db";
 
 const router = Router();
 
@@ -43,9 +44,10 @@ router.get("/integrations/stats", requireAdmin, async (req, res) => {
 });
 
 // ── GET /api/integrations/templates ────────────────────────────────────────────
-router.get("/integrations/templates", async (req, res) => {
+router.get("/integrations/templates", async (_req, res) => {
   try {
-    const r = await db(req)(`SELECT * FROM automation_templates WHERE active=true ORDER BY popularity DESC`);
+    // automation_templates are global (org_id='default'); use pool to bypass per-org RLS
+    const r = await pool.query(`SELECT * FROM automation_templates WHERE active=true ORDER BY popularity DESC`);
     res.json({ templates: r.rows, count: r.rows.length });
   } catch {
     res.json({ templates: [], count: 0 });

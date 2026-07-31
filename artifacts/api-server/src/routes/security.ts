@@ -104,6 +104,20 @@ router.get("/security/2fa", async (req: Request, res: Response): Promise<void> =
   res.json({ available: false, enabled: false, roadmap: "TOTP/HOTP — Q3 2026", message: "2FA non encore implémenté — roadmap Q3 2026" });
 });
 
+// ── POST /api/security/2fa/setup — stub (TOTP roadmap Q3 2026) ──────────────
+router.post("/security/2fa/setup", async (req: Request, res: Response): Promise<void> => {
+  res.status(501).json({
+    available: false,
+    message: "2FA (TOTP) sera disponible en Q3 2026. Votre compte est actuellement protégé par lien magique.",
+    roadmap: "TOTP/HOTP — Q3 2026",
+  });
+});
+
+// ── POST /api/security/2fa/verify — stub ─────────────────────────────────────
+router.post("/security/2fa/verify", async (_req: Request, res: Response): Promise<void> => {
+  res.status(501).json({ available: false, message: "2FA non encore disponible." });
+});
+
 // ── GET /api/security/api-keys ───────────────────────────────────────────────
 router.get("/security/api-keys", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);

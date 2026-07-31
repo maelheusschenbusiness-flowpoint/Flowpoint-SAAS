@@ -625,6 +625,48 @@ router.get("/ai/history", async (req, res) => {
   }
 });
 
+// ── GET /ai/config — read current AI provider + intensity ───────────────────
+router.get("/ai/config", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.orgId ?? "default";
+  try {
+    const prefs = await loadOrgAIPrefs(orgId);
+    res.json({
+      provider:  prefs.preferredProvider ?? "openai",
+      intensity: prefs.aiIntensity       ?? "Équilibré",
+      modules:   prefs.aiModules         ?? {},
+    });
+  } catch {
+    res.json({ provider: "openai", intensity: "Équilibré", modules: {} });
+  }
+});
+
+// ── PATCH /ai/config — update provider + intensity via prefs ─────────────────
+router.patch("/ai/config", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.orgId ?? "default";
+  const { provider, intensity } = req.body as { provider?: string; intensity?: string };
+  try {
+    // Read current prefs
+    const { rows } = await pool.query(
+      `SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`,
+      [orgId]
+    );
+    const current = (rows[0]?.settings as Record<string, unknown>) ?? {};
+    const updated: Record<string, unknown> = { ...current };
+    if (provider)  updated["preferredProvider"] = provider;
+    if (intensity) updated["aiIntensity"]        = intensity;
+    await pool.query(
+      `INSERT INTO user_prefs (org_id, settings, updated_at)
+       VALUES ($1,$2,NOW())
+       ON CONFLICT (org_id) DO UPDATE SET settings=$2, updated_at=NOW()`,
+      [orgId, JSON.stringify(updated)]
+    );
+    res.json({ ok: true, provider: updated["preferredProvider"], intensity: updated["aiIntensity"] });
+  } catch (err) {
+    logger.error({ err }, "[ai] PATCH /ai/config failed");
+    res.status(500).json({ error: "Failed to update AI config" });
+  }
+});
+
 // ── POST /ai/chat — streaming conversational AI ───────────────────────────────
 export async function chatHandler(req: Request, res: Response): Promise<void> {
   const ip = getClientIp(req);

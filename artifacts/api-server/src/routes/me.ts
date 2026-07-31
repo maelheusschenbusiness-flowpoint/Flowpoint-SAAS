@@ -103,7 +103,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         email:               req.orgContext?.email ?? "",
         plan:                normPlan(rawPlan),
         role:                req.orgContext?.role ?? "owner",
-        org:                 { name: dbData?.orgName ?? billingData?.orgName, website: dbData?.website ?? "" },
+        org:                 { name: billingData?.orgName ?? dbData?.orgName ?? "", website: dbData?.website ?? "" },
         subscriptionStatus:  normStatus,
         stripeSubscriptionId: rawStripeSubId,
         trialEndsAt:         rawTrialEndsAt,
@@ -176,6 +176,25 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
 // ── PATCH /api/me ─────────────────────────────────────────────────────────────
 // Fully org-isolated: reads from DB, applies only provided fields, returns DB-confirmed data.
 // Never reads from store.me (global singleton) to prevent multi-tenant leaks.
+// ── PATCH /api/org — update organisation name / website ─────────────────────
+router.patch("/org", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const { name, website } = req.body as { name?: string; website?: string };
+  if (!name && !website) { res.json({ ok: true }); return; }
+  try {
+    const { persistOrgData } = await import("../services/org-data.js");
+    const fields: Parameters<typeof persistOrgData>[1] = {};
+    if (name)    fields.orgName  = name.trim();
+    if (website) fields.website  = website.trim();
+    await persistOrgData(orgId, fields);
+    res.json({ ok: true, name: name?.trim(), website: website?.trim() });
+  } catch (err) {
+    logger.error({ err }, "[me] PATCH /org failed");
+    res.status(500).json({ error: "Failed to update organisation" });
+  }
+});
+
 router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;

@@ -15,6 +15,8 @@ const router = Router();
 function auditToPublic(row: Record<string, unknown>) {
   return {
     id:        row["id"],
+    name:      row["name"] ?? "",
+    notes:     row["notes"] ?? "",
     url:       row["url"],
     score:     row["score"],
     status:    row["status"],
@@ -81,9 +83,9 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
       return;
     }
     await req.orgDb(
-      `INSERT INTO audits (id, url, score, status, speed, date, issues, origin, org_id, created_at)
-       VALUES ($1,$2,0,'processing',0,$3,0,$4,$5,NOW())`,
-      [auditId, normalizedUrl, dateStr, origin, orgId],
+      `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_at)
+       VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,NOW())`,
+      [auditId, normalizedUrl, (req.body as Record<string,unknown>)["name"] as string || "", dateStr, origin, orgId],
     );
 
     store.logActivity({
@@ -140,9 +142,10 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
       }
     })().catch(() => {});
 
+    const auditName = ((req.body as Record<string,unknown>)["name"] as string) || "";
     res.status(201).json({
-      id: auditId, url: normalizedUrl, score: 0,
-      status: "processing", speed: 0, date: dateStr, issues: 0, origin,
+      id: auditId, url: normalizedUrl, name: auditName, notes: "",
+      score: 0, status: "processing", speed: 0, date: dateStr, issues: 0, origin,
     });
   } catch (err) {
     logger.error({ err }, "[audits] POST failed");

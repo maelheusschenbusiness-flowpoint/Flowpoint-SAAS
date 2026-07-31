@@ -397,6 +397,7 @@ export async function initDataTables(): Promise<void> {
       );
     `);
     await run(client, `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS client_name TEXT NOT NULL DEFAULT '';`);
     await run(client, `CREATE INDEX IF NOT EXISTS calendar_events_date_idx ON calendar_events(date);`);
     await run(client, `CREATE INDEX IF NOT EXISTS calendar_events_org_id_idx ON calendar_events(org_id);`);
 

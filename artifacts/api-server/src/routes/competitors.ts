@@ -56,12 +56,13 @@ router.get("/competitors/:id", async (req, res) => {
 
 router.post("/competitors", reportRateLimit, canWrite, async (req, res) => {
   const {
-    name, url,
+    name, url: rawUrl, domain: rawDomain,
     domainRating = 0, keywords = 0, traffic = 0, threatLevel = "low",
   } = req.body as {
-    name?: string; url?: string; domainRating?: number;
+    name?: string; url?: string; domain?: string; domainRating?: number;
     keywords?: number; traffic?: number; threatLevel?: string;
   };
+  const url = rawUrl || rawDomain; // accept 'domain' as alias for 'url'
   if (!name || !url) { res.status(400).json({ error: "name and url required" }); return; }
 
   const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
