@@ -369,7 +369,6 @@ app.get("/robots.txt", (_req: Request, res: Response): void => {
       "Disallow: /checkout-payment.html",
       "Disallow: /checkout-return.html",
       "Disallow: /login-verify.html",
-      "Disallow: /dev-login.html",
       "",
       "Sitemap: https://app.flowpoint.pro/sitemap.xml",
     ].join("\n"),
@@ -397,15 +396,6 @@ app.get("/.well-known/security.txt", (_req: Request, res: Response): void => {
       "Policy: https://flowpoint.pro/politique-de-confidentialite",
     ].join("\n"),
   );
-});
-
-// Dev-only auth helper: never serve in real production deployments
-app.get("/dev-login.html", (req: Request, res: Response, next: NextFunction) => {
-  if (process.env["NODE_ENV"] === "production" && !process.env["REPLIT_DEV_DOMAIN"]) {
-    res.status(404).json({ ok: false, error: "Not found", code: "NOT_FOUND" });
-    return;
-  }
-  next();
 });
 
 app.use("/", staticCache, express.static(dashboardDir, { index: false }));
