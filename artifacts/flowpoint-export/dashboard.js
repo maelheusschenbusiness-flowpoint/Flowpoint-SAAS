@@ -391,7 +391,9 @@ function _fpSessionFetchOptions(options = {}) {
   const token = _fpCurrentSessionToken();
   return {
     ...options,
-    credentials: token ? 'include' : 'omit',
+    // Always include the cookie (primary auth). The Bearer token is only an
+    // additional per-tab override; it never replaces the cookie.
+    credentials: 'include',
     headers: {
       ...(options.headers || {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -414,10 +416,12 @@ function _confirmSessionExpired() {
       if (r.status === 401) {
         console.warn('[FP-AUTH]', ts, 'Confirmation /api/me → 401. Session truly expired. Redirecting.');
         _401BackgroundCount = 0;
-        ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_tab_uid'].forEach(function(k) {
+        // Clear auth artefacts — keep fp_session_token/fp_tab_uid so the tab
+        // identity survives accidental 401s; the login page will overwrite them.
+        ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(function(k) {
           try { localStorage.removeItem(k); } catch(_) {}
         });
-        try { sessionStorage.clear(); } catch(_) {}
+        try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
         window.location.href = '/login.html';
       } else {
         console.warn('[FP-AUTH]', ts, 'Confirmation /api/me →', r.status, '— session still valid, ignoring background 401.');
@@ -463,15 +467,13 @@ async function apiFetch(path, opts = {}) {
       headers: {
         'Content-Type': 'application/json',
         ...(isGet ? { 'Cache-Control': 'no-cache, no-store' } : {}),
-        // Only send Authorization header when sessionStorage override is active.
-        // Otherwise the cookie handles auth silently — no token in JS memory at all.
+        // Send Bearer when a per-tab token is present (takes priority over cookie on server).
+        // Cookie is always sent as primary auth — never omit credentials.
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(opts.headers || {}),
       },
-      // Never fall back to the shared HttpOnly cookie. It belongs to the last
-      // account that logged in anywhere in this browser, not necessarily this
-      // dashboard tab. A tab without its own token must go back through login.
-      credentials: token ? 'include' : 'omit',
+      // Always include the cookie. Bearer is only an additional per-tab override.
+      credentials: 'include',
     });
     if (res.status === 401) {
       const _ts = new Date().toISOString();
@@ -494,8 +496,10 @@ async function apiFetch(path, opts = {}) {
       console.warn('[FP-AUTH]', _ts, 'Foreground 401 on', path, '— clearing session and redirecting.');
       _401BackgroundCount = 0;
       if (_401ConfirmTimer) { clearTimeout(_401ConfirmTimer); _401ConfirmTimer = null; }
-      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_tab_uid'].forEach(k => localStorage.removeItem(k));
-      try { sessionStorage.clear(); } catch(_) {}
+      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
+      // Only remove the data cache, not fp_session_token/fp_tab_uid — the login
+      // page will set new ones; clearing here could wipe a sibling tab's identity.
+      try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
       window.location.href = '/login.html';
       return null;
     }

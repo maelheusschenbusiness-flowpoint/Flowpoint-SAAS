@@ -74,7 +74,7 @@
 
   function _confirmSessionExpiredBackend() {
     fetch('/api/me', {
-      credentials: _sessionToken() ? 'include' : 'omit',
+      credentials: 'include',
       headers: _authHeaders(),
     })
       .then(function(r) {
@@ -130,10 +130,10 @@
       (opts && opts.headers) || {}
     );
 
-    // If this tab has no session token, do not send the shared HttpOnly cookie.
-    // Sending it would make a fresh tab display whichever account logged in last.
+    // Always include the cookie (primary auth). Bearer is an additional per-tab
+    // override that takes priority on the server — it never replaces the cookie.
     var fetchOpts = Object.assign({}, opts || {}, {
-      credentials: _sessionToken() ? 'include' : 'omit',
+      credentials: 'include',
       headers: headers,
     });
 
@@ -2113,7 +2113,7 @@
         var resp = await fetch(base + '/api/ai/chat', {
           method: 'POST',
           headers: Object.assign({ 'Content-Type': 'application/json' }, _authHeaders()),
-          credentials: _sessionToken() ? 'include' : 'omit',
+          credentials: 'include',
           body: JSON.stringify({
             message: message,
             history: this.history.slice(-10),
