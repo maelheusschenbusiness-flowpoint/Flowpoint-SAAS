@@ -9341,6 +9341,7 @@ function renderSettings() {
             <select class="fp-select" style="width:100%" onchange="applyLanguagePref(this.value);saveSettings();showToast('success','Langue sauvegardée')">
               ${[['fr','🇫🇷 Français'],['en','🇬🇧 English'],['es','🇪🇸 Español'],['de','🇩🇪 Deutsch'],['it','🇮🇹 Italiano'],['pt','🇵🇹 Português'],['pt-br','🇧🇷 Português (BR)'],['nl','🇳🇱 Nederlands'],['pl','🇵🇱 Polski'],['sv','🇸🇪 Svenska'],['ro','🇷🇴 Română'],['cs','🇨🇿 Čeština']].map(([val,lbl]) => `<option value="${val}"${(s.language||'fr')===val?' selected':''}>${lbl}</option>`).join('')}
             </select>
+            <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">La préférence est sauvegardée. La traduction complète de l'interface est planifiée.</div>
           </div>
           <div class="fp-form-group">
             <label class="fp-form-label">Format de date</label>
@@ -10871,8 +10872,8 @@ function renderSettings() {
     (_hasReports?3:0)
   );
   const circ38 = 2 * Math.PI * 38;
-  // Config timeline: from STATE activity log or empty for new users
-  const _actEntries=(STATE.activityLog||[]).slice(0,6);
+  // Config timeline: from live activity events (same source as Activity page)
+  const _actEntries=(STATE.activityEvents||[]).slice(0,6);
   const _typeColor={info:'#2563EB',success:'#22c55e',warning:'#f59e0b',error:'#ef4444',security:'#8b5cf6',billing:'#06b6d4'};
   const configTimeline=_actEntries.length>0
     ? _actEntries.map(a=>({
@@ -10892,9 +10893,6 @@ function renderSettings() {
         </h1>
         <div class="fp-section-sub">Workspace health ${workspaceHealth}/100 · ${_intAct} intégration${_intAct===1?'':'s'} active${_intAct===1?'':'s'} · ${_wfAct} workflow${_wfAct===1?'':'s'} actif${_wfAct===1?'':'s'}</div>
       </div>
-      <div class="fp-section-actions">
-        ${btn('Sauvegarder','fp-btn fp-btn-primary fp-btn-sm','','id="settings-save" onclick="(()=>{const pb=document.getElementById(\'profile-save-btn\');if(pb){pb.click();return;}const prefs=Object.fromEntries([...document.querySelectorAll(\'[data-toggle]\')].map(el=>[el.dataset.toggle,el.classList.contains(\'on\')]));apiAction(\'PATCH\',\'/api/me/prefs\',{settings:prefs}).then(r=>showToast(r&&r.ok?\'success\':\'error\',r&&r.ok?\'Param\\u00e8tres sauvegard\\u00e9s\':\'Erreur\')).catch(()=>showToast(\'error\',\'Erreur\'));})();"')}
-      </div>
     </div>
 
     <!-- AI INTELLIGENCE -->
@@ -10903,7 +10901,7 @@ function renderSettings() {
           (()=>{ const _todo=[]; if(!_has2fa)_todo.push('activer le 2FA'); if(_intAct===0)_todo.push('connecter vos intégrations (GA4, GSC)'); return `Workspace health <strong>${workspaceHealth}/100</strong>. `+(_todo.length?`<strong>${_todo.length} action${_todo.length>1?'s':''} prioritaire${_todo.length>1?'s':''}</strong> : ${_todo.join(' et ')}. `:'')+`${_wfAct} workflow${_wfAct===1?'':'s'} actif${_wfAct===1?'':'s'}.`; })(),
           ['Activer le 2FA', 'Connecter GSC', 'Rapport workspace complet']
         )
-      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔧</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Workspace Intelligence IA — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse de santé workspace, recommandations de configuration et audit de sécurité IA.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeOrCheckout('pro')" ">Passer Pro</button></div>`
+      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔧</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Workspace Intelligence IA — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse de santé workspace, recommandations de configuration et audit de sécurité IA.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing');setTimeout(function(){navigateSub('plans');},50)">Passer Pro</button></div>`
     }
 
     <!-- WORKSPACE HEALTH + STATUS CARDS -->
@@ -14762,6 +14760,8 @@ function bindSectionEvents() {
       toggle.classList.toggle('on', STATE.settings[key]);
       toggle.setAttribute('aria-pressed', STATE.settings[key]);
       if (key === 'themeAuto') { STATE.theme = STATE.settings.themeAuto ? 'dark' : STATE.theme; applyTheme(); }
+      // Auto-save every toggle change to server immediately
+      saveSettings();
     }));
     $('#settings-save')?.addEventListener('click', () => { saveSettings(); showToast('success','Paramètres sauvegardés !'); });
     // BUG-2 FIX: use disconnectAllSessions() to also revoke the server-side session
