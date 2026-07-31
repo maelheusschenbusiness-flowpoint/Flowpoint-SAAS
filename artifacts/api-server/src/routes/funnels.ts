@@ -236,6 +236,7 @@ router.post("/funnels", async (req: Request, res: Response) => {
   try {
     const orgId = getOrgId(req);
     const body = { ...(req.body as Record<string, unknown>) };
+    if (body["orgId"] !== undefined) logger.debug({ orgId }, "[Funnels] Ignoring client-supplied orgId. Using authenticated context.");
     delete body["orgId"];
 
     const name = (body["name"] as string | undefined)?.trim();

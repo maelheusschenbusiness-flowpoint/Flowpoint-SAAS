@@ -54,6 +54,7 @@ router.post("/white-label/templates", async (req: Request, res: Response) => {
 router.patch("/white-label/templates/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
   const body = { ...(req.body ?? {}) };
+  if (body.orgId !== undefined || body.org_id !== undefined) logger.debug({ id }, "[WhiteLabel] Ignoring client-supplied orgId/org_id. Using authenticated context.");
   delete body.id; delete body.orgId; delete body.org_id;
 
   const setClauses: string[] = ["updated_at=now()"];

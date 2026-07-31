@@ -2779,7 +2779,7 @@ function renderActivityList() {
   if (filter !== 'all') {
     if (STATE.activityFilterLoading) {
       list.innerHTML = `<div class="fp-activity-empty" style="opacity:.6">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="animation:spin 1s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="animation:spin 1.2s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
         <div>Chargement…</div>
       </div>`;
       return;
@@ -7979,31 +7979,16 @@ function renderBilling() {
         showToast('info', 'Vous êtes déjà sur le plan ' + _targetPlan.charAt(0).toUpperCase() + _targetPlan.slice(1) + '.');
         return;
       }
-      // Active or trialing → direct upgrade, no checkout, no new customer
+      // Active or trialing → upgrade directly, no modal, no checkout, no new customer
       const _bStatus = (typeof getBillingStatus === 'function' ? getBillingStatus() : (STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || '');
       if (_bStatus === 'active' || _bStatus === 'trialing') {
-        if (document.getElementById('fp-upgrade-confirm-modal')) return;
-        const _planLabel = _targetPlan.charAt(0).toUpperCase() + _targetPlan.slice(1);
-        const _isUp = (_targetPlan === 'ultra' && _curPlan !== 'ultra') || (_targetPlan === 'pro' && _curPlan === 'standard');
-        const _modal = document.createElement('div');
-        _modal.id = 'fp-upgrade-confirm-modal';
-        _modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
-        _modal.innerHTML = `<div style="background:var(--fp-bg-card,#1e293b);border-radius:16px;padding:28px 24px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);border:1px solid var(--fp-border)">
-          <div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px">${_isUp ? '⬆️' : '⬇️'} Passer au plan ${_planLabel}</div>
-          <div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;line-height:1.6">Votre abonnement sera mis à jour <strong style="color:var(--fp-text)">immédiatement</strong>. ${_isUp ? 'La différence de prix sera calculée au prorata de la période restante.' : 'Le nouveau tarif s\'appliquera à partir du prochain renouvellement.'}</div>
-          <div style="display:flex;gap:8px">
-            <button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-upgrade-confirm-modal')?.remove()">Annuler</button>
-            <button class="fp-btn fp-btn-primary" style="flex:1" onclick="window._fpDoUpgrade('${_targetPlan}')">Confirmer →</button>
-          </div>
-        </div>`;
-        document.body.appendChild(_modal);
+        window._fpDoUpgrade(_targetPlan);
         return;
       }
       // No active subscription → standard pricing/checkout flow
       fpGoToPricing(_targetPlan);
     };
     window._fpDoUpgrade = async function(plan) {
-      document.getElementById('fp-upgrade-confirm-modal')?.remove();
       showToast('info', 'Mise à jour du plan en cours…');
       try {
         const r = await apiAction('POST', '/api/billing/upgrade', { plan });
@@ -12114,7 +12099,7 @@ function renderAuditDetailPanel(audit) {
           <span id="fp-audit-hist-csv-btn" data-url="${escHtml(audit.url)}" style="margin-left:auto;font-size:10px;font-weight:600;color:var(--fp-accent);cursor:pointer;padding:2px 8px;border:1px solid rgba(37,99,235,0.3);border-radius:4px;display:none">⬇ CSV</span>
         </div>
         <div id="fp-audit-hist-content" style="min-height:60px;display:flex;align-items:center;justify-content:center;color:var(--fp-text-faint);font-size:12px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;margin-right:6px"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1.2s linear infinite;margin-right:6px"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
           Chargement…
         </div>
       </div>
