@@ -6507,6 +6507,9 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   width: 48px; height: 48px; border-radius: 50%;
   border: 3px solid var(--fp-border); border-top-color: var(--fp-accent);
   animation: fpSpin 1.2s linear infinite;
+  will-change: transform;
+  transform: translateZ(0);
+  transition: none;
 }
 @keyframes fpSpin { to { transform: rotate(360deg); } }
 .fp-psi-sparkline { display: inline-block; vertical-align: middle; }
@@ -8867,6 +8870,9 @@ html[data-theme="light"] .fp-skel-shimmer {
   border-top-color: #2563EB;
   border-radius: 50%;
   animation: fpSpin 1.2s linear infinite;
+  will-change: transform;
+  transform: translateZ(0);
+  transition: none;
   flex-shrink: 0;
 }
 html[data-theme="light"] .fp-skeleton-page::before {
