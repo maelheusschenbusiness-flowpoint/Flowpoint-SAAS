@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { randomBytes } from "crypto";
 import { requireOrgId } from "../lib/require-org-id.js";
 
 import { PLAN_LIMITS } from "../lib/plans.js";
@@ -62,6 +63,12 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         (req.orgContext?.email?.split("@")[0] ?? "User");
 
       const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
+      // Allow regenerated key stored in user_prefs.settings to override the deterministic hash
+      const prefsRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [] }));
+      const _storedPubKey = (prefsRow.rows[0] as Record<string,unknown>)?.settings as Record<string,unknown> | null;
+      const _publicApiKey = (typeof _storedPubKey?.publicApiKey === "string" && _storedPubKey.publicApiKey)
+        ? _storedPubKey.publicApiKey
+        : `fp_pub_${_pkHash}`;
 
       // Normalise subscription status — include trialConsumedAt for pending_billing detection
       const normStatus = normalizeSubscriptionStatus({
@@ -107,7 +114,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         usage:              dbData?.usage,
         addons:             _mergedAddons,
         limits,
-        publicApiKey:       `fp_pub_${_pkHash}`,
+        publicApiKey:       _publicApiKey,
         createdAt:          dbData?.createdAt ?? new Date().toISOString(),
         timezone:  settingsTimezone ?? dbData?.timezone  ?? null,
         language:  dbData?.language  ?? null,
@@ -263,7 +270,7 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
     usage:              current?.usage ?? {},
     addons:             current?.addons ?? {},
     limits,
-    publicApiKey:       `fp_pub_${_pkHash}`,
+    publicApiKey:       _publicApiKey,
     createdAt:          current?.createdAt ?? new Date().toISOString(),
     timezone:           resolvedTimezone,
     language:           current?.language  ?? null,
@@ -579,6 +586,43 @@ router.get("/me/storage", async (req: Request, res: Response): Promise<void> => 
   } catch (err) {
     logger.error({ err }, "[me/storage] failed");
     res.status(500).json({ error: "Impossible de lire le stockage" });
+  }
+});
+
+// ── POST /api/settings/api-keys/regenerate ────────────────────────────────────
+router.post("/settings/api-keys/regenerate", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const { type } = req.body as { type?: "public" | "secret" };
+  try {
+    const suffix = randomBytes(20).toString("hex"); // 40-char hex
+    if (type === "secret") {
+      const secretKey = `fp_sec_${suffix}`;
+      await orgDb(req)(
+        `INSERT INTO user_prefs (org_id, settings, updated_at)
+         VALUES ($1, jsonb_build_object('secretApiKey', $2::text), now())
+         ON CONFLICT (org_id) DO UPDATE SET
+           settings = COALESCE(user_prefs.settings, '{}'::jsonb) || jsonb_build_object('secretApiKey', $2::text),
+           updated_at = now()`,
+        [orgId, secretKey]
+      );
+      res.json({ ok: true, key: secretKey, type: "secret" });
+    } else {
+      // Public key: store custom suffix in prefs so it overrides the deterministic hash
+      const publicKey = `fp_pub_${suffix}`;
+      await orgDb(req)(
+        `INSERT INTO user_prefs (org_id, settings, updated_at)
+         VALUES ($1, jsonb_build_object('publicApiKey', $2::text), now())
+         ON CONFLICT (org_id) DO UPDATE SET
+           settings = COALESCE(user_prefs.settings, '{}'::jsonb) || jsonb_build_object('publicApiKey', $2::text),
+           updated_at = now()`,
+        [orgId, publicKey]
+      );
+      res.json({ ok: true, key: publicKey, type: "public" });
+    }
+  } catch (err) {
+    logger.error({ err }, "[api-keys/regenerate] failed");
+    res.status(500).json({ error: "Erreur lors de la régénération" });
   }
 });
 

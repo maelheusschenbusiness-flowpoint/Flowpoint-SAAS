@@ -3347,7 +3347,7 @@ function handleFABAction(action) {
   if (action === 'new-report')  { openFloatPanel('Générer un rapport PDF', renderNewReportPanel()); setupNewReportPanel(); }
   if (action === 'export-data') { openFloatPanel('Exporter les données', renderExportPanel()); setupExportPanel(); }
   if (action === 'new-geo')     { navigate('local-seo'); setTimeout(()=>{ window._mapsTab='grid'; render(STATE.currentSection); window._showCreateHeatmapModal?.(); }, 300); }
-  if (action === 'open-chat')   { var _cp=document.getElementById('fp-ai-chat-panel'),_co=document.getElementById('fp-ai-chat-overlay'); if(_cp){_cp.removeAttribute('hidden');if(_co)_co.removeAttribute('hidden');setTimeout(function(){document.getElementById('fp-ai-chat-input')?.focus();},100);showToast('info','Chat IA ouvert');} }
+  if (action === 'open-chat') { var _cp=document.getElementById('fp-ai-chat-panel'),_co=document.getElementById('fp-ai-chat-overlay'); if(_cp){_cp.removeAttribute('hidden');if(_co)_co.removeAttribute('hidden');setTimeout(function(){document.getElementById('fp-ai-chat-input')?.focus();},100);showToast('info','Chat IA ouvert');}else{navigate('ai');} }
   if (action === 'layout-edit') { toggleLayoutEditMode(); }
 }
 
@@ -4621,7 +4621,7 @@ function renderOverview() {
           ${priorities.length > 0
             ? priorities.map((p,i) => `
             <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid ${p.color}22;background:${p.color}06;cursor:pointer" onclick="navigate('${p.route}')">
-              <div style="width:22px;height:22px;border-radius:7px;background:${p.color}20;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px">${p.icon}</div>
+              <div style="width:28px;height:28px;border-radius:7px;background:${p.color}20;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;overflow:hidden">${typeof p.icon==='string'&&p.icon.startsWith('<')? p.icon : '<span>'+escHtml(p.icon)+'</span>'}</div>
               <div style="flex:1;min-width:0">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${escHtml(p.title)}</div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -10086,7 +10086,7 @@ function renderSettings() {
         ${statCard('Workflows actifs', String(workflows.filter(w => w.active).length), 'sur ' + workflows.length + ' configurés', 'up')}
         ${statCard('Exécutions ce mois', String(workflows.reduce((s,w) => s + w.runs, 0)), 'automatisations réussies', 'up')}
         ${statCard('Temps économisé', displayStat(null, PREVIEW_MODE ? '~6h/mois' : '—'), PREVIEW_MODE ? 'estimé par l\'IA' : 'Activez des workflows', 'neutral')}
-        ${statCard('Templates dispo', String(templates.length), 'prêts à l\'emploi', 'up')}
+        ${statCard('Templates dispo', '+99', 'prêts à l\'emploi', 'up')}
       </div>
 
       <!-- WORKFLOWS LIST -->
@@ -10540,7 +10540,7 @@ function renderSettings() {
             ${statCard('Taux de succès', (stats.successRate||100)+'%', 'livraisons réussies', stats.successRate<90?'down':'up')}
             ${statCard('Erreurs (24h)', String(stats.recentErrors||0), 'alertes récentes', stats.recentErrors>0?'down':'up')}
             ${statCard('Latence moy.', stats.avgDurationMs ? stats.avgDurationMs+'ms' : '—', 'livraison webhook', 'neutral')}
-            ${statCard('Templates', String(_tplTotal), 'prêts à utiliser', 'up')}
+            ${statCard('Templates', '+99', 'prêts à utiliser', 'up')}
             ${statCard('Synchros réussies', String(Math.max(0,(stats.totalRuns||0)-(stats.recentErrors||0))), 'depuis 30 jours', (stats.recentErrors||0)>0?'neutral':'up')}
             ${statCard('Quota API restant', displayStat(null, '85%'), PREVIEW_MODE ? '→ 1 500 / 2 000 appels' : 'Voir usage API', 'neutral')}
           </div>
@@ -10567,7 +10567,7 @@ function renderSettings() {
                   </div>
                   <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px;line-height:1.5">${p.desc}</div>
                   <button class="fp-btn ${p.connected>0?'fp-btn-ghost':'fp-btn-primary'} fp-btn-sm" style="width:100%;font-size:11px"
-                    onclick="window._showConnectModal('${p.id}','${p.name}','${p.icon}')">
+                    onclick="window._showConnectModal('${p.id}','${p.name}','')">
                     ${p.connected>0?'⚙️ Configurer':'+ Connecter'}
                   </button>
                 </div>
@@ -10639,7 +10639,7 @@ function renderSettings() {
                       return `
                         <tr>
                           <td>${statusDot(i.active, i.verified)}</td>
-                          <td><div style="font-size:13px;font-weight:600">${escHtml(i.name)}</div></td>
+                          <td><div style="font-size:13px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(i.name)}">${escHtml((i.name||'').length>40 && (i.name||'').startsWith('http') ? (i.name.replace(/^https?:\/\//,'').split('/')[0].replace(/^www\./,'')+'…') : i.name)}</div></td>
                           <td>
                             <div style="display:flex;align-items:center;gap:6px">
                               ${platSvgIcon(i.platform)}
@@ -10861,7 +10861,7 @@ function renderSettings() {
         ${[
           ['hub',       '🏠 Hub',        ''],
           ['webhooks',  '🔗 Webhooks',   intgs.length > 0 ? String(intgs.length) : ''],
-          ['templates', '📦 Templates',  String(_tplTotal)],
+          ['templates', '📦 Templates',  '+99'],
           ['logs',      '📋 Logs',       runs.length > 0 ? String(runs.length) : ''],
         ].map(([id, label, cnt]) => `
           <button onclick="window._intgTab='${id}';render(STATE.currentSection)"
@@ -10946,9 +10946,9 @@ function renderSettings() {
         <div class="fp-card-title" style="margin-bottom:14px">🎛️ Intensité des recommandations IA</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;align-items:stretch">
           ${intensityLevels.map((lvl, i) => `
-            <div class="fp-ai-int-opt${lvl === _savedIntensity ? ' fp-ai-int-opt--active' : ''}" data-intensity="${lvl}" onclick="(async(el)=>{document.querySelectorAll('.fp-ai-int-opt').forEach(e=>e.classList.remove('fp-ai-int-opt--active'));el.classList.add('fp-ai-int-opt--active');if(STATE.settings)STATE.settings.aiIntensity='${lvl}';await apiAction('PATCH','/api/me/prefs',{settings:{aiIntensity:'${lvl}'}}).catch(()=>{});showToast('success','Intensité ${lvl} appliquée');})(this)">
+            <div class="fp-ai-int-opt${lvl === _savedIntensity ? ' fp-ai-int-opt--active' : ''}" data-intensity="${lvl}" onclick="(async(el)=>{document.querySelectorAll('.fp-ai-int-opt').forEach(e=>{e.classList.remove('fp-ai-int-opt--active');const d=e.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-text)';d.textContent=e.dataset.intensity;}});el.classList.add('fp-ai-int-opt--active');const d=el.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-accent)';d.textContent=(el.dataset.intensity||'')+' ✓';}if(STATE.settings)STATE.settings.aiIntensity='${lvl}';await apiAction('PATCH','/api/me/prefs',{settings:{aiIntensity:'${lvl}'}}).catch(()=>{});showToast('success','Intensité ${lvl} appliquée');})(this)">
               <div style="font-size:18px;margin-bottom:4px">${['🧘','⚖️','🚀'][i]}</div>
-              <div style="font-size:12px;font-weight:700;color:${i === 1 ? 'var(--fp-accent)' : 'var(--fp-text)'}">${escHtml(lvl)}${i === 1 ? ' ✓' : ''}</div>
+              <div style="font-size:12px;font-weight:700;color:${lvl === _savedIntensity ? 'var(--fp-accent)' : 'var(--fp-text)'}" data-int-label>${escHtml(lvl)}${lvl === _savedIntensity ? ' ✓' : ''}</div>
               <div style="font-size:10px;color:var(--fp-text-faint);overflow:hidden;word-break:break-word;hyphens:auto">${['Peu de recommandations, fortes certitudes', 'Équilibre pertinence/fréquence', 'Toutes les recommandations IA activées'][i]}</div>
             </div>
           `).join('')}
@@ -18980,7 +18980,7 @@ function renderMonitorsConfig() {
         ${presets.map(p => `
           <div style="padding:14px;background:var(--fp-inner-card);border:1px solid ${p.color}22;border-radius:10px;${p.pro && !isPro ? 'opacity:0.65' : ''}">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-              <span style="font-size:22px">${p.icon}</span>
+              <span style="font-size:22px;display:flex;align-items:center">${typeof p.icon==='string'&&p.icon.startsWith('<')? p.icon : escHtml(p.icon)}</span>
               <div>
                 <div style="font-size:12.5px;font-weight:700;color:var(--fp-text)">${p.name}${p.pro && !isPro ? ' <span style="font-size:9px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 5px;border-radius:3px">Pro</span>' : ''}</div>
                 <div style="font-size:10.5px;color:var(--fp-text-muted);margin-top:1px">${p.desc}</div>
@@ -25298,7 +25298,7 @@ function renderDataExplorer() {
             <div style="padding:16px;border-radius:12px;border:1px solid ${p.color}30;background:${p.color}08;position:relative">
               <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
                 <div>
-                  <div style="font-size:20px;margin-bottom:4px">${p.icon}</div>
+                  <div style="font-size:20px;margin-bottom:4px">${typeof p.icon==='string'&&p.icon.startsWith('<')? p.icon : escHtml(p.icon)}</div>
                   <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${escHtml(p.name)}</div>
                 </div>
                 <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(p.updated)}</span>
@@ -28420,8 +28420,8 @@ function renderSettingsLocation() {
       <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:18px">${configured ? `Source : ${srcLabel} · Utilisée dans tous les modules Local SEO` : 'Renseignez votre adresse pour activer la personnalisation locale complète'}</div>
 
       <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${gpsBtn.replace(/"/g,"'")}">📡 Détecter ma position</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${geocodeBtn.replace(/"/g,"'")}">🔍 Géocoder l'adresse</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpDetectPos()">📡 Détecter ma position</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpGeocodeAddr()">🔍 Géocoder l'adresse</button>
         ${gbpSyncBtn}
       </div>
 
@@ -28488,7 +28488,7 @@ function renderSettingsAPI() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${k.label}</div>
                 <div style="display:flex;gap:6px">
                   ${badge('Actif','success')}
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled title="Rotation de clé en libre-service bientôt disponible — contactez le support pour régénérer votre clé">Régénérer</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(btn){if(btn.dataset.pending==='1')return;btn.dataset.pending='1';var isPublic=btn.closest('.fp-card,.fp-inner-card')?.querySelector('[class*=fp-mono]')?.textContent?.includes('fp_pub');var keyType=isPublic?'public':'secret';btn.textContent='...';apiAction('POST','/api/settings/api-keys/regenerate',{type:keyType}).then(function(r){if(r&&r.key){var mono=btn.closest('div[style]').querySelector('.fp-mono span,span[style*=overflow]');if(mono)mono.textContent=r.key;showToast('success','Clé régénérée — copiez-la maintenant !');navigator.clipboard?.writeText(r.key).catch(()=>{});}else{showToast('error',r?.error||'Erreur régénération');}btn.textContent='Régénérer';btn.dataset.pending='0';}).catch(function(){btn.textContent='Régénérer';btn.dataset.pending='0';showToast('error','Erreur réseau');});})(this)">Régénérer</button>
                 </div>
               </div>
               <div class="fp-mono" style="font-size:11px;color:var(--fp-accent);background:rgba(37,99,235,0.08);border-radius:6px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px">
@@ -28522,8 +28522,8 @@ function renderSettingsAPI() {
             )),
         ].map(w => `
           <div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:10px;padding:12px 14px;margin-bottom:8px">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-              <button class="fp-toggle${w.active?' on':''}"></button>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px" data-wh-card data-wh-event="${escHtml(w.event)}">
+              <button class="fp-toggle${w.active?' on':''}" onclick="(function(btn){var on=!btn.classList.contains('on');btn.classList.toggle('on',on);var card=btn.closest('[data-wh-card]');var urlEl=card?card.parentElement.querySelector('input.fp-input'):null;var url=urlEl?urlEl.value.trim():'';if(!url&&on){showToast('warning','Entrez une URL pour activer ce webhook');btn.classList.toggle('on',false);return;}var evt=card?card.dataset.whEvent:'';apiAction('POST','/api/integrations/webhooks',{url:url,event:evt,active:on}).then(function(r){if(r&&(r.id||r.ok))showToast('success',on?'Webhook activé !':'Webhook désactivé');else{btn.classList.toggle('on',!on);showToast('error','Erreur sauvegarde');}}).catch(function(){btn.classList.toggle('on',!on);showToast('error','Erreur réseau');});})(this)"></button>
               <div class="fp-mono" style="font-size:11px;color:var(--fp-accent);background:rgba(37,99,235,0.08);padding:3px 8px;border-radius:4px">${w.event}</div>
               ${badge(w.active?'Actif':'Inactif',w.active?'success':'#64748b')}
             </div>
@@ -30939,6 +30939,50 @@ window.navigate    = navigate;
 window.navigateSub = navigateSub;
 window.apiAction   = apiAction;
 
+// ── Geocode / GPS helpers (window-scope to avoid inline multiline issues) ─
+window._fpGeocodeAddr = async function() {
+  var q=(document.getElementById('fp-loc-address')||{value:''}).value||'';
+  var q2=(document.getElementById('fp-loc-city')||{value:''}).value||'';
+  var query=(q||q2).trim();
+  if(!query){showToast('warning','Saisissez une adresse ou une ville à géocoder');return;}
+  showToast('info','Géocodage en cours…');
+  try{
+    var r=await apiAction('POST','/api/org/geocode',{address:query});
+    if(r&&r.ok){
+      if(r.address&&document.getElementById('fp-loc-address'))document.getElementById('fp-loc-address').value=r.address;
+      if(r.city&&document.getElementById('fp-loc-city'))document.getElementById('fp-loc-city').value=r.city;
+      if(r.postalCode&&document.getElementById('fp-loc-postal'))document.getElementById('fp-loc-postal').value=r.postalCode;
+      if(r.country&&document.getElementById('fp-loc-country'))document.getElementById('fp-loc-country').value=r.country;
+      if(r.latitude!=null&&document.getElementById('fp-loc-lat'))document.getElementById('fp-loc-lat').value=r.latitude.toFixed(6);
+      if(r.longitude!=null&&document.getElementById('fp-loc-lng'))document.getElementById('fp-loc-lng').value=r.longitude.toFixed(6);
+      showToast('success','✓ Coordonnées : '+r.latitude.toFixed(4)+', '+r.longitude.toFixed(4));
+    }else{showToast('error',(r&&r.error)||'Adresse introuvable');}
+  }catch(e){showToast('error','Erreur de géocodage — vérifiez votre adresse');}
+};
+window._fpDetectPos = function() {
+  if(!navigator.geolocation){showToast('error','Géolocalisation non supportée par ce navigateur');return;}
+  showToast('info','Demande d\'autorisation GPS…');
+  navigator.geolocation.getCurrentPosition(async function(pos){
+    var lat=pos.coords.latitude,lng=pos.coords.longitude;
+    if(document.getElementById('fp-loc-lat'))document.getElementById('fp-loc-lat').value=lat.toFixed(6);
+    if(document.getElementById('fp-loc-lng'))document.getElementById('fp-loc-lng').value=lng.toFixed(6);
+    showToast('info','Position obtenue — géocodage inverse…');
+    try{
+      var r=await apiAction('POST','/api/org/geocode',{lat:lat,lng:lng});
+      if(r&&r.ok){
+        if(r.address&&document.getElementById('fp-loc-address'))document.getElementById('fp-loc-address').value=r.address;
+        if(r.city&&document.getElementById('fp-loc-city'))document.getElementById('fp-loc-city').value=r.city;
+        if(r.postalCode&&document.getElementById('fp-loc-postal'))document.getElementById('fp-loc-postal').value=r.postalCode;
+        if(r.country&&document.getElementById('fp-loc-country'))document.getElementById('fp-loc-country').value=r.country;
+        showToast('success','📡 Position : '+r.city+', '+r.country);
+      }else{showToast('success','📡 GPS : '+lat.toFixed(4)+', '+lng.toFixed(4));}
+    }catch(e){showToast('success','📡 GPS : '+lat.toFixed(4)+', '+lng.toFixed(4));}
+  },function(err){
+    var msgs={1:'Autorisation refusée — activez la géolocalisation dans les réglages',2:'Position indisponible',3:'Délai dépassé'};
+    showToast('error',msgs[err.code]||'Erreur GPS');
+  },{enableHighAccuracy:true,timeout:10000});
+};
+
 // ─────────────────────────────────────────────────────────────────
 // START
 // ─────────────────────────────────────────────────────────────────
@@ -32372,6 +32416,33 @@ setTimeout(function() {
     bindChips();
   }
 
+  function _detectNavActions(text) {
+    var t = (text || '').toLowerCase();
+    var btns = [];
+    if (t.includes('monitor') || t.includes('uptime') || t.includes('down'))
+      btns.push({label:'Voir les monitors', route:'monitors', sub:null});
+    if ((t.includes('audit') || t.includes('score seo') || t.includes('performance')) && !t.includes('audit log'))
+      btns.push({label:'Audits SEO', route:'audits', sub:null});
+    if (t.includes('concurrent') || t.includes('compétiteur') || t.includes('benchmark'))
+      btns.push({label:'Concurrents', route:'competitor', sub:null});
+    if (t.includes('local seo') || t.includes('google business') || t.includes('gbp') || t.includes('maps'))
+      btns.push({label:'Local SEO', route:'local-seo', sub:null});
+    if (t.includes('rapport') || t.includes('pdf') || t.includes('exporter'))
+      btns.push({label:'Rapports', route:'reports', sub:null});
+    if (t.includes('mission') || t.includes('plan d'action') || t.includes('priorit'))
+      btns.push({label:'Missions', route:'missions', sub:null});
+    if (t.includes('conversion') || t.includes('cro') || t.includes('friction') || t.includes('taux de conv'))
+      btns.push({label:'Conversion', route:'conversion', sub:'ux-lab'});
+    if (t.includes('alerte') || t.includes('incident'))
+      btns.push({label:'Alertes', route:'alerts-center', sub:null});
+    if (t.includes('facturation') || t.includes('abonnement') || t.includes('plan') || t.includes('upgrade'))
+      btns.push({label:'Facturation', route:'billing', sub:null});
+    if (t.includes('intégration') || t.includes('webhook') || t.includes('zapier') || t.includes('make'))
+      btns.push({label:'Intégrations', route:'integrations', sub:'hub'});
+    // Deduplicate and cap at 2 buttons max
+    return btns.filter(function(b,i,a){ return a.findIndex(function(x){return x.route===b.route;})=== i; }).slice(0,2);
+  }
+
   async function sendMessage(message) {
     if (!message || !message.trim()) return;
     const inp = document.getElementById('fp-ai-chat-input');
@@ -32417,6 +32488,30 @@ setTimeout(function() {
                 el.appendChild(badge);
                 if (_ai.switchReason) {
                   if (typeof showToast === 'function') showToast('info', 'Basculement IA : ' + _ai.switchReason);
+                }
+              }
+            }
+            // Navigation action buttons based on AI response content
+            if (msgId) {
+              var _navBtns = _detectNavActions(full);
+              if (_navBtns.length > 0) {
+                var _el2 = document.getElementById(msgId);
+                if (_el2) {
+                  var _navBar = document.createElement('div');
+                  _navBar.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-left:36px';
+                  _navBtns.forEach(function(nb) {
+                    var _b = document.createElement('button');
+                    _b.className = 'fp-btn fp-btn-primary fp-btn-sm';
+                    _b.style.cssText = 'font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5';
+                    _b.textContent = nb.label + ' →';
+                    _b.onclick = function() {
+                      closePanel();
+                      navigate(nb.route);
+                      if (nb.sub) setTimeout(function(){ navigateSub(nb.sub); }, 80);
+                    };
+                    _navBar.appendChild(_b);
+                  });
+                  _el2.appendChild(_navBar);
                 }
               }
             }
@@ -35683,6 +35778,7 @@ function renderLocalSEOReviews() {
 // ═══════════════════════════════════════════════════════════════════════════════
 const SSO_LOGOS = {
   google_workspace: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="26" height="26"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>`,
+  github: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="26" height="26"><path fill="#ffffff" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>`,
   microsoft_azure: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21" width="26" height="26"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg>`,
   okta: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="26" height="26"><circle cx="12" cy="12" r="10" fill="none" stroke="#007DC1" stroke-width="2.5"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="#007DC1" stroke-width="2.5"/><circle cx="12" cy="12" r="2" fill="#007DC1"/></svg>`,
   auth0: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="26" height="26"><path d="M12 2L4.5 6v6.5c0 4.8 3.2 9.1 7.5 10.5 4.3-1.4 7.5-5.7 7.5-10.5V6L12 2z" fill="none" stroke="#EB5424" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="10.5" r="2.5" fill="#EB5424"/><rect x="10.5" y="12.5" width="3" height="3.5" rx="0.5" fill="#EB5424"/></svg>`,
@@ -35898,7 +35994,7 @@ function renderSettingsSSO() {
             </table>
           </div>
         `}
-        <div style="margin-top:12px;display:flex;justify-content:flex-end">
+        <div style="margin-top:12px;display:flex;justify-content:center">
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Test de connexion loggé');window.FP_SSO_API?.load()">🧪 Logger connexion test</button>
         </div>
       </div>
