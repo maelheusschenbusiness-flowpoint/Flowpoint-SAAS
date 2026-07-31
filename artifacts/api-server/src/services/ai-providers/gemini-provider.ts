@@ -3,23 +3,49 @@
  *
  * Uses the Google GenAI SDK. Supports chat, streaming, vision, and image generation.
  * Role mapping: "assistant" → "model" for Gemini.
+ *
+ * Key policy: GEMINI_API_KEY must always be passed explicitly to the constructor.
+ * GOOGLE_API_KEY is reserved for Google Maps and must never be selected by the SDK.
+ * We mask GOOGLE_API_KEY during client construction to prevent the SDK's
+ * getApiKeyFromEnv() from auto-selecting the Maps key (SDK @google/genai ≥ 2.11
+ * always calls getApiKeyFromEnv() in the constructor regardless of explicit apiKey).
+ *
+ * Model policy: the canonical default model is defined in capabilities.ts
+ * (PROVIDER_CAPABILITIES.gemini.defaultModel). No other fallback is accepted.
  */
 
 import { GoogleGenAI } from "@google/genai";
 import type { AIProviderId, AIProviderChatOptions, AIProviderStreamChunk, AIProviderResult } from "./openai-provider.js";
 import { toGeminiParts, type GeminiPart } from "./multimodal-mappers.js";
+import { PROVIDER_CAPABILITIES } from "./capabilities.js";
+
+/** Single source of truth for the Gemini model used across chat and streaming. */
+const GEMINI_DEFAULT_MODEL = PROVIDER_CAPABILITIES.gemini.defaultModel;
 
 export class GeminiProvider {
   readonly id: AIProviderId = "gemini";
   private client: GoogleGenAI;
 
   constructor(apiKey: string) {
-    this.client = new GoogleGenAI({ apiKey });
+    if (!apiKey) {
+      throw new Error("GeminiProvider: GEMINI_API_KEY must be provided explicitly — never rely on SDK env-var auto-selection");
+    }
+    // Temporarily mask GOOGLE_API_KEY so the SDK's getApiKeyFromEnv() cannot
+    // auto-select the Maps key. We restore it immediately after construction.
+    const savedGoogleKey = process.env["GOOGLE_API_KEY"];
+    delete process.env["GOOGLE_API_KEY"];
+    try {
+      this.client = new GoogleGenAI({ apiKey });
+    } finally {
+      if (savedGoogleKey !== undefined) {
+        process.env["GOOGLE_API_KEY"] = savedGoogleKey;
+      }
+    }
   }
 
   async chat(opts: AIProviderChatOptions): Promise<AIProviderResult> {
     const start = Date.now();
-    const model = opts.model ?? "gemini-2.5-flash";
+    const model = opts.model ?? GEMINI_DEFAULT_MODEL;
     const { contents, systemInstruction } = this.buildContents(opts);
 
     const resp = await this.client.models.generateContent({
@@ -29,8 +55,9 @@ export class GeminiProvider {
         maxOutputTokens: opts.maxTokens ?? 8192,
         ...(opts.json ? { responseMimeType: "application/json" } : {}),
         ...(systemInstruction ? { systemInstruction } : {}),
-        // Disable thinking mode on gemini-2.5+ to avoid empty text responses
-        thinkingConfig: { thinkingBudget: 0 },
+        // Note: do NOT set thinkingConfig.thinkingBudget:0 — gemini-3.x-pro models
+        // require thinking mode and reject budget:0. Thinking tokens are transparently
+        // filtered in the response via the !p.thought guard below.
       },
     });
 
@@ -56,7 +83,7 @@ export class GeminiProvider {
 
   async *stream(opts: AIProviderChatOptions): AsyncGenerator<AIProviderStreamChunk, AIProviderResult, unknown> {
     const start = Date.now();
-    const model = opts.model ?? "gemini-2.5-flash";
+    const model = opts.model ?? GEMINI_DEFAULT_MODEL;
     const { contents, systemInstruction } = this.buildContents(opts);
 
     const stream = await this.client.models.generateContentStream({
@@ -66,8 +93,9 @@ export class GeminiProvider {
         maxOutputTokens: opts.maxTokens ?? 8192,
         ...(opts.json ? { responseMimeType: "application/json" } : {}),
         ...(systemInstruction ? { systemInstruction } : {}),
-        // Disable thinking mode on gemini-2.5+ to avoid empty delta chunks
-        thinkingConfig: { thinkingBudget: 0 },
+        // Note: do NOT set thinkingConfig.thinkingBudget:0 — gemini-3.x-pro models
+        // require thinking mode and reject budget:0. Thinking tokens are filtered
+        // via the rawParts.filter(p => !p.thought) guard in the streaming loop below.
       },
     });
 

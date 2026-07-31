@@ -45,9 +45,9 @@ export const AI_MODELS: Record<string, AIModelConfig> = {
   // Google Gemini family — IDs aligned with capabilities.ts
   "gemini-3.1-pro-preview":    { provider: "gemini", inputCostPer1k: 0.002,    outputCostPer1k: 0.012,  cacheCostPer1k: 0 },
   "gemini-3-flash-preview":    { provider: "gemini", inputCostPer1k: 0.0001,   outputCostPer1k: 0.0004, cacheCostPer1k: 0 },
+  "gemini-3.5-flash":          { provider: "gemini", inputCostPer1k: 0.00015,  outputCostPer1k: 0.0006, cacheCostPer1k: 0 },
   "gemini-3-pro-image-preview":{ provider: "gemini", inputCostPer1k: 0.002,    outputCostPer1k: 0.012,  cacheCostPer1k: 0 },
-  "gemini-2.5-pro":            { provider: "gemini", inputCostPer1k: 0.00125,  outputCostPer1k: 0.01,   cacheCostPer1k: 0 },
-  "gemini-2.5-flash":          { provider: "gemini", inputCostPer1k: 0.000075, outputCostPer1k: 0.0003, cacheCostPer1k: 0 },
+  "gemini-3.1-flash-image":    { provider: "gemini", inputCostPer1k: 0.0001,   outputCostPer1k: 0.0004, cacheCostPer1k: 0 },
   "gemini-2.5-flash-image":    { provider: "gemini", inputCostPer1k: 0.000075, outputCostPer1k: 0.0003, cacheCostPer1k: 0 },
 };
 
@@ -84,9 +84,9 @@ export const MODEL_MULTIPLIERS: Record<string, number> = {
   // Gemini
   "gemini-3.1-pro-preview":    1.2,
   "gemini-3-flash-preview":    0.3,
+  "gemini-3.5-flash":          0.4,
   "gemini-3-pro-image-preview":1.5,
-  "gemini-2.5-pro":     1.0,
-  "gemini-2.5-flash":   0.3,
+  "gemini-3.1-flash-image":    0.35,
   "gemini-2.5-flash-image":    0.35,
 };
 

@@ -112,9 +112,9 @@ export const PROVIDER_CAPABILITIES: Record<AIProviderId, ProviderCapabilities> =
     models: [
       "gemini-3.1-pro-preview",
       "gemini-3-flash-preview",
+      "gemini-3.5-flash",
       "gemini-3-pro-image-preview",
-      "gemini-2.5-pro",
-      "gemini-2.5-flash",
+      "gemini-3.1-flash-image",
       "gemini-2.5-flash-image",
     ],
     capabilities: [
