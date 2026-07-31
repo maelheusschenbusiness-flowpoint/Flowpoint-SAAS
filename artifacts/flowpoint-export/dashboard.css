@@ -1413,6 +1413,11 @@ body::before {
   gap: 4px;
   align-items: center;
 }
+.fp-ai-typing-inline {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 4px;
+}
 .fp-ai-typing-dot {
   width: 6px;
   height: 6px;
