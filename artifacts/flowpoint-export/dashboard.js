@@ -11827,14 +11827,97 @@ function renderAI() {
   `;
 }
 
+function _buildAIWelcome() {
+  // ── Collect all available context ────────────────────────────────────────
+  const firstName = STATE.me?.firstName || STATE.me?.name || '';
+  const greeting  = firstName ? 'Bonjour ' + firstName + ' 👋' : 'Bonjour 👋';
+
+  const audits       = STATE.audits   || [];
+  const monitors     = STATE.monitors || [];
+  const missions     = STATE.missions || [];
+  const competitors  = STATE.competitors || [];
+  const keywords     = STATE.keywords   || [];
+  const alertEvents  = STATE.alertEvents || [];
+
+  const nbSites      = audits.length;
+  const avgScore     = nbSites > 0 ? Math.round(audits.reduce((s,a) => s + (a.score||0), 0) / nbSites) : null;
+  const criticalSites = audits.filter(a => (a.score||0) < 40).length;
+
+  const monDown  = monitors.filter(m => m.status === 'down').length;
+  const monTotal = monitors.length;
+
+  const now = Date.now();
+  const missPending = missions.filter(m => m.status !== 'done' && !m.done).length;
+  const missLate    = missions.filter(m => m.status !== 'done' && !m.done && m.dueDate && new Date(m.dueDate).getTime() < now).length;
+
+  const recentAlerts = alertEvents.filter(a => {
+    const d = new Date(a.triggeredAt || a.createdAt || a.created_at || 0);
+    return now - d.getTime() < 48 * 3600 * 1000;
+  }).length;
+
+  const nbCompetitors = competitors.length;
+  const nbKeywords    = keywords.length;
+  const gscConnected  = !!(STATE.gsc && STATE.gsc.connected);
+
+  // ── Build contextual bullets (only from real data) ────────────────────────
+  const bullets = [];
+
+  if (avgScore !== null && nbSites > 0) {
+    const lvl = avgScore >= 80 ? 'excellent' : avgScore >= 60 ? 'bon' : avgScore >= 40 ? 'à améliorer' : 'critique';
+    bullets.push('Votre score SEO moyen est de **' + avgScore + '/100** sur **' + nbSites + ' site' + (nbSites > 1 ? 's' : '') + '** — niveau ' + lvl + '.');
+  }
+  if (criticalSites > 0) {
+    bullets.push('**' + criticalSites + ' site' + (criticalSites > 1 ? 's' : '') + '** ont un score critique (< 40/100) — optimisation urgente recommandée.');
+  }
+  if (monDown > 0) {
+    bullets.push('**' + monDown + ' monitor' + (monDown > 1 ? 's' : '') + ' DOWN** en ce moment — intervention requise.');
+  } else if (monTotal > 0) {
+    bullets.push('**' + monTotal + ' monitor' + (monTotal > 1 ? 's' : '') + '** surveillé' + (monTotal > 1 ? 's' : '') + ' — tous opérationnels ✓');
+  }
+  if (missLate > 0) {
+    bullets.push('**' + missLate + ' mission' + (missLate > 1 ? 's' : '') + ' en retard** — priorité immédiate.');
+  } else if (missPending > 0) {
+    bullets.push('**' + missPending + ' mission' + (missPending > 1 ? 's' : '') + '** en attente d\'action.');
+  }
+  if (recentAlerts > 0) {
+    bullets.push('**' + recentAlerts + ' alerte' + (recentAlerts > 1 ? 's' : '') + '** déclenchée' + (recentAlerts > 1 ? 's' : '') + ' ces 48 dernières heures.');
+  }
+  if (nbCompetitors > 0) {
+    bullets.push('**' + nbCompetitors + ' concurrent' + (nbCompetitors > 1 ? 's' : '') + '** suivi' + (nbCompetitors > 1 ? 's' : '') + ' — analyse comparative disponible.');
+  }
+  if (nbKeywords > 0 && gscConnected) {
+    bullets.push('**' + nbKeywords + ' mot' + (nbKeywords > 1 ? 's' : '') + '-clé' + (nbKeywords > 1 ? 's' : '') + '** tracké' + (nbKeywords > 1 ? 's' : '') + ' via Google Search Console.');
+  }
+
+  // ── Compose message ───────────────────────────────────────────────────────
+  let text = greeting + '\n\n';
+
+  if (bullets.length >= 2) {
+    text += 'J\'ai analysé votre espace FlowPoint — voici les points clés :\n\n';
+    text += bullets.map(b => '• ' + b).join('\n');
+    text += '\n\nJe peux vous aider à :\n';
+    text += '• identifier et prioriser vos actions SEO\n';
+    text += '• analyser vos concurrents et opportunités\n';
+    text += '• interpréter vos audits et diagnostiquer les blocages\n';
+    text += '• améliorer votre référencement local\n';
+    text += '• créer un plan d\'action sur-mesure\n';
+    text += '\nQuel sujet voulez-vous approfondir en premier ?';
+  } else if (bullets.length === 1) {
+    text += 'J\'ai analysé votre espace FlowPoint.\n\n• ' + bullets[0] + '\n\n';
+    text += 'Je peux analyser vos audits, monitors, concurrents et missions pour vous guider.\nPar quel sujet souhaitez-vous commencer ?';
+  } else {
+    // No data available yet
+    text += 'Je suis votre assistant FlowPoint.\n\n';
+    text += 'Vos données sont en cours de chargement. Dès qu\'elles seront disponibles, je pourrai analyser vos audits SEO, monitors, missions et concurrents pour vous proposer des recommandations personnalisées.\n\n';
+    text += 'En attendant, posez-moi une question ou décrivez votre objectif principal.';
+  }
+
+  return text;
+}
+
 function renderAIMessages() {
   if (STATE.aiMessages.length === 0) {
-    const _wAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
-    const _wSites = STATE.audits.length;
-    const _wTxt = _wAvg !== null
-      ? 'Bonjour\u00a0! Je suis votre co-pilote FlowPoint IA.\nVotre score SEO moyen est de **' + _wAvg + '\u00a0/\u00a0100** sur ' + _wSites + '\u00a0site' + (_wSites > 1 ? 's audités' : ' audité') + '. Par où commençons-nous\u00a0?'
-      : 'Bonjour\u00a0! Je suis votre co-pilote FlowPoint IA.\nJe peux analyser vos audits, monitors, alertes et métriques lorsqu\'ils sont disponibles. Par où commençons-nous\u00a0?';
-    STATE.aiMessages = [{ from:'ai', text:_wTxt, chips:['audits','monitors'] }];
+    STATE.aiMessages = [{ from:'ai', text: _buildAIWelcome(), chips:[] }];
   }
 
   // Detect contextual chips to add from message content
