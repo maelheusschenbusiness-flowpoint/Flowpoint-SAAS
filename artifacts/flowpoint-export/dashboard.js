@@ -11783,7 +11783,7 @@ function renderAIMessages() {
       </div>
       <div style="max-width:78%;min-width:0">
         <div style="padding:9px 13px;border-radius:${isAI ? '4px 12px 12px 12px' : '12px 4px 12px 12px'};background:${isAI ? 'var(--fp-inner-card)' : '#2563EB'};border:1px solid ${isAI ? 'rgba(255,255,255,0.07)' : 'rgba(37,99,235,0.5)'};font-size:12px;color:${isAI ? 'var(--fp-text-soft)' : '#ffffff'};${isAI ? '' : 'text-shadow:0 1px 4px rgba(0,0,0,0.5);'}line-height:1.6">
-          ${m.text ? escHtml(m.text).replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--fp-text)">$1</strong>').replace(/\n/g,'<br>') : ''}${m.streaming && isAI ? '<span style="display:inline-block;width:2px;height:12px;background:var(--fp-accent);margin-left:2px;vertical-align:middle;animation:fp-blink 1s step-end infinite"></span>' : ''}
+           ${m.text ? escHtml(m.text).replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--fp-text)">$1</strong>').replace(/\n/g,'<br>') : ''}${m.streaming && isAI ? '<span class="fp-ai-typing fp-ai-typing-inline" aria-label="L\'IA écrit"><span class="fp-ai-typing-dot"></span><span class="fp-ai-typing-dot"></span><span class="fp-ai-typing-dot"></span></span>' : ''}
         </div>
         ${isAI && !m.streaming ? renderChips(dedupedChips) : ''}
       </div>
