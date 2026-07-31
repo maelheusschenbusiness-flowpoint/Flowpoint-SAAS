@@ -969,10 +969,12 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             return !addonKey || !targetIncluded.has(addonKey);
           });
 
-          // Compute effective date early — needed by both the idempotency path and the normal path
-          const effectiveDate = new Date(sub.current_period_end * 1000).toLocaleDateString("fr-FR", {
-            day: "2-digit", month: "long", year: "numeric",
-          });
+          // Compute effective date early — guard null/undefined for trialing subscriptions
+          // During trial, current_period_end may be undefined; fall back to trial_end
+          const _periodEndTs = sub.current_period_end ?? (isTrialing ? sub.trial_end : undefined);
+          const effectiveDate = _periodEndTs
+            ? new Date(_periodEndTs * 1000).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
+            : "la prochaine échéance";
 
           // ── Idempotency: if subscription already has an active schedule, skip ──
           if (sub.schedule) {

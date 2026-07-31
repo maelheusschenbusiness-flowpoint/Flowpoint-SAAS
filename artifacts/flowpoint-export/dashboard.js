@@ -3927,28 +3927,71 @@ function renderNotifications() {
 
   const dropdown = $('#fp-notif-dropdown');
   if (!dropdown) return;
+
+  // Load hidden notification IDs from STATE (persisted in localStorage)
+  if (!STATE._hiddenNotifIds) {
+    try { STATE._hiddenNotifIds = JSON.parse(localStorage.getItem('fp-hidden-notif-ids') || '[]'); } catch(_) { STATE._hiddenNotifIds = []; }
+  }
+  const hiddenIds = STATE._hiddenNotifIds;
+  const showHidden = STATE._notifShowHidden || false;
+
   const typeColors = { error:'#ef4444', success:'#22c55e', warning:'#f59e0b', info:'#2563EB' };
+  const visible = STATE.notifications.filter(n => showHidden ? hiddenIds.includes(n.id||n.title) : !hiddenIds.includes(n.id||n.title));
+
   dropdown.innerHTML = `
     <div class="fp-notif-header">
       <span class="fp-notif-title">Notifications</span>
       <button class="fp-notif-mark-all" id="fp-notif-mark-all">Tout marquer lu</button>
     </div>
-    ${STATE.notifications.map(n => `
-      <div class="fp-notif-item${n.read ? '' : ' unread'}">
+    ${visible.length === 0 ? `<div style="padding:24px;text-align:center;color:var(--fp-text-faint);font-size:12px">${showHidden ? 'Aucune notification masquée' : 'Aucune notification'}</div>` : ''}
+    ${visible.map(n => {
+      const nid = n.id || n.title;
+      const isHid = hiddenIds.includes(nid);
+      return `
+      <div class="fp-notif-item${n.read ? '' : ' unread'}" style="position:relative" data-nid="${escHtml(String(nid))}">
         <div class="fp-notif-dot" style="background:${typeColors[n.type]||'#2563EB'}"></div>
-        <div class="fp-notif-body">
-          <div class="fp-notif-item-title">${n.title}</div>
+        <div class="fp-notif-body" style="flex:1;min-width:0">
+          <div class="fp-notif-item-title">${escHtml(n.title||'')}</div>
           <div class="fp-notif-item-desc">${escHtml(n.message || n.desc || '')}</div>
-          <div class="fp-notif-item-time">${(function(v){if(!v)return '';try{var d=new Date(v);return isNaN(d.getTime())?'':d.toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}})( n.createdAt||n.time)}</div>
+          <div class="fp-notif-item-time">${(function(v){if(!v)return '';try{var d=new Date(v);return isNaN(d.getTime())?'':d.toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}})(n.createdAt||n.time)}</div>
         </div>
-      </div>
-    `).join('')}
+        <button class="fp-notif-hide-btn" data-nid="${escHtml(String(nid))}" title="${isHid?'Démasquer':'Masquer'}" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--fp-text-faint);font-size:10px;padding:2px 6px;border-radius:6px;transition:background 0.15s;white-space:nowrap">${isHid?'↩ Voir':'Masquer'}</button>
+      </div>`;
+    }).join('')}
+    ${hiddenIds.length > 0 ? `
+    <div style="padding:8px 12px;border-top:1px solid var(--fp-border);text-align:center">
+      <button id="fp-notif-toggle-hidden" style="background:none;border:none;cursor:pointer;color:var(--fp-text-faint);font-size:11px;padding:4px 8px;border-radius:6px">
+        ${showHidden ? '← Voir les actives' : `Voir les masquées (${hiddenIds.length})`}
+      </button>
+    </div>` : ''}
   `;
+
+  // Mark all read
   dropdown.querySelector('#fp-notif-mark-all')?.addEventListener('click', () => {
     STATE.notifications = STATE.notifications.map(n => ({ ...n, read: true }));
     saveNotifs();
     renderNotifications();
     showToast('success', 'Toutes les notifications marquées lues');
+  });
+
+  // Toggle show hidden
+  dropdown.querySelector('#fp-notif-toggle-hidden')?.addEventListener('click', () => {
+    STATE._notifShowHidden = !STATE._notifShowHidden;
+    renderNotifications();
+  });
+
+  // Per-notification hide/unhide
+  dropdown.querySelectorAll('.fp-notif-hide-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const nid = btn.dataset.nid;
+      if (!nid) return;
+      const idx = STATE._hiddenNotifIds.indexOf(nid);
+      if (idx >= 0) { STATE._hiddenNotifIds.splice(idx, 1); }
+      else { STATE._hiddenNotifIds.push(nid); }
+      try { localStorage.setItem('fp-hidden-notif-ids', JSON.stringify(STATE._hiddenNotifIds)); } catch(_) {}
+      renderNotifications();
+    });
   });
 }
 
@@ -7744,25 +7787,25 @@ function renderTeam() {
           <div style="display:flex;flex-direction:column;gap:8px">
             ${(()=>{
               const _tm = STATE.team && STATE.team.length > 0 ? STATE.team : [];
-              const _n0 = _tm[0]?.name || 'Vous';
-              const _n1 = _tm[1]?.name || _n0;
-              const _n2 = _tm[2]?.name || _n0;
-              return [
-                { task:'Audit SEO ' + (STATE.audits&&STATE.audits.length>0?((STATE.audits[0].url||'').replace(/^https?:\/\//,'')||'votre site'):'votre site'), assignee:_n1, due:new Date(Date.now()+7*86400000).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), status:'En cours', color:'#f59e0b' },
-                { task:'Rapport mensuel — ' + (STATE.audits&&STATE.audits.length>1?((STATE.audits[1].url||'').replace(/^https?:\/\//,'')||'client'):'client'), assignee:_n0, due:new Date(Date.now()+5*86400000).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), status:'À faire', color:'#94a3b8' },
-                { task:'Réponses avis GBP', assignee:_n2, due:new Date(Date.now()+6*86400000).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), status:'À faire', color:'#94a3b8' },
-                { task:'Optimisation meta — ' + (STATE.audits&&STATE.audits.length>0?((STATE.audits[0].url||'').replace(/^https?:\/\//,'')||'votre site'):'votre site'), assignee:_n1, due:'—', status:'Terminé', color:'#22c55e' },
-              ];
-            })().map(t => `
-              <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--fp-inner-card);border-radius:8px;border:1px solid var(--fp-border)">
-                <div style="width:8px;height:8px;border-radius:50%;background:${t.color};flex-shrink:0"></div>
-                <div style="flex:1;min-width:0">
-                  <div style="font-size:12px;color:var(--fp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.task)}</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint)">${t.assignee} · ${t.due}</div>
-                </div>
-                ${badge(t.status, t.color)}
-              </div>
-            `).join('')}
+              const _stColors = { done:'#22c55e', inprogress:'#f59e0b', todo:'#94a3b8', blocked:'#ef4444' };
+              const _stLabels = { done:'Terminé', inprogress:'En cours', todo:'À faire', blocked:'Bloqué' };
+              const _missions = (STATE.missions||[]).filter(m=>m.status!=='dismissed'&&m.status!=='stale').slice(0,4);
+              if (_missions.length === 0) return '<div style="text-align:center;padding:16px 0;color:var(--fp-text-faint);font-size:12px">Aucune tâche assignée</div>';
+              return _missions.map(m => {
+                const _col = _stColors[m.status] || '#94a3b8';
+                const _lbl = _stLabels[m.status] || m.status || 'À faire';
+                const _due = (m.dueDate||m.due_date) ? new Date(m.dueDate||m.due_date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}) : '—';
+                const _who = m.assignedTo || m.assigned_to || (_tm[0]?.name || 'Vous');
+                return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--fp-inner-card);border-radius:8px;border:1px solid var(--fp-border)">
+                  <div style="width:8px;height:8px;border-radius:50%;background:${_col};flex-shrink:0"></div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:12px;color:var(--fp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(m.title||m.name||'Mission')}</div>
+                    <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(_who)} · ${_due}</div>
+                  </div>
+                  ${badge(_lbl, _col)}
+                </div>`;
+              }).join('');
+            })()}
           </div>
         </div>
       </div>
@@ -13438,6 +13481,16 @@ function render() {
 function _doRender() {
   const page = $('#fp-page');
   if (!page) return;
+
+  // Page-transition loading bar (top of screen, iOS-compatible)
+  try {
+    const _old = document.querySelector('.fp-nav-loading');
+    if (_old) _old.remove();
+    const _bar = document.createElement('div');
+    _bar.className = 'fp-nav-loading';
+    document.body.appendChild(_bar);
+    setTimeout(() => { try { _bar.remove(); } catch(_){} }, 650);
+  } catch(_) {}
 
   // Update nav active — match primary route
   $$('.fp-nav-item, .fp-nav-ai').forEach(el => {
@@ -28235,20 +28288,26 @@ function renderTeamPerformance() {
     <div class="fp-card">
       <div class="fp-card-title" style="margin-bottom:14px">Tâches assignées</div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        ${[
-          { task:'Audit SEO ' + (STATE.audits&&STATE.audits.length>0?((STATE.audits[0].url||'').replace(/^https?:\/\//,'')||'votre site'):'votre site'), assignee: metrics.length > 1 ? metrics[1].name : metrics[0]?.name || '—', due: new Date(Date.now()+7*86400000).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}), status:'En cours' },
-          { task:'Rapport mensuel — ' + (STATE.audits&&STATE.audits.length>1?((STATE.audits[1].url||'').replace(/^https?:\/\//,'')||'client'):'client'), assignee: metrics[0]?.name || '—', due: new Date(Date.now()+5*86400000).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}), status:'À faire' },
-          { task:'Réponses avis GBP', assignee: metrics.length > 2 ? metrics[2].name : metrics[0]?.name || '—', due: new Date(Date.now()+6*86400000).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}), status:'À faire' },
-        ].map(t => `
-          <div class="fp-opp-card">
-            <div class="fp-opp-icon" style="background:rgba(37,99,235,0.1)">${svgIcon('check-square').replace('stroke="currentColor"','stroke="#2563EB"')}</div>
-            <div class="fp-opp-body">
-              <div class="fp-opp-title">${escHtml(t.task)}</div>
-              <div class="fp-opp-desc">${escHtml(t.assignee)} · Échéance : ${t.due}</div>
-            </div>
-            ${badge(t.status, t.status==='Terminé'?'success':t.status==='En cours'?'warning':'#64748b')}
-          </div>
-        `).join('')}
+        ${(()=>{
+          const _stColors = { done:'#22c55e', inprogress:'#f59e0b', todo:'#94a3b8', blocked:'#ef4444' };
+          const _stLabels = { done:'Terminé', inprogress:'En cours', todo:'À faire', blocked:'Bloqué' };
+          const _ms = (STATE.missions||[]).filter(m=>m.status!=='dismissed'&&m.status!=='stale').slice(0,3);
+          if (_ms.length === 0) return '<div style="text-align:center;padding:16px 0;color:var(--fp-text-faint);font-size:12px">Aucune tâche assignée</div>';
+          return _ms.map(m => {
+            const _col = _stColors[m.status]||'#94a3b8';
+            const _lbl = _stLabels[m.status]||m.status||'À faire';
+            const _due = (m.dueDate||m.due_date)?new Date(m.dueDate||m.due_date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}):'—';
+            const _who = m.assignedTo||m.assigned_to||(metrics[0]?.name||'—');
+            return `<div class="fp-opp-card">
+              <div class="fp-opp-icon" style="background:rgba(37,99,235,0.1)">${svgIcon('check-square').replace('stroke="currentColor"','stroke="#2563EB"')}</div>
+              <div class="fp-opp-body">
+                <div class="fp-opp-title">${escHtml(m.title||m.name||'Mission')}</div>
+                <div class="fp-opp-desc">${escHtml(_who)} · Échéance : ${_due}</div>
+              </div>
+              ${badge(_lbl, _col)}
+            </div>`;
+          }).join('');
+        })()}
         <button class="fp-btn fp-btn-primary fp-btn-sm" style="align-self:flex-start;margin-top:4px" onclick="openAssignTaskModal()">+ Assigner une tâche</button>
       </div>
     </div>
@@ -36605,6 +36664,68 @@ function renderGA4ClientMode() {
         </div>`}
     </div>`;
 
+  // ── Sub-route routing for Mode Client tabs ────────────────────────
+  if (sub === 'reporting') {
+    return header + permsBanner + reportsHtml;
+  }
+  if (sub === 'dashboards') {
+    return header + permsBanner + kpisRow + auditsHtml;
+  }
+  if (sub === 'communication') {
+    const _commHtml = `
+      <div class="fp-card fp-mb-20">
+        <div class="fp-card-title" style="margin-bottom:14px">💬 Communication client</div>
+        <div style="text-align:center;padding:24px 16px;color:var(--fp-text-muted)">
+          <div style="font-size:32px;margin-bottom:12px">📬</div>
+          <div style="font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:6px">Espace de communication</div>
+          <div style="font-size:12px;margin-bottom:16px">Partagez des mises à jour et rapports directement avec vos clients.</div>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('reporting')">Voir les rapports partagés →</button>
+        </div>
+      </div>`;
+    return header + permsBanner + _commHtml + reportsHtml;
+  }
+  if (sub === 'onboarding') {
+    const _onbHtml = `
+      <div class="fp-card fp-mb-20">
+        <div class="fp-card-title" style="margin-bottom:14px">🚀 Onboarding client</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${[{done:true,label:'Compte créé'},{done:!!(kpis.audit_count>0),label:'Premier audit lancé'},{done:!!(kpis.monitor_count>0),label:'Monitoring configuré'},{done:!!(reports.length>0),label:'Premier rapport partagé'},{done:false,label:'Accès client configuré'}].map(s=>`
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:${s.done?'rgba(34,197,94,0.06)':'var(--fp-inner-card)'};border:1px solid ${s.done?'rgba(34,197,94,0.25)':'var(--fp-border)'}">
+            <div style="width:20px;height:20px;border-radius:50%;background:${s.done?'#22c55e':'rgba(148,163,184,0.2)'};display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">${s.done?'✓':'○'}</div>
+            <div style="font-size:13px;font-weight:600;color:${s.done?'var(--fp-text)':'var(--fp-text-muted)'}">${escHtml(s.label)}</div>
+            ${s.done?badge('Complété','#22c55e'):badge('En attente','#94a3b8')}
+          </div>`).join('')}
+        </div>
+      </div>`;
+    return header + permsBanner + kpisRow + _onbHtml;
+  }
+  if (sub === 'projects') {
+    const _msList = (STATE.missions||[]).filter(m=>m.status!=='dismissed').slice(0,8);
+    const _prjHtml = `
+      <div class="fp-card">
+        <div class="fp-flex-between fp-mb-16">
+          <div class="fp-card-title" style="margin-bottom:0">📋 Projets & missions</div>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('missions')">Voir tout →</button>
+        </div>
+        ${_msList.length===0?`<div style="text-align:center;padding:24px;color:var(--fp-text-faint);font-size:12px">Aucune mission active</div>`:_msList.map(m=>{
+          const _c={'done':'#22c55e','inprogress':'#f59e0b','todo':'#94a3b8','blocked':'#ef4444'}[m.status]||'#94a3b8';
+          const _l={'done':'Terminé','inprogress':'En cours','todo':'À faire','blocked':'Bloqué'}[m.status]||m.status||'—';
+          return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border);margin-bottom:8px">
+            <div style="width:8px;height:8px;border-radius:50%;background:${_c};flex-shrink:0"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:600;color:var(--fp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(m.title||m.name||'Mission')}</div>
+              <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(m.category||m.type||'Mission')}</div>
+            </div>
+            ${badge(_l,_c)}
+          </div>`;
+        }).join('')}
+      </div>`;
+    return header + permsBanner + _prjHtml;
+  }
+  if (sub === 'analytics') {
+    return header + permsBanner + kpisRow + monitorsHtml;
+  }
+  // Default: Command Center — all sections
   return header + permsBanner + kpisRow + monitorsHtml + auditsHtml + reportsHtml;
 }
 

@@ -6506,14 +6506,28 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
 .fp-psi-spinner {
   width: 48px; height: 48px; border-radius: 50%;
   border: 3px solid var(--fp-border); border-top-color: var(--fp-accent);
-  animation: fpSpin 2.8s linear infinite;
+  animation: fpSpin 1s linear infinite;
+  -webkit-animation: fpSpin 1s linear infinite;
   will-change: transform;
   transform: translateZ(0);
+  -webkit-transform: translateZ(0);
   transition: none;
 }
+@-webkit-keyframes fpSpin { to { -webkit-transform: rotate(360deg); transform: rotate(360deg); } }
 @keyframes fpSpin { to { transform: rotate(360deg); } }
 /* Alias used by inline SVG spinners (animation:spin) — must live in CSS, not JS-injected */
+@-webkit-keyframes spin { to { -webkit-transform: rotate(360deg); transform: rotate(360deg); } }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Page-transition loading bar (top of screen) */
+.fp-nav-loading {
+  position: fixed; top: 0; left: 0; height: 2px; z-index: 9999;
+  background: linear-gradient(90deg, var(--fp-accent, #2563EB), #818cf8);
+  -webkit-animation: fpNavLoad 0.5s ease-out forwards;
+  animation: fpNavLoad 0.5s ease-out forwards;
+}
+@-webkit-keyframes fpNavLoad { from { width: 0; opacity: 1; } 80% { width: 90%; opacity: 1; } to { width: 100%; opacity: 0; } }
+@keyframes fpNavLoad { from { width: 0; opacity: 1; } 80% { width: 90%; opacity: 1; } to { width: 100%; opacity: 0; } }
 .fp-psi-sparkline { display: inline-block; vertical-align: middle; }
 .fp-psi-history-chart { width: 100%; height: 120px; }
 
