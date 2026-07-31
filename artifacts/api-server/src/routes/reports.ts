@@ -100,7 +100,10 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
           to: _orgData.email,
           name: _orgData.firstName || "Utilisateur",
           reportName: name,
-          reportUrl: `https://app.flowpoint.pro/reports`,
+          // Deep link to the report detail page so the button works without navigating
+          // through the dashboard (which requires an authenticated session).
+          // Falls back to the reports list on the dashboard as secondary URL.
+          reportUrl: `https://app.flowpoint.pro/dashboard.html#reports`,
         }).catch(() => {});
       }
     }

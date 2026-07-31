@@ -1678,15 +1678,30 @@
     try { currentCart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
     var targetPlan = currentCart && currentCart.plan;
 
-    /* ── Non-subscriber or add-only cart → use standard checkout.html flow ── */
-    if (!isSubscribed || !targetPlan) {
-      var count = (targetPlan ? 1 : 0) + Object.keys((currentCart && currentCart.addons) || {}).length;
-      if (count === 0) {
-        if (typeof showToast === 'function') showToast('Sélectionnez d\'abord un plan, un add-on ou des crédits IA', true);
+    /* ── Already-subscribed, add-on-only cart (no plan change) ─────────────
+       User comes from the dashboard to buy an add-on. They already have a plan
+       so we must NOT ask them to select one — go straight to checkout.html.   */
+    if (isSubscribed && !targetPlan) {
+      var addonCount = Object.keys((currentCart && currentCart.addons) || {}).length;
+      if (addonCount === 0) {
+        if (typeof showToast === 'function') showToast('Aucun add-on sélectionné.', true);
         return;
       }
       try { localStorage.setItem('fp_cart', JSON.stringify(currentCart || {})); } catch(e) {}
-      window.location.href = '/checkout.html' + (targetPlan ? '?plan=' + encodeURIComponent(targetPlan) : '');
+      window.location.href = '/checkout.html';
+      return;
+    }
+
+    /* ── Non-subscriber without a plan → must select one first ─────────────  */
+    if (!isSubscribed && !targetPlan) {
+      if (typeof showToast === 'function') showToast('Sélectionnez d\'abord un plan pour activer votre compte.', true);
+      return;
+    }
+
+    /* ── Non-subscriber with a plan (standard checkout) ── */
+    if (!isSubscribed) {
+      try { localStorage.setItem('fp_cart', JSON.stringify(currentCart || {})); } catch(e) {}
+      window.location.href = '/checkout.html?plan=' + encodeURIComponent(targetPlan);
       return;
     }
 

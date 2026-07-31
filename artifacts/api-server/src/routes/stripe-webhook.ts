@@ -181,6 +181,31 @@ export async function activateNewSignup(opts: {
   const email     = signupRow["email"] ?? orgId;
   const firstName = signupRow["first_name"] ?? "";
 
+  // ── 1b. Guard: skip if the org already has an active subscription ─────────
+  // An existing user can end up with a valid pending_signups token if they
+  // started a second checkout before consuming their first one. In that case,
+  // we must NOT send a second magic link — they already have an account.
+  {
+    const orgCheck = await pgPool.connect();
+    try {
+      const r = await orgCheck.query(
+        `SELECT subscription_status FROM organizations WHERE id = $1 LIMIT 1`,
+        [orgId]
+      );
+      const existingStatus = r.rows[0]?.subscription_status ?? null;
+      if (existingStatus && existingStatus !== "pending_billing" && existingStatus !== "incomplete") {
+        logger.info({ orgId, existingStatus }, "[Webhook/activate] Org already active — skipping duplicate magic link");
+        // Mark token consumed so it can't fire again
+        await pgPool.connect().then(async c => {
+          try {
+            await c.query(`UPDATE pending_signups SET consumed_at = NOW() WHERE token = $1 AND consumed_at IS NULL`, [preRegToken]);
+          } finally { c.release(); }
+        }).catch(() => {});
+        return;
+      }
+    } finally { orgCheck.release(); }
+  }
+
   // ── 2. Upsert org_settings for profile data only ────────────────────────
   const { upsertOrgSettings, loadOrgSettings: _loadSettings } = await import("../services/org-settings.js");
   const _existing = await _loadSettings(orgId).catch(() => null);
@@ -691,26 +716,54 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         await persistAddonsFromSubscription(obj, orgId).catch(() => {});
       }
 
+      // ── Email routing based on billing_reason ─────────────────────────────
+      // "subscription_create" → the activation magic link was already sent by
+      //   checkout.session.completed / activateNewSignup. Do NOT send a second email.
+      // "subscription_update" → plan change email (not "payment confirmed").
+      // "subscription_cycle" → recurring renewal → send payment-confirmed.
+      // Anything else (manual, add-on, one-off) → send add-on confirmation.
+      const billingReason = String(obj["billing_reason"] || "");
+      if (billingReason === "subscription_create") {
+        logger.info({ orgId, billingReason }, "[Webhook] invoice.payment_succeeded: subscription_create — activation email already sent, skipping duplicate");
+        break;
+      }
+
       // P0-5: load email from DB — never from store.me
       const orgData = await loadOrgEmail(orgId);
-      if (orgData.email) {
-        const amountCents = Number(obj["amount_paid"] || 0);
-        const periodEnd = (() => {
-          try {
-            const l = obj["lines"] as Record<string, unknown>;
-            const d = (l["data"] as Array<Record<string, unknown>>)?.[0];
-            return d ? new Date(Number(d["period"]?.["end"] ?? 0) * 1000).toISOString() : undefined;
-          } catch { return undefined; }
-        })();
-        mailer.sendPaymentSucceeded({
+      if (!orgData.email) {
+        logger.warn({ orgId }, "[Webhook] invoice.payment_succeeded: no email found in org_settings — email NOT sent");
+        break;
+      }
+
+      const amountCents = Number(obj["amount_paid"] || 0);
+      const periodEnd = (() => {
+        try {
+          const l = obj["lines"] as Record<string, unknown>;
+          const d = (l["data"] as Array<Record<string, unknown>>)?.[0];
+          return d ? new Date(Number(d["period"]?.["end"] ?? 0) * 1000).toISOString() : undefined;
+        } catch { return undefined; }
+      })();
+      const recipientName = orgData.firstName || orgData.email.split("@")[0] || "Utilisateur";
+
+      if (billingReason === "subscription_update") {
+        // Plan changed → send plan-change specific email, not generic "payment confirmed"
+        mailer.sendPlanChanged({
           to:        orgData.email,
-          name:      orgData.firstName || orgData.email.split("@")[0] || "Utilisateur",
+          name:      recipientName,
           plan:      orgData.plan,
           amountEur: amountCents > 0 ? Math.round(amountCents / 100) : undefined,
           periodEnd,
-        }).catch(err => logger.warn({ err, orgId }, "[Webhook] sendPaymentSucceeded email failed"));
+        }).catch(err => logger.warn({ err, orgId }, "[Webhook] sendPlanChanged email failed"));
       } else {
-        logger.warn({ orgId }, "[Webhook] invoice.payment_succeeded: no email found in org_settings — email NOT sent");
+        // subscription_cycle (renewal) or manual (add-on) → standard payment confirmed
+        mailer.sendPaymentSucceeded({
+          to:        orgData.email,
+          name:      recipientName,
+          plan:      orgData.plan,
+          amountEur: amountCents > 0 ? Math.round(amountCents / 100) : undefined,
+          periodEnd,
+          isAddon:   billingReason !== "subscription_cycle",
+        }).catch(err => logger.warn({ err, orgId }, "[Webhook] sendPaymentSucceeded email failed"));
       }
       break;
     }

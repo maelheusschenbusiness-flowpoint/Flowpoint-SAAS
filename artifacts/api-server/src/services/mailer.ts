@@ -312,9 +312,50 @@ async function sendTrialEnding(opts: {
   });
 }
 
-// ── 4. Payment Succeeded ──────────────────────────────────────────────────────
+// ── 4. Payment Succeeded (renewal or add-on) ─────────────────────────────────
 
 async function sendPaymentSucceeded(opts: {
+  to: string;
+  name: string;
+  plan: string;
+  amountEur?: number;
+  periodEnd?: string;
+  /** true when billing_reason is not "subscription_cycle" (e.g. add-on, manual) */
+  isAddon?: boolean;
+}): Promise<MailResult> {
+  const planLabel = { standard: "Standard", pro: "Pro", ultra: "Ultra" }[opts.plan.toLowerCase()] ?? opts.plan;
+  const amount = opts.amountEur ? `${opts.amountEur}€` : "";
+  const period = opts.periodEnd
+    ? new Date(opts.periodEnd).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+    : "";
+
+  const isAddon = !!opts.isAddon;
+  const eyebrow = isAddon ? "Add-on activé" : "Renouvellement confirmé";
+  const title   = isAddon ? "Ton option est active" : "Ton abonnement est renouvelé";
+  const body    = isAddon
+    ? `<p style="margin:0 0 16px;">Merci ${opts.name} ! Ton option FlowPoint${amount ? ` (${amount})` : ""} a bien été ajoutée à ton compte.</p>
+       <p style="margin:0;">Tu peux retrouver tous tes add-ons actifs depuis la section Facturation de ton dashboard.</p>`
+    : `<p style="margin:0 0 16px;">Merci ${opts.name} ! Ton abonnement <strong>FlowPoint ${planLabel}</strong>${amount ? ` (${amount})` : ""} a été renouvelé avec succès.</p>
+       ${period ? `<p style="margin:0 0 16px;">Prochaine facturation : <strong>${period}</strong>.</p>` : ""}
+       <p style="margin:0;">Tu peux gérer ta facturation (factures, changement de moyen de paiement, annulation) depuis le portail client.</p>`;
+
+  return send({
+    to: opts.to,
+    subject: isAddon ? "✅ Option activée — FlowPoint" : "✅ Abonnement renouvelé — FlowPoint",
+    tag: "payment_succeeded",
+    html: layout({
+      eyebrow,
+      accentColor: "#16a34a",
+      title,
+      body,
+      cta: { label: "Accéder au portail facturation →", url: "https://app.flowpoint.pro/billing" },
+    }),
+  });
+}
+
+// ── 4b. Plan Changed ──────────────────────────────────────────────────────────
+
+async function sendPlanChanged(opts: {
   to: string;
   name: string;
   plan: string;
@@ -328,16 +369,16 @@ async function sendPaymentSucceeded(opts: {
     : "";
   return send({
     to: opts.to,
-    subject: "✅ Paiement confirmé — FlowPoint",
-    tag: "payment_succeeded",
+    subject: `✅ Ton abonnement FlowPoint ${planLabel} est actif`,
+    tag: "plan_changed",
     html: layout({
-      eyebrow: "Paiement confirmé",
-      accentColor: "#16a34a",
-      title: "Ton paiement est accepté",
-      body: `<p style="margin:0 0 16px;">Merci ${opts.name} ! Ton abonnement <strong>FlowPoint ${planLabel}</strong>${amount ? ` (${amount})` : ""} est actif.</p>
+      eyebrow: "Plan mis à jour",
+      accentColor: "#2563EB",
+      title: `Ton plan ${planLabel} est actif`,
+      body: `<p style="margin:0 0 16px;">Merci ${opts.name} ! Ton abonnement <strong>FlowPoint ${planLabel}</strong>${amount ? ` (${amount}/mois)` : ""} est maintenant actif.</p>
              ${period ? `<p style="margin:0 0 16px;">Prochaine facturation : <strong>${period}</strong>.</p>` : ""}
-             <p style="margin:0;">Tu peux gérer ta facturation (factures, changement de moyen de paiement, annulation) depuis le portail client.</p>`,
-      cta: { label: "Accéder au portail facturation →", url: "https://app.flowpoint.pro/billing" },
+             <p style="margin:0;">Tu peux gérer ta facturation et tes options depuis le portail client.</p>`,
+      cta: { label: "Accéder à mon dashboard →", url: "https://app.flowpoint.pro" },
     }),
   });
 }
@@ -792,6 +833,7 @@ export const mailer = {
   sendTrialStarted,
   sendTrialEnding,
   sendPaymentSucceeded,
+  sendPlanChanged,
   sendPaymentFailed,
   sendMonitorDown,
   sendMonitorUp,
