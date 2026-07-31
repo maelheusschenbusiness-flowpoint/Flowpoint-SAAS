@@ -7778,9 +7778,30 @@ function renderBilling() {
   const upgradeScore = isUltra ? 0 : (healthScore!=null ? Math.round(healthScore*0.8) : null);
 
   // ── Billing lifecycle — defined here so Plans tab buttons always work ──────
-  // Always redirect to pricing.html — user confirms plan change in the checkout flow.
+  // Plan buttons may appear outside the Plans tab. Keep the same direct Stripe
+  // path there as in the Plans tab; only accounts without an active/trialing
+  // subscription use the pricing/checkout flow.
   window.fpUpgradeOrCheckout = window.fpUpgradeOrCheckout || function(plan) {
-    fpGoToPricing(plan);
+    const _target = (plan || 'pro').toLowerCase();
+    const _current = ((STATE.billing && STATE.billing.plan) || (STATE.me && STATE.me.plan) || '').toLowerCase();
+    if (_current === _target) {
+      showToast('info', 'Vous êtes déjà sur ce plan.');
+      return;
+    }
+    const _status = (typeof getBillingStatus === 'function'
+      ? getBillingStatus()
+      : (STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status))
+        || (STATE.me && STATE.me.subscriptionStatus) || '');
+    if (_status === 'active' || _status === 'trialing') {
+      if (typeof window._fpDoUpgrade === 'function') window._fpDoUpgrade(_target);
+      else {
+        apiAction('POST', '/api/billing/upgrade', { plan: _target })
+          .then(() => window.location.reload())
+          .catch(() => showToast('error', 'Erreur lors du changement de plan.'));
+      }
+      return;
+    }
+    fpGoToPricing(_target);
   };
 
   // ══════════════════════════════════════════════════════════
@@ -8037,10 +8058,10 @@ function renderBilling() {
     };
     window._fpAddonStripeKeys = _ADDON_STRIPE_KEYS;
 
-    // ── Billing lifecycle: upgrade / cancel / reactivate ──────────────────────
+    // ── Billing lifecycle: upgrade / downgrade / cancel / reactivate ──────────
     // For active/trialing subscriptions: call /api/billing/upgrade directly — no new
-    // customer created, no card re-entry. Stripe updates the subscription immediately
-    // with prorations. Only redirect to pricing for users without an active subscription.
+    // customer created, no card re-entry. Upgrades are immediate; downgrades are
+    // scheduled by Stripe. Only redirect to pricing without an active subscription.
     window.fpUpgradeOrCheckout = async function(plan) {
       const _targetPlan = (plan || 'pro').toLowerCase();
       const _curPlan = ((STATE.billing && STATE.billing.plan) || (STATE.me && STATE.me.plan) || '').toLowerCase();
@@ -8061,10 +8082,26 @@ function renderBilling() {
       showToast('info', 'Mise à jour du plan en cours…');
       try {
         const r = await apiAction('POST', '/api/billing/upgrade', { plan });
-        if (r && (r.upgraded || r.downgrade)) {
+        if (r && r.downgrade) {
+          const _date = r.effectiveDate || 'la prochaine échéance';
+          const _when = r.trialDowngrade ? 'à la fin de votre essai' : 'à la prochaine échéance';
+          showToast('success', 'Downgrade programmé ' + _when + ' (' + _date + ')');
+          // Keep the current plan/status locally. The lower plan is not active
+          // until Stripe reaches the scheduled phase.
+          if (STATE.billing) {
+            STATE.billing.pendingPlan = plan;
+            STATE.billing.pendingPlanDate = _date;
+          }
+          setTimeout(function() { navigate('billing'); navigateSub('plans'); }, 900);
+          return;
+        }
+        if (r && r.upgraded) {
           showToast('success', 'Plan mis à jour → ' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' ✓');
-          if (STATE.billing) { STATE.billing.plan = plan; STATE.billing.subscriptionStatus = 'active'; }
-          if (STATE.me) { STATE.me.plan = plan; STATE.me.subscriptionStatus = 'active'; }
+          // Upgrade is immediate, but a trial remains a trial with its original
+          // trial_end. Reload from the authoritative API instead of fabricating
+          // an "active" status in the browser.
+          if (STATE.billing) { STATE.billing.plan = plan; }
+          if (STATE.me) { STATE.me.plan = plan; }
           setTimeout(function() { navigate('billing'); navigateSub('plans'); }, 900);
           return;
         }

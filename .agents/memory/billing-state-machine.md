@@ -43,6 +43,11 @@ Set _orgId from `/api/me` email field (async after page load).
 - NULL = account has never had a real Stripe trial → `canStartTrial=true`.
 - Non-null = trial already used → `canStartTrial=false`, "14j offerts" badge hidden in checkout.html.
 
+## Direct plan changes
+- Active/trialing plan buttons call the authenticated upgrade endpoint directly; they must never send an existing subscriber through Checkout.
+- Stripe upgrades change the subscription immediately while preserving `trial_end`; downgrades use a schedule and keep the current plan until trial/period end.
+- A `customer.subscription.updated` webhook must not clear `pendingPlan` while the subscription metadata still identifies the higher current phase.
+
 ## Migration script
 `artifacts/api-server/scripts/billing-migration-dryrun.ts` — audits all org_settings rows.
 Run `pnpm --filter api-server exec tsx scripts/billing-migration-dryrun.ts` for dry-run.

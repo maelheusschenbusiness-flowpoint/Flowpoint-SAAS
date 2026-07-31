@@ -734,8 +734,8 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
 });
 
 // ── POST /billing/upgrade ─────────────────────────────────────────────────────
-// Handles: trial (any direction, immediate), upgrade (immediate + prorations),
-//          downgrade (scheduled to period end via subscription schedule).
+// Handles: upgrade (immediate + prorations), downgrade (scheduled to the end
+// of the current trial or paid period via a Stripe subscription schedule).
 // Also reconciles add-ons that become included in the new plan.
 router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
   const plan = parsePlan(req.body?.plan, res);
@@ -949,10 +949,15 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             return !addonKey || !targetIncluded.has(addonKey);
           });
 
-        if (isDowngrade && !isTrialing) {
-          // ── Active downgrade → schedule change at period end ─────────────────
-          // Phase 1: keep current plan until period end (no change)
-          // Phase 2: switch to new lower plan at period end
+        if (isDowngrade) {
+          // ── Downgrade → schedule change at trial/period end ──────────────────
+          // Phase 1: keep the current plan and the current trial/paid period
+          // unchanged. Phase 2: switch to the lower plan at that exact date.
+          //
+          // This deliberately includes trialing subscriptions: changing the
+          // item now would downgrade the user's access immediately. A schedule
+          // preserves the remaining trial days and changes the price only when
+          // the trial ends (or at the next paid renewal).
           const currentPriceId = planItem?.price?.id ?? PLAN_PRICE_IDS[currentPlan];
 
           const currentAddonPrices = sub.items.data
@@ -978,7 +983,9 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
               plan,
               downgrade:            true,
               effective:            "period_end",
+              effectiveReason:       isTrialing ? "trial_end" : "period_end",
               effectiveDate,
+              trialDowngrade:        isTrialing,
               removedIncludedAddons: [],
               idempotent:           true,
             });
@@ -999,6 +1006,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
                     { price: currentPriceId ?? undefined, quantity: 1 },
                     ...currentAddonPrices,
                   ],
+                    ...(isTrialing && sub.trial_end ? { trial_end: sub.trial_end } : {}),
                   proration_behavior: "none",
                 },
                 {
@@ -1006,6 +1014,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
                     { price: priceId, quantity: 1 },
                     ...nextAddonPrices,
                   ],
+                    metadata: { plan: targetPlan },
                   proration_behavior: "none",
                 },
               ],
@@ -1046,16 +1055,18 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
               plan,
               downgrade:            true,
               effective:            "period_end",
+              effectiveReason:       isTrialing ? "trial_end" : "period_end",
               effectiveDate,
+              trialDowngrade:        isTrialing,
               removedIncludedAddons: removedAddonKeys,
               idempotent:           true,
             });
             return;
           }
 
-          // Do NOT change org_settings.plan now — the subscription is still on
-          // the current (higher) plan until the period end. Only store the
-          // pending change so the dashboard can show the scheduled downgrade.
+          // Do NOT change organizations.plan now — the subscription is still
+          // on the current (higher) plan until the scheduled effective date.
+          // Only store the pending change so the dashboard can show it.
           await persistOrgData(orgId, { pendingPlan: plan, pendingPlanDate: effectiveDate }).catch(() => {});
           logger.info(
             { plan, subId: sub.id, orgId, effectiveDate, removedAddonKeys },
@@ -1066,16 +1077,18 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             plan,
             downgrade:            true,
             effective:            "period_end",
+            effectiveReason:       isTrialing ? "trial_end" : "period_end",
             effectiveDate,
+            trialDowngrade:        isTrialing,
             removedIncludedAddons: removedAddonKeys,
           });
           return;
         }
 
-        // ── Upgrade OR downgrade-during-trial → immediate update ────────────
-        // Active downgrades go through the schedule path above (isDowngrade && !isTrialing).
-        // During a trial, a downgrade is applied immediately (no prorations — trial not yet billed).
-        const prorationBehavior = (isUpgrade && !isTrialing) ? "create_prorations" : "none";
+        // ── Upgrade → immediate update ──────────────────────────────────────
+        // Downgrades never reach this branch. During a trial, pin trial_end so
+        // the remaining trial duration is not changed by the plan update.
+        const prorationBehavior = isUpgrade && !isTrialing ? "create_prorations" : "none";
         await stripe.subscriptions.update(sub.id, {
           items: [
             { id: planItem?.id, price: priceId },
@@ -1087,7 +1100,8 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           // Without this, some Stripe price trial settings can silently extend the period.
           ...(isTrialing && sub.trial_end ? { trial_end: sub.trial_end } : {}),
         });
-        // Mark trialConsumedAt so canStartTrial stays false even if stripeSubscriptionId is cleared.
+        // Mark trialConsumedAt so canStartTrial stays false even if the
+        // subscription ID is later cleared.
         await persistOrgData(orgId, {
           plan,
           trialConsumedAt: new Date().toISOString(),
@@ -1561,15 +1575,27 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         const status = sub.status;
         const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null;
         const cancelAtPeriodEnd = sub.cancel_at_period_end;
+        // A schedule emits subscription.updated events while its current phase
+        // is still active. Do not clear a pending downgrade on that event: the
+        // lower plan is effective only once Stripe enters the next phase.
+        const scheduledPlanStillPending = !!(
+          orgSettings?.pendingPlan &&
+          orgSettings.pendingPlan.toLowerCase() !== plan
+        );
 
         if (plan) store.broadcastPlanUpdate(plan, orgId);
         await persistOrgData(orgId, {
           subscriptionStatus: status,
           plan:               plan || undefined,
           trialEndsAt:        trialEnd ?? undefined,
-          // Clear any pending downgrade now that the plan has been applied by Stripe
-          pendingPlan:        null,
-          pendingPlanDate:    null,
+          ...(scheduledPlanStillPending
+            ? {}
+            : {
+                // Clear any pending downgrade now that the plan has been
+                // applied by Stripe.
+                pendingPlan:     null,
+                pendingPlanDate: null,
+              }),
         });
 
         if (cancelAtPeriodEnd) {
