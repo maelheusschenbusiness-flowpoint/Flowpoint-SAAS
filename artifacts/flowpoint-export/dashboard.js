@@ -3495,6 +3495,22 @@ function initLocalSEOMap() {
     });
     STATE._gmap = map;
     STATE._gmapDark = darkStyles;
+    // Dark mode: style Google Maps native map-type controls (Plan / Satellite)
+    if (!isLight) {
+      google.maps.event.addListenerOnce(map, 'tilesloaded', () => {
+        if (document.getElementById('fp-gmap-dark-ctrl')) return;
+        const s = document.createElement('style');
+        s.id = 'fp-gmap-dark-ctrl';
+        s.textContent = [
+          '#fp-gmap .gm-style-mtc button{background:#1e293b!important;color:#e2e8f0!important;border-color:#334155!important;box-shadow:none!important}',
+          '#fp-gmap .gm-style-mtc button:hover{background:#334155!important}',
+          '#fp-gmap .gm-style-mtc>div{background:#1e293b!important;border-color:#334155!important}',
+          '#fp-gmap .gm-bundled-control button,#fp-gmap .gm-fullscreen-control{background:#1e293b!important;color:#e2e8f0!important}',
+          '#fp-gmap .gm-svpc,#fp-gmap .gm-fullscreen-control img{filter:invert(1) brightness(0.8)}',
+        ].join('');
+        document.head.appendChild(s);
+      });
+    }
     // Business marker (only if we have a center)
     let bm = null;
     if (center) {
@@ -3547,22 +3563,10 @@ function initLocalSEOMap() {
       mk.addListener('click', () => iw.open(map, mk));
     });
 
-    // User geolocation marker — always recreate on new map instance
+    // Geolocation marker — only from stored coordinates (no browser permission prompt).
+    // Users set their location via Settings > Localisation or the Workspace address fields.
     if (STATE._geoMarker) { try { STATE._geoMarker.setMap(null); } catch(_){} STATE._geoMarker = null; }
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(pos => {
-        const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        map.setCenter(userPos);
-        STATE._geoMarker = new google.maps.Marker({
-          position: userPos, map, zIndex: 20, title: 'Vous \u00eates ici',
-          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 11, fillColor: '#22c55e', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 }
-        });
-        const uIW = new google.maps.InfoWindow({ content: '<div style="font-family:Inter,sans-serif;padding:8px;min-width:120px"><strong>\ud83d\udccd Vous \u00eates ici</strong></div>' });
-        STATE._geoMarker.addListener('click', () => uIW.open(map, STATE._geoMarker));
-        STATE._lastUserLat = userPos.lat;
-        STATE._lastUserLng = userPos.lng;
-      }, () => {}, { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 });
-    } else if (STATE._lastUserLat != null && STATE._lastUserLng != null) {
+    if (STATE._lastUserLat != null && STATE._lastUserLng != null) {
       const userPos = { lat: STATE._lastUserLat, lng: STATE._lastUserLng };
       STATE._geoMarker = new google.maps.Marker({
         position: userPos, map, zIndex: 20, title: 'Vous \u00eates ici',
@@ -7221,7 +7225,6 @@ function renderLocalSEO() {
             <div style="width:6px;height:6px;border-radius:50%;background:#22c55e;animation:fp-pulse-dot 2s infinite"></div>
             <span style="font-size:10px;color:#22c55e;font-weight:600">En direct</span>
           </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" id="fp-sat-btn" onclick="window._toggleSatelliteMode(this)">🛰 Satellite</button>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('zones')">Voir zones →</button>
         </div>
       </div>
