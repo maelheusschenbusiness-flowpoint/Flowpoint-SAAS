@@ -8933,3 +8933,26 @@ html[data-theme="light"] .fp-skel-block::after {
   border-color: rgba(0,0,0,0.09) !important;
   box-shadow: 0 20px 60px rgba(0,0,0,0.15) !important;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   MOBILE HOTFIXES — 2026-07-31
+   ══════════════════════════════════════════════════════════════ */
+
+/* 1. iOS Safari blue focus ring on scrollable containers → hide */
+.fp-page,
+.fp-main-wrap,
+.fp-sidebar {
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 2. Forecast bottom row: each half must not overflow into the other */
+@media (max-width: 640px) {
+  .fp-forecast-grid > div > div:last-child {
+    gap: 4px !important;
+  }
+  /* Left bar from sidebar border-right bleed fix */
+  .fp-sidebar {
+    border-right: none !important;
+  }
+}

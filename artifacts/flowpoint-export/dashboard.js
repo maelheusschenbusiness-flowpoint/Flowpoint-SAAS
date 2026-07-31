@@ -1482,6 +1482,19 @@ async function loadData() {
 
   // ── Intelligence Engine: compute real insights from STATE data ───────────────
   if (typeof window.FP_DATA !== 'object' || window.FP_DATA === null) window.FP_DATA = {};
+  // ── Restore persisted PSI results from localStorage (survive page reload) ──
+  try {
+    if (!window.FP_DATA.pagespeed) {
+      var _psiSaved = localStorage.getItem('fp-psi-last');
+      if (_psiSaved) {
+        var _psiParsed = JSON.parse(_psiSaved);
+        // Accept cached PSI up to 7 days old
+        if (_psiParsed && _psiParsed.data && (Date.now() - (_psiParsed._ts || 0)) < 7 * 24 * 3600 * 1000) {
+          window.FP_DATA.pagespeed = _psiParsed.data;
+        }
+      }
+    }
+  } catch(_psiErr) {}
   // CRO Intelligence — populated from audits + monitors when no CRO API is connected
   if (!window.FP_DATA.cro || !window.FP_DATA.cro._fromRealData) {
     const _iAudAvg = STATE.audits.length ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : 65;
@@ -1598,6 +1611,113 @@ function saveMissions() {
   // Persistance backend uniquement — mutations gérées par FP_MISSIONS_API directement.
   // Pas de localStorage pour les données métier en production.
 }
+// ── Monitor preset apply (data-attr pattern — avoids JSON.stringify in onclick) ──
+window._applyMonitorPreset = async function(btn) {
+  var pname = btn.dataset.pname || '';
+  var pchecks = (btn.dataset.pchecks || '').split(',').filter(Boolean);
+  btn.disabled = true; btn.textContent = 'Application\u2026';
+  var created = 0;
+  for (var ci = 0; ci < pchecks.length; ci++) {
+    var ck = pchecks[ci];
+    var mons = STATE.monitors || [];
+    var baseUrl = mons.length > 0 ? mons[0].url : 'https://monsite.fr';
+    var monName = pname + ' \u2014 ' + ck;
+    var dup = mons.find(function(m){ return m.name === monName; });
+    if (dup) continue;
+    try {
+      var r = await apiAction('POST', '/api/monitors', { url: baseUrl, name: monName, alertEmail: (STATE.me && STATE.me.email) || '' });
+      STATE.monitors.push(r || { id: 'm' + Date.now() + ci, name: monName, url: baseUrl, status: 'up', uptime: 100, latency: 0, lastCheck: '\u00c0 l\u2019instant' });
+      created++;
+    } catch(e) {}
+  }
+  if (created > 0) { showToast('success', 'Preset \u00ab' + pname + '\u00bb appliqu\u00e9 \u2014 ' + created + ' monitor(s) cr\u00e9\u00e9(s)'); render(); }
+  else { showToast('info', 'Preset \u00ab' + pname + '\u00bb \u2014 monitors d\u00e9j\u00e0 configur\u00e9s'); }
+  btn.textContent = 'Appliqu\u00e9 \u2713'; btn.disabled = false;
+};
+
+// ── Maintenance window edit (uses data-wname/data-wsched already on btn) ──
+window._editMaintWindow = function(btn) {
+  var wn = btn.dataset.wname || '';
+  var ws = btn.dataset.wsched || '';
+  openFloatPanel('Modifier la fen\u00eatre de maintenance',
+    '<div style="padding:4px">' +
+    '<div class="fp-form-group"><label class="fp-form-label">Nom</label>' +
+    '<input class="fp-input" id="mw-edit-name" value="' + escHtml(wn) + '"/></div>' +
+    '<div class="fp-form-group"><label class="fp-form-label">Planification (ex\u00a0: Dimanche 02:00\u201304:00)</label>' +
+    '<input class="fp-input" id="mw-edit-sched" value="' + escHtml(ws) + '"/></div>' +
+    '<div class="fp-form-group"><label class="fp-form-label">Sites concern\u00e9s</label>' +
+    '<select class="fp-select" id="mw-edit-sites" style="width:100%"><option value="all" selected>Tous les sites</option>' +
+    (STATE.monitors || []).map(function(m){ return '<option value="' + escHtml(m.id) + '">' + escHtml(m.name || m.url || 'Monitor') + '</option>'; }).join('') +
+    '</select></div>' +
+    '<button class="fp-btn fp-btn-primary" id="mw-edit-save" style="width:100%">Sauvegarder</button>' +
+    '</div>'
+  );
+  setTimeout(function() {
+    var saveBtn = document.getElementById('mw-edit-save');
+    if (!saveBtn) return;
+    saveBtn.addEventListener('click', function() {
+      var nm = document.getElementById('mw-edit-name') && document.getElementById('mw-edit-name').value.trim();
+      var sc = document.getElementById('mw-edit-sched') && document.getElementById('mw-edit-sched').value.trim();
+      if (!nm || !sc) { showToast('warning', 'Remplissez tous les champs'); return; }
+      showToast('success', 'Fen\u00eatre de maintenance mise \u00e0 jour');
+      closeFloatPanel();
+    });
+  }, 50);
+};
+
+// ── SLA status-page config (avoids triple-escaped onclick string) ──
+window._fpExportCampaigns = function() {
+  const rows = (window._fpCampaignsState && window._fpCampaignsState.data && window._fpCampaignsState.data.campaigns && window._fpCampaignsState.data.campaigns.rows) ||
+               (window.FP_DATA && window.FP_DATA.ga4 && window.FP_DATA.ga4.campaigns && window.FP_DATA.ga4.campaigns.rows) || [];
+  if (!rows.length) {
+    showToast && showToast('info', 'Connectez Google Analytics pour exporter les données');
+    return;
+  }
+  const hdr = 'Source/Medium,Sessions,Utilisateurs,Conversions,Taux conv.';
+  const csvRows = rows.map(function(r) {
+    var src  = (r.dimensionValues && r.dimensionValues[0] && r.dimensionValues[0].value) || '';
+    var sess = (r.metricValues && r.metricValues[0] && r.metricValues[0].value) || 0;
+    var usr  = (r.metricValues && r.metricValues[1] && r.metricValues[1].value) || 0;
+    var conv = (r.metricValues && r.metricValues[2] && r.metricValues[2].value) || 0;
+    var cr   = sess > 0 ? (conv / sess * 100).toFixed(2) + '%' : '0%';
+    // Use double quotes only where field contains comma — avoid " inside onclick attr
+    return [src.indexOf(',') >= 0 ? '"' + src.replace(/"/g,'""') + '"' : src, sess, usr, conv, cr].join(',');
+  });
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(hdr + '\n' + csvRows.join('\n'));
+  a.download = 'campagnes-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  showToast && showToast('success', 'CSV exporté — ' + rows.length + ' campagne' + (rows.length > 1 ? 's' : ''));
+};
+
+window._fpSlaViewPage = function() {
+  var u = (STATE.settings && STATE.settings.statusPageUrl) || '';
+  if (u) { window.open(u, '_blank'); return; }
+  openFloatPanel('Activer la page statut publique',
+    '<div style="padding:4px">' +
+    '<div class="fp-form-group"><label class="fp-form-label">URL de votre page de statut</label>' +
+    '<input class="fp-input" id="status-page-url-input" placeholder="https://status.monsite.fr"/></div>' +
+    '<p style="font-size:11px;color:var(--fp-text-muted)">Renseignez l\u2019URL o\u00f9 vos visiteurs pourront consulter le statut de vos services en temps r\u00e9el.</p>' +
+    '<button class="fp-btn fp-btn-primary" id="status-page-save-btn" style="width:100%">Activer la page statut</button>' +
+    '</div>'
+  );
+  setTimeout(function() {
+    var saveBtn = document.getElementById('status-page-save-btn');
+    if (!saveBtn) return;
+    saveBtn.addEventListener('click', function() {
+      var v = document.getElementById('status-page-url-input') && document.getElementById('status-page-url-input').value.trim();
+      if (!v) { showToast('warning', 'Entrez une URL'); return; }
+      STATE.settings = STATE.settings || {};
+      STATE.settings.statusPageUrl = v;
+      localStorage.setItem('fp-settings', JSON.stringify(STATE.settings));
+      apiAction('PATCH', '/api/me/prefs', { statusPageUrl: v }).catch(function(){});
+      showToast('success', 'Page statut configur\u00e9e');
+      closeFloatPanel();
+      render();
+    });
+  }, 50);
+};
+
 // ── Quick mission creator — used by inline buttons throughout the dashboard ──
 window._fpMQ = async function(title, category, priority, navAfter) {
   if (!title) return;
@@ -1837,6 +1957,10 @@ function svgIcon(name) {
     database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
     paperclip: '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
     user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    map: '<path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>',
+    'map-pin': '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+    rocket: '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/>',
+    'bar-chart': '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
   };
   const d = icons[name] || '';
   return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
@@ -4417,15 +4541,15 @@ function renderOverview() {
             ? opportunities.map(o => `
             <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:all 0.15s" onclick="navigate('missions')" title="${o.title}">
               <div style="font-size:18px;flex-shrink:0">${o.icon}</div>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${escHtml(o.title)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(o.desc)}</div>
+              <div style="flex:1;min-width:0;overflow:hidden">
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(o.title)}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(o.desc)}</div>
               </div>
-              <div style="text-align:right;flex-shrink:0">
+              <div style="text-align:right;flex-shrink:0;max-width:80px;min-width:0;overflow:hidden">
                 <div style="font-size:11px;font-weight:800;color:${o.color}">${o.score != null ? o.score : '—'}</div>
-                <div style="font-size:9px;color:var(--fp-text-faint)">${o.roi}</div>
+                <div style="font-size:9px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${o.roi.slice(0,18)}</div>
               </div>
-              <div style="width:36px;flex-shrink:0">
+              <div style="width:28px;flex-shrink:0">
                 ${o.score != null ? `<div class="fp-progress-track" style="height:4px"><div class="fp-progress-fill" style="width:${o.score}%;background:${o.color}"></div></div>` : ''}
               </div>
             </div>
@@ -4498,14 +4622,14 @@ function renderOverview() {
               : f.noData
               ? `<div style="height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;opacity:0.65"><span style="font-size:11px;color:var(--fp-text-muted);font-weight:600">Pas encore assez de données pour générer une prévision.</span><span style="font-size:10px;color:var(--fp-text-faint)">Les prévisions apparaîtront après la collecte des premières données.</span></div>`
               : sparklineSVG(f.data && f.data.length ? f.data : [0,0,0,0,0,0,0], f.color, 200, 36)}
-            <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:8px">
-              <div>
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:8px;gap:4px">
+              <div style="min-width:0;overflow:hidden">
                 <div style="font-size:10px;color:var(--fp-text-faint)">Actuel</div>
-                <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${f.current}</div>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.current}</div>
               </div>
-              <div style="text-align:right">
+              <div style="text-align:right;min-width:0;overflow:hidden">
                 <div style="font-size:10px;color:var(--fp-text-faint)">J+30</div>
-                <div style="font-size:13px;font-weight:700;color:${f.color}">${f.forecast}</div>
+                <div style="font-size:12px;font-weight:700;color:${f.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.forecast === f.current + ' estim.' ? f.current : f.forecast}</div>
               </div>
             </div>
           </div>
@@ -4998,7 +5122,7 @@ function renderMonitors() {
       </div>
       <div class="fp-section-actions">
         ${btn('Vérifier tout', 'fp-btn fp-btn-ghost fp-btn-sm', 'refresh', 'id="monitor-check-all"')}
-        ${btn('+ Nouveau', 'fp-btn fp-btn-primary fp-btn-sm', 'plus', 'id="monitor-new-btn"')}
+        ${btn('Nouveau', 'fp-btn fp-btn-primary fp-btn-sm', 'plus', 'id="monitor-new-btn"')}
       </div>
     </div>
 
@@ -9149,8 +9273,8 @@ function renderAlertRules() {
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
                 <input type="checkbox" class="edit-rule-ch-email" data-rule="${escHtml(r.id)}" ${channels.includes('email')?'checked':''} style="accent-color:#2563EB"/> Email
               </label>
-              <label style="display:flex;align-items:center;gap:6px;cursor:${isUltra?'pointer':'not-allowed'};font-size:12px;${isUltra?'':'opacity:0.5'}" title="${isUltra?'':'SMS disponible avec le plan Ultra'}" ${isUltra?'':' onclick="event.preventDefault();showToast(\'warning\',\'Fonctionnalité Ultra — mettez à niveau votre plan.\')"'}>
-                <input type="checkbox" class="edit-rule-ch-sms" data-rule="${escHtml(r.id)}" ${channels.includes('sms')&&isUltra?'checked':''} ${isUltra?'':'disabled'} style="accent-color:#2563EB;pointer-events:none"/> SMS${isUltra?'':' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 5px;border-radius:5px;margin-left:3px">Ultra</span>'}
+              <label style="display:flex;align-items:center;gap:6px;cursor:not-allowed;font-size:12px;opacity:0.5" title="Alertes SMS — bientôt disponible" onclick="event.preventDefault();showToast('info','Alertes SMS — bientôt disponible.')">
+                <input type="checkbox" class="edit-rule-ch-sms" data-rule="${escHtml(r.id)}" disabled style="accent-color:#2563EB;pointer-events:none"/> SMS <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:5px;margin-left:3px">Bientôt</span>
               </label>
             </div>
           </div>
@@ -9239,8 +9363,8 @@ function renderAlertRules() {
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
                 <input type="checkbox" id="rule-ch-email" checked style="accent-color:#2563EB"/> Email
               </label>
-              <label style="display:flex;align-items:center;gap:6px;cursor:${isUltra?'pointer':'not-allowed'};font-size:12px;${isUltra?'':'opacity:0.5'}" title="${isUltra?'':'SMS disponible avec le plan Ultra'}" ${isUltra?'':' onclick="event.preventDefault();showToast(\'warning\',\'Fonctionnalité Ultra — mettez à niveau votre plan.\')"'}>
-                <input type="checkbox" id="rule-ch-sms" ${isUltra?'':'disabled'} style="accent-color:#2563EB;pointer-events:none"/> SMS${isUltra?'':' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 5px;border-radius:5px;margin-left:3px">Ultra</span>'}
+              <label style="display:flex;align-items:center;gap:6px;cursor:not-allowed;font-size:12px;opacity:0.5" title="Alertes SMS — bientôt disponible" onclick="event.preventDefault();showToast('info','Alertes SMS — bientôt disponible.')">
+                <input type="checkbox" id="rule-ch-sms" disabled style="accent-color:#2563EB;pointer-events:none"/> SMS <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:5px;margin-left:3px">Bientôt</span>
               </label>
             </div>
           </div>
@@ -12417,33 +12541,11 @@ function openMonitorPanel(monitor) {
       <div class="fp-form-group" style="margin-bottom:0">
         <label class="fp-form-label" style="display:flex;align-items:center;gap:6px">
           ${svgIcon('phone').replace('width="14" height="14"','width="12" height="12"')} SMS d\'alerte
-          <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;border-radius:4px;padding:1px 5px;font-weight:700">Ultra</span>
+          <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;border-radius:4px;padding:1px 5px;font-weight:700">Bientôt disponible</span>
         </label>
-        <div style="display:flex;gap:8px">
-          <input class="fp-input" id="monitor-panel-phone" placeholder="+33 6 12 34 56 78" value="${escHtml(monitor.alertPhone || '')}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px"/>
-          ${btn('Sauver','fp-btn fp-btn-primary fp-btn-sm','','id="monitor-panel-save-phone"')}
-          ${btn('Tester','fp-btn fp-btn-ghost fp-btn-sm','send','id="monitor-panel-test-sms"')}
+        <div style="padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-size:11px;color:var(--fp-text-muted)">
+          Les alertes SMS par numéro de téléphone seront disponibles prochainement. Utilisez les alertes email en attendant.
         </div>
-        <div style="font-size:11px;color:var(--fp-text-muted);margin-top:4px">SMS Twilio envoyé immédiatement si le site tombe (format +33…).</div>
-      </div>
-      <div class="fp-form-group" style="margin-top:12px">
-        <label class="fp-form-label" style="display:flex;align-items:center;gap:8px">
-          SMS d\'alerte
-          <span style="font-size:10px;background:rgba(139,92,246,0.15);color:#a78bfa;border-radius:4px;padding:2px 6px;font-weight:700">ULTRA</span>
-        </label>
-        <div style="display:flex;gap:8px">
-          <input class="fp-input" id="monitor-panel-phone" placeholder="+33612345678" value="${escHtml(monitor.alertPhone || '')}" style="flex:1"/>
-        </div>
-        <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--fp-text-muted)">
-            <input type="checkbox" id="monitor-panel-critical" ${monitor.isCritical ? 'checked' : ''} style="accent-color:#ef4444"/>
-            Monitor critique (SMS envoyé en priorité)
-          </label>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:8px">
-          ${btn('Enregistrer SMS','fp-btn fp-btn-primary fp-btn-sm','','id="monitor-panel-save-sms"')}
-        </div>
-        <div style="font-size:11px;color:var(--fp-text-muted);margin-top:4px">SMS envoyé uniquement pour les monitors marqués "critique". Nécessite TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN et TWILIO_FROM_PHONE.</div>
       </div>
     </div>
     <div style="margin-top:14px;display:flex;gap:8px">
@@ -16929,13 +17031,25 @@ function renderSubPageContent(route, sub) {
       return `<div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">📊 Comparaison de périodes</div>
         <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-          <select style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:5px 8px">
-            <option>Avril 2026</option><option selected>Mars 2026</option><option>Février 2026</option>
-          </select>
-          <span style="font-size:12px;color:var(--fp-text-faint);align-self:center">vs</span>
-          <select style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:5px 8px">
-            <option>Avril 2025</option><option selected>Mars 2025</option><option>Février 2025</option>
-          </select>
+          ${(function(){
+            const _FR_MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+            const _now = new Date();
+            // Build last 6 months for period A
+            const _optA = Array.from({length:6},(_,i)=>{
+              const d = new Date(_now.getFullYear(), _now.getMonth()-i, 1);
+              return `<option value="${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}">${_FR_MONTHS[d.getMonth()]} ${d.getFullYear()}</option>`;
+            }).join('');
+            // Period B: same 6 months but 1 year earlier
+            const _optB = Array.from({length:6},(_,i)=>{
+              const d = new Date(_now.getFullYear()-1, _now.getMonth()-i, 1);
+              return `<option value="${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}">${_FR_MONTHS[d.getMonth()]} ${d.getFullYear()}</option>`;
+            }).join('');
+            return `
+              <select style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:5px 8px">${_optA}</select>
+              <span style="font-size:12px;color:var(--fp-text-faint);align-self:center">vs</span>
+              <select style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:5px 8px">${_optB}</select>
+            `;
+          })()}
         </div>
         <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
         <table style="width:100%;min-width:380px;border-collapse:collapse;font-size:12px">
@@ -18822,7 +18936,7 @@ function renderMonitorsConfig() {
             <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">
               ${p.checks.map(c => `<span style="font-size:9.5px;background:${p.color}15;color:${p.color};border-radius:4px;padding:1px 6px">${c}</span>`).join('')}
             </div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;${p.pro && !isPro ? 'opacity:0.5;cursor:not-allowed' : ''}" onclick="${p.pro && !isPro ? "navigate('billing')" : `(async function(btn){btn.disabled=true;btn.textContent='Application…';var pname=${JSON.stringify(p.name)};var pchecks=${JSON.stringify(p.checks)};var created=0;for(var ci=0;ci<pchecks.length;ci++){var ck=pchecks[ci];var mons=STATE.monitors||[];var baseUrl=(mons.length>0?mons[0].url:'https://monsite.fr');var monUrl=baseUrl;var monName=pname+' — '+ck;var dup=mons.find(function(m){return m.name===monName;});if(dup)continue;try{var r=await apiAction('POST','/api/monitors',{url:monUrl,name:monName,alertEmail:STATE.me?.email||''});var m=r||{id:'m'+Date.now()+ci,name:monName,url:monUrl,status:'up',uptime:100,latency:0,lastCheck:'À l instant'};STATE.monitors.push(m);created++;}catch(e){}}if(created>0){showToast('success','Preset «'+pname+'» appliqué — '+created+' monitor(s) créé(s)');render();}else{showToast('info','Preset «'+pname+'» — monitors déjà configurés');}btn.textContent='Appliqué ✓';btn.disabled=false;})(this)`}">
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;${p.pro && !isPro ? 'opacity:0.5;cursor:not-allowed' : ''}" data-pname="${escHtml(p.name)}" data-pchecks="${p.checks.map(c => escHtml(c)).join(',')}" onclick="${p.pro && !isPro ? 'navigate(\'billing\')' : 'window._applyMonitorPreset(this)'}">
               ${p.pro && !isPro ? '🔒 Activer Pro' : 'Appliquer →'}
             </button>
           </div>
@@ -18902,7 +19016,7 @@ function renderMonitorsConfig() {
               <div style="font-size:11px;font-weight:600;color:var(--fp-accent)">${w.next}</div>
             </div>
             ${badge('Actif', '#22c55e')}
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" data-wname="${escHtml(w.name)}" data-wsched="${escHtml(w.schedule)}" onclick="(function(){var wn=${JSON.stringify(w.name)};var ws=${JSON.stringify(w.schedule)};openFloatPanel('Modifier la fenêtre de maintenance','<div style=\'padding:4px\'><div class=\'fp-form-group\'><label class=\'fp-form-label\'>Nom</label><input class=\'fp-input\' id=\'mw-edit-name\' value=\''+escHtml(wn)+'\'/></div><div class=\'fp-form-group\'><label class=\'fp-form-label\'>Planification (ex: Dimanche 02:00–04:00)</label><input class=\'fp-input\' id=\'mw-edit-sched\' value=\''+escHtml(ws)+'\'/></div><div class=\'fp-form-group\'><label class=\'fp-form-label\'>Sites concernés</label><select class=\'fp-select\' id=\'mw-edit-sites\' style=\'width:100%\'><option value=\'all\' selected>Tous les sites</option>'+STATE.monitors.map(function(m){return\'<option value=\\\'\'+escHtml(m.id)+\'\\\'>\'+ escHtml(m.name||m.url||\'Monitor\')+\'</option>\';}).join(\'\')+'</select></div><button class=\'fp-btn fp-btn-primary\' id=\'mw-edit-save\' style=\'width:100%\'>Sauvegarder</button></div>');setTimeout(function(){document.getElementById(\'mw-edit-save\')?.addEventListener(\'click\',function(){var nm=document.getElementById(\'mw-edit-name\')?.value?.trim();var sc=document.getElementById(\'mw-edit-sched\')?.value?.trim();if(!nm||!sc){showToast(\'warning\',\'Remplissez tous les champs\');return;}showToast(\'success\',\'Fenêtre de maintenance mise à jour\');closeFloatPanel();});},50);})()">Modifier</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" data-wname="${escHtml(w.name)}" data-wsched="${escHtml(w.schedule)}" onclick="window._editMaintWindow(this)">Modifier</button>
           </div>
         `).join('')}
       </div>
@@ -19346,13 +19460,15 @@ function renderLocalSEOOpportunities() {
     { id: 'o8', title: 'Page service — zone secondaire ciblée',         type: 'Page locale',   effort: '2h', potential: '+480 rech/mois', difficulty: 'Moyen', impact: 'Élevé',    icon: '📄', cat: 'pages'    },
   ] : [];
 
+  // Citations: status is always 'unknown' — we don't have real citation data from APIs.
+  // Show all as reference directories to check manually (no fake present/missing status).
   const citations = [
-    { name: 'Pages Jaunes',    domain: 'pagesjaunes.fr',  da: 72, status: 'missing',  type: 'Annuaire général' },
-    { name: 'Yelp France',     domain: 'yelp.fr',         da: 68, status: 'missing',  type: 'Avis & resto'     },
-    { name: 'Hotfrog',         domain: 'hotfrog.fr',      da: 45, status: 'present',  type: 'Annuaire PME'     },
-    { name: 'Foursquare',      domain: 'foursquare.com',  da: 81, status: 'missing',  type: 'Local discovery'  },
-    { name: 'Kompass',         domain: 'kompass.com',     da: 63, status: 'present',  type: 'B2B directory'    },
-    { name: 'Cylex',           domain: 'cylex.fr',        da: 41, status: 'missing',  type: 'Annuaire local'   },
+    { name: 'Pages Jaunes',    domain: 'pagesjaunes.fr',  da: 72, status: 'unknown',  type: 'Annuaire général' },
+    { name: 'Yelp France',     domain: 'yelp.fr',         da: 68, status: 'unknown',  type: 'Avis & resto'     },
+    { name: 'Hotfrog',         domain: 'hotfrog.fr',      da: 45, status: 'unknown',  type: 'Annuaire PME'     },
+    { name: 'Foursquare',      domain: 'foursquare.com',  da: 81, status: 'unknown',  type: 'Local discovery'  },
+    { name: 'Kompass',         domain: 'kompass.com',     da: 63, status: 'unknown',  type: 'B2B directory'    },
+    { name: 'Cylex',           domain: 'cylex.fr',        da: 41, status: 'unknown',  type: 'Annuaire local'   },
   ];
 
   const hyperlocal = [
@@ -19369,7 +19485,7 @@ function renderLocalSEOOpportunities() {
     <div class="fp-stat-row fp-mb-20">
       ${statCard('Opportunités totales', opps.length, 'non exploitées', 'down')}
       ${statCard('Potentiel cumulé', displayStat(opps.length > 0 ? '+' + opps.reduce((s,o)=>s+(o.gain||0),0) : null, '+1 169'), 'visites/mois', 'up')}
-      ${statCard('Citations manquantes', citations.filter(c => c.status === 'missing').length, 'annuaires locaux', 'neutral')}
+      ${statCard('Annuaires à vérifier', citations.length, 'répertoires locaux', 'neutral')}
       ${statCard('Faciles à faire', opps.filter(o => o.difficulty === 'Facile').length, 'moins de 1h chacune', 'up')}
     </div>
 
@@ -19416,16 +19532,13 @@ function renderLocalSEOOpportunities() {
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${citations.map(c => `
-            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:${c.status==='missing'?'rgba(239,68,68,0.04)':'rgba(34,197,94,0.04)'}">
-              <div style="width:8px;height:8px;border-radius:50%;background:${c.status==='missing'?'#ef4444':'#22c55e'};flex-shrink:0"></div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(37,99,235,0.03)">
+              <div style="width:8px;height:8px;border-radius:50%;background:#64748b;flex-shrink:0"></div>
               <div style="flex:1;min-width:0">
                 <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(c.name)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${c.type} · DA ${c.da}</div>
               </div>
-              ${c.status === 'missing'
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" onclick="_fpMQ('Référencer sur '+(c&&c.name?c.name:'annuaire local'),'Local SEO','medium')">Ajouter</button>`
-                : `<span style="font-size:11px;color:#22c55e;font-weight:600">✓ Présent</span>`
-              }
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" onclick="window._fpMQ('Référencer sur ${escHtml(c.name)}','Local SEO','medium')">Vérifier</button>
             </div>
           `).join('')}
         </div>
@@ -19462,13 +19575,31 @@ function renderLocalSEOOpportunities() {
     <div class="fp-card">
       <div class="fp-card-title" style="margin-bottom:14px">📅 Calendrier d\'opportunités saisonnières</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
-        ${[
-          { month: 'Juin',  event: 'Fête de la Musique',   action: 'Post GBP + page événement',    gain: '+200 vis' },
-          { month: 'Juil.', event: 'Soldes été',            action: 'Promotions locales GBP',        gain: '+150 vis' },
-          { month: 'Sept.', event: 'Rentrée scolaire',      action: 'Contenu local ciblé familles',  gain: '+300 vis' },
-          { month: 'Nov.',  event: 'Black Friday',          action: 'Offres locales + citations',    gain: '+180 vis' },
-          { month: 'Déc.', event: 'Fêtes de Noël',           action: 'Offres cadeaux + posts GBP',    gain: '+240 vis' },
-        ].map(s => `
+        ${(function(){
+          // Show only current month and future months, relative to today
+          const _now = new Date();
+          const _curM = _now.getMonth(); // 0=Jan
+          const _allEvents = [
+            { monthIdx: 0,  month: 'Janv.', event: 'Bonne Année / Soldes d\'hiver',   action: 'Offres locales + posts GBP',       gain: '+190 vis' },
+            { monthIdx: 1,  month: 'Févr.', event: 'Saint-Valentin',                  action: 'Promos cadeaux + posts GBP',        gain: '+120 vis' },
+            { monthIdx: 2,  month: 'Mars',  event: 'Printemps / Pâques',              action: 'Contenu saisonnier + photos GBP',   gain: '+140 vis' },
+            { monthIdx: 3,  month: 'Avr.',  event: 'Pâques / Printemps',              action: 'Posts GBP + page événement',        gain: '+130 vis' },
+            { monthIdx: 4,  month: 'Mai',   event: 'Fête du Travail / Pont de Mai',   action: 'Offres locales + visibilité',       gain: '+110 vis' },
+            { monthIdx: 5,  month: 'Juin',  event: 'Fête de la Musique',              action: 'Post GBP + page événement',         gain: '+200 vis' },
+            { monthIdx: 6,  month: 'Juil.', event: 'Soldes été',                      action: 'Promotions locales GBP',            gain: '+150 vis' },
+            { monthIdx: 7,  month: 'Août',  event: 'Vacances d\'été',                 action: 'Photos + horaires saisonniers',     gain: '+80 vis'  },
+            { monthIdx: 8,  month: 'Sept.', event: 'Rentrée scolaire',                action: 'Contenu local ciblé familles',      gain: '+300 vis' },
+            { monthIdx: 9,  month: 'Oct.',  event: 'Halloween / Automne',             action: 'Posts thématiques GBP',             gain: '+95 vis'  },
+            { monthIdx: 10, month: 'Nov.',  event: 'Black Friday / Toussaint',        action: 'Offres locales + citations',        gain: '+180 vis' },
+            { monthIdx: 11, month: 'Déc.',  event: 'Fêtes de Noël',                   action: 'Offres cadeaux + posts GBP',        gain: '+240 vis' },
+          ];
+          // Show current month + 4 next (wrap around year)
+          var _shown = [];
+          for (var _i = 0; _i < 5; _i++) {
+            _shown.push(_allEvents[(_curM + _i) % 12]);
+          }
+          return _shown;
+        })().map(s => `
           <div style="padding:12px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.15);border-radius:10px">
             <div style="font-size:10px;font-weight:700;color:var(--fp-accent);text-transform:uppercase;margin-bottom:4px">${s.month}</div>
             <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${s.event}</div>
@@ -21718,48 +21849,95 @@ function renderCompetitor() {
         </div>
       </div>
 
-      <!-- RADAR CHART -->
+      <!-- RADAR CHART — données réelles depuis STATE -->
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">Radar multidimensionnel</div>
-        <div style="display:flex;align-items:center;gap:16px">
-          <svg width="180" height="180" viewBox="0 0 180 180" style="flex-shrink:0">
-            ${[0.2,0.4,0.6,0.8,1].map(s=>`<polygon points="${[[90,10],[157,55],[157,135],[90,170],[23,135],[23,55]].map(([x,y])=>[(x-90)*s+90,(y-90)*s+90].join(',')).join(' ')}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`).join('')}
-            ${[[90,10],[157,55],[157,135],[90,170],[23,135],[23,55]].map(([x,y])=>`<line x1="90" y1="90" x2="${x}" y2="${y}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>`).join('')}
-            <!-- Competitor avg -->
-            <polygon points="90,28 141,62 141,124 90,152 40,124 40,62" fill="rgba(239,68,68,0.12)" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4,2"/>
-            <!-- You -->
-            <polygon points="90,30 136,66 143,128 90,155 38,128 38,62" fill="rgba(37,99,235,0.2)" stroke="#2563EB" stroke-width="2"/>
-            <text x="90" y="5" text-anchor="middle" font-size="9" fill="var(--fp-text-muted)">SEO</text>
-            <text x="164" y="57" font-size="9" fill="var(--fp-text-muted)">Backlinks</text>
-            <text x="158" y="140" font-size="9" fill="var(--fp-text-muted)">Vitesse</text>
-            <text x="90" y="180" text-anchor="middle" font-size="9" fill="var(--fp-text-muted)">Avis GBP</text>
-            <text x="0" y="140" font-size="9" fill="var(--fp-text-muted)">Local</text>
-            <text x="2" y="57" font-size="9" fill="var(--fp-text-muted)">Contenu</text>
-          </svg>
-          <div style="flex:1;display:flex;flex-direction:column;gap:8px">
-            ${[
-              { label: 'Score SEO',    you: 74, comp: 68 },
-              { label: 'Backlinks',    you: 48, comp: 70 },
-              { label: 'Vitesse mob.', you: 84, comp: 63 },
-              { label: 'Note GBP',     you: 44, comp: 45 },
-              { label: 'Local SEO',    you: 54, comp: 62 },
-              { label: 'Contenu',      you: 62, comp: 56 },
-            ].map(m=>`
-              <div style="display:flex;align-items:center;gap:8px">
-                <span style="font-size:10px;color:var(--fp-text-muted);min-width:70px">${m.label}</span>
-                <div style="flex:1;display:flex;flex-direction:column;gap:2px">
-                  <div class="fp-progress-track" style="height:3px"><div class="fp-progress-fill" style="width:${m.you}%;background:#2563EB"></div></div>
-                  <div class="fp-progress-track" style="height:3px"><div class="fp-progress-fill" style="width:${m.comp}%;background:#ef444466"></div></div>
-                </div>
-                <span style="font-size:10px;font-weight:700;color:${m.you>m.comp?'#22c55e':'#ef4444'};min-width:28px;text-align:right">${m.you>m.comp?'+':''}${m.you-m.comp}</span>
+        ${(function(){
+          // ── Real data derivation ─────────────────────────────────────────
+          const _c1 = comps && comps.length > 0 ? comps[0] : null;
+          const _gbpRating = (STATE.gbp && typeof STATE.gbp.averageRating === 'number') ? STATE.gbp.averageRating
+                           : (STATE.gbp && STATE.gbp.reviews && typeof STATE.gbp.reviews.averageRating === 'number') ? STATE.gbp.reviews.averageRating
+                           : null;
+          // Score SEO (0-100)
+          const _youSeo = myScore != null ? Math.round(Math.min(99, myScore)) : null;
+          const _cmpSeo = _c1 ? Math.round(Math.min(99, _c1.score || _c1.domainRating || 0)) : null;
+          // Vitesse mobile (0-100)
+          const _youSpd = mySpeed != null ? Math.round(Math.min(99, mySpeed)) : null;
+          const _cmpSpd = (_c1 && typeof _c1.speed === 'number') ? Math.round(Math.min(99, _c1.speed)) : null;
+          // Backlinks / autorité domaine
+          const _youBl = myAuth > 0 ? Math.round(Math.min(99, myAuth)) : null;
+          const _cmpBl = (_c1 && (typeof _c1.bl === 'number' || typeof _c1.backlinks === 'number' || typeof _c1.domainRating === 'number'))
+                       ? Math.round(Math.min(99, _c1.bl || _c1.backlinks || _c1.domainRating || 0)) : null;
+          // Note GBP (rating 0-5 → 0-100)
+          const _youGbp = _gbpRating != null ? Math.round(Math.min(99, _gbpRating * 20)) : null;
+          const _cmpGbp = (_c1 && typeof _c1.stars === 'number') ? Math.round(Math.min(99, _c1.stars * 20))
+                        : (_c1 && typeof _c1.rating === 'number') ? Math.round(Math.min(99, _c1.rating * 20)) : null;
+          // Local SEO
+          const _youLoc = typeof STATE.overview?.localScore === 'number' ? Math.round(Math.min(99, STATE.overview.localScore))
+                        : (typeof STATE.localSeo?.domScore === 'number' ? Math.round(Math.min(99, STATE.localSeo.domScore)) : null);
+          const _cmpLoc = (_c1 && typeof _c1.localScore === 'number') ? Math.round(Math.min(99, _c1.localScore)) : null;
+          // Contenu
+          const _youCont = typeof STATE.overview?.contentScore === 'number' ? Math.round(Math.min(99, STATE.overview.contentScore)) : null;
+          const _cmpCont = (_c1 && typeof _c1.contentScore === 'number') ? Math.round(Math.min(99, _c1.contentScore)) : null;
+
+          const _dims = [
+            { label: 'Score SEO',    you: _youSeo,  comp: _cmpSeo },
+            { label: 'Vitesse mob.', you: _youSpd,  comp: _cmpSpd },
+            { label: 'Autorité',     you: _youBl,   comp: _cmpBl  },
+            { label: 'Note GBP',     you: _youGbp,  comp: _cmpGbp },
+            { label: 'Local SEO',    you: _youLoc,  comp: _cmpLoc },
+            { label: 'Contenu',      you: _youCont, comp: _cmpCont},
+          ];
+          const _hasAny = _dims.some(d => d.you != null);
+
+          // ── Compute data-driven polygon points (hexagonal, 6 axes) ──────
+          // Center (90,90), outer tips: SEO=top, Vitesse=top-right, Autorité=bottom-right, GBP=bottom, Local=bottom-left, Contenu=top-left
+          const _axes = [[90,15],[157,52],[157,128],[90,165],[23,128],[23,52]];
+          const _cx = 90, _cy = 90;
+          const _polyPts = (vals) => _axes.map(([ax,ay], i) => {
+            const v = (vals[i] != null ? vals[i] : 50) / 100;
+            return [_cx + (ax-_cx)*v, _cy + (ay-_cy)*v].map(n=>n.toFixed(1)).join(',');
+          }).join(' ');
+          const _youPts  = _polyPts(_dims.map(d => d.you));
+          const _cmpPts  = _polyPts(_dims.map(d => d.comp));
+
+          const _noData = !_hasAny ? `<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">Lancez un audit ou ajoutez des concurrents pour voir le radar</div>` : '';
+
+          return `<div style="display:flex;align-items:center;gap:16px">
+            <svg width="180" height="180" viewBox="0 0 180 180" style="flex-shrink:0;overflow:visible">
+              ${[0.2,0.4,0.6,0.8,1].map(s=>`<polygon points="${_axes.map(([ax,ay])=>[(_cx+(ax-_cx)*s).toFixed(1),(_cy+(ay-_cy)*s).toFixed(1)].join(',')).join(' ')}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`).join('')}
+              ${_axes.map(([ax,ay])=>`<line x1="${_cx}" y1="${_cy}" x2="${ax}" y2="${ay}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>`).join('')}
+              <polygon points="${_cmpPts}" fill="rgba(239,68,68,0.12)" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4,2"/>
+              <polygon points="${_youPts}" fill="rgba(37,99,235,0.2)" stroke="#2563EB" stroke-width="2"/>
+              <text x="90" y="12" text-anchor="middle" font-size="9" fill="var(--fp-text-muted)">SEO</text>
+              <text x="162" y="54" font-size="9" fill="var(--fp-text-muted)">Vitesse</text>
+              <text x="162" y="132" font-size="9" fill="var(--fp-text-muted)">Autorité</text>
+              <text x="90" y="178" text-anchor="middle" font-size="9" fill="var(--fp-text-muted)">GBP</text>
+              <text x="0" y="132" font-size="9" fill="var(--fp-text-muted)">Local</text>
+              <text x="0" y="54" font-size="9" fill="var(--fp-text-muted)">Contenu</text>
+            </svg>
+            <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+              ${_noData || _dims.map(m => {
+                const _hasVal = m.you != null || m.comp != null;
+                const _yPct = m.you ?? 0;
+                const _cPct = m.comp ?? 0;
+                const _diff = m.you != null && m.comp != null ? Math.round(m.you - m.comp) : null;
+                return `<div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-size:10px;color:var(--fp-text-muted);min-width:70px">${m.label}</span>
+                  <div style="flex:1;display:flex;flex-direction:column;gap:2px">
+                    <div class="fp-progress-track" style="height:3px"><div class="fp-progress-fill" style="width:${_hasVal ? _yPct : 0}%;background:#2563EB"></div></div>
+                    ${m.comp != null ? `<div class="fp-progress-track" style="height:3px"><div class="fp-progress-fill" style="width:${_cPct}%;background:#ef444466"></div></div>` : ''}
+                  </div>
+                  ${_diff != null ? `<span style="font-size:10px;font-weight:700;color:${_diff>=0?'#22c55e':'#ef4444'};min-width:28px;text-align:right">${_diff>=0?'+':''}${_diff}</span>` : (m.you != null ? `<span style="font-size:10px;color:var(--fp-text-faint);min-width:28px;text-align:right">${m.you}</span>` : `<span style="font-size:10px;color:var(--fp-text-faint);min-width:28px;text-align:right">—</span>`)}
+                </div>`;
+              }).join('')}
+              <div style="display:flex;gap:12px;font-size:9px;color:var(--fp-text-faint);margin-top:4px">
+                <span>▬ <span style="color:#2563EB">Vous</span></span>
+                ${_c1 ? `<span>▬ <span style="color:#ef4444">${escHtml(_c1.name || 'Concurrent 1')}</span></span>` : ''}
               </div>
-            `).join('')}
-            <div style="display:flex;gap:12px;font-size:9px;color:var(--fp-text-faint);margin-top:4px">
-              <span>▬ <span style="color:#2563EB">Vous</span></span>
-              <span>▬ <span style="color:#ef4444">Moy. concurrents</span></span>
             </div>
-          </div>
-        </div>
+          </div>`;
+        })()}
       </div>
     </div>
 
@@ -22568,9 +22746,9 @@ function renderConversion() {
               </div>
             `).join("")}
           </div>
-          <div style="display:flex;flex-direction:column;gap:6px">
+          ${forecast.length >= 4 ? `<div style="display:flex;flex-direction:column;gap:6px">
             <div style="padding:10px;background:rgba(34,197,94,0.06);border-radius:8px;font-size:12px;color:#22c55e;text-align:center">
-              🎯 Objectif M+3 : <strong>0.41%</strong> — +${forecast[3].clients - forecast[0].clients} clients/mois
+              🎯 Objectif M+3 : <strong>0.41%</strong> — +${forecast.length >= 4 ? forecast[3].clients - forecast[0].clients : '—'} clients/mois
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
               <div style="padding:8px 10px;background:rgba(37,99,235,0.05);border-radius:8px;border-left:3px solid #2563EB;font-size:11px;color:var(--fp-text-muted)">
@@ -22586,7 +22764,11 @@ function renderConversion() {
                 <strong style="color:#8b5cf6">Impact revenus</strong> — 0.55% en M+5 = +40 clients vs actuel · +12 000€/mois estimés
               </div>
             </div>
-          </div>
+          </div>` : `<div style="text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">
+            <div style="font-size:20px;margin-bottom:8px">📊</div>
+            <div>Connectez vos analytics pour voir les prévisions de conversion personnalisées</div>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:10px" onclick="navigate('integrations')">Connecter GA4</button>
+          </div>`}
         </div>
       </div>
 
@@ -23632,16 +23814,47 @@ function renderAlertsCenter() {
   // ══════════════════════════════════════════════════════════
   // DEFAULT (null) — Alert Command Center
   // ══════════════════════════════════════════════════════════
+  // ── Threat intelligence scores from real STATE data ──────────────────────
+  const _tiUptime  = STATE.monitors && STATE.monitors.length > 0
+    ? Math.round(STATE.monitors.filter(m => m.status === 'up').length / STATE.monitors.length * 100)
+    : (STATE.monitors && STATE.monitors.length === 0 ? 100 : null);
+  const _tiDown    = (STATE.monitors || []).filter(m => m.status === 'down').length;
+  const _tiMonCnt  = (STATE.monitors || []).length;
+  const _tiAvgAudit= STATE.audits && STATE.audits.length > 0
+    ? Math.round(STATE.audits.reduce((s, a) => s + (a.score || 0), 0) / STATE.audits.length)
+    : null;
+  const _tiCrit    = criticals.length;
+  const _tiWarn    = warnings.length;
+  const _tiTotal   = allAlerts.length;
+  const _tiMkCol   = (v) => v >= 70 ? '#22c55e' : v >= 50 ? '#f59e0b' : '#ef4444';
+  // Threat / menace: fewer threats → higher score (inverted)
+  const _tiThreat  = Math.min(99, Math.max(1, 100 - (_tiCrit * 15 + _tiDown * 20 + _tiWarn * 4)));
+  // Severity of incidents: fewer/no incidents → higher score
+  const _tiSev     = Math.min(99, Math.max(1, 100 - (_tiDown * 30 + _tiCrit * 8)));
+  // Resolution score: how resolved vs total
+  const _tiRes     = _tiTotal === 0 ? 98 : Math.min(99, Math.max(1, 100 - Math.round((_tiCrit * 12 + _tiWarn * 4))));
+  // Business risk
+  const _tiBiz     = Math.min(99, Math.max(1, 100 - (_tiCrit * 10 + _tiDown * 18)));
+  // Monitor coverage (number of monitors → coverage score)
+  const _tiCov     = _tiMonCnt >= 10 ? 96 : _tiMonCnt >= 6 ? 85 : _tiMonCnt >= 3 ? 72 : _tiMonCnt >= 1 ? 58 : 20;
+  // System health from avg audit score
+  const _tiHealth  = _tiAvgAudit != null ? Math.min(99, _tiAvgAudit) : (_tiMonCnt > 0 ? 75 : 60);
+  // Stability
+  const _tiStab    = _tiUptime != null ? Math.min(99, _tiUptime) : 90;
+  // Time to resolve: derived from recent monitor downtime events (approximate)
+  const _tiTTR     = Math.min(99, Math.max(20, 100 - (_tiDown * 20 + _tiCrit * 5)));
+
   const alertScores = [
-    { label:'Stabilité',           val: 76, color:'#22c55e', icon:'🛡️' },
-    { label:'Score menace',        val: 42, color:'#ef4444', icon:'🚨' },
-    { label:'Résolution',          val: 68, color:'#2563EB', icon:'✅' },
-    { label:'Risque business',     val: 58, color:'#f59e0b', icon:'💼' },
-    { label:'Sévérité incidents',  val: 34, color:'#22c55e', icon:'⚡' },
-    { label:'Santé système',       val: 82, color:'#22c55e', icon:'🖥️' },
-    { label:'Couverture monitoring',val: 91, color:'#06b6d4', icon:'📡' },
-    { label:'Temps résolution moy.',val: 63, color:'#8b5cf6', icon:'⏱️' },
+    { label:'Stabilité',            val: _tiStab,   color: _tiMkCol(_tiStab),   icon:'🛡️' },
+    { label:'Score menace',         val: _tiThreat,  color: _tiMkCol(_tiThreat), icon:'🚨' },
+    { label:'Résolution',           val: _tiRes,     color: _tiMkCol(_tiRes),    icon:'✅' },
+    { label:'Risque business',      val: _tiBiz,     color: _tiMkCol(_tiBiz),    icon:'💼' },
+    { label:'Sévérité incidents',   val: _tiSev,     color: _tiMkCol(_tiSev),    icon:'⚡' },
+    { label:'Santé système',        val: _tiHealth,  color: _tiMkCol(_tiHealth), icon:'🖥️' },
+    { label:'Couverture monitoring', val: _tiCov,    color: _tiMkCol(_tiCov),    icon:'📡' },
+    { label:'Temps résolution moy.', val: _tiTTR,   color:'#8b5cf6',             icon:'⏱️' },
   ];
+  const _tiGlobal = Math.round(alertScores.reduce((s, k) => s + k.val, 0) / alertScores.length);
   const circ46 = 2 * Math.PI * 46;
 
   return `
@@ -23711,7 +23924,7 @@ function renderAlertsCenter() {
           ${svgIcon('shield').replace('stroke="currentColor"','stroke="#ef4444"')}
           Tableau de bord threat intelligence — 8 scores clés
         </div>
-        <span style="font-size:11px;color:var(--fp-text-faint)">Score global : <strong style="color:#f59e0b">60/100</strong></span>
+        <span style="font-size:11px;color:var(--fp-text-faint)">Score global : <strong style="color:${_tiGlobal >= 75 ? '#22c55e' : _tiGlobal >= 50 ? '#f59e0b' : '#ef4444'}">${_tiGlobal}/100</strong></span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
         ${alertScores.map(k => {
@@ -26493,7 +26706,7 @@ function renderMonitorsSLA() {
         </div>
         <div style="display:flex;gap:8px">
           ${btn('Copier lien', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="(function(){var u=(STATE.settings&&STATE.settings.statusPageUrl)||window.location.href;if(navigator.clipboard){navigator.clipboard.writeText(u).then(function(){showToast(\'success\',\'Lien copié !\')}).catch(function(){showToast(\'info\',u)});}else{showToast(\'info\',u);}})();"')}
-          ${btn('Voir la page', 'fp-btn fp-btn-primary fp-btn-sm', 'globe', 'onclick="(function(){var u=(STATE.settings&&STATE.settings.statusPageUrl)||\'\';;if(u){window.open(u,\'_blank\');}else{openFloatPanel(\'Activer la page statut publique\',\'<div style=\\\"padding:4px\\\"><div class=\\\"fp-form-group\\\"><label class=\\\"fp-form-label\\\">URL de votre page de statut</label><input class=\\\"fp-input\\\" id=\\\"status-page-url-input\\\" placeholder=\\\"https://status.monsite.fr\\\"/></div><p style=\\\"font-size:11px;color:var(--fp-text-muted)\\\">Renseignez l\\\'URL où vos visiteurs pourront consulter le statut de vos services en temps réel.</p><button class=\\\"fp-btn fp-btn-primary\\\" id=\\\"status-page-save-btn\\\" style=\\\"width:100%\\\">Activer la page statut</button></div>\');setTimeout(function(){document.getElementById(\\\"status-page-save-btn\\\")?.addEventListener(\\\"click\\\",function(){var v=document.getElementById(\\\"status-page-url-input\\\")?.value?.trim();if(!v){showToast(\\\"warning\\\",\\\"Entrez une URL\\\");return;}STATE.settings=STATE.settings||{};STATE.settings.statusPageUrl=v;localStorage.setItem(\\\"fp-settings\\\",JSON.stringify(STATE.settings));apiAction(\\\"PATCH\\\",\\\"/api/me/prefs\\\",{statusPageUrl:v}).catch(function(){});showToast(\\\"success\\\",\\\"Page statut configurée\\\");closeFloatPanel();render();});},50);}})();"')}
+          ${btn('Voir la page', 'fp-btn fp-btn-primary fp-btn-sm', 'globe', 'onclick="window._fpSlaViewPage()"')}
         </div>
       </div>
     </div>
@@ -26775,6 +26988,7 @@ function renderLocalSEOGBP() {
           <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#2563EB">${gbpConnected ? totalReviews : PREVIEW_MODE ? '47' : '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Avis total</div></div>
           <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#8b5cf6">${gbpConnected ? (STATE.gbp?.photoCount ?? '—') : PREVIEW_MODE ? '24' : '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Photos</div></div>
         </div>
+        ${gbpConnected ? `
         <div style="border-top:1px solid var(--fp-border);padding-top:14px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
             <span style="font-size:12px;font-weight:600;color:var(--fp-text-soft)">Complétude de la fiche</span>
@@ -26785,22 +26999,31 @@ function renderLocalSEOGBP() {
           </div>
           <div style="font-size:10px;color:var(--fp-text-faint)">${completeness.filter(c=>!c.done).length} éléments manquants</div>
         </div>
+        ` : ''}
       </div>
 
       <!-- COMPLETENESS CHECKLIST -->
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:12px">Optimisation de la fiche</div>
+        ${gbpConnected ? `
         <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto">
           ${completeness.map(item => `
             <div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;background:${item.done?'rgba(34,197,94,0.04)':'rgba(239,68,68,0.03)'}">
               <div style="width:18px;height:18px;border-radius:5px;background:${item.done?'rgba(34,197,94,0.15)':'rgba(239,68,68,0.1)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="${item.done?'#22c55e':'#ef4444'}" stroke-width="3">${item.done?'<polyline points="20 6 9 17 4 12"/>':'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'}</svg>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="${item.done?'#22c55e':'#ef4444'}" stroke-width="3">${item.done?'<polyline points="20 6 9 17 4 12"/>':'<line x1="18" y1="6" x2="6" y2="18"/>'}</svg>
               </div>
               <span style="flex:1;font-size:12px;color:${item.done?'var(--fp-text-soft)':'var(--fp-text-muted)'}">${item.label}</span>
               ${!item.done ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:2px 6px" onclick="navigate('audits')">Corriger</button>` : ''}
             </div>
           `).join('')}
         </div>
+        ` : `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:140px;gap:10px;opacity:0.6">
+          <div style="font-size:32px">📋</div>
+          <div style="font-size:12px;color:var(--fp-text-muted);text-align:center">Connectez votre fiche Google Business<br>pour voir l'analyse de complétude.</div>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_GBP_API?window.FP_GBP_API.openConnect():navigate('local-seo')">Connecter GBP</button>
+        </div>
+        `}
       </div>
     </div>
 
@@ -29011,14 +29234,15 @@ function renderGA4Analytics() {
         <div class="fp-section-sub">${_ga4Connected() ? `Propriété : ${escHtml(_ga4Property())} · Dernières 30 jours` : 'Connectez Google Analytics 4 pour voir vos données réelles'}</div>
       </div>
       <div class="fp-section-actions">
-        <select id="fp-ga4-period" onchange="window.FP_GA4_API&&window.FP_GA4_API.reload(parseInt(this.value))"
+        <select id="fp-ga4-period" onchange="if(!_ga4Connected()){navigateSub('connect');return;}window.FP_GA4_API&&window.FP_GA4_API.reload(parseInt(this.value))"
           style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:5px 8px">
           <option value="7">7 jours</option>
           <option value="30" selected>30 jours</option>
           <option value="90">90 jours</option>
           <option value="180">6 mois</option>
         </select>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.export()">📥 Export</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="if(!_ga4Connected()){navigateSub('connect');showToast('info','Connectez GA4 pour exporter vos données');return;}window.FP_GA4_API&&window.FP_GA4_API.export()">📥 Export</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="if(!_ga4Connected()){navigateSub('connect');return;}window.FP_GA4_API&&window.FP_GA4_API.reload()">🔄 Actualiser</button>
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('live')">🔴 Live</button>
       </div>
     </div>
@@ -30377,7 +30601,7 @@ function renderGA4Campaigns() {
           <option value="7">7 jours</option><option value="30" selected>30 jours</option><option value="90">90 jours</option>
         </select>
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpCampaignsAPI.loadAll()">🔄 Actualiser</button>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(){const rows=(window.FP_DATA?.campaigns?.rows||[]);if(!rows.length){showToast('info','Connectez Google Analytics pour exporter les données');return;}const csv=rows.map(r=>'\"'+escHtml(r.dimensionValues?.[0]?.value||'')+'\",'+(r.metricValues?.[0]?.value||0)+','+(r.metricValues?.[1]?.value||0)).join('\n');const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,Source,Sessions,Conversions\n'+csv;a.download='campagnes-'+new Date().toISOString().slice(0,10)+'.csv';a.click();showToast('success','CSV exporté — '+rows.length+' campagne'+(rows.length>1?'s':''))})()">📥 CSV</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpExportCampaigns()">📥 CSV</button>
       </div>
     </div>
 
@@ -30747,6 +30971,12 @@ function normalizePageSpeedResult(raw) {
 function setPageSpeedResult(raw) {
   var normalized = normalizePageSpeedResult(raw);
   if (window.FP_DATA) window.FP_DATA.pagespeed = normalized;
+  // ── Persist PSI results across sessions / tab restores ────────────────────
+  try {
+    if (normalized) {
+      localStorage.setItem('fp-psi-last', JSON.stringify({ data: normalized, _ts: Date.now() }));
+    }
+  } catch(_) {}
   return normalized;
 }
 window.setPageSpeedResult = setPageSpeedResult;
@@ -31745,15 +31975,91 @@ async function fpAnalyzePSI() {
 
 async function fpGetPSIAIReco() {
   const btn = document.getElementById('fp-psi-ai-btn');
-  if (btn) btn.disabled = true;
+  if (btn) { btn.disabled = true; btn.textContent = 'Génération en cours…'; }
+
+  const psi = window.FP_DATA && window.FP_DATA.pagespeed;
+  if (!psi) {
+    showToast && showToast('warning', 'Lancez d\'abord une analyse PageSpeed pour obtenir des recommandations.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Générer les recommandations'; }
+    return;
+  }
+
   try {
-    const psi = window.FP_DATA && window.FP_DATA.pagespeed;
-    if (psi && window.FP_PAGESPEED_API) {
-      await window.FP_PAGESPEED_API.getAIRecommendations(psi.url, psi.mobile, psi.desktop);
-      showToast && showToast('success', 'Recommandations IA générées !');
+    // ── Build a detailed, real prompt from actual PSI data ──────────────────
+    const _mScore = psi.mobile && psi.mobile.score != null ? Math.round(psi.mobile.score <= 1 ? psi.mobile.score * 100 : psi.mobile.score) : null;
+    const _dScore = psi.desktop && psi.desktop.score != null ? Math.round(psi.desktop.score <= 1 ? psi.desktop.score * 100 : psi.desktop.score) : null;
+    const _cwv   = (psi.mobile && psi.mobile.cwv) || {};
+    const _opps  = (psi.mobile && psi.mobile.opportunities) || [];
+    const _diag  = (psi.mobile && psi.mobile.diagnostics) || [];
+    const _metricFmt = (val, unit) => (val != null && isFinite(Number(val))) ? `${Math.round(Number(val))}${unit}` : 'N/A';
+    const _sMobile  = _mScore  != null ? `${_mScore}/100`  : 'N/A';
+    const _sDesktop = _dScore  != null ? `${_dScore}/100` : 'N/A';
+
+    const _oppLines = _opps.slice(0, 10).map(o => {
+      const savMs = o.savings_ms ? ` (économie estimée : ${Math.round(o.savings_ms)} ms)` : '';
+      const savKb = o.savings_bytes ? ` (économie : ${Math.round(o.savings_bytes / 1024)} KB)` : '';
+      return `- ${o.title || o.id}${savMs || savKb}`;
+    }).join('\n');
+
+    const _prompt = [
+      `Voici les données PageSpeed Insights réelles pour le site **${psi.url}** :`,
+      ``,
+      `**Scores de performance :**`,
+      `- Mobile : ${_sMobile}`,
+      `- Desktop : ${_sDesktop}`,
+      ``,
+      `**Core Web Vitals (stratégie mobile) :**`,
+      `- LCP (Largest Contentful Paint) : ${_metricFmt(_cwv.lcp, ' ms')}`,
+      `- CLS (Cumulative Layout Shift) : ${_cwv.cls != null ? Number(_cwv.cls).toFixed(3) : 'N/A'}`,
+      `- INP (Interaction to Next Paint) : ${_metricFmt(_cwv.inp, ' ms')}`,
+      `- TTFB (Time to First Byte) : ${_metricFmt(_cwv.ttfb, ' ms')}`,
+      `- FCP (First Contentful Paint) : ${_metricFmt(_cwv.fcp, ' ms')}`,
+      `- TBT (Total Blocking Time) : ${_metricFmt(_cwv.tbt, ' ms')}`,
+      ``,
+      _opps.length ? `**Opportunités d'optimisation identifiées (${_opps.length}) :**\n${_oppLines}` : `**Aucune opportunité majeure détectée**`,
+      ``,
+      `Sur la base de ces données **réelles et précises**, génère un **plan d'optimisation complet et personnalisé** pour ce site. Pour chaque Core Web Vital hors des seuils recommandés (LCP > 2500ms, CLS > 0.1, INP > 200ms, TTFB > 800ms), explique la cause probable et les actions concrètes. Priorise par impact sur le score. Termine par un plan d'action en 3 phases : Quick Wins (< 1 semaine), Améliorations structurelles (1 mois), Refactoring long terme.`,
+    ].join('\n');
+
+    const _base = window.__FP_BACKEND_URL || '';
+    const resp = await fetch(_base + '/api/ai/chat', _fpSessionFetchOptions({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: _prompt, mode: 'performant' }),
+    }));
+
+    if (resp.ok) {
+      const _result = await resp.json();
+      const _reco = (_result && (_result.message || _result.response || _result.text || _result.content)) || '';
+      if (_reco) {
+        if (window.FP_DATA && window.FP_DATA.pagespeed) {
+          window.FP_DATA.pagespeed.aiRecommendations = _reco;
+          // Persist updated recommendations to localStorage
+          try {
+            var _saved = JSON.parse(localStorage.getItem('fp-psi-last') || '{}');
+            if (_saved && _saved.data) {
+              _saved.data.aiRecommendations = _reco;
+              localStorage.setItem('fp-psi-last', JSON.stringify(_saved));
+            }
+          } catch(_) {}
+        }
+        showToast && showToast('success', 'Recommandations IA générées avec succès !');
+        render();
+      } else {
+        showToast && showToast('error', 'L\'IA n\'a pas renvoyé de réponse — réessayez');
+      }
+    } else if (resp.status === 402) {
+      showToast && showToast('error', 'Crédits IA insuffisants — upgradez votre plan');
+    } else if (resp.status === 401) {
+      showToast && showToast('error', 'Session expirée — veuillez vous reconnecter');
+    } else {
+      showToast && showToast('error', 'Erreur lors de la génération IA — réessayez dans quelques instants');
     }
+  } catch(_e) {
+    console.warn('[fpGetPSIAIReco]', _e);
+    showToast && showToast('error', 'Erreur réseau — vérifiez votre connexion et réessayez');
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Générer les recommandations'; }
   }
 }
 
