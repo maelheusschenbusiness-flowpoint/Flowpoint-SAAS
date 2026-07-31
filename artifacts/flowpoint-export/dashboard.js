@@ -11517,10 +11517,10 @@ function renderAI() {
           🤖 AI Credits — Usage
           ${isUnlimited ? `<span style="font-size:10px;font-weight:700;padding:2px 10px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.3);border-radius:20px;color:#8b5cf6">Ultra · Usage prioritaire</span>` : ''}
         </h1>
-        <div class="fp-section-sub">Plan ${plan} · Réinitialisation le ${resetDate} · ${isUnlimited ? '10 000 000 AI Credits/mois (prioritaire)' : fmtNum(remaining) + ' AI Credits restants'}</div></div>
-        <div class="fp-section-actions">
+        <div class="fp-section-sub">Plan ${plan} · Réinitialisation le ${resetDate} · ${isUnlimited ? 'Crédits illimités (prioritaire)' : fmtNum(remaining) + ' AI Credits restants'}</div></div>
+        ${!isUnlimited ? `<div class="fp-section-actions">
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing');setTimeout(function(){navigateSub('plans');},50)">Upgrader le plan →</button>
-        </div>
+        </div>` : ''}
       </div>
 
       ${alertHtml}
@@ -11529,7 +11529,7 @@ function renderAI() {
       <div class="fp-stat-row fp-mb-20">
         ${statCard('AI Credits utilisés', fmtNum(usedCredits), 'ce mois', 'up')}
         ${isUnlimited
-          ? statCard('AI Credits', '10 M', '10 000 000 inclus/mois', 'up')
+          ? statCard('AI Credits', '∞', 'Illimité', 'up')
           : statCard('AI Credits restants', fmtNum(remaining), 'sur ' + fmtNum(maxCredits) + ' alloués', remaining < 20000 ? 'down' : 'up')}
         ${statCard('Statut IA', 'Performante', 'Haute qualité · Prioritaire', 'up')}
         ${statCard('Consommation', pct + '%', 'du quota mensuel', pct > 70 ? 'down' : 'neutral')}
@@ -11539,11 +11539,11 @@ function renderAI() {
       <div class="fp-card fp-mb-16" style="padding:20px 22px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
           <div>
-            <div style="font-size:14px;font-weight:800;color:var(--fp-text)">Quota mensuel — Plan ${plan}${isUnlimited ? ' · 10 M crédits' : ''}</div>
+            <div style="font-size:14px;font-weight:800;color:var(--fp-text)">Quota mensuel — Plan ${plan}${isUnlimited ? ' · Crédits illimités' : ''}</div>
             <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Réinitialisation automatique le 1er de chaque mois${isUnlimited ? ' · Usage raisonnable appliqué' : ''}</div>
           </div>
           <div style="text-align:right">
-            <div style="font-size:22px;font-weight:900;color:${pc};font-family:var(--fp-font-head)">${fmtNum(usedCredits)} <span style="font-size:13px;font-weight:500;color:var(--fp-text-faint)">/ ${isUnlimited ? '10 M' : fmtNum(maxCredits)}</span></div>
+            <div style="font-size:22px;font-weight:900;color:${pc};font-family:var(--fp-font-head)">${fmtNum(usedCredits)} <span style="font-size:13px;font-weight:500;color:var(--fp-text-faint)">/ ${isUnlimited ? '∞' : fmtNum(maxCredits)}</span></div>
             <div style="font-size:11px;color:${pc};font-weight:700">${pct}% consommé</div>
           </div>
         </div>
@@ -11556,7 +11556,7 @@ function renderAI() {
           <span>0</span>
           <span style="color:#f59e0b">⚡ Alerte 70%</span>
           <span style="color:#ef4444">🚨 Alerte 90%</span>
-          <span>${isUnlimited ? '10 000 000' : fmtNum(maxCredits)}</span>
+          <span>${isUnlimited ? '∞' : fmtNum(maxCredits)}</span>
         </div>
       </div>
 
@@ -11600,12 +11600,12 @@ function renderAI() {
               </button>
             `).join('')}
           </div>
-          <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);text-align:center">
-            <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">Ou passer au plan supérieur pour plus d\'AI Credits inclus</div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%" onclick="navigate('billing');setTimeout(function(){navigateSub('plans');},50)" ${isUltra ? 'disabled' : ''}>
-              ${isUltra ? '✓ Ultra — 10 000 000 AI Credits/mois' : plan === 'Pro' ? 'Passer Ultra — 10 M AI Credits/mois →' : 'Passer Pro — 500k AI Credits/mois →'}
+          ${!isUltra ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);text-align:center">
+            <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">Passer au plan supérieur pour plus d\'AI Credits inclus</div>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%" onclick="navigate('billing');setTimeout(function(){navigateSub('plans');},50)">
+              ${plan === 'Pro' ? 'Passer Ultra — Crédits illimités →' : 'Passer Pro — 500k AI Credits/mois →'}
             </button>
-          </div>
+          </div>` : ''}
         </div>
       </div>
 
@@ -11635,7 +11635,7 @@ function renderAI() {
           ${[
             { name:'Standard', credits:'100k',    price:'29€',  color:'#22c55e', current: plan === 'Standard', features:['IA Performante'] },
             { name:'Pro',      credits:'500k',    price:'79€',  color:'#2563EB', current: plan === 'Pro',      features:['IA Performante'] },
-            { name:'Ultra',    credits:'10 M',    price:'149€', color:'#8b5cf6', current: isUltra,             features:['IA Prioritaire'] },
+            { name:'Ultra',    credits:'∞',       price:'149€', color:'#8b5cf6', current: isUltra,             features:['IA Prioritaire'] },
           ].map(p => `
             <div style="padding:14px;border-radius:12px;border:2px solid ${p.current?p.color+'66':'var(--fp-border)'};background:${p.current?p.color+'0d':'var(--fp-inner-card)'};text-align:center">
               <div style="font-size:12px;font-weight:800;color:${p.color};margin-bottom:4px">${p.name}</div>
