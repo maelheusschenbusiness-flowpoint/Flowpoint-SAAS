@@ -16,6 +16,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { getSession }                            from "../services/sessions.js";
 import { logger }                                from "../lib/logger.js";
+import { pool }                                  from "@workspace/db";
 
 export interface OrgContext {
   orgId:    string;
@@ -95,6 +96,32 @@ async function _orgContext(req: Request, _res: Response, next: NextFunction): Pr
       req.orgContext = { orgId: "default", userId: "service", role: "admin" };
       next();
       return;
+    }
+
+    // 3. FlowPoint API keys (fp_pub_ / fp_sec_) stored in user_prefs.settings
+    if (token.startsWith("fp_pub_") || token.startsWith("fp_sec_")) {
+      const isSecret = token.startsWith("fp_sec_");
+      const field    = isSecret ? "secretApiKey" : "publicApiKey";
+      try {
+        const result = await pool.query<{ org_id: string }>(
+          `SELECT org_id FROM user_prefs WHERE settings->>'${field}' = $1 LIMIT 1`,
+          [token]
+        );
+        if (result.rows.length > 0) {
+          const orgId = result.rows[0].org_id;
+          req.orgId      = orgId;
+          req.userId     = `apikey:${orgId}`;
+          req.orgContext = {
+            orgId,
+            userId: `apikey:${orgId}`,
+            role:   isSecret ? "owner" : "member",
+          };
+          next();
+          return;
+        }
+      } catch (err) {
+        logger.warn({ err }, "[OrgContext] fp_* key lookup failed");
+      }
     }
 
     logger.debug({ url: req.url }, "[OrgContext] Unrecognised token — anonymous context");

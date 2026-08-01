@@ -629,16 +629,36 @@ router.get("/me/storage", async (req: Request, res: Response): Promise<void> => 
 router.get("/settings/api-keys", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
+
+  // API-key principals (fp_pub_ / fp_sec_) must never see the raw secret key value.
+  // Only interactive sessions (browser login) may retrieve it.
+  const isApiKeyPrincipal = (req.orgContext?.userId ?? "").startsWith("apikey:");
+
   try {
     const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [] }));
     const prefs = (r.rows[0] as Record<string, unknown>)?.settings as Record<string, string> | null;
     const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
     const publicKey  = prefs?.publicApiKey  ?? `fp_pub_${_pkHash}`;
     const secretKey  = prefs?.secretApiKey  ?? null;
+
+    // Auto-persist the deterministic public key if it hasn't been stored yet.
+    // This ensures it is findable by orgContext on future API requests.
+    if (!prefs?.publicApiKey) {
+      orgDb(req)(
+        `INSERT INTO user_prefs (org_id, settings, updated_at)
+         VALUES ($1, jsonb_build_object('publicApiKey', $2::text), now())
+         ON CONFLICT (org_id) DO UPDATE SET
+           settings   = COALESCE(user_prefs.settings, '{}'::jsonb) || jsonb_build_object('publicApiKey', $2::text),
+           updated_at = now()`,
+        [orgId, publicKey]
+      ).catch((err: unknown) => logger.warn({ err }, "[api-keys] auto-persist publicApiKey failed"));
+    }
+
     res.json({
       publicKey,
-      secretKey,
-      hasSecret: !!secretKey,
+      // Never expose the actual secret to API-key callers — they already have their own credential.
+      secretKey:  isApiKeyPrincipal ? null : secretKey,
+      hasSecret:  !!secretKey,
     });
   } catch (err) {
     logger.error({ err }, "[api-keys/get] failed");
@@ -700,6 +720,13 @@ router.delete("/settings/data", async (req: Request, res: Response): Promise<voi
 router.post("/settings/api-keys/regenerate", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
+
+  // API-key principals must not be able to regenerate keys — only interactive sessions may rotate them.
+  if ((req.orgContext?.userId ?? "").startsWith("apikey:")) {
+    res.status(403).json({ error: "Forbidden: API keys cannot be rotated via an API key credential" });
+    return;
+  }
+
   const { type } = req.body as { type?: "public" | "secret" };
   try {
     const suffix = randomBytes(20).toString("hex"); // 40-char hex

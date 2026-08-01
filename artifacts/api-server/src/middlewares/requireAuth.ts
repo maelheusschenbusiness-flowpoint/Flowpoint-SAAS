@@ -82,6 +82,25 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
     return;
   }
 
+  // Accept FlowPoint API keys (fp_pub_ / fp_sec_) resolved by orgContext middleware.
+  // orgContext already looked up the key in user_prefs and set req.orgContext.orgId when valid.
+  if (provided.startsWith("fp_pub_") || provided.startsWith("fp_sec_")) {
+    const resolvedOrgId = req.orgContext?.orgId;
+    if (resolvedOrgId && resolvedOrgId !== "default") {
+      // Public key: read-only — reject any mutating method
+      if (provided.startsWith("fp_pub_") && req.method !== "GET") {
+        res.status(403).json({ error: "Forbidden: public API key allows read-only access (GET requests only)" });
+        return;
+      }
+      next();
+      return;
+    }
+    // Key present but not resolved — treat as invalid credential
+    logger.info({ method: req.method, url: req.url?.split("?")[0] }, "[Auth] 401 unknown fp_* key");
+    res.status(401).json({ error: "Unauthorized: invalid API key" });
+    return;
+  }
+
   if (!serviceSecret) {
     if (isProduction) {
       logger.error("[Auth] API_SECRET_KEY is not set — all management requests are being rejected");
