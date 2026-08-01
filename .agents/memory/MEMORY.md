@@ -99,3 +99,4 @@
 - [Per-tab session bootstrap](per-tab-session-bootstrap.md) — fp-backend loads before dashboard; protected preloads must await sessionStorage token restoration before using auth
 - [dashboard.js skeleton stuck — SyntaxError](dashboard-skeleton-syntaxerror.md) — SyntaxError crashes IIFE; fp-backend shows skeleton that never resolves; always run node --check after edits
 - [dashboard.js apiFetch resilience](dashboard-apifetch-resilience.md) — AbortController 15s timeout + 12s safety timer on loadData + fp_session_token cleared on 401; prevents permanent skeleton
+- [AI Agents Phase 1](ai-agents-phase1.md) — registre destinations.json = source unique; marqueur SSE retenu (borné 8Ko); permissions FAIL-CLOSED; prefill validé 2 côtés; jamais de bouton non journalisé
