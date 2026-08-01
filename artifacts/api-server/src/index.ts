@@ -10,6 +10,7 @@ import { initRlsSetup } from "./services/init-rls-setup.js";
 import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
 import { initAiMigration } from "./services/init-ai-migration.js";
 import { initPhase1Users } from "./services/init-phase1-users.js";
+import { initAgentTables } from "./services/init-agent-tables.js";
 import { startMonitorCron } from "./services/monitor-cron.js";
 import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib/startup-retry.js";
 
@@ -155,6 +156,12 @@ async function main() {
       .catch((err: unknown) => {
         logger.warn({ err }, "[startup] phase1-users step failed (non-fatal)");
       });
+
+    // AI Agents Phase 1 — tables agent (idempotent, doit tourner à chaque boot)
+    await runCriticalStartupStep("init-agent-tables", initAgentTables)
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] init-agent-tables step failed (non-fatal)");
+      });
   } else {
     // ── Full init path: local dev or first deploy without Pre-Deploy. ──────
     logger.info("[startup] Core tables absent — running full init sequence");
@@ -172,6 +179,12 @@ async function main() {
     await runCriticalStartupStep("phase1-users", initPhase1Users)
       .catch((err: unknown) => {
         logger.warn({ err }, "[startup] phase1-users step failed (non-fatal)");
+      });
+
+    // AI Agents Phase 1 — tables agent (idempotent)
+    await runCriticalStartupStep("init-agent-tables", initAgentTables)
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] init-agent-tables step failed (non-fatal)");
       });
   }
 

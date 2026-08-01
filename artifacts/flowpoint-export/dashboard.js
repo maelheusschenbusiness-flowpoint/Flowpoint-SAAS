@@ -5009,7 +5009,7 @@ function renderAudits() {
 
   return `
     ${_auditErrBanner}
-    <div class="fp-section-header">
+    <div class="fp-section-header" data-fp-anchor="audits-list">
       <div>
         <h1>Audits SEO</h1>
         <div class="fp-section-sub">Analysez et optimisez la visibilité de vos sites</div>
@@ -5646,7 +5646,7 @@ function renderMissions() {
   const doneCount = STATE.missions.filter(m => m.status === 'done').length;
 
   return `
-    <div class="fp-section-header">
+    <div class="fp-section-header" data-fp-anchor="missions-list">
       <div>
         <h1>Missions IA</h1>
         <div class="fp-section-sub">Moteur IA · ${STATE.missions.filter(m=>m.status!=='done').length} actives · ${doneCount} complétées</div>
@@ -9446,7 +9446,7 @@ function renderAlertRules() {
         : "Configurez vos premières règles d\'alerte pour être notifié automatiquement des incidents, chutes de score ou problèmes de monitoring.",
       ['Créer une règle', 'Latence critique', 'Score SEO critique', 'Chute ranking']
     )}
-    <div class="fp-card" style="margin-bottom:16px">
+    <div class="fp-card" style="margin-bottom:16px" data-fp-anchor="settings-notifications">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <div>
           <div class="fp-card-title">Règles d\'alerte personnalisées</div>
@@ -9894,7 +9894,7 @@ function renderSettings() {
       </div>
 
       <!-- MEMBERS -->
-      <div class="fp-card fp-mb-20">
+      <div class="fp-card fp-mb-20" data-fp-anchor="team-members">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon('users').replace('stroke="currentColor"','stroke="#2563EB"')}
@@ -10636,7 +10636,7 @@ function renderSettings() {
       if (tab === 'hub') {
         return `
           <!-- STAT ROW -->
-          <div class="fp-stat-row fp-mb-16">
+          <div class="fp-stat-row fp-mb-16" data-fp-anchor="integrations-hub">
             ${statCard('Intégrations actives', String(totalConnected + nativeConnected), 'webhooks + natives', totalConnected>0?'up':'neutral')}
             ${statCard('Déclencheurs envoyés', String(stats.totalRuns||0), 'toutes intégrations', 'up')}
             ${statCard('Taux de succès', (stats.successRate||100)+'%', 'livraisons réussies', stats.successRate<90?'down':'up')}
@@ -11874,7 +11874,7 @@ function renderAI() {
       : '';
 
     return `
-      <div class="fp-section-header">
+      <div class="fp-section-header" data-fp-anchor="ai-usage">
         <div><h1 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           🤖 AI Credits — Usage
           ${isUnlimited ? `<span style="font-size:10px;font-weight:700;padding:2px 10px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.3);border-radius:20px;color:#8b5cf6">Ultra · Usage prioritaire</span>` : ''}
@@ -12183,6 +12183,14 @@ function renderAIMessages() {
     return chips.slice(0, 3); // max 3 chips per message
   }
 
+  // AI Agents Phase 1 : boutons issus d'une proposition serveur validée (max 2)
+  const renderProposalActions = (p) => {
+    const acts = (p.actions || []).slice(0, 2);
+    return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+      ${acts.map(a => `<button class="fp-btn ${a.primary ? 'fp-btn-primary' : 'fp-btn-ghost'} fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5" data-dest="${escHtml(a.destinationId)}" data-anchor="${escHtml(a.highlight || '')}" onclick="window._fpNavDest(this)">${escHtml(a.label)} →</button>`).join('')}
+    </div>`;
+  };
+
   const renderChips = (chips) => {
     if (!chips || !chips.length) return '';
     return `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px">
@@ -12212,7 +12220,7 @@ function renderAIMessages() {
         <div style="padding:9px 13px;border-radius:${isAI ? '4px 12px 12px 12px' : '12px 4px 12px 12px'};background:${isAI ? 'var(--fp-inner-card)' : '#2563EB'};border:1px solid ${isAI ? 'rgba(255,255,255,0.07)' : 'rgba(37,99,235,0.5)'};font-size:12px;color:${isAI ? 'var(--fp-text-soft)' : '#ffffff'};${isAI ? '' : 'text-shadow:0 1px 4px rgba(0,0,0,0.5);'}line-height:1.6">
            ${m.text ? escHtml(m.text).replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--fp-text)">$1</strong>').replace(/\n/g,'<br>') : ''}${m.streaming && isAI ? '<span class="fp-ai-typing fp-ai-typing-inline" aria-label="L\'IA écrit"><span class="fp-ai-typing-dot"></span><span class="fp-ai-typing-dot"></span><span class="fp-ai-typing-dot"></span></span>' : ''}
         </div>
-        ${isAI && !m.streaming ? renderChips(dedupedChips) : ''}
+        ${isAI && !m.streaming ? (m.proposal && m.proposal.actions && m.proposal.actions.length ? renderProposalActions(m.proposal) : renderChips(dedupedChips)) : ''}
       </div>
     </div>`;
   }).join('');
@@ -12396,7 +12404,7 @@ async function sendAIMessage(text) {
     const resp = await fetch('/api/ai/chat', _fpSessionFetchOptions({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, context, stream: true, history, provider: STATE.aiProvider || 'openai' }),
+      body: JSON.stringify({ message: text, context, stream: true, history, provider: STATE.aiProvider || 'openai', conversationId: STATE._aiConversationId || undefined }),
       signal: _ctrl.signal,
     }));
 
@@ -12424,6 +12432,7 @@ async function sendAIMessage(text) {
     const decoder = new TextDecoder();
     let buffer = '';
     let fullText = '';
+    let _proposal = null; // AI Agents Phase 1 : proposition de navigation validée serveur
 
     while (true) {
       const { done, value } = await reader.read();
@@ -12439,8 +12448,12 @@ async function sendAIMessage(text) {
           const parsed = JSON.parse(payload);
           if (parsed.delta) {
             fullText += parsed.delta;
-            STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: true };
+            STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: true, proposal: _proposal };
             updateAIUI();
+          } else if (parsed.action_proposal) {
+            _proposal = parsed.action_proposal;
+          } else if (parsed._ai) {
+            if (parsed._ai.conversationId) STATE._aiConversationId = parsed._ai.conversationId;
           } else if (parsed.error) {
             fullText = '⚠ ' + parsed.error;
           }
@@ -12448,7 +12461,7 @@ async function sendAIMessage(text) {
       }
     }
 
-    STATE.aiMessages[streamIdx] = { from:'ai', text: fullText || '(Réponse vide)', streaming: false };
+    STATE.aiMessages[streamIdx] = { from:'ai', text: fullText || '(Réponse vide)', streaming: false, proposal: _proposal };
   } catch(e) {
     console.error('[AI Chat] sendAIMessage error:', e.name, e.message, e);
     const errMsg = (e.name === 'AbortError') ? '⚠ La requête IA a été annulée (délai dépassé).'
@@ -23412,6 +23425,7 @@ function renderAlertsCenter() {
       { icon: '⚡', title: "Images non optimisées",          prob: 91, color: '#ef4444', desc: "6 images > 500KB chargées sans lazy loading ni compression WebP" },
     ] : [];
     return `
+      <div data-fp-anchor="monitors-incidents"></div>
       ${isUltra
         ? aiBlock(incidents.length > 0
               ? '<strong>' + incidents.length + ' incident' + (incidents.length > 1 ? 's' : '') + ' actif' + (incidents.length > 1 ? 's' : '') + '</strong> — action requise. ' + incidents.filter(i=>i.sev==='critical').length + ' critique' + (incidents.filter(i=>i.sev==='critical').length > 1 ? 's' : '') + ' en cours de traitement.'
@@ -28575,7 +28589,7 @@ function renderSettingsLocation() {
 
   return `
     ${configBanner}
-    <div class="fp-card">
+    <div class="fp-card" data-fp-anchor="settings-localisation">
       <div class="fp-card-title" style="margin-bottom:4px">
         📍 Localisation de l'entreprise
         ${configured ? `<span style="margin-left:8px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#22c55e">✓ Configurée</span>` : `<span style="margin-left:8px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b">Non configurée</span>`}
@@ -31101,6 +31115,59 @@ window.navigate    = navigate;
 window.navigateSub = navigateSub;
 window.apiAction   = apiAction;
 
+// ── AI Agents Phase 1 : navigation générique validée par le registre ──────────
+// Le registre (GET /api/ai/destinations) est la SEULE source de routes — le
+// frontend n'exécute jamais une destination non déclarée côté serveur.
+let _fpDestinationsCache = null;
+async function _fpLoadDestinations(force) {
+  if (_fpDestinationsCache && !force) return _fpDestinationsCache;
+  try {
+    const d = await apiFetch('/api/ai/destinations');
+    if (d && Array.isArray(d.destinations)) _fpDestinationsCache = d.destinations;
+  } catch(e) { console.warn('[FP_NAV] destinations load failed', e); }
+  return _fpDestinationsCache || [];
+}
+async function navigateToDestination(opts) {
+  opts = opts || {};
+  const dests = await _fpLoadDestinations();
+  const dest = dests.find(d => d.id === opts.destinationId);
+  if (!dest) { if (typeof showToast === 'function') showToast('info', 'Destination non disponible'); return; }
+  // Prefill sécurisé : uniquement les champs déclarés (type, taille, valeurs) — le reste est ignoré
+  if (opts.params && opts.params.prefill && dest.prefill) {
+    const clean = {};
+    Object.keys(dest.prefill).forEach(k => {
+      const spec = dest.prefill[k]; const v = opts.params.prefill[k];
+      if (v == null || !spec) return;
+      if (spec.type === 'string' && typeof v === 'string' && v.length <= (spec.maxLength || 500) && (!spec.enum || spec.enum.indexOf(v) >= 0)) clean[k] = v;
+      else if (spec.type === 'number' && typeof v === 'number' && isFinite(v)) clean[k] = v;
+      else if (spec.type === 'boolean' && typeof v === 'boolean') clean[k] = v;
+    });
+    try { sessionStorage.setItem('fp_prefill', JSON.stringify({ destinationId: dest.id, fields: clean, ts: Date.now() })); } catch(e) {}
+  }
+  navigate(dest.route, dest.sub || undefined);
+  // Highlight : uniquement une ancre déclarée dans le registre pour cette destination
+  const anchor = opts.highlight && Array.isArray(dest.anchors) && dest.anchors.indexOf(opts.highlight) >= 0 ? opts.highlight : null;
+  if (anchor) {
+    let tries = 0;
+    const tryFlash = function() {
+      const el = document.querySelector('[data-fp-anchor="' + anchor + '"]');
+      if (el) {
+        try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(e) {}
+        el.classList.add('fp-anchor-flash');
+        setTimeout(function(){ el.classList.remove('fp-anchor-flash'); }, 2600);
+      } else if (++tries < 12) setTimeout(tryFlash, 150);
+    };
+    setTimeout(tryFlash, 250);
+  }
+}
+window.navigateToDestination = navigateToDestination;
+// Handler inline sécurisé (pattern data-attributes — jamais de JSON dans onclick)
+window._fpNavDest = function(btn) {
+  try {
+    navigateToDestination({ destinationId: btn.dataset.dest, highlight: btn.dataset.anchor || null });
+  } catch(e) { console.warn('[FP_NAV] _fpNavDest error', e); }
+};
+
 // ── Geocode / GPS helpers (window-scope to avoid inline multiline issues) ─
 window._fpGeocodeAddr = async function() {
   var q=(document.getElementById('fp-loc-address')||{value:''}).value||'';
@@ -32578,33 +32645,6 @@ setTimeout(function() {
     bindChips();
   }
 
-  function _detectNavActions(text) {
-    var t = (text || '').toLowerCase();
-    var btns = [];
-    if (t.includes('monitor') || t.includes('uptime') || t.includes('down'))
-      btns.push({label:'Voir les monitors', route:'monitors', sub:null});
-    if ((t.includes('audit') || t.includes('score seo') || t.includes('performance')) && !t.includes('audit log'))
-      btns.push({label:'Audits SEO', route:'audits', sub:null});
-    if (t.includes('concurrent') || t.includes('compétiteur') || t.includes('benchmark'))
-      btns.push({label:'Concurrents', route:'competitor', sub:null});
-    if (t.includes('local seo') || t.includes('google business') || t.includes('gbp') || t.includes('maps'))
-      btns.push({label:'Local SEO', route:'local-seo', sub:null});
-    if (t.includes('rapport') || t.includes('pdf') || t.includes('exporter'))
-      btns.push({label:'Rapports', route:'reports', sub:null});
-    if (t.includes('mission') || t.includes("plan d'action") || t.includes('priorit'))
-      btns.push({label:'Missions', route:'missions', sub:null});
-    if (t.includes('conversion') || t.includes('cro') || t.includes('friction') || t.includes('taux de conv'))
-      btns.push({label:'Conversion', route:'conversion', sub:'ux-lab'});
-    if (t.includes('alerte') || t.includes('incident'))
-      btns.push({label:'Alertes', route:'alerts-center', sub:null});
-    if (t.includes('facturation') || t.includes('abonnement') || t.includes('plan') || t.includes('upgrade'))
-      btns.push({label:'Facturation', route:'billing', sub:null});
-    if (t.includes('intégration') || t.includes('webhook') || t.includes('zapier') || t.includes('make'))
-      btns.push({label:'Intégrations', route:'integrations', sub:'hub'});
-    // Deduplicate and cap at 2 buttons max
-    return btns.filter(function(b,i,a){ return a.findIndex(function(x){return x.route===b.route;})=== i; }).slice(0,2);
-  }
-
   async function sendMessage(message) {
     if (!message || !message.trim()) return;
     const inp = document.getElementById('fp-ai-chat-input');
@@ -32632,7 +32672,7 @@ setTimeout(function() {
             }
             fullReply = full;
           },
-          onDone: function(full, _ai) {
+          onDone: function(full, _ai, _proposal) {
             setTyping(false);
             if (msgId) updateMessage(msgId, full, true);
             else msgId = appendMessage('assistant', full, false);
@@ -32653,28 +32693,27 @@ setTimeout(function() {
                 }
               }
             }
-            // Navigation action buttons based on AI response content
-            if (msgId) {
-              var _navBtns = _detectNavActions(full);
-              if (_navBtns.length > 0) {
-                var _el2 = document.getElementById(msgId);
-                if (_el2) {
-                  var _navBar = document.createElement('div');
-                  _navBar.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-left:36px';
-                  _navBtns.forEach(function(nb) {
-                    var _b = document.createElement('button');
-                    _b.className = 'fp-btn fp-btn-primary fp-btn-sm';
-                    _b.style.cssText = 'font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5';
-                    _b.textContent = nb.label + ' →';
-                    _b.onclick = function() {
-                      closePanel();
-                      navigate(nb.route);
-                      if (nb.sub) setTimeout(function(){ navigateSub(nb.sub); }, 80);
-                    };
-                    _navBar.appendChild(_b);
-                  });
-                  _el2.appendChild(_navBar);
-                }
+            // AI Agents Phase 1 : boutons de navigation issus d'une proposition
+            // serveur validée contre le registre (plus aucune heuristique locale)
+            if (msgId && _proposal && Array.isArray(_proposal.actions) && _proposal.actions.length > 0) {
+              var _el2 = document.getElementById(msgId);
+              if (_el2) {
+                var _navBar = document.createElement('div');
+                _navBar.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-left:36px';
+                _proposal.actions.slice(0, 2).forEach(function(a) {
+                  var _b = document.createElement('button');
+                  _b.className = a.primary ? 'fp-btn fp-btn-primary fp-btn-sm' : 'fp-btn fp-btn-ghost fp-btn-sm';
+                  _b.style.cssText = 'font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5';
+                  _b.textContent = a.label + ' →';
+                  _b.onclick = function() {
+                    closePanel();
+                    if (window.navigateToDestination) {
+                      window.navigateToDestination({ destinationId: a.destinationId, highlight: a.highlight || null });
+                    }
+                  };
+                  _navBar.appendChild(_b);
+                });
+                _el2.appendChild(_navBar);
               }
             }
             // Refresh credit counter immediately after each reply — no page reload needed
@@ -32860,7 +32899,7 @@ function renderGitHubIntegration() {
 
   if (!connected) {
     return `
-      <div class="fp-section-header"><div class="fp-section-title">GitHub Integration</div><div class="fp-section-desc">Connectez vos dépôts pour l\'analyse de code, le monitoring des déploiements et le scoring de santé.</div></div>
+      <div class="fp-section-header" data-fp-anchor="github-connect"><div class="fp-section-title">GitHub Integration</div><div class="fp-section-desc">Connectez vos dépôts pour l\'analyse de code, le monitoring des déploiements et le scoring de santé.</div></div>
       <div class="fp-card" style="text-align:center;padding:48px 32px;max-width:480px;margin:0 auto">
         <svg width="56" height="56" viewBox="0 0 24 24" fill="currentColor" style="color:var(--fp-text-muted);margin-bottom:20px"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg>
         <div style="font-size:18px;font-weight:800;color:var(--fp-text);margin-bottom:8px">Connectez GitHub</div>
@@ -33357,7 +33396,7 @@ function renderSearchConsole() {
         <div class="fp-section-title">Google Search Console</div>
         <div class="fp-section-sub">Connectez GSC pour suivre vos mots-clés, impressions, CTR et position moyenne en temps réel.</div>
       </div>
-      <div class="fp-gsc-connect-card">
+      <div class="fp-gsc-connect-card" data-fp-anchor="gsc-connect">
         <div class="fp-gsc-connect-icon">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4285F4" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </div>

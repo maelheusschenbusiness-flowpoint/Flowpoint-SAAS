@@ -46,6 +46,11 @@ import {
 } from "../services/ai-attachment-parser.js";
 import { buildProviderMessages, getImageUsageMetadata, type MultimodalMessage } from "../services/ai-multimodal.js";
 import type { AIAttachmentReference, ResolvedAIAttachment, NormalizedAttachment, NormalizedImageAttachment } from "../types/ai-attachments.js";
+import { resolveEffectivePermissions } from "../agent/permissions.js";
+import { filterDestinations, validateNavAction, REGISTRY_VERSION } from "../agent/destination-registry.js";
+import { buildNavPromptSection, NavMarkerFilter, extractNavMarker } from "../agent/nav-agent.js";
+import { createNavigationProposal } from "../agent/proposals.js";
+import { resolvePlanFromDB } from "../middlewares/planGate.js";
 
 const router = Router();
 // aiRateLimit applied per POST route below — GET endpoints (history, usage, recommendations) are not rate-limited
@@ -587,15 +592,16 @@ async function persistChatMessage(opts: {
   feature: string;
   model?: string;
   tokensUsed?: number;
+  conversationId?: string;
 }): Promise<void> {
   try {
     const client = await pool.connect();
     try {
       const id = `ach_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       await client.query(`
-        INSERT INTO ai_chat_history (id, org_id, user_id, role, content, feature, model, tokens_used)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      `, [id, opts.orgId, opts.userId, opts.role, opts.content, opts.feature, opts.model ?? "gpt-5-mini", opts.tokensUsed ?? 0]);
+        INSERT INTO ai_chat_history (id, org_id, user_id, role, content, feature, model, tokens_used, conversation_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `, [id, opts.orgId, opts.userId, opts.role, opts.content, opts.feature, opts.model ?? "gpt-5-mini", opts.tokensUsed ?? 0, opts.conversationId ?? null]);
     } finally {
       client.release();
     }
@@ -705,6 +711,12 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
   const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  // ── AI Agents Phase 1 : identifiant de conversation (lien historique ↔ propositions) ──
+  const rawConvId = (req.body as Record<string, unknown>)["conversationId"];
+  const conversationId = typeof rawConvId === "string" && /^[a-zA-Z0-9_-]{1,64}$/.test(rawConvId)
+    ? rawConvId
+    : `conv_${requestId}`;
 
   const aiPrefs = await loadOrgAIPrefs(orgId);
   if (!checkModuleEnabled(aiPrefs, "dailyAI")) {
@@ -827,6 +839,7 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
 
   // 6. Build enriched _ai metadata — always tells the truth about what was used
   const aiMeta = {
+    conversationId,
     provider:         selectedProvider,
     requestedModel,
     model:            effectiveModel,
@@ -853,7 +866,16 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
     ...getImageUsageMetadata(parsedImageAttachments),
   };
 
-  const fpContext = await buildFlowpointContext(context, orgId, contextFactor);
+  // ── AI Agents Phase 1 : permissions effectives + plan → destinations navigables ──
+  // Résolu par requête (jamais mis en cache global — leçon store.me).
+  const [fpContext, effectivePerms, orgPlanRaw] = await Promise.all([
+    buildFlowpointContext(context, orgId, contextFactor),
+    resolveEffectivePermissions(userId, orgId, req.orgContext?.role),
+    resolvePlanFromDB(req),
+  ]);
+  const orgPlan = (orgPlanRaw ?? "standard").toLowerCase();
+  const allowedDestinations = filterDestinations(effectivePerms, orgPlan);
+  const navPromptSection = buildNavPromptSection(allowedDestinations);
 
   // Base consultant instructions. fpContext is appended separately below so the
   // attachment block can be added in one explicit place visible to both paths.
@@ -875,6 +897,7 @@ ${STRICT_AI_RULE}
   const finalSystemPrompt = [
     systemPromptBase,
     fpContext,
+    navPromptSection,
     attachmentContext,
   ].filter(Boolean).join("\n\n");
 
@@ -898,7 +921,7 @@ ${STRICT_AI_RULE}
   });
 
   // Persist user message fire-and-forget — log failures but never block streaming
-  persistChatMessage({ orgId, userId, role: "user", content: message, feature: "chat" })
+  persistChatMessage({ orgId, userId, role: "user", content: message, feature: "chat", conversationId })
     .catch(err => logger.warn({ err }, "[AI] persistChatMessage (user) failed"));
 
   if (wantStream) {
@@ -921,6 +944,10 @@ ${STRICT_AI_RULE}
         maxTokens:     effectiveMaxTokens,
       });
 
+      // AI Agents Phase 1 : le marqueur de navigation est retenu hors du flux —
+      // l'utilisateur ne voit jamais <<<FP_NAV>>>, il reçoit un événement structuré.
+      const navFilter = new NavMarkerFilter();
+
       for await (const chunk of stream) {
         if (chunk && typeof chunk === "object" && "_aiMeta" in chunk) {
           continue; // We use our own enriched aiMeta — ignore internal routing metadata
@@ -928,9 +955,28 @@ ${STRICT_AI_RULE}
         if (chunk && typeof chunk === "object" && "content" in chunk) {
           const text = (chunk as { content: string }).content;
           fullReply += text;
-          res.write(`data: ${JSON.stringify({ delta: text })}\n\n`);
+          const safe = navFilter.push(text);
+          if (safe) res.write(`data: ${JSON.stringify({ delta: safe })}\n\n`);
         }
       }
+
+      const { remaining, markerJson } = navFilter.flush();
+      if (remaining) res.write(`data: ${JSON.stringify({ delta: remaining })}\n\n`);
+
+      // Validation stricte contre le registre : destination inconnue / permission
+      // absente / plan insuffisant / ancre non déclarée → action abandonnée.
+      if (markerJson) {
+        const nav = validateNavAction(markerJson, effectivePerms, orgPlan);
+        if (nav) {
+          const proposal = await createNavigationProposal({
+            orgId, userId, conversationId,
+            provider: selectedProvider, model: effectiveModel,
+            navActions: [nav],
+          });
+          if (proposal) res.write(`data: ${JSON.stringify({ action_proposal: proposal })}\n\n`);
+        }
+      }
+
       res.write(`data: ${JSON.stringify({ _ai: aiMeta })}\n\n`);
       res.write(`data: [DONE]\n\n`);
       res.end();
@@ -944,7 +990,7 @@ ${STRICT_AI_RULE}
       }, 0) / 4);
       const estTokensOut = Math.ceil(fullReply.length / 4);
 
-      persistChatMessage({ orgId, userId, role: "assistant", content: fullReply, feature: "chat", model: effectiveModel, tokensUsed: estTokensOut })
+      persistChatMessage({ orgId, userId, role: "assistant", content: extractNavMarker(fullReply).cleanText, feature: "chat", model: effectiveModel, tokensUsed: estTokensOut, conversationId })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant) failed"));
       recordCompletedUsage({ feature: "chat", orgId, userId, model: effectiveModel as AIModel, provider: selectedProvider, tokensIn: estTokensIn, tokensOut: estTokensOut, latencyMs, success: true, requestId, metadata: usageMetadata })
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage failed"));
@@ -972,14 +1018,29 @@ ${STRICT_AI_RULE}
         messages,
         maxTokens:     effectiveMaxTokens,
       });
-      const reply = result.text || "Je ne peux pas repondre pour le moment.";
+      const rawReply = result.text || "Je ne peux pas repondre pour le moment.";
       const latencyMs = Date.now() - t0;
 
-      persistChatMessage({ orgId, userId, role: "assistant", content: reply, feature: "chat", model: effectiveModel, tokensUsed: result.usage.completionTokens })
+      // AI Agents Phase 1 : extraction + validation du marqueur de navigation
+      const { cleanText, markerJson } = extractNavMarker(rawReply);
+      const reply = cleanText || "Je ne peux pas repondre pour le moment.";
+      let actionProposal = null;
+      if (markerJson) {
+        const nav = validateNavAction(markerJson, effectivePerms, orgPlan);
+        if (nav) {
+          actionProposal = await createNavigationProposal({
+            orgId, userId, conversationId,
+            provider: selectedProvider, model: effectiveModel,
+            navActions: [nav],
+          });
+        }
+      }
+
+      persistChatMessage({ orgId, userId, role: "assistant", content: reply, feature: "chat", model: effectiveModel, tokensUsed: result.usage.completionTokens, conversationId })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant non-stream) failed"));
       recordCompletedUsage({ feature: "chat", orgId, userId, model: effectiveModel as AIModel, provider: selectedProvider, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens, latencyMs, success: true, requestId, metadata: usageMetadata })
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage (non-stream) failed"));
-      res.json({ reply, streaming: false, _ai: aiMeta });
+      res.json({ reply, streaming: false, action_proposal: actionProposal, _ai: aiMeta });
     } catch (err) {
       logger.error({ err, provider: selectedProvider, model: effectiveModel }, "[AI] Chat failed");
       const errCode    = (err as Record<string, unknown>)?.code;
@@ -993,6 +1054,68 @@ ${STRICT_AI_RULE}
   }
 }
 router.post("/ai/chat", aiRateLimit, chatHandler);
+
+// ── GET /ai/destinations — registre de navigation filtré (AI Agents Phase 1) ──
+// Source de vérité unique pour le frontend : mêmes permissions effectives et
+// même plan que ce que voit le modèle. Jamais de route inventée côté client.
+router.get("/ai/destinations", async (req: Request, res: Response): Promise<void> => {
+  const orgId  = req.orgId  ?? "default";
+  const userId = req.userId ?? "anonymous";
+  try {
+    const [perms, planRaw] = await Promise.all([
+      resolveEffectivePermissions(userId, orgId, req.orgContext?.role),
+      resolvePlanFromDB(req),
+    ]);
+    const plan = (planRaw ?? "standard").toLowerCase();
+    const destinations = filterDestinations(perms, plan).map((d) => ({
+      id: d.id,
+      route: d.route,
+      sub: d.sub,
+      description: d.description,
+      openModes: d.openModes,
+      anchors: d.anchors,
+      prefill: d.prefill,
+    }));
+    res.json({ version: REGISTRY_VERSION, plan, destinations });
+  } catch (err) {
+    logger.error({ err, orgId }, "[agent] GET /ai/destinations failed");
+    res.status(500).json({ error: "Failed to load destinations" });
+  }
+});
+
+// ── GET /ai/conversations/:id/timeline — historique complet d'une conversation ──
+// Messages + propositions d'actions liés par conversation_id (Ajustement 10).
+router.get("/ai/conversations/:id/timeline", async (req: Request, res: Response): Promise<void> => {
+  const orgId  = req.orgId ?? "default";
+  const convId = String(req.params["id"] ?? "");
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(convId)) {
+    res.status(400).json({ error: "conversationId invalide" });
+    return;
+  }
+  try {
+    const [msgs, props, logs] = await Promise.all([
+      pool.query(
+        `SELECT id, role, content, model, created_at FROM ai_chat_history
+         WHERE org_id = $1 AND conversation_id = $2 ORDER BY created_at ASC LIMIT 200`,
+        [orgId, convId]
+      ),
+      pool.query(
+        `SELECT id, kind, payload, status, provider, model, created_at, expires_at FROM ai_action_proposals
+         WHERE org_id = $1 AND conversation_id = $2 ORDER BY created_at ASC LIMIT 100`,
+        [orgId, convId]
+      ),
+      pool.query(
+        `SELECT id, proposal_id, tool, args, result, error, undone_at, created_at FROM ai_action_logs
+         WHERE org_id = $1 AND conversation_id = $2 ORDER BY created_at ASC LIMIT 100`,
+        [orgId, convId]
+      ),
+    ]);
+    res.json({ conversationId: convId, messages: msgs.rows, proposals: props.rows, actions: logs.rows });
+  } catch (err) {
+    logger.error({ err, orgId, convId }, "[agent] timeline failed");
+    res.status(500).json({ error: "Failed to load timeline" });
+  }
+});
 
 // ── POST /ai/audit — full technical + SEO audit analysis ─────────────────────
 router.post("/ai/audit", aiRateLimit, async (req, res) => {

@@ -8987,3 +8987,13 @@ html[data-theme="light"] .fp-skel-block::after {
   background: var(--fp-bg-card-hover) !important;
   border-color: var(--fp-border-hover) !important;
 }
+
+/* ── AI Agents Phase 1 : flash visuel d'ancre après navigation IA ────────── */
+[data-fp-anchor].fp-anchor-flash {
+  animation: fpAnchorFlash 2.6s ease;
+  border-radius: 12px;
+}
+@keyframes fpAnchorFlash {
+  0%, 55% { box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.55); background-color: rgba(37, 99, 235, 0.08); }
+  100%    { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+}

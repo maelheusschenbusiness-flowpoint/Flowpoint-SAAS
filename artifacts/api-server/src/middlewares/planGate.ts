@@ -29,7 +29,7 @@ const isProd = () => process.env["NODE_ENV"] === "production" && !process.env["R
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function resolvePlanFromDB(req: Request): Promise<string | null> {
+export async function resolvePlanFromDB(req: Request): Promise<string | null> {
   const orgId = (req as { orgId?: string }).orgId;
 
   if (!orgId || orgId === "default") return "standard";
