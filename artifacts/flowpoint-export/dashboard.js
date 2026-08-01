@@ -10084,10 +10084,10 @@ function renderSettings() {
           icon:     w.icon     || '⚡',
           color:    w.category === 'Monitoring' ? '#ef4444' : w.category === 'IA' ? '#8b5cf6' : w.category === 'SEO' ? '#22c55e' : '#2563EB',
           active:   w.enabled  ?? true,
-          trigger:  (w.triggerConfig && w.triggerConfig.description) || (w.triggerType === 'schedule' ? 'Planifié' : w.triggerType === 'event' ? 'Événement' : w.triggerType || '—'),
+          trigger:  ((w.trigger_config||w.triggerConfig)?.description) || (w.trigger_type === 'schedule' || w.triggerType === 'schedule' ? 'Planifié' : w.trigger_type === 'event' || w.triggerType === 'event' ? 'Événement' : w.trigger_type || w.triggerType || '—'),
           action:   Array.isArray(w.actions) && w.actions[0] ? (w.actions[0].description || w.actions[0].type || '—') : '—',
-          runs:     w.runsCount || 0,
-          lastRun:  w.lastRunAt ? new Date(w.lastRunAt).toLocaleDateString('fr-FR') : 'Jamais',
+          runs:     w.runs_count || w.runsCount || 0,
+          lastRun:  (w.last_run_at || w.lastRunAt) ? new Date(w.last_run_at || w.lastRunAt).toLocaleDateString('fr-FR') : 'Jamais',
           category: w.category || 'Général',
         }))
       : [];

@@ -8970,3 +8970,20 @@ html[data-theme="light"] .fp-skel-block::after {
     border-right: none !important;
   }
 }
+
+/* ── V. DARK MODE : enforce card bg regardless of inline styles ──── */
+/* Fixes white-card regression on desktop dark mode                   */
+:not([data-theme="light"]) .fp-card,
+:not([data-theme="light"]) .fp-stat-card,
+:not([data-theme="light"]) .fp-kpi-card,
+:not([data-theme="light"]) .fp-gauge-card {
+  background: var(--fp-bg-card) !important;
+  border-color: var(--fp-border) !important;
+  color: var(--fp-text) !important;
+}
+:not([data-theme="light"]) .fp-card:hover,
+:not([data-theme="light"]) .fp-stat-card:hover,
+:not([data-theme="light"]) .fp-kpi-card:hover {
+  background: var(--fp-bg-card-hover) !important;
+  border-color: var(--fp-border-hover) !important;
+}
