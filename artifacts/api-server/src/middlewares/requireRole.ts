@@ -58,3 +58,6 @@ export const canAdmin  = requireRole(["owner", "admin"]);
 
 /** owner only — billing management, org deletion */
 export const ownerOnly = requireRole(["owner"]);
+
+/** owner · admin — can delete calendar events (calendar.delete permission) */
+export const canDelete = requireRole(["owner", "admin"]);

@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { canWrite } from "../middlewares/requireRole.js";
+import { canWrite, canDelete } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -138,7 +138,7 @@ router.patch("/calendar-events/:id", canWrite, async (req: Request, res: Respons
 });
 
 // ── Suppression ───────────────────────────────────────────────────────────
-router.delete("/calendar-events/:id", canWrite, async (req: Request, res: Response) => {
+router.delete("/calendar-events/:id", canDelete, async (req: Request, res: Response) => {
   try {
     const r = await (req as OrgReq).orgDb(
       `DELETE FROM calendar_events WHERE id=$1 RETURNING id`, [req.params.id]

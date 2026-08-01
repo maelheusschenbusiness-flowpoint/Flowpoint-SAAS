@@ -52,11 +52,13 @@ import { buildNavPromptSection, NavMarkerFilter, extractNavMarker } from "../age
 import { createNavigationProposal, createPendingToolProposal } from "../agent/proposals.js";
 import { resolvePlanFromDB } from "../middlewares/planGate.js";
 // ── AI Agents Phase 2 — tool calling ──────────────────────────────────────────
-import { MISSION_TOOLS, TOOL_BY_NAME, type AIToolCall } from "../agent/mission-tools.js";
+import { MISSION_TOOLS, type AIToolCall } from "../agent/mission-tools.js";
 // ── AI Agents Phase 3 — outils calendrier ─────────────────────────────────────
 import { CALENDAR_TOOLS } from "../agent/calendar-tools.js";
 /** Registre unifié missions + calendrier passé au provider lors du tool calling. */
 const ALL_TOOLS = [...MISSION_TOOLS, ...CALENDAR_TOOLS];
+/** Map de lookup unifié — phase 2 missions + phase 3 calendrier. */
+const ALL_TOOLS_MAP = new Map(ALL_TOOLS.map((t) => [t.name, t]));
 import { aiChatWithTools, buildToolResultMessages, type ToolCallingResult } from "../services/ai-tool-calling.js";
 import { executeTool, type ExecuteContext } from "../agent/tool-executor.js";
 import { undoAction } from "../agent/undo.js";
@@ -832,7 +834,7 @@ async function runToolCallingLoop(opts: {
     const injections: import("../services/ai-tool-calling.js").ToolResultInjection[] = [];
 
     for (const toolCall of roundResult.toolCalls) {
-      const toolDef = TOOL_BY_NAME.get(toolCall.name);
+      const toolDef = ALL_TOOLS_MAP.get(toolCall.name);
       if (!toolDef) {
         opts.sseWrite(`data: ${JSON.stringify({ tool_call: { id: toolCall.id, name: toolCall.name, status: "unknown_tool" } })}\n\n`);
         injections.push({ toolCallId: toolCall.id, toolName: toolCall.name, content: `Unknown tool: ${toolCall.name}` });
