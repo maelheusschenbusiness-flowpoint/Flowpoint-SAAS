@@ -16968,7 +16968,7 @@ function renderSubPageContent(route, sub) {
             <div style="font-size:17px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Entonnoirs non disponibles</div>
             <div style="font-size:13px;color:var(--fp-text-muted);max-width:380px;line-height:1.6">Connectez Google Analytics 4 pour visualiser vos entonnoirs de conversion, analyser les points de friction et optimiser votre parcours utilisateur.</div>
           </div>
-          <button class="fp-btn fp-btn-primary" onclick="navigate('settings');setTimeout(()=>navigateSub('integrations'),50)">
+          <button class="fp-btn fp-btn-primary" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">
             Connecter GA4 →
           </button>
         </div>
@@ -17188,7 +17188,7 @@ function renderSubPageContent(route, sub) {
           <div style="font-size:11px;max-width:420px;margin:0 auto">${_ga4Connected()
             ? 'Les tranches d\'âge et le genre nécessitent l\'activation de <strong>Google Signals</strong> dans votre propriété GA4 (Administration → Paramètres des données → Collecte des données), puis un délai de collecte de 24-48h.'
             : 'Les données d\'âge et de genre proviennent de Google Signals, disponible après connexion de votre compte Google Analytics.'}</div>
-          ${_ga4Connected() ? '' : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:14px" onclick="navigate('settings');setTimeout(()=>navigateSub('integrations'),50)">Connecter GA4 →</button>`}
+          ${_ga4Connected() ? '' : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:14px" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4 →</button>`}
         </div>
       </div>`;
     }
@@ -22410,7 +22410,7 @@ function renderConversion() {
               </div>
               ${idx < funnelSteps.length - 1 ? `<div style="margin-left:140px;font-size:10px;color:var(--fp-text-faint);padding-left:4px">▼ ${100 - Math.round(funnelSteps[idx+1].abs / s.abs * 100)}% de chute vers "${escHtml(funnelSteps[idx+1].label)}"</div>` : ""}
             </div>
-          `).join("") : `<div style="padding:24px;text-align:center;background:var(--fp-inner-card);border-radius:10px;font-size:13px;color:var(--fp-text-muted)">🔌 Connectez GA4 ou Matomo pour afficher votre entonnoir en temps réel.<br><button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:10px" onclick="navigate('integrations')">Connecter analytics</button></div>`}
+          `).join("") : `<div style="padding:24px;text-align:center;background:var(--fp-inner-card);border-radius:10px;font-size:13px;color:var(--fp-text-muted)">🔌 Connectez GA4 pour afficher votre entonnoir en temps réel.<br><button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:10px" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button></div>`}
         </div>
       </div>
 
@@ -22769,7 +22769,7 @@ function renderConversion() {
             <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Aucune fuite de revenus détectée</div>
             <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 16px">${escHtml(_rlEmptyReason)}</div>
             <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('integrations')">Connecter GA4 / PageSpeed</button>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_REVENUE_LEAK_API.detect(window.FP_DATA?.activeSite)">Lancer la détection</button>
             </div>
            </div>`
@@ -22996,7 +22996,7 @@ function renderConversion() {
           </div>` : `<div style="text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">
             <div style="font-size:20px;margin-bottom:8px">📊</div>
             <div>Connectez vos analytics pour voir les prévisions de conversion personnalisées</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:10px" onclick="navigate('integrations')">Connecter GA4</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:10px" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button>
           </div>`}
         </div>
       </div>
@@ -29100,7 +29100,14 @@ window.awlGo                  = awlGo;
 // GA4 ANALYTICS — SHARED HELPERS
 // ══════════════════════════════════════════════════════════════════════
 
-function _ga4Connected() { return !!(window.FP_DATA?.ga4?.connected); }
+function _ga4Connected() {
+  // Source 1 : FP_GA4_API.load() (Analytics page) ou loadData() via /api/ga4/status
+  if (window.FP_DATA?.ga4?.connected === true) return true;
+  // Source 2 : STATE.ga4Status chargé par loadData() au boot — fiable même si
+  //            window.FP_DATA.ga4 n'a pas encore été initialisé par FP_GA4_API.load()
+  if (STATE.ga4Status?.connected === true) return true;
+  return false;
+}
 function _ga4Property()  { return window.FP_DATA?.ga4?.propertyName || window.FP_DATA?.ga4?.propertyId || ''; }
 
 function _ga4MetricSum(rows, idx) {
@@ -29885,7 +29892,7 @@ function renderGA4Conversion() {
         <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 20px">
           Connectez GA4 pour afficher vos conversions réelles, revenus, landing pages et analyses par source.
         </div>
-        <button class="fp-btn fp-btn-primary" onclick="navigate('integrations')">Connecter GA4</button>
+        <button class="fp-btn fp-btn-primary" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button>
       </div>`;
   }
 
