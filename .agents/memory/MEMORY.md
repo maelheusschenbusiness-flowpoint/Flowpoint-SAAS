@@ -97,3 +97,5 @@
 - [Missions fast-path schema gap](missions-fast-path-schema.md) — initMissionsTables was absent from fast-path; missing columns caused 500 on Render; fix: add to fast-path + full ALTER TABLE self-heal
 - [Real data feed isolation](real-data-feed-isolation.md) — notifications, activity, and team chat are separate org-scoped persisted feeds; no seed or cross-feed fallback
 - [Per-tab session bootstrap](per-tab-session-bootstrap.md) — fp-backend loads before dashboard; protected preloads must await sessionStorage token restoration before using auth
+- [dashboard.js skeleton stuck — SyntaxError](dashboard-skeleton-syntaxerror.md) — SyntaxError crashes IIFE; fp-backend shows skeleton that never resolves; always run node --check after edits
+- [dashboard.js apiFetch resilience](dashboard-apifetch-resilience.md) — AbortController 15s timeout + 12s safety timer on loadData + fp_session_token cleared on 401; prevents permanent skeleton
