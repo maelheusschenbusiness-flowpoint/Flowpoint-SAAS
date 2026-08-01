@@ -10,6 +10,7 @@ import {
 } from "../services/keyword-engine.js";
 import { logger } from "../lib/logger.js";
 import { withCache } from "../middlewares/cacheControl.js";
+import { canWrite } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -177,7 +178,7 @@ router.get("/keywords/:id/history", async (req, res) => {
 });
 
 // POST /api/keywords/track
-router.post("/keywords/track", async (req, res) => {
+router.post("/keywords/track", canWrite, async (req, res) => {
   const orgId = getOrg(req); const plan = getPlan(req);
   const { keyword, url, device, location, language, tag } = req.body as Record<string,string>;
   if (!keyword) { res.status(400).json({ error: "keyword required" }); return; }
@@ -191,7 +192,7 @@ router.post("/keywords/track", async (req, res) => {
 });
 
 // POST /api/keywords/sync
-router.post("/keywords/sync", async (req, res) => {
+router.post("/keywords/sync", canWrite, async (req, res) => {
   const orgId = getOrg(req);
   const t0 = Date.now();
   try {
@@ -206,7 +207,7 @@ router.post("/keywords/sync", async (req, res) => {
 });
 
 // POST /api/keywords/cluster
-router.post("/keywords/cluster", async (req, res) => {
+router.post("/keywords/cluster", canWrite, async (req, res) => {
   const orgId = getOrg(req);
   try {
     const clusters = await generateClusters(orgId);
@@ -215,7 +216,7 @@ router.post("/keywords/cluster", async (req, res) => {
 });
 
 // POST /api/keywords/opportunities/generate
-router.post("/keywords/opportunities/generate", async (req, res) => {
+router.post("/keywords/opportunities/generate", canWrite, async (req, res) => {
   const orgId = getOrg(req);
   const { domain = "monsite.fr" } = req.body as { domain?: string };
   try {
@@ -225,7 +226,7 @@ router.post("/keywords/opportunities/generate", async (req, res) => {
 });
 
 // PATCH /api/keywords/alerts/:id/read
-router.patch("/keywords/alerts/:id/read", async (req, res) => {
+router.patch("/keywords/alerts/:id/read", canWrite, async (req, res) => {
   try {
     await (req as OrgReq).orgDb(`UPDATE ranking_alerts SET read = true WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
@@ -233,7 +234,7 @@ router.patch("/keywords/alerts/:id/read", async (req, res) => {
 });
 
 // POST /api/keywords (legacy — inserts into tracked_keywords)
-router.post("/keywords", async (req, res) => {
+router.post("/keywords", canWrite, async (req, res) => {
   const orgId = getOrg(req);
   const { keyword, position = 0, volume = 0, difficulty = 50, tag, intent } = req.body as {
     keyword?: string; position?: number; volume?: number; difficulty?: number; tag?: string; intent?: string;
@@ -259,7 +260,7 @@ router.post("/keywords", async (req, res) => {
 });
 
 // PATCH /api/keywords/:id
-router.patch("/keywords/:id", async (req, res) => {
+router.patch("/keywords/:id", canWrite, async (req, res) => {
   const orgId = getOrg(req);
   try {
     const exists = await (req as OrgReq).orgDb(
@@ -284,7 +285,7 @@ router.patch("/keywords/:id", async (req, res) => {
 });
 
 // DELETE /api/keywords/:id
-router.delete("/keywords/:id", async (req, res) => {
+router.delete("/keywords/:id", canWrite, async (req, res) => {
   const orgId = getOrg(req);
   try {
     const deleted = await (req as OrgReq).orgDb(
@@ -292,11 +293,11 @@ router.delete("/keywords/:id", async (req, res) => {
       [req.params.id, orgId]);
     if (deleted.rows.length > 0) {
       store.logActivity({ type:"audit", label:`Keyword retiré : "${deleted.rows[0].keyword}"`, targetId:req.params.id, targetType:"keyword", orgId }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
+      res.json({ ok: true });
     } else {
       res.status(404).json({ error: "not found" });
     }
-    res.json({ ok: true });
-  } catch { res.json({ ok: true }); }
+  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
 export default router;
