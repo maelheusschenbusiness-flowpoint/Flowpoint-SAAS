@@ -137,17 +137,80 @@ export class GeminiProvider {
       }
     }
 
-    // Log non-STOP finish reasons so truncation is always visible in server logs
-    if (lastFinishReason && lastFinishReason !== "STOP") {
-      logger.warn({ model, finishReason: lastFinishReason, textLength: fullText.length },
-        "[Gemini] Stream ended with non-STOP finishReason — response may be incomplete");
-      if (lastFinishReason === "MAX_TOKENS") {
-        // Append a visible truncation marker so users know the response was cut
-        fullText += "\n\n*(Réponse tronquée — limite de tokens atteinte. Posez votre question en plusieurs parties si nécessaire.)*";
-        yield { content: "\n\n*(Réponse tronquée — limite de tokens atteinte. Posez votre question en plusieurs parties si nécessaire.)*", usage: undefined };
+    // ── Normalisation complète de finishReason ────────────────────────────────
+    // Ne jamais présenter une réponse tronquée/bloquée/interrompue comme complète.
+    // Chaque raison produit un message utilisateur explicite ET un log serveur.
+    switch (lastFinishReason) {
+      case "STOP":
+      case undefined:
+      case null:
+        // Complétion normale
+        logger.info({ model, finishReason: lastFinishReason ?? "none", textLength: fullText.length },
+          "[Gemini] Stream completed normally");
+        break;
+
+      case "MAX_TOKENS": {
+        // Réponse tronquée — limite de tokens atteinte
+        const truncMsg = "\n\n*(Réponse tronquée — limite de tokens atteinte. Posez votre question en plusieurs parties si nécessaire.)*";
+        fullText += truncMsg;
+        yield { content: truncMsg, usage: undefined };
+        logger.warn({ model, finishReason: lastFinishReason, textLength: fullText.length },
+          "[Gemini] Stream ended with MAX_TOKENS — response is incomplete");
+        break;
       }
-    } else if (lastFinishReason === "STOP" || !lastFinishReason) {
-      logger.info({ model, finishReason: lastFinishReason ?? "none", textLength: fullText.length }, "[Gemini] Stream completed normally");
+
+      case "SAFETY": {
+        // Contenu bloqué par les filtres de sécurité Gemini
+        const safetyMsg = "\n\n*(Réponse interrompue — le contenu a été bloqué par les filtres de sécurité du modèle. Reformulez votre demande.)*";
+        fullText += safetyMsg;
+        yield { content: safetyMsg, usage: undefined };
+        logger.warn({ model, finishReason: lastFinishReason, textLength: fullText.length },
+          "[Gemini] Stream ended with SAFETY — content blocked by safety filters");
+        break;
+      }
+
+      case "RECITATION": {
+        // Arrêt pour citation de contenu protégé
+        const recitationMsg = "\n\n*(Réponse interrompue — le modèle a détecté du contenu potentiellement protégé par des droits d'auteur.)*";
+        fullText += recitationMsg;
+        yield { content: recitationMsg, usage: undefined };
+        logger.warn({ model, finishReason: lastFinishReason, textLength: fullText.length },
+          "[Gemini] Stream ended with RECITATION — possible copyright content detected");
+        break;
+      }
+
+      case "ERROR": {
+        // Erreur interne du provider Gemini
+        const errorMsg = "\n\n*(Une erreur est survenue du côté du modèle Gemini. Réessayez dans quelques instants.)*";
+        fullText += errorMsg;
+        yield { content: errorMsg, usage: undefined };
+        logger.error({ model, finishReason: lastFinishReason, textLength: fullText.length },
+          "[Gemini] Stream ended with ERROR — provider-side error");
+        break;
+      }
+
+      case "ABORTED": {
+        // Stream interrompu (déconnexion client, timeout, annulation)
+        // Ne pas ajouter de message si fullText est vide pour éviter les réponses fantômes.
+        if (fullText.length > 0) {
+          const abortMsg = "\n\n*(Génération interrompue.)*";
+          fullText += abortMsg;
+          yield { content: abortMsg, usage: undefined };
+        }
+        logger.warn({ model, finishReason: lastFinishReason, textLength: fullText.length },
+          "[Gemini] Stream ABORTED — client disconnected or request cancelled");
+        break;
+      }
+
+      default: {
+        // Raison inconnue — traiter comme potentiellement incomplète
+        const unknownMsg = `\n\n*(Génération terminée de façon inattendue [${lastFinishReason}]. La réponse peut être incomplète.)*`;
+        fullText += unknownMsg;
+        yield { content: unknownMsg, usage: undefined };
+        logger.warn({ model, finishReason: lastFinishReason, textLength: fullText.length },
+          "[Gemini] Stream ended with unknown finishReason");
+        break;
+      }
     }
 
     return {
