@@ -101,3 +101,4 @@
 - [dashboard.js skeleton stuck — SyntaxError](dashboard-skeleton-syntaxerror.md) — SyntaxError crashes IIFE; fp-backend shows skeleton that never resolves; always run node --check after edits
 - [dashboard.js apiFetch resilience](dashboard-apifetch-resilience.md) — AbortController 15s timeout + 12s safety timer on loadData + fp_session_token cleared on 401; prevents permanent skeleton
 - [AI Agents Phase 1](ai-agents-phase1.md) — registre destinations.json = source unique; marqueur SSE retenu (borné 8Ko); permissions FAIL-CLOSED; prefill validé 2 côtés; jamais de bouton non journalisé
+- [AI Agents Phase 2](ai-agents-phase2.md) — missions.delete distinct; version_after exact (no tolerance); normalizeGeminiFinishReason; QA fixtures sous /api/qa/ (pas /qa/); 198+68/198+68 certifiés
