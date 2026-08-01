@@ -216,7 +216,7 @@ export const MISSION_TOOLS: ToolDef[] = [
       "Supprime définitivement une mission. " +
       "⚠ ACTION IRRÉVERSIBLE — requiert une confirmation explicite de l'utilisateur. " +
       "L'ID doit provenir d'un appel préalable à search_mission.",
-    requiredPermission: "missions.write",
+    requiredPermission: "missions.delete",
     confirmationLevel: "full",
     isWrite: true,
     parameters: {

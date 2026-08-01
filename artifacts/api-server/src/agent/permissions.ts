@@ -12,7 +12,8 @@ import { logger } from "../lib/logger.js";
 export const PERMISSION_CATALOG = [
   "overview.read",
   "missions.read",
-  "missions.write",   // Phase 2 — création / modification / suppression de missions via IA
+  "missions.write",   // Phase 2 — création / modification (hors suppression) de missions via IA
+  "missions.delete",  // Phase 2 — suppression de missions via IA (owner + admin uniquement par défaut)
   "audits.read",
   "monitors.read",
   "keywords.read",
@@ -33,16 +34,18 @@ export const PERMISSION_CATALOG = [
 export type Permission = (typeof PERMISSION_CATALOG)[number];
 
 const ALL_READ: Permission[] = PERMISSION_CATALOG.filter(
-  (p) => p !== "settings.admin" && p !== "billing.read" && !p.endsWith(".write")
+  (p) => p !== "settings.admin" && p !== "billing.read" && !p.endsWith(".write") && !p.endsWith(".delete")
 );
 
 /** Bundles par défaut par rôle — valeurs de départ, jamais la source de vérité finale. */
 const ROLE_BUNDLES: Record<string, Permission[]> = {
-  // owner/admin/member : toutes permissions (lecture + écriture missions)
+  // owner/admin : toutes permissions y compris suppression de missions
   owner:   [...PERMISSION_CATALOG],
   admin:   [...PERMISSION_CATALOG],
-  member:  [...ALL_READ, "missions.write"],   // members can manage missions via AI
-  viewer:  [...ALL_READ],                     // viewers: read-only, pas d'écriture
+  // member : lecture + écriture missions, PAS de suppression
+  member:  [...ALL_READ, "missions.write"],
+  // viewer : lecture seule, aucune écriture ni suppression
+  viewer:  [...ALL_READ],
   // service (API_SECRET_KEY interne) : tout — cohérent avec requireRole
   service: [...PERMISSION_CATALOG],
 };
