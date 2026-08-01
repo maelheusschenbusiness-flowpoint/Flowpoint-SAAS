@@ -23,6 +23,91 @@ import { logger } from "../../lib/logger.js";
 /** Single source of truth for the Gemini model used across chat and streaming. */
 const GEMINI_DEFAULT_MODEL = PROVIDER_CAPABILITIES.gemini.defaultModel;
 
+// ── finishReason normalisation ────────────────────────────────────────────────
+
+export interface GeminiFinishReasonResult {
+  /** Text to append to the response. null = nothing to append (normal completion). */
+  appendText: string | null;
+  /** Log level to use for the server-side log entry. */
+  logLevel: "info" | "warn" | "error";
+  /** Server-side log message (technical, never shown to user). */
+  logMessage: string;
+}
+
+/**
+ * Pure function — maps a Gemini finishReason to a user-facing append string and
+ * a log entry. Exported so it can be tested independently (QA fixtures + unit tests).
+ *
+ * Rules:
+ *  - STOP / null / undefined → normal; no append, info log.
+ *  - MAX_TOKENS   → truncation notice; warn log.
+ *  - SAFETY       → content-blocked notice; warn log.
+ *  - RECITATION   → copyright notice; warn log.
+ *  - ERROR        → provider error notice; error log (not warn).
+ *  - ABORTED      → interruption notice (only if textSoFar non-empty); warn log.
+ *  - anything else → unknown-reason notice; warn log.
+ *
+ * Messages are deliberately user-friendly (French) — no technical details exposed.
+ */
+export function normalizeGeminiFinishReason(
+  reason: string | null | undefined,
+  textSoFar: string
+): GeminiFinishReasonResult {
+  switch (reason) {
+    case "STOP":
+    case undefined:
+    case null:
+      return {
+        appendText: null,
+        logLevel: "info",
+        logMessage: "[Gemini] Stream completed normally",
+      };
+
+    case "MAX_TOKENS":
+      return {
+        appendText: "\n\n*(Réponse tronquée — limite de tokens atteinte. Posez votre question en plusieurs parties si nécessaire.)*",
+        logLevel: "warn",
+        logMessage: "[Gemini] Stream ended with MAX_TOKENS — response is incomplete",
+      };
+
+    case "SAFETY":
+      return {
+        appendText: "\n\n*(Réponse interrompue — le contenu a été bloqué par les filtres de sécurité du modèle. Reformulez votre demande.)*",
+        logLevel: "warn",
+        logMessage: "[Gemini] Stream ended with SAFETY — content blocked by safety filters",
+      };
+
+    case "RECITATION":
+      return {
+        appendText: "\n\n*(Réponse interrompue — le modèle a détecté du contenu potentiellement protégé par des droits d'auteur.)*",
+        logLevel: "warn",
+        logMessage: "[Gemini] Stream ended with RECITATION — possible copyright content detected",
+      };
+
+    case "ERROR":
+      return {
+        appendText: "\n\n*(Une erreur est survenue du côté du modèle Gemini. Réessayez dans quelques instants.)*",
+        logLevel: "error",
+        logMessage: "[Gemini] Stream ended with ERROR — provider-side error",
+      };
+
+    case "ABORTED":
+      return {
+        // Only append if there is already some text — avoids phantom empty responses.
+        appendText: textSoFar.length > 0 ? "\n\n*(Génération interrompue.)*" : null,
+        logLevel: "warn",
+        logMessage: "[Gemini] Stream ABORTED — client disconnected or request cancelled",
+      };
+
+    default:
+      return {
+        appendText: `\n\n*(Génération terminée de façon inattendue [${reason}]. La réponse peut être incomplète.)*`,
+        logLevel: "warn",
+        logMessage: `[Gemini] Stream ended with unknown finishReason: ${reason}`,
+      };
+  }
+}
+
 export class GeminiProvider {
   readonly id: AIProviderId = "gemini";
   private client: GoogleGenAI;
@@ -137,81 +222,15 @@ export class GeminiProvider {
       }
     }
 
-    // ── Normalisation complète de finishReason ────────────────────────────────
-    // Ne jamais présenter une réponse tronquée/bloquée/interrompue comme complète.
-    // Chaque raison produit un message utilisateur explicite ET un log serveur.
-    switch (lastFinishReason) {
-      case "STOP":
-      case undefined:
-      case null:
-        // Complétion normale
-        logger.info({ model, finishReason: lastFinishReason ?? "none", textLength: fullText.length },
-          "[Gemini] Stream completed normally");
-        break;
-
-      case "MAX_TOKENS": {
-        // Réponse tronquée — limite de tokens atteinte
-        const truncMsg = "\n\n*(Réponse tronquée — limite de tokens atteinte. Posez votre question en plusieurs parties si nécessaire.)*";
-        fullText += truncMsg;
-        yield { content: truncMsg, usage: undefined };
-        logger.warn({ model, finishReason: lastFinishReason, textLength: fullText.length },
-          "[Gemini] Stream ended with MAX_TOKENS — response is incomplete");
-        break;
-      }
-
-      case "SAFETY": {
-        // Contenu bloqué par les filtres de sécurité Gemini
-        const safetyMsg = "\n\n*(Réponse interrompue — le contenu a été bloqué par les filtres de sécurité du modèle. Reformulez votre demande.)*";
-        fullText += safetyMsg;
-        yield { content: safetyMsg, usage: undefined };
-        logger.warn({ model, finishReason: lastFinishReason, textLength: fullText.length },
-          "[Gemini] Stream ended with SAFETY — content blocked by safety filters");
-        break;
-      }
-
-      case "RECITATION": {
-        // Arrêt pour citation de contenu protégé
-        const recitationMsg = "\n\n*(Réponse interrompue — le modèle a détecté du contenu potentiellement protégé par des droits d'auteur.)*";
-        fullText += recitationMsg;
-        yield { content: recitationMsg, usage: undefined };
-        logger.warn({ model, finishReason: lastFinishReason, textLength: fullText.length },
-          "[Gemini] Stream ended with RECITATION — possible copyright content detected");
-        break;
-      }
-
-      case "ERROR": {
-        // Erreur interne du provider Gemini
-        const errorMsg = "\n\n*(Une erreur est survenue du côté du modèle Gemini. Réessayez dans quelques instants.)*";
-        fullText += errorMsg;
-        yield { content: errorMsg, usage: undefined };
-        logger.error({ model, finishReason: lastFinishReason, textLength: fullText.length },
-          "[Gemini] Stream ended with ERROR — provider-side error");
-        break;
-      }
-
-      case "ABORTED": {
-        // Stream interrompu (déconnexion client, timeout, annulation)
-        // Ne pas ajouter de message si fullText est vide pour éviter les réponses fantômes.
-        if (fullText.length > 0) {
-          const abortMsg = "\n\n*(Génération interrompue.)*";
-          fullText += abortMsg;
-          yield { content: abortMsg, usage: undefined };
-        }
-        logger.warn({ model, finishReason: lastFinishReason, textLength: fullText.length },
-          "[Gemini] Stream ABORTED — client disconnected or request cancelled");
-        break;
-      }
-
-      default: {
-        // Raison inconnue — traiter comme potentiellement incomplète
-        const unknownMsg = `\n\n*(Génération terminée de façon inattendue [${lastFinishReason}]. La réponse peut être incomplète.)*`;
-        fullText += unknownMsg;
-        yield { content: unknownMsg, usage: undefined };
-        logger.warn({ model, finishReason: lastFinishReason, textLength: fullText.length },
-          "[Gemini] Stream ended with unknown finishReason");
-        break;
-      }
+    // ── Normalisation finishReason ────────────────────────────────────────────
+    // Délégué à normalizeGeminiFinishReason (exported pure function, testable).
+    const frResult = normalizeGeminiFinishReason(lastFinishReason, fullText);
+    if (frResult.appendText !== null) {
+      fullText += frResult.appendText;
+      yield { content: frResult.appendText, usage: undefined };
     }
+    logger[frResult.logLevel]({ model, finishReason: lastFinishReason ?? "none", textLength: fullText.length },
+      frResult.logMessage);
 
     return {
       text: fullText,

@@ -2,25 +2,23 @@
  * FlowPoint AI Agents — Phase 2 : Service Undo.
  *
  * Restaure l'état précédent d'une ressource à partir du snapshot stocké dans
- * ai_action_logs.undo_snapshot. Ne jamais inverser logiquement une action —
- * toujours restaurer le snapshot réel.
+ * ai_action_logs.undo_snapshot.
  *
  * Sécurité :
  *  - L'action doit appartenir à l'organisation (org_id scope)
  *  - L'action ne doit pas déjà être annulée (undone_at IS NULL)
- *  - Timeout d'undo : 30 minutes après la création (configurable)
- *  - Le snapshot null (outils sans write, ex: search) → undo refusé
- *  - Validation de version : si la ressource a été modifiée depuis l'action,
- *    l'Undo retourne 409 PROPOSAL_STALE — jamais d'écrasement silencieux.
+ *  - Timeout d'undo : 30 minutes après la création
+ *  - Le snapshot null → undo refusé
+ *  - Validation de version EXACTE : version_after stocké immédiatement après la
+ *    mutation dans ai_action_logs.version_after. Si current.updated_at (ISO) ≠
+ *    version_after → 409 PROPOSAL_STALE, aucune donnée modifiée.
+ *    Aucune tolérance temporelle — comparaison milliseconde-parfaite.
  */
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
 
 export const UNDO_TTL_MINUTES = 30;
-
-/** Tolérance horloge entre le SQL NOW() de l'action et le created_at du log (ms). */
-const VERSION_TOLERANCE_MS = 5_000;
 
 export interface UndoResult {
   ok: boolean;
@@ -39,7 +37,7 @@ export async function undoAction(
   let row: Record<string, unknown> | undefined;
   try {
     const r = await pool.query(
-      `SELECT id, org_id, tool, undo_snapshot, undone_at, result, created_at
+      `SELECT id, org_id, tool, undo_snapshot, undone_at, result, created_at, version_after
        FROM ai_action_logs WHERE id = $1 AND org_id = $2`,
       [actionLogId, orgId]
     );
@@ -80,14 +78,14 @@ export async function undoAction(
     return { ok: false, message: "Snapshot invalide.", actionLogId };
   }
 
-  const toolName = row["tool"] as string;
-  const logCreatedAt = row["created_at"] as string;
+  const toolName  = row["tool"] as string;
+  const versionAfter = row["version_after"] as string | null | undefined;
 
-  // 3. Restauration selon l'outil (avec validation de version pour les updates)
+  // 3. Restauration avec validation de version exacte
   try {
-    const snapResult = await applySnapshot(toolName, snap as Record<string, unknown>, orgId, logCreatedAt);
+    const snapResult = await applySnapshot(toolName, snap as Record<string, unknown>, orgId, versionAfter ?? null);
     if (snapResult?.stale) {
-      logger.warn({ actionLogId, toolName, orgId }, "[undo] PROPOSAL_STALE — concurrent modification detected");
+      logger.warn({ actionLogId, toolName, orgId, versionAfter }, "[undo] PROPOSAL_STALE — concurrent modification detected");
       return {
         ok: false,
         code: "PROPOSAL_STALE",
@@ -110,8 +108,9 @@ export async function undoAction(
 
   // 5. Log activité
   await store.logActivity({
-    type: "report", label: `[IA] Annulation : ${toolName} (${snap["title"] ?? actionLogId})`,
-    targetId: snap["id"] as string ?? actionLogId, targetType: "mission",
+    type: "report", label: `[IA] Annulation : ${toolName} (${(snap as Record<string, unknown>)["title"] ?? actionLogId})`,
+    targetId: (snap as Record<string, unknown>)["id"] as string ?? actionLogId,
+    targetType: "mission",
     metadata: { actionLogId, toolName }, orgId,
   }).catch(() => {});
 
@@ -120,29 +119,29 @@ export async function undoAction(
 }
 
 /** Résultat intermédiaire d'applySnapshot — stale = modification concurrente détectée. */
-interface SnapshotResult {
-  stale?: boolean;
-}
+interface SnapshotResult { stale?: boolean }
 
 /**
  * Applique le snapshot sur la ressource cible.
  *
- * @param logCreatedAt  created_at de l'entrée ai_action_logs. Utilisé comme
- *                      borne de version : si la mission a été modifiée après
- *                      (+ tolérance), on retourne { stale: true }.
+ * @param versionAfter  ISO string de updated_at capturé IMMÉDIATEMENT après la mutation
+ *                      dans ai_action_logs.version_after.
+ *                      Comparaison EXACTE avec current.updated_at (aucune tolérance).
+ *                      null = outil sans version lock (create/delete).
  */
 async function applySnapshot(
   toolName: string,
   snap: Record<string, unknown>,
   orgId: string,
-  logCreatedAt: string,
+  versionAfter: string | null,
 ): Promise<SnapshotResult | void> {
   const id = snap["id"] as string;
   if (!id) throw new Error("Snapshot sans ID — impossible de restaurer.");
 
   if (toolName === "create_mission") {
     // Annuler une création = supprimer la mission.
-    // Pas de validation de version : si la mission n'existe plus (supprimée manuellement), OK.
+    // Pas de version lock : si la mission a été modifiée entre-temps, on la supprime quand même
+    // (c'est notre action, pas une modification concurrente d'une tierce partie).
     await pool.query(`DELETE FROM missions WHERE id = $1 AND org_id = $2`, [id, orgId]);
     return;
   }
@@ -175,28 +174,45 @@ async function applySnapshot(
   }
 
   if (["update_mission", "complete_mission", "assign_mission"].includes(toolName)) {
-    // ── Validation de version : modification concurrente ? ────────────────────
-    // L'action a exécuté UPDATE … SET updated_at = NOW() ≈ logCreatedAt.
-    // Si à l'heure de l'Undo, updated_at > logCreatedAt + tolérance, quelqu'un
-    // d'autre a modifié la mission après notre action → 409 PROPOSAL_STALE.
-    const vRow = await pool.query<{ updated_at: Date | null; id: string }>(
-      `SELECT updated_at FROM missions WHERE id = $1 AND org_id = $2`,
-      [id, orgId]
-    );
+    // ── Validation de version EXACTE ──────────────────────────────────────────
+    // version_after = updated_at capturé IMMÉDIATEMENT après la mutation (ISO string).
+    // current.updated_at converti en ISO doit correspondre exactement.
+    // Si différent → quelqu'un d'autre a modifié la mission → PROPOSAL_STALE.
+    //
+    // Cas legacy : si version_after est null (log antérieur au déploiement), on
+    // autorise l'Undo sans version check plutôt que de bloquer définitivement.
+    if (versionAfter !== null && versionAfter !== undefined) {
+      const vRow = await pool.query<{ updated_at: Date | null }>(
+        `SELECT updated_at FROM missions WHERE id = $1 AND org_id = $2`,
+        [id, orgId]
+      );
 
-    if (!vRow.rows[0]) {
-      // La mission n'existe plus — elle a été supprimée après l'action.
-      throw new Error("La mission n'existe plus dans votre organisation. Elle a peut-être été supprimée depuis l'action.");
-    }
+      if (!vRow.rows[0]) {
+        throw new Error("La mission n'existe plus dans votre organisation. Elle a peut-être été supprimée depuis l'action.");
+      }
 
-    const currentUpdatedAt = vRow.rows[0].updated_at
-      ? new Date(vRow.rows[0].updated_at).getTime()
-      : 0;
-    const actionTimestamp = new Date(logCreatedAt).getTime();
+      const currentUpdatedAt = vRow.rows[0].updated_at
+        ? new Date(vRow.rows[0].updated_at).toISOString()
+        : null;
 
-    if (currentUpdatedAt > actionTimestamp + VERSION_TOLERANCE_MS) {
-      // Modification postérieure à notre action → refus sécurisé
-      return { stale: true };
+      if (currentUpdatedAt !== versionAfter) {
+        // Versions ne correspondent pas → modification concurrente détectée
+        logger.debug({
+          currentUpdatedAt,
+          versionAfter,
+          diff: currentUpdatedAt !== versionAfter,
+        }, "[undo] version mismatch detail");
+        return { stale: true };
+      }
+    } else {
+      // Legacy log sans version_after : vérifier que la mission existe
+      const existsRow = await pool.query(
+        `SELECT id FROM missions WHERE id = $1 AND org_id = $2`,
+        [id, orgId]
+      );
+      if (!existsRow.rows[0]) {
+        throw new Error("La mission n'existe plus dans votre organisation.");
+      }
     }
 
     // ── Restauration ──────────────────────────────────────────────────────────
