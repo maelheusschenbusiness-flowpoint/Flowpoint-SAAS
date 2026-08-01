@@ -65,28 +65,28 @@ export function normalizeGeminiFinishReason(
 
     case "MAX_TOKENS":
       return {
-        appendText: "\n\n*(Réponse tronquée — limite de tokens atteinte. Posez votre question en plusieurs parties si nécessaire.)*",
+        appendText: "\n\nJe n'ai pas pu terminer cette réponse. Demandez-moi de continuer à partir du dernier point si vous le souhaitez.",
         logLevel: "warn",
         logMessage: "[Gemini] Stream ended with MAX_TOKENS — response is incomplete",
       };
 
     case "SAFETY":
       return {
-        appendText: "\n\n*(Réponse interrompue — le contenu a été bloqué par les filtres de sécurité du modèle. Reformulez votre demande.)*",
+        appendText: "\n\nJe ne peux pas répondre à cette demande. Essayez de la reformuler différemment.",
         logLevel: "warn",
         logMessage: "[Gemini] Stream ended with SAFETY — content blocked by safety filters",
       };
 
     case "RECITATION":
       return {
-        appendText: "\n\n*(Réponse interrompue — le modèle a détecté du contenu potentiellement protégé par des droits d'auteur.)*",
+        appendText: "\n\nJe ne peux pas reproduire ce contenu tel quel. Demandez-moi de l'exprimer avec mes propres mots si vous le souhaitez.",
         logLevel: "warn",
         logMessage: "[Gemini] Stream ended with RECITATION — possible copyright content detected",
       };
 
     case "ERROR":
       return {
-        appendText: "\n\n*(Une erreur est survenue du côté du modèle Gemini. Réessayez dans quelques instants.)*",
+        appendText: "\n\nUne erreur est survenue. Réessayez dans quelques instants ou changez de modèle.",
         logLevel: "error",
         logMessage: "[Gemini] Stream ended with ERROR — provider-side error",
       };
@@ -94,14 +94,14 @@ export function normalizeGeminiFinishReason(
     case "ABORTED":
       return {
         // Only append if there is already some text — avoids phantom empty responses.
-        appendText: textSoFar.length > 0 ? "\n\n*(Génération interrompue.)*" : null,
+        appendText: textSoFar.length > 0 ? "\n\nLa génération a été interrompue." : null,
         logLevel: "warn",
         logMessage: "[Gemini] Stream ABORTED — client disconnected or request cancelled",
       };
 
     default:
       return {
-        appendText: `\n\n*(Génération terminée de façon inattendue [${reason}]. La réponse peut être incomplète.)*`,
+        appendText: "\n\nLa réponse n'a pas pu être complétée. Essayez de reformuler votre question.",
         logLevel: "warn",
         logMessage: `[Gemini] Stream ended with unknown finishReason: ${reason}`,
       };

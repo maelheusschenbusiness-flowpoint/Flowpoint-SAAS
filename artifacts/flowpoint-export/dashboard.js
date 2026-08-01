@@ -12243,6 +12243,32 @@ function renderAIMessages() {
     </div>`;
   };
 
+  // AI Agents Phase 2 : carte de confirmation pour les actions en attente
+  const renderConfirmCard = (cr) => {
+    if (!cr || !cr.proposalId) return '';
+    const isDestructive = cr.confirmationLevel === 'full';
+    const preview = escHtml(cr.preview || 'Confirmer cette action ?');
+    const pid = escHtml(cr.proposalId);
+    return `<div style="margin-top:8px;padding:10px 12px;border-radius:8px;background:${isDestructive ? 'rgba(239,68,68,0.07)' : 'rgba(37,99,235,0.07)'};border:1px solid ${isDestructive ? 'rgba(239,68,68,0.25)' : 'rgba(37,99,235,0.2)'};font-size:11px;color:var(--fp-text-soft)">
+      <div style="font-weight:600;margin-bottom:8px;color:var(--fp-text);line-height:1.4">${isDestructive ? '⚠️ ' : ''}${preview}</div>
+      <div style="display:flex;gap:6px">
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5${isDestructive ? ';background:#ef4444;border-color:#ef4444' : ''}" data-pid="${pid}" onclick="window.fpAiConfirmAction(this.dataset.pid, this)">Confirmer</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5" data-pid="${pid}" onclick="window.fpAiDismissConfirm(this.dataset.pid, this)">Ignorer</button>
+      </div>
+    </div>`;
+  };
+
+  // AI Agents Phase 2 : bouton d'annulation avec TTL (30 min)
+  const renderUndoButton = (ut) => {
+    if (!ut || !ut.actionLogId) return '';
+    const logId = escHtml(ut.actionLogId);
+    const expiresAt = escHtml(new Date(Date.now() + (ut.ttlMinutes || 30) * 60000).toISOString());
+    const label = ut.label ? escHtml(ut.label) : 'l\'action';
+    return `<div style="margin-top:6px">
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:3px 10px;border-radius:20px;height:auto;line-height:1.5;color:#6b7280;border-color:rgba(107,114,128,0.3)" data-lid="${logId}" data-exp="${expiresAt}" onclick="window.fpAiUndoAction(this.dataset.lid, this.dataset.exp, this)" title="Annuler ${label} — disponible 30 min">↩ Annuler l'action</button>
+    </div>`;
+  };
+
   const renderChips = (chips) => {
     if (!chips || !chips.length) return '';
     return `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px">
@@ -12272,7 +12298,9 @@ function renderAIMessages() {
         <div style="padding:9px 13px;border-radius:${isAI ? '4px 12px 12px 12px' : '12px 4px 12px 12px'};background:${isAI ? 'var(--fp-inner-card)' : '#2563EB'};border:1px solid ${isAI ? 'rgba(255,255,255,0.07)' : 'rgba(37,99,235,0.5)'};font-size:12px;color:${isAI ? 'var(--fp-text-soft)' : '#ffffff'};${isAI ? '' : 'text-shadow:0 1px 4px rgba(0,0,0,0.5);'}line-height:1.6">
            ${m.text ? escHtml(m.text).replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--fp-text)">$1</strong>').replace(/\n/g,'<br>') : ''}${m.streaming && isAI ? '<span class="fp-ai-typing fp-ai-typing-inline" aria-label="L\'IA écrit"><span class="fp-ai-typing-dot"></span><span class="fp-ai-typing-dot"></span><span class="fp-ai-typing-dot"></span></span>' : ''}
         </div>
-        ${isAI && !m.streaming ? (m.proposal && m.proposal.actions && m.proposal.actions.length ? renderProposalActions(m.proposal) : renderChips(dedupedChips)) : ''}
+        ${isAI && !m.streaming && m.confirmRequest ? renderConfirmCard(m.confirmRequest) : ''}
+        ${isAI && !m.streaming && m.undoToken ? renderUndoButton(m.undoToken) : ''}
+        ${isAI && !m.streaming && !m.confirmRequest ? (m.proposal && m.proposal.actions && m.proposal.actions.length ? renderProposalActions(m.proposal) : renderChips(dedupedChips)) : ''}
       </div>
     </div>`;
   }).join('');
@@ -12456,7 +12484,7 @@ async function sendAIMessage(text) {
     const resp = await fetch('/api/ai/chat', _fpSessionFetchOptions({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, context, stream: true, history, provider: STATE.aiProvider || 'openai', conversationId: STATE._aiConversationId || undefined }),
+      body: JSON.stringify({ message: text, context, stream: true, history, provider: STATE.aiProvider || 'openai', conversationId: STATE._aiConversationId || undefined, enableTools: true }),
       signal: _ctrl.signal,
     }));
 
@@ -12485,6 +12513,8 @@ async function sendAIMessage(text) {
     let buffer = '';
     let fullText = '';
     let _proposal = null; // AI Agents Phase 1 : proposition de navigation validée serveur
+    let _confirmReq = null; // AI Agents Phase 2 : confirmation_request en attente
+    let _undoToken = null;  // AI Agents Phase 2 : token d'annulation disponible (undo_available)
 
     while (true) {
       const { done, value } = await reader.read();
@@ -12504,6 +12534,14 @@ async function sendAIMessage(text) {
             updateAIUI();
           } else if (parsed.action_proposal) {
             _proposal = parsed.action_proposal;
+          } else if (parsed.confirmation_request) {
+            // SSE fermé après cet événement — stocker et afficher immédiatement la carte
+            _confirmReq = parsed.confirmation_request;
+            STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: false, proposal: _proposal, confirmRequest: _confirmReq };
+            STATE.aiLoading = false;
+            updateAIUI();
+          } else if (parsed.undo_available) {
+            _undoToken = parsed.undo_available;
           } else if (parsed._ai) {
             if (parsed._ai.conversationId) STATE._aiConversationId = parsed._ai.conversationId;
           } else if (parsed.error) {
@@ -12513,7 +12551,7 @@ async function sendAIMessage(text) {
       }
     }
 
-    STATE.aiMessages[streamIdx] = { from:'ai', text: fullText || '(Réponse vide)', streaming: false, proposal: _proposal };
+    STATE.aiMessages[streamIdx] = { from:'ai', text: fullText || '(Réponse vide)', streaming: false, proposal: _proposal, undoToken: _undoToken };
   } catch(e) {
     console.error('[AI Chat] sendAIMessage error:', e.name, e.message, e);
     const errMsg = (e.name === 'AbortError') ? '⚠ La requête IA a été annulée (délai dépassé).'
@@ -31174,6 +31212,166 @@ window.navigate    = navigate;
 window.navigateSub = navigateSub;
 window.apiAction   = apiAction;
 
+// ── AI Agents Phase 2 — bouton Annuler et confirmation (chat principal) ───────
+
+/** Confirme une action en attente depuis la carte de confirmation dans le chat principal. */
+window.fpAiConfirmAction = async function(proposalId, btnEl) {
+  if (!proposalId || !btnEl) return;
+  var convId = STATE._aiConversationId || '';
+  if (!convId) { if (btnEl) btnEl.textContent = '⚠ Session perdue'; return; }
+  btnEl.disabled = true;
+  var origText = btnEl.textContent;
+  btnEl.textContent = 'En cours…';
+  try {
+    var r = await apiFetch('/api/ai/conversations/' + encodeURIComponent(convId) + '/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposalId: proposalId }),
+    });
+    var msgIdx = STATE.aiMessages.findIndex(function(m) {
+      return m.confirmRequest && m.confirmRequest.proposalId === proposalId;
+    });
+    if (msgIdx !== -1) {
+      var resultText = r.ok
+        ? '✅ ' + (r.content || 'Action effectuée.')
+        : '⚠ ' + (r.error || 'Échec de l\'exécution.');
+      STATE.aiMessages[msgIdx] = {
+        from: 'ai',
+        text: (STATE.aiMessages[msgIdx].text ? STATE.aiMessages[msgIdx].text + '\n\n' : '') + resultText,
+        streaming: false,
+        undoToken: (r.ok && r.undoToken) ? r.undoToken : null,
+      };
+      if (r.ok) { STATE.missions = null; loadMissions && loadMissions().catch(function(){}); }
+      updateAIUI();
+    }
+  } catch(e) {
+    btnEl.disabled = false;
+    btnEl.textContent = origText;
+  }
+};
+
+/** Ignore une carte de confirmation (ne pas exécuter l'action). */
+window.fpAiDismissConfirm = function(proposalId, btnEl) {
+  var msgIdx = STATE.aiMessages.findIndex(function(m) {
+    return m.confirmRequest && m.confirmRequest.proposalId === proposalId;
+  });
+  if (msgIdx !== -1) {
+    STATE.aiMessages[msgIdx] = {
+      from: 'ai',
+      text: (STATE.aiMessages[msgIdx].text ? STATE.aiMessages[msgIdx].text + '\n\n' : '') + '*(Action ignorée.)*',
+      streaming: false,
+    };
+    updateAIUI();
+  }
+};
+
+/** Annule une action depuis le bouton Annuler dans le chat principal (TTL 30 min). */
+window.fpAiUndoAction = async function(logId, expiresAt, btnEl) {
+  if (!logId || !btnEl) return;
+  var now = Date.now();
+  var exp = expiresAt ? new Date(expiresAt).getTime() : (now + 1);
+  if (now >= exp) {
+    btnEl.textContent = 'Délai expiré';
+    btnEl.disabled = true;
+    return;
+  }
+  btnEl.disabled = true;
+  btnEl.textContent = '↩ Annulation…';
+  try {
+    var r = await apiFetch('/api/ai/actions/' + encodeURIComponent(logId) + '/undo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    var msgIdx = STATE.aiMessages.findIndex(function(m) {
+      return m.undoToken && m.undoToken.actionLogId === logId;
+    });
+    if (r.ok) {
+      btnEl.textContent = '✅ Annulé';
+      btnEl.style.color = '#22c55e';
+      if (msgIdx !== -1) {
+        STATE.aiMessages[msgIdx] = {
+          from: 'ai',
+          text: STATE.aiMessages[msgIdx].text + '\n\n✅ Action annulée.',
+          streaming: false,
+          undoToken: null,
+        };
+        updateAIUI();
+      }
+      STATE.missions = null; loadMissions && loadMissions().catch(function(){});
+    } else if (r.code === 'PROPOSAL_STALE') {
+      btnEl.textContent = 'Modifié — annulation impossible';
+      btnEl.style.color = '#ef4444';
+      btnEl.disabled = true;
+    } else if (r.code === 'UNDO_VERSION_UNAVAILABLE') {
+      btnEl.textContent = 'Non annulable';
+      btnEl.style.color = '#ef4444';
+      btnEl.disabled = true;
+    } else if (r.code === 'ALREADY_UNDONE') {
+      btnEl.textContent = 'Déjà annulé';
+      btnEl.disabled = true;
+    } else {
+      btnEl.textContent = '↩ Annuler l\'action';
+      btnEl.disabled = false;
+    }
+  } catch(e) {
+    btnEl.disabled = false;
+    btnEl.textContent = '↩ Annuler l\'action';
+  }
+};
+
+/** Confirme une action depuis le panel flottant IA. */
+window.fpAiPanelConfirm = async function(proposalId, convId, confirmBtn, card, msgId) {
+  if (!proposalId || !confirmBtn) return;
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'En cours…';
+  try {
+    var r = await (window.FP_AI_CHAT_API ? window.FP_AI_CHAT_API.confirmAction(convId, proposalId) : Promise.reject(new Error('API non dispo')));
+    if (card) {
+      var resultText = r.ok ? '✅ ' + (r.content || 'Action effectuée.') : '⚠ ' + (r.error || 'Échec.');
+      card.innerHTML = '<span style="font-size:11px;color:var(--fp-text-soft)">' + resultText + '</span>';
+      if (r.ok && r.undoToken && r.undoToken.actionLogId) {
+        var logId = r.undoToken.actionLogId;
+        var exp = new Date(Date.now() + (r.undoToken.ttlMinutes || 30) * 60000).toISOString();
+        var undoBtn = document.createElement('button');
+        undoBtn.className = 'fp-btn fp-btn-ghost fp-btn-sm';
+        undoBtn.style.cssText = 'margin-top:6px;font-size:11px;padding:3px 10px;border-radius:20px;height:auto;line-height:1.5;color:#6b7280;border-color:rgba(107,114,128,0.3)';
+        undoBtn.textContent = '↩ Annuler l\'action';
+        undoBtn.onclick = function() { window.fpAiPanelUndo(logId, exp, undoBtn, card); };
+        card.appendChild(undoBtn);
+        if (r.ok) { window.FP_DATA && window.FP_DATA.missions && (window.FP_DATA.missions = null); }
+      }
+    }
+  } catch(e) {
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmer'; }
+  }
+};
+
+/** Annule une action depuis le panel flottant IA. */
+window.fpAiPanelUndo = async function(logId, expiresAt, btn, card) {
+  if (!logId || !btn) return;
+  var now = Date.now();
+  if (expiresAt && now >= new Date(expiresAt).getTime()) {
+    btn.textContent = 'Délai expiré'; btn.disabled = true; return;
+  }
+  btn.disabled = true; btn.textContent = '↩ Annulation…';
+  try {
+    var r = await (window.FP_AI_CHAT_API ? window.FP_AI_CHAT_API.undoAction(logId) : Promise.reject(new Error('API non dispo')));
+    if (r.ok) {
+      btn.textContent = '✅ Annulé'; btn.style.color = '#22c55e';
+      if (card) { var s = card.querySelector('span'); if (s) s.textContent += ' — Annulé ✅'; }
+    } else if (r.code === 'PROPOSAL_STALE') {
+      btn.textContent = 'Modifié — annulation impossible'; btn.style.color = '#ef4444'; btn.disabled = true;
+    } else if (r.code === 'UNDO_VERSION_UNAVAILABLE') {
+      btn.textContent = 'Non annulable'; btn.style.color = '#ef4444'; btn.disabled = true;
+    } else {
+      btn.textContent = '↩ Annuler l\'action'; btn.disabled = false;
+    }
+  } catch(e) {
+    btn.textContent = '↩ Annuler l\'action'; btn.disabled = false;
+  }
+};
+
 // ── AI Agents Phase 1 : navigation générique validée par le registre ──────────
 // Le registre (GET /api/ai/destinations) est la SEULE source de routes — le
 // frontend n'exécute jamais une destination non déclarée côté serveur.
@@ -32788,6 +32986,46 @@ setTimeout(function() {
             // Refresh credit counter immediately after each reply — no page reload needed
             if (typeof loadAICredits === 'function') loadAICredits().catch(function(){});
             setSendEnabled(true);
+          },
+          // ── AI Agents Phase 2 — confirmation + undo dans le panel flottant ──
+          onConfirmationRequest: function(cr) {
+            setTyping(false);
+            if (!msgId) msgId = appendMessage('assistant', cr.preview || '', false);
+            var el = document.getElementById(msgId);
+            if (!el || !cr.proposalId) return;
+            var convId = window.FP_AI_CHAT_API && window.FP_AI_CHAT_API._convId || '';
+            var isD = cr.confirmationLevel === 'full';
+            var card = document.createElement('div');
+            card.style.cssText = 'margin-top:8px;padding:10px 12px;border-radius:8px;background:' + (isD ? 'rgba(239,68,68,0.07)' : 'rgba(37,99,235,0.07)') + ';border:1px solid ' + (isD ? 'rgba(239,68,68,0.25)' : 'rgba(37,99,235,0.2)') + ';font-size:11px';
+            card.innerHTML = '<div style="font-weight:600;margin-bottom:6px;color:var(--fp-text);line-height:1.4">' + (isD ? '⚠️ ' : '') + (cr.preview || 'Confirmer ?') + '</div>'
+              + '<div style="display:flex;gap:6px">'
+              + '<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5' + (isD ? ';background:#ef4444;border-color:#ef4444' : '') + '">Confirmer</button>'
+              + '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5">Ignorer</button>'
+              + '</div>';
+            var btns = card.querySelectorAll('button');
+            var pid = cr.proposalId;
+            btns[0].addEventListener('click', function() { window.fpAiPanelConfirm(pid, convId, btns[0], card, msgId); });
+            btns[1].addEventListener('click', function() { card.style.display = 'none'; setSendEnabled(true); });
+            el.appendChild(card);
+          },
+          onUndoAvailable: function(ut) {
+            if (!ut || !ut.actionLogId) return;
+            var el = document.getElementById(msgId);
+            if (!el) return;
+            var logId = ut.actionLogId;
+            var exp = new Date(Date.now() + (ut.ttlMinutes || 30) * 60000).toISOString();
+            var bar = document.createElement('div');
+            bar.style.cssText = 'margin-top:6px';
+            var undoBtn = document.createElement('button');
+            undoBtn.className = 'fp-btn fp-btn-ghost fp-btn-sm';
+            undoBtn.style.cssText = 'font-size:11px;padding:3px 10px;border-radius:20px;height:auto;line-height:1.5;color:#6b7280;border-color:rgba(107,114,128,0.3)';
+            undoBtn.textContent = '↩ Annuler l\'action';
+            undoBtn.addEventListener('click', function() { window.fpAiPanelUndo(logId, exp, undoBtn, bar); });
+            bar.appendChild(undoBtn);
+            el.appendChild(bar);
+          },
+          onToolCall: function(tc) {
+            setTyping(true); // garder l'indicateur pendant l'exécution de l'outil
           },
         });
       } else {

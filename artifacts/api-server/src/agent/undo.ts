@@ -9,10 +9,11 @@
  *  - L'action ne doit pas déjà être annulée (undone_at IS NULL)
  *  - Timeout d'undo : 30 minutes après la création
  *  - Le snapshot null → undo refusé
- *  - Validation de version EXACTE : version_after stocké immédiatement après la
- *    mutation dans ai_action_logs.version_after. Si current.updated_at (ISO) ≠
- *    version_after → 409 PROPOSAL_STALE, aucune donnée modifiée.
- *    Aucune tolérance temporelle — comparaison milliseconde-parfaite.
+ *  - Validation de version EXACTE + SQL ATOMIQUE : UPDATE WHERE id=$1 AND org_id=$2
+ *    AND updated_at=$3::TIMESTAMPTZ. rowCount=0 → PROPOSAL_STALE ou mission disparue.
+ *    Aucune tolérance temporelle. Aucune race condition entre lecture et restauration.
+ *  - version_after IS NULL (log antérieur au déploiement) → UNDO_VERSION_UNAVAILABLE.
+ *    Mieux vaut refuser que risquer d'écraser des modifications concurrentes invisibles.
  */
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
@@ -23,7 +24,7 @@ export const UNDO_TTL_MINUTES = 30;
 export interface UndoResult {
   ok: boolean;
   message: string;
-  code?: "PROPOSAL_STALE" | "ALREADY_UNDONE" | "TTL_EXPIRED" | "NO_SNAPSHOT" | "NOT_FOUND";
+  code?: "PROPOSAL_STALE" | "ALREADY_UNDONE" | "TTL_EXPIRED" | "NO_SNAPSHOT" | "NOT_FOUND" | "UNDO_VERSION_UNAVAILABLE";
   actionLogId?: string;
   toolName?: string;
 }
@@ -94,6 +95,16 @@ export async function undoAction(
         toolName,
       };
     }
+    if (snapResult?.versionUnavailable) {
+      logger.warn({ actionLogId, toolName, orgId }, "[undo] UNDO_VERSION_UNAVAILABLE — legacy log without version_after");
+      return {
+        ok: false,
+        code: "UNDO_VERSION_UNAVAILABLE",
+        message: "Cette action ne peut pas être annulée : la version de référence n'est pas disponible (action antérieure au système d'annulation sécurisé).",
+        actionLogId,
+        toolName,
+      };
+    }
   } catch (err) {
     logger.error({ err, toolName, actionLogId }, "[undo] applySnapshot failed");
     return { ok: false, message: `Erreur lors de la restauration : ${err instanceof Error ? err.message : String(err)}`,
@@ -118,16 +129,21 @@ export async function undoAction(
   return { ok: true, message: "Action annulée avec succès.", actionLogId, toolName };
 }
 
-/** Résultat intermédiaire d'applySnapshot — stale = modification concurrente détectée. */
-interface SnapshotResult { stale?: boolean }
+/** Résultat intermédiaire d'applySnapshot. */
+interface SnapshotResult {
+  stale?: boolean;
+  versionUnavailable?: boolean;
+}
 
 /**
  * Applique le snapshot sur la ressource cible.
  *
- * @param versionAfter  ISO string de updated_at capturé IMMÉDIATEMENT après la mutation
- *                      dans ai_action_logs.version_after.
- *                      Comparaison EXACTE avec current.updated_at (aucune tolérance).
- *                      null = outil sans version lock (create/delete).
+ * Pour update/complete/assign :
+ *  - versionAfter IS NULL → UNDO_VERSION_UNAVAILABLE (log legacy, refus sécurisé).
+ *  - versionAfter non null → UPDATE atomique WHERE updated_at = $version::TIMESTAMPTZ.
+ *    rowCount=0 → stale ou mission disparue (disambiguated par un SELECT).
+ *
+ * Pour create/delete : pas de version lock (opérations idempotentes).
  */
 async function applySnapshot(
   toolName: string,
@@ -140,8 +156,7 @@ async function applySnapshot(
 
   if (toolName === "create_mission") {
     // Annuler une création = supprimer la mission.
-    // Pas de version lock : si la mission a été modifiée entre-temps, on la supprime quand même
-    // (c'est notre action, pas une modification concurrente d'une tierce partie).
+    // Pas de version lock : l'action est la nôtre, la suppression est toujours valide.
     await pool.query(`DELETE FROM missions WHERE id = $1 AND org_id = $2`, [id, orgId]);
     return;
   }
@@ -174,65 +189,57 @@ async function applySnapshot(
   }
 
   if (["update_mission", "complete_mission", "assign_mission"].includes(toolName)) {
-    // ── Validation de version EXACTE ──────────────────────────────────────────
-    // version_after = updated_at capturé IMMÉDIATEMENT après la mutation (ISO string).
-    // current.updated_at converti en ISO doit correspondre exactement.
-    // Si différent → quelqu'un d'autre a modifié la mission → PROPOSAL_STALE.
-    //
-    // Cas legacy : si version_after est null (log antérieur au déploiement), on
-    // autorise l'Undo sans version check plutôt que de bloquer définitivement.
-    if (versionAfter !== null && versionAfter !== undefined) {
-      const vRow = await pool.query<{ updated_at: Date | null }>(
-        `SELECT updated_at FROM missions WHERE id = $1 AND org_id = $2`,
-        [id, orgId]
-      );
+    // ── Sécurité version : logs sans version_after refusés ────────────────────
+    // Un log antérieur au déploiement de version_after ne peut pas garantir
+    // l'absence de modifications concurrentes. Refus explicite > restauration aveugle.
+    if (versionAfter === null || versionAfter === undefined) {
+      return { versionUnavailable: true };
+    }
 
-      if (!vRow.rows[0]) {
-        throw new Error("La mission n'existe plus dans votre organisation. Elle a peut-être été supprimée depuis l'action.");
-      }
+    // ── Restauration atomique : UPDATE WHERE updated_at = $version ────────────
+    // En une seule requête SQL : compare + restaure.
+    // Aucune race condition possible entre lecture de version et écriture.
+    // rowCount = 0 → mission modifiée entre-temps OU mission supprimée.
+    // Atomique : UPDATE ... WHERE id=$9 AND org_id=$10 AND updated_at≈versionAfter.
+    // Troncature à la milliseconde des deux côtés : date_trunc('milliseconds', ...).
+    // Raison : tool-executor capture updated_at via JS Date.toISOString() (ms),
+    // mais PostgreSQL peut stocker avec une précision microseconde.
+    // Troncature à la ms garantit la correspondance sans risquer une tolérance large.
+    const updateRes = await pool.query<{ id: string }>(`
+      UPDATE missions SET
+        title        = $1,
+        description  = $2,
+        status       = $3,
+        priority     = $4,
+        due_date     = $5,
+        assigned_to  = $6,
+        completed_at = $7,
+        dismissed_at = $8,
+        updated_at   = NOW()
+      WHERE id = $9 AND org_id = $10
+        AND date_trunc('milliseconds', updated_at)
+          = date_trunc('milliseconds', $11::TIMESTAMPTZ)
+    `, [
+      snap["title"], snap["description"], snap["status"], snap["priority"],
+      snap["due_date"], snap["assigned_to"], snap["completed_at"], snap["dismissed_at"],
+      id, orgId,
+      versionAfter,
+    ]);
 
-      const currentUpdatedAt = vRow.rows[0].updated_at
-        ? new Date(vRow.rows[0].updated_at).toISOString()
-        : null;
-
-      if (currentUpdatedAt !== versionAfter) {
-        // Versions ne correspondent pas → modification concurrente détectée
-        logger.debug({
-          currentUpdatedAt,
-          versionAfter,
-          diff: currentUpdatedAt !== versionAfter,
-        }, "[undo] version mismatch detail");
-        return { stale: true };
-      }
-    } else {
-      // Legacy log sans version_after : vérifier que la mission existe
+    if ((updateRes.rowCount ?? 0) === 0) {
+      // Disambiguate : mission supprimée vs modifiée concurremment
       const existsRow = await pool.query(
         `SELECT id FROM missions WHERE id = $1 AND org_id = $2`,
         [id, orgId]
       );
       if (!existsRow.rows[0]) {
-        throw new Error("La mission n'existe plus dans votre organisation.");
+        throw new Error("La mission n'existe plus dans votre organisation. Elle a peut-être été supprimée depuis l'action.");
       }
+      // Mission existe mais updated_at ne correspond pas → modification concurrente
+      logger.debug({ id, orgId, versionAfter }, "[undo] SQL atomic check: version mismatch");
+      return { stale: true };
     }
 
-    // ── Restauration ──────────────────────────────────────────────────────────
-    await pool.query(`
-      UPDATE missions SET
-        title       = $1,
-        description = $2,
-        status      = $3,
-        priority    = $4,
-        due_date    = $5,
-        assigned_to = $6,
-        completed_at = $7,
-        dismissed_at = $8,
-        updated_at  = NOW()
-      WHERE id = $9 AND org_id = $10
-    `, [
-      snap["title"], snap["description"], snap["status"], snap["priority"],
-      snap["due_date"], snap["assigned_to"], snap["completed_at"], snap["dismissed_at"],
-      id, orgId,
-    ]);
     return;
   }
 

@@ -2118,6 +2118,7 @@
             message: message,
             history: this.history.slice(-10),
             stream: true,
+            enableTools: true,
             context: { orgId: orgId, plan: window.FP_DATA && window.FP_DATA.me && window.FP_DATA.me.plan },
             conversationId: this._convId || undefined,
           }),

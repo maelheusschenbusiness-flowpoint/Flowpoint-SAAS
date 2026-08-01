@@ -841,9 +841,10 @@ async function runToolCallingLoop(opts: {
     );
   }
 
-  // Hit max rounds — emit a note and let caller stream a final response
+  // Hit max rounds — emit a user-visible fallback message and close
   logger.warn({ rounds: MAX_TOOL_ROUNDS, ctx: ctx.conversationId }, "[tool-loop] max rounds reached");
-  return { suspended: false, finalTextEmitted: false, undoTokens, messages };
+  opts.sseWrite(`data: ${JSON.stringify({ delta: "\n\nJe n'ai pas pu terminer cette action automatiquement. Reformulez votre demande ou ouvrez la section Missions pour agir directement." })}\n\n`);
+  return { suspended: false, finalTextEmitted: true, undoTokens, messages };
 }
 
 function buildConfirmationPreview(toolName: string, args: Record<string, unknown>): string {
@@ -1318,9 +1319,18 @@ router.post("/ai/actions/:id/undo", async (req: Request, res: Response): Promise
   const result = await undoAction(logId, orgId, userId);
   if (result.ok) {
     res.json(result);
-  } else {
-    res.status(400).json(result);
+    return;
   }
+  // Map semantic error codes to appropriate HTTP status codes
+  const statusMap: Record<string, number> = {
+    NOT_FOUND:               404,
+    TTL_EXPIRED:             410,
+    ALREADY_UNDONE:          409,
+    PROPOSAL_STALE:          409,
+    UNDO_VERSION_UNAVAILABLE: 409,
+  };
+  const status = (result.code && statusMap[result.code]) ? statusMap[result.code] : 400;
+  res.status(status).json(result);
 });
 
 // ── POST /ai/conversations/:id/confirm — exécuter une action en attente ──────
