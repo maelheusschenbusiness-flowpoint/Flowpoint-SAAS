@@ -49,8 +49,13 @@ import type { AIAttachmentReference, ResolvedAIAttachment, NormalizedAttachment,
 import { resolveEffectivePermissions } from "../agent/permissions.js";
 import { filterDestinations, validateNavAction, REGISTRY_VERSION } from "../agent/destination-registry.js";
 import { buildNavPromptSection, NavMarkerFilter, extractNavMarker } from "../agent/nav-agent.js";
-import { createNavigationProposal } from "../agent/proposals.js";
+import { createNavigationProposal, createPendingToolProposal } from "../agent/proposals.js";
 import { resolvePlanFromDB } from "../middlewares/planGate.js";
+// ── AI Agents Phase 2 — tool calling ──────────────────────────────────────────
+import { MISSION_TOOLS, TOOL_BY_NAME, type AIToolCall } from "../agent/mission-tools.js";
+import { aiChatWithTools, buildToolResultMessages, type ToolCallingResult } from "../services/ai-tool-calling.js";
+import { executeTool, type ExecuteContext } from "../agent/tool-executor.js";
+import { undoAction } from "../agent/undo.js";
 
 const router = Router();
 // aiRateLimit applied per POST route below — GET endpoints (history, usage, recommendations) are not rate-limited
@@ -339,7 +344,19 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
     const recentAct    = (e["recentActivity"] as string[]) ?? [];
     const topCroRecs   = (e["topCroRecs"] as string[]) ?? [];
     const revLeak      = (e["revenueLeak"] as number) ?? 0;
-    const missAct      = (e["missionsActive"] as number) ?? 0;
+    // Real top missions from DB (by priority_score for agent context)
+    let topMissions: Array<{ id: string; title: string; status: string; priority: string; category: string; dueDate: string | null }> = [];
+    {
+      const mRes = await pool.query(
+        `SELECT id, title, status, priority, category, due_date
+         FROM missions WHERE org_id=$1 AND status NOT IN ('done','dismissed')
+         ORDER BY priority_score DESC NULLS LAST LIMIT 10`,
+        [oid]
+      ).catch(() => ({ rows: [] }));
+      topMissions = mRes.rows as typeof topMissions;
+    }
+
+    const missAct      = (e["missionsActive"] as number) ?? topMissions.filter(m => m.status === "in_progress").length;
     const missComp     = (e["missionsCompleted"] as number) ?? 0;
     const activeAlerts = (e["activeAlertsCount"] as number) ?? 0;
     const aiCredits    = (e["aiCredits"] as number|null) ?? null;
@@ -431,6 +448,11 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       `=== MISSIONS & ALERTES ===`,
       `Missions actives : ${missAct} | Missions complétées : ${missComp}`,
       `Alertes actives : ${activeAlerts}`,
+      topMissions.length > 0
+        ? `Top missions prioritaires :\n${topMissions.map(m =>
+            `  - [${m.id}] "${m.title}" | statut: ${m.status} | priorité: ${m.priority} | catégorie: ${m.category}${m.dueDate ? ` | échéance: ${m.dueDate}` : ""}`
+          ).join("\n")}`
+        : "Aucune mission active",
       topCroRecs.length > 0 ? `Recommandations CRO : ${topCroRecs.join(" / ")}` : "",
       revLeak > 0 ? `Fuites de revenus détectées : ${revLeak}` : "",
       ``,
@@ -673,6 +695,181 @@ router.patch("/ai/config", async (req: Request, res: Response): Promise<void> =>
   }
 });
 
+// ── AI Agents Phase 2 : boucle tool-calling ───────────────────────────────────
+// Appelée UNIQUEMENT depuis le chemin SSE de chatHandler quand enableTools=true.
+// Émet des événements SSE directement sur `res`, retourne si l'SSE est suspendu
+// (confirmation_request) ou terminé (réponse finale après tool calls).
+
+const MAX_TOOL_ROUNDS = 3;
+
+interface ToolLoopResult {
+  /** true = la connexion SSE a été fermée (confirmation_request ou erreur). */
+  suspended: boolean;
+  /** Texte final si des outils ont été appelés (déjà émis comme delta). */
+  finalTextEmitted: boolean;
+  /** Liste des tokens d'undo à émettre à la fin. */
+  undoTokens: Array<{ actionLogId: string; label: string }>;
+  /** Messages mis à jour avec les injections d'outils (pour continuer le stream). */
+  messages: import("../services/ai-multimodal.js").MultimodalMessage[];
+}
+
+async function runToolCallingLoop(opts: {
+  provider: AIProviderId;
+  model: string;
+  messages: import("../services/ai-multimodal.js").MultimodalMessage[];
+  ctx: ExecuteContext;
+  sseWrite: (data: string) => void;
+  sseClose: () => void;
+}): Promise<ToolLoopResult> {
+  const { provider, model, ctx } = opts;
+  let messages = [...opts.messages] as import("../services/ai-multimodal.js").MultimodalMessage[];
+  const undoTokens: Array<{ actionLogId: string; label: string }> = [];
+  let toolsCalledTotal = 0;
+  // Provider-native messages accumulate across rounds to preserve tool_calls/tool_result structure
+  let nativeMessages: unknown[] | undefined;
+  // System prompt carried separately for Anthropic/Gemini (not part of their native messages array)
+  let carriedSystemPrompt: string | undefined;
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    let roundResult: ToolCallingResult;
+    try {
+      roundResult = await aiChatWithTools(
+        nativeMessages
+          ? { provider, model, tools: MISSION_TOOLS, nativeMessages, systemPrompt: carriedSystemPrompt, maxTokens: 1024 }
+          : { provider, model, tools: MISSION_TOOLS, messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[], maxTokens: 1024 }
+      );
+      // Carry system prompt for Anthropic/Gemini continuation rounds
+      if (round === 0 && roundResult.systemPrompt) {
+        carriedSystemPrompt = roundResult.systemPrompt;
+      }
+    } catch (err) {
+      logger.error({ err, round, provider }, "[tool-loop] aiChatWithTools failed");
+      // Fail gracefully — let caller proceed with normal stream
+      return { suspended: false, finalTextEmitted: false, undoTokens, messages };
+    }
+
+    if (!roundResult.hasToolCalls) {
+      // No tool calls this round
+      if (toolsCalledTotal > 0) {
+        // Emit final text as delta events (tools were used in earlier rounds)
+        if (roundResult.text) {
+          const chunks = roundResult.text.match(/.{1,80}/gs) ?? [roundResult.text];
+          for (const chunk of chunks) {
+            opts.sseWrite(`data: ${JSON.stringify({ delta: chunk })}\n\n`);
+          }
+        }
+        return { suspended: false, finalTextEmitted: true, undoTokens, messages };
+      }
+      // Round 0, no tool calls → fall through to normal stream
+      return { suspended: false, finalTextEmitted: false, undoTokens, messages };
+    }
+
+    // Emit any text from this round as delta events
+    if (roundResult.text) {
+      const chunks = roundResult.text.match(/.{1,80}/gs) ?? [roundResult.text];
+      for (const chunk of chunks) {
+        opts.sseWrite(`data: ${JSON.stringify({ delta: chunk })}\n\n`);
+      }
+    }
+
+    const injections: import("../services/ai-tool-calling.js").ToolResultInjection[] = [];
+
+    for (const toolCall of roundResult.toolCalls) {
+      const toolDef = TOOL_BY_NAME.get(toolCall.name);
+      if (!toolDef) {
+        opts.sseWrite(`data: ${JSON.stringify({ tool_call: { id: toolCall.id, name: toolCall.name, status: "unknown_tool" } })}\n\n`);
+        injections.push({ toolCallId: toolCall.id, toolName: toolCall.name, content: `Unknown tool: ${toolCall.name}` });
+        continue;
+      }
+
+      opts.sseWrite(`data: ${JSON.stringify({
+        tool_call: { id: toolCall.id, name: toolCall.name, args: toolCall.arguments, confirmationLevel: toolDef.confirmationLevel },
+      })}\n\n`);
+
+      if (toolDef.confirmationLevel === "none") {
+        // Execute immediately
+        const execResult = await executeTool(toolCall, ctx);
+        toolsCalledTotal++;
+        opts.sseWrite(`data: ${JSON.stringify({
+          tool_result: { id: execResult.actionLogId, toolCallId: toolCall.id, name: toolCall.name, ok: execResult.ok, content: execResult.content },
+        })}\n\n`);
+
+        // Queue undo token if this was a write with a snapshot
+        if (execResult.ok && execResult.actionLogId && execResult.undoLabel) {
+          undoTokens.push({ actionLogId: execResult.actionLogId, label: execResult.undoLabel });
+        }
+
+        // If navigate_to returned a nav proposal, emit it
+        if (execResult.navProposal) {
+          opts.sseWrite(`data: ${JSON.stringify({ action_proposal: execResult.navProposal })}\n\n`);
+        }
+
+        injections.push({ toolCallId: toolCall.id, toolName: toolCall.name, content: execResult.content });
+
+      } else {
+        // preview / full — store pending proposal, emit confirmation_request, suspend
+        const preview = buildConfirmationPreview(toolCall.name, toolCall.arguments);
+        const proposal = await createPendingToolProposal({
+          orgId: ctx.orgId, userId: ctx.userId, conversationId: ctx.conversationId,
+          provider, model, toolName: toolCall.name, toolCallId: toolCall.id,
+          args: toolCall.arguments, confirmationLevel: toolDef.confirmationLevel, previewText: preview,
+        });
+
+        opts.sseWrite(`data: ${JSON.stringify({
+          confirmation_request: {
+            proposalId: proposal?.proposalId ?? null,
+            toolName: toolCall.name,
+            confirmationLevel: toolDef.confirmationLevel,
+            preview,
+            args: sanitizeArgsForClient(toolCall.arguments),
+            expiresAt: proposal?.expiresAt ?? null,
+          },
+        })}\n\n`);
+
+        opts.sseClose();
+        return { suspended: true, finalTextEmitted: false, undoTokens, messages };
+      }
+    }
+
+    // Build provider-native messages for the next round (preserves tool_calls/tool_result structure)
+    nativeMessages = buildToolResultMessages(
+      provider,
+      roundResult.nativeMessages,
+      roundResult.text,
+      roundResult.toolCalls,
+      injections
+    );
+  }
+
+  // Hit max rounds — emit a note and let caller stream a final response
+  logger.warn({ rounds: MAX_TOOL_ROUNDS, ctx: ctx.conversationId }, "[tool-loop] max rounds reached");
+  return { suspended: false, finalTextEmitted: false, undoTokens, messages };
+}
+
+function buildConfirmationPreview(toolName: string, args: Record<string, unknown>): string {
+  switch (toolName) {
+    case "create_mission":
+      return `Créer une mission intitulée "${args["title"] ?? "?"}"${args["priority"] ? ` (priorité: ${args["priority"]})` : ""}${args["category"] ? ` dans la catégorie "${args["category"]}"` : ""}`;
+    case "update_mission":
+      return `Modifier la mission ID "${args["id"] ?? "?"}"${args["title"] ? ` → titre: "${args["title"]}"` : ""}${args["status"] ? ` → statut: ${args["status"]}` : ""}${args["priority"] ? ` → priorité: ${args["priority"]}` : ""}`;
+    case "complete_mission":
+      return `Marquer la mission ID "${args["id"] ?? "?"}" comme terminée`;
+    case "delete_mission":
+      return `⚠ Supprimer définitivement la mission ID "${args["id"] ?? "?"}"`;
+    default:
+      return `Exécuter l'action "${toolName}"`;
+  }
+}
+
+function sanitizeArgsForClient(args: Record<string, unknown>): Record<string, unknown> {
+  // Don't expose internal IDs or large objects to the client
+  return Object.fromEntries(
+    Object.entries(args)
+      .filter(([, v]) => typeof v !== "object" || v === null)
+      .slice(0, 10)
+  );
+}
+
 // ── POST /ai/chat — streaming conversational AI ───────────────────────────────
 export async function chatHandler(req: Request, res: Response): Promise<void> {
   const ip = getClientIp(req);
@@ -681,13 +878,15 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { message, context, stream: wantStream = true, history = [], provider, model } = req.body as {
+  const { message, context, stream: wantStream = true, history = [], provider, model, enableTools } = req.body as {
     message?: string;
     context?: Record<string, unknown>;
     stream?: boolean;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
     provider?: AIProviderId;
     model?: string;
+    /** Phase 2 — active les outils missions pour ce message (opt-in). */
+    enableTools?: boolean;
   };
 
   if (!message?.trim()) {
@@ -933,6 +1132,41 @@ ${STRICT_AI_RULE}
 
     const t0 = Date.now();
     let fullReply = "";
+    let toolLoopUndoTokens: Array<{ actionLogId: string; label: string }> = [];
+
+    // ── AI Agents Phase 2 : boucle tool-calling (opt-in via enableTools) ──────
+    if (enableTools && effectivePerms.has("missions.read")) {
+      const toolCtx: ExecuteContext = {
+        orgId, userId, conversationId,
+        provider: selectedProvider, model: effectiveModel,
+        effectivePerms, orgPlan,
+      };
+      const loopResult = await runToolCallingLoop({
+        provider: selectedProvider,
+        model:    effectiveModel,
+        messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[],
+        ctx:      toolCtx,
+        sseWrite: (data) => res.write(data),
+        sseClose: () => { /* no-op — caller handles close below */ },
+      });
+      toolLoopUndoTokens = loopResult.undoTokens;
+
+      if (loopResult.suspended || loopResult.finalTextEmitted) {
+        // Emit undo tokens before the _ai + [DONE] frame
+        for (const ut of toolLoopUndoTokens) {
+          res.write(`data: ${JSON.stringify({ undo_available: { actionLogId: ut.actionLogId, label: ut.label, ttlMinutes: 30 } })}\n\n`);
+        }
+        res.write(`data: ${JSON.stringify({ _ai: aiMeta })}\n\n`);
+        res.write(`data: [DONE]\n\n`);
+        res.end();
+        recordCompletedUsage({ feature: "chat", orgId, userId, model: effectiveModel as AIModel,
+          provider: selectedProvider, tokensIn: 0, tokensOut: 0,
+          latencyMs: Date.now() - t0, success: true, requestId,
+          metadata: { ...usageMetadata, toolCalling: true } }).catch(() => {});
+        return;
+      }
+      // Round 0 had no tool calls → fall through to normal aiStream below
+    }
 
     try {
       const stream = aiStream({
@@ -1054,6 +1288,126 @@ ${STRICT_AI_RULE}
   }
 }
 router.post("/ai/chat", aiRateLimit, chatHandler);
+
+// ── GET /ai/actions — liste des action logs de l'org ─────────────────────────
+router.get("/ai/actions", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.orgId ?? "default";
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, conversation_id, tool, args, confirmation_level, result, error,
+              undo_snapshot IS NOT NULL AS can_undo, undone_at, created_at
+       FROM ai_action_logs WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`,
+      [orgId]
+    );
+    res.json({ actions: rows });
+  } catch (err) {
+    logger.error({ err, orgId }, "[agent] GET /ai/actions failed");
+    res.status(500).json({ error: "Failed to load actions" });
+  }
+});
+
+// ── POST /ai/actions/:id/undo — annuler une action ─────────────────────────────
+router.post("/ai/actions/:id/undo", async (req: Request, res: Response): Promise<void> => {
+  const orgId  = req.orgId  ?? "default";
+  const userId = req.userId ?? "anonymous";
+  const logId  = String(req.params["id"] ?? "");
+  if (!/^[a-zA-Z0-9_-]{1,100}$/.test(logId)) {
+    res.status(400).json({ ok: false, error: "ID d'action invalide" });
+    return;
+  }
+  const result = await undoAction(logId, orgId, userId);
+  if (result.ok) {
+    res.json(result);
+  } else {
+    res.status(400).json(result);
+  }
+});
+
+// ── POST /ai/conversations/:id/confirm — exécuter une action en attente ──────
+router.post("/ai/conversations/:id/confirm", async (req: Request, res: Response): Promise<void> => {
+  const orgId  = req.orgId  ?? "default";
+  const userId = req.userId ?? "anonymous";
+  const convId = String(req.params["id"] ?? "");
+  const { proposalId } = req.body as { proposalId?: string };
+
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(convId)) {
+    res.status(400).json({ ok: false, error: "conversationId invalide" });
+    return;
+  }
+  if (!proposalId || !/^[a-zA-Z0-9_-]{1,100}$/.test(proposalId)) {
+    res.status(400).json({ ok: false, error: "proposalId requis" });
+    return;
+  }
+
+  try {
+    // Atomically claim the pending proposal — prevents concurrent double-execution.
+    // The UPDATE only matches rows in 'pending' state that have not expired.
+    // If two requests race, exactly one will get a row back; the other gets 0 rows.
+    const { rows } = await pool.query(
+      `UPDATE ai_action_proposals
+       SET status='claimed'
+       WHERE id=$1 AND org_id=$2 AND conversation_id=$3
+         AND kind='pending_tool_call'
+         AND status='pending'
+         AND expires_at > NOW()
+       RETURNING id, payload, provider, model, expires_at`,
+      [proposalId, orgId, convId]
+    );
+    const prop = rows[0] as Record<string, unknown> | undefined;
+    if (!prop) {
+      // Either not found, already claimed/confirmed/expired, or wrong org — disambiguate with a read-only check
+      const { rows: check } = await pool.query(
+        `SELECT status, expires_at FROM ai_action_proposals WHERE id=$1 AND org_id=$2`,
+        [proposalId, orgId]
+      );
+      if (!check[0]) {
+        res.status(404).json({ ok: false, error: "Proposition introuvable" });
+      } else if (new Date(check[0]["expires_at"] as string) < new Date()) {
+        res.status(410).json({ ok: false, error: "Cette proposition a expiré" });
+      } else {
+        res.status(409).json({ ok: false, error: `Cette action est déjà dans l'état "${check[0]["status"]}"` });
+      }
+      return;
+    }
+
+    const payload = (typeof prop["payload"] === "string" ? JSON.parse(prop["payload"]) : prop["payload"]) as Record<string, unknown>;
+    const toolName = payload["toolName"] as string;
+    const toolCallId = payload["toolCallId"] as string ?? proposalId;
+    const args = payload["args"] as Record<string, unknown> ?? {};
+
+    // Resolve permissions for this user
+    const effectivePerms = await resolveEffectivePermissions(userId, orgId, req.orgContext?.role);
+    const orgPlan = ((await resolvePlanFromDB(req)) ?? "standard").toLowerCase();
+
+    const toolCtx: ExecuteContext = {
+      orgId, userId, conversationId: convId,
+      provider: String(prop["provider"] ?? "openai"),
+      model: String(prop["model"] ?? "gpt-5-mini"),
+      effectivePerms, orgPlan,
+    };
+
+    const toolCall: AIToolCall = { id: toolCallId, name: toolName, arguments: args };
+    const execResult = await executeTool(toolCall, toolCtx);
+
+    // Mark proposal as confirmed
+    await pool.query(
+      `UPDATE ai_action_proposals SET status='confirmed' WHERE id=$1`,
+      [proposalId]
+    ).catch(() => {});
+
+    res.json({
+      ok: execResult.ok,
+      content: execResult.content,
+      data: execResult.data ?? null,
+      undoToken: execResult.ok && execResult.undoLabel
+        ? { actionLogId: execResult.actionLogId, label: execResult.undoLabel, ttlMinutes: 30 }
+        : null,
+    });
+  } catch (err) {
+    logger.error({ err, proposalId, orgId }, "[agent] confirm failed");
+    res.status(500).json({ ok: false, error: "Erreur lors de l'exécution" });
+  }
+});
 
 // ── GET /ai/destinations — registre de navigation filtré (AI Agents Phase 1) ──
 // Source de vérité unique pour le frontend : mêmes permissions effectives et

@@ -2156,6 +2156,19 @@
                   lastProposal = obj.action_proposal;
                   if (typeof opts.onProposal === 'function') { try { opts.onProposal(lastProposal); } catch(pErr) {} }
                 }
+                // AI Agents Phase 2 — tool calling events
+                if (obj.tool_call) {
+                  if (typeof opts.onToolCall === 'function') { try { opts.onToolCall(obj.tool_call); } catch(e) {} }
+                }
+                if (obj.tool_result) {
+                  if (typeof opts.onToolResult === 'function') { try { opts.onToolResult(obj.tool_result); } catch(e) {} }
+                }
+                if (obj.confirmation_request) {
+                  if (typeof opts.onConfirmationRequest === 'function') { try { opts.onConfirmationRequest(obj.confirmation_request); } catch(e) {} }
+                }
+                if (obj.undo_available) {
+                  if (typeof opts.onUndoAvailable === 'function') { try { opts.onUndoAvailable(obj.undo_available); } catch(e) {} }
+                }
                 if (obj._ai) {
                   lastAi = obj._ai;
                   if (obj._ai.conversationId) this._convId = obj._ai.conversationId;
@@ -2208,6 +2221,55 @@
       try {
         return await window._fpFetch('/api/ai/missions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile: profile || {}, context: {} }) });
       } catch(e) { return null; }
+    },
+
+    // ── AI Agents Phase 2 — confirmation + undo ──────────────────────────────
+
+    /**
+     * Confirme une action en attente (niveau preview/full).
+     * @param {string} conversationId - ID de la conversation
+     * @param {string} proposalId - ID de la proposition retourné par confirmation_request
+     * @returns {Promise<{ok, content, data, undoToken}>}
+     */
+    confirmAction: async function(conversationId, proposalId) {
+      try {
+        return await window._fpFetch('/api/ai/conversations/' + conversationId + '/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ proposalId: proposalId }),
+        });
+      } catch(e) {
+        console.warn('[FP_AI_CHAT] confirmAction error', e);
+        return { ok: false, error: 'Erreur réseau' };
+      }
+    },
+
+    /**
+     * Annule une action précédemment exécutée (dans les 30 minutes).
+     * @param {string} actionLogId - ID de l'action à annuler (retourné par undo_available)
+     * @returns {Promise<{ok, message}>}
+     */
+    undoAction: async function(actionLogId) {
+      try {
+        return await window._fpFetch('/api/ai/actions/' + actionLogId + '/undo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+      } catch(e) {
+        console.warn('[FP_AI_CHAT] undoAction error', e);
+        return { ok: false, error: 'Erreur réseau' };
+      }
+    },
+
+    /**
+     * Récupère les action logs de l'organisation.
+     * @returns {Promise<{actions: Array}>}
+     */
+    getActions: async function() {
+      try {
+        return await window._fpFetch('/api/ai/actions');
+      } catch(e) { return { actions: [] }; }
     },
 
     loadHistory: async function() {

@@ -8,10 +8,11 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
-/** Catalogue exhaustif des permissions connues — Phase 1 : lecture uniquement. */
+/** Catalogue exhaustif des permissions connues — Phase 1 lecture + Phase 2 écriture missions. */
 export const PERMISSION_CATALOG = [
   "overview.read",
   "missions.read",
+  "missions.write",   // Phase 2 — création / modification / suppression de missions via IA
   "audits.read",
   "monitors.read",
   "keywords.read",
@@ -32,15 +33,16 @@ export const PERMISSION_CATALOG = [
 export type Permission = (typeof PERMISSION_CATALOG)[number];
 
 const ALL_READ: Permission[] = PERMISSION_CATALOG.filter(
-  (p) => p !== "settings.admin" && p !== "billing.read"
+  (p) => p !== "settings.admin" && p !== "billing.read" && !p.endsWith(".write")
 );
 
 /** Bundles par défaut par rôle — valeurs de départ, jamais la source de vérité finale. */
 const ROLE_BUNDLES: Record<string, Permission[]> = {
-  owner:  [...PERMISSION_CATALOG],
-  admin:  [...PERMISSION_CATALOG],
-  member: [...ALL_READ],
-  viewer: [...ALL_READ],
+  // owner/admin/member : toutes permissions (lecture + écriture missions)
+  owner:   [...PERMISSION_CATALOG],
+  admin:   [...PERMISSION_CATALOG],
+  member:  [...ALL_READ, "missions.write"],   // members can manage missions via AI
+  viewer:  [...ALL_READ],                     // viewers: read-only, pas d'écriture
   // service (API_SECRET_KEY interne) : tout — cohérent avec requireRole
   service: [...PERMISSION_CATALOG],
 };

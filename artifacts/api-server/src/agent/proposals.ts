@@ -10,6 +10,7 @@ import { logger } from "../lib/logger.js";
 import type { ValidatedNavAction } from "./destination-registry.js";
 
 export const PROPOSAL_TTL_MINUTES = 15;
+export const PENDING_TOOL_TTL_MINUTES = 10;
 
 export interface ActionProposal {
   proposalId: string;
@@ -73,4 +74,63 @@ export async function createNavigationProposal(opts: {
   }
 
   return { proposalId, conversationId, actions, expiresAt: expiresAt.toISOString() };
+}
+
+// ── Pending tool-call proposal (Phase 2 confirmation flow) ─────────────────
+
+export interface PendingToolProposal {
+  proposalId: string;
+  toolName: string;
+  confirmationLevel: string;
+  previewText: string;
+  expiresAt: string;
+}
+
+/**
+ * Persiste une proposition d'outil en attente de confirmation.
+ * kind = "pending_tool_call" dans ai_action_proposals.
+ */
+export async function createPendingToolProposal(opts: {
+  orgId: string;
+  userId: string;
+  conversationId: string;
+  provider: string;
+  model: string;
+  toolName: string;
+  toolCallId: string;
+  args: Record<string, unknown>;
+  confirmationLevel: string;
+  previewText: string;
+}): Promise<PendingToolProposal | null> {
+  const proposalId = `ptool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const expiresAt = new Date(Date.now() + PENDING_TOOL_TTL_MINUTES * 60_000);
+
+  const payload = {
+    toolName: opts.toolName,
+    toolCallId: opts.toolCallId,
+    args: opts.args,
+    confirmationLevel: opts.confirmationLevel,
+    previewText: opts.previewText,
+  };
+
+  try {
+    await pool.query(
+      `INSERT INTO ai_action_proposals
+         (id, org_id, user_id, conversation_id, kind, payload, status, provider, model, created_at, expires_at)
+       VALUES ($1,$2,$3,$4,'pending_tool_call',$5,'pending',$6,$7,NOW(),$8)`,
+      [proposalId, opts.orgId, opts.userId, opts.conversationId,
+       JSON.stringify(payload), opts.provider, opts.model, expiresAt]
+    );
+  } catch (err) {
+    logger.error({ err, orgId: opts.orgId }, "[agent] createPendingToolProposal failed — proposal dropped");
+    return null;
+  }
+
+  return {
+    proposalId,
+    toolName: opts.toolName,
+    confirmationLevel: opts.confirmationLevel,
+    previewText: opts.previewText,
+    expiresAt: expiresAt.toISOString(),
+  };
 }
