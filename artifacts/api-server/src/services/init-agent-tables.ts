@@ -71,6 +71,8 @@ export async function initAgentTables(): Promise<void> {
       )
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS aal_org_conv_idx ON ai_action_logs(org_id, conversation_id)`);
+    // Phase 2 — Undo exact version: capture updated_at immediately after mutation
+    await client.query(`ALTER TABLE ai_action_logs ADD COLUMN IF NOT EXISTS version_after TEXT`).catch(() => {});
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS ai_autopilot_grants (

@@ -13,6 +13,8 @@
 import { Router, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { setGA4FunnelBaseUrl } from "../services/ga4-funnel-service.js";
+import { resolveEffectivePermissions } from "../agent/permissions.js";
+import { normalizeGeminiFinishReason } from "../services/ai-providers/gemini-provider.js";
 
 const router = Router();
 
@@ -201,6 +203,61 @@ router.post("/qa/billing/activate-signup", qaGuard, async (req: Request, res: Re
     }
     await _qaActivate({ preRegToken, orgId, customerId, selectedPlan, isTrial });
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ── POST /qa/permissions-test ─────────────────────────────────────────────────
+// Returns resolved effective permissions for a given userId/orgId/role combination.
+// Uses the live resolveEffectivePermissions() function (respects DB overrides).
+// Body: { userId: string; orgId: string; role: string }
+router.post("/qa/permissions-test", qaGuard, async (req: Request, res: Response) => {
+  const { userId, orgId, role } = req.body as { userId?: string; orgId?: string; role?: string };
+  if (!userId || !orgId || typeof role === "undefined") {
+    res.status(400).json({ error: "userId, orgId, role are required" });
+    return;
+  }
+  try {
+    const perms = await resolveEffectivePermissions(userId, orgId, role);
+    res.json({
+      ok: true,
+      userId, orgId, role,
+      permissions: Array.from(perms).sort(),
+      hasDeleteMissions: perms.has("missions.delete"),
+      hasWriteMissions: perms.has("missions.write"),
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ── POST /qa/gemini-finish-reason ─────────────────────────────────────────────
+// Tests normalizeGeminiFinishReason() for a given finishReason + textSoFar.
+// Returns the result so QA scripts can assert user-friendliness, log level, etc.
+// Body: { finishReason: string | null; textSoFar?: string }
+router.post("/qa/gemini-finish-reason", qaGuard, (req: Request, res: Response) => {
+  const { finishReason, textSoFar = "Voici une réponse partielle." } = req.body as {
+    finishReason?: string | null;
+    textSoFar?: string;
+  };
+  try {
+    const result = normalizeGeminiFinishReason(
+      finishReason === undefined ? null : finishReason,
+      textSoFar
+    );
+    // Validate user-friendliness: appendText must not contain stack traces, error codes,
+    // or technical identifiers if present.
+    const isTechnical = result.appendText
+      ? /Error:|TypeError|at Object\.|\.ts:\d|\.js:\d|INTERNAL|null pointer|undefined/i.test(result.appendText)
+      : false;
+    res.json({
+      ok: true,
+      finishReason: finishReason ?? null,
+      textSoFar,
+      ...result,
+      userFriendly: result.appendText === null ? true : !isTechnical,
+    });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

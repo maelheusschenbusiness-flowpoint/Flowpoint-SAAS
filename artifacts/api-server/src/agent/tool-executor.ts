@@ -84,19 +84,22 @@ async function logActionLog(opts: {
   result: "ok" | "error" | "pending";
   error?: string | null;
   snapshot?: Record<string, unknown> | null;
+  /** ISO string of updated_at captured IMMEDIATELY after the write — exact Undo version anchor. */
+  versionAfter?: string | null;
   durationMs?: number;
 }): Promise<void> {
   try {
     await pool.query(
       `INSERT INTO ai_action_logs
          (id, org_id, user_id, conversation_id, provider, model, tool, args,
-          confirmation_level, result, error, undo_snapshot, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())`,
+          confirmation_level, result, error, undo_snapshot, version_after, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())`,
       [
         opts.id, opts.orgId, opts.userId, opts.conversationId,
         opts.provider, opts.model, opts.tool,
         JSON.stringify(opts.args), opts.confirmationLevel, opts.result,
         opts.error ?? null, opts.snapshot ? JSON.stringify(opts.snapshot) : null,
+        opts.versionAfter ?? null,
       ]
     );
   } catch (err) {
@@ -248,6 +251,9 @@ async function dispatchTool(
 
     const row = await pool.query(`SELECT * FROM missions WHERE id = $1`, [id]);
     const mission = row.rows[0];
+    const createVersionAfter = mission?.updated_at
+      ? new Date(mission.updated_at as string | Date).toISOString()
+      : null;
 
     await store.logActivity({
       type: "report", label: `[IA] Mission créée : ${title}`,
@@ -258,7 +264,7 @@ async function dispatchTool(
     // Snapshot the created mission so undo (= delete) has the ID available
     await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
       tool: name, args, confirmationLevel: toolDef.confirmationLevel,
-      result: "ok", snapshot: mission ?? { id }, durationMs: Date.now() - t0 });
+      result: "ok", snapshot: mission ?? { id }, versionAfter: createVersionAfter, durationMs: Date.now() - t0 });
 
     return { toolCallId: logId, toolName: name, ok: true,
       content: `Mission créée avec succès — ID: ${id} | Titre: "${title}" | Priorité: ${priority}`,
@@ -299,6 +305,13 @@ async function dispatchTool(
       isNowDone, isNowDismissed, id, orgId,
     ]);
 
+    // Capture updated_at immediately after the write — exact Undo version anchor
+    const updateVersionRow = await pool.query<{ updated_at: Date | null }>(
+      `SELECT updated_at FROM missions WHERE id = $1 AND org_id = $2`, [id, orgId]);
+    const updateVersionAfter = updateVersionRow.rows[0]?.updated_at
+      ? new Date(updateVersionRow.rows[0].updated_at).toISOString()
+      : null;
+
     await store.logActivity({
       type: "report", label: `[IA] Mission modifiée : ${snapshot["title"]}`,
       targetId: id, targetType: "mission",
@@ -307,7 +320,7 @@ async function dispatchTool(
 
     await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
       tool: name, args, confirmationLevel: toolDef.confirmationLevel,
-      result: "ok", snapshot, durationMs: Date.now() - t0 });
+      result: "ok", snapshot, versionAfter: updateVersionAfter, durationMs: Date.now() - t0 });
 
     return { toolCallId: logId, toolName: name, ok: true,
       content: `Mission "${snapshot["title"]}" (ID: ${id}) modifiée avec succès.`,
@@ -336,6 +349,12 @@ async function dispatchTool(
       [id, orgId]
     );
 
+    const completeVersionRow = await pool.query<{ updated_at: Date | null }>(
+      `SELECT updated_at FROM missions WHERE id = $1 AND org_id = $2`, [id, orgId]);
+    const completeVersionAfter = completeVersionRow.rows[0]?.updated_at
+      ? new Date(completeVersionRow.rows[0].updated_at).toISOString()
+      : null;
+
     await store.logActivity({
       type: "report", label: `[IA] Mission accomplie : ${snapshot["title"]}`,
       targetId: id, targetType: "mission",
@@ -344,7 +363,7 @@ async function dispatchTool(
 
     await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
       tool: name, args, confirmationLevel: toolDef.confirmationLevel,
-      result: "ok", snapshot, durationMs: Date.now() - t0 });
+      result: "ok", snapshot, versionAfter: completeVersionAfter, durationMs: Date.now() - t0 });
 
     return { toolCallId: logId, toolName: name, ok: true,
       content: `Mission "${snapshot["title"]}" (ID: ${id}) marquée comme terminée ✓`,
@@ -368,6 +387,12 @@ async function dispatchTool(
       [assignedTo, id, orgId]
     );
 
+    const assignVersionRow = await pool.query<{ updated_at: Date | null }>(
+      `SELECT updated_at FROM missions WHERE id = $1 AND org_id = $2`, [id, orgId]);
+    const assignVersionAfter = assignVersionRow.rows[0]?.updated_at
+      ? new Date(assignVersionRow.rows[0].updated_at).toISOString()
+      : null;
+
     await store.logActivity({
       type: "report", label: `[IA] Mission attribuée : ${snapshot["title"]} → ${assignedTo}`,
       targetId: id, targetType: "mission",
@@ -376,7 +401,7 @@ async function dispatchTool(
 
     await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
       tool: name, args, confirmationLevel: toolDef.confirmationLevel,
-      result: "ok", snapshot, durationMs: Date.now() - t0 });
+      result: "ok", snapshot, versionAfter: assignVersionAfter, durationMs: Date.now() - t0 });
 
     return { toolCallId: logId, toolName: name, ok: true,
       content: `Mission "${snapshot["title"]}" (ID: ${id}) attribuée à ${assignedTo}.`,
@@ -403,9 +428,10 @@ async function dispatchTool(
       metadata: { provider, model, tool: name }, orgId,
     }).catch(() => {});
 
+    // version_after = null for delete (row no longer exists)
     await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
       tool: name, args, confirmationLevel: toolDef.confirmationLevel,
-      result: "ok", snapshot, durationMs: Date.now() - t0 });
+      result: "ok", snapshot, versionAfter: null, durationMs: Date.now() - t0 });
 
     return { toolCallId: logId, toolName: name, ok: true,
       content: `Mission "${snapshot["title"]}" (ID: ${id}) supprimée définitivement.`,
