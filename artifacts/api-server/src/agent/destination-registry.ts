@@ -84,7 +84,7 @@ export interface ValidatedNavAction {
   label: string;
   route: string;
   sub: string | null;
-  params: Record<string, string>;
+  params: Record<string, string | number | boolean>;
   highlight: string | null;
   openMode: OpenMode;
 }
@@ -134,13 +134,28 @@ export function validateNavAction(
   }
   if (!dest.openModes.includes(openMode)) openMode = "page";
 
-  // params : Phase 1 — uniquement des scalaires courts, clés alphanumériques
-  const params: Record<string, string> = {};
-  if (r["params"] && typeof r["params"] === "object") {
-    for (const [k, v] of Object.entries(r["params"] as Record<string, unknown>)) {
-      if (!/^[a-zA-Z0-9_]{1,40}$/.test(k)) continue;
-      if (typeof v === "string" && v.length <= 200) params[k] = v;
-      else if (typeof v === "number" || typeof v === "boolean") params[k] = String(v);
+  // params (prefill sécurisé, exigence n°2) : SEULS les champs déclarés dans
+  // dest.prefill passent, avec type/maxLength/enum vérifiés. Pas de prefill
+  // déclaré → aucun param accepté. Le frontend revalide avec les mêmes specs.
+  const params: Record<string, string | number | boolean> = {};
+  if (dest.prefill && r["params"] && typeof r["params"] === "object") {
+    const rawParams = r["params"] as Record<string, unknown>;
+    for (const [k, spec] of Object.entries(dest.prefill)) {
+      const v = rawParams[k];
+      if (v == null) continue;
+      if (spec.type === "string" && typeof v === "string" && v.length <= (spec.maxLength ?? 200) && (!spec.enum || spec.enum.includes(v))) {
+        params[k] = v;
+      } else if (spec.type === "number" && typeof v === "number" && Number.isFinite(v)) {
+        params[k] = v;
+      } else if (spec.type === "boolean" && typeof v === "boolean") {
+        params[k] = v;
+      } else {
+        logger.warn({ destinationId, field: k }, "[agent] prefill field rejected (type/size/enum) — dropped");
+      }
+    }
+    const undeclared = Object.keys(rawParams).filter((k) => !(dest.prefill as Record<string, unknown>)[k]);
+    if (undeclared.length > 0) {
+      logger.warn({ destinationId, undeclared }, "[agent] undeclared prefill fields — dropped");
     }
   }
 

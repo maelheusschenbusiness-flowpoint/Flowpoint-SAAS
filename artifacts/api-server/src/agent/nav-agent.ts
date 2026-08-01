@@ -14,6 +14,7 @@
  * Une route inventée par le modèle est simplement abandonnée (log) — le bouton
  * n'apparaît pas. Jamais de navigation non validée.
  */
+import { logger } from "../lib/logger.js";
 import type { Destination } from "./destination-registry.js";
 
 export const NAV_MARKER_START = "<<<FP_NAV>>>";
@@ -48,15 +49,31 @@ ${NAV_MARKER_START}{"destinationId":"<id>","label":"<texte du bouton, max 5 mots
  * Filtre de flux : émet le texte au fil de l'eau en retenant tout début potentiel
  * de marqueur. Gère le marqueur coupé entre plusieurs chunks SSE.
  */
+/**
+ * Taille maximale du payload capturé entre <<<FP_NAV>>> et <<<END_NAV>>>.
+ * Un marqueur légitime (1-2 actions) fait < 1 Ko ; au-delà de cette borne le
+ * contenu est jeté (marker → null, jamais montré au client) et on continue de
+ * tout retenir jusqu'à la fin du flux pour garantir qu'aucun fragment ne fuit.
+ */
+const MAX_MARKER_CAPTURE = 8192;
+
 export class NavMarkerFilter {
   private pending = "";
   private capturing = false;
   private captured = "";
+  private overflowed = false;
 
   /** Retourne le texte sûr à émettre pour ce chunk. */
   push(text: string): string {
     if (this.capturing) {
-      this.captured += text;
+      if (!this.overflowed) {
+        this.captured += text;
+        if (this.captured.length > MAX_MARKER_CAPTURE) {
+          logger.warn({ size: this.captured.length }, "[agent] nav marker payload oversized — dropped");
+          this.captured = "";
+          this.overflowed = true;
+        }
+      }
       return "";
     }
     this.pending += text;
@@ -88,6 +105,7 @@ export class NavMarkerFilter {
       this.pending = "";
       return { remaining, markerJson: null };
     }
+    if (this.overflowed) return { remaining: "", markerJson: null };
     const endIdx = this.captured.indexOf(NAV_MARKER_END);
     const jsonStr = (endIdx >= 0 ? this.captured.slice(0, endIdx) : this.captured).trim();
     let markerJson: unknown | null = null;

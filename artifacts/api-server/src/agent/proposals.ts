@@ -20,7 +20,7 @@ export interface ActionProposal {
     primary: boolean;
     label: string;
     destinationId: string;
-    params: Record<string, string>;
+    params: Record<string, string | number | boolean>;
     highlight: string | null;
     openMode: string;
   }>;

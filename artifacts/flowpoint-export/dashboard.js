@@ -12187,7 +12187,7 @@ function renderAIMessages() {
   const renderProposalActions = (p) => {
     const acts = (p.actions || []).slice(0, 2);
     return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-      ${acts.map(a => `<button class="fp-btn ${a.primary ? 'fp-btn-primary' : 'fp-btn-ghost'} fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5" data-dest="${escHtml(a.destinationId)}" data-anchor="${escHtml(a.highlight || '')}" onclick="window._fpNavDest(this)">${escHtml(a.label)} →</button>`).join('')}
+      ${acts.map(a => `<button class="fp-btn ${a.primary ? 'fp-btn-primary' : 'fp-btn-ghost'} fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5" data-dest="${escHtml(a.destinationId)}" data-anchor="${escHtml(a.highlight || '')}" data-params="${a.params && Object.keys(a.params).length ? escHtml(JSON.stringify(a.params)) : ''}" onclick="window._fpNavDest(this)">${escHtml(a.label)} →</button>`).join('')}
     </div>`;
   };
 
@@ -31164,7 +31164,13 @@ window.navigateToDestination = navigateToDestination;
 // Handler inline sécurisé (pattern data-attributes — jamais de JSON dans onclick)
 window._fpNavDest = function(btn) {
   try {
-    navigateToDestination({ destinationId: btn.dataset.dest, highlight: btn.dataset.anchor || null });
+    let prefill = null;
+    if (btn.dataset.params) { try { prefill = JSON.parse(btn.dataset.params); } catch(pe) {} }
+    navigateToDestination({
+      destinationId: btn.dataset.dest,
+      highlight: btn.dataset.anchor || null,
+      params: prefill && typeof prefill === 'object' ? { prefill: prefill } : null,
+    });
   } catch(e) { console.warn('[FP_NAV] _fpNavDest error', e); }
 };
 
@@ -32708,7 +32714,11 @@ setTimeout(function() {
                   _b.onclick = function() {
                     closePanel();
                     if (window.navigateToDestination) {
-                      window.navigateToDestination({ destinationId: a.destinationId, highlight: a.highlight || null });
+                      window.navigateToDestination({
+                        destinationId: a.destinationId,
+                        highlight: a.highlight || null,
+                        params: a.params && Object.keys(a.params).length ? { prefill: a.params } : null,
+                      });
                     }
                   };
                   _navBar.appendChild(_b);

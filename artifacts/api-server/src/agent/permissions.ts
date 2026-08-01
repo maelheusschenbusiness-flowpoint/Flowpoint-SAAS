@@ -52,7 +52,11 @@ export function isKnownPermission(p: string): p is Permission {
 /**
  * Résout les permissions effectives d'un utilisateur dans une organisation.
  * bundle(rôle) + grants − revokes (table org_member_permissions).
- * Fail-safe : si la table est illisible, on retourne le bundle du rôle seul.
+ *
+ * FAIL-CLOSED : si les overrides sont illisibles (panne DB, table absente),
+ * on retourne un ensemble VIDE — jamais le bundle du rôle seul. Une révocation
+ * explicite ne doit jamais être restaurée par une panne transitoire ; l'agent
+ * perd la navigation le temps de la panne, le chat continue de fonctionner.
  */
 export async function resolveEffectivePermissions(
   userId: string,
@@ -71,7 +75,8 @@ export async function resolveEffectivePermissions(
       else if (r.mode === "revoke") bundle.delete(r.permission);
     }
   } catch (err) {
-    logger.warn({ err, orgId }, "[agent] org_member_permissions unreadable — role bundle only");
+    logger.error({ err, orgId }, "[agent] org_member_permissions unreadable — FAIL CLOSED (zéro permission agent)");
+    return new Set<string>();
   }
   return bundle;
 }
