@@ -28548,7 +28548,7 @@ function renderSettingsAPI() {
                   { event:'report.generated', url:'', active:false },
                   { event:'score.alert',      url:'', active:false },
                 ]
-            )),
+            ))),
         ].map(w => `
           <div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:10px;padding:12px 14px;margin-bottom:8px">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px" data-wh-card data-wh-event="${escHtml(w.event)}">
@@ -32458,7 +32458,7 @@ setTimeout(function() {
       btns.push({label:'Local SEO', route:'local-seo', sub:null});
     if (t.includes('rapport') || t.includes('pdf') || t.includes('exporter'))
       btns.push({label:'Rapports', route:'reports', sub:null});
-    if (t.includes('mission') || t.includes('plan d'action') || t.includes('priorit'))
+    if (t.includes('mission') || t.includes("plan d'action") || t.includes('priorit'))
       btns.push({label:'Missions', route:'missions', sub:null});
     if (t.includes('conversion') || t.includes('cro') || t.includes('friction') || t.includes('taux de conv'))
       btns.push({label:'Conversion', route:'conversion', sub:'ux-lab'});
