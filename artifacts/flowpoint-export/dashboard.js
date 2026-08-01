@@ -462,19 +462,30 @@ async function apiFetch(path, opts = {}) {
     const _path = isGet && !path.includes('?')
       ? `${path}?_cb=${Date.now()}`
       : isGet ? `${path}&_cb=${Date.now()}` : path;
-    const res = await fetch(_path, {
-      ...opts,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(isGet ? { 'Cache-Control': 'no-cache, no-store' } : {}),
-        // Send Bearer when a per-tab token is present (takes priority over cookie on server).
-        // Cookie is always sent as primary auth — never omit credentials.
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(opts.headers || {}),
-      },
-      // Always include the cookie. Bearer is only an additional per-tab override.
-      credentials: 'include',
-    });
+    // Timeout guard: abort if the server goes silent (e.g. mid-restart TCP hang).
+    // 15 s is generous enough for slow connections but short enough to surface hangs.
+    const _fetchTimeout = opts.timeout || 15000;
+    const _ctrl = new AbortController();
+    const _abortTimer = setTimeout(() => _ctrl.abort(), _fetchTimeout);
+    let res;
+    try {
+      res = await fetch(_path, {
+        ...opts,
+        signal: _ctrl.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(isGet ? { 'Cache-Control': 'no-cache, no-store' } : {}),
+          // Send Bearer when a per-tab token is present (takes priority over cookie on server).
+          // Cookie is always sent as primary auth — never omit credentials.
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(opts.headers || {}),
+        },
+        // Always include the cookie. Bearer is only an additional per-tab override.
+        credentials: 'include',
+      });
+    } finally {
+      clearTimeout(_abortTimer);
+    }
     if (res.status === 401) {
       const _ts = new Date().toISOString();
       if (opts.backgroundPoll) {
@@ -1103,6 +1114,15 @@ async function loadData() {
   // ── Loading state: show skeleton immediately before any API call ──
   STATE.loading = true;
   render();
+  // ── Safety timeout: if loadData hangs (e.g. TCP connection frozen after server restart),
+  //    force STATE.loading = false after 12 s so the skeleton never stays permanently.
+  const _loadSafetyTimer = setTimeout(() => {
+    if (STATE.loading) {
+      console.warn('[FP] loadData safety timeout — forcing render after 12s hang');
+      STATE.loading = false;
+      render();
+    }
+  }, 12000);
   // ── Phase 0: Instant render from sessionStorage cache (stale-while-revalidate) ──
   try {
     const _sc = sessionStorage.getItem('fp-state-cache');
@@ -1165,12 +1185,13 @@ async function loadData() {
     if (PREVIEW_MODE) {
       console.warn('[FP] Preview mode: using mock /api/me', e);
     } else {
+      clearTimeout(_loadSafetyTimer);
       showFatalError('Impossible de joindre /api/me. Vérifiez que le backend est démarré.');
       return;
     }
   }
   STATE.me = me || (PREVIEW_MODE ? MOCK_ME : null);
-  if (!STATE.me) { showFatalError('/api/me n\'a pas répondu.'); return; }
+  if (!STATE.me) { clearTimeout(_loadSafetyTimer); showFatalError('/api/me n\'a pas répondu.'); return; }
   if (STATE.me?.plan) STATE.me.plan = STATE.me.plan.charAt(0).toUpperCase() + STATE.me.plan.slice(1);
 
   // ── Phase 2: Overview + plan definitions — resilient, any failure is non-blocking ──
@@ -1231,6 +1252,7 @@ async function loadData() {
   if (!STATE.historySiteUrl && STATE.audits.length > 0) STATE.historySiteUrl = STATE.audits[0].url;
 
   // ── Phase 3: Early render with primary data so the UI is visible immediately ──
+  clearTimeout(_loadSafetyTimer);
   STATE.loading = false;
   render();
 
