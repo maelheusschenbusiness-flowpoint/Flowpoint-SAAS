@@ -10956,7 +10956,7 @@ function renderSettings() {
             "IA Config Lab actif. <strong>7 modules IA disponibles</strong> — 5 actifs. Recommandation : activer le module <strong>Intelligence marché IA</strong> pour une veille concurrentielle automatique. Intensité IA actuelle : Équilibré.",
             ['Activer tous les modules', 'Optimiser l\'intensité IA', 'Rapport IA Lab']
           )
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Config Lab complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">IA Stratégiste, churn prevention, market intelligence et automation agressive.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Config Lab complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">IA Stratégiste, churn prevention, market intelligence et automation agressive.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing');setTimeout(()=>navigateSub('plans'),100)">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -10998,7 +10998,7 @@ function renderSettings() {
               </div>
               ${locked
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="fpGoToPricing()">🔒 Upgrader</button>`
-                : `<button class="fp-toggle${m.active ? ' on' : ''}" data-ai-module="${m.key}" onclick="(async(btn)=>{const next=!btn.classList.contains('on');btn.classList.toggle('on',next);btn.setAttribute('aria-pressed',String(next));const mods={};document.querySelectorAll('[data-ai-module]').forEach(b=>{mods[b.dataset.aiModule]=b.classList.contains('on');});await apiAction('PATCH','/api/me/prefs',{settings:{aiModules:mods}}).catch(()=>{});showToast(next?'success':'info',next?'Module activ\u00e9':'Module d\u00e9sactiv\u00e9');})(this)"></button>`
+                : `<button class="fp-toggle${m.active ? ' on' : ''}" data-ai-module="${m.key}" onclick="(async(btn)=>{const next=!btn.classList.contains('on');btn.classList.toggle('on',next);btn.setAttribute('aria-pressed',String(next));const mods={};document.querySelectorAll('[data-ai-module]').forEach(b=>{mods[b.dataset.aiModule]=b.classList.contains('on');});const r=await apiAction('PATCH','/api/me/prefs',{settings:{aiModules:mods}}).catch(()=>null);if(r&&r.ok!==false){if(!STATE.settings)STATE.settings={};STATE.settings.aiModules=mods;showToast(next?'success':'info',next?'Module IA activ\u00e9':'Module IA d\u00e9sactiv\u00e9');}else{btn.classList.toggle('on',!next);showToast('error','Erreur sauvegarde module');}})(this)"></button>`
               }
             </div>`;
           }).join('')}
@@ -16179,22 +16179,72 @@ async function init() {
   window.fpFmtDate = relDate;
   window.openDataDeletionPanel = function(kind) {
     const isAccount = kind === 'account';
-    const title = isAccount ? 'Supprimer mon compte' : 'Supprimer toutes les données';
-    const subject = encodeURIComponent(isAccount ? 'Demande de suppression de compte (RGPD)' : 'Demande de suppression des données (RGPD)');
-    const email = (STATE.me && STATE.me.email) ? STATE.me.email : '';
-    openFloatPanel(title, `
+    if (isAccount) { window.fpDeleteAccountModal && window.fpDeleteAccountModal(); return; }
+    // Data-only deletion — calls real API endpoint
+    openFloatPanel('Supprimer toutes les données', `
       <div style="padding:4px">
-        <p style="font-size:12px;color:var(--fp-text-muted);line-height:1.5">
-          ${isAccount
-            ? 'La suppression de compte est définitive : votre workspace, vos sites, missions, audits et rapports seront effacés.'
-            : 'Cette action efface définitivement toutes les données de votre workspace (sites, missions, audits, monitors, rapports).'}
-          Conformément au RGPD, la demande est traitée par notre équipe sous 30 jours, depuis l'adresse email du compte${email ? ` (<strong>${escHtml(email)}</strong>)` : ''}.
+        <p style="font-size:12px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:12px">
+          Cette action est <strong style="color:#ef4444">irréversible</strong>.<br>
+          Tous vos audits, monitors, rapports, missions, analytics, concurrents et données SEO seront supprimés définitivement. Votre compte reste actif.
         </p>
-        <a class="fp-btn fp-btn-primary" style="width:100%;margin-top:10px;text-align:center;box-sizing:border-box" href="mailto:support@flowpoint.app?subject=${subject}">Envoyer la demande par email</a>
+        <div style="font-size:12px;color:var(--fp-text);font-weight:600;margin-bottom:6px">Tapez <code style="background:rgba(239,68,68,0.1);padding:2px 6px;border-radius:4px;color:#ef4444">SUPPRIMER</code> pour confirmer :</div>
+        <input id="fp-del-data-inp" type="text" placeholder="SUPPRIMER" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid rgba(239,68,68,0.4);border-radius:8px;background:var(--fp-bg,#f8fafc);color:var(--fp-text);font-size:13px;margin-bottom:12px;outline:none"/>
+        <button id="fp-del-data-btn" class="fp-btn fp-btn-primary" style="width:100%;background:#ef4444;border-color:#ef4444;opacity:0.4;cursor:not-allowed" disabled onclick="(async()=>{const btn=document.getElementById('fp-del-data-btn');btn.disabled=true;btn.textContent='Suppression…';try{const r=await apiAction('DELETE','/api/settings/data');if(r&&r.ok){closeFloatPanel();showToast('success','Données supprimées ('+r.deleted+' éléments)');render(STATE.currentSection);}else{showToast('error',r?.error||'Erreur suppression');btn.disabled=false;btn.textContent='Supprimer définitivement';}}catch(e){showToast('error','Erreur réseau');btn.disabled=false;btn.textContent='Supprimer définitivement';}})()">Supprimer définitivement</button>
         <button class="fp-btn fp-btn-ghost" style="width:100%;margin-top:8px" onclick="closeFloatPanel()">Annuler</button>
       </div>
     `);
+    setTimeout(()=>{
+      const inp=document.getElementById('fp-del-data-inp'),btn=document.getElementById('fp-del-data-btn');
+      if(inp&&btn)inp.addEventListener('input',()=>{const ok=inp.value==='SUPPRIMER';btn.disabled=!ok;btn.style.opacity=ok?'1':'0.4';btn.style.cursor=ok?'pointer':'not-allowed';});
+    },50);
   };
+
+  window._regenerateApiKey = async function(keyId, btn) {
+    if (btn.dataset.pending === '1') return;
+    btn.dataset.pending = '1';
+    const orig = btn.textContent;
+    btn.textContent = '…';
+    try {
+      const r = await apiAction('POST', '/api/settings/api-keys/regenerate', { type: keyId === 'pub' ? 'public' : 'secret' });
+      if (r && r.key) {
+        const span = document.querySelector('[data-apikey-val="' + keyId + '"]');
+        if (span) span.textContent = r.key;
+        // Update STATE so re-render keeps the key
+        if (!STATE.settings) STATE.settings = {};
+        if (keyId === 'pub') STATE.settings.publicApiKey  = r.key;
+        else                 STATE.settings.secretApiKey  = r.key;
+        showToast('success', 'Clé régénérée ! Copiez-la maintenant.');
+        navigator.clipboard?.writeText(r.key).catch(() => {});
+      } else { showToast('error', r?.error || 'Erreur régénération'); }
+    } catch(e) { showToast('error', 'Erreur réseau'); }
+    btn.textContent = orig;
+    btn.dataset.pending = '0';
+  };
+
+  window._copyApiKey = async function(keyId, btn) {
+    const span = document.querySelector('[data-apikey-val="' + keyId + '"]');
+    const current = span ? span.textContent.trim() : '';
+    // If the value contains bullets (masked), fetch real key first
+    if (!current || current.includes('•')) {
+      btn.textContent = '…';
+      try {
+        const r = await apiAction('GET', '/api/settings/api-keys');
+        const key = keyId === 'pub' ? r?.publicKey : r?.secretKey;
+        if (key) {
+          if (span) span.textContent = key;
+          if (!STATE.settings) STATE.settings = {};
+          if (keyId === 'pub') STATE.settings.publicApiKey  = key;
+          else                 STATE.settings.secretApiKey  = key;
+          await navigator.clipboard.writeText(key);
+          showToast('success', 'Clé copiée !');
+        } else { showToast('info', keyId === 'sec' ? 'Aucune clé secrète — cliquez Régénérer' : 'Clé non disponible'); }
+      } catch(e) { showToast('info', 'Impossible de copier automatiquement'); }
+      btn.textContent = 'Copier';
+    } else {
+      navigator.clipboard?.writeText(current).then(() => showToast('success', 'Clé copiée !')).catch(() => showToast('info', 'Copiez manuellement'));
+    }
+  };
+
   window.apiAction = apiAction;
   window.togglePushNotifications = togglePushNotifications;
   window.openFloatPanel = openFloatPanel;
@@ -28502,24 +28552,25 @@ function renderSettingsAPI() {
         ${aiBlock('Vos clés API permettent d\'intégrer FlowPoint dans vos propres outils. Ne partagez jamais votre clé secrète — régénérez-la immédiatement si elle est compromise.',[])}
         <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
           ${(()=>{
-            const _pk = STATE.settings?.publicApiKey || STATE.me?.publicApiKey || null;
+            const _pk  = STATE.settings?.publicApiKey  || STATE.me?.publicApiKey  || null;
+            const _sk  = STATE.settings?.secretApiKey  || null;
             const _pkCreated = STATE.me?.createdAt ? new Date(STATE.me.createdAt).toLocaleDateString('fr-FR') : (STATE.settings?.apiKeyCreated || '—');
             return [
-              { label:'Clé publique (lecture seule)', key: _pk || (PREVIEW_MODE ? 'fp_pub_k7m2x9q3a1b4c5d6e7f8' : '(clé non disponible — contactez le support)'), created: _pkCreated },
-              { label:'Clé secrète (accès complet)',  key:'fp_sec_••••••••••••••••••••', created: _pkCreated },
+              { id:'pub', label:'Clé publique (lecture seule)',  key: _pk || (PREVIEW_MODE ? 'fp_pub_k7m2x9q3a1b4c5d6e7f8' : '(non générée — cliquez Régénérer)'), created: _pkCreated },
+              { id:'sec', label:'Clé secrète (accès complet)',   key: _sk  || 'fp_sec_••••••••••••••••••••••••••••••••••••••••••••',                           created: _pkCreated },
             ];
           })().map(k => `
-            <div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:10px;padding:14px 16px">
+            <div data-apikey-card="${k.id}" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:10px;padding:14px 16px">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${k.label}</div>
                 <div style="display:flex;gap:6px">
                   ${badge('Actif','success')}
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(btn){if(btn.dataset.pending==='1')return;btn.dataset.pending='1';var isPublic=btn.closest('.fp-card,.fp-inner-card')?.querySelector('[class*=fp-mono]')?.textContent?.includes('fp_pub');var keyType=isPublic?'public':'secret';btn.textContent='...';apiAction('POST','/api/settings/api-keys/regenerate',{type:keyType}).then(function(r){if(r&&r.key){var mono=btn.closest('div[style]').querySelector('.fp-mono span,span[style*=overflow]');if(mono)mono.textContent=r.key;showToast('success','Clé régénérée — copiez-la maintenant !');navigator.clipboard?.writeText(r.key).catch(()=>{});}else{showToast('error',r?.error||'Erreur régénération');}btn.textContent='Régénérer';btn.dataset.pending='0';}).catch(function(){btn.textContent='Régénérer';btn.dataset.pending='0';showToast('error','Erreur réseau');});})(this)">Régénérer</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._regenerateApiKey('${k.id}',this)">Régénérer</button>
                 </div>
               </div>
               <div class="fp-mono" style="font-size:11px;color:var(--fp-accent);background:rgba(37,99,235,0.08);border-radius:6px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px">
-                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${k.key}</span>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(btn){var el=btn.previousElementSibling||btn.closest('div').querySelector('code,input');var key=el?el.textContent||el.value:'';if(key&&navigator.clipboard)navigator.clipboard.writeText(key).then(()=>showToast('success','Clé copiée !')).catch(()=>showToast('info','Copiez manuellement la clé'));else showToast('info','Sélectionnez et copiez la clé manuellement');})(this)" style="padding:2px 8px;font-size:10px;flex-shrink:0">Copier</button>
+                <span data-apikey-val="${k.id}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${k.key}</span>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._copyApiKey('${k.id}',this)" style="padding:2px 8px;font-size:10px;flex-shrink:0">Copier</button>
               </div>
               <div style="font-size:10px;color:var(--fp-text-faint);margin-top:6px">Créée le ${k.created}</div>
             </div>
@@ -28533,7 +28584,7 @@ function renderSettingsAPI() {
           ...((()=>{
             // Load saved webhooks from Integration Hub data (FP_DATA) if available
             const _savedWH = (window.FP_DATA?.integrations?.integrations||[]).filter(i=>i.platform==='webhook'&&i.type==='outgoing');
-            return _savedWH.length > 0 ? _savedWH.map(i=>({event:(i.events&&i.events[0])||'*', url:i.endpoint_url||'', active:!!i.active})) : null;
+            return _savedWH.length > 0 ? _savedWH.map(i=>({id:i.id, event:(i.events&&i.events[0])||'*', url:i.endpoint_url||'', active:!!i.active})) : null;
           })() || (STATE.settings?.webhooks && Array.isArray(STATE.settings.webhooks) && STATE.settings.webhooks.length > 0
             ? STATE.settings.webhooks
             : (PREVIEW_MODE
@@ -28541,26 +28592,20 @@ function renderSettingsAPI() {
                   { event:'monitor.down',     url:'https://hooks.zapier.com/hooks/catch/abc123', active:true  },
                   { event:'audit.completed',  url:'https://webhook.site/xyz456',                active:true  },
                   { event:'report.generated', url:'',                                            active:false },
-                  { event:'score.alert',      url:'',                                            active:false },
                 ]
-              : [
-                  { event:'monitor.down',     url:'', active:false },
-                  { event:'audit.completed',  url:'', active:false },
-                  { event:'report.generated', url:'', active:false },
-                  { event:'score.alert',      url:'', active:false },
-                ]
+              : []
             ))),
         ].map(w => `
           <div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:10px;padding:12px 14px;margin-bottom:8px">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px" data-wh-card data-wh-event="${escHtml(w.event)}">
-              <button class="fp-toggle${w.active?' on':''}" onclick="(function(btn){var on=!btn.classList.contains('on');btn.classList.toggle('on',on);var card=btn.closest('[data-wh-card]');var urlEl=card?card.parentElement.querySelector('input.fp-input'):null;var url=urlEl?urlEl.value.trim():'';if(!url&&on){showToast('warning','Entrez une URL pour activer ce webhook');btn.classList.toggle('on',false);return;}var evt=card?card.dataset.whEvent:'';apiAction('POST','/api/integrations/webhooks',{url:url,event:evt,active:on}).then(function(r){if(r&&(r.id||r.ok))showToast('success',on?'Webhook activé !':'Webhook désactivé');else{btn.classList.toggle('on',!on);showToast('error','Erreur sauvegarde');}}).catch(function(){btn.classList.toggle('on',!on);showToast('error','Erreur réseau');});})(this)"></button>
-              <div class="fp-mono" style="font-size:11px;color:var(--fp-accent);background:rgba(37,99,235,0.08);padding:3px 8px;border-radius:4px">${w.event}</div>
-              ${badge(w.active?'Actif':'Inactif',w.active?'success':'#64748b')}
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px" data-wh-card data-wh-id="${escHtml(w.id||'')}">
+              <button class="fp-toggle${w.active?' on':''}" onclick="(function(btn){var on=!btn.classList.contains('on');btn.classList.toggle('on',on);var card=btn.closest('[data-wh-card]');var urlEl=card?card.parentElement.querySelector('input.fp-input'):null;var url=urlEl?urlEl.value.trim():'';var badgeEl=card?card.querySelector('[data-wh-badge]'):null;if(!url&&on){showToast('warning','Entrez une URL pour activer ce webhook');btn.classList.toggle('on',false);return;}var wid=card?card.dataset.whId:'';var patchFn=wid?apiAction('PATCH','/api/integrations/connections/'+wid,{active:on}):apiAction('POST','/api/integrations/webhooks',{url:url,active:on});patchFn.then(function(r){if(r&&(r.id||r.ok||r.active!==undefined)){if(badgeEl){badgeEl.textContent=on?'Actif':'Inactif';badgeEl.style.background=on?'rgba(34,197,94,0.15)':'rgba(100,116,139,0.15)';badgeEl.style.color=on?'#22c55e':'#94a3b8';}showToast('success',on?'Webhook activé !':'Webhook désactivé');}else{btn.classList.toggle('on',!on);showToast('error','Erreur sauvegarde');}}).catch(function(){btn.classList.toggle('on',!on);showToast('error','Erreur réseau');});})(this)"></button>
+              <span data-wh-badge style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;background:${w.active?'rgba(34,197,94,0.15)':'rgba(100,116,139,0.15)'};color:${w.active?'#22c55e':'#94a3b8'}">${w.active?'Actif':'Inactif'}</span>
             </div>
             <input class="fp-input" placeholder="https://votre-endpoint.com/webhook" value="${escHtml(w.url)}" style="font-family:var(--fp-font-mono);font-size:11px;margin-bottom:8px"/>
             <div style="display:flex;gap:8px">
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(btn){var el=btn.parentElement.parentElement.querySelector('input.fp-input');var url=el?el.value.trim():'';if(!url){showToast('error','Entrez une URL webhook');return;}apiAction('POST','/api/integrations/webhooks/test',{url:url}).then(r=>{if(r&&(r.ok||r.success)){showToast('success','Ping de test envoyé !')}else{showToast('info','Test indisponible — enregistrez le webhook')}}).catch(()=>showToast('info','Test indisponible — enregistrez le webhook'))})(this)">Tester</button>
               <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(btn){var urlEl=btn.parentElement.parentElement.querySelector('input.fp-input');var url=urlEl?urlEl.value.trim():'';if(!url){showToast('error','Entrez une URL webhook');return;}apiAction('POST','/api/integrations/webhooks',{url:url}).then(r=>{if(r&&r.id)showToast('success','Webhook sauvegardé !');else showToast('error','Erreur sauvegarde');}).catch(()=>showToast('error','Erreur sauvegarde'));})(this)">Sauver</button>
+              ${w.id ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.25)" onclick="window.fpDarkConfirm&&window.fpDarkConfirm('Supprimer ce webhook ?',function(){apiAction('DELETE','/api/integrations/connections/${escHtml(w.id)}').then(function(){showToast('success','Webhook supprimé');window._reloadIntgData&&window._reloadIntgData().then(()=>render(STATE.currentSection));}).catch(()=>showToast('error','Erreur suppression'));})">Supprimer</button>` : ''}
             </div>
           </div>
         `).join('')}

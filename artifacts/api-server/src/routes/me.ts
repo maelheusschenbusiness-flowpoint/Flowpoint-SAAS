@@ -625,6 +625,77 @@ router.get("/me/storage", async (req: Request, res: Response): Promise<void> => 
   }
 });
 
+// ── GET /api/settings/api-keys ───────────────────────────────────────────────
+router.get("/settings/api-keys", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  try {
+    const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [] }));
+    const prefs = (r.rows[0] as Record<string, unknown>)?.settings as Record<string, string> | null;
+    const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
+    const publicKey  = prefs?.publicApiKey  ?? `fp_pub_${_pkHash}`;
+    const secretKey  = prefs?.secretApiKey  ?? null;
+    res.json({
+      publicKey,
+      secretKey,
+      hasSecret: !!secretKey,
+    });
+  } catch (err) {
+    logger.error({ err }, "[api-keys/get] failed");
+    res.status(500).json({ error: "Erreur" });
+  }
+});
+
+// ── DELETE /api/settings/data ─────────────────────────────────────────────────
+// Purge all product data for this org but keep the account intact.
+router.delete("/settings/data", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const tables = [
+    "audits", "audit_schedules", "reports", "report_exports",
+    "monitors", "monitor_checks", "monitor_incidents",
+    "alert_rules", "alert_events",
+    "tracked_keywords", "calendar_events",
+    "team_messages", "team_files",
+    "automation_integrations", "automation_workflows", "automation_runs",
+    "automation_logs", "workflow_runs", "incoming_webhooks",
+    "missions", "mission_history", "mission_ai_logs",
+    "psi_cache", "seo_forecasts", "funnels", "funnel_steps",
+    "gsc_keyword_data", "gsc_page_data", "gsc_sync_logs",
+    "behavior_events", "behavior_sessions",
+    "traffic_sources", "traffic_losses",
+    "cro_scores", "cro_experiments", "revenue_leaks",
+    "local_pack_history", "org_checklist",
+    "overview_insights_cache", "overview_insights_rl",
+    "activity_log", "share_tokens", "growth_objectives",
+  ];
+  try {
+    const { pool: pgPool } = await import("@workspace/db");
+    const client = await pgPool.connect();
+    let deleted = 0;
+    try {
+      const existCheck = await client.query<{ tablename: string }>(
+        `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
+        [tables]
+      );
+      const existing = new Set(existCheck.rows.map(r => r.tablename));
+      await client.query("BEGIN");
+      for (const t of tables.filter(t => existing.has(t))) {
+        const r = await client.query(`DELETE FROM ${t} WHERE org_id = $1`, [orgId]);
+        deleted += r.rowCount ?? 0;
+      }
+      await client.query("COMMIT");
+    } finally {
+      client.release();
+    }
+    logger.info({ orgId, deleted }, "[settings/data] User data purged");
+    res.json({ ok: true, deleted });
+  } catch (err) {
+    logger.error({ err }, "[settings/data] purge failed");
+    res.status(500).json({ error: "Erreur lors de la suppression" });
+  }
+});
+
 // ── POST /api/settings/api-keys/regenerate ────────────────────────────────────
 router.post("/settings/api-keys/regenerate", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
