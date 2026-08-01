@@ -8041,6 +8041,25 @@ function renderBilling() {
       <div class="fp-skel-block" style="height:200px"></div>
     </div>`;
   }
+  // ── Stripe-sync on every billing page render ───────────────────────────────
+  // Fires a background call to reconcile DB ↔ Stripe so management buttons
+  // reflect real subscription state (e.g. stale 'active' → 'canceled').
+  setTimeout(function() {
+    apiFetch('/api/billing/subscription').then(function(r) {
+      if (!r || typeof r !== 'object') return;
+      var hadStatus = (STATE.billing || {}).subscriptionStatus;
+      var _rawDate = r.currentPeriodEnd || r.trialEndsAt || null;
+      var _nextDate = _rawDate ? new Date(_rawDate).toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit',year:'numeric'}) : null;
+      var _planAmtMap = { standard:29, pro:79, ultra:149, agency:149 };
+      var _nextAmount = r.nextAmount || _planAmtMap[(r.plan||'').toLowerCase()] || null;
+      STATE.billing = Object.assign({}, STATE.billing || {}, r, { nextDate: _nextDate, nextAmount: _nextAmount });
+      // Re-render billing page only when subscription status changed (stale DB corrected by Stripe)
+      if (hadStatus && hadStatus !== r.subscriptionStatus && STATE.route === 'billing') {
+        var page = document.getElementById('fp-page');
+        if (page) page.innerHTML = renderBilling();
+      }
+    }).catch(function() {});
+  }, 0);
   const sub  = STATE.subRoute;
   const me   = STATE.me;
   if (!me) return '<div style="padding:40px;text-align:center;color:var(--fp-text-muted);font-size:14px">Chargement du profil…</div>';
@@ -8481,8 +8500,14 @@ function renderBilling() {
       try {
         const r = await apiAction('POST', '/api/billing/cancel', { atPeriodEnd: true });
         if (r && r.ok) {
-          showToast('success', 'Abonnement annulé — accès conservé jusqu\'à la fin de la période');
-          if (STATE.billing) STATE.billing.cancelAtPeriodEnd = true;
+          if (r.selfHealed) {
+            // DB was stale — subscription already gone in Stripe, now corrected
+            if (STATE.billing) STATE.billing.subscriptionStatus = 'canceled';
+            showToast('info', 'Abonnement déjà résilié — statut mis à jour');
+          } else {
+            showToast('success', 'Abonnement annulé — accès conservé jusqu\'à la fin de la période');
+            if (STATE.billing) STATE.billing.cancelAtPeriodEnd = true;
+          }
           setTimeout(()=>navigateSub('plans'), 700);
         } else { showToast('error', (r && r.error) || 'Erreur lors de l\'annulation'); }
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'annulation impossible')); }
@@ -8511,8 +8536,22 @@ function renderBilling() {
       showToast('info', 'Annulation de l\'essai en cours…');
       try {
         const r = await apiAction('POST', '/api/billing/cancel-trial', { atPeriodEnd: false });
-        if (r && r.ok) { showToast('success', 'Essai annulé'); setTimeout(()=>window.location.reload(), 1200); }
-        else { showToast('error', (r && r.error) || 'Erreur lors de l\'annulation'); }
+        if (r && r.ok) {
+          if (r.selfHealed) {
+            // DB was stale — trial already gone in Stripe, now corrected
+            if (STATE.billing) STATE.billing.subscriptionStatus = 'canceled';
+            showToast('info', 'Essai déjà terminé — statut mis à jour');
+            setTimeout(()=>navigateSub('plans'), 700);
+          } else {
+            showToast('success', 'Essai annulé');
+            setTimeout(()=>window.location.reload(), 1200);
+          }
+        } else if (r && r.transitioned) {
+          // Trial already converted to active paid subscription — route to regular cancel
+          if (STATE.billing) STATE.billing.subscriptionStatus = 'active';
+          showToast('info', 'Votre essai est déjà converti en abonnement actif');
+          setTimeout(()=>navigateSub('manage'), 800);
+        } else { showToast('error', (r && r.error) || 'Erreur lors de l\'annulation'); }
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'annulation impossible')); }
     };
 

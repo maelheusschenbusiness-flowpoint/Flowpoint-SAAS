@@ -528,11 +528,23 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
 
   try {
     const stripe = await createStripeClient(stripeKey);
-    // Check both active AND trialing subscriptions (trial can also be cancelled at period end)
-    const activeSubs  = await stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "active",   limit: 1 });
-    const trialSubs   = await stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "trialing", limit: 1 });
-    const sub = activeSubs.data[0] ?? trialSubs.data[0];
-    if (!sub) { res.status(404).json({ error: "No active subscription found" }); return; }
+    // List ALL subscriptions (active, trialing, past_due, unpaid, incomplete)
+    // using auto-pagination so we never miss a live sub hidden behind page 2+.
+    const TERMINAL = new Set(["canceled", "incomplete_expired"]);
+    const allSubsArr = await stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "all" }).autoPagingToArray({ limit: 200 });
+    const liveSubs = allSubsArr.filter(s => !TERMINAL.has(s.status));
+    // Prefer active > trialing > any other live status
+    const sub = liveSubs.find(s => s.status === "active")
+      ?? liveSubs.find(s => s.status === "trialing")
+      ?? liveSubs[0];
+    if (!sub) {
+      // Self-heal: DB says active/trialing but Stripe has no non-canceled subscription.
+      // Correct the DB rather than returning a confusing 404 to the user.
+      await persistOrgData(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
+      logger.warn({ orgId }, "[Billing] cancel: no live Stripe subscription found — self-healing DB status to canceled");
+      res.json({ ok: true, selfHealed: true, message: "Abonnement déjà résilié — statut mis à jour." });
+      return;
+    }
 
     const email = billingCtx.email ?? req.orgContext?.email;
 
@@ -627,14 +639,34 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
 
   try {
     const stripe = await createStripeClient(stripeKey);
-    const subs = await stripe.subscriptions.list({
-      customer: billingCtx.stripeCustomerId, status: "trialing", limit: 5,
-    });
-    const sub = subs.data[0];
-    if (!sub) {
-      res.status(404).json({ error: "Aucun essai actif trouvé." });
+    // List ALL subscriptions using auto-pagination to detect every possible transition
+    const CANCEL_TERMINAL = new Set(["canceled", "incomplete_expired"]);
+    const allCancelSubsArr = await stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "all" }).autoPagingToArray({ limit: 200 });
+    const liveCancelSubs = allCancelSubsArr.filter(s => !CANCEL_TERMINAL.has(s.status));
+    const trialSub  = liveCancelSubs.find(s => s.status === "trialing");
+    const activeSub = liveCancelSubs.find(s => s.status === "active" || s.status === "past_due");
+
+    if (!trialSub) {
+      if (activeSub) {
+        // Trial already transitioned to paid subscription — correct the DB and
+        // tell the frontend to use the regular cancel flow instead.
+        // Return 200 (not 409) so apiFetch/apiAction can read the response body.
+        await persistOrgData(orgId, { subscriptionStatus: "active" }).catch(() => {});
+        logger.info({ orgId, subId: activeSub.id }, "[Billing] cancel-trial: trial transitioned to active — DB corrected");
+        res.json({
+          ok: false,
+          transitioned: true,
+          error: "Votre essai est déjà converti en abonnement actif. Utilisez « Annuler l'abonnement » à la place.",
+        });
+        return;
+      }
+      // No live subscription at all — self-heal
+      await persistOrgData(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
+      logger.warn({ orgId }, "[Billing] cancel-trial: no trialing Stripe subscription found — self-healing DB status to canceled");
+      res.json({ ok: true, selfHealed: true, message: "Essai déjà terminé — statut mis à jour." });
       return;
     }
+    const sub = trialSub;
 
     const email = billingCtx.email ?? req.orgContext?.email;
 
@@ -1132,6 +1164,9 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
     // listing all active subscriptions for this customer.
     let sub: Awaited<ReturnType<typeof stripe.subscriptions.list>>["data"][0] | undefined;
 
+    // Track post-reconciliation state when the tracked sub is gone from Stripe
+    let reconciledDbStatus: string | null = null;
+
     if (stripeSubscriptionId) {
       try {
         const fetched = await stripe.subscriptions.retrieve(stripeSubscriptionId);
@@ -1139,28 +1174,63 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
       } catch (fetchErr: unknown) {
         const code = (fetchErr as { code?: string })?.code;
         if (code !== "resource_missing") throw fetchErr;
-        // Subscription no longer exists in Stripe — reconcile DB
-        logger.warn({ orgId, stripeSubscriptionId }, "[Billing] resource_missing: Stripe subscription gone — clearing stale reference");
-        try {
-          const { pool: pgPool } = await import("@workspace/db");
-          const _client = await pgPool.connect();
-          try {
-            const newStatus = stripeCustomerId ? "incomplete" : "pending_billing";
-            // Jalon 7: write to organizations (source of truth)
-            await _client.query(
-              `UPDATE organizations
-               SET    stripe_subscription_id = NULL,
-                      subscription_status    = $1,
-                      updated_at             = NOW()
-               WHERE  id = $2`,
-              [newStatus, orgId]
-            );
-            logger.info({ orgId, newStatus }, "[Billing] resource_missing: DB reconciled — subscription ID cleared (organizations)");
-          } finally { _client.release(); }
-        } catch (cleanupErr) {
-          logger.warn({ cleanupErr, orgId }, "[Billing] resource_missing: DB cleanup failed (non-fatal)");
+        // Tracked subscription ID is gone from Stripe.
+        // Before clearing, check whether the customer has a replacement live subscription.
+        logger.warn({ orgId, stripeSubscriptionId }, "[Billing] resource_missing: tracked Stripe subscription gone — checking for replacement");
+        const RM_TERMINAL = new Set(["canceled", "incomplete_expired"]);
+        let replacementSub: typeof sub | undefined;
+        if (stripeCustomerId) {
+          // Use auto-pagination to find any live subscription across all pages
+          const replacementArr = await stripe.subscriptions.list({ customer: stripeCustomerId, status: "all" }).autoPagingToArray({ limit: 200 });
+          replacementSub = replacementArr.find(s => !RM_TERMINAL.has(s.status));
         }
-        // sub remains undefined — reconciled will reflect cleared state
+        if (replacementSub) {
+          // Customer has a live replacement subscription — adopt it instead of clearing
+          sub = replacementSub;
+          logger.info({ orgId, newSubId: replacementSub.id, newStatus: replacementSub.status },
+            "[Billing] resource_missing: found replacement subscription — adopting");
+          try {
+            const { pool: pgPool } = await import("@workspace/db");
+            const _client = await pgPool.connect();
+            try {
+              await _client.query(
+                `UPDATE organizations
+                 SET    stripe_subscription_id = $1,
+                        subscription_status    = $2,
+                        updated_at             = NOW()
+                 WHERE  id = $3`,
+                [replacementSub.id, replacementSub.status, orgId]
+              );
+            } finally { _client.release(); }
+          } catch (adoptErr) {
+            logger.warn({ adoptErr, orgId }, "[Billing] resource_missing: failed to persist adopted subscription (non-fatal)");
+          }
+        } else {
+          // Truly no active subscription — clear the stale reference
+          const newStatus = stripeCustomerId ? "canceled" : "pending_billing";
+          try {
+            const { pool: pgPool } = await import("@workspace/db");
+            const _client = await pgPool.connect();
+            try {
+              // Jalon 7: write to organizations (source of truth)
+              await _client.query(
+                `UPDATE organizations
+                 SET    stripe_subscription_id = NULL,
+                        subscription_status    = $1,
+                        updated_at             = NOW()
+                 WHERE  id = $2`,
+                [newStatus, orgId]
+              );
+              logger.info({ orgId, newStatus }, "[Billing] resource_missing: DB reconciled — subscription ID cleared (organizations)");
+            } finally { _client.release(); }
+          } catch (cleanupErr) {
+            logger.warn({ cleanupErr, orgId }, "[Billing] resource_missing: DB cleanup failed (non-fatal)");
+          }
+          // Track the reconciled status so we return it in the response below
+          // (normalisedStatus still holds the stale pre-cleanup value)
+          reconciledDbStatus = newStatus;
+          // sub remains undefined — effectiveSubId will be null below
+        }
       }
     } else {
       const subs = await stripe.subscriptions.list({ customer: stripeCustomerId, status: "all", limit: 1 });
@@ -1168,15 +1238,19 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
     }
 
     // The Stripe status is authoritative when a subscription is found.
+    // When sub is missing (resource_missing path), use the reconciled DB status.
     // Re-apply the state machine to avoid impossible combos from Stripe.
     const stripeStatus = sub?.status ?? null;
-    const effectiveSubId = sub?.id ?? stripeSubscriptionId;
+    // After resource_missing, effectiveSubId must be null — never re-use the stale ID
+    const effectiveSubId = sub?.id ?? null;
     const { normalizeSubscriptionStatus } = await import("../lib/subscription-state.js");
     const reconciledTrialEndsAt = sub?.trial_end
       ? new Date(sub.trial_end * 1000).toISOString()
       : trialEndsAt;
+    // rawStatus priority: live Stripe > reconciled DB (post-cleanup) > stale DB
+    const rawStatusForNorm = stripeStatus ?? reconciledDbStatus ?? normalisedStatus;
     const reconciled = normalizeSubscriptionStatus({
-      rawStatus:            stripeStatus ?? normalisedStatus,
+      rawStatus:            rawStatusForNorm,
       stripeSubscriptionId: effectiveSubId ?? null,
       stripeCustomerId,
       trialEndsAt:          reconciledTrialEndsAt,
@@ -1766,7 +1840,9 @@ router.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (req:
     // No local data is touched until Stripe is confirmed clean.
     if (stripeKey && billingCtx.stripeCustomerId) {
       const stripe = await createStripeClient(stripeKey);
-      // Cancel every non-canceled subscription — throw on failure (no .catch)
+
+      // Cancel every non-canceled subscription — propagate any Stripe error so
+      // we never delete local data when Stripe operations fail unexpectedly.
       const subs = await stripe.subscriptions.list({
         customer: billingCtx.stripeCustomerId,
         status: "all",
@@ -1777,9 +1853,24 @@ router.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (req:
           await stripe.subscriptions.cancel(sub.id);
         }
       }
-      // Delete Stripe customer — throw on failure
-      await stripe.customers.del(billingCtx.stripeCustomerId);
-      logger.info({ orgId, customerId: billingCtx.stripeCustomerId }, "[Billing/DeleteAccount] Stripe resources deleted");
+
+      // Delete Stripe customer — guard only this step for resource_missing:
+      // the customer may have already been deleted externally (test accounts,
+      // manual cleanup, duplicate calls). Anything else is a real Stripe error.
+      try {
+        await stripe.customers.del(billingCtx.stripeCustomerId);
+        logger.info({ orgId, customerId: billingCtx.stripeCustomerId }, "[Billing/DeleteAccount] Stripe resources deleted");
+      } catch (delErr: unknown) {
+        const delCode = (delErr as { code?: string })?.code;
+        if (delCode === "resource_missing") {
+          logger.warn(
+            { orgId, customerId: billingCtx.stripeCustomerId },
+            "[Billing/DeleteAccount] Stripe customer not found (resource_missing) — already deleted, skipping"
+          );
+        } else {
+          throw delErr;
+        }
+      }
     }
 
     // ── Step 2: Transactional DB deletion ────────────────────────────────────
