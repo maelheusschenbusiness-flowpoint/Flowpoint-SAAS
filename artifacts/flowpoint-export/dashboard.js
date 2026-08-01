@@ -8654,10 +8654,10 @@ function renderBilling() {
       )}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Total payé 2026', displayStat(STATE.billing?.totalPaid ? STATE.billing.totalPaid + '€' : null, '286€'), PREVIEW_MODE ? '5 factures · HT' : 'Voir Stripe', 'neutral')}
-        ${statCard('Prochain débit', displayStat(STATE.billing?.nextAmount ? STATE.billing.nextAmount + '€' : null, '79€'), PREVIEW_MODE ? '01/06/2026 — dans 23 jours' : 'Voir Stripe', 'neutral')}
-        ${statCard('Méthodes de paiement', String(paymentMethods.length), 'actives — Visa par défaut', 'up')}
-        ${statCard('Paiements échoués', displayStat(STATE.billing?.failedPayments !== undefined ? String(STATE.billing.failedPayments) : null, '0'), PREVIEW_MODE ? 'aucun incident 2026' : 'Voir Stripe', 'up')}
+        ${statCard('Total payé 2026', displayStat(STATE.billing?.totalPaid != null ? STATE.billing.totalPaid + '€' : null, PREVIEW_MODE ? '286€' : '0€'), PREVIEW_MODE ? '5 factures · HT' : (STATE.billing?.totalPaid ? 'Total HT' : 'Aucune facture'), 'neutral')}
+        ${statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, PREVIEW_MODE ? '79€' : '79€'), PREVIEW_MODE ? '01/06/2026 — dans 23 jours' : 'Prochaine échéance', 'neutral')}
+        ${statCard('Méthodes de paiement', String(paymentMethods.length), paymentMethods.length > 0 ? 'actives — ' + (paymentMethods[0]?.brand || 'Carte') + ' par défaut' : 'Aucune carte enregistrée', 'up')}
+        ${statCard('Paiements échoués', displayStat(STATE.billing?.failedPayments != null ? String(STATE.billing.failedPayments) : '0', '0'), PREVIEW_MODE ? 'aucun incident 2026' : (STATE.billing?.failedPayments ? STATE.billing.failedPayments + ' incident(s)' : 'Aucun incident'), 'up')}
       </div>
 
       <!-- PAYMENT METHODS -->
@@ -9107,7 +9107,7 @@ function renderBilling() {
       ${statCard('Plan actuel', plan, 'actif · ' + (plan === 'Standard' ? '29€' : (plan === 'Agency' || plan === 'Ultra') ? '149€' : '79€') + '/mois', 'up')}
       ${statCard('Usage Health', displayStat(healthScore!=null?healthScore+'/100':null,'78/100'), healthScore!=null?(healthScore > 70 ? 'Sain — sous contrôle' : 'Attention requise'):PREVIEW_MODE?'Sain — sous contrôle':'Calcul en cours', healthScore!=null?(healthScore > 70 ? 'up' : 'down'):'neutral')}
       ${statCard('Potentiel upgrade', displayStat(upgradeScore!=null&&upgradeScore>0?upgradeScore+'%':null,'62%'), isUltra ? 'Plan optimal atteint' : 'Score upgrade détecté', isUltra ? 'up' : 'neutral')}
-      ${statCard('Prochain débit', displayStat(STATE.billing?.nextAmount ? STATE.billing.nextAmount + '€' : null, '79€'), PREVIEW_MODE ? '01/06/2026 · dans 23j' : 'Voir Stripe', 'neutral')}
+      ${statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '79€'), PREVIEW_MODE ? '01/06/2026 · dans 23j' : 'Prochaine échéance', 'neutral')}
     </div>
 
     <!-- PLAN + GAUGES -->
@@ -9159,7 +9159,7 @@ function renderBilling() {
           <div>
             <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Usage Health Score</div>
             <div style="font-size:11px;color:${usageHealth > 70 ? '#22c55e' : '#f59e0b'};font-weight:600;margin-bottom:4px">${usageHealth > 70 ? '✓ Sain — toutes ressources sous contrôle' : '⚠ Quelques ressources à surveiller'}</div>
-            <div style="font-size:10px;color:var(--fp-text-faint)">Score composite 9 ressources</div>
+            <div style="font-size:10px;color:var(--fp-text-faint)">Score composé · 9 ressources</div>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:7px">
@@ -11943,7 +11943,7 @@ function renderAI() {
   const promptCats = [
     {
       cat:'🔍 SEO & Audits',
-      prompts:['Quels sont mes 3 sites les plus critiques ?','Analyser les balises title manquantes',(function(){ var s=typeof avgScore==='function'?avgScore():null; return (s!=null&&isFinite(s))?'Comment passer de '+Math.round(s)+' à '+Math.min(Math.round(s)+10,100)+'/100 ?':'Comment améliorer mon score SEO ?'; }()),'Comparer mon score vs mes concurrents'],
+      prompts:['Quels sont mes 3 sites les plus critiques ?','Analyser les balises title manquantes','Comment améliorer mon score SEO ?','Comparer mon score vs mes concurrents'],
     },
     {
       cat:'📍 Local SEO',
@@ -11951,11 +11951,11 @@ function renderAI() {
     },
     {
       cat:'📊 Rapports & Data',
-      prompts:['Créer un rapport mensuel pour mon client','Résumer les performances de mai 2026','Quels KPIs mettre en avant ?','Générer un résumé exécutif (2 pages)'],
+      prompts:['Créer un rapport mensuel pour mon client','Résumer les performances de ' + PREV_MONTH,'Quels KPIs mettre en avant ?','Générer un résumé exécutif (2 pages)'],
     },
     {
       cat:'⚡ Actions prioritaires',
-      prompts:['Que faire en priorité aujourd\'hui ?','Comment améliorer mon uptime ?','Plan d\'action 30 jours pour +10 pts SEO','Identifier les fuites de conversion'],
+      prompts:['Que faire en priorité aujourd\'hui ?','Comment améliorer mon uptime ?','Quel plan d\'action pour les 30 prochains jours ?','Identifier les fuites de conversion'],
     },
   ];
 

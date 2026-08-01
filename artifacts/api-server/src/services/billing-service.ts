@@ -71,11 +71,13 @@ export async function getUsageSummary(orgId = "default") {
         return Number(r.rows[0]?.count ?? 0);
       } catch { return 0; }
     };
-    const [auditsUsed, monitorsUsed, reportsUsed, seatsUsed] = await Promise.all([
+    const [auditsUsed, monitorsUsed, reportsUsed, seatsUsed, exportsUsed, pdfsUsed] = await Promise.all([
       safeCount(`SELECT COUNT(*) FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId]),
       safeCount(`SELECT COUNT(*) FROM monitors WHERE org_id=$1`, [orgId]),
       safeCount(`SELECT COUNT(*) FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId]),
       safeCount(`SELECT COUNT(*) FROM team_members WHERE org_id=$1`, [orgId]),
+      safeCount(`SELECT COUNT(*) FROM report_exports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId]),
+      safeCount(`SELECT COUNT(*) FROM report_exports WHERE org_id=$1 AND created_at > date_trunc('month', now()) AND (format='pdf' OR format IS NULL)`, [orgId]),
     ]);
 
     return {
@@ -85,7 +87,8 @@ export async function getUsageSummary(orgId = "default") {
         audits:   { used: auditsUsed,   limit: limits.audits,   pct: Math.round((auditsUsed   / Math.max(limits.audits,   1)) * 100) },
         monitors: { used: monitorsUsed, limit: limits.monitors + extraMonitors * 50, pct: Math.round((monitorsUsed / Math.max(limits.monitors, 1)) * 100) },
         reports:  { used: reportsUsed,  limit: limits.reports,  pct: Math.round((reportsUsed  / Math.max(limits.reports,  1)) * 100) },
-        exports:  { used: 0,            limit: limits.exports,  pct: 0 },
+        exports:  { used: exportsUsed,  limit: limits.exports,  pct: Math.round((exportsUsed  / Math.max(limits.exports ?? limits.reports, 1)) * 100) },
+        pdfs:     { used: pdfsUsed,     limit: limits.reports,  pct: Math.round((pdfsUsed     / Math.max(limits.reports,  1)) * 100) },
         seats:    { used: seatsUsed,    limit: limits.teamMembers + extraSeats, pct: Math.round((seatsUsed / Math.max(limits.teamMembers, 1)) * 100) },
       },
       addons: orgData?.addons ?? {},

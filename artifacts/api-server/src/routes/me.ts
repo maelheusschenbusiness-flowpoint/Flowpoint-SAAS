@@ -126,6 +126,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
               monitor: { used: (monR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.monitors },
               reports: { used: (repR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
               exports: { used: (expR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.exports ?? limits.reports },
+              pdf:     { used: (expR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
             };
           } catch { return dbData?.usage ?? {}; }
         })(),
