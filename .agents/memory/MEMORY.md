@@ -1,3 +1,4 @@
+- [Stripe webhook secret key name](stripe-webhook-secret-key.md) — must read STRIPE_WEBHOOK_SECRET || STRIPE_WEBHOOK_SECRET_RENDER; only the _RENDER name is set in prod secrets
 - [github_connections real schema](github-service-schema.md) — github_user_id NOT NULL, connected_at not installed_at; exchangeCodeForToken returns string not object; getGitHubUser returns avatarUrl camelCase
 - [Test setup — orgDb + dbContext](test-setup-orgdb.md) — routes using req.orgDb need BOTH orgContext AND dbContext in test server; orgContext alone leaves req.orgDb undefined
 - [Router catch-all plan gate pattern](router-catchall-plangate.md) — router.use(requireFeature()) with no path prefix intercepts ALL unmatched routes; always path-scope it

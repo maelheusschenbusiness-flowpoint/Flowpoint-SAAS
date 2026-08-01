@@ -8416,14 +8416,9 @@ function renderBilling() {
         showToast('info', 'Vous êtes déjà sur le plan ' + _targetPlan.charAt(0).toUpperCase() + _targetPlan.slice(1) + '.');
         return;
       }
-      // Active or trialing → upgrade directly, no modal, no checkout, no new customer
-      const _bStatus = (typeof getBillingStatus === 'function' ? getBillingStatus() : (STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || '');
-      if (_bStatus === 'active' || _bStatus === 'trialing') {
-        window._fpDoUpgrade(_targetPlan);
-        return;
-      }
-      // No active subscription → standard pricing/checkout flow
-      fpGoToPricing(_targetPlan);
+      // Always try the upgrade API first — _fpDoUpgrade handles the noSubscription
+      // response from the server and redirects to pricing only when truly needed.
+      window._fpDoUpgrade(_targetPlan);
     };
     window._fpDoUpgrade = async function(plan) {
       showToast('info', 'Mise à jour du plan en cours…');
@@ -8592,9 +8587,27 @@ function renderBilling() {
       if (!_a) { fpGoToPricing(); return; }
       const key = _ADDON_STRIPE_KEYS[_a.name];
       if (!key) { fpGoToPricing(); return; }
+      const _bStatus = (typeof getBillingStatus === 'function' ? getBillingStatus() : (STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || '');
+      if (_bStatus === 'active' || _bStatus === 'trialing') {
+        // Active subscription → activate directly via API, no redirect
+        showToast('info', 'Activation en cours…');
+        try {
+          const r = await apiAction('POST', '/api/addons/' + encodeURIComponent(key) + '/activate', {});
+          if (r && r.ok) {
+            showToast('success', (_a.name || 'Add-on') + ' activé ✓');
+            try { sessionStorage.removeItem('fp-state-cache'); } catch(_e) {}
+            _apiFetchCache.clear();
+            _apiFetchInFlight.clear();
+            loadData().then(function() { navigate('billing'); navigateSub('addons'); }).catch(function() { render(); });
+          } else {
+            showToast('error', (r && r.error) || 'Activation impossible');
+          }
+        } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'activation impossible')); }
+        return;
+      }
+      // No active subscription → redirect to pricing for checkout
       showToast('info', 'Chargement…');
       try {
-        /* plan:null = add-on only purchase, don't pre-select or re-bill current plan */
         const cart = { plan: null, addons: {}, fromDashboard: true };
         cart.addons[key] = 1;
         localStorage.setItem('fp_cart', JSON.stringify(cart));

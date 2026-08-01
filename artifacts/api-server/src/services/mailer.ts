@@ -16,6 +16,7 @@
  */
 
 import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import { logger } from "../lib/logger.js";
 import fs from "fs";
 import path from "path";
@@ -24,15 +25,28 @@ import path from "path";
 
 function getResend(): Resend | null {
   const key = process.env["RESEND_API_KEY"];
-  if (!key) {
-    logger.warn("[Mailer] RESEND_API_KEY not set — emails disabled");
-    return null;
-  }
+  if (!key) return null;
   return new Resend(key);
 }
 
 function getFrom(): string {
-  return process.env["RESEND_FROM"] || "FlowPoint <noreply@flowpoint.pro>";
+  return (
+    process.env["RESEND_FROM"] ||
+    process.env["SMTP_FROM"] ||
+    "FlowPoint <noreply@flowpoint.pro>"
+  );
+}
+
+// ── SMTP transport (nodemailer) — used when RESEND_API_KEY is absent ──────────
+
+function getSmtpTransport(): nodemailer.Transporter | null {
+  const host = process.env["SMTP_HOST"];
+  const pass = process.env["SMTP_PASS"];
+  if (!host || !pass) return null;
+  const port   = parseInt(process.env["SMTP_PORT"] || "465", 10);
+  const secure = process.env["SMTP_SECURE"] !== "false"; // default true
+  const user   = process.env["SMTP_USER"] || "resend";
+  return nodemailer.createTransport({ host, port, secure, auth: { user, pass } });
 }
 
 export interface MailResult {
@@ -206,25 +220,48 @@ async function send(opts: {
   }
 
   const resend = getResend();
-  if (!resend) return { ok: false, error: "RESEND_API_KEY_MISSING" };
 
+  // ── Path A: Resend SDK (preferred when RESEND_API_KEY is set) ───────────────
+  if (resend) {
+    try {
+      const result = await resend.emails.send({
+        from: opts.from ?? getFrom(),
+        to: opts.to,
+        subject: opts.subject,
+        html: opts.html,
+        tags: opts.tag ? [{ name: "type", value: opts.tag }] : undefined,
+      });
+      if (result.error) {
+        logger.warn({ err: result.error, to: opts.to, subject: opts.subject }, "[Mailer] Resend error");
+        return { ok: false, error: result.error.message };
+      }
+      logger.info({ id: result.data?.id, to: opts.to, tag: opts.tag }, "[Mailer] Email sent via Resend SDK");
+      return { ok: true, id: result.data?.id };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err, to: opts.to, subject: opts.subject }, "[Mailer] Resend SDK send failed");
+      return { ok: false, error: msg };
+    }
+  }
+
+  // ── Path B: SMTP transport (nodemailer) — when RESEND_API_KEY absent ─────────
+  const smtp = getSmtpTransport();
+  if (!smtp) {
+    logger.warn({ to: opts.to }, "[Mailer] No email transport available (RESEND_API_KEY and SMTP_PASS both missing)");
+    return { ok: false, error: "NO_EMAIL_TRANSPORT" };
+  }
   try {
-    const result = await resend.emails.send({
+    const info = await smtp.sendMail({
       from: opts.from ?? getFrom(),
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
-      tags: opts.tag ? [{ name: "type", value: opts.tag }] : undefined,
     });
-    if (result.error) {
-      logger.warn({ err: result.error, to: opts.to, subject: opts.subject }, "[Mailer] Resend error");
-      return { ok: false, error: result.error.message };
-    }
-    logger.info({ id: result.data?.id, to: opts.to, tag: opts.tag }, "[Mailer] Email sent");
-    return { ok: true, id: result.data?.id };
+    logger.info({ id: info.messageId, to: opts.to, tag: opts.tag }, "[Mailer] Email sent via SMTP");
+    return { ok: true, id: info.messageId };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error({ err, to: opts.to, subject: opts.subject }, "[Mailer] Failed to send email");
+    logger.error({ err, to: opts.to, subject: opts.subject }, "[Mailer] SMTP send failed");
     return { ok: false, error: msg };
   }
 }

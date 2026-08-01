@@ -339,31 +339,30 @@ function getPublicUrl(): string {
 
 async function sendMagicEmail(email: string, link: string): Promise<void> {
   const resendKey = process.env["RESEND_API_KEY"];
-  if (!resendKey) {
-    logger.warn("[Auth] RESEND_API_KEY not set — cannot send magic link");
+  const smtpPass  = process.env["SMTP_PASS"];
+  const smtpHost  = process.env["SMTP_HOST"];
+
+  if (!resendKey && !smtpPass) {
+    logger.warn("[Auth] No email transport (RESEND_API_KEY and SMTP_PASS both missing) — cannot send magic link");
     throw new Error("RESEND_API_KEY_MISSING");
   }
 
-  // Centralized transactional sender — override via RESEND_FROM env var only
+  // Centralized transactional sender — override via RESEND_FROM or SMTP_FROM env var
   const fromEmail =
-    process.env["RESEND_FROM"] || "FlowPoint <noreply@flowpoint.pro>";
+    process.env["RESEND_FROM"] ||
+    process.env["SMTP_FROM"] ||
+    `FlowPoint <${process.env["ALERT_EMAIL_FROM"] || "noreply@flowpoint.pro"}>`;
 
   logger.info({
     email,
     from: fromEmail,
+    transport: resendKey ? "resend-sdk" : "smtp",
     publicBaseUrl: process.env["PUBLIC_BASE_URL"] || "(not set)",
-    resendKeyPresent: true,
   }, "[Auth] Sending magic link email");
 
-  const resend = new Resend(resendKey);
-  let result: Awaited<ReturnType<typeof resend.emails.send>>;
-
-  try {
-    result = await resend.emails.send({
-      from: fromEmail,
-      to: email,
-      subject: "Votre lien de connexion FlowPoint",
-      html: `<!DOCTYPE html>
+  // ── Send via available transport ────────────────────────────────────────────
+  const _emailSubject = "Votre lien de connexion FlowPoint";
+  const _emailHtml = `<!DOCTYPE html>
 <html lang="fr" xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta charset="UTF-8"/>
@@ -483,33 +482,55 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
   </table>
 
 </body>
-</html>`,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.error({ err: msg, email, from: fromEmail }, "[Auth] Resend threw unexpected error");
-    throw new Error("EMAIL_SEND_FAILED: " + msg);
-  }
+</html>`;
 
-  if (result.error) {
-    const errName = (result.error as { name?: string }).name || "";
-    const errMsg  = (result.error as { message?: string }).message || JSON.stringify(result.error);
-    logger.error({ error: result.error, email, from: fromEmail }, "[Auth] Resend API returned error");
-
-    // Surface a specific message for domain-verification failures
-    if (
-      errName.includes("domain") ||
-      errName.includes("validation") ||
-      errMsg.toLowerCase().includes("domain") ||
-      errMsg.toLowerCase().includes("not verified") ||
-      errMsg.toLowerCase().includes("sender")
-    ) {
-      throw new Error("DOMAIN_NOT_VERIFIED: " + errMsg);
+  if (resendKey) {
+    // ── Resend SDK path ──────────────────────────────────────────────────────
+    const resendClient = new Resend(resendKey);
+    let result: Awaited<ReturnType<typeof resendClient.emails.send>>;
+    try {
+      result = await resendClient.emails.send({
+        from:    fromEmail,
+        to:      email,
+        subject: _emailSubject,
+        html:    _emailHtml,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg, email, from: fromEmail }, "[Auth] Resend SDK threw error");
+      throw new Error("EMAIL_SEND_FAILED: " + msg);
     }
-    throw new Error("RESEND_ERROR: " + errMsg);
+    if (result.error) {
+      const errMsg = (result.error as { message?: string }).message || JSON.stringify(result.error);
+      logger.error({ error: result.error, email }, "[Auth] Resend API error");
+      if (
+        errMsg.toLowerCase().includes("domain") ||
+        errMsg.toLowerCase().includes("not verified") ||
+        errMsg.toLowerCase().includes("sender")
+      ) {
+        throw new Error("DOMAIN_NOT_VERIFIED: " + errMsg);
+      }
+      throw new Error("RESEND_ERROR: " + errMsg);
+    }
+    logger.info({ email, id: result.data?.id, from: fromEmail }, "[Auth] Magic link sent (Resend SDK)");
+  } else {
+    // ── SMTP path (nodemailer) — used when RESEND_API_KEY absent ────────────
+    const { createTransport } = await import("nodemailer");
+    const smtp = createTransport({
+      host:   smtpHost!,
+      port:   parseInt(process.env["SMTP_PORT"] || "465", 10),
+      secure: process.env["SMTP_SECURE"] !== "false",
+      auth:   { user: process.env["SMTP_USER"] || "resend", pass: smtpPass! },
+    });
+    try {
+      const info = await smtp.sendMail({ from: fromEmail, to: email, subject: _emailSubject, html: _emailHtml });
+      logger.info({ messageId: info.messageId, email, from: fromEmail }, "[Auth] Magic link sent (SMTP)");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg, email, from: fromEmail }, "[Auth] SMTP send failed");
+      throw new Error("EMAIL_SEND_FAILED: " + msg);
+    }
   }
-
-  logger.info({ email, id: result.data?.id, from: fromEmail }, "[Auth] Magic link email delivered");
 }
 
 router.post("/auth/magic-link", authRateLimit, async (req: Request, res: Response) => {

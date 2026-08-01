@@ -337,7 +337,7 @@ export async function activateNewSignup(opts: {
 
 async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
-  const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"];
+  const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
 
   let event: { type: string; data: { object: Record<string, unknown> } };
 
