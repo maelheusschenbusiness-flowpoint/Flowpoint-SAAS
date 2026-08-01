@@ -590,10 +590,18 @@ async function dispatchTool(
       durationMs: Date.now() - t0 });
 
     const timeStr = startTime ? ` à ${startTime}` : "";
+    const navCreateDest = validateNavAction(
+      { destinationId: "calendar-today", label: "Voir mes événements", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const navCreateProposal = navCreateDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [navCreateDest] })
+      : null;
     return { toolCallId: logId, toolName: name, ok: true,
       content: `Événement créé — ID: ${id} | "${title}" | ${date}${timeStr} (${duration} min)`,
       data: event, actionLogId: logId,
-      undoLabel: `Annuler la création de "${title}"` };
+      undoLabel: `Annuler la création de "${title}"`,
+      navProposal: navCreateProposal };
   }
 
   // ── update_calendar_event ─────────────────────────────────────────────────
@@ -666,10 +674,18 @@ async function dispatchTool(
       tool: name, args, confirmationLevel: toolDef.confirmationLevel,
       result: "ok", snapshot: snap, versionAfter: updateVersionAfter, durationMs: Date.now() - t0 });
 
+    const navUpdateDest = validateNavAction(
+      { destinationId: "calendar-today", label: "Voir mes événements", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const navUpdateProposal = navUpdateDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [navUpdateDest] })
+      : null;
     return { toolCallId: logId, toolName: name, ok: true,
       content: `Événement "${snap["title"]}" (ID: ${id}) modifié avec succès.`,
       data: { id, updated: args }, snapshot: snap, actionLogId: logId,
-      undoLabel: `Annuler la modification de "${snap["title"]}"` };
+      undoLabel: `Annuler la modification de "${snap["title"]}"`,
+      navProposal: navUpdateProposal };
   }
 
   // ── move_calendar_event ───────────────────────────────────────────────────
@@ -727,10 +743,18 @@ async function dispatchTool(
 
     const oldInfo = `${snap["date"]}${snap["start_time"] ? ` à ${snap["start_time"]}` : ""}`;
     const newInfo = `${newDate}${newStartTime ? ` à ${newStartTime}` : ""}`;
+    const navMoveDest = validateNavAction(
+      { destinationId: "calendar-week", label: "Voir la semaine", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const navMoveProposal = navMoveDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [navMoveDest] })
+      : null;
     return { toolCallId: logId, toolName: name, ok: true,
       content: `Événement "${snap["title"]}" déplacé de ${oldInfo} vers ${newInfo}.`,
       data: { id, newDate, newStartTime, newDuration }, snapshot: snap, actionLogId: logId,
-      undoLabel: `Annuler le déplacement de "${snap["title"]}"` };
+      undoLabel: `Annuler le déplacement de "${snap["title"]}"`,
+      navProposal: navMoveProposal };
   }
 
   // ── delete_calendar_event ─────────────────────────────────────────────────
@@ -756,10 +780,18 @@ async function dispatchTool(
       tool: name, args, confirmationLevel: toolDef.confirmationLevel,
       result: "ok", snapshot: snap, versionAfter: null, durationMs: Date.now() - t0 });
 
+    const navDeleteDest = validateNavAction(
+      { destinationId: "calendar-today", label: "Retour au calendrier", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const navDeleteProposal = navDeleteDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [navDeleteDest] })
+      : null;
     return { toolCallId: logId, toolName: name, ok: true,
       content: `Événement "${snap["title"]}" (ID: ${id}) supprimé définitivement.`,
       data: { id, deleted: true }, snapshot: snap, actionLogId: logId,
-      undoLabel: `Annuler la suppression de "${snap["title"]}"` };
+      undoLabel: `Annuler la suppression de "${snap["title"]}"`,
+      navProposal: navDeleteProposal };
   }
 
   // fallback

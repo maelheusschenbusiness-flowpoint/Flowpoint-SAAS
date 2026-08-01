@@ -1471,6 +1471,7 @@ router.post("/ai/conversations/:id/confirm", async (req: Request, res: Response)
       undoToken: execResult.ok && execResult.undoLabel
         ? { actionLogId: execResult.actionLogId, label: execResult.undoLabel, ttlMinutes: 30 }
         : null,
+      navProposal: execResult.navProposal ?? null,
     });
   } catch (err) {
     logger.error({ err, proposalId, orgId }, "[agent] confirm failed");
