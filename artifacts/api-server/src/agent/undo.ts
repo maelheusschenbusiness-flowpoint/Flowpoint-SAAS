@@ -118,10 +118,12 @@ export async function undoAction(
   ).catch(err => logger.warn({ err }, "[undo] mark undone_at failed"));
 
   // 5. Log activité
+  const calendarTools = ["create_calendar_event", "update_calendar_event", "move_calendar_event", "delete_calendar_event"];
+  const targetType = calendarTools.includes(toolName) ? "calendar_event" : "mission";
   await store.logActivity({
     type: "report", label: `[IA] Annulation : ${toolName} (${(snap as Record<string, unknown>)["title"] ?? actionLogId})`,
     targetId: (snap as Record<string, unknown>)["id"] as string ?? actionLogId,
-    targetType: "mission",
+    targetType,
     metadata: { actionLogId, toolName }, orgId,
   }).catch(() => {});
 
@@ -240,6 +242,81 @@ async function applySnapshot(
       return { stale: true };
     }
 
+    return;
+  }
+
+  // ── Calendrier — Phase 3 ─────────────────────────────────────────────────────
+
+  if (toolName === "create_calendar_event") {
+    // Annuler une création = supprimer l'événement (idempotent)
+    await pool.query(`DELETE FROM calendar_events WHERE id = $1 AND org_id = $2`, [id, orgId]);
+    return;
+  }
+
+  if (toolName === "delete_calendar_event") {
+    // Annuler une suppression = réinsérer fidèlement depuis le snapshot
+    await pool.query(`
+      INSERT INTO calendar_events (
+        id, org_id, title, site, type, date, start_time, duration, notes, client_name,
+        priority, color, reminder, linked_mission_id, updated_at, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),COALESCE($15,NOW()))
+      ON CONFLICT (id) DO NOTHING
+    `, [
+      id, orgId,
+      snap["title"] ?? "", snap["site"] ?? "", snap["type"] ?? "Autre",
+      snap["date"] ?? "", snap["start_time"] ?? snap["startTime"] ?? "",
+      snap["duration"] ?? 60, snap["notes"] ?? "", snap["client_name"] ?? snap["clientName"] ?? "",
+      snap["priority"] ?? "normal", snap["color"] ?? "", snap["reminder"] ?? 0,
+      snap["linked_mission_id"] ?? snap["linkedMissionId"] ?? null,
+      snap["created_at"] ?? null,
+    ]);
+    return;
+  }
+
+  if (toolName === "update_calendar_event" || toolName === "move_calendar_event") {
+    // Même règle que missions : logs sans version_after refusés
+    if (versionAfter === null || versionAfter === undefined) {
+      return { versionUnavailable: true };
+    }
+
+    // Restauration atomique avec comparaison de version (troncature ms obligatoire)
+    const calUpdateRes = await pool.query<{ id: string }>(`
+      UPDATE calendar_events SET
+        title             = $1,
+        site              = $2,
+        type              = $3,
+        date              = $4,
+        start_time        = $5,
+        duration          = $6,
+        notes             = $7,
+        client_name       = $8,
+        priority          = COALESCE($9, priority),
+        color             = COALESCE($10, color),
+        reminder          = COALESCE($11::INTEGER, reminder),
+        linked_mission_id = $12,
+        updated_at        = NOW()
+      WHERE id = $13 AND org_id = $14
+        AND date_trunc('milliseconds', updated_at)
+          = date_trunc('milliseconds', $15::TIMESTAMPTZ)
+    `, [
+      snap["title"] ?? "", snap["site"] ?? "", snap["type"] ?? "Autre",
+      snap["date"] ?? "", snap["start_time"] ?? snap["startTime"] ?? "",
+      snap["duration"] ?? 60, snap["notes"] ?? "", snap["client_name"] ?? snap["clientName"] ?? "",
+      snap["priority"] ?? null, snap["color"] ?? null,
+      snap["reminder"] != null ? String(snap["reminder"]) : null,
+      snap["linked_mission_id"] ?? snap["linkedMissionId"] ?? null,
+      id, orgId, versionAfter,
+    ]);
+
+    if ((calUpdateRes.rowCount ?? 0) === 0) {
+      const existsRow = await pool.query(
+        `SELECT id FROM calendar_events WHERE id = $1 AND org_id = $2`, [id, orgId]
+      );
+      if (!existsRow.rows[0]) {
+        throw new Error("L'événement n'existe plus dans votre organisation.");
+      }
+      return { stale: true };
+    }
     return;
   }
 

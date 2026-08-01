@@ -15,10 +15,20 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
-import { TOOL_BY_NAME, TOOL_ARG_SCHEMAS, type AIToolCall, type AIToolCallResult } from "./mission-tools.js";
+import { TOOL_BY_NAME as _MISSION_TOOL_BY_NAME, TOOL_ARG_SCHEMAS as _MISSION_ARG_SCHEMAS, type AIToolCall, type AIToolCallResult } from "./mission-tools.js";
+import { CALENDAR_TOOL_BY_NAME, CALENDAR_ARG_SCHEMAS, snapCalendarEvent, detectCalendarConflicts } from "./calendar-tools.js";
 import { filterDestinations, validateNavAction } from "./destination-registry.js";
 import { createNavigationProposal, type ActionProposal } from "./proposals.js";
 import type { Permission } from "./permissions.js";
+
+// ── Phase 3 : registre unifié missions + calendrier ───────────────────────
+const TOOL_BY_NAME: Map<string, import("./mission-tools.js").ToolDef> = new Map([
+  ..._MISSION_TOOL_BY_NAME, ...CALENDAR_TOOL_BY_NAME,
+]);
+const TOOL_ARG_SCHEMAS: Record<string, { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } }> = {
+  ..._MISSION_ARG_SCHEMAS,
+  ...(CALENDAR_ARG_SCHEMAS as Record<string, { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } }>),
+};
 
 // ── Snapshot helpers ─────────────────────────────────────────────────────────
 
@@ -465,6 +475,291 @@ async function dispatchTool(
     return { toolCallId: logId, toolName: name, ok: true,
       content: `Navigation proposée vers "${nav.route}"${nav.highlight ? ` (ancre: ${nav.highlight})` : ""}.`,
       navProposal: proposal, actionLogId: logId };
+  }
+
+  // ── search_calendar_event ─────────────────────────────────────────────────
+  if (name === "search_calendar_event") {
+    const query    = args["query"] as string | undefined;
+    const dateArg  = args["date"]  as string | undefined;
+    const typeArg  = args["type"]  as string | undefined;
+    const limit    = (args["limit"] as number) ?? 5;
+
+    const today    = new Date().toISOString().slice(0, 10);
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    const weekEnd  = new Date(Date.now() + 7  * 86_400_000).toISOString().slice(0, 10);
+    const monthEnd = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+
+    let sql = `SELECT id, title, site, type, date, start_time, duration, notes, client_name, priority, color
+               FROM calendar_events WHERE org_id = $1`;
+    const params: unknown[] = [orgId];
+    let p = 2;
+
+    if (dateArg) {
+      if (dateArg === "today")    { sql += ` AND date = $${p++}`;                       params.push(today); }
+      else if (dateArg === "tomorrow") { sql += ` AND date = $${p++}`;                  params.push(tomorrow); }
+      else if (dateArg === "week")  { sql += ` AND date >= $${p++} AND date <= $${p++}`; params.push(today, weekEnd); }
+      else if (dateArg === "month") { sql += ` AND date >= $${p++} AND date <= $${p++}`; params.push(today, monthEnd); }
+      else                          { sql += ` AND date = $${p++}`;                       params.push(dateArg); }
+    }
+    if (query) {
+      sql += ` AND (title ILIKE $${p} OR notes ILIKE $${p} OR client_name ILIKE $${p})`; p++;
+      params.push(`%${query}%`);
+    }
+    if (typeArg) { sql += ` AND type ILIKE $${p++}`; params.push(`%${typeArg}%`); }
+    sql += ` ORDER BY date ASC, start_time ASC LIMIT $${p}`; params.push(limit);
+
+    const r = await pool.query(sql, params);
+    const events = r.rows;
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+      result: "ok", durationMs: Date.now() - t0 });
+
+    if (events.length === 0) {
+      const crit = [query ? `"${query}"` : null, dateArg, typeArg].filter(Boolean).join(", ");
+      return { toolCallId: logId, toolName: name, ok: true,
+        content: `Aucun événement trouvé pour ${crit || "cette recherche"}. L'agenda est peut-être vide ou les critères ne correspondent à aucun événement.`,
+        actionLogId: logId };
+    }
+
+    const list = events.map((e: Record<string, unknown>) =>
+      `- ID: ${e["id"]} | "${e["title"]}" | ${e["date"]}${e["start_time"] ? ` à ${e["start_time"]}` : ""}` +
+      `${e["duration"] ? ` (${e["duration"]} min)` : ""}` +
+      `${e["type"] && e["type"] !== "Autre" ? ` | ${e["type"]}` : ""}` +
+      `${e["client_name"] ? ` | Client: ${e["client_name"]}` : ""}` +
+      `${e["priority"] && e["priority"] !== "normal" ? ` | Priorité: ${e["priority"]}` : ""}`
+    ).join("\n");
+
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `${events.length} événement(s) trouvé(s) :\n${list}`,
+      data: { events }, actionLogId: logId };
+  }
+
+  // ── create_calendar_event ─────────────────────────────────────────────────
+  if (name === "create_calendar_event") {
+    const title     = args["title"] as string;
+    const date      = args["date"]  as string;
+    const startTime = (args["startTime"] as string) ?? "";
+    const duration  = (args["duration"] as number) ?? 60;
+
+    // Vérifier les conflits de créneau
+    if (startTime) {
+      const conflicts = await detectCalendarConflicts({ orgId, date, startTime, duration, pool });
+      if (conflicts.length > 0) {
+        const msg = conflicts.map(c => `"${c.title}" à ${c.start_time} (${c.duration} min)`).join(", ");
+        return { toolCallId: logId, toolName: name, ok: false,
+          content: `Conflit de créneau détecté — vous avez déjà : ${msg}. Souhaitez-vous déplacer l'ancien, choisir un autre horaire, ou créer quand même malgré le conflit ?`,
+          actionLogId: logId };
+      }
+    }
+
+    const id = `ce_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    await pool.query(`
+      INSERT INTO calendar_events
+        (id, org_id, title, site, type, date, start_time, duration, notes, client_name,
+         priority, color, reminder, linked_mission_id, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW())
+    `, [
+      id, orgId, title,
+      (args["site"] as string) ?? "",
+      (args["type"] as string) ?? "Autre",
+      date, startTime, duration,
+      (args["notes"] as string) ?? "",
+      (args["clientName"] as string) ?? "",
+      (args["priority"] as string) ?? "normal",
+      (args["color"] as string) ?? "",
+      (args["reminder"] as number) ?? 0,
+      (args["linkedMissionId"] as string) ?? null,
+    ]);
+
+    const row = await pool.query(`SELECT * FROM calendar_events WHERE id = $1`, [id]);
+    const event = row.rows[0];
+    const createVersionAfter = event?.updated_at
+      ? new Date(event.updated_at as string | Date).toISOString()
+      : null;
+
+    await store.logActivity({
+      type: "report", label: `[IA] Événement créé : "${title}" (${date})`,
+      targetId: id, targetType: "calendar_event",
+      metadata: { provider, model, tool: name, date, startTime }, orgId,
+    }).catch(() => {});
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+      result: "ok", snapshot: event ?? { id }, versionAfter: createVersionAfter,
+      durationMs: Date.now() - t0 });
+
+    const timeStr = startTime ? ` à ${startTime}` : "";
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `Événement créé — ID: ${id} | "${title}" | ${date}${timeStr} (${duration} min)`,
+      data: event, actionLogId: logId,
+      undoLabel: `Annuler la création de "${title}"` };
+  }
+
+  // ── update_calendar_event ─────────────────────────────────────────────────
+  if (name === "update_calendar_event") {
+    const id   = args["id"] as string;
+    const snap = await snapCalendarEvent(id, orgId, pool);
+    if (!snap) {
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `Événement ID "${id}" introuvable. Utilise search_calendar_event pour trouver l'ID exact.`,
+        actionLogId: logId };
+    }
+
+    const newDate      = (args["date"] as string)      ?? (snap["date"] as string) ?? "";
+    const newStartTime = (args["startTime"] as string) ?? (snap["start_time"] as string) ?? "";
+    const newDuration  = (args["duration"] as number)  ?? (snap["duration"] as number) ?? 60;
+
+    if ((args["date"] || args["startTime"]) && newStartTime) {
+      const conflicts = await detectCalendarConflicts({
+        orgId, date: newDate, startTime: newStartTime,
+        duration: newDuration, excludeId: id, pool,
+      });
+      if (conflicts.length > 0) {
+        const msg = conflicts.map(c => `"${c.title}" à ${c.start_time}`).join(", ");
+        return { toolCallId: logId, toolName: name, ok: false,
+          content: `Conflit détecté au nouveau créneau : ${msg}. Voulez-vous choisir un autre horaire ?`,
+          actionLogId: logId };
+      }
+    }
+
+    await pool.query(`
+      UPDATE calendar_events SET
+        title             = COALESCE($1, title),
+        site              = COALESCE($2, site),
+        type              = COALESCE($3, type),
+        date              = COALESCE($4, date),
+        start_time        = COALESCE($5, start_time),
+        duration          = COALESCE($6, duration),
+        notes             = COALESCE($7, notes),
+        client_name       = COALESCE($8, client_name),
+        priority          = COALESCE($9, priority),
+        color             = COALESCE($10, color),
+        reminder          = COALESCE($11::INTEGER, reminder),
+        linked_mission_id = COALESCE($12, linked_mission_id),
+        updated_at        = NOW()
+      WHERE id = $13 AND org_id = $14
+    `, [
+      (args["title"] as string)     ?? null, (args["site"] as string)   ?? null,
+      (args["type"] as string)      ?? null, (args["date"] as string)   ?? null,
+      (args["startTime"] as string) ?? null, (args["duration"] as number) != null ? String(args["duration"]) : null,
+      (args["notes"] as string)     ?? null, (args["clientName"] as string) ?? null,
+      (args["priority"] as string)  ?? null, (args["color"] as string)  ?? null,
+      (args["reminder"] as number)  != null ? String(args["reminder"])   : null,
+      (args["linkedMissionId"] as string) ?? null,
+      id, orgId,
+    ]);
+
+    const updRow = await pool.query<{ updated_at: Date | null }>(
+      `SELECT updated_at FROM calendar_events WHERE id = $1 AND org_id = $2`, [id, orgId]);
+    const updateVersionAfter = updRow.rows[0]?.updated_at
+      ? new Date(updRow.rows[0].updated_at).toISOString()
+      : null;
+
+    await store.logActivity({
+      type: "report", label: `[IA] Événement modifié : "${snap["title"]}"`,
+      targetId: id, targetType: "calendar_event",
+      metadata: { provider, model, tool: name, changes: args }, orgId,
+    }).catch(() => {});
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+      result: "ok", snapshot: snap, versionAfter: updateVersionAfter, durationMs: Date.now() - t0 });
+
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `Événement "${snap["title"]}" (ID: ${id}) modifié avec succès.`,
+      data: { id, updated: args }, snapshot: snap, actionLogId: logId,
+      undoLabel: `Annuler la modification de "${snap["title"]}"` };
+  }
+
+  // ── move_calendar_event ───────────────────────────────────────────────────
+  if (name === "move_calendar_event") {
+    const id   = args["id"] as string;
+    const snap = await snapCalendarEvent(id, orgId, pool);
+    if (!snap) {
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `Événement ID "${id}" introuvable. Utilise search_calendar_event pour trouver l'ID exact.`,
+        actionLogId: logId };
+    }
+
+    const newDate      = (args["newDate"] as string)      ?? (snap["date"] as string)       ?? "";
+    const newStartTime = (args["newStartTime"] as string) ?? (snap["start_time"] as string) ?? "";
+    const newDuration  = (args["newDuration"] as number)  ?? (snap["duration"] as number)   ?? 60;
+
+    if (newStartTime) {
+      const conflicts = await detectCalendarConflicts({
+        orgId, date: newDate, startTime: newStartTime,
+        duration: newDuration, excludeId: id, pool,
+      });
+      if (conflicts.length > 0) {
+        const msg = conflicts.map(c => `"${c.title}" à ${c.start_time}`).join(", ");
+        return { toolCallId: logId, toolName: name, ok: false,
+          content: `Conflit détecté au créneau cible : ${msg}. Souhaitez-vous un autre horaire ou conserver quand même ?`,
+          actionLogId: logId };
+      }
+    }
+
+    await pool.query(`
+      UPDATE calendar_events SET
+        date       = $1,
+        start_time = $2,
+        duration   = $3,
+        updated_at = NOW()
+      WHERE id = $4 AND org_id = $5
+    `, [newDate, newStartTime, newDuration, id, orgId]);
+
+    const moveRow = await pool.query<{ updated_at: Date | null }>(
+      `SELECT updated_at FROM calendar_events WHERE id = $1 AND org_id = $2`, [id, orgId]);
+    const moveVersionAfter = moveRow.rows[0]?.updated_at
+      ? new Date(moveRow.rows[0].updated_at).toISOString()
+      : null;
+
+    await store.logActivity({
+      type: "report",
+      label: `[IA] Événement déplacé : "${snap["title"]}" → ${newDate}${newStartTime ? ` à ${newStartTime}` : ""}`,
+      targetId: id, targetType: "calendar_event",
+      metadata: { provider, model, tool: name, newDate, newStartTime }, orgId,
+    }).catch(() => {});
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+      result: "ok", snapshot: snap, versionAfter: moveVersionAfter, durationMs: Date.now() - t0 });
+
+    const oldInfo = `${snap["date"]}${snap["start_time"] ? ` à ${snap["start_time"]}` : ""}`;
+    const newInfo = `${newDate}${newStartTime ? ` à ${newStartTime}` : ""}`;
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `Événement "${snap["title"]}" déplacé de ${oldInfo} vers ${newInfo}.`,
+      data: { id, newDate, newStartTime, newDuration }, snapshot: snap, actionLogId: logId,
+      undoLabel: `Annuler le déplacement de "${snap["title"]}"` };
+  }
+
+  // ── delete_calendar_event ─────────────────────────────────────────────────
+  if (name === "delete_calendar_event") {
+    const id   = args["id"] as string;
+    const snap = await snapCalendarEvent(id, orgId, pool);
+    if (!snap) {
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `Événement ID "${id}" introuvable. Utilise search_calendar_event pour trouver l'ID exact.`,
+        actionLogId: logId };
+    }
+
+    await pool.query(`DELETE FROM calendar_events WHERE id = $1 AND org_id = $2`, [id, orgId]);
+
+    await store.logActivity({
+      type: "report", label: `[IA] Événement supprimé : "${snap["title"]}" (${snap["date"]})`,
+      targetId: id, targetType: "calendar_event",
+      metadata: { provider, model, tool: name }, orgId,
+    }).catch(() => {});
+
+    // version_after = null : la ligne n'existe plus (identique au pattern delete_mission)
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+      result: "ok", snapshot: snap, versionAfter: null, durationMs: Date.now() - t0 });
+
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `Événement "${snap["title"]}" (ID: ${id}) supprimé définitivement.`,
+      data: { id, deleted: true }, snapshot: snap, actionLogId: logId,
+      undoLabel: `Annuler la suppression de "${snap["title"]}"` };
   }
 
   // fallback

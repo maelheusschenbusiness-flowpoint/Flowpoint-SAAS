@@ -8,12 +8,15 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
-/** Catalogue exhaustif des permissions connues — Phase 1 lecture + Phase 2 écriture missions. */
+/** Catalogue exhaustif des permissions connues — Phase 1 lecture + Phase 2 missions + Phase 3 calendrier. */
 export const PERMISSION_CATALOG = [
   "overview.read",
   "missions.read",
-  "missions.write",   // Phase 2 — création / modification (hors suppression) de missions via IA
-  "missions.delete",  // Phase 2 — suppression de missions via IA (owner + admin uniquement par défaut)
+  "missions.write",    // Phase 2 — création / modification (hors suppression) de missions via IA
+  "missions.delete",   // Phase 2 — suppression de missions via IA (owner + admin uniquement par défaut)
+  "calendar.read",     // Phase 3 — lecture des événements du calendrier
+  "calendar.write",    // Phase 3 — création / modification des événements du calendrier
+  "calendar.delete",   // Phase 3 — suppression des événements du calendrier (owner + admin uniquement)
   "audits.read",
   "monitors.read",
   "keywords.read",
@@ -39,11 +42,11 @@ const ALL_READ: Permission[] = PERMISSION_CATALOG.filter(
 
 /** Bundles par défaut par rôle — valeurs de départ, jamais la source de vérité finale. */
 const ROLE_BUNDLES: Record<string, Permission[]> = {
-  // owner/admin : toutes permissions y compris suppression de missions
+  // owner/admin : toutes permissions y compris suppression missions + calendrier
   owner:   [...PERMISSION_CATALOG],
   admin:   [...PERMISSION_CATALOG],
-  // member : lecture + écriture missions, PAS de suppression
-  member:  [...ALL_READ, "missions.write"],
+  // member : lecture + écriture missions + calendrier, PAS de suppression
+  member:  [...ALL_READ, "missions.write", "calendar.write"],
   // viewer : lecture seule, aucune écriture ni suppression
   viewer:  [...ALL_READ],
   // service (API_SECRET_KEY interne) : tout — cohérent avec requireRole

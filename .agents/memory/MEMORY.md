@@ -103,3 +103,4 @@
 - [AI Agents Phase 1](ai-agents-phase1.md) — registre destinations.json = source unique; marqueur SSE retenu (borné 8Ko); permissions FAIL-CLOSED; prefill validé 2 côtés; jamais de bouton non journalisé
 - [AI Agents Phase 2](ai-agents-phase2.md) — missions.delete distinct; version_after exact (no tolerance); normalizeGeminiFinishReason; QA fixtures sous /api/qa/ (pas /qa/); 198+68/198+68 certifiés
 - [Phase 2 blockers — Undo atomic + UNDO_VERSION_UNAVAILABLE + Gemini French + Undo UI](phase2-blockers-patterns.md) — date_trunc ms fix; NULL version_after→409; Gemini keyword map; max rounds finalTextEmitted; bouton Annuler dashboard+panel
+- [AI Agents Phase 3.1 — Calendrier](ai-agents-phase3.md) — 5 outils calendar, fast-path schema self-heal, destinations.json prefill=null (pas null dans objet), ALL_TOOLS merge; 116/116 certifiés

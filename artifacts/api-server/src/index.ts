@@ -162,6 +162,22 @@ async function main() {
       .catch((err: unknown) => {
         logger.warn({ err }, "[startup] init-agent-tables step failed (non-fatal)");
       });
+
+    // AI Agents Phase 3 — colonnes calendrier IA (idempotent: IF NOT EXISTS)
+    await runCriticalStartupStep("calendar-phase3-columns", async () => {
+      const client = await pool.connect();
+      try {
+        await client.query(`ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+        await client.query(`ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS priority         TEXT        NOT NULL DEFAULT 'normal'`);
+        await client.query(`ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS color            TEXT        NOT NULL DEFAULT ''`);
+        await client.query(`ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS reminder         INTEGER     NOT NULL DEFAULT 0`);
+        await client.query(`ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS linked_mission_id TEXT`);
+        await client.query(`CREATE INDEX IF NOT EXISTS calendar_events_date_org_idx ON calendar_events(org_id, date)`);
+        logger.info("[startup] calendar_events Phase 3 columns ensured (updated_at, priority, color, reminder, linked_mission_id)");
+      } finally { client.release(); }
+    }).catch((err: unknown) => {
+      logger.warn({ err }, "[startup] calendar-phase3-columns step failed (non-fatal)");
+    });
   } else {
     // ── Full init path: local dev or first deploy without Pre-Deploy. ──────
     logger.info("[startup] Core tables absent — running full init sequence");

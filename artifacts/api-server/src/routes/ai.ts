@@ -53,6 +53,10 @@ import { createNavigationProposal, createPendingToolProposal } from "../agent/pr
 import { resolvePlanFromDB } from "../middlewares/planGate.js";
 // ── AI Agents Phase 2 — tool calling ──────────────────────────────────────────
 import { MISSION_TOOLS, TOOL_BY_NAME, type AIToolCall } from "../agent/mission-tools.js";
+// ── AI Agents Phase 3 — outils calendrier ─────────────────────────────────────
+import { CALENDAR_TOOLS } from "../agent/calendar-tools.js";
+/** Registre unifié missions + calendrier passé au provider lors du tool calling. */
+const ALL_TOOLS = [...MISSION_TOOLS, ...CALENDAR_TOOLS];
 import { aiChatWithTools, buildToolResultMessages, type ToolCallingResult } from "../services/ai-tool-calling.js";
 import { executeTool, type ExecuteContext } from "../agent/tool-executor.js";
 import { undoAction } from "../agent/undo.js";
@@ -461,6 +465,59 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       aiCredits != null ? `Crédits IA restants : ${aiCredits}` : "",
     ];
 
+    // === CALENDRIER — Phase 3 : contexte événements ===
+    try {
+      const calToday   = new Date().toISOString().slice(0, 10);
+      const calWeekEnd = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+      const calRes = await pool.query(
+        `SELECT id, title, date, start_time, duration, type, client_name, priority
+         FROM calendar_events
+         WHERE org_id = $1 AND date >= $2 AND date <= $3
+         ORDER BY date ASC, start_time ASC
+         LIMIT 20`,
+        [oid, calToday, calWeekEnd]
+      ).catch(() => ({ rows: [] as Array<Record<string, unknown>> }));
+
+      const calRows: Array<Record<string, unknown>> = calRes.rows as Array<Record<string, unknown>>;
+      const calTodayEvts = calRows.filter(e => e["date"] === calToday);
+      const calUpcoming  = calRows.filter(e => String(e["date"]) > calToday);
+
+      // Détection de conflits de créneau
+      const calConflicts: string[] = [];
+      for (let ci = 0; ci < calRows.length; ci++) {
+        for (let cj = ci + 1; cj < calRows.length; cj++) {
+          const ei = calRows[ci]!, ej = calRows[cj]!;
+          if (ei["date"] !== ej["date"] || !ei["start_time"] || !ej["start_time"]) continue;
+          const [h1 = 0, m1 = 0] = String(ei["start_time"]).split(":").map(Number);
+          const [h2 = 0, m2 = 0] = String(ej["start_time"]).split(":").map(Number);
+          const s1 = h1 * 60 + m1, e1 = s1 + (Number(ei["duration"]) || 60);
+          const s2 = h2 * 60 + m2, e2 = s2 + (Number(ej["duration"]) || 60);
+          if (s1 < e2 && e1 > s2) {
+            calConflicts.push(`"${ei["title"]}" ${ei["start_time"]} ↔ "${ej["title"]}" ${ej["start_time"]} le ${ei["date"]}`);
+          }
+        }
+      }
+
+      lines.push(
+        ``,
+        `=== CALENDRIER (7 prochains jours) ===`,
+        `Date du jour : ${calToday}`,
+        calTodayEvts.length > 0
+          ? `Aujourd'hui (${calTodayEvts.length} événement${calTodayEvts.length > 1 ? "s" : ""}) : ${calTodayEvts.map(e =>
+              `"${e["title"]}"${e["start_time"] ? ` à ${e["start_time"]}` : ""} (${e["duration"] ?? 60} min)${e["client_name"] ? ` — ${e["client_name"]}` : ""}${e["priority"] && e["priority"] !== "normal" ? ` [${e["priority"]}]` : ""}`
+            ).join(" | ")}`
+          : `Aujourd'hui : aucun événement`,
+        calUpcoming.length > 0
+          ? `À venir cette semaine (${calUpcoming.length}) : ${calUpcoming.slice(0, 8).map(e =>
+              `${e["date"]} "${e["title"]}"${e["start_time"] ? ` ${e["start_time"]}` : ""}`
+            ).join(" | ")}`
+          : `Aucun événement dans les 7 prochains jours`,
+        calConflicts.length > 0
+          ? `⚠ Conflits de créneau détectés : ${calConflicts.join(" / ")}`
+          : `Aucun conflit de créneau`,
+      );
+    } catch { /* non-fatal : contexte calendrier ignoré */ }
+
     return lines.filter(l => l !== "").join("\n");
   } catch {
     return `Platform: Flowpoint SaaS SEO Dashboard. Plan: ${store.me.plan ?? "Pro"}.`;
@@ -735,8 +792,8 @@ async function runToolCallingLoop(opts: {
     try {
       roundResult = await aiChatWithTools(
         nativeMessages
-          ? { provider, model, tools: MISSION_TOOLS, nativeMessages, systemPrompt: carriedSystemPrompt, maxTokens: 1024 }
-          : { provider, model, tools: MISSION_TOOLS, messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[], maxTokens: 1024 }
+          ? { provider, model, tools: ALL_TOOLS, nativeMessages, systemPrompt: carriedSystemPrompt, maxTokens: 1024 }
+          : { provider, model, tools: ALL_TOOLS, messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[], maxTokens: 1024 }
       );
       // Carry system prompt for Anthropic/Gemini continuation rounds
       if (round === 0 && roundResult.systemPrompt) {
