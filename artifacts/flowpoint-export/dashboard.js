@@ -416,11 +416,13 @@ function _confirmSessionExpired() {
       if (r.status === 401) {
         console.warn('[FP-AUTH]', ts, 'Confirmation /api/me → 401. Session truly expired. Redirecting.');
         _401BackgroundCount = 0;
-        // Clear auth artefacts — keep fp_session_token/fp_tab_uid so the tab
-        // identity survives accidental 401s; the login page will overwrite them.
+        // Clear auth artefacts. sessionStorage is tab-isolated so removing
+        // fp_session_token here does NOT affect sibling tabs — each tab has its
+        // own independent sessionStorage context.
         ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(function(k) {
           try { localStorage.removeItem(k); } catch(_) {}
         });
+        try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
         try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
         window.location.href = '/login.html';
       } else {
@@ -508,8 +510,9 @@ async function apiFetch(path, opts = {}) {
       _401BackgroundCount = 0;
       if (_401ConfirmTimer) { clearTimeout(_401ConfirmTimer); _401ConfirmTimer = null; }
       ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
-      // Only remove the data cache, not fp_session_token/fp_tab_uid — the login
-      // page will set new ones; clearing here could wipe a sibling tab's identity.
+      // sessionStorage is tab-isolated — removing fp_session_token here only
+      // affects THIS tab; sibling tabs each have their own sessionStorage context.
+      try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
       try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
       window.location.href = '/login.html';
       return null;
