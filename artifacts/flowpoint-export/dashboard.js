@@ -1630,6 +1630,13 @@ function relDate(d) {
 }
 function sanitizeNotes(raw) { return String(raw).replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim().slice(0,2000); }
 function unread() { return STATE.notifications.filter(n => !n.read).length; }
+function addLocalNotification(type, title, body) {
+  const n = { id: 'local_' + Date.now(), type, title, body, read: false, createdAt: new Date().toISOString() };
+  if (!Array.isArray(STATE.notifications)) STATE.notifications = [];
+  STATE.notifications.unshift(n);
+  if (STATE.notifications.length > 60) STATE.notifications.pop();
+  try { renderNotifications(); } catch(_) {}
+}
 function avgScore() { return STATE.audits.length ? Math.round(STATE.audits.reduce((a,b) => a+b.score, 0) / STATE.audits.length) : 0; }
 function monitorsDown() { return STATE.monitors.filter(m => m.status === 'down').length; }
 function saveMissions() {
@@ -1773,6 +1780,7 @@ window._fpMQ = async function(title, category, priority, navAfter) {
   } catch(e) {}
   saveMissions();
   showToast('success', 'Mission créée · ' + title.slice(0, 40));
+  addLocalNotification('mission', '🚀 Mission créée', title.slice(0, 55));
   logActivityEvent('success', 'Mission créée : ' + title.slice(0, 60));
   if (navAfter) setTimeout(function() { navigate('missions'); }, 600);
 };
@@ -3372,7 +3380,7 @@ function handleFABAction(action) {
   if (action === 'new-report')  { openFloatPanel('Générer un rapport PDF', renderNewReportPanel()); setupNewReportPanel(); }
   if (action === 'export-data') { openFloatPanel('Exporter les données', renderExportPanel()); setupExportPanel(); }
   if (action === 'new-geo')     { navigate('local-seo'); setTimeout(()=>{ window._mapsTab='grid'; render(STATE.currentSection); window._showCreateHeatmapModal?.(); }, 300); }
-  if (action === 'open-chat') { var _cp=document.getElementById('fp-ai-chat-panel'),_co=document.getElementById('fp-ai-chat-overlay'); if(_cp){_cp.removeAttribute('hidden');if(_co)_co.removeAttribute('hidden');setTimeout(function(){document.getElementById('fp-ai-chat-input')?.focus();},100);showToast('info','Chat IA ouvert');}else{navigate('ai');} }
+  if (action === 'open-chat') { navigate('ai'); }
   if (action === 'layout-edit') { toggleLayoutEditMode(); }
 }
 
@@ -4263,7 +4271,76 @@ function renderOverview() {
           icon:    _catIcon(m.category),
           route:   'missions',
         }))
-    : (PREVIEW_MODE ? _previewPriorities : []);
+    : (PREVIEW_MODE ? _previewPriorities : _genSmartPriorities());
+
+  // ── Smart data-driven recommendations when no missions exist ────────────────
+  function _genSmartPriorities() {
+    const recs = [];
+    const _auditUrl = (STATE.audits[0] && STATE.audits[0].url) ? STATE.audits[0].url : null;
+    const _critIssues = STATE.overview?.criticalIssues || 0;
+    const _gscConnected = (STATE.connectors || []).some(c => (c.key === 'gsc' || c.id === 'gsc') && (c.connected || c.status === 'active'));
+    const _ga4Connected = (STATE.connectors || []).some(c => (c.key === 'ga4' || c.id === 'ga4') && (c.connected || c.status === 'active'));
+    const _hasMonitorsDown = (STATE.monitors || []).some(m => m.status === 'down');
+    const _hasGbp = (STATE.localSeo?.listings || []).length > 0 || (STATE.localListings || []).length > 0;
+    const _hasKeywords = (STATE.keywords || []).length > 0;
+    if (_hasMonitorsDown) {
+      const _downList = (STATE.monitors || []).filter(m => m.status === 'down');
+      recs.push({ title: `${_downList.length} monitor${_downList.length > 1 ? 's' : ''} en alerte — site${_downList.length > 1 ? 's' : ''} inaccessible${_downList.length > 1 ? 's' : ''}`, impact: 'Critique', roi: 'Indisponibilité détectée', time: '5 min', urgency: 'Urgent', color: '#ef4444', icon: '🚨', route: 'monitors' });
+    }
+    if (avg > 0 && avg < 50) {
+      recs.push({ title: `Score SEO critique (${avg}/100) — corriger les erreurs prioritaires`, impact: 'Élevé', roi: `+${Math.round((70 - avg) * 0.4)} pts estimés`, time: '2h', urgency: 'Haute', color: '#f59e0b', icon: '🔍', route: 'audits' });
+    } else if (avg >= 50 && avg < 70 && _critIssues > 0) {
+      recs.push({ title: `${_critIssues} erreur${_critIssues > 1 ? 's' : ''} critique${_critIssues > 1 ? 's' : ''} — amélioration rapide possible`, impact: 'Élevé', roi: `+${Math.round(_critIssues * 1.5)} pts SEO estimés`, time: '1h', urgency: 'Haute', color: '#f59e0b', icon: '⚠️', route: 'audits' });
+    }
+    if (!_gscConnected) {
+      recs.push({ title: 'Connecter Google Search Console pour débloquer vos données de trafic', impact: 'Élevé', roi: 'Données SEO réelles + keywords', time: '3 min', urgency: 'Haute', color: '#2563EB', icon: '🔗', route: 'settings' });
+    }
+    if (!_ga4Connected) {
+      recs.push({ title: 'Connecter Google Analytics 4 pour suivre vos conversions', impact: 'Moyen', roi: 'Entonnoir + taux de conv. réels', time: '3 min', urgency: 'Normale', color: '#2563EB', icon: '📊', route: 'settings' });
+    }
+    if (!_hasGbp && localScore > 0 && localScore < 60) {
+      recs.push({ title: 'Fiche Google Business Profile incomplète — optimiser pour le Local Pack', impact: 'Élevé', roi: '+trafic local estimé', time: '20 min', urgency: 'Haute', color: '#22c55e', icon: '📍', route: 'local-seo' });
+    }
+    if (_hasKeywords) {
+      const _lowKw = (STATE.keywords || []).filter(k => k.position > 10).length;
+      if (_lowKw > 0) recs.push({ title: `${_lowKw} mot${_lowKw > 1 ? 's' : ''}-clé${_lowKw > 1 ? 's' : ''} en page 2+ — potentiel de remontée`, impact: 'Moyen', roi: `+${Math.min(999, _lowKw * 12)} visites/mois estimées`, time: '1h', urgency: 'Normale', color: '#8b5cf6', icon: '🔑', route: 'audits' });
+    }
+    if (recs.length === 0 && _auditUrl) {
+      recs.push({ title: `Relancer un audit complet de ${_auditUrl}`, impact: 'Moyen', roi: 'Vérifier les évolutions récentes', time: '5 min', urgency: 'Normale', color: '#2563EB', icon: '🔍', route: 'audits' });
+    }
+    return recs.slice(0, 5);
+  }
+
+  function _genSmartOpps() {
+    const opps = [];
+    const _auditDomain = (STATE.audits[0] && STATE.audits[0].url) ? (() => { try { return new URL(STATE.audits[0].url).hostname; } catch(_){ return STATE.audits[0].url; } })() : null;
+    const _critIssues = STATE.overview?.criticalIssues || 0;
+    const _gscConnected = (STATE.connectors || []).some(c => (c.key === 'gsc' || c.id === 'gsc') && (c.connected || c.status === 'active'));
+    const _hasKeywords = (STATE.keywords || []).length > 0;
+    const _hasCompetitors = (STATE.competitors || []).length > 0;
+    if (avg > 0 && avg < 70) {
+      const gain = Math.max(5, Math.round((70 - avg) * 0.5));
+      opps.push({ title: `Améliorer le score SEO de ${_auditDomain || 'votre site'}`, score: avg, roi: `+${gain} pts estimés`, type: 'SEO', color: '#2563EB', icon: '🔍', desc: `Score actuel : ${avg}/100 — des corrections techniques rapides peuvent générer un gain significatif` });
+    }
+    if (_critIssues > 0) {
+      opps.push({ title: `Corriger ${_critIssues} erreur${_critIssues > 1 ? 's' : ''} critique${_critIssues > 1 ? 's' : ''}`, score: Math.max(10, 80 - _critIssues * 3), roi: 'Impact SEO direct', type: 'Technique', color: '#ef4444', icon: '⚠️', desc: `${_critIssues} problème${_critIssues > 1 ? 's' : ''} bloquant${_critIssues > 1 ? 's' : ''} l'indexation — correctifs prioritaires` });
+    }
+    if (!_gscConnected) {
+      opps.push({ title: 'Débloquer vos positions réelles sur Google', score: 90, roi: 'Données SEO complètes', type: 'SEO', color: '#22c55e', icon: '🔗', desc: 'Connectez Google Search Console pour voir vos mots-clés, impressions et clics réels' });
+    }
+    if (_hasKeywords) {
+      const _page2 = (STATE.keywords || []).filter(k => k.position > 10 && k.position <= 20);
+      if (_page2.length > 0) opps.push({ title: `${_page2.length} mot${_page2.length > 1 ? 's' : ''}-clé${_page2.length > 1 ? 's' : ''} proche${_page2.length > 1 ? 's' : ''} de la page 1`, score: 85, roi: `+${Math.min(999, _page2.length * 15)} visites/mois`, type: 'SEO', color: '#2563EB', icon: '🔑', desc: 'Positions 11-20 — contenu ciblé ou netlinking pour décrocher la page 1' });
+    }
+    if (_hasCompetitors) {
+      const _topComp = (STATE.competitors || []).sort((a, b) => (b.domain_rating || 0) - (a.domain_rating || 0))[0];
+      if (_topComp) opps.push({ title: `Analyser les forces de ${_topComp.domain || _topComp.name || 'votre concurrent'}`, score: 78, roi: 'Opportunités de différenciation', type: 'Concurrence', color: '#f59e0b', icon: '⚔️', desc: 'Identifier les mots-clés gagnés par vos concurrents que vous n\'avez pas encore' });
+    }
+    if (opps.length < 2) {
+      opps.push({ title: 'Générer des missions IA personnalisées', score: 95, roi: 'Plan d\'action sur mesure', type: 'IA', color: '#8b5cf6', icon: '🧠', desc: 'L\'IA analyse vos audits, keywords et monitors pour créer un plan de croissance adapté à votre situation' });
+    }
+    return opps.slice(0, 5);
+  }
 
   const _previewOpps = [
     { title:'Optimiser les pages locales', score:94, roi:'Fort potentiel local détecté', type:'Local SEO', color:'#22c55e', icon:'📍', desc:'Pages locales manquantes sur vos zones cibles — opportunité de capture' },
@@ -4286,7 +4363,7 @@ function renderOverview() {
           icon:  _catIcon(m.category),
           desc:  (m.description || m.title).slice(0, 80),
         }))
-    : (PREVIEW_MODE ? _previewOpps : []);
+    : (PREVIEW_MODE ? _previewOpps : _genSmartOpps());
 
   const wsModules = [
     { name:'Audits SEO',      score:avg,    status:avg>70?'ok':'warn', icon:'🔍', issues:STATE.overview?.criticalIssues ?? 0, color:'#2563EB',  route:'audits' },
@@ -12310,11 +12387,17 @@ async function sendAIMessage(text) {
     .slice(-10)
     .map(m => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }));
 
+  // Abort any in-flight SSE stream before starting a new one (navigation, new message, etc.)
+  if (STATE._aiStreamCtrl) { try { STATE._aiStreamCtrl.abort(); } catch(_) {} }
+  const _ctrl = new AbortController();
+  STATE._aiStreamCtrl = _ctrl;
+
   try {
     const resp = await fetch('/api/ai/chat', _fpSessionFetchOptions({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, context, stream: true, history, provider: STATE.aiProvider || 'openai' }),
+      signal: _ctrl.signal,
     }));
 
     if (!resp.ok || !resp.body) {
@@ -12711,6 +12794,7 @@ function setupNewAuditPanel() {
         STATE.audits.unshift(a);
         if (typeof startAuditPolling === 'function') startAuditPolling(a.id);
         showToast('success', `Audit lancé pour ${escHtml(url)}`);
+        addLocalNotification('audit', '🔍 Audit lancé', 'Analyse de ' + url + ' en cours…');
         closeFloatPanel();
         if (STATE.route === 'audits') render(); else navigate('audits');
       } catch(e) {
@@ -12980,6 +13064,7 @@ function setupNewMonitorPanel() {
         const m = res || { id:'m'+Date.now(), name, url, status:'up', uptime:100, latency:null, lastCheck:null };
         STATE.monitors.push(m);
         showToast('success', `Monitor créé pour ${escHtml(url)}`);
+        addLocalNotification('monitor', '📡 Monitor créé', url + ' est maintenant surveillé');
         closeFloatPanel();
         if (STATE.route === 'monitors') render();
       } catch(e) { showToast('error','Erreur lors de la création du monitor'); }
@@ -13157,10 +13242,12 @@ function setupNewReportPanel() {
 
         if (format === 'PDF' && r.id) {
           showToast('success', `Téléchargement du rapport PDF « ${escHtml(name)} »…`);
+          addLocalNotification('report', '📄 Rapport PDF prêt', name.slice(0, 50));
           downloadReportPdf(r.id, name);
         } else {
           const notesSuffix = meetingNotes.length ? ` · ${meetingNotes.length} note${meetingNotes.length>1?'s':''} de réunion incluse${meetingNotes.length>1?'s':''}` : '';
           showToast('success', `Rapport ${format} « ${escHtml(name)} » généré${notesSuffix}.`);
+          addLocalNotification('report', `📄 Rapport ${format} généré`, name.slice(0, 50));
         }
 
         closeFloatPanel();

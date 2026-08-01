@@ -293,6 +293,13 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   const plan   = current?.plan ?? "standard";
   const limits = PLAN_LIMITS[plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
   const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
+  // Resolve publicApiKey — check user_prefs for a stored custom key, fall back to deterministic hash.
+  // This mirrors the GET /api/me logic so PATCH returns a consistent, valid publicApiKey.
+  const _patchPrefsRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [] }));
+  const _patchStoredKey = (_patchPrefsRow.rows[0] as Record<string,unknown>)?.settings as Record<string,unknown> | null;
+  const _publicApiKey = (typeof _patchStoredKey?.publicApiKey === "string" && _patchStoredKey.publicApiKey)
+    ? _patchStoredKey.publicApiKey
+    : `fp_pub_${_pkHash}`;
 
   res.json({
     firstName:          current?.firstName ?? "",

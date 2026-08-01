@@ -18,6 +18,7 @@ import { GoogleGenAI } from "@google/genai";
 import type { AIProviderId, AIProviderChatOptions, AIProviderStreamChunk, AIProviderResult } from "./openai-provider.js";
 import { toGeminiParts, type GeminiPart } from "./multimodal-mappers.js";
 import { PROVIDER_CAPABILITIES } from "./capabilities.js";
+import { logger } from "../../lib/logger.js";
 
 /** Single source of truth for the Gemini model used across chat and streaming. */
 const GEMINI_DEFAULT_MODEL = PROVIDER_CAPABILITIES.gemini.defaultModel;
@@ -90,7 +91,9 @@ export class GeminiProvider {
       model,
       contents,
       config: {
-        maxOutputTokens: opts.maxTokens ?? 8192,
+        // Use a generous default so long responses (>1000 words) are never truncated.
+        // Gemini 2.5 Pro/Flash support up to 65536 output tokens; 16384 is safe and fast.
+        maxOutputTokens: opts.maxTokens ?? 16384,
         ...(opts.json ? { responseMimeType: "application/json" } : {}),
         ...(systemInstruction ? { systemInstruction } : {}),
         // Note: do NOT set thinkingConfig.thinkingBudget:0 — gemini-3.x-pro models
@@ -103,6 +106,7 @@ export class GeminiProvider {
     let promptTokens = 0;
     let completionTokens = 0;
     let totalTokens = 0;
+    let lastFinishReason: string | undefined;
 
     for await (const chunk of stream) {
       // chunk.text getter can return "" when thinking tokens are present in parts
@@ -126,6 +130,24 @@ export class GeminiProvider {
         completionTokens = chunk.usageMetadata.candidatesTokenCount ?? completionTokens;
         totalTokens = chunk.usageMetadata.totalTokenCount ?? totalTokens;
       }
+      // Track finishReason from each candidate chunk — last non-empty value wins
+      const fr = (chunk.candidates?.[0] as Record<string, unknown> | undefined)?.finishReason as string | undefined;
+      if (fr && fr !== "FINISH_REASON_UNSPECIFIED" && fr !== "0") {
+        lastFinishReason = fr;
+      }
+    }
+
+    // Log non-STOP finish reasons so truncation is always visible in server logs
+    if (lastFinishReason && lastFinishReason !== "STOP") {
+      logger.warn({ model, finishReason: lastFinishReason, textLength: fullText.length },
+        "[Gemini] Stream ended with non-STOP finishReason — response may be incomplete");
+      if (lastFinishReason === "MAX_TOKENS") {
+        // Append a visible truncation marker so users know the response was cut
+        fullText += "\n\n*(Réponse tronquée — limite de tokens atteinte. Posez votre question en plusieurs parties si nécessaire.)*";
+        yield { content: "\n\n*(Réponse tronquée — limite de tokens atteinte. Posez votre question en plusieurs parties si nécessaire.)*", usage: undefined };
+      }
+    } else if (lastFinishReason === "STOP" || !lastFinishReason) {
+      logger.info({ model, finishReason: lastFinishReason ?? "none", textLength: fullText.length }, "[Gemini] Stream completed normally");
     }
 
     return {

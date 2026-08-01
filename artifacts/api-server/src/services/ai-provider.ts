@@ -199,20 +199,40 @@ export async function *aiStream(opts: AIProviderChatOptions & {
     logger.info({ provider: primaryProviderId, model: primaryModel, task, streaming: true }, "[AI] Stream request (strict provider — user selected)");
 
     try {
+      // Drive the generator manually so we can capture the generator return value
+      // (AIProviderResult) via IteratorResult.done===true. Using `for await...of`
+      // discards the return value, which caused a spurious second provider.chat()
+      // call after every stream — the root cause of Gemini truncation.
       const gen = provider.stream({ ...chatOpts, model: primaryModel });
       let finalResult: AIProviderResult | undefined;
+      let accumulatedText = "";
 
-      for await (const chunk of gen) {
-        if (chunk && typeof chunk === "object" && "content" in chunk) {
-          yield chunk as AIProviderStreamChunk;
+      while (true) {
+        const step = await gen.next();
+        if (step.done) {
+          // Generator return value is the AIProviderResult
+          if (step.value && typeof step.value === "object" && "text" in step.value) {
+            finalResult = step.value as AIProviderResult;
+          }
+          break;
         }
-        if (chunk && typeof chunk === "object" && "text" in chunk && "usage" in chunk) {
-          finalResult = chunk as unknown as AIProviderResult;
+        const chunk = step.value;
+        if (chunk && typeof chunk === "object" && "content" in chunk) {
+          accumulatedText += (chunk as AIProviderStreamChunk).content;
+          yield chunk as AIProviderStreamChunk;
         }
       }
 
+      // Fallback: build result from accumulated stream text if provider didn't return one
       if (!finalResult) {
-        finalResult = await provider.chat({ ...chatOpts, model: primaryModel });
+        logger.warn({ provider: primaryProviderId, model: primaryModel }, "[AI] Stream returned no finalResult — building from accumulated text (no second call)");
+        finalResult = {
+          text: accumulatedText,
+          usage: { promptTokens: 0, completionTokens: Math.ceil(accumulatedText.length / 4), totalTokens: Math.ceil(accumulatedText.length / 4) },
+          model: primaryModel,
+          provider: primaryProviderId,
+          latencyMs: 0,
+        } as AIProviderResult;
       }
 
       logger.info({ provider: primaryProviderId, model: primaryModel, tokens: finalResult.usage.totalTokens, latency: finalResult.latencyMs }, "[AI] Stream complete");
@@ -240,20 +260,35 @@ export async function *aiStream(opts: AIProviderChatOptions & {
       const provider = getProvider(providerId);
       logger.info({ provider: providerId, model, task, streaming: true, attempt: i + 1 }, "[AI] Stream request (internal route)");
 
+      // Manual iteration to capture generator return value (same fix as strict path above)
       const gen = provider.stream({ ...chatOpts, model });
       let finalResult: AIProviderResult | undefined;
+      let accumulatedText = "";
 
-      for await (const chunk of gen) {
-        if (chunk && typeof chunk === "object" && "content" in chunk) {
-          yield chunk as AIProviderStreamChunk;
+      while (true) {
+        const step = await gen.next();
+        if (step.done) {
+          if (step.value && typeof step.value === "object" && "text" in step.value) {
+            finalResult = step.value as AIProviderResult;
+          }
+          break;
         }
-        if (chunk && typeof chunk === "object" && "text" in chunk && "usage" in chunk) {
-          finalResult = chunk as unknown as AIProviderResult;
+        const chunk = step.value;
+        if (chunk && typeof chunk === "object" && "content" in chunk) {
+          accumulatedText += (chunk as AIProviderStreamChunk).content;
+          yield chunk as AIProviderStreamChunk;
         }
       }
 
       if (!finalResult) {
-        finalResult = await provider.chat({ ...chatOpts, model });
+        logger.warn({ provider: providerId, model }, "[AI] Stream returned no finalResult — building from accumulated text (no second call)");
+        finalResult = {
+          text: accumulatedText,
+          usage: { promptTokens: 0, completionTokens: Math.ceil(accumulatedText.length / 4), totalTokens: Math.ceil(accumulatedText.length / 4) },
+          model,
+          provider: providerId,
+          latencyMs: 0,
+        } as AIProviderResult;
       }
 
       if (i > 0) {

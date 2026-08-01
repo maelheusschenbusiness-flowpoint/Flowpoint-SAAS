@@ -48,9 +48,11 @@ const MATRIX: Record<AIProviderId, Record<AIIntensityMode, IntensityConfig>> = {
   gemini: {
     // gemini-3-flash-preview wins on latency: TTFT ~2.8s, full ~3s on simple questions.
     // gemini-3.1-pro-preview reserved for Performant: thinking model, TTFT ~7-10s.
-    Conservateur: { model: "gemini-3-flash-preview",  maxTokens: 800,  contextDepth: "shallow" },
-    Équilibré:    { model: "gemini-3-flash-preview",  maxTokens: 2500, contextDepth: "standard" },
-    Performant:   { model: "gemini-3.1-pro-preview",  maxTokens: 3500, contextDepth: "deep" },
+    // Token budgets are generous because FlowPoint's system prompt can be 4000-6000 tokens
+    // of workspace context; a low maxTokens causes MAX_TOKENS truncation mid-sentence.
+    Conservateur: { model: "gemini-3-flash-preview",  maxTokens: 2048,  contextDepth: "shallow" },
+    Équilibré:    { model: "gemini-3-flash-preview",  maxTokens: 8192,  contextDepth: "standard" },
+    Performant:   { model: "gemini-3.1-pro-preview",  maxTokens: 16000, contextDepth: "deep" },
   },
 };
 
