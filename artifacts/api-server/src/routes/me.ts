@@ -111,7 +111,24 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         canStartTrial:       _canStartTrial,
         hasPremiumAccess:    normStatus === "active" || normStatus === "trialing",
         mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing",
-        usage:              dbData?.usage,
+        usage:              await (async () => {
+          try {
+            const [auditR, monR, repR, expR] = await Promise.all([
+              orgDb(req)(`SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
+              orgDb(req)(`SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
+              orgDb(req)(`SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
+              orgDb(req)(`SELECT COUNT(*)::int AS n FROM report_exports WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
+            ]);
+            const stored = (dbData?.usage ?? {}) as Record<string, unknown>;
+            return {
+              ...stored,
+              audit:   { used: (auditR.rows[0] as Record<string,number>|undefined)?.n ?? 0, limit: limits.audits },
+              monitor: { used: (monR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.monitors },
+              reports: { used: (repR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
+              exports: { used: (expR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.exports ?? limits.reports },
+            };
+          } catch { return dbData?.usage ?? {}; }
+        })(),
         addons:             _mergedAddons,
         limits,
         publicApiKey:       _publicApiKey,

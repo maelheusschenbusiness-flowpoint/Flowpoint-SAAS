@@ -111,7 +111,7 @@ async function getSeatUsage(
     ),
     db(
       `SELECT COUNT(*)::int AS n FROM team_invitations
-       WHERE org_id = $1 AND status = 'pending'`,
+       WHERE org_id = $1 AND status = 'pending' AND expires_at > NOW()`,
       [orgId]
     ),
   ]);

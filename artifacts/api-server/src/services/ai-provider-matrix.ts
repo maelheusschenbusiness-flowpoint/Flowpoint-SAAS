@@ -36,21 +36,21 @@ export interface IntensityConfig {
  */
 const MATRIX: Record<AIProviderId, Record<AIIntensityMode, IntensityConfig>> = {
   openai: {
-    Conservateur: { model: "gpt-5-mini", maxTokens: 500,  reasoningEffort: "low",    contextDepth: "shallow" },
-    Équilibré:    { model: "gpt-5",      maxTokens: 800,  reasoningEffort: "medium", contextDepth: "standard" },
-    Performant:   { model: "gpt-5",      maxTokens: 1400, reasoningEffort: "high",   contextDepth: "deep" },
+    Conservateur: { model: "gpt-5-mini", maxTokens: 800,  reasoningEffort: "low",    contextDepth: "shallow" },
+    Équilibré:    { model: "gpt-5",      maxTokens: 2000, reasoningEffort: "medium", contextDepth: "standard" },
+    Performant:   { model: "gpt-5",      maxTokens: 3000, reasoningEffort: "high",   contextDepth: "deep" },
   },
   anthropic: {
-    Conservateur: { model: "claude-haiku-4-5",  maxTokens: 500,  contextDepth: "shallow" },
-    Équilibré:    { model: "claude-sonnet-4-6", maxTokens: 800,  contextDepth: "standard" },
-    Performant:   { model: "claude-opus-4-8",   maxTokens: 1400, contextDepth: "deep" },
+    Conservateur: { model: "claude-haiku-4-5",  maxTokens: 800,  contextDepth: "shallow" },
+    Équilibré:    { model: "claude-sonnet-4-6", maxTokens: 2000, contextDepth: "standard" },
+    Performant:   { model: "claude-opus-4-8",   maxTokens: 3000, contextDepth: "deep" },
   },
   gemini: {
     // gemini-3-flash-preview wins on latency: TTFT ~2.8s, full ~3s on simple questions.
     // gemini-3.1-pro-preview reserved for Performant: thinking model, TTFT ~7-10s.
-    Conservateur: { model: "gemini-3-flash-preview",  maxTokens: 500,  contextDepth: "shallow" },
-    Équilibré:    { model: "gemini-3-flash-preview",  maxTokens: 900,  contextDepth: "standard" },
-    Performant:   { model: "gemini-3.1-pro-preview",  maxTokens: 1400, contextDepth: "deep" },
+    Conservateur: { model: "gemini-3-flash-preview",  maxTokens: 800,  contextDepth: "shallow" },
+    Équilibré:    { model: "gemini-3-flash-preview",  maxTokens: 2500, contextDepth: "standard" },
+    Performant:   { model: "gemini-3.1-pro-preview",  maxTokens: 3500, contextDepth: "deep" },
   },
 };
 

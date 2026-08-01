@@ -20,7 +20,7 @@ const plan = (req: Request): string => ((req as unknown as { me?: { plan?: strin
 const db   = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
 // ── GET /api/integrations ──────────────────────────────────────────────────────
-router.get("/integrations", requireAdmin, async (req, res) => {
+router.get("/integrations", async (req, res) => {
   const { platform, active } = req.query as Record<string, string>;
   try {
     let query = `SELECT * FROM automation_integrations WHERE org_id=$1`;
@@ -36,7 +36,7 @@ router.get("/integrations", requireAdmin, async (req, res) => {
 });
 
 // ── GET /api/integrations/stats ────────────────────────────────────────────────
-router.get("/integrations/stats", requireAdmin, async (req, res) => {
+router.get("/integrations/stats", async (req, res) => {
   try {
     const stats = await getIntegrationStats(org(req));
     res.json({ ...stats, limit: getIntegrationLimit(plan(req)), plan: plan(req), events: SUPPORTED_EVENTS });
@@ -60,7 +60,7 @@ router.get("/integrations/events", (_req, res) => {
 });
 
 // ── GET /api/integrations/automation-logs ─────────────────────────────────────
-router.get("/integrations/automation-logs", requireAdmin, async (req, res) => {
+router.get("/integrations/automation-logs", async (req, res) => {
   const { integration_id, level, limit: lim = "50" } = req.query as Record<string, string>;
   try {
     let query = `SELECT al.*, ai.name as integration_name, ai.platform as integration_platform
@@ -78,7 +78,7 @@ router.get("/integrations/automation-logs", requireAdmin, async (req, res) => {
 });
 
 // ── GET /api/integrations/runs ─────────────────────────────────────────────────
-router.get("/integrations/runs", requireAdmin, async (req, res) => {
+router.get("/integrations/runs", async (req, res) => {
   const { integration_id, status, limit: lim = "50" } = req.query as Record<string, string>;
   try {
     let query = `SELECT ar.*, ai.name as integration_name, ai.platform
@@ -96,7 +96,7 @@ router.get("/integrations/runs", requireAdmin, async (req, res) => {
 });
 
 // ── GET /api/integrations/incoming-webhooks ────────────────────────────────────
-router.get("/integrations/incoming-webhooks", requireAdmin, async (req, res) => {
+router.get("/integrations/incoming-webhooks", async (req, res) => {
   try {
     const r = await db(req)(
       `SELECT * FROM incoming_webhooks WHERE org_id=$1 ORDER BY created_at DESC`,
@@ -107,7 +107,7 @@ router.get("/integrations/incoming-webhooks", requireAdmin, async (req, res) => 
 });
 
 // ── GET /api/integrations/zapier ───────────────────────────────────────────────
-router.get("/integrations/zapier", requireAdmin, async (req, res) => {
+router.get("/integrations/zapier", async (req, res) => {
   try {
     const r = await db(req)(
       `SELECT * FROM automation_integrations WHERE org_id=$1 AND platform='zapier' ORDER BY created_at DESC`,
@@ -127,7 +127,7 @@ router.get("/integrations/zapier", requireAdmin, async (req, res) => {
 });
 
 // ── POST /api/integrations/zapier/connect ──────────────────────────────────────
-router.post("/integrations/zapier/connect", requireAdmin, async (req, res) => {
+router.post("/integrations/zapier/connect", async (req, res) => {
   const { webhookUrl, events = [], name = "Zapier Integration" } = req.body as { webhookUrl?: string; events?: string[]; name?: string };
   if (!webhookUrl) { res.status(400).json({ error: "webhookUrl requis" }); return; }
   try {
@@ -143,7 +143,7 @@ router.post("/integrations/zapier/connect", requireAdmin, async (req, res) => {
 });
 
 // ── GET /api/integrations/make ─────────────────────────────────────────────────
-router.get("/integrations/make", requireAdmin, async (req, res) => {
+router.get("/integrations/make", async (req, res) => {
   try {
     const r = await db(req)(
       `SELECT * FROM automation_integrations WHERE org_id=$1 AND platform='make' ORDER BY created_at DESC`,
@@ -154,7 +154,7 @@ router.get("/integrations/make", requireAdmin, async (req, res) => {
 });
 
 // ── POST /api/integrations/make/connect ───────────────────────────────────────
-router.post("/integrations/make/connect", requireAdmin, async (req, res) => {
+router.post("/integrations/make/connect", async (req, res) => {
   const { webhookUrl, events = [], name = "Make Integration", scenarioName } = req.body as {
     webhookUrl?: string; events?: string[]; name?: string; scenarioName?: string;
   };
@@ -172,7 +172,7 @@ router.post("/integrations/make/connect", requireAdmin, async (req, res) => {
 });
 
 // ── POST /api/integrations/connections ─────────────────────────────────────────
-router.post("/integrations/connections", requireAdmin, async (req, res) => {
+router.post("/integrations/connections", async (req, res) => {
   const { name, platform, endpointUrl, events = [], headers = {}, retryEnabled = true, maxRetries = 3 } = req.body as {
     name?: string; platform?: string; endpointUrl?: string;
     events?: string[]; headers?: Record<string, string>;
@@ -191,7 +191,7 @@ router.post("/integrations/connections", requireAdmin, async (req, res) => {
 });
 
 // ── PATCH /api/integrations/connections/:id ────────────────────────────────────
-router.patch("/integrations/connections/:id", requireAdmin, async (req, res) => {
+router.patch("/integrations/connections/:id", async (req, res) => {
   const { active, name, events, endpointUrl, headers } = req.body as {
     active?: boolean; name?: string; events?: string[];
     endpointUrl?: string; headers?: Record<string, string>;
@@ -215,10 +215,10 @@ router.patch("/integrations/connections/:id", requireAdmin, async (req, res) => 
 });
 
 // ── DELETE /api/integrations/connections/:id ───────────────────────────────────
-router.delete("/integrations/connections/:id", requireAdmin, async (req, res) => {
+router.delete("/integrations/connections/:id", async (req, res) => {
   try {
     await db(req)(
-      `UPDATE automation_integrations SET active=false, updated_at=now() WHERE id=$1 AND org_id=$2`,
+      `DELETE FROM automation_integrations WHERE id=$1 AND org_id=$2`,
       [req.params.id, org(req)]
     );
     res.json({ ok: true });
@@ -226,7 +226,7 @@ router.delete("/integrations/connections/:id", requireAdmin, async (req, res) =>
 });
 
 // ── POST /api/integrations/connections/:id/test ────────────────────────────────
-router.post("/integrations/connections/:id/test", requireAdmin, async (req, res) => {
+router.post("/integrations/connections/:id/test", async (req, res) => {
   try {
     const result = await testIntegration(req.params.id, org(req));
     res.json(result);
@@ -234,7 +234,7 @@ router.post("/integrations/connections/:id/test", requireAdmin, async (req, res)
 });
 
 // ── POST /api/integrations/test ────────────────────────────────────────────────
-router.post("/integrations/test", requireAdmin, async (req, res) => {
+router.post("/integrations/test", async (req, res) => {
   const { integration_id } = req.body as { integration_id?: string };
   if (!integration_id) { res.status(400).json({ error: "integration_id requis" }); return; }
   try {
@@ -244,7 +244,7 @@ router.post("/integrations/test", requireAdmin, async (req, res) => {
 });
 
 // ── POST /api/integrations/dispatch ────────────────────────────────────────────
-router.post("/integrations/dispatch", requireAdmin, async (req, res) => {
+router.post("/integrations/dispatch", async (req, res) => {
   const { event, payload = {} } = req.body as { event?: string; payload?: Record<string, unknown> };
   if (!event || !SUPPORTED_EVENTS.includes(event as typeof SUPPORTED_EVENTS[number])) {
     res.status(400).json({ error: "event invalide", supported: SUPPORTED_EVENTS }); return;
@@ -256,7 +256,7 @@ router.post("/integrations/dispatch", requireAdmin, async (req, res) => {
 });
 
 // ── GET /api/integrations/webhooks ─ list saved outgoing webhooks ───────────────
-router.get("/integrations/webhooks", requireAdmin, async (req, res) => {
+router.get("/integrations/webhooks", async (req, res) => {
   try {
     const r = await db(req)(
       `SELECT id, name, endpoint_url as url, events, active, created_at, updated_at
@@ -270,7 +270,7 @@ router.get("/integrations/webhooks", requireAdmin, async (req, res) => {
 });
 
 // ── POST /api/integrations/webhooks ─ save outgoing webhook ──────────────────
-router.post("/integrations/webhooks", requireAdmin, async (req, res) => {
+router.post("/integrations/webhooks", async (req, res) => {
   const { url, events = ["*"], headers = {} } = req.body as { url?: string; events?: string[]; headers?: Record<string, string> };
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
   const id = `wh_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -285,7 +285,7 @@ router.post("/integrations/webhooks", requireAdmin, async (req, res) => {
 });
 
 // ── POST /api/integrations/webhooks/test ─ ping test ─────────────────────────
-router.post("/integrations/webhooks/test", requireAdmin, async (req, res) => {
+router.post("/integrations/webhooks/test", async (req, res) => {
   const { url } = req.body as { url?: string };
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
   // SSRF guard: https only, no private/link-local/loopback
@@ -340,7 +340,7 @@ router.post("/integrations/webhook/incoming", async (req, res) => {
 });
 
 // ── POST /api/integrations/incoming-webhooks ────────────────────────────────────
-router.post("/integrations/incoming-webhooks", requireAdmin, async (req, res) => {
+router.post("/integrations/incoming-webhooks", async (req, res) => {
   const { name, source = "custom", action = "create_mission", action_config = {} } = req.body as {
     name?: string; source?: string; action?: string; action_config?: Record<string, unknown>;
   };
@@ -358,10 +358,10 @@ router.post("/integrations/incoming-webhooks", requireAdmin, async (req, res) =>
 });
 
 // ── DELETE /api/integrations/incoming-webhooks/:id ─────────────────────────────
-router.delete("/integrations/incoming-webhooks/:id", requireAdmin, async (req, res) => {
+router.delete("/integrations/incoming-webhooks/:id", async (req, res) => {
   try {
     await db(req)(
-      `UPDATE incoming_webhooks SET active=false WHERE id=$1 AND org_id=$2`,
+      `DELETE FROM incoming_webhooks WHERE id=$1 AND org_id=$2`,
       [req.params.id, org(req)]
     );
     res.json({ ok: true });
@@ -369,7 +369,7 @@ router.delete("/integrations/incoming-webhooks/:id", requireAdmin, async (req, r
 });
 
 // ── POST /api/integrations/runs/:id/retry ──────────────────────────────────────
-router.post("/integrations/runs/:id/retry", requireAdmin, async (req, res) => {
+router.post("/integrations/runs/:id/retry", async (req, res) => {
   try {
     const runRes = await db(req)(
       `SELECT ar.*, ai.endpoint_url, ai.secret_key, ai.headers, ai.timeout_ms, ai.max_retries, ai.retry_enabled

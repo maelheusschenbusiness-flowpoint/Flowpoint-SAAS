@@ -16356,7 +16356,8 @@ async function init() {
   };
 
   window._testWebhook = async function(id, name) {
-    showToast('info', 'Test de "' + name + '" en cours…');
+    var _shortName = name && name.length > 40 ? name.slice(0, 40) + '…' : (name || id);
+    showToast('info', 'Test de "' + _shortName + '" en cours…');
     try {
       const r = await window.FP_INTEGRATIONS_API.test(id);
       if (r?.success) showToast('success', '✅ Test réussi (' + r.statusCode + ') en ' + r.durationMs + 'ms');
