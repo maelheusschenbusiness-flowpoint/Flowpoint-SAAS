@@ -2263,13 +2263,22 @@ export async function initDataTables(): Promise<void> {
           WHERE table_schema='public' AND table_name='organizations' AND column_name='id';
 
           IF col_type IN ('text','character varying') THEN
+            -- RLS dance: policies referencing org_id block ALTER COLUMN TYPE (0A000).
+            -- Drop ONLY the 4 tenant policies + legacy isolation policy, recreate after cast.
+            DROP POLICY IF EXISTS tenant_select     ON ai_usage_logs;
+            DROP POLICY IF EXISTS tenant_insert     ON ai_usage_logs;
+            DROP POLICY IF EXISTS tenant_update     ON ai_usage_logs;
+            DROP POLICY IF EXISTS tenant_delete     ON ai_usage_logs;
+            DROP POLICY IF EXISTS rls_org_isolation ON ai_usage_logs;
+            -- Drop FK if present (recreated below once column is UUID)
+            ALTER TABLE ai_usage_logs DROP CONSTRAINT IF EXISTS ai_usage_logs_org_id_fkey;
             UPDATE ai_usage_logs SET org_id = m.new_id::text
               FROM _fp_uuid_map m WHERE ai_usage_logs.org_id = m.old_id;
             DELETE FROM ai_usage_logs
             WHERE org_id IS NOT NULL
               AND org_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
             ALTER TABLE ai_usage_logs ALTER COLUMN org_id DROP DEFAULT;
-            ALTER TABLE ai_usage_logs ALTER COLUMN org_id TYPE UUID USING org_id::uuid;
+            ALTER TABLE ai_usage_logs ALTER COLUMN org_id TYPE UUID USING NULLIF(org_id, '')::uuid;
             DROP INDEX IF EXISTS ai_usage_logs_org_idx;
             CREATE INDEX IF NOT EXISTS ai_usage_logs_org_created_idx
               ON ai_usage_logs(org_id, created_at DESC);
@@ -2283,6 +2292,15 @@ export async function initDataTables(): Promise<void> {
                 ADD CONSTRAINT ai_usage_logs_org_id_fkey
                 FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
             END IF;
+            -- Recreate the 4 tenant policies; ::text cast so the TEXT GUC still compares
+            CREATE POLICY tenant_select ON ai_usage_logs FOR SELECT
+              USING     (org_id::text = current_setting('app.current_org_id', true));
+            CREATE POLICY tenant_insert ON ai_usage_logs FOR INSERT
+              WITH CHECK(org_id::text = current_setting('app.current_org_id', true));
+            CREATE POLICY tenant_update ON ai_usage_logs FOR UPDATE
+              USING     (org_id::text = current_setting('app.current_org_id', true));
+            CREATE POLICY tenant_delete ON ai_usage_logs FOR DELETE
+              USING     (org_id::text = current_setting('app.current_org_id', true));
           END IF;
         END $ai_logs_uuid$;
       `);
@@ -2355,6 +2373,13 @@ export async function initDataTables(): Promise<void> {
         WHERE table_schema='public' AND table_name='organizations' AND column_name='id';
 
         IF col_type = 'text' THEN
+          -- RLS dance: policies referencing org_id block ALTER COLUMN TYPE (0A000).
+          DROP POLICY IF EXISTS tenant_select     ON ai_usage_logs;
+          DROP POLICY IF EXISTS tenant_insert     ON ai_usage_logs;
+          DROP POLICY IF EXISTS tenant_update     ON ai_usage_logs;
+          DROP POLICY IF EXISTS tenant_delete     ON ai_usage_logs;
+          DROP POLICY IF EXISTS rls_org_isolation ON ai_usage_logs;
+          ALTER TABLE ai_usage_logs DROP CONSTRAINT IF EXISTS ai_usage_logs_org_id_fkey;
           -- Remove legacy rows whose org_id cannot be cast to UUID
           DELETE FROM ai_usage_logs
           WHERE org_id IS NOT NULL
@@ -2364,8 +2389,12 @@ export async function initDataTables(): Promise<void> {
           UPDATE ai_usage_logs SET org_id = NULL WHERE org_id IN ('default', '');
           -- Drop the DEFAULT before casting (TEXT default cannot auto-cast to UUID)
           ALTER TABLE ai_usage_logs ALTER COLUMN org_id DROP DEFAULT;
-          -- Cast column type
-          ALTER TABLE ai_usage_logs ALTER COLUMN org_id TYPE UUID USING org_id::uuid;
+          -- Cast column type ('' → NULL, valid UUID strings cast cleanly)
+          ALTER TABLE ai_usage_logs ALTER COLUMN org_id TYPE UUID USING NULLIF(org_id, '')::uuid;
+          -- Recreate org index (name may vary across schema generations)
+          DROP INDEX IF EXISTS ai_usage_logs_org_idx;
+          CREATE INDEX IF NOT EXISTS ai_usage_logs_org_created_idx
+            ON ai_usage_logs(org_id, created_at DESC);
           -- Only add FK when organizations.id is also UUID (prevents SQLSTATE 42804)
           IF org_col_type = 'uuid' AND NOT EXISTS (
             SELECT 1 FROM information_schema.table_constraints
@@ -2376,6 +2405,15 @@ export async function initDataTables(): Promise<void> {
               ADD CONSTRAINT ai_usage_logs_org_id_fkey
               FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
           END IF;
+          -- Recreate the 4 tenant policies; ::text cast so the TEXT GUC still compares
+          CREATE POLICY tenant_select ON ai_usage_logs FOR SELECT
+            USING     (org_id::text = current_setting('app.current_org_id', true));
+          CREATE POLICY tenant_insert ON ai_usage_logs FOR INSERT
+            WITH CHECK(org_id::text = current_setting('app.current_org_id', true));
+          CREATE POLICY tenant_update ON ai_usage_logs FOR UPDATE
+            USING     (org_id::text = current_setting('app.current_org_id', true));
+          CREATE POLICY tenant_delete ON ai_usage_logs FOR DELETE
+            USING     (org_id::text = current_setting('app.current_org_id', true));
         END IF;
       END $$;
     `);
