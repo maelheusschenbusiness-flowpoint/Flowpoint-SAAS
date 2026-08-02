@@ -1024,6 +1024,21 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     // Attach payment method to resolved customer (safe even if already attached)
     await stripe.paymentMethods.attach(paymentMethodId!, { customer: customerId! }).catch(() => {});
 
+    // Keep the canonical billing record in sync before creating the subscription.
+    // A trial checkout may create the Stripe customer before the activation
+    // webhook creates the UUID organization; persistOrgData mirrors safely for
+    // pre-registration IDs and writes organizations for authenticated accounts.
+    try {
+      const { persistOrgData: persistCheckoutCustomer } = await import("../services/org-data.js");
+      await persistCheckoutCustomer(_authenticatedOrgId, { stripeCustomerId: customerId! });
+      logger.info({ orgId: _authenticatedOrgId, customerId }, "[PublicBilling] finalize: Stripe customer linked to organization");
+    } catch (customerPersistErr) {
+      // Do not abandon a successful Stripe confirmation; the later subscription
+      // persistence/webhook remains a recovery path, but make the gap visible.
+      logger.error({ customerPersistErr, orgId: _authenticatedOrgId, customerId },
+        "[PublicBilling] finalize: could not link Stripe customer to organization");
+    }
+
     /* ── Enrich Customer: merge Stripe Address Element data + pending_signups ──
        Source priority:
          • name/email   → pending_signups (signup data) > pm.billing_details

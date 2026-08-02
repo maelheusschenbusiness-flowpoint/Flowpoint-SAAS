@@ -53,6 +53,7 @@ router.get("/sessions", async (req: Request, res: Response): Promise<void> => {
       `SELECT token, email, ip_address, user_agent, created_at, expires_at
        FROM user_sessions
        WHERE org_id = $1
+          AND expires_at > NOW()
        ORDER BY created_at DESC
        LIMIT 15`,
       [orgId]
@@ -68,31 +69,22 @@ router.get("/sessions", async (req: Request, res: Response): Promise<void> => {
         id:       String(row["token"]).slice(0, 16),  // safe partial token as ID
         event:    "Connexion réussie",
         device:   rawUa ? rawUa.slice(0, 80) : "Appareil inconnu",
-        ip:       rawIp ? rawIp.replace(/(\d+)$/, "***") : "IP inconnue",
+        // The security screen is for the authenticated account holder: show the
+        // recorded client address rather than a fabricated/masked placeholder.
+        ip:       rawIp || "IP inconnue",
         date:     createdAt ? createdAt.toISOString() : null,
         isCurrent,
         success:  true,
       };
     });
 
-    // If current session is not already in the list (e.g. no ip/ua stored), prepend it
-    if (!sessions.some(s => s.isCurrent)) {
-      sessions.unshift({
-        id:       "current",
-        event:    "Session actuelle",
-        device:   req.headers["user-agent"]?.slice(0, 80) ?? "Navigateur actuel",
-        ip:       "***",
-        date:     new Date().toISOString(),
-        isCurrent: true,
-        success:  true,
-      });
-    }
-
     res.json({ sessions, count: sessions.length });
-  } catch {
-    res.json({
-      sessions: [{ id: "current", event: "Session actuelle", device: "Appareil actuel", ip: "***", date: new Date().toISOString(), isCurrent: true, success: true }],
-      count: 1,
+  } catch (err) {
+    logger.error({ err, orgId }, "[Security] Failed to load current sessions");
+    res.status(500).json({
+      error: "sessions_unavailable",
+      sessions: [],
+      count: 0,
     });
   }
 });

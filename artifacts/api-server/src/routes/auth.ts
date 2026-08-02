@@ -1370,7 +1370,7 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
       email,
       role:      sessionRole,
       userUuid:  sessionUserUuid,
-      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+       ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
   } catch (sessErr) {
@@ -1569,7 +1569,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     const sessionToken = await createSession({
       userId: googleIdentity.orgId, orgId: googleIdentity.orgId, userUuid: googleIdentity.userUuid,
       email: resolvedEmail, role: "owner",
-      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+       ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
     const isProd = isDeployedProd();
@@ -1664,7 +1664,7 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
     // Direct OAuth login = org creator → owner role.
     const sessionToken = await createSession({
       userId: resolvedEmail, orgId: resolvedEmail, email: resolvedEmail, role: "owner",
-      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+       ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
     const isProd = isDeployedProd();
@@ -1961,7 +1961,7 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
       orgId:     resolvedEmail,
       email:     resolvedEmail,
       role:      "owner",
-      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
     const isProd = isDeployedProd();
@@ -2000,7 +2000,7 @@ router.post("/auth/dev-session", async (req: Request, res: Response) => {
   try {
     const token = await createSession({
       userId: email, orgId, email, role,
-      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
     const isProd = isDeployedProd();
@@ -2036,7 +2036,7 @@ router.get("/auth/dev-login", async (req: Request, res: Response) => {
   try {
     const token = await createSession({
       userId: email, orgId, email, role,
-      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
     res.cookie("fp_token", token, {

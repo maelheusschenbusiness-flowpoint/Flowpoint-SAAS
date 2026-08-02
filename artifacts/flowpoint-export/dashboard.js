@@ -1468,7 +1468,7 @@ async function loadData() {
     }).catch(() => {}),
     // Login history — real data from user_sessions (replaces empty sso_login_audits)
     apiFetch('/api/sessions').then(function(r) {
-      if (r && Array.isArray(r.sessions) && r.sessions.length > 0) {
+      if (r && Array.isArray(r.sessions)) {
         STATE.loginHistory = r.sessions;
       }
     }).catch(function() {}),
@@ -1624,9 +1624,12 @@ function statusLabel(s) { return s === 'up' ? 'UP' : s === 'down' ? 'DOWN' : 'LE
 function relDate(d) {
   const fmt = (STATE.settings && STATE.settings.dateFormat) || 'DD/MM/YYYY';
   const dt = new Date(d);
+  const locale = ({ 'pt-br':'pt-BR', fr:'fr-FR', en:'en-US', es:'es-ES', de:'de-DE', it:'it-IT', pt:'pt-PT', nl:'nl-NL', pl:'pl-PL', sv:'sv-SE', ro:'ro-RO', cs:'cs-CZ' })[
+    String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase()
+  ] || 'fr-FR';
   if (fmt === 'MM/DD/YYYY') return dt.toLocaleDateString('en-US');
   if (fmt === 'YYYY-MM-DD') return dt.toISOString().slice(0, 10);
-  return dt.toLocaleDateString('fr-FR');
+  return dt.toLocaleDateString(locale);
 }
 function sanitizeNotes(raw) { return String(raw).replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim().slice(0,2000); }
 function unread() { return STATE.notifications.filter(n => !n.read).length; }
@@ -5680,7 +5683,7 @@ function renderMissions() {
         { label:'Total actives', value: STATE.missions.filter(m=>m.status!=='done').length, color:'#2563EB', icon:'activity' },
         { label:'Critiques', value: critCount, color:'#ef4444', icon:'alert-triangle' },
         { label:'Hautes', value: highCount, color:'#f97316', icon:'trending-up' },
-        { label:'Complétées', value: doneCount, color:'#22c55e', icon:'check-circle' },
+        { label:'Complétées', value: doneCount, color:'#22c55e', icon:'check' },
       ].map(k=>`
         <div class="fp-card" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
           <div style="width:32px;height:32px;border-radius:8px;background:${k.color}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -9747,7 +9750,7 @@ function renderSettings() {
             <select class="fp-select" style="width:100%" onchange="applyLanguagePref(this.value);saveSettings();showToast('success','Langue sauvegardée')">
               ${[['fr','🇫🇷 Français'],['en','🇬🇧 English'],['es','🇪🇸 Español'],['de','🇩🇪 Deutsch'],['it','🇮🇹 Italiano'],['pt','🇵🇹 Português'],['pt-br','🇧🇷 Português (BR)'],['nl','🇳🇱 Nederlands'],['pl','🇵🇱 Polski'],['sv','🇸🇪 Svenska'],['ro','🇷🇴 Română'],['cs','🇨🇿 Čeština']].map(([val,lbl]) => `<option value="${val}"${(s.language||'fr')===val?' selected':''}>${lbl}</option>`).join('')}
             </select>
-            <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">La préférence est sauvegardée. La traduction complète de l'interface est planifiée.</div>
+            <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">La préférence est sauvegardée et appliquée à l’interface.</div>
           </div>
           <div class="fp-form-group">
             <label class="fp-form-label">Format de date</label>
@@ -10033,20 +10036,19 @@ function renderSettings() {
       {label:'API keys sécurisées',        done:true,     weight:15, desc:'Clé publique en lecture seule'},
     ]);
     const secScore = _secRaw?.score != null ? _secRaw.score : Math.round(secItems.reduce((s,i) => i.done ? s + i.weight : s, 0));
-    // Build sessions panel from real loginHistory when available, falling back to a safe default
+    // Build sessions panel solely from the server-side session history. Never
+    // invent a session/IP: a new account must not see data from an old account.
     const _lhRaw = STATE.loginHistory || STATE.securityLogs || null;
     const _lhList = _lhRaw && Array.isArray(_lhRaw) && _lhRaw.length > 0 ? _lhRaw : null;
     const sessions = _lhList
       ? _lhList.map(function(l) {
           var isCur = !!(l.isCurrent || l.current);
           var rawDate = l.date || l.timestamp || null;
-          var dateStr = isCur ? 'Maintenant' : (rawDate ? new Date(rawDate).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—');
+          var locale = ({ 'pt-br':'pt-BR', fr:'fr-FR', en:'en-US', es:'es-ES', de:'de-DE', it:'it-IT', pt:'pt-PT', nl:'nl-NL', pl:'pl-PL', sv:'sv-SE', ro:'ro-RO', cs:'cs-CZ' })[String((STATE.settings && STATE.settings.language) || 'fr').toLowerCase()] || 'fr-FR';
+          var dateStr = isCur ? 'Maintenant' : (rawDate ? new Date(rawDate).toLocaleString(locale,{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—');
           return { device: l.device||l.userAgent||'Appareil inconnu', location: 'Localisation inconnue', ip: l.ip||'***.***.***.***', date: dateStr, current: isCur };
         })
-      : [
-          {device:STATE.me?.user?.device||'Appareil actuel · Navigateur', location:STATE.me?.location?.city?STATE.me.location.city+', '+(STATE.me?.location?.country||''):'Localisation inconnue', ip:'***.***.***.***', date:'Maintenant', current:true},
-          ...(PREVIEW_MODE ? [{device:'Autre appareil · Navigateur', location:STATE.me?.location?.city||'Localisation inconnue', ip:'***.***.***.***', date:'Il y a 6h', current:false}] : []),
-        ];
+      : [];
     const loginHistory = _lhList
       ? _lhList.map(l => ({ event: l.event||l.type||'Connexion', device: l.device||l.userAgent||'Appareil inconnu', ip: l.ip||'***.***.***.***', date: (l.date||l.timestamp) ? new Date(l.date||l.timestamp).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—', success: l.success !== false, current: !!(l.isCurrent||l.current) }))
       : (PREVIEW_MODE ? [
@@ -16379,8 +16381,10 @@ async function init() {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.fpSyncAiBadge);
   else window.fpSyncAiBadge();
 
-  // ── fpApplyTranslations: real UI translation pass (FR → EN) ──
-  // Applied after every render when the language preference is English.
+  // ── Locale catalogs ─────────────────────────────────────────────────────
+  // The dashboard is rendered from French source strings. A catalog per locale
+  // keeps every supported language deterministic across rerenders; user content
+  // is deliberately left untouched when it has no UI-key match.
   var FP_I18N_EN = {
     "Vue d'ensemble": 'Overview', 'Audits SEO': 'SEO Audits', 'Mots-clés': 'Keywords',
     'Concurrents': 'Competitors', 'Rapports': 'Reports', 'Missions': 'Missions',
@@ -16408,10 +16412,26 @@ async function init() {
     'Faible': 'Low', 'Statut': 'Status', 'Actif': 'Active', 'Inactif': 'Inactive',
     'Nouvelle conv.': 'New chat', 'Envoyer': 'Send'
   };
+  var FP_I18N = {
+    en: FP_I18N_EN,
+    es: {'Vue d\'ensemble':'Resumen','Audits SEO':'Auditorías SEO','Mots-clés':'Palabras clave','Concurrents':'Competidores','Rapports':'Informes','Missions':'Misiones','Assistant IA':'Asistente IA','Calendrier':'Calendario','Équipe':'Equipo','Paramètres':'Configuración','Facturation':'Facturación','Sécurité':'Seguridad','Intégrations':'Integraciones','Notifications':'Notificaciones','Alertes':'Alertas','Croissance':'Crecimiento','Trafic':'Tráfico','Rechercher':'Buscar','Rechercher…':'Buscar…','Ajouter':'Añadir','Annuler':'Cancelar','Enregistrer':'Guardar','Sauvegarder':'Guardar','Supprimer':'Eliminar','Modifier':'Editar','Fermer':'Cerrar','Voir tout':'Ver todo','Exporter':'Exportar','Actualiser':'Actualizar','Chargement…':'Cargando…','Aucune donnée':'Sin datos','Changer de plan':'Cambiar plan','Plan actuel':'Plan actual','Choisir':'Elegir','Langue':'Idioma','Thème':'Tema','Sombre':'Oscuro','Clair':'Claro','En cours':'En curso','Terminé':'Completado','À faire':'Por hacer','Priorité':'Prioridad','Statut':'Estado','Actif':'Activo','Inactif':'Inactivo','Envoyer':'Enviar','Nouvelle conv.':'Nuevo chat','Complétées':'Completadas'},
+    de: {'Vue d\'ensemble':'Übersicht','Audits SEO':'SEO-Audits','Mots-clés':'Schlüsselwörter','Concurrents':'Wettbewerber','Rapports':'Berichte','Missions':'Aufgaben','Assistant IA':'KI-Assistent','Calendrier':'Kalender','Équipe':'Team','Paramètres':'Einstellungen','Facturation':'Abrechnung','Sécurité':'Sicherheit','Intégrations':'Integrationen','Notifications':'Benachrichtigungen','Alertes':'Warnungen','Croissance':'Wachstum','Trafic':'Traffic','Rechercher':'Suchen','Rechercher…':'Suchen…','Ajouter':'Hinzufügen','Annuler':'Abbrechen','Enregistrer':'Speichern','Sauvegarder':'Speichern','Supprimer':'Löschen','Modifier':'Bearbeiten','Fermer':'Schließen','Voir tout':'Alle anzeigen','Exporter':'Exportieren','Actualiser':'Aktualisieren','Chargement…':'Lädt…','Aucune donnée':'Keine Daten','Changer de plan':'Plan ändern','Plan actuel':'Aktueller Plan','Choisir':'Auswählen','Langue':'Sprache','Thème':'Design','Sombre':'Dunkel','Clair':'Hell','En cours':'In Bearbeitung','Terminé':'Erledigt','À faire':'Zu erledigen','Priorité':'Priorität','Statut':'Status','Actif':'Aktiv','Inactif':'Inaktiv','Envoyer':'Senden','Nouvelle conv.':'Neuer Chat','Complétées':'Abgeschlossen'},
+    it: {'Vue d\'ensemble':'Panoramica','Audits SEO':'Audit SEO','Mots-clés':'Parole chiave','Concurrents':'Concorrenti','Rapports':'Report','Missions':'Attività','Assistant IA':'Assistente IA','Calendrier':'Calendario','Équipe':'Team','Paramètres':'Impostazioni','Facturation':'Fatturazione','Sécurité':'Sicurezza','Intégrations':'Integrazioni','Notifications':'Notifiche','Alertes':'Avvisi','Croissance':'Crescita','Trafic':'Traffico','Rechercher':'Cerca','Rechercher…':'Cerca…','Ajouter':'Aggiungi','Annuler':'Annulla','Enregistrer':'Salva','Sauvegarder':'Salva','Supprimer':'Elimina','Modifier':'Modifica','Fermer':'Chiudi','Voir tout':'Vedi tutto','Exporter':'Esporta','Actualiser':'Aggiorna','Chargement…':'Caricamento…','Aucune donnée':'Nessun dato','Changer de plan':'Cambia piano','Plan actuel':'Piano attuale','Choisir':'Scegli','Langue':'Lingua','Thème':'Tema','Sombre':'Scuro','Clair':'Chiaro','En cours':'In corso','Terminé':'Completato','À faire':'Da fare','Priorité':'Priorità','Statut':'Stato','Actif':'Attivo','Inactif':'Inattivo','Envoyer':'Invia','Nouvelle conv.':'Nuova chat','Complétées':'Completate'},
+    pt: {'Vue d\'ensemble':'Visão geral','Audits SEO':'Auditorias SEO','Mots-clés':'Palavras-chave','Concurrents':'Concorrentes','Rapports':'Relatórios','Missions':'Tarefas','Assistant IA':'Assistente de IA','Calendrier':'Calendário','Équipe':'Equipa','Paramètres':'Definições','Facturation':'Faturação','Sécurité':'Segurança','Intégrations':'Integrações','Notifications':'Notificações','Alertes':'Alertas','Croissance':'Crescimento','Trafic':'Tráfego','Rechercher':'Pesquisar','Rechercher…':'Pesquisar…','Ajouter':'Adicionar','Annuler':'Cancelar','Enregistrer':'Guardar','Sauvegarder':'Guardar','Supprimer':'Eliminar','Modifier':'Editar','Fermer':'Fechar','Voir tout':'Ver tudo','Exporter':'Exportar','Actualiser':'Atualizar','Chargement…':'A carregar…','Aucune donnée':'Sem dados','Changer de plan':'Alterar plano','Plan actuel':'Plano atual','Choisir':'Escolher','Langue':'Idioma','Thème':'Tema','Sombre':'Escuro','Clair':'Claro','En cours':'Em curso','Terminé':'Concluído','À faire':'Por fazer','Priorité':'Prioridade','Statut':'Estado','Actif':'Ativo','Inactif':'Inativo','Envoyer':'Enviar','Nouvelle conv.':'Nova conversa','Complétées':'Concluídas'},
+    nl: {'Vue d\'ensemble':'Overzicht','Audits SEO':'SEO-audits','Mots-clés':'Zoekwoorden','Concurrents':'Concurrenten','Rapports':'Rapporten','Missions':'Taken','Assistant IA':'AI-assistent','Calendrier':'Agenda','Équipe':'Team','Paramètres':'Instellingen','Facturation':'Facturering','Sécurité':'Beveiliging','Intégrations':'Integraties','Notifications':'Meldingen','Alertes':'Waarschuwingen','Croissance':'Groei','Trafic':'Verkeer','Rechercher':'Zoeken','Rechercher…':'Zoeken…','Ajouter':'Toevoegen','Annuler':'Annuleren','Enregistrer':'Opslaan','Sauvegarder':'Opslaan','Supprimer':'Verwijderen','Modifier':'Bewerken','Fermer':'Sluiten','Voir tout':'Alles bekijken','Exporter':'Exporteren','Actualiser':'Vernieuwen','Chargement…':'Laden…','Aucune donnée':'Geen gegevens','Changer de plan':'Abonnement wijzigen','Plan actuel':'Huidig abonnement','Choisir':'Kiezen','Langue':'Taal','Thème':'Thema','Sombre':'Donker','Clair':'Licht','En cours':'Bezig','Terminé':'Voltooid','À faire':'Te doen','Priorité':'Prioriteit','Statut':'Status','Actif':'Actief','Inactif':'Inactief','Envoyer':'Versturen','Nouvelle conv.':'Nieuw gesprek','Complétées':'Voltooid'},
+    pl: {'Vue d\'ensemble':'Przegląd','Audits SEO':'Audyty SEO','Mots-clés':'Słowa kluczowe','Concurrents':'Konkurenci','Rapports':'Raporty','Missions':'Zadania','Assistant IA':'Asystent AI','Calendrier':'Kalendarz','Équipe':'Zespół','Paramètres':'Ustawienia','Facturation':'Rozliczenia','Sécurité':'Bezpieczeństwo','Intégrations':'Integracje','Notifications':'Powiadomienia','Alertes':'Alerty','Croissance':'Rozwój','Trafic':'Ruch','Rechercher':'Szukaj','Rechercher…':'Szukaj…','Ajouter':'Dodaj','Annuler':'Anuluj','Enregistrer':'Zapisz','Sauvegarder':'Zapisz','Supprimer':'Usuń','Modifier':'Edytuj','Fermer':'Zamknij','Voir tout':'Zobacz wszystko','Exporter':'Eksportuj','Actualiser':'Odśwież','Chargement…':'Ładowanie…','Aucune donnée':'Brak danych','Changer de plan':'Zmień plan','Plan actuel':'Obecny plan','Choisir':'Wybierz','Langue':'Język','Thème':'Motyw','Sombre':'Ciemny','Clair':'Jasny','En cours':'W toku','Terminé':'Ukończone','À faire':'Do zrobienia','Priorité':'Priorytet','Statut':'Status','Actif':'Aktywny','Inactif':'Nieaktywny','Envoyer':'Wyślij','Nouvelle conv.':'Nowa rozmowa','Complétées':'Ukończone'},
+    sv: {'Vue d\'ensemble':'Översikt','Audits SEO':'SEO-granskningar','Mots-clés':'Nyckelord','Concurrents':'Konkurrenter','Rapports':'Rapporter','Missions':'Uppgifter','Assistant IA':'AI-assistent','Calendrier':'Kalender','Équipe':'Team','Paramètres':'Inställningar','Facturation':'Fakturering','Sécurité':'Säkerhet','Intégrations':'Integrationer','Notifications':'Notiser','Alertes':'Varningar','Croissance':'Tillväxt','Trafic':'Trafik','Rechercher':'Sök','Rechercher…':'Sök…','Ajouter':'Lägg till','Annuler':'Avbryt','Enregistrer':'Spara','Sauvegarder':'Spara','Supprimer':'Ta bort','Modifier':'Redigera','Fermer':'Stäng','Voir tout':'Visa alla','Exporter':'Exportera','Actualiser':'Uppdatera','Chargement…':'Laddar…','Aucune donnée':'Inga data','Changer de plan':'Byt plan','Plan actuel':'Nuvarande plan','Choisir':'Välj','Langue':'Språk','Thème':'Tema','Sombre':'Mörk','Clair':'Ljus','En cours':'Pågår','Terminé':'Klar','À faire':'Att göra','Priorité':'Prioritet','Statut':'Status','Actif':'Aktiv','Inactif':'Inaktiv','Envoyer':'Skicka','Nouvelle conv.':'Ny chatt','Complétées':'Slutförda'},
+    ro: {'Vue d\'ensemble':'Prezentare generală','Audits SEO':'Audituri SEO','Mots-clés':'Cuvinte-cheie','Concurrents':'Concurenți','Rapports':'Rapoarte','Missions':'Sarcini','Assistant IA':'Asistent AI','Calendrier':'Calendar','Équipe':'Echipă','Paramètres':'Setări','Facturation':'Facturare','Sécurité':'Securitate','Intégrations':'Integrări','Notifications':'Notificări','Alertes':'Alerte','Croissance':'Creștere','Trafic':'Trafic','Rechercher':'Caută','Rechercher…':'Caută…','Ajouter':'Adaugă','Annuler':'Anulează','Enregistrer':'Salvează','Sauvegarder':'Salvează','Supprimer':'Șterge','Modifier':'Editează','Fermer':'Închide','Voir tout':'Vezi tot','Exporter':'Exportă','Actualiser':'Actualizează','Chargement…':'Se încarcă…','Aucune donnée':'Fără date','Changer de plan':'Schimbă planul','Plan actuel':'Plan curent','Choisir':'Alege','Langue':'Limbă','Thème':'Temă','Sombre':'Întunecat','Clair':'Luminos','En cours':'În curs','Terminé':'Finalizat','À faire':'De făcut','Priorité':'Prioritate','Statut':'Stare','Actif':'Activ','Inactif':'Inactiv','Envoyer':'Trimite','Nouvelle conv.':'Conversație nouă','Complétées':'Finalizate'},
+    cs: {'Vue d\'ensemble':'Přehled','Audits SEO':'SEO audity','Mots-clés':'Klíčová slova','Concurrents':'Konkurenti','Rapports':'Reporty','Missions':'Úkoly','Assistant IA':'AI asistent','Calendrier':'Kalendář','Équipe':'Tým','Paramètres':'Nastavení','Facturation':'Fakturace','Sécurité':'Zabezpečení','Intégrations':'Integrace','Notifications':'Oznámení','Alertes':'Upozornění','Croissance':'Růst','Trafic':'Návštěvnost','Rechercher':'Hledat','Rechercher…':'Hledat…','Ajouter':'Přidat','Annuler':'Zrušit','Enregistrer':'Uložit','Sauvegarder':'Uložit','Supprimer':'Smazat','Modifier':'Upravit','Fermer':'Zavřít','Voir tout':'Zobrazit vše','Exporter':'Exportovat','Actualiser':'Obnovit','Chargement…':'Načítání…','Aucune donnée':'Žádná data','Changer de plan':'Změnit plán','Plan actuel':'Aktuální plán','Choisir':'Vybrat','Langue':'Jazyk','Thème':'Motiv','Sombre':'Tmavý','Clair':'Světlý','En cours':'Probíhá','Terminé':'Dokončeno','À faire':'K vyřízení','Priorité':'Priorita','Statut':'Stav','Actif':'Aktivní','Inactif':'Neaktivní','Envoyer':'Odeslat','Nouvelle conv.':'Nový chat','Complétées':'Dokončené'}
+  };
+  // Brazilian Portuguese follows the Portuguese catalog with its own locale
+  // for Intl formatting. French intentionally needs no replacement map.
+  FP_I18N['pt-br'] = FP_I18N.pt;
   window.fpApplyTranslations = function() {
     try {
-      var lang = (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr';
-      if (String(lang).toLowerCase().indexOf('en') !== 0) return;
+      var lang = String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase();
+      var catalog = FP_I18N[lang] || {};
+      if (!Object.keys(catalog).length) return;
       var roots = [document.getElementById('fp-sidebar'), document.getElementById('fp-page'), document.querySelector('.fp-topbar'), document.getElementById('fp-header')];
       roots.forEach(function(root) {
         if (!root) return;
@@ -16422,14 +16442,14 @@ async function init() {
           if (!t) continue;
           var trimmed = t.trim();
           if (!trimmed) continue;
-          var tr = FP_I18N_EN[trimmed];
+          var tr = catalog[trimmed];
           if (tr) node.nodeValue = t.replace(trimmed, tr);
         }
         root.querySelectorAll('[placeholder],[title]').forEach(function(el) {
           var ph = el.getAttribute('placeholder');
-          if (ph && FP_I18N_EN[ph.trim()]) el.setAttribute('placeholder', FP_I18N_EN[ph.trim()]);
+          if (ph && catalog[ph.trim()]) el.setAttribute('placeholder', catalog[ph.trim()]);
           var ti = el.getAttribute('title');
-          if (ti && FP_I18N_EN[ti.trim()]) el.setAttribute('title', FP_I18N_EN[ti.trim()]);
+          if (ti && catalog[ti.trim()]) el.setAttribute('title', catalog[ti.trim()]);
         });
       });
     } catch(e) { /* translation must never break rendering */ }
@@ -16442,9 +16462,7 @@ async function init() {
     document.documentElement.lang = langCode;
     if (STATE.settings) STATE.settings.language = val;
     localStorage.setItem('fp:language', val);
-    // Re-render so the <select> keeps the correct selected option on the next render.
-    // Full UI translation (i18n) applies to AI-generated content and future text fields;
-    // the dashboard interface itself is rendered in French.
+    // Re-render applies the chosen locale catalog without mutating user content.
     render();
   };
 

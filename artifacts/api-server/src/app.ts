@@ -20,6 +20,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app: Express = express();
 
+// Only the directly-connected deployment proxy is trusted. Express will then
+// use the client address supplied by that proxy; never accept arbitrary
+// multi-hop X-Forwarded-For chains from the public internet.
 app.set("trust proxy", 1);
 
 // ── 0. Gzip / Brotli response compression ────────────────────────────────────
