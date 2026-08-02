@@ -227,10 +227,11 @@ router.post("/google/disconnect", async (req: Request, res: Response) => {
   const orgId = getOrgId(req);
   const client = await pool.connect();
   try {
-    await Promise.all([
-      client.query(`DELETE FROM google_accounts WHERE org_id=$1`, [orgId]),
-      client.query(`DELETE FROM google_tokens   WHERE org_id=$1`, [orgId]),
-    ]);
+    // P1-1: sequential queries on the same client — Promise.all on a single pg
+    // PoolClient triggers a "client.query() when already executing" deprecation
+    // warning (and can corrupt query state in older pg versions).
+    await client.query(`DELETE FROM google_accounts WHERE org_id=$1`, [orgId]);
+    await client.query(`DELETE FROM google_tokens   WHERE org_id=$1`, [orgId]);
     store.logActivity({ type: "team", label: "Google déconnecté", targetType: "connector", orgId });
     res.json({ ok: true });
   } catch {

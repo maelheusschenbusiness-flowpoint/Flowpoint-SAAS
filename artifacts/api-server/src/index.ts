@@ -163,6 +163,22 @@ async function main() {
         logger.warn({ err }, "[startup] init-agent-tables step failed (non-fatal)");
       });
 
+    // P0-5 / P0-3 / P1-2 / P1-3 : run full initDataTables on fast path too.
+    // All statements are IF NOT EXISTS / idempotent. The schema_migrations table
+    // added inside initDataTables ensures expensive CREATE TABLE blocks are skipped
+    // on subsequent boots once the tables exist.
+    await runCriticalStartupStep("init-data-tables", initDataTables)
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] init-data-tables step failed (non-fatal)");
+      });
+
+    // P0-5 : initAiMigration was previously only run on the full path.
+    // Add it here so ai_recommendations / ai_workspace_profiles etc. are always present.
+    await runCriticalStartupStep("AI migration", initAiMigration)
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] AI migration step failed (non-fatal)");
+      });
+
     // AI Agents Phase 3 — colonnes calendrier IA (idempotent: IF NOT EXISTS)
     await runCriticalStartupStep("calendar-phase3-columns", async () => {
       const client = await pool.connect();

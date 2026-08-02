@@ -269,6 +269,116 @@ async function applySnapshot(
       return;
     }
 
+    // ── delete_recurring_series — réinsérer les occurrences supprimées ────────
+    if (batchType === "delete_recurring_series") {
+      const reinsertClient = await pool.connect();
+      try {
+        await reinsertClient.query("BEGIN");
+        for (const e of batchEvents) {
+          await reinsertClient.query(
+            `INSERT INTO calendar_events
+               (id, org_id, title, site, type, date, start_time, duration, notes,
+                client_name, priority, color, reminder, linked_mission_id, rrule,
+                series_id, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [
+              e["id"], orgId,
+              e["title"]      ?? "",
+              e["site"]       ?? "",
+              e["type"]       ?? "Autre",
+              e["date"]       ?? "",
+              e["start_time"] ?? "",
+              e["duration"]   ?? 60,
+              e["notes"]      ?? "",
+              e["client_name"]      ?? "",
+              e["priority"]         ?? "normal",
+              e["color"]            ?? "",
+              e["reminder"]         ?? 0,
+              e["linked_mission_id"]?? null,
+              e["rrule"]      ?? null,
+              e["series_id"]  ?? null,
+              e["created_at"] ?? new Date().toISOString(),
+            ]
+          );
+        }
+        await reinsertClient.query("COMMIT");
+      } catch (err) {
+        await reinsertClient.query("ROLLBACK");
+        reinsertClient.release();
+        throw err;
+      }
+      reinsertClient.release();
+      return;
+    }
+
+    // ── update_recurring_event — restaurer les champs avant modification ──────
+    if (batchType === "update_recurring_event") {
+      const postWriteVersions = snap["postWriteVersions"] as Record<string, string> | undefined;
+      const updUndoClient = await pool.connect();
+      try {
+        await updUndoClient.query("BEGIN");
+        for (const e of batchEvents) {
+          const evId = e["id"] as string;
+          const pwv  = postWriteVersions?.[evId];
+
+          let rowsAffected: number;
+          if (pwv) {
+            const res = await updUndoClient.query(
+              `UPDATE calendar_events
+                  SET title       = $1,  site        = $2,  type       = $3,
+                      date        = $4,  start_time  = $5,  duration   = $6,
+                      notes       = $7,  client_name = $8,  priority   = $9,
+                      color       = $10, reminder    = $11, linked_mission_id = $12,
+                      updated_at  = NOW()
+               WHERE id = $13 AND org_id = $14
+                 AND date_trunc('milliseconds', updated_at)
+                   = date_trunc('milliseconds', $15::TIMESTAMPTZ)
+               RETURNING id`,
+              [
+                e["title"] ?? "", e["site"] ?? "", e["type"] ?? "Autre",
+                e["date"]  ?? "", e["start_time"] ?? String(e["startTime"] ?? ""), e["duration"] ?? 60,
+                e["notes"] ?? "", e["client_name"] ?? String(e["clientName"] ?? ""),
+                e["priority"] ?? "normal", e["color"] ?? "", e["reminder"] ?? 0,
+                e["linked_mission_id"] ?? null,
+                evId, orgId, pwv,
+              ]
+            );
+            rowsAffected = res.rowCount ?? 0;
+          } else {
+            // Legacy log — no version lock
+            const res = await updUndoClient.query(
+              `UPDATE calendar_events
+                  SET title = $1, site = $2, type = $3, date = $4, start_time = $5,
+                      duration = $6, notes = $7, client_name = $8, priority = $9,
+                      color = $10, reminder = $11, linked_mission_id = $12, updated_at = NOW()
+               WHERE id = $13 AND org_id = $14 RETURNING id`,
+              [
+                e["title"] ?? "", e["site"] ?? "", e["type"] ?? "Autre",
+                e["date"]  ?? "", e["start_time"] ?? "", e["duration"] ?? 60,
+                e["notes"] ?? "", e["client_name"] ?? "", e["priority"] ?? "normal",
+                e["color"] ?? "", e["reminder"] ?? 0, e["linked_mission_id"] ?? null,
+                evId, orgId,
+              ]
+            );
+            rowsAffected = res.rowCount ?? 0;
+          }
+          if (pwv && rowsAffected === 0) {
+            await updUndoClient.query("ROLLBACK");
+            updUndoClient.release();
+            return { stale: true };
+          }
+        }
+        await updUndoClient.query("COMMIT");
+      } catch (err) {
+        await updUndoClient.query("ROLLBACK");
+        updUndoClient.release();
+        throw err;
+      }
+      updUndoClient.release();
+      return;
+    }
+
     throw new Error(`Batch undo non implémenté pour le type : ${batchType}`);
   }
 

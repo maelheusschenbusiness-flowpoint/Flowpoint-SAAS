@@ -405,9 +405,11 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS reminder INTEGER NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS linked_mission_id TEXT;`);
     await run(client, `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS rrule TEXT;`); // Phase 3 — récurrents
+    await run(client, `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS series_id TEXT;`); // Phase 3.2 — lien occurrences
     await run(client, `CREATE INDEX IF NOT EXISTS calendar_events_date_idx ON calendar_events(date);`);
     await run(client, `CREATE INDEX IF NOT EXISTS calendar_events_org_id_idx ON calendar_events(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS calendar_events_date_org_idx ON calendar_events(org_id, date);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS calendar_events_series_idx ON calendar_events(org_id, series_id) WHERE series_id IS NOT NULL;`);
 
     // ── report_exports ────────────────────────────────────────────────────────
     await run(client, `
@@ -1457,7 +1459,719 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS ip_address TEXT`);
     await run(client, `ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_agent TEXT`);
 
-    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations, local_pack_history, overview_insights_cache, overview_insights_rl, pending_signups, activity_logs, user_sessions(ip+ua) ready");
+    // ── P1-3 : schema_migrations — per-block migration tracking ───────────────
+    // Tracks which migration blocks have been applied so expensive CREATE TABLE
+    // blocks are skipped on subsequent boots.  Self-healing ALTER TABLE blocks
+    // still run unconditionally (they are idempotent and protect against drift).
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        id           SERIAL      PRIMARY KEY,
+        migration_id TEXT        UNIQUE NOT NULL,
+        executed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        checksum     TEXT
+      )
+    `);
+
+    // Helper: returns true if a migration_id has already been recorded.
+    const hasMigration = async (migId: string): Promise<boolean> => {
+      try {
+        const r = await client.query<{ c: number }>(
+          `SELECT COUNT(*)::int AS c FROM schema_migrations WHERE migration_id = $1`,
+          [migId],
+        );
+        return Number(r.rows[0]?.c ?? 0) > 0;
+      } catch { return false; }
+    };
+    const recordMigration = async (migId: string): Promise<void> => {
+      await run(client, `INSERT INTO schema_migrations (migration_id) VALUES ('${migId}') ON CONFLICT DO NOTHING`);
+    };
+
+    // ── P0-3 / P0-4 : Missing production tables ────────────────────────────────
+    // All 19 tables below were used by production code but had no CREATE TABLE
+    // in any init file. They are created here with correct columns + full inline
+    // RLS (ENABLE, FORCE, 4 tenant policies).
+    //
+    // v2 supersedes v1 (which lacked RLS and had wrong github_connections schema).
+    // On DBs that ran v1, the schema_migrations record is replaced by v2 so the
+    // RLS and github_connections fix are applied exactly once.
+
+    // Inline helper: ENABLE RLS + 4 org-scoped tenant policies on any TEXT-org_id table.
+    // Idempotent: DROP POLICY IF EXISTS before CREATE.
+    // NOTE: We do NOT set FORCE ROW LEVEL SECURITY here — the 19 new tables are accessed
+    // by several services via raw pool/client.query() (no withOrgDb GUC setup).
+    // FORCE would deny all access for those services under a non-BYPASSRLS application role.
+    // The 4 agent tables (in init-agent-tables.ts) that use req.orgDb/withOrgDb keep FORCE.
+    const applyTenantRls = async (t: string): Promise<void> => {
+      const GUC = `current_setting('app.current_org_id', true)`;
+      await run(client, `ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`);
+      for (const [op, cmd] of [
+        ["select", `FOR SELECT USING     (COALESCE(org_id,'default') = ${GUC})`],
+        ["insert", `FOR INSERT WITH CHECK (COALESCE(org_id,'default') = ${GUC})`],
+        ["update", `FOR UPDATE USING     (COALESCE(org_id,'default') = ${GUC})`],
+        ["delete", `FOR DELETE USING     (COALESCE(org_id,'default') = ${GUC})`],
+      ] as [string, string][]) {
+        await run(client, `DROP   POLICY IF EXISTS "tenant_${op}" ON "${t}"`);
+        await run(client, `CREATE POLICY           "tenant_${op}" ON "${t}" ${cmd}`);
+      }
+    };
+
+    if (!await hasMigration("missing-production-tables-v3")) {
+      // Supersede v1 and v2 (v2 had wrong schemas + FORCE RLS for raw-pool services)
+      await run(client, `DELETE FROM schema_migrations WHERE migration_id IN ('missing-production-tables-v1','missing-production-tables-v2')`);
+
+      // ── P0-4 : github_connections — exact schema from github-service.ts ─────
+      // The service does: INSERT (org_id, github_user_id[number], login, name,
+      // email, avatar_url, access_token, scope, connected_at) … ON CONFLICT (org_id)
+      // DO UPDATE. Therefore: org_id TEXT UNIQUE (one connection per org),
+      // github_user_id BIGINT (GitHub API returns numeric IDs).
+      //
+      // Approach: CREATE TABLE IF NOT EXISTS for fresh installs.
+      // For existing tables with wrong column types, use safe in-place ALTER rather
+      // than DROP TABLE which would destroy production OAuth connections.
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS github_connections (
+          id             BIGSERIAL   PRIMARY KEY,
+          org_id         TEXT        NOT NULL UNIQUE DEFAULT 'default',
+          github_user_id BIGINT      NOT NULL DEFAULT 0,
+          login          TEXT,
+          name           TEXT,
+          email          TEXT,
+          avatar_url     TEXT,
+          access_token   TEXT,
+          scope          TEXT,
+          connected_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at     TIMESTAMPTZ
+        )
+      `);
+      // Safe in-place repair: if org_id is UUID, cast to TEXT preserving data.
+      await run(client, `
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='github_connections'
+              AND column_name='org_id' AND data_type='uuid'
+          ) THEN
+            ALTER TABLE github_connections
+              ALTER COLUMN org_id TYPE TEXT USING org_id::text;
+          END IF;
+        END $$
+      `);
+      // If github_user_id is TEXT, cast to BIGINT; rows where cast fails default to 0.
+      await run(client, `
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='github_connections'
+              AND column_name='github_user_id' AND data_type='text'
+          ) THEN
+            ALTER TABLE github_connections
+              ALTER COLUMN github_user_id TYPE BIGINT
+                USING CASE WHEN github_user_id ~ '^[0-9]+$'
+                           THEN github_user_id::BIGINT ELSE 0 END;
+          END IF;
+        END $$
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS github_connections_org_idx ON github_connections(org_id)`);
+      await applyTenantRls("github_connections");
+
+      // ── permission_logs ─────────────────────────────────────────────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS permission_logs (
+          id         TEXT        PRIMARY KEY,
+          org_id     TEXT        NOT NULL DEFAULT 'default',
+          user_id    TEXT,
+          resource   TEXT        NOT NULL DEFAULT '',
+          action     TEXT        NOT NULL DEFAULT '',
+          allowed    BOOLEAN     NOT NULL DEFAULT false,
+          reason     TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS permission_logs_org_idx ON permission_logs(org_id, created_at DESC)`);
+      await applyTenantRls("permission_logs");
+
+      // ── report_templates ────────────────────────────────────────────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS report_templates (
+          id                       TEXT        PRIMARY KEY,
+          org_id                   TEXT        NOT NULL DEFAULT 'default',
+          name                     TEXT        NOT NULL DEFAULT '',
+          logo_url                 TEXT,
+          primary_color            TEXT,
+          secondary_color          TEXT,
+          font                     TEXT,
+          footer_text              TEXT,
+          header_text              TEXT,
+          hide_flowpoint_branding  BOOLEAN     NOT NULL DEFAULT false,
+          is_default               BOOLEAN     NOT NULL DEFAULT false,
+          created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS report_templates_org_idx ON report_templates(org_id)`);
+      await applyTenantRls("report_templates");
+
+      // ── google_reviews ──────────────────────────────────────────────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS google_reviews (
+          id                TEXT        PRIMARY KEY,
+          org_id            TEXT        NOT NULL DEFAULT 'default',
+          location_id       TEXT,
+          review_id         TEXT        NOT NULL DEFAULT '',
+          reviewer_name     TEXT,
+          reviewer_photo    TEXT,
+          rating            INTEGER,
+          comment           TEXT,
+          create_time       TEXT,
+          update_time       TEXT,
+          owner_reply       TEXT,
+          reply_comment     TEXT,
+          reply_updated_at  TIMESTAMPTZ
+        )
+      `);
+      await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS google_reviews_review_org_idx ON google_reviews(review_id, org_id)`);
+      await run(client, `CREATE INDEX IF NOT EXISTS google_reviews_org_loc_idx ON google_reviews(org_id, location_id)`);
+      await applyTenantRls("google_reviews");
+
+      // ── gbp_posts — gbp-posting-service.ts UPDATE sets published_at ──────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS gbp_posts (
+          id             TEXT        PRIMARY KEY,
+          org_id         TEXT        NOT NULL DEFAULT 'default',
+          location_id    TEXT,
+          location_name  TEXT,
+          post_type      TEXT        NOT NULL DEFAULT 'STANDARD',
+          title          TEXT,
+          content        TEXT        NOT NULL DEFAULT '',
+          cta_type       TEXT,
+          cta_url        TEXT,
+          media_urls     JSONB       NOT NULL DEFAULT '[]',
+          event_title    TEXT,
+          event_start    TIMESTAMPTZ,
+          event_end      TIMESTAMPTZ,
+          offer_code     TEXT,
+          status         TEXT        NOT NULL DEFAULT 'draft',
+          scheduled_at   TIMESTAMPTZ,
+          published_at   TIMESTAMPTZ,
+          seo_keywords   JSONB       NOT NULL DEFAULT '[]',
+          ai_generated   BOOLEAN     NOT NULL DEFAULT false,
+          views          INTEGER     NOT NULL DEFAULT 0,
+          clicks         INTEGER     NOT NULL DEFAULT 0,
+          calls          INTEGER     NOT NULL DEFAULT 0,
+          created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS gbp_posts_org_idx ON gbp_posts(org_id, created_at DESC)`);
+      await applyTenantRls("gbp_posts");
+
+      // ── dataforseo_quota (composite PK; no surrogate id) ────────────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS dataforseo_quota (
+          org_id        TEXT    NOT NULL DEFAULT 'default',
+          date          DATE    NOT NULL DEFAULT CURRENT_DATE,
+          requests_used INTEGER NOT NULL DEFAULT 0,
+          created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (org_id, date)
+        )
+      `);
+      await applyTenantRls("dataforseo_quota");
+
+      // ── roles ───────────────────────────────────────────────────────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS roles (
+          id          TEXT        PRIMARY KEY,
+          org_id      TEXT        NOT NULL DEFAULT 'default',
+          name        TEXT        NOT NULL DEFAULT '',
+          description TEXT,
+          is_system   BOOLEAN     NOT NULL DEFAULT false,
+          permissions JSONB       NOT NULL DEFAULT '[]',
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS roles_org_idx ON roles(org_id)`);
+      await applyTenantRls("roles");
+
+      // ── gsc_sites — gsc-service.ts discover INSERT uses permission_level ──────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS gsc_sites (
+          id               TEXT        PRIMARY KEY,
+          org_id           TEXT        NOT NULL DEFAULT 'default',
+          site_url         TEXT        NOT NULL DEFAULT '',
+          display_name     TEXT,
+          permission_level TEXT,
+          is_active        BOOLEAN     NOT NULL DEFAULT true,
+          created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gsc_sites_org_url_idx ON gsc_sites(org_id, site_url)`);
+      await applyTenantRls("gsc_sites");
+
+      // ── reviews ─────────────────────────────────────────────────────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS reviews (
+          id         TEXT        PRIMARY KEY,
+          org_id     TEXT        NOT NULL DEFAULT 'default',
+          author     TEXT,
+          rating     INTEGER,
+          text       TEXT,
+          sentiment  TEXT,
+          platform   TEXT        NOT NULL DEFAULT 'google',
+          replied    BOOLEAN     NOT NULL DEFAULT false,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS reviews_org_idx ON reviews(org_id, created_at DESC)`);
+      await applyTenantRls("reviews");
+
+      // ── crm_sync_logs — crm-service.ts uses records_processed/created/failed ─
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS crm_sync_logs (
+          id                  TEXT        PRIMARY KEY,
+          org_id              TEXT        NOT NULL DEFAULT 'default',
+          crm_integration_id  TEXT,
+          provider            TEXT,
+          direction           TEXT        NOT NULL DEFAULT 'import',
+          entity_type         TEXT,
+          status              TEXT        NOT NULL DEFAULT 'pending',
+          count               INTEGER     NOT NULL DEFAULT 0,
+          records_processed   INTEGER     NOT NULL DEFAULT 0,
+          records_created     INTEGER     NOT NULL DEFAULT 0,
+          records_updated     INTEGER     NOT NULL DEFAULT 0,
+          records_failed      INTEGER     NOT NULL DEFAULT 0,
+          duration_ms         INTEGER,
+          error               TEXT,
+          started_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          completed_at        TIMESTAMPTZ
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS crm_sync_logs_org_idx ON crm_sync_logs(org_id, started_at DESC)`);
+      await applyTenantRls("crm_sync_logs");
+
+      // ── automation_templates — schema derived from production DB inspection ───
+      // integrations-service.ts queries: active=true ORDER BY popularity DESC
+      // NOT NULL cols that need defaults: platform, category, trigger_event, action_type
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS automation_templates (
+          id              TEXT        PRIMARY KEY,
+          org_id          TEXT        NOT NULL DEFAULT 'default',
+          name            TEXT        NOT NULL DEFAULT '',
+          description     TEXT,
+          platform        TEXT        NOT NULL DEFAULT 'custom',
+          category        TEXT        NOT NULL DEFAULT 'general',
+          trigger_event   TEXT        NOT NULL DEFAULT '',
+          action_type     TEXT        NOT NULL DEFAULT '',
+          config_template JSONB                DEFAULT '{}',
+          icon            TEXT                 DEFAULT '⚡',
+          color           TEXT                 DEFAULT '#2563EB',
+          popularity      INTEGER              DEFAULT 0,
+          plan_required   TEXT                 DEFAULT 'Standard',
+          active          BOOLEAN              DEFAULT true,
+          created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS automation_templates_org_idx ON automation_templates(org_id)`);
+      await applyTenantRls("automation_templates");
+
+      // ── local_heatmaps — local-maps-service.ts INSERT columns ────────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS local_heatmaps (
+          id          TEXT        PRIMARY KEY,
+          org_id      TEXT        NOT NULL DEFAULT 'default',
+          location_id TEXT,
+          name        TEXT,
+          keyword     TEXT,
+          center_lat  REAL,
+          center_lng  REAL,
+          lat         REAL,
+          lng         REAL,
+          radius_km   REAL,
+          grid_size   INTEGER     NOT NULL DEFAULT 5,
+          status      TEXT        NOT NULL DEFAULT 'pending',
+          results     JSONB       NOT NULL DEFAULT '[]',
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS local_heatmaps_org_idx ON local_heatmaps(org_id, created_at DESC)`);
+      await applyTenantRls("local_heatmaps");
+
+      // ── login_audits — sso-service.ts INSERT uses method, failure_reason ─────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS login_audits (
+          id             TEXT        PRIMARY KEY,
+          org_id         TEXT        NOT NULL DEFAULT 'default',
+          user_id        TEXT,
+          email          TEXT,
+          action         TEXT        NOT NULL DEFAULT 'login',
+          method         TEXT,
+          ip             TEXT,
+          user_agent     TEXT,
+          success        BOOLEAN     NOT NULL DEFAULT true,
+          failure_reason TEXT,
+          created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS login_audits_org_idx ON login_audits(org_id, created_at DESC)`);
+      await run(client, `CREATE INDEX IF NOT EXISTS login_audits_email_idx ON login_audits(email)`);
+      await applyTenantRls("login_audits");
+
+      // ── crm_integrations — crm-service.ts INSERT/UPDATE columns ─────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS crm_integrations (
+          id                TEXT        PRIMARY KEY,
+          org_id            TEXT        NOT NULL DEFAULT 'default',
+          provider          TEXT        NOT NULL DEFAULT '',
+          name              TEXT,
+          status            TEXT        NOT NULL DEFAULT 'active',
+          access_token      TEXT,
+          refresh_token     TEXT,
+          token_expires_at  TIMESTAMPTZ,
+          portal_id         TEXT,
+          scope             TEXT,
+          instance_url      TEXT,
+          metadata          JSONB       NOT NULL DEFAULT '{}',
+          last_sync_at      TIMESTAMPTZ,
+          last_sync_status  TEXT,
+          synced_contacts   INTEGER     NOT NULL DEFAULT 0,
+          connected_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS crm_integrations_org_provider_idx ON crm_integrations(org_id, provider)`);
+      await applyTenantRls("crm_integrations");
+
+      // ── google_locations ────────────────────────────────────────────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS google_locations (
+          id              TEXT        PRIMARY KEY,
+          org_id          TEXT        NOT NULL DEFAULT 'default',
+          location_id     TEXT,
+          name            TEXT        NOT NULL DEFAULT '',
+          primary_category TEXT,
+          rating          REAL,
+          reviews_count   INTEGER     NOT NULL DEFAULT 0,
+          phone           TEXT,
+          website         TEXT,
+          lat             REAL,
+          lng             REAL,
+          raw_data        JSONB       NOT NULL DEFAULT '{}',
+          last_sync_at    TIMESTAMPTZ
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS google_locations_org_idx ON google_locations(org_id)`);
+      await applyTenantRls("google_locations");
+
+      // ── org_auth_config — sso-service.ts ON CONFLICT(org_id) uses these columns ─
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS org_auth_config (
+          id                TEXT        PRIMARY KEY,
+          org_id            TEXT        NOT NULL UNIQUE DEFAULT 'default',
+          provider          TEXT,
+          client_id         TEXT,
+          client_secret     TEXT,
+          metadata_url      TEXT,
+          enabled           BOOLEAN     NOT NULL DEFAULT false,
+          sso_required      BOOLEAN     NOT NULL DEFAULT false,
+          allow_magic_link  BOOLEAN     NOT NULL DEFAULT true,
+          allow_password    BOOLEAN     NOT NULL DEFAULT true,
+          session_ttl_hours INTEGER     NOT NULL DEFAULT 24,
+          mfa_enabled       BOOLEAN     NOT NULL DEFAULT false,
+          allowed_domains   TEXT[]      NOT NULL DEFAULT '{}',
+          created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await applyTenantRls("org_auth_config");
+
+      // ── google_accounts ─────────────────────────────────────────────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS google_accounts (
+          id            TEXT        PRIMARY KEY,
+          org_id        TEXT        NOT NULL UNIQUE DEFAULT 'default',
+          google_id     TEXT,
+          email         TEXT,
+          access_token  TEXT,
+          refresh_token TEXT,
+          token_expiry  TIMESTAMPTZ,
+          scopes        JSONB       NOT NULL DEFAULT '[]',
+          connected_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at    TIMESTAMPTZ
+        )
+      `);
+      await applyTenantRls("google_accounts");
+
+      // ── sso_providers — sso-service.ts uses: type,name,client_id,issuer,default_role ─
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS sso_providers (
+          id           TEXT        PRIMARY KEY,
+          org_id       TEXT        NOT NULL DEFAULT 'default',
+          type         TEXT        NOT NULL DEFAULT 'saml',
+          name         TEXT,
+          client_id    TEXT,
+          issuer       TEXT,
+          enabled      BOOLEAN     NOT NULL DEFAULT true,
+          default_role TEXT        NOT NULL DEFAULT 'member',
+          created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS sso_providers_org_idx ON sso_providers(org_id)`);
+      await applyTenantRls("sso_providers");
+
+      // ── ga4_properties — ga4-service.ts uses property_name; ON CONFLICT(org_id) ─
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS ga4_properties (
+          id            TEXT        PRIMARY KEY,
+          org_id        TEXT        NOT NULL UNIQUE DEFAULT 'default',
+          account_id    TEXT,
+          property_id   TEXT        NOT NULL DEFAULT '',
+          property_name TEXT,
+          is_active     BOOLEAN     NOT NULL DEFAULT true,
+          website_url   TEXT,
+          created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS ga4_properties_org_idx ON ga4_properties(org_id)`);
+      await applyTenantRls("ga4_properties");
+
+      // Verify all 19 tables exist, have RLS enabled, and have all 4 tenant policies
+      // before recording the migration. run() swallows individual DDL errors; this
+      // spot-check prevents permanently marking a partial migration as complete.
+      const VERIFY_TABLES = [
+        "github_connections","permission_logs","report_templates","google_reviews",
+        "gbp_posts","dataforseo_quota","roles","gsc_sites","reviews","crm_sync_logs",
+        "automation_templates","local_heatmaps","login_audits","crm_integrations",
+        "google_locations","org_auth_config","google_accounts","sso_providers","ga4_properties",
+      ];
+      // Also spot-check required columns for the tables with the most critical schema fixes.
+      const VERIFY_COLUMNS: Record<string, string[]> = {
+        sso_providers:    ["type","name","client_id","issuer","default_role"],
+        org_auth_config:  ["sso_required","allow_magic_link","allow_password","session_ttl_hours","mfa_enabled"],
+        login_audits:     ["method","failure_reason"],
+        ga4_properties:   ["property_name"],
+        gsc_sites:        ["permission_level"],
+        gbp_posts:        ["published_at"],
+        local_heatmaps:   ["location_id","center_lat","radius_km","status"],
+        crm_integrations: ["name","status","token_expires_at","portal_id","metadata"],
+        crm_sync_logs:       ["records_processed","records_created","records_failed","duration_ms"],
+        github_connections:  ["github_user_id","login","connected_at"],
+        automation_templates:["active","popularity"],
+      };
+      const failures: string[] = [];
+      for (const t of VERIFY_TABLES) {
+        // Table existence
+        const te = await client.query<{ e: boolean }>(
+          `SELECT to_regclass($1) IS NOT NULL AS e`, [`public.${t}`]
+        );
+        if (!te.rows[0]?.e) { failures.push(`${t}:missing`); continue; }
+        // RLS enabled (not FORCE — these tables use raw pool queries)
+        const rlsr = await client.query<{ rls: boolean }>(
+          `SELECT c.relrowsecurity AS rls FROM pg_class c
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname = 'public' AND c.relname = $1`, [t]
+        );
+        if (!rlsr.rows[0]?.rls) failures.push(`${t}:rls_not_enabled`);
+        // All 4 tenant policies
+        const pr = await client.query<{ cnt: number }>(
+          `SELECT COUNT(*)::int AS cnt FROM pg_policies
+           WHERE schemaname='public' AND tablename=$1
+             AND policyname LIKE 'tenant_%'`, [t]
+        );
+        if (Number(pr.rows[0]?.cnt) < 4) failures.push(`${t}:policies_${pr.rows[0]?.cnt}`);
+        // Column spot-check
+        const reqCols = VERIFY_COLUMNS[t];
+        if (reqCols?.length) {
+          const colr = await client.query<{ column_name: string }>(
+            `SELECT column_name FROM information_schema.columns
+             WHERE table_schema='public' AND table_name=$1`, [t]
+          );
+          const colSet = new Set(colr.rows.map(r => r.column_name));
+          for (const col of reqCols) {
+            if (!colSet.has(col)) failures.push(`${t}:missing_col_${col}`);
+          }
+        }
+      }
+      if (failures.length > 0) {
+        logger.warn({ failures }, "[init-data-tables] missing-production-tables-v3: verification failed — NOT recording, will retry on next boot");
+      } else {
+        await recordMigration("missing-production-tables-v3");
+        logger.info("[init-data-tables] missing-production-tables-v3: 19 tables, RLS, policies, and columns verified ✓");
+      }
+    } else {
+      logger.info("[init-data-tables] missing-production-tables-v3: already applied — skipping");
+    }
+
+    // ── Self-healing column additions for tables created by v1/v2 migrations ──
+    // These always run (idempotent ADD COLUMN IF NOT EXISTS) to repair existing
+    // installs that had the old incomplete schemas from v1/v2 migrations.
+    // automation_templates: self-heal all columns, including NOT NULL ones that
+    // need backfill before the constraint can be enforced.
+    await run(client, `ALTER TABLE automation_templates ADD COLUMN IF NOT EXISTS active         BOOLEAN DEFAULT true`);
+    await run(client, `ALTER TABLE automation_templates ADD COLUMN IF NOT EXISTS popularity     INTEGER DEFAULT 0`);
+    await run(client, `ALTER TABLE automation_templates ADD COLUMN IF NOT EXISTS platform       TEXT`);
+    await run(client, `ALTER TABLE automation_templates ADD COLUMN IF NOT EXISTS trigger_event  TEXT`);
+    await run(client, `ALTER TABLE automation_templates ADD COLUMN IF NOT EXISTS action_type    TEXT`);
+    await run(client, `ALTER TABLE automation_templates ADD COLUMN IF NOT EXISTS config_template JSONB DEFAULT '{}'`);
+    await run(client, `ALTER TABLE automation_templates ADD COLUMN IF NOT EXISTS icon           TEXT DEFAULT '⚡'`);
+    await run(client, `ALTER TABLE automation_templates ADD COLUMN IF NOT EXISTS color          TEXT DEFAULT '#2563EB'`);
+    await run(client, `ALTER TABLE automation_templates ADD COLUMN IF NOT EXISTS plan_required  TEXT DEFAULT 'Standard'`);
+    // Backfill NULLs before setting NOT NULL + DEFAULT
+    await run(client, `UPDATE automation_templates SET platform='custom'      WHERE platform      IS NULL`);
+    await run(client, `UPDATE automation_templates SET trigger_event=''       WHERE trigger_event IS NULL`);
+    await run(client, `UPDATE automation_templates SET action_type=''         WHERE action_type   IS NULL`);
+    await run(client, `ALTER TABLE automation_templates ALTER COLUMN platform      SET DEFAULT 'custom'`);
+    await run(client, `ALTER TABLE automation_templates ALTER COLUMN trigger_event SET DEFAULT ''`);
+    await run(client, `ALTER TABLE automation_templates ALTER COLUMN action_type   SET DEFAULT ''`);
+    // sso_providers: rename provider_type→keep old, add new service columns
+    await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS type         TEXT NOT NULL DEFAULT 'saml'`);
+    await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS name         TEXT`);
+    await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS client_id    TEXT`);
+    await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS issuer       TEXT`);
+    await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS default_role TEXT NOT NULL DEFAULT 'member'`);
+    // org_auth_config: new SSO config columns
+    await run(client, `ALTER TABLE org_auth_config ADD COLUMN IF NOT EXISTS sso_required      BOOLEAN NOT NULL DEFAULT false`);
+    await run(client, `ALTER TABLE org_auth_config ADD COLUMN IF NOT EXISTS allow_magic_link  BOOLEAN NOT NULL DEFAULT true`);
+    await run(client, `ALTER TABLE org_auth_config ADD COLUMN IF NOT EXISTS allow_password    BOOLEAN NOT NULL DEFAULT true`);
+    await run(client, `ALTER TABLE org_auth_config ADD COLUMN IF NOT EXISTS session_ttl_hours INTEGER NOT NULL DEFAULT 24`);
+    await run(client, `ALTER TABLE org_auth_config ADD COLUMN IF NOT EXISTS mfa_enabled       BOOLEAN NOT NULL DEFAULT false`);
+    await run(client, `ALTER TABLE org_auth_config ADD COLUMN IF NOT EXISTS allowed_domains   TEXT[]  NOT NULL DEFAULT '{}'`);
+    // login_audits: method + failure_reason
+    await run(client, `ALTER TABLE login_audits ADD COLUMN IF NOT EXISTS method         TEXT`);
+    await run(client, `ALTER TABLE login_audits ADD COLUMN IF NOT EXISTS failure_reason TEXT`);
+    // ga4_properties: property_name (service uses instead of display_name) + UNIQUE(org_id) for ON CONFLICT
+    await run(client, `ALTER TABLE ga4_properties ADD COLUMN IF NOT EXISTS property_name TEXT`);
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS ga4_properties_org_idx ON ga4_properties(org_id)`);
+    // gsc_sites: permission_level
+    await run(client, `ALTER TABLE gsc_sites ADD COLUMN IF NOT EXISTS permission_level TEXT`);
+    // gbp_posts: published_at
+    await run(client, `ALTER TABLE gbp_posts ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`);
+    // local_heatmaps: full new column set
+    await run(client, `ALTER TABLE local_heatmaps ADD COLUMN IF NOT EXISTS location_id TEXT`);
+    await run(client, `ALTER TABLE local_heatmaps ADD COLUMN IF NOT EXISTS name        TEXT`);
+    await run(client, `ALTER TABLE local_heatmaps ADD COLUMN IF NOT EXISTS center_lat  REAL`);
+    await run(client, `ALTER TABLE local_heatmaps ADD COLUMN IF NOT EXISTS center_lng  REAL`);
+    await run(client, `ALTER TABLE local_heatmaps ADD COLUMN IF NOT EXISTS radius_km   REAL`);
+    await run(client, `ALTER TABLE local_heatmaps ADD COLUMN IF NOT EXISTS status      TEXT NOT NULL DEFAULT 'pending'`);
+    // crm_integrations: all service columns
+    await run(client, `ALTER TABLE crm_integrations ADD COLUMN IF NOT EXISTS name             TEXT`);
+    await run(client, `ALTER TABLE crm_integrations ADD COLUMN IF NOT EXISTS status           TEXT NOT NULL DEFAULT 'active'`);
+    await run(client, `ALTER TABLE crm_integrations ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ`);
+    await run(client, `ALTER TABLE crm_integrations ADD COLUMN IF NOT EXISTS portal_id        TEXT`);
+    await run(client, `ALTER TABLE crm_integrations ADD COLUMN IF NOT EXISTS scope            TEXT`);
+    await run(client, `ALTER TABLE crm_integrations ADD COLUMN IF NOT EXISTS metadata         JSONB NOT NULL DEFAULT '{}'`);
+    await run(client, `ALTER TABLE crm_integrations ADD COLUMN IF NOT EXISTS last_sync_at     TIMESTAMPTZ`);
+    await run(client, `ALTER TABLE crm_integrations ADD COLUMN IF NOT EXISTS last_sync_status TEXT`);
+    await run(client, `ALTER TABLE crm_integrations ADD COLUMN IF NOT EXISTS synced_contacts  INTEGER NOT NULL DEFAULT 0`);
+    // crm_sync_logs: records columns
+    await run(client, `ALTER TABLE crm_sync_logs ADD COLUMN IF NOT EXISTS records_processed INTEGER NOT NULL DEFAULT 0`);
+    await run(client, `ALTER TABLE crm_sync_logs ADD COLUMN IF NOT EXISTS records_created   INTEGER NOT NULL DEFAULT 0`);
+    await run(client, `ALTER TABLE crm_sync_logs ADD COLUMN IF NOT EXISTS records_updated   INTEGER NOT NULL DEFAULT 0`);
+    await run(client, `ALTER TABLE crm_sync_logs ADD COLUMN IF NOT EXISTS records_failed    INTEGER NOT NULL DEFAULT 0`);
+    await run(client, `ALTER TABLE crm_sync_logs ADD COLUMN IF NOT EXISTS duration_ms       INTEGER`);
+    logger.info("[init-data-tables] self-healing column ALTERs for v1/v2 schema gaps done");
+
+    // ── Remove FORCE ROW LEVEL SECURITY from all raw-pool-accessed tables ─────
+    // These 19 tables were set to FORCE RLS by the v2 migration but are accessed
+    // via raw pool.query() without withOrgDb in several services (sso, crm, ga4,
+    // gsc, gbp-posting, local-maps). FORCE would break every query under a
+    // non-BYPASSRLS application role. This runs every boot (idempotent).
+    for (const _t of [
+      "github_connections","permission_logs","report_templates","google_reviews",
+      "gbp_posts","dataforseo_quota","roles","gsc_sites","reviews","crm_sync_logs",
+      "automation_templates","local_heatmaps","login_audits","crm_integrations",
+      "google_locations","org_auth_config","google_accounts","sso_providers","ga4_properties",
+    ]) {
+      await run(client, `ALTER TABLE "${_t}" ENABLE ROW LEVEL SECURITY`);
+      await run(client, `ALTER TABLE "${_t}" NO FORCE ROW LEVEL SECURITY`);
+    }
+    logger.info("[init-data-tables] NO FORCE RLS applied to 19 raw-pool tenant tables");
+
+    // ── P0-5 self-healing ALTERs — always run (idempotent, protect drift) ────
+    // org_addons.activated_at — used by billing addons service
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ`);
+    // ai_monthly_usage extra columns (already in block above but repeat for safety)
+    await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS credits_used NUMERIC    NOT NULL DEFAULT 0`);
+    await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS cost_eur     NUMERIC    NOT NULL DEFAULT 0`);
+    await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS tokens_used  BIGINT     NOT NULL DEFAULT 0`);
+    await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS reset_at     TIMESTAMPTZ`);
+    await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    // ai_usage_logs — all columns written by ai-engine.ts
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS user_id          UUID`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS provider         TEXT`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS credits_used     NUMERIC`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS credits_debited  NUMERIC`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS tokens_in        INTEGER`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS tokens_out       INTEGER`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS cached_tokens    INTEGER`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS cost_eur         NUMERIC`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS real_cost_eur    NUMERIC`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS latency_ms       INTEGER`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS duration_ms      INTEGER`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS success          BOOLEAN`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS metadata         JSONB`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS idempotency_key  TEXT`);
+
+    // ── P1-2 : ai_usage_logs org_id type fix ─────────────────────────────────
+    // migrations/002_dashboard_tables.sql created org_id as TEXT; organizations.id
+    // is UUID. Fix by casting after purging any uncastable legacy rows.
+    // The ALTER is guarded: only runs when org_id is still TEXT type.
+    await run(client, `
+      DO $$
+      DECLARE col_type TEXT;
+      BEGIN
+        SELECT data_type INTO col_type
+        FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='ai_usage_logs' AND column_name='org_id';
+
+        IF col_type = 'text' THEN
+          -- Remove legacy rows whose org_id cannot be cast to UUID
+          DELETE FROM ai_usage_logs
+          WHERE org_id IS NOT NULL
+            AND org_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            AND org_id NOT IN ('default', '');
+          -- NULL-ify the sentinel values before casting
+          UPDATE ai_usage_logs SET org_id = NULL WHERE org_id IN ('default', '');
+          -- Drop the DEFAULT before casting (TEXT default cannot auto-cast to UUID)
+          ALTER TABLE ai_usage_logs ALTER COLUMN org_id DROP DEFAULT;
+          -- Cast column type
+          ALTER TABLE ai_usage_logs ALTER COLUMN org_id TYPE UUID USING org_id::uuid;
+          -- Add FK (idempotent via DO block)
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.table_constraints
+            WHERE table_name='ai_usage_logs' AND constraint_name='ai_usage_logs_org_id_fkey'
+          ) THEN
+            ALTER TABLE ai_usage_logs
+              ADD CONSTRAINT ai_usage_logs_org_id_fkey
+              FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+          END IF;
+        END IF;
+      END $$;
+    `);
+
+    // Same cast for ai_monthly_usage if it has TEXT org_id
+    await run(client, `
+      DO $$
+      DECLARE col_type TEXT;
+      BEGIN
+        SELECT data_type INTO col_type
+        FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='ai_monthly_usage' AND column_name='org_id';
+
+        IF col_type = 'text' THEN
+          DELETE FROM ai_monthly_usage
+          WHERE org_id IS NOT NULL
+            AND org_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            AND org_id NOT IN ('default', '');
+          UPDATE ai_monthly_usage SET org_id = NULL WHERE org_id IN ('default', '');
+          ALTER TABLE ai_monthly_usage ALTER COLUMN org_id DROP DEFAULT;
+          ALTER TABLE ai_monthly_usage ALTER COLUMN org_id TYPE UUID USING org_id::uuid;
+        END IF;
+      END $$;
+    `);
+
+    logger.info("[init-data-tables] all tables, schema_migrations, missing-production-tables, P0-5 ALTERs, P1-2 type fixes done");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
     throw err;

@@ -549,7 +549,9 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
         `- "quand suis-je libre ?", "trouve un créneau", "est-ce que j'ai du temps ?" → appeler find_free_slots.`,
         `- "déplace toute ma semaine", "je suis absent cette semaine" → appeler reschedule_week.`,
         `- "optimise mon planning", "regroupe mes réunions de mardi" → appeler optimize_schedule.`,
-        `- "réunion hebdo chaque lundi", "event récurrent", "tous les jours à 9h" → appeler create_recurring_event avec la RRULE adaptée.`,
+        `- "réunion hebdo chaque lundi", "event récurrent", "tous les jours à 9h" → appeler create_recurring_event (RRULE: DAILY|WEEKLY|MONTHLY|YEARLY ou FREQ=WEEKLY;BYDAY=MO,WE etc.).`,
+        `- "modifie uniquement cette occurrence", "mets à jour toute la série" → appeler update_recurring_event (scope: 'single'|'all').`,
+        `- "annule seulement ce lundi", "supprime toute la série hebdo" → appeler delete_recurring_series (scope: 'single'|'all').`,
         `- Toute question sur les événements ("qu'est-ce que j'ai cette semaine ?", "quels sont mes RDV ?", "mes prochains rendez-vous ?") → appeler search_calendar_event PUIS expliquer les résultats en texte.`,
         `- Après tout appel d'outil : TOUJOURS produire une réponse textuelle qui explique le résultat à l'utilisateur. Ne jamais laisser le tool_result sans commentaire.`,
         `- Pour les questions d'analyse (conflits, planning) : si le contexte calendrier ci-dessus contient déjà l'information, tu peux répondre directement en texte sans appeler un outil.`,
@@ -568,6 +570,73 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
           ? `⚠ Conflits de créneau détectés : ${calConflicts.join(" / ")}`
           : `Aucun conflit de créneau`,
       );
+
+      // Phase 3.2 — contexte étendu (compact)
+      try {
+        // UTC offset (hours) for context
+        const utcOffsetMs = (() => {
+          try {
+            const nowStr = new Date().toLocaleString("en-US", { timeZone: orgTimezone, hour: "numeric", hour12: false, timeZoneName: "short" });
+            // Use Intl to get offset in minutes
+            const fmt = new Intl.DateTimeFormat("en-US", { timeZone: orgTimezone, timeZoneName: "shortOffset" });
+            const parts = fmt.formatToParts(new Date());
+            const tzPart = parts.find(p => p.type === "timeZoneName")?.value ?? "UTC+0";
+            return tzPart; // e.g. "GMT+2" or "UTC"
+          } catch { return "UTC"; }
+        })();
+
+        // Recurring events this week
+        const recurringRes = await pool.query(
+          `SELECT COUNT(*) AS cnt FROM calendar_events
+           WHERE org_id = $1 AND series_id IS NOT NULL
+             AND date >= $2 AND date <= $3`,
+          [oid, calToday, calWeekEnd]
+        ).catch(() => ({ rows: [{ cnt: 0 }] }));
+        const recurringThisWeek = Number((recurringRes.rows[0] as Record<string, unknown>)?.["cnt"] ?? 0);
+
+        // Distinct series this week
+        const seriesRes = await pool.query(
+          `SELECT COUNT(DISTINCT series_id) AS cnt FROM calendar_events
+           WHERE org_id = $1 AND series_id IS NOT NULL
+             AND date >= $2 AND date <= $3`,
+          [oid, calToday, calWeekEnd]
+        ).catch(() => ({ rows: [{ cnt: 0 }] }));
+        const seriesThisWeek = Number((seriesRes.rows[0] as Record<string, unknown>)?.["cnt"] ?? 0);
+
+        // Quick free-slot count for today (work day 08:00–18:00, 60-min slots)
+        const busyToday = calTodayEvts.filter(e => e["start_time"]).map(e => {
+          const [h, m] = String(e["start_time"] ?? "00:00").split(":").map(Number);
+          const s = (h ?? 0) * 60 + (m ?? 0);
+          return { start: s, end: s + (Number(e["duration"]) || 60) };
+        });
+        let freeSlotCount = 0;
+        let freeCursor = 8 * 60;
+        while (freeCursor + 60 <= 18 * 60) {
+          const end = freeCursor + 60;
+          const blocked = busyToday.some(b => freeCursor < b.end && end > b.start);
+          if (!blocked) { freeSlotCount++; freeCursor = end; }
+          else { freeCursor = (busyToday.find(b => freeCursor < b.end && end > b.start)?.end ?? freeCursor) + 1; }
+        }
+
+        // Linked missions count (calendar_events linked to missions)
+        const linkedRes = await pool.query(
+          `SELECT COUNT(*) AS cnt FROM calendar_events
+           WHERE org_id = $1 AND linked_mission_id IS NOT NULL
+             AND date >= $2 AND date <= $3`,
+          [oid, calToday, calWeekEnd]
+        ).catch(() => ({ rows: [{ cnt: 0 }] }));
+        const linkedMissions = Number((linkedRes.rows[0] as Record<string, unknown>)?.["cnt"] ?? 0);
+
+        lines.push(
+          `Fuseau effectif (offset UTC) : ${utcOffsetMs}`,
+          `Événements récurrents cette semaine : ${recurringThisWeek} (${seriesThisWeek} série${seriesThisWeek > 1 ? "s" : ""})`,
+          freeSlotCount > 0
+            ? `Créneaux libres aujourd'hui (08h–18h, 60 min) : ${freeSlotCount} disponible${freeSlotCount > 1 ? "s" : ""}`
+            : `Aucun créneau libre de 60 min aujourd'hui (08h–18h)`,
+          linkedMissions > 0 ? `Événements liés à des missions : ${linkedMissions}` : "",
+          `Total événements 7 jours : ${calRows.length}`,
+        );
+      } catch { /* non-fatal — contexte étendu ignoré */ }
     } catch { /* non-fatal : contexte calendrier ignoré */ }
 
     return lines.filter(l => l !== "").join("\n");
@@ -1539,6 +1608,24 @@ router.post("/ai/conversations/:id/confirm", async (req: Request, res: Response)
 // ── GET /ai/destinations — registre de navigation filtré (AI Agents Phase 1) ──
 // Source de vérité unique pour le frontend : mêmes permissions effectives et
 // même plan que ce que voit le modèle. Jamais de route inventée côté client.
+// ── GET /ai/tools — catalogue complet des outils IA (Phase 3.2) ──────────
+router.get("/ai/tools", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tools = ALL_TOOLS.map((t) => ({
+      name:              t.name,
+      description:       t.description,
+      requiredPermission: t.requiredPermission,
+      confirmationLevel: t.confirmationLevel,
+      isWrite:           t.isWrite,
+      parameters:        t.parameters,
+    }));
+    res.json({ count: tools.length, tools });
+  } catch (err) {
+    logger.error({ err }, "[agent] GET /ai/tools failed");
+    res.status(500).json({ error: "Failed to load tools" });
+  }
+});
+
 router.get("/ai/destinations", async (req: Request, res: Response): Promise<void> => {
   const orgId  = req.orgId  ?? "default";
   const userId = req.userId ?? "anonymous";

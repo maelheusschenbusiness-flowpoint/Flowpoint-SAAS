@@ -890,9 +890,19 @@ async function dispatchTool(
         actionLogId: logId };
     }
     const list = freeSlots.map(s => `- ${s.date} : ${s.startTime}–${s.endTime} (${duration} min)`).join("\n");
+
+    // Phase 3.2 — navProposal pour find_free_slots → vue hebdomadaire
+    const ffsNavDest = validateNavAction(
+      { destinationId: "calendar-week", label: "Voir la semaine", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const ffsNavProposal = ffsNavDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [ffsNavDest] })
+      : null;
+
     return { toolCallId: logId, toolName: name, ok: true,
       content: `${freeSlots.length} créneau(x) libre(s) de ${duration} min :\n${list}`,
-      data: { freeSlots }, actionLogId: logId };
+      data: { freeSlots }, actionLogId: logId, navProposal: ffsNavProposal };
   }
 
   // ── reschedule_week ───────────────────────────────────────────────────────
@@ -971,11 +981,15 @@ async function dispatchTool(
       result: "ok", snapshot: batchSnap as unknown as Record<string, unknown>,
       versionAfter: null, durationMs: Date.now() - t0 });
 
-    const list = events.map(ev => {
-      const oldD = ev["date"] as string;
-      const newD = new Date(new Date(oldD + "T00:00:00Z").getTime() + offsetDays * 86_400_000).toISOString().slice(0, 10);
-      return `"${ev["title"]}" : ${oldD} → ${newD}`;
+    // Phase 3.2 — avant/après clair
+    const beforeLines = events.map(ev =>
+      `  "${ev["title"]}" : ${ev["date"]}${ev["start_time"] ? ` ${ev["start_time"]}` : ""}`,
+    ).join("\n");
+    const afterLines = events.map(ev => {
+      const newD = new Date(new Date(String(ev["date"]) + "T00:00:00Z").getTime() + offsetDays * 86_400_000).toISOString().slice(0, 10);
+      return `  "${ev["title"]}" : ${newD}${ev["start_time"] ? ` ${ev["start_time"]}` : ""}`;
     }).join("\n");
+    const list = `AVANT (semaine du ${sourceWeekStart}) :\n${beforeLines}\nAPRÈS (semaine du ${targetWeekStart}) :\n${afterLines}`;
 
     const navWeekDest = validateNavAction(
       { destinationId: "calendar-week", label: "Voir la semaine cible", openMode: "page" },
@@ -1089,7 +1103,15 @@ async function dispatchTool(
       result: "ok", snapshot: batchOptSnap as unknown as Record<string, unknown>,
       versionAfter: null, durationMs: Date.now() - t0 });
 
-    const list = updates.map(u => `"${u.title}" : ${u.oldStartTime} → ${u.newStartTime}`).join("\n");
+    // Phase 3.2 — justification par déplacement
+    const list = updates.map((u, i) => {
+      const reason = i === 0
+        ? "premier événement, positionnement initial"
+        : u.oldStartTime === u.newStartTime
+          ? "inchangé"
+          : "compacté pour réduire le temps mort";
+      return `"${u.title}" : ${u.oldStartTime} → ${u.newStartTime} (${reason})`;
+    }).join("\n");
 
     const navOptDest = validateNavAction(
       { destinationId: "calendar-optimize", label: "Voir le planning optimisé", openMode: "page" },
@@ -1127,6 +1149,8 @@ async function dispatchTool(
 
     const createdIds: string[]                         = [];
     const createdSnaps: Record<string, unknown>[]      = [];
+    // Phase 3.2 — shared series_id links all occurrences for update/delete_recurring_series
+    const seriesId = `ser_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     // All-or-nothing transaction: a failure mid-series leaves no partial orphans
     const recClient = await pool.connect();
@@ -1135,13 +1159,12 @@ async function dispatchTool(
       for (let i = 0; i < dates.length; i++) {
         const id = `ce_${Date.now()}_${Math.random().toString(36).slice(2, 6)}_r${i}`;
         const d  = dates[i]!;
-        // Only store rrule on the first occurrence (marker of the series)
-        const rruleVal = i === 0 ? rrule : null;
+        // Phase 3.2: rrule stored on ALL occurrences (not just the first) for series queries
         await recClient.query(`
           INSERT INTO calendar_events
             (id, org_id, title, site, type, date, start_time, duration, notes, client_name,
-             priority, color, reminder, linked_mission_id, rrule, created_at, updated_at)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW())
+             priority, color, reminder, linked_mission_id, rrule, series_id, created_at, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW())
         `, [
           id, orgId, title,
           (args["site"] as string)       ?? "",
@@ -1152,11 +1175,12 @@ async function dispatchTool(
           (args["color"] as string)      ?? "",
           (args["reminder"] as number)   ?? 0,
           (args["linkedMissionId"] as string) ?? null,
-          rruleVal,
+          rrule,
+          seriesId,
         ]);
         createdIds.push(id);
         createdSnaps.push({ id, org_id: orgId, title, date: d, start_time: startTime,
-          duration, type: eventType, rrule: rruleVal });
+          duration, type: eventType, rrule, series_id: seriesId });
       }
       await recClient.query("COMMIT");
     } catch (err) {
@@ -1196,6 +1220,221 @@ async function dispatchTool(
       actionLogId: logId,
       undoLabel: `Annuler la création de "${title}" (${dates.length} occurrences)`,
       navProposal: navRecProposal };
+  }
+
+  // ── update_recurring_event ───────────────────────────────────────────────
+  if (name === "update_recurring_event") {
+    const eventId = args["eventId"] as string;
+    const scope   = (args["scope"] as "single" | "all") ?? "single";
+
+    // Fields to update — only provided fields are changed
+    const updates: Record<string, unknown> = {};
+    if (args["title"]      != null) updates["title"]       = args["title"];
+    if (args["startTime"]  != null) updates["start_time"]  = args["startTime"];
+    if (args["duration"]   != null) updates["duration"]    = args["duration"];
+    if (args["type"]       != null) updates["type"]        = args["type"];
+    if (args["notes"]      != null) updates["notes"]       = args["notes"];
+    if (args["clientName"] != null) updates["client_name"] = args["clientName"];
+    if (args["priority"]   != null) updates["priority"]    = args["priority"];
+    if (args["color"]      != null) updates["color"]       = args["color"];
+
+    if (Object.keys(updates).length === 0) {
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: "Aucun champ à modifier fourni.", actionLogId: logId };
+    }
+
+    const targetR = await pool.query(
+      `SELECT id, org_id, title, site, type, date, start_time, duration, notes,
+              client_name, priority, color, reminder, linked_mission_id, rrule,
+              series_id, updated_at, created_at
+       FROM calendar_events WHERE id = $1 AND org_id = $2`,
+      [eventId, orgId]
+    );
+    if (targetR.rows.length === 0) {
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `Événement introuvable : ${eventId}`, actionLogId: logId };
+    }
+    const targetRow = targetR.rows[0] as Record<string, unknown>;
+    const seriesId  = targetRow["series_id"] as string | null;
+    const titleStr  = String(targetRow["title"] ?? "");
+
+    // Collect all events to update
+    let eventIds: string[] = [eventId];
+    let snapshots: Record<string, unknown>[] = [{
+      ...targetRow,
+      updated_at: targetRow["updated_at"] instanceof Date
+        ? (targetRow["updated_at"] as Date).toISOString()
+        : String(targetRow["updated_at"] ?? ""),
+    }];
+
+    if (scope === "all" && seriesId) {
+      const allOccs = await pool.query(
+        `SELECT id, org_id, title, site, type, date, start_time, duration, notes,
+                client_name, priority, color, reminder, linked_mission_id, rrule,
+                series_id, updated_at, created_at
+         FROM calendar_events WHERE series_id = $1 AND org_id = $2 ORDER BY date ASC`,
+        [seriesId, orgId]
+      );
+      eventIds  = (allOccs.rows as Record<string, unknown>[]).map(r => String(r["id"]));
+      snapshots = (allOccs.rows as Record<string, unknown>[]).map(r => ({
+        ...r,
+        updated_at: r["updated_at"] instanceof Date
+          ? (r["updated_at"] as Date).toISOString()
+          : String(r["updated_at"] ?? ""),
+      }));
+    }
+
+    // Build SET clause dynamically
+    const setCols = Object.keys(updates).map((k, i) => `${k} = $${i + 1}`).join(", ");
+    const setVals = Object.values(updates);
+    const postWriteVersions: Record<string, string> = {};
+
+    const updClient = await pool.connect();
+    try {
+      await updClient.query("BEGIN");
+      for (const eid of eventIds) {
+        const res = await updClient.query(
+          `UPDATE calendar_events SET ${setCols}, updated_at = NOW()
+           WHERE id = $${setVals.length + 1} AND org_id = $${setVals.length + 2}
+           RETURNING id, updated_at`,
+          [...setVals, eid, orgId]
+        );
+        if (res.rows[0]) {
+          const ts = (res.rows[0] as Record<string, unknown>)["updated_at"];
+          postWriteVersions[eid] = ts instanceof Date ? ts.toISOString() : String(ts);
+        }
+      }
+      await updClient.query("COMMIT");
+    } catch (err) {
+      await updClient.query("ROLLBACK");
+      updClient.release();
+      throw err;
+    }
+    updClient.release();
+
+    await store.logActivity({
+      type: "report",
+      label: `[IA] Récurrent mis à jour : "${titleStr}" (scope=${scope}, ${eventIds.length} occ.)`,
+      targetId: eventIds[0] ?? orgId, targetType: "calendar_event",
+      metadata: { provider, model, tool: name, scope, count: eventIds.length }, orgId,
+    }).catch(() => {});
+
+    const batchUpdSnap = { batchType: "update_recurring_event", scope, events: snapshots, postWriteVersions };
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+      result: "ok", snapshot: batchUpdSnap as unknown as Record<string, unknown>,
+      versionAfter: null, durationMs: Date.now() - t0 });
+
+    const summary = Object.entries(updates).map(([k, v]) => `${k}="${v}"`).join(", ");
+    const navUpdDest = validateNavAction(
+      { destinationId: "calendar-week", label: "Voir le calendrier", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const navUpdProposal = navUpdDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [navUpdDest] })
+      : null;
+
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: scope === "all"
+        ? `${eventIds.length} occurrence(s) de "${titleStr}" mises à jour (${summary}).`
+        : `Occurrence "${titleStr}" du ${String(targetRow["date"] ?? "")} mise à jour (${summary}).`,
+      data: { count: eventIds.length, scope },
+      snapshot: batchUpdSnap as unknown as Record<string, unknown>,
+      actionLogId: logId,
+      undoLabel: `Annuler la modification de "${titleStr}" (${scope === "all" ? eventIds.length + " occurrences" : "1 occurrence"})`,
+      navProposal: navUpdProposal };
+  }
+
+  // ── delete_recurring_series ───────────────────────────────────────────────
+  if (name === "delete_recurring_series") {
+    const eventId = args["eventId"] as string;
+    const scope   = (args["scope"] as "single" | "all") ?? "single";
+
+    const targetR2 = await pool.query(
+      `SELECT id, org_id, title, site, type, date, start_time, duration, notes,
+              client_name, priority, color, reminder, linked_mission_id, rrule,
+              series_id, updated_at, created_at
+       FROM calendar_events WHERE id = $1 AND org_id = $2`,
+      [eventId, orgId]
+    );
+    if (targetR2.rows.length === 0) {
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `Événement introuvable : ${eventId}`, actionLogId: logId };
+    }
+    const targetRow2 = targetR2.rows[0] as Record<string, unknown>;
+    const seriesId2  = targetRow2["series_id"] as string | null;
+    const titleStr2  = String(targetRow2["title"] ?? "");
+
+    let eventsToDelete: Record<string, unknown>[] = [{
+      ...targetRow2,
+      updated_at: targetRow2["updated_at"] instanceof Date
+        ? (targetRow2["updated_at"] as Date).toISOString()
+        : String(targetRow2["updated_at"] ?? ""),
+    }];
+
+    if (scope === "all" && seriesId2) {
+      const allOccs2 = await pool.query(
+        `SELECT id, org_id, title, site, type, date, start_time, duration, notes,
+                client_name, priority, color, reminder, linked_mission_id, rrule,
+                series_id, updated_at, created_at
+         FROM calendar_events WHERE series_id = $1 AND org_id = $2 ORDER BY date ASC`,
+        [seriesId2, orgId]
+      );
+      eventsToDelete = (allOccs2.rows as Record<string, unknown>[]).map(r => ({
+        ...r,
+        updated_at: r["updated_at"] instanceof Date
+          ? (r["updated_at"] as Date).toISOString()
+          : String(r["updated_at"] ?? ""),
+      }));
+    }
+
+    const delRClient = await pool.connect();
+    try {
+      await delRClient.query("BEGIN");
+      for (const e of eventsToDelete) {
+        await delRClient.query(
+          `DELETE FROM calendar_events WHERE id = $1 AND org_id = $2`,
+          [e["id"], orgId]
+        );
+      }
+      await delRClient.query("COMMIT");
+    } catch (err) {
+      await delRClient.query("ROLLBACK");
+      delRClient.release();
+      throw err;
+    }
+    delRClient.release();
+
+    await store.logActivity({
+      type: "report",
+      label: `[IA] Série supprimée : "${titleStr2}" (scope=${scope}, ${eventsToDelete.length} occ.)`,
+      targetId: eventsToDelete[0]?.["id"] as string ?? orgId, targetType: "calendar_event",
+      metadata: { provider, model, tool: name, scope, count: eventsToDelete.length }, orgId,
+    }).catch(() => {});
+
+    const batchDelSnap = { batchType: "delete_recurring_series", scope, events: eventsToDelete };
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+      result: "ok", snapshot: batchDelSnap as unknown as Record<string, unknown>,
+      versionAfter: null, durationMs: Date.now() - t0 });
+
+    const navDelDest = validateNavAction(
+      { destinationId: "calendar-recurring", label: "Voir les événements récurrents", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const navDelProposal = navDelDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [navDelDest] })
+      : null;
+
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: scope === "all"
+        ? `${eventsToDelete.length} occurrence(s) de la série "${titleStr2}" supprimées.`
+        : `Occurrence "${titleStr2}" du ${String(targetRow2["date"] ?? "")} supprimée (les autres occurrences de la série sont conservées).`,
+      data: { count: eventsToDelete.length, scope },
+      snapshot: batchDelSnap as unknown as Record<string, unknown>,
+      actionLogId: logId,
+      undoLabel: `Annuler la suppression de "${titleStr2}" (${eventsToDelete.length} occurrence${eventsToDelete.length > 1 ? "s" : ""})`,
+      navProposal: navDelProposal };
   }
 
   // fallback

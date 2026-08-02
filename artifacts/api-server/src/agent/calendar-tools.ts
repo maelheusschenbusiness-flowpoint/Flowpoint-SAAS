@@ -335,9 +335,63 @@ export const CALENDAR_TOOLS: ToolDef[] = [
       required: ["title", "startDate", "rrule"],
     },
   },
+
+  // ── Phase 3.2 : gestion avancée des récurrences ──────────────────────────
+  {
+    name: "update_recurring_event",
+    description:
+      "Modifie une ou toutes les occurrences d'un événement récurrent. " +
+      "scope='single' : modifie uniquement cette occurrence (exception dans la série). " +
+      "scope='all' : met à jour toutes les occurrences partageant le même series_id. " +
+      "Utiliser quand l'utilisateur dit 'change uniquement cette réunion', " +
+      "'mets à jour toutes les réunions hebdo', 'toutes les occurrences de X'. " +
+      "Même règle que update_calendar_event : appeler search_calendar_event d'abord pour obtenir l'ID réel. " +
+      "Aperçu présenté avant modification. Annulation possible dans les 30 minutes.",
+    requiredPermission: "calendar.write",
+    confirmationLevel: "preview",
+    isWrite: true,
+    parameters: {
+      type: "object",
+      properties: {
+        eventId:    { type: "string",  description: "ID de l'occurrence cible (obligatoire)." },
+        scope:      { type: "string",  enum: ["single", "all"], description: "'single' = cette occurrence uniquement. 'all' = toute la série." },
+        title:      { type: "string",  description: "Nouveau titre." },
+        startTime:  { type: "string",  description: "Nouvelle heure de début HH:MM." },
+        duration:   { type: "number",  description: "Nouvelle durée en minutes.", minimum: 5, maximum: 1440 },
+        type:       { type: "string",  description: "Nouveau type d'événement." },
+        notes:      { type: "string",  description: "Nouvelles notes." },
+        clientName: { type: "string",  description: "Nouveau nom de client ou participant." },
+        priority:   { type: "string",  enum: ["low", "normal", "high", "urgent"] },
+        color:      { type: "string",  description: "Nouvelle couleur hex (ex : #3b82f6)." },
+      },
+      required: ["eventId", "scope"],
+    },
+  },
+
+  {
+    name: "delete_recurring_series",
+    description:
+      "Supprime une ou toutes les occurrences d'un événement récurrent. " +
+      "scope='single' : supprime uniquement cette occurrence (les autres restent). " +
+      "scope='all' : supprime toute la série (toutes les occurrences avec le même series_id). " +
+      "Utiliser quand l'utilisateur dit 'annule uniquement ce lundi', 'supprime toutes les réunions hebdo de X'. " +
+      "Pour supprimer un seul événement NON récurrent, utiliser delete_calendar_event. " +
+      "Confirmation obligatoire avant suppression. Annulation possible dans les 30 minutes.",
+    requiredPermission: "calendar.write",
+    confirmationLevel: "confirm",
+    isWrite: true,
+    parameters: {
+      type: "object",
+      properties: {
+        eventId: { type: "string", description: "ID d'une occurrence de la série (obligatoire)." },
+        scope:   { type: "string", enum: ["single", "all"], description: "'single' = cette occurrence. 'all' = toute la série." },
+      },
+      required: ["eventId", "scope"],
+    },
+  },
 ];
 
-// ── Map pour tool-executor ─────────────────────────────────────────────────
+// ── Map pour tool-executor — Phase 3 + 3.2 ────────────────────────────────
 export const CALENDAR_TOOL_BY_NAME = new Map<string, ToolDef>(
   CALENDAR_TOOLS.map((t) => [t.name, t])
 );
@@ -430,13 +484,32 @@ export const CALENDAR_ARG_SCHEMAS = {
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format YYYY-MM-DD requis"),
     startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
     duration: z.number().int().min(5).max(1440).optional(),
-    rrule: z.string().min(1).max(200),
+    rrule: z.string().min(1).max(300),
     occurrences: z.number().int().min(1).max(52).optional(),
     type: z.string().max(100).optional(),
     notes: z.string().max(2000).optional(),
     clientName: z.string().max(200).optional(),
     priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
     color: z.string().max(20).optional(),
+  }),
+
+  // Phase 3.2
+  update_recurring_event: z.object({
+    eventId:    z.string().min(1).max(100),
+    scope:      z.enum(["single", "all"]),
+    title:      z.string().min(1).max(200).optional(),
+    startTime:  z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    duration:   z.number().int().min(5).max(1440).optional(),
+    type:       z.string().max(100).optional(),
+    notes:      z.string().max(2000).optional(),
+    clientName: z.string().max(200).optional(),
+    priority:   z.enum(["low", "normal", "high", "urgent"]).optional(),
+    color:      z.string().max(20).optional(),
+  }),
+
+  delete_recurring_series: z.object({
+    eventId: z.string().min(1).max(100),
+    scope:   z.enum(["single", "all"]),
   }),
 };
 
@@ -468,29 +541,109 @@ export async function snapCalendarEvent(
  * Calcule les dates d'un événement récurrent à partir d'une RRULE simplifiée.
  * Formats supportés : DAILY, WEEKLY, MONTHLY, WEEKLY:N, DAILY:N, MONTHLY:N
  */
-export function computeRecurrenceDates(startDate: string, rrule: string, count: number): string[] {
-  const dates: string[] = [];
-  const upper = rrule.trim().toUpperCase();
-  const [freq, intervalStr] = upper.split(":");
-  const interval = Math.max(1, parseInt(intervalStr ?? "1", 10) || 1);
+/**
+ * Phase 3.2 — Moteur RRULE étendu.
+ *
+ * Formats acceptés :
+ *   Héritage : "DAILY", "WEEKLY", "MONTHLY", "YEARLY", "WEEKLY:2", "DAILY:3"…
+ *   Standard : "FREQ=WEEKLY;BYDAY=MO,WE;COUNT=8"
+ *              "FREQ=MONTHLY;INTERVAL=2;UNTIL=2026-12-31"
+ *              "FREQ=YEARLY;INTERVAL=1;COUNT=5"
+ *
+ * Règles :
+ *   - `count` est le maximum si RRULE ne précise pas COUNT/UNTIL.
+ *   - UNTIL en YYYYMMDD ou YYYY-MM-DD.
+ *   - BYDAY s'applique à WEEKLY uniquement (ex : MO,WE,FR).
+ *   - Calcul en UTC pur pour éviter la dérive DST sur les dates calendrier.
+ */
+const BYDAY_MAP: Record<string, number> = {
+  SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6,
+};
 
-  for (let i = 0; i < count; i++) {
-    // Use UTC to avoid DST-induced date drift
-    const base = new Date(startDate + "T00:00:00Z");
-    if (freq === "DAILY") {
-      base.setUTCDate(base.getUTCDate() + i * interval);
-    } else if (freq === "WEEKLY") {
-      base.setUTCDate(base.getUTCDate() + i * 7 * interval);
-    } else if (freq === "MONTHLY") {
-      // Add months without overflowing into next month (e.g. Jan 31 + 1 month → Feb 28)
-      const originalDay = base.getUTCDate();
-      base.setUTCMonth(base.getUTCMonth() + i * interval, 1);
-      const daysInMonth = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)).getUTCDate();
-      base.setUTCDate(Math.min(originalDay, daysInMonth));
-    } else {
-      break; // Unknown freq — stop
+export function computeRecurrenceDates(startDate: string, rrule: string, count: number): string[] {
+  const upper = rrule.trim().toUpperCase();
+
+  // ── Parse ────────────────────────────────────────────────────────────────
+  let freq     = "";
+  let interval = 1;
+  let byDay:  number[] = [];
+  let untilIso: string | null = null;
+  let maxCount = count;
+
+  if (upper.includes("FREQ=")) {
+    // Standard iCalendar-like format
+    for (const part of upper.split(";")) {
+      const [k, v] = part.split("=");
+      if (!v) continue;
+      if (k === "FREQ")     freq     = v;
+      if (k === "INTERVAL") interval = Math.max(1, parseInt(v, 10) || 1);
+      if (k === "COUNT")    maxCount = Math.min(count, parseInt(v, 10) || count);
+      if (k === "UNTIL") {
+        // Accept YYYYMMDD or YYYY-MM-DD
+        untilIso = v.includes("-")
+          ? v.slice(0, 10)
+          : `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`;
+      }
+      if (k === "BYDAY") {
+        byDay = v.split(",").map(d => BYDAY_MAP[d.trim()]).filter(n => n !== undefined) as number[];
+      }
     }
-    dates.push(base.toISOString().slice(0, 10));
+  } else {
+    // Legacy "DAILY", "WEEKLY:2", "MONTHLY", "YEARLY"
+    const [f, iStr] = upper.split(":");
+    freq     = f ?? "";
+    interval = Math.max(1, parseInt(iStr ?? "1", 10) || 1);
+  }
+
+  const base = new Date(startDate + "T00:00:00Z");
+  const dates: string[] = [];
+
+  // ── WEEKLY + BYDAY — e.g. "FREQ=WEEKLY;BYDAY=MO,WE,FR" ─────────────────
+  if (freq === "WEEKLY" && byDay.length > 0) {
+    for (let week = 0; dates.length < maxCount; week++) {
+      const weekAnchor = new Date(base.getTime() + week * interval * 7 * 86_400_000);
+      const anchorDow  = weekAnchor.getUTCDay();
+      for (const targetDow of [...byDay].sort((a, b) => a - b)) {
+        const diff    = (targetDow - anchorDow + 7) % 7;
+        const occDate = new Date(weekAnchor.getTime() + diff * 86_400_000);
+        if (occDate.getTime() < base.getTime()) continue; // before series start
+        const iso = occDate.toISOString().slice(0, 10);
+        if (untilIso && iso > untilIso) continue;
+        if (dates.indexOf(iso) === -1) dates.push(iso);
+        if (dates.length >= maxCount) break;
+      }
+      // Safety: stop after scanning 1000 weeks
+      if (week > 1000) break;
+    }
+    return dates.sort();
+  }
+
+  // ── Simple frequency generation ──────────────────────────────────────────
+  for (let i = 0; i < maxCount; i++) {
+    const d = new Date(base.getTime()); // re-derive each iteration to avoid accumulation errors
+    if (freq === "DAILY") {
+      d.setUTCDate(d.getUTCDate() + i * interval);
+    } else if (freq === "WEEKLY") {
+      d.setUTCDate(d.getUTCDate() + i * 7 * interval);
+    } else if (freq === "MONTHLY") {
+      // Clamp to last day of target month (e.g. Jan 31 + 1 month → Feb 28)
+      const origDay = d.getUTCDate();
+      d.setUTCMonth(d.getUTCMonth() + i * interval, 1);
+      const daysInMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+      d.setUTCDate(Math.min(origDay, daysInMonth));
+    } else if (freq === "YEARLY") {
+      const origDay   = d.getUTCDate();
+      const origMonth = d.getUTCMonth();
+      d.setUTCFullYear(d.getUTCFullYear() + i * interval);
+      d.setUTCMonth(origMonth, 1);
+      const daysInMonth = new Date(Date.UTC(d.getUTCFullYear(), origMonth + 1, 0)).getUTCDate();
+      d.setUTCDate(Math.min(origDay, daysInMonth));
+    } else {
+      break; // Unknown freq
+    }
+    const iso = d.toISOString().slice(0, 10);
+    if (untilIso && iso > untilIso) break;
+    dates.push(iso);
   }
   return dates;
 }

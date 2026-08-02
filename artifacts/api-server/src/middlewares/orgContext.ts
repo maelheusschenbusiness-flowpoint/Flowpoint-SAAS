@@ -14,7 +14,7 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
-import { getSession }                            from "../services/sessions.js";
+import { getSession, deleteSession }              from "../services/sessions.js";
 import { logger }                                from "../lib/logger.js";
 import { pool }                                  from "@workspace/db";
 
@@ -67,13 +67,30 @@ export function orgContext(req: Request, res: Response, next: NextFunction): voi
   _orgContext(req, res, next).catch(next);
 }
 
-async function _orgContext(req: Request, _res: Response, next: NextFunction): Promise<void> {
+/** UUID v4 pattern — same as planGate.ts. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function _orgContext(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token = extractToken(req);
 
   if (token) {
     // 1. Per-session token — checks memory cache then DB (survives restarts)
     const session = await getSession(token);
     if (session) {
+      // P0-6: Reject legacy email-as-orgId sessions that survived the auth v2 migration.
+      // These sessions carry an email address as orgId, which breaks UUID columns.
+      // Destroy the session so the client re-authenticates cleanly.
+      if (session.orgId && !UUID_RE.test(session.orgId) && session.orgId.includes("@")) {
+        logger.info(
+          { url: req.url?.split("?")[0], orgIdShape: "email" },
+          "[OrgContext] Destroying legacy email-as-orgId session — client will re-authenticate",
+        );
+        // Best-effort destroy (non-blocking)
+        deleteSession(token).catch(() => {});
+        res.status(401).json({ error: "session_expired", reason: "legacy_session" });
+        return;
+      }
+
       req.orgId      = session.orgId;
       req.userId     = session.userId;
       req.userUuid   = session.userUuid;
