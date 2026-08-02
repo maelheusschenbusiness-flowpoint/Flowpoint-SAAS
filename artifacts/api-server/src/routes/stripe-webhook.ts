@@ -145,7 +145,7 @@ export async function activateNewSignup(opts: {
   }
 
   const { pool: pgPool } = await import("@workspace/db");
-  const { randomBytes } = await import("crypto");
+  const { randomBytes, randomUUID: _wbRandUUID } = await import("crypto");
 
   // ── 1. Load pending_signups ──────────────────────────────────────────────
   const dbClient = await pgPool.connect();
@@ -182,29 +182,35 @@ export async function activateNewSignup(opts: {
   const firstName = signupRow["first_name"] ?? "";
 
   // ── 1b. Guard: skip if the org already has an active subscription ─────────
-  // An existing user can end up with a valid pending_signups token if they
-  // started a second checkout before consuming their first one. In that case,
-  // we must NOT send a second magic link — they already have an account.
+  // Look up by owner_email (organizations.id is UUID — cannot query by email string).
+  // Also capture the existing org UUID for idempotent re-runs.
+  let _existingOrgUUID: string | null = null;
   {
     const orgCheck = await pgPool.connect();
     try {
-      const r = await orgCheck.query(
-        `SELECT subscription_status FROM organizations WHERE id = $1 LIMIT 1`,
-        [orgId]
+      const r = await orgCheck.query<{ id: string; subscription_status: string }>(
+        `SELECT id::text, subscription_status FROM organizations WHERE owner_email = $1 LIMIT 1`,
+        [email]
       );
-      const existingStatus = r.rows[0]?.subscription_status ?? null;
-      if (existingStatus && existingStatus !== "pending_billing" && existingStatus !== "incomplete") {
-        logger.info({ orgId, existingStatus }, "[Webhook/activate] Org already active — skipping duplicate magic link");
-        // Mark token consumed so it can't fire again
-        await pgPool.connect().then(async c => {
-          try {
-            await c.query(`UPDATE pending_signups SET consumed_at = NOW() WHERE token = $1 AND consumed_at IS NULL`, [preRegToken]);
-          } finally { c.release(); }
-        }).catch(() => {});
-        return;
+      const existingRow = r.rows[0] ?? null;
+      if (existingRow) {
+        _existingOrgUUID = existingRow.id;
+        const existingStatus = existingRow.subscription_status ?? null;
+        if (existingStatus && existingStatus !== "pending_billing" && existingStatus !== "incomplete") {
+          logger.info({ orgId: _existingOrgUUID, existingStatus }, "[Webhook/activate] Org already active — skipping duplicate magic link");
+          // Mark token consumed so it can't fire again
+          await pgPool.connect().then(async c => {
+            try {
+              await c.query(`UPDATE pending_signups SET consumed_at = NOW() WHERE token = $1 AND consumed_at IS NULL`, [preRegToken]);
+            } finally { c.release(); }
+          }).catch(() => {});
+          return;
+        }
       }
     } finally { orgCheck.release(); }
   }
+  // Use existing UUID for idempotency, or generate a fresh one for new orgs
+  const orgUUID = _existingOrgUUID ?? _wbRandUUID();
 
   // ── 2. Upsert org_settings for profile data only ────────────────────────
   const { upsertOrgSettings, loadOrgSettings: _loadSettings } = await import("../services/org-settings.js");
@@ -249,7 +255,9 @@ export async function activateNewSignup(opts: {
     const userId = upsertUser.rows[0]?.id;
     if (!userId) throw new Error(`Failed to upsert user for email=${email}`);
 
-    const newOrgSlug = orgId.replace(/[^a-z0-9]/gi, "-").toLowerCase().slice(0, 60);
+    // orgUUID is a proper UUID — either the existing org's UUID or a freshly generated one.
+    // Email (orgId) is stored only in owner_email; never used as the primary key.
+    const newOrgSlug = (signupRow["company_name"] ?? email).replace(/[^a-z0-9]/gi, "-").toLowerCase().slice(0, 60);
     const orgInsert = await activateClient.query<{ id: string }>(
       `INSERT INTO organizations
          (id, name, slug, owner_user_id, status, plan, subscription_status,
@@ -263,7 +271,7 @@ export async function activateNewSignup(opts: {
              updated_at          = NOW()
        RETURNING id`,
       [
-        orgId,
+        orgUUID,
         signupRow["company_name"] ?? email,
         newOrgSlug,
         userId,
@@ -274,7 +282,7 @@ export async function activateNewSignup(opts: {
         isTrial ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() : null,
       ]
     );
-    newOrgId = orgInsert.rows[0]?.id ?? orgId;
+    newOrgId = orgInsert.rows[0]?.id ?? orgUUID;
 
     await activateClient.query(
       `INSERT INTO organization_members (organization_id, user_id, role, status)

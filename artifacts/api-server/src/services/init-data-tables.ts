@@ -876,49 +876,14 @@ export async function initDataTables(): Promise<void> {
     // ── organizations table (Wave 3 Lot A) ───────────────────────────────────
     // Provides a first-class organization record for every org.
     // Backfilled from org_settings so existing orgs are not orphaned.
-    // org_id (TEXT) is the canonical tenant key across all tables; this table
-    // extends it with audit fields, owner, slug and Stripe references.
-    //
-    // Fix: if a previous schema created organizations.id as UUID (42804), cast
-    // it to TEXT before the INSERT so org_id (TEXT) maps without type error.
-    // Must drop FK constraints that reference organizations(id) BEFORE altering
-    // the column type — PostgreSQL refuses ALTER COLUMN TYPE when FKs exist.
-    // init-phase1-users.ts does the same on the full boot path; this guard runs
-    // on every boot so the fast path (which skips phase1-users order) is also safe.
-    await run(client, `
-      DO $$ BEGIN
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_schema = 'public' AND table_name = 'organizations'
-            AND column_name = 'id' AND data_type = 'uuid'
-        ) THEN
-          ALTER TABLE org_addons    DROP CONSTRAINT IF EXISTS org_addons_org_id_fkey;
-          ALTER TABLE org_settings  DROP CONSTRAINT IF EXISTS org_settings_org_id_fkey;
-          ALTER TABLE org_checklist DROP CONSTRAINT IF EXISTS org_checklist_org_id_fkey;
-          ALTER TABLE org_secrets   DROP CONSTRAINT IF EXISTS org_secrets_org_id_fkey;
-          ALTER TABLE team_members  DROP CONSTRAINT IF EXISTS team_members_org_id_fkey;
-          ALTER TABLE organizations ALTER COLUMN id TYPE TEXT USING id::text;
-        END IF;
-      END $$;
-    `);
-    // Belt-and-suspenders: also convert org_addons.org_id if it is UUID-typed.
-    // This handles the case where org_addons was created independently with
-    // org_id UUID before organizations.id was set to TEXT (SQLSTATE 42804).
-    await run(client, `
-      DO $$ BEGIN
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_schema = 'public' AND table_name = 'org_addons'
-            AND column_name = 'org_id' AND data_type = 'uuid'
-        ) THEN
-          ALTER TABLE org_addons DROP CONSTRAINT IF EXISTS org_addons_org_id_fkey;
-          ALTER TABLE org_addons ALTER COLUMN org_id TYPE TEXT USING org_id::text;
-        END IF;
-      END $$;
-    `);
+    // organizations.id is UUID — the canonical authoritative type.
+    // The UUID→TEXT downgrade blocks that previously lived here have been removed;
+    // they were the root cause of SQLSTATE 42804/0A000 boot errors.
+    // A one-time migration (fix-org-uuid-relations-v1, further below) handles
+    // any legacy TEXT ids on existing databases.
     await run(client, `
       CREATE TABLE IF NOT EXISTS organizations (
-        id               TEXT        NOT NULL PRIMARY KEY,
+        id               UUID        NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
         name             TEXT        NOT NULL DEFAULT '',
         slug             TEXT        NOT NULL DEFAULT '',
         owner_user_id    TEXT        NOT NULL DEFAULT '',
@@ -931,25 +896,36 @@ export async function initDataTables(): Promise<void> {
       );
     `);
     // Backfill: insert one row per org_settings entry (idempotent via ON CONFLICT DO NOTHING).
-    // Uses org_settings as source-of-truth for plan, stripe fields, and name.
+    // Only runs when organizations.id is TEXT — on UUID databases (new installs or post-migration)
+    // org_settings.org_id may contain email addresses which cannot be cast to UUID,
+    // so this backfill is intentionally skipped; orgs are created via the signup flow instead.
     await run(client, `
-      INSERT INTO organizations (id, name, slug, owner_user_id, status, plan,
-                                  stripe_customer_id, stripe_subscription_id, created_at, updated_at)
-      SELECT
-        org_id                                AS id,
-        COALESCE(NULLIF(org_name, ''), org_id) AS name,
-        LOWER(REGEXP_REPLACE(COALESCE(NULLIF(org_name,''), org_id), '[^a-z0-9]+', '-', 'gi')) AS slug,
-        org_id                                AS owner_user_id,
-        CASE WHEN subscription_status IN ('active','trialing') THEN 'active'
-             WHEN subscription_status = 'canceled' THEN 'inactive'
-             ELSE 'active' END                AS status,
-        COALESCE(NULLIF(plan,''), 'standard') AS plan,
-        NULLIF(stripe_customer_id,'')         AS stripe_customer_id,
-        NULL                                  AS stripe_subscription_id,
-        COALESCE(created_at, NOW())           AS created_at,
-        NOW()                                 AS updated_at
-      FROM org_settings
-      ON CONFLICT (id) DO NOTHING;
+      DO $$ DECLARE org_id_type TEXT;
+      BEGIN
+        SELECT data_type INTO org_id_type
+        FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='organizations' AND column_name='id';
+
+        IF org_id_type = 'text' THEN
+          INSERT INTO organizations (id, name, slug, owner_user_id, status, plan,
+                                      stripe_customer_id, stripe_subscription_id, created_at, updated_at)
+          SELECT
+            org_id                                AS id,
+            COALESCE(NULLIF(org_name, ''), org_id) AS name,
+            LOWER(REGEXP_REPLACE(COALESCE(NULLIF(org_name,''), org_id), '[^a-z0-9]+', '-', 'gi')) AS slug,
+            org_id                                AS owner_user_id,
+            CASE WHEN subscription_status IN ('active','trialing') THEN 'active'
+                 WHEN subscription_status = 'canceled' THEN 'inactive'
+                 ELSE 'active' END                AS status,
+            COALESCE(NULLIF(plan,''), 'standard') AS plan,
+            NULLIF(stripe_customer_id,'')         AS stripe_customer_id,
+            NULL                                  AS stripe_subscription_id,
+            COALESCE(created_at, NOW())           AS created_at,
+            NOW()                                 AS updated_at
+          FROM org_settings
+          ON CONFLICT (id) DO NOTHING;
+        END IF;
+      END $$;
     `);
     // Additive columns on existing organizations table (safe re-runs)
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';`);
@@ -2154,17 +2130,229 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS metadata         JSONB`);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS idempotency_key  TEXT`);
 
-    // ── P1-2 : ai_usage_logs org_id type fix ─────────────────────────────────
-    // migrations/002_dashboard_tables.sql created org_id as TEXT; organizations.id
-    // is UUID. Fix by casting after purging any uncastable legacy rows.
-    // The ALTER is guarded: only runs when org_id is still TEXT type.
+    // ── fix-org-uuid-relations-v1 — one-time migration, fixes 3 boot SQL errors ─
+    // Error 1 (42804): ai_usage_logs_org_id_fkey type mismatch UUID vs TEXT
+    // Error 2 (0A000): org_addons ALTER COLUMN TYPE blocked by RLS policies
+    // Error 3 (42804): TEXT email inserted into UUID organizations.id (fixed in public-billing.ts)
+    //
+    // Guarded by schema_migrations — runs exactly once.
+    // Each DO block checks the current column type, so individual steps are
+    // idempotent if a previous partial run already converted some columns.
+    if (!await hasMigration("fix-org-uuid-relations-v1")) {
+      // Retry-on-next-boot: use client.query() directly so errors are not swallowed.
+      // If any step throws, the migration is NOT recorded — the next boot will retry.
+      // Only after ALL steps succeed is the migration marker written (idempotency guard).
+      let _migOk = false;
+      try {
+      // Session-scoped temp table holds old_id→new_id mapping across DO blocks.
+      // No ON COMMIT DROP — persists for the lifetime of this pool connection.
+      await client.query(`
+        CREATE TEMP TABLE IF NOT EXISTS _fp_uuid_map (
+          old_id TEXT NOT NULL,
+          new_id UUID NOT NULL
+        )
+      `);
+
+      // Step A: organizations.id TEXT→UUID
+      // If organizations.id is TEXT (legacy/fresh-DB scenario), generate canonical
+      // UUIDs for any non-UUID rows (email addresses, 'default', slugs),
+      // propagate to dependent TEXT org_id columns, then ALTER the PK to UUID.
+      await client.query(`
+        DO $org_uuid_fix$
+        DECLARE col_type TEXT;
+        BEGIN
+          SELECT data_type INTO col_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='organizations' AND column_name='id';
+
+          IF col_type = 'text' THEN
+            -- Build old→new mapping for non-UUID ids
+            INSERT INTO _fp_uuid_map (old_id, new_id)
+            SELECT id, gen_random_uuid()
+            FROM organizations
+            WHERE id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+
+            IF EXISTS (SELECT 1 FROM _fp_uuid_map) THEN
+              -- Propagate new UUIDs to all TEXT org_id columns before PK change
+              UPDATE org_settings         SET org_id = m.new_id::text FROM _fp_uuid_map m WHERE org_settings.org_id        = m.old_id;
+              UPDATE org_addons           SET org_id = m.new_id::text FROM _fp_uuid_map m WHERE org_addons.org_id          = m.old_id;
+              UPDATE org_checklist        SET org_id = m.new_id::text FROM _fp_uuid_map m WHERE org_checklist.org_id       = m.old_id;
+              UPDATE org_secrets          SET org_id = m.new_id::text FROM _fp_uuid_map m WHERE org_secrets.org_id         = m.old_id;
+              UPDATE team_members         SET org_id = m.new_id::text FROM _fp_uuid_map m WHERE team_members.org_id        = m.old_id;
+              UPDATE ai_usage_logs        SET org_id = m.new_id::text FROM _fp_uuid_map m WHERE ai_usage_logs.org_id       = m.old_id;
+              UPDATE ai_monthly_usage     SET org_id = m.new_id::text FROM _fp_uuid_map m WHERE ai_monthly_usage.org_id    = m.old_id;
+              UPDATE ai_credit_purchases  SET org_id = m.new_id::text FROM _fp_uuid_map m WHERE ai_credit_purchases.org_id = m.old_id;
+              -- Update organizations.id itself (must be last)
+              UPDATE organizations SET id = m.new_id::text FROM _fp_uuid_map m WHERE organizations.id = m.old_id;
+            END IF;
+
+            -- Drop ALL FK constraints referencing organizations(id) BEFORE type change.
+            -- PostgreSQL refuses ALTER COLUMN TYPE on a PK that is still referenced by FKs.
+            ALTER TABLE IF EXISTS org_settings  DROP CONSTRAINT IF EXISTS org_settings_org_id_fkey;
+            ALTER TABLE IF EXISTS org_checklist DROP CONSTRAINT IF EXISTS org_checklist_org_id_fkey;
+            ALTER TABLE IF EXISTS org_secrets   DROP CONSTRAINT IF EXISTS org_secrets_org_id_fkey;
+            ALTER TABLE IF EXISTS team_members  DROP CONSTRAINT IF EXISTS team_members_org_id_fkey;
+            ALTER TABLE IF EXISTS org_addons    DROP CONSTRAINT IF EXISTS org_addons_org_id_fkey;
+
+            -- All id values are now valid UUID strings — safe to cast
+            ALTER TABLE organizations ALTER COLUMN id TYPE UUID USING id::uuid;
+            ALTER TABLE organizations ALTER COLUMN id SET DEFAULT gen_random_uuid();
+          END IF;
+        END $org_uuid_fix$;
+      `);
+
+      // Step B: org_addons.org_id TEXT→UUID with RLS dance (Error 2 fix)
+      // RLS policies that reference org_id block ALTER COLUMN TYPE (SQLSTATE 0A000).
+      // Solution: drop policies, alter, recreate with ::text cast for GUC compat.
+      await client.query(`
+        DO $org_addons_uuid$
+        DECLARE col_type TEXT;
+        BEGIN
+          SELECT data_type INTO col_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='org_addons' AND column_name='org_id';
+
+          IF col_type IN ('text','character varying') THEN
+            -- Drop RLS policies that block ALTER COLUMN TYPE (Error 2)
+            DROP POLICY IF EXISTS rls_org_isolation ON org_addons;
+            DROP POLICY IF EXISTS tenant_select      ON org_addons;
+            DROP POLICY IF EXISTS tenant_insert      ON org_addons;
+            DROP POLICY IF EXISTS tenant_update      ON org_addons;
+            DROP POLICY IF EXISTS tenant_delete      ON org_addons;
+            -- Drop FK before type change
+            ALTER TABLE org_addons DROP CONSTRAINT IF EXISTS org_addons_org_id_fkey;
+            -- Apply mapping from Step A (in case org_addons was updated there)
+            UPDATE org_addons oa SET org_id = m.new_id::text
+              FROM _fp_uuid_map m WHERE oa.org_id = m.old_id;
+            -- Delete rows whose org_id cannot be cast to UUID (legacy 'default' sentinel)
+            DELETE FROM org_addons
+            WHERE org_id IS NOT NULL
+              AND org_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+            -- Drop DEFAULT before type change ('default' TEXT cannot auto-cast to UUID)
+            ALTER TABLE org_addons ALTER COLUMN org_id DROP DEFAULT;
+            -- Cast TEXT → UUID
+            ALTER TABLE org_addons ALTER COLUMN org_id TYPE UUID USING org_id::uuid;
+            -- Recreate FK to organizations(id)
+            ALTER TABLE org_addons
+              ADD CONSTRAINT org_addons_org_id_fkey
+              FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+            -- Recreate RLS policies; compare via ::text cast so GUC TEXT value works
+            CREATE POLICY tenant_select ON org_addons FOR SELECT
+              USING     (org_id::text = current_setting('app.current_org_id', true));
+            CREATE POLICY tenant_insert ON org_addons FOR INSERT
+              WITH CHECK(org_id::text = current_setting('app.current_org_id', true));
+            CREATE POLICY tenant_update ON org_addons FOR UPDATE
+              USING     (org_id::text = current_setting('app.current_org_id', true));
+            CREATE POLICY tenant_delete ON org_addons FOR DELETE
+              USING     (org_id::text = current_setting('app.current_org_id', true));
+          END IF;
+        END $org_addons_uuid$;
+      `);
+
+      // Step C: ai_usage_logs.org_id TEXT→UUID + FK to organizations(id) (Error 1 fix)
+      await client.query(`
+        DO $ai_logs_uuid$
+        DECLARE col_type TEXT; org_col_type TEXT;
+        BEGIN
+          SELECT data_type INTO col_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='ai_usage_logs' AND column_name='org_id';
+
+          SELECT data_type INTO org_col_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='organizations' AND column_name='id';
+
+          IF col_type IN ('text','character varying') THEN
+            UPDATE ai_usage_logs SET org_id = m.new_id::text
+              FROM _fp_uuid_map m WHERE ai_usage_logs.org_id = m.old_id;
+            DELETE FROM ai_usage_logs
+            WHERE org_id IS NOT NULL
+              AND org_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+            ALTER TABLE ai_usage_logs ALTER COLUMN org_id DROP DEFAULT;
+            ALTER TABLE ai_usage_logs ALTER COLUMN org_id TYPE UUID USING org_id::uuid;
+            DROP INDEX IF EXISTS ai_usage_logs_org_idx;
+            CREATE INDEX IF NOT EXISTS ai_usage_logs_org_created_idx
+              ON ai_usage_logs(org_id, created_at DESC);
+            -- Only add FK when organizations.id is also UUID (prevents SQLSTATE 42804)
+            IF org_col_type = 'uuid' AND NOT EXISTS (
+              SELECT 1 FROM information_schema.table_constraints
+              WHERE table_name='ai_usage_logs' AND constraint_name='ai_usage_logs_org_id_fkey'
+                AND constraint_type='FOREIGN KEY'
+            ) THEN
+              ALTER TABLE ai_usage_logs
+                ADD CONSTRAINT ai_usage_logs_org_id_fkey
+                FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+            END IF;
+          END IF;
+        END $ai_logs_uuid$;
+      `);
+
+      // Step D: ai_monthly_usage.org_id TEXT→UUID
+      await client.query(`
+        DO $ai_monthly_uuid$
+        DECLARE col_type TEXT;
+        BEGIN
+          SELECT data_type INTO col_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='ai_monthly_usage' AND column_name='org_id';
+
+          IF col_type IN ('text','character varying') THEN
+            UPDATE ai_monthly_usage SET org_id = m.new_id::text
+              FROM _fp_uuid_map m WHERE ai_monthly_usage.org_id = m.old_id;
+            DELETE FROM ai_monthly_usage
+            WHERE org_id IS NOT NULL
+              AND org_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+            ALTER TABLE ai_monthly_usage ALTER COLUMN org_id DROP DEFAULT;
+            ALTER TABLE ai_monthly_usage ALTER COLUMN org_id TYPE UUID USING org_id::uuid;
+          END IF;
+        END $ai_monthly_uuid$;
+      `);
+
+      // Step E: ai_credit_purchases.org_id TEXT→UUID
+      await client.query(`
+        DO $ai_credits_uuid$
+        DECLARE col_type TEXT;
+        BEGIN
+          SELECT data_type INTO col_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='ai_credit_purchases' AND column_name='org_id';
+
+          IF col_type IN ('text','character varying') THEN
+            UPDATE ai_credit_purchases SET org_id = m.new_id::text
+              FROM _fp_uuid_map m WHERE ai_credit_purchases.org_id = m.old_id;
+            DELETE FROM ai_credit_purchases
+            WHERE org_id IS NOT NULL
+              AND org_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+            ALTER TABLE ai_credit_purchases ALTER COLUMN org_id DROP DEFAULT;
+            ALTER TABLE ai_credit_purchases ALTER COLUMN org_id TYPE UUID USING org_id::uuid;
+          END IF;
+        END $ai_credits_uuid$;
+      `);
+
+        _migOk = true;
+      } catch (migErr: unknown) {
+        logger.error({ err: migErr }, "[init-data-tables] fix-org-uuid-relations-v1 migration FAILED — will retry on next boot");
+      }
+      if (_migOk) {
+        await recordMigration("fix-org-uuid-relations-v1");
+        logger.info("[init-data-tables] fix-org-uuid-relations-v1 migration complete ✓");
+      }
+    }
+
+    // ── P1-2 : ai_usage_logs org_id type fix (idempotent fallback guard) ────────
+    // Runs only if fix-org-uuid-relations-v1 failed or hasn't run yet.
+    // Guards FK creation on organizations.id being UUID to prevent SQLSTATE 42804.
     await run(client, `
       DO $$
-      DECLARE col_type TEXT;
+      DECLARE col_type TEXT; org_col_type TEXT;
       BEGIN
         SELECT data_type INTO col_type
         FROM information_schema.columns
         WHERE table_schema='public' AND table_name='ai_usage_logs' AND column_name='org_id';
+
+        SELECT data_type INTO org_col_type
+        FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='organizations' AND column_name='id';
 
         IF col_type = 'text' THEN
           -- Remove legacy rows whose org_id cannot be cast to UUID
@@ -2178,10 +2366,11 @@ export async function initDataTables(): Promise<void> {
           ALTER TABLE ai_usage_logs ALTER COLUMN org_id DROP DEFAULT;
           -- Cast column type
           ALTER TABLE ai_usage_logs ALTER COLUMN org_id TYPE UUID USING org_id::uuid;
-          -- Add FK (idempotent via DO block)
-          IF NOT EXISTS (
+          -- Only add FK when organizations.id is also UUID (prevents SQLSTATE 42804)
+          IF org_col_type = 'uuid' AND NOT EXISTS (
             SELECT 1 FROM information_schema.table_constraints
             WHERE table_name='ai_usage_logs' AND constraint_name='ai_usage_logs_org_id_fkey'
+              AND constraint_type='FOREIGN KEY'
           ) THEN
             ALTER TABLE ai_usage_logs
               ADD CONSTRAINT ai_usage_logs_org_id_fkey

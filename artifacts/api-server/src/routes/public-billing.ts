@@ -1216,7 +1216,10 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             return;
           }
           const _fcAEmail = _fcSignup["email"] ?? _authenticatedOrgId;
-          const _fcAOrgId = _fcAEmail;
+          // Use a proper UUID for organizations.id — email as PK caused SQLSTATE 42804
+          // when organizations.id is UUID-typed. Slug and owner_email remain email-based.
+          const { randomUUID: _fcRandUUID } = await import("crypto");
+          const _fcAOrgId = _fcRandUUID();
 
           const _fcActTxC = await _fcActPool.connect();
           try {

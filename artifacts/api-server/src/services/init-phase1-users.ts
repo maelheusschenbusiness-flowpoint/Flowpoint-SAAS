@@ -107,36 +107,13 @@ export async function initPhase1Users(): Promise<void> {
     await run(client, `CREATE POLICY "tenant_update" ON organization_members FOR UPDATE USING     (organization_id::text = ${GUC})`);
     await run(client, `CREATE POLICY "tenant_delete" ON organization_members FOR DELETE USING     (organization_id::text = ${GUC})`);
 
-    // ── 2b. Self-healing: coerce organizations.id UUID→TEXT ──────────────────
-    // Some production DBs have organizations.id typed as UUID (created by an
-    // older migration or the Supabase Dashboard before the TEXT primary key fix).
-    // Steps:
-    //   1. Drop FK constraints that reference organizations(id) — PostgreSQL
-    //      refuses ALTER COLUMN TYPE when FKs exist, even if USING is valid.
-    //      org_addons_org_id_fkey (TEXT→UUID) is the known culprit on Render.
-    //   2. Alter organizations.id from UUID to TEXT.  USING id::text is lossless.
-    // Note: the JOIN/WHERE queries below also use explicit ::text casts so they
-    // work correctly even if this coercion is skipped (belt-and-suspenders).
-    await run(client, `
-      DO $$ BEGIN
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_schema = 'public' AND table_name = 'organizations'
-            AND column_name = 'id' AND data_type = 'uuid'
-        ) THEN
-          -- Drop every FK that references organizations(id) before type change.
-          -- These constraints point TEXT → UUID, which becomes TEXT → TEXT after
-          -- the ALTER and can safely be left absent (no hard FK needed for TEXT keys).
-          ALTER TABLE org_addons    DROP CONSTRAINT IF EXISTS org_addons_org_id_fkey;
-          ALTER TABLE org_settings  DROP CONSTRAINT IF EXISTS org_settings_org_id_fkey;
-          ALTER TABLE org_checklist DROP CONSTRAINT IF EXISTS org_checklist_org_id_fkey;
-          ALTER TABLE org_secrets   DROP CONSTRAINT IF EXISTS org_secrets_org_id_fkey;
-          ALTER TABLE team_members  DROP CONSTRAINT IF EXISTS team_members_org_id_fkey;
-          -- Now alter the primary key column type.
-          ALTER TABLE organizations ALTER COLUMN id TYPE TEXT USING id::text;
-        END IF;
-      END $$;
-    `);
+    // ── 2b. (removed) UUID→TEXT downgrade ────────────────────────────────────
+    // The UUID→TEXT downgrade block that previously lived here has been removed.
+    // organizations.id is now UUID (canonical authoritative type).
+    // The fix-org-uuid-relations-v1 migration in init-data-tables.ts handles
+    // any legacy TEXT ids on existing databases (runs once, guarded by
+    // schema_migrations).  All JOIN/WHERE queries below use ::text casts so they
+    // work correctly regardless of the current id type.
 
     // ── 3. user_sessions — add nullable user_id for Phase 2 backfill ─────────
     await run(client, `ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_id_v2 UUID;`);
