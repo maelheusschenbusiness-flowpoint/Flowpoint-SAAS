@@ -469,8 +469,10 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
 
     // === CALENDRIER — Phase 3 : contexte événements ===
     try {
-      const calToday   = new Date().toISOString().slice(0, 10);
-      const calWeekEnd = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+      const calNow      = new Date();
+      const calToday    = calNow.toISOString().slice(0, 10);
+      const calTimeHHMM = calNow.toISOString().slice(11, 16); // HH:MM en UTC
+      const calWeekEnd  = new Date(calNow.getTime() + 7 * 86_400_000).toISOString().slice(0, 10);
       const calRes = await pool.query(
         `SELECT id, title, date, start_time, duration, type, client_name, priority
          FROM calendar_events
@@ -503,7 +505,14 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       lines.push(
         ``,
         `=== CALENDRIER (7 prochains jours) ===`,
-        `Date du jour : ${calToday}`,
+        `Date et heure actuelles (UTC) : ${calToday} à ${calTimeHHMM}`,
+        `RÉSOLUTION DES EXPRESSIONS RELATIVES — Utilise cette date/heure pour calculer "dans 30 minutes", "dans 2 heures", "demain matin", "vendredi dans deux semaines", etc. Ne fais aucune supposition silencieuse. Si une expression est ambiguë, demande une clarification avant d'appeler l'outil.`,
+        `RÈGLES OUTILS CALENDRIER (obligatoires) :`,
+        `- Toute demande de création/modification/déplacement/suppression → appeler l'outil correspondant (create/update/move/delete_calendar_event). Ne jamais décrire l'action sans la faire.`,
+        `- Toute question sur les événements ("qu'est-ce que j'ai cette semaine ?", "quels sont mes RDV ?", "mes prochains rendez-vous ?") → appeler search_calendar_event PUIS expliquer les résultats en texte.`,
+        `- Après tout appel d'outil : TOUJOURS produire une réponse textuelle qui explique le résultat à l'utilisateur. Ne jamais laisser le tool_result sans commentaire.`,
+        `- Pour les questions d'analyse (conflits, planning) : si le contexte calendrier ci-dessus contient déjà l'information, tu peux répondre directement en texte sans appeler un outil.`,
+        `- Si un paramètre obligatoire manque → demander à l'utilisateur AVANT d'appeler l'outil.`,
         calTodayEvts.length > 0
           ? `Aujourd'hui (${calTodayEvts.length} événement${calTodayEvts.length > 1 ? "s" : ""}) : ${calTodayEvts.map(e =>
               `"${e["title"]}"${e["start_time"] ? ` à ${e["start_time"]}` : ""} (${e["duration"] ?? 60} min)${e["client_name"] ? ` — ${e["client_name"]}` : ""}${e["priority"] && e["priority"] !== "normal" ? ` [${e["priority"]}]` : ""}`

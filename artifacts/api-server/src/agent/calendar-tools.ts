@@ -18,9 +18,11 @@ export const CALENDAR_TOOLS: ToolDef[] = [
     name: "search_calendar_event",
     description:
       "Recherche des événements dans le calendrier FlowPoint par titre, date, type, notes ou nom de client. " +
+      "APPEL OBLIGATOIRE pour TOUTE question sur les événements : 'qu'est-ce que j'ai cette semaine ?', " +
+      "'mes RDV de demain', 'quels sont mes événements de lundi ?', 'qu'est-ce que j'ai prévu ?', etc. " +
+      "Ne jamais répondre en texte seul pour une question calendrier — toujours appeler cet outil pour obtenir les vraies données. " +
       "À utiliser AVANT toute modification pour trouver l'ID réel d'un événement. " +
-      "L'IA ne doit JAMAIS inventer un ID d'événement. " +
-      "Supporte les requêtes naturelles : 'mon rendez-vous SEO', 'les événements de mardi', 'cette semaine'.",
+      "L'IA ne doit JAMAIS inventer un ID d'événement.",
     requiredPermission: "calendar.read",
     confirmationLevel: "none",
     isWrite: false,
@@ -52,8 +54,11 @@ export const CALENDAR_TOOLS: ToolDef[] = [
     name: "create_calendar_event",
     description:
       "Crée un nouvel événement dans le calendrier FlowPoint. " +
+      "RÉSOLUTION DES EXPRESSIONS RELATIVES : utilise la date et l'heure actuelles injectées dans le contexte calendrier pour calculer la date/heure ISO exacte. " +
+      "Exemples : 'dans 30 minutes' → ajouter 30 min à l'heure actuelle ; 'dans une heure' → +60 min ; 'demain matin' → demain 09:00 ; 'vendredi dans deux semaines' → vendredi +14 j. " +
+      "Ne jamais supposer silencieusement — si une expression est ambiguë, demander une clarification. " +
       "Vérifie automatiquement les conflits de créneau avant la création. " +
-      "Si un champ important manque (titre ou date), demander à l'utilisateur avant d'appeler cet outil. " +
+      "Si le titre ou la date manque, demander à l'utilisateur avant d'appeler cet outil. " +
       "Niveau de confirmation : aperçu présenté avant la création effective.",
     requiredPermission: "calendar.write",
     confirmationLevel: "preview",
@@ -125,6 +130,7 @@ export const CALENDAR_TOOLS: ToolDef[] = [
     description:
       "Déplace un événement vers une nouvelle date et/ou heure. " +
       "Spécialisé pour les demandes de type : 'décale ce rendez-vous à jeudi', 'avance d'une heure', 'passe-le demain matin'. " +
+      "RÉSOLUTION DES EXPRESSIONS RELATIVES : utilise la date et l'heure actuelles injectées dans le contexte calendrier pour calculer la nouvelle date/heure ISO exacte ('avance d'une heure' → heure actuelle +60 min). " +
       "Vérifie les conflits de créneau avant le déplacement. " +
       "Utiliser search_calendar_event pour obtenir l'ID avant d'appeler cet outil. " +
       "Aperçu présenté avant le déplacement.",
