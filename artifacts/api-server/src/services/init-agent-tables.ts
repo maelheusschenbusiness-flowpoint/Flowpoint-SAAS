@@ -186,7 +186,15 @@ export async function initAgentTables(): Promise<void> {
     // deny all queries under a non-BYPASSRLS application role. We ENABLE RLS
     // and add tenant isolation policies so they activate when the GUC path is
     // adopted in a follow-up migration.
-    for (const t of ["org_member_permissions", "ai_action_proposals", "ai_action_logs", "ai_autopilot_grants"]) {
+    // ai_chat_history is included here for the same reason as the 4 agent tables:
+    // it is accessed via raw pool.query() in routes/ai.ts (GET /ai/history, POST /ai/chat)
+    // without withOrgDb/req.orgDb, so no app.current_org_id GUC is set.
+    // FORCE ROW LEVEL SECURITY would therefore deny all queries under a
+    // non-BYPASSRLS application role. We ENABLE RLS inline (so it takes effect
+    // on first boot even when init-rls-migration runs before this table exists)
+    // and add tenant isolation policies so they activate when the GUC path is
+    // adopted in a follow-up migration.
+    for (const t of ["org_member_permissions", "ai_action_proposals", "ai_action_logs", "ai_autopilot_grants", "ai_chat_history"]) {
       await runa(client, `${t} ENABLE RLS`,   `ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`);
       await runa(client, `${t} NO FORCE RLS`, `ALTER TABLE "${t}" NO FORCE ROW LEVEL SECURITY`);
       await tenantPolicies(client, t);

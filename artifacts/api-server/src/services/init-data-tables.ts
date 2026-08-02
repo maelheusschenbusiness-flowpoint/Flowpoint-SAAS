@@ -881,6 +881,10 @@ export async function initDataTables(): Promise<void> {
     //
     // Fix: if a previous schema created organizations.id as UUID (42804), cast
     // it to TEXT before the INSERT so org_id (TEXT) maps without type error.
+    // Must drop FK constraints that reference organizations(id) BEFORE altering
+    // the column type — PostgreSQL refuses ALTER COLUMN TYPE when FKs exist.
+    // init-phase1-users.ts does the same on the full boot path; this guard runs
+    // on every boot so the fast path (which skips phase1-users order) is also safe.
     await run(client, `
       DO $$ BEGIN
         IF EXISTS (
@@ -888,7 +892,27 @@ export async function initDataTables(): Promise<void> {
           WHERE table_schema = 'public' AND table_name = 'organizations'
             AND column_name = 'id' AND data_type = 'uuid'
         ) THEN
+          ALTER TABLE org_addons    DROP CONSTRAINT IF EXISTS org_addons_org_id_fkey;
+          ALTER TABLE org_settings  DROP CONSTRAINT IF EXISTS org_settings_org_id_fkey;
+          ALTER TABLE org_checklist DROP CONSTRAINT IF EXISTS org_checklist_org_id_fkey;
+          ALTER TABLE org_secrets   DROP CONSTRAINT IF EXISTS org_secrets_org_id_fkey;
+          ALTER TABLE team_members  DROP CONSTRAINT IF EXISTS team_members_org_id_fkey;
           ALTER TABLE organizations ALTER COLUMN id TYPE TEXT USING id::text;
+        END IF;
+      END $$;
+    `);
+    // Belt-and-suspenders: also convert org_addons.org_id if it is UUID-typed.
+    // This handles the case where org_addons was created independently with
+    // org_id UUID before organizations.id was set to TEXT (SQLSTATE 42804).
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'org_addons'
+            AND column_name = 'org_id' AND data_type = 'uuid'
+        ) THEN
+          ALTER TABLE org_addons DROP CONSTRAINT IF EXISTS org_addons_org_id_fkey;
+          ALTER TABLE org_addons ALTER COLUMN org_id TYPE TEXT USING org_id::text;
         END IF;
       END $$;
     `);
@@ -1452,6 +1476,13 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS target_id   TEXT`);
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS target_type TEXT`);
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS metadata    JSONB NOT NULL DEFAULT '{}'`);
+    // ── RLS on activity_logs — enable inline so it takes effect on first boot ──
+    // init-rls-migration runs before this table is created on the slow path;
+    // adding ENABLE here ensures the table has RLS immediately after creation.
+    // NO FORCE: backend accesses via raw pool.query() (superuser BYPASSRLS).
+    // Tenant policies (4 × CRUD) are added by init-rls-migration on next run.
+    await run(client, `ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE activity_logs NO FORCE ROW LEVEL SECURITY`);
 
     // ── user_sessions — self-heal ip_address + user_agent columns ──────────────
     // These columns may not exist on older deployments (table was created before
@@ -1471,6 +1502,16 @@ export async function initDataTables(): Promise<void> {
         checksum     TEXT
       )
     `);
+    // ── RLS on schema_migrations — backend-only, no public policies ────────────
+    // This table must never be readable by anon/authenticated (PostgREST) clients.
+    // ENABLE RLS with no public policies = implicit deny-all for client roles.
+    // NO FORCE: backend pool.query() uses postgres superuser (BYPASSRLS) so we
+    // keep FORCE off while the app relies on raw pool.query() throughout.
+    // REVOKE is belt-and-suspenders in case anon/authenticated have SELECT grants.
+    await run(client, `ALTER TABLE schema_migrations ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE schema_migrations NO FORCE ROW LEVEL SECURITY`);
+    await run(client, `REVOKE ALL ON schema_migrations FROM anon`);
+    await run(client, `REVOKE ALL ON schema_migrations FROM authenticated`);
 
     // Helper: returns true if a migration_id has already been recorded.
     const hasMigration = async (migId: string): Promise<boolean> => {

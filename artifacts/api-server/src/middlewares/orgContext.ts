@@ -87,7 +87,21 @@ async function _orgContext(req: Request, res: Response, next: NextFunction): Pro
         );
         // Best-effort destroy (non-blocking)
         deleteSession(token).catch(() => {});
-        res.status(401).json({ error: "session_expired", reason: "legacy_session" });
+
+        // Clear the stale cookie so the browser does not re-send it on subsequent requests.
+        res.clearCookie("fp_token", { httpOnly: true, secure: true, sameSite: "lax", path: "/" });
+
+        // For API calls return structured JSON so the frontend JS can handle it.
+        // For page/browser navigation redirect to signin so the user sees the login
+        // form rather than raw JSON text.
+        // Note: /api/dashboard* serves dashboard HTML (not JSON) — treat as page navigation.
+        const isDashboardPage = req.url?.startsWith("/api/dashboard");
+        const isApiCall       = req.url?.startsWith("/api/") && !isDashboardPage;
+        if (isApiCall) {
+          res.status(401).json({ error: "session_expired", reason: "legacy_session" });
+        } else {
+          res.redirect(302, "/signin.html?reason=session_expired");
+        }
         return;
       }
 

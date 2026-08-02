@@ -118,8 +118,19 @@ export async function undoAction(
   ).catch(err => logger.warn({ err }, "[undo] mark undone_at failed"));
 
   // 5. Log activité
-  const calendarTools = ["create_calendar_event", "update_calendar_event", "move_calendar_event", "delete_calendar_event"];
-  const targetType = calendarTools.includes(toolName) ? "calendar_event" : "mission";
+  const calendarTools = ["create_calendar_event", "update_calendar_event", "move_calendar_event", "delete_calendar_event",
+    "reschedule_week", "optimize_schedule", "create_recurring_event", "update_recurring_event", "delete_recurring_series",
+    "find_free_slots"];
+  const recommTools  = ["generate_recommendations", "generate_seo_strategy", "dismiss_recommendation", "restore_recommendation", "create_missions_from_strategy"];
+  const auditTools   = ["run_audit", "rerun_audit", "delete_audit", "create_missions_from_audit"];
+  const monitorTools = ["search_monitors", "search_incidents", "explain_incident", "compare_incidents",
+    "acknowledge_incident", "resolve_incident", "create_missions_from_incident", "optimize_monitors",
+    "configure_monitor", "suspend_monitor", "resume_monitor", "delete_monitor"];
+  const targetType = calendarTools.includes(toolName) ? "calendar_event"
+    : auditTools.includes(toolName)    ? "audit"
+    : recommTools.includes(toolName)   ? "report"
+    : monitorTools.includes(toolName)  ? "organization"
+    : "mission";
   await store.logActivity({
     type: "report", label: `[IA] Annulation : ${toolName} (${(snap as Record<string, unknown>)["title"] ?? actionLogId})`,
     targetId: (snap as Record<string, unknown>)["id"] as string ?? actionLogId,
@@ -382,6 +393,71 @@ async function applySnapshot(
     throw new Error(`Batch undo non implémenté pour le type : ${batchType}`);
   }
 
+  // ── Phase 5 — create_missions_from_strategy batch undo ──────────────────
+  // snap.missions is the list of missions created from a strategy; undo = DELETE all of them.
+  if (snap["batchType"] === "create_missions_from_strategy" && Array.isArray(snap["missions"])) {
+    const stratMissions = snap["missions"] as Record<string, unknown>[];
+    const stratDelClient = await pool.connect();
+    try {
+      await stratDelClient.query("BEGIN");
+      for (const m of stratMissions) {
+        await stratDelClient.query(
+          `DELETE FROM missions WHERE id = $1 AND org_id = $2`,
+          [m["id"], orgId]
+        );
+      }
+      await stratDelClient.query("COMMIT");
+    } catch (err) {
+      await stratDelClient.query("ROLLBACK");
+      stratDelClient.release();
+      throw err;
+    }
+    stratDelClient.release();
+    return;
+  }
+
+  // ── Phase 6 — create_missions_from_incident batch undo ───────────────────
+  if (snap["batchType"] === "create_missions_from_incident" && Array.isArray(snap["missions"])) {
+    const incMissions = snap["missions"] as Record<string, unknown>[];
+    const incDelClient = await pool.connect();
+    try {
+      await incDelClient.query("BEGIN");
+      for (const m of incMissions) {
+        await incDelClient.query(`DELETE FROM missions WHERE id=$1 AND org_id=$2`, [m["id"], orgId]);
+      }
+      await incDelClient.query("COMMIT");
+    } catch (err) {
+      await incDelClient.query("ROLLBACK");
+      incDelClient.release();
+      throw err;
+    }
+    incDelClient.release();
+    return;
+  }
+
+  // ── Phase 4 — create_missions_from_audit batch undo ─────────────────────
+  // snap.missions is the list of missions created; undo = DELETE all of them.
+  if (snap["batchType"] === "create_missions_from_audit" && Array.isArray(snap["missions"])) {
+    const missions = snap["missions"] as Record<string, unknown>[];
+    const delClient = await pool.connect();
+    try {
+      await delClient.query("BEGIN");
+      for (const m of missions) {
+        await delClient.query(
+          `DELETE FROM missions WHERE id = $1 AND org_id = $2`,
+          [m["id"], orgId]
+        );
+      }
+      await delClient.query("COMMIT");
+    } catch (err) {
+      await delClient.query("ROLLBACK");
+      delClient.release();
+      throw err;
+    }
+    delClient.release();
+    return;
+  }
+
   const id = snap["id"] as string;
   if (!id) throw new Error("Snapshot sans ID — impossible de restaurer.");
 
@@ -546,6 +622,117 @@ async function applySnapshot(
       }
       return { stale: true };
     }
+    return;
+  }
+
+  // ── Phase 6 — create_missions_from_incident batch undo ───────────────────
+  if (snap["batchType"] === "create_missions_from_incident" && Array.isArray(snap["missions"])) {
+    const incMissions = snap["missions"] as Record<string, unknown>[];
+    const incDelClient = await pool.connect();
+    try {
+      await incDelClient.query("BEGIN");
+      for (const m of incMissions) {
+        await incDelClient.query(`DELETE FROM missions WHERE id=$1 AND org_id=$2`, [m["id"], orgId]);
+      }
+      await incDelClient.query("COMMIT");
+    } catch (err) {
+      await incDelClient.query("ROLLBACK");
+      incDelClient.release();
+      throw err;
+    }
+    incDelClient.release();
+    return;
+  }
+
+  // ── Phase 6 — resolve_incident undo ──────────────────────────────────────
+  if (toolName === "resolve_incident") {
+    const riId = snap["id"] as string;
+    if (!riId) throw new Error("Snapshot resolve_incident sans ID.");
+    await pool.query(
+      `UPDATE monitor_incidents SET resolved_at=NULL, duration_s=NULL WHERE id=$1 AND org_id=$2`,
+      [riId, orgId]
+    );
+    return;
+  }
+
+  // ── Phase 6 — suspend_monitor undo (= resume) ────────────────────────────
+  if (toolName === "suspend_monitor") {
+    const susId = snap["id"] as string;
+    if (!susId) throw new Error("Snapshot suspend_monitor sans ID.");
+    await pool.query(
+      `UPDATE monitors SET enabled=true, updated_at=NOW() WHERE id=$1 AND org_id=$2`,
+      [susId, orgId]
+    );
+    return;
+  }
+
+  // ── Phase 6 — delete_monitor undo (= re-insert from snapshot) ────────────
+  if (toolName === "delete_monitor") {
+    const dm = snap as Record<string, unknown>;
+    if (!dm["id"]) throw new Error("Snapshot delete_monitor sans ID.");
+    await pool.query(
+      `INSERT INTO monitors (id, org_id, name, url, status, uptime, latency, last_check,
+                             alert_email, alert_phone, is_critical, frequency, enabled, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+       ON CONFLICT (id) DO NOTHING`,
+      [dm["id"], orgId, dm["name"] ?? "Restored monitor", dm["url"] ?? "", dm["status"] ?? "unknown",
+       dm["uptime"] ?? 100, dm["latency"] ?? 0, dm["last_check"] ?? null,
+       dm["alert_email"] ?? null, dm["alert_phone"] ?? null, dm["is_critical"] ?? false,
+       dm["frequency"] ?? 300, dm["enabled"] ?? true, dm["created_at"] ?? new Date().toISOString()]
+    );
+    return;
+  }
+
+  // ── Phase 6 — configure_monitor undo (= restore previous values) ─────────
+  if (toolName === "configure_monitor") {
+    const cm = snap as Record<string, unknown>;
+    if (cm["action"] === "create") {
+      // Undo create = delete the newly created monitor
+      const newMonId = cm["id"] as string;
+      if (newMonId) await pool.query(`DELETE FROM monitors WHERE id=$1 AND org_id=$2`, [newMonId, orgId]);
+      return;
+    }
+    if (!cm["id"]) throw new Error("Snapshot configure_monitor sans ID.");
+    // Undo update = restore previous field values
+    await pool.query(
+      `UPDATE monitors SET name=$1, url=$2, frequency=$3, alert_email=$4, alert_phone=$5,
+                           is_critical=$6, enabled=$7, updated_at=NOW()
+         WHERE id=$8 AND org_id=$9`,
+      [cm["name"], cm["url"], cm["frequency"] ?? 300, cm["alert_email"] ?? null,
+       cm["alert_phone"] ?? null, cm["is_critical"] ?? false, cm["enabled"] ?? true,
+       cm["id"], orgId]
+    );
+    return;
+  }
+
+  // ── Phase 5 — dismiss_recommendation undo ────────────────────────────────
+  // Undo dismiss = restore status to the previous value (snap.status, typically "active").
+  if (toolName === "dismiss_recommendation") {
+    const prevStatus = (snap["status"] as string) ?? "active";
+    await pool.query(
+      `UPDATE ai_recommendations SET status=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3`,
+      [prevStatus, id, orgId]
+    );
+    return;
+  }
+
+  // ── Phase 5 — restore_recommendation undo ────────────────────────────────
+  // Undo restore = revert status to "dismissed".
+  if (toolName === "restore_recommendation") {
+    await pool.query(
+      `UPDATE ai_recommendations SET status='dismissed', updated_at=NOW() WHERE id=$1 AND org_id=$2`,
+      [id, orgId]
+    );
+    return;
+  }
+
+  // ── Phase 5 — generate_recommendations / generate_seo_strategy undo ──────
+  // Undo = mark the generated row as archived/dismissed (soft-delete pattern).
+  if (toolName === "generate_recommendations" || toolName === "generate_seo_strategy") {
+    await pool.query(
+      `UPDATE ai_recommendations SET status='dismissed', updated_at=NOW() WHERE id=$1 AND org_id=$2`,
+      [id, orgId]
+    );
     return;
   }
 

@@ -113,6 +113,10 @@ const NEEDS_ORG_ID_SET = new Set(NEEDS_ORG_ID);
 const BACKEND_ONLY_TABLES: readonly string[] = [
   "pending_signups",
   "checkout_post_tokens",
+  // schema_migrations is infrastructure — never accessible to anon/authenticated.
+  // ENABLE RLS with no public policies = implicit deny-all for client roles.
+  // init-data-tables.ts also enables RLS inline so it activates on first boot.
+  "schema_migrations",
 ];
 
 export async function runRlsMigrationIfNeeded(): Promise<void> {

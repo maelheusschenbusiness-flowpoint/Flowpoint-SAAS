@@ -55,9 +55,15 @@ import { resolvePlanFromDB } from "../middlewares/planGate.js";
 import { MISSION_TOOLS, type AIToolCall } from "../agent/mission-tools.js";
 // ── AI Agents Phase 3 — outils calendrier ─────────────────────────────────────
 import { CALENDAR_TOOLS } from "../agent/calendar-tools.js";
-/** Registre unifié missions + calendrier passé au provider lors du tool calling. */
-const ALL_TOOLS = [...MISSION_TOOLS, ...CALENDAR_TOOLS];
-/** Map de lookup unifié — phase 2 missions + phase 3 calendrier. */
+// ── AI Agents Phase 4 — outils audits SEO ─────────────────────────────────────
+import { AUDIT_TOOLS } from "../agent/audit-tools.js";
+// ── AI Agents Phase 5 — recommandations SEO & stratégie ───────────────────────
+import { RECOMMENDATION_TOOLS } from "../agent/recommendation-tools.js";
+// ── AI Agents Phase 6 — monitors, incidents & alertes ────────────────────────
+import { MONITOR_TOOLS } from "../agent/monitor-tools.js";
+/** Registre unifié missions + calendrier + audits + recommandations + monitors passé au provider lors du tool calling. */
+const ALL_TOOLS = [...MISSION_TOOLS, ...CALENDAR_TOOLS, ...AUDIT_TOOLS, ...RECOMMENDATION_TOOLS, ...MONITOR_TOOLS];
+/** Map de lookup unifié — phase 2 à 6. */
 const ALL_TOOLS_MAP = new Map(ALL_TOOLS.map((t) => [t.name, t]));
 import { aiChatWithTools, buildToolResultMessages, type ToolCallingResult } from "../services/ai-tool-calling.js";
 import { executeTool, type ExecuteContext } from "../agent/tool-executor.js";
@@ -638,6 +644,148 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
         );
       } catch { /* non-fatal — contexte étendu ignoré */ }
     } catch { /* non-fatal : contexte calendrier ignoré */ }
+
+    // === SEO INTELLIGENCE — Phase 5 : contexte compact recommandations & stratégie ===
+    try {
+      const [recActiveR, recDismissedR, recStratR] = await Promise.allSettled([
+        pool.query(
+          `SELECT id, title, priority, metadata FROM ai_recommendations
+           WHERE org_id=$1 AND status='active' ORDER BY priority DESC LIMIT 5`,
+          [oid]
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS cnt FROM ai_recommendations WHERE org_id=$1 AND status='dismissed'`,
+          [oid]
+        ),
+        pool.query(
+          `SELECT id, title, created_at FROM ai_recommendations
+           WHERE org_id=$1 AND type='strategy' AND status='active' ORDER BY created_at DESC LIMIT 1`,
+          [oid]
+        ),
+      ]);
+      const recActive    = recActiveR.status    === "fulfilled" ? (recActiveR.value.rows    as Record<string, unknown>[]) : [];
+      const recDismissed = recDismissedR.status === "fulfilled" ? Number((recDismissedR.value.rows[0] as Record<string, unknown>)?.["cnt"] ?? 0) : 0;
+      const recStrat     = recStratR.status     === "fulfilled" ? (recStratR.value.rows     as Record<string, unknown>[]) : [];
+
+      const topOpportunities = recActive
+        .filter(r => Number(r["priority"] ?? 0) >= 70)
+        .slice(0, 3)
+        .map(r => {
+          const m = (r["metadata"] as Record<string, unknown>) ?? {};
+          return `${m["category"] ?? "SEO"} : ${r["title"]}`;
+        });
+      const criticalCount = recActive.filter(r => Number(r["priority"] ?? 0) >= 90).length;
+
+      lines.push(
+        ``,
+        `=== SEO INTELLIGENCE (Phase 5) ===`,
+        `Recommandations actives : ${recActive.length} | Ignorées : ${recDismissed}`,
+        criticalCount > 0 ? `Problèmes critiques : ${criticalCount} recommandation(s) en zone CRITIQUE (score >= 90)` : `Aucun problème critique détecté`,
+        topOpportunities.length > 0
+          ? `Top opportunités : ${topOpportunities.join(" | ")}`
+          : `Aucune opportunité enregistrée — utilisez generate_recommendations pour en créer`,
+        recStrat.length > 0
+          ? `Stratégie actuelle : [${recStrat[0]!["id"]}] ${recStrat[0]!["title"]} (${String(recStrat[0]!["created_at"]).slice(0, 10)})`
+          : `Aucune stratégie SEO générée — utilisez generate_seo_strategy`,
+        `RÈGLES OUTILS SEO INTELLIGENCE :`,
+        `- "mes recommandations", "conseils SEO", "recommandations prioritaires" → appeler search_recommendations.`,
+        `- "génère des recommandations", "analyse mon SEO" → appeler generate_recommendations.`,
+        `- "crée une stratégie", "plan SEO global" → appeler generate_seo_strategy.`,
+        `- "plan d'action", "feuille de route" → appeler create_action_plan.`,
+        `- "par où commencer", "le plus urgent" → appeler prioritize_recommendations.`,
+        `- "explique cette recommandation" → appeler explain_recommendation (chercher l'ID avec search_recommendations d'abord).`,
+        `- "transforme en missions", "missions de la stratégie" → appeler create_missions_from_strategy.`,
+        `- "ignore cette recommandation" → appeler dismiss_recommendation.`,
+        `- "restaure cette recommandation" → appeler restore_recommendation.`,
+        `- Les recommandations sont basées UNIQUEMENT sur les données réelles FlowPoint. Aucune donnée inventée.`,
+      );
+    } catch { /* non-fatal : contexte SEO intelligence ignoré */ }
+
+    // === MONITOR HEALTH — Phase 6 : état de santé des monitors & incidents ===
+    try {
+      const [mhGlobal, mhCritical, mhActiveInc, mhUnreadAlerts, mhRecentDown, mhLastResolved] = await Promise.allSettled([
+        pool.query(
+          `SELECT COUNT(*) AS total, AVG(uptime) AS avg_uptime, AVG(latency) AS avg_latency,
+                  SUM(CASE WHEN status='down' THEN 1 ELSE 0 END) AS down_count,
+                  SUM(CASE WHEN enabled=false THEN 1 ELSE 0 END) AS paused_count
+           FROM monitors WHERE org_id=$1`,
+          [oid]
+        ),
+        pool.query(
+          `SELECT id, name, url, status, uptime FROM monitors WHERE org_id=$1 AND is_critical=true AND status='down' LIMIT 5`,
+          [oid]
+        ),
+        pool.query(
+          `SELECT mi.id, mi.monitor_id, mi.started_at, mi.error, m.name AS monitor_name
+           FROM monitor_incidents mi JOIN monitors m ON m.id=mi.monitor_id AND m.org_id=mi.org_id
+           WHERE mi.org_id=$1 AND mi.resolved_at IS NULL ORDER BY mi.started_at ASC LIMIT 5`,
+          [oid]
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS cnt FROM alert_events WHERE org_id=$1 AND read_at IS NULL`,
+          [oid]
+        ),
+        pool.query(
+          `SELECT mi.id, mi.started_at, mi.error, m.name AS monitor_name
+           FROM monitor_incidents mi JOIN monitors m ON m.id=mi.monitor_id AND m.org_id=mi.org_id
+           WHERE mi.org_id=$1 AND mi.resolved_at IS NULL ORDER BY mi.started_at ASC LIMIT 1`,
+          [oid]
+        ),
+        pool.query(
+          `SELECT mi.id, mi.started_at, mi.resolved_at, mi.duration_s, m.name AS monitor_name
+           FROM monitor_incidents mi JOIN monitors m ON m.id=mi.monitor_id AND m.org_id=mi.org_id
+           WHERE mi.org_id=$1 AND mi.resolved_at IS NOT NULL ORDER BY mi.resolved_at DESC LIMIT 1`,
+          [oid]
+        ),
+      ]);
+
+      const mhG   = mhGlobal.status       === "fulfilled" ? (mhGlobal.value.rows[0]       as Record<string, unknown>) : {};
+      const mhCrit = mhCritical.status    === "fulfilled" ? (mhCritical.value.rows         as Record<string, unknown>[]) : [];
+      const mhIncs = mhActiveInc.status   === "fulfilled" ? (mhActiveInc.value.rows        as Record<string, unknown>[]) : [];
+      const mhAlerts = mhUnreadAlerts.status === "fulfilled" ? Number((mhUnreadAlerts.value.rows[0] as Record<string, unknown>)?.["cnt"] ?? 0) : 0;
+      const mhLastDown = mhRecentDown.status === "fulfilled" ? (mhRecentDown.value.rows[0] as Record<string, unknown> | undefined) : undefined;
+      const mhLastRes  = mhLastResolved.status === "fulfilled" ? (mhLastResolved.value.rows[0] as Record<string, unknown> | undefined) : undefined;
+
+      const mhTotal    = Number(mhG["total"]    ?? 0);
+      const mhAvgUp    = Number(mhG["avg_uptime"] ?? 100).toFixed(2);
+      const mhAvgLat   = Number(mhG["avg_latency"] ?? 0).toFixed(0);
+      const mhDownCnt  = Number(mhG["down_count"] ?? 0);
+      const mhPaused   = Number(mhG["paused_count"] ?? 0);
+
+      lines.push(
+        ``,
+        `=== MONITOR HEALTH (Phase 6) ===`,
+        `Monitors : ${mhTotal} total | ${mhDownCnt} hors ligne 🔴 | ${mhPaused} suspendu(s) ⏸️`,
+        `Uptime global moyen : ${mhAvgUp}% | Latence moy : ${mhAvgLat}ms`,
+        mhIncs.length > 0
+          ? `Incidents actifs : ${mhIncs.length} 🔴 — ${mhIncs.map(i => `${i["monitor_name"] ?? i["monitor_id"]} (depuis ${String(i["started_at"]).slice(0, 16)})`).join(", ")}`
+          : `Incidents actifs : aucun ✅`,
+        mhCrit.length > 0
+          ? `Monitors CRITIQUES hors ligne : ${mhCrit.map(m => `${m["name"]} (${m["url"]})`).join(", ")}`
+          : `Aucun monitor critique hors ligne ✅`,
+        mhAlerts > 0 ? `Alertes non lues : ${mhAlerts} ⚠️` : `Alertes : toutes lues ✅`,
+        mhLastDown
+          ? `Dernière panne : ${mhLastDown["monitor_name"]} (depuis ${String(mhLastDown["started_at"]).slice(0, 16)}) — ${mhLastDown["error"] ?? "cause inconnue"}`
+          : `Aucune panne active`,
+        mhLastRes
+          ? `Dernier incident résolu : ${mhLastRes["monitor_name"]} (résolu ${String(mhLastRes["resolved_at"]).slice(0, 16)}, durée ${typeof mhLastRes["duration_s"] === "number" ? `${Math.round(mhLastRes["duration_s"] as number / 60)}min` : "?"})`
+          : `Aucun incident résolu récemment`,
+        `RÈGLES OUTILS MONITORS (obligatoires) :`,
+        `- "quels sites sont hors ligne", "monitors critiques", "état des monitors" → appeler search_monitors.`,
+        `- "incidents actifs", "pannes récentes", "incidents de la semaine" → appeler search_incidents.`,
+        `- "explique cette panne", "pourquoi ce site est tombé", "cause de l'incident" → appeler explain_incident.`,
+        `- "compare ces incidents", "tendance des pannes" → appeler compare_incidents.`,
+        `- "acquitte cet incident", "vu, je prends en charge" → appeler acknowledge_incident.`,
+        `- "marque comme résolu", "incident résolu", "ferme cet incident" → appeler resolve_incident.`,
+        `- "crée des missions depuis l'incident", "missions de correction" → appeler create_missions_from_incident.`,
+        `- "optimise mes monitors", "suggestions monitoring", "faux positifs" → appeler optimize_monitors.`,
+        `- "crée un monitor", "configure ce monitor", "modifie l'intervalle" → appeler configure_monitor.`,
+        `- "suspends ce monitor", "arrête les checks" → appeler suspend_monitor.`,
+        `- "réactive ce monitor", "reprends les vérifications" → appeler resume_monitor.`,
+        `- "supprime ce monitor" → appeler delete_monitor (protections: incidents ouverts, alertes actives).`,
+        `- Toutes les données sont en temps réel. Aucune donnée inventée.`,
+      );
+    } catch { /* non-fatal : contexte monitor health ignoré */ }
 
     return lines.filter(l => l !== "").join("\n");
   } catch {

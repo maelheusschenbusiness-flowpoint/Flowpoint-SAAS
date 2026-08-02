@@ -17,17 +17,25 @@ import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
 import { TOOL_BY_NAME as _MISSION_TOOL_BY_NAME, TOOL_ARG_SCHEMAS as _MISSION_ARG_SCHEMAS, type AIToolCall, type AIToolCallResult } from "./mission-tools.js";
 import { CALENDAR_TOOL_BY_NAME, CALENDAR_ARG_SCHEMAS, snapCalendarEvent, detectCalendarConflicts, computeRecurrenceDates } from "./calendar-tools.js";
+import { AUDIT_TOOL_BY_NAME, AUDIT_ARG_SCHEMAS, snapAudit, fmtAuditStatus } from "./audit-tools.js";
+import { RECOMMENDATION_TOOL_BY_NAME, RECOMMENDATION_ARG_SCHEMAS, snapRecommendation, fmtRecommPriority, computeRecommPriorityScore, type RecommendationInput } from "./recommendation-tools.js";
+import { MONITOR_TOOL_BY_NAME, MONITOR_ARG_SCHEMAS, snapMonitor, snapIncident, fmtMonitorStatus, fmtDurationS, fmtUptimePct } from "./monitor-tools.js";
+import { analyzePSI } from "../services/pagespeed-service.js";
 import { filterDestinations, validateNavAction } from "./destination-registry.js";
 import { createNavigationProposal, type ActionProposal } from "./proposals.js";
 import type { Permission } from "./permissions.js";
 
-// ── Phase 3 : registre unifié missions + calendrier ───────────────────────
+// ── Phase 6 : registre unifié missions + calendrier + audits + recommandations + monitors ─
 const TOOL_BY_NAME: Map<string, import("./mission-tools.js").ToolDef> = new Map([
-  ..._MISSION_TOOL_BY_NAME, ...CALENDAR_TOOL_BY_NAME,
+  ..._MISSION_TOOL_BY_NAME, ...CALENDAR_TOOL_BY_NAME, ...AUDIT_TOOL_BY_NAME, ...RECOMMENDATION_TOOL_BY_NAME,
+  ...MONITOR_TOOL_BY_NAME,
 ]);
 const TOOL_ARG_SCHEMAS: Record<string, { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } }> = {
   ..._MISSION_ARG_SCHEMAS,
-  ...(CALENDAR_ARG_SCHEMAS as Record<string, { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } }>),
+  ...(CALENDAR_ARG_SCHEMAS       as Record<string, { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } }>),
+  ...(AUDIT_ARG_SCHEMAS          as Record<string, { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } }>),
+  ...(RECOMMENDATION_ARG_SCHEMAS as Record<string, { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } }>),
+  ...(MONITOR_ARG_SCHEMAS        as Record<string, { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } }>),
 };
 
 // ── Snapshot helpers ─────────────────────────────────────────────────────────
@@ -1437,7 +1445,1478 @@ async function dispatchTool(
       navProposal: navDelProposal };
   }
 
-  // fallback
+  // ── Phase 4 : Audits SEO ──────────────────────────────────────────────────
+
+  // ── search_audits ─────────────────────────────────────────────────────────
+  if (name === "search_audits") {
+    const url    = args["url"]    as string | undefined;
+    const status = args["status"] as string | undefined;
+    const days   = args["days"]   as number | undefined;
+    const limit  = Math.min((args["limit"] as number) ?? 5, 20);
+
+    let sql = `SELECT id, url, name, score, status, speed, date, issues, origin, created_at
+               FROM audits WHERE org_id=$1`;
+    const params: unknown[] = [orgId];
+    let pi = 2;
+    if (url)    { sql += ` AND url ILIKE $${pi++}`;                                    params.push(`%${url}%`); }
+    if (status) { sql += ` AND status=$${pi++}`;                                       params.push(status); }
+    if (days)   { sql += ` AND created_at > NOW() - ($${pi++}::int || ' days')::INTERVAL`; params.push(days); }
+    sql += ` ORDER BY created_at DESC LIMIT $${pi}`;
+    params.push(limit);
+
+    const r = await pool.query(sql, params);
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: "none", result: "ok", durationMs: Date.now() - t0 });
+
+    if (!r.rows.length) {
+      return { toolCallId: logId, toolName: name, ok: true,
+        content: "Aucun audit trouvé avec ces critères.", actionLogId: logId };
+    }
+    const lines = (r.rows as Record<string, unknown>[]).map(a =>
+      `• [${a["id"]}] ${a["url"]} — Score: ${a["score"]}/100 — ${fmtAuditStatus(String(a["status"] ?? ""), Number(a["score"] ?? 0))} — ${String(a["date"] ?? (a["created_at"] as string)?.slice(0, 10) ?? "?")}`
+    );
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `${r.rows.length} audit(s) trouvé(s) :\n${lines.join("\n")}`,
+      data: { audits: r.rows },
+      actionLogId: logId };
+  }
+
+  // ── run_audit ─────────────────────────────────────────────────────────────
+  if (name === "run_audit") {
+    let url = (args["url"] as string).trim();
+    const origin = (args["origin"] as string) ?? "agent";
+    if (!url.startsWith("http://") && !url.startsWith("https://")) url = `https://${url}`;
+
+    // Prevent duplicate within 24 h
+    const dupCheck = await pool.query(
+      `SELECT id FROM audits WHERE org_id=$1 AND url=$2 AND created_at > NOW() - INTERVAL '24 hours' LIMIT 1`,
+      [orgId, url]
+    );
+    if (dupCheck.rows.length > 0) {
+      const dupId = (dupCheck.rows[0] as Record<string, unknown>)["id"];
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `Un audit pour ${url} existe déjà (ID : ${dupId}). Utilisez summarize_audit pour voir les résultats ou rerun_audit pour forcer une nouvelle analyse.`,
+        actionLogId: logId };
+    }
+
+    const today    = new Date().toISOString().slice(0, 10);
+    const auditId  = `a${Date.now()}`;
+    await pool.query(
+      `INSERT INTO audits (id, org_id, url, name, score, status, speed, date, issues, origin, created_at)
+       VALUES ($1,$2,$3,$4,0,'processing',0,$5,0,$6,NOW())`,
+      [auditId, orgId, url, url, today, origin]
+    );
+
+    // Background PSI — fire and forget, exact same weighted formula as routes/audits.ts
+    (async () => {
+      try {
+        const [mobRes, deskRes] = await Promise.allSettled([
+          analyzePSI(url, "mobile",  orgId),
+          analyzePSI(url, "desktop", orgId),
+        ]);
+        const mob  = mobRes.status  === "fulfilled" ? mobRes.value  : null;
+        const desk = deskRes.status === "fulfilled" ? deskRes.value : null;
+        if (!mob && !desk) {
+          await pool.query(`UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`, [auditId, orgId]);
+          return;
+        }
+        const s = (src: typeof mob) => src ? {
+          perf: src.scores.performance, seo: src.scores.seo,
+          a11y: src.scores.accessibility, bp: src.scores.bestPractices,
+        } : null;
+        const ms = s(mob); const ds = s(desk);
+        const blendPct = (mVal: number, dVal: number) => Math.round(mVal * 0.6 + dVal * 0.4);
+        const perf = ms && ds ? blendPct(ms.perf, ds.perf) : (ms?.perf ?? ds?.perf ?? 0);
+        const seo  = ms && ds ? blendPct(ms.seo,  ds.seo)  : (ms?.seo  ?? ds?.seo  ?? 0);
+        const a11y = ms && ds ? Math.round((ms.a11y + ds.a11y) / 2) : (ms?.a11y ?? ds?.a11y ?? 0);
+        const bp   = ms && ds ? Math.round((ms.bp   + ds.bp)   / 2) : (ms?.bp   ?? ds?.bp   ?? 0);
+        const finalScore = Math.round(perf * 0.40 + seo * 0.30 + a11y * 0.15 + bp * 0.15);
+        const finalStatus = finalScore >= 70 ? "ok" : finalScore >= 50 ? "warn" : "error";
+        const speed  = desk ? desk.scores.performance : (mob?.scores.performance ?? 0);
+        const issues = (mob?.criticalIssues.length ?? 0) + (desk?.criticalIssues.length ?? 0);
+        await pool.query(
+          `UPDATE audits SET score=$1, status=$2, speed=$3, issues=$4 WHERE id=$5 AND org_id=$6`,
+          [finalScore, finalStatus, speed, issues, auditId, orgId]
+        );
+        await store.logActivity({ type: "audit",
+          label: `[IA] Audit lancé : ${url} → Score ${finalScore}/100`,
+          targetId: auditId, targetType: "audit",
+          metadata: { score: finalScore, status: finalStatus, provider, model }, orgId,
+        }).catch(() => {});
+      } catch (err) {
+        logger.warn({ err, auditId, url }, "[audit-tool] background PSI failed");
+        await pool.query(`UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`, [auditId, orgId]).catch(() => {});
+      }
+    })();
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "ok",
+      snapshot: null, versionAfter: null, durationMs: Date.now() - t0 });
+
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `Audit lancé pour ${url} (ID : ${auditId}). L'analyse PageSpeed prend 30 à 60 secondes. Utilisez summarize_audit(${auditId}) une fois terminé pour voir le score et les problèmes.`,
+      data: { auditId, url, status: "processing" },
+      actionLogId: logId };
+  }
+
+  // ── rerun_audit ───────────────────────────────────────────────────────────
+  if (name === "rerun_audit") {
+    const auditId = args["auditId"] as string;
+    const existing = await snapAudit(auditId, orgId, pool);
+    if (!existing) {
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `Audit ${auditId} introuvable ou n'appartient pas à cette organisation.`,
+        actionLogId: logId };
+    }
+    const url    = existing["url"] as string;
+    const today  = new Date().toISOString().slice(0, 10);
+    const newId  = `a${Date.now()}`;
+    await pool.query(
+      `INSERT INTO audits (id, org_id, url, name, score, status, speed, date, issues, origin, created_at)
+       VALUES ($1,$2,$3,$4,0,'processing',0,$5,0,'agent',NOW())`,
+      [newId, orgId, url, url, today]
+    );
+
+    // Background PSI — same as run_audit
+    (async () => {
+      try {
+        const [mobRes, deskRes] = await Promise.allSettled([
+          analyzePSI(url, "mobile", orgId), analyzePSI(url, "desktop", orgId),
+        ]);
+        const mob  = mobRes.status  === "fulfilled" ? mobRes.value  : null;
+        const desk = deskRes.status === "fulfilled" ? deskRes.value : null;
+        if (!mob && !desk) {
+          await pool.query(`UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`, [newId, orgId]);
+          return;
+        }
+        const blendPct = (m: number, d: number) => Math.round(m * 0.6 + d * 0.4);
+        const perf  = mob && desk ? blendPct(mob.scores.performance, desk.scores.performance) : (mob?.scores.performance ?? desk?.scores.performance ?? 0);
+        const seo   = mob && desk ? blendPct(mob.scores.seo, desk.scores.seo) : (mob?.scores.seo ?? desk?.scores.seo ?? 0);
+        const a11y  = mob && desk ? Math.round((mob.scores.accessibility + desk.scores.accessibility) / 2) : (mob?.scores.accessibility ?? desk?.scores.accessibility ?? 0);
+        const bp    = mob && desk ? Math.round((mob.scores.bestPractices + desk.scores.bestPractices) / 2) : (mob?.scores.bestPractices ?? desk?.scores.bestPractices ?? 0);
+        const score = Math.round(perf * 0.40 + seo * 0.30 + a11y * 0.15 + bp * 0.15);
+        const st    = score >= 70 ? "ok" : score >= 50 ? "warn" : "error";
+        const speed = desk?.scores.performance ?? mob?.scores.performance ?? 0;
+        const issues = (mob?.criticalIssues.length ?? 0) + (desk?.criticalIssues.length ?? 0);
+        await pool.query(
+          `UPDATE audits SET score=$1, status=$2, speed=$3, issues=$4 WHERE id=$5 AND org_id=$6`,
+          [score, st, speed, issues, newId, orgId]
+        );
+      } catch (err) {
+        logger.warn({ err, newId }, "[audit-tool] rerun background PSI failed");
+        await pool.query(`UPDATE audits SET status='error' WHERE id=$1 AND org_id=$2`, [newId, orgId]).catch(() => {});
+      }
+    })();
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "ok",
+      snapshot: existing, versionAfter: null, durationMs: Date.now() - t0 });
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `Nouvel audit lancé pour ${url} (ID : ${newId}). L'analyse prend 30 à 60 secondes.`,
+      data: { auditId: newId, url, status: "processing" }, actionLogId: logId };
+  }
+
+  // ── compare_audits ────────────────────────────────────────────────────────
+  if (name === "compare_audits") {
+    const idA = args["auditIdA"] as string;
+    const idB = args["auditIdB"] as string;
+    const [a, b] = await Promise.all([
+      snapAudit(idA, orgId, pool),
+      snapAudit(idB, orgId, pool),
+    ]);
+    if (!a) return { toolCallId: logId, toolName: name, ok: false, content: `Audit A (${idA}) introuvable.`, actionLogId: logId };
+    if (!b) return { toolCallId: logId, toolName: name, ok: false, content: `Audit B (${idB}) introuvable.`, actionLogId: logId };
+
+    const scoreA = Number(a["score"] ?? 0);
+    const scoreB = Number(b["score"] ?? 0);
+    const diff   = scoreB - scoreA;
+    const trend  = diff > 0 ? `📈 +${diff} pts` : diff < 0 ? `📉 ${diff} pts` : "➡️ inchangé";
+    const speedA = Number(a["speed"] ?? 0);
+    const speedB = Number(b["speed"] ?? 0);
+    const speedDiff = speedB - speedA;
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: "none", result: "ok", durationMs: Date.now() - t0 });
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: [
+        `Comparaison : ${a["url"]}`,
+        `Audit A [${idA}] (${a["date"] ?? "?"}) : Score ${scoreA}/100 — ${fmtAuditStatus(String(a["status"] ?? ""), scoreA)}`,
+        `Audit B [${idB}] (${b["date"] ?? "?"}) : Score ${scoreB}/100 — ${fmtAuditStatus(String(b["status"] ?? ""), scoreB)}`,
+        `Évolution du score : ${trend}`,
+        `Vitesse : A=${speedA}/100, B=${speedB}/100 (${speedDiff >= 0 ? "+" : ""}${speedDiff} pts)`,
+        `Problèmes critiques : A=${a["issues"]}, B=${b["issues"]}`,
+      ].join("\n"),
+      data: { auditA: a, auditB: b, scoreDiff: diff },
+      actionLogId: logId };
+  }
+
+  // ── summarize_audit ───────────────────────────────────────────────────────
+  if (name === "summarize_audit") {
+    const auditId = args["auditId"] as string;
+    const audit = await snapAudit(auditId, orgId, pool);
+    if (!audit) return { toolCallId: logId, toolName: name, ok: false,
+      content: `Audit ${auditId} introuvable.`, actionLogId: logId };
+
+    // Pull PSI data from cache (latest mobile)
+    const psiR = await pool.query(
+      `SELECT scores, metrics, critical_issues, opportunities, analyzed_at
+       FROM psi_cache WHERE url=$1 AND strategy='mobile' ORDER BY analyzed_at DESC LIMIT 1`,
+      [audit["url"]]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+    const psi = (psiR.rows[0] as Record<string, unknown> | undefined) ?? null;
+
+    const issues: Array<Record<string, unknown>> = psi
+      ? (Array.isArray(psi["critical_issues"]) ? psi["critical_issues"] as Array<Record<string, unknown>> : [])
+      : [];
+    const opps: Array<Record<string, unknown>> = psi
+      ? (Array.isArray(psi["opportunities"]) ? psi["opportunities"] as Array<Record<string, unknown>> : [])
+      : [];
+
+    const lines = [
+      `Audit [${auditId}] — ${audit["url"]}`,
+      `Score SEO : ${audit["score"]}/100 — ${fmtAuditStatus(String(audit["status"] ?? ""), Number(audit["score"] ?? 0))}`,
+      `Vitesse PageSpeed : ${audit["speed"]}/100`,
+      `Problèmes critiques : ${audit["issues"]}`,
+      `Date : ${audit["date"] ?? "?"}`,
+    ];
+    if (issues.length) {
+      lines.push(`\nProblèmes critiques (mobile) :`);
+      issues.slice(0, 5).forEach(i => lines.push(`  • ${i["id"]} : ${i["title"]} (score: ${i["score"]})`));
+    }
+    if (opps.length) {
+      lines.push(`\nOpportunités d'optimisation :`);
+      opps.slice(0, 5).forEach(o => lines.push(`  • ${o["id"]} : économie ~${o["savings"]}s`));
+    }
+    if (psi?.["metrics"]) {
+      const m = psi["metrics"] as Record<string, number>;
+      lines.push(`\nMétriques Web Vitals (mobile) :`);
+      lines.push(`  LCP=${m["lcp"] ?? "?"}s  CLS=${m["cls"] ?? "?"}  FCP=${m["fcp"] ?? "?"}s  TBT=${m["tbt"] ?? "?"}ms`);
+    }
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: "none", result: "ok", durationMs: Date.now() - t0 });
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: lines.join("\n"), data: { audit, psi }, actionLogId: logId };
+  }
+
+  // ── explain_audit_issue ───────────────────────────────────────────────────
+  if (name === "explain_audit_issue") {
+    const auditId = args["auditId"] as string;
+    const issueId = args["issueId"] as string;
+    const audit = await snapAudit(auditId, orgId, pool);
+    if (!audit) return { toolCallId: logId, toolName: name, ok: false,
+      content: `Audit ${auditId} introuvable.`, actionLogId: logId };
+
+    const psiR = await pool.query(
+      `SELECT critical_issues, opportunities FROM psi_cache WHERE url=$1 ORDER BY analyzed_at DESC LIMIT 1`,
+      [audit["url"]]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+    const psi = (psiR.rows[0] as Record<string, unknown> | undefined) ?? null;
+    const allIssues: Array<Record<string, unknown>> = psi
+      ? [...(Array.isArray(psi["critical_issues"]) ? psi["critical_issues"] as Array<Record<string, unknown>> : []),
+         ...(Array.isArray(psi["opportunities"])   ? psi["opportunities"]   as Array<Record<string, unknown>> : [])]
+      : [];
+
+    const match = allIssues.find(i =>
+      String(i["id"] ?? "").toLowerCase().includes(issueId.toLowerCase()) ||
+      String(i["title"] ?? "").toLowerCase().includes(issueId.toLowerCase())
+    );
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: "none", result: "ok", durationMs: Date.now() - t0 });
+
+    if (!match) {
+      const available = allIssues.slice(0, 8).map(i => `${i["id"]} : ${i["title"]}`).join("\n  ");
+      return { toolCallId: logId, toolName: name, ok: true,
+        content: `Issue "${issueId}" non trouvée dans cet audit. Issues disponibles :\n  ${available || "(aucune)"}`,
+        actionLogId: logId };
+    }
+
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: [
+        `Issue : ${match["id"]}`,
+        `Titre : ${match["title"]}`,
+        `Description : ${match["description"] ?? "Non disponible."}`,
+        `Score d'impact : ${match["score"] ?? "?"}/1 (plus proche de 0 = plus critique)`,
+        match["savings"] ? `Gain potentiel : ~${match["savings"]}s de chargement` : null,
+      ].filter(Boolean).join("\n"),
+      data: { issue: match }, actionLogId: logId };
+  }
+
+  // ── create_missions_from_audit ────────────────────────────────────────────
+  if (name === "create_missions_from_audit") {
+    const auditId    = args["auditId"]    as string;
+    const maxMiss    = Math.min((args["maxMissions"] as number) ?? 5, 10);
+    const priority   = (args["priority"] as string) ?? "high";
+
+    const audit = await snapAudit(auditId, orgId, pool);
+    if (!audit) return { toolCallId: logId, toolName: name, ok: false,
+      content: `Audit ${auditId} introuvable.`, actionLogId: logId };
+    if (audit["status"] === "processing") return { toolCallId: logId, toolName: name, ok: false,
+      content: `L'audit ${auditId} est encore en cours de traitement. Attendez quelques instants puis réessayez.`,
+      actionLogId: logId };
+
+    const psiR = await pool.query(
+      `SELECT critical_issues, opportunities FROM psi_cache WHERE url=$1 ORDER BY analyzed_at DESC LIMIT 1`,
+      [audit["url"]]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+    const psi = (psiR.rows[0] as Record<string, unknown> | undefined) ?? null;
+    const critIssues: Array<Record<string, unknown>> = psi && Array.isArray(psi["critical_issues"])
+      ? psi["critical_issues"] as Array<Record<string, unknown>>
+      : [];
+    const opps: Array<Record<string, unknown>> = psi && Array.isArray(psi["opportunities"])
+      ? psi["opportunities"] as Array<Record<string, unknown>>
+      : [];
+
+    const candidates = [...critIssues, ...opps].slice(0, maxMiss);
+    if (!candidates.length) return { toolCallId: logId, toolName: name, ok: false,
+      content: `Aucun problème trouvé dans l'audit ${auditId} pour créer des missions.`, actionLogId: logId };
+
+    const now = new Date().toISOString().slice(0, 10);
+    const createdMissions: Record<string, unknown>[] = [];
+    const mClient = await pool.connect();
+    try {
+      await mClient.query("BEGIN");
+      for (const issue of candidates) {
+        const mId = `m_audit_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const title = `[SEO] Corriger : ${issue["title"] ?? issue["id"]}`;
+        const desc  = `Problème détecté sur ${audit["url"]} (audit ${auditId}) : ${issue["description"] ?? issue["title"] ?? ""}`;
+        const cat   = "SEO";
+        const row = await mClient.query(
+          `INSERT INTO missions (id, org_id, title, description, status, priority, category, due_date,
+                                 source_type, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,'todo',$5,$6,$7,'agent',NOW(),NOW())
+           RETURNING id, title, description, status, priority, category, due_date, updated_at`,
+          [mId, orgId, title, desc, priority, cat, now]
+        );
+        if (row.rows[0]) createdMissions.push(row.rows[0] as Record<string, unknown>);
+      }
+      await mClient.query("COMMIT");
+    } catch (err) {
+      await mClient.query("ROLLBACK");
+      mClient.release();
+      throw err;
+    }
+    mClient.release();
+
+    const batchSnap = { batchType: "create_missions_from_audit", auditId, missions: createdMissions };
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "ok",
+      snapshot: batchSnap as unknown as Record<string, unknown>,
+      versionAfter: null, durationMs: Date.now() - t0 });
+
+    await store.logActivity({
+      type: "mission",
+      label: `[IA] ${createdMissions.length} mission(s) créée(s) depuis audit ${auditId}`,
+      targetId: auditId, targetType: "audit",
+      metadata: { provider, model, tool: name, count: createdMissions.length, auditId }, orgId,
+    }).catch(() => {});
+
+    const navMissDest = validateNavAction(
+      { destinationId: "missions-list", label: "Voir les missions", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const navMissProposal = navMissDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [navMissDest] })
+      : null;
+
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `${createdMissions.length} mission(s) créée(s) depuis l'audit de ${audit["url"]} :\n` +
+        createdMissions.map(m => `• [${m["id"]}] ${m["title"]}`).join("\n"),
+      data: { missions: createdMissions, auditId },
+      snapshot: batchSnap as unknown as Record<string, unknown>,
+      actionLogId: logId,
+      undoLabel: `Annuler la création de ${createdMissions.length} mission(s) depuis l'audit`,
+      navProposal: navMissProposal };
+  }
+
+  // ── delete_audit ──────────────────────────────────────────────────────────
+  if (name === "delete_audit") {
+    const auditId = args["auditId"] as string;
+    const snap = await snapAudit(auditId, orgId, pool);
+    if (!snap) return { toolCallId: logId, toolName: name, ok: false,
+      content: `Audit ${auditId} introuvable.`, actionLogId: logId };
+
+    await pool.query(`DELETE FROM audits WHERE id=$1 AND org_id=$2`, [auditId, orgId]);
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "ok",
+      snapshot: snap, versionAfter: null, durationMs: Date.now() - t0 });
+    await store.logActivity({
+      type: "audit",
+      label: `[IA] Audit supprimé : ${snap["url"]} (ID: ${auditId})`,
+      targetId: auditId, targetType: "audit",
+      metadata: { provider, model, tool: name }, orgId,
+    }).catch(() => {});
+
+    const navAuditDest = validateNavAction(
+      { destinationId: "audits-list", label: "Voir les audits", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const navAuditProposal = navAuditDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [navAuditDest] })
+      : null;
+
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `Audit [${auditId}] de ${snap["url"]} supprimé définitivement.`,
+      data: { auditId, url: snap["url"] },
+      actionLogId: logId, navProposal: navAuditProposal };
+  }
+
+  // ── export_audit ──────────────────────────────────────────────────────────
+  if (name === "export_audit") {
+    const auditId = args["auditId"] as string;
+    const audit = await snapAudit(auditId, orgId, pool);
+    if (!audit) return { toolCallId: logId, toolName: name, ok: false,
+      content: `Audit ${auditId} introuvable.`, actionLogId: logId };
+
+    const psiR = await pool.query(
+      `SELECT scores, metrics, critical_issues, opportunities, analyzed_at, strategy
+       FROM psi_cache WHERE url=$1 AND strategy='mobile' ORDER BY analyzed_at DESC LIMIT 1`,
+      [audit["url"]]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+    const psi = (psiR.rows[0] as Record<string, unknown> | undefined) ?? null;
+    const issues: Array<Record<string, unknown>> = psi && Array.isArray(psi["critical_issues"]) ? psi["critical_issues"] as Array<Record<string, unknown>> : [];
+    const opps: Array<Record<string, unknown>>   = psi && Array.isArray(psi["opportunities"])   ? psi["opportunities"]   as Array<Record<string, unknown>> : [];
+    const metrics: Record<string, number>        = (psi?.["metrics"] as Record<string, number>) ?? {};
+    const scores: Record<string, number>         = (psi?.["scores"]  as Record<string, number>) ?? {};
+
+    const md = [
+      `# Rapport d'audit SEO — ${audit["url"]}`,
+      `**Date :** ${audit["date"] ?? "?"}  |  **ID :** ${auditId}`,
+      `**Score global :** ${audit["score"]}/100 (${fmtAuditStatus(String(audit["status"] ?? ""), Number(audit["score"] ?? 0))})`,
+      `**Vitesse PageSpeed :** ${audit["speed"]}/100`,
+      `**Problèmes critiques :** ${audit["issues"]}`,
+      ``,
+      `## Scores détaillés (mobile)`,
+      `| Catégorie | Score |`,
+      `|---|---|`,
+      `| Performance | ${scores["performance"] ?? "N/A"}/100 |`,
+      `| SEO | ${scores["seo"] ?? "N/A"}/100 |`,
+      `| Accessibilité | ${scores["accessibility"] ?? "N/A"}/100 |`,
+      `| Bonnes pratiques | ${scores["bestPractices"] ?? "N/A"}/100 |`,
+      ``,
+      `## Core Web Vitals (mobile)`,
+      `| Métrique | Valeur |`,
+      `|---|---|`,
+      `| LCP | ${metrics["lcp"] ?? "N/A"}s |`,
+      `| CLS | ${metrics["cls"] ?? "N/A"} |`,
+      `| FCP | ${metrics["fcp"] ?? "N/A"}s |`,
+      `| TBT | ${metrics["tbt"] ?? "N/A"}ms |`,
+    ];
+
+    if (issues.length) {
+      md.push(``, `## Problèmes critiques`);
+      issues.forEach(i => {
+        md.push(`- **${i["id"]}** : ${i["title"]}`);
+        if (i["description"]) md.push(`  > ${String(i["description"]).slice(0, 200)}`);
+      });
+    }
+    if (opps.length) {
+      md.push(``, `## Opportunités d'optimisation`);
+      opps.forEach(o => md.push(`- **${o["id"]}** : économie ~${o["savings"]}s — ${o["title"]}`));
+    }
+    md.push(``, `---`, `*Généré par FlowPoint AI — ${new Date().toISOString().slice(0, 10)}*`);
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: "none", result: "ok", durationMs: Date.now() - t0 });
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: md.join("\n"), data: { markdown: md.join("\n"), auditId }, actionLogId: logId };
+  }
+
+  // ── Phase 5 : Recommandations SEO & Intelligence ─────────────────────────
+  const name2 = name; // alias to avoid TS narrowing issues in complex branches
+
+  // ── search_recommendations ────────────────────────────────────────────────
+  if (name2 === "search_recommendations") {
+    const statusF   = (args["status"]   as string) ?? "active";
+    const categoryF = args["category"]  as string | undefined;
+    const priorityF = args["priority"]  as string | undefined;
+    const limitF    = Math.min((args["limit"] as number) ?? 10, 25);
+
+    let sql = `SELECT id, type, title, description, priority, status, source, metadata, created_at
+               FROM ai_recommendations WHERE org_id=$1 AND status=$2`;
+    const params: unknown[] = [orgId, statusF];
+    let pi = 3;
+    if (categoryF) { sql += ` AND metadata->>'category' ILIKE $${pi++}`; params.push(`%${categoryF}%`); }
+    if (priorityF) {
+      const scoreRanges: Record<string, string> = {
+        critical: "priority >= 90",
+        high_value: "priority >= 70 AND priority < 90",
+        quick_win: "priority >= 50 AND priority < 70",
+        long_term: "priority < 50",
+      };
+      const rangeClause = scoreRanges[priorityF];
+      if (rangeClause) sql += ` AND (${rangeClause})`;
+    }
+    sql += ` ORDER BY priority DESC, created_at DESC LIMIT $${pi}`;
+    params.push(limitF);
+
+    const recRows = await pool.query(sql, params);
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "none", result: "ok", durationMs: Date.now() - t0 });
+
+    if (!recRows.rows.length) {
+      return { toolCallId: logId, toolName: name2, ok: true,
+        content: `Aucune recommandation trouvée (statut: ${statusF}). Utilisez generate_recommendations pour en créer.`, actionLogId: logId };
+    }
+    const recLines = (recRows.rows as Record<string, unknown>[]).map(rec => {
+      const meta = (rec["metadata"] as Record<string, unknown>) ?? {};
+      const cat  = String(meta["category"] ?? "SEO");
+      return `• [${rec["id"]}] ${fmtRecommPriority(Number(rec["priority"] ?? 0))} | ${cat} — ${rec["title"]}`;
+    });
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `${recRows.rows.length} recommandation(s) :\n${recLines.join("\n")}`,
+      data: { recommendations: recRows.rows }, actionLogId: logId };
+  }
+
+  // ── generate_recommendations ──────────────────────────────────────────────
+  if (name2 === "generate_recommendations") {
+    const genFocus      = (args["focus"] as string | undefined)?.toLowerCase();
+    const genMaxResults = Math.min((args["maxResults"] as number) ?? 5, 10);
+    const genUrgency    = (args["urgencyOnly"] as boolean) ?? false;
+
+    const [genAudits, genKw, genComp, genMon] = await Promise.allSettled([
+      pool.query(`SELECT id, url, score, status, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 5`, [orgId]),
+      pool.query(`SELECT keyword, current_position, search_volume FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC LIMIT 10`, [orgId]),
+      pool.query(`SELECT name, domain_rating FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT 3`, [orgId]),
+      pool.query(`SELECT url, status FROM monitors WHERE org_id=$1 LIMIT 5`, [orgId]),
+    ]);
+    const genAuditRows = genAudits.status === "fulfilled" ? (genAudits.value.rows as Record<string, unknown>[]) : [];
+    const genKwRows    = genKw.status     === "fulfilled" ? (genKw.value.rows    as Record<string, unknown>[]) : [];
+    const genCompRows  = genComp.status   === "fulfilled" ? (genComp.value.rows  as Record<string, unknown>[]) : [];
+    const genMonRows   = genMon.status    === "fulfilled" ? (genMon.value.rows   as Record<string, unknown>[]) : [];
+
+    const candidates: RecommendationInput[] = [];
+    for (const a of genAuditRows) {
+      const sc = Number(a["score"] ?? 0); const sp = Number(a["speed"] ?? 0);
+      if ((!genFocus || ["performance","technique"].includes(genFocus)) && sp < 60) {
+        candidates.push({ title: `Améliorer la vitesse PageSpeed de ${a["url"]}`,
+          description: `Score vitesse actuel : ${sp}/100. Optimiser LCP, réduire le JS inutilisé, activer la compression.`,
+          category: "performance", urgency: 100 - sp, impact: 80, effort: 50, confidence: 90, source: "audit",
+          metadata: { auditId: a["id"], url: a["url"], currentSpeed: sp } });
+      }
+      if ((!genFocus || ["technique","seo"].includes(genFocus)) && sc < 70) {
+        candidates.push({ title: `Corriger les erreurs SEO critiques de ${a["url"]}`,
+          description: `Score SEO : ${sc}/100. ${a["issues"]} problème(s) critique(s) détecté(s).`,
+          category: "technique", urgency: 100 - sc, impact: 85, effort: 40, confidence: 95, source: "audit",
+          metadata: { auditId: a["id"], url: a["url"], currentScore: sc, issues: a["issues"] } });
+      }
+    }
+    for (const kw of genKwRows) {
+      const pos = Number(kw["current_position"] ?? 999); const vol = Number(kw["search_volume"] ?? 0);
+      if ((!genFocus || ["contenu","seo"].includes(genFocus)) && pos >= 4 && pos <= 15 && vol > 0) {
+        candidates.push({ title: `Pousser "${kw["keyword"]}" de la position ${pos} vers le Top 3`,
+          description: `Mot-clé en position ${pos} avec ${vol} recherches/mois. Fort potentiel de trafic en Top 3.`,
+          category: "contenu", urgency: vol > 1000 ? 75 : 55, impact: 85, effort: 45, confidence: 80, source: "keyword",
+          metadata: { keyword: kw["keyword"], position: pos, volume: vol } });
+      }
+    }
+    for (const comp of genCompRows) {
+      if ((!genFocus || genFocus === "backlinks") && Number(comp["domain_rating"] ?? 0) > 30) {
+        candidates.push({ title: `Analyser la stratégie backlinks de ${comp["name"]}`,
+          description: `Concurrent ${comp["name"]} DR=${comp["domain_rating"]}. Identifier leurs sources de backlinks.`,
+          category: "backlinks", urgency: 55, impact: 70, effort: 60, confidence: 75, source: "competitor",
+          metadata: { competitor: comp["name"], dr: comp["domain_rating"] } });
+      }
+    }
+    const downMonitors = genMonRows.filter(m => m["status"] === "down");
+    if ((!genFocus || genFocus === "performance") && downMonitors.length > 0) {
+      candidates.push({ title: `Résoudre la panne détectée sur ${String(downMonitors[0]!["url"] ?? "")}`,
+        description: `Monitor détecte le site en DOWN. Impact immédiat sur SEO et expérience utilisateur.`,
+        category: "performance", urgency: 100, impact: 95, effort: 20, confidence: 100, source: "monitor",
+        metadata: { url: downMonitors[0]!["url"] } });
+    }
+    if (!candidates.length) {
+      return { toolCallId: logId, toolName: name2, ok: true,
+        content: "Données insuffisantes pour générer des recommandations. Commencez par lancer un audit SEO (run_audit) et ajoutez des mots-clés à suivre.",
+        actionLogId: logId };
+    }
+    const scored = candidates
+      .map(c => ({ ...c, score: computeRecommPriorityScore(c) }))
+      .filter(c => !genUrgency || c.score >= 70)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, genMaxResults);
+
+    const genCreated: Record<string, unknown>[] = [];
+    for (const rec of scored) {
+      const rId = `r${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      await pool.query(
+        `INSERT INTO ai_recommendations (id, org_id, type, title, description, priority, status, source, metadata, created_at, updated_at)
+         VALUES ($1,$2,'recommendation',$3,$4,$5,'active',$6,$7::jsonb,NOW(),NOW())
+         ON CONFLICT (id) DO NOTHING`,
+        [rId, orgId, rec.title, rec.description, rec.score, rec.source,
+         JSON.stringify({ ...rec.metadata, category: rec.category, urgency: rec.urgency, impact: rec.impact, effort: rec.effort, confidence: rec.confidence })]
+      );
+      genCreated.push({ id: rId, title: rec.title, priority: rec.score, category: rec.category, source: rec.source });
+    }
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: toolDef.confirmationLevel, result: "ok",
+      snapshot: null, versionAfter: null, durationMs: Date.now() - t0 });
+    await store.logActivity({ type: "report",
+      label: `[IA] ${genCreated.length} recommandation(s) SEO générée(s)`,
+      targetId: orgId, targetType: "organization",
+      metadata: { provider, model, tool: name2, count: genCreated.length }, orgId,
+    }).catch(() => {});
+
+    const navGenDest = validateNavAction(
+      { destinationId: "recommendations", label: "Voir les recommandations", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const navGenProposal = navGenDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [navGenDest] })
+      : null;
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `${genCreated.length} recommandation(s) générée(s) :\n` +
+        genCreated.map(r => `• [${r["id"]}] ${fmtRecommPriority(Number(r["priority"] ?? 0))} | ${r["category"]} — ${r["title"]}`).join("\n"),
+      data: { recommendations: genCreated }, actionLogId: logId, navProposal: navGenProposal };
+  }
+
+  // ── prioritize_recommendations ────────────────────────────────────────────
+  if (name2 === "prioritize_recommendations") {
+    const prioScope = (args["scope"] as string) ?? "all";
+    const prioR = await pool.query(
+      `SELECT id, title, priority, status, metadata FROM ai_recommendations
+       WHERE org_id=$1 AND status='active' ORDER BY priority DESC LIMIT 25`,
+      [orgId]
+    );
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "none", result: "ok", durationMs: Date.now() - t0 });
+
+    if (!prioR.rows.length) {
+      return { toolCallId: logId, toolName: name2, ok: true,
+        content: "Aucune recommandation active. Utilisez generate_recommendations pour en créer.", actionLogId: logId };
+    }
+    const prioRecs = prioR.rows as Record<string, unknown>[];
+    const prioBuckets: Record<string, typeof prioRecs> = {
+      critical:   prioRecs.filter(x => Number(x["priority"] ?? 0) >= 90),
+      high_value: prioRecs.filter(x => Number(x["priority"] ?? 0) >= 70 && Number(x["priority"] ?? 0) < 90),
+      quick_win:  prioRecs.filter(x => Number(x["priority"] ?? 0) >= 50 && Number(x["priority"] ?? 0) < 70),
+      long_term:  prioRecs.filter(x => Number(x["priority"] ?? 0) < 50),
+    };
+    const prioFiltered = prioScope === "all" ? prioBuckets : { [prioScope]: prioBuckets[prioScope] ?? [] };
+    const prioLabels: Record<string, string> = {
+      critical: "🚨 CRITIQUE (traiter immédiatement)", high_value: "⬆️ HAUTE VALEUR (fort impact)",
+      quick_win: "⚡ QUICK WINS (facile + efficace)",  long_term: "📅 LONG TERME (travail de fond)",
+    };
+    const prioLines: string[] = [];
+    for (const [bucket, items] of Object.entries(prioFiltered)) {
+      if (!items.length) continue;
+      prioLines.push(`\n${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
+      items.forEach(x => {
+        const m = (x["metadata"] as Record<string, unknown>) ?? {};
+        prioLines.push(`  • [${x["id"]}] ${String(m["category"] ?? "SEO")} — ${x["title"]} (score: ${x["priority"]}/100)`);
+      });
+    }
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `Recommandations priorisées (${prioRecs.length} total) :${prioLines.join("\n")}`,
+      data: { buckets: prioBuckets }, actionLogId: logId };
+  }
+
+  // ── explain_recommendation ────────────────────────────────────────────────
+  if (name2 === "explain_recommendation") {
+    const expRecId = args["recommendationId"] as string;
+    const expSnap  = await snapRecommendation(expRecId, orgId, pool);
+    if (!expSnap) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `Recommandation ${expRecId} introuvable. Utilisez search_recommendations pour trouver l'ID.`, actionLogId: logId };
+
+    const expMeta = (expSnap["metadata"] as Record<string, unknown>) ?? {};
+    const effort  = Number(expMeta["effort"] ?? 50);
+    const diffLabel = effort < 30 ? "Facile" : effort < 60 ? "Moyen" : "Difficile";
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "none", result: "ok", durationMs: Date.now() - t0 });
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: [
+        `Recommandation [${expRecId}] : ${expSnap["title"]}`,
+        ``,
+        `Observation : ${expSnap["description"]}`,
+        ``,
+        `Interprétation : Priorité ${expSnap["priority"]}/100 — ${fmtRecommPriority(Number(expSnap["priority"] ?? 0))}`,
+        expMeta["urgency"]    ? `Urgence : ${expMeta["urgency"]}/100`          : null,
+        expMeta["impact"]     ? `Impact SEO estimé : ${expMeta["impact"]}/100` : null,
+        expMeta["confidence"] ? `Confiance : ${expMeta["confidence"]}/100`     : null,
+        ``,
+        `Difficulté : ${diffLabel} (${effort}/100)`,
+        `Catégorie : ${expMeta["category"] ?? expSnap["source"] ?? "SEO"}`,
+        expMeta["auditId"] ? `Source : Audit ${expMeta["auditId"]}` : null,
+        expMeta["keyword"] ? `Source : Mot-clé "${expMeta["keyword"]}" (position ${expMeta["position"]})` : null,
+        expMeta["url"]     ? `Site concerné : ${expMeta["url"]}` : null,
+      ].filter(Boolean).join("\n"),
+      data: { recommendation: expSnap }, actionLogId: logId };
+  }
+
+  // ── create_action_plan ────────────────────────────────────────────────────
+  if (name2 === "create_action_plan") {
+    const planWeeks = Math.min((args["weeks"] as number) ?? 4, 12);
+    const planFocus = (args["focus"] as string | undefined)?.toLowerCase();
+
+    const planR = await pool.query(
+      `SELECT id, title, priority, metadata FROM ai_recommendations
+       WHERE org_id=$1 AND status='active' ORDER BY priority DESC LIMIT 20`,
+      [orgId]
+    );
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "none", result: "ok", durationMs: Date.now() - t0 });
+
+    const planRecs = (planR.rows as Record<string, unknown>[])
+      .filter(x => !planFocus || String((x["metadata"] as Record<string, unknown>)?.["category"] ?? "").toLowerCase().includes(planFocus));
+    if (!planRecs.length) {
+      return { toolCallId: logId, toolName: name2, ok: true,
+        content: "Aucune recommandation disponible pour créer un plan. Lancez d'abord generate_recommendations.", actionLogId: logId };
+    }
+    const planBuckets: Record<number, typeof planRecs> = {};
+    for (let w = 1; w <= planWeeks; w++) planBuckets[w] = [];
+    const planSorted = [...planRecs].sort((a, b) => Number(b["priority"] ?? 0) - Number(a["priority"] ?? 0));
+    planSorted.forEach((rec, i) => {
+      const w = Math.min(Math.floor(i / 2) + 1, planWeeks);
+      planBuckets[w]!.push(rec);
+    });
+    const planLines: string[] = [`Plan d'action SEO — ${planWeeks} semaine(s) :`, ""];
+    for (let w = 1; w <= planWeeks; w++) {
+      const items = planBuckets[w] ?? [];
+      if (!items.length) continue;
+      const startDate = new Date(Date.now() + (w - 1) * 7 * 86_400_000).toISOString().slice(0, 10);
+      planLines.push(`\uD83D\uDCC5 Semaine ${w} (à partir du ${startDate}) :`);
+      items.forEach(x => planLines.push(`  • ${x["title"]}`));
+      planLines.push("");
+    }
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: planLines.join("\n"), data: { plan: planBuckets }, actionLogId: logId };
+  }
+
+  // ── generate_seo_strategy ─────────────────────────────────────────────────
+  if (name2 === "generate_seo_strategy") {
+    const stratHorizon = (args["horizon"] as string) ?? "6months";
+    const stratFocus   = (args["focus"]   as string) ?? "technique, contenu, local, backlinks, conversion";
+
+    const [sAudits, sKw, sComp] = await Promise.allSettled([
+      pool.query(`SELECT url, score, status FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 3`, [orgId]),
+      pool.query(`SELECT keyword, current_position FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC LIMIT 5`, [orgId]),
+      pool.query(`SELECT name, domain_rating FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT 3`, [orgId]),
+    ]);
+    const sAuditRows = sAudits.status === "fulfilled" ? (sAudits.value.rows as Record<string, unknown>[]) : [];
+    const sKwRows    = sKw.status     === "fulfilled" ? (sKw.value.rows    as Record<string, unknown>[]) : [];
+    const sCompRows  = sComp.status   === "fulfilled" ? (sComp.value.rows  as Record<string, unknown>[]) : [];
+
+    const sAvgScore = sAuditRows.length > 0 ? Math.round(sAuditRows.reduce((s, a) => s + Number(a["score"] ?? 0), 0) / sAuditRows.length) : 0;
+    const sKwTop10  = sKwRows.filter(k => Number(k["current_position"] ?? 999) <= 10).length;
+    const stratHorizonLabel = stratHorizon === "3months" ? "3 mois" : stratHorizon === "12months" ? "12 mois" : "6 mois";
+    const stratTitle   = `Stratégie SEO ${stratHorizonLabel} — ${new Date().toISOString().slice(0, 10)}`;
+    const stratDesc    = `Stratégie basée sur ${sAuditRows.length} audit(s), ${sKwRows.length} mot(s)-clé, ${sCompRows.length} concurrent(s). Score moyen : ${sAvgScore}/100. Axes : ${stratFocus}. ${sKwTop10} mot(s)-clé en Top 10.`;
+    const stratId      = `s${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+    await pool.query(
+      `INSERT INTO ai_recommendations (id, org_id, type, title, description, priority, status, source, metadata, created_at, updated_at)
+       VALUES ($1,$2,'strategy',$3,$4,85,'active','agent',$5::jsonb,NOW(),NOW())
+       ON CONFLICT (id) DO NOTHING`,
+      [stratId, orgId, stratTitle, stratDesc,
+       JSON.stringify({ horizon: stratHorizon, focus: stratFocus, avgScore: sAvgScore, kwInTop10: sKwTop10,
+         auditCount: sAuditRows.length, kwCount: sKwRows.length, compCount: sCompRows.length })]
+    );
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: toolDef.confirmationLevel, result: "ok",
+      snapshot: { id: stratId, type: "strategy", title: stratTitle }, versionAfter: null, durationMs: Date.now() - t0 });
+    await store.logActivity({ type: "report",
+      label: `[IA] Stratégie SEO générée : ${stratTitle}`,
+      targetId: stratId, targetType: "organization",
+      metadata: { provider, model, tool: name2 }, orgId,
+    }).catch(() => {});
+
+    const navStratDest = validateNavAction(
+      { destinationId: "seo-strategy", label: "Voir la stratégie", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const navStratProposal = navStratDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [navStratDest] })
+      : null;
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: [
+        `Stratégie SEO générée [${stratId}] :`,
+        `**${stratTitle}**`,
+        ``,
+        `Horizon : ${stratHorizonLabel} | Axes : ${stratFocus}`,
+        `Score SEO moyen : ${sAvgScore}/100 | Mots-clés Top 10 : ${sKwTop10}/${sKwRows.length}`,
+        ``,
+        `Utilisez create_missions_from_strategy avec strategyId="${stratId}" pour créer les missions correspondantes.`,
+      ].join("\n"),
+      data: { strategyId: stratId, title: stratTitle },
+      actionLogId: logId, navProposal: navStratProposal };
+  }
+
+  // ── compare_strategy ──────────────────────────────────────────────────────
+  if (name2 === "compare_strategy") {
+    const cmpA = args["strategyA"] as string;
+    const cmpB = args["strategyB"] as string;
+    const cmpKwR = await pool.query(
+      `SELECT keyword, current_position FROM tracked_keywords WHERE org_id=$1 AND active=true LIMIT 10`,
+      [orgId]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+    const cmpKws = cmpKwR.rows as Record<string, unknown>[];
+    const localPattern = /(paris|lyon|marseille|bordeaux|nantes|toulouse|près|local|ville|quartier)/i;
+    const localKwCount = cmpKws.filter(k => localPattern.test(String(k["keyword"] ?? ""))).length;
+    const hasLocal     = localKwCount > 0;
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "none", result: "ok", durationMs: Date.now() - t0 });
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: [
+        `Comparaison de stratégies SEO :`,
+        ``,
+        `Option A : ${cmpA}`,
+        `Adapté si : présence locale forte, mots-clés géolocalisés, Google Business Profile actif.`,
+        hasLocal ? `Vos données : ${localKwCount} mot(s)-clé local(aux) détecté(s) — cette approche est pertinente.` : `Peu de mots-clés locaux détectés dans votre suivi.`,
+        ``,
+        `Option B : ${cmpB}`,
+        `Adapté si : ambitions nationales, fort volume de recherche, contenu à large diffusion.`,
+        ``,
+        `Recommandation : ${hasLocal ? `l'approche "${cmpA}" semble plus adaptée à votre présence actuelle.` : `l'approche "${cmpB}" offre plus de potentiel avec vos données actuelles.`}`,
+        `Pour approfondir, utilisez generate_seo_strategy avec l'axe choisi.`,
+      ].join("\n"),
+      data: { strategyA: cmpA, strategyB: cmpB, hasLocalKeywords: hasLocal }, actionLogId: logId };
+  }
+
+  // ── create_missions_from_strategy ─────────────────────────────────────────
+  if (name2 === "create_missions_from_strategy") {
+    const msStratId  = args["strategyId"]  as string | undefined;
+    const msMaxMiss  = Math.min((args["maxMissions"] as number) ?? 5, 15);
+    const msPriority = (args["priority"]   as string) ?? "high";
+
+    let msSourceRecs: Record<string, unknown>[] = [];
+    if (msStratId) {
+      const msStratCheck = await pool.query(
+        `SELECT id FROM ai_recommendations WHERE id=$1 AND org_id=$2 LIMIT 1`,
+        [msStratId, orgId]
+      );
+      if (msStratCheck.rows.length > 0) {
+        const msRecR = await pool.query(
+          `SELECT id, title, description, metadata FROM ai_recommendations
+           WHERE org_id=$1 AND status='active' AND type='recommendation' ORDER BY priority DESC LIMIT $2`,
+          [orgId, msMaxMiss]
+        );
+        msSourceRecs = msRecR.rows as Record<string, unknown>[];
+      }
+    }
+    if (!msSourceRecs.length) {
+      const msRecR = await pool.query(
+        `SELECT id, title, description, metadata FROM ai_recommendations
+         WHERE org_id=$1 AND status='active' AND type='recommendation' ORDER BY priority DESC LIMIT $2`,
+        [orgId, msMaxMiss]
+      );
+      msSourceRecs = msRecR.rows as Record<string, unknown>[];
+    }
+    if (!msSourceRecs.length) {
+      return { toolCallId: logId, toolName: name2, ok: false,
+        content: "Aucune recommandation active. Utilisez generate_recommendations ou generate_seo_strategy d'abord.", actionLogId: logId };
+    }
+
+    const msToday = new Date().toISOString().slice(0, 10);
+    const msMissions: Record<string, unknown>[] = [];
+    const msClient = await pool.connect();
+    try {
+      await msClient.query("BEGIN");
+      for (const rec of msSourceRecs.slice(0, msMaxMiss)) {
+        const mId  = `m_strat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const meta = (rec["metadata"] as Record<string, unknown>) ?? {};
+        const cat  = String(meta["category"] ?? "SEO").toUpperCase();
+        const row  = await msClient.query(
+          `INSERT INTO missions (id, org_id, title, description, status, priority, category, due_date, source_type, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,'todo',$5,$6,$7,'agent',NOW(),NOW())
+           RETURNING id, title, description, status, priority, category, due_date, updated_at`,
+          [mId, orgId, `[Stratégie] ${rec["title"]}`, String(rec["description"] ?? "Mission issue de la stratégie SEO."), msPriority, cat, msToday]
+        );
+        if (row.rows[0]) msMissions.push(row.rows[0] as Record<string, unknown>);
+      }
+      await msClient.query("COMMIT");
+    } catch (err) {
+      await msClient.query("ROLLBACK");
+      msClient.release();
+      throw err;
+    }
+    msClient.release();
+
+    const msBatchSnap = { batchType: "create_missions_from_strategy", strategyId: msStratId ?? null, missions: msMissions };
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: toolDef.confirmationLevel, result: "ok",
+      snapshot: msBatchSnap as unknown as Record<string, unknown>,
+      versionAfter: null, durationMs: Date.now() - t0 });
+    await store.logActivity({ type: "mission",
+      label: `[IA] ${msMissions.length} mission(s) créée(s) depuis stratégie SEO`,
+      targetId: msStratId ?? orgId, targetType: "organization",
+      metadata: { provider, model, tool: name2, count: msMissions.length, strategyId: msStratId ?? null }, orgId,
+    }).catch(() => {});
+
+    const msNavDest = validateNavAction(
+      { destinationId: "missions-list", label: "Voir les missions", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const msNavProposal = msNavDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [msNavDest] })
+      : null;
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `${msMissions.length} mission(s) créée(s) depuis la stratégie SEO :\n` +
+        msMissions.map(m => `• [${m["id"]}] ${m["title"]}`).join("\n"),
+      data: { missions: msMissions, strategyId: msStratId ?? null },
+      snapshot: msBatchSnap as unknown as Record<string, unknown>,
+      actionLogId: logId,
+      undoLabel: `Annuler la création de ${msMissions.length} mission(s) depuis la stratégie`,
+      navProposal: msNavProposal };
+  }
+
+  // ── dismiss_recommendation ────────────────────────────────────────────────
+  if (name2 === "dismiss_recommendation") {
+    const dimRecId = args["recommendationId"] as string;
+    const dimReason = (args["reason"] as string | undefined) ?? null;
+    const dimSnap  = await snapRecommendation(dimRecId, orgId, pool);
+    if (!dimSnap) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `Recommandation ${dimRecId} introuvable.`, actionLogId: logId };
+    if (dimSnap["status"] === "dismissed") return { toolCallId: logId, toolName: name2, ok: false,
+      content: `La recommandation [${dimRecId}] est déjà ignorée. Utilisez restore_recommendation pour la restaurer.`, actionLogId: logId };
+
+    const dimMetaOld = (dimSnap["metadata"] as Record<string, unknown>) ?? {};
+    const dimMetaNew = { ...dimMetaOld, dismiss_reason: dimReason, dismissed_at: new Date().toISOString() };
+    await pool.query(
+      `UPDATE ai_recommendations SET status='dismissed', metadata=$1::jsonb, updated_at=NOW() WHERE id=$2 AND org_id=$3`,
+      [JSON.stringify(dimMetaNew), dimRecId, orgId]
+    );
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "none", result: "ok",
+      snapshot: dimSnap, versionAfter: null, durationMs: Date.now() - t0 });
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `Recommandation [${dimRecId}] "${dimSnap["title"]}" ignorée${dimReason ? ` (motif : ${dimReason})` : ""}. Utilisez restore_recommendation pour la restaurer.`,
+      data: { recommendationId: dimRecId }, actionLogId: logId };
+  }
+
+  // ── restore_recommendation ────────────────────────────────────────────────
+  if (name2 === "restore_recommendation") {
+    const restRecId = args["recommendationId"] as string;
+    const restSnap  = await snapRecommendation(restRecId, orgId, pool);
+    if (!restSnap) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `Recommandation ${restRecId} introuvable.`, actionLogId: logId };
+    if (restSnap["status"] === "active") return { toolCallId: logId, toolName: name2, ok: false,
+      content: `La recommandation [${restRecId}] est déjà active.`, actionLogId: logId };
+
+    await pool.query(
+      `UPDATE ai_recommendations SET status='active', updated_at=NOW() WHERE id=$1 AND org_id=$2`,
+      [restRecId, orgId]
+    );
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "none", result: "ok",
+      snapshot: restSnap, versionAfter: null, durationMs: Date.now() - t0 });
+
+    const restNavDest = validateNavAction(
+      { destinationId: "recommendations", label: "Voir les recommandations", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const restNavProposal = restNavDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [restNavDest] })
+      : null;
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `Recommandation [${restRecId}] "${restSnap["title"]}" restaurée en statut actif.`,
+      data: { recommendationId: restRecId }, actionLogId: logId, navProposal: restNavProposal };
+  }
+
+  // ── Phase 6 : Monitors, Incidents & Alertes ──────────────────────────────
+  // ── search_monitors ───────────────────────────────────────────────────────
+  if (name2 === "search_monitors") {
+    const smQuery      = (args["query"]       as string  | undefined) ?? null;
+    const smStatus     = (args["status"]      as string  | undefined) ?? "all";
+    const smCritical   = (args["is_critical"] as boolean | undefined) ?? null;
+    const smEnabled    = (args["enabled"]     as boolean | undefined) ?? null;
+    const smLimit      = Math.min(Number(args["limit"] ?? 20), 100);
+
+    let smSql = `SELECT id, org_id, name, url, status, uptime, latency, last_check, is_critical, frequency, enabled, alert_email, updated_at
+                   FROM monitors WHERE org_id=$1`;
+    const smParams: unknown[] = [orgId];
+    let smP = 2;
+    if (smQuery) { smSql += ` AND (LOWER(name) LIKE $${smP} OR LOWER(url) LIKE $${smP})`; smParams.push(`%${smQuery.toLowerCase()}%`); smP++; }
+    if (smStatus && smStatus !== "all") {
+      if (smStatus === "paused") { smSql += ` AND enabled=false`; }
+      else { smSql += ` AND status=$${smP}`; smParams.push(smStatus); smP++; }
+    }
+    if (smCritical !== null) { smSql += ` AND is_critical=$${smP}`; smParams.push(smCritical); smP++; }
+    if (smEnabled !== null)  { smSql += ` AND enabled=$${smP}`;    smParams.push(smEnabled);  smP++; }
+    smSql += ` ORDER BY is_critical DESC, status DESC, name ASC LIMIT $${smP}`;
+    smParams.push(smLimit);
+
+    const smRows = (await pool.query(smSql, smParams)).rows as Record<string, unknown>[];
+    if (!smRows.length) return { toolCallId: logId, toolName: name2, ok: true,
+      content: "Aucun monitor ne correspond aux critères de recherche.", actionLogId: logId };
+
+    const smSummary = smRows.map(m =>
+      `[${m["id"]}] ${m["name"]} (${m["url"]}) — ${fmtMonitorStatus(m["status"])}${m["enabled"] === false ? " ⏸️" : ""} | Uptime: ${fmtUptimePct(m["uptime"])} | Latence: ${m["latency"] ?? "?"}ms | Critique: ${m["is_critical"] ? "Oui" : "Non"}`
+    ).join("\n");
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `${smRows.length} monitor(s) trouvé(s) :\n\n${smSummary}`,
+      data: { monitors: smRows, count: smRows.length }, actionLogId: logId };
+  }
+
+  // ── search_incidents ──────────────────────────────────────────────────────
+  if (name2 === "search_incidents") {
+    const siMonId    = (args["monitor_id"]     as string | undefined) ?? null;
+    const siStatus   = (args["status"]         as string | undefined) ?? "all";
+    const siDays     = Math.min(Number(args["period_days"]    ?? 7), 365);
+    const siMinDur   = (args["min_duration_s"] as number | undefined) ?? null;
+    const siLimit    = Math.min(Number(args["limit"] ?? 20), 100);
+
+    let siSql = `SELECT mi.id, mi.monitor_id, mi.org_id, mi.started_at, mi.resolved_at, mi.duration_s, mi.error,
+                        m.name AS monitor_name, m.url AS monitor_url, m.is_critical
+                   FROM monitor_incidents mi
+                   JOIN monitors m ON m.id = mi.monitor_id AND m.org_id = mi.org_id
+                  WHERE mi.org_id=$1 AND mi.started_at >= NOW() - $2::interval`;
+    const siParams: unknown[] = [orgId, `${siDays} days`];
+    let siP = 3;
+    if (siMonId) { siSql += ` AND mi.monitor_id=$${siP}`; siParams.push(siMonId); siP++; }
+    if (siStatus === "active")   siSql += ` AND mi.resolved_at IS NULL`;
+    if (siStatus === "resolved") siSql += ` AND mi.resolved_at IS NOT NULL`;
+    if (siMinDur !== null)       { siSql += ` AND mi.duration_s >= $${siP}`; siParams.push(siMinDur); siP++; }
+    siSql += ` ORDER BY mi.started_at DESC LIMIT $${siP}`;
+    siParams.push(siLimit);
+
+    const siRows = (await pool.query(siSql, siParams)).rows as Record<string, unknown>[];
+    if (!siRows.length) return { toolCallId: logId, toolName: name2, ok: true,
+      content: `Aucun incident trouvé sur les ${siDays} derniers jours.`, actionLogId: logId };
+
+    const siSummary = siRows.map(i =>
+      `[${i["id"]}] ${i["monitor_name"]} (${i["monitor_url"]}) — ` +
+      `Début: ${String(i["started_at"]).slice(0, 16)} | ` +
+      (i["resolved_at"] ? `Résolu: ${String(i["resolved_at"]).slice(0, 16)} | Durée: ${fmtDurationS(i["duration_s"])}` : `🔴 ACTIF (en cours)`) +
+      (i["error"] ? ` | Erreur: ${i["error"]}` : "")
+    ).join("\n");
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `${siRows.length} incident(s) sur ${siDays} jours :\n\n${siSummary}`,
+      data: { incidents: siRows, count: siRows.length, period_days: siDays }, actionLogId: logId };
+  }
+
+  // ── explain_incident ──────────────────────────────────────────────────────
+  if (name2 === "explain_incident") {
+    const eiId = args["incident_id"] as string;
+    const eiSnap = await snapIncident(eiId, orgId, pool);
+    if (!eiSnap) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `Incident ${eiId} introuvable.`, actionLogId: logId };
+
+    const [eiMon, eiChecks, eiAlerts] = await Promise.allSettled([
+      pool.query(`SELECT id, name, url, status, uptime, latency, is_critical, frequency FROM monitors WHERE id=$1 AND org_id=$2`,
+        [eiSnap["monitor_id"], orgId]),
+      pool.query(`SELECT checked_at, ok, latency, status_code, error FROM monitor_checks WHERE monitor_id=$1 AND org_id=$2 AND checked_at BETWEEN $3 AND $4 ORDER BY checked_at ASC LIMIT 20`,
+        [eiSnap["monitor_id"], orgId, eiSnap["started_at"], eiSnap["resolved_at"] ?? new Date().toISOString()]),
+      pool.query(`SELECT type, severity, message, triggered_at, read_at FROM alert_events WHERE monitor_id=$1 AND org_id=$2 AND triggered_at >= $3 ORDER BY triggered_at ASC LIMIT 10`,
+        [eiSnap["monitor_id"], orgId, eiSnap["started_at"]]),
+    ]);
+    const eiMonRow = eiMon.status === "fulfilled" ? (eiMon.value.rows[0] as Record<string, unknown> | undefined) : undefined;
+    const eiCheckRows = eiChecks.status === "fulfilled" ? (eiChecks.value.rows as Record<string, unknown>[]) : [];
+    const eiAlertRows = eiAlerts.status === "fulfilled" ? (eiAlerts.value.rows as Record<string, unknown>[]) : [];
+
+    const failedChecks = eiCheckRows.filter(c => !c["ok"]);
+    const errors = [...new Set(failedChecks.map(c => c["error"] ?? c["status_code"]).filter(Boolean))];
+    const isResolved = !!eiSnap["resolved_at"];
+
+    const eiLines = [
+      `=== INCIDENT [${eiId}] ===`,
+      `Monitor  : ${eiMonRow?.["name"] ?? "?"} — ${eiMonRow?.["url"] ?? "?"}`,
+      `Criticité: ${eiMonRow?.["is_critical"] ? "🔴 CRITIQUE" : "Normal"}`,
+      ``,
+      `Début    : ${String(eiSnap["started_at"]).slice(0, 19).replace("T", " ")} UTC`,
+      isResolved ? `Résolu   : ${String(eiSnap["resolved_at"]).slice(0, 19).replace("T", " ")} UTC` : `Statut   : 🔴 EN COURS`,
+      isResolved ? `Durée    : ${fmtDurationS(eiSnap["duration_s"])}` : `Durée    : En cours depuis ${fmtDurationS(Math.round((Date.now() - new Date(eiSnap["started_at"] as string).getTime()) / 1000))}`,
+      ``,
+      `Cause probable : ${errors.length ? errors.slice(0, 3).join(", ") : "Inconnue (aucun détail enregistré)"}`,
+      eiSnap["error"] ? `Erreur détaillée : ${eiSnap["error"]}` : "",
+      ``,
+      `Checks analysés : ${eiCheckRows.length} | Échecs : ${failedChecks.length}`,
+      failedChecks.length ? `Codes d'erreur : ${[...new Set(failedChecks.map(c => c["status_code"]).filter(Boolean))].join(", ") || "N/A"}` : "",
+      eiAlertRows.length ? `Alertes déclenchées : ${eiAlertRows.length} (${eiAlertRows.filter(a => a["read_at"]).length} acquittées)` : "Aucune alerte déclenchée",
+      ``,
+      `Uptime monitor   : ${fmtUptimePct(eiMonRow?.["uptime"])} | Latence moy : ${eiMonRow?.["latency"] ?? "?"}ms`,
+      ``,
+      `Recommandations :`,
+      `• Utilisez create_missions_from_incident pour créer les missions de correction.`,
+      !isResolved ? `• Utilisez resolve_incident pour marquer l'incident comme résolu.` : "",
+      `• Vérifiez les checks récents avec search_incidents pour détecter une récurrence.`,
+    ].filter(l => l !== "");
+
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: eiLines.join("\n"),
+      data: { incident: eiSnap, monitor: eiMonRow, failedChecks: failedChecks.length, alerts: eiAlertRows.length },
+      actionLogId: logId };
+  }
+
+  // ── compare_incidents ─────────────────────────────────────────────────────
+  if (name2 === "compare_incidents") {
+    const ciIds     = args["incident_ids"] as string[];
+    const ciMetrics = (args["metrics"] as string[] | undefined) ?? ["duration", "frequency", "type", "causes", "impact"];
+
+    const ciRows = await Promise.allSettled(
+      ciIds.map(id => pool.query(
+        `SELECT mi.id, mi.monitor_id, mi.started_at, mi.resolved_at, mi.duration_s, mi.error,
+                m.name AS monitor_name, m.url, m.is_critical, m.uptime
+           FROM monitor_incidents mi JOIN monitors m ON m.id=mi.monitor_id AND m.org_id=mi.org_id
+          WHERE mi.id=$1 AND mi.org_id=$2`,
+        [id, orgId]
+      ))
+    );
+    const ciIncidents = ciRows
+      .filter(r => r.status === "fulfilled" && r.value.rows.length > 0)
+      .map(r => (r as PromiseFulfilledResult<{ rows: Record<string, unknown>[] }>).value.rows[0]);
+
+    if (!ciIncidents.length) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `Aucun des incidents fournis n'a été trouvé dans votre organisation.`, actionLogId: logId };
+
+    const ciLines = [`=== COMPARAISON DE ${ciIncidents.length} INCIDENT(S) ===`, ""];
+    if (ciMetrics.includes("duration")) {
+      ciLines.push("DURÉE :");
+      ciIncidents.forEach(i => ciLines.push(`  [${i["id"]}] ${i["monitor_name"]} : ${i["resolved_at"] ? fmtDurationS(i["duration_s"]) : "En cours"}`));
+      ciLines.push("");
+    }
+    if (ciMetrics.includes("type")) {
+      ciLines.push("TYPE D'ERREUR :");
+      ciIncidents.forEach(i => ciLines.push(`  [${i["id"]}] ${i["monitor_name"]} : ${i["error"] ?? "Inconnue"}`));
+      ciLines.push("");
+    }
+    if (ciMetrics.includes("impact")) {
+      ciLines.push("IMPACT :");
+      ciIncidents.forEach(i => ciLines.push(`  [${i["id"]}] ${i["monitor_name"]} : Uptime global ${fmtUptimePct(i["uptime"])} | Critique: ${i["is_critical"] ? "Oui" : "Non"}`));
+      ciLines.push("");
+    }
+    const durations = ciIncidents.map(i => Number(i["duration_s"] ?? 0)).filter(d => d > 0);
+    if (durations.length > 1) {
+      ciLines.push(`TENDANCE : Durée min ${fmtDurationS(Math.min(...durations))} / max ${fmtDurationS(Math.max(...durations))} / moy ${fmtDurationS(Math.round(durations.reduce((s, d) => s + d, 0) / durations.length))}`);
+    }
+
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: ciLines.join("\n"),
+      data: { incidents: ciIncidents, count: ciIncidents.length }, actionLogId: logId };
+  }
+
+  // ── acknowledge_incident ──────────────────────────────────────────────────
+  if (name2 === "acknowledge_incident") {
+    const aiId   = args["incident_id"] as string;
+    const aiNote = (args["note"] as string | undefined) ?? null;
+    const aiSnap = await snapIncident(aiId, orgId, pool);
+    if (!aiSnap) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `Incident ${aiId} introuvable.`, actionLogId: logId };
+
+    // Mark associated alert_events as read
+    const aiAckR = await pool.query(
+      `UPDATE alert_events SET read_at=NOW() WHERE org_id=$1 AND monitor_id=$2 AND triggered_at >= $3 AND read_at IS NULL`,
+      [orgId, aiSnap["monitor_id"], aiSnap["started_at"]]
+    );
+    const aiAckedCount = aiAckR.rowCount ?? 0;
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "preview", result: "ok",
+      snapshot: { ...aiSnap, note: aiNote }, versionAfter: null, durationMs: Date.now() - t0 });
+    await store.logActivity({ type: "alert", label: `[IA] Incident acquitté : ${aiSnap["error"] ?? aiId}${aiNote ? ` (${aiNote})` : ""}`,
+      targetId: aiId, targetType: "organization", metadata: { provider, model, tool: name2, note: aiNote }, orgId }).catch(() => {});
+
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `Incident [${aiId}] acquitté. ${aiAckedCount} alerte(s) marquée(s) comme lue(s)${aiNote ? `. Note : ${aiNote}` : ""}.`,
+      data: { incidentId: aiId, alertsAcknowledged: aiAckedCount }, actionLogId: logId };
+  }
+
+  // ── resolve_incident ──────────────────────────────────────────────────────
+  if (name2 === "resolve_incident") {
+    const riId   = args["incident_id"]     as string;
+    const riNote = (args["resolution_note"] as string | undefined) ?? null;
+    const riSnap = await snapIncident(riId, orgId, pool);
+    if (!riSnap) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `Incident ${riId} introuvable.`, actionLogId: logId };
+    if (riSnap["resolved_at"]) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `L'incident [${riId}] est déjà résolu (${String(riSnap["resolved_at"]).slice(0, 16)}).`, actionLogId: logId };
+
+    const riDurationS = Math.round((Date.now() - new Date(riSnap["started_at"] as string).getTime()) / 1000);
+    await pool.query(
+      `UPDATE monitor_incidents SET resolved_at=NOW(), duration_s=$1 WHERE id=$2 AND org_id=$3`,
+      [riDurationS, riId, orgId]
+    );
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "full", result: "ok",
+      snapshot: riSnap, versionAfter: new Date().toISOString(), durationMs: Date.now() - t0 });
+    await store.logActivity({ type: "alert", label: `[IA] Incident résolu : ${riSnap["error"] ?? riId} (durée: ${fmtDurationS(riDurationS)})${riNote ? ` — ${riNote}` : ""}`,
+      targetId: riId, targetType: "organization", metadata: { provider, model, tool: name2, note: riNote }, orgId }).catch(() => {});
+
+    const riNavDest = validateNavAction({ destinationId: "incident-detail", label: "Voir l'incident", openMode: "page" }, ctx.effectivePerms, ctx.orgPlan);
+    const riNav = riNavDest ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [riNavDest] }) : null;
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `Incident [${riId}] résolu en ${fmtDurationS(riDurationS)}${riNote ? `. Note : ${riNote}` : ""}.`,
+      data: { incidentId: riId, durationS: riDurationS }, actionLogId: logId, navProposal: riNav };
+  }
+
+  // ── create_missions_from_incident ─────────────────────────────────────────
+  if (name2 === "create_missions_from_incident") {
+    const cmiId    = args["incident_id"]   as string;
+    const cmiTypes = (args["mission_types"] as string[] | undefined) ?? ["investigation", "correction", "verification", "suivi"];
+    const cmiAssignee = (args["assignee_id"] as string | undefined) ?? null;
+    const cmiSnap  = await snapIncident(cmiId, orgId, pool);
+    if (!cmiSnap) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `Incident ${cmiId} introuvable.`, actionLogId: logId };
+
+    // Fetch monitor name for mission titles
+    const cmiMonR = await pool.query(`SELECT name, url FROM monitors WHERE id=$1 AND org_id=$2`, [cmiSnap["monitor_id"], orgId]);
+    const cmiMon  = (cmiMonR.rows[0] as Record<string, unknown> | undefined) ?? {};
+    const cmiSite = (cmiMon["name"] as string) || (cmiMon["url"] as string) || "site";
+
+    const cmiMissionDefs: Record<string, { title: string; description: string; priority: string }> = {
+      investigation: { title:       `Investigation incident ${cmiSite}`,
+                       description: `Analyser la cause de l'incident [${cmiId}] sur ${cmiSite}. Erreur : ${cmiSnap["error"] ?? "Inconnue"}. Vérifier logs serveur, configuration DNS, certificat SSL.`,
+                       priority:    "high" },
+      correction:    { title:       `Correction incident ${cmiSite}`,
+                       description: `Corriger le problème identifié lors de l'incident [${cmiId}] sur ${cmiSite}. Déployer le fix et documenter la cause.`,
+                       priority:    "high" },
+      verification:  { title:       `Vérification post-correction ${cmiSite}`,
+                       description: `Vérifier que ${cmiSite} est pleinement rétabli après correction de l'incident [${cmiId}]. Tests de performance, disponibilité, SSL.`,
+                       priority:    "medium" },
+      suivi:         { title:       `Suivi monitoring ${cmiSite} (post-incident)`,
+                       description: `Surveiller ${cmiSite} pendant 48h après résolution de l'incident [${cmiId}]. Alerter si l'uptime redescend sous 99%.`,
+                       priority:    "low" },
+    };
+
+    const cmiMissions: Record<string, unknown>[] = [];
+    for (const mType of cmiTypes) {
+      const def = cmiMissionDefs[mType];
+      if (!def) continue;
+      const mId = `m_inc${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      await pool.query(
+        `INSERT INTO missions (id, org_id, title, description, status, priority, assigned_to, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,'pending',$5,$6,NOW(),NOW()) ON CONFLICT (id) DO NOTHING`,
+        [mId, orgId, def.title, def.description, def.priority, cmiAssignee]
+      );
+      cmiMissions.push({ id: mId, type: mType, title: def.title, priority: def.priority });
+    }
+
+    const cmiBatchSnap = { batchType: "create_missions_from_incident", incidentId: cmiId, missions: cmiMissions };
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "full", result: "ok",
+      snapshot: cmiBatchSnap, versionAfter: null, durationMs: Date.now() - t0 });
+    await store.logActivity({ type: "task", label: `[IA] ${cmiMissions.length} mission(s) créée(s) depuis incident ${cmiSite}`,
+      targetId: cmiId, targetType: "organization", metadata: { provider, model, tool: name2 }, orgId }).catch(() => {});
+
+    const cmiNavDest = validateNavAction({ destinationId: "mission-list", label: "Voir les missions", openMode: "page" }, ctx.effectivePerms, ctx.orgPlan);
+    const cmiNav = cmiNavDest ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [cmiNavDest] }) : null;
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: [
+        `${cmiMissions.length} mission(s) créée(s) depuis l'incident [${cmiId}] sur ${cmiSite} :`,
+        ...cmiMissions.map((m, i) => `${i + 1}. [${m["id"]}] ${m["title"]} (priorité: ${m["priority"]})`),
+        ``,
+        `Utilisez POST /api/ai/actions/${logId}/undo pour annuler toutes ces missions.`,
+      ].join("\n"),
+      data: { incidentId: cmiId, missions: cmiMissions }, actionLogId: logId, navProposal: cmiNav };
+  }
+
+  // ── optimize_monitors ─────────────────────────────────────────────────────
+  if (name2 === "optimize_monitors") {
+    const omFocus = (args["focus"] as string | undefined) ?? "all";
+
+    const [omMonitors, omIncidents] = await Promise.allSettled([
+      pool.query(`SELECT id, name, url, status, uptime, latency, frequency, enabled, is_critical, last_check FROM monitors WHERE org_id=$1 ORDER BY frequency ASC`, [orgId]),
+      pool.query(`SELECT monitor_id, COUNT(*) AS incident_count, AVG(duration_s) AS avg_duration
+                    FROM monitor_incidents WHERE org_id=$1 AND started_at >= NOW() - '30 days'::interval
+                   GROUP BY monitor_id`, [orgId]),
+    ]);
+    const omMons  = omMonitors.status  === "fulfilled" ? (omMonitors.value.rows  as Record<string, unknown>[]) : [];
+    const omIncs  = omIncidents.status === "fulfilled" ? (omIncidents.value.rows as Record<string, unknown>[]) : [];
+    const omIncMap = new Map(omIncs.map(i => [i["monitor_id"], i]));
+
+    const omLines: string[] = [`=== OPTIMISATION MONITORS ===`, `Analyse de ${omMons.length} monitor(s) ─ Axe : ${omFocus}`, ""];
+
+    if ((omFocus === "frequency" || omFocus === "all") && omMons.length) {
+      const highFreq = omMons.filter(m => Number(m["frequency"] ?? 60) < 120 && m["enabled"]);
+      const lowFreq  = omMons.filter(m => Number(m["frequency"] ?? 60) >= 600 && !m["is_critical"] && m["enabled"]);
+      omLines.push("FRÉQUENCE :");
+      if (highFreq.length) omLines.push(`  ⚡ ${highFreq.length} monitor(s) ultra-fréquents (<2min) — envisager 5min pour les non-critiques`);
+      if (lowFreq.length)  omLines.push(`  🐌 ${lowFreq.length} monitor(s) à très faible fréquence (≥10min) — envisager 5min max`);
+      if (!highFreq.length && !lowFreq.length) omLines.push("  ✅ Fréquences bien configurées");
+      omLines.push("");
+    }
+
+    if ((omFocus === "duplicates" || omFocus === "all") && omMons.length) {
+      const urlMap = new Map<string, Record<string, unknown>[]>();
+      for (const m of omMons) { const u = (m["url"] as string).toLowerCase(); urlMap.set(u, [...(urlMap.get(u) ?? []), m]); }
+      const dups = [...urlMap.entries()].filter(([, ms]) => ms.length > 1);
+      omLines.push("DOUBLONS :");
+      if (dups.length) dups.forEach(([url, ms]) => omLines.push(`  ⚠️ ${ms.length}× monitors pour ${url} : ${ms.map(m => m["name"]).join(", ")}`));
+      else omLines.push("  ✅ Aucun doublon détecté");
+      omLines.push("");
+    }
+
+    if ((omFocus === "false_positives" || omFocus === "all") && omIncs.length) {
+      const highIncident = omIncs.filter(i => Number(i["incident_count"] ?? 0) > 5 && Number(i["avg_duration"] ?? 999) < 120);
+      omLines.push("FAUX POSITIFS (incidents < 2min fréquents) :");
+      if (highIncident.length) {
+        for (const i of highIncident) {
+          const mon = omMons.find(m => m["id"] === i["monitor_id"]);
+          omLines.push(`  ⚠️ ${mon?.["name"] ?? i["monitor_id"]} : ${i["incident_count"]} incidents/30j, durée moy ${fmtDurationS(i["avg_duration"])} — envisager un seuil de tolérance`);
+        }
+      } else omLines.push("  ✅ Aucun faux positif détecté");
+      omLines.push("");
+    }
+
+    if ((omFocus === "coverage" || omFocus === "all")) {
+      const disabled = omMons.filter(m => m["enabled"] === false);
+      omLines.push("COUVERTURE :");
+      if (disabled.length) omLines.push(`  ⏸️ ${disabled.length} monitor(s) suspendu(s) : ${disabled.map(m => m["name"]).join(", ")}`);
+      omLines.push(`  📊 ${omMons.filter(m => m["is_critical"]).length}/${omMons.length} monitors critiques`);
+      omLines.push("");
+    }
+
+    omLines.push("ℹ️ Ces recommandations sont des propositions. Utilisez configure_monitor / suspend_monitor / delete_monitor pour les appliquer.");
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: omLines.join("\n"),
+      data: { monitorsAnalyzed: omMons.length, incidentDataDays: 30 }, actionLogId: logId };
+  }
+
+  // ── configure_monitor ─────────────────────────────────────────────────────
+  if (name2 === "configure_monitor") {
+    const cfMonId    = (args["monitor_id"]  as string  | undefined) ?? null;
+    const cfUrl      = (args["url"]         as string  | undefined) ?? null;
+    const cfName     = (args["name"]        as string  | undefined) ?? null;
+    const cfFreq     = (args["frequency"]   as number  | undefined) ?? null;
+    const cfTimeout  = (args["timeout"]     as number  | undefined) ?? null;
+    const cfEmail    = (args["alert_email"] as string  | undefined) ?? null;
+    const cfPhone    = (args["alert_phone"] as string  | undefined) ?? null;
+    const cfCritical = (args["is_critical"] as boolean | undefined) ?? null;
+    const cfEnabled  = (args["enabled"]     as boolean | undefined) ?? null;
+
+    let cfSnap: Record<string, unknown> | null = null;
+    if (cfMonId) {
+      cfSnap = await snapMonitor(cfMonId, orgId, pool);
+      if (!cfSnap) return { toolCallId: logId, toolName: name2, ok: false,
+        content: `Monitor ${cfMonId} introuvable.`, actionLogId: logId };
+    } else {
+      if (!cfUrl) return { toolCallId: logId, toolName: name2, ok: false,
+        content: "Impossible de créer un monitor sans URL.", actionLogId: logId };
+    }
+
+    let cfResultId: string;
+    let cfAction: string;
+
+    if (cfMonId && cfSnap) {
+      // UPDATE existing monitor
+      const cfSets: string[] = [];
+      const cfVals: unknown[] = [orgId, cfMonId];
+      let cfP = 3;
+      const cfFields: [string, unknown][] = [
+        ["url", cfUrl], ["name", cfName], ["frequency", cfFreq], ["alert_email", cfEmail],
+        ["alert_phone", cfPhone], ["is_critical", cfCritical], ["enabled", cfEnabled],
+      ];
+      for (const [col, val] of cfFields) {
+        if (val !== null) { cfSets.push(`${col}=$${cfP}`); cfVals.push(val); cfP++; }
+      }
+      if (!cfSets.length) return { toolCallId: logId, toolName: name2, ok: false,
+        content: "Aucun champ à mettre à jour.", actionLogId: logId };
+      cfSets.push("updated_at=NOW()");
+      await pool.query(`UPDATE monitors SET ${cfSets.join(", ")} WHERE org_id=$1 AND id=$2`, cfVals);
+      cfResultId = cfMonId;
+      cfAction   = "mis à jour";
+    } else {
+      // INSERT new monitor
+      cfResultId = `mon${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      await pool.query(
+        `INSERT INTO monitors (id, org_id, name, url, status, uptime, latency, frequency, enabled, is_critical, alert_email, alert_phone, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,'unknown',100,0,$5,true,$6,$7,$8,NOW(),NOW())`,
+        [cfResultId, orgId, cfName ?? cfUrl, cfUrl, cfFreq ?? 300, cfCritical ?? false, cfEmail ?? null, cfPhone ?? null]
+      );
+      cfAction = "créé";
+    }
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "full", result: "ok",
+      snapshot: cfSnap ?? { id: cfResultId, action: "create" }, versionAfter: new Date().toISOString(), durationMs: Date.now() - t0 });
+    await store.logActivity({ type: "alert", label: `[IA] Monitor ${cfAction} : ${cfName ?? cfUrl ?? cfResultId}`,
+      targetId: cfResultId, targetType: "organization", metadata: { provider, model, tool: name2 }, orgId }).catch(() => {});
+
+    const cfNavDest = validateNavAction({ destinationId: "monitor-detail", label: "Voir le monitor", openMode: "page" }, ctx.effectivePerms, ctx.orgPlan);
+    const cfNav = cfNavDest ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [cfNavDest] }) : null;
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `Monitor [${cfResultId}] ${cfAction} avec succès${cfUrl ? ` pour l'URL : ${cfUrl}` : ""}.`,
+      data: { monitorId: cfResultId, action: cfAction }, actionLogId: logId, navProposal: cfNav };
+  }
+
+  // ── suspend_monitor ───────────────────────────────────────────────────────
+  if (name2 === "suspend_monitor") {
+    const susId     = args["monitor_id"] as string;
+    const susReason = (args["reason"] as string | undefined) ?? null;
+    const susSnap   = await snapMonitor(susId, orgId, pool);
+    if (!susSnap) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `Monitor ${susId} introuvable.`, actionLogId: logId };
+    if (susSnap["enabled"] === false) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `Le monitor [${susId}] "${susSnap["name"]}" est déjà suspendu.`, actionLogId: logId };
+
+    await pool.query(`UPDATE monitors SET enabled=false, updated_at=NOW() WHERE id=$1 AND org_id=$2`, [susId, orgId]);
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "preview", result: "ok",
+      snapshot: susSnap, versionAfter: new Date().toISOString(), durationMs: Date.now() - t0 });
+    await store.logActivity({ type: "alert", label: `[IA] Monitor suspendu : ${susSnap["name"] ?? susId}${susReason ? ` (${susReason})` : ""}`,
+      targetId: susId, targetType: "organization", metadata: { provider, model, tool: name2 }, orgId }).catch(() => {});
+
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `Monitor [${susId}] "${susSnap["name"]}" suspendu.${susReason ? ` Motif : ${susReason}` : ""} Utilisez resume_monitor pour le réactiver.`,
+      data: { monitorId: susId }, actionLogId: logId };
+  }
+
+  // ── resume_monitor ────────────────────────────────────────────────────────
+  if (name2 === "resume_monitor") {
+    const resId   = args["monitor_id"] as string;
+    const resSnap = await snapMonitor(resId, orgId, pool);
+    if (!resSnap) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `Monitor ${resId} introuvable.`, actionLogId: logId };
+    if (resSnap["enabled"] !== false) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `Le monitor [${resId}] "${resSnap["name"]}" est déjà actif.`, actionLogId: logId };
+
+    await pool.query(`UPDATE monitors SET enabled=true, updated_at=NOW() WHERE id=$1 AND org_id=$2`, [resId, orgId]);
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "preview", result: "ok",
+      snapshot: resSnap, versionAfter: new Date().toISOString(), durationMs: Date.now() - t0 });
+    await store.logActivity({ type: "alert", label: `[IA] Monitor réactivé : ${resSnap["name"] ?? resId}`,
+      targetId: resId, targetType: "organization", metadata: { provider, model, tool: name2 }, orgId }).catch(() => {});
+
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `Monitor [${resId}] "${resSnap["name"]}" réactivé. Les vérifications reprennent.`,
+      data: { monitorId: resId }, actionLogId: logId };
+  }
+
+  // ── delete_monitor ────────────────────────────────────────────────────────
+  if (name2 === "delete_monitor") {
+    const delId    = args["monitor_id"] as string;
+    const delForce = (args["force"]     as boolean | undefined) ?? false;
+    const delSnap  = await snapMonitor(delId, orgId, pool);
+    if (!delSnap) return { toolCallId: logId, toolName: name2, ok: false,
+      content: `Monitor ${delId} introuvable.`, actionLogId: logId };
+
+    // Protection checks
+    if (!delForce) {
+      const [delMissions, delAlerts, delActiveIncs] = await Promise.allSettled([
+        pool.query(`SELECT COUNT(*) AS cnt FROM missions WHERE org_id=$1 AND title ILIKE $2`, [orgId, `%${delId}%`]),
+        pool.query(`SELECT COUNT(*) AS cnt FROM alert_events WHERE org_id=$1 AND monitor_id=$2 AND read_at IS NULL AND resolved_at IS NULL`, [orgId, delId]),
+        pool.query(`SELECT COUNT(*) AS cnt FROM monitor_incidents WHERE org_id=$1 AND monitor_id=$2 AND resolved_at IS NULL`, [orgId, delId]),
+      ]);
+      const mCount = Number((delMissions.status === "fulfilled" ? delMissions.value.rows[0] : { cnt: 0 })?.["cnt"] ?? 0);
+      const aCount = Number((delAlerts.status   === "fulfilled" ? delAlerts.value.rows[0]   : { cnt: 0 })?.["cnt"] ?? 0);
+      const iCount = Number((delActiveIncs.status === "fulfilled" ? delActiveIncs.value.rows[0] : { cnt: 0 })?.["cnt"] ?? 0);
+      const blockers: string[] = [];
+      if (iCount > 0) blockers.push(`${iCount} incident(s) ouvert(s)`);
+      if (aCount > 0) blockers.push(`${aCount} alerte(s) non lue(s)`);
+      if (mCount > 0) blockers.push(`${mCount} mission(s) liée(s) au monitor`);
+      if (blockers.length) return { toolCallId: logId, toolName: name2, ok: false,
+        content: `Impossible de supprimer le monitor [${delId}] "${delSnap["name"]}" : ${blockers.join(", ")}. Utilisez force=true pour ignorer ces protections.`,
+        actionLogId: logId };
+    }
+
+    await pool.query(`DELETE FROM monitors WHERE id=$1 AND org_id=$2`, [delId, orgId]);
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name2, args, confirmationLevel: "full", result: "ok",
+      snapshot: delSnap, versionAfter: null, durationMs: Date.now() - t0 });
+    await store.logActivity({ type: "alert", label: `[IA] Monitor supprimé : ${delSnap["name"] ?? delId}`,
+      targetId: delId, targetType: "organization", metadata: { provider, model, tool: name2, forced: delForce }, orgId }).catch(() => {});
+
+    return { toolCallId: logId, toolName: name2, ok: true,
+      content: `Monitor [${delId}] "${delSnap["name"]}" supprimé définitivement.`,
+      data: { monitorId: delId }, actionLogId: logId };
+  }
+
+  // fallback — Phase 6 final
   return { toolCallId: logId, toolName: name, ok: false,
     content: `Outil ${name} non implémenté dans cette phase.`, actionLogId: logId };
 }

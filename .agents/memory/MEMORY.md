@@ -105,3 +105,7 @@
 - [Phase 2 blockers — Undo atomic + UNDO_VERSION_UNAVAILABLE + Gemini French + Undo UI](phase2-blockers-patterns.md) — date_trunc ms fix; NULL version_after→409; Gemini keyword map; max rounds finalTextEmitted; bouton Annuler dashboard+panel
 - [AI Agents Phase 3.1 — Calendrier](ai-agents-phase3.md) — 5 outils calendar, ALL_TOOLS_MAP lookup, canDelete middleware, Gemini pre-embed pattern; 3×65/65 E2E + 116/116 structure certifiés
 - [AI Agents Phase 3.2 — Calendrier avancé](ai-agents-phase32.md) — update_recurring_event + delete_recurring_series, RRULE enrichi (YEARLY/BYDAY/UNTIL), series_id sur toutes occurrences, /ai/tools endpoint, 105/105 certifiés
+- [AI Agents Phase 4 — Audits SEO](ai-agents-phase4.md) — 9 audit tools, audits.write/delete/export permissions, fire-and-forget PSI, create_missions_from_audit undo, 63/63 certifiés 2026-08-02
+- [Partie A infra RLS fixes](partie-a-infra-rls-fixes.md) — inline ENABLE RLS in init files (not rls-migration); FK drops before ALTER COLUMN TYPE UUID→TEXT; rule for future tables
+- [AI Agents Phase 5 — Recommandations SEO](ai-agents-phase5.md) — 10 outils, 6 permissions, 6 destinations; undo handlers for dismiss/restore/generate in undo.ts; confirmationLevel preview/full = AI asks confirm in single-turn chat; 89/89 certifiés 2026-08-02
+- [AI Agents Phase 6 — Monitors & Alertes](ai-agents-phase6.md) — 12 outils, 7 permissions, 8 destinations; batch undo MUST be before const id=snap["id"] line; delete_monitor 3 protections; 124/124 certifiés 2026-08-02

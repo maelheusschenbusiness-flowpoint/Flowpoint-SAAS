@@ -8,17 +8,32 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
-/** Catalogue exhaustif des permissions connues — Phase 1 lecture + Phase 2 missions + Phase 3 calendrier. */
+/** Catalogue exhaustif des permissions connues — Phase 1 à 6. */
 export const PERMISSION_CATALOG = [
   "overview.read",
   "missions.read",
-  "missions.write",    // Phase 2 — création / modification (hors suppression) de missions via IA
-  "missions.delete",   // Phase 2 — suppression de missions via IA (owner + admin uniquement par défaut)
-  "calendar.read",     // Phase 3 — lecture des événements du calendrier
-  "calendar.write",    // Phase 3 — création / modification des événements du calendrier
-  "calendar.delete",   // Phase 3 — suppression des événements du calendrier (owner + admin uniquement)
+  "missions.write",            // Phase 2 — création / modification (hors suppression) de missions via IA
+  "missions.delete",           // Phase 2 — suppression de missions via IA (owner + admin uniquement par défaut)
+  "calendar.read",             // Phase 3 — lecture des événements du calendrier
+  "calendar.write",            // Phase 3 — création / modification des événements du calendrier
+  "calendar.delete",           // Phase 3 — suppression des événements du calendrier (owner + admin uniquement)
   "audits.read",
+  "audits.write",              // Phase 4 — lancement d'audits + création de missions depuis un audit
+  "audits.delete",             // Phase 4 — suppression d'audits (owner + admin uniquement par défaut)
+  "audits.export",             // Phase 4 — export d'audit en Markdown
+  "recommendations.read",      // Phase 5 — lecture des recommandations SEO
+  "recommendations.generate",  // Phase 5 — génération de recommandations + plan d'action + missions depuis stratégie
+  "recommendations.dismiss",   // Phase 5 — ignorer une recommandation (avec motif)
+  "recommendations.restore",   // Phase 5 — restaurer une recommandation ignorée
+  "recommendations.export",    // Phase 5 — export de recommandations
+  "strategy.generate",         // Phase 5 — génération de stratégie SEO globale + comparaison + missions
   "monitors.read",
+  "monitors.write",            // Phase 6 — suspension/reprise + création de missions depuis incident
+  "monitors.delete",           // Phase 6 — suppression de monitors (owner + admin uniquement)
+  "monitors.configure",        // Phase 6 — création / modification de monitors (owner + admin + member)
+  "incidents.read",            // Phase 6 — lecture des incidents (tous rôles)
+  "incidents.resolve",         // Phase 6 — acquittement + résolution d'incidents (owner + admin + member)
+  "alerts.manage",             // Phase 6 — gestion des alertes (owner + admin uniquement)
   "keywords.read",
   "competitors.read",
   "reports.read",
@@ -42,11 +57,25 @@ const ALL_READ: Permission[] = PERMISSION_CATALOG.filter(
 
 /** Bundles par défaut par rôle — valeurs de départ, jamais la source de vérité finale. */
 const ROLE_BUNDLES: Record<string, Permission[]> = {
-  // owner/admin : toutes permissions y compris suppression missions + calendrier
+  // owner/admin : toutes permissions y compris suppression + stratégie
   owner:   [...PERMISSION_CATALOG],
   admin:   [...PERMISSION_CATALOG],
-  // member : lecture + écriture missions + calendrier, PAS de suppression
-  member:  [...ALL_READ, "missions.write", "calendar.write"],
+  // member : lecture + écriture missions + calendrier + lancement audits + export + recommandations + stratégie + monitors/incidents
+  member:  [
+    ...ALL_READ,
+    "missions.write",
+    "calendar.write",
+    "audits.write",
+    "audits.export",
+    "recommendations.generate",
+    "recommendations.dismiss",
+    "recommendations.restore",
+    "recommendations.export",
+    "strategy.generate",
+    "monitors.write",
+    "monitors.configure",
+    "incidents.resolve",
+  ],
   // viewer : lecture seule, aucune écriture ni suppression
   viewer:  [...ALL_READ],
   // service (API_SECRET_KEY interne) : tout — cohérent avec requireRole
