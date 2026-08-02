@@ -27,6 +27,7 @@ export default defineConfig({
       "src/routes/overview.test.ts",
       "src/routes/growth-objectives.test.ts",
       "src/services/ensure-stripe-customer.test.ts",
+      "src/agent/ai-tool-gate.test.ts",
     ],
     environment: "node",
     globals:     false,
