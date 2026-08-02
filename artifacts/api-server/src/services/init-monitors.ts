@@ -75,21 +75,21 @@ export async function initMonitorsTables(): Promise<void> {
         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='monitorid')
            AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='monitor_id')
         THEN
-          ALTER TABLE monitor_checks ADD COLUMN monitor_id TEXT NOT NULL DEFAULT '';
+          ALTER TABLE monitor_checks ADD COLUMN IF NOT EXISTS monitor_id TEXT NOT NULL DEFAULT '';
           UPDATE monitor_checks SET monitor_id = "monitorId";
         END IF;
 
         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='checkedat')
            AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='checked_at')
         THEN
-          ALTER TABLE monitor_checks ADD COLUMN checked_at BIGINT NOT NULL DEFAULT 0;
+          ALTER TABLE monitor_checks ADD COLUMN IF NOT EXISTS checked_at BIGINT NOT NULL DEFAULT 0;
           UPDATE monitor_checks SET checked_at = "checkedAt";
         END IF;
 
         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='createdat')
            AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='created_at')
         THEN
-          ALTER TABLE monitor_checks ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT NOW();
+          ALTER TABLE monitor_checks ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
           UPDATE monitor_checks SET created_at = "createdAt";
         END IF;
       END $$;
@@ -160,21 +160,21 @@ export async function initMonitorsTables(): Promise<void> {
         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='monitorid')
            AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='monitor_id')
         THEN
-          ALTER TABLE monitor_incidents ADD COLUMN monitor_id TEXT NOT NULL DEFAULT '';
+          ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS monitor_id TEXT NOT NULL DEFAULT '';
           UPDATE monitor_incidents SET monitor_id = "monitorId";
         END IF;
 
         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='startedat')
            AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='started_at')
         THEN
-          ALTER TABLE monitor_incidents ADD COLUMN started_at TIMESTAMP NOT NULL DEFAULT NOW();
+          ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS started_at TIMESTAMP NOT NULL DEFAULT NOW();
           UPDATE monitor_incidents SET started_at = "startedAt";
         END IF;
 
         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='createdat')
            AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='created_at')
         THEN
-          ALTER TABLE monitor_incidents ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT NOW();
+          ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
           UPDATE monitor_incidents SET created_at = "createdAt";
         END IF;
       END $$;

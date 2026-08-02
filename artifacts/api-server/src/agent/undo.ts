@@ -625,25 +625,6 @@ async function applySnapshot(
     return;
   }
 
-  // ── Phase 6 — create_missions_from_incident batch undo ───────────────────
-  if (snap["batchType"] === "create_missions_from_incident" && Array.isArray(snap["missions"])) {
-    const incMissions = snap["missions"] as Record<string, unknown>[];
-    const incDelClient = await pool.connect();
-    try {
-      await incDelClient.query("BEGIN");
-      for (const m of incMissions) {
-        await incDelClient.query(`DELETE FROM missions WHERE id=$1 AND org_id=$2`, [m["id"], orgId]);
-      }
-      await incDelClient.query("COMMIT");
-    } catch (err) {
-      await incDelClient.query("ROLLBACK");
-      incDelClient.release();
-      throw err;
-    }
-    incDelClient.release();
-    return;
-  }
-
   // ── Phase 6 — resolve_incident undo ──────────────────────────────────────
   if (toolName === "resolve_incident") {
     const riId = snap["id"] as string;
