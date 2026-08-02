@@ -1204,7 +1204,14 @@ ${STRICT_AI_RULE}
     let toolLoopUndoTokens: Array<{ actionLogId: string; label: string }> = [];
 
     // ── AI Agents Phase 2 : boucle tool-calling (opt-in via enableTools) ──────
-    if (enableTools && effectivePerms.has("missions.read")) {
+    // Ouvre la boucle dès que l'utilisateur possède AU MOINS une permission couverte
+    // par un outil déclaré (missions.read, calendar.read, …). La vérification fine
+    // par-outil est faite dans tool-executor (FAIL-CLOSED). Ne pas restreindre ici
+    // à missions.read seulement : un utilisateur calendar-only doit aussi en bénéficier.
+    const hasAnyToolPermission = ALL_TOOLS.some(
+      (t) => effectivePerms.has(t.requiredPermission)
+    );
+    if (enableTools && hasAnyToolPermission) {
       const toolCtx: ExecuteContext = {
         orgId, userId, conversationId,
         provider: selectedProvider, model: effectiveModel,

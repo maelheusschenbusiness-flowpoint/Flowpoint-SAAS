@@ -386,6 +386,35 @@ router.post("/admin/test-session", async (req: Request, res: Response): Promise<
 
 
 
+// ── POST /api/admin/ai-usage-seed ─────────────────────────────────────────────
+// Forces an org's ai_monthly_usage row to a specific credits_used value.
+// Intended for automated tests only — lets tests ensure EXHAUSTED state before running.
+router.post("/admin/ai-usage-seed", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const { orgId, creditsUsed } = req.body as { orgId?: string; creditsUsed?: number };
+  if (!orgId || creditsUsed == null || typeof creditsUsed !== "number") {
+    res.status(400).json({ ok: false, error: "orgId (string) and creditsUsed (number) required" });
+    return;
+  }
+
+  const month = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+  const resetAt = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString();
+  const id = `amu_${orgId}_${month}`;
+
+  try {
+    await pool.query(
+      `INSERT INTO ai_monthly_usage (id, org_id, month, credits_used, cost_eur, request_count, tokens_used, reset_at, updated_at)
+       VALUES ($1, $2, $3, $4, 0, 0, 0, $5, NOW())
+       ON CONFLICT (org_id, month) DO UPDATE SET credits_used = EXCLUDED.credits_used, updated_at = NOW()`,
+      [id, orgId, month, creditsUsed, resetAt]
+    );
+    res.json({ ok: true, orgId, month, creditsUsed });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 // ── GET /api/admin/rls — RLS coverage audit ───────────────────────────────────
 router.get("/admin/rls", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;

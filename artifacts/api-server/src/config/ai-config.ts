@@ -81,7 +81,9 @@ export const MODEL_MULTIPLIERS: Record<string, number> = {
   "deepseek-v3-0324":   0.25,
   "deepseek-r2":        0.35,
 
-  // Gemini
+  // Gemini (2.x legacy names kept for backward compatibility)
+  "gemini-2.5-flash":          0.3,
+  "gemini-2.5-pro":            1.2,
   "gemini-3.1-pro-preview":    1.2,
   "gemini-3-flash-preview":    0.3,
   "gemini-3.5-flash":          0.4,
