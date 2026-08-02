@@ -2305,44 +2305,91 @@ export async function initDataTables(): Promise<void> {
         END $ai_logs_uuid$;
       `);
 
-      // Step D: ai_monthly_usage.org_id TEXT→UUID
+      // Step D: ai_monthly_usage.org_id TEXT→UUID + FK + RLS policy recreation.
+      // The four tenant policies depend on org_id and must be removed before the
+      // type cast.  The entire DO block is transactional: a failure restores the
+      // original policies and column definition instead of leaving partial state.
       await client.query(`
         DO $ai_monthly_uuid$
-        DECLARE col_type TEXT;
+        DECLARE col_type TEXT; org_col_type TEXT;
         BEGIN
           SELECT data_type INTO col_type
           FROM information_schema.columns
           WHERE table_schema='public' AND table_name='ai_monthly_usage' AND column_name='org_id';
 
+          SELECT data_type INTO org_col_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='organizations' AND column_name='id';
+
           IF col_type IN ('text','character varying') THEN
+            DROP POLICY IF EXISTS tenant_select ON ai_monthly_usage;
+            DROP POLICY IF EXISTS tenant_insert ON ai_monthly_usage;
+            DROP POLICY IF EXISTS tenant_update ON ai_monthly_usage;
+            DROP POLICY IF EXISTS tenant_delete ON ai_monthly_usage;
+            ALTER TABLE ai_monthly_usage DROP CONSTRAINT IF EXISTS ai_monthly_usage_org_id_fkey;
             UPDATE ai_monthly_usage SET org_id = m.new_id::text
               FROM _fp_uuid_map m WHERE ai_monthly_usage.org_id = m.old_id;
             DELETE FROM ai_monthly_usage
             WHERE org_id IS NOT NULL
               AND org_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
             ALTER TABLE ai_monthly_usage ALTER COLUMN org_id DROP DEFAULT;
-            ALTER TABLE ai_monthly_usage ALTER COLUMN org_id TYPE UUID USING org_id::uuid;
+            ALTER TABLE ai_monthly_usage ALTER COLUMN org_id TYPE UUID USING NULLIF(org_id, '')::uuid;
+            IF org_col_type = 'uuid' THEN
+              ALTER TABLE ai_monthly_usage
+                ADD CONSTRAINT ai_monthly_usage_org_id_fkey
+                FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+            END IF;
+            CREATE POLICY tenant_select ON ai_monthly_usage FOR SELECT
+              USING     (org_id::text = current_setting('app.current_org_id', true));
+            CREATE POLICY tenant_insert ON ai_monthly_usage FOR INSERT
+              WITH CHECK(org_id::text = current_setting('app.current_org_id', true));
+            CREATE POLICY tenant_update ON ai_monthly_usage FOR UPDATE
+              USING     (org_id::text = current_setting('app.current_org_id', true));
+            CREATE POLICY tenant_delete ON ai_monthly_usage FOR DELETE
+              USING     (org_id::text = current_setting('app.current_org_id', true));
           END IF;
         END $ai_monthly_uuid$;
       `);
 
-      // Step E: ai_credit_purchases.org_id TEXT→UUID
+      // Step E: ai_credit_purchases.org_id TEXT→UUID + FK + RLS policy recreation.
       await client.query(`
         DO $ai_credits_uuid$
-        DECLARE col_type TEXT;
+        DECLARE col_type TEXT; org_col_type TEXT;
         BEGIN
           SELECT data_type INTO col_type
           FROM information_schema.columns
           WHERE table_schema='public' AND table_name='ai_credit_purchases' AND column_name='org_id';
 
+          SELECT data_type INTO org_col_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='organizations' AND column_name='id';
+
           IF col_type IN ('text','character varying') THEN
+            DROP POLICY IF EXISTS tenant_select ON ai_credit_purchases;
+            DROP POLICY IF EXISTS tenant_insert ON ai_credit_purchases;
+            DROP POLICY IF EXISTS tenant_update ON ai_credit_purchases;
+            DROP POLICY IF EXISTS tenant_delete ON ai_credit_purchases;
+            ALTER TABLE ai_credit_purchases DROP CONSTRAINT IF EXISTS ai_credit_purchases_org_id_fkey;
             UPDATE ai_credit_purchases SET org_id = m.new_id::text
               FROM _fp_uuid_map m WHERE ai_credit_purchases.org_id = m.old_id;
             DELETE FROM ai_credit_purchases
             WHERE org_id IS NOT NULL
               AND org_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
             ALTER TABLE ai_credit_purchases ALTER COLUMN org_id DROP DEFAULT;
-            ALTER TABLE ai_credit_purchases ALTER COLUMN org_id TYPE UUID USING org_id::uuid;
+            ALTER TABLE ai_credit_purchases ALTER COLUMN org_id TYPE UUID USING NULLIF(org_id, '')::uuid;
+            IF org_col_type = 'uuid' THEN
+              ALTER TABLE ai_credit_purchases
+                ADD CONSTRAINT ai_credit_purchases_org_id_fkey
+                FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+            END IF;
+            CREATE POLICY tenant_select ON ai_credit_purchases FOR SELECT
+              USING     (org_id::text = current_setting('app.current_org_id', true));
+            CREATE POLICY tenant_insert ON ai_credit_purchases FOR INSERT
+              WITH CHECK(org_id::text = current_setting('app.current_org_id', true));
+            CREATE POLICY tenant_update ON ai_credit_purchases FOR UPDATE
+              USING     (org_id::text = current_setting('app.current_org_id', true));
+            CREATE POLICY tenant_delete ON ai_credit_purchases FOR DELETE
+              USING     (org_id::text = current_setting('app.current_org_id', true));
           END IF;
         END $ai_credits_uuid$;
       `);
