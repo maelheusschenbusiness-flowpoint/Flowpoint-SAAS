@@ -77,6 +77,7 @@ async function resolveOrCreateLegacyOrg({
   email,
   userUuid,
   orgSettings,
+  authProvider = "magic_link",
 }: {
   email: string;
   userUuid: string | undefined;
@@ -87,6 +88,7 @@ async function resolveOrCreateLegacyOrg({
     subscriptionStatus?: string | null;
     orgName?: string | null;
   } | null;
+  authProvider?: "magic_link" | "google";
 }): Promise<{ orgId: string; userUuid: string }> {
 
   const client = await pool.connect();
@@ -108,8 +110,8 @@ async function resolveOrCreateLegacyOrg({
         const freshUuid = randomUUID();
         await client.query(
           `INSERT INTO users (id, email, status, email_verified, auth_provider)
-           VALUES ($1::uuid, $2, 'active', true, 'magic_link')`,
-          [freshUuid, email],
+           VALUES ($1::uuid, $2, 'active', true, $3)`,
+          [freshUuid, email, authProvider],
         );
         resolvedUserUuid = freshUuid;
       }
@@ -342,9 +344,9 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
   const smtpPass  = process.env["SMTP_PASS"];
   const smtpHost  = process.env["SMTP_HOST"];
 
-  if (!resendKey && !smtpPass) {
-    logger.warn("[Auth] No email transport (RESEND_API_KEY and SMTP_PASS both missing) — cannot send magic link");
-    throw new Error("RESEND_API_KEY_MISSING");
+  if (!resendKey && (!smtpPass || !smtpHost)) {
+    logger.warn("[Auth] No complete email transport (Resend, or SMTP_HOST + SMTP_PASS) — cannot send magic link");
+    throw new Error("EMAIL_TRANSPORT_MISSING");
   }
 
   // Centralized transactional sender — override via RESEND_FROM or SMTP_FROM env var
@@ -643,12 +645,13 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
     return;
   }
 
-  // ── Send via Resend ───────────────────────────────────────────────────────────
+  // ── Send via configured email transport ───────────────────────────────────────
   const resendKey = process.env["RESEND_API_KEY"];
   const isProduction = isDeployedProd();
   const isDevWorkspace = !!process.env["REPLIT_DEV_DOMAIN"];
 
-  if (resendKey) {
+  const smtpConfigured = !!(process.env["SMTP_HOST"] && process.env["SMTP_PASS"]);
+  if (resendKey || smtpConfigured) {
     try {
       await sendMagicEmail(email, verifyPath);
       logger.info({ email }, "[Auth] login-request: magic link sent successfully");
@@ -662,7 +665,7 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ err: msg, email }, "[Auth] login-request: Resend failed");
 
-      if (msg.startsWith("RESEND_API_KEY_MISSING")) {
+      if (msg.startsWith("EMAIL_TRANSPORT_MISSING")) {
         res.status(503).json({ error: "Service email non configuré." });
       } else if (msg.startsWith("DOMAIN_NOT_VERIFIED")) {
         // 503 = service unavailable (external config issue, not internal error)
@@ -679,7 +682,7 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
   }
 
   if (!isProduction) {
-    logger.warn({ email, debugLink: verifyPath }, "[Auth] No RESEND_API_KEY — returning debugLink");
+    logger.warn({ email, debugLink: verifyPath }, "[Auth] No configured email transport — returning debugLink");
     res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: lien retourné directement." });
   } else {
     logger.error("[Auth] RESEND_API_KEY not set in production");
@@ -1512,7 +1515,10 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       }
     } catch { /* state parse error — ignore */ }
 
-    // Persist org settings (including plan) so /api/me returns correct plan after restart
+    // Persist org settings (including plan) so /api/me returns correct plan after restart.
+    // OAuth must also create a UUID-backed identity before issuing a session:
+    // orgContext correctly rejects legacy email-as-orgId sessions.
+    let googleIdentity: { orgId: string; userUuid: string };
     try {
       const { upsertOrgSettings, loadOrgSettings: _loadGoogleOrg } = await import("../services/org-settings.js");
       const _existingGoogleOrg = await _loadGoogleOrg(resolvedEmail).catch(() => null);
@@ -1525,7 +1531,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
         });
         logger.info({ email: resolvedEmail }, "[Auth] Google login — existing org, billing data preserved");
       } else {
-        // New account — pending_billing (trial not granted at signup)
+        // New account — pending billing until Checkout activates it.
         await upsertOrgSettings(resolvedEmail, {
           email: resolvedEmail,
           firstName: user.name ? user.name.split(" ")[0] : undefined,
@@ -1535,8 +1541,25 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
         });
         logger.info({ email: resolvedEmail, plan: planFromState }, "[Auth] Google login — new org created with pending_billing");
       }
+
+      // Preserve the billing gate: an OAuth signup may create its identity, but
+      // it must complete Checkout before a valid dashboard session is issued.
+      const googleOrgSettings = await _loadGoogleOrg(resolvedEmail);
+      if (googleOrgSettings?.subscriptionStatus === "pending_billing") {
+        res.redirect(`${publicUrl}/signin.html?plan=${encodeURIComponent(planFromState ?? googleOrgSettings.plan ?? "standard")}`);
+        return;
+      }
+
+      googleIdentity = await resolveOrCreateLegacyOrg({
+        email: resolvedEmail,
+        userUuid: undefined,
+        orgSettings: googleOrgSettings,
+        authProvider: "google",
+      });
     } catch (err) {
-      logger.warn({ err }, "[Auth] Google login — org_settings persist failed (non-fatal)");
+      logger.error({ err }, "[Auth] Google login — identity provisioning failed");
+      res.redirect(`${publicUrl}/login.html?error=google_auth_failed`);
+      return;
     }
 
     logger.info({ email: user.email }, "[Auth] Google login successful");
@@ -1544,7 +1567,8 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     // Issue a unique per-session token and set it as an HttpOnly cookie.
     // Direct OAuth login = org creator → owner role.
     const sessionToken = await createSession({
-      userId: resolvedEmail, orgId: resolvedEmail, email: resolvedEmail, role: "owner",
+      userId: googleIdentity.orgId, orgId: googleIdentity.orgId, userUuid: googleIdentity.userUuid,
+      email: resolvedEmail, role: "owner",
       ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
