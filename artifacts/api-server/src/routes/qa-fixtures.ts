@@ -15,6 +15,7 @@ import { pool } from "@workspace/db";
 import { setGA4FunnelBaseUrl } from "../services/ga4-funnel-service.js";
 import { resolveEffectivePermissions } from "../agent/permissions.js";
 import { normalizeGeminiFinishReason } from "../services/ai-providers/gemini-provider.js";
+import { executeTool, type ExecuteContext } from "../agent/tool-executor.js";
 
 const router = Router();
 
@@ -258,6 +259,41 @@ router.post("/qa/gemini-finish-reason", qaGuard, (req: Request, res: Response) =
       ...result,
       userFriendly: result.appendText === null ? true : !isTechnical,
     });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ── POST /qa/fixtures/tool — invoke executeTool directly for QA ───────────────
+// Bypasses SSE/chat flow. Used by Phase 3 advanced certification suites.
+// Body: { tool: string; args: Record<string,unknown>; orgId: string; userId: string; role?: string }
+router.post("/qa/fixtures/tool", qaGuard, async (req: Request, res: Response) => {
+  const { tool, args, orgId, userId, role = "owner" } = req.body as {
+    tool?: string;
+    args?: Record<string, unknown>;
+    orgId?: string;
+    userId?: string;
+    role?: string;
+  };
+  if (!tool || !orgId || !userId) {
+    res.status(400).json({ error: "tool, orgId, userId are required" });
+    return;
+  }
+  try {
+    const effectivePerms = await resolveEffectivePermissions(userId, orgId, role);
+    const ctx: ExecuteContext = {
+      orgId, userId,
+      conversationId: `qa_tool_${Date.now()}`,
+      provider: "openai",
+      model: "gpt-4o-qa",
+      effectivePerms,
+      orgPlan: "ultra",
+    };
+    const result = await executeTool(
+      { id: `qa_${Date.now()}`, name: tool, arguments: args ?? {} },
+      ctx
+    );
+    res.json({ ok: true, result });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

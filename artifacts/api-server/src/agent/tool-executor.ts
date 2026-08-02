@@ -16,7 +16,7 @@ import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
 import { TOOL_BY_NAME as _MISSION_TOOL_BY_NAME, TOOL_ARG_SCHEMAS as _MISSION_ARG_SCHEMAS, type AIToolCall, type AIToolCallResult } from "./mission-tools.js";
-import { CALENDAR_TOOL_BY_NAME, CALENDAR_ARG_SCHEMAS, snapCalendarEvent, detectCalendarConflicts } from "./calendar-tools.js";
+import { CALENDAR_TOOL_BY_NAME, CALENDAR_ARG_SCHEMAS, snapCalendarEvent, detectCalendarConflicts, computeRecurrenceDates } from "./calendar-tools.js";
 import { filterDestinations, validateNavAction } from "./destination-registry.js";
 import { createNavigationProposal, type ActionProposal } from "./proposals.js";
 import type { Permission } from "./permissions.js";
@@ -792,6 +792,410 @@ async function dispatchTool(
       data: { id, deleted: true }, snapshot: snap, actionLogId: logId,
       undoLabel: `Annuler la suppression de "${snap["title"]}"`,
       navProposal: navDeleteProposal };
+  }
+
+  // ── find_free_slots ───────────────────────────────────────────────────────
+  if (name === "find_free_slots") {
+    const dateArg   = args["date"]      as string;
+    const duration  = (args["duration"]  as number) ?? 60;
+    const startHour = (args["startHour"] as number) ?? 8;
+    const endHour   = (args["endHour"]   as number) ?? 18;
+    const limit     = (args["limit"]     as number) ?? 5;
+
+    // Fetch org timezone so "today/tomorrow/week" resolve to org-local calendar dates.
+    // Falls back to UTC if no timezone is stored.
+    let orgTzFfs = "UTC";
+    try {
+      const tzRow = await pool.query(
+        `SELECT COALESCE(
+           (SELECT timezone FROM organizations WHERE id = $1 AND timezone IS NOT NULL AND timezone != '' LIMIT 1),
+           (SELECT timezone FROM org_settings  WHERE org_id = $1 AND timezone IS NOT NULL AND timezone != '' LIMIT 1),
+           'UTC'
+         ) AS tz`,
+        [orgId]
+      );
+      if (tzRow.rows[0]?.tz) orgTzFfs = String(tzRow.rows[0].tz);
+    } catch { /* keep UTC */ }
+
+    /** Returns the local YYYY-MM-DD in `tz` for today + daysOffset calendar days. */
+    function localCalendarDate(tz: string, daysOffset: number): string {
+      const now = new Date();
+      try {
+        // Step 1: get today's local calendar date as YYYY-MM-DD
+        const todayStr = now.toLocaleString("fr-FR", {
+          timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+        });
+        const m = todayStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (m) {
+          // Step 2: advance by daysOffset from that local date (pure calendar arithmetic)
+          const localBase = new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00Z`);
+          return new Date(localBase.getTime() + daysOffset * 86_400_000).toISOString().slice(0, 10);
+        }
+      } catch { /* fall through */ }
+      return new Date(now.getTime() + daysOffset * 86_400_000).toISOString().slice(0, 10);
+    }
+
+    // Build list of dates to scan using org-local calendar dates
+    let datesToScan: string[];
+    if (dateArg === "today")         { datesToScan = [localCalendarDate(orgTzFfs, 0)]; }
+    else if (dateArg === "tomorrow") { datesToScan = [localCalendarDate(orgTzFfs, 1)]; }
+    else if (dateArg === "week") {
+      datesToScan = Array.from({ length: 7 }, (_, i) => localCalendarDate(orgTzFfs, i));
+    } else { datesToScan = [dateArg]; }
+
+    const freeSlots: Array<{ date: string; startTime: string; endTime: string }> = [];
+    const dayStart = startHour * 60;
+    const dayEnd   = endHour   * 60;
+
+    for (const d of datesToScan) {
+      if (freeSlots.length >= limit) break;
+
+      const r = await pool.query(
+        `SELECT start_time, duration FROM calendar_events
+         WHERE org_id = $1 AND date = $2 AND start_time != ''
+         ORDER BY start_time ASC`,
+        [orgId, d]
+      );
+      const busy = (r.rows as Array<Record<string, unknown>>).map(row => {
+        const [h, m] = String(row["start_time"] ?? "00:00").split(":").map(Number);
+        const s = (h ?? 0) * 60 + (m ?? 0);
+        return { start: s, end: s + (Number(row["duration"]) || 60) };
+      });
+
+      let cursor = dayStart;
+      while (cursor + duration <= dayEnd && freeSlots.length < limit) {
+        const slotEnd  = cursor + duration;
+        // Find first overlapping busy block
+        const overlap = busy.find(b => cursor < b.end && slotEnd > b.start);
+        if (!overlap) {
+          const sh = Math.floor(cursor / 60).toString().padStart(2, "0");
+          const sm = (cursor % 60).toString().padStart(2, "0");
+          const eh = Math.floor(slotEnd / 60).toString().padStart(2, "0");
+          const em = (slotEnd % 60).toString().padStart(2, "0");
+          freeSlots.push({ date: d, startTime: `${sh}:${sm}`, endTime: `${eh}:${em}` });
+          cursor = slotEnd; // advance past this free slot
+        } else {
+          cursor = overlap.end; // skip past the blocking event
+        }
+      }
+    }
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+      result: "ok", durationMs: Date.now() - t0 });
+
+    if (freeSlots.length === 0) {
+      return { toolCallId: logId, toolName: name, ok: true,
+        content: `Aucun créneau libre de ${duration} min trouvé entre ${startHour}h et ${endHour}h${dateArg === "week" ? " sur les 7 prochains jours" : " ce jour-là"}. Essayez une durée plus courte ou une autre plage horaire.`,
+        actionLogId: logId };
+    }
+    const list = freeSlots.map(s => `- ${s.date} : ${s.startTime}–${s.endTime} (${duration} min)`).join("\n");
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `${freeSlots.length} créneau(x) libre(s) de ${duration} min :\n${list}`,
+      data: { freeSlots }, actionLogId: logId };
+  }
+
+  // ── reschedule_week ───────────────────────────────────────────────────────
+  if (name === "reschedule_week") {
+    const sourceWeekStart = args["sourceWeekStart"] as string;
+    const targetWeekStart = args["targetWeekStart"] as string;
+    const eventIds        = args["eventIds"] as string[] | undefined;
+
+    // Compute source week end (Sunday)
+    const srcStart = new Date(sourceWeekStart + "T00:00:00Z");
+    const srcEnd   = new Date(srcStart.getTime() + 6 * 86_400_000).toISOString().slice(0, 10);
+    const tgtStart = new Date(targetWeekStart + "T00:00:00Z");
+    const offsetMs = tgtStart.getTime() - srcStart.getTime();
+    const offsetDays = Math.round(offsetMs / 86_400_000);
+
+    let sql = `SELECT id, title, date, start_time, duration, site, type, notes, client_name,
+                      priority, color, reminder, linked_mission_id, updated_at
+               FROM calendar_events
+               WHERE org_id = $1 AND date >= $2 AND date <= $3`;
+    const params: unknown[] = [orgId, sourceWeekStart, srcEnd];
+    if (eventIds && eventIds.length > 0) { sql += ` AND id = ANY($4)`; params.push(eventIds); }
+    sql += ` ORDER BY date ASC, start_time ASC`;
+
+    const eventsRes = await pool.query(sql, params);
+    const events = eventsRes.rows as Array<Record<string, unknown>>;
+
+    if (events.length === 0) {
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `Aucun événement trouvé dans la semaine du ${sourceWeekStart}.`,
+        actionLogId: logId };
+    }
+
+    // Capture pre-write snapshots (what to restore on undo)
+    const snapshots = events.map(e => ({
+      ...e,
+      updated_at: e["updated_at"] instanceof Date ? (e["updated_at"] as Date).toISOString() : e["updated_at"],
+    }));
+
+    // Atomic transaction — capture post-write updated_at for version locking on undo
+    const postWriteVersions: Record<string, string> = {};
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const ev of events) {
+        const oldDate  = new Date((ev["date"] as string) + "T00:00:00Z");
+        const newDate  = new Date(oldDate.getTime() + offsetDays * 86_400_000).toISOString().slice(0, 10);
+        const rwRes = await client.query<{ id: string; updated_at: Date }>(
+          `UPDATE calendar_events SET date = $1, updated_at = NOW()
+           WHERE id = $2 AND org_id = $3
+           RETURNING id, updated_at`,
+          [newDate, ev["id"], orgId]
+        );
+        if (rwRes.rows[0]) {
+          const ts = rwRes.rows[0].updated_at;
+          postWriteVersions[String(ev["id"])] = ts instanceof Date ? ts.toISOString() : String(ts);
+        }
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      client.release();
+      throw err;
+    }
+    client.release();
+
+    await store.logActivity({
+      type: "report",
+      label: `[IA] ${events.length} événement(s) déplacés : semaine du ${sourceWeekStart} → ${targetWeekStart}`,
+      targetId: orgId, targetType: "calendar_event",
+      metadata: { provider, model, tool: name, count: events.length, offsetDays }, orgId,
+    }).catch(() => {});
+
+    const batchSnap = { batchType: "reschedule_week", events: snapshots, postWriteVersions };
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+      result: "ok", snapshot: batchSnap as unknown as Record<string, unknown>,
+      versionAfter: null, durationMs: Date.now() - t0 });
+
+    const list = events.map(ev => {
+      const oldD = ev["date"] as string;
+      const newD = new Date(new Date(oldD + "T00:00:00Z").getTime() + offsetDays * 86_400_000).toISOString().slice(0, 10);
+      return `"${ev["title"]}" : ${oldD} → ${newD}`;
+    }).join("\n");
+
+    const navWeekDest = validateNavAction(
+      { destinationId: "calendar-week", label: "Voir la semaine cible", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const navWeekProposal = navWeekDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [navWeekDest] })
+      : null;
+
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `${events.length} événement(s) déplacés de la semaine du ${sourceWeekStart} vers le ${targetWeekStart} (+${offsetDays}j) :\n${list}`,
+      data: { count: events.length, offsetDays },
+      snapshot: batchSnap as unknown as Record<string, unknown>,
+      actionLogId: logId,
+      undoLabel: `Annuler le déplacement de semaine (${events.length} événement${events.length > 1 ? "s" : ""})`,
+      navProposal: navWeekProposal };
+  }
+
+  // ── optimize_schedule ─────────────────────────────────────────────────────
+  if (name === "optimize_schedule") {
+    const date         = args["date"]         as string;
+    const startHour    = (args["startHour"]    as number) ?? 9;
+    const breakMinutes = (args["breakMinutes"] as number) ?? 15;
+
+    const evRes = await pool.query(
+      `SELECT id, title, date, start_time, duration, site, type, notes, client_name,
+              priority, color, reminder, linked_mission_id, updated_at
+       FROM calendar_events
+       WHERE org_id = $1 AND date = $2 AND start_time IS NOT NULL AND start_time != ''
+       ORDER BY start_time ASC`,
+      [orgId, date]
+    );
+    const events = evRes.rows as Array<Record<string, unknown>>;
+
+    if (events.length < 2) {
+      await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+        tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+        result: "ok", durationMs: Date.now() - t0 });
+      return { toolCallId: logId, toolName: name, ok: true,
+        content: events.length === 0
+          ? `Aucun événement avec horaire défini le ${date} — rien à optimiser.`
+          : `Un seul événement le ${date} — rien à regrouper.`,
+        actionLogId: logId };
+    }
+
+    // Capture pre-write snapshots (what to restore on undo)
+    const snapshots = events.map(e => ({
+      ...e,
+      updated_at: e["updated_at"] instanceof Date ? (e["updated_at"] as Date).toISOString() : e["updated_at"],
+    }));
+
+    // Compute new times starting from startHour with breakMinutes between events
+    const updates: Array<{ id: string; newStartTime: string; oldStartTime: string; title: string; duration: number }> = [];
+    let cursor = startHour * 60;
+    for (const ev of events) {
+      const dur = Number(ev["duration"]) || 60;
+      const sh  = Math.floor(cursor / 60).toString().padStart(2, "0");
+      const sm  = (cursor % 60).toString().padStart(2, "0");
+      const newST = `${sh}:${sm}`;
+      if (newST !== (ev["start_time"] as string)) {
+        updates.push({ id: ev["id"] as string, newStartTime: newST,
+          oldStartTime: ev["start_time"] as string, title: ev["title"] as string, duration: dur });
+      }
+      cursor += dur + breakMinutes;
+    }
+
+    if (updates.length === 0) {
+      await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+        tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+        result: "ok", durationMs: Date.now() - t0 });
+      return { toolCallId: logId, toolName: name, ok: true,
+        content: `Le planning du ${date} est déjà optimisé — aucune modification nécessaire.`,
+        actionLogId: logId };
+    }
+
+    // Atomic transaction — capture post-write updated_at for version locking on undo
+    const optPostWriteVersions: Record<string, string> = {};
+    const optClient = await pool.connect();
+    try {
+      await optClient.query("BEGIN");
+      for (const u of updates) {
+        const optRes = await optClient.query<{ id: string; updated_at: Date }>(
+          `UPDATE calendar_events SET start_time = $1, updated_at = NOW()
+           WHERE id = $2 AND org_id = $3
+           RETURNING id, updated_at`,
+          [u.newStartTime, u.id, orgId]
+        );
+        if (optRes.rows[0]) {
+          const ts = optRes.rows[0].updated_at;
+          optPostWriteVersions[u.id] = ts instanceof Date ? ts.toISOString() : String(ts);
+        }
+      }
+      await optClient.query("COMMIT");
+    } catch (err) {
+      await optClient.query("ROLLBACK");
+      optClient.release();
+      throw err;
+    }
+    optClient.release();
+
+    await store.logActivity({
+      type: "report",
+      label: `[IA] Planning optimisé le ${date} (${updates.length} modification${updates.length > 1 ? "s" : ""})`,
+      targetId: orgId, targetType: "calendar_event",
+      metadata: { provider, model, tool: name, count: updates.length }, orgId,
+    }).catch(() => {});
+
+    const batchOptSnap = { batchType: "optimize_schedule", events: snapshots, postWriteVersions: optPostWriteVersions };
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+      result: "ok", snapshot: batchOptSnap as unknown as Record<string, unknown>,
+      versionAfter: null, durationMs: Date.now() - t0 });
+
+    const list = updates.map(u => `"${u.title}" : ${u.oldStartTime} → ${u.newStartTime}`).join("\n");
+
+    const navOptDest = validateNavAction(
+      { destinationId: "calendar-optimize", label: "Voir le planning optimisé", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const navOptProposal = navOptDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [navOptDest] })
+      : null;
+
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `Planning du ${date} optimisé — ${updates.length} événement(s) repositionné(s) à partir de ${startHour}h (pause ${breakMinutes} min) :\n${list}`,
+      data: { count: updates.length, updates },
+      snapshot: batchOptSnap as unknown as Record<string, unknown>,
+      actionLogId: logId,
+      undoLabel: `Annuler l'optimisation du ${date}`,
+      navProposal: navOptProposal };
+  }
+
+  // ── create_recurring_event ────────────────────────────────────────────────
+  if (name === "create_recurring_event") {
+    const title       = args["title"]       as string;
+    const startDate   = args["startDate"]   as string;
+    const startTime   = (args["startTime"]   as string) ?? "";
+    const duration    = (args["duration"]    as number) ?? 60;
+    const rrule       = args["rrule"]       as string;
+    const occurrences = (args["occurrences"] as number) ?? 4;
+    const eventType   = (args["type"]        as string) ?? "Réunion";
+
+    const dates = computeRecurrenceDates(startDate, rrule, occurrences);
+    if (dates.length === 0) {
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `RRULE non reconnue : "${rrule}". Formats supportés : DAILY, WEEKLY, MONTHLY, WEEKLY:2, DAILY:2, MONTHLY:2…`,
+        actionLogId: logId };
+    }
+
+    const createdIds: string[]                         = [];
+    const createdSnaps: Record<string, unknown>[]      = [];
+
+    // All-or-nothing transaction: a failure mid-series leaves no partial orphans
+    const recClient = await pool.connect();
+    try {
+      await recClient.query("BEGIN");
+      for (let i = 0; i < dates.length; i++) {
+        const id = `ce_${Date.now()}_${Math.random().toString(36).slice(2, 6)}_r${i}`;
+        const d  = dates[i]!;
+        // Only store rrule on the first occurrence (marker of the series)
+        const rruleVal = i === 0 ? rrule : null;
+        await recClient.query(`
+          INSERT INTO calendar_events
+            (id, org_id, title, site, type, date, start_time, duration, notes, client_name,
+             priority, color, reminder, linked_mission_id, rrule, created_at, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW())
+        `, [
+          id, orgId, title,
+          (args["site"] as string)       ?? "",
+          eventType, d, startTime, duration,
+          (args["notes"] as string)      ?? "",
+          (args["clientName"] as string) ?? "",
+          (args["priority"] as string)   ?? "normal",
+          (args["color"] as string)      ?? "",
+          (args["reminder"] as number)   ?? 0,
+          (args["linkedMissionId"] as string) ?? null,
+          rruleVal,
+        ]);
+        createdIds.push(id);
+        createdSnaps.push({ id, org_id: orgId, title, date: d, start_time: startTime,
+          duration, type: eventType, rrule: rruleVal });
+      }
+      await recClient.query("COMMIT");
+    } catch (err) {
+      await recClient.query("ROLLBACK");
+      recClient.release();
+      throw err;
+    }
+    recClient.release();
+
+    await store.logActivity({
+      type: "report",
+      label: `[IA] Événement récurrent créé : "${title}" (${dates.length} occurrence${dates.length > 1 ? "s" : ""}, RRULE=${rrule})`,
+      targetId: createdIds[0] ?? orgId, targetType: "calendar_event",
+      metadata: { provider, model, tool: name, count: dates.length, rrule }, orgId,
+    }).catch(() => {});
+
+    const batchRecSnap = { batchType: "create_recurring_event", events: createdSnaps };
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+      result: "ok", snapshot: batchRecSnap as unknown as Record<string, unknown>,
+      versionAfter: null, durationMs: Date.now() - t0 });
+
+    const listDates = dates.map((d, i) => `${i + 1}. ${d}${startTime ? ` à ${startTime}` : ""}`).join("\n");
+
+    const navRecDest = validateNavAction(
+      { destinationId: "calendar-recurring", label: "Voir les événements récurrents", openMode: "page" },
+      ctx.effectivePerms, ctx.orgPlan
+    );
+    const navRecProposal = navRecDest
+      ? await createNavigationProposal({ orgId, userId, conversationId, provider, model, navActions: [navRecDest] })
+      : null;
+
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `Événement récurrent "${title}" créé — ${dates.length} occurrence${dates.length > 1 ? "s" : ""} (RRULE=${rrule}) :\n${listDates}`,
+      data: { count: dates.length, ids: createdIds, rrule },
+      snapshot: batchRecSnap as unknown as Record<string, unknown>,
+      actionLogId: logId,
+      undoLabel: `Annuler la création de "${title}" (${dates.length} occurrences)`,
+      navProposal: navRecProposal };
   }
 
   // fallback

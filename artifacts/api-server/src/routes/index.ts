@@ -146,7 +146,13 @@ router.use((req: Request, res: Response, next: NextFunction) => {
     // Service credential is restricted to explicitly internal routes only.
     // All ordinary user routes return 403 — the key must never read user data.
     const isInternalRoute = (req.method === "POST" && req.path === "/alert-events") ||
-      (req.method === "POST" && req.path === "/qa/billing/activate-signup");
+      (req.method === "POST" && req.path === "/qa/billing/activate-signup") ||
+      (req.method === "POST" && req.path === "/qa/fixtures/tool") ||
+      (req.method === "POST" && req.path === "/qa/permissions-test") ||
+      (req.method === "POST" && req.path === "/qa/gemini-finish-reason") ||
+      (req.method === "POST" && req.path === "/qa/inject-checks") ||
+      (req.method === "POST" && req.path === "/qa/fixture") ||
+      (req.method === "POST" && req.path === "/qa/ga4-funnel-base-url");
     // QA injection: allow POST /monitors/:id/check ONLY when the request body
     // explicitly carries a _qa_result field (service-only injection path).
     // isQaFixturesEnabled() is NOT checked here — handleCheck does that and

@@ -467,11 +467,45 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       aiCredits != null ? `Crédits IA restants : ${aiCredits}` : "",
     ];
 
-    // === CALENDRIER — Phase 3 : contexte événements ===
+    // === CALENDRIER — Phase 3 : contexte événements + fuseau horaire ===
     try {
       const calNow      = new Date();
       const calToday    = calNow.toISOString().slice(0, 10);
       const calTimeHHMM = calNow.toISOString().slice(11, 16); // HH:MM en UTC
+
+      // Fetch org timezone — organizations table first, fallback to org_settings
+      let orgTimezone = "UTC";
+      try {
+        const tzOrg = await pool.query(
+          `SELECT timezone FROM organizations WHERE id = $1 AND timezone IS NOT NULL AND timezone != '' LIMIT 1`,
+          [oid]
+        ).catch(() => ({ rows: [] as Array<Record<string, unknown>> }));
+        if (tzOrg.rows[0]?.["timezone"]) {
+          orgTimezone = String(tzOrg.rows[0]["timezone"]);
+        } else {
+          const tzSet = await pool.query(
+            `SELECT timezone FROM org_settings WHERE org_id = $1 AND timezone IS NOT NULL AND timezone != '' LIMIT 1`,
+            [oid]
+          ).catch(() => ({ rows: [] as Array<Record<string, unknown>> }));
+          if (tzSet.rows[0]?.["timezone"]) orgTimezone = String(tzSet.rows[0]["timezone"]);
+        }
+      } catch { /* keep UTC */ }
+
+      // Compute local time in org timezone (DST handled by Intl)
+      let calLocalHHMM = calTimeHHMM;
+      let calLocalDate = calToday;
+      try {
+        const localStr = calNow.toLocaleString("fr-FR", { timeZone: orgTimezone,
+          year: "numeric", month: "2-digit", day: "2-digit",
+          hour: "2-digit", minute: "2-digit", hour12: false });
+        // localStr format: "DD/MM/YYYY, HH:MM"
+        const m = localStr.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s+(\d{2}):(\d{2})/);
+        if (m) {
+          calLocalDate  = `${m[3]}-${m[2]}-${m[1]}`;
+          calLocalHHMM  = `${m[4]}:${m[5]}`;
+        }
+      } catch { /* keep UTC */ }
+
       const calWeekEnd  = new Date(calNow.getTime() + 7 * 86_400_000).toISOString().slice(0, 10);
       const calRes = await pool.query(
         `SELECT id, title, date, start_time, duration, type, client_name, priority
@@ -505,10 +539,17 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       lines.push(
         ``,
         `=== CALENDRIER (7 prochains jours) ===`,
-        `Date et heure actuelles (UTC) : ${calToday} à ${calTimeHHMM}`,
-        `RÉSOLUTION DES EXPRESSIONS RELATIVES — Utilise cette date/heure pour calculer "dans 30 minutes", "dans 2 heures", "demain matin", "vendredi dans deux semaines", etc. Ne fais aucune supposition silencieuse. Si une expression est ambiguë, demande une clarification avant d'appeler l'outil.`,
+        `Fuseau horaire de l'organisation : ${orgTimezone}`,
+        `Date et heure locales (${orgTimezone}) : ${calLocalDate} à ${calLocalHHMM}`,
+        `Date et heure UTC (référence serveur) : ${calToday} à ${calTimeHHMM}`,
+        `RÉSOLUTION DES EXPRESSIONS RELATIVES — Utilise la date/heure LOCALE ci-dessus (${orgTimezone}) pour calculer "dans 30 minutes", "dans 2 heures", "demain matin", "vendredi dans deux semaines", etc. Les dates stockées sont en heure locale. Ne fais aucune supposition silencieuse. Si une expression est ambiguë, demande une clarification avant d'appeler l'outil.`,
+        `DST / Heure d'été : la résolution des expressions relatives utilise l'heure locale déjà corrigée de l'heure d'été (via Intl). Pour les événements futurs à cheval sur un changement d'heure, précise toujours l'heure locale attendue.`,
         `RÈGLES OUTILS CALENDRIER (obligatoires) :`,
         `- Toute demande de création/modification/déplacement/suppression → appeler l'outil correspondant (create/update/move/delete_calendar_event). Ne jamais décrire l'action sans la faire.`,
+        `- "quand suis-je libre ?", "trouve un créneau", "est-ce que j'ai du temps ?" → appeler find_free_slots.`,
+        `- "déplace toute ma semaine", "je suis absent cette semaine" → appeler reschedule_week.`,
+        `- "optimise mon planning", "regroupe mes réunions de mardi" → appeler optimize_schedule.`,
+        `- "réunion hebdo chaque lundi", "event récurrent", "tous les jours à 9h" → appeler create_recurring_event avec la RRULE adaptée.`,
         `- Toute question sur les événements ("qu'est-ce que j'ai cette semaine ?", "quels sont mes RDV ?", "mes prochains rendez-vous ?") → appeler search_calendar_event PUIS expliquer les résultats en texte.`,
         `- Après tout appel d'outil : TOUJOURS produire une réponse textuelle qui explique le résultat à l'utilisateur. Ne jamais laisser le tool_result sans commentaire.`,
         `- Pour les questions d'analyse (conflits, planning) : si le contexte calendrier ci-dessus contient déjà l'information, tu peux répondre directement en texte sans appeler un outil.`,

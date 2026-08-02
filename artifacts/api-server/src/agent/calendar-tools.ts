@@ -170,6 +170,171 @@ export const CALENDAR_TOOLS: ToolDef[] = [
       required: ["id"],
     },
   },
+
+  // ── Phase 3 capacités avancées ─────────────────────────────────────────────
+
+  {
+    name: "find_free_slots",
+    description:
+      "Trouve les créneaux libres dans une journée ou une plage de dates. " +
+      "Utiliser pour répondre à 'quand suis-je libre ?', 'trouve-moi un créneau de 2h vendredi', " +
+      "'est-ce que j'ai du temps lundi matin ?'. " +
+      "Utilise la date/heure injectée dans le contexte pour résoudre les expressions relatives. " +
+      "Outil en lecture seule — aucune confirmation requise.",
+    requiredPermission: "calendar.read",
+    confirmationLevel: "none",
+    isWrite: false,
+    parameters: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description:
+            "Date YYYY-MM-DD pour un seul jour, ou période : 'today', 'tomorrow', 'week' (7 prochains jours).",
+        },
+        duration: {
+          type: "number",
+          description: "Durée cherchée en minutes (défaut : 60).",
+          minimum: 5,
+          maximum: 480,
+        },
+        startHour: {
+          type: "number",
+          description: "Heure de début de la plage de recherche, 0-23 (défaut : 8 = 8h00).",
+          minimum: 0,
+          maximum: 23,
+        },
+        endHour: {
+          type: "number",
+          description: "Heure de fin de la plage de recherche, 1-24 (défaut : 18 = 18h00).",
+          minimum: 1,
+          maximum: 24,
+        },
+        limit: {
+          type: "number",
+          description: "Nombre maximum de créneaux à retourner (défaut : 5, max : 20).",
+          minimum: 1,
+          maximum: 20,
+        },
+      },
+      required: ["date"],
+    },
+  },
+
+  {
+    name: "reschedule_week",
+    description:
+      "Déplace tous les événements d'une semaine vers une autre semaine en conservant la position " +
+      "relative de chaque événement dans la semaine (lundi→lundi, mardi→mardi, etc.). " +
+      "Utiliser pour 'décale ma semaine du 10 août au 17 août', 'je serai absent cette semaine, déplace tout à la semaine prochaine'. " +
+      "Utiliser search_calendar_event pour vérifier les événements avant d'appeler cet outil. " +
+      "Transaction atomique : tout passe ou rien ne passe. " +
+      "Aperçu présenté avant l'exécution. Annulation possible dans les 30 minutes.",
+    requiredPermission: "calendar.write",
+    confirmationLevel: "preview",
+    isWrite: true,
+    parameters: {
+      type: "object",
+      properties: {
+        sourceWeekStart: {
+          type: "string",
+          description: "Date du lundi de la semaine source (YYYY-MM-DD).",
+        },
+        targetWeekStart: {
+          type: "string",
+          description: "Date du lundi de la semaine cible (YYYY-MM-DD).",
+        },
+        eventIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "IDs d'événements spécifiques à déplacer (optionnel — tous les événements de la semaine si absent).",
+          maxItems: 50,
+        },
+      },
+      required: ["sourceWeekStart", "targetWeekStart"],
+    },
+  },
+
+  {
+    name: "optimize_schedule",
+    description:
+      "Réorganise les événements d'une journée pour les regrouper et minimiser les trous entre les réunions. " +
+      "Utiliser pour 'optimise mon planning de mardi', 'regroupe mes réunions de demain', " +
+      "'j'ai trop de trous dans mon agenda du 15, arrange ça'. " +
+      "Les événements sans heure définie ne sont pas touchés. " +
+      "Transaction atomique. Aperçu présenté avant modification. Annulation possible dans les 30 minutes.",
+    requiredPermission: "calendar.write",
+    confirmationLevel: "preview",
+    isWrite: true,
+    parameters: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description: "Date YYYY-MM-DD de la journée à optimiser.",
+        },
+        startHour: {
+          type: "number",
+          description: "Heure de début de la plage de travail, 0-23 (défaut : 9).",
+          minimum: 0,
+          maximum: 23,
+        },
+        breakMinutes: {
+          type: "number",
+          description: "Pause minimum en minutes entre deux événements (défaut : 15).",
+          minimum: 0,
+          maximum: 60,
+        },
+      },
+      required: ["date"],
+    },
+  },
+
+  {
+    name: "create_recurring_event",
+    description:
+      "Crée un événement récurrent avec une règle de récurrence. " +
+      "Utiliser pour 'réunion hebdo chaque lundi', 'scrum quotidien', 'bilan mensuel le 1er du mois'. " +
+      "Crée plusieurs occurrences en DB selon la règle. " +
+      "RRULE supportées : 'DAILY' (quotidien), 'WEEKLY' (hebdomadaire), 'MONTHLY' (mensuel), " +
+      "'WEEKLY:2' (toutes les 2 semaines), 'DAILY:2' (tous les 2 jours). " +
+      "Aperçu présenté avant création. Annulation possible dans les 30 minutes (supprime toutes les occurrences).",
+    requiredPermission: "calendar.write",
+    confirmationLevel: "preview",
+    isWrite: true,
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Titre de l'événement (obligatoire, max 200 caractères)." },
+        startDate: { type: "string", description: "Date de la première occurrence YYYY-MM-DD (obligatoire)." },
+        startTime: { type: "string", description: "Heure de début HH:MM (ex : 09:00)." },
+        duration: { type: "number", description: "Durée en minutes (défaut : 60).", minimum: 5, maximum: 1440 },
+        rrule: {
+          type: "string",
+          description:
+            "Règle de récurrence : 'DAILY', 'WEEKLY', 'MONTHLY', 'WEEKLY:2' (toutes les 2 semaines), " +
+            "'DAILY:2' (tous les 2 jours), 'MONTHLY:2' (tous les 2 mois). " +
+            "Construis cette chaîne depuis la demande de l'utilisateur.",
+        },
+        occurrences: {
+          type: "number",
+          description: "Nombre d'occurrences à créer (défaut : 4, max : 52).",
+          minimum: 1,
+          maximum: 52,
+        },
+        type: { type: "string", description: "Type d'événement (Réunion, Rendez-vous, Formation, Autre…)." },
+        notes: { type: "string", description: "Notes ou description." },
+        clientName: { type: "string", description: "Nom du client ou participant." },
+        priority: {
+          type: "string",
+          enum: ["low", "normal", "high", "urgent"],
+          description: "Priorité (défaut : normal).",
+        },
+        color: { type: "string", description: "Couleur en hex (ex : #3b82f6)." },
+      },
+      required: ["title", "startDate", "rrule"],
+    },
+  },
 ];
 
 // ── Map pour tool-executor ─────────────────────────────────────────────────
@@ -237,6 +402,42 @@ export const CALENDAR_ARG_SCHEMAS = {
   delete_calendar_event: z.object({
     id: z.string().min(1).max(100),
   }),
+
+  // ── Phase 3 capacités avancées ─────────────────────────────────────────────
+
+  find_free_slots: z.object({
+    date: z.string().min(1).max(50),
+    duration: z.number().int().min(5).max(480).optional(),
+    startHour: z.number().int().min(0).max(23).optional(),
+    endHour: z.number().int().min(1).max(24).optional(),
+    limit: z.number().int().min(1).max(20).optional(),
+  }),
+
+  reschedule_week: z.object({
+    sourceWeekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format YYYY-MM-DD requis"),
+    targetWeekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format YYYY-MM-DD requis"),
+    eventIds: z.array(z.string().max(100)).max(50).optional(),
+  }),
+
+  optimize_schedule: z.object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format YYYY-MM-DD requis"),
+    startHour: z.number().int().min(0).max(23).optional(),
+    breakMinutes: z.number().int().min(0).max(60).optional(),
+  }),
+
+  create_recurring_event: z.object({
+    title: z.string().min(1).max(200),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format YYYY-MM-DD requis"),
+    startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    duration: z.number().int().min(5).max(1440).optional(),
+    rrule: z.string().min(1).max(200),
+    occurrences: z.number().int().min(1).max(52).optional(),
+    type: z.string().max(100).optional(),
+    notes: z.string().max(2000).optional(),
+    clientName: z.string().max(200).optional(),
+    priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+    color: z.string().max(20).optional(),
+  }),
 };
 
 // ── Snapshot helper ────────────────────────────────────────────────────────
@@ -261,6 +462,37 @@ export async function snapCalendarEvent(
   } catch {
     return null;
   }
+}
+
+/**
+ * Calcule les dates d'un événement récurrent à partir d'une RRULE simplifiée.
+ * Formats supportés : DAILY, WEEKLY, MONTHLY, WEEKLY:N, DAILY:N, MONTHLY:N
+ */
+export function computeRecurrenceDates(startDate: string, rrule: string, count: number): string[] {
+  const dates: string[] = [];
+  const upper = rrule.trim().toUpperCase();
+  const [freq, intervalStr] = upper.split(":");
+  const interval = Math.max(1, parseInt(intervalStr ?? "1", 10) || 1);
+
+  for (let i = 0; i < count; i++) {
+    // Use UTC to avoid DST-induced date drift
+    const base = new Date(startDate + "T00:00:00Z");
+    if (freq === "DAILY") {
+      base.setUTCDate(base.getUTCDate() + i * interval);
+    } else if (freq === "WEEKLY") {
+      base.setUTCDate(base.getUTCDate() + i * 7 * interval);
+    } else if (freq === "MONTHLY") {
+      // Add months without overflowing into next month (e.g. Jan 31 + 1 month → Feb 28)
+      const originalDay = base.getUTCDate();
+      base.setUTCMonth(base.getUTCMonth() + i * interval, 1);
+      const daysInMonth = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)).getUTCDate();
+      base.setUTCDate(Math.min(originalDay, daysInMonth));
+    } else {
+      break; // Unknown freq — stop
+    }
+    dates.push(base.toISOString().slice(0, 10));
+  }
+  return dates;
 }
 
 /**

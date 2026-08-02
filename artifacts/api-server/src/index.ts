@@ -172,8 +172,9 @@ async function main() {
         await client.query(`ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS color            TEXT        NOT NULL DEFAULT ''`);
         await client.query(`ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS reminder         INTEGER     NOT NULL DEFAULT 0`);
         await client.query(`ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS linked_mission_id TEXT`);
+        await client.query(`ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS rrule TEXT`);
         await client.query(`CREATE INDEX IF NOT EXISTS calendar_events_date_org_idx ON calendar_events(org_id, date)`);
-        logger.info("[startup] calendar_events Phase 3 columns ensured (updated_at, priority, color, reminder, linked_mission_id)");
+        logger.info("[startup] calendar_events Phase 3 columns ensured (updated_at, priority, color, reminder, linked_mission_id, rrule)");
       } finally { client.release(); }
     }).catch((err: unknown) => {
       logger.warn({ err }, "[startup] calendar-phase3-columns step failed (non-fatal)");

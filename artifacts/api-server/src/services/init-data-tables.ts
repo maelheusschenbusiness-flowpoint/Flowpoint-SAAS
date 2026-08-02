@@ -404,6 +404,7 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '';`);
     await run(client, `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS reminder INTEGER NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS linked_mission_id TEXT;`);
+    await run(client, `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS rrule TEXT;`); // Phase 3 — récurrents
     await run(client, `CREATE INDEX IF NOT EXISTS calendar_events_date_idx ON calendar_events(date);`);
     await run(client, `CREATE INDEX IF NOT EXISTS calendar_events_org_id_idx ON calendar_events(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS calendar_events_date_org_idx ON calendar_events(org_id, date);`);

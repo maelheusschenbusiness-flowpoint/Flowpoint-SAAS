@@ -153,6 +153,125 @@ async function applySnapshot(
   orgId: string,
   versionAfter: string | null,
 ): Promise<SnapshotResult | void> {
+
+  // ── Phase 3 avancé — opérations batch (MUST be first — no top-level id) ──
+  // reschedule_week / optimize_schedule / create_recurring_event
+  // Détecté par snap.batchType.
+  // - create_recurring_event : DELETE atomique (toujours idempotent — on efface ce qu'on a créé).
+  // - reschedule_week / optimize_schedule : version lock sur chaque événement via postWriteVersions ;
+  //   si un événement a été modifié depuis l'action → ROLLBACK → PROPOSAL_STALE.
+  if (snap["batchType"] && Array.isArray(snap["events"])) {
+    const batchType   = snap["batchType"] as string;
+    const batchEvents = snap["events"] as Record<string, unknown>[];
+
+    if (batchType === "create_recurring_event") {
+      // Annuler = supprimer toutes les occurrences créées dans une transaction atomique
+      const delClient = await pool.connect();
+      try {
+        await delClient.query("BEGIN");
+        for (const e of batchEvents) {
+          await delClient.query(
+            `DELETE FROM calendar_events WHERE id = $1 AND org_id = $2`,
+            [e["id"], orgId]
+          );
+        }
+        await delClient.query("COMMIT");
+      } catch (err) {
+        await delClient.query("ROLLBACK");
+        delClient.release();
+        throw err;
+      }
+      delClient.release();
+      return;
+    }
+
+    if (batchType === "reschedule_week" || batchType === "optimize_schedule") {
+      // postWriteVersions : { [eventId]: isoTimestamp } capturé par tool-executor après l'écriture.
+      // Si absent (ancien log), on procède sans version lock (compat ascendante — no user data at risk
+      // for logs written before this fix because those logs pre-date the postWriteVersions field).
+      const postWriteVersions = snap["postWriteVersions"] as Record<string, string> | undefined;
+
+      const batchClient = await pool.connect();
+      try {
+        await batchClient.query("BEGIN");
+
+        for (const e of batchEvents) {
+          const evId = e["id"] as string;
+          const pwv  = postWriteVersions?.[evId];
+
+          if (batchType === "reschedule_week") {
+            // Restore original date with version check
+            let rows: number;
+            if (pwv) {
+              const res = await batchClient.query(
+                `UPDATE calendar_events
+                    SET date = $1, updated_at = NOW()
+                  WHERE id = $2 AND org_id = $3
+                    AND date_trunc('milliseconds', updated_at)
+                      = date_trunc('milliseconds', $4::TIMESTAMPTZ)
+                 RETURNING id`,
+                [e["date"], evId, orgId, pwv]
+              );
+              rows = res.rowCount ?? 0;
+            } else {
+              // Legacy log — no version lock
+              const res = await batchClient.query(
+                `UPDATE calendar_events SET date = $1, updated_at = NOW()
+                  WHERE id = $2 AND org_id = $3 RETURNING id`,
+                [e["date"], evId, orgId]
+              );
+              rows = res.rowCount ?? 0;
+            }
+            if (pwv && rows === 0) {
+              // Event was modified after the batch write — abort entire undo
+              await batchClient.query("ROLLBACK");
+              batchClient.release();
+              return { stale: true };
+            }
+          } else {
+            // optimize_schedule — restore original start_time with version check
+            const origSt = String(e["start_time"] ?? e["startTime"] ?? "");
+            let rows: number;
+            if (pwv) {
+              const res = await batchClient.query(
+                `UPDATE calendar_events
+                    SET start_time = $1, updated_at = NOW()
+                  WHERE id = $2 AND org_id = $3
+                    AND date_trunc('milliseconds', updated_at)
+                      = date_trunc('milliseconds', $4::TIMESTAMPTZ)
+                 RETURNING id`,
+                [origSt, evId, orgId, pwv]
+              );
+              rows = res.rowCount ?? 0;
+            } else {
+              const res = await batchClient.query(
+                `UPDATE calendar_events SET start_time = $1, updated_at = NOW()
+                  WHERE id = $2 AND org_id = $3 RETURNING id`,
+                [origSt, evId, orgId]
+              );
+              rows = res.rowCount ?? 0;
+            }
+            if (pwv && rows === 0) {
+              await batchClient.query("ROLLBACK");
+              batchClient.release();
+              return { stale: true };
+            }
+          }
+        }
+
+        await batchClient.query("COMMIT");
+      } catch (err) {
+        await batchClient.query("ROLLBACK");
+        batchClient.release();
+        throw err;
+      }
+      batchClient.release();
+      return;
+    }
+
+    throw new Error(`Batch undo non implémenté pour le type : ${batchType}`);
+  }
+
   const id = snap["id"] as string;
   if (!id) throw new Error("Snapshot sans ID — impossible de restaurer.");
 
