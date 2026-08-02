@@ -4083,7 +4083,7 @@ function renderSidebarStatus() {
   // User card
   const userEl = $('#sidebar-user');
   if (userEl) {
-    const sitesCount = STATE.audits?.length || 6;
+    const sitesCount = STATE.audits?.length || 0;
     const missionsActive = (STATE.missions||[]).filter(m=>m.status!=='done').length;
     const streak = STATE.streak || 0;
     userEl.innerHTML = `
@@ -13506,9 +13506,26 @@ async function fpGoToPricing(targetPlan) {
     showToast('Vous êtes déjà sur le plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + '.', 'info');
     return;
   }
-  // Always redirect to FlowPoint pricing.html for all plan changes
+  // Subscribed users: change the plan directly via the Stripe subscription — no pricing redirect
+  const subStatus = ((STATE.billing && STATE.billing.status) || (STATE.me && STATE.me.subscriptionStatus) || '').toLowerCase();
+  const isSubscribed = subStatus === 'active' || subStatus === 'trialing';
+  if (isSubscribed) {
+    showToast('info', 'Mise à jour du plan…');
+    try {
+      const r = await apiFetch('/api/billing/upgrade', { method: 'POST', body: JSON.stringify({ plan }) });
+      if (r && r.url) { window.location.href = r.url; return; }
+      if (r && r.error) throw new Error(r.message || r.error);
+      showToast('success', 'Plan mis à jour : ' + plan.charAt(0).toUpperCase() + plan.slice(1) + (r && r.scheduled ? ' (appliqué en fin de période)' : ''));
+      try { const me = await apiFetch('/api/me'); if (me) STATE.me = me; } catch(_) {}
+      render();
+      return;
+    } catch(e) {
+      showToast('error', 'Changement de plan impossible : ' + (e && e.message ? e.message : 'réessayez'));
+      return;
+    }
+  }
+  // Non-subscribed: go through pricing/checkout
   showToast('Chargement du parcours upgrade…', 'loading');
-  // Redirect to pricing.html with pre-selected plan + active addons
   const cart = { plan: plan, addons: {}, fromDashboard: true };
   const currentAddons = (STATE.me && STATE.me.addons) || (STATE.billing && STATE.billing.addons) || {};
   Object.keys(currentAddons).forEach(function(k) { if (currentAddons[k]) cart.addons[k] = 1; });
@@ -13829,6 +13846,8 @@ function _doRender() {
   closeFAB();
   closeCtxMenu();
   updatePlanSwitcher();
+  if (window.fpSyncAiBadge) window.fpSyncAiBadge();
+  if (window.fpApplyTranslations) window.fpApplyTranslations();
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -15213,16 +15232,18 @@ function bindSectionEvents() {
           checkBtn.addEventListener('click', async () => {
             const plan = checkBtn.dataset.checkoutPlan;
             checkBtn.disabled = true;
-            checkBtn.textContent = 'Redirection…';
-            showToast('info', 'Ouverture de la page tarifs…');
+            checkBtn.textContent = 'Mise à jour…';
             try {
-              const cart = { plan: plan, addons: {}, fromDashboard: true };
-              const currentAddons = (STATE.me && STATE.me.addons) || (STATE.billing && STATE.billing.addons) || {};
-              Object.keys(currentAddons).forEach(function(k) { if (currentAddons[k]) cart.addons[k] = 1; });
-              localStorage.setItem('fp_cart', JSON.stringify(cart));
-              window.location.href = '/pricing.html?from=dashboard&plan=' + encodeURIComponent(plan);
+              // Direct plan change via Stripe subscription update — no pricing redirect
+              const r = await apiFetch('/api/billing/upgrade', { method: 'POST', body: JSON.stringify({ plan }) });
+              if (r && r.url) { window.location.href = r.url; return; } // reactivation/checkout needed
+              if (r && r.error) throw new Error(r.message || r.error);
+              showToast('success', 'Plan mis à jour : ' + plan.charAt(0).toUpperCase() + plan.slice(1) + (r && r.scheduled ? ' (appliqué en fin de période)' : ''));
+              closeFloatPanel();
+              try { const me = await apiFetch('/api/me'); if (me) STATE.me = me; } catch(_) {}
+              render();
             } catch(e) {
-              showToast('error', 'Erreur de redirection — réessayez');
+              showToast('error', 'Changement de plan impossible : ' + (e && e.message ? e.message : 'réessayez'));
               checkBtn.disabled = false;
               checkBtn.textContent = 'Choisir';
             }
@@ -16343,6 +16364,75 @@ async function init() {
         btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="3" style="margin-right:4px;vertical-align:middle" pointer-events="none"><polyline points="20 6 9 17 4 12"/></svg>' + escHtml(v);
       })
       .catch(function() { showToast('error', 'Erreur sauvegarde'); });
+  };
+
+  // ── fpSyncAiBadge: keep the sidebar/chat AI badges in sync with the stored provider ──
+  window.fpSyncAiBadge = function() {
+    var labels = { openai: 'GPT-5', anthropic: 'Claude', gemini: 'Gemini' };
+    var badge = labels[STATE.aiProvider] || 'GPT-5';
+    STATE.aiModel = badge;
+    var b = document.getElementById('fp-ai-badge');
+    if (b && b.textContent !== badge) b.textContent = badge;
+    var s = document.getElementById('fp-ai-chat-model-label');
+    if (s) s.textContent = badge + ' · FlowPoint Expert';
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.fpSyncAiBadge);
+  else window.fpSyncAiBadge();
+
+  // ── fpApplyTranslations: real UI translation pass (FR → EN) ──
+  // Applied after every render when the language preference is English.
+  var FP_I18N_EN = {
+    "Vue d'ensemble": 'Overview', 'Audits SEO': 'SEO Audits', 'Mots-clés': 'Keywords',
+    'Concurrents': 'Competitors', 'Rapports': 'Reports', 'Missions': 'Missions',
+    'Assistant IA': 'AI Assistant', 'Calendrier': 'Calendar', 'Équipe': 'Team',
+    'Paramètres': 'Settings', 'Facturation': 'Billing', 'Sécurité': 'Security',
+    'Intégrations': 'Integrations', 'Notifications': 'Notifications', 'Alertes': 'Alerts',
+    'Recommandations': 'Recommendations', 'Croissance': 'Growth', 'Trafic': 'Traffic',
+    'Rechercher': 'Search', 'Rechercher…': 'Search…', 'Nouvel audit': 'New audit',
+    'Nouveau monitor': 'New monitor', 'Nouvelle mission': 'New mission',
+    'Ajouter': 'Add', 'Annuler': 'Cancel', 'Enregistrer': 'Save', 'Sauvegarder': 'Save',
+    'Supprimer': 'Delete', 'Modifier': 'Edit', 'Fermer': 'Close', 'Voir tout': 'View all',
+    'Tout voir': 'View all', 'Exporter': 'Export', 'Actualiser': 'Refresh',
+    'Chargement…': 'Loading…', 'Aucune donnée': 'No data', 'Pas de données': 'No data',
+    'Score SEO moyen': 'Average SEO score', 'Missions actives': 'Active missions',
+    'missions actives': 'active missions', 'missions': 'missions',
+    'Changer de plan': 'Change plan', 'Plan actuel': 'Current plan', 'Choisir': 'Choose',
+    'Gérer mon abonnement': 'Manage my subscription', 'Membres': 'Members',
+    'Déconnexion': 'Log out', 'Mon profil': 'My profile', 'Langue': 'Language',
+    'Thème': 'Theme', 'Sombre': 'Dark', 'Clair': 'Light',
+    'Aujourd\u2019hui': 'Today', "Aujourd'hui": 'Today', 'Cette semaine': 'This week',
+    'Ce mois': 'This month', 'derniers jours': 'last days',
+    'Activité récente': 'Recent activity', 'Actions rapides': 'Quick actions',
+    'Voir les détails': 'View details', 'En cours': 'In progress', 'Terminé': 'Done',
+    'À faire': 'To do', 'Priorité': 'Priority', 'Élevée': 'High', 'Moyenne': 'Medium',
+    'Faible': 'Low', 'Statut': 'Status', 'Actif': 'Active', 'Inactif': 'Inactive',
+    'Nouvelle conv.': 'New chat', 'Envoyer': 'Send'
+  };
+  window.fpApplyTranslations = function() {
+    try {
+      var lang = (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr';
+      if (String(lang).toLowerCase().indexOf('en') !== 0) return;
+      var roots = [document.getElementById('fp-sidebar'), document.getElementById('fp-page'), document.querySelector('.fp-topbar'), document.getElementById('fp-header')];
+      roots.forEach(function(root) {
+        if (!root) return;
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+        var node;
+        while ((node = walker.nextNode())) {
+          var t = node.nodeValue;
+          if (!t) continue;
+          var trimmed = t.trim();
+          if (!trimmed) continue;
+          var tr = FP_I18N_EN[trimmed];
+          if (tr) node.nodeValue = t.replace(trimmed, tr);
+        }
+        root.querySelectorAll('[placeholder],[title]').forEach(function(el) {
+          var ph = el.getAttribute('placeholder');
+          if (ph && FP_I18N_EN[ph.trim()]) el.setAttribute('placeholder', FP_I18N_EN[ph.trim()]);
+          var ti = el.getAttribute('title');
+          if (ti && FP_I18N_EN[ti.trim()]) el.setAttribute('title', FP_I18N_EN[ti.trim()]);
+        });
+      });
+    } catch(e) { /* translation must never break rendering */ }
   };
 
   // ── applyLanguagePref: persist preference and re-render so the select stays on the chosen value ──

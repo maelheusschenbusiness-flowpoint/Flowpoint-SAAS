@@ -184,13 +184,15 @@ function isTestMailerEnabled(): boolean {
 
 // ── Internal send helper ──────────────────────────────────────────────────────
 
-async function send(opts: {
+type SendOpts = {
   to: string;
   subject: string;
   html: string;
   tag?: string;
   from?: string;
-}): Promise<MailResult> {
+};
+
+async function send(opts: SendOpts): Promise<MailResult> {
   // ── Test transport: write to TEST_MAIL_DIR (requires ENABLE_TEST_MAILER=true) ──
   if (isTestMailerEnabled()) {
     const testMailDir = process.env["TEST_MAIL_DIR"]!;
@@ -232,24 +234,31 @@ async function send(opts: {
         tags: opts.tag ? [{ name: "type", value: opts.tag }] : undefined,
       });
       if (result.error) {
-        logger.warn({ err: result.error, to: opts.to, subject: opts.subject }, "[Mailer] Resend error");
-        return { ok: false, error: result.error.message };
+        logger.warn({ err: result.error, to: opts.to, subject: opts.subject }, "[Mailer] Resend error — trying SMTP fallback");
+        const fb = await sendViaSmtp(opts);
+        return fb ?? { ok: false, error: result.error.message };
       }
       logger.info({ id: result.data?.id, to: opts.to, tag: opts.tag }, "[Mailer] Email sent via Resend SDK");
       return { ok: true, id: result.data?.id };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err, to: opts.to, subject: opts.subject }, "[Mailer] Resend SDK send failed");
-      return { ok: false, error: msg };
+      logger.error({ err, to: opts.to, subject: opts.subject }, "[Mailer] Resend SDK send failed — trying SMTP fallback");
+      const fb = await sendViaSmtp(opts);
+      return fb ?? { ok: false, error: msg };
     }
   }
 
   // ── Path B: SMTP transport (nodemailer) — when RESEND_API_KEY absent ─────────
+  const fb = await sendViaSmtp(opts);
+  if (fb) return fb;
+  logger.warn({ to: opts.to }, "[Mailer] No email transport available (RESEND_API_KEY and SMTP_PASS both missing)");
+  return { ok: false, error: "NO_EMAIL_TRANSPORT" };
+}
+
+/** SMTP send helper — returns null when no SMTP transport is configured. */
+async function sendViaSmtp(opts: SendOpts): Promise<MailResult | null> {
   const smtp = getSmtpTransport();
-  if (!smtp) {
-    logger.warn({ to: opts.to }, "[Mailer] No email transport available (RESEND_API_KEY and SMTP_PASS both missing)");
-    return { ok: false, error: "NO_EMAIL_TRANSPORT" };
-  }
+  if (!smtp) return null;
   try {
     const info = await smtp.sendMail({
       from: opts.from ?? getFrom(),

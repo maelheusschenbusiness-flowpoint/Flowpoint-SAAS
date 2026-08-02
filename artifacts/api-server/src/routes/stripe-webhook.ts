@@ -326,9 +326,12 @@ export async function activateNewSignup(opts: {
   const publicUrl    = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
   const magicLinkUrl = `${publicUrl}/login-verify.html?token=${magicToken}`;
 
-  const { mailer: _mailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
+  const { mailer: _mailer } = await import("../services/mailer.js").catch((impErr: unknown) => {
+    logger.error({ impErr }, "[Webhook/activate] mailer import failed — magic link NOT sent");
+    return { mailer: null };
+  });
   if (_mailer) {
-    await _mailer.sendActivationMagicLink({
+    const mailResult = await _mailer.sendActivationMagicLink({
       to:          email,
       name:        firstName || email.split("@")[0],
       plan:        selectedPlan,
@@ -336,8 +339,13 @@ export async function activateNewSignup(opts: {
       isTrial,
     }).catch((mailErr: unknown) => {
       logger.error({ mailErr, email }, "[Webhook/activate] Failed to send activation magic link email");
+      return { ok: false as const, error: String(mailErr) };
     });
-    logger.info({ email, orgId }, "[Webhook/activate] Activation magic link email sent");
+    if (mailResult && mailResult.ok) {
+      logger.info({ email, orgId, id: (mailResult as { id?: string }).id }, "[Webhook/activate] Activation magic link email sent");
+    } else {
+      logger.error({ email, orgId, error: (mailResult as { error?: string })?.error ?? "unknown" }, "[Webhook/activate] Activation magic link email NOT delivered");
+    }
   } else {
     logger.warn({ email }, "[Webhook/activate] Mailer not available — magic link NOT sent");
   }
@@ -442,6 +450,32 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
     }
   } catch (e) {
     logger.warn({ e }, "[Webhook] org lookup failed");
+  }
+
+  // ── Canonicalize: legacy email-shaped orgId → UUID organizations.id ──────
+  // Metadata written at checkout time may carry the email as orgId while the
+  // activation created a UUID org. Writing plan/status with the email key lands
+  // in org_settings only, leaving canonical organizations.plan stale (dashboard
+  // then shows the wrong plan). Resolve email → organizations.id here.
+  const UUID_RE_WH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (orgId && !UUID_RE_WH.test(orgId)) {
+    try {
+      const { pool: pgPoolC } = await import("@workspace/db");
+      const cc = await pgPoolC.connect();
+      try {
+        const rc = await cc.query(
+          `SELECT id FROM organizations WHERE lower(owner_email) = lower($1) ORDER BY created_at DESC LIMIT 1`,
+          [orgId]
+        );
+        if (rc.rows[0]?.id) {
+          logger.info({ from: orgId.includes("@") ? "email" : "non-uuid", to: rc.rows[0].id, resolvedVia }, "[Webhook] orgId canonicalized to organizations.id");
+          orgId = String(rc.rows[0].id);
+          resolvedVia += "+owner_email_canonicalized";
+        }
+      } finally { cc.release(); }
+    } catch (canonErr) {
+      logger.warn({ canonErr }, "[Webhook] orgId canonicalization failed — using raw orgId");
+    }
   }
 
   if (!orgId) {

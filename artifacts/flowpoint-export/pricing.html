@@ -1691,8 +1691,10 @@
 
     /* ── Already-subscribed, add-on-only cart (no plan change) ─────────────
        User comes from the dashboard to buy an add-on. They already have a plan
-       so we must NOT ask them to select one — go straight to checkout.html.   */
-    if (isSubscribed && !targetPlan) {
+       so we must NOT ask them to select one — go straight to checkout.html.
+       If the billing-state fetch failed (bs undefined), trust the dashboard
+       origin: only subscribed users can trigger an add-on-only cart.          */
+    if ((isSubscribed || !bs) && !targetPlan) {
       var addonCount = Object.keys((currentCart && currentCart.addons) || {}).length;
       if (addonCount === 0) {
         if (typeof showToast === 'function') showToast('Aucun add-on sélectionné.', true);

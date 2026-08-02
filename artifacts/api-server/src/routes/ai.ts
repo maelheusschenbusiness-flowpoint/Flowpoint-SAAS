@@ -1061,8 +1061,8 @@ async function runToolCallingLoop(opts: {
     try {
       roundResult = await aiChatWithTools(
         nativeMessages
-          ? { provider, model, tools: ALL_TOOLS, nativeMessages, systemPrompt: carriedSystemPrompt, maxTokens: 1024 }
-          : { provider, model, tools: ALL_TOOLS, messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[], maxTokens: 1024 }
+          ? { provider, model, tools: ALL_TOOLS, nativeMessages, systemPrompt: carriedSystemPrompt, maxTokens: 4096 }
+          : { provider, model, tools: ALL_TOOLS, messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[], maxTokens: 4096 }
       );
       // Carry system prompt for Anthropic/Gemini continuation rounds
       if (round === 0 && roundResult.systemPrompt) {

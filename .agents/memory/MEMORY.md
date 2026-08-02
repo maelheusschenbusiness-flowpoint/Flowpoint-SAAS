@@ -108,4 +108,6 @@
 - [AI Agents Phase 4 — Audits SEO](ai-agents-phase4.md) — 9 audit tools, audits.write/delete/export permissions, fire-and-forget PSI, create_missions_from_audit undo, 63/63 certifiés 2026-08-02
 - [Partie A infra RLS fixes](partie-a-infra-rls-fixes.md) — inline ENABLE RLS in init files (not rls-migration); FK drops before ALTER COLUMN TYPE UUID→TEXT; rule for future tables
 - [AI Agents Phase 5 — Recommandations SEO](ai-agents-phase5.md) — 10 outils, 6 permissions, 6 destinations; undo handlers for dismiss/restore/generate in undo.ts; confirmationLevel preview/full = AI asks confirm in single-turn chat; 89/89 certifiés 2026-08-02
+- [Webhook orgId canonicalization](webhook-orgid-canonicalization.md) — email-shaped orgId must be mapped to UUID organizations.id before any plan/status persist; mailer Resend→SMTP fallback
+- [Dashboard plan/addon/badge/i18n fixes](dashboard-plan-addon-i18n-fixes.md) — direct /billing/upgrade for subscribed, pricing gate trusts dashboard origin, no literal count fallbacks, fpApplyTranslations catalog
 - [AI Agents Phase 6 — Monitors & Alertes](ai-agents-phase6.md) — 12 outils, 7 permissions, 8 destinations; batch undo MUST be before const id=snap["id"] line; delete_monitor 3 protections; 124/124 certifiés 2026-08-02
