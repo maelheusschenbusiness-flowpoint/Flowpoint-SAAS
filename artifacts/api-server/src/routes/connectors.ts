@@ -4,18 +4,15 @@ import { eq } from "drizzle-orm";
 import { store } from "../services/store.js";
 import { requireAdmin } from "../middlewares/requireAdmin.js";
 import crypto from "crypto";
+import { SYSTEM_CONNECTOR_SEEDS } from "../services/canonical-system-seeds.js";
 
 const router = Router();
 
-const SEED: Array<typeof connectorsTable.$inferInsert> = [
-  { id: "conn-slack", provider: "slack", status: "disconnected", connected: false, config: '{"webhookUrl":""}' },
-  { id: "conn-github", provider: "github", status: "disconnected", connected: false, config: '{"org":""}' },
-  { id: "conn-google", provider: "google", status: "disconnected", connected: false, config: '{}' },
-  { id: "conn-gsc", provider: "google-search-console", status: "disconnected", connected: false, config: '{}' },
-  { id: "conn-ga", provider: "google-analytics", status: "disconnected", connected: false, config: '{}' },
-  { id: "conn-notion", provider: "notion", status: "disconnected", connected: false, config: '{}' },
-  { id: "conn-discord", provider: "discord", status: "disconnected", connected: false, config: '{"webhookUrl":""}' },
-];
+const SEED: Array<typeof connectorsTable.$inferInsert> = SYSTEM_CONNECTOR_SEEDS.map((connector) => ({
+  ...connector,
+  status: "disconnected",
+  connected: false,
+}));
 
 async function ensureSeed() {
   const existing = await db.select().from(connectorsTable).limit(1);

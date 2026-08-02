@@ -25,6 +25,7 @@ import { initAutomationTables }  from "./services/init-automation.js";
 import { initMonitorsTables }    from "./services/init-monitors.js";
 import { initDataTables }        from "./services/init-data-tables.js";
 import { initAiMigration }       from "./services/init-ai-migration.js";
+import { runCanonicalSystemSeeds } from "./services/canonical-system-seeds.js";
 
 function section(label: string) {
   console.log("\n" + "─".repeat(60));
@@ -100,6 +101,18 @@ async function migrate() {
 
   try { await initAiMigration(); console.log("  ✓ init-ai-migration done"); }
   catch (err: any) { console.error(`  ✗ initAiMigration: ${err.message}`); process.exit(1); }
+
+  // ── 9. Canonical global system seed catalog ─────────────────────────────────
+  section("[9/9] Canonical global system seeds");
+  try {
+    const seeded = await runCanonicalSystemSeeds();
+    console.log(`  ✓ org_settings default: ${seeded.orgSettings}`);
+    console.log(`  ✓ user_prefs default  : ${seeded.userPrefs}`);
+    console.log(`  ✓ global connectors   : ${seeded.connectors}`);
+  } catch (err: any) {
+    console.error(`  ✗ canonical system seeds failed: ${err.message}`);
+    process.exit(1);
+  }
 
   // ── Summary ─────────────────────────────────────────────────────────────────
   section("Post-migration summary");
