@@ -602,6 +602,40 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
     case "payment_intent.succeeded":
     case "setup_intent.succeeded": {
       const piMeta = (obj["metadata"] as Record<string, string>) ?? {};
+
+      // ── In-app AI credit pack purchase (PaymentElement modal, no redirect) ──
+      if (piMeta["type"] === "ai_credits") {
+        const pack    = piMeta["pack"]    ?? "";
+        const credits = parseInt(piMeta["credits"] ?? "0", 10);
+        const amountEurCents = parseInt(piMeta["amountEurCents"] ?? "0", 10);
+        const piId    = String(obj["id"] ?? "");
+        const aiOrgId = orgId ?? piMeta["orgId"] ?? null;
+
+        if (credits > 0 && aiOrgId && piId) {
+          try {
+            const { pool: pgPool } = await import("@workspace/db");
+            const client = await pgPool.connect();
+            try {
+              // Deterministic id keyed on the PaymentIntent → idempotent on retries
+              await client.query(
+                `INSERT INTO ai_credit_purchases
+                   (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 ON CONFLICT (id) DO NOTHING`,
+                [`acp_pi_${piId}`, aiOrgId, pack, credits, amountEurCents, "", piId]
+              );
+            } finally { client.release(); }
+            store.broadcast({ type: "ai:credits_added", pack, credits }, aiOrgId);
+            logger.info({ pack, credits, orgId: aiOrgId }, "[Webhook] AI credits credited (payment_intent flow)");
+          } catch (e) {
+            logger.error({ e, orgId: aiOrgId }, "[Webhook] Failed to credit AI credits (payment_intent flow)");
+          }
+        } else {
+          logger.error({ pack, credits, piId }, "[Webhook] AI credits intent: orgId unresolved — credits NOT credited");
+        }
+        break;
+      }
+
       const piPreRegToken = piMeta["pre_register_token"] ?? "";
 
       if (!piPreRegToken) {

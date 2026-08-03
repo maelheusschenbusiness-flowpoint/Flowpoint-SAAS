@@ -2799,6 +2799,7 @@ function openFloatPanel(title, content) {
   panelTitle.textContent = title;
   body.innerHTML = content;
   wrapper.removeAttribute('hidden');
+  if (window.fpApplyTranslations) window.fpApplyTranslations();
   // ── Invite panel: attach handler exactly once, right here, after innerHTML ──
   if (title === 'Inviter un membre') {
     const sendBtn = body.querySelector('#invite-send');
@@ -3188,6 +3189,7 @@ function renderActivityList() {
     } catch(_) { STATE.activityHasMore = false; }
     renderActivityList();
   });
+  if (window.fpApplyTranslations) window.fpApplyTranslations();
 }
 
 function openActivityPanel() {
@@ -8665,10 +8667,12 @@ function renderBilling() {
         } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'activation impossible')); }
         return;
       }
-      // No active subscription → redirect to pricing for checkout
+      // No active subscription → redirect to pricing for checkout.
+      // Pre-select the current (or last known) plan so checkout never asks again.
       showToast('info', 'Chargement…');
       try {
-        const cart = { plan: null, addons: {}, fromDashboard: true };
+        const _knownPlan = ((STATE.billing && STATE.billing.plan) || (STATE.me && STATE.me.plan) || '').toLowerCase() || null;
+        const cart = { plan: _knownPlan, addons: {}, fromDashboard: true };
         cart.addons[key] = 1;
         localStorage.setItem('fp_cart', JSON.stringify(cart));
         window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(key);
@@ -9808,7 +9812,7 @@ function renderSettings() {
           <div class="fp-form-group">
             <label class="fp-form-label">Langue</label>
             <select class="fp-select" style="width:100%" onchange="applyLanguagePref(this.value);saveSettings();showToast('success','Langue sauvegardée')">
-              ${[['fr','🇫🇷 Français'],['en','🇬🇧 English'],['es','🇪🇸 Español'],['de','🇩🇪 Deutsch'],['it','🇮🇹 Italiano'],['pt','🇵🇹 Português'],['pt-br','🇧🇷 Português (BR)'],['nl','🇳🇱 Nederlands'],['pl','🇵🇱 Polski'],['sv','🇸🇪 Svenska'],['ro','🇷🇴 Română'],['cs','🇨🇿 Čeština']].map(([val,lbl]) => `<option value="${val}"${(s.language||'fr')===val?' selected':''}>${lbl}</option>`).join('')}
+              ${[['fr','🇫🇷 Français'],['en','🇬🇧 English'],['es','🇪🇸 Español']].map(([val,lbl]) => `<option value="${val}"${(s.language||'fr')===val?' selected':''}>${lbl}</option>`).join('')}
             </select>
             <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">La préférence est sauvegardée et appliquée à l’interface.</div>
           </div>
@@ -13569,7 +13573,7 @@ async function fpGoToPricing(targetPlan) {
   }
   // Subscribed users: change the plan directly via the Stripe subscription — no pricing redirect
   const subStatus = ((STATE.billing && STATE.billing.status) || (STATE.me && STATE.me.subscriptionStatus) || '').toLowerCase();
-  const isSubscribed = subStatus === 'active' || subStatus === 'trialing';
+  const isSubscribed = subStatus === 'active' || subStatus === 'trialing' || subStatus === 'past_due';
   if (isSubscribed) {
     showToast('info', 'Mise à jour du plan…');
     try {
@@ -16511,11 +16515,189 @@ async function init() {
     'Templates prédéfinis': 'Predefined templates', 'Règles d\'alerte': 'Alert rules',
     'Créer une alerte': 'Create an alert', 'Créer un rapport': 'Create a report',
     'Nouveau workflow': 'New workflow', 'Workflows configurés': 'Configured workflows',
-    'Intégrations actives': 'Active integrations', 'Ajouter un webhook': 'Add a webhook'
+    'Intégrations actives': 'Active integrations', 'Ajouter un webhook': 'Add a webhook',
+    // Sidebar / routes
+    'Centre d\u2019alertes': 'Alert center', "Centre d'alertes": 'Alert center',
+    'Mode Client': 'Client Mode', 'Activité': 'Activity', 'Monitors': 'Monitors',
+    'Local SEO': 'Local SEO', 'Performance Web': 'Web Performance',
+    'Audit Technique': 'Technical Audit', 'Campagnes': 'Campaigns', 'Funnels': 'Funnels',
+    'Audience': 'Audience', 'Analytics': 'Analytics', 'Live': 'Live',
+    'Tous les systèmes OK': 'All systems OK', 'Sièges': 'Seats',
+    // Sub-nav labels
+    'Aperçu': 'Overview', 'Toutes': 'All', 'Terminées': 'Done', 'Liste': 'List',
+    'Analyse': 'Analysis', 'Comparaison': 'Comparison', 'Opportunités': 'Opportunities',
+    'Carte': 'Map', 'Zones': 'Zones', 'Avis IA': 'AI Reviews', 'Tendances': 'Trends',
+    'Projections': 'Projections', 'Objectifs': 'Goals', 'Contenu': 'Content',
+    'Incidents': 'Incidents', 'Parcours': 'Paths', 'Appareils': 'Devices',
+    'Géographie': 'Geography', 'Événements': 'Events', 'Pages actives': 'Active pages',
+    'Sources': 'Sources', 'Organique': 'Organic', 'Payant': 'Paid', 'Anomalies': 'Anomalies',
+    'Prévisions': 'Forecast', 'Exports': 'Exports', 'Comportement': 'Behavior',
+    'Temps réel': 'Real-time', 'Rôles': 'Roles', 'Synchronisation': 'Sync',
+    'Connexions': 'Connections', 'Mouvements': 'Movements', 'Signaux': 'Signals',
+    'Rapports IA': 'AI Reports', 'IA Recommandations': 'AI Recommendations',
+    'Actions Rapides': 'Quick Actions', 'Fichiers': 'Files', 'Chat': 'Chat',
+    'Démographique': 'Demographics', 'Matrice accès': 'Access matrix',
+    'Audit sécurité': 'Security audit', 'Mapping champs': 'Field mapping',
+    'Déploiements': 'Deployments', 'Dépôts': 'Repositories', 'Environnements': 'Environments',
+    'Tableau de bord': 'Dashboard', 'Qualité': 'Quality', 'Accessibilité': 'Accessibility',
+    'Score Santé': 'Health Score', 'Checklist': 'Checklist', 'Insights IA': 'AI Insights',
+    // Settings tabs
+    'Workspace': 'Workspace', 'API & Dev': 'API & Dev', 'IA Config': 'AI Config',
+    '📍 Localisation': '📍 Location', '🔐 SSO SAML': '🔐 SSO SAML', 'Localisation': 'Location',
+    // Common states & misc
+    'Aucune activité': 'No activity', 'Aucune activité récente': 'No recent activity',
+    'Tout marquer lu': 'Mark all read', 'Aucune notification': 'No notifications',
+    'Erreur de rendu': 'Rendering error', 'Retour accueil': 'Back to home',
+    'Erreur réseau': 'Network error', 'Réessayer plus tard': 'Try again later',
+    'Enregistrement…': 'Saving…', 'Suppression…': 'Deleting…', 'Envoi…': 'Sending…',
+    'Copié !': 'Copied!', 'Langue sauvegardée': 'Language saved',
+    'Format de date': 'Date format', 'Format d\'heure': 'Time format', 'Devise': 'Currency',
+    'Fuseau horaire': 'Timezone', 'Apparence & Personnalisation': 'Appearance & Personalization',
+    'Automatique': 'Automatic', 'Prénom': 'First name', 'Nom de famille': 'Last name',
+    'Nom de l\'organisation': 'Organization name', 'Adresse': 'Address', 'Ville': 'City',
+    'Code postal': 'Postal code', 'Pays': 'Country', 'Téléphone': 'Phone',
+    'Mois': 'Month', 'Semaine': 'Week', 'Jour': 'Day', 'Année': 'Year',
+    'Total': 'Total', 'Moyenne': 'Average', 'Coût mensuel': 'Monthly cost',
+    'Sans engagement': 'No commitment', 'Add-ons actifs': 'Active add-ons',
+    'Voir tous les usages': 'View all usage', 'Espaces de facturation': 'Billing spaces',
+    'Plans & Abonnements': 'Plans & Subscriptions', 'Factures & Paiements': 'Invoices & Payments',
+    'Templates de workflows': 'Workflow templates', 'Exécutions ce mois': 'Runs this month',
+    'Workflows actifs': 'Active workflows', 'Temps économisé': 'Time saved',
+    'Templates dispo': 'Templates available', 'prêts à l\'emploi': 'ready to use',
+    'Historique des livraisons': 'Delivery history', 'Journal des événements': 'Event log',
+    'Aucune livraison encore. Testez un webhook pour commencer.': 'No deliveries yet. Test a webhook to get started.',
+    'Aucun événement enregistré.': 'No events recorded.',
+    'Authentification à deux facteurs (2FA)': 'Two-factor authentication (2FA)',
+    'Clé publique (lecture seule)': 'Public key (read-only)',
+    'Clé secrète (accès complet)': 'Secret key (full access)',
+    'Membres de l\'équipe': 'Team members', 'Inviter': 'Invite', 'En attente': 'Pending',
+    'Activer': 'Enable', 'Désactiver': 'Disable', 'Activé': 'Enabled', 'Désactivé': 'Disabled',
+    'Oui': 'Yes', 'Non': 'No', 'ou': 'or', 'et': 'and',
+    'Aucun audit': 'No audits', 'Aucun monitor': 'No monitors', 'Aucun rapport': 'No reports',
+    'Aucune mission': 'No missions', 'Aucun mot-clé': 'No keywords',
+    'Créer un audit': 'Create an audit', 'Lancer un audit': 'Run an audit',
+    'Générer un rapport': 'Generate a report', 'Générer': 'Generate',
+    'Prochaine étape': 'Next step', 'Progression': 'Progress',
+    'Score': 'Score', 'Problèmes détectés': 'Issues found', 'Résolu': 'Resolved',
+    'Jamais': 'Never', 'Maintenant': 'Now', 'il y a': 'ago',
   };
   var FP_I18N = {
     en: FP_I18N_EN,
-    es: {'Vue d\'ensemble':'Resumen','Audits SEO':'Auditorías SEO','Mots-clés':'Palabras clave','Concurrents':'Competidores','Rapports':'Informes','Missions':'Misiones','Assistant IA':'Asistente IA','Calendrier':'Calendario','Équipe':'Equipo','Paramètres':'Configuración','Facturation':'Facturación','Sécurité':'Seguridad','Intégrations':'Integraciones','Notifications':'Notificaciones','Alertes':'Alertas','Croissance':'Crecimiento','Trafic':'Tráfico','Rechercher':'Buscar','Rechercher…':'Buscar…','Ajouter':'Añadir','Annuler':'Cancelar','Enregistrer':'Guardar','Sauvegarder':'Guardar','Supprimer':'Eliminar','Modifier':'Editar','Fermer':'Cerrar','Voir tout':'Ver todo','Exporter':'Exportar','Actualiser':'Actualizar','Chargement…':'Cargando…','Aucune donnée':'Sin datos','Changer de plan':'Cambiar plan','Plan actuel':'Plan actual','Choisir':'Elegir','Langue':'Idioma','Thème':'Tema','Sombre':'Oscuro','Clair':'Claro','En cours':'En curso','Terminé':'Completado','À faire':'Por hacer','Priorité':'Prioridad','Statut':'Estado','Actif':'Activo','Inactif':'Inactivo','Envoyer':'Enviar','Nouvelle conv.':'Nuevo chat','Complétées':'Completadas'},
+    es: {
+    "Vue d'ensemble": 'Resumen', 'Audits SEO': 'Auditorías SEO', 'Mots-clés': 'Palabras clave',
+    'Concurrents': 'Competidores', 'Rapports': 'Informes', 'Missions': 'Misiones',
+    'Assistant IA': 'Asistente IA', 'Calendrier': 'Calendario', 'Équipe': 'Equipo',
+    'Paramètres': 'Configuración', 'Facturation': 'Facturación', 'Sécurité': 'Seguridad',
+    'Intégrations': 'Integraciones', 'Notifications': 'Notificaciones', 'Alertes': 'Alertas',
+    'Recommandations': 'Recomendaciones', 'Croissance': 'Crecimiento', 'Trafic': 'Tráfico',
+    'Rechercher': 'Buscar', 'Rechercher…': 'Buscar…', 'Nouvel audit': 'Nueva auditoría',
+    'Nouveau monitor': 'Nuevo monitor', 'Nouvelle mission': 'Nueva misión',
+    'Ajouter': 'Añadir', 'Annuler': 'Cancelar', 'Enregistrer': 'Guardar', 'Sauvegarder': 'Guardar',
+    'Supprimer': 'Eliminar', 'Modifier': 'Editar', 'Fermer': 'Cerrar', 'Voir tout': 'Ver todo',
+    'Tout voir': 'Ver todo', 'Exporter': 'Exportar', 'Actualiser': 'Actualizar',
+    'Chargement…': 'Cargando…', 'Aucune donnée': 'Sin datos', 'Pas de données': 'Sin datos',
+    'Score SEO moyen': 'Puntuación SEO media', 'Missions actives': 'Misiones activas',
+    'missions actives': 'misiones activas', 'missions': 'misiones',
+    'Changer de plan': 'Cambiar plan', 'Plan actuel': 'Plan actual', 'Choisir': 'Elegir',
+    'Gérer mon abonnement': 'Gestionar mi suscripción', 'Membres': 'Miembros',
+    'Déconnexion': 'Cerrar sesión', 'Mon profil': 'Mi perfil', 'Langue': 'Idioma',
+    'Thème': 'Tema', 'Sombre': 'Oscuro', 'Clair': 'Claro',
+    'Aujourd\u2019hui': 'Hoy', "Aujourd'hui": 'Hoy', 'Cette semaine': 'Esta semana',
+    'Ce mois': 'Este mes', 'derniers jours': 'últimos días',
+    'Activité récente': 'Actividad reciente', 'Actions rapides': 'Acciones rápidas',
+    'Voir les détails': 'Ver detalles', 'En cours': 'En curso', 'Terminé': 'Completado',
+    'À faire': 'Por hacer', 'Priorité': 'Prioridad', 'Élevée': 'Alta', 'Moyenne': 'Media',
+    'Faible': 'Baja', 'Statut': 'Estado', 'Actif': 'Activo', 'Inactif': 'Inactivo',
+    'Nouvelle conv.': 'Nuevo chat', 'Envoyer': 'Enviar',
+    'Complétées': 'Completadas', 'Basse': 'Baja', 'Haute': 'Alta', 'Critique': 'Crítica',
+    'Général': 'General', 'Profil': 'Perfil', 'Préférences': 'Preferencias', 'Données': 'Datos',
+    'Automatisations': 'Automatizaciones', 'Workflows': 'Workflows', 'Webhooks': 'Webhooks',
+    'Clés API': 'Claves API', 'Rôle': 'Rol', 'Propriétaire': 'Propietario',
+    'Administrateur': 'Administrador', 'Éditeur': 'Editor', 'Lecteur': 'Lector',
+    'Inviter un membre': 'Invitar a un miembro', 'Passer Pro': 'Pasar a Pro', 'Passer Ultra': 'Pasar a Ultra',
+    'Plan Standard': 'Plan Standard', 'Plan Pro': 'Plan Pro', 'Plan Ultra': 'Plan Ultra',
+    'Factures': 'Facturas', 'Moyens de paiement': 'Métodos de pago', 'Add-ons': 'Add-ons',
+    'Utilisation': 'Uso', 'Consommation': 'Consumo', 'Crédits IA': 'Créditos IA',
+    'Prochaine facture': 'Próxima factura', 'Abonnement': 'Suscripción', 'Mensuel': 'Mensual', 'Annuel': 'Anual',
+    'Télécharger': 'Descargar', 'Copier': 'Copiar', 'Régénérer': 'Regenerar', 'Tester': 'Probar',
+    'Connecter': 'Conectar', 'Connecté': 'Conectado', 'Non connecté': 'No conectado', 'Gérer': 'Gestionar',
+    'Configurer': 'Configurar', 'Créer': 'Crear', 'Dupliquer': 'Duplicar', 'Archiver': 'Archivar',
+    'Détails': 'Detalles', 'Historique': 'Historial', 'Hier': 'Ayer',
+    'Derniers 30 jours': 'Últimos 30 días',
+    'Score SEO': 'Puntuación SEO', 'Problèmes': 'Problemas', 'Vitesse': 'Velocidad', 'Uptime': 'Uptime',
+    'Positions': 'Posiciones', 'Impressions': 'Impresiones', 'Clics': 'Clics', 'Sessions': 'Sesiones',
+    'Conversions': 'Conversiones', 'Pages': 'Páginas', 'Voir plus': 'Ver más', 'Voir moins': 'Ver menos',
+    'Tout sélectionner': 'Seleccionar todo', 'Aucun résultat': 'Sin resultados', 'Réessayer': 'Reintentar',
+    'Confirmer': 'Confirmar', 'Retour': 'Volver', 'Suivant': 'Siguiente', 'Précédent': 'Anterior',
+    'Nom': 'Nombre', 'Email': 'Email', 'Site web': 'Sitio web', 'Description': 'Descripción',
+    'Date': 'Fecha', 'Type': 'Tipo', 'Actions': 'Acciones', 'Canaux': 'Canales',
+    'Sécurité du compte': 'Seguridad de la cuenta', 'Mot de passe': 'Contraseña', 'Se déconnecter': 'Cerrar sesión',
+    'Sessions actives': 'Sesiones activas', 'Dernière connexion': 'Última conexión',
+    'Templates prédéfinis': 'Plantillas predefinidas', "Règles d'alerte": 'Reglas de alerta',
+    'Créer une alerte': 'Crear una alerta', 'Créer un rapport': 'Crear un informe',
+    'Nouveau workflow': 'Nuevo workflow', 'Workflows configurés': 'Workflows configurados',
+    'Intégrations actives': 'Integraciones activas', 'Ajouter un webhook': 'Añadir un webhook',
+    'Centre d\u2019alertes': 'Centro de alertas', "Centre d'alertes": 'Centro de alertas',
+    'Mode Client': 'Modo Cliente', 'Activité': 'Actividad', 'Monitors': 'Monitores',
+    'Local SEO': 'SEO Local', 'Performance Web': 'Rendimiento Web',
+    'Audit Technique': 'Auditoría Técnica', 'Campagnes': 'Campañas', 'Funnels': 'Embudos',
+    'Audience': 'Audiencia', 'Analytics': 'Analytics', 'Live': 'En vivo',
+    'Tous les systèmes OK': 'Todos los sistemas OK', 'Sièges': 'Asientos',
+    'Aperçu': 'Resumen', 'Toutes': 'Todas', 'Terminées': 'Completadas', 'Liste': 'Lista',
+    'Analyse': 'Análisis', 'Comparaison': 'Comparación', 'Opportunités': 'Oportunidades',
+    'Carte': 'Mapa', 'Zones': 'Zonas', 'Avis IA': 'Reseñas IA', 'Tendances': 'Tendencias',
+    'Projections': 'Proyecciones', 'Objectifs': 'Objetivos', 'Contenu': 'Contenido',
+    'Incidents': 'Incidentes', 'Parcours': 'Recorridos', 'Appareils': 'Dispositivos',
+    'Géographie': 'Geografía', 'Événements': 'Eventos', 'Pages actives': 'Páginas activas',
+    'Sources': 'Fuentes', 'Organique': 'Orgánico', 'Payant': 'De pago', 'Anomalies': 'Anomalías',
+    'Prévisions': 'Previsiones', 'Exports': 'Exportaciones', 'Comportement': 'Comportamiento',
+    'Temps réel': 'Tiempo real', 'Rôles': 'Roles', 'Synchronisation': 'Sincronización',
+    'Connexions': 'Conexiones', 'Mouvements': 'Movimientos', 'Signaux': 'Señales',
+    'Rapports IA': 'Informes IA', 'IA Recommandations': 'Recomendaciones IA',
+    'Actions Rapides': 'Acciones Rápidas', 'Fichiers': 'Archivos', 'Chat': 'Chat',
+    'Démographique': 'Demografía', 'Matrice accès': 'Matriz de acceso',
+    'Audit sécurité': 'Auditoría de seguridad', 'Mapping champs': 'Mapeo de campos',
+    'Déploiements': 'Despliegues', 'Dépôts': 'Repositorios', 'Environnements': 'Entornos',
+    'Tableau de bord': 'Panel', 'Qualité': 'Calidad', 'Accessibilité': 'Accesibilidad',
+    'Score Santé': 'Puntuación de Salud', 'Checklist': 'Checklist', 'Insights IA': 'Insights IA',
+    'Workspace': 'Workspace', 'API & Dev': 'API & Dev', 'IA Config': 'Config IA',
+    '📍 Localisation': '📍 Ubicación', '🔐 SSO SAML': '🔐 SSO SAML', 'Localisation': 'Ubicación',
+    'Aucune activité': 'Sin actividad', 'Aucune activité récente': 'Sin actividad reciente',
+    'Tout marquer lu': 'Marcar todo leído', 'Aucune notification': 'Sin notificaciones',
+    'Erreur de rendu': 'Error de renderizado', 'Retour accueil': 'Volver al inicio',
+    'Erreur réseau': 'Error de red', 'Réessayer plus tard': 'Inténtelo más tarde',
+    'Enregistrement…': 'Guardando…', 'Suppression…': 'Eliminando…', 'Envoi…': 'Enviando…',
+    'Copié !': '¡Copiado!', 'Langue sauvegardée': 'Idioma guardado',
+    'Format de date': 'Formato de fecha', "Format d'heure": 'Formato de hora', 'Devise': 'Moneda',
+    'Fuseau horaire': 'Zona horaria', 'Apparence & Personnalisation': 'Apariencia y Personalización',
+    'Automatique': 'Automático', 'Prénom': 'Nombre', 'Nom de famille': 'Apellido',
+    "Nom de l'organisation": 'Nombre de la organización', 'Adresse': 'Dirección', 'Ville': 'Ciudad',
+    'Code postal': 'Código postal', 'Pays': 'País', 'Téléphone': 'Teléfono',
+    'Mois': 'Mes', 'Semaine': 'Semana', 'Jour': 'Día', 'Année': 'Año',
+    'Total': 'Total', 'Moyenne': 'Media', 'Coût mensuel': 'Coste mensual',
+    'Sans engagement': 'Sin compromiso', 'Add-ons actifs': 'Add-ons activos',
+    'Voir tous les usages': 'Ver todos los usos', 'Espaces de facturation': 'Espacios de facturación',
+    'Plans & Abonnements': 'Planes y Suscripciones', 'Factures & Paiements': 'Facturas y Pagos',
+    'Templates de workflows': 'Plantillas de workflows', 'Exécutions ce mois': 'Ejecuciones este mes',
+    'Workflows actifs': 'Workflows activos', 'Temps économisé': 'Tiempo ahorrado',
+    'Templates dispo': 'Plantillas disponibles', "prêts à l'emploi": 'listas para usar',
+    'Historique des livraisons': 'Historial de entregas', 'Journal des événements': 'Registro de eventos',
+    'Aucune livraison encore. Testez un webhook pour commencer.': 'Aún sin entregas. Pruebe un webhook para empezar.',
+    'Aucun événement enregistré.': 'Ningún evento registrado.',
+    'Authentification à deux facteurs (2FA)': 'Autenticación de dos factores (2FA)',
+    'Clé publique (lecture seule)': 'Clave pública (solo lectura)',
+    'Clé secrète (accès complet)': 'Clave secreta (acceso completo)',
+    "Membres de l'équipe": 'Miembros del equipo', 'Inviter': 'Invitar', 'En attente': 'Pendiente',
+    'Activer': 'Activar', 'Désactiver': 'Desactivar', 'Activé': 'Activado', 'Désactivé': 'Desactivado',
+    'Oui': 'Sí', 'Non': 'No', 'ou': 'o', 'et': 'y',
+    'Aucun audit': 'Sin auditorías', 'Aucun monitor': 'Sin monitores', 'Aucun rapport': 'Sin informes',
+    'Aucune mission': 'Sin misiones', 'Aucun mot-clé': 'Sin palabras clave',
+    'Créer un audit': 'Crear una auditoría', 'Lancer un audit': 'Lanzar una auditoría',
+    'Générer un rapport': 'Generar un informe', 'Générer': 'Generar',
+    'Prochaine étape': 'Próximo paso', 'Progression': 'Progreso',
+    'Score': 'Puntuación', 'Problèmes détectés': 'Problemas detectados', 'Résolu': 'Resuelto',
+    'Jamais': 'Nunca', 'Maintenant': 'Ahora', 'il y a': 'hace',
+    },
     de: {'Vue d\'ensemble':'Übersicht','Audits SEO':'SEO-Audits','Mots-clés':'Schlüsselwörter','Concurrents':'Wettbewerber','Rapports':'Berichte','Missions':'Aufgaben','Assistant IA':'KI-Assistent','Calendrier':'Kalender','Équipe':'Team','Paramètres':'Einstellungen','Facturation':'Abrechnung','Sécurité':'Sicherheit','Intégrations':'Integrationen','Notifications':'Benachrichtigungen','Alertes':'Warnungen','Croissance':'Wachstum','Trafic':'Traffic','Rechercher':'Suchen','Rechercher…':'Suchen…','Ajouter':'Hinzufügen','Annuler':'Abbrechen','Enregistrer':'Speichern','Sauvegarder':'Speichern','Supprimer':'Löschen','Modifier':'Bearbeiten','Fermer':'Schließen','Voir tout':'Alle anzeigen','Exporter':'Exportieren','Actualiser':'Aktualisieren','Chargement…':'Lädt…','Aucune donnée':'Keine Daten','Changer de plan':'Plan ändern','Plan actuel':'Aktueller Plan','Choisir':'Auswählen','Langue':'Sprache','Thème':'Design','Sombre':'Dunkel','Clair':'Hell','En cours':'In Bearbeitung','Terminé':'Erledigt','À faire':'Zu erledigen','Priorité':'Priorität','Statut':'Status','Actif':'Aktiv','Inactif':'Inaktiv','Envoyer':'Senden','Nouvelle conv.':'Neuer Chat','Complétées':'Abgeschlossen'},
     it: {'Vue d\'ensemble':'Panoramica','Audits SEO':'Audit SEO','Mots-clés':'Parole chiave','Concurrents':'Concorrenti','Rapports':'Report','Missions':'Attività','Assistant IA':'Assistente IA','Calendrier':'Calendario','Équipe':'Team','Paramètres':'Impostazioni','Facturation':'Fatturazione','Sécurité':'Sicurezza','Intégrations':'Integrazioni','Notifications':'Notifiche','Alertes':'Avvisi','Croissance':'Crescita','Trafic':'Traffico','Rechercher':'Cerca','Rechercher…':'Cerca…','Ajouter':'Aggiungi','Annuler':'Annulla','Enregistrer':'Salva','Sauvegarder':'Salva','Supprimer':'Elimina','Modifier':'Modifica','Fermer':'Chiudi','Voir tout':'Vedi tutto','Exporter':'Esporta','Actualiser':'Aggiorna','Chargement…':'Caricamento…','Aucune donnée':'Nessun dato','Changer de plan':'Cambia piano','Plan actuel':'Piano attuale','Choisir':'Scegli','Langue':'Lingua','Thème':'Tema','Sombre':'Scuro','Clair':'Chiaro','En cours':'In corso','Terminé':'Completato','À faire':'Da fare','Priorité':'Priorità','Statut':'Stato','Actif':'Attivo','Inactif':'Inattivo','Envoyer':'Invia','Nouvelle conv.':'Nuova chat','Complétées':'Completate'},
     pt: {'Vue d\'ensemble':'Visão geral','Audits SEO':'Auditorias SEO','Mots-clés':'Palavras-chave','Concurrents':'Concorrentes','Rapports':'Relatórios','Missions':'Tarefas','Assistant IA':'Assistente de IA','Calendrier':'Calendário','Équipe':'Equipa','Paramètres':'Definições','Facturation':'Faturação','Sécurité':'Segurança','Intégrations':'Integrações','Notifications':'Notificações','Alertes':'Alertas','Croissance':'Crescimento','Trafic':'Tráfego','Rechercher':'Pesquisar','Rechercher…':'Pesquisar…','Ajouter':'Adicionar','Annuler':'Cancelar','Enregistrer':'Guardar','Sauvegarder':'Guardar','Supprimer':'Eliminar','Modifier':'Editar','Fermer':'Fechar','Voir tout':'Ver tudo','Exporter':'Exportar','Actualiser':'Atualizar','Chargement…':'A carregar…','Aucune donnée':'Sem dados','Changer de plan':'Alterar plano','Plan actuel':'Plano atual','Choisir':'Escolher','Langue':'Idioma','Thème':'Tema','Sombre':'Escuro','Clair':'Claro','En cours':'Em curso','Terminé':'Concluído','À faire':'Por fazer','Priorité':'Prioridade','Statut':'Estado','Actif':'Ativo','Inactif':'Inativo','Envoyer':'Enviar','Nouvelle conv.':'Nova conversa','Complétées':'Concluídas'},
@@ -16528,33 +16710,80 @@ async function init() {
   // Brazilian Portuguese follows the Portuguese catalog with its own locale
   // for Intl formatting. French intentionally needs no replacement map.
   FP_I18N['pt-br'] = FP_I18N.pt;
+  // Source-restore translation engine.
+  // French is the canonical source. On first translation of a node we remember
+  // its original French text (node.__fpSrc / el.__fpSrcPh / el.__fpSrcTi).
+  // Every language switch re-translates FROM that source — never from already-
+  // translated text — so FR→ES→FR round-trips leave zero residue and the FR
+  // labels (e.g. « Rapports ») are always restored, never stuck as « Informes ».
+  var FP_I18N_SKIP = { SCRIPT:1, STYLE:1, TEXTAREA:1, CODE:1, PRE:1 };
   window.fpApplyTranslations = function() {
     try {
       var lang = String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase();
-      var catalog = FP_I18N[lang] || {};
-      if (!Object.keys(catalog).length) return;
-      var roots = [document.getElementById('fp-sidebar'), document.getElementById('fp-page'), document.querySelector('.fp-topbar'), document.getElementById('fp-header')];
+      var catalog = FP_I18N[lang] || null; // null/empty ⇒ French ⇒ restore pass
+      var roots = [document.getElementById('fp-sidebar'), document.getElementById('fp-page'),
+                   document.querySelector('.fp-topbar'), document.getElementById('fp-header'),
+                   document.getElementById('fp-float-panel'), document.getElementById('fp-activity-panel'),
+                   document.getElementById('fp-cmd-palette'), document.getElementById('fp-toast-container')];
+      var seen = [];
       roots.forEach(function(root) {
         if (!root) return;
-        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+        // avoid double-processing nested roots
+        for (var i = 0; i < seen.length; i++) { if (seen[i].contains(root)) return; }
+        seen.push(root);
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+          acceptNode: function(n) {
+            var p = n.parentNode;
+            return (p && FP_I18N_SKIP[p.nodeName]) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+          }
+        });
         var node;
         while ((node = walker.nextNode())) {
-          var t = node.nodeValue;
-          if (!t) continue;
-          var trimmed = t.trim();
+          var src = (node.__fpSrc !== undefined) ? node.__fpSrc : node.nodeValue;
+          if (!src) continue;
+          var trimmed = src.trim();
           if (!trimmed) continue;
-          var tr = catalog[trimmed];
-          if (tr) node.nodeValue = t.replace(trimmed, tr);
+          var tr = catalog ? catalog[trimmed] : null;
+          if (tr) {
+            if (node.__fpSrc === undefined) node.__fpSrc = node.nodeValue;
+            var next = src.replace(trimmed, tr);
+            if (node.nodeValue !== next) node.nodeValue = next;
+          } else if (node.__fpSrc !== undefined) {
+            // No translation in the target language (or back to French):
+            // restore the canonical French source — prevents language mixing.
+            if (node.nodeValue !== node.__fpSrc) node.nodeValue = node.__fpSrc;
+          }
         }
         root.querySelectorAll('[placeholder],[title]').forEach(function(el) {
-          var ph = el.getAttribute('placeholder');
-          if (ph && catalog[ph.trim()]) el.setAttribute('placeholder', catalog[ph.trim()]);
-          var ti = el.getAttribute('title');
-          if (ti && catalog[ti.trim()]) el.setAttribute('title', catalog[ti.trim()]);
+          var phSrc = (el.__fpSrcPh !== undefined) ? el.__fpSrcPh : el.getAttribute('placeholder');
+          if (phSrc) {
+            var phTr = catalog ? catalog[phSrc.trim()] : null;
+            if (phTr) {
+              if (el.__fpSrcPh === undefined) el.__fpSrcPh = phSrc;
+              el.setAttribute('placeholder', phTr);
+            } else if (el.__fpSrcPh !== undefined) {
+              el.setAttribute('placeholder', el.__fpSrcPh);
+            }
+          }
+          var tiSrc = (el.__fpSrcTi !== undefined) ? el.__fpSrcTi : el.getAttribute('title');
+          if (tiSrc) {
+            var tiTr = catalog ? catalog[tiSrc.trim()] : null;
+            if (tiTr) {
+              if (el.__fpSrcTi === undefined) el.__fpSrcTi = tiSrc;
+              el.setAttribute('title', tiTr);
+            } else if (el.__fpSrcTi !== undefined) {
+              el.setAttribute('title', el.__fpSrcTi);
+            }
+          }
         });
       });
     } catch(e) { /* translation must never break rendering */ }
   };
+  // Apply immediately on definition: init()'s first render can happen before this
+  // block executes, so a persisted EN/ES preference must be applied to the DOM now
+  // (and again on DOMContentLoaded if the document is still loading).
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ window.fpApplyTranslations(); });
+  else window.fpApplyTranslations();
 
   // ── applyLanguagePref: persist preference and re-render so the select stays on the chosen value ──
   window.applyLanguagePref = function(val) {
@@ -35178,28 +35407,105 @@ window.FP_AI_CREDITS_API = {
   },
 };
 
-// ── Shared AI-credit purchase: direct Stripe Checkout session ─────────────────
+// ── Shared AI-credit purchase: in-app PaymentElement modal ────────────────────
 // Called from both FP_ADDONS_API.buyCredits and FP_AI_CREDITS_API.buyCredits.
-// The webhook credits the org on checkout.session.completed; the success page
-// returns to the dashboard where fresh /api/ai-credits data reflects the pack.
+// No redirect to checkout.stripe.com: the payment happens inside the dashboard.
+// The webhook credits the org on payment_intent.succeeded (metadata.type=ai_credits).
+function _fpLoadStripeJs() {
+  return new Promise(function(resolve, reject) {
+    if (typeof Stripe !== 'undefined') { resolve(); return; }
+    var s = document.createElement('script');
+    s.src = 'https://js.stripe.com/v3/';
+    s.onload = function() { resolve(); };
+    s.onerror = function() { reject(new Error('Stripe.js n\'a pas pu se charger (bloqueur de publicités ?)')); };
+    document.head.appendChild(s);
+  });
+}
+
 window._fpBuyAICredits = async function(pack) {
   showToast('info', 'Préparation du paiement…');
+  var r;
   try {
-    const r = await apiFetch('/api/billing/checkout-ai-credits', {
-      method: 'POST',
-      body: JSON.stringify({ pack }),
-    });
-    if (r && r.url) {
-      try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-      window.location.href = r.url;
-      return r;
-    }
-    showToast('error', (r && (r.error || r.detail)) || 'Erreur lors de la création du paiement');
-    return r;
+    r = await apiFetch('/api/billing/ai-credits-intent', { method: 'POST', body: JSON.stringify({ pack }) });
   } catch(e) {
     showToast('error', 'Erreur lors de la création du paiement : ' + ((e && e.message) || 'réessayez'));
     return null;
   }
+  if (!r || !r.clientSecret || !r.publishableKey) {
+    showToast('error', (r && (r.error || r.detail)) || 'Erreur lors de la création du paiement');
+    return r || null;
+  }
+  try { await _fpLoadStripeJs(); } catch(e) { showToast('error', e.message); return null; }
+
+  // ── Modal ──
+  document.getElementById('fp-ai-pay-modal')?.remove();
+  var modal = document.createElement('div');
+  modal.id = 'fp-ai-pay-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = '<div style="background:var(--fp-card-bg,#111827);border:1px solid var(--fp-border);border-radius:16px;padding:24px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4)">'
+    + '<div style="font-size:16px;font-weight:800;color:var(--fp-text);margin-bottom:4px">Crédits IA — ' + Number(r.credits).toLocaleString('fr-FR') + '</div>'
+    + '<div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:16px">Paiement unique de <strong style="color:var(--fp-text)">' + r.amountEur + '€</strong> — vos crédits sont ajoutés immédiatement après confirmation.</div>'
+    + '<div id="fp-ai-pay-element" style="min-height:120px"></div>'
+    + '<div id="fp-ai-pay-error" style="display:none;margin-top:10px;font-size:12px;color:#f87171"></div>'
+    + '<div style="display:flex;gap:8px;margin-top:18px">'
+    + '<button class="fp-btn fp-btn-ghost" style="flex:1" id="fp-ai-pay-cancel">Annuler</button>'
+    + '<button class="fp-btn fp-btn-primary" style="flex:1" id="fp-ai-pay-confirm" disabled>Payer ' + r.amountEur + '€</button>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+  if (window.fpApplyTranslations) window.fpApplyTranslations();
+
+  var stripe, elements;
+  var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  try {
+    stripe = Stripe(r.publishableKey);
+    elements = stripe.elements({ clientSecret: r.clientSecret, appearance: { theme: isDark ? 'night' : 'stripe', variables: { colorPrimary: '#2563eb', borderRadius: '10px' } } });
+    var pe = elements.create('payment');
+    pe.mount('#fp-ai-pay-element');
+    pe.on('ready', function() { document.getElementById('fp-ai-pay-confirm').disabled = false; });
+    pe.on('loaderror', function(ev) {
+      var errBox = document.getElementById('fp-ai-pay-error');
+      if (errBox) { errBox.style.display = 'block'; errBox.textContent = (ev && ev.error && ev.error.message) || 'Erreur de chargement du formulaire de paiement.'; }
+    });
+  } catch(e) {
+    modal.remove();
+    showToast('error', 'Erreur Stripe : ' + (e.message || e));
+    return null;
+  }
+
+  document.getElementById('fp-ai-pay-cancel').onclick = function() { modal.remove(); };
+  modal.addEventListener('click', function(ev) { if (ev.target === modal) modal.remove(); });
+
+  document.getElementById('fp-ai-pay-confirm').onclick = async function() {
+    var btn = this;
+    btn.disabled = true; btn.textContent = 'Paiement…';
+    var errBox = document.getElementById('fp-ai-pay-error');
+    try {
+      var result = await stripe.confirmPayment({ elements: elements, redirect: 'if_required' });
+      if (result.error) {
+        errBox.style.display = 'block';
+        errBox.textContent = result.error.message || 'Paiement refusé.';
+        btn.disabled = false; btn.textContent = 'Payer ' + r.amountEur + '€';
+        return;
+      }
+      modal.remove();
+      showToast('success', 'Paiement confirmé — vos crédits IA arrivent…');
+      try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+      // The webhook credits the org asynchronously — poll a few times then refresh.
+      var attempts = 0;
+      var poll = async function() {
+        attempts++;
+        try { await window.FP_AI_CREDITS_API.load(); } catch(_) {}
+        render();
+        if (attempts < 5) setTimeout(poll, 2500);
+      };
+      setTimeout(poll, 2000);
+    } catch(e) {
+      errBox.style.display = 'block';
+      errBox.textContent = (e && e.message) || 'Erreur lors du paiement.';
+      btn.disabled = false; btn.textContent = 'Payer ' + r.amountEur + '€';
+    }
+  };
+  return r;
 };
 
 // ── Cumulative usage tracking for client-side exports ─────────────────────────

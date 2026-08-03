@@ -1257,11 +1257,18 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
       trialConsumedAt:      billingCtx.trialConsumedAt,
     });
 
+    // Real next-invoice amount: sum of the live subscription items (plan + add-ons).
+    // Never fabricated — null when there is no live subscription.
+    const nextAmount = sub
+      ? (sub.items?.data ?? []).reduce((t: number, it: { price?: { unit_amount?: number | null } | null; quantity?: number }) => t + ((it.price?.unit_amount ?? 0) * (it.quantity ?? 1)), 0) / 100
+      : null;
+
     res.json({
       plan,
       status:              reconciled,
       subscriptionStatus:  reconciled,
       trialEndsAt:         reconciledTrialEndsAt,
+      nextAmount,
       // During trial, current_period_end may be undefined — fall back to trial_end
       currentPeriodEnd:    (() => {
         const ts = sub?.current_period_end ?? sub?.trial_end ?? null;
@@ -1549,6 +1556,69 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, ownerOnly,
       error: "Erreur lors de la création du paiement",
       detail: msg.slice(0, 300) || undefined,
     });
+  }
+});
+
+// ── POST /billing/ai-credits-intent ──────────────────────────────────────────
+// In-app AI credit pack purchase: creates a PaymentIntent consumed by a
+// PaymentElement modal inside the dashboard — no redirect to checkout.stripe.com.
+// The webhook credits the org on payment_intent.succeeded (metadata.type=ai_credits).
+router.post("/billing/ai-credits-intent", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
+  const { pack = "" } = req.body as { pack?: string };
+
+  const AI_PACK_MAP: Record<string, { addonKey: string; credits: number; amountEurCents: number }> = {
+    "ai_credits_50k":  { addonKey: "aiCreditsPack50k",  credits: 50000,  amountEurCents: 400  },
+    "ai_credits_200k": { addonKey: "aiCreditsPack200k", credits: 200000, amountEurCents: 900  },
+    "ai_credits_500k": { addonKey: "aiCreditsPack500k", credits: 500000, amountEurCents: 1900 },
+  };
+  const packInfo = AI_PACK_MAP[pack.toLowerCase()];
+  if (!packInfo) {
+    res.status(400).json({ error: `Pack IA inconnu : ${pack}. Valeurs valides : ai_credits_50k, ai_credits_200k, ai_credits_500k` });
+    return;
+  }
+
+  const orgId = req.orgId ?? "default";
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const publishableKey = process.env["STRIPE_PUBLISHABLE_KEY"] ?? process.env["PUBLIC_STRIPE_API_KEY"] ?? "";
+
+  if (!stripeKey || !publishableKey) {
+    logger.error({ orgId, pack }, "[Billing] Stripe keys missing — AI credits in-app payment unavailable");
+    res.status(503).json({ error: "Paiement indisponible : configuration Stripe manquante. Contactez le support." });
+    return;
+  }
+
+  try {
+    const billingCtx = await loadBillingContext(orgId);
+    const stripe = await createStripeClient(stripeKey);
+    const customerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey);
+
+    const intent = await stripe.paymentIntents.create({
+      amount:   packInfo.amountEurCents,
+      currency: "eur",
+      customer: customerId,
+      automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+      description: `FlowPoint AI Credits — ${packInfo.credits.toLocaleString("fr-FR")} crédits`,
+      metadata: {
+        type:           "ai_credits",
+        pack,
+        credits:        String(packInfo.credits),
+        amountEurCents: String(packInfo.amountEurCents),
+        orgId,
+      },
+    });
+
+    logger.info({ pack, credits: packInfo.credits, orgId }, "[Billing] AI credits PaymentIntent created (in-app)");
+    res.json({
+      clientSecret:  intent.client_secret,
+      publishableKey,
+      pack,
+      credits:   packInfo.credits,
+      amountEur: packInfo.amountEurCents / 100,
+    });
+  } catch (err) {
+    logger.error({ err, orgId, pack }, "[Billing] Failed to create AI credits PaymentIntent");
+    const msg = (err as { message?: string })?.message ?? "";
+    res.status(500).json({ error: "Erreur lors de la création du paiement", detail: msg.slice(0, 300) || undefined });
   }
 });
 
