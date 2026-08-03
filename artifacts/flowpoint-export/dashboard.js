@@ -8230,8 +8230,8 @@ function renderBilling() {
     }
     // fallback canonical (identique au backend)
     return [
-      { id:'standard', name:'Standard', priceEur:29, badge:'Démarrage', tagline:'Pour les indépendants et PME', color:'#2563EB', features:['30 audits','10 monitors','30 rapports PDF','1 utilisateur','100 000 AI credits','1 workspace','Rétention 30 jours','Support email 48h'], locked:['White-label','API Access','Analytics concurrents','Multi-workspace','SSO SAML','Onboarding dédié','SLA garanti 99.9%','Agency Lab'], limits:{audits:30,monitors:10,reports:30,exports:30,teamMembers:1,workspaces:1,retention:30}, aiCredits:100000 },
-      { id:'pro',      name:'Pro',      priceEur:79, badge:'Recommandé', tagline:'Pour les agences et équipes growth', color:'#2563EB', features:['300 audits','50 monitors','300 rapports PDF','5 utilisateurs','500 000 AI credits','5 workspaces','Rétention 90 jours','Support prioritaire 4h'], locked:['Multi-workspace (5 max)','SSO SAML','Onboarding dédié','SLA garanti 99.9%'], limits:{audits:300,monitors:50,reports:300,exports:300,teamMembers:5,workspaces:5,retention:90}, aiCredits:500000 },
+      { id:'standard', name:'Standard', priceEur:29, badge:'Démarrage', tagline:'Pour les indépendants et PME', color:'#2563EB', features:['30 audits','10 monitors','30 rapports PDF','1 utilisateur','100 000 AI credits','1 workspace','Rétention 30 jours','Support email 48h','White-label'], locked:['API Access','Analytics concurrents','Multi-workspace','SSO SAML','Onboarding dédié','SLA garanti 99.9%','Agency Lab'], limits:{audits:30,monitors:10,reports:30,exports:30,teamMembers:1,workspaces:1,retention:30}, aiCredits:100000 },
+      { id:'pro',      name:'Pro',      priceEur:79, badge:'Recommandé', tagline:'Pour les agences et équipes growth', color:'#2563EB', features:['300 audits','50 monitors','300 rapports PDF','5 utilisateurs','500 000 AI credits','5 workspaces','Rétention 90 jours','Support prioritaire 4h','White-label'], locked:['Multi-workspace (5 max)','SSO SAML','Onboarding dédié','SLA garanti 99.9%'], limits:{audits:300,monitors:50,reports:300,exports:300,teamMembers:5,workspaces:5,retention:90}, aiCredits:500000 },
       { id:'ultra',    name:'Ultra',    priceEur:149, badge:'Ultra', tagline:'Pour les grandes agences et entreprises', color:'#2563EB', features:['1000 audits','300 monitors','1000 rapports PDF','10 utilisateurs','10 000 000 AI credits','10 workspaces','Rétention 365 jours','Support dédié <1h','SLA 99.9%','SSO SAML','White-label portail'], locked:[], limits:{audits:1000,monitors:300,reports:1000,exports:1000,teamMembers:10,workspaces:10,retention:365}, aiCredits:10000000 },
     ];
   })();
@@ -8401,7 +8401,7 @@ function renderBilling() {
                   ]},
                   { group:'IA & SEO', rows:[
                     ['IA Insights', '—', '✓ Pro', '✓ Complet'],
-                    ['White-label', '—', '✓', '✓'],
+                    ['White-label', '✓', '✓', '✓'],
                     ['API Access', '—', '✓', '✓ Illimitée'],
                     ['Analytics concurrents', '—', '✓', '✓'],
                   ]},
@@ -8742,29 +8742,11 @@ function renderBilling() {
       const key = _ADDON_STRIPE_KEYS[_a.name];
       if (!key) { fpGoToPricing(); return; }
       const _bStatus = (typeof getBillingStatus === 'function' ? getBillingStatus() : (STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || '');
-      if (_bStatus === 'active' || _bStatus === 'trialing') {
-        // Active subscription → activate directly via API, no redirect
-        showToast('info', 'Activation en cours…');
-        try {
-          const r = await apiAction('POST', '/api/addons/' + encodeURIComponent(key) + '/activate', {});
-          if (r && r.ok) {
-            showToast('success', (_a.name || 'Add-on') + ' activé ✓');
-            try { sessionStorage.removeItem('fp-state-cache'); } catch(_e) {}
-            _apiFetchCache.clear();
-            _apiFetchInFlight.clear();
-            loadData().then(function() { navigate('billing'); navigateSub('addons'); }).catch(function() { render(); });
-          } else {
-            showToast('error', (r && r.error) || 'Activation impossible');
-          }
-        } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'activation impossible')); }
-        return;
-      }
-      // No active subscription → redirect to pricing for checkout.
-      // Pre-select the current (or last known) plan so checkout never asks again.
-      showToast('info', 'Chargement…');
+      // All paid add-ons use the same cart → Stripe checkout flow.  Never grant
+      // access directly from the dashboard: Stripe payment must happen first.
+      showToast('info', 'Ouverture du panier…');
       try {
-        const _knownPlan = ((STATE.billing && STATE.billing.plan) || (STATE.me && STATE.me.plan) || '').toLowerCase() || null;
-        const cart = { plan: _knownPlan, addons: {}, fromDashboard: true };
+        const cart = { plan: null, addons: {}, fromDashboard: true };
         cart.addons[key] = 1;
         localStorage.setItem('fp_cart', JSON.stringify(cart));
         window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(key);
@@ -9104,7 +9086,7 @@ function renderBilling() {
               { label:'+200k', price:'9€',  pack:'ai_credits_200k', credits:200000, badge:'Best value' },
               { label:'+500k', price:'19€', pack:'ai_credits_500k', credits:500000, badge:null         },
             ].map(p => `
-              <button onclick="window.FP_AI_CREDITS_API.buyCredits('${p.pack}')" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;border:${p.badge?'2px':'1px'} solid rgba(37,99,235,${p.badge?'0.5':'0.3'});background:rgba(37,99,235,${p.badge?'0.15':'0.08'});cursor:pointer;position:relative;flex-shrink:0">
+              <button onclick="fpBuyAICredits('${p.pack}')" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;border:${p.badge?'2px':'1px'} solid rgba(37,99,235,${p.badge?'0.5':'0.3'});background:rgba(37,99,235,${p.badge?'0.15':'0.08'});cursor:pointer;position:relative;flex-shrink:0">
                 ${p.badge ? `<span style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#2563EB;color:#fff;font-size:7px;font-weight:800;padding:1px 6px;border-radius:10px;white-space:nowrap">${p.badge}</span>` : ''}
                 <span style="font-size:11px;font-weight:700;color:#2563EB">${p.label}</span>
                 <span style="font-size:10px;color:var(--fp-text-faint)">·</span>
@@ -12157,7 +12139,7 @@ function renderAI() {
           <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:12px">Disponibles immédiatement · Valables jusqu\'au prochain rechargement</div>
           <div style="display:flex;flex-direction:column;gap:10px">
             ${creditPackages.map(p => `
-              <button onclick="window.FP_AI_CREDITS_API.buyCredits('${p.pack}')" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:10px;border:${p.badge?'2px solid rgba(37,99,235,0.5)':'1px solid rgba(255,255,255,0.08)'};background:${p.badge?'rgba(37,99,235,0.1)':'var(--fp-inner-card)'};cursor:pointer;width:100%;position:relative;overflow:hidden;transition:all 0.15s">
+              <button onclick="fpBuyAICredits('${p.pack}')" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:10px;border:${p.badge?'2px solid rgba(37,99,235,0.5)':'1px solid rgba(255,255,255,0.08)'};background:${p.badge?'rgba(37,99,235,0.1)':'var(--fp-inner-card)'};cursor:pointer;width:100%;position:relative;overflow:hidden;transition:all 0.15s">
                 ${p.badge ? `<div style="position:absolute;top:0;right:0;background:#2563EB;color:#fff;font-size:8px;font-weight:800;padding:2px 9px;border-radius:0 8px 0 7px;letter-spacing:0.04em">${p.badge}</div>` : ''}
                 <div style="text-align:left">
                   <div style="font-size:12px;font-weight:700;color:${p.badge?'#2563EB':'var(--fp-text)'}">${p.label} AI Credits</div>
@@ -13687,29 +13669,10 @@ async function fpGoToPricing(targetPlan) {
     showToast('Vous êtes déjà sur le plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + '.', 'info');
     return;
   }
-  // Subscribed users: change the plan directly via the Stripe subscription — no pricing redirect
-  const subStatus = ((STATE.billing && STATE.billing.status) || (STATE.me && STATE.me.subscriptionStatus) || '').toLowerCase();
-  const isSubscribed = subStatus === 'active' || subStatus === 'trialing' || subStatus === 'past_due';
-  if (isSubscribed) {
-    showToast('info', 'Mise à jour du plan…');
-    try {
-      const r = await apiFetch('/api/billing/upgrade', { method: 'POST', body: JSON.stringify({ plan }) });
-      if (r && r.url) { window.location.href = r.url; return; }
-      if (r && r.error) throw new Error(r.message || r.error);
-      showToast('success', 'Plan mis à jour : ' + plan.charAt(0).toUpperCase() + plan.slice(1) + (r && r.scheduled ? ' (appliqué en fin de période)' : ''));
-      try { const me = await apiFetch('/api/me'); if (me) STATE.me = me; } catch(_) {}
-      render();
-      return;
-    } catch(e) {
-      showToast('error', 'Changement de plan impossible : ' + (e && e.message ? e.message : 'réessayez'));
-      return;
-    }
-  }
-  // Non-subscribed: go through pricing/checkout
-  showToast('Chargement du parcours upgrade…', 'loading');
-  const cart = { plan: plan, addons: {}, fromDashboard: true };
-  const currentAddons = (STATE.me && STATE.me.addons) || (STATE.billing && STATE.billing.addons) || {};
-  Object.keys(currentAddons).forEach(function(k) { if (currentAddons[k]) cart.addons[k] = 1; });
+  // Always preserve the chosen plan in the cart so pricing visually preselects it.
+  // Existing subscribers still get their Stripe subscription updated at checkout.
+  showToast('Chargement du parcours de paiement…', 'loading');
+  const cart = { plan: plan, addons: {}, fromDashboard: true, upgradeFromDashboard: true };
   try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
   window.location.href = '/pricing.html?from=dashboard&plan=' + encodeURIComponent(plan);
 }
