@@ -361,6 +361,17 @@ router.post("/admin/test-session", async (req: Request, res: Response): Promise<
 
   const client = await pool.connect();
   try {
+    // Test convenience: when the orgId is a UUID, ensure a matching organizations
+    // row exists — AI usage tables (ai_usage_logs / ai_monthly_usage) have an FK
+    // to organizations(id), so a session on a non-existent org could never track usage.
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId)) {
+      await client.query(
+        `INSERT INTO organizations (id, name, slug, owner_user_id, status, plan)
+         VALUES ($1::uuid, 'Test Org', 'test-org-' || left($1::text, 8), 'test-admin', 'active', 'pro')
+         ON CONFLICT (id) DO NOTHING`,
+        [orgId]
+      );
+    }
     const token = `fp_prodtest_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
     const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
     await client.query(
@@ -377,6 +388,7 @@ router.post("/admin/test-session", async (req: Request, res: Response): Promise<
       note: "Short-lived test token — expires in " + ttlMinutes + " min. Do not store in code.",
     });
   } catch (err) {
+    console.error("[Admin] test-session failed:", err);
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   } finally {
     client.release();
@@ -402,7 +414,18 @@ router.post("/admin/ai-usage-seed", async (req: Request, res: Response): Promise
   const resetAt = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString();
   const id = `amu_${orgId}_${month}`;
 
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId)) {
+    res.status(400).json({ ok: false, error: "orgId must be a UUID (ai_monthly_usage.org_id is UUID with FK to organizations)" });
+    return;
+  }
+
   try {
+    await pool.query(
+      `INSERT INTO organizations (id, name, slug, owner_user_id, status, plan)
+       VALUES ($1::uuid, 'Test Org', 'test-org-' || left($1::text, 8), 'test-admin', 'active', 'pro')
+       ON CONFLICT (id) DO NOTHING`,
+      [orgId]
+    );
     await pool.query(
       `INSERT INTO ai_monthly_usage (id, org_id, month, credits_used, cost_eur, request_count, tokens_used, reset_at, updated_at)
        VALUES ($1, $2, $3, $4, 0, 0, 0, $5, NOW())

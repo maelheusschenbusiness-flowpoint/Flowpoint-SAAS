@@ -261,6 +261,12 @@ async function main() {
     logger.info(`FlowPoint API listening on port ${PORT} (${env.NODE_ENV})`);
     startMonitorCron();
 
+    // Durable recovery of AI usage writes that failed after provider consumption
+    // (idempotent replays — survives restarts, unlike in-process timers).
+    import("./services/ai-engine.js")
+      .then(({ startAiUsageOutboxWorker }) => startAiUsageOutboxWorker())
+      .catch((err) => logger.warn({ err }, "[AI] usage outbox worker not started"));
+
     // Cleanup cron: purge expired pending_signups and checkout_post_tokens every hour
     setInterval(async () => {
       const client = await pool.connect();

@@ -53,9 +53,11 @@ function currentMonth(): string {
 
 const RUN_ID = Date.now();
 
-/** org_id unique par exécution — évite toute collision avec les données réelles */
-const ORG_WITH_EXTRA = `test-econ-int-extra-${RUN_ID}`;
-const ORG_NO_EXTRA   = `test-econ-int-noextra-${RUN_ID}`;
+/** org_id UUID unique par exécution — ai_monthly_usage / ai_credit_purchases
+ *  ont désormais des colonnes org_id UUID avec FK vers organizations(id). */
+import { randomUUID } from "node:crypto";
+const ORG_WITH_EXTRA = randomUUID();
+const ORG_NO_EXTRA   = randomUUID();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Suite principale
@@ -67,6 +69,16 @@ describe("getOrgUsageStatus — intégration DB réelle", () => {
   // ── Setup : insérer des données de test directement via pool (BYPASSRLS) ───
 
   beforeAll(async () => {
+    // FK : ai_monthly_usage / ai_credit_purchases → organizations(id)
+    await pool.query(
+      `INSERT INTO organizations (id, name, slug, owner_user_id, status, plan)
+       VALUES ($1,$2,$3,'test-user','active','standard'),
+              ($4,$5,$6,'test-user','active','standard')
+       ON CONFLICT (id) DO NOTHING`,
+      [ORG_WITH_EXTRA, "Econ Test Extra", `econ-extra-${RUN_ID}`,
+       ORG_NO_EXTRA,   "Econ Test NoExtra", `econ-noextra-${RUN_ID}`],
+    );
+
     // ── Cas 1 : planLimit=100000, additionalCredits=50000, used=120000 ────────
     // org_settings → plan="standard" (100 000 crédits inclus)
     await pool.query(
@@ -134,6 +146,10 @@ describe("getOrgUsageStatus — intégration DB réelle", () => {
     );
     await pool.query(
       `DELETE FROM org_settings WHERE org_id IN ($1,$2)`,
+      [ORG_WITH_EXTRA, ORG_NO_EXTRA],
+    );
+    await pool.query(
+      `DELETE FROM organizations WHERE id IN ($1::uuid,$2::uuid)`,
       [ORG_WITH_EXTRA, ORG_NO_EXTRA],
     );
   }, 30_000);

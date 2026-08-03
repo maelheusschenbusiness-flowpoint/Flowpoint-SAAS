@@ -54,7 +54,9 @@ import { resolveAIAttachments, type OrgDb } from "./ai-attachments.js";
 import { parseAIAttachments, getDefaultParserLimits } from "./ai-attachment-parser.js";
 
 // ── Unique org for test isolation ────────────────────────────────────────────
-const orgId  = `test-parser-${Date.now()}`;
+// ai_usage_logs / ai_monthly_usage ont des colonnes org_id UUID + FK organizations(id)
+import { randomUUID } from "node:crypto";
+const orgId  = randomUUID();
 const limits = getDefaultParserLimits(1.0);
 
 let fileIdTxt  = "";
@@ -174,6 +176,13 @@ async function insertUsageLog(extraMeta?: Record<string, unknown>): Promise<stri
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 beforeAll(async () => {
+  // FK : ai_usage_logs.org_id → organizations(id)
+  await pool.query(
+    `INSERT INTO organizations (id, name, slug, owner_user_id, status, plan)
+     VALUES ($1,'Parser Test Org',$2,'test-user','active','pro')
+     ON CONFLICT (id) DO NOTHING`,
+    [orgId, `parser-test-${Date.now()}`],
+  );
   fileIdTxt  = `f_txt_${Date.now()}`;
   fileIdJson = `f_json_${Date.now()}`;
   fileIdCsv  = `f_csv_${Date.now()}`;
@@ -202,6 +211,7 @@ afterAll(async () => {
   await pool.query("DELETE FROM team_files    WHERE org_id = $1", [orgId]);
   await pool.query("DELETE FROM ai_usage_logs WHERE org_id = $1", [orgId]);
   await pool.query("DELETE FROM ai_monthly_usage WHERE org_id = $1", [orgId]);
+  await pool.query("DELETE FROM organizations WHERE id = $1::uuid", [orgId]);
 });
 
 // ── A) Parse pipeline tests ───────────────────────────────────────────────────

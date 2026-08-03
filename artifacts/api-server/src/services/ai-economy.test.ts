@@ -728,6 +728,10 @@ describe("Crédits additionnels réels — formule totalAvailable = creditsLimit
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SERVER_URL = "http://localhost:8081";
+// UUID fixes — les tables IA ont des org_id UUID avec FK organizations(id);
+// test-session/ai-usage-seed créent la ligne organizations automatiquement.
+const EXHAUSTED_ORG = "00000000-0000-4000-8000-0000000000e1";
+const NORMAL_ORG    = "00000000-0000-4000-8000-0000000000e2";
 
 async function serverReachable(): Promise<boolean> {
   try {
@@ -756,14 +760,14 @@ describe("Quota bloque avant provider — HTTP (stream=false + stream=true)", ()
   beforeAll(async () => {
     reachable = await serverReachable();
     if (!reachable) return;
-    tokenExhausted = await getToken("test_exhausted_99");
+    tokenExhausted = await getToken(EXHAUSTED_ORG);
     // Seed the org to well above any plan's credit limit so EXHAUSTED gate fires reliably.
     // 9_999_999 >> Ultra plan limit (≤100k) → usagePercent = 100+ → EXHAUSTED on every plan.
     const SEED_CREDITS = 9_999_999;
     await fetch(`${SERVER_URL}/api/admin/ai-usage-seed`, {
       method: "POST",
       headers: { "x-admin-key": process.env["ADMIN_KEY"] ?? "", "Content-Type": "application/json" },
-      body: JSON.stringify({ orgId: "test_exhausted_99", creditsUsed: SEED_CREDITS }),
+      body: JSON.stringify({ orgId: EXHAUSTED_ORG, creditsUsed: SEED_CREDITS }),
       signal: AbortSignal.timeout(5000),
     });
   });
@@ -836,7 +840,7 @@ describe("Comptabilisation unique — delta requestCount = 1 par appel réussi",
 
   beforeAll(async () => {
     reachable = await serverReachable();
-    if (reachable) tokenNormal = await getToken("test_economy_e2");
+    if (reachable) tokenNormal = await getToken(NORMAL_ORG);
   });
 
   it("un seul appel réussi → requestCount += 1, metadata _ai complète", async () => {

@@ -35,6 +35,49 @@ export type AIFeature =
   | "audit_summary"
   | "overview_insights";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** In-process cache of legacy orgId → canonical organizations.id (UUID). */
+const _canonOrgCache = new Map<string, string | null>();
+
+/**
+ * Resolve a possibly-legacy org identifier (email-shaped or `org_...`) to the
+ * canonical organizations.id UUID. ai_usage_logs / ai_monthly_usage have
+ * UUID org_id columns, so any non-UUID id would make PostgreSQL reject the
+ * write (`invalid input syntax for type uuid`) and silently lose the usage.
+ * Returns null when no canonical org can be found.
+ */
+export async function resolveCanonicalOrgUuid(orgId: string): Promise<string | null> {
+  if (UUID_RE.test(orgId)) return orgId;
+  if (_canonOrgCache.has(orgId)) return _canonOrgCache.get(orgId) ?? null;
+  let resolved: string | null = null;
+  try {
+    const client = await pool.connect();
+    try {
+      // Legacy ids are usually the owner's email (checkout metadata) — same
+      // canonicalization rule as the Stripe webhook.
+      const r = await client.query<{ id: string }>(
+        `SELECT id FROM organizations
+          WHERE lower(owner_email) = lower($1)
+          ORDER BY created_at DESC LIMIT 1`,
+        [orgId]
+      );
+      resolved = r.rows[0]?.id ? String(r.rows[0].id) : null;
+    } finally { client.release(); }
+  } catch (err) {
+    // Transient persistence failure — this is NOT a verified absence. Callers
+    // must treat it as "quota state unavailable" (503), never as a 402
+    // unresolvable-org verdict. Do not cache.
+    logger.warn({ err, orgId }, "[AI] resolveCanonicalOrgUuid lookup failed");
+    const e = new Error(`org canonicalization lookup unavailable: ${orgId}`);
+    (e as Error & { code?: string }).code = "ORG_LOOKUP_UNAVAILABLE";
+    throw e;
+  }
+  _canonOrgCache.set(orgId, resolved);
+  if (!resolved) logger.error({ orgId }, "[AI] no canonical org UUID found for legacy orgId — usage cannot be tracked");
+  return resolved;
+}
+
 function currentMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -49,7 +92,7 @@ function planCreditLimit(plan?: string | null): number {
   return PLAN_AI_CREDITS[(plan ?? "standard").toLowerCase()] ?? PLAN_AI_CREDITS.standard;
 }
 
-export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
+export async function getOrCreateMonthlyUsage(rawOrgId = "default"): Promise<{
   creditsUsed: number;
   creditsLimit: number;
   creditsExtra: number;
@@ -60,6 +103,16 @@ export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
   resetAt: Date;
 }> {
   const month       = currentMonth();
+  // Canonicalize legacy org ids (email / org_...) BEFORE any quota read/write.
+  // The AI tables have UUID org_id — a raw legacy id used to throw here, which
+  // checkAIQuota() caught and turned into an unlimited "degraded" allow, i.e.
+  // legacy accounts bypassed the quota gate entirely.
+  const orgId = await resolveCanonicalOrgUuid(rawOrgId);
+  if (!orgId) {
+    const e = new Error(`AI usage org id not canonicalizable: ${rawOrgId}`);
+    (e as Error & { code?: string }).code = "ORG_NOT_CANONICAL";
+    throw e;
+  }
   const _dbData     = await loadOrgData(orgId).catch(() => null);
   const plan        = (_dbData?.plan || store.me.plan || "standard").toLowerCase();
   const creditLimit = planCreditLimit(plan);
@@ -128,8 +181,17 @@ export async function consumeAICredits(opts: {
   tokensOut?: number;
   cachedTokens?: number;
   metadata?: Record<string, unknown>;
+  /** Idempotency key — reuse on retry to avoid double-billing. */
+  requestId?: string;
 }): Promise<{ allowed: boolean; creditsUsed: number; remaining: number }> {
-  const orgId       = opts.orgId ?? "default";
+  const rawOrgId    = opts.orgId ?? "default";
+  // Canonicalize BEFORE any read/write — fail CLOSED when unresolvable:
+  // an org whose usage cannot be tracked must not receive provider-backed work.
+  const orgId = await resolveCanonicalOrgUuid(rawOrgId);
+  if (!orgId) {
+    logger.error({ rawOrgId, feature: opts.feature }, "[AI] consumeAICredits — org id not canonicalizable, blocking request");
+    return { allowed: false, creditsUsed: 0, remaining: 0 };
+  }
   const aiCfg       = opts.model ? null : await (async () => {
     try {
       const { selectOptimalModel } = await import("./ai-prefs.js");
@@ -145,7 +207,6 @@ export async function consumeAICredits(opts: {
   // ── Dynamic cost calculation ──────────────────────────────────────────────────────────────
   const realCostEur    = computeRealCostEur({ model, tokensIn, tokensOut, cachedTokens });
   const creditsDebited = computeCreditsDebited({ feature: opts.feature, model, realCostEur });
-  const month          = currentMonth();
 
   try {
     const usage = await getOrCreateMonthlyUsage(orgId);
@@ -158,50 +219,27 @@ export async function consumeAICredits(opts: {
       return { allowed: false, creditsUsed: 0, remaining };
     }
 
-    const logId = `aul_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-
-    await withOrgDb(orgId, async (client) => {
-      await client.query(
-        `INSERT INTO ai_usage_logs
-           (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
-            tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,0,0,'true',$14)`,
-        [logId, orgId, opts.userId ?? "system", provider, model, opts.feature,
-         creditsDebited, creditsDebited,
-         tokensIn, tokensOut, cachedTokens,
-         realCostEur, realCostEur,
-         opts.metadata ? JSON.stringify(opts.metadata) : null]
-      );
+    // ── Debit through the single atomic + idempotent write path ────────────
+    // (log + monthly aggregate in one transaction, threshold alerts included)
+    const rec = await recordCompletedUsage({
+      feature: opts.feature, orgId, userId: opts.userId ?? "system",
+      model: model as AIModel, provider, tokensIn, tokensOut, cachedTokens,
+      latencyMs: 0, success: true,
+      requestId: opts.requestId,
+      metadata: opts.metadata,
+      fixedCreditCost: creditsDebited,
     });
 
-    const client2 = await pool.connect();
-    try {
-      await client2.query(
-        `INSERT INTO ai_monthly_usage
-           (id, org_id, month, credits_used, cost_eur, request_count, tokens_used, reset_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,1,$6,$7,NOW())
-         ON CONFLICT (org_id, month) DO UPDATE
-           SET credits_used   = ai_monthly_usage.credits_used   + $4,
-               cost_eur       = ai_monthly_usage.cost_eur       + $5,
-               request_count  = ai_monthly_usage.request_count  + 1,
-               tokens_used    = ai_monthly_usage.tokens_used    + $6,
-               updated_at     = NOW()`,
-        [`amu_${orgId}_${month}`, orgId, month, creditsDebited, realCostEur, tokensIn + tokensOut, monthResetDate()]
-      );
-    } finally {
-      client2.release();
-    }
-
-    const newUsed = usage.creditsUsed + creditsDebited;
-    const pct     = Math.round((newUsed / totalAvailable) * 100);
-    const oldPct  = Math.round((usage.creditsUsed / totalAvailable) * 100);
-    if      (pct >= 90 && oldPct < 90) await triggerAIAlert(orgId, "quota_90pct", newUsed, totalAvailable);
-    else if (pct >= 70 && oldPct < 70) await triggerAIAlert(orgId, "quota_70pct", newUsed, totalAvailable);
-
-    return { allowed: true, creditsUsed: creditsDebited, remaining: Math.max(0, remaining - creditsDebited) };
+    return { allowed: true, creditsUsed: rec.creditsDebited, remaining: rec.remaining };
   } catch (err) {
-    logger.error({ err }, "[AI] consumeAICredits failed — allowing with degraded tracking");
-    return { allowed: true, creditsUsed: creditsDebited, remaining: 99999 };
+    if ((err as Error & { code?: string })?.code === "ORG_NOT_CANONICAL") {
+      logger.error({ orgId, feature: opts.feature }, "[AI] consumeAICredits — org not canonicalizable, blocking request");
+      return { allowed: false, creditsUsed: 0, remaining: 0 };
+    }
+    // Fail CLOSED: if the quota state cannot be read or the debit cannot be
+    // persisted, provider-backed work must not proceed (billing risk).
+    logger.error({ err, orgId, feature: opts.feature }, "[AI] consumeAICredits failed — blocking request (fail-closed)");
+    return { allowed: false, creditsUsed: 0, remaining: 0 };
   }
 }
 
@@ -224,8 +262,16 @@ export async function checkAIQuota(opts: {
     }
     return { allowed: true, remaining };
   } catch (err) {
-    logger.warn({ err, orgId }, "[AI] checkAIQuota failed — allowing with degraded tracking");
-    return { allowed: true, remaining: 99999 };
+    if ((err as Error & { code?: string })?.code === "ORG_NOT_CANONICAL") {
+      // Fail CLOSED: an org whose usage cannot be read/written would otherwise
+      // get unlimited untracked provider calls (direct billing risk).
+      logger.error({ orgId }, "[AI] checkAIQuota — org id not canonicalizable, blocking request");
+      return { allowed: false, remaining: 0 };
+    }
+    // Fail CLOSED for every persistence/read failure: when the quota state is
+    // unreadable, allowing would grant unlimited untracked provider calls.
+    logger.error({ err, orgId }, "[AI] checkAIQuota failed — blocking request (fail-closed)");
+    return { allowed: false, remaining: 0 };
   }
 }
 
@@ -242,31 +288,21 @@ export async function trackAIUsage(opts: {
   success: boolean;
   metadata?: Record<string, unknown>;
 }): Promise<void> {
-  const logId      = `aul_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const provider   = opts.provider ?? "openai";
-  const cachedTok  = opts.cachedTokens ?? 0;
-  const realCostEur= computeRealCostEur({ model: opts.model, tokensIn: opts.tokensIn, tokensOut: opts.tokensOut, cachedTokens: cachedTok });
-  const creditsDeb = computeCreditsDebited({ feature: opts.feature, model: opts.model, realCostEur });
-
-  try {
-    await withOrgDb(opts.orgId ?? "default", async (client) => {
-      await client.query(
-        `INSERT INTO ai_usage_logs
-           (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
-            tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-        [logId, opts.orgId ?? "default", opts.userId ?? "system", provider, opts.model, opts.feature,
-         creditsDeb, creditsDeb,
-         opts.tokensIn, opts.tokensOut, cachedTok,
-         realCostEur, realCostEur,
-         opts.latencyMs, opts.latencyMs,
-         opts.success ? "true" : "false",
-         opts.metadata ? JSON.stringify(opts.metadata) : null]
-      );
-    });
-  } catch (err) {
-    logger.error({ err }, "[AI] trackAIUsage failed");
-  }
+  // Thin wrapper over the single atomic + idempotent write path — canonical
+  // org resolution, one transaction for log + monthly aggregate, loud errors.
+  await recordCompletedUsage({
+    feature: opts.feature,
+    orgId: opts.orgId ?? "default",
+    userId: opts.userId ?? "system",
+    model: opts.model,
+    provider: opts.provider,
+    tokensIn: opts.tokensIn,
+    tokensOut: opts.tokensOut,
+    cachedTokens: opts.cachedTokens,
+    latencyMs: opts.latencyMs,
+    success: opts.success,
+    metadata: opts.metadata,
+  });
 }
 
 export async function recordCompletedUsage(opts: {
@@ -290,7 +326,7 @@ export async function recordCompletedUsage(opts: {
    *  regardless of model multiplier (e.g. feature-priced endpoints). */
   fixedCreditCost?: number;
 }): Promise<{ creditsDebited: number; remaining: number }> {
-  const { orgId, userId, model, feature, tokensIn, tokensOut, latencyMs } = opts;
+  const { userId, model, feature, tokensIn, tokensOut, latencyMs } = opts;
   const provider    = opts.provider ?? "openai";
   const cachedTok   = opts.cachedTokens ?? 0;
   const realCostEur = computeRealCostEur({ model, tokensIn, tokensOut, cachedTokens: cachedTok });
@@ -302,14 +338,38 @@ export async function recordCompletedUsage(opts: {
   const idemKey     = opts.requestId ?? null;
   const metaJson    = opts.metadata ? JSON.stringify(opts.metadata) : null;
 
+  // ── Canonicalize legacy org ids (email / org_...) → organizations.id UUID.
+  // ai_usage_logs.org_id and ai_monthly_usage.org_id are UUID columns; a
+  // non-UUID id used to make both writes fail silently ("invalid input syntax
+  // for type uuid") — the provider was billed but FlowPoint never counted it.
+  const orgId = await resolveCanonicalOrgUuid(opts.orgId);
+  if (!orgId) {
+    // Verified absence — fail explicitly; callers must never receive a
+    // success-shaped debit for usage that was not persisted.
+    logger.error({ rawOrgId: opts.orgId, feature, model, tokensIn, tokensOut },
+      "[AI] recordCompletedUsage: usage NOT recorded — org id could not be canonicalized");
+    const e = new Error(`AI usage org id not canonicalizable: ${opts.orgId}`);
+    (e as Error & { code?: string }).code = "ORG_NOT_CANONICAL";
+    throw e;
+  }
+
+  // ── Atomic + idempotent write: the usage log insert and the monthly
+  // aggregate upsert run in ONE transaction (withOrgDb wraps BEGIN/COMMIT).
+  // The monthly upsert only runs when the log row was actually inserted:
+  // a replayed requestId hits the idempotency unique index, inserts nothing,
+  // and therefore does NOT double-increment ai_monthly_usage. If either
+  // statement fails, the whole transaction rolls back — the log and the
+  // aggregate can never diverge.
+  let recorded = false;
   try {
-    await withOrgDb(orgId, async (client) => {
-      await client.query(
+    recorded = await withOrgDb(orgId, async (client) => {
+      const ins = await client.query(
         `INSERT INTO ai_usage_logs
            (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
             tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata, idempotency_key)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-         ON CONFLICT DO NOTHING`,
+         ON CONFLICT DO NOTHING
+         RETURNING id`,
         [logId, orgId, userId, provider, model, feature,
          creditsDeb, creditsDeb,
          tokensIn, tokensOut, cachedTok,
@@ -319,29 +379,34 @@ export async function recordCompletedUsage(opts: {
          metaJson,
          idemKey]
       );
+      if (ins.rowCount === 0) {
+        // Duplicate requestId — already billed once; skip the aggregate.
+        return false;
+      }
+      await client.query(
+        `INSERT INTO ai_monthly_usage
+           (id, org_id, month, credits_used, cost_eur, request_count, tokens_used, reset_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,1,$6,$7,NOW())
+         ON CONFLICT (org_id, month) DO UPDATE
+           SET credits_used   = ai_monthly_usage.credits_used   + $4,
+               cost_eur       = ai_monthly_usage.cost_eur       + $5,
+               request_count  = ai_monthly_usage.request_count  + 1,
+               tokens_used    = ai_monthly_usage.tokens_used    + $6,
+               updated_at     = NOW()`,
+        [`amu_${orgId}_${month}`, orgId, month, creditsDeb, realCostEur, tokensIn + tokensOut, monthResetDate()]
+      );
+      return true;
     });
   } catch (err) {
-    logger.warn({ err }, "[AI] recordCompletedUsage: log insert failed");
+    // Loud, explicit failure — the provider WAS consumed but FlowPoint could
+    // not persist the usage. This must never pass silently at debug level.
+    logger.error({ err, orgId, feature, model, requestId: idemKey },
+      "[AI] recordCompletedUsage: usage write FAILED — provider consumed but not tracked");
+    // Propagate: callers must never mistake a rolled-back debit for a success.
+    throw err;
   }
-
-  const client = await pool.connect();
-  try {
-    await client.query(
-      `INSERT INTO ai_monthly_usage
-         (id, org_id, month, credits_used, cost_eur, request_count, tokens_used, reset_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,1,$6,$7,NOW())
-       ON CONFLICT (org_id, month) DO UPDATE
-         SET credits_used   = ai_monthly_usage.credits_used   + $4,
-             cost_eur       = ai_monthly_usage.cost_eur       + $5,
-             request_count  = ai_monthly_usage.request_count  + 1,
-             tokens_used    = ai_monthly_usage.tokens_used    + $6,
-             updated_at     = NOW()`,
-      [`amu_${orgId}_${month}`, orgId, month, creditsDeb, realCostEur, tokensIn + tokensOut, monthResetDate()]
-    );
-  } catch (err) {
-    logger.warn({ err }, "[AI] recordCompletedUsage: monthly upsert failed");
-  } finally {
-    client.release();
+  if (!recorded && idemKey) {
+    logger.info({ orgId, requestId: idemKey }, "[AI] recordCompletedUsage: duplicate requestId — usage already recorded, aggregate not re-incremented");
   }
 
   // Fetch updated usage for alert thresholds + return value
@@ -360,6 +425,138 @@ export async function recordCompletedUsage(opts: {
   } catch {
     return { creditsDebited: creditsDeb, remaining: 0 };
   }
+}
+
+/**
+ * Fire-and-forget variant with a durable compensating mechanism.
+ *
+ * Some call sites (SSE streaming, endpoints that respond before accounting)
+ * cannot await/propagate a recording failure — the response is already gone.
+ * For those paths, a failed atomic write is retried with backoff using the
+ * SAME idempotency key, so a late success can never double-bill. If no
+ * requestId was supplied, one is generated here to make retries safe.
+ */
+export function recordCompletedUsageDeferred(
+  opts: Parameters<typeof recordCompletedUsage>[0],
+): void {
+  const withKey = opts.requestId
+    ? opts
+    : { ...opts, requestId: `req_deferred_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` };
+  recordCompletedUsage(withKey).catch(async (err) => {
+    if ((err as Error & { code?: string })?.code === "ORG_NOT_CANONICAL") {
+      // Verified absence — retrying cannot succeed; already error-logged.
+      return;
+    }
+    // Durable compensation: persist the payload to the outbox so a worker can
+    // replay it (idempotency key prevents double-billing) even across restarts.
+    try {
+      await enqueueAiUsageOutbox(withKey);
+      logger.warn({ orgId: withKey.orgId, requestId: withKey.requestId },
+        "[AI] recordCompletedUsageDeferred: write failed — payload persisted to outbox for durable retry");
+    } catch (enqueueErr) {
+      // Store fully unavailable — last resort in-process retry, then loud loss.
+      logger.error({ err, enqueueErr, orgId: withKey.orgId, requestId: withKey.requestId },
+        "[AI] recordCompletedUsageDeferred: outbox enqueue failed — scheduling last-resort in-process retry");
+      const t = setTimeout(() => recordCompletedUsageDeferred(withKey), 60_000);
+      (t as { unref?: () => void }).unref?.();
+    }
+  });
+}
+
+// ── Durable outbox for AI usage writes ────────────────────────────────────────
+// Failed deferred accounting is persisted here and replayed by a worker; the
+// idempotency key on ai_usage_logs makes replays safe (no double-billing).
+let _outboxTableReady = false;
+async function ensureAiUsageOutboxTable(): Promise<void> {
+  if (_outboxTableReady) return;
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_usage_pending_writes (
+        id            TEXT PRIMARY KEY,
+        request_id    TEXT UNIQUE NOT NULL,
+        org_id        TEXT NOT NULL,
+        payload       JSONB NOT NULL,
+        attempts      INTEGER NOT NULL DEFAULT 0,
+        last_error    TEXT,
+        next_retry_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
+    await client.query(`ALTER TABLE ai_usage_pending_writes ENABLE ROW LEVEL SECURITY`);
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'ai_usage_pending_writes') THEN
+          CREATE POLICY org_isolation ON ai_usage_pending_writes
+            USING (org_id = current_setting('app.org_id', true));
+        END IF;
+      END $$`);
+    _outboxTableReady = true;
+  } finally { client.release(); }
+}
+
+async function enqueueAiUsageOutbox(opts: Parameters<typeof recordCompletedUsage>[0]): Promise<void> {
+  await ensureAiUsageOutboxTable();
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `INSERT INTO ai_usage_pending_writes (id, request_id, org_id, payload)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (request_id) DO NOTHING`,
+      [`aup_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+       opts.requestId, opts.orgId, JSON.stringify(opts)]
+    );
+  } finally { client.release(); }
+}
+
+/** Replay pending usage writes once. Returns number of rows recovered.
+ *  Exported for the interval worker AND for restart-recovery tests. */
+export async function processAiUsageOutboxOnce(limit = 20): Promise<number> {
+  await ensureAiUsageOutboxTable();
+  const client = await pool.connect();
+  let recovered = 0;
+  try {
+    const due = await client.query<{ id: string; payload: Parameters<typeof recordCompletedUsage>[0]; attempts: number }>(
+      `SELECT id, payload, attempts FROM ai_usage_pending_writes
+        WHERE next_retry_at <= NOW() ORDER BY created_at LIMIT $1`,
+      [limit]
+    );
+    for (const row of due.rows) {
+      try {
+        await recordCompletedUsage(row.payload);
+        await client.query(`DELETE FROM ai_usage_pending_writes WHERE id = $1`, [row.id]);
+        recovered++;
+      } catch (err) {
+        const code = (err as Error & { code?: string })?.code;
+        if (code === "ORG_NOT_CANONICAL") {
+          // Verified absence — replay can never succeed; drop with a loud log.
+          logger.error({ id: row.id }, "[AI] outbox: org verified absent — dropping unrecoverable usage row");
+          await client.query(`DELETE FROM ai_usage_pending_writes WHERE id = $1`, [row.id]);
+          continue;
+        }
+        const backoffMin = Math.min(60, 2 ** Math.min(row.attempts, 6));
+        await client.query(
+          `UPDATE ai_usage_pending_writes
+              SET attempts = attempts + 1, last_error = $2, next_retry_at = NOW() + ($3 || ' minutes')::interval
+            WHERE id = $1`,
+          [row.id, String((err as Error)?.message ?? err), String(backoffMin)]
+        );
+      }
+    }
+  } finally { client.release(); }
+  return recovered;
+}
+
+let _outboxWorkerStarted = false;
+/** Start the periodic outbox worker (call once at server startup). */
+export function startAiUsageOutboxWorker(intervalMs = 60_000): void {
+  if (_outboxWorkerStarted) return;
+  _outboxWorkerStarted = true;
+  const t = setInterval(() => {
+    processAiUsageOutboxOnce().then((n) => {
+      if (n > 0) logger.info({ recovered: n }, "[AI] usage outbox: recovered pending usage writes");
+    }).catch((err) => logger.warn({ err }, "[AI] usage outbox worker tick failed"));
+  }, intervalMs);
+  (t as { unref?: () => void }).unref?.();
 }
 
 async function triggerAIAlert(orgId: string, type: string, current: number, limit: number): Promise<void> {

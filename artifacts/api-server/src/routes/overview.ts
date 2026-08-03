@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { createHash } from "node:crypto";
 import { getOverviewMetrics } from "../services/overview-service.js";
 import { aiChat } from "../services/ai-provider.js";
-import { checkAIQuota, recordCompletedUsage } from "../services/ai-engine.js";
+import { checkAIQuota, recordCompletedUsageDeferred } from "../services/ai-engine.js";
 import { pool } from "@workspace/db";
 
 const router = Router();
@@ -402,7 +402,7 @@ router.get("/overview/insights", async (req: Request, res: Response) => {
 
     // ── 9. Record usage — only on real successful generation (500 credits) ──
     if (genSucceeded) {
-      recordCompletedUsage({
+      recordCompletedUsageDeferred({
         orgId,
         feature:         "overview_insights",
         userId:          "service",
@@ -412,7 +412,7 @@ router.get("/overview/insights", async (req: Request, res: Response) => {
         latencyMs,
         success:         true,
         fixedCreditCost: INSIGHTS_COST_CREDITS,  // always 500, never discounted by model multiplier
-      }).catch(() => { /* non-blocking */ });
+      });
     }
 
     if (!genSucceeded) {

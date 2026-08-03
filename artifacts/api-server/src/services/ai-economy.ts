@@ -348,7 +348,9 @@ export async function getOrgUsageStatus(
       economyTier,
     };
   } catch (err) {
-    logger.warn({ err, orgId }, "[AI Economy] getOrgUsageStatus failed — NORMAL fallback");
-    return { used: 0, limit: 0, remaining: 999999, usagePercent: 0, economyTier: "NORMAL" };
+    // Fail CLOSED for every persistence/read failure: if usage cannot be read
+    // it cannot be enforced or recorded, so provider calls must not proceed.
+    logger.error({ err, orgId }, "[AI Economy] getOrgUsageStatus failed — EXHAUSTED fail-closed");
+    return { used: 0, limit: 0, remaining: 0, usagePercent: 100, economyTier: "EXHAUSTED" };
   }
 }

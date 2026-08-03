@@ -10,6 +10,7 @@ import {
   getAIUsageStats,
   getOrCreateMonthlyUsage,
   recordCompletedUsage,
+  recordCompletedUsageDeferred,
   type AIFeature,
   type AIModel,
 } from "../services/ai-engine.js";
@@ -1324,8 +1325,18 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
 
     resolvedUsagePercent = usagePercent;
     resolvedEconomyTier  = economyTier;
-  } catch (_) {
-    // DB unreachable — fail-open, NORMAL tier (safer than blocking all requests during outage)
+  } catch (err) {
+    // Fail CLOSED: when quota state cannot be read (DB failure) or the org id
+    // cannot be canonicalized, we must not call the provider — usage would be
+    // untracked and quota unenforceable (direct billing risk).
+    const notCanonical = (err as Error & { code?: string })?.code === "ORG_NOT_CANONICAL";
+    logger.error({ err, orgId, notCanonical }, "[AI] /chat quota state unavailable — blocking request (fail-closed)");
+    res.status(notCanonical ? 402 : 503).json({
+      ok: false,
+      code: notCanonical ? "QUOTA_UNRESOLVABLE_ORG" : "QUOTA_STATE_UNAVAILABLE",
+      error: "AI usage tracking unavailable — request blocked",
+    });
+    return;
   }
 
   economyPolicy = resolveEconomyPolicy({
@@ -1513,10 +1524,10 @@ RÈGLES D'ACTION (obligatoires) :
         res.write(`data: ${JSON.stringify({ _ai: aiMeta })}\n\n`);
         res.write(`data: [DONE]\n\n`);
         res.end();
-        recordCompletedUsage({ feature: "chat", orgId, userId, model: effectiveModel as AIModel,
+        recordCompletedUsageDeferred({ feature: "chat", orgId, userId, model: effectiveModel as AIModel,
           provider: selectedProvider, tokensIn: 0, tokensOut: 0,
           latencyMs: Date.now() - t0, success: true, requestId,
-          metadata: { ...usageMetadata, toolCalling: true } }).catch(() => {});
+          metadata: { ...usageMetadata, toolCalling: true } });
         return;
       }
       // Round 0 had no tool calls → fall through to normal aiStream below
@@ -1589,8 +1600,7 @@ RÈGLES D'ACTION (obligatoires) :
 
       persistChatMessage({ orgId, userId, role: "assistant", content: extractNavMarker(fullReply).cleanText, feature: "chat", model: effectiveModel, tokensUsed: estTokensOut, conversationId })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant) failed"));
-      recordCompletedUsage({ feature: "chat", orgId, userId, model: effectiveModel as AIModel, provider: selectedProvider, tokensIn: estTokensIn, tokensOut: estTokensOut, latencyMs, success: true, requestId, metadata: usageMetadata })
-        .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage failed"));
+      recordCompletedUsageDeferred({ feature: "chat", orgId, userId, model: effectiveModel as AIModel, provider: selectedProvider, tokensIn: estTokensIn, tokensOut: estTokensOut, latencyMs, success: true, requestId, metadata: usageMetadata });
     } catch (err) {
       logger.error({ err, provider: selectedProvider, model: effectiveModel }, "[AI] Streaming chat failed");
       const errCode    = (err as Record<string, unknown>)?.code;
@@ -2606,12 +2616,12 @@ router.post("/ai/generate", aiRateLimit, async (req: Request, res: Response) => 
     });
     const latencyMs = Date.now() - t0;
 
-    recordCompletedUsage({
+    recordCompletedUsageDeferred({
       feature: "chat", orgId, userId,
       model: (result._ai.model) as AIModel, provider: result._ai.provider,
       tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens,
       latencyMs, success: true, requestId,
-    }).catch(err => logger.warn({ err }, "[AI] /generate recordCompletedUsage failed"));
+    });
 
     res.json({
       content: result.text,

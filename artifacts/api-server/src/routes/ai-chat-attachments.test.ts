@@ -23,7 +23,7 @@ import type { Request, Response } from "express";
 const spies = vi.hoisted(() => ({
   aiChat:                   vi.fn(),
   aiStream:                 vi.fn(),
-  recordCompletedUsage:     vi.fn().mockResolvedValue(undefined),
+  recordCompletedUsage:     vi.fn().mockResolvedValue({ creditsDebited: 0, remaining: 1000 }),
   getOrCreateMonthlyUsage:  vi.fn(),
   loadOrgAIPrefs:           vi.fn(),
   checkModuleEnabled:       vi.fn(),
@@ -70,6 +70,9 @@ vi.mock("../middlewares/rateLimiter.js", () => ({
 vi.mock("../services/ai-engine.js", () => ({
   getOrCreateMonthlyUsage: spies.getOrCreateMonthlyUsage,
   recordCompletedUsage:    spies.recordCompletedUsage,
+  // Deferred variant delegates to the same spy so "single debit" assertions
+  // keep counting every accounting attempt regardless of the write path used.
+  recordCompletedUsageDeferred: (opts: unknown) => { void spies.recordCompletedUsage(opts); },
   consumeAICredits:        vi.fn(),
   checkAIQuota:            vi.fn(),
   getAIUsageStats:         vi.fn(),
@@ -189,7 +192,7 @@ function setupDefaultMocks(): void {
   // Provider validation — must be set here because vi.resetAllMocks() clears vi.hoisted() defaults
   spies.isValidProvider.mockReturnValue(true);
   spies.isModelValidForProvider.mockReturnValue(true);
-  spies.recordCompletedUsage.mockResolvedValue(undefined);
+  spies.recordCompletedUsage.mockResolvedValue({ creditsDebited: 0, remaining: 1000 });
   spies.moduleDisabledResponse.mockReturnValue({ error: "module disabled" });
 
   spies.loadOrgAIPrefs.mockResolvedValue({

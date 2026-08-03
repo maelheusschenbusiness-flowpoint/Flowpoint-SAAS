@@ -4,7 +4,7 @@ import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { aiChat } from "../services/ai-provider.js";
 import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
-import { checkAIQuota, recordCompletedUsage, type AIModel } from "../services/ai-engine.js";
+import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
 
 const router = Router();
@@ -151,12 +151,12 @@ RÈGLES IMPORTANTES :
 
       // Record usage only when AI actually generated content (not when using fallback)
       if (aiGenerationSucceeded) {
-        recordCompletedUsage({
+        recordCompletedUsageDeferred({
           feature: "strategist", orgId, userId,
           model: aiCfg.model as AIModel, provider: aiCfg.provider,
           tokensIn: aiTokensIn, tokensOut: aiTokensOut,
           latencyMs: aiLatencyMs, success: true, requestId,
-        }).catch(err => logger.warn({ err }, "[AWL] recordCompletedUsage failed"));
+        });
       }
 
       logger.info({ orgId, provider: aiCfg.provider, model: aiCfg.model, businessName }, "[AWL] AI generation succeeded");
