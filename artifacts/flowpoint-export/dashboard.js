@@ -1773,8 +1773,10 @@ window._applyMonitorPreset = async function(btn) {
       created++;
     } catch(e) {}
   }
-  if (created > 0) { showToast('success', 'Preset \u00ab' + pname + '\u00bb appliqu\u00e9 \u2014 ' + created + ' monitor(s) cr\u00e9\u00e9(s)'); render(); }
-  else { showToast('info', 'Preset \u00ab' + pname + '\u00bb \u2014 monitors d\u00e9j\u00e0 configur\u00e9s'); }
+  if (created > 0) {
+    showToast('success', 'Preset \u00ab' + pname + '\u00bb appliqu\u00e9 \u2014 ' + created + ' monitor(s) cr\u00e9\u00e9(s). Visibles dans la liste Monitors.');
+    setTimeout(function() { navigate('monitors'); }, 800);
+  } else { showToast('info', 'Preset \u00ab' + pname + '\u00bb \u2014 tous les monitors de ce preset sont d\u00e9j\u00e0 configur\u00e9s.'); }
   btn.textContent = 'Appliqu\u00e9 \u2713'; btn.disabled = false;
 };
 
@@ -1836,13 +1838,19 @@ window._fpExportCampaigns = function() {
 
 window._fpSlaViewPage = function() {
   var u = (STATE.settings && STATE.settings.statusPageUrl) || '';
-  if (u) { window.open(u, '_blank'); return; }
-  openFloatPanel('Activer la page statut publique',
+  var title = u ? 'Modifier la page de statut' : 'Activer la page statut publique';
+  var btnLabel = u ? 'Mettre à jour' : 'Activer la page statut';
+  openFloatPanel(title,
     '<div style="padding:4px">' +
     '<div class="fp-form-group"><label class="fp-form-label">URL de votre page de statut</label>' +
-    '<input class="fp-input" id="status-page-url-input" placeholder="https://status.monsite.fr"/></div>' +
+    '<input class="fp-input" id="status-page-url-input" placeholder="https://status.monsite.fr" value="' + (u ? u.replace(/"/g,'&quot;') : '') + '"/></div>' +
     '<p style="font-size:11px;color:var(--fp-text-muted)">Renseignez l\u2019URL o\u00f9 vos visiteurs pourront consulter le statut de vos services en temps r\u00e9el.</p>' +
-    '<button class="fp-btn fp-btn-primary" id="status-page-save-btn" style="width:100%">Activer la page statut</button>' +
+    (u ? '<div style="display:flex;gap:8px">' +
+      '<button class="fp-btn fp-btn-ghost" id="status-page-open-btn" style="flex:1">Ouvrir ↗</button>' +
+      '<button class="fp-btn fp-btn-ghost" id="status-page-clear-btn" style="flex:1;color:#ef4444">Supprimer</button>' +
+    '</div><div style="margin-top:8px">' : '') +
+    '<button class="fp-btn fp-btn-primary" id="status-page-save-btn" style="width:100%;margin-top:8px">' + btnLabel + '</button>' +
+    (u ? '</div>' : '') +
     '</div>'
   );
   setTimeout(function() {
@@ -1856,6 +1864,18 @@ window._fpSlaViewPage = function() {
       localStorage.setItem('fp-settings', JSON.stringify(STATE.settings));
       apiAction('PATCH', '/api/me/prefs', { statusPageUrl: v }).catch(function(){});
       showToast('success', 'Page statut configur\u00e9e');
+      closeFloatPanel();
+      render();
+    });
+    var openBtn = document.getElementById('status-page-open-btn');
+    if (openBtn && u) openBtn.addEventListener('click', function() { window.open(u, '_blank'); });
+    var clearBtn = document.getElementById('status-page-clear-btn');
+    if (clearBtn) clearBtn.addEventListener('click', function() {
+      STATE.settings = STATE.settings || {};
+      STATE.settings.statusPageUrl = '';
+      localStorage.setItem('fp-settings', JSON.stringify(STATE.settings));
+      apiAction('PATCH', '/api/me/prefs', { statusPageUrl: '' }).catch(function(){});
+      showToast('success', 'Page statut supprim\u00e9e');
       closeFloatPanel();
       render();
     });
@@ -7608,7 +7628,7 @@ function renderLocalSEO() {
           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Local Pack Rankings</div>
           <div id="dfs-local-rank-widget">
             <div style="text-align:center;padding:16px;color:#64748b;font-size:12px">
-              Cliquez <strong>Charger rankings</strong> pour voir les positions locales Google en direct via DataForSEO
+              Cliquez <strong>Charger rankings</strong> pour voir vos positions locales Google en direct
             </div>
           </div>
         </div>
@@ -13908,7 +13928,7 @@ function _doRender() {
     case 'conversion':     html = renderGA4Conversion(); break;
     case 'alerts-center':  html = renderAlertsCenter(); break;
     case 'activity-feed':  html = renderActivityFeed(); break;
-    case 'data-explorer':  html = renderGA4DataExplorer(); break;
+    case 'data-explorer':  html = renderDataExplorer(); break;
     case 'client-mode':    html = renderGA4ClientMode(); break;
     case 'analytics':      html = renderGA4Analytics(); break;
     case 'traffic':        html = renderGA4Traffic(); break;
@@ -24563,23 +24583,46 @@ function renderAlertsCenter() {
   // SUB: AI THREAT ANALYSIS LAB
   // ══════════════════════════════════════════════════════════
   if (sub === 'ai') {
-    const riskPreds = [
-      { icon:'🌐', title:"Risque perte Local Pack",   prob:68, horizon:"4-6 sem.", sev:'critical', desc:(STATE.competitors&&STATE.competitors.length>0?"Si " + escHtml(STATE.competitors[0].name||'votre concurrent principal') + " maintient son rythme, perte probable du Local Pack.":"Un concurrent en accélération — perte probable du Local Pack dans votre zone. Fenêtre d'action : 3 semaines."), color:'#ef4444' },
-      { icon:'📱', title:"Chute conversion mobile M+1",    prob:74, horizon:"30 jours", sev:'critical', desc:"Sans correction du formulaire mobile, le taux conversion mobile restera < 0.2%. Consultez le rapport pour l'impact estimé.", color:'#ef4444' },
-      { icon:'⚡', title:"Surcharge serveur pic juillet",  prob:52, horizon:"60 jours", sev:'warning',  desc:"Avec la croissance trafic Maps (+21%/mois), risque de timeout serveur lors des pics de juillet-août similaire à l\'incident du 4/05.", color:'#f59e0b' },
-      { icon:'🔗', title:"Pénalité backlinks spam",  prob:31, horizon:"90 jours", sev:'medium',  desc:"3 backlinks de faible qualité détectés ce mois. Si le volume augmente, risque de filtre Google Penguin" + (STATE.audits&&STATE.audits.length>0?' sur ' + ((STATE.audits[0].url||'').replace(/^https?:\/\//,'')):'') + ".", color:'#2563EB' },
-      { icon:'📉', title:"Risque déclin SEO — " + (STATE.monitors&&STATE.monitors.length>0?((STATE.monitors.reduce((b,m)=>(m.latency||0)>(b.latency||0)?m:b,STATE.monitors[0]).url||STATE.monitors[0].name||'').replace(/^https?:\/\//,'')||'votre site'):'votre site'), prob:61, horizon:"45 jours", sev:'warning', desc:"Sans correction vitesse mobile et Core Web Vitals, Google peut désclasser les pages principales.", color:'#f59e0b' },
-    ];
-    const vulns = [
-      { cat: 'Conversion', score: 28, risk: 'Critique', items: ['Formulaire mobile cassé', 'CTA Hero invisible mobile', 'Page Tarifs sans ancrage'] },
-      { cat: 'Infrastructure', score: 44, risk: 'Élevé', items: ['2 sites vitesse < 500ms', 'CDN non configuré', 'Cache navigateur absent'] },
-      { cat: 'Local SEO', score: 61, risk: 'Moyen', items: [(STATE.gbp?.unansweredReviews!=null?STATE.gbp.unansweredReviews+' avis sans réponse':(PREVIEW_MODE?'14 avis sans réponse':'Avis GBP en attente')), 'Photos GBP obsolètes', 'Zones locales en recul'] },
-      { cat: 'SEO Technique', score: 74, risk: 'Faible',  items: ['2 sites mots-clés en baisse', 'Schema markup partiel'] },
-      { cat: 'Contenu',       score: 51, risk: 'Moyen',   items: ['Fréquence publication faible (4/mois)', 'Aucune page locale quartier', 'FAQ manquante'] },
-    ];
+    // Real-data derived risks only — no invented probabilities
+    const _realRisks = [];
+    // Risk: monitors down
+    const _downMons = (STATE.monitors||[]).filter(m => m.status === 'down');
+    if (_downMons.length > 0) {
+      _realRisks.push({ icon:'🔴', title:'Site(s) inaccessible(s) — ' + _downMons.length + ' monitor' + (_downMons.length>1?'s':'') + ' DOWN', sev:'critical', color:'#ef4444', desc: _downMons.map(m=>(m.url||m.name||'').replace(/^https?:\/\//,'')).join(', ') + ' — vérifiez votre hébergement immédiatement.' });
+    }
+    // Risk: audits with low score
+    const _badAudits = (STATE.audits||[]).filter(a=>(a.score||0)<50);
+    if (_badAudits.length > 0) {
+      _realRisks.push({ icon:'📉', title:'Score SEO critique — ' + _badAudits.length + ' site' + (_badAudits.length>1?'s':''), sev:'critical', color:'#ef4444', desc: 'Score moyen : ' + Math.round(_badAudits.reduce((s,a)=>s+(a.score||0),0)/_badAudits.length) + '/100 — risque de déclin de ranking. Lancez des audits correctifs.' });
+    }
+    // Risk: no GBP connected
+    if (!STATE.gbp || !STATE.gbp.connected) {
+      _realRisks.push({ icon:'📍', title:'Google Business Profile non connecté', sev:'warning', color:'#f59e0b', desc:'Sans GBP configuré, votre visibilité locale sur Google Maps est limitée. Connectez votre fiche GBP pour surveiller les avis et positions locales.' });
+    }
+    // Risk: unanswered GBP reviews
+    if (STATE.gbp?.unansweredReviews > 0) {
+      _realRisks.push({ icon:'⭐', title:STATE.gbp.unansweredReviews + ' avis Google sans réponse', sev:'warning', color:'#f59e0b', desc:'Les avis sans réponse dégradent votre note moyenne et la confiance client. Répondez dans les 48h pour maintenir votre réputation.' });
+    }
+    // Risk: no keywords tracked
+    const _kwCount = (STATE.keywords||STATE.keywordData?.keywords||[]).length;
+    if (_kwCount === 0) {
+      _realRisks.push({ icon:'🔑', title:'Aucun mot-clé suivi', sev:'warning', color:'#f59e0b', desc:'Sans suivi de positions, vous ne pouvez pas détecter les chutes de ranking. Ajoutez vos mots-clés cibles pour activer la veille.' });
+    }
+    // Risk: no competitors
+    const _compCount = (STATE.competitors||[]).length;
+    if (_compCount === 0) {
+      _realRisks.push({ icon:'🎯', title:'Aucun concurrent configuré', sev:'medium', color:'#2563EB', desc:'Sans veille concurrentielle, vous ne détectez pas les mouvements de vos concurrents. Ajoutez vos concurrents principaux.' });
+    }
+    // Risk: latent monitors
+    const _slowMons = (STATE.monitors||[]).filter(m => (m.latency||0) > 500);
+    if (_slowMons.length > 0) {
+      _realRisks.push({ icon:'⚡', title:'Latence élevée — ' + _slowMons.length + ' site' + (_slowMons.length>1?'s':''), sev:'warning', color:'#f59e0b', desc: _slowMons.map(m=>(m.url||m.name||'').replace(/^https?:\/\//,'')+ ' (' + (m.latency||'—') + 'ms)').join(', ') + ' — dépasse le seuil 500ms. Cela impacte les Core Web Vitals et la conversion.' });
+    }
     return `
       ${isUltra
-        ? aiBlock("5 risques prédictifs détectés. 2 critiques à traiter dans les 3 semaines. <strong>Risque prioritaire : perte Local Pack</strong> (prob. 68%) si la pression concurrentielle continue. Revenue à risque M+3 estimé — consultez le rapport pour les chiffres.",
+        ? aiBlock(_realRisks.length > 0
+            ? _realRisks.filter(r=>r.sev==='critical').length + " risque" + (_realRisks.filter(r=>r.sev==='critical').length>1?'s':'') + " critique" + (_realRisks.filter(r=>r.sev==='critical').length>1?'s':'') + " et " + _realRisks.filter(r=>r.sev!=='critical').length + " alerte" + (_realRisks.filter(r=>r.sev!=='critical').length>1?'s':'') + " détectée" + (_realRisks.filter(r=>r.sev!=='critical').length>1?'s':'') + " à partir de vos données réelles."
+            : "Aucun risque détecté pour le moment — les analyses s'affineront avec vos données.",
             ['Rapport risques complet', 'Plan défensif IA', 'Alerter équipe'])
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🔮</div>
@@ -24589,66 +24632,37 @@ function renderAlertsCenter() {
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Risques prédits', String(riskPreds.length), 'horizon 90 jours', 'down')}
-        ${statCard('Risques critiques', String(riskPreds.filter(r => r.sev === 'critical').length), 'action < 3 semaines', 'down')}
-        ${statCard('Revenue à risque', 'Voir rapport', 'si aucune action M+3', 'down')}
-        ${statCard('Vulnérabilités', String(vulns.filter(v => v.risk !== 'Faible').length), 'domaines critiques', 'neutral')}
+        ${statCard('Risques détectés', String(_realRisks.length), _realRisks.length > 0 ? 'basés sur vos données réelles' : 'Aucun risque détecté', _realRisks.filter(r=>r.sev==='critical').length > 0 ? 'down' : 'neutral')}
+        ${statCard('Risques critiques', String(_realRisks.filter(r=>r.sev==='critical').length), _realRisks.filter(r=>r.sev==='critical').length > 0 ? 'action immédiate' : 'Aucun', _realRisks.filter(r=>r.sev==='critical').length > 0 ? 'down' : 'up')}
+        ${statCard('Alertes', String(_realRisks.filter(r=>r.sev==='warning').length), 'à surveiller', 'neutral')}
+        ${statCard('Monitors DOWN', String(_downMons.length), _downMons.length > 0 ? 'sites inaccessibles' : 'Tous opérationnels', _downMons.length > 0 ? 'down' : 'up')}
       </div>
 
       <!-- RISK PREDICTIONS -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('cpu').replace('stroke="currentColor"','stroke="#8b5cf6"')}
-          Prédictions IA — Risques futurs
+          Risques détectés — Données réelles
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${riskPreds.map(r => `
+          ${_realRisks.length === 0
+            ? `<div style="text-align:center;padding:32px 16px;color:var(--fp-text-faint);font-size:12px;line-height:1.6">
+                <div style="font-size:28px;margin-bottom:8px">✅</div>
+                <div style="font-weight:600;margin-bottom:4px">Aucun risque détecté pour le moment</div>
+                <div>Les analyses s'affineront avec vos données — ajoutez monitors, mots-clés et concurrents pour activer la détection.</div>
+              </div>`
+            : _realRisks.map(r => `
             <div style="display:flex;align-items:flex-start;gap:12px;padding:14px;border-radius:10px;border:1px solid ${r.color}28;background:${r.color}06">
               <span style="font-size:22px;flex-shrink:0">${r.icon}</span>
               <div style="flex:1;min-width:0">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-                  ${badge(r.sev === 'critical' ? 'Critique' : r.sev === 'warning' ? 'Alerte' : 'Moyen', r.color)}
-                  <span style="font-size:10px;color:var(--fp-text-faint)">Horizon : ${escHtml(r.horizon)}</span>
+                  ${badge(r.sev === 'critical' ? 'Critique' : r.sev === 'warning' ? 'Alerte' : 'Info', r.color)}
                 </div>
                 <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(r.title)}</div>
                 <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5">${escHtml(r.desc)}</div>
               </div>
-              <div style="text-align:center;flex-shrink:0;min-width:64px">
-                <div style="font-size:20px;font-weight:900;color:${r.color}">${r.prob}%</div>
-                <div style="font-size:9px;color:var(--fp-text-faint)">probabilité</div>
-                <div class="fp-progress-track" style="height:4px;margin-top:4px"><div class="fp-progress-fill" style="width:${r.prob}%;background:${r.color}"></div></div>
-              </div>
             </div>
           `).join('')}
-        </div>
-      </div>
-
-      <!-- VULNERABILITY ANALYSIS -->
-      <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🛡️ Analyse de vulnérabilités business</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
-          ${vulns.map(v => {
-            const vc = v.risk === 'Critique' ? '#ef4444' : v.risk === 'Élevé' ? '#f59e0b' : v.risk === 'Moyen' ? '#2563EB' : '#22c55e';
-            const circ = 2 * Math.PI * 28;
-            const fill = v.score / 100 * circ;
-            return `<div style="padding:14px;border-radius:12px;border:1px solid ${vc}28;background:${vc}07">
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-                <svg width="56" height="56" viewBox="0 0 64 64" style="flex-shrink:0">
-                  <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="6"/>
-                  <circle cx="32" cy="32" r="28" fill="none" stroke="${vc}" stroke-width="6"
-                    stroke-dasharray="${fill.toFixed(1)} ${(circ-fill).toFixed(1)}"
-                    stroke-dashoffset="${(circ*0.25).toFixed(1)}" stroke-linecap="round"
-                    transform="rotate(-90 32 32)"/>
-                  <text x="32" y="37" text-anchor="middle" font-size="13" font-weight="800" fill="${vc}">${v.score}</text>
-                </svg>
-                <div>
-                  <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${escHtml(v.cat)}</div>
-                  ${badge(v.risk, vc)}
-                </div>
-              </div>
-              ${v.items.map(item => `<div style="font-size:10px;color:var(--fp-text-muted);padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03)">• ${escHtml(item)}</div>`).join('')}
-            </div>`;
-          }).join('')}
         </div>
       </div>
     `;
@@ -24678,26 +24692,26 @@ function renderAlertsCenter() {
   const _tiRes     = _tiTotal === 0 ? 98 : Math.min(99, Math.max(1, 100 - Math.round((_tiCrit * 12 + _tiWarn * 4))));
   // Business risk
   const _tiBiz     = Math.min(99, Math.max(1, 100 - (_tiCrit * 10 + _tiDown * 18)));
-  // Monitor coverage (number of monitors → coverage score)
-  const _tiCov     = _tiMonCnt >= 10 ? 96 : _tiMonCnt >= 6 ? 85 : _tiMonCnt >= 3 ? 72 : _tiMonCnt >= 1 ? 58 : 20;
-  // System health from avg audit score
-  const _tiHealth  = _tiAvgAudit != null ? Math.min(99, _tiAvgAudit) : (_tiMonCnt > 0 ? 75 : 60);
-  // Stability
-  const _tiStab    = _tiUptime != null ? Math.min(99, _tiUptime) : 90;
-  // Time to resolve: derived from recent monitor downtime events (approximate)
-  const _tiTTR     = Math.min(99, Math.max(20, 100 - (_tiDown * 20 + _tiCrit * 5)));
+  // Monitor coverage — null when no monitors configured yet
+  const _tiCov     = _tiMonCnt === 0 ? null : (_tiMonCnt >= 10 ? 96 : _tiMonCnt >= 6 ? 85 : _tiMonCnt >= 3 ? 72 : 58);
+  // System health from avg audit score — null when no audits
+  const _tiHealth  = _tiAvgAudit != null ? Math.min(99, _tiAvgAudit) : (_tiMonCnt > 0 ? null : null);
+  // Stability — null when no monitor data
+  const _tiStab    = _tiUptime != null ? Math.min(99, _tiUptime) : null;
+  // Time to resolve — only meaningful when monitors exist
+  const _tiTTR     = _tiMonCnt > 0 ? Math.min(99, Math.max(20, 100 - (_tiDown * 20 + _tiCrit * 5))) : null;
 
   const alertScores = [
-    { label:'Stabilité',            val: _tiStab,   color: _tiMkCol(_tiStab),   icon:'🛡️' },
+    { label:'Stabilité',            val: _tiStab,   color: _tiStab   != null ? _tiMkCol(_tiStab)   : '#64748b', icon:'🛡️' },
     { label:'Score menace',         val: _tiThreat,  color: _tiMkCol(_tiThreat), icon:'🚨' },
     { label:'Résolution',           val: _tiRes,     color: _tiMkCol(_tiRes),    icon:'✅' },
     { label:'Risque business',      val: _tiBiz,     color: _tiMkCol(_tiBiz),    icon:'💼' },
     { label:'Sévérité incidents',   val: _tiSev,     color: _tiMkCol(_tiSev),    icon:'⚡' },
-    { label:'Santé système',        val: _tiHealth,  color: _tiMkCol(_tiHealth), icon:'🖥️' },
-    { label:'Couverture monitoring', val: _tiCov,    color: _tiMkCol(_tiCov),    icon:'📡' },
-    { label:'Temps résolution moy.', val: _tiTTR,   color:'#8b5cf6',             icon:'⏱️' },
+    { label:'Santé système',        val: _tiHealth,  color: _tiHealth != null ? _tiMkCol(_tiHealth) : '#64748b', icon:'🖥️' },
+    { label:'Couverture monitoring', val: _tiCov,    color: _tiCov    != null ? _tiMkCol(_tiCov)    : '#64748b', icon:'📡' },
+    { label:'Temps résolution moy.', val: _tiTTR,   color: _tiTTR    != null ? '#8b5cf6'            : '#64748b', icon:'⏱️' },
   ];
-  const _tiGlobal = Math.round(alertScores.reduce((s, k) => s + k.val, 0) / alertScores.length);
+  const _tiGlobal = (function(){ const valid = alertScores.filter(k => k.val != null); return valid.length > 0 ? Math.round(valid.reduce((s,k)=>s+k.val,0)/valid.length) : null; })();
   const circ46 = 2 * Math.PI * 46;
 
   return `
@@ -24710,7 +24724,7 @@ function renderAlertsCenter() {
         <div class="fp-section-sub">Surveillance temps réel · ${criticals.length} ${pluralizeFr(criticals.length, 'critique')} · ${warnings.length} ${pluralizeFr(warnings.length, 'alerte')} · Mis à jour à l\'instant</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Tout marquer lu', 'fp-btn fp-btn-ghost fp-btn-sm', 'check', "onclick=\"apiAction('POST','/api/alert-rules/mark-all-read').then(()=>{showToast('success','Alertes marquées lues');render(STATE.currentSection);}).catch(()=>showToast('error','Erreur'))\"" )}
+        ${btn('Tout marquer lu', 'fp-btn fp-btn-ghost fp-btn-sm', 'check', "onclick=\"apiAction('PATCH','/api/alert-rules/mark-all-read').then(()=>{if(Array.isArray(STATE.notifications))STATE.notifications.forEach(n=>{n.read=true;});STATE.alertUnread=0;showToast('success','Alertes marquées lues');render(STATE.currentSection);}).catch(()=>showToast('error','Erreur'))\"" )}
         ${btn('Config alertes',  'fp-btn fp-btn-ghost fp-btn-sm', 'settings', "onclick=\"navigate('settings');setTimeout(()=>navigateSub('alerts'),50)\"" )}
       </div>
     </div>
@@ -24767,23 +24781,25 @@ function renderAlertsCenter() {
           ${svgIcon('shield').replace('stroke="currentColor"','stroke="#ef4444"')}
           Tableau de bord threat intelligence — 8 scores clés
         </div>
-        <span style="font-size:11px;color:var(--fp-text-faint)">Score global : <strong style="color:${_tiGlobal >= 75 ? '#22c55e' : _tiGlobal >= 50 ? '#f59e0b' : '#ef4444'}">${_tiGlobal}/100</strong></span>
+        <span style="font-size:11px;color:var(--fp-text-faint)">Score global : <strong style="color:${_tiGlobal != null ? (_tiGlobal >= 75 ? '#22c55e' : _tiGlobal >= 50 ? '#f59e0b' : '#ef4444') : '#64748b'}">${_tiGlobal != null ? _tiGlobal + '/100' : '—'}</strong></span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
         ${alertScores.map(k => {
-          const filled = k.val / 100 * circ46;
+          const hasVal = k.val != null;
+          const filled = hasVal ? k.val / 100 * circ46 : 0;
           const dash   = circ46 - filled;
-          return `<div style="padding:14px;border-radius:12px;border:1px solid ${k.color}28;background:${k.color}07;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center">
+          const _textColor = hasVal ? k.color : (STATE.theme==='light'?'rgba(0,0,0,0.25)':'rgba(255,255,255,0.30)');
+          return `<div class="fp-ti-score-card" style="padding:14px;border-radius:12px;border:1px solid ${k.color}28;background:${k.color}07;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center">
             <svg width="64" height="64" viewBox="0 0 120 120" style="margin-bottom:2px">
-              <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
-              <circle cx="60" cy="60" r="46" fill="none" stroke="${k.color}" stroke-width="8"
+              <circle cx="60" cy="60" r="46" fill="none" stroke="${STATE.theme==='light'?'rgba(0,0,0,0.10)':'rgba(255,255,255,0.05)'}" stroke-width="8"/>
+              ${hasVal ? `<circle cx="60" cy="60" r="46" fill="none" stroke="${k.color}" stroke-width="8"
                 stroke-dasharray="${filled.toFixed(1)} ${dash.toFixed(1)}"
                 stroke-dashoffset="${(circ46*0.25).toFixed(1)}"
-                stroke-linecap="round" transform="rotate(-90 60 60)"/>
-              <text x="60" y="65" text-anchor="middle" font-size="22" font-weight="800" fill="${k.color}" font-family="Outfit,sans-serif">${k.val}</text>
+                stroke-linecap="round" transform="rotate(-90 60 60)"/>` : ''}
+              <text x="60" y="65" text-anchor="middle" font-size="22" font-weight="800" fill="${_textColor}" font-family="Outfit,sans-serif">${hasVal ? k.val : '—'}</text>
             </svg>
-            <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft)">${k.icon} ${escHtml(k.label)}</div>
-            <div>${badge(k.val>=70?'Bon':k.val>=45?'Moyen':'Critique', k.color)}</div>
+            <div class="fp-ti-score-label" style="font-size:11px;font-weight:600;color:var(--fp-text-soft)">${k.icon} ${escHtml(k.label)}</div>
+            <div class="fp-ti-score-badge">${hasVal ? badge(k.val>=70?'Bon':k.val>=45?'Moyen':'Critique', k.color) : `<span style="font-size:10px;color:var(--fp-text-faint);font-style:italic">—</span>`}</div>
           </div>`;
         }).join('')}
       </div>
@@ -25025,14 +25041,18 @@ function renderActivityFeed() {
           { kw:"fleuriste mariage paris",        pos:22, vol:190, delta:+7,  action:"Amplifier"          },
         ] : []);
     return `
-      ${aiBlock('Activité SEO intense cette semaine. <strong>' + (STATE.audits&&STATE.audits.length>0?Math.max(...STATE.audits.map(a=>a.score||0)):82) + '/100 record historique</strong> atteint ce mois. <strong>Momentum global : +7 pts ce mois.</strong>',
-        ['Timeline SEO complète', 'Rapport croissance', 'Optimiser les baisses'])}
+      ${aiBlock((()=>{
+        const _topScore = STATE.audits&&STATE.audits.length>0 ? Math.max(...STATE.audits.map(a=>a.score||0)) : null;
+        return _topScore != null
+          ? 'Score SEO maximum détecté : <strong>' + _topScore + '/100</strong>. ' + (seoActs.length > 0 ? seoActs.length + ' action(s) SEO enregistrée(s).' : 'Ajoutez de l\'activité pour enrichir l\'analyse.')
+          : 'Les analyses SEO s\'affineront avec vos données — lancez un audit pour commencer.';
+      })(), ['Timeline SEO complète', 'Rapport croissance', 'Optimiser les baisses'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Actions SEO ce mois', String(seoActs.length + 12), 'dont 4 majeures', 'up')}
-        ${statCard('Mots-clés améliorés', displayStat(null, '14'), PREVIEW_MODE ? '+7 nouvelles positions top 10' : 'Connectez DataForSEO', 'neutral')}
-        ${statCard('Score moyen portfolio', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,'71/100'); })(), PREVIEW_MODE ? '+5 pts ce mois' : 'score moyen portfolio', 'neutral')}
-        ${statCard('Momentum SEO', displayStat(null, '+7 pts'), PREVIEW_MODE ? 'accélération confirmée' : 'Connectez DataForSEO', 'neutral')}
+        ${statCard('Actions SEO ce mois', seoActs.length > 0 ? String(seoActs.length) : '—', seoActs.length > 0 ? 'événements SEO' : 'Les données apparaîtront avec votre activité réelle', seoActs.length > 0 ? 'up' : 'neutral')}
+        ${statCard('Mots-clés améliorés', kws.length > 0 ? String(kws.filter(k=>(k.delta||0)>0).length) : '—', kws.length > 0 ? 'positions en hausse' : 'Connectez DataForSEO', 'neutral')}
+        ${statCard('Score moyen portfolio', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return _a != null ? _a+'/100' : '—'; })(), STATE.audits&&STATE.audits.length>0 ? 'score moyen portfolio' : 'Lancez un premier audit', 'neutral')}
+        ${statCard('Momentum SEO', '—', 'Les données apparaîtront avec votre activité réelle', 'neutral')}
       </div>
 
       <!-- MILESTONES -->
@@ -25104,11 +25124,12 @@ function renderActivityFeed() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'monitoring') {
     const monActs = liveFeed.filter(a => a.cat === 'monitoring');
-    const slaRows = STATE.monitors.slice(0, 5).map((m, i) => ({
-      ...m, uptime: [99.98, 98.72, 100, 99.12, 99.91][i] || 99.5,
-      incidents: [0, 1, 0, 1, 0][i],
-      lat: [142, 890, 89, 621, 318][i] || 250,
-      sla: [true, false, true, true, true][i],
+    const slaRows = STATE.monitors.slice(0, 5).map((m) => ({
+      ...m,
+      uptime: typeof m.uptime === 'number' ? m.uptime : (m.status === 'up' ? null : m.status === 'down' ? null : null),
+      incidents: Array.isArray(m.incidents) ? m.incidents.length : (typeof m.incidentCount === 'number' ? m.incidentCount : null),
+      lat: typeof m.latency === 'number' ? m.latency : null,
+      sla: m.sla != null ? m.sla : null,
     }));
     const _monProbsLog = (STATE.monitors || []).filter(m => m.status !== 'up');
     const _nowLog = new Date();
@@ -25151,13 +25172,18 @@ function renderActivityFeed() {
           <table class="fp-data-table">
             <thead><tr><th>Monitor</th><th style="text-align:center">Uptime</th><th style="text-align:center">Latence</th><th style="text-align:center">Incidents</th><th style="text-align:center">SLA</th></tr></thead>
             <tbody>
-              ${slaRows.map(m => `<tr>
+              ${slaRows.length === 0 ? `<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--fp-text-faint);font-size:12px">Les données apparaîtront avec votre activité réelle</td></tr>` : slaRows.map(m => {
+                const _upC = m.uptime != null ? (m.uptime >= 99.9 ? '#22c55e' : m.uptime >= 99 ? '#f59e0b' : '#ef4444') : 'var(--fp-text-faint)';
+                const _latC = m.lat != null ? (m.lat > 500 ? '#ef4444' : m.lat > 300 ? '#f59e0b' : '#22c55e') : 'var(--fp-text-faint)';
+                const _incC = m.incidents != null ? (m.incidents > 0 ? '#f59e0b' : '#22c55e') : 'var(--fp-text-faint)';
+                return `<tr>
                 <td style="font-size:11px;font-weight:600">${escHtml(m.url?.replace('https://','') || m.name || 'Monitor')}</td>
-                <td style="text-align:center;font-weight:700;color:${m.uptime >= 99.9 ? '#22c55e' : m.uptime >= 99 ? '#f59e0b' : '#ef4444'}">${m.uptime}%</td>
-                <td style="text-align:center;font-weight:700;color:${m.lat > 500 ? '#ef4444' : m.lat > 300 ? '#f59e0b' : '#22c55e'}">${m.lat}ms</td>
-                <td style="text-align:center;font-weight:700;color:${m.incidents > 0 ? '#f59e0b' : '#22c55e'}">${m.incidents}</td>
-                <td style="text-align:center">${badge(m.sla ? 'OK' : 'NOK', m.sla ? '#22c55e' : '#ef4444')}</td>
-              </tr>`).join('')}
+                <td style="text-align:center;font-weight:700;color:${_upC}">${m.uptime != null ? m.uptime + '%' : '—'}</td>
+                <td style="text-align:center;font-weight:700;color:${_latC}">${m.lat != null ? m.lat + 'ms' : '—'}</td>
+                <td style="text-align:center;font-weight:700;color:${_incC}">${m.incidents != null ? m.incidents : '—'}</td>
+                <td style="text-align:center">${m.sla != null ? badge(m.sla ? 'OK' : 'NOK', m.sla ? '#22c55e' : '#ef4444') : '<span style="color:var(--fp-text-faint)">—</span>'}</td>
+              </tr>`;
+              }).join('')}
             </tbody>
           </table>
         </div>
@@ -25219,31 +25245,44 @@ function renderActivityFeed() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'ai') {
     const aiActs = liveFeed.filter(a => a.cat === 'ai');
-    const automations = [
-      { name:"Mise à jour fiches GBP",         freq:"Quotidien", last:"09/05 · 06h00", status:'actif',  runs:28, success:28, icon:'📍' },
-      { name:"Rapport hebdomadaire auto",       freq:"Lundi 8h",  last:"06/05 · 08h00", status:'actif',  runs:4,  success:4,  icon:'📄' },
-      { name:"Alerte ranking dégradé",          freq:"Temps réel",last:"09/05 · 11h14", status:'actif',  runs:12, success:11, icon:'🔔' },
-      { name:"Nettoyage backlinks spam",        freq:"Mensuel",   last:"01/05 · 00h00", status:'actif',  runs:1,  success:1,  icon:'🔗' },
-      { name:"Résumé IA activité quotidienne",  freq:"18h00",     last:"08/05 · 18h00", status:'pause',  runs:7,  success:7,  icon:'🤖' },
-    ];
-    const aiInsights = [
-      { icon:'🎯', title:"Plan optimisation " + (STATE.audits&&STATE.audits.length>0?((STATE.audits.reduce((b,a)=>(a.score||0)<(b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')||'site prioritaire'):'site prioritaire'), applied:"09/05", actions:3, result:"Score +4pts anticipé" },
-      { icon:'📊', title:"Analyse concurrentielle automatique",      applied:"08/05", actions:5, result:"2 menaces identifiées"   },
-      { icon:'⚡', title:"Recommandations Core Web Vitals",          applied:"07/05", actions:4, result:"LCP estimé -1.2s"        },
-      { icon:'🗺️', title:"Stratégie Local Pack renforcée",           applied:"06/05", actions:6, result:"Visibilité Maps +8%"    },
-    ];
+    // Real automations from workflow API
+    const _rawWfs = (window.FP_DATA && window.FP_DATA.automation && Array.isArray(window.FP_DATA.automation.workflows))
+      ? window.FP_DATA.automation.workflows
+      : (STATE.workflows || []);
+    const automations = _rawWfs.map(wf => ({
+      name:    wf.name || wf.title || 'Automatisation',
+      freq:    wf.schedule || wf.frequency || '—',
+      last:    wf.lastRun ? new Date(wf.lastRun).toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit'}) + ' · ' + new Date(wf.lastRun).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '—',
+      status:  wf.active !== false ? 'actif' : 'pause',
+      runs:    typeof wf.totalRuns === 'number' ? wf.totalRuns : (typeof wf.runs === 'number' ? wf.runs : 0),
+      success: typeof wf.successRuns === 'number' ? wf.successRuns : (typeof wf.success === 'number' ? wf.success : 0),
+      icon:    wf.icon || '⚙️',
+    }));
+    // Real AI plan logs from activity events of type 'ai'
+    const _aiEvts = (STATE.activityEvents || []).filter(e => e.type === 'ai' || (e.metadata && e.metadata.category === 'ai'));
+    const aiInsights = _aiEvts.slice(0, 8).map(e => ({
+      icon: '🤖',
+      title: e.label || 'Action IA',
+      applied: e.createdAt ? new Date(e.createdAt).toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit'}) : '—',
+      actions: e.metadata?.actionCount || 1,
+      result: e.metadata?.result || e.metadata?.message || '—',
+    }));
+    const _activeCount = automations.filter(a => a.status === 'actif').length;
+    const _totalSuccess = automations.reduce((s,a) => s + a.success, 0);
     return `
       ${isUltra
-        ? aiBlock("Automations actives ce mois : <strong>28 mises à jour GBP exécutées</strong> sans intervention manuelle. " + aiInsights.length + " plans IA appliqués — résultats mesurables sur <strong>" + (STATE.audits||[]).length + " site" + ((STATE.audits||[]).length !== 1 ? 's' : '') + "</strong> du portfolio.",
+        ? aiBlock((_activeCount > 0
+            ? _activeCount + " automatisation" + (_activeCount > 1 ? 's' : '') + " active" + (_activeCount > 1 ? 's' : '') + " — <strong>" + _totalSuccess + " exécution" + (_totalSuccess > 1 ? 's' : '') + " réussie" + (_totalSuccess > 1 ? 's' : '') + "</strong> au total. "
+            : "Aucune automatisation configurée. ") + (aiInsights.length > 0 ? aiInsights.length + " action" + (aiInsights.length > 1 ? 's' : '') + " IA journalisée" + (aiInsights.length > 1 ? 's' : '') + "." : "Les actions IA apparaîtront ici dès leur exécution."),
             ['Créer une automatisation', 'Rapport IA complet', 'Voir les prévisions'])
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🤖</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA & Automations — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Logs complets des actions IA, automatisations avancées et plans exécutés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Automatisations actives', String(automations.filter(a => a.status === 'actif').length), 'exécutions 24/7', 'up')}
-        ${statCard('Plans IA appliqués', String(aiInsights.length), 'ce mois', 'up')}
-        ${statCard('Exécutions réussies', String(automations.reduce((s,a) => s + a.success, 0)), 'taux succès 98%', 'up')}
-        ${statCard('Gain temps estimé', displayStat(null, '14h/mois'), PREVIEW_MODE ? 'tâches automatisées' : 'Activez les automations', 'neutral')}
+        ${statCard('Automatisations actives', _rawWfs.length > 0 ? String(_activeCount) : '—', _rawWfs.length > 0 ? 'exécutions 24/7' : 'Configurez les automatisations', _activeCount > 0 ? 'up' : 'neutral')}
+        ${statCard('Plans IA journalisés', _aiEvts.length > 0 ? String(_aiEvts.length) : '—', _aiEvts.length > 0 ? 'ce mois' : 'Les actions IA apparaîtront ici', 'neutral')}
+        ${statCard('Exécutions réussies', _rawWfs.length > 0 ? String(_totalSuccess) : '—', _rawWfs.length > 0 ? 'toutes automatisations' : 'Aucune automatisation', _totalSuccess > 0 ? 'up' : 'neutral')}
+        ${statCard('Gain temps estimé', '—', 'données insuffisantes', 'neutral')}
       </div>
 
       <!-- AUTOMATIONS -->
@@ -25253,33 +25292,37 @@ function renderActivityFeed() {
           Automatisations actives
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${automations.map(a => {
-            const ac = a.status === 'actif' ? '#22c55e' : '#f59e0b';
-            return `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid ${ac}22">
-              <span style="font-size:20px;flex-shrink:0">${a.icon}</span>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(a.name)}</div>
-                <div style="font-size:10px;color:var(--fp-text-muted)">Fréquence : ${escHtml(a.freq)} · Dernier : ${escHtml(a.last)}</div>
-              </div>
-              <div style="text-align:right;flex-shrink:0">
-                <div style="font-size:11px;font-weight:700;color:var(--fp-text)">${a.success}/${a.runs} OK</div>
-                ${badge(a.status === 'actif' ? 'Actif' : 'Pause', ac)}
-              </div>
-            </div>`;
-          }).join('')}
+          ${automations.length === 0
+            ? `<div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint);font-size:12px;line-height:1.6"><div style="font-size:24px;margin-bottom:8px">⚙️</div><div style="font-weight:600;margin-bottom:4px">Aucune automatisation configurée</div><div>Les données apparaîtront avec votre activité réelle</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:10px" onclick="navigate('settings');setTimeout(()=>navigateSub('automations'),50)">Configurer →</button></div>`
+            : automations.map(a => {
+              const ac = a.status === 'actif' ? '#22c55e' : '#f59e0b';
+              return `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid ${ac}22">
+                <span style="font-size:20px;flex-shrink:0">${escHtml(a.icon)}</span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(a.name)}</div>
+                  <div style="font-size:10px;color:var(--fp-text-muted)">Fréquence : ${escHtml(a.freq)} · Dernier : ${escHtml(a.last)}</div>
+                </div>
+                <div style="text-align:right;flex-shrink:0">
+                  <div style="font-size:11px;font-weight:700;color:var(--fp-text)">${a.success}/${a.runs} OK</div>
+                  ${badge(a.status === 'actif' ? 'Actif' : 'Pause', ac)}
+                </div>
+              </div>`;
+            }).join('')}
         </div>
       </div>
 
       <!-- AI PLANS APPLIED -->
       <div class="fp-card fp-mb-20">
-        <div class="fp-card-title" style="margin-bottom:14px">🧠 Plans IA exécutés ce mois</div>
+        <div class="fp-card-title" style="margin-bottom:14px">🧠 Log IA — Plans exécutés</div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${aiInsights.map(a => `
+          ${aiInsights.length === 0
+            ? `<div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint);font-size:12px;line-height:1.6"><div style="font-size:24px;margin-bottom:8px">🧠</div><div style="font-weight:600;margin-bottom:4px">Aucune action IA journalisée</div><div>Les données apparaîtront avec votre activité réelle</div></div>`
+            : aiInsights.map(a => `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.2)">
-              <span style="font-size:20px;flex-shrink:0">${a.icon}</span>
+              <span style="font-size:20px;flex-shrink:0">${escHtml(a.icon)}</span>
               <div style="flex:1;min-width:0">
                 <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(a.title)}</div>
-                <div style="font-size:10px;color:var(--fp-text-muted)">${a.actions} actions exécutées · ${escHtml(a.applied)}</div>
+                <div style="font-size:10px;color:var(--fp-text-muted)">${a.actions} action(s) · ${escHtml(a.applied)}</div>
               </div>
               <div style="text-align:right;flex-shrink:0">
                 <div style="font-size:11px;font-weight:700;color:#22c55e">${escHtml(a.result)}</div>
@@ -25293,19 +25336,21 @@ function renderActivityFeed() {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">⚡ Log IA — Actions récentes</div>
         <div class="fp-timeline">
-          ${aiActs.map(item => {
-            const c = colors[item.type] || '#8b5cf6';
-            return `<div class="fp-timeline-item">
-              <div class="fp-timeline-dot" style="background:${c}12;border-color:${c}25">
-                ${svgIcon(item.icon).replace('stroke="currentColor"',`stroke="${c}"`)}
-              </div>
-              <div class="fp-timeline-body">
-                <div class="fp-timeline-title">${escHtml(item.title)}</div>
-                <div class="fp-timeline-desc">${escHtml(item.desc)}</div>
-                <div class="fp-timeline-time">Il y a ${escHtml(item.time)} · ${escHtml(item.user)}</div>
-              </div>
-            </div>`;
-          }).join('')}
+          ${aiActs.length === 0
+            ? `<div style="text-align:center;padding:16px;color:var(--fp-text-faint);font-size:12px">Aucune action IA enregistrée — les données apparaîtront avec votre activité réelle</div>`
+            : aiActs.map(item => {
+              const c = colors[item.type] || '#8b5cf6';
+              return `<div class="fp-timeline-item">
+                <div class="fp-timeline-dot" style="background:${c}12;border-color:${c}25">
+                  ${svgIcon(item.icon).replace('stroke="currentColor"',`stroke="${c}"`)}
+                </div>
+                <div class="fp-timeline-body">
+                  <div class="fp-timeline-title">${escHtml(item.title)}</div>
+                  <div class="fp-timeline-desc">${escHtml(item.desc)}</div>
+                  <div class="fp-timeline-time">Il y a ${escHtml(item.time)} · ${escHtml(item.user)}</div>
+                </div>
+              </div>`;
+            }).join('')}
         </div>
       </div>
     `;
@@ -25521,10 +25566,10 @@ function renderActivityFeed() {
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Score ops global', displayStat(null, '71/100'), PREVIEW_MODE ? '+13 pts 3 semaines' : 'Analyse en cours', 'neutral')}
-        ${statCard('Actions totales', String(liveFeed.length), 'toutes catégories', 'up')}
-        ${statCard('Taux automatisation', displayStat(null, '38%'), PREVIEW_MODE ? 'objectif 60%' : 'Configurez les automations', 'neutral')}
-        ${statCard('MTTR incidents', displayStat(null, '38 min'), PREVIEW_MODE ? 'SLA respecté' : 'Aucun incident résolu', 'neutral')}
+        ${statCard('Score ops global', '—', 'Les données apparaîtront avec votre activité réelle', 'neutral')}
+        ${statCard('Actions totales', String((STATE.activityEvents||[]).length), 'événements enregistrés', (STATE.activityEvents||[]).length > 0 ? 'up' : 'neutral')}
+        ${statCard('Taux automatisation', (()=>{ const _wfs=(window.FP_DATA?.automation?.workflows||STATE.workflows||[]); const _active=_wfs.filter(w=>w.active!==false).length; return _wfs.length > 0 ? String(Math.round(_active/_wfs.length*100))+'%' : '—'; })(), 'automatisations actives', 'neutral')}
+        ${statCard('MTTR incidents', '—', 'Aucun incident résolu', 'neutral')}
       </div>
 
       <!-- 6 OPS SCORES GAUGES -->
@@ -25568,19 +25613,20 @@ function renderActivityFeed() {
               </div>`;
             }).join('')}
           </div>
-          <div style="font-size:11px;color:var(--fp-text-muted);text-align:center">Momentum ops : <strong style="color:#22c55e">74/100</strong> — record historique</div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px"><div style="padding:8px;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:8px;text-align:center"><div style="font-size:15px;font-weight:800;color:#22c55e">+13 pts</div><div style="font-size:9px;color:var(--fp-text-faint)">vs semaine passée</div></div><div style="padding:8px;background:rgba(37,99,235,0.07);border:1px solid rgba(37,99,235,0.2);border-radius:8px;text-align:center"><div style="font-size:15px;font-weight:800;color:#2563EB">52</div><div style="font-size:9px;color:var(--fp-text-faint)">actions exécutées</div></div><div style="padding:8px;background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.2);border-radius:8px;text-align:center"><div style="font-size:15px;font-weight:800;color:#8b5cf6">3</div><div style="font-size:9px;color:var(--fp-text-faint)">membres actifs</div></div></div><div style="margin-top:8px;padding:8px 10px;background:rgba(34,197,94,0.05);border-radius:8px;font-size:10px;color:var(--fp-text-muted)">🚀 Trajectoire : <strong style="color:#22c55e">+8 pts prévus la semaine prochaine</strong> si les 3 missions prioritaires sont complétées</div>
-          <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
-            <div style="padding:8px 10px;background:rgba(37,99,235,0.05);border-radius:8px;border-left:3px solid #2563EB;font-size:11px;color:var(--fp-text-muted)">
-              <strong style="color:#2563EB">Analyse S22</strong> — Pic historique atteint. Le gain +13 pts provient des audits SEO complétés (+7) et des optimisations GBP (+4). Dynamique à maintenir.
-            </div>
-            <div style="padding:8px 10px;background:rgba(245,158,11,0.05);border-radius:8px;border-left:3px solid #f59e0b;font-size:11px;color:var(--fp-text-muted)">
-              <strong style="color:#f59e0b">Point d'attention</strong> — Productivité équipe (68/100) en dessous du momentum global (74). Déléguer 2 tâches supplémentaires = +5 pts estimés la semaine prochaine.
-            </div>
-            <div style="padding:8px 10px;background:rgba(139,92,246,0.05);border-radius:8px;border-left:3px solid #8b5cf6;font-size:11px;color:var(--fp-text-muted)">
-              <strong style="color:#8b5cf6">Objectif S23</strong> — Maintenir &gt;70/100 pour valider le badge "Momentum Elite". Missions prioritaires à traiter avant vendredi.
-            </div>
-          </div>
+          ${weeks.length > 0
+            ? `<div style="font-size:11px;color:var(--fp-text-muted);text-align:center">Momentum ops : <strong style="color:#22c55e">${momentum[momentum.length-1]}/100</strong></div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px">
+                <div style="padding:8px;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:8px;text-align:center"><div style="font-size:15px;font-weight:800;color:#22c55e">${momentum.length>1?((momentum[momentum.length-1]-momentum[momentum.length-2])>=0?'+':''+(momentum[momentum.length-1]-momentum[momentum.length-2]))+' pts':'—'}</div><div style="font-size:9px;color:var(--fp-text-faint)">vs semaine passée</div></div>
+                <div style="padding:8px;background:rgba(37,99,235,0.07);border:1px solid rgba(37,99,235,0.2);border-radius:8px;text-align:center"><div style="font-size:15px;font-weight:800;color:#2563EB">${(STATE.activityEvents||[]).length}</div><div style="font-size:9px;color:var(--fp-text-faint)">actions enregistrées</div></div>
+                <div style="padding:8px;background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.2);border-radius:8px;text-align:center"><div style="font-size:15px;font-weight:800;color:#8b5cf6">${(STATE.team||[]).length || '—'}</div><div style="font-size:9px;color:var(--fp-text-faint)">membres actifs</div></div>
+              </div>`
+            : `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px">
+                <div style="padding:8px;background:rgba(37,99,235,0.07);border:1px solid rgba(37,99,235,0.2);border-radius:8px;text-align:center"><div style="font-size:15px;font-weight:800;color:#2563EB">${(STATE.activityEvents||[]).length}</div><div style="font-size:9px;color:var(--fp-text-faint)">actions enregistrées</div></div>
+                <div style="padding:8px;background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.2);border-radius:8px;text-align:center"><div style="font-size:15px;font-weight:800;color:#8b5cf6">${(STATE.team||[]).length || '—'}</div><div style="font-size:9px;color:var(--fp-text-faint)">membres actifs</div></div>
+                <div style="padding:8px;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:8px;text-align:center"><div style="font-size:15px;font-weight:800;color:#22c55e">${(STATE.audits||[]).length}</div><div style="font-size:9px;color:var(--fp-text-faint)">audits effectués</div></div>
+              </div>
+              <div style="margin-top:8px;padding:8px 10px;background:rgba(37,99,235,0.05);border-radius:8px;font-size:11px;color:var(--fp-text-faint);text-align:center">Les données apparaîtront avec votre activité réelle</div>`
+          }
         </div>
 
         <div class="fp-card">
@@ -26040,10 +26086,10 @@ function renderDataExplorer() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'dashboards') {
     const presets = [
-      { name: 'Dashboard SEO Executive',   widgets: 8,  updated: 'Aujourd\'hui', icon: '🔍', color: '#2563EB',  desc: 'Score SEO, positions, backlinks, local SEO domination' },
-      { name: 'Dashboard Marketing',        widgets: 6,  updated: 'Hier',         icon: '📢', color: '#8b5cf6',  desc: 'Sources trafic, conversion, campagnes, ROI' },
-      { name: 'Dashboard Performance',      widgets: 7,  updated: '02/05',        icon: '⚡', color: '#22c55e',  desc: 'Uptime, vitesse, Core Web Vitals, SLA' },
-      { name: 'Dashboard Client (white)',   widgets: 5,  updated: '01/05',        icon: '👔', color: '#f59e0b',  desc: 'Vue simplifiée branded pour présentations client' },
+      { name: 'Dashboard SEO Executive',   widgets: 8,  updated: '—', icon: '🔍', color: '#2563EB',  desc: 'Score SEO, positions, backlinks, local SEO domination' },
+      { name: 'Dashboard Marketing',        widgets: 6,  updated: '—', icon: '📢', color: '#8b5cf6',  desc: 'Sources trafic, conversion, campagnes, ROI' },
+      { name: 'Dashboard Performance',      widgets: 7,  updated: '—', icon: '⚡', color: '#22c55e',  desc: 'Uptime, vitesse, Core Web Vitals, SLA' },
+      { name: 'Dashboard Client (white)',   widgets: 5,  updated: '—', icon: '👔', color: '#f59e0b',  desc: 'Vue simplifiée branded pour présentations client' },
     ];
     const widgetTypes = [
       { name: 'Score SEO',         icon: '📊', plan: 'Standard' },
@@ -36730,7 +36776,7 @@ function renderLocalDominationMaps() {
             </select>
           </div>
           <div style="font-size:10px;color:var(--fp-text-faint);padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border:1px solid rgba(37,99,235,0.15)">
-            ℹ️ En production, les rankings sont récupérés via DataForSEO ou Google Maps API pour chaque point de la grille.
+            ℹ️ La heatmap sera générée pour chaque point de la grille autour de votre emplacement configuré.
           </div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">

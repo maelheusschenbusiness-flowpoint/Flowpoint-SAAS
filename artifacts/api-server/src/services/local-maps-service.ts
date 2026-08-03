@@ -6,8 +6,16 @@ export interface Heatmap {
   radius_km: number; grid_size: number; status: string; created_at: string;
 }
 
+export interface BusinessPoint {
+  address: string | null;
+  city: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
 export interface MapsDashboard {
   heatmaps: Heatmap[];
+  businessPoint: BusinessPoint | null;
   summary: {
     totalHeatmaps: number;
     avgRank: number | null;
@@ -20,19 +28,111 @@ export interface MapsDashboard {
   recommendations: Array<{ title: string; description: string; impact: string; effort: string }>;
 }
 
-export async function getMapsDashboard(orgId: string): Promise<MapsDashboard> {
-  const heatmaps = await getHeatmaps(orgId);
+// ── Server-side geocoding (Google or Nominatim fallback) ─────────────────────
+async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  // Try Google Geocoding API first (if key configured)
+  const googleKey = process.env["GOOGLE_API_KEY"] ?? process.env["GOOGLE_MAPS_KEY"] ?? "";
+  if (googleKey) {
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${googleKey}&language=fr`;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6000);
+      const r = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (r.ok) {
+        const data = await r.json() as { status: string; results: Array<{ geometry: { location: { lat: number; lng: number } } }> };
+        if (data.status === "OK" && data.results[0]) {
+          const loc = data.results[0].geometry.location;
+          return { lat: loc.lat, lng: loc.lng };
+        }
+      }
+    } catch { /* fall through to Nominatim */ }
+  }
 
-  const dominanceScores = heatmaps.map(h => Number((h as Record<string,unknown>)["dominance_score"] ?? 0)).filter(n => n > 0);
+  // Fallback: Nominatim / OSM (no API key required)
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=fr`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+    const r = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { "User-Agent": "FlowPoint/1.0 (contact@flowpoint.pro)" },
+    });
+    clearTimeout(timer);
+    if (r.ok) {
+      const data = await r.json() as Array<{ lat: string; lon: string }>;
+      if (data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    }
+  } catch { /* ignore */ }
+
+  return null;
+}
+
+// ── Load + enrich org business location ──────────────────────────────────────
+// If lat/lng are absent but an address is stored, geocode and cache into org_settings.
+async function getBusinessPoint(orgId: string): Promise<BusinessPoint | null> {
+  const client = await pool.connect();
+  try {
+    // Load from org_settings (canonical location store)
+    const r = await client.query(
+      `SELECT address, city, latitude, longitude FROM org_settings WHERE org_id=$1 LIMIT 1`,
+      [orgId],
+    );
+    const row = r.rows[0] as { address: string | null; city: string | null; latitude: string | number | null; longitude: string | number | null } | undefined;
+    if (!row) return null;
+
+    const address = row.address ?? null;
+    const city    = row.city    ?? null;
+    let lat  = row.latitude  != null ? Number(row.latitude)  : null;
+    let lng  = row.longitude != null ? Number(row.longitude) : null;
+
+    // If we have an address but no coords → geocode and persist
+    const geoQuery = [address, city].filter(Boolean).join(", ");
+    if (geoQuery && (lat == null || lng == null || isNaN(lat) || isNaN(lng))) {
+      const coords = await geocodeAddress(geoQuery);
+      if (coords) {
+        lat = coords.lat;
+        lng = coords.lng;
+        // Cache back to org_settings so next load is instant
+        await client.query(
+          `UPDATE org_settings SET latitude=$1, longitude=$2 WHERE org_id=$3`,
+          [lat, lng, orgId],
+        ).catch(() => { /* non-fatal */ });
+      }
+    }
+
+    if (!address && !city) return null;
+    return {
+      address,
+      city,
+      latitude:  lat  != null && !isNaN(lat)  ? lat  : null,
+      longitude: lng  != null && !isNaN(lng)   ? lng  : null,
+    };
+  } catch {
+    return null;
+  } finally {
+    client.release();
+  }
+}
+
+export async function getMapsDashboard(orgId: string): Promise<MapsDashboard> {
+  const [heatmaps, businessPoint] = await Promise.all([
+    getHeatmaps(orgId),
+    getBusinessPoint(orgId),
+  ]);
+
+  type HeatmapExt = Heatmap & { dominance_score?: unknown };
+  const dominanceScores = heatmaps.map(h => Number((h as HeatmapExt).dominance_score ?? 0)).filter(n => n > 0);
   const avgRank = dominanceScores.length > 0
     ? Math.round((dominanceScores.reduce((s, n) => s + n, 0) / dominanceScores.length) * 10) / 10
     : null;
   const coverageScore = heatmaps.length > 0
-    ? Math.min(100, Math.round((heatmaps.filter(h => Number((h as Record<string,unknown>)["dominance_score"] ?? 0) >= 50).length / heatmaps.length) * 100))
+    ? Math.min(100, Math.round((heatmaps.filter(h => Number((h as HeatmapExt).dominance_score ?? 0) >= 50).length / heatmaps.length) * 100))
     : null;
 
   return {
     heatmaps,
+    businessPoint,
     summary: {
       totalHeatmaps: heatmaps.length,
       avgRank,
@@ -57,10 +157,10 @@ export async function getHeatmaps(orgId: string): Promise<Heatmap[]> {
   } catch { return []; } finally { client.release(); }
 }
 
-export async function getHeatmapDetail(id: string): Promise<Heatmap | null> {
+export async function getHeatmapDetail(orgId: string, id: string): Promise<Heatmap | null> {
   const client = await pool.connect();
   try {
-    const res = await client.query(`SELECT * FROM local_heatmaps WHERE id=$1 LIMIT 1`, [id]);
+    const res = await client.query(`SELECT * FROM local_heatmaps WHERE id=$1 AND org_id=$2 LIMIT 1`, [id, orgId]);
     return res.rows[0] ?? null;
   } catch { return null; } finally { client.release(); }
 }

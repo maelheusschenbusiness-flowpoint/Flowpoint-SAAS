@@ -152,6 +152,10 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS speed INTEGER NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS date TEXT NOT NULL DEFAULT '';`);
     await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS issues INTEGER NOT NULL DEFAULT 0;`);
+    // BUGFIX-AUDIT-NAME: audits.name was missing from CREATE TABLE — INSERT (id,url,name,...) failed
+    // with Postgres 42703 "column audits.name does not exist" causing every audit creation to return 500.
+    await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';`);
     // BUGFIX: audits.org_id was never added outside of the RLS migration
     // (pnpm run migrate), which had never been executed against production —
     // POST /api/audits INSERTs an org_id column that did not exist there,

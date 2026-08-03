@@ -114,7 +114,8 @@ router.post("/alert-rules", canWrite, async (req, res) => {
 
 
 // ── PATCH /alert-rules/mark-all-read ─────────────────────────────────────────
-router.patch("/alert-rules/mark-all-read", canWrite, async (req, res) => {
+// POST alias retained for frontend compatibility (both verbs accepted)
+async function markAllReadHandler(req: import("express").Request, res: import("express").Response) {
   try {
     await db(req)(`UPDATE alert_events SET read_at=NOW() WHERE read_at IS NULL AND org_id=$1`, [org(req)]);
     if (Array.isArray(store.triggeredAlerts)) store.triggeredAlerts = [];
@@ -123,7 +124,9 @@ router.patch("/alert-rules/mark-all-read", canWrite, async (req, res) => {
     if (Array.isArray(store.triggeredAlerts)) store.triggeredAlerts = [];
     res.json({ ok: true });
   }
-});
+}
+router.patch("/alert-rules/mark-all-read", canWrite, markAllReadHandler);
+router.post("/alert-rules/mark-all-read",  canWrite, markAllReadHandler);
 
 // ── PATCH /alert-rules/:id ────────────────────────────────────────────────────
 router.patch("/alert-rules/:id", canWrite, async (req, res) => {

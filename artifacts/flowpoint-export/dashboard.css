@@ -9025,3 +9025,120 @@ html[data-theme="light"] .fp-skel-block::after {
   0%, 55% { box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.55); background-color: rgba(37, 99, 235, 0.08); }
   100%    { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   POLISH FIXES — card hover transparency + rankings frame + badges
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 1. CARD HOVER TRANSPARENCY FIX ─────────────────────────────────
+   Dark theme uses rgba(255,255,255,0.07/0.10) backgrounds which are
+   semi-transparent and can look "see-through" on hover.
+   Override all hover rules to use solid computed equivalents:
+     rgba(255,255,255,0.07) on #050810 ≈ #16191f
+     rgba(255,255,255,0.10) on #050810 ≈ #1c1f29
+   Light theme: keep solid white.
+   ─────────────────────────────────────────────────────────────────── */
+
+/* Dark mode — solid hover backgrounds, no transparency */
+:not([data-theme="light"]) .fp-card:hover,
+html:not([data-theme="light"]) .fp-card:hover {
+  background: #1c1f29 !important;
+  border-color: rgba(37, 99, 235, 0.28) !important;
+  box-shadow: 0 4px 24px rgba(37, 99, 235, 0.10) !important;
+}
+:not([data-theme="light"]) .fp-stat-card:hover,
+html:not([data-theme="light"]) .fp-stat-card:hover {
+  background: #1c1f29 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+:not([data-theme="light"]) .fp-kpi-card:hover,
+html:not([data-theme="light"]) .fp-kpi-card:hover {
+  background: #1c1f29 !important;
+  border-color: rgba(37, 99, 235, 0.30) !important;
+  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.12) !important;
+}
+:not([data-theme="light"]) .fp-gauge-card:hover,
+html:not([data-theme="light"]) .fp-gauge-card:hover {
+  background: #1c1f29 !important;
+  border-color: rgba(37, 99, 235, 0.30) !important;
+}
+
+/* Also fix the base dark card bg to be solid (plugs the underlying rgba) */
+:not([data-theme="light"]) .fp-card,
+html:not([data-theme="light"]) .fp-card,
+:not([data-theme="light"]) .fp-stat-card,
+html:not([data-theme="light"]) .fp-stat-card,
+:not([data-theme="light"]) .fp-kpi-card,
+html:not([data-theme="light"]) .fp-kpi-card,
+:not([data-theme="light"]) .fp-gauge-card,
+html:not([data-theme="light"]) .fp-gauge-card {
+  background: #16191f !important;
+}
+
+/* Light theme — solid white on hover (never transparent) */
+html[data-theme="light"] .fp-card:hover,
+[data-theme="light"] .fp-card:hover {
+  background: #ffffff !important;
+  border-color: rgba(37, 99, 235, 0.28) !important;
+  box-shadow: 0 6px 28px rgba(37, 99, 235, 0.14), 0 0 0 1px rgba(37, 99, 235, 0.10) !important;
+}
+html[data-theme="light"] .fp-kpi-card:hover,
+[data-theme="light"] .fp-kpi-card:hover {
+  background: #ffffff !important;
+  border-color: rgba(37, 99, 235, 0.30) !important;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.10) !important;
+}
+html[data-theme="light"] .fp-gauge-card:hover,
+[data-theme="light"] .fp-gauge-card:hover {
+  background: #ffffff !important;
+  border-color: rgba(37, 99, 235, 0.28) !important;
+}
+html[data-theme="light"] .fp-stat-card:hover,
+[data-theme="light"] .fp-stat-card:hover {
+  background: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Also catch generic [class*=card]:hover that might set rgba backgrounds */
+:not([data-theme="light"]) .fp-monitor-card:hover,
+html:not([data-theme="light"]) .fp-monitor-card:hover {
+  background: #1c1f29 !important;
+}
+:not([data-theme="light"]) .fp-kanban-card:hover,
+html:not([data-theme="light"]) .fp-kanban-card:hover {
+  background: #1c1f29 !important;
+}
+
+/* ── 2. LOCAL SEO RANKINGS FRAME — solid background ─────────────────
+   The DataForSEO / rankings container inside Local SEO uses .fp-card
+   which gets the transparent rgba bg from dark mode. Ensure it's solid
+   (handled by rule 1 above), but also cover any inner content cells.
+   ─────────────────────────────────────────────────────────────────── */
+:not([data-theme="light"]) #dfs-local-rank-widget,
+html:not([data-theme="light"]) #dfs-local-rank-widget {
+  background: transparent; /* inherits solid parent card */
+}
+
+/* ── 3. ALERT COMMAND CENTER 8-SCORE GAUGES — badge vertical alignment ──
+   The gauge cards are flex-columns. We pin the label to a min-height
+   of 2 lines (~2.4em) so the badge always sits at the same baseline.
+   The outer card container is targeted by the fp-ti-score-badge sibling
+   approach: label gets min-height; badge wrapper gets margin-top:auto.
+   ─────────────────────────────────────────────────────────────────── */
+
+/* Give each gauge card a consistent min-height so all badges align */
+.fp-ti-score-card {
+  min-height: 170px;
+}
+
+.fp-ti-score-label {
+  min-height: 2.4em;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+}
+.fp-ti-score-badge {
+  margin-top: auto;
+}
