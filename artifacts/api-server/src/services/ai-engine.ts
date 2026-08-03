@@ -57,6 +57,7 @@ export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
   requestCount: number;
   tokensUsed: number;
   tokenLimit: number;
+  resetAt: Date;
 }> {
   const month       = currentMonth();
   const _dbData     = await loadOrgData(orgId).catch(() => null);
@@ -107,10 +108,14 @@ export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
       requestCount: Number(row.request_count),
       tokensUsed:   Number(row.tokens_used),
       tokenLimit,
+      resetAt:      monthResetDate(),
     };
   }
 
-  return { creditsUsed: 0, creditsLimit: creditLimit, creditsExtra, costEur: 0, requestCount: 0, tokensUsed: 0, tokenLimit };
+  return {
+    creditsUsed: 0, creditsLimit: creditLimit, creditsExtra, costEur: 0,
+    requestCount: 0, tokensUsed: 0, tokenLimit, resetAt: monthResetDate(),
+  };
 }
 
 export async function consumeAICredits(opts: {
@@ -386,15 +391,17 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
   alerts: Array<{ alertType: string; message: string; triggeredAt: Date }>;
   estimatedCostEur: number;
 }> {
-  const _dbData     = await loadOrgData(orgId).catch(() => null);
-  const plan        = (_dbData?.plan || store.me.plan || "standard").toLowerCase();
-  const creditLimit = planCreditLimit(plan);
-  const tokenLimit  = PLAN_AI_TOKENS[plan] ?? PLAN_AI_TOKENS.standard;
+  // Single source of truth for the monthly balance, including purchased packs
+  // (ai_credit_purchases) — same path as quota checks in getOrCreateMonthlyUsage.
+  const canonicalMonthly = await getOrCreateMonthlyUsage(orgId).catch(() => ({
+    creditsUsed: 0, creditsLimit: planCreditLimit("standard"), creditsExtra: 0,
+    costEur: 0, requestCount: 0, tokensUsed: 0,
+    tokenLimit: PLAN_AI_TOKENS.standard, resetAt: monthResetDate(),
+  }));
 
   const fallback = {
     monthly: {
-      creditsUsed: 0, creditsLimit: creditLimit, creditsExtra: 0,
-      costEur: 0, requestCount: 0, tokensUsed: 0, tokenLimit,
+      ...canonicalMonthly,
     },
     byFeature: [] as Array<{ feature: string; credits: number; pct: number; cost: number }>,
     byProvider: [] as Array<{ provider: string; credits: number; pct: number; cost: number }>,
@@ -405,37 +412,32 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
   };
 
   try {
-    type MonthRow = {
-      credits_used: number; cost_eur: number; request_count: number; tokens_used: number;
-    };
     type LogRow    = { feature: string; credits: string; cost: string };
     type ProviderRow = { provider: string; credits: string; cost: string };
     type ModelRow    = { model: string; credits: string; cost: string };
     type AlertRow  = { alert_type: string; message: string; triggered_at: Date };
     type DailyRow  = { day: string; credits: string };
 
-    const [monthly, byFeature, byProvider, byModel, alerts, dailyHistory] = await withOrgDb<
-      [ReturnType<typeof fallback.monthly> , typeof fallback.byFeature, typeof fallback.byProvider, typeof fallback.byModel, typeof fallback.alerts, number[]]
+    const [byFeature, byProvider, byModel, alerts, dailyHistory] = await withOrgDb<
+      [typeof fallback.byFeature, typeof fallback.byProvider, typeof fallback.byModel, typeof fallback.alerts, number[]]
     >(orgId, async (client) => {
-      const [mRes, lRes, pRes, moRes, aRes, dRes] = await Promise.all([
-        client.query<MonthRow>(
-          `SELECT credits_used, cost_eur, request_count, COALESCE(tokens_used, 0) AS tokens_used
-           FROM ai_monthly_usage WHERE org_id=$1 AND month=$2 LIMIT 1`,
-          [orgId, currentMonth()]
-        ),
+      const [lRes, pRes, moRes, aRes, dRes] = await Promise.all([
         client.query<LogRow>(
           `SELECT feature, SUM(credits_used)::text AS credits, SUM(cost_eur)::text AS cost
-           FROM ai_usage_logs WHERE org_id=$1 GROUP BY feature LIMIT 20`,
+           FROM ai_usage_logs WHERE org_id=$1 AND created_at >= date_trunc('month', NOW())
+           GROUP BY feature LIMIT 20`,
           [orgId]
         ),
         client.query<ProviderRow>(
           `SELECT provider, SUM(credits_used)::text AS credits, SUM(cost_eur)::text AS cost
-           FROM ai_usage_logs WHERE org_id=$1 GROUP BY provider LIMIT 20`,
+           FROM ai_usage_logs WHERE org_id=$1 AND created_at >= date_trunc('month', NOW())
+           GROUP BY provider LIMIT 20`,
           [orgId]
         ),
         client.query<ModelRow>(
           `SELECT model, SUM(credits_used)::text AS credits, SUM(cost_eur)::text AS cost
-           FROM ai_usage_logs WHERE org_id=$1 GROUP BY model LIMIT 20`,
+           FROM ai_usage_logs WHERE org_id=$1 AND created_at >= date_trunc('month', NOW())
+           GROUP BY model LIMIT 20`,
           [orgId]
         ),
         client.query<AlertRow>(
@@ -452,19 +454,6 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
           [orgId]
         ),
       ]);
-
-      const mr = mRes.rows[0];
-      const m = mr
-        ? {
-            creditsUsed:  Number(mr.credits_used),
-            creditsLimit: creditLimit,
-            creditsExtra: 0,
-            costEur:      Number(mr.cost_eur),
-            requestCount: Number(mr.request_count),
-            tokensUsed:   Number(mr.tokens_used),
-            tokenLimit,
-          }
-        : { ...fallback.monthly };
 
       const total = lRes.rows.reduce((s, l) => s + Number(l.credits), 0) || 1;
       const bf = lRes.rows.map(l => ({
@@ -499,11 +488,11 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
         return dayMap.get(d.toISOString().slice(0, 10)) ?? 0;
       });
 
-      return [m, bf, bp, bm, al, dh];
+      return [bf, bp, bm, al, dh];
     });
 
     const estimatedCostEur = byFeature.reduce((s, f) => s + (f.cost || 0), 0);
-    return { monthly, byFeature, byProvider, byModel, alerts, dailyHistory, estimatedCostEur };
+    return { monthly: canonicalMonthly, byFeature, byProvider, byModel, alerts, dailyHistory, estimatedCostEur };
   } catch (err) {
     logger.error({ err }, "[AI] getAIUsageStats failed — returning plan-based fallback");
     return fallback;

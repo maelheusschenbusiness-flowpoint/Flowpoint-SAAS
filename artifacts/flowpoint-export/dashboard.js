@@ -8989,7 +8989,7 @@ function renderBilling() {
               <span style="font-size:14px;font-weight:800;color:var(--fp-text)">AI Credits</span>
               <span style="font-size:10px;font-weight:700;padding:1px 8px;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:#2563EB">IA Performante</span>
             </div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+' / '+fk(t)+' AI Credits consommés ce mois';})() : 'Chargement des crédits IA…'} · Réinitialisation le ${STATE.aiCredits?.resetDate ? new Date(STATE.aiCredits.resetDate).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}) : '01/' + String(new Date().getMonth()+2).padStart(2,'0') + '/' + new Date().getFullYear()}</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+' / '+fk(t)+' AI Credits consommés ce mois';})() : 'Chargement des crédits IA…'} · Réinitialisation le ${(function(){var d=STATE.aiCredits?.resetDate?new Date(STATE.aiCredits.resetDate):null;if(!d||Number.isNaN(d.getTime()))d=new Date(new Date().getFullYear(),new Date().getMonth()+1,1);return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'});}())}</div>
           </div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('ai');setTimeout(()=>navigateSub('usage'),50)">Voir détails complets →</button>
         </div>
@@ -9110,7 +9110,7 @@ function renderBilling() {
             ? "IA Stratégiste activé — analyse complète du compte. <strong>3 opportunités d\'optimisation détectées</strong>. Priorité : activer Review Intelligence (ROI < 1 semaine). Prévision : dépassement plan dans 8 jours. White-Label non configuré — setup en 10 minutes."
             : "IA Stratégiste activé. <strong>" + strategies.length + " opportunité" + (strategies.length > 1 ? "s" : "") + " d\'optimisation identifiée" + (strategies.length > 1 ? "s" : "") + "</strong> à partir de vos données réelles.",
             ['Appliquer toutes les recommandations', 'Rapport ROI complet', 'Prévision 6 mois'])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Stratégiste complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse ROI, prévision d\'upgrade, et optimisation des coûts SaaS automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Stratégiste complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse ROI, prévision d\'upgrade, et optimisation des coûts SaaS automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpGoToBillingPlans()">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -11942,7 +11942,7 @@ function renderAI() {
       ? Math.round(usedCredits / Math.max(maxCredits, 1) * 100)
       : Math.round(usedCredits / Math.max(maxCreditsDB, 1) * 100);
     const pc           = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#2563EB';
-    const resetDate    = liveCredits?.resetDate
+    const resetDate    = liveCredits?.resetDate && !Number.isNaN(new Date(liveCredits.resetDate).getTime())
       ? new Date(liveCredits.resetDate).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'})
       : new Date(new Date().getFullYear(), new Date().getMonth()+1, 1).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'});
     const estCostEur   = liveCredits?.costEur != null ? Number(liveCredits.costEur).toFixed(3) : '0.000';
@@ -11975,9 +11975,9 @@ function renderAI() {
     const alert90 = pct >= 90;
     const alert70 = pct >= 70 && pct < 90;
     const alertHtml = alert90
-      ? `<div style="padding:12px 16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:var(--fp-radius-md);margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:18px">🚨</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#ef4444">90% de vos AI Credits utilisés</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">Achetez un pack ou upgradez votre plan pour continuer à utiliser l\'IA sans interruption.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Upgrader →</button></div>`
+      ? `<div style="padding:12px 16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:var(--fp-radius-md);margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:18px">🚨</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#ef4444">90% de vos AI Credits utilisés</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">Achetez un pack ou upgradez votre plan pour continuer à utiliser l\'IA sans interruption.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpGoToBillingPlans()">Upgrader →</button></div>`
       : alert70
-      ? `<div style="padding:12px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--fp-radius-md);margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:18px">⚡</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#f59e0b">70% de vos AI Credits consommés</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">Pensez à recharger avant la fin du mois.</div></div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('plans')" style="margin-left:auto">Voir plans</button></div>`
+      ? `<div style="padding:12px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--fp-radius-md);margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:18px">⚡</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#f59e0b">70% de vos AI Credits consommés</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">Pensez à recharger avant la fin du mois.</div></div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="fpGoToBillingPlans()" style="margin-left:auto">Voir plans</button></div>`
       : '';
 
     return `
@@ -12391,7 +12391,7 @@ async function loadAICredits() {
       const used  = m.creditsUsed  ?? data.creditsUsed  ?? data.used  ?? 0;
       const limit = m.creditsLimit ?? data.creditsLimit ?? data.limit ?? 0;
       const extra = m.creditsExtra ?? data.creditsExtra ?? data.extra ?? 0;
-      const resetDate = m.resetDate ?? data.resetDate ?? null;
+      const resetDate = m.resetAt ?? m.resetDate ?? data.resetAt ?? data.resetDate ?? null;
       const requestCount = m.requestCount ?? data.requestCount ?? 0;
       STATE.aiCredits = {
         used, limit, extra, resetDate, requestCount,
@@ -12402,6 +12402,10 @@ async function loadAICredits() {
         costEur:      data.estimatedCostEur ?? data.costEur ?? 0,
         raw: data,
       };
+      // Keep the newer dashboard data cache in exactly the same canonical shape.
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.aiCredits = { ...STATE.aiCredits, total: Number(limit) + Number(extra), remaining: Math.max(0, Number(limit) + Number(extra) - Number(used)) };
+      window.dispatchEvent(new CustomEvent('fp:ai-credits-updated', { detail: STATE.aiCredits }));
     }
   } catch(_) { /* non-bloquant */ }
 }
@@ -12677,7 +12681,9 @@ async function fetchAuditAIInsights(auditRef) {
       if (panel && !document.getElementById(`fp-audit-ai-result-${auditRef.id}`)) panel.appendChild(container);
       else if (targetEl) targetEl.innerHTML = container.outerHTML;
     }
-    if (data.creditsRemaining != null) STATE.aiCredits = data.creditsRemaining;
+    // API responses expose only the remaining balance here; reload the canonical
+    // usage object instead of replacing STATE.aiCredits with a number.
+    if (data.creditsRemaining != null) loadAICredits().then(() => render()).catch(() => {});
   } catch(e) { showToast('error', 'Analyse IA indisponible'); }
 }
 
@@ -13621,6 +13627,12 @@ function navigateSub(sub) {
   _doRender();
   const _p = document.getElementById('fp-page'); if (_p) _p.scrollTo({ top: 0, behavior: 'instant' });
 }
+
+// Explicit destination for every upgrade CTA: do not rely on the active AI sub-page.
+window.fpGoToBillingPlans = function() {
+  navigate('billing');
+  setTimeout(function() { navigateSub('plans'); }, 0);
+};
 
 function renderSubNav(items) {
   return `<nav class="fp-sub-nav" role="tablist">${items.map(t => `
@@ -35136,35 +35148,27 @@ window.FP_ADDONS_API = {
 window.FP_AI_CREDITS_API = {
   async load() {
     try {
-      const [stats, usage] = await Promise.all([
-        apiFetch('/api/ai-credits').catch(() => null),
-        apiFetch('/api/ai-credits/usage').catch(() => null),
-      ]);
+      await loadAICredits();
+      const credits = STATE.aiCredits;
+      if (!credits) return null;
       window.FP_DATA = window.FP_DATA || {};
-      const _m = stats?.monthly || {};
-      const _used   = _m.creditsUsed  || 0;
-      const _limit  = _m.creditsLimit || 200000;
-      const _extra  = _m.creditsExtra || 0;
       window.FP_DATA.aiCredits = {
-        total:        _limit + _extra,
-        used:         _used,
-        remaining:    _limit + _extra - _used,
-        pct:          _limit > 0 ? Math.round((_used / (_limit + _extra)) * 100) : 0,
-        plan:         stats?.plan        || 'pro',
-        monthly:      _m,
-        byFeature:    usage?.byFeature   || stats?.byFeature || [],
-        dailyHistory: usage?.dailyHistory || stats?.dailyHistory || [],
-        alerts:       stats?.alerts      || [],
-        requestCount: _m.requestCount    || 0,
-        costEur:      _m.costEur         || 0,
-        resetAt:      _m.resetAt         || null,
+        ...credits,
+        total: Number(credits.limit) + Number(credits.extra),
+        remaining: Math.max(0, Number(credits.limit) + Number(credits.extra) - Number(credits.used)),
+        pct: credits.limit > 0 ? Math.round((Number(credits.used) / (Number(credits.limit) + Number(credits.extra))) * 100) : 0,
+        resetAt: credits.resetDate,
       };
+      return window.FP_DATA.aiCredits;
     } catch(e) { console.warn('[FP_AI_CREDITS_API] load error:', e); }
   },
 
   async consume(feature, metadata) {
     try {
-      return await apiFetch('/api/ai-credits/consume', { method: 'POST', body: JSON.stringify({ feature, metadata }) });
+      const result = await apiFetch('/api/ai-credits/consume', { method: 'POST', body: JSON.stringify({ feature, metadata }) });
+      await loadAICredits();
+      render();
+      return result;
     } catch(e) { console.warn('[FP_AI_CREDITS_API] consume error:', e); return null; }
   },
 

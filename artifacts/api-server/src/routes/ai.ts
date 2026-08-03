@@ -1606,9 +1606,16 @@ ${STRICT_AI_RULE}
 
       persistChatMessage({ orgId, userId, role: "assistant", content: reply, feature: "chat", model: effectiveModel, tokensUsed: result.usage.completionTokens, conversationId })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant non-stream) failed"));
-      recordCompletedUsage({ feature: "chat", orgId, userId, model: effectiveModel as AIModel, provider: selectedProvider, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens, latencyMs, success: true, requestId, metadata: usageMetadata })
-        .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage (non-stream) failed"));
-      res.json({ reply, streaming: false, action_proposal: actionProposal, _ai: aiMeta });
+      const usage = await recordCompletedUsage({
+        feature: "chat", orgId, userId, model: effectiveModel as AIModel,
+        provider: selectedProvider, tokensIn: result.usage.promptTokens,
+        tokensOut: result.usage.completionTokens, latencyMs, success: true,
+        requestId, metadata: usageMetadata,
+      });
+      res.json({
+        reply, streaming: false, action_proposal: actionProposal, _ai: aiMeta,
+        creditsRemaining: usage.remaining, creditsDebited: usage.creditsDebited,
+      });
     } catch (err) {
       logger.error({ err, provider: selectedProvider, model: effectiveModel }, "[AI] Chat failed");
       const errCode    = (err as Record<string, unknown>)?.code;

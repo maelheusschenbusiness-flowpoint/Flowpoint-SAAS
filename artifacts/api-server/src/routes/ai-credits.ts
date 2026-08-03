@@ -3,11 +3,28 @@ import { getAIUsageStats, consumeAICredits, type AIFeature } from "../services/a
 
 const router = Router();
 
+function usageResponse(stats: Awaited<ReturnType<typeof getAIUsageStats>>) {
+  const { monthly } = stats;
+  const totalAvailable = monthly.creditsLimit + monthly.creditsExtra;
+  const resetAt = monthly.resetAt.toISOString();
+  return {
+    ...stats,
+    // Keep both shapes while dashboard clients converge on the monthly contract.
+    used: monthly.creditsUsed,
+    limit: monthly.creditsLimit,
+    extra: monthly.creditsExtra,
+    requestCount: monthly.requestCount,
+    resetAt,
+    resetDate: resetAt,
+    remaining: Math.max(0, totalAvailable - monthly.creditsUsed),
+  };
+}
+
 router.get("/ai-credits", async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
   try {
     const stats = await getAIUsageStats(orgId);
-    res.json(stats);
+    res.json(usageResponse(stats));
   } catch {
     res.status(500).json({ error: "Failed to fetch AI credits" });
   }
@@ -18,7 +35,7 @@ router.get("/ai/credits", async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
   try {
     const stats = await getAIUsageStats(orgId);
-    res.json(stats);
+    res.json(usageResponse(stats));
   } catch {
     res.status(500).json({ error: "Failed to fetch AI credits" });
   }
@@ -28,16 +45,7 @@ router.get("/ai-credits/usage", async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
   try {
     const stats = await getAIUsageStats(orgId);
-    const totalAvailable = stats.monthly.creditsLimit + stats.monthly.creditsExtra;
-    res.json({
-      monthly: stats.monthly,
-      byFeature: stats.byFeature,
-      byProvider: stats.byProvider,
-      byModel: stats.byModel,
-      dailyHistory: stats.dailyHistory,
-      estimatedCostEur: stats.estimatedCostEur,
-      remaining: Math.max(0, totalAvailable - stats.monthly.creditsUsed),
-    });
+    res.json(usageResponse(stats));
   } catch {
     res.status(500).json({ error: "Failed to fetch usage stats" });
   }
