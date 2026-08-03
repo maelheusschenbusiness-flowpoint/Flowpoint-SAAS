@@ -1074,29 +1074,47 @@ function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
       saveBtn.dataset.submitting = '1';
       saveBtn.disabled = true;
       saveBtn.textContent = 'Création…';
+      // Optimistic insertion: add temp item immediately for instant feedback
+      const _tmpId = '__tmp_wf_' + Date.now();
+      const _optimisticItem = { id: _tmpId, name, trigger, action, active: true, enabled: true, runs: 0, lastRun: '—', icon: tplIcon || '⚡', category: 'Custom', color: '#2563EB', _optimistic: true };
+      STATE.workflows = STATE.workflows || [];
+      STATE.workflows.unshift(_optimisticItem);
+      if (window.FP_DATA && window.FP_DATA.automation) {
+        window.FP_DATA.automation.workflows = window.FP_DATA.automation.workflows || [];
+        window.FP_DATA.automation.workflows.unshift(_optimisticItem);
+      }
       closeFloatPanel();
+      render();
+      showToast('success', 'Workflow créé !');
       if (window.FP_AUTOMATION_API && window.FP_AUTOMATION_API.create) {
-        // Persist via API; consume the created row directly, fall back to a reload
+        // Persist via API then replace the optimistic item with the real one
         window.FP_AUTOMATION_API.create(payload).then((r) => {
           const created = r && r.workflow;
+          // Remove optimistic item
+          STATE.workflows = (STATE.workflows || []).filter(w => w.id !== _tmpId);
+          if (window.FP_DATA && window.FP_DATA.automation) {
+            window.FP_DATA.automation.workflows = (window.FP_DATA.automation.workflows || []).filter(w => w.id !== _tmpId);
+          }
           if (created) {
-            showToast('success', 'Workflow créé !');
-            return window.FP_AUTOMATION_API.load().then(() => {
-              STATE.workflows = (window.FP_DATA && window.FP_DATA.automation && window.FP_DATA.automation.workflows) || [];
-              render();
-            });
+            STATE.workflows.unshift(created);
+            if (window.FP_DATA && window.FP_DATA.automation) window.FP_DATA.automation.workflows.unshift(created);
+            render();
           } else {
+            // Fallback: reload from server
             return window.FP_AUTOMATION_API.load().then(() => {
               STATE.workflows = (window.FP_DATA && window.FP_DATA.automation && window.FP_DATA.automation.workflows) || STATE.workflows || [];
               render();
             });
           }
-        }).catch(() => { showToast('error', 'Échec de la création du workflow'); });
-      } else {
-        STATE.workflows = STATE.workflows || [];
-        STATE.workflows.push({ id: 'wf' + Date.now(), name, trigger, action, active: true, enabled: true, runs: 0, lastRun: '—', icon: tplIcon || '⚡', category: 'Custom', color: '#2563EB' });
-        showToast('success', 'Workflow créé !');
-        render();
+        }).catch(() => {
+          // Rollback optimistic item on error
+          STATE.workflows = (STATE.workflows || []).filter(w => w.id !== _tmpId);
+          if (window.FP_DATA && window.FP_DATA.automation) {
+            window.FP_DATA.automation.workflows = (window.FP_DATA.automation.workflows || []).filter(w => w.id !== _tmpId);
+          }
+          render();
+          showToast('error', 'Échec de la création du workflow');
+        });
       }
     });
   }, 60);
@@ -8738,23 +8756,24 @@ function renderBilling() {
         _btn.disabled = !ok; _btn.style.opacity = ok ? '1' : '0.4'; _btn.style.cursor = ok ? 'pointer' : 'not-allowed';
       });
     };
-    window.fpConfirmDeleteAccount = async function() {
+    window.fpConfirmDeleteAccount = function() {
       const _inp = document.getElementById('fp-delete-confirm-input');
       if (!_inp || _inp.value !== 'SUPPRIMER') return;
-      if (!confirm('Dernière confirmation — cette action est irréversible et définitive. Continuer ?')) return;
       document.getElementById('fp-delete-account-modal')?.remove();
-      showToast('info', 'Suppression du compte en cours…');
-      try {
-        const r = await apiAction('DELETE', '/api/billing/account');
-        if (r && r.ok) {
-          showToast('success', 'Compte supprimé. Redirection…');
-          setTimeout(() => {
-            try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(e) {}
-            try { localStorage.clear(); sessionStorage.clear(); } catch(e) {}
-            window.location.href = '/';
-          }, 1800);
-        } else { showToast('error', (r && r.error) || 'Erreur lors de la suppression du compte'); }
-      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible')); }
+      window.fpDarkConfirm('Dernière confirmation — cette action est irréversible et définitive. Continuer ?', async () => {
+        showToast('info', 'Suppression du compte en cours…');
+        try {
+          const r = await apiAction('DELETE', '/api/billing/account');
+          if (r && r.ok) {
+            showToast('success', 'Compte supprimé. Redirection…');
+            setTimeout(() => {
+              try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(e) {}
+              try { localStorage.clear(); sessionStorage.clear(); } catch(e) {}
+              window.location.href = '/';
+            }, 1800);
+          } else { showToast('error', (r && r.error) || 'Erreur lors de la suppression du compte'); }
+        } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible')); }
+      }, 'Supprimer définitivement');
     };
     window.fpActivateAddon = async function(addonIdx) {
       const _a = window._fpAllAddons && window._fpAllAddons[addonIdx];
@@ -9906,7 +9925,7 @@ function renderSettings() {
           <div class="fp-form-group">
             <label class="fp-form-label">Langue</label>
             <select class="fp-select" style="width:100%" onchange="applyLanguagePref(this.value);saveSettings();showToast('success','Langue sauvegardée')">
-              ${[['fr','🇫🇷 Français'],['en','🇬🇧 English'],['es','🇪🇸 Español']].map(([val,lbl]) => `<option value="${val}"${(s.language||'fr')===val?' selected':''}>${lbl}</option>`).join('')}
+              ${[['fr','🇫🇷 Français'],['en','🇬🇧 English'],['es','🇪🇸 Español'],['de','🇩🇪 Deutsch'],['it','🇮🇹 Italiano'],['pt','🇵🇹 Português'],['nl','🇳🇱 Nederlands'],['pl','🇵🇱 Polski'],['sv','🇸🇪 Svenska'],['ro','🇷🇴 Română'],['cs','🇨🇿 Čeština']].map(([val,lbl]) => `<option value="${val}"${(s.language||'fr')===val?' selected':''}>${lbl}</option>`).join('')}
             </select>
             <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">La préférence est sauvegardée et appliquée à l’interface.</div>
           </div>
@@ -10126,7 +10145,7 @@ function renderSettings() {
               <select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="(async(el)=>{const r=await apiAction('PATCH','/api/team/${m.id}',{role:el.value.toLowerCase()}).catch(()=>null);if(r&&!r.error){const tm=(STATE.team||[]).find(t=>t.id==='${m.id}');if(tm)tm.role=el.value.toLowerCase();showToast('success','R\u00f4le mis \u00e0 jour');}else{showToast('error','Erreur mise \u00e0 jour r\u00f4le');}el.blur();})(this)">
                 ${roles.map(r => `<option ${r === m.role ? 'selected' : ''}>${r}</option>`).join('')}
               </select>
-              ${m.role !== 'Owner' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="(async()=>{if(!confirm('Retirer ce membre de l\\'\\'équipe ?'))return;const r=await apiAction('DELETE','/api/team/${m.id}').catch(()=>null);if(r&&!r.error){STATE.team=(STATE.team||[]).filter(t=>t.id!=='${m.id}');showToast('success','Membre retir\u00e9');render();}else{showToast('error','Erreur lors du retrait');}})()">Retirer</button>` : ''}
+              ${m.role !== 'Owner' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="window.fpDarkConfirm('Retirer ce membre de l\\'équipe ?',async function(){const r=await apiAction('DELETE','/api/team/${m.id}').catch(()=>null);if(r&&!r.error){STATE.team=(STATE.team||[]).filter(t=>t.id!=='${m.id}');showToast('success','Membre retir\u00e9');render();}else{showToast('error','Erreur lors du retrait');}}, 'Retirer le membre')">Retirer</button>` : ''}
             </div>
           `).join('')}
         </div>
@@ -11479,10 +11498,10 @@ function renderSettings() {
     <div class="fp-grid-2 fp-mb-20">
       <div class="fp-card" style="background:linear-gradient(135deg,rgba(37,99,235,0.07),rgba(139,92,246,0.05));border:1px solid rgba(37,99,235,0.18)">
         <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
-          <svg width="80" height="80" viewBox="0 0 90 90">
+          <svg width="80" height="80" viewBox="0 0 90 90" style="overflow:visible">
             <circle cx="45" cy="45" r="38" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="7"/>
-            <circle cx="45" cy="45" r="38" fill="none" stroke="${workspaceHealth > 80 ? '#22c55e' : workspaceHealth > 60 ? '#f59e0b' : '#ef4444'}" stroke-width="7"
-              stroke-dasharray="${(workspaceHealth/100*circ38).toFixed(1)} ${(circ38*(1-workspaceHealth/100)).toFixed(1)}"
+            <circle class="fp-workspace-health-ring" cx="45" cy="45" r="38" fill="none" stroke="${workspaceHealth > 80 ? '#22c55e' : workspaceHealth > 60 ? '#f59e0b' : '#ef4444'}" stroke-width="7"
+              stroke-dasharray="${circ38.toFixed(1)}" stroke-dashoffset="${(circ38*(1-workspaceHealth/100)).toFixed(1)}"
               stroke-linecap="round" transform="rotate(-90 45 45)"/>
             <text x="45" y="51" text-anchor="middle" font-size="20" font-weight="900" fill="${workspaceHealth > 80 ? '#22c55e' : '#f59e0b'}" font-family="Outfit,sans-serif">${workspaceHealth}</text>
           </svg>
@@ -13880,6 +13899,28 @@ function updatePlanSwitcher() {
   </button>`;
 }
 
+// ── Global nav spinner helpers ────────────────────────────────────────────────
+function _fpGetNavSpinner() {
+  let el = document.getElementById('fp-nav-spinner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'fp-nav-spinner';
+    el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = '<div class="fp-nav-spin-ring"></div>';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+window.fpShowNavSpinner = function() {
+  try { _fpGetNavSpinner().classList.add('fp-nav-spinner-visible'); } catch(_) {}
+};
+window.fpHideNavSpinner = function() {
+  try {
+    const el = document.getElementById('fp-nav-spinner');
+    if (el) el.classList.remove('fp-nav-spinner-visible');
+  } catch(_) {}
+};
+
 let _renderTimer = null;
 function render() {
   if (_renderTimer) clearTimeout(_renderTimer);
@@ -13888,6 +13929,9 @@ function render() {
 function _doRender() {
   const page = $('#fp-page');
   if (!page) return;
+
+  // Show circular spinner during navigation, hide after render
+  window.fpShowNavSpinner();
 
   // Page-transition loading bar (top of screen, iOS-compatible)
   try {
@@ -14023,6 +14067,8 @@ function _doRender() {
   updatePlanSwitcher();
   if (window.fpSyncAiBadge) window.fpSyncAiBadge();
   if (window.fpApplyTranslations) window.fpApplyTranslations();
+  // Hide global nav spinner now that render is complete
+  window.fpHideNavSpinner();
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -14169,26 +14215,27 @@ function bindBulkBarEvents() {
     render();
   });
 
-  document.getElementById('bulk-delete-audits')?.addEventListener('click', async () => {
+  document.getElementById('bulk-delete-audits')?.addEventListener('click', () => {
     const ids = [...STATE.selectedAudits];
     if (!ids.length) return;
-    if (!confirm(`Supprimer ${ids.length} audit${ids.length>1?'s':''} ? Cette action est irréversible.`)) return;
-    showProgress(0, ids.length);
-    let done = 0, ok = 0, fail = 0;
-    await Promise.allSettled(ids.map(async id => {
-      try {
-        await apiAction('DELETE', `/api/audits/${id}`);
-        STATE.audits = STATE.audits.filter(a => a.id !== id);
-        ok++;
-      } catch(e) {
-        STATE.audits = STATE.audits.filter(a => a.id !== id);
-        ok++;
-      }
-      showProgress(++done, ids.length);
-    }));
-    STATE.selectedAudits.clear();
-    resultToast(ok, fail, 'supprimé', 'audit');
-    render();
+    window.fpDarkConfirm(`Supprimer ${ids.length} audit${ids.length>1?'s':''} ? Cette action est irréversible.`, async () => {
+      showProgress(0, ids.length);
+      let done = 0, ok = 0, fail = 0;
+      await Promise.allSettled(ids.map(async id => {
+        try {
+          await apiAction('DELETE', `/api/audits/${id}`);
+          STATE.audits = STATE.audits.filter(a => a.id !== id);
+          ok++;
+        } catch(e) {
+          STATE.audits = STATE.audits.filter(a => a.id !== id);
+          ok++;
+        }
+        showProgress(++done, ids.length);
+      }));
+      STATE.selectedAudits.clear();
+      resultToast(ok, fail, 'supprimé', 'audit');
+      render();
+    }, `Supprimer ${ids.length > 1 ? ids.length + ' audits' : "l'audit"}`);
   });
 
   // ── MONITORS ──
@@ -14209,26 +14256,27 @@ function bindBulkBarEvents() {
     render();
   });
 
-  document.getElementById('bulk-delete-monitors')?.addEventListener('click', async () => {
+  document.getElementById('bulk-delete-monitors')?.addEventListener('click', () => {
     const ids = [...STATE.selectedMonitors];
     if (!ids.length) return;
-    if (!confirm(`Supprimer ${ids.length} monitor${ids.length>1?'s':''} ? Cette action est irréversible.`)) return;
-    showProgress(0, ids.length);
-    let done = 0, ok = 0, fail = 0;
-    await Promise.allSettled(ids.map(async id => {
-      try {
-        await apiAction('DELETE', `/api/monitors/${id}`);
-        STATE.monitors = STATE.monitors.filter(m => m.id !== id);
-        ok++;
-      } catch(e) {
-        STATE.monitors = STATE.monitors.filter(m => m.id !== id);
-        ok++;
-      }
-      showProgress(++done, ids.length);
-    }));
-    STATE.selectedMonitors.clear();
-    resultToast(ok, fail, 'supprimé', 'monitor');
-    render();
+    window.fpDarkConfirm(`Supprimer ${ids.length} monitor${ids.length>1?'s':''} ? Cette action est irréversible.`, async () => {
+      showProgress(0, ids.length);
+      let done = 0, ok = 0, fail = 0;
+      await Promise.allSettled(ids.map(async id => {
+        try {
+          await apiAction('DELETE', `/api/monitors/${id}`);
+          STATE.monitors = STATE.monitors.filter(m => m.id !== id);
+          ok++;
+        } catch(e) {
+          STATE.monitors = STATE.monitors.filter(m => m.id !== id);
+          ok++;
+        }
+        showProgress(++done, ids.length);
+      }));
+      STATE.selectedMonitors.clear();
+      resultToast(ok, fail, 'supprimé', 'monitor');
+      render();
+    }, `Supprimer ${ids.length > 1 ? ids.length + ' monitors' : 'le monitor'}`);
   });
 }
 
@@ -14756,11 +14804,12 @@ function bindSectionEvents() {
         // Delete button
         if (e.target.closest('.monitor-del')) {
           e.stopPropagation();
-          if (!confirm('Supprimer ' + monitor.name + ' ?')) return;
-          apiAction('DELETE', '/api/monitors/' + monitor.id).catch(() => {}).finally(() => {
-            STATE.monitors = STATE.monitors.filter(m => m.id !== monitor.id);
-            showToast('error', 'Monitor supprimé'); render();
-          });
+          window.fpDarkConfirm('Supprimer ' + monitor.name + ' ?', () => {
+            apiAction('DELETE', '/api/monitors/' + monitor.id).catch(() => {}).finally(() => {
+              STATE.monitors = STATE.monitors.filter(m => m.id !== monitor.id);
+              showToast('success', 'Monitor supprimé'); render();
+            });
+          }, 'Supprimer le monitor');
           return;
         }
         openMonitorPanel(monitor);
@@ -15463,7 +15512,7 @@ function bindSectionEvents() {
       });
     });
     $('#team-invite-btn')?.addEventListener('click', () => fpOpenInvite());
-    $$('[data-remove-member]').forEach(btn => btn.addEventListener('click', async () => { const memberId = btn.dataset.removeMember; if (!memberId || !confirm('Retirer ce membre de l\'équipe ?')) return; const r = await apiAction('DELETE', `/api/team/${memberId}`).catch(() => null); if (r && !r.error) { STATE.team = (STATE.team || []).filter(t => t.id !== memberId); showToast('success', 'Membre retiré'); render(); } else { showToast('error', 'Erreur lors du retrait'); } }));
+    $$('[data-remove-member]').forEach(btn => btn.addEventListener('click', () => { const memberId = btn.dataset.removeMember; if (!memberId) return; window.fpDarkConfirm('Retirer ce membre de l\'équipe ?', async () => { const r = await apiAction('DELETE', `/api/team/${memberId}`).catch(() => null); if (r && !r.error) { STATE.team = (STATE.team || []).filter(t => t.id !== memberId); showToast('success', 'Membre retiré'); render(); } else { showToast('error', 'Erreur lors du retrait'); } }, 'Retirer le membre'); }));
     // sendChat listeners are bound in bindNewRouteEvents (team+chat sub-route only)
     // to avoid double-binding when re-rendering.
   }
@@ -20635,10 +20684,11 @@ function renderTeamFilesSearch(q) {
   rows.forEach(r => { r.style.display = (!term || r.dataset.fileName.includes(term)) ? '' : 'none'; });
 }
 async function deleteTeamFile(id) {
-  if (!confirm('Supprimer ce fichier ?')) return;
-  const r = await apiAction('DELETE', `/api/team/files/${id}`).catch(() => null);
-  if (r && r.ok) { showToast('success','Fichier supprimé'); STATE.teamFiles = (STATE.teamFiles||[]).filter(f=>f.id!==id); render(); }
-  else showToast('error','Erreur suppression');
+  window.fpDarkConfirm('Supprimer ce fichier ?', async () => {
+    const r = await apiAction('DELETE', `/api/team/files/${id}`).catch(() => null);
+    if (r && r.ok) { showToast('success','Fichier supprimé'); STATE.teamFiles = (STATE.teamFiles||[]).filter(f=>f.id!==id); render(); }
+    else showToast('error','Erreur suppression');
+  }, 'Supprimer le fichier');
 }
 async function downloadFileAssetById(id) {
   try {
@@ -20657,8 +20707,25 @@ async function downloadFileAssetById(id) {
 // GROWTH PAGE — Animation system
 // ─────────────────────────────────────────────────────────────────
 function initPageAnimations(route, sub) {
-  if (route !== 'growth' || sub !== null) return;
   requestAnimationFrame(() => {
+    // Workspace health ring animation — draw in from full offset to target
+    document.querySelectorAll('.fp-workspace-health-ring').forEach(el => {
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduced) return;
+      const targetOffset = parseFloat(el.getAttribute('stroke-dashoffset') || '0');
+      const circ = parseFloat(el.getAttribute('stroke-dasharray') || '238.76');
+      // Start at full circle hidden, transition to target
+      el.style.transition = 'none';
+      el.style.strokeDashoffset = String(circ);
+      el.style.opacity = '0.15';
+      // Force reflow, then animate
+      void el.getBoundingClientRect();
+      el.style.transition = 'stroke-dashoffset 1.1s cubic-bezier(0.4,0,0.2,1), opacity 0.4s ease';
+      el.style.strokeDashoffset = String(targetOffset);
+      el.style.opacity = '1';
+    });
+
+    if (route !== 'growth' || sub !== null) return;
     document.querySelectorAll('[data-ring-target]').forEach(el => {
       const val = parseFloat(el.dataset.ringTarget);
       const rad = parseFloat(el.dataset.ringR || '32');
@@ -21182,7 +21249,7 @@ function renderGrowthObjectives() {
               '<div style="font-size:11px;color:var(--fp-text-faint)">📅 '+dl+'</div>' +
               (o.next ? '<div style="font-size:10px;color:var(--fp-text-muted);margin-top:2px">→ '+escHtml(o.next)+'</div>' : '') +
             '</div>' +
-            '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444" onclick="(function(){if(!confirm(\'Supprimer cet objectif ?\'))return;apiFetch(\'/api/growth/objectives/\'+'+JSON.stringify(o.id)+',{method:\'DELETE\'}).then(function(){if(!STATE.growthObjectives)return;STATE.growthObjectives=STATE.growthObjectives.filter(function(x){return x.id!=='+JSON.stringify(o.id)+'});render(STATE.currentSection);showToast(\'success\',\'Objectif supprimé\')}).catch(function(){showToast(\'error\',\'Erreur\')})})()">✕</button>' +
+            '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444" onclick="window.fpDarkConfirm(\'Supprimer cet objectif ?\',function(){apiFetch(\'/api/growth/objectives/\'+'+JSON.stringify(o.id)+',{method:\'DELETE\'}).then(function(){if(!STATE.growthObjectives)return;STATE.growthObjectives=STATE.growthObjectives.filter(function(x){return x.id!=='+JSON.stringify(o.id)+'});render(STATE.currentSection);showToast(\'success\',\'Objectif supprimé\')}).catch(function(){showToast(\'error\',\'Erreur\')})},\'Supprimer l\\\'objectif\')">✕</button>' +
           '</div>';
         }).join('')}
       </div>
@@ -28428,14 +28495,16 @@ function renderGrowthKeywords() {
       if (btn) { btn.disabled = false; btn.textContent = '⟳ Sync'; }
     };
 
-    window._kwDelete = async function(id) {
-      if (!id || !confirm('Retirer ce mot-clé du suivi ?')) return;
-      try {
-        await apiFetch('/api/keywords/' + id, { method:'DELETE' });
-        showToast('success','Mot-clé retiré');
-        await window._reloadKeywords();
-        render(STATE.currentSection);
-      } catch(e) { showToast('error','Erreur'); }
+    window._kwDelete = function(id) {
+      if (!id) return;
+      window.fpDarkConfirm('Retirer ce mot-clé du suivi ?', async () => {
+        try {
+          await apiFetch('/api/keywords/' + id, { method:'DELETE' });
+          showToast('success','Mot-clé retiré');
+          await window._reloadKeywords();
+          render(STATE.currentSection);
+        } catch(e) { showToast('error','Erreur'); }
+      }, 'Retirer le mot-clé');
     };
 
     window._kwHistory = async function(id, kw) {
@@ -29288,7 +29357,7 @@ function renderSettingsLocation() {
 
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="fp-btn fp-btn-primary" onclick="${saveBtn.replace(/"/g,"'")}">💾 Sauvegarder la localisation</button>
-        ${configured ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(async()=>{if(!confirm('Effacer la localisation ?'))return;try{const r=await apiAction('PUT','/api/org/location',{address:null,city:null,postalCode:null,country:null,latitude:null,longitude:null,serviceArea:[],locationConfigured:false,locationSource:'manual'});if(r.ok){if(STATE.me&&STATE.me.location)STATE.me.location={locationConfigured:false};showToast('success','Localisation effacée');render();}else showToast('error','Erreur');}catch(e){showToast('error','Erreur réseau');}})()">🗑 Effacer</button>` : ''}
+        ${configured ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpDarkConfirm('Effacer la localisation ?',async function(){try{const r=await apiAction('PUT','/api/org/location',{address:null,city:null,postalCode:null,country:null,latitude:null,longitude:null,serviceArea:[],locationConfigured:false,locationSource:'manual'});if(r.ok){if(STATE.me&&STATE.me.location)STATE.me.location={locationConfigured:false};showToast('success','Localisation effacée');render();}else showToast('error','Erreur');}catch(e){showToast('error','Erreur réseau');}}, 'Effacer la localisation')">🗑 Effacer</button>` : ''}
       </div>
     </div>
 
@@ -31149,19 +31218,20 @@ window._fpFunnelEdit = async function(btn) {
 };
 
 // Delete with confirmation
-window._fpFunnelDelete = async function(btn) {
+window._fpFunnelDelete = function(btn) {
   const id    = btn.dataset.fid;
   const fname = btn.dataset.fname || 'ce funnel';
   if (!id) return;
-  if (!confirm(`Supprimer "${fname}" ? Cette action est irréversible.`)) return;
-  try {
-    const res = await apiFetch(`/api/funnels/${id}`, { method: 'DELETE' });
-    if (!res?.ok) throw new Error(res?.error || 'Erreur lors de la suppression');
-    showToast?.('success', 'Funnel supprimé');
-    window._fpFunnelLoad();
-  } catch (e) {
-    showToast?.('error', String(e.message || e));
-  }
+  window.fpDarkConfirm(`Supprimer "${fname}" ? Cette action est irréversible.`, async () => {
+    try {
+      const res = await apiFetch(`/api/funnels/${id}`, { method: 'DELETE' });
+      if (!res?.ok) throw new Error(res?.error || 'Erreur lors de la suppression');
+      showToast?.('success', 'Funnel supprimé');
+      window._fpFunnelLoad();
+    } catch (e) {
+      showToast?.('error', String(e.message || e));
+    }
+  }, 'Supprimer le funnel');
 };
 
 // Render run result
@@ -33946,7 +34016,7 @@ function renderGitHubIntegration() {
       <button class="fp-btn fp-btn-primary" onclick="navigate('code-analysis')">🔍 Analyser le code</button>
       <button class="fp-btn fp-btn-ghost" onclick="navigate('deployments')">🚀 Voir les déploiements</button>
       <button class="fp-btn fp-btn-ghost" onclick="navigate('repository-health')">❤️ Score de santé</button>
-      <button class="fp-btn fp-btn-ghost fp-btn-danger" onclick="if(confirm('Déconnecter GitHub ?'))window.FP_GITHUB_API.disconnect().then(()=>render())">Déconnecter</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-danger" onclick="window.fpDarkConfirm('Déconnecter GitHub ?',function(){window.FP_GITHUB_API.disconnect().then(()=>render());},'Déconnecter GitHub')">Déconnecter</button>
     </div>`;
 }
 
@@ -34325,7 +34395,7 @@ function renderSearchConsole() {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Synchroniser
         </button>
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('connect')">Sites ▾</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-btn-danger" onclick="if(confirm('Déconnecter GSC ?'))window.FP_GSC_API&&window.FP_GSC_API.disconnect().then(()=>render())">Déconnecter</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-btn-danger" onclick="window.fpDarkConfirm('Déconnecter GSC ?',function(){window.FP_GSC_API&&window.FP_GSC_API.disconnect().then(()=>render());},'Déconnecter GSC')">Déconnecter</button>
       </div>
     </div>`;
 
@@ -35452,14 +35522,15 @@ window.FP_AUTOMATION_API = {
   },
 
   async remove(workflowId) {
-    if (!confirm('Supprimer ce workflow ? Cette action est définitive.')) return;
-    try {
-      const r = await apiFetch(`/api/automation/workflows/${encodeURIComponent(workflowId)}`, { method: 'DELETE' });
-      if (r?.ok === false) { showToast('error', r?.error || 'Suppression impossible'); return; }
-      await this.load();
-      render();
-      showToast('success', 'Workflow supprimé');
-    } catch(e) { showToast('error', String(e)); }
+    window.fpDarkConfirm('Supprimer ce workflow ? Cette action est définitive.', async () => {
+      try {
+        const r = await apiFetch(`/api/automation/workflows/${encodeURIComponent(workflowId)}`, { method: 'DELETE' });
+        if (r?.ok === false) { showToast('error', r?.error || 'Suppression impossible'); return; }
+        await this.load();
+        render();
+        showToast('success', 'Workflow supprimé');
+      } catch(e) { showToast('error', String(e)); }
+    }, 'Supprimer le workflow');
   },
 };
 
@@ -37490,12 +37561,13 @@ window._fpReportsAPI = {
     } catch(e) { showToast('error', 'Erreur création rapport'); return null; }
   },
   async delete(id, name) {
-    if (!confirm('Supprimer le rapport "' + (name || id) + '" ?')) return;
-    try {
-      await apiFetch('/api/reports/' + id, { method: 'DELETE' });
-      showToast('success', 'Rapport supprimé');
-      await this.load({ force: true }); // bypass cache — real GET after mutation
-    } catch(e) { showToast('error', 'Erreur suppression'); }
+    window.fpDarkConfirm('Supprimer le rapport "' + (name || id) + '" ?', async () => {
+      try {
+        await apiFetch('/api/reports/' + id, { method: 'DELETE' });
+        showToast('success', 'Rapport supprimé');
+        await this.load({ force: true }); // bypass cache — real GET after mutation
+      } catch(e) { showToast('error', 'Erreur suppression'); }
+    }, 'Supprimer le rapport');
   },
   async share(id) {
     try {
