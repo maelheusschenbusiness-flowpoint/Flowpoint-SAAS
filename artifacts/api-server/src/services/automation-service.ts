@@ -300,9 +300,10 @@ export async function getWorkflowsData(orgId = "default"): Promise<{
     let runs: Array<Record<string, unknown>> = [];
     try {
       const runsRes = await pgClient.query(
-        `SELECT id, workflow_id, status, started_at, ended_at, duration_ms,
+        `SELECT id, workflow_id, org_id, status, started_at, ended_at, duration_ms,
                 steps_completed, steps_failed, error, output
-         FROM workflow_runs ORDER BY started_at DESC LIMIT 20`
+          FROM workflow_runs WHERE org_id=$1 ORDER BY started_at DESC LIMIT 20`,
+        [orgId]
       );
       runs = runsRes.rows;
     } finally {

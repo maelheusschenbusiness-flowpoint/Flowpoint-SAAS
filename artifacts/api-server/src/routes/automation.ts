@@ -14,11 +14,27 @@ const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 router.get("/automation/workflows", async (req: Request, res: Response) => {
   try {
     const r = await db(req)(
-      `SELECT * FROM automation_workflows WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`,
+      `SELECT * FROM automation_workflows WHERE org_id=$1 ORDER BY created_at DESC LIMIT 500`,
       [org(req)]
     );
     if (r.rows.length > 0) {
-      res.json({ workflows: r.rows, runs: [], stats: { totalRuns: 0, successRate: 100, avgDuration: 0 } });
+      const runs = await db(req)(
+        `SELECT status, duration_ms FROM workflow_runs WHERE org_id=$1 ORDER BY started_at DESC LIMIT 100`,
+        [org(req)]
+      ).catch(() => ({ rows: [] }));
+      const runRows = runs.rows as Array<Record<string, unknown>>;
+      const totalRuns = runRows.length;
+      const successRuns = runRows.filter((run: Record<string, unknown>) => run["status"] === "success").length;
+      const durations = runRows.map((run: Record<string, unknown>) => Number(run["duration_ms"] ?? 0)).filter(Number.isFinite);
+      res.json({
+        workflows: r.rows,
+        runs: runs.rows,
+        stats: {
+          totalRuns,
+          successRate: totalRuns ? Math.round((successRuns / totalRuns) * 100) : null,
+          avgDuration: durations.length ? Math.round(durations.reduce((sum: number, value: number) => sum + value, 0) / durations.length) : null,
+        },
+      });
       return;
     }
     const data = await getWorkflowsData(org(req));
@@ -83,19 +99,25 @@ router.patch("/automation/workflows/:id", async (req: Request, res: Response) =>
 });
 
 router.post("/automation/workflows/:id/run", async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = String(req.params.id);
   try {
     // Tenant isolation: the workflow must belong to the requesting org before execution
     const owned = await db(req)(
-      `SELECT id FROM automation_workflows WHERE id=$1 AND org_id=$2`,
+      `SELECT id, enabled FROM automation_workflows WHERE id=$1 AND org_id=$2`,
       [id, org(req)]
     );
     if (owned.rows.length === 0) {
       res.status(404).json({ error: "Workflow not found" }); return;
     }
+    if (owned.rows[0]["enabled"] !== true) {
+      res.status(409).json({ error: "Workflow désactivé : activez-le avant de l’exécuter." }); return;
+    }
     const result = await executeWorkflow(id, org(req));
+    if (!result.success) {
+      res.status(409).json({ error: "Workflow indisponible ou désactivé" }); return;
+    }
     store.logActivity({ type: "audit", label: `Workflow exécuté : ${id}`, targetId: id, targetType: "workflow", orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
-    store.broadcast({ type: "fp:workflow:completed", workflowId: id, durationMs: result?.durationMs }, org(req));
+    store.broadcast({ type: "fp:workflow:completed", workflowId: id }, org(req));
     res.json(result);
   } catch {
     res.status(500).json({ error: "Failed to execute workflow" });

@@ -1,4 +1,4 @@
-import { pool } from "@workspace/db";
+import { pool, withOrgDb } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import crypto from "crypto";
 
@@ -87,11 +87,11 @@ export async function dispatchEvent(
   payload: Record<string, unknown>,
   orgId: string
 ): Promise<{ dispatched: number; failed: number }> {
-  const client = await pool.connect();
   let dispatched = 0;
   let failed = 0;
 
   try {
+    await withOrgDb(orgId, async (client) => {
     // Select all active integrations for this org
     const res = await client.query(
       `SELECT * FROM automation_integrations WHERE org_id=$1 AND active=true`,
@@ -105,9 +105,12 @@ export async function dispatchEvent(
     });
 
     for (const intg of subscribed) {
+      const startedAt = Date.now();
+      const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
       try {
-        const ok = await _deliverWebhook(intg, event, payload);
-        const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+        const delivery = await _deliverWebhook(intg, event, payload);
+        const ok = delivery.ok;
+        const durationMs = Date.now() - startedAt;
         await client.query(
           `UPDATE automation_integrations SET
              last_triggered=NOW(),
@@ -120,25 +123,38 @@ export async function dispatchEvent(
         // Log the run
         await client.query(
           `INSERT INTO automation_runs
-             (id, org_id, integration_id, event_type, payload, status, attempt, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,1,NOW())
+             (id, org_id, integration_id, event_type, payload, status, attempt, duration_ms, http_status, triggered_at, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,NOW(),NOW())
            ON CONFLICT (id) DO NOTHING`,
-          [runId, orgId, intg["id"], event, JSON.stringify(payload), ok ? "success" : "failed"]
+          [runId, orgId, intg["id"], event, JSON.stringify(payload), ok ? "success" : "failed", durationMs, delivery.statusCode ?? null]
         );
+        await writeAutomationLog(client, {
+          orgId, integrationId: String(intg["id"]), runId,
+          level: ok ? "info" : "error",
+          message: ok
+            ? `Webhook livré : ${event} (${delivery.statusCode ?? "OK"})`
+            : `Échec de livraison : ${event}${delivery.error ? ` — ${delivery.error}` : ""}`,
+          metadata: { event, statusCode: delivery.statusCode ?? null, durationMs, payload },
+        }).catch(err => logger.warn({ err, integrationId: intg["id"], runId }, "[integrations] delivery log write failed"));
         if (ok) dispatched++; else failed++;
       } catch (err) {
         logger.warn({ err, integrationId: intg["id"] }, "[integrations] dispatch failed for one integration");
+        await writeAutomationLog(client, {
+          orgId, integrationId: String(intg["id"]), runId,
+          level: "error",
+          message: `Échec de livraison : ${event} — ${err instanceof Error ? err.message : "erreur inconnue"}`,
+          metadata: { event, durationMs: Date.now() - startedAt, payload },
+        }).catch(() => {});
         failed++;
       }
     }
 
     return { dispatched, failed };
+    });
   } catch (err) {
     logger.error({ err, event, orgId }, "[integrations] dispatchEvent outer error");
-    return { dispatched, failed };
-  } finally {
-    client.release();
   }
+  return { dispatched, failed };
 }
 
 // ── _deliverWebhook ────────────────────────────────────────────────────────────
@@ -147,9 +163,9 @@ async function _deliverWebhook(
   intg: Record<string, unknown>,
   event: string,
   payload: Record<string, unknown>
-): Promise<boolean> {
+): Promise<{ ok: boolean; statusCode?: number; error?: string }> {
   const endpointUrl = (intg["endpoint_url"] as string | undefined)?.trim();
-  if (!endpointUrl) return false;
+  if (!endpointUrl) return { ok: false, error: "URL de destination absente" };
 
   const platform = (intg["platform"] as string | undefined) || "custom";
   const secretKey = intg["secret_key"] as string | undefined;
@@ -181,7 +197,7 @@ async function _deliverWebhook(
   });
 
   logger.info({ platform, event, status: response.status, url: endpointUrl }, "[integrations] webhook delivered");
-  return response.ok;
+  return { ok: response.ok, statusCode: response.status, error: response.ok ? undefined : `HTTP ${response.status}` };
 }
 
 // ── buildPlatformPayload ───────────────────────────────────────────────────────
@@ -267,8 +283,7 @@ export async function testIntegration(
   id: string,
   orgId: string
 ): Promise<{ ok: boolean; success: boolean; statusCode?: number; durationMs?: number; error?: string }> {
-  const client = await pool.connect();
-  try {
+  return withOrgDb(orgId, async (client) => {
     const res = await client.query(
       `SELECT * FROM automation_integrations WHERE id=$1 AND org_id=$2 LIMIT 1`,
       [id, orgId]
@@ -282,9 +297,10 @@ export async function testIntegration(
     let ok = false;
     let httpStatus: number | undefined;
 
+    let deliveryError: string | undefined;
     try {
       const endpointUrl = (intg["endpoint_url"] as string | undefined)?.trim();
-      if (!endpointUrl) return { ok: false, success: false, error: "No endpoint URL configured" };
+      if (!endpointUrl) throw new Error("No endpoint URL configured");
 
       const platform = (intg["platform"] as string | undefined) || "custom";
       const body = buildPlatformPayload(platform, "test.ping", {
@@ -314,12 +330,7 @@ export async function testIntegration(
       ok = response.ok;
       httpStatus = response.status;
     } catch (err) {
-      return {
-        ok: false,
-        success: false,
-        durationMs: Date.now() - t0,
-        error: err instanceof Error ? err.message : "Request failed",
-      };
+      deliveryError = err instanceof Error ? err.message : "Request failed";
     }
 
     const durationMs = Date.now() - t0;
@@ -334,12 +345,22 @@ export async function testIntegration(
        WHERE id=$3`,
       [ok ? 1 : 0, ok ? 0 : 1, id]
     );
+    const runId = `run_test_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+    await client.query(
+      `INSERT INTO automation_runs
+         (id, org_id, integration_id, event_type, payload, status, attempt, duration_ms, http_status, triggered_at, created_at)
+       VALUES ($1,$2,$3,'test.ping','{}',$4,1,$5,$6,NOW(),NOW())`,
+      [runId, orgId, id, ok ? "success" : "failed", durationMs, httpStatus ?? null]
+    );
+    await writeAutomationLog(client, {
+      orgId, integrationId: id, runId, level: ok ? "info" : "error",
+      message: ok ? `Test webhook réussi (${httpStatus ?? "OK"})` : `Test webhook échoué${httpStatus ? ` (HTTP ${httpStatus})` : deliveryError ? ` — ${deliveryError}` : ""}`,
+      metadata: { event: "test.ping", statusCode: httpStatus ?? null, durationMs, error: deliveryError ?? null },
+    });
 
     logger.info({ id, ok, httpStatus, durationMs }, "[integrations] testIntegration");
-    return { ok, success: ok, statusCode: httpStatus, durationMs };
-  } finally {
-    client.release();
-  }
+    return { ok, success: ok, statusCode: httpStatus, durationMs, error: deliveryError };
+  });
 }
 
 // ── getIntegrationStats ───────────────────────────────────────────────────────
@@ -347,11 +368,10 @@ export async function getIntegrationStats(orgId: string): Promise<{
   total: number;
   enabled: number;
   totalDeliveries: number;
-  successRate: number;
+  successRate: number | null;
   events: string[];
 }> {
-  const client = await pool.connect();
-  try {
+  return withOrgDb(orgId, async (client) => {
     const res = await client.query(
       `SELECT
          COUNT(*) AS total,
@@ -369,14 +389,12 @@ export async function getIntegrationStats(orgId: string): Promise<{
       total: Number(r["total"] ?? 0),
       enabled: Number(r["enabled_count"] ?? 0),
       totalDeliveries: total,
-      successRate: total > 0 ? Math.round((success / total) * 100) : 100,
+      successRate: total > 0 ? Math.round((success / total) * 100) : null,
       events: [...SUPPORTED_EVENTS],
     };
-  } catch {
-    return { total: 0, enabled: 0, totalDeliveries: 0, successRate: 100, events: [...SUPPORTED_EVENTS] };
-  } finally {
-    client.release();
-  }
+  }).catch(() => {
+    return { total: 0, enabled: 0, totalDeliveries: 0, successRate: null, events: [...SUPPORTED_EVENTS] };
+  });
 }
 
 // ── processIncomingWebhook ────────────────────────────────────────────────────
@@ -384,29 +402,41 @@ export async function getIntegrationStats(orgId: string): Promise<{
 // Signature: processIncomingWebhook(token, body, orgId)
 export async function processIncomingWebhook(
   token: string,
-  body: Record<string, unknown>,
-  orgId: string
+  body: Record<string, unknown>
 ): Promise<{ processed: boolean; action?: string; message?: string }> {
+  // This is a public endpoint: the opaque token is the routing credential.
+  // Look up only its org first, then perform all subsequent work in that org's
+  // RLS-scoped transaction.
   const client = await pool.connect();
   try {
     const res = await client.query(
-      `SELECT * FROM incoming_webhooks WHERE token=$1 AND active=true LIMIT 1`,
+      `SELECT org_id FROM incoming_webhooks WHERE token=$1 AND active=true LIMIT 1`,
       [token]
     );
     if (!res.rows.length) throw new Error("Token webhook invalide ou désactivé");
+    const orgId = String((res.rows[0] as Record<string, unknown>)["org_id"]);
+    return await withOrgDb(orgId, async (orgClient) => {
+      const hookResult = await orgClient.query(
+        `SELECT * FROM incoming_webhooks WHERE token=$1 AND org_id=$2 AND active=true LIMIT 1`,
+        [token, orgId]
+      );
+      if (!hookResult.rows.length) throw new Error("Token webhook invalide ou désactivé");
+      const hook = hookResult.rows[0] as Record<string, unknown>;
 
-    const hook = res.rows[0] as Record<string, unknown>;
-
-    // Update hit counter
-    await client.query(
-      `UPDATE incoming_webhooks SET hits=COALESCE(hits,0)+1, last_hit=NOW() WHERE token=$1`,
-      [token]
-    );
+      // Update hit counter
+      await orgClient.query(
+      `UPDATE incoming_webhooks SET hits=COALESCE(hits,0)+1, last_hit=NOW() WHERE token=$1 AND org_id=$2`,
+      [token, orgId]
+      );
 
     const action = (hook["action"] as string) || "log";
     const actionConfig = parseJson<Record<string, unknown>>(hook["action_config"] as string, {});
 
     logger.info({ token: token.slice(0, 8) + "…", action, orgId }, "[integrations] incoming webhook received");
+    await writeAutomationLog(orgClient, {
+      orgId, level: "info", message: `Webhook entrant reçu (${String(hook["source"] ?? "custom")})`,
+      metadata: { incomingWebhookId: hook["id"], action, payload: body },
+    });
 
     if (action === "create_mission") {
       // Create a mission from the incoming webhook data
@@ -414,7 +444,7 @@ export async function processIncomingWebhook(
       const missionDesc = (body["description"] as string) || (body["message"] as string) || JSON.stringify(body).slice(0, 500);
 
       const missionId = `mission_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
-      await client.query(
+        await orgClient.query(
         `INSERT INTO missions (id, org_id, title, description, source_type, source_data, status, priority, created_at)
          VALUES ($1,$2,$3,$4,'webhook',$5,'pending','medium',NOW())
          ON CONFLICT DO NOTHING`,
@@ -432,7 +462,8 @@ export async function processIncomingWebhook(
     }
 
     // Default: log
-    return { processed: true, action: "log", message: "Webhook reçu et enregistré" };
+      return { processed: true, action: "log", message: "Webhook reçu et enregistré" };
+    });
   } finally {
     client.release();
   }
@@ -469,7 +500,26 @@ export async function logEvent(opts: {
   payload: unknown;
   status: string;
 }): Promise<void> {
-  logger.debug(opts, "[integrations] logEvent");
+  await withOrgDb(opts.orgId, async (client) => {
+    await writeAutomationLog(client, {
+      orgId: opts.orgId,
+      level: opts.status === "error" ? "error" : "info",
+      message: opts.event,
+      metadata: { payload: opts.payload, status: opts.status },
+    });
+  });
+}
+
+async function writeAutomationLog(
+  client: { query: (sql: string, values?: unknown[]) => Promise<unknown> },
+  entry: { orgId: string; integrationId?: string; runId?: string; level: string; message: string; metadata?: Record<string, unknown> }
+): Promise<void> {
+  const id = `alog_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  await client.query(
+    `INSERT INTO automation_logs (id, run_id, org_id, integration_id, level, message, metadata, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())`,
+    [id, entry.runId ?? null, entry.orgId, entry.integrationId ?? null, entry.level, entry.message, JSON.stringify(entry.metadata ?? {})]
+  );
 }
 
 // ── parseJson ─────────────────────────────────────────────────────────────────

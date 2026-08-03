@@ -318,7 +318,7 @@ router.post("/integrations/webhooks/test", async (req, res) => {
 // ── POST /api/integrations/webhook/incoming/:token — public ────────────────────
 router.post("/integrations/webhook/incoming/:token", async (req, res) => {
   try {
-    const result = await processIncomingWebhook(req.params.token, req.body || {}, org(req));
+    const result = await processIncomingWebhook(req.params.token, req.body || {});
     res.json({ ok: true, ...result });
   } catch (err) {
     const msg = safeErrMsg(err);
@@ -331,7 +331,7 @@ router.post("/integrations/webhook/incoming", async (req, res) => {
   const token = req.headers["x-flowpoint-token"] as string || req.query.token as string;
   if (!token) { res.status(400).json({ error: "token requis (header X-FlowPoint-Token ou ?token=)" }); return; }
   try {
-    const result = await processIncomingWebhook(token, req.body || {}, org(req));
+    const result = await processIncomingWebhook(token, req.body || {});
     res.json({ ok: true, ...result });
   } catch (err) {
     const msg = safeErrMsg(err);

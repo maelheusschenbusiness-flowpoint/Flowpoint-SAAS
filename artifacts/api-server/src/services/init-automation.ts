@@ -94,6 +94,7 @@ export async function initAutomationTables(): Promise<void> {
 
     // ── automation_integrations — columns added at runtime ────────────────────
     const aiCols: Array<[string, string]> = [
+      ["type",          "TEXT NOT NULL DEFAULT 'outgoing'"],
       ["name",          "TEXT NOT NULL DEFAULT 'Integration'"],
       ["platform",      "TEXT NOT NULL DEFAULT 'custom'"],
       ["endpoint_url",  "TEXT NOT NULL DEFAULT ''"],
@@ -121,11 +122,18 @@ export async function initAutomationTables(): Promise<void> {
       ["event_type",     "TEXT"],
       ["payload",        "JSONB DEFAULT '{}'"],
       ["attempt",        "INTEGER DEFAULT 1"],
+      ["triggered_at",   "TIMESTAMP DEFAULT NOW()"],
+      ["http_status",    "INTEGER"],
     ];
     for (const [col, def] of arCols) {
       await client.query(`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ${col} ${def}`);
     }
     await client.query(`CREATE INDEX IF NOT EXISTS idx_auto_runs_intg ON automation_runs(integration_id) WHERE integration_id IS NOT NULL`);
+
+    // ── automation_logs — delivery log metadata ───────────────────────────────
+    await client.query(`ALTER TABLE automation_logs ADD COLUMN IF NOT EXISTS run_id TEXT`);
+    await client.query(`ALTER TABLE automation_logs ADD COLUMN IF NOT EXISTS integration_id TEXT`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_auto_logs_org_created ON automation_logs(org_id, created_at DESC)`);
 
     // ── incoming_webhooks — add token/action columns ──────────────────────────
     const iwCols: Array<[string, string]> = [
@@ -142,7 +150,7 @@ export async function initAutomationTables(): Promise<void> {
 
     logger.info("Automation tables initialized");
   } catch (err) {
-    logger.error("Failed to init automation tables", { err });
+    logger.error({ err }, "Failed to init automation tables");
     throw err;
   } finally {
     client.release();

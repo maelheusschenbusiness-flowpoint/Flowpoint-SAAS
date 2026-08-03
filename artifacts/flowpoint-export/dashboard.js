@@ -1031,6 +1031,8 @@ function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
   `);
   setTimeout(() => {
     document.getElementById('wf-save')?.addEventListener('click', () => {
+      const saveBtn = document.getElementById('wf-save');
+      if (!saveBtn || saveBtn.dataset.submitting === '1') return;
       const name = document.getElementById('wf-name')?.value?.trim();
       if (!name) { showToast('warning', 'Entrez un nom pour le workflow'); return; }
       const trigger = document.getElementById('wf-trigger')?.value;
@@ -1045,19 +1047,20 @@ function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
         trigger_config: { event: trigger, description: _trigLabels[trigger] || trigger },
         actions: [{ type: action, description: _actLabels[action] || action }],
       };
+      saveBtn.dataset.submitting = '1';
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Création…';
       closeFloatPanel();
       if (window.FP_AUTOMATION_API && window.FP_AUTOMATION_API.create) {
         // Persist via API; consume the created row directly, fall back to a reload
         window.FP_AUTOMATION_API.create(payload).then((r) => {
           const created = r && r.workflow;
           if (created) {
-            window.FP_DATA = window.FP_DATA || {};
-            window.FP_DATA.automation = window.FP_DATA.automation || { workflows: [] };
-            window.FP_DATA.automation.workflows = window.FP_DATA.automation.workflows || [];
-            window.FP_DATA.automation.workflows.unshift(created);
-            STATE.workflows = window.FP_DATA.automation.workflows;
             showToast('success', 'Workflow créé !');
-            render();
+            return window.FP_AUTOMATION_API.load().then(() => {
+              STATE.workflows = (window.FP_DATA && window.FP_DATA.automation && window.FP_DATA.automation.workflows) || [];
+              render();
+            });
           } else {
             return window.FP_AUTOMATION_API.load().then(() => {
               STATE.workflows = (window.FP_DATA && window.FP_DATA.automation && window.FP_DATA.automation.workflows) || STATE.workflows || [];
@@ -10337,7 +10340,8 @@ function renderSettings() {
                 <div style="font-size:9px;color:var(--fp-text-faint);margin-top:2px">${wf.runs} exécutions · Dernier : ${escHtml(wf.lastRun)}</div>
               </div>
               <button class="fp-toggle${wf.active ? ' on' : ''}" onclick="${wf.id ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.toggle('${escHtml(wf.id)}',${!wf.active}):showToast('error','Module automations non chargé — rechargez la page')` : `showToast('error','Workflow invalide : identifiant manquant')`}"></button>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="${wf.id ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.run('${escHtml(wf.id)}'):showToast('error','Module automations non chargé — rechargez la page')` : `showToast('error','Workflow invalide : identifiant manquant')`}">▶ Run</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;${wf.active ? '' : 'opacity:.45;cursor:not-allowed'}" ${wf.active ? '' : 'disabled title="Activez le workflow avant de l’exécuter"'} onclick="${wf.id && wf.active ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.run('${escHtml(wf.id)}'):showToast('error','Module automations non chargé — rechargez la page')` : ''}">▶ Run</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;color:var(--fp-danger)" onclick="${wf.id ? `window.FP_AUTOMATION_API&&window.FP_AUTOMATION_API.remove('${escHtml(wf.id)}')` : ''}" title="Supprimer ce workflow">🗑</button>
             </div>
           `).join('')}
         </div>
@@ -10752,7 +10756,7 @@ function renderSettings() {
           <div class="fp-stat-row fp-mb-16" data-fp-anchor="integrations-hub">
             ${statCard('Intégrations actives', String(totalConnected + nativeConnected), 'webhooks + natives', totalConnected>0?'up':'neutral')}
             ${statCard('Déclencheurs envoyés', String(stats.totalRuns||0), 'toutes intégrations', 'up')}
-            ${statCard('Taux de succès', (stats.successRate||100)+'%', 'livraisons réussies', stats.successRate<90?'down':'up')}
+            ${statCard('Taux de succès', stats.totalDeliveries > 0 && stats.successRate != null ? stats.successRate+'%' : '—', stats.totalDeliveries > 0 ? 'livraisons réussies' : 'Aucune livraison', stats.totalDeliveries > 0 && stats.successRate < 90 ? 'down' : 'neutral')}
             ${statCard('Erreurs (24h)', String(stats.recentErrors||0), 'alertes récentes', stats.recentErrors>0?'down':'up')}
             ${statCard('Latence moy.', stats.avgDurationMs ? stats.avgDurationMs+'ms' : '—', 'livraison webhook', 'neutral')}
             ${statCard('Templates', '+99', 'prêts à utiliser', 'up')}
@@ -10848,7 +10852,8 @@ function renderSettings() {
                   </tr></thead>
                   <tbody>
                     ${intgs.map(i => {
-                      const successRate = i.trigger_count > 0 ? Math.round((1 - i.failure_count/i.trigger_count)*100) : 100;
+                      const deliveries = Number(i.success_count||0) + Number(i.failure_count||0);
+                      const successRate = deliveries > 0 ? Math.round((Number(i.success_count||0)/deliveries)*100) : null;
                       return `
                         <tr>
                           <td>${statusDot(i.active, i.verified)}</td>
@@ -10869,7 +10874,7 @@ function renderSettings() {
                           </td>
                           <td style="text-align:center;font-size:13px;font-weight:700;color:var(--fp-text)">${i.trigger_count ?? 0}</td>
                           <td style="text-align:center">
-                            <span style="font-size:11px;font-weight:700;color:${successRate>=90?'var(--fp-success)':successRate>=70?'var(--fp-warning)':'var(--fp-danger)'}">${successRate}%</span>
+                            <span style="font-size:11px;font-weight:700;color:${successRate == null ? 'var(--fp-text-faint)' : successRate>=90?'var(--fp-success)':successRate>=70?'var(--fp-warning)':'var(--fp-danger)'}">${successRate == null ? '—' : successRate+'%'}</span>
                           </td>
                           <td style="text-align:center;font-size:10px;color:var(--fp-text-faint)">
                             ${i.last_triggered_at ? new Date(i.last_triggered_at).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'Jamais'}
@@ -11064,7 +11069,7 @@ function renderSettings() {
 
       ${aiBlock(
         totalConnected > 0
-          ? `${totalConnected} intégration${totalConnected>1?'s':''} active${totalConnected>1?'s':''}. Taux de succès : <strong>${stats.successRate||100}%</strong>. ${stats.recentErrors>0?'<strong>'+stats.recentErrors+' erreur(s)</strong> dans les 24h — vérifiez les logs de livraison.':'Toutes les livraisons sont nominales.'}`
+          ? `${totalConnected} intégration${totalConnected>1?'s':''} active${totalConnected>1?'s':''}. ${stats.totalDeliveries > 0 ? `Taux de succès : <strong>${stats.successRate}%</strong>. ${stats.recentErrors>0?'<strong>'+stats.recentErrors+' erreur(s)</strong> dans les 24h — vérifiez les logs de livraison.':'Toutes les livraisons sont nominales.'}` : 'Aucune livraison encore. Testez un webhook pour commencer.'}`
           : 'Connectez Zapier ou Make pour automatiser vos workflows SEO. Ou créez un webhook personnalisé pour notifier vos outils en temps réel.',
         ['IA : Connecter Zapier', 'IA : Configurer Slack', 'Voir les templates']
       )}
@@ -35301,7 +35306,11 @@ window.FP_AUTOMATION_API = {
     showToast('info', 'Exécution du workflow lancée…');
     try {
       const r = await apiFetch(`/api/automation/workflows/${encodeURIComponent(workflowId)}/run`, { method: 'POST' });
-      if (r?.ok !== false) showToast('success', 'Workflow exécuté avec succès');
+      if (r?.ok !== false) {
+        showToast('success', 'Workflow exécuté avec succès');
+        await this.load();
+        render();
+      }
       else showToast('error', r?.error || 'Erreur d\'exécution');
     } catch(e) { showToast('error', String(e)); }
   },
@@ -35309,13 +35318,20 @@ window.FP_AUTOMATION_API = {
   async create(workflowData) {
     try {
       const r = await apiFetch('/api/automation/workflows', { method: 'POST', body: JSON.stringify(workflowData) });
-      if (r?.ok !== false) {
-        await this.load();
-        render();
-        showToast('success', 'Workflow créé');
-      } else showToast('error', r?.error || 'Erreur');
+      if (r?.ok === false) showToast('error', r?.error || 'Erreur');
       return r;
     } catch(e) { showToast('error', String(e)); return null; }
+  },
+
+  async remove(workflowId) {
+    if (!confirm('Supprimer ce workflow ? Cette action est définitive.')) return;
+    try {
+      const r = await apiFetch(`/api/automation/workflows/${encodeURIComponent(workflowId)}`, { method: 'DELETE' });
+      if (r?.ok === false) { showToast('error', r?.error || 'Suppression impossible'); return; }
+      await this.load();
+      render();
+      showToast('success', 'Workflow supprimé');
+    } catch(e) { showToast('error', String(e)); }
   },
 };
 
