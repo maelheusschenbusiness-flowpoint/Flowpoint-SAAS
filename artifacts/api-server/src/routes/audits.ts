@@ -143,6 +143,8 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
     })().catch(() => {});
 
     const auditName = ((req.body as Record<string,unknown>)["name"] as string) || "";
+    // Cumulative usage accounting — never decremented on deletion
+    import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "audit_created")).catch(() => {});
     res.status(201).json({
       id: auditId, url: normalizedUrl, name: auditName, notes: "",
       score: 0, status: "processing", speed: 0, date: dateStr, issues: 0, origin,

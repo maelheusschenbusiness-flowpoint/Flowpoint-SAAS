@@ -593,6 +593,8 @@ function exportCsv(headerRow, dataRows, filename) {
   const a = document.createElement('a');
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
+  // Cumulative usage accounting (fire-and-forget) — survives item deletion
+  try { if (typeof window.fpTrackUsage === 'function') window.fpTrackUsage('export'); } catch(_) {}
 }
 
 async function downloadReportPdf(reportId, name, triggerEl) {
@@ -1722,6 +1724,7 @@ window._fpExportCampaigns = function() {
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(hdr + '\n' + csvRows.join('\n'));
   a.download = 'campagnes-' + new Date().toISOString().slice(0, 10) + '.csv';
   a.click();
+  try { if (typeof window.fpTrackUsage === 'function') window.fpTrackUsage('export'); } catch(_) {}
   showToast && showToast('success', 'CSV exporté — ' + rows.length + ' campagne' + (rows.length > 1 ? 's' : ''));
 };
 
@@ -8065,7 +8068,7 @@ function renderBilling() {
   }, 0);
   const sub  = STATE.subRoute;
   const me   = STATE.me;
-  if (!me) return '<div style="padding:40px;text-align:center;color:var(--fp-text-muted);font-size:14px">Chargement du profil…</div>';
+  if (!me) return '<div style="padding:60px 40px;text-align:center;color:var(--fp-text-muted);font-size:14px"><div style="width:42px;height:42px;margin:0 auto 14px;border-radius:50%;border:3px solid var(--fp-border);border-top-color:var(--fp-accent,#2563EB);animation:spin 0.9s linear infinite"></div>Chargement du profil…</div>';
   const user   = STATE?.me?.user || STATE?.user || null;
   const plan = me?.plan || 'Standard';
   const _ud    = STATE.usageDetails || {};
@@ -8112,9 +8115,9 @@ function renderBilling() {
   const _planLimits = me?.limits || _limitsFromDef;
   const usages = [
     { l:'Audits',      icon:'search',     v:_usage.audit?.used    ?? 0, max:_usage.audit?.limit    ?? _planLimits.audits,    color:'#2563EB', forecast:_dynFcst(_usage.audit?.used??0, _usage.audit?.limit??_planLimits.audits) },
-    { l:'PDF',         icon:'file-text',  v:_usage.pdf?.used      ?? 0, max:_usage.pdf?.limit      ?? _planLimits.reports,   color:'#8b5cf6', forecast:_dynFcst(_usage.pdf?.used??0, _usage.pdf?.limit??_planLimits.reports) },
-    { l:'Exports',     icon:'download',   v:_usage.exports?.used  ?? 0, max:_usage.exports?.limit  ?? _planLimits.exports,   color:'#22c55e', forecast:_dynFcst(_usage.exports?.used??0, _usage.exports?.limit??_planLimits.exports) },
-    { l:'Monitors',    icon:'activity',   v:_usage.monitor?.used  ?? 0, max:_usage.monitor?.limit  ?? _planLimits.monitors,  color:'#f59e0b', forecast:_dynFcst(_usage.monitor?.used??0, _usage.monitor?.limit??_planLimits.monitors) },
+    { l:'PDF',         icon:'file-text',  v:_ud.pdfExportsUsed    ?? _usage.pdf?.used     ?? 0, max:_usage.pdf?.limit      ?? _planLimits.reports,   color:'#8b5cf6', forecast:_dynFcst(_ud.pdfExportsUsed ?? _usage.pdf?.used ?? 0, _usage.pdf?.limit??_planLimits.reports) },
+    { l:'Exports',     icon:'download',   v:_ud.exportsUsed       ?? _usage.exports?.used ?? 0, max:_ud.exportsLimit ?? _usage.exports?.limit  ?? _planLimits.exports,   color:'#22c55e', forecast:_dynFcst(_ud.exportsUsed ?? _usage.exports?.used ?? 0, _ud.exportsLimit ?? _usage.exports?.limit ?? _planLimits.exports) },
+    { l:'Monitors',    icon:'activity',   v:_usage.monitor?.used  ?? _ud.monitorsActive ?? 0, max:_ud.monitorsLimit ?? _usage.monitor?.limit  ?? _planLimits.monitors,  color:'#f59e0b', forecast:_dynFcst(_usage.monitor?.used ?? _ud.monitorsActive ?? 0, _ud.monitorsLimit ?? _usage.monitor?.limit ?? _planLimits.monitors) },
     { l:'Sièges',      icon:'users',      v:(STATE.seatUsage?.used ?? _ud.teamMembersUsed ?? 1), max:Math.max(STATE.seatUsage?.limit ?? 1, _ud.teamMembersLimit ?? _planLimits.teamMembers ?? 1), color:'#06b6d4', forecast:_dynFcst(STATE.seatUsage?.used ?? _ud.teamMembersUsed ?? 1, Math.max(STATE.seatUsage?.limit ?? 1, _ud.teamMembersLimit ?? _planLimits.teamMembers ?? 1)) },
     { l:'Storage',     icon:'database',   v:_ud.storageUsed,          max:10,    color:'#8b5cf6', forecast:null, unit:'GB',  na:_ud.storageUsed==null },
     { l:'API Appels',  icon:'code',       v:_ud.apiCalls,             max:10000, color:'#f59e0b', forecast:null,             na:_ud.apiCalls==null },
@@ -9265,7 +9268,7 @@ function renderBilling() {
           ${[
             { label:'Coût mensuel',       val: isStd ? '29€' : isPro && !isUltra ? '79€' : '149€' },
             { label:'Sans engagement',    val: 'Mensuel — résiliation libre' },
-            { label:'Add-ons actifs',     val: STATE.billing?.addons?.length != null ? String(STATE.billing.addons.length) + ' modules' : '—' },
+            { label:'Add-ons actifs',     val: (()=>{ const _a=STATE.billing?.addons; const _n=_a&&typeof _a==='object'?Object.values(_a).filter(Boolean).length:0; const _inc=_ud.includedAddonsCount ?? ({standard:1,pro:6,ultra:10}[_planKey2]??1); return _n+' actif'+(_n!==1?'s':'')+' · '+_inc+' inclus (plan)'; })() },
             { label:'Prochaine facture',  val: STATE.billing?.nextDate || '—' },
           ].map(m => `<div style="padding:10px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">
             <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:3px">${escHtml(m.label)}</div>
@@ -11410,7 +11413,7 @@ function renderAI() {
   }
   const sub  = STATE.subRoute;
   const me   = STATE.me;
-  if (!me) return '<div style="padding:40px;text-align:center;color:var(--fp-text-muted);font-size:14px">Chargement du profil…</div>';
+  if (!me) return '<div style="padding:60px 40px;text-align:center;color:var(--fp-text-muted);font-size:14px"><div style="width:42px;height:42px;margin:0 auto 14px;border-radius:50%;border:3px solid var(--fp-border);border-top-color:var(--fp-accent,#2563EB);animation:spin 0.9s linear infinite"></div>Chargement du profil…</div>';
   const user   = STATE?.me?.user || STATE?.user || null;
   const _usage = me?.usage || {};
   const plan = me?.plan || 'Pro';
@@ -35023,15 +35026,8 @@ window.FP_ADDONS_API = {
   },
 
   async buyCredits(pack) {
-    showToast('info', 'Redirection vers la page tarifs…');
-    try {
-      const _packKeyMap = { 'ai_credits_50k': 'aiCreditsPack50k', 'ai_credits_200k': 'aiCreditsPack200k', 'ai_credits_500k': 'aiCreditsPack500k' };
-      const cartKey = _packKeyMap[pack] || pack;
-      const cart = { plan: null, addons: {}, fromDashboard: true };
-      cart.addons[cartKey] = 1;
-      localStorage.setItem('fp_cart', JSON.stringify(cart));
-      window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(cartKey);
-    } catch(e) { showToast('error', String(e)); return null; }
+    // Direct Stripe Checkout — no pricing/cart detour for existing customers
+    return window._fpBuyAICredits(pack);
   },
 };
 
@@ -35075,16 +35071,41 @@ window.FP_AI_CREDITS_API = {
   },
 
   async buyCredits(pack) {
-    showToast('info', 'Redirection vers la page tarifs…');
-    try {
-      const _packKeyMap = { 'ai_credits_50k':'aiCreditsPack50k', 'ai_credits_200k':'aiCreditsPack200k', 'ai_credits_500k':'aiCreditsPack500k' };
-      const cartKey = _packKeyMap[pack] || pack;
-      const _cart = { plan: null, addons: {}, fromDashboard: true };
-      _cart.addons[cartKey] = 1;
-      localStorage.setItem('fp_cart', JSON.stringify(_cart));
-      window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(cartKey);
-    } catch(e) { showToast('error', String(e)); return null; }
+    // Direct Stripe Checkout — no pricing/cart detour for existing customers
+    return window._fpBuyAICredits(pack);
   },
+};
+
+// ── Shared AI-credit purchase: direct Stripe Checkout session ─────────────────
+// Called from both FP_ADDONS_API.buyCredits and FP_AI_CREDITS_API.buyCredits.
+// The webhook credits the org on checkout.session.completed; the success page
+// returns to the dashboard where fresh /api/ai-credits data reflects the pack.
+window._fpBuyAICredits = async function(pack) {
+  showToast('info', 'Préparation du paiement…');
+  try {
+    const r = await apiFetch('/api/billing/checkout-ai-credits', {
+      method: 'POST',
+      body: JSON.stringify({ pack }),
+    });
+    if (r && r.url) {
+      try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+      window.location.href = r.url;
+      return r;
+    }
+    showToast('error', (r && (r.error || r.detail)) || 'Erreur lors de la création du paiement');
+    return r;
+  } catch(e) {
+    showToast('error', 'Erreur lors de la création du paiement : ' + ((e && e.message) || 'réessayez'));
+    return null;
+  }
+};
+
+// ── Cumulative usage tracking for client-side exports ─────────────────────────
+// Fire-and-forget; deletion of the exported item never decrements this history.
+window.fpTrackUsage = function(kind) {
+  try {
+    apiFetch('/api/billing/usage-events', { method: 'POST', body: JSON.stringify({ kind }) }).catch(() => {});
+  } catch(_) {}
 };
 
 // ── Auto-load all integrations on page start ──────────────────────────────────

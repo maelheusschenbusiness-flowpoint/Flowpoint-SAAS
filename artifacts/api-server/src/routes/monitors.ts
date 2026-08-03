@@ -624,6 +624,8 @@ router.post("/monitors", monitorCreateRateLimit, canWrite, async (req: Request, 
       type: "monitor", label: `Monitor créé : ${name} (${url})`,
       targetId: id, targetType: "monitor", metadata: { url, name }, orgId,
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
+    // Cumulative usage accounting — never decremented on deletion
+    import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "monitor_created")).catch(() => {});
 
     res.status(201).json(toPublic(row.rows[0]));
   } catch (err) {

@@ -88,6 +88,8 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
     const r = await db(req)(`SELECT * FROM reports WHERE id=$1`, [id]);
     const report = r.rows[0] ?? { id, name };
     store.logActivity({ type: "report", label: `Rapport généré : ${name}`, targetId: id, targetType: "report", metadata: { name, format }, orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
+    // Cumulative usage accounting — never decremented on deletion
+    import("../services/usage-events.js").then(m => m.recordUsageEvent(org(req), "report_created")).catch(() => {});
     res.status(201).json(report);
 
     // Fire-and-forget: report generated email — use org-scoped data, never store.me singleton
@@ -171,6 +173,8 @@ router.get("/reports/:id/download", async (req: Request, res: Response) => {
     missions = misr.rows.map(r => ({ title: r.title as string, status: r.status as string, priority: r.priority as string, dueDate: r.due_date as string }));
   } catch {}
 
+  // Cumulative usage accounting — PDF export counted at download time
+  import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "pdf_export")).catch(() => {});
   await streamReportPdf(res, report as Parameters<typeof streamReportPdf>[1], audit as Parameters<typeof streamReportPdf>[2], meetingNotes, monitors, missions);
 });
 

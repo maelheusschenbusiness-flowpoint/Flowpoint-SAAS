@@ -1262,7 +1262,11 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
       status:              reconciled,
       subscriptionStatus:  reconciled,
       trialEndsAt:         reconciledTrialEndsAt,
-      currentPeriodEnd:    sub?.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+      // During trial, current_period_end may be undefined — fall back to trial_end
+      currentPeriodEnd:    (() => {
+        const ts = sub?.current_period_end ?? sub?.trial_end ?? null;
+        return ts ? new Date(ts * 1000).toISOString() : null;
+      })(),
       cancelAtPeriodEnd:   sub?.cancel_at_period_end ?? false,
       subscriptionId:      effectiveSubId ?? null,
       addons:              billingCtx.addons,
@@ -1391,6 +1395,8 @@ router.get("/billing/usage-details", async (req: Request, res: Response): Promis
 
   let reportsUsed: number | null = null;
   let teamMembersUsed: number | null = null;
+  let monitorsActive: number | null = null;
+  let auditsUsed: number | null = null;
 
   try {
     const r = await req.orgDb(
@@ -1409,11 +1415,45 @@ router.get("/billing/usage-details", async (req: Request, res: Response): Promis
     teamMembersUsed = 1 + Number(r.rows[0]?.count ?? 0); // 1 = owner always counts
   } catch { /* team_members table may not exist yet */ }
 
+  try {
+    const r = await req.orgDb(`SELECT COUNT(*) FROM monitors WHERE org_id = $1`, [orgId]);
+    monitorsActive = Number(r.rows[0]?.count ?? 0);
+  } catch { /* monitors table may not exist yet */ }
+
+  try {
+    const r = await req.orgDb(
+      `SELECT COUNT(*) FROM audits WHERE org_id = $1 AND created_at > date_trunc('month', now())`,
+      [orgId]
+    );
+    auditsUsed = Number(r.rows[0]?.count ?? 0);
+  } catch { /* audits table may not exist yet */ }
+
+  // ── Cumulative monthly usage events (append-only — deletion never decrements) ──
+  const { getMonthlyUsageCounts } = await import("../services/usage-events.js");
+  const events = await getMonthlyUsageCounts(orgId);
+  const cumulative = (live: number | null, kind: string): number | null => {
+    const ev = events[kind] ?? 0;
+    if (live == null) return ev > 0 ? ev : null;
+    return Math.max(live, ev);
+  };
+
+  const planKey = billingCtx.plan.toLowerCase();
+  const includedAddonsCount = (PLAN_INCLUDED_ADDONS[planKey] ?? PLAN_INCLUDED_ADDONS["standard"])?.size ?? 1;
+
   res.json({
-    reportsUsed,
+    reportsUsed:      cumulative(reportsUsed, "report_created"),
     reportsLimit:     limits.reports,
     teamMembersUsed,
     teamMembersLimit: limits.teamMembers,
+    monitorsUsed:     cumulative(monitorsActive, "monitor_created"),
+    monitorsActive,
+    monitorsLimit:    limits.monitors,
+    auditsUsed:       cumulative(auditsUsed, "audit_created"),
+    auditsLimit:      limits.audits,
+    pdfExportsUsed:   events["pdf_export"] ?? 0,
+    exportsUsed:      (events["export"] ?? 0) + (events["pdf_export"] ?? 0) + (events["health_export"] ?? 0),
+    exportsLimit:     limits.exports,
+    includedAddonsCount,
     emailsSent:    null,
     apiCalls:      null,
     storageUsed:   null,
@@ -1421,8 +1461,24 @@ router.get("/billing/usage-details", async (req: Request, res: Response): Promis
   });
 });
 
+// ── POST /billing/usage-events ────────────────────────────────────────────────
+// Client-side exports (CSV, Health-Score PDF generated in-browser) report their
+// consumption here so the cumulative counters include them.
+router.post("/billing/usage-events", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.orgContext?.orgId ?? req.orgId ?? "default";
+  const kind = String((req.body as { kind?: string })?.kind ?? "");
+  const CLIENT_KINDS = new Set(["export", "health_export", "pdf_export"]);
+  if (!CLIENT_KINDS.has(kind)) {
+    res.status(400).json({ error: "kind invalide (export | health_export | pdf_export)" });
+    return;
+  }
+  const { recordUsageEvent } = await import("../services/usage-events.js");
+  await recordUsageEvent(orgId, kind);
+  res.json({ ok: true, kind });
+});
+
 // ── POST /billing/checkout-ai-credits ─────────────────────────────────────────
-router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, async (req: Request, res: Response) => {
+router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
   const { pack = "" } = req.body as { pack?: string };
 
   const AI_PACK_MAP: Record<string, { addonKey: string; credits: number; envVar: string; amountEurCents: number }> = {
@@ -1488,7 +1544,11 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, async (req
     res.json({ url: session.url, pack, credits: packInfo.credits });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to create AI credits checkout session");
-    res.status(500).json({ error: "Failed to create checkout session" });
+    const msg = (err as { message?: string })?.message ?? "";
+    res.status(500).json({
+      error: "Erreur lors de la création du paiement",
+      detail: msg.slice(0, 300) || undefined,
+    });
   }
 });
 
