@@ -1051,6 +1051,8 @@ async function runToolCallingLoop(opts: {
   let messages = [...opts.messages] as import("../services/ai-multimodal.js").MultimodalMessage[];
   const undoTokens: Array<{ actionLogId: string; label: string }> = [];
   let toolsCalledTotal = 0;
+  let toolsSucceeded = 0;
+  let toolsFailed = 0;
   // Provider-native messages accumulate across rounds to preserve tool_calls/tool_result structure
   let nativeMessages: unknown[] | undefined;
   // System prompt carried separately for Anthropic/Gemini (not part of their native messages array)
@@ -1077,12 +1079,24 @@ async function runToolCallingLoop(opts: {
     if (!roundResult.hasToolCalls) {
       // No tool calls this round
       if (toolsCalledTotal > 0) {
-        // Emit final text as delta events (tools were used in earlier rounds)
-        if (roundResult.text) {
-          const chunks = roundResult.text.match(/.{1,80}/gs) ?? [roundResult.text];
-          for (const chunk of chunks) {
-            opts.sseWrite(`data: ${JSON.stringify({ delta: chunk })}\n\n`);
-          }
+        // Emit final text as delta events (tools were used in earlier rounds).
+        // Never end with an empty bubble: if the provider returned no text after
+        // tool execution, emit an explicit completion message instead.
+        const allFailed = toolsSucceeded === 0 && toolsFailed > 0;
+        const someFailed = toolsFailed > 0 && toolsSucceeded > 0;
+        const finalText = roundResult.text && roundResult.text.trim()
+          ? roundResult.text
+          : allFailed
+            ? "⚠ L'action demandée n'a pas pu aboutir. Réessayez ou reformulez votre demande."
+            : someFailed
+              ? "L'action est partiellement terminée : certaines étapes ont échoué. Consultez la section concernée pour vérifier le résultat."
+              : "✅ Action effectuée. Consultez la section concernée pour voir le résultat, ou posez-moi une question de suivi.";
+        const chunks = finalText.match(/.{1,80}/gs) ?? [finalText];
+        for (const chunk of chunks) {
+          opts.sseWrite(`data: ${JSON.stringify({ delta: chunk })}\n\n`);
+        }
+        if (!roundResult.text?.trim()) {
+          logger.warn({ provider, toolsCalledTotal }, "[tool-loop] empty final text after tools — fallback emitted");
         }
         return { suspended: false, finalTextEmitted: true, undoTokens, messages };
       }
@@ -1116,6 +1130,7 @@ async function runToolCallingLoop(opts: {
         // Execute immediately
         const execResult = await executeTool(toolCall, ctx);
         toolsCalledTotal++;
+        if (execResult.ok) toolsSucceeded++; else toolsFailed++;
         opts.sseWrite(`data: ${JSON.stringify({
           tool_result: { id: execResult.actionLogId, toolCallId: toolCall.id, name: toolCall.name, ok: execResult.ok, content: execResult.content },
         })}\n\n`);
@@ -1410,6 +1425,11 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
 Tu réponds en français, en consultant humain — pas en outil. Ton interlocuteur peut être un artisan, un dentiste, un restaurateur : adapte le vocabulaire à quelqu'un qui ne connaît pas le SEO.
 
 ${STRICT_AI_RULE}
+
+RÈGLES D'ACTION (obligatoires) :
+- Tu ne dis JAMAIS "je lance", "je fais", "c'est en cours" sans avoir réellement appelé l'outil correspondant dans ce même tour. Si aucun outil n'est disponible pour l'action demandée, dis-le clairement et indique où le faire manuellement dans l'app.
+- Si l'utilisateur fournit une URL et demande une analyse/un audit, appelle immédiatement l'outil run_audit avec cette URL (ne réponds pas par du texte seul).
+- Si une action nécessite une confirmation, appelle l'outil : la confirmation sera présentée automatiquement à l'utilisateur.
 === DONNÉES RÉELLES DU COMPTE ===`;
 
   // Step 3B: attachment block (security-prefixed, XML-delimited).
@@ -1530,6 +1550,15 @@ ${STRICT_AI_RULE}
 
       const { remaining, markerJson } = navFilter.flush();
       if (remaining) res.write(`data: ${JSON.stringify({ delta: remaining })}\n\n`);
+
+      // Never close a stream with zero text: emit an explicit fallback so the
+      // UI never shows an empty bubble (covers empty provider streams).
+      if (!fullReply.trim()) {
+        logger.warn({ provider: selectedProvider, model: effectiveModel }, "[AI] empty streamed reply — fallback emitted");
+        const fb = "Je n'ai pas pu générer de réponse cette fois-ci. Reformulez votre question ou réessayez dans un instant.";
+        fullReply = fb;
+        res.write(`data: ${JSON.stringify({ delta: fb })}\n\n`);
+      }
 
       // Validation stricte contre le registre : destination inconnue / permission
       // absente / plan insuffisant / ancre non déclarée → action abandonnée.

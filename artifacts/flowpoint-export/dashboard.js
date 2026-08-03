@@ -3134,7 +3134,8 @@ function getAvatarColor(name) {
 }
 
 function getInitials(name) {
-  return (name || 'Équipe').split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'É';
+  if (!name || !String(name).trim()) return '?';
+  return String(name).split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?';
 }
 
 function formatActivityDetails(metadata) {
@@ -12278,8 +12279,13 @@ function renderAI() {
         <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Analyse les baisses de positions et indique les actions prioritaires." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">📉 Analyser mes positions</button>
         <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Compare mes derniers audits et résume les progrès à réaliser." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">🔎 Comparer mes audits</button>
       </div>
-      <div class="fp-ai-quick-prompts">
-        ${['Améliorer mon score SEO moyen','Analyser les monitors DOWN','Créer un rapport mensuel','Opportunités Local SEO'].map(p =>`<button class="fp-ai-quick" data-ai-prompt="${p}">${p}</button>`).join('')}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
+        ${[
+          {icon:'📈', label:'Améliorer mon score SEO moyen', prompt:'Comment améliorer mon score SEO moyen ? Donne des actions concrètes basées sur mes audits.'},
+          {icon:'🔴', label:'Analyser les monitors DOWN',    prompt:'Analyse mes monitors DOWN et indique les causes probables et les actions à faire.'},
+          {icon:'📄', label:'Créer un rapport mensuel',      prompt:'Crée un rapport mensuel résumant mes performances SEO, monitors et missions.'},
+          {icon:'📍', label:'Opportunités Local SEO',        prompt:'Quelles sont mes meilleures opportunités Local SEO en ce moment ?'},
+        ].map(p =>`<button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="${escHtml(p.prompt)}" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${p.icon} ${p.label}</button>`).join('')}
       </div>
     </div>
 
@@ -12709,7 +12715,20 @@ async function sendAIMessage(text) {
       }
     }
 
-    STATE.aiMessages[streamIdx] = { from:'ai', text: fullText || '(Réponse vide)', streaming: false, proposal: _proposal, undoToken: _undoToken };
+    if (_confirmReq) {
+      // La carte de confirmation doit TOUJOURS être préservée — même si du texte
+      // explicatif a été streamé avant (forme courante des tool-calls). Le texte
+      // est affiché à côté de la carte, jamais à sa place.
+      STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: false, proposal: _proposal, confirmRequest: _confirmReq, undoToken: _undoToken };
+    } else {
+      STATE.aiMessages[streamIdx] = {
+        from:'ai',
+        text: fullText || '⚠ Je n\'ai pas reçu de réponse du service IA. Réessayez, ou reformulez votre demande.',
+        streaming: false, proposal: _proposal, undoToken: _undoToken,
+        retryable: !fullText,
+      };
+      if (!fullText) console.warn('[AI Chat] empty AI response (no delta received)');
+    }
   } catch(e) {
     console.error('[AI Chat] sendAIMessage error:', e.name, e.message, e);
     const errMsg = (e.name === 'AbortError') ? '⚠ La requête IA a été annulée (délai dépassé).'

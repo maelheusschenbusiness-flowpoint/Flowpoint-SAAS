@@ -16,18 +16,12 @@
  *  - delete_monitor         (monitors.delete,  full,    write + undo)
  */
 import { z } from "zod";
+import type { ToolDef as BaseToolDef } from "./mission-tools.js";
 
-// ── ToolDef (same shape as other phase tool files) ───────────────────────────
-
-export interface ToolDef {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-  requiredPermission: string;
-  confirmationLevel: "none" | "preview" | "full";
-  isWrite: boolean;
-  undoable?: boolean;
-}
+// ── ToolDef — shared contract from mission-tools (single source of truth) ────
+// `undoable` is a monitor-phase extension consumed locally only.
+export type ToolDef = BaseToolDef & { undoable?: boolean };
+export type { BaseToolDef };
 
 // ── Tool definitions ─────────────────────────────────────────────────────────
 
