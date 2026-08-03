@@ -4425,12 +4425,14 @@ function renderOverview() {
     const hasVal = val != null && Number.isFinite(val);
     const fill = hasVal ? (val/max*c).toFixed(1) : '0';
     const empty = c.toFixed(1);
+    const targetOffset = hasVal ? (c * (1 - Math.max(0, Math.min(max, val)) / max)).toFixed(1) : c.toFixed(1);
     const _textColor = hasVal ? color : (STATE.theme==='light'?'rgba(0,0,0,0.25)':'rgba(255,255,255,0.30)');
     const _label = hasVal ? String(val) : '—';
     return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
       <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${STATE.theme==='light'?'rgba(0,0,0,0.10)':'rgba(255,255,255,0.08)'}" stroke-width="5"/>
-      ${hasVal ? `<circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="5"
+      ${hasVal ? `<circle class="fp-score-ring-fill" data-ring-circ="${c.toFixed(1)}" data-ring-target-offset="${targetOffset}" cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="5"
         stroke-dasharray="${fill} ${empty}" stroke-linecap="round"
+        stroke-dashoffset="${c.toFixed(1)}"
         transform="rotate(-90 ${size/2} ${size/2})"/>` : ''}
       <text x="${size/2}" y="${size/2+5}" text-anchor="middle" font-size="12" font-weight="900" fill="${_textColor}" font-family="Outfit,sans-serif">${_label}</text>
     </svg>`;
@@ -13900,6 +13902,7 @@ function updatePlanSwitcher() {
 }
 
 // ── Global nav spinner helpers ────────────────────────────────────────────────
+let _fpNavSpinnerSafetyTimer = null;
 function _fpGetNavSpinner() {
   let el = document.getElementById('fp-nav-spinner');
   if (!el) {
@@ -13912,10 +13915,20 @@ function _fpGetNavSpinner() {
   return el;
 }
 window.fpShowNavSpinner = function() {
-  try { _fpGetNavSpinner().classList.add('fp-nav-spinner-visible'); } catch(_) {}
+  try {
+    if (_fpNavSpinnerSafetyTimer) clearTimeout(_fpNavSpinnerSafetyTimer);
+    _fpGetNavSpinner().classList.add('fp-nav-spinner-visible');
+    // A renderer or a late network callback must never leave the overlay
+    // blocking the dashboard indefinitely.
+    _fpNavSpinnerSafetyTimer = setTimeout(() => window.fpHideNavSpinner(), 10000);
+  } catch(_) {}
 };
 window.fpHideNavSpinner = function() {
   try {
+    if (_fpNavSpinnerSafetyTimer) {
+      clearTimeout(_fpNavSpinnerSafetyTimer);
+      _fpNavSpinnerSafetyTimer = null;
+    }
     const el = document.getElementById('fp-nav-spinner');
     if (el) el.classList.remove('fp-nav-spinner-visible');
   } catch(_) {}
@@ -16726,6 +16739,31 @@ async function init() {
     'Prochaine étape': 'Next step', 'Progression': 'Progress',
     'Score': 'Score', 'Problèmes détectés': 'Issues found', 'Résolu': 'Resolved',
     'Jamais': 'Never', 'Maintenant': 'Now', 'il y a': 'ago',
+    'Confirmation': 'Confirmation', 'Supprimer le workflow': 'Delete workflow',
+    'Supprimer ce workflow ? Cette action est définitive.': 'Delete this workflow? This action is permanent.',
+    'Supprimer': 'Delete', 'Supprimer définitivement': 'Delete permanently',
+    'Workflow': 'Workflow', 'Workflows configurés': 'Configured workflows',
+    'Créer': 'Create', '+ Créer': '+ Create', 'Créer le workflow': 'Create workflow',
+    'Création…': 'Creating…', 'Workflow créé !': 'Workflow created!',
+    'Échec de la création du workflow': 'Workflow creation failed',
+    'Workflow supprimé': 'Workflow deleted', 'Workflow exécuté avec succès': 'Workflow executed successfully',
+    'Exécution du workflow lancée…': 'Workflow run started…',
+    'Entrez un nom pour le workflow': 'Enter a workflow name',
+    'Nom du workflow': 'Workflow name', 'Mon workflow automatisé': 'My automated workflow',
+    'Déclencheur': 'Trigger', 'Action automatique': 'Automatic action',
+    'Audit terminé': 'Audit completed', 'Alerte déclenchée': 'Alert triggered',
+    'Planning hebdomadaire': 'Weekly schedule', 'Monitor en erreur': 'Monitor error',
+    'Rapport prêt': 'Report ready', 'Envoyer email': 'Send email',
+    'Générer rapport PDF': 'Generate PDF report', 'Notification Slack': 'Slack notification',
+    'Déclencher webhook': 'Trigger webhook', 'Créer mission': 'Create mission',
+    'Templates de workflows': 'Workflow templates', 'Utiliser ce template': 'Use this template',
+    '▶ Run': '▶ Run', 'Supprimer ce workflow': 'Delete this workflow',
+    'Santé Workspace': 'Workspace Health', 'Workspace Health': 'Workspace Health',
+    'Excellent': 'Excellent', 'Moyen': 'Average', 'À améliorer': 'Needs improvement',
+    'Bon état général': 'Good overall health', 'Optimisations possibles': 'Optimizations available',
+    'action requise': 'action required', 'actions requises': 'actions required',
+    'Toutes les optimisations sont actives': 'All optimizations are active',
+    'Chargement de la page…': 'Loading page…', 'État de la page': 'Page status',
   };
   var FP_I18N = {
     en: FP_I18N_EN,
@@ -16856,6 +16894,13 @@ async function init() {
   // Brazilian Portuguese follows the Portuguese catalog with its own locale
   // for Intl formatting. French intentionally needs no replacement map.
   FP_I18N['pt-br'] = FP_I18N.pt;
+  // Sparse catalogs intentionally override the English catalog.  English is
+  // the product fallback for every supported locale so a newly-rendered UI
+  // string never falls back to a French literal after switching languages.
+  ['es','de','it','pt','nl','pl','sv','ro','cs'].forEach(function(locale) {
+    FP_I18N[locale] = Object.assign({}, FP_I18N_EN, FP_I18N[locale] || {});
+  });
+  FP_I18N['pt-br'] = FP_I18N.pt;
   // Source-restore translation engine.
   // French is the canonical source. On first translation of a node we remember
   // its original French text (node.__fpSrc / el.__fpSrcPh / el.__fpSrcTi).
@@ -16871,6 +16916,9 @@ async function init() {
                    document.querySelector('.fp-topbar'), document.getElementById('fp-header'),
                    document.getElementById('fp-float-panel'), document.getElementById('fp-activity-panel'),
                    document.getElementById('fp-cmd-palette'), document.getElementById('fp-toast-container')];
+      document.querySelectorAll('.fp-confirm-overlay, .fp-modal-overlay').forEach(function(root) {
+        roots.push(root);
+      });
       var seen = [];
       roots.forEach(function(root) {
         if (!root) return;
@@ -16920,6 +16968,17 @@ async function init() {
             } else if (el.__fpSrcTi !== undefined) {
               el.setAttribute('title', el.__fpSrcTi);
             }
+          }
+        });
+        root.querySelectorAll('[aria-label]').forEach(function(el) {
+          var ariaSrc = (el.__fpSrcAria !== undefined) ? el.__fpSrcAria : el.getAttribute('aria-label');
+          if (!ariaSrc) return;
+          var ariaTr = catalog ? catalog[ariaSrc.trim()] : null;
+          if (ariaTr) {
+            if (el.__fpSrcAria === undefined) el.__fpSrcAria = ariaSrc;
+            el.setAttribute('aria-label', ariaTr);
+          } else if (el.__fpSrcAria !== undefined) {
+            el.setAttribute('aria-label', el.__fpSrcAria);
           }
         });
       });
@@ -17219,21 +17278,68 @@ async function init() {
 
   window.fpDarkConfirm = function(message, onConfirm, title) {
     const uid = 'fpdc' + Date.now();
-    const cbKey = '__fpDcCb_' + uid;
-    window[cbKey] = function() { delete window[cbKey]; if (onConfirm) onConfirm(); };
-    const el = document.createElement('div');
-    el.id = uid;
-    el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:99999;display:flex;align-items:center;justify-content:center';
-    el.innerHTML = `<div style="background:var(--fp-card,#1e2334);border:1px solid var(--fp-border,rgba(255,255,255,0.12));border-radius:16px;padding:28px 32px;max-width:420px;width:90vw;box-shadow:0 24px 64px rgba(0,0,0,0.6)">
-      <div style="font-size:16px;font-weight:700;color:var(--fp-text,#f1f5f9);margin-bottom:10px">${title||'Confirmation'}</div>
-      <div style="font-size:13px;color:var(--fp-text-muted,#94a3b8);margin-bottom:22px;line-height:1.65">${message}</div>
-      <div style="display:flex;gap:10px;justify-content:flex-end">
-        <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('${uid}').remove()">Annuler</button>
-        <button class="fp-btn fp-btn-primary" style="background:#ef4444;border-color:#ef4444"
-          onclick="document.getElementById('${uid}').remove();window['${cbKey}']&&window['${cbKey}']()">Supprimer</button>
-      </div>
-    </div>`;
-    document.body.appendChild(el);
+    const overlay = document.createElement('div');
+    overlay.id = uid;
+    overlay.className = 'fp-confirm-overlay';
+    overlay.setAttribute('role', 'presentation');
+
+    const dialog = document.createElement('div');
+    dialog.className = 'fp-confirm-dialog';
+    dialog.setAttribute('role', 'alertdialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', uid + '-title');
+    dialog.setAttribute('aria-describedby', uid + '-message');
+
+    const heading = document.createElement('h2');
+    heading.id = uid + '-title';
+    heading.className = 'fp-confirm-title';
+    heading.textContent = title || 'Confirmation';
+    const body = document.createElement('p');
+    body.id = uid + '-message';
+    body.className = 'fp-confirm-message';
+    body.textContent = message;
+
+    const actions = document.createElement('div');
+    actions.className = 'fp-confirm-actions';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'fp-btn fp-btn-ghost';
+    cancel.textContent = 'Annuler';
+    const confirm = document.createElement('button');
+    confirm.type = 'button';
+    confirm.className = 'fp-btn fp-btn-primary fp-confirm-danger';
+    confirm.textContent = 'Supprimer';
+    actions.append(cancel, confirm);
+    dialog.append(heading, body, actions);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    if (window.fpApplyTranslations) window.fpApplyTranslations();
+
+    const close = () => {
+      document.removeEventListener('keydown', onKeyDown);
+      overlay.remove();
+    };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close();
+      } else if (event.key === 'Tab') {
+        const focusables = [cancel, confirm];
+        const next = event.shiftKey
+          ? (document.activeElement === focusables[0] ? focusables[1] : focusables[0])
+          : (document.activeElement === focusables[1] ? focusables[0] : focusables[1]);
+        event.preventDefault();
+        next.focus();
+      }
+    };
+    cancel.addEventListener('click', close);
+    overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); });
+    confirm.addEventListener('click', async () => {
+      close();
+      try { await onConfirm?.(); } catch (error) { showToast('error', String(error)); }
+    });
+    document.addEventListener('keydown', onKeyDown);
+    requestAnimationFrame(() => confirm.focus());
   };
 
   window._intgRefresh = async function(btn) {
@@ -20709,11 +20815,11 @@ async function downloadFileAssetById(id) {
 function initPageAnimations(route, sub) {
   requestAnimationFrame(() => {
     // Workspace health ring animation — draw in from full offset to target
-    document.querySelectorAll('.fp-workspace-health-ring').forEach(el => {
+    document.querySelectorAll('.fp-workspace-health-ring, .fp-score-ring-fill').forEach(el => {
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       if (reduced) return;
-      const targetOffset = parseFloat(el.getAttribute('stroke-dashoffset') || '0');
-      const circ = parseFloat(el.getAttribute('stroke-dasharray') || '238.76');
+      const targetOffset = parseFloat(el.dataset.ringTargetOffset || el.getAttribute('stroke-dashoffset') || '0');
+      const circ = parseFloat(el.dataset.ringCirc || el.getAttribute('stroke-dasharray') || '238.76');
       // Start at full circle hidden, transition to target
       el.style.transition = 'none';
       el.style.strokeDashoffset = String(circ);

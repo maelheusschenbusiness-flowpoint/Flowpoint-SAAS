@@ -1143,6 +1143,56 @@ html:not([data-theme="light"]) .fp-toast {
   font-weight: 700;
   color: var(--fp-text);
 }
+
+/* ── DARK CONFIRMATION DIALOG ── */
+.fp-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(2, 5, 12, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: fp-fade-in 0.15s var(--fp-ease);
+}
+.fp-confirm-dialog {
+  width: min(420px, 100%);
+  padding: 26px 28px;
+  border: 1px solid rgba(37,99,235,0.34);
+  border-radius: var(--fp-radius-lg);
+  background: #0d1525;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.03);
+  animation: fp-scale-in 0.18s var(--fp-ease-spring);
+}
+.fp-confirm-title {
+  margin: 0 0 10px;
+  font-family: var(--fp-font-head);
+  font-size: 17px;
+  line-height: 1.25;
+  color: var(--fp-text);
+}
+.fp-confirm-message {
+  margin: 0 0 22px;
+  color: var(--fp-text-muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.fp-confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.fp-confirm-danger { background: var(--fp-danger) !important; border-color: var(--fp-danger) !important; }
+[data-theme="light"] .fp-confirm-overlay { background: rgba(15,23,42,0.52); }
+[data-theme="light"] .fp-confirm-dialog {
+  background: #ffffff;
+  border-color: rgba(37,99,235,0.22);
+  box-shadow: 0 24px 60px rgba(15,23,42,0.22);
+}
+@media (max-width: 480px) {
+  .fp-confirm-dialog { padding: 22px 20px; }
+  .fp-confirm-actions { flex-direction: column-reverse; }
+  .fp-confirm-actions .fp-btn { width: 100%; }
+}
 .fp-shortcut-row {
   display: flex;
   align-items: center;
@@ -9185,8 +9235,11 @@ html:not([data-theme="light"]) #dfs-local-rank-widget {
   transition: stroke-dashoffset 1.1s cubic-bezier(0.4, 0, 0.2, 1),
               opacity 0.4s ease;
 }
+.fp-score-ring-fill {
+  transition: stroke-dashoffset 1.1s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease;
+}
 @media (prefers-reduced-motion: reduce) {
-  .fp-workspace-health-ring {
+  .fp-workspace-health-ring, .fp-score-ring-fill {
     transition: none;
   }
 }
