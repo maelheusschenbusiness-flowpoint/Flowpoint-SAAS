@@ -521,7 +521,13 @@ async function apiFetch(path, opts = {}) {
     if (!opts.backgroundPoll) { _401BackgroundCount = 0; }
     if (!res.ok) {
       if (isGet) _apiFetchInFlight.delete(path);
-      throw new Error(`HTTP ${res.status}`);
+      let detail = null;
+      try { detail = await res.json(); } catch (_) {}
+      const err = new Error(detail?.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.code = detail?.code;
+      err.retryAfterSeconds = detail?.details?.retryAfterSeconds;
+      throw err;
     }
     const data = await res.json();
     if (isGet) {
@@ -712,7 +718,7 @@ function exportInvoicesCsv() {
 function exportReportsCsv() {
   const reports = STATE.reports || [];
   const rows = reports.map(r =>
-    `"${(r.name||'').replace(/"/g,'""')}","${r.type||'PDF'}","${new Date(r.date||Date.now()).toLocaleDateString('fr-FR')}","${r.pages||0} pages"`
+    `"${(r.name||'').replace(/"/g,'""')}","${r.type||'PDF'}","${fmtDate(r.date || r.createdAt)}","${r.pages||0} pages"`
   );
   exportCsv('Nom,Format,Date,Pages', rows, `rapports-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
   showToast('success', `CSV exporté — ${rows.length} rapport${rows.length>1?'s':''}`);
@@ -721,7 +727,7 @@ function exportReportsCsv() {
 function exportAuditsCsv(audits) {
   const list = audits || STATE.audits || [];
   const rows = list.map(a =>
-    `"${(a.url||'').replace(/"/g,'""')}",${a.score||0},${a.speed||0},"${a.score>=70?'Bon':a.score>=45?'Moyen':'Mauvais'}","${new Date(a.date||Date.now()).toLocaleDateString('fr-FR')}",${a.issues||0}`
+    `"${(a.url||'').replace(/"/g,'""')}",${a.score||0},${a.speed||0},"${a.score>=70?'Bon':a.score>=45?'Moyen':'Mauvais'}","${fmtDate(a.date || a.createdAt)}",${a.issues||0}`
   );
   exportCsv('URL,Score SEO,Vitesse,Statut,Date,Problèmes', rows, `audits-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
   showToast('success', `CSV exporté — ${rows.length} audit${rows.length>1?'s':''}`);
@@ -1707,6 +1713,30 @@ function relDate(d) {
   if (fmt === 'MM/DD/YYYY') return dt.toLocaleDateString('en-US');
   if (fmt === 'YYYY-MM-DD') return dt.toISOString().slice(0, 10);
   return dt.toLocaleDateString(locale);
+}
+function fmtDate(value) {
+  if (!value || value === '—') return '—';
+  const dt = value instanceof Date ? value : new Date(value);
+  return isNaN(dt.getTime()) ? '—' : relDate(dt);
+}
+function normalizeAuditUrl(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return null;
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(value) ? value : 'https://' + value);
+    if (!/^https?:$/.test(parsed.protocol) || !parsed.hostname) return null;
+    parsed.hash = '';
+    if ((parsed.protocol === 'https:' && parsed.port === '443') || (parsed.protocol === 'http:' && parsed.port === '80')) parsed.port = '';
+    return parsed.toString().replace(/\/$/, '');
+  } catch (_) { return null; }
+}
+function auditErrorMessage(error) {
+  const msg = String(error?.message || error || '');
+  if (error?.code === 'QUOTA_EXCEEDED' || msg.includes('quota')) return 'Votre quota d’audits est atteint pour ce mois.';
+  if (error?.status === 429 || error?.code === 'RATE_LIMIT_EXCEEDED') return `Trop de lancements : réessayez${error?.retryAfterSeconds ? ' dans ' + Math.ceil(error.retryAfterSeconds / 60) + ' min' : ' dans quelques minutes'}.`;
+  if (error?.status === 409 || error?.code === 'DUPLICATE_AUDIT') return 'Un audit de cette URL est déjà en cours ou a déjà été lancé aujourd’hui.';
+  if (error?.status === 400 || error?.code === 'INVALID_AUDIT_URL') return 'URL invalide : entrez une adresse HTTP ou HTTPS valide.';
+  return 'Impossible de créer l’audit pour le moment. Réessayez dans un instant.';
 }
 function sanitizeNotes(raw) { return String(raw).replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim().slice(0,2000); }
 function unread() { return STATE.notifications.filter(n => !n.read).length; }
@@ -12221,6 +12251,8 @@ function renderAI() {
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px">
         <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Que faire en priorité ?" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">🚨 Que faire en priorité ?</button>
         <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Plan d'action 30 jours" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">📅 Plan d'action 30 jours</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Analyse les baisses de positions et indique les actions prioritaires." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">📉 Analyser mes positions</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Compare mes derniers audits et résume les progrès à réaliser." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">🔎 Comparer mes audits</button>
       </div>
       <div class="fp-ai-quick-prompts">
         ${['Améliorer mon score SEO moyen','Analyser les monitors DOWN','Créer un rapport mensuel','Opportunités Local SEO'].map(p =>`<button class="fp-ai-quick" data-ai-prompt="${p}">${p}</button>`).join('')}
@@ -12992,9 +13024,14 @@ function renderNewAuditPanel() {
 function setupNewAuditPanel() {
   setTimeout(() => {
     $('#na-run')?.addEventListener('click', async () => {
-      const url = $('#na-url')?.value.trim();
-      if (!url) { showToast('warning','Entrez une URL'); return; }
+      if (STATE._auditRunning) return;
+      const url = normalizeAuditUrl($('#na-url')?.value);
+      if (!url) { showToast('warning','Entrez une URL HTTP ou HTTPS valide'); $('#na-url')?.focus(); return; }
       const type = $('#na-type')?.value || 'SEO complet';
+      const runBtn = $('#na-run');
+      const originalLabel = runBtn?.textContent;
+      STATE._auditRunning = true;
+      if (runBtn) { runBtn.disabled = true; runBtn.textContent = 'Lancement…'; }
       try {
         const res = await apiAction('POST', '/api/audits', { url, type });
         const a = res || { id:'a'+Date.now(), url, score: null, status:'pending', speed: null, date: new Date().toISOString(), issues: 0 };
@@ -13004,14 +13041,10 @@ function setupNewAuditPanel() {
         addLocalNotification('audit', '🔍 Audit lancé', 'Analyse de ' + url + ' en cours…');
         closeFloatPanel();
         if (STATE.route === 'audits') render(); else navigate('audits');
-      } catch(e) {
-        const msg = e?.message || e?.toString() || '';
-        const detail = msg.includes('rate') ? 'Limite de lancement atteinte — réessayez dans quelques minutes'
-          : msg.includes('url') || msg.includes('URL') ? 'URL invalide — vérifiez le format'
-          : msg.includes('quota') || msg.includes('Quota') ? 'Quota d\'audits atteint pour ce mois'
-          : msg.includes('400') ? 'URL requise — entrez une adresse valide'
-          : 'Erreur lors du lancement de l\'audit — ' + (msg || 'vérifiez la connexion');
-        showToast('error', detail);
+      } catch(e) { showToast('error', auditErrorMessage(e)); }
+      finally {
+        STATE._auditRunning = false;
+        if (runBtn) { runBtn.disabled = false; runBtn.textContent = originalLabel || 'Lancer l’audit'; }
       }
     });
   }, 50);
@@ -14352,7 +14385,7 @@ function bindSectionEvents() {
       });
       cb.addEventListener('click', e => e.stopPropagation());
     });
-    $('#audit-new-btn')?.addEventListener('click', () => { $('#audit-url-input')?.focus(); showToast('info','Entrez l\'URL à auditer'); });
+    $('#audit-new-btn')?.addEventListener('click', () => { openFloatPanel('Nouvel audit', renderNewAuditPanel()); setupNewAuditPanel(); });
     // P1.2: audit-run-btn — URL validation + anti-double-click guard + proper loading state
     (function _bindAuditRun() {
       const _btn = $('#audit-run-btn');
@@ -14360,11 +14393,8 @@ function bindSectionEvents() {
       if (!_btn) return;
       _btn.addEventListener('click', async () => {
         if (STATE._auditRunning) return; // P1.2: double-click guard
-        const url = _input?.value.trim();
-        if (!url) { showToast('warning','Entrez une URL'); _input?.focus(); return; }
-        // Basic URL validation
-        try { new URL(url.startsWith('http') ? url : 'https://' + url); } catch(_) { showToast('warning','URL invalide'); _input?.focus(); return; }
-        const _normUrl = url.startsWith('http') ? url : 'https://' + url;
+        const _normUrl = normalizeAuditUrl(_input?.value);
+        if (!_normUrl) { showToast('warning','Entrez une URL HTTP ou HTTPS valide'); _input?.focus(); return; }
         STATE._auditRunning = true;
         _btn.disabled = true;
         const _origText = _btn.textContent;
@@ -14379,8 +14409,7 @@ function bindSectionEvents() {
           if (_input) _input.value = '';
           render();
         } catch(e) {
-          const _msg = e && e.message ? e.message : '';
-          showToast('error', _msg.includes('400') ? 'URL invalide ou non accessible' : 'Erreur lors du lancement de l\'audit');
+          showToast('error', auditErrorMessage(e));
         } finally {
           STATE._auditRunning = false;
           _btn.disabled = false;
@@ -21336,7 +21365,7 @@ function renderGrowthCommandCenter() {
         <div class="fp-section-sub">Intelligence stratégique · Actif · ${CUR_MONTH}</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Exporter','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="(function(){var hdr=\'URL,Score SEO,Date,Statut\';var rows=(STATE.audits||[]).map(function(a){return [JSON.stringify(a.url||\'—\'),a.score||0,a.date?a.date.slice(0,10):\'—\',a.status||\'—\'].join(\',\')});if(!rows.length){showToast(\'warning\',\'Aucun audit à exporter\');return;}exportCsv(hdr,rows,\'croissance-flowpoint-\'+new Date().toISOString().slice(0,10)+\'.csv\');showToast(\'success\',rows.length+\' audit(s) exporté(s)\');})()"')}
+        ${btn('Exporter','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="exportAuditsCsv(STATE.audits||[])"')}
         ${btn('Rapport complet','fp-btn fp-btn-primary fp-btn-sm','file','onclick="navigate(\'reports\')"')}
       </div>
     </div>
@@ -37828,7 +37857,7 @@ function renderGA4ClientMode() {
                 <td style="font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(String(a.url||''))}"><strong>${escHtml(String(a.url||'—').replace('https://',''))}</strong></td>
                 <td style="text-align:center;font-weight:800;color:${color}">${sc > 0 ? sc + '/100' : '—'}</td>
                 <td style="text-align:center">${badge(String(a.status||'done'), '#475569')}</td>
-                <td style="text-align:center;color:var(--fp-text-faint);font-size:11px">${escHtml(String(a.date||'—'))}</td>
+                <td style="text-align:center;color:var(--fp-text-faint);font-size:11px">${escHtml(fmtDate(a.date || a.createdAt))}</td>
               </tr>`;
             }).join('')}
           </tbody>

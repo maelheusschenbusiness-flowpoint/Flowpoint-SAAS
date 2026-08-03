@@ -11,6 +11,20 @@ import { logger } from "../lib/logger.js";
 
 const router = Router();
 
+function normalizeAuditUrl(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const candidate = raw.trim().match(/^https?:\/\//i) ? raw.trim() : `https://${raw.trim()}`;
+  try {
+    const parsed = new URL(candidate);
+    if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname) return null;
+    parsed.hash = "";
+    if ((parsed.protocol === "https:" && parsed.port === "443") || (parsed.protocol === "http:" && parsed.port === "80")) parsed.port = "";
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
 // ── DB row → public shape ──────────────────────────────────────────────────────
 function auditToPublic(row: Record<string, unknown>) {
   return {
@@ -61,10 +75,15 @@ router.get("/audits", async (req: Request, res: Response) => {
 // ── POST /audits ──────────────────────────────────────────────────────────────
 
 router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Response) => {
-  const { url, origin = "manual" } = req.body as { url?: string; origin?: string };
-  if (!url) { res.status(400).json({ error: "url required" }); return; }
-
-  const normalizedUrl = url.startsWith("http") ? url : `https://${url}`;
+  const { url, origin = "manual", type } = req.body as { url?: string; origin?: string; type?: string };
+  const normalizedUrl = normalizeAuditUrl(url);
+  if (!normalizedUrl) {
+    res.status(400).json({
+      error: "L’URL doit être une adresse HTTP ou HTTPS valide.",
+      code: "INVALID_AUDIT_URL",
+    });
+    return;
+  }
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   const auditId       = `a${Date.now()}`;
@@ -79,7 +98,7 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
       [orgId, normalizedUrl]
     );
     if (dup.rows.length) {
-      res.status(409).json({ error: "Audit déjà lancé aujourd'hui", duplicateId: dup.rows[0].id });
+      res.status(409).json({ error: "Audit déjà lancé aujourd'hui", code: "DUPLICATE_AUDIT", duplicateId: dup.rows[0].id });
       return;
     }
     await req.orgDb(
@@ -90,7 +109,7 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
 
     store.logActivity({
       type: "audit", label: `Audit lancé : ${normalizedUrl}`,
-      targetId: auditId, targetType: "audit", metadata: { url: normalizedUrl, origin }, orgId,
+      targetId: auditId, targetType: "audit", metadata: { url: normalizedUrl, origin, type: type ?? "SEO complet" }, orgId,
     }).catch(err => logger.error({ err }, "[audits] logActivity failed"));
 
     // Async PSI analysis — runs after response is sent.
@@ -147,11 +166,11 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
     import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "audit_created")).catch(() => {});
     res.status(201).json({
       id: auditId, url: normalizedUrl, name: auditName, notes: "",
-      score: 0, status: "processing", speed: 0, date: dateStr, issues: 0, origin,
+      score: 0, status: "processing", speed: 0, date: dateStr, issues: 0, origin, type: type ?? "SEO complet",
     });
   } catch (err) {
     logger.error({ err }, "[audits] POST failed");
-    res.status(500).json({ error: "Failed to create audit" });
+    res.status(500).json({ error: "La création de l’audit a échoué. Réessayez dans un instant.", code: "AUDIT_CREATE_FAILED" });
   }
 });
 
