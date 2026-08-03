@@ -35,7 +35,11 @@ router.get("/automation/workflows", async (req: Request, res: Response) => {
 });
 
 router.post("/automation/workflows", async (req: Request, res: Response) => {
-  const { name, icon, description, triggerType, triggerConfig, actions, category } = req.body ?? {};
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const { name, icon, description, actions, category } = body as { name?: string; icon?: string; description?: string; actions?: unknown; category?: string };
+  // Accept both camelCase (API clients) and snake_case (dashboard frontend)
+  const triggerType   = (body.triggerType   ?? body.trigger_type)   as string | undefined;
+  const triggerConfig = (body.triggerConfig ?? body.trigger_config) as Record<string, unknown> | undefined;
   if (!name || !triggerType || !actions) {
     res.status(400).json({ error: "name, triggerType, actions required" }); return;
   }
@@ -47,7 +51,10 @@ router.post("/automation/workflows", async (req: Request, res: Response) => {
       [id, org(req), name, icon ?? "⚡", description ?? null, triggerType,
        JSON.stringify(triggerConfig ?? {}), JSON.stringify(actions), category ?? "general"]
     );
-    res.status(201).json({ ok: true, id });
+    // Return the created row so the frontend can update its list without a reload
+    const created = await db(req)(`SELECT * FROM automation_workflows WHERE id=$1 AND org_id=$2`, [id, org(req)]).catch(() => ({ rows: [] }));
+    store.logActivity({ type: "settings", label: `Workflow créé : ${name}`, targetId: id, targetType: "workflow", orgId: org(req) }).catch(() => {});
+    res.status(201).json({ ok: true, id, workflow: created.rows[0] ?? null });
   } catch {
     res.status(500).json({ error: "Failed to create workflow" });
   }
@@ -78,7 +85,15 @@ router.patch("/automation/workflows/:id", async (req: Request, res: Response) =>
 router.post("/automation/workflows/:id/run", async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const result = await executeWorkflow(id);
+    // Tenant isolation: the workflow must belong to the requesting org before execution
+    const owned = await db(req)(
+      `SELECT id FROM automation_workflows WHERE id=$1 AND org_id=$2`,
+      [id, org(req)]
+    );
+    if (owned.rows.length === 0) {
+      res.status(404).json({ error: "Workflow not found" }); return;
+    }
+    const result = await executeWorkflow(id, org(req));
     store.logActivity({ type: "audit", label: `Workflow exécuté : ${id}`, targetId: id, targetType: "workflow", orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
     store.broadcast({ type: "fp:workflow:completed", workflowId: id, durationMs: result?.durationMs }, org(req));
     res.json(result);

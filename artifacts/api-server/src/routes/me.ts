@@ -459,6 +459,13 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
        checklist ? JSON.stringify(checklist) : null,
        settings  ? JSON.stringify(settings)  : null]
     );
+    // Journalise la modification de paramètres dans le fil d'activité (Command Center)
+    if (settings && Object.keys(settings).length > 0) {
+      const keys = Object.keys(settings).slice(0, 5).join(", ");
+      import("../services/store.js")
+        .then(m => m.store.logActivity({ type: "settings", label: `Paramètres mis à jour : ${keys}`, orgId }))
+        .catch(() => {});
+    }
     res.json({ ok: true });
   } catch {
     res.json({ ok: false });
@@ -667,6 +674,8 @@ router.get("/settings/api-keys", async (req: Request, res: Response): Promise<vo
       // Never expose the actual secret to API-key callers — they already have their own credential.
       secretKey:  isApiKeyPrincipal ? null : secretKey,
       hasSecret:  !!secretKey,
+      publicKeyCreatedAt: prefs?.publicApiKeyCreatedAt ?? null,
+      secretKeyCreatedAt: prefs?.secretApiKeyCreatedAt ?? null,
     });
   } catch (err) {
     logger.error({ err }, "[api-keys/get] failed");
@@ -738,30 +747,35 @@ router.post("/settings/api-keys/regenerate", async (req: Request, res: Response)
   const { type } = req.body as { type?: "public" | "secret" };
   try {
     const suffix = randomBytes(20).toString("hex"); // 40-char hex
+    const createdAt = new Date().toISOString();
     if (type === "secret") {
       const secretKey = `fp_sec_${suffix}`;
       await orgDb(req)(
         `INSERT INTO user_prefs (org_id, settings, updated_at)
-         VALUES ($1, jsonb_build_object('secretApiKey', $2::text), now())
+         VALUES ($1, jsonb_build_object('secretApiKey', $2::text, 'secretApiKeyCreatedAt', $3::text), now())
          ON CONFLICT (org_id) DO UPDATE SET
-           settings = COALESCE(user_prefs.settings, '{}'::jsonb) || jsonb_build_object('secretApiKey', $2::text),
+           settings = COALESCE(user_prefs.settings, '{}'::jsonb) || jsonb_build_object('secretApiKey', $2::text, 'secretApiKeyCreatedAt', $3::text),
            updated_at = now()`,
-        [orgId, secretKey]
+        [orgId, secretKey, createdAt]
       );
-      res.json({ ok: true, key: secretKey, type: "secret" });
+      res.json({ ok: true, key: secretKey, type: "secret", createdAt });
     } else {
       // Public key: store custom suffix in prefs so it overrides the deterministic hash
       const publicKey = `fp_pub_${suffix}`;
       await orgDb(req)(
         `INSERT INTO user_prefs (org_id, settings, updated_at)
-         VALUES ($1, jsonb_build_object('publicApiKey', $2::text), now())
+         VALUES ($1, jsonb_build_object('publicApiKey', $2::text, 'publicApiKeyCreatedAt', $3::text), now())
          ON CONFLICT (org_id) DO UPDATE SET
-           settings = COALESCE(user_prefs.settings, '{}'::jsonb) || jsonb_build_object('publicApiKey', $2::text),
+           settings = COALESCE(user_prefs.settings, '{}'::jsonb) || jsonb_build_object('publicApiKey', $2::text, 'publicApiKeyCreatedAt', $3::text),
            updated_at = now()`,
-        [orgId, publicKey]
+        [orgId, publicKey, createdAt]
       );
-      res.json({ ok: true, key: publicKey, type: "public" });
+      res.json({ ok: true, key: publicKey, type: "public", createdAt });
     }
+    // Journalise la rotation de clé dans le fil d'activité
+    import("../services/store.js")
+      .then(m => m.store.logActivity({ type: "security", label: `Clé API ${type === "secret" ? "secrète" : "publique"} régénérée`, orgId }))
+      .catch(() => {});
   } catch (err) {
     logger.error({ err }, "[api-keys/regenerate] failed");
     res.status(500).json({ error: "Erreur lors de la régénération" });

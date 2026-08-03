@@ -1035,16 +1035,70 @@ function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
       if (!name) { showToast('warning', 'Entrez un nom pour le workflow'); return; }
       const trigger = document.getElementById('wf-trigger')?.value;
       const action = document.getElementById('wf-action')?.value;
-      const wf = { id: 'wf' + Date.now(), name, trigger, action, active: true, runs: 0, lastRun: '—', icon: tplIcon || '⚡', category: 'Custom', color: '#2563EB' };
-      STATE.workflows = STATE.workflows || [];
-      STATE.workflows.push(wf);
-      showToast('success', 'Workflow créé !');
+      const _trigLabels = { audit_done:'Audit terminé', alert:'Alerte déclenchée', weekly:'Planning hebdomadaire', monitor_down:'Monitor en erreur', report_ready:'Rapport prêt' };
+      const _actLabels  = { send_email:'Envoyer email', gen_report:'Générer rapport PDF', slack_notif:'Notification Slack', webhook:'Déclencher webhook', create_mission:'Créer mission' };
+      const payload = {
+        name,
+        enabled: true,
+        category: 'Custom',
+        trigger_type: trigger === 'weekly' ? 'schedule' : 'event',
+        trigger_config: { event: trigger, description: _trigLabels[trigger] || trigger },
+        actions: [{ type: action, description: _actLabels[action] || action }],
+      };
       closeFloatPanel();
-      render();
+      if (window.FP_AUTOMATION_API && window.FP_AUTOMATION_API.create) {
+        // Persist via API; consume the created row directly, fall back to a reload
+        window.FP_AUTOMATION_API.create(payload).then((r) => {
+          const created = r && r.workflow;
+          if (created) {
+            window.FP_DATA = window.FP_DATA || {};
+            window.FP_DATA.automation = window.FP_DATA.automation || { workflows: [] };
+            window.FP_DATA.automation.workflows = window.FP_DATA.automation.workflows || [];
+            window.FP_DATA.automation.workflows.unshift(created);
+            STATE.workflows = window.FP_DATA.automation.workflows;
+            showToast('success', 'Workflow créé !');
+            render();
+          } else {
+            return window.FP_AUTOMATION_API.load().then(() => {
+              STATE.workflows = (window.FP_DATA && window.FP_DATA.automation && window.FP_DATA.automation.workflows) || STATE.workflows || [];
+              render();
+            });
+          }
+        }).catch(() => { showToast('error', 'Échec de la création du workflow'); });
+      } else {
+        STATE.workflows = STATE.workflows || [];
+        STATE.workflows.push({ id: 'wf' + Date.now(), name, trigger, action, active: true, enabled: true, runs: 0, lastRun: '—', icon: tplIcon || '⚡', category: 'Custom', color: '#2563EB' });
+        showToast('success', 'Workflow créé !');
+        render();
+      }
     });
   }, 60);
 }
 window.openNewWorkflowPanel = openNewWorkflowPanel;
+
+// ── Invitation d'équipe — contrôle de capacité des sièges ────────────────────
+function fpOpenInvite() {
+  const me = STATE.me || {};
+  const _pending = (STATE.pendingInvitations || []).length;
+  const used  = (STATE.seatUsage?.used ?? ((STATE.team || []).length || 1)) + _pending;
+  const limit = STATE.seatUsage?.limit ?? (me?.limits?.teamMembers ?? (1 + (me?.addons?.extraSeats || 0)));
+  if (limit && used >= limit) {
+    openFloatPanel('Sièges épuisés', `
+      <div style="text-align:center;padding:8px 4px">
+        <div style="font-size:34px;margin-bottom:10px">👥</div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:6px">Tous vos sièges sont utilisés (${used}/${limit})</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">Pour inviter un nouveau membre, passez à un plan supérieur ou ajoutez des sièges supplémentaires via un add-on.</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="fp-btn fp-btn-primary" style="width:100%" onclick="closeFloatPanel();navigate('billing');setTimeout(function(){navigateSub('plans')},80)">Voir les plans</button>
+          <button class="fp-btn fp-btn-ghost" style="width:100%" onclick="closeFloatPanel();navigate('billing');setTimeout(function(){navigateSub('addons')},80)">Ajouter des sièges (add-on)</button>
+        </div>
+      </div>
+    `);
+    return;
+  }
+  openFloatPanel('Inviter un membre', renderInvitePanel());
+}
+window.fpOpenInvite = fpOpenInvite;
 
 function resolveIncident(incId) {
   STATE.resolvedIncidents = STATE.resolvedIncidents || {};
@@ -9596,7 +9650,10 @@ function renderAlertRules() {
       // Show templates unless user explicitly dismissed them with the "Masquer" button.
       // Template activation alone does NOT hide the panel — other templates stay visible.
       const showTemplates = localStorage.getItem(firstAccessKey) !== 'done';
-      if (!showTemplates) return '';
+      if (!showTemplates) return `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:4px">
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="localStorage.removeItem('fp-alert-templates-hidden');render()">📋 Afficher les templates prédéfinis</button>
+    </div>`;
       return `
     <div class="fp-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -9958,7 +10015,7 @@ function renderSettings() {
             ${svgIcon('users').replace('stroke="currentColor"','stroke="#2563EB"')}
             Membres de l\'équipe
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openFloatPanel('Inviter un membre',renderInvitePanel())">+ Inviter</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenInvite()">+ Inviter</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${members.map(m => `
@@ -10176,6 +10233,10 @@ function renderSettings() {
   // SUB: AUTOMATIONS & WORKFLOWS
   // ══════════════════════════════════════════════════════════
   if (sub === 'automations') {
+    // Lazy-load persisted workflows the first time this page is opened
+    if (!PREVIEW_MODE && (!window.FP_DATA || !window.FP_DATA.automation) && window.FP_AUTOMATION_API) {
+      window.FP_AUTOMATION_API.load().then(() => { try { render(); } catch(e) {} });
+    }
     const MOCK_WORKFLOWS = [
       {
         name:'Rapport mensuel automatique',   icon:'📄', color:'#2563EB', active:true,
@@ -10633,7 +10694,7 @@ function renderSettings() {
     const platIcon  = p => ({zapier:'⚡',make:'🔄',slack:'💬',notion:'📋',hubspot:'🎯',airtable:'📊',email:'📧',custom:'🔗',webhook:'🔌'})[p] || '🔌';
     const platSvgIcon = id => {
       const ic = {
-        zapier:     `<div style="width:32px;height:32px;border-radius:8px;background:#FF4A00;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg viewBox="0 0 24 24" width="18" height="18" fill="white"><path d="M6.5 2h11l-4.5 6.5H18L8 21l2-8.5H6z"/></svg></div>`,
+        zapier:     `<div style="width:32px;height:32px;border-radius:8px;background:#FF4F00;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="3.2" stroke-linecap="round"><path d="M12 4v16M4 12h16M6.3 6.3l11.4 11.4M17.7 6.3L6.3 17.7"/></svg></div>`,
         make:       `<div style="width:32px;height:32px;border-radius:8px;background:#6D00CC;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg viewBox="0 0 33 18" width="22" height="12" fill="white"><circle cx="5" cy="9" r="4.5"/><circle cx="16.5" cy="9" r="4.5"/><circle cx="28" cy="9" r="4.5"/></svg></div>`,
         slack:      `<div style="width:32px;height:32px;border-radius:8px;background:#1A1D27;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg viewBox="0 0 24 24" width="16" height="16"><path fill="#E01E5A" d="M5 15.2a2.4 2.4 0 0 1-4.8 0 2.4 2.4 0 0 1 2.4-2.4H5v2.4zm1.2 0a2.4 2.4 0 1 1 4.8 0v6a2.4 2.4 0 0 1-4.8 0v-6z"/><path fill="#36C5F0" d="M8.8 5A2.4 2.4 0 0 1 8.8.2a2.4 2.4 0 0 1 2.4 2.4V5H8.8zm0 1.2a2.4 2.4 0 0 1 0 4.8H2.8a2.4 2.4 0 0 1 0-4.8h6z"/><path fill="#2EB67D" d="M19 8.8a2.4 2.4 0 0 1 4.8 0 2.4 2.4 0 0 1-2.4 2.4H19V8.8zm-1.2 0a2.4 2.4 0 0 1-4.8 0V2.8a2.4 2.4 0 0 1 4.8 0v6z"/><path fill="#ECB22E" d="M15.2 19a2.4 2.4 0 0 1 4.8 0 2.4 2.4 0 0 1-2.4 2.4h-2.4V19zm0-1.2a2.4 2.4 0 1 1-4.8 0v-6a2.4 2.4 0 0 1 4.8 0v6z"/></svg></div>`,
         discord:    `<div style="width:32px;height:32px;border-radius:8px;background:#5865F2;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg viewBox="0 0 71 55" width="18" height="14" fill="white"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.6.8a40.7 40.7 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.7 37.7 0 0 0 25.6.9 58.4 58.4 0 0 0 10.9 4.9C1.6 18.5-.9 31.7.3 44.7a58.8 58.8 0 0 0 17.7 8.9 42 42 0 0 0 3.6-5.9 38.7 38.7 0 0 1-5.5-2.6c.4-.3.7-.6 1.1-.9 11.5 5.3 24 5.3 35.4 0l1.1.9a36 36 0 0 1-5.5 2.6 47.1 47.1 0 0 0 3.6 5.9 58.6 58.6 0 0 0 17.8-8.9c1.5-15.2-2.5-28.3-10.7-40zM23.7 36.9c-3.5 0-6.4-3.2-6.4-7.1 0-4 2.8-7.2 6.4-7.2 3.6 0 6.5 3.2 6.4 7.2 0 3.9-2.8 7.1-6.4 7.1zm23.6 0c-3.5 0-6.4-3.2-6.4-7.1 0-4 2.8-7.2 6.4-7.2 3.6 0 6.5 3.2 6.4 7.2 0 3.9-2.8 7.1-6.4 7.1z"/></svg></div>`,
@@ -10671,22 +10732,13 @@ function renderSettings() {
       { id:'make',         name:'Make',             icon:'🔄', color:'#6d00cc', desc:'Scénarios d\'automatisation visuels. Rapports auto, tickets, alertes personnalisées.', status:'disconnected', connected: intgs.filter(i=>i.platform==='make'&&i.active).length },
       { id:'slack',        name:'Slack',            icon:'💬', color:'#4a154b', desc:'Alertes monitors, rapports hebdomadaires et résumés IA dans vos canaux Slack.', status:'disconnected', connected: intgs.filter(i=>i.platform==='slack'&&i.active).length },
       { id:'discord',      name:'Discord',          icon:'🎮', color:'#5865f2', desc:'Notifications temps réel dans vos canaux Discord. Alerts monitors, audits et rapports.', status:'disconnected', connected: intgs.filter(i=>i.platform==='discord'&&i.active).length },
-      { id:'notion',       name:'Notion',           icon:'📋', color:'#6b7280', desc:'Créez des pages Notion automatiquement pour chaque mission, rapport ou audit.', status:'disconnected', connected: intgs.filter(i=>i.platform==='notion'&&i.active).length },
-      { id:'hubspot',      name:'HubSpot',          icon:'🎯', color:'#ff7a59', desc:'Synchronisez les clients, avis négatifs et alertes vers votre CRM HubSpot.', status:'disconnected', connected: intgs.filter(i=>i.platform==='hubspot'&&i.active).length },
       { id:'airtable',     name:'Airtable',         icon:'📊', color:'#18bfff', desc:'Loggez backlinks, keywords et audits dans vos bases Airtable en temps réel.', status:'disconnected', connected: intgs.filter(i=>i.platform==='airtable'&&i.active).length },
-      { id:'pipedrive',    name:'Pipedrive',         icon:'🏆', color:'#22c55e', desc:'Pipeline clients SEO → leads. Synchronisez opportunités et alertes vers votre CRM.', status:'disconnected', connected: intgs.filter(i=>i.platform==='pipedrive'&&i.active).length },
-      { id:'google_ads',   name:'Google Ads',        icon:'📢', color:'#4285f4', desc:'Performances campagnes, ROAS et mots-clés ads. Croisez SEO et SEA dans vos rapports.', status:'disconnected', connected: intgs.filter(i=>i.platform==='google_ads'&&i.active).length },
-      { id:'semrush',      name:'Semrush',           icon:'🔎', color:'#ff642b', desc:'Synchronisez vos données de ranking, mots-clés et backlinks depuis Semrush.', status:'disconnected', connected: intgs.filter(i=>i.platform==='semrush'&&i.active).length },
-      { id:'mailchimp',    name:'Mailchimp',         icon:'📧', color:'#ffe01b', desc:'Envoyez vos rapports SEO hebdomadaires automatiquement à vos listes clients.', status:'disconnected', connected: intgs.filter(i=>i.platform==='mailchimp'&&i.active).length },
       { id:'n8n',          name:'n8n',               icon:'🔗', color:'#ea5e00', desc:'Workflows d\'automatisation avancés open source. Connectez FlowPoint à tout votre stack.', status:'disconnected', connected: intgs.filter(i=>i.platform==='n8n'&&i.active).length },
-      { id:'linkedin',    name:'LinkedIn Ads',     icon:'in', color:'#0A66C2', desc:'Importez vos campagnes LinkedIn Ads. Croisez les performances SEO et social pour un reporting 360°.', status:'disconnected', connected: intgs.filter(i=>i.platform==='linkedin'&&i.active).length },
-      { id:'shopify',     name:'Shopify',           icon:'S',  color:'#96BF48', desc:'Synchronisez vos données e-commerce. Corrélation SEO ↔ ventes, pages produits et collections.', status:'disconnected', connected: intgs.filter(i=>i.platform==='shopify'&&i.active).length },
-      { id:'monday',      name:'Monday.com',        icon:'📋', color:'#F62B54', desc:'Transformez vos missions SEO en tâches Monday. Suivi des projets, deadlines et collaboration d\'équipe.', status:'disconnected', connected: intgs.filter(i=>i.platform==='monday'&&i.active).length },
     ];
     platformCards.forEach(p => { if (p.connected > 0) p.status = 'connected'; });
 
     const totalConnected = intgs.filter(i => i.active).length;
-    const nativeConnected = [gbpConn, ga4Conn, gscConn, ghConn].filter(Boolean).length;
+    const nativeConnected = [gbpConn, ga4Conn, gscConn].filter(Boolean).length;
 
     function renderTab(tab) {
       // ── HUB ────────────────────────────────────────────────────────────────
@@ -10742,8 +10794,6 @@ function renderSettings() {
                 {name:'Google Business Profile', icon:'🏢', connected:gbpConn, btn:gbpConn?"navigate('local-seo')"  :"typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.openConnect():navigate('local-seo')", desc:'Fiches GBP, avis, posts locaux'},
                 {name:'Google Analytics 4',      icon:'📈', connected:ga4Conn, btn:"navigate('analytics')",desc:'Sessions, conversions, temps réel'},
                 {name:'Google Search Console',   icon:'🔍', connected:gscConn, btn:"navigate('search-console')",desc:'Positions, impressions, CTR'},
-                {name:'GitHub',                  icon:'🐙', connected:ghConn,  btn:"navigate('github-integration')",desc:'Déploiements, commits, audits auto'},
-                {name:'Stripe',                  icon:'💳', connected:!!(STATE.billing?.stripeCustomerId || (STATE.billing?.subscriptionStatus&&STATE.billing.subscriptionStatus!=='inactive')), btn:"navigate('billing')", desc:'Paiements, abonnements, facturation clients'},
                 {name:'Meta Ads',                icon:'📊', connected:false,   btn:"", comingSoon:true,           desc:'Campagnes Facebook & Instagram Ads'},
               ].map(n => `
                 <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
@@ -11087,14 +11137,14 @@ function renderSettings() {
     return `
       ${isUltra
         ? aiBlock(
-            "IA Config Lab actif. <strong>7 modules IA disponibles</strong> — 5 actifs. Recommandation : activer le module <strong>Intelligence marché IA</strong> pour une veille concurrentielle automatique. Intensité IA actuelle : Équilibré.",
+            (()=>{ const _avail=aiModules.filter(m=>!((m.plan==='Pro'&&isStd)||(m.plan==='Ultra'&&!isUltra))); const _on=_avail.filter(m=>m.active); const _off=_avail.filter(m=>!m.active); return `IA Config Lab actif. <strong>${_avail.length} modules IA disponibles</strong> — ${_on.length} actif${_on.length>1?'s':''}.${_off.length?` Recommandation : activer le module <strong>${escHtml(_off[0].label)}</strong>.`:''} Intensité IA actuelle : ${escHtml(_savedIntensity)}.`; })(),
             ['Activer tous les modules', 'Optimiser l\'intensité IA', 'Rapport IA Lab']
           )
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Config Lab complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">IA Stratégiste, churn prevention, market intelligence et automation agressive.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing');setTimeout(()=>navigateSub('plans'),100)">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Modules IA actifs', String(aiModules.filter(m => m.active).length) + '/' + aiModules.length, 'modules configurés', 'up')}
+        ${(()=>{ const _unlocked=aiModules.filter(m=>!((m.plan==='Pro'&&isStd)||(m.plan==='Ultra'&&!isUltra))); const _on=_unlocked.filter(m=>m.active).length; return statCard('Modules IA actifs', _on + '/' + _unlocked.length, _unlocked.length<aiModules.length ? (aiModules.length-_unlocked.length)+' verrouillés (plan)' : 'modules configurés', _on>0?'up':'neutral'); })()}
         ${statCard('Intensité IA', _savedIntensity, 'recommandations mesurées', 'up')}
         ${statCard('AI Credits', STATE.aiCredits ? (function(){var u=STATE.aiCredits,fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(u.limit);}()) : '…/…', PREVIEW_MODE ? '41% utilisés ce mois' : (STATE.aiCredits ? Math.round(STATE.aiCredits.used/Math.max(STATE.aiCredits.limit,1)*100)+'% utilisés' : 'Chargement…'), 'neutral')}
         ${statCard('Précision IA', displayStat(null, PREVIEW_MODE ? '87%' : '—'), PREVIEW_MODE ? '87% recommandations pertinentes' : 'Analyse en cours', 'neutral')}
@@ -13552,6 +13602,11 @@ function navigate(route, subRoute) {
 }
 
 function navigateSub(sub) {
+  // "Passer Pro/Ultra" buttons across the app target the Billing → Plans tab.
+  // If called from another section (Settings, etc.), route to Billing first.
+  if (sub === 'plans' && STATE.route !== 'billing') {
+    try { navigate('billing'); } catch(e) { STATE.route = 'billing'; }
+  }
   STATE.subRoute = sub;
   try { localStorage.setItem('fp:last-sub', sub || ''); } catch(e) {}
   try {
@@ -15294,9 +15349,7 @@ function bindSectionEvents() {
         ]);
       });
     });
-    $('#team-invite-btn')?.addEventListener('click', () => {
-      openFloatPanel('Inviter un membre', renderInvitePanel());
-    });
+    $('#team-invite-btn')?.addEventListener('click', () => fpOpenInvite());
     $$('[data-remove-member]').forEach(btn => btn.addEventListener('click', async () => { const memberId = btn.dataset.removeMember; if (!memberId || !confirm('Retirer ce membre de l\'équipe ?')) return; const r = await apiAction('DELETE', `/api/team/${memberId}`).catch(() => null); if (r && !r.error) { STATE.team = (STATE.team || []).filter(t => t.id !== memberId); showToast('success', 'Membre retiré'); render(); } else { showToast('error', 'Erreur lors du retrait'); } }));
     // sendChat listeners are bound in bindNewRouteEvents (team+chat sub-route only)
     // to avoid double-binding when re-rendering.
@@ -16339,6 +16392,11 @@ async function init() {
     var s = {};
     s[k] = v;
     if (STATE.settings) STATE.settings[k] = v;
+    // Optimistic entry in the activity feed so the Command Center timeline reflects the change immediately
+    try {
+      STATE.activityEvents = STATE.activityEvents || [];
+      STATE.activityEvents.unshift({ id: 'local-' + Date.now(), type: 'settings', label: lbl || ('Paramètre modifié : ' + k), createdAt: new Date().toISOString() });
+    } catch(e) {}
     apiAction('PATCH', '/api/me/prefs', { settings: s })
       .then(function() {
         // Context-aware toasts for each preset
@@ -16413,7 +16471,35 @@ async function init() {
     'Voir les détails': 'View details', 'En cours': 'In progress', 'Terminé': 'Done',
     'À faire': 'To do', 'Priorité': 'Priority', 'Élevée': 'High', 'Moyenne': 'Medium',
     'Faible': 'Low', 'Statut': 'Status', 'Actif': 'Active', 'Inactif': 'Inactive',
-    'Nouvelle conv.': 'New chat', 'Envoyer': 'Send'
+    'Nouvelle conv.': 'New chat', 'Envoyer': 'Send',
+    'Complétées': 'Completed', 'Basse': 'Low', 'Haute': 'High', 'Critique': 'Critical',
+    'Général': 'General', 'Profil': 'Profile', 'Préférences': 'Preferences', 'Données': 'Data',
+    'Automatisations': 'Automations', 'Workflows': 'Workflows', 'Webhooks': 'Webhooks',
+    'Clés API': 'API keys', 'Membres': 'Members', 'Rôle': 'Role', 'Propriétaire': 'Owner',
+    'Administrateur': 'Administrator', 'Éditeur': 'Editor', 'Lecteur': 'Viewer',
+    'Inviter un membre': 'Invite a member', 'Passer Pro': 'Upgrade to Pro', 'Passer Ultra': 'Upgrade to Ultra',
+    'Plan Standard': 'Standard plan', 'Plan Pro': 'Pro plan', 'Plan Ultra': 'Ultra plan',
+    'Factures': 'Invoices', 'Moyens de paiement': 'Payment methods', 'Add-ons': 'Add-ons',
+    'Utilisation': 'Usage', 'Consommation': 'Consumption', 'Crédits IA': 'AI credits',
+    'Prochaine facture': 'Next invoice', 'Abonnement': 'Subscription', 'Mensuel': 'Monthly', 'Annuel': 'Yearly',
+    'Télécharger': 'Download', 'Copier': 'Copy', 'Régénérer': 'Regenerate', 'Tester': 'Test',
+    'Connecter': 'Connect', 'Connecté': 'Connected', 'Non connecté': 'Not connected', 'Gérer': 'Manage',
+    'Configurer': 'Configure', 'Créer': 'Create', 'Dupliquer': 'Duplicate', 'Archiver': 'Archive',
+    'Détails': 'Details', 'Historique': 'History', 'Aujourd\'hui': 'Today', 'Hier': 'Yesterday',
+    'Cette semaine': 'This week', 'Ce mois': 'This month', 'Derniers 30 jours': 'Last 30 days',
+    'Score SEO': 'SEO score', 'Problèmes': 'Issues', 'Vitesse': 'Speed', 'Uptime': 'Uptime',
+    'Positions': 'Rankings', 'Impressions': 'Impressions', 'Clics': 'Clicks', 'Sessions': 'Sessions',
+    'Conversions': 'Conversions', 'Pages': 'Pages', 'Voir plus': 'See more', 'Voir moins': 'See less',
+    'Tout sélectionner': 'Select all', 'Aucun résultat': 'No results', 'Réessayer': 'Retry',
+    'Confirmer': 'Confirm', 'Retour': 'Back', 'Suivant': 'Next', 'Précédent': 'Previous',
+    'Nom': 'Name', 'Email': 'Email', 'Site web': 'Website', 'Description': 'Description',
+    'Date': 'Date', 'Type': 'Type', 'Actions': 'Actions', 'Canaux': 'Channels',
+    'Sécurité du compte': 'Account security', 'Mot de passe': 'Password', 'Se déconnecter': 'Log out',
+    'Sessions actives': 'Active sessions', 'Dernière connexion': 'Last login',
+    'Templates prédéfinis': 'Predefined templates', 'Règles d\'alerte': 'Alert rules',
+    'Créer une alerte': 'Create an alert', 'Créer un rapport': 'Create a report',
+    'Nouveau workflow': 'New workflow', 'Workflows configurés': 'Configured workflows',
+    'Intégrations actives': 'Active integrations', 'Ajouter un webhook': 'Add a webhook'
   };
   var FP_I18N = {
     en: FP_I18N_EN,
@@ -16512,8 +16598,14 @@ async function init() {
         if (span) span.textContent = r.key;
         // Update STATE so re-render keeps the key
         if (!STATE.settings) STATE.settings = {};
-        if (keyId === 'pub') STATE.settings.publicApiKey  = r.key;
-        else                 STATE.settings.secretApiKey  = r.key;
+        if (keyId === 'pub') { STATE.settings.publicApiKey = r.key; STATE.settings.publicApiKeyCreatedAt = r.createdAt || new Date().toISOString(); }
+        else                 { STATE.settings.secretApiKey = r.key; STATE.settings.secretApiKeyCreatedAt = r.createdAt || new Date().toISOString(); }
+        // Refresh the "Créée le" date on the visible card
+        try {
+          const card = document.querySelector('[data-apikey-card="' + keyId + '"]');
+          const dateEl = card && card.querySelector('div[style*="margin-top:6px"]');
+          if (dateEl) dateEl.textContent = 'Créée le ' + new Date().toLocaleDateString('fr-FR');
+        } catch(e) {}
         showToast('success', 'Clé régénérée ! Copiez-la maintenant.');
         navigator.clipboard?.writeText(r.key).catch(() => {});
       } else { showToast('error', r?.error || 'Erreur régénération'); }
@@ -28856,10 +28948,13 @@ function renderSettingsAPI() {
           ${(()=>{
             const _pk  = STATE.settings?.publicApiKey  || STATE.me?.publicApiKey  || null;
             const _sk  = STATE.settings?.secretApiKey  || null;
-            const _pkCreated = STATE.me?.createdAt ? new Date(STATE.me.createdAt).toLocaleDateString('fr-FR') : (STATE.settings?.apiKeyCreated || '—');
+            const _fmtD = v => { try { return v ? new Date(v).toLocaleDateString('fr-FR') : null; } catch(e) { return null; } };
+            const _acctCreated = _fmtD(STATE.me?.createdAt) || STATE.settings?.apiKeyCreated || '—';
+            const _pkCreated = _fmtD(STATE.settings?.publicApiKeyCreatedAt) || _acctCreated;
+            const _skCreated = _fmtD(STATE.settings?.secretApiKeyCreatedAt) || (_sk ? _acctCreated : '—');
             return [
               { id:'pub', label:'Clé publique (lecture seule)',  key: _pk || (PREVIEW_MODE ? 'fp_pub_k7m2x9q3a1b4c5d6e7f8' : '(non générée — cliquez Régénérer)'), created: _pkCreated },
-              { id:'sec', label:'Clé secrète (accès complet)',   key: _sk  || 'fp_sec_••••••••••••••••••••••••••••••••••••••••••••',                           created: _pkCreated },
+              { id:'sec', label:'Clé secrète (accès complet)',   key: _sk  || 'fp_sec_••••••••••••••••••••••••••••••••••••••••••••',                           created: _skCreated },
             ];
           })().map(k => `
             <div data-apikey-card="${k.id}" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:10px;padding:14px 16px">
@@ -34939,9 +35034,12 @@ window.FP_AUTOMATION_API = {
   async load() {
     try {
       const data = await apiFetch('/api/automation/workflows').catch(() => null);
-      if (!data) return;
       window.FP_DATA = window.FP_DATA || {};
-      window.FP_DATA.automation = { workflows: data.workflows || data || [] };
+      // Always set automation (even empty) so renderers know the load completed
+      const wfs = data ? (data.workflows || data || []) : [];
+      window.FP_DATA.automation = { workflows: Array.isArray(wfs) ? wfs : [] };
+      // Keep the global workflow counter (Command Center) in sync
+      try { (window.STATE || STATE).workflows = window.FP_DATA.automation.workflows; } catch(e) {}
     } catch(e) { console.warn('[FP_AUTOMATION_API] load error:', e); }
   },
 

@@ -2,6 +2,7 @@ import type { Response } from "express";
 import PDFDocument from "pdfkit";
 
 interface ReportRow { id: string; name: string; type: string; date: string; auditId?: string | null; whiteLabel?: boolean | null; dateStart?: string | null; dateEnd?: string | null; }
+export interface WlBranding { agencyName?: string; primaryColor?: string; secondaryColor?: string; footerMsg?: string; logoUrl?: string; }
 interface AuditRow  { url: string; score: number; status: string; speed?: number | null; issues?: number | null; }
 interface MeetingNote { title: string; date: string; notes: string; site?: string; }
 interface MonitorRow { name: string; url?: string; status?: string; uptime?: number | null; }
@@ -13,7 +14,8 @@ export function streamReportPdf(
   audit: AuditRow | undefined,
   meetingNotes: MeetingNote[],
   monitors: MonitorRow[] = [],
-  missions: MissionRow[] = []
+  missions: MissionRow[] = [],
+  branding?: WlBranding | null
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: "A4", bufferPages: true });
@@ -25,14 +27,17 @@ export function streamReportPdf(
     doc.on("error", reject);
     res.on("finish", resolve);
 
-    const BLUE   = "#2563EB";
+    // White-label branding: applied only when the report was created as white-label
+    const wl = report.whiteLabel && branding ? branding : null;
+    const BLUE   = (wl?.primaryColor && /^#[0-9a-fA-F]{6}$/.test(wl.primaryColor)) ? wl.primaryColor : "#2563EB";
     const GREEN  = "#22c55e";
     const GRAY   = "#6b7280";
     const DARK   = "#111827";
+    const brandName = (wl?.agencyName || "").trim() || "FlowPoint";
 
     // ── Header ────────────────────────────────────────────────────────────────
     doc.rect(0, 0, doc.page.width, 80).fill(BLUE);
-    doc.fillColor("white").fontSize(22).font("Helvetica-Bold").text("FlowPoint", 50, 25);
+    doc.fillColor("white").fontSize(22).font("Helvetica-Bold").text(brandName, 50, 25);
     doc.fontSize(10).font("Helvetica").text("Rapport SEO & Performance", 50, 52);
     doc.fillColor(DARK);
 
@@ -156,7 +161,10 @@ export function streamReportPdf(
     for (let i = pageRange.start; i < pageRange.start + pageRange.count; i++) {
       doc.switchToPage(i);
       doc.fontSize(8).font("Helvetica").fillColor(GRAY)
-        .text(`FlowPoint SaaS — Rapport confidentiel — Page ${i + 1}`, 50, doc.page.height - 30, { align: "center" });
+        .text(wl
+          ? `${(wl.footerMsg || "").trim() || `${brandName} — Rapport confidentiel`} — Page ${i + 1}`
+          : `FlowPoint SaaS — Rapport confidentiel — Page ${i + 1}`,
+          50, doc.page.height - 30, { align: "center" });
     }
 
     doc.end();

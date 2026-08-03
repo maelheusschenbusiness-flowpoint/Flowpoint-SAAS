@@ -30,11 +30,13 @@ export async function ensureDefaultWorkflows(orgId = "default"): Promise<void> {
   }
 }
 
-export async function executeWorkflow(workflowId: string): Promise<{ success: boolean; runId: string }> {
+export async function executeWorkflow(workflowId: string, orgId?: string): Promise<{ success: boolean; runId: string }> {
   const runId = `wr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   try {
     const [wf] = await db.select().from(automationWorkflowsTable).where(eq(automationWorkflowsTable.id, workflowId)).limit(1);
     if (!wf || !wf.enabled) return { success: false, runId };
+    // Defence in depth: if the caller supplies an org, the workflow must belong to it
+    if (orgId && wf.orgId !== orgId) return { success: false, runId };
 
     await db.insert(workflowRunsTable).values({
       id: runId,

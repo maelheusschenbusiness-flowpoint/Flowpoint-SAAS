@@ -8782,7 +8782,7 @@ html[data-theme="light"] .fp-ai-quick-prompts .fp-ai-quick {
    Light mode : #ffffff = blanc pur, se distingue du fond #f0f2f5
    ══════════════════════════════════════════════════════════════ */
 :root {
-  --fp-inner-card: rgba(10,16,36,0.88);
+  --fp-inner-card: rgb(13,19,40); /* opaque : les sous-cartes gardent leur fond au hover du parent */
 }
 html[data-theme="light"] {
   --fp-inner-card: #eef2ff;

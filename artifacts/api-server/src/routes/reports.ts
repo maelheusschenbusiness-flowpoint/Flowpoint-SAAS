@@ -173,9 +173,19 @@ router.get("/reports/:id/download", async (req: Request, res: Response) => {
     missions = misr.rows.map(r => ({ title: r.title as string, status: r.status as string, priority: r.priority as string, dueDate: r.due_date as string }));
   } catch {}
 
+  // White-label branding (agency name, colors, footer) from user_prefs.settings.wlBranding
+  let wlBranding: import("../services/pdf.js").WlBranding | null = null;
+  if (report.white_label) {
+    try {
+      const pr = await db(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+      const wl = (pr.rows[0]?.settings as Record<string, unknown> | undefined)?.wlBranding;
+      if (wl && typeof wl === "object") wlBranding = wl as import("../services/pdf.js").WlBranding;
+    } catch {}
+  }
+
   // Cumulative usage accounting — PDF export counted at download time
   import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "pdf_export")).catch(() => {});
-  await streamReportPdf(res, report as Parameters<typeof streamReportPdf>[1], audit as Parameters<typeof streamReportPdf>[2], meetingNotes, monitors, missions);
+  await streamReportPdf(res, { ...(report as unknown as Parameters<typeof streamReportPdf>[1]), whiteLabel: !!report.white_label }, audit as Parameters<typeof streamReportPdf>[2], meetingNotes, monitors, missions, wlBranding);
 });
 
 // ── POST /reports/:id/share ────────────────────────────────────────────────────

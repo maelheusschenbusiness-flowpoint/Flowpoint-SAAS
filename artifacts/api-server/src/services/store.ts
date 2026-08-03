@@ -157,7 +157,7 @@ class Store {
            FROM activity_logs
            ${where}
               AND created_at >= COALESCE(
-                (SELECT created_at FROM organizations WHERE id = $3),
+                (SELECT created_at FROM organizations WHERE id::text = $3),
                 '-infinity'::timestamptz
               )
            ORDER BY created_at DESC, id DESC
