@@ -585,7 +585,19 @@ async function apiAction(method, path, body, options = {}) {
 
 // ─── HELPERS GLOBAUX ─────────────────────────────────────────────────────────
 
-function exportCsv(headerRow, dataRows, filename) {
+async function refreshMeUsage() {
+  try {
+    const me = await apiFetch('/api/me', { force: true });
+    if (me && typeof me === 'object') {
+      STATE.me = me;
+      render();
+    }
+  } catch (_) {
+    // An export remains usable even if the non-critical usage refresh fails.
+  }
+}
+
+async function exportCsv(headerRow, dataRows, filename) {
   const bom = '\ufeff';
   const csv = bom + [headerRow, ...dataRows].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -593,8 +605,11 @@ function exportCsv(headerRow, dataRows, filename) {
   const a = document.createElement('a');
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
-  // Cumulative usage accounting (fire-and-forget) — survives item deletion
-  try { if (typeof window.fpTrackUsage === 'function') window.fpTrackUsage('export'); } catch(_) {}
+  // Cumulative usage accounting — wait for persistence before updating the UI.
+  try {
+    if (typeof window.fpTrackUsage === 'function') await window.fpTrackUsage('export');
+    await refreshMeUsage();
+  } catch(_) {}
 }
 
 async function downloadReportPdf(reportId, name, triggerEl) {
@@ -621,6 +636,8 @@ async function downloadReportPdf(reportId, name, triggerEl) {
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    // The backend records this successful PDF export; refresh the live quota display.
+    setTimeout(refreshMeUsage, 150);
   } catch(e) {
     showToast('error', 'Erreur lors du téléchargement : ' + (e?.message || ''));
   } finally {
@@ -868,6 +885,7 @@ async function bindAuditPanelBtns(audit) {
         const res = await apiAction('POST', '/api/reports', { name, auditId: audit.id, format: 'PDF' });
         const r = res || { id: 'r' + Date.now(), name };
         STATE.reports.unshift(r);
+        refreshMeUsage();
         showToast('success', 'Téléchargement du rapport PDF…');
         downloadReportPdf(r.id, name);
       } catch(e) {
@@ -3071,6 +3089,10 @@ const ACTIVITY_TYPE_CONFIG = {
   report:  { label:'Rapport', color:'#f59e0b', bg:'rgba(245,158,11,0.12)' },
   alert:   { label:'Alerte',  color:'#ef4444', bg:'rgba(239,68,68,0.12)' },
   team:    { label:'Équipe',  color:'#8b5cf6', bg:'rgba(139,92,246,0.12)' },
+  settings:{ label:'Réglages',color:'#06b6d4', bg:'rgba(6,182,212,0.12)' },
+  mission: { label:'Mission', color:'#a855f7', bg:'rgba(168,85,247,0.12)' },
+  export:  { label:'Export',  color:'#f97316', bg:'rgba(249,115,22,0.12)' },
+  system:  { label:'Système', color:'#64748b', bg:'rgba(100,116,139,0.12)' },
 };
 const AVATAR_COLORS = ['#2563EB','#22c55e','#f59e0b','#8b5cf6','#ef4444','#06b6d4'];
 
@@ -3081,7 +3103,18 @@ function getAvatarColor(name) {
 }
 
 function getInitials(name) {
-  return (name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  return (name || 'Équipe').split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'É';
+}
+
+function formatActivityDetails(metadata) {
+  if (!metadata || typeof metadata !== 'object') return '';
+  const entries = Object.entries(metadata).filter(([, value]) => value !== null && value !== undefined && value !== '');
+  if (!entries.length) return '';
+  const rows = entries.map(([key, value]) => {
+    const display = Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value) : String(value);
+    return `<div><strong>${escHtml(key.replace(/([A-Z])/g, ' $1'))}</strong> : ${escHtml(display)}</div>`;
+  }).join('');
+  return `<div class="fp-activity-details" hidden>${rows}</div><button type="button" class="fp-activity-expand" aria-expanded="false">Voir plus</button>`;
 }
 
 function relTimeActivity(dateStr) {
@@ -3142,7 +3175,7 @@ function renderActivityList() {
 
   const lastSeen = STATE.activityLastSeen;
   let html = events.map(e => {
-    const cfg = ACTIVITY_TYPE_CONFIG[e.type] || ACTIVITY_TYPE_CONFIG.audit;
+    const cfg = ACTIVITY_TYPE_CONFIG[e.type] || ACTIVITY_TYPE_CONFIG.system;
     const avatarColor = getAvatarColor(e.userName || 'U');
     const isNew = new Date(e.createdAt || e.created_at).getTime() > lastSeen;
     return `
@@ -3152,6 +3185,7 @@ function renderActivityList() {
         </div>
         <div class="fp-activity-body">
           <div class="fp-activity-panel-label">${escHtml(e.label)}</div>
+          ${formatActivityDetails(e.metadata)}
           <div class="fp-activity-meta">
             <span class="fp-activity-user-name">${escHtml(e.userName || 'Équipe')}</span>
             <span class="fp-activity-time-rel">${relTimeActivity(e.createdAt)}</span>
@@ -13412,6 +13446,7 @@ function setupNewReportPanel() {
         const res = await apiAction('POST', '/api/reports', { name, auditId, format, whiteLabel, branding, reportType, meetingNotes, dateStart, dateEnd });
         const r = res || { id:'r'+Date.now(), name, type: format, date: new Date().toISOString(), pages: 0, shared: false };
         STATE.reports.unshift(r);
+        refreshMeUsage();
 
         if (format === 'PDF' && r.id) {
           showToast('success', `Téléchargement du rapport PDF « ${escHtml(name)} »…`);
@@ -14465,6 +14500,7 @@ function bindSectionEvents() {
         const res = await apiAction('POST', '/api/reports', { name, auditId: audit.id, format: 'PDF' });
         const r = res || { id: 'r' + Date.now(), name };
         STATE.reports.unshift(r);
+        refreshMeUsage();
         showToast('success', 'Export PDF en cours…');
         downloadReportPdf(r.id, name);
       } catch(e2) {
@@ -15260,6 +15296,7 @@ function bindSectionEvents() {
             try {
               const res = await apiAction('POST', '/api/reports', { name: report.name, format: report.type || 'PDF' });
               if (res) { const idx = STATE.reports.findIndex(x=>x.id===report.id); if(idx>=0) STATE.reports.splice(idx,1); STATE.reports.unshift(res); }
+              refreshMeUsage();
               showToast('success','Rapport régénéré !'); render();
             } catch(e) { showToast('error','Erreur lors de la régénération'); }
           } },
@@ -33196,6 +33233,14 @@ document.addEventListener('click', function _activityDelegation(e) {
         .finally(function() { STATE.activityFilterLoading = false; renderActivityList(); });
     }
   }
+  const expandBtn = e.target.closest('.fp-activity-expand');
+  if (expandBtn) {
+    const details = expandBtn.previousElementSibling;
+    const expanded = expandBtn.getAttribute('aria-expanded') === 'true';
+    expandBtn.setAttribute('aria-expanded', String(!expanded));
+    expandBtn.textContent = expanded ? 'Voir plus' : 'Voir moins';
+    if (details) details.hidden = expanded;
+  }
 });
 
 // ── BUG-W1-V32-005 — Audit polling controller ────────────────────────────────
@@ -35526,10 +35571,11 @@ window._fpBuyAICredits = async function(pack) {
 
 // ── Cumulative usage tracking for client-side exports ─────────────────────────
 // Fire-and-forget; deletion of the exported item never decrements this history.
-window.fpTrackUsage = function(kind) {
+window.fpTrackUsage = async function(kind) {
   try {
-    apiFetch('/api/billing/usage-events', { method: 'POST', body: JSON.stringify({ kind }) }).catch(() => {});
-  } catch(_) {}
+    await apiFetch('/api/billing/usage-events', { method: 'POST', body: JSON.stringify({ kind }) });
+  } catch(_) { return false; }
+  return true;
 };
 
 // ── Auto-load all integrations on page start ──────────────────────────────────
