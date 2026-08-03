@@ -290,7 +290,7 @@ router.get("/overview/insights", async (req: Request, res: Response) => {
       ),
       pool.query(`SELECT COUNT(*) AS cnt FROM competitors WHERE org_id=$1`, [orgId]),
       pool.query(
-        `SELECT COALESCE(SUM(estimated_loss),0) AS total FROM revenue_leaks WHERE org_id=$1 AND status='active'`,
+        `SELECT COALESCE(SUM(estimated_monthly_loss),0) AS total FROM revenue_leaks WHERE org_id=$1 AND status='active'`,
         [orgId]
       ),
     ]);

@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
+import { isUUIDFormat } from "../lib/validate-org-id.js";
 import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 
 const router = Router();
@@ -10,19 +11,27 @@ function getOrg(req: Request): string {
   return (req as OrgReq).orgId ?? "default";
 }
 
+function getOrganizationUuid(orgId: string): string | null {
+  return isUUIDFormat(orgId) ? orgId : null;
+}
+
 // ── GET /notifications ────────────────────────────────────────────────────────
 
 router.get("/notifications", async (req: Request, res: Response) => {
   try {
+    const orgId = getOrg(req);
+    // notifications.org_id is TEXT, while organizations.id is UUID. Keep the
+    // two parameter types independent so PostgreSQL never infers uuid = text.
+    const organizationId = getOrganizationUuid(orgId);
     const result = await (req as OrgReq).orgDb(
       `SELECT * FROM notifications
          WHERE org_id = $1
            AND created_at >= COALESCE(
-             (SELECT created_at FROM organizations WHERE id = $1),
+              (SELECT created_at FROM organizations WHERE id = $2::uuid),
              '-infinity'::timestamptz
            )
        ORDER BY created_at DESC LIMIT 50`,
-      [getOrg(req)],
+       [orgId, organizationId],
     );
     res.json(result.rows.map(n => ({
       id:        n.id,

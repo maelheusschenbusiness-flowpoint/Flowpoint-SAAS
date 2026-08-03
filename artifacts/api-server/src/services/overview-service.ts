@@ -149,7 +149,7 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
         [orgId]
       ),
       pool.query(
-        `SELECT COUNT(*) as count, COALESCE(SUM(estimated_loss), 0) as total
+        `SELECT COUNT(*) as count, COALESCE(SUM(estimated_monthly_loss), 0) as total
          FROM revenue_leaks WHERE org_id=$1 AND status='active'`,
         [orgId]
       ),
