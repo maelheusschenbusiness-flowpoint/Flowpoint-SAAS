@@ -152,7 +152,8 @@ router.get("/seo/maps", withQuota(async (req, res) => {
   const { keyword = "restaurant", location = "Paris" } = req.query as Record<string,string>;
   try {
     const data = await getGoogleMapsResults(keyword, location, orgId);
-    res.json({ keyword, location, count: data.length, results: data });
+    if (data.error) { res.status(502).json({ error: "Maps fetch failed" }); return; }
+    res.json({ keyword, location, count: data.results.length, results: data.results });
   } catch (e) {
     res.status(500).json({ error: "Maps fetch failed", detail: String(e) });
   }
@@ -279,19 +280,15 @@ router.post("/local-seo/rankings", canWrite, async (req, res) => {
     if (await isDataForSEOConfigured(orgId)) {
       const allowed = await checkAndIncrementQuota(orgId, "rankings", 1).catch(() => false);
       if (allowed) {
-        // DataForSEO local pack search — delegate to existing service if available
-        const { getLocalPackResults } = await import("../services/dataforseo-service.js").catch(() => ({ getLocalPackResults: null })) as Record<string, unknown>;
-        if (typeof getLocalPackResults === "function") {
-          const results = await (getLocalPackResults as Function)(keyword, location, orgId);
-          res.json({ ok: true, keyword, location, rankings: results || [] });
-          return;
-        }
+        const { getLocalPackRank } = await import("../services/dataforseo-service.js");
+        const rankings = await getLocalPackRank(keyword, location, orgId);
+        res.json({ ok: true, keyword, location, rankings, configured: true });
+        return;
       }
     }
-    // Graceful fallback — frontend shows demo data when rankings is empty
-    res.json({ ok: false, rankings: [], message: "DataForSEO non configuré" });
+    res.json({ ok: false, rankings: [], configured: false, reason: "not_configured", message: "DataForSEO n’est pas configuré pour cette organisation." });
   } catch (e) {
-    res.json({ ok: false, rankings: [], error: String(e) });
+    res.status(502).json({ ok: false, rankings: [], configured: true, reason: "provider_error", error: "DataForSEO ne répond pas pour le moment." });
   }
 });
 

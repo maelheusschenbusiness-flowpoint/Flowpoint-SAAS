@@ -1,7 +1,5 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
-import { connectMongo } from "../lib/mongo.js";
-import { NotificationModel } from "../models/Notification.js";
 import { mailer } from "./mailer.js";
 
 // ── SEO Alert evaluation ──────────────────────────────────────────────────────
@@ -47,16 +45,26 @@ export async function evaluateAlertRulesForAudit(url: string, score: number, org
             logger.warn({ err: aeErr }, "[monitor-cron] alert_event write failed (non-fatal)");
           }
           try {
-            await connectMongo();
-            await NotificationModel.create({
-              _id: `notif_alert_${Date.now()}`,
-              type: "warning",
-              title: `Alerte SEO : ${rule.name}`,
-              message: `${url} — score ${score}/100 (seuil: ${rule.threshold})`,
-              read: false,
-            });
-          } catch (mongoErr) {
-            logger.warn({ err: mongoErr }, "[monitor-cron] Notification write to MongoDB failed");
+            const existingNotification = await client.query(
+              `SELECT id FROM notifications
+               WHERE org_id=$1 AND title=$2 AND message=$3 AND created_at >= NOW() - INTERVAL '1 hour'
+               LIMIT 1`,
+              [orgId, `Alerte SEO : ${String(rule.name)}`, `${url} — score ${score}/100 (seuil: ${rule.threshold})`],
+            );
+            if (existingNotification.rows[0]) continue;
+            await client.query(
+              `INSERT INTO notifications (id, org_id, type, title, message, link, read, created_at)
+               VALUES ($1,$2,'warning',$3,$4,$5,false,NOW())`,
+              [
+                `notif_seo_${Date.now()}_${String(rule.id)}`,
+                orgId,
+                `Alerte SEO : ${String(rule.name)}`,
+                `${url} — score ${score}/100 (seuil: ${rule.threshold})`,
+                "/audits",
+              ],
+            );
+          } catch (notificationErr) {
+            logger.warn({ err: notificationErr }, "[monitor-cron] PostgreSQL notification write failed");
           }
           const _channels: string[] = (() => { try { const v = typeof rule.channels === "string" ? JSON.parse(rule.channels) : rule.channels; return Array.isArray(v) ? v : ["email"]; } catch { return ["email"]; } })();
           // Recipient: per-rule org owner email from LEFT JOIN organizations.

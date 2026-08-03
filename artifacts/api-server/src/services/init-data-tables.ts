@@ -1814,6 +1814,22 @@ export async function initDataTables(): Promise<void> {
       await run(client, `CREATE INDEX IF NOT EXISTS local_heatmaps_org_idx ON local_heatmaps(org_id, created_at DESC)`);
       await applyTenantRls("local_heatmaps");
 
+      // ── competitor_map_results — real DataForSEO Maps discoveries ───────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS competitor_map_results (
+          id TEXT PRIMARY KEY, org_id TEXT NOT NULL DEFAULT 'default',
+          keyword TEXT NOT NULL, location TEXT NOT NULL, place_id TEXT NOT NULL,
+          name TEXT NOT NULL, address TEXT, category TEXT, rating REAL,
+          review_count INTEGER NOT NULL DEFAULT 0, rank INTEGER,
+          photo_url TEXT, authority_score INTEGER NOT NULL DEFAULT 0,
+          source TEXT NOT NULL DEFAULT 'dataforseo_maps', fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(org_id, keyword, location, place_id)
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS competitor_map_results_org_idx ON competitor_map_results(org_id, fetched_at DESC)`);
+      await applyTenantRls("competitor_map_results");
+
       // ── login_audits — sso-service.ts INSERT uses method, failure_reason ─────
       await run(client, `
         CREATE TABLE IF NOT EXISTS login_audits (

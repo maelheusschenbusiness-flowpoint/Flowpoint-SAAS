@@ -1341,6 +1341,7 @@ async function loadData() {
   clearTimeout(_loadSafetyTimer);
   STATE.loading = false;
   render();
+  if (!STATE._notificationPoll) STATE._notificationPoll = setInterval(refreshNotifications, 30_000);
 
   // ── Phase 4: All secondary fetches in one parallel batch ─────────────────────
   const _domain = (STATE.audits[0] && (() => { try { return new URL(STATE.audits[0].url).hostname; } catch(_){ return ''; } })()) || '';
@@ -4131,7 +4132,7 @@ function renderNotifications() {
   // Mark all read
   dropdown.querySelector('#fp-notif-mark-all')?.addEventListener('click', () => {
     STATE.notifications = STATE.notifications.map(n => ({ ...n, read: true }));
-    saveNotifs();
+    apiAction('PATCH', '/api/notifications/read-all').catch(() => showToast('warning', 'La synchronisation des lectures a échoué. Réessayez plus tard.'));
     renderNotifications();
     showToast('success', 'Toutes les notifications marquées lues');
   });
@@ -4155,6 +4156,26 @@ function renderNotifications() {
       renderNotifications();
     });
   });
+
+  dropdown.querySelectorAll('.fp-notif-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const notification = STATE.notifications.find(n => String(n.id || n.title) === item.dataset.nid);
+      if (!notification || notification.read || !notification.id) return;
+      notification.read = true;
+      apiAction('PATCH', `/api/notifications/${encodeURIComponent(notification.id)}/read`).catch(() => {});
+      renderNotifications();
+    });
+  });
+}
+
+async function refreshNotifications() {
+  try {
+    const notifications = await apiFetch('/api/notifications', { force: true });
+    if (Array.isArray(notifications)) {
+      STATE.notifications = notifications;
+      renderNotifications();
+    }
+  } catch (_) {}
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -4255,7 +4276,10 @@ function renderSidebarStatus() {
 
   // Monitors badge in sidebar
   const monBadge = $('#monitors-badge');
-  if (monBadge) { monBadge[down > 0 ? 'removeAttribute' : 'setAttribute']('hidden', ''); monBadge.textContent = down; }
+  if (monBadge) {
+    if (down > 0) { monBadge.removeAttribute('hidden'); monBadge.textContent = String(down); }
+    else { monBadge.setAttribute('hidden', ''); monBadge.textContent = ''; }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -17247,7 +17271,7 @@ async function init() {
           <input id="rl-city" class="fp-input" placeholder="Ville (ex: Paris)" value="${STATE.me?.location?.city||''}" style="width:100%;box-sizing:border-box"/>
         </div>
         <div style="font-size:10px;color:var(--fp-text-faint,#64748b);margin-top:8px;padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border:1px solid rgba(37,99,235,0.15)">
-          ℹ️ Nécessite DataForSEO configuré. En démo, des données simulées sont affichées.
+          ℹ️ Les résultats affichés proviennent de DataForSEO. Si le service n’est pas configuré, aucun classement ne sera inventé.
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
           <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-rankings-modal').style.display='none'">Annuler</button>
@@ -17268,10 +17292,12 @@ async function init() {
       if (r?.ok || r?.rankings) {
         showToast('success','Rankings chargés !');
         render(STATE.currentSection);
+      } else if (r?.reason === 'not_configured' || r?.configured === false) {
+        showToast('warning','Classements indisponibles : DataForSEO n’est pas configuré pour cette organisation.');
       } else {
-        showToast('info','DataForSEO non configuré — données démo affichées');
+        showToast('info','Aucun classement local trouvé pour cette requête. Vérifiez le mot-clé et la ville.');
       }
-    } catch(e) { showToast('info','DataForSEO non configuré — données démo affichées'); }
+    } catch(e) { showToast('error','Impossible de charger les classements locaux. Réessayez dans un instant.'); }
   };
   // Auto-missions generator — replaces undefined FP_DATAFORSEO_API.generateMissions()
   window._generateLocalMissions = async function() {
@@ -36369,10 +36395,13 @@ function renderPermissions() {
 window.FP_LOCAL_MAPS_API = {
   async load() {
     try {
-      const data = await apiFetch('/api/local-maps').catch(() => null);
+      const [data, competitors] = await Promise.all([
+        apiFetch('/api/local-maps').catch(() => null),
+        apiFetch('/api/local-maps/competitors').catch(() => null),
+      ]);
       if (!data) return;
       window.FP_DATA = window.FP_DATA || {};
-      window.FP_DATA.localMaps = { ...data, loadedAt: Date.now() };
+      window.FP_DATA.localMaps = { ...data, competitors: competitors?.competitors || [], loadedAt: Date.now() };
     } catch(e) { console.warn('[FP_LOCAL_MAPS_API]', e); }
   },
   async createHeatmap(data) {
@@ -36384,6 +36413,34 @@ window.FP_LOCAL_MAPS_API = {
   async getAIRecommendations() {
     return await apiFetch('/api/local-maps/ai-recommendations', { method: 'POST', body: JSON.stringify({}) });
   },
+  async discoverCompetitors(data) {
+    return await apiFetch('/api/local-maps/competitors/discover', { method: 'POST', body: JSON.stringify(data) });
+  },
+};
+window._discoverLocalCompetitors = async function() {
+  const location = STATE.me?.location || {};
+  const place = [location.city, location.address].find(Boolean);
+  const keyword = (STATE.keywords || STATE.keywordRankings || []).find(k => k.keyword || k.kw)?.keyword
+    || (STATE.keywords || STATE.keywordRankings || []).find(k => k.keyword || k.kw)?.kw;
+  if (!place) { showToast('warning', 'Ajoutez une ville ou une adresse dans les paramètres avant de rechercher des concurrents locaux.'); return; }
+  if (!keyword) { showToast('warning', 'Ajoutez un mot-clé suivi avant de lancer la découverte de concurrents.'); return; }
+  showToast('info', 'Recherche des concurrents locaux en cours…');
+  try {
+    const data = await window.FP_LOCAL_MAPS_API.discoverCompetitors({ keyword, location: place });
+    if (data?.configured === false) { showToast('warning', data.message || 'DataForSEO n’est pas configuré pour cette organisation.'); return; }
+    if (!data?.ok) { showToast('error', data?.error || 'La recherche locale a échoué.'); return; }
+    await window.FP_LOCAL_MAPS_API.load();
+    render(STATE.currentSection);
+    showToast(data.count ? 'success' : 'info', data.count ? `${data.count} concurrent(s) local(aux) trouvé(s).` : 'Aucun concurrent local trouvé pour ce mot-clé et cette zone.');
+  } catch (_) { showToast('error', 'La recherche locale est indisponible. Réessayez dans un instant.'); }
+};
+window._addLocalCompetitor = async function(id) {
+  if (!id) { showToast('warning', 'Ce concurrent doit être actualisé avant de pouvoir être ajouté.'); return; }
+  try {
+    const result = await apiAction('POST', `/api/local-maps/competitors/${encodeURIComponent(id)}/add`);
+    if (result?.alreadyExists) showToast('info', 'Ce concurrent est déjà suivi.');
+    else showToast('success', 'Concurrent ajouté à votre analyse.');
+  } catch (_) { showToast('error', 'Impossible d’ajouter ce concurrent pour le moment.'); }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -36714,6 +36771,8 @@ function renderLocalCompetitorMap() {
   const filterMin = window._mapFilterMin || 0;
   const filtered = competitors.filter(c => (!filterPack || c.is_local_pack) && c.authority_score >= filterMin);
   const authColor = (s) => s >= 80 ? 'var(--fp-success)' : s >= 60 ? 'var(--fp-warning)' : s >= 40 ? 'var(--fp-accent)' : 'var(--fp-text-faint)';
+  const location = STATE.me?.location || {};
+  const configuredLocation = [location.city, location.address].filter(Boolean).join(', ');
   return `
     <div class="fp-section-header">
       <div>
@@ -36744,19 +36803,25 @@ function renderLocalCompetitorMap() {
       ${[0,40,60,80].map(min => `<button class="fp-btn ${filterMin===min?'fp-btn-primary':'fp-btn-ghost'} fp-btn-sm" onclick="window._mapFilterMin=${min};render(STATE.currentSection)">Autorité ≥${min}</button>`).join('')}
     </div>
 
-    <!-- COMPETITOR LIST (visual map simulation) -->
+    <div class="fp-card fp-mb-16" style="padding:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:12px;font-weight:800">📍 Zone analysée</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-top:4px">${configuredLocation ? escHtml(configuredLocation) : 'Aucun emplacement configuré — ajoutez votre ville dans les paramètres pour des résultats locaux pertinents.'}</div>
+        </div>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._discoverLocalCompetitors()">Découvrir des concurrents</button>
+      </div>
+    </div>
+
+    <!-- COMPETITOR LIST -->
     <div class="fp-card">
-      <!-- Map placeholder with competitor pins visualization -->
       <div style="position:relative;height:220px;border-radius:12px;overflow:hidden;background:linear-gradient(135deg,rgba(37,99,235,0.06) 0%,rgba(34,197,94,0.04) 100%);border:1px solid rgba(255,255,255,0.08);margin-bottom:16px;display:flex;align-items:center;justify-content:center">
         <div style="text-align:center">
           <div style="font-size:32px;margin-bottom:8px">🗺</div>
-          <div style="font-size:12px;color:var(--fp-text-muted)">Google Maps — ${competitors.length} concurrents positionnés</div>
-          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">Connectez votre clé Google Maps pour la carte interactive</div>
+          <div style="font-size:12px;color:var(--fp-text-muted)">${competitors.length ? `${competitors.length} concurrents locaux trouvés` : 'Aucun concurrent local chargé'}</div>
+          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${configuredLocation ? 'Utilisez « Découvrir des concurrents » pour interroger les données disponibles.' : 'Configurez un emplacement avant de lancer une recherche locale.'}</div>
         </div>
-        <!-- Simulated pins -->
-        ${competitors.slice(0, 6).map((_, i) => `
-          <div style="position:absolute;${i%2===0?'left':'right'}:${15+i*8}%;${i%3===0?'top':'bottom'}:${20+i*10}%;font-size:16px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))">📍</div>
-        `).join('')}
+        ${configuredLocation ? `<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:22px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))" title="Emplacement configuré">📍</div>` : ''}
       </div>
 
       <!-- Competitor cards -->
@@ -36770,15 +36835,16 @@ function renderLocalCompetitorMap() {
                 <span style="font-size:13px;font-weight:700;color:var(--fp-text)">${escHtml(c.name)}</span>
                 ${c.is_local_pack ? `<span style="font-size:8px;padding:1px 6px;border-radius:6px;background:rgba(245,158,11,0.15);color:var(--fp-warning)">Local Pack</span>` : ''}
               </div>
-              <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(c.address || '')} · ${c.distance_km ? c.distance_km+'km' : '—'}</div>
+              <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(c.address || '')} · Position ${c.rank || '—'}</div>
               <div style="display:flex;gap:8px;margin-top:3px">
-                <span style="font-size:10px;color:var(--fp-warning)">⭐ ${parseFloat(c.rating || 0).toFixed(1)} (${c.review_count || 0} avis)</span>
+                <span style="font-size:10px;color:var(--fp-warning)">⭐ ${parseFloat(c.rating || 0).toFixed(1)} (${Number(c.review_count || 0).toLocaleString('fr-FR')} avis)</span>
                 <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(c.category || '')}</span>
               </div>
             </div>
             <div style="text-align:right;flex-shrink:0">
               <div style="font-size:16px;font-weight:800;color:${authColor(c.authority_score)}">${c.authority_score}</div>
               <div style="font-size:9px;color:var(--fp-text-faint)">autorité</div>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm fp-local-add-competitor" data-competitor-id="${escHtml(String(c.id || ''))}" style="font-size:9px;margin-top:5px;padding:3px 5px">+ Ajouter</button>
             </div>
           </div>
         `).join('')}
@@ -36786,6 +36852,11 @@ function renderLocalCompetitorMap() {
     </div>
   `;
 }
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest?.('.fp-local-add-competitor');
+  if (button?.dataset?.competitorId) window._addLocalCompetitor(button.dataset.competitorId);
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // RENDER: LOCAL SEO REVIEWS (new sub-tab for local-seo route)

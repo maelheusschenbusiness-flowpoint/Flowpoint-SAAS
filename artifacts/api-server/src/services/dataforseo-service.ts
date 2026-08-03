@@ -259,8 +259,8 @@ export async function getLocalPackRank(
 
 export async function getGoogleMapsResults(
   keyword: string, location: string, orgId = "default"
-): Promise<Array<{ name: string; rating: number; reviews: number; address: string; category: string }>> {
-  if (!await isDataForSEOConfigured(orgId)) return [];
+): Promise<{ results: Array<{ name: string; rating: number; reviews: number; address: string; category: string; placeId: string; rank: number; photoUrl: string | null }>; error?: string }> {
+  if (!await isDataForSEOConfigured(orgId)) return { results: [] };
   try {
     type DFSResult = Array<{
       status_code: number;
@@ -271,6 +271,9 @@ export async function getGoogleMapsResults(
           rating?: { value: number; votes_count: number };
           address?: string;
           category?: string;
+          place_id?: string;
+          rank_absolute?: number;
+          image_url?: string;
         }>;
       }>;
     }>;
@@ -285,16 +288,19 @@ export async function getGoogleMapsResults(
       .filter(i => i.type === "maps_search")
       .slice(0, 10);
 
-    return items.map(item => ({
+    return { results: items.map(item => ({
       name:     item.title    ?? "",
       rating:   item.rating?.value       ?? 0,
       reviews:  item.rating?.votes_count ?? 0,
       address:  item.address  ?? "",
       category: item.category ?? "",
-    }));
+      placeId:  item.place_id ?? "",
+      rank:     item.rank_absolute ?? 0,
+      photoUrl: item.image_url ?? null,
+    })) };
   } catch (e) {
     logger.warn({ e }, "[dfs] getGoogleMapsResults failed");
-    return [];
+    return { results: [], error: "provider_error" };
   }
 }
 
