@@ -18,6 +18,9 @@ export const ADDON_DEFINITIONS: Record<string, {
   extraSeats:          { name: "+5 Sièges",                  category: "Team",         description: "+5 membres supplémentaires",               price: "14€/mois",  isFlagAddon: false },
   monitorsPack50:      { name: "+50 Monitors",               category: "Monitoring",   description: "+50 monitors actifs",                      price: "19€/mois",  isFlagAddon: false },
   auditsPack200:       { name: "+200 Audits",                category: "SEO",          description: "+200 audits mensuels",                     price: "9€/mois",   isFlagAddon: false },
+  advancedSeoLab:      { name: "Advanced SEO Lab",           category: "SEO",          description: "Audit SEO avancé + recommandations IA",   price: "19€/mois",  isFlagAddon: true  },
+  backlinkIntelligence:{ name: "Backlink Intelligence",      category: "SEO",          description: "Analyse de backlinks et autorité de domaine", price: "19€/mois", isFlagAddon: true  },
+  keywordDomination:   { name: "Keyword Domination Engine",  category: "SEO",          description: "Suivi et stratégie mots-clés avancée",     price: "19€/mois",  isFlagAddon: true  },
   aiExecutiveReport:   { name: "AI Executive Reporting",     category: "IA",           description: "Résumés exécutifs IA automatiques",        price: "29€/mois",  isFlagAddon: true  },
   aiForecasting:       { name: "AI Forecasting Engine",      category: "IA",           description: "Prévisions SEO/trafic/conversion 90j",     price: "39€/mois",  isFlagAddon: true  },
   revenueLeak:         { name: "Revenue Leak AI",            category: "Conversion",   description: "Détection pertes revenus automatique",     price: "24€/mois",  isFlagAddon: true  },
@@ -112,6 +115,34 @@ export async function getOrgAddons(orgId = "default"): Promise<Record<string, bo
 export function applyAddonToStore(addonKey: string, active: boolean | number): void {
   const addons = store.me.addons as Record<string, boolean | number>;
   addons[addonKey] = active;
+}
+
+/**
+ * Provisions every add-on that is bundled in the given plan by writing it into
+ * org_addons.  Uses onConflictDoNothing so repeated calls are idempotent.
+ * Fire-and-forget: callers do not need to await the result in webhook handlers.
+ *
+ * @param activator - injectable activator fn (defaults to activateAddon); pass a
+ *   stub in unit tests to avoid live DB calls while still verifying provisioning logic.
+ */
+export async function provisionPlanAddons(
+  plan: string,
+  orgId: string,
+  activator: (key: string, orgId: string) => Promise<boolean> = activateAddon,
+): Promise<void> {
+  const { PLAN_INCLUDED_ADDONS } = await import("../lib/plans.js");
+  const included = PLAN_INCLUDED_ADDONS[plan.toLowerCase()] ?? new Set<string>();
+  if (!included.size) return;
+  const keys = Array.from(included);
+  const results = await Promise.allSettled(keys.map(key => activator(key, orgId)));
+  const failed = results
+    .map((r, i) => (r.status === "rejected" || (r.status === "fulfilled" && !r.value)) ? keys[i] : null)
+    .filter((k): k is string => k !== null);
+  if (failed.length) {
+    logger.warn({ plan, orgId, failed }, "[Addons] Some plan-bundled addons failed to provision");
+  } else {
+    logger.info({ plan, orgId, count: included.size }, "[Addons] Plan-bundled addons provisioned");
+  }
 }
 
 export async function addExtraAICredits(pack: "50k" | "200k" | "500k", orgId = "default"): Promise<number> {

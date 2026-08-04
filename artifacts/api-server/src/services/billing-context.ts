@@ -9,6 +9,7 @@
  */
 
 import { pool } from "@workspace/db";
+import { PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 import { loadOrgData } from "./org-data.js";
 import { normalizeSubscriptionStatus, statusGrantsAccess } from "../lib/subscription-state.js";
 import { logger } from "../lib/logger.js";
@@ -97,6 +98,16 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
       if (!(key in addons)) {
         addons[key] = val as boolean | number;
       }
+    }
+  }
+
+  // Overlay plan-bundled addons so feature gates work without manual DB activation.
+  // This is read-only — no writes to org_addons happen here.
+  const planName = (orgData?.plan ?? "standard").toLowerCase();
+  const planIncluded = PLAN_INCLUDED_ADDONS[planName] ?? new Set<string>();
+  for (const key of planIncluded) {
+    if (!(key in addons)) {
+      addons[key] = true;
     }
   }
 

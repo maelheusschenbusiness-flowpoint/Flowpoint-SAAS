@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient } from "../services/stripe-factory.js";
@@ -13,16 +13,9 @@ import {
 } from "../services/billing-service.js";
 import { mailer } from "../services/mailer.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
+import { provisionPlanAddons } from "../services/addons-service.js";
 
-/* Add-ons included in each plan — same source as public-billing.ts */
-const PLAN_INCLUDED_ADDONS: Record<string, Set<string>> = {
-  // Canonical add-on inclusion — single source of truth (mirrors public-billing.ts, checkout.html, dashboard.js)
-  // Standard=1 | Pro=6 (cumulative) | Ultra=10 (cumulative)
-  standard: new Set(["whiteLabel"]),
-  pro:      new Set(["whiteLabel", "customDomain", "advancedWebhooks", "retention90d", "advancedSeoLab", "backlinkIntelligence"]),
-  ultra:    new Set(["whiteLabel", "customDomain", "advancedWebhooks", "retention90d", "advancedSeoLab", "backlinkIntelligence",
-                     "retention365d", "keywordDomination", "behavioralAI", "aiForecasting"]),
-};
+/* PLAN_INCLUDED_ADDONS imported from plans.ts — do NOT duplicate here */
 
 /** Dedicated billing rate limiters — do NOT share quota with reports/exports. */
 const billingPortalRateLimit   = createRateLimit("billingPortalPerMinute");
@@ -1723,6 +1716,10 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
           trialEndsAt: trialEnd ?? undefined,
           stripeCustomerId: String(sub.customer),
         });
+        // Provision bundled add-ons for the activated plan (fire-and-forget, idempotent)
+        provisionPlanAddons(plan, orgId).catch(err =>
+          logger.warn({ err, plan, orgId }, "[Webhook] provisionPlanAddons failed on subscription.created")
+        );
         await trackBillingEvent("subscription_created", { plan, amount: 0, currency: "eur", subscriptionId: sub.id }, orgId);
         break;
       }
@@ -1755,6 +1752,10 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
                 pendingPlanDate: null,
               }),
         });
+        // Provision bundled add-ons for the new plan (fire-and-forget, idempotent)
+        provisionPlanAddons(plan, orgId).catch(err =>
+          logger.warn({ err, plan, orgId }, "[Webhook] provisionPlanAddons failed on subscription.updated")
+        );
 
         if (cancelAtPeriodEnd) {
           // Subscription scheduled for cancellation — broadcast so SSE clients update UI
@@ -1825,6 +1826,10 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
           plan,
           stripeCustomerId: session.customer ? String(session.customer) : undefined,
         });
+        // Provision bundled add-ons for the purchased plan (fire-and-forget, idempotent)
+        provisionPlanAddons(plan, orgId).catch(err =>
+          logger.warn({ err, plan, orgId }, "[Webhook] provisionPlanAddons failed on checkout.session.completed")
+        );
         await trackBillingEvent("subscription_created", { plan, amount: 0, currency: "eur", sessionId: session.id }, orgId);
         break;
       }

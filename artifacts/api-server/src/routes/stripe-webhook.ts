@@ -588,6 +588,12 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
       if (["standard","pro","ultra"].includes(planNorm)) {
         store.broadcastPlanUpdate(planNorm, orgId);
+        // Provision plan-bundled add-ons immediately at checkout so the subscriber
+        // can access their features without waiting for the subscription.created event.
+        const { provisionPlanAddons } = await import("../services/addons-service.js");
+        provisionPlanAddons(planNorm, orgId).catch(err =>
+          logger.warn({ err, planNorm, orgId }, "[Webhook] provisionPlanAddons failed on checkout.session.completed")
+        );
       }
       logger.info({ plan: planNorm, orgId }, "[Webhook] Checkout session completed");
       break;
@@ -737,6 +743,16 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
       // Persist activated add-ons to DB using the resolved orgId
       await persistAddonsFromSubscription(obj, orgId);
+
+      // Provision plan-bundled add-ons (whiteLabel for Pro, customDomain for Ultra, etc.)
+      // These are never Stripe subscription items because they are included at no extra charge.
+      // provisionPlanAddons is idempotent (ON CONFLICT DO NOTHING under the hood).
+      if (newPlan && (status === "active" || status === "trialing")) {
+        const { provisionPlanAddons } = await import("../services/addons-service.js");
+        provisionPlanAddons(newPlan, orgId).catch(err =>
+          logger.warn({ err, newPlan, orgId }, "[Webhook] provisionPlanAddons failed on subscription event")
+        );
+      }
 
       if (status === "past_due" || status === "unpaid" || status === "canceled") {
         store.broadcast({ type: "subscription_status", status }, orgId);

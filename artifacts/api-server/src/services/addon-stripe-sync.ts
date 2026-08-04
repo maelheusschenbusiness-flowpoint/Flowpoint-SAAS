@@ -6,18 +6,12 @@
  * no pricing/cart detour. Included-in-plan add-ons and one-time AI credit
  * packs are never added as subscription items.
  */
-import { ADDON_PRICE_IDS } from "../lib/plans.js";
+import { ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 import { loadBillingContext } from "./billing-context.js";
 import { createStripeClient } from "./stripe-factory.js";
 import { logger } from "../lib/logger.js";
 
-const PLAN_INCLUDED_ADDONS: Record<string, Set<string>> = {
-  // Mirrors billing.ts / public-billing.ts canonical inclusion matrix
-  standard: new Set(["whiteLabel"]),
-  pro:      new Set(["whiteLabel", "customDomain", "advancedWebhooks", "retention90d", "advancedSeoLab", "backlinkIntelligence"]),
-  ultra:    new Set(["whiteLabel", "customDomain", "advancedWebhooks", "retention90d", "advancedSeoLab", "backlinkIntelligence",
-                     "retention365d", "keywordDomination", "behavioralAI", "aiForecasting"]),
-};
+/* PLAN_INCLUDED_ADDONS imported from plans.ts — single source of truth */
 
 const ONE_TIME_ADDONS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
 

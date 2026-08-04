@@ -125,13 +125,14 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
     cro:false, multiLocation:false, prioritySupport:false,
   },
   pro: {
-    sso:true, saml:false, whiteLabel:false, customDomain:false,
+    // whiteLabel + prioritySupport + webhooks bundled in Pro (see PLAN_INCLUDED_ADDONS in plans.ts)
+    sso:true, saml:false, whiteLabel:true, customDomain:false,
     localDominationMaps:true, geoGridSize9x9:false, competitorIntelAI:true,
     marketIntelligence:true, reviewIntelAI:true, gbpPosting:true,
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,
     pdfExport:true, apiAccess:true, webhooks:true, zapierIntegration:false,
     behavioralAI:true, forecastingAI:true, revenueLeakAI:true,
-    cro:true, multiLocation:false, prioritySupport:false,
+    cro:true, multiLocation:false, prioritySupport:true,
   },
   ultra: {
     sso:true, saml:true, whiteLabel:true, customDomain:true,

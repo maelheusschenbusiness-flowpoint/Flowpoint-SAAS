@@ -3,6 +3,7 @@ import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuo
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
+import { PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 
 const router = Router();
 
@@ -14,8 +15,13 @@ router.get("/addons", async (req: Request, res: Response) => {
     const orgAddons = await getOrgAddons(orgId);
     // Use DB-sourced addons — never the store.me singleton (cross-tenant contamination risk).
     // org_addons is the source of truth; legacy org_settings JSON only fills gaps.
-    const liveAddons = { ...(dbData?.addons ?? {}), ...(orgAddons ?? {}) };
-    const quotas = getQuotaLimits(plan, liveAddons as Record<string, boolean | number>);
+    const liveAddons: Record<string, boolean | number> = { ...(dbData?.addons ?? {}), ...(orgAddons ?? {}) };
+    // Overlay plan-bundled addons so subscribers see entitlements without manual activation.
+    const planIncluded = PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>();
+    for (const key of planIncluded) {
+      if (!(key in liveAddons)) liveAddons[key] = true;
+    }
+    const quotas = getQuotaLimits(plan, liveAddons);
     res.json({
       addons: liveAddons,
       orgAddons,

@@ -24,10 +24,11 @@ router.get("/white-label/templates", async (req: Request, res: Response) => {
 });
 
 router.post("/white-label/templates", async (req: Request, res: Response) => {
-  // Feature gate — check DB, never the store.me singleton
-  const { loadOrgData } = await import("../services/org-data.js");
-  const _wlData = await loadOrgData(org(req)).catch(() => null);
-  if (!_wlData?.addons?.whiteLabel) {
+  // Feature gate — loadBillingContext overlays plan-bundled add-ons so Pro/Ultra
+  // subscribers are granted access without a manual org_addons row.
+  const { loadBillingContext } = await import("../services/billing-context.js");
+  const ctx = await loadBillingContext(org(req)).catch(() => null);
+  if (!ctx?.addons?.["whiteLabel"]) {
     res.status(403).json({ error: "White-label add-on required" }); return;
   }
   const { name, logoUrl, primaryColor, secondaryColor, font, footerText, headerText, hideFlowpointBranding, isDefault } = req.body ?? {};
@@ -93,10 +94,11 @@ router.get("/white-label/domains", async (req: Request, res: Response) => {
 });
 
 router.post("/white-label/domains", async (req: Request, res: Response) => {
-  // Feature gate — check DB, never the store.me singleton
-  const { loadOrgData } = await import("../services/org-data.js");
-  const _cdData = await loadOrgData(org(req)).catch(() => null);
-  if (!_cdData?.addons?.customDomain) {
+  // Feature gate — loadBillingContext overlays plan-bundled add-ons so Ultra
+  // subscribers are granted access without a manual org_addons row.
+  const { loadBillingContext } = await import("../services/billing-context.js");
+  const ctx = await loadBillingContext(org(req)).catch(() => null);
+  if (!ctx?.addons?.["customDomain"]) {
     res.status(403).json({ error: "Custom domain add-on required" }); return;
   }
   const { domain } = req.body ?? {};

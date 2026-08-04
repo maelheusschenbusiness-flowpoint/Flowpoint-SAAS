@@ -221,6 +221,45 @@ export const QTY_ADDONS = new Set([
   "aiCreditsPack50k","aiCreditsPack200k","aiCreditsPack500k",
 ]);
 
+/**
+ * PLAN_INCLUDED_ADDONS — single source of truth for which add-ons are bundled
+ * into each plan at no extra charge.  All consumers (billing.ts, public-billing.ts,
+ * addon-stripe-sync.ts) MUST import from here; never duplicate this map locally.
+ *
+ * Invariants:
+ *   • ultra ⊇ pro ⊇ standard (cumulative sets)
+ *   • No key here unless it also has a price ID in ADDON_PRICE_IDS
+ *   • One-time credit packs must never appear here
+ *
+ * Standard plan: white-label is in the "locked" feature list → NOT included.
+ * Pro plan: white-label is a listed feature; customDomain is NOT (ultra only).
+ * Ultra plan: adds customDomain + retention365d + advanced AI add-ons.
+ */
+export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
+  standard: new Set<string>([]),
+  pro: new Set<string>([
+    "whiteLabel",
+    "advancedWebhooks",
+    "retention90d",
+    "advancedSeoLab",
+    "backlinkIntelligence",
+    "prioritySupport",
+  ]),
+  ultra: new Set<string>([
+    "whiteLabel",
+    "customDomain",
+    "advancedWebhooks",
+    "retention90d",
+    "advancedSeoLab",
+    "backlinkIntelligence",
+    "prioritySupport",
+    "retention365d",
+    "keywordDomination",
+    "behavioralAI",
+    "aiForecasting",
+  ]),
+};
+
 export function getPlanForPriceId(priceId: string): string | null {
   for (const [plan, id] of Object.entries(PLAN_PRICE_IDS)) {
     if (id && id === priceId) return plan;

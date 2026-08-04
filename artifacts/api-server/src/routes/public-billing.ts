@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 import { createStripeClient } from "../services/stripe-factory.js";
@@ -116,15 +116,7 @@ function parsePlanOrEmptyPub(raw: unknown, res: Response): string | null {
 /* Add-ons that are one-time purchases (not subscription items) */
 const AI_CREDIT_PACKS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
 
-/* Add-ons included in each plan (excluded from billing) */
-const PLAN_INCLUDED_ADDONS: Record<string, Set<string>> = {
-  // Canonical add-on inclusion — single source of truth (mirrors billing.ts, checkout.html, dashboard.js)
-  // Standard=1 | Pro=6 (cumulative) | Ultra=10 (cumulative)
-  standard: new Set(["whiteLabel"]),
-  pro:      new Set(["whiteLabel", "customDomain", "advancedWebhooks", "retention90d", "advancedSeoLab", "backlinkIntelligence"]),
-  ultra:    new Set(["whiteLabel", "customDomain", "advancedWebhooks", "retention90d", "advancedSeoLab", "backlinkIntelligence",
-                     "retention365d", "keywordDomination", "behavioralAI", "aiForecasting"]),
-};
+/* PLAN_INCLUDED_ADDONS imported from plans.ts — do NOT duplicate here */
 
 function buildLineItems(
   plan: string,
