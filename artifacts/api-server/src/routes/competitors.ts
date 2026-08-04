@@ -7,6 +7,151 @@ import { withCache } from "../middlewares/cacheControl.js";
 
 const router = Router();
 
+// ── In-memory suggestions cache: 6 h per org ─────────────────────────────────
+const suggestionsCache = new Map<string, { ts: number; data: unknown[] }>();
+const SUGGESTIONS_TTL_MS = 6 * 60 * 60 * 1000;
+
+type OrgReq = Request & {
+  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  orgId?: string;
+};
+
+function scoreThreat(place: Record<string, unknown>, orgKeywords: string[]): "high" | "medium" | "low" {
+  const rating  = typeof place["rating"]             === "number" ? place["rating"]             : 0;
+  const reviews = typeof place["user_ratings_total"] === "number" ? place["user_ratings_total"] : 0;
+  const types   = ((place["types"] as string[]) ?? []).join(" ").toLowerCase();
+  const name    = String(place["name"] ?? "").toLowerCase();
+  const match   = orgKeywords.some(k => name.includes(k.toLowerCase()) || types.includes(k.toLowerCase()));
+  const score   = (rating  >= 4.5 ? 3 : rating  >= 4.0 ? 2 : 1)
+                + (reviews >= 500 ? 3 : reviews >= 100  ? 2 : reviews >= 20 ? 1 : 0)
+                + (match ? 2 : 0);
+  return score >= 6 ? "high" : score >= 3 ? "medium" : "low";
+}
+
+function threatReason(place: Record<string, unknown>, threat: string): string {
+  const rating  = typeof place["rating"]             === "number" ? place["rating"]             : null;
+  const reviews = typeof place["user_ratings_total"] === "number" ? place["user_ratings_total"] : 0;
+  if (threat === "high")   return `Note ${rating ?? "?"}/5 avec ${reviews} avis — concurrent direct très actif`;
+  if (threat === "medium") return `Note ${rating ?? "?"}/5 avec ${reviews} avis — présence locale établie`;
+  return `Faible présence (${reviews} avis) — concurrent potentiel à surveiller`;
+}
+
+// ── GET /competitors/suggestions ─────────────────────────────────────────────
+router.get("/competitors/suggestions", async (req, res) => {
+  const orgId = (req as OrgReq).orgId ?? req.orgContext?.orgId ?? "default";
+
+  const cached = suggestionsCache.get(orgId);
+  if (cached && Date.now() - cached.ts < SUGGESTIONS_TTL_MS) {
+    res.json({ ok: true, suggestions: cached.data, cached: true });
+    return;
+  }
+
+  const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
+  if (!apiKey) {
+    res.json({ ok: true, suggestions: [], reason: "maps_not_configured" });
+    return;
+  }
+
+  try {
+    // 1. Resolve org GBP lat/lng
+    let lat: number | null = null;
+    let lng: number | null = null;
+    let locationAddress: string | null = null;
+    try {
+      const locRes = await (req as OrgReq).orgDb(
+        `SELECT lat, lng, raw_data FROM google_locations WHERE org_id=$1 ORDER BY last_sync_at DESC LIMIT 1`,
+        [orgId]
+      );
+      const locRow = locRes.rows[0];
+      if (locRow) {
+        lat = typeof locRow["lat"] === "number" ? locRow["lat"] : null;
+        lng = typeof locRow["lng"] === "number" ? locRow["lng"] : null;
+        if (lat == null || lng == null) {
+          const raw = locRow["raw_data"] as Record<string, unknown> | null;
+          const latlng = raw?.["latlng"] as Record<string, unknown> | null;
+          if (latlng) {
+            lat = typeof latlng["latitude"]  === "number" ? latlng["latitude"]  : null;
+            lng = typeof latlng["longitude"] === "number" ? latlng["longitude"] : null;
+          }
+          if (lat == null) {
+            const addr = raw?.["storefrontAddress"] as Record<string, unknown> | null;
+            if (addr) {
+              const lines = (addr["addressLines"] as string[] | undefined) ?? [];
+              locationAddress = [...lines, addr["locality"], addr["administrativeArea"]].filter(Boolean).join(", ");
+            }
+          }
+        }
+      }
+    } catch { /* no GBP data */ }
+
+    if (lat == null && !locationAddress) {
+      res.json({ ok: true, suggestions: [], reason: "no_gbp_location" });
+      return;
+    }
+
+    // Geocode from address if lat/lng not stored
+    if ((lat == null || lng == null) && locationAddress) {
+      const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(locationAddress)}&key=${apiKey}`;
+      const geoData = await fetch(geoUrl).then(r => r.json()) as Record<string, unknown>;
+      const results = (geoData["results"] as unknown[]) ?? [];
+      if (results.length > 0) {
+        const loc = ((results[0] as Record<string, unknown>)["geometry"] as Record<string, unknown>)?.["location"] as Record<string, number> | undefined;
+        lat = loc?.["lat"] ?? null;
+        lng = loc?.["lng"] ?? null;
+      }
+    }
+
+    if (lat == null || lng == null) {
+      res.json({ ok: true, suggestions: [], reason: "no_gbp_location" });
+      return;
+    }
+
+    // 2. Org tracked keywords
+    let orgKeywords: string[] = [];
+    try {
+      const kwRes = await (req as OrgReq).orgDb(
+        `SELECT keyword FROM tracked_keywords WHERE org_id=$1 AND active=true LIMIT 20`,
+        [orgId]
+      );
+      orgKeywords = kwRes.rows.map((r: Record<string, unknown>) => String(r["keyword"] ?? "")).filter(Boolean);
+    } catch { /* non-fatal */ }
+
+    // 3. Nearby Places search
+    const searchKeyword = orgKeywords[0] ?? "business";
+    const nearbyUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=3000&keyword=${encodeURIComponent(searchKeyword)}&key=${apiKey}`;
+    const nearbyData = await fetch(nearbyUrl).then(r => r.json()) as Record<string, unknown>;
+    const places = (nearbyData["results"] as Record<string, unknown>[]) ?? [];
+
+    // 4. Score and shape
+    const suggestions = places.slice(0, 20).map(place => {
+      const threat = scoreThreat(place, orgKeywords);
+      const geom   = (place["geometry"] as Record<string, unknown>)?.["location"] as Record<string, number> | undefined;
+      return {
+        name:             String(place["name"] ?? ""),
+        address:          String(place["vicinity"] ?? place["formatted_address"] ?? ""),
+        lat:              geom?.["lat"] ?? null,
+        lng:              geom?.["lng"] ?? null,
+        rating:           typeof place["rating"]             === "number" ? place["rating"]             : null,
+        userRatingsTotal: typeof place["user_ratings_total"] === "number" ? place["user_ratings_total"] : 0,
+        placeId:          String(place["place_id"] ?? ""),
+        threat,
+        reason: threatReason(place, threat),
+      };
+    });
+    suggestions.sort((a, b) => {
+      const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
+      const d = (order[a.threat] ?? 2) - (order[b.threat] ?? 2);
+      return d !== 0 ? d : (b.userRatingsTotal ?? 0) - (a.userRatingsTotal ?? 0);
+    });
+
+    suggestionsCache.set(orgId, { ts: Date.now(), data: suggestions });
+    res.json({ ok: true, suggestions });
+  } catch (err) {
+    logger.warn({ err }, "[competitors/suggestions] failed");
+    res.json({ ok: true, suggestions: [], reason: "fetch_error" });
+  }
+});
+
 // ── DB row → public shape ──────────────────────────────────────────────────────
 function toPublic(row: Record<string, unknown>) {
   return {

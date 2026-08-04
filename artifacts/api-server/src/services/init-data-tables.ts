@@ -2510,6 +2510,60 @@ export async function initDataTables(): Promise<void> {
       END $$;
     `);
 
+    // ── user_activity_days — one row per org per day for accurate streak ─────────
+    // PK (org_id, user_id, day) ensures idempotent upsert on every dashboard request.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS user_activity_days (
+        org_id  TEXT NOT NULL DEFAULT 'default',
+        user_id TEXT NOT NULL DEFAULT 'default',
+        day     DATE NOT NULL,
+        PRIMARY KEY (org_id, user_id, day)
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS user_activity_days_org_idx ON user_activity_days(org_id, day DESC)`);
+    await run(client, `ALTER TABLE user_activity_days ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE user_activity_days NO FORCE ROW LEVEL SECURITY`);
+    await run(client, `DROP POLICY IF EXISTS "uad_select" ON "user_activity_days"`);
+    await run(client, `DROP POLICY IF EXISTS "uad_insert" ON "user_activity_days"`);
+    await run(client, `DROP POLICY IF EXISTS "uad_delete" ON "user_activity_days"`);
+    await run(client, `CREATE POLICY "uad_select" ON "user_activity_days" FOR SELECT USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "uad_insert" ON "user_activity_days" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "uad_delete" ON "user_activity_days" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+
+    // ── team_channels — persisted channel registry for team chat ─────────────────
+    // Channels survive even when they have zero messages.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS team_channels (
+        org_id     TEXT        NOT NULL DEFAULT 'default',
+        name       TEXT        NOT NULL,
+        created_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (org_id, name)
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS team_channels_org_idx ON team_channels(org_id)`);
+    // Back-fill: persist every channel that already has messages
+    await run(client, `
+      INSERT INTO team_channels (org_id, name, created_by, created_at)
+      SELECT DISTINCT org_id, channel, 'system', NOW()
+      FROM team_messages
+      WHERE NOT EXISTS (
+        SELECT 1 FROM team_channels tc
+        WHERE tc.org_id = team_messages.org_id AND tc.name = team_messages.channel
+      )
+      ON CONFLICT (org_id, name) DO NOTHING
+    `);
+    await run(client, `ALTER TABLE team_channels ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE team_channels NO FORCE ROW LEVEL SECURITY`);
+    await run(client, `DROP POLICY IF EXISTS "tc_select" ON "team_channels"`);
+    await run(client, `DROP POLICY IF EXISTS "tc_insert" ON "team_channels"`);
+    await run(client, `DROP POLICY IF EXISTS "tc_update" ON "team_channels"`);
+    await run(client, `DROP POLICY IF EXISTS "tc_delete" ON "team_channels"`);
+    await run(client, `CREATE POLICY "tc_select" ON "team_channels" FOR SELECT USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tc_insert" ON "team_channels" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tc_update" ON "team_channels" FOR UPDATE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tc_delete" ON "team_channels" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+
     logger.info("[init-data-tables] all tables, schema_migrations, missing-production-tables, P0-5 ALTERs, P1-2 type fixes done");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");

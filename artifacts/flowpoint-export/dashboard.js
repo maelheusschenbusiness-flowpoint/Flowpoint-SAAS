@@ -35,9 +35,18 @@
 
 // ─────────────────────────────────────────────────────────────────
 // DYNAMIC DATE LABELS
+// These use a locale-safe helper defined later; CUR_MONTH/PREV_MONTH are
+// re-evaluated at render time via getCurMonth()/getPrevMonth() below.
 // ─────────────────────────────────────────────────────────────────
-const CUR_MONTH = new Date().toLocaleDateString('fr-FR',{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+new Date().getFullYear();
-const PREV_MONTH = (function(){var d=new Date();d.setMonth(d.getMonth()-1);return d.toLocaleDateString('fr-FR',{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+d.getFullYear();}());
+function _initLocale() {
+  return ({'pt-br':'pt-BR',fr:'fr-FR',en:'en-US',es:'es-ES',de:'de-DE',it:'it-IT',pt:'pt-PT',nl:'nl-NL',pl:'pl-PL',sv:'sv-SE',ro:'ro-RO',cs:'cs-CZ'})[
+    String((typeof STATE !== 'undefined' && STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase()
+  ] || 'fr-FR';
+}
+const CUR_MONTH = new Date().toLocaleDateString(_initLocale(),{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+new Date().getFullYear();
+const PREV_MONTH = (function(){var d=new Date();d.setMonth(d.getMonth()-1);return d.toLocaleDateString(_initLocale(),{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+d.getFullYear();}());
+function getCurMonth() { return new Date().toLocaleDateString(getLocale(),{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+new Date().getFullYear(); }
+function getPrevMonth() { var d=new Date();d.setMonth(d.getMonth()-1);return d.toLocaleDateString(getLocale(),{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+d.getFullYear(); }
 
 // ─────────────────────────────────────────────────────────────────
 // PREVIEW_MODE — must be declared before any constant that uses it
@@ -141,6 +150,7 @@ const STATE = {
   channelMessages: null,
   msgAttachment: null,
   msgAttachmentFile: null,
+  teamChatPendingFiles: [], // pending attachment chips for team chat composer
   streak: parseInt(localStorage.getItem('fp:streak') || '0', 10),
   userScore: null, // computed from real API data in loadData
   selectedRowIndex: -1,
@@ -690,13 +700,13 @@ function fmtLastCheck(v) {
     const d = new Date(s);
     if (isNaN(d.getTime())) return null;
     const diffMs = Date.now() - d.getTime();
-    if (diffMs < 0 || diffMs > 365 * 86400000) return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'short' });
+    if (diffMs < 0 || diffMs > 365 * 86400000) return d.toLocaleDateString(getLocale(), { day:'2-digit', month:'short' });
     const mins = Math.round(diffMs / 60000);
     if (mins < 1) return 'à l\u2019instant';
     if (mins < 60) return mins + ' min';
     const hrs = Math.floor(mins / 60);
     if (hrs < 24) return hrs + ' h';
-    return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'short' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+    return d.toLocaleDateString(getLocale(), { day:'2-digit', month:'short' }) + ' ' + d.toLocaleTimeString(getLocale(), { hour:'2-digit', minute:'2-digit' });
   }
   return s;
 }
@@ -727,7 +737,7 @@ function _fmtInvDate(v) {
     const d = (!isNaN(n) && n > 1e9 && n < 2e10) ? new Date(n * 1000) : new Date(v);
     if (isNaN(d.getTime())) return String(v);
     if (typeof fmtDate === 'function') return fmtDate(d);
-    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return d.toLocaleDateString(getLocale(), { day: '2-digit', month: '2-digit', year: 'numeric' });
   } catch(e) { return String(v); }
 }
 
@@ -787,7 +797,7 @@ async function loadAuditHistory(audit) {
 
   const sorted = [...history].sort((a, b) => new Date(a.date) - new Date(b.date));
   const scores = sorted.map(h => h.score);
-  const dates = sorted.map(h => new Date(h.date).toLocaleDateString('fr-FR', { day:'2-digit', month:'short' }));
+  const dates = sorted.map(h => new Date(h.date).toLocaleDateString(getLocale(), { day:'2-digit', month:'short' }));
 
   // Trend line (linear regression)
   const n = scores.length;
@@ -862,7 +872,7 @@ async function loadAuditHistory(audit) {
             const delta = i < arr.length - 1 ? h.score - arr[i+1].score : null;
             const dc = delta === null ? '#94a3b8' : delta > 0 ? '#22c55e' : delta < 0 ? '#ef4444' : '#94a3b8';
             return `<tr>
-              <td style="padding:3px 0;color:var(--fp-text-muted)">${new Date(h.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'2-digit'})}</td>
+              <td style="padding:3px 0;color:var(--fp-text-muted)">${new Date(h.date).toLocaleDateString(getLocale(),{day:'2-digit',month:'short',year:'2-digit'})}</td>
               <td style="text-align:center;font-weight:700;color:${scoreColor(h.score)}">${h.score}</td>
               <td style="text-align:center;color:${dc};font-weight:600">${delta === null ? '—' : (delta > 0 ? '+' : '') + delta + 'pt'}</td>
               <td style="text-align:center"><span style="font-size:9px;padding:1px 5px;border-radius:3px;${(h.origin||'manual')==='auto'?'background:rgba(139,92,246,0.15);color:#8b5cf6':'background:var(--fp-track);color:var(--fp-text-faint)'}">${h.origin === 'auto' ? 'Auto' : 'Manuel'}</span></td>
@@ -878,7 +888,7 @@ async function loadAuditHistory(audit) {
     csvBtn.onclick = () => {
       const rows = sorted.map((h, i) => {
         const delta = i > 0 ? h.score - sorted[i-1].score : '';
-        return `${new Date(h.date).toLocaleDateString('fr-FR')},${h.score},${delta},${h.origin||'manual'},${h.speed||''}`;
+        return `${new Date(h.date).toLocaleDateString(getLocale())},${h.score},${delta},${h.origin||'manual'},${h.speed||''}`;
       });
       exportCsv('Date,Score SEO,Delta,Origine,Vitesse', rows, `historique-${audit.url.replace(/[^a-z0-9]/gi,'_').slice(0,30)}.csv`);
     };
@@ -918,7 +928,7 @@ async function bindAuditPanelBtns(audit) {
       exportBtn.textContent = 'Génération…';
       try {
         const host = (audit.url || '').replace(/^https?:\/\//, '').split('/')[0];
-        const name = `Audit ${host} — ${new Date().toLocaleDateString('fr-FR')}`;
+        const name = `Audit ${host} — ${new Date().toLocaleDateString(getLocale())}`;
         const res = await apiAction('POST', '/api/reports', { name, auditId: audit.id, format: 'PDF' });
         const r = res || { id: 'r' + Date.now(), name };
         STATE.reports.unshift(r);
@@ -1429,18 +1439,23 @@ async function loadData() {
     const _toChEntry = m => ({
       id: m.id || null,
       from: m.from, text: m.text,
-      time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '',
+      time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}) : '',
       createdAt: m.createdAt || null,
       read: true, self: !!m.self, attachmentUrl: m.attachmentUrl||null, attachmentName: m.attachmentName||null,
     });
-    STATE.channelMessages = {
-      general:  (Array.isArray(_allMsgs.general)  ? _allMsgs.general  : []).map(_toChEntry),
-      seo:      (Array.isArray(_allMsgs.seo)       ? _allMsgs.seo      : []).map(_toChEntry),
-      rapports: (Array.isArray(_allMsgs.rapports)  ? _allMsgs.rapports : []).map(_toChEntry),
-      support:  (Array.isArray(_allMsgs.support)   ? _allMsgs.support  : []).map(_toChEntry),
-    };
+    // Build channel map: include known channels + any extras from server response
+    const _knownChs = ['general','seo','rapports','support'];
+    const _serverChs = Object.keys(_allMsgs).filter(k => !_knownChs.includes(k));
+    STATE.channelMessages = {};
+    [..._knownChs, ..._serverChs].forEach(ch => {
+      STATE.channelMessages[ch] = (Array.isArray(_allMsgs[ch]) ? _allMsgs[ch] : []).map(_toChEntry);
+    });
+    // Populate STATE.channels from server data
+    if (!STATE.channels) STATE.channels = [];
+    [..._knownChs, ..._serverChs].forEach(ch => { if (!STATE.channels.includes(ch)) STATE.channels.push(ch); });
   } else if (!STATE.channelMessages) {
     STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
+    if (!STATE.channels) STATE.channels = ['general','seo','rapports','support'];
   }
   STATE.teamChatHistory = (STATE.channelMessages[STATE.msgChannel||'general'] || []).map(m => ({
     id: m.id || null, from: m.from, msg: m.text || (m.attachmentName ? `📎 ${m.attachmentName}` : ''),
@@ -1512,24 +1527,8 @@ async function loadData() {
     }
   }
 
-  // Compute streak from activity events when server prefs don't provide one.
-  // If today has no events yet (partial day), skip d=0 and start from yesterday
-  // so a user with a perfect chain through yesterday still sees a non-zero streak.
-  if (!STATE.streak && STATE.activityEvents.length > 0) {
-    const activeDays = new Set(STATE.activityEvents.map(e => String(e.createdAt || e.created_at || '').slice(0, 10)));
-    const _todayStr = new Date(Date.now()).toISOString().slice(0, 10);
-    const _startOffset = activeDays.has(_todayStr) ? 0 : 1; // skip today if no events yet
-    let _s = 0;
-    for (let _d = _startOffset; _d < 365; _d++) {
-      if (activeDays.has(new Date(Date.now() - _d * 86400000).toISOString().slice(0, 10))) { _s++; } else { break; }
-    }
-    if (_s > 0) {
-      STATE.streak = _s;
-      localStorage.setItem('fp:streak', String(_s));
-      // Persist computed streak to the server so it survives fresh browser sessions
-      apiAction('PATCH', '/api/me/prefs', { streak: _s }).catch(function() {});
-    }
-  }
+  // Streak is now fetched from /api/me/streak in Phase 5 — not computed client-side.
+  // Legacy localStorage value ignored to prevent stale data overriding server value.
 
   // ── Phase 5: API module data — all parallel ───────────────────────────────────
   await Promise.allSettled([
@@ -1563,11 +1562,14 @@ async function loadData() {
     // ── Billing subscription + plans ────────────────────────────────────────────
     apiFetch('/api/billing/subscription').then(r => {
       if (r && typeof r === 'object') {
-        const _rawDate = r.currentPeriodEnd || r.trialEndsAt || null;
-        const _nextDate = _rawDate ? new Date(_rawDate).toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit',year:'numeric'}) : null;
+        // nextBillingDate = trial end when trialing, else Stripe current_period_end
+        const _rawDate = r.nextBillingDate || r.currentPeriodEnd || r.trialEndsAt || null;
+        const _nextDate = _rawDate ? new Date(_rawDate).toLocaleDateString(getLocale(), {day:'2-digit',month:'2-digit',year:'numeric'}) : null;
+        const _isTrialing = (r.subscriptionStatus || r.status || '').toLowerCase() === 'trialing';
+        const _nextLabel  = _isTrialing ? "Fin d'essai" : 'Prochaine facturation';
         const _planAmtMap = { standard:29, pro:79, ultra:149, agency:149 };
         const _nextAmount = r.nextAmount ?? _planAmtMap[(r.plan||'').toLowerCase()] ?? null;
-        STATE.billing = { ...(STATE.billing || {}), ...r, nextDate: _nextDate, nextAmount: _nextAmount };
+        STATE.billing = { ...(STATE.billing || {}), ...r, nextDate: _nextDate, nextDateLabel: _nextLabel, nextAmount: _nextAmount };
       }
     }).catch(() => {}),
     apiFetch('/api/billing/plans').then(r => {
@@ -1608,6 +1610,27 @@ async function loadData() {
   ]);
 
   STATE.growthObjectives = await apiFetch('/api/growth/objectives').then(r => Array.isArray(r) ? r : []).catch(() => []);
+
+  // ── Fix 5: Real streak from /api/me/streak ───────────────────────────────────
+  // Always fetch the authoritative streak from the backend — never compute client-side.
+  await apiFetch('/api/me/streak').then(function(r) {
+    if (r && typeof r === 'object') {
+      if (typeof r.current === 'number') STATE.streak = r.current;
+      if (typeof r.best === 'number') STATE.streakBest = r.best;
+    }
+  }).catch(function() {});
+
+  // ── Fix 4: Progression & achievements from /api/progression ─────────────────
+  await apiFetch('/api/progression').then(function(r) {
+    if (r && typeof r === 'object') {
+      STATE.progression = r;
+      // Sync counts from real API into derived STATE fields if not already set
+      if (typeof r.streak === 'object' && r.streak) {
+        if (typeof r.streak.current === 'number') STATE.streak = r.streak.current;
+        if (typeof r.streak.best === 'number') STATE.streakBest = r.streak.best;
+      }
+    }
+  }).catch(function() {});
 
   // Apply pinned state
   STATE.audits   = STATE.audits.map(a => ({ ...a, pinned: !!(STATE.pinned['audit_'+a.id]) }));
@@ -1754,12 +1777,19 @@ function scoreLabel(s) { return s >= 70 ? 'Bon' : s >= 40 ? 'Moyen' : 'Critique'
 function impactColor(i) { return i === 'Très élevé' ? '#ef4444' : i === 'Élevé' ? '#f59e0b' : '#22c55e'; }
 function statusBadgeColor(s) { return s === 'up' ? '#22c55e' : s === 'down' ? '#ef4444' : '#f59e0b'; }
 function statusLabel(s) { return s === 'up' ? 'UP' : s === 'down' ? 'DOWN' : 'LENT'; }
+
+// ── getLocale: central BCP-47 locale resolver for all toLocaleDateString / toLocaleString calls ──
+// Always reads from the live setting so locale changes propagate without reload.
+function getLocale() {
+  return ({ 'pt-br':'pt-BR', fr:'fr-FR', en:'en-US', es:'es-ES', de:'de-DE', it:'it-IT', pt:'pt-PT', nl:'nl-NL', pl:'pl-PL', sv:'sv-SE', ro:'ro-RO', cs:'cs-CZ' })[
+    String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase()
+  ] || 'fr-FR';
+}
+
 function relDate(d) {
   const fmt = (STATE.settings && STATE.settings.dateFormat) || 'DD/MM/YYYY';
   const dt = new Date(d);
-  const locale = ({ 'pt-br':'pt-BR', fr:'fr-FR', en:'en-US', es:'es-ES', de:'de-DE', it:'it-IT', pt:'pt-PT', nl:'nl-NL', pl:'pl-PL', sv:'sv-SE', ro:'ro-RO', cs:'cs-CZ' })[
-    String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase()
-  ] || 'fr-FR';
+  const locale = getLocale();
   if (fmt === 'MM/DD/YYYY') return dt.toLocaleDateString('en-US');
   if (fmt === 'YYYY-MM-DD') return dt.toISOString().slice(0, 10);
   return dt.toLocaleDateString(locale);
@@ -2536,6 +2566,13 @@ function uptime30SparklineSVG(monitorId) {
 // ─────────────────────────────────────────────────────────────────
 function showToast(type, msg) {
   const id = 't' + Date.now() + Math.random().toString(36).slice(2);
+  // Translate the message through the active catalog (French source → target language)
+  var _toastCatalog = (typeof FP_I18N !== 'undefined' && FP_I18N) ? FP_I18N : null;
+  var _toastLang = String((typeof STATE !== 'undefined' && STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase();
+  var _toastLookup = _toastCatalog && _toastLang !== 'fr' ? (_toastCatalog[_toastLang] || null) : null;
+  var _msgStr = String(msg);
+  if (_toastLookup && _toastLookup[_msgStr.trim()]) _msgStr = _toastLookup[_msgStr.trim()];
+  var _closeLabel = (_toastLookup && _toastLookup['Fermer']) ? _toastLookup['Fermer'] : 'Fermer';
   const icons = {
     success: '<polyline points="20 6 9 17 4 12"/>',
     error: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
@@ -2546,7 +2583,7 @@ function showToast(type, msg) {
   const toast = document.createElement('div');
   toast.className = `fp-toast ${type}`;
   toast.id = id;
-  toast.innerHTML = `${icon}<span>${escHtml(String(msg))}</span><button class="fp-toast-close" aria-label="Fermer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
+  toast.innerHTML = `${icon}<span>${escHtml(_msgStr)}</span><button class="fp-toast-close" aria-label="${escHtml(_closeLabel)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
   toast.querySelector('.fp-toast-close').onclick = () => removeToast(id);
   $('#fp-toast-container').prepend(toast);
   setTimeout(() => removeToast(id), 3500);
@@ -2993,8 +3030,59 @@ function openNewChannelPanel() {
   const html = '<div class="fp-form-group"><label class="fp-form-label">Nom du canal</label><input class="fp-input" id="channel-name" placeholder="ex: stratégie, client-martin"/></div>'
     + '<div class="fp-form-group"><label class="fp-form-label">Visibilité</label><select class="fp-input" id="channel-type"><option value="public">Public — toute l\'équipe</option><option value="private">Privé — sur invitation</option></select></div>'
     + '<div class="fp-form-group"><label class="fp-form-label">Membres (optionnel)</label><input class="fp-input" id="channel-members" placeholder="sophie@agence.fr, mael@agence.fr"/></div>'
-    + '<button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" onclick="const n=document.getElementById(\'channel-name\')?.value?.trim();if(!n){showToast(\'warning\',\'Nommez le canal\');return;}showToast(\'success\',\'Canal #\'+n+\' créé !\');closeFloatPanel();">Créer le canal</button>';
+    + '<button class="fp-btn fp-btn-primary" id="create-channel-btn" style="width:100%;margin-top:8px">Créer le canal</button>';
   openFloatPanel('Nouveau canal', html);
+  // bind after DOM insertion
+  setTimeout(() => {
+    document.getElementById('create-channel-btn')?.addEventListener('click', async () => {
+      const rawName = document.getElementById('channel-name')?.value?.trim() || '';
+      if (!rawName) { showToast('warning', 'Nommez le canal'); return; }
+      // Normalize: strip leading #, lowercase
+      const name = rawName.replace(/^#+/, '').toLowerCase().replace(/\s+/g, '-');
+      const type = document.getElementById('channel-type')?.value || 'public';
+      const btn = document.getElementById('create-channel-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Création…'; }
+      try {
+        const r = await apiAction('POST', '/api/team/channels', { name, type }).catch(() => null);
+        if (r && (r.ok || r.id || r.name)) {
+          showToast('success', 'Canal #' + name + ' créé !');
+          // Ensure channelMessages has an entry for the new channel
+          if (!STATE.channelMessages) STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
+          if (!STATE.channelMessages[name]) STATE.channelMessages[name] = [];
+          // Add to STATE.channels list (create if missing)
+          if (!STATE.channels) STATE.channels = ['general','seo','rapports','support'];
+          if (!STATE.channels.includes(name)) STATE.channels.push(name);
+          // Switch to the new channel
+          STATE.msgChannel = name;
+          closeFloatPanel();
+          // Re-fetch channel list from server (backend persists channels)
+          const fresh = await fetch('/api/team/channels', _fpSessionFetchOptions()).then(r2 => r2.ok ? r2.json() : null).catch(() => null);
+          if (fresh) {
+            const list = Array.isArray(fresh) ? fresh : (fresh.channels || []);
+            list.forEach(ch => {
+              const cname = (ch.name || ch).replace(/^#+/, '').toLowerCase();
+              if (cname && !STATE.channels.includes(cname)) STATE.channels.push(cname);
+              if (!STATE.channelMessages[cname]) STATE.channelMessages[cname] = [];
+            });
+          }
+          render();
+        } else {
+          // Backend may not have this endpoint yet — add locally and continue
+          if (!STATE.channelMessages) STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
+          if (!STATE.channelMessages[name]) STATE.channelMessages[name] = [];
+          if (!STATE.channels) STATE.channels = ['general','seo','rapports','support'];
+          if (!STATE.channels.includes(name)) STATE.channels.push(name);
+          STATE.msgChannel = name;
+          showToast('success', 'Canal #' + name + ' créé !');
+          closeFloatPanel();
+          render();
+        }
+      } catch(e) {
+        showToast('error', 'Erreur lors de la création du canal');
+        if (btn) { btn.disabled = false; btn.textContent = 'Créer le canal'; }
+      }
+    });
+  }, 50);
 }
 window.openNewChannelPanel = openNewChannelPanel;
 
@@ -3020,43 +3108,79 @@ function openAssignTaskModal() {
   openFloatPanel('Assigner une tâche', html);
 }
 
-async function handleChatAttach(input) {
+// _renderTeamChatPendingChips: inject pending-file chips above/inside the composer inputs
+function _renderTeamChatPendingChips() {
+  const pending = STATE.teamChatPendingFiles || [];
+  ['fp-team-chat-attach-chips','fp-team-chat-attach-chips-main'].forEach(chipId => {
+    const el = document.getElementById(chipId);
+    if (!el) return;
+    if (pending.length === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    el.style.display = 'flex';
+    el.innerHTML = pending.map((f, i) => {
+      const sz = f.size > 1024*1024 ? (f.size/(1024*1024)).toFixed(1)+' MB' : Math.round(f.size/1024)+' KB';
+      return `<div style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px 3px 10px;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.35);border-radius:20px;font-size:11px;color:#2563EB;max-width:220px;overflow:hidden">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${escHtml(f.name)}">${escHtml(f.name)}</span>
+        <span style="color:#64748b;flex-shrink:0">${sz}</span>
+        <button data-chip-idx="${i}" style="background:none;border:none;cursor:pointer;color:#64748b;padding:0 2px;display:flex;align-items:center;flex-shrink:0" title="Retirer" aria-label="Retirer la pièce jointe">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>`;
+    }).join('');
+    el.querySelectorAll('[data-chip-idx]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.chipIdx, 10);
+        STATE.teamChatPendingFiles = (STATE.teamChatPendingFiles || []).filter((_, j) => j !== idx);
+        _renderTeamChatPendingChips();
+      });
+    });
+  });
+}
+window._renderTeamChatPendingChips = _renderTeamChatPendingChips;
+
+function handleChatAttach(input) {
   const files = Array.from(input.files || []);
   if (!files.length) return;
+  // Stage files as pending chips — user can review before send
+  if (!STATE.teamChatPendingFiles) STATE.teamChatPendingFiles = [];
+  files.forEach(f => STATE.teamChatPendingFiles.push({ name: f.name, size: f.size, file: f }));
+  input.value = ''; // reset so same file can be re-selected
+  // Show chips immediately without full re-render
+  _renderTeamChatPendingChips();
+}
+window.handleChatAttach = handleChatAttach;
+
+// _sendTeamChatPending: used by team chat send buttons to flush pending files
+async function _sendTeamChatPending(typedText, channel) {
   const from = STATE?.me?.firstName || STATE?.me?.name?.split(' ')[0] || 'Vous';
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const pending = STATE.teamChatPendingFiles || [];
+  if (!STATE.channelMessages) STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
+  if (!STATE.channelMessages[channel]) STATE.channelMessages[channel] = [];
 
-  // Capture any typed text from either chat input (team page or sub-page)
-  const textInput = document.getElementById('team-chat-input');
-  const typedText = (textInput && textInput.value.trim()) ? textInput.value.trim() : '';
-  const channel = STATE.msgChannel || 'general';
-
-  for (const file of files) {
+  for (const pf of pending) {
     try {
       const reader = new FileReader();
       const content = await new Promise((resolve, reject) => {
         reader.onload = () => resolve(String(reader.result).split(',')[1]);
         reader.onerror = reject;
-        reader.readAsDataURL(file);
+        reader.readAsDataURL(pf.file);
       });
       const r = await apiAction('POST', '/api/team/files', {
-        name: file.name,
-        type: file.type || file.name.split('.').pop(),
-        size: file.size,
+        name: pf.name,
+        type: pf.file.type || pf.name.split('.').pop(),
+        size: pf.size,
         content: content,
         sharedBy: from,
       }).catch(() => null);
       if (r && r.ok) {
         const fileId = r.file?.id;
         const attachmentUrl  = fileId ? `/api/team/files/${fileId}/content` : null;
-        const attachmentName = r.file?.name || file.name;
-        const attachMsg = typedText ? `${typedText}` : '';
-        // Sync to channelMessages (unified state)
-        if (!STATE.channelMessages) STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
-        if (!STATE.channelMessages[channel]) STATE.channelMessages[channel] = [];
+        const attachmentName = r.file?.name || pf.name;
+        const attachMsg = typedText || '';
         STATE.channelMessages[channel].push({ from, text: attachMsg, time, read: true, self: true, attachmentUrl, attachmentName });
-        // Keep teamChatHistory in sync for backward compat
         STATE.teamChatHistory.push({ from, msg: attachMsg || `📎 ${attachmentName}`, time, attachmentUrl, attachmentName });
         try {
           await apiAction('POST', '/api/team/messages', {
@@ -3066,25 +3190,12 @@ async function handleChatAttach(input) {
           });
         } catch(_) {}
       } else {
-        showToast('error', `Échec de l'envoi de ${file.name}`);
+        showToast('error', `Échec de l'envoi de ${pf.name}`);
       }
-    } catch(e) { showToast('error', `Erreur envoi ${file.name}`); }
+    } catch(e) { showToast('error', `Erreur envoi ${pf.name}`); }
   }
-
-  // Clear both the file input and any typed text
-  input.value = '';
-  if (textInput) textInput.value = '';
-
-  if (STATE.subRoute === 'chat') {
-    navigateSub('chat');
-    setTimeout(() => { const msgs = document.getElementById('team-chat-msgs'); if (msgs) msgs.scrollTop = msgs.scrollHeight; }, 60);
-  } else {
-    render();
-    setTimeout(() => { const msgs = document.getElementById('team-chat-msgs'); if (msgs) msgs.scrollTop = msgs.scrollHeight; }, 60);
-  }
-  showToast('success', `${files.length} fichier(s) envoyé(s) dans le chat !`);
+  STATE.teamChatPendingFiles = [];
 }
-window.handleChatAttach = handleChatAttach;
 
 // ─────────────────────────────────────────────────────────────────
 // EMOJI PICKER
@@ -3224,7 +3335,7 @@ function relTimeActivity(dateStr) {
   if (diff < 3600) return `Il y a ${Math.floor(diff/60)} min`;
   if (diff < 86400) return `Il y a ${Math.floor(diff/3600)}h`;
   if (diff < 172800) return 'Hier';
-  return new Date(dateStr).toLocaleDateString('fr-FR', { day:'2-digit', month:'short' });
+  return new Date(dateStr).toLocaleDateString(getLocale(), { day:'2-digit', month:'short' });
 }
 
 function countActivityUnread() {
@@ -3730,9 +3841,15 @@ function _fpApplyLayout() {
 // ─── GOOGLE MAPS ──────────────────────────────────────────────
 let _gmapsKey = null;
 let _gmapsLoading = false;
+let _gmapsKeyFetchedAt = 0; // timestamp of last fetch; retry if empty after 30s
 
 async function _fetchGmapsKey() {
-  if (_gmapsKey !== null) return _gmapsKey;
+  // Return cached non-empty key immediately
+  if (_gmapsKey) return _gmapsKey;
+  // Retry empty-key fetches at most once per 30s (avoids hammering on re-nav)
+  const now = Date.now();
+  if (_gmapsKey === '' && (now - _gmapsKeyFetchedAt) < 30000) return _gmapsKey;
+  _gmapsKeyFetchedAt = now;
   try {
     const r = await fetch('/api/maps/config', _fpSessionFetchOptions());
     if (r.ok) { const d = await r.json(); _gmapsKey = d.apiKey || ''; }
@@ -3825,6 +3942,8 @@ function loadGoogleMaps(cb) {
 function initLocalSEOMap() {
   const el = document.getElementById('fp-gmap');
   if (!el) return;
+  // If google.maps is already loaded but _gmapsLoading is stale-true, reset it
+  if (typeof google !== 'undefined' && google.maps && _gmapsLoading) _gmapsLoading = false;
   loadGoogleMaps(() => {
     const mapEl = document.getElementById('fp-gmap');
     if (!mapEl || mapEl._mapInited) return;
@@ -4233,7 +4352,7 @@ function renderNotifications() {
         <div class="fp-notif-body" style="flex:1;min-width:0">
           <div class="fp-notif-item-title">${escHtml(n.title||'')}</div>
           <div class="fp-notif-item-desc">${escHtml(n.message || n.desc || '')}</div>
-          <div class="fp-notif-item-time">${(function(v){if(!v)return '';try{var d=new Date(v);return isNaN(d.getTime())?'':d.toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}})(n.createdAt||n.time)}</div>
+          <div class="fp-notif-item-time">${(function(v){if(!v)return '';try{var d=new Date(v);return isNaN(d.getTime())?'':d.toLocaleDateString(getLocale(),{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}})(n.createdAt||n.time)}</div>
         </div>
         <button class="fp-notif-hide-btn" data-nid="${escHtml(String(nid))}" title="${isHid?'Démasquer':'Masquer'}" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--fp-text-faint);font-size:10px;padding:2px 6px;border-radius:6px;transition:background 0.15s;white-space:nowrap">${isHid?'↩ Voir':'Masquer'}</button>
       </div>`;
@@ -4675,7 +4794,7 @@ function renderOverview() {
   var _gscPrev    = STATE.overview?.organicGrowthPct ?? null;
   var _convCurr   = conversionRate != null ? conversionRate.toFixed(2) + '%' : '—';
   var _localCurr  = localScore > 0 ? localScore + '%' : '—';
-  var _traficCurr = _gscClicks != null ? _gscClicks.toLocaleString('fr-FR') + ' clics' : '—';
+  var _traficCurr = _gscClicks != null ? _gscClicks.toLocaleString(getLocale()) + ' clics' : '—';
   // Forecast labels: real data only — never synthetic extrapolation
   var _seoFcast   = _ah.length >= 1 ? (Math.min(100, _ah[_ah.length-1] + (_ah.length >= 2 ? Math.round((_ah[_ah.length-1] - _ah[0]) / Math.max(_ah.length-1,1)) : 0)) + '/100') : (avg > 0 ? avg + '/100' : '—');
   var _traficFcast = _gscClicks != null && _gscPrev != null ? ((_gscPrev > 0 ? '+' : '') + _gscPrev + '%') : '—';
@@ -4699,13 +4818,25 @@ function renderOverview() {
     { label:'Local Pack', current:_localCurr,  forecast:'—', unit:'pos', color:'#f59e0b', data:_localData, loading:!_ovReturned, noData:_ovReturned && _localData == null },
   ];
 
-  const achievements = [
-    { icon:'🏆', title: missionsCompleted > 0 ? missionsCompleted + ' mission' + (missionsCompleted > 1 ? 's' : '') + ' complétée' + (missionsCompleted > 1 ? 's' : '') : 'Aucune mission complétée', desc: missionsCompleted > 0 ? 'Continuez sur votre lancée !' : 'Créez votre première mission', color:'#f59e0b', unlocked: missionsCompleted > 0 },
-    { icon:'🔥', title: realStreak > 0 ? 'Streak ' + realStreak + ' jour' + (realStreak > 1 ? 's' : '') : 'Streak à démarrer', desc: realStreak > 0 ? 'Optimisation quotidienne active' : 'Connectez-vous chaque jour pour cumuler', color:'#ef4444', unlocked: realStreak > 0 },
-    { icon:'⭐', title:'Score 70+ atteint',       desc:'Benchmark professionnel franchi', color:'#22c55e', unlocked: avg >= 70 },
-    { icon:'🚀', title: isUltra ? 'Plan Ultra actif' : 'Passer en Ultra', desc: isUltra ? 'Accès complet à toutes les fonctionnalités avancées' : 'Prochain objectif : plan Ultra', color:'#8b5cf6', unlocked: isUltra },
-    { icon:'💎', title:'100% Uptime — 30 jours', desc:'Stabilité monitoring exemplaire', color:'#06b6d4', unlocked: down === 0 && totalMonitors > 0 },
-  ];
+  // Fix 4: use real progression achievements if available
+  const _ovProgData = STATE.progression || null;
+  const _ovProgAch  = _ovProgData && Array.isArray(_ovProgData.achievements) ? _ovProgData.achievements : null;
+  // Fix 5: always use server streak
+  const achievements = _ovProgAch
+    ? _ovProgAch.map(a => ({
+        icon: a.key === 'first_audit' ? '🏆' : a.key === 'streak_7' ? '🔥' : a.key === 'score_70' ? '⭐' : a.key === 'elite' ? '🚀' : a.key === 'uptime' ? '💎' : '🎖️',
+        title: a.label,
+        desc: a.achieved ? 'Débloqué !' : (a.progress != null && a.target != null ? a.progress + '/' + a.target : 'En cours'),
+        color: a.achieved ? '#22c55e' : '#64748b',
+        unlocked: !!a.achieved,
+      }))
+    : [
+      { icon:'🏆', title: missionsCompleted > 0 ? missionsCompleted + ' mission' + (missionsCompleted > 1 ? 's' : '') + ' complétée' + (missionsCompleted > 1 ? 's' : '') : 'Aucune mission complétée', desc: missionsCompleted > 0 ? 'Continuez sur votre lancée !' : 'Créez votre première mission', color:'#f59e0b', unlocked: missionsCompleted > 0 },
+      { icon:'🔥', title: realStreak > 0 ? 'Streak ' + realStreak + ' jour' + (realStreak > 1 ? 's' : '') : 'Streak à démarrer', desc: realStreak > 0 ? 'Optimisation quotidienne active' : 'Connectez-vous chaque jour pour cumuler', color:'#ef4444', unlocked: realStreak > 0 },
+      { icon:'⭐', title:'Score 70+ atteint',       desc:'Benchmark professionnel franchi', color:'#22c55e', unlocked: avg >= 70 },
+      { icon:'🚀', title: isUltra ? 'Plan Ultra actif' : 'Passer en Ultra', desc: isUltra ? 'Accès complet à toutes les fonctionnalités avancées' : 'Prochain objectif : plan Ultra', color:'#8b5cf6', unlocked: isUltra },
+      { icon:'💎', title:'100% Uptime — 30 jours', desc:'Stabilité monitoring exemplaire', color:'#06b6d4', unlocked: down === 0 && totalMonitors > 0 },
+    ];
 
   const quickActions = [
     { label:'Audit SEO',         icon:'🔍', color:'#2563EB', action:"navigate('audits')" },
@@ -4866,10 +4997,10 @@ function renderOverview() {
       const hasGa4Data = _ga4Sess != null || _ga4Conv != null;
       if (!hasGscData && !hasGa4Data) return '';
       const kpis = [];
-      if (_gscClicks != null) kpis.push({ label:'Clics GSC', val:_gscClicks.toLocaleString('fr-FR'), icon:'🔍', color:'#2563EB', sub:'30 derniers jours' });
-      if (_gscImpr != null) kpis.push({ label:'Impressions', val:_gscImpr.toLocaleString('fr-FR'), icon:'👁', color:'#8b5cf6', sub:'30 derniers jours' });
-      if (_ga4Sess != null) kpis.push({ label:'Sessions GA4', val:_ga4Sess.toLocaleString('fr-FR'), icon:'📊', color:'#22c55e', sub:'30 derniers jours' });
-      if (_ga4Conv != null) kpis.push({ label:'Conversions', val:_ga4Conv.toLocaleString('fr-FR'), icon:'🎯', color:'#f59e0b', sub:'30 derniers jours' });
+      if (_gscClicks != null) kpis.push({ label:'Clics GSC', val:_gscClicks.toLocaleString(getLocale()), icon:'🔍', color:'#2563EB', sub:'30 derniers jours' });
+      if (_gscImpr != null) kpis.push({ label:'Impressions', val:_gscImpr.toLocaleString(getLocale()), icon:'👁', color:'#8b5cf6', sub:'30 derniers jours' });
+      if (_ga4Sess != null) kpis.push({ label:'Sessions GA4', val:_ga4Sess.toLocaleString(getLocale()), icon:'📊', color:'#22c55e', sub:'30 derniers jours' });
+      if (_ga4Conv != null) kpis.push({ label:'Conversions', val:_ga4Conv.toLocaleString(getLocale()), icon:'🎯', color:'#f59e0b', sub:'30 derniers jours' });
       return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px">
         ${kpis.map(k=>`<div class="fp-card fp-card-sm" style="padding:12px 14px">
           <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:4px;display:flex;align-items:center;gap:4px">
@@ -5121,7 +5252,7 @@ function renderOverview() {
       <div class="fp-card" style="background:linear-gradient(135deg,rgba(37,99,235,0.06),var(--fp-bg-card, rgba(5,8,16,0.9)));border:1px solid rgba(37,99,235,0.15);display:flex;flex-direction:column">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
           <div style="font-size:18px">📋</div>
-          <div class="fp-card-title" style="margin-bottom:0">Daily Digest — ${new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</div>
+          <div class="fp-card-title" style="margin-bottom:0">Daily Digest — ${new Date().toLocaleDateString(getLocale(),{weekday:'long',day:'numeric',month:'long'})}</div>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;flex:1">
@@ -5358,7 +5489,7 @@ function renderAudits() {
       </div>
       <div style="display:flex;flex-direction:column;gap:5px">
         ${STATE.auditUpcoming.map(s => {
-          const nextDate = s.nextRun ? new Date(s.nextRun).toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'short'}) : '—';
+          const nextDate = s.nextRun ? new Date(s.nextRun).toLocaleDateString(getLocale(),{weekday:'short',day:'2-digit',month:'short'}) : '—';
           const freqLabel = { daily:'Quotidien', weekly:'Hebdo', monthly:'Mensuel' }[s.frequency] || s.frequency;
           return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--fp-border)">
             <span style="color:var(--fp-text-soft);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(s.url)}">${escHtml(s.url)}</span>
@@ -5503,7 +5634,7 @@ function renderMonitors() {
   ).toFixed(1);
 
   const _tlNow = new Date();
-  const _tlFmt = (d) => d.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+  const _tlFmt = (d) => d.toLocaleTimeString(getLocale(), {hour:'2-digit', minute:'2-digit'});
   const timeline = (STATE.monitors || []).slice(0, 6).map((m, i) => ({
     time: _tlFmt(new Date(_tlNow.getTime() - (i * 90 + 15) * 60000)),
     type: m.status === 'down' ? 'down' : m.status === 'warn' ? 'alert' : 'up',
@@ -5802,8 +5933,8 @@ function renderMissionDetail(m) {
   const steps = m.steps || [];
   const done = steps.filter(s => s.done).length;
   const pct = steps.length ? Math.round((done / steps.length) * 100) : 0;
-  const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e', open:'#6366f1' };
-  const statusLabels = { todo:'À faire', inprogress:'En cours', done:'Terminé', open:'Ouverte' };
+  const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e', open:'#6366f1', in_progress:'#2563EB' };
+  const statusLabels = { todo:'À faire', inprogress:'En cours', done:'Terminé', open:'À faire', in_progress:'En cours', completed:'Terminée' };
   return `
     <div class="fp-mission-detail-header">
       <div class="fp-mission-detail-icon">${svgIcon('target').replace('stroke="currentColor"','stroke="#2563EB"')}</div>
@@ -5913,8 +6044,8 @@ function renderMissions() {
       return new Date(a.dueDate||a.date||0) - new Date(b.dueDate||b.date||0);
     });
 
-  const statusLabels = { todo:'À démarrer', inprogress:'En cours', done:'Complétées', open:'Ouverte' };
-  const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e', open:'#6366f1' };
+  const statusLabels = { todo:'À démarrer', inprogress:'En cours', done:'Complétées', open:'À faire', in_progress:'En cours', completed:'Terminée' };
+  const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e', open:'#6366f1', in_progress:'#2563EB' };
   const cats = ['SEO','Performance','Conversion','Local SEO','Concurrent'];
 
   const quickWins = STATE.missions.filter(m => m.aiQuickWin && m.status === 'todo').slice(0, 4);
@@ -6287,7 +6418,7 @@ function renderMissionCalendar(missions) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const prevMonthDays = new Date(year, month, 0).getDate();
-  const monthName = new Date(year, month, 1).toLocaleDateString('fr-FR', { month: 'long' });
+  const monthName = new Date(year, month, 1).toLocaleDateString(getLocale(), { month: 'long' });
   const dayNames = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
   const missionsByDate = {};
   missions.forEach(m => { if (m.date) { if (!missionsByDate[m.date]) missionsByDate[m.date] = []; missionsByDate[m.date].push(m); } });
@@ -6393,7 +6524,7 @@ function renderMissionCalendar(missions) {
 
 function renderDailyAgenda(dateStr, missions) {
   const [y, mo, d] = dateStr.split('-').map(Number);
-  const label = new Date(y, mo - 1, d).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const label = new Date(y, mo - 1, d).toLocaleDateString(getLocale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const dayMissions = (missions || []).filter(m => m.date === dateStr);
   const dayCes = ((STATE.calendarEvents || []).filter(ce => ce.date === dateStr)).slice().sort((a, b) => {
     const ta = a.startTime || 'zz', tb = b.startTime || 'zz';
@@ -6427,8 +6558,8 @@ function renderDailyAgenda(dateStr, missions) {
     </div>`;
   }).join('');
   const missionItems = dayMissions.map(m => {
-    const statusColor = m.status === 'done' ? '#22c55e' : m.status === 'inprogress' ? '#f59e0b' : '#2563EB';
-    const statusLabel = m.status === 'done' ? 'Terminé' : m.status === 'inprogress' ? 'En cours' : 'À faire';
+    const statusColor = (m.status === 'done' || m.status === 'completed') ? '#22c55e' : (m.status === 'inprogress' || m.status === 'in_progress') ? '#f59e0b' : '#2563EB';
+    const statusLabel = (m.status === 'done' || m.status === 'completed') ? 'Terminé' : (m.status === 'inprogress' || m.status === 'in_progress') ? 'En cours' : 'À faire';
     return `<div class="fp-agenda-mission-item" data-mission-id="${m.id}" style="display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid var(--fp-border);cursor:pointer;transition:background .15s" onmouseover="this.style.background='var(--fp-surface-hover,rgba(0,0,0,0.03))'" onmouseout="this.style.background=''">
       <div style="flex-shrink:0;width:3px;border-radius:3px;background:${statusColor};align-self:stretch;margin:2px 0"></div>
       <div style="flex:1;min-width:0">
@@ -6689,7 +6820,7 @@ function renderReports() {
     { id:'r4', name:'Export données CSV — Audits',     date:'28/04/2026', type:'CSV', pages:1,  shared:false, size:'34 KB',  client:'Interne', score:'—',   color:'#64748b' },
   ] : [];
   const allReports = _stRepts.length > 0
-    ? _stRepts.map(r=>({ id:r.id||r._id||'r'+Math.random(), name:r.name||r.title||'Rapport', date:r.date||r.createdAt?new Date(r.date||r.createdAt).toLocaleDateString('fr-FR'):'—', type:r.type||r.format||'PDF', pages:r.pages??null, shared:r.shared||r.isShared||false, size:r.size||null, client:r.client||r.clientName||'Interne', color:r.color||'#2563EB' }))
+    ? _stRepts.map(r=>({ id:r.id||r._id||'r'+Math.random(), name:r.name||r.title||'Rapport', date:r.date||r.createdAt?new Date(r.date||r.createdAt).toLocaleDateString(getLocale()):'—', type:r.type||r.format||'PDF', pages:r.pages??null, shared:r.shared||r.isShared||false, size:r.size||null, client:r.client||r.clientName||'Interne', color:r.color||'#2563EB' }))
     : _DEMO_AR;
 
   const _scheduledRaw = STATE.scheduledReports || STATE.reportSchedules || null;
@@ -6819,7 +6950,7 @@ function renderReports() {
       if (!STATE.audits || STATE.audits.length === 0) return null;
       const sorted = [...STATE.audits].sort((a,b) => new Date(a.date) - new Date(b.date));
       const monthly = {};
-      sorted.forEach(a => { const m = new Date(a.date).toLocaleDateString('fr-FR',{month:'short'}); if (!monthly[m]) monthly[m] = []; monthly[m].push(a.score||0); });
+      sorted.forEach(a => { const m = new Date(a.date).toLocaleDateString(getLocale(),{month:'short'}); if (!monthly[m]) monthly[m] = []; monthly[m].push(a.score||0); });
       const entries = Object.entries(monthly).slice(-5);
       return entries.length >= 2 ? entries : null;
     })();
@@ -6935,7 +7066,7 @@ function renderReports() {
     const _downMon = (STATE.monitors || []).filter(m => m.status !== 'up');
     const incidents = _downMon.map(m => ({
       site: (m.url||m.name||'').replace(/^https?:\/\//,''),
-      date: new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}) + ' · ' + new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),
+      date: new Date().toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}) + ' · ' + new Date().toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}),
       dur: fmtLastCheck(m.lastCheck) || '—',
       impact: m.status === 'down' ? 'Critique' : 'Moyen',
       cause: m.status === 'down' ? 'Site inaccessible — vérification requise' : `Latence élevée : ${m.latency||'—'}ms`,
@@ -7143,7 +7274,7 @@ function renderReports() {
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Taux de conversion', displayStat(STATE.overview?.conversionRate ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : null, '1.06%'), PREVIEW_MODE ? '+0.12% vs M-1' : 'Connectez analytics', 'neutral')}
         ${statCard('Clients convertis', displayStat(STATE.overview?.clientsPerMonth, '134'), PREVIEW_MODE ? 'ce mois' : 'Connectez analytics', 'neutral')}
-        ${statCard('Revenue capturé', displayStat(STATE.overview?.revenue ? STATE.overview.revenue.toLocaleString('fr-FR') + '€' : null, '3 220€'), PREVIEW_MODE ? 'estimé ce mois' : 'Connectez analytics', 'neutral')}
+        ${statCard('Revenue capturé', displayStat(STATE.overview?.revenue ? STATE.overview.revenue.toLocaleString(getLocale()) + '€' : null, '3 220€'), PREVIEW_MODE ? 'estimé ce mois' : 'Connectez analytics', 'neutral')}
         ${statCard('Revenue perdu', displayStat(null, '-3 800€'), PREVIEW_MODE ? '4 fuites détectées' : 'Connectez analytics', PREVIEW_MODE ? 'down' : 'neutral')}
       </div>
 
@@ -7158,11 +7289,11 @@ function renderReports() {
             <div style="width:110px;font-size:11px;color:var(--fp-text-muted);text-align:right;flex-shrink:0">${escHtml(s.stage||s.label||'')}</div>
             <div style="flex:1;background:var(--fp-inner-card);border-radius:6px;height:28px;overflow:hidden">
               <div style="height:100%;width:${s.pct}%;background:linear-gradient(90deg,${idx===0?'#2563EB':idx===4?'#22c55e':'#8b5cf6'}99,${idx===0?'#2563EB':idx===4?'#22c55e':'#8b5cf6'}33);border-radius:6px;display:flex;align-items:center;padding-left:8px">
-                ${s.n >= 3000 ? `<span style="font-size:10px;font-weight:700;color:#fff">${s.n.toLocaleString('fr-FR')}</span>` : ''}
+                ${s.n >= 3000 ? `<span style="font-size:10px;font-weight:700;color:#fff">${s.n.toLocaleString(getLocale())}</span>` : ''}
               </div>
             </div>
             <div style="min-width:90px;text-align:right;flex-shrink:0">
-              <div style="font-size:12px;font-weight:800;color:${idx===0?'#2563EB':idx===4?'#22c55e':'#8b5cf6'}">${s.n.toLocaleString('fr-FR')}</div>
+              <div style="font-size:12px;font-weight:800;color:${idx===0?'#2563EB':idx===4?'#22c55e':'#8b5cf6'}">${s.n.toLocaleString(getLocale())}</div>
               ${s.drop !== null ? `<div style="font-size:10px;color:#ef4444;font-weight:600">-${s.drop}%</div>` : ''}
             </div>
           </div>
@@ -7199,7 +7330,7 @@ function renderReports() {
             <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
               <div style="flex:1;font-size:11px;color:var(--fp-text-muted)">${escHtml(l.desc)}</div>
               <div style="text-align:right;flex-shrink:0">
-                <div style="font-size:13px;font-weight:800;color:#ef4444">-${l.impact.toLocaleString('fr-FR')}€</div>
+                <div style="font-size:13px;font-weight:800;color:#ef4444">-${l.impact.toLocaleString(getLocale())}€</div>
                 <div style="font-size:9px;color:var(--fp-text-faint)">/mois</div>
               </div>
               ${badge(l.urgent ? 'Urgent' : 'Moyen', l.urgent ? '#ef4444' : '#f59e0b')}
@@ -7217,7 +7348,7 @@ function renderReports() {
     // Reports client list from STATE.clients, fallback to PREVIEW_MODE only
     const _rClientsRaw = STATE.clients && Array.isArray(STATE.clients) && STATE.clients.length > 0 ? STATE.clients : null;
     const clients = _rClientsRaw
-      ? _rClientsRaw.map(c=>({ name:c.name||c.companyName||'Client', reports:c.reportsCount||0, lastSent:c.lastReport?new Date(c.lastReport).toLocaleDateString('fr-FR').slice(0,5):'—', nextSend:c.nextReport?new Date(c.nextReport).toLocaleDateString('fr-FR').slice(0,5):'Manuel', score:c.seoScore||c.score||null, trend:c.trend||0, logo:'🏢', active:c.active!==false }))
+      ? _rClientsRaw.map(c=>({ name:c.name||c.companyName||'Client', reports:c.reportsCount||0, lastSent:c.lastReport?new Date(c.lastReport).toLocaleDateString(getLocale()).slice(0,5):'—', nextSend:c.nextReport?new Date(c.nextReport).toLocaleDateString(getLocale()).slice(0,5):'Manuel', score:c.seoScore||c.score||null, trend:c.trend||0, logo:'🏢', active:c.active!==false }))
       : (PREVIEW_MODE ? [
           { name: 'Boulangerie Martin',   reports: 3, lastSent: '05/05', nextSend: '01/06', score: 74, trend: +5, logo: '🥐', active: true  },
           { name: 'Restaurant Le Soleil', reports: 2, lastSent: '01/05', nextSend: '01/06', score: 61, trend: +2, logo: '🍽️', active: true  },
@@ -7933,18 +8064,31 @@ function renderLocalSEO() {
           </svg>
         </div>
         <div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:4px">Territoire maîtrisé</div>
-        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">Vous dominez <strong style="color:var(--fp-accent)">63%</strong> des recherches locales cibles</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">${domScore != null ? `Vous dominez <strong style="color:var(--fp-accent)">${domScore}%</strong> des recherches locales cibles` : 'Connectez GBP pour mesurer votre domination locale'}</div>
         <div style="border-top:1px solid var(--fp-border);padding-top:14px;display:flex;flex-direction:column;gap:8px">
-          ${[
-            { label: 'Autorité régionale',  val: 78, color: '#2563EB' },
-            { label: 'Couverture visibilité', val: 63, color: '#8b5cf6' },
-            { label: 'Force GBP',             val: 71, color: '#22c55e' },
-            { label: 'Pression citiation',    val: 55, color: '#f59e0b' },
-          ].map(m => `<div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:11px;color:var(--fp-text-muted);min-width:120px;text-align:left">${m.label}</span>
-            <div class="fp-progress-track" style="flex:1;height:5px"><div class="fp-progress-fill" style="width:${m.val}%;background:${m.color}"></div></div>
-            <span style="font-size:11px;font-weight:700;color:${m.color};min-width:28px;text-align:right">${m.val}</span>
-          </div>`).join('')}
+          ${(function(){
+            // Fix 3: use real data from STATE.localSeo; null → show '—' not fabricated values
+            const _gbpRating = (_lseo.averageRating != null) ? Math.round(_lseo.averageRating * 20) : (_lseo.avgRating != null ? Math.round(_lseo.avgRating * 20) : null);
+            const _gbpScore  = (_lseo.gbpScore != null) ? Math.round(_lseo.gbpScore) : (_lseo.completionScore != null ? Math.round(_lseo.completionScore) : null);
+            const _authScore = (STATE.overview?.domainRating != null) ? Math.round(Math.min(99, STATE.overview.domainRating)) : null;
+            const _covScore  = domScore != null ? domScore : null;
+            const metrics = [
+              { label: 'Autorité régionale',   val: _authScore, color: '#2563EB' },
+              { label: 'Couverture visibilité', val: _covScore,  color: '#8b5cf6' },
+              { label: 'Force GBP',             val: _gbpScore,  color: '#22c55e' },
+              { label: 'Note GBP',              val: _gbpRating, color: '#f59e0b' },
+            ];
+            const _anyVal = metrics.some(m => m.val != null);
+            if (!_anyVal && !isDemoMode()) return `<div style="padding:12px;text-align:center;color:var(--fp-text-faint);font-size:11px">Connectez GBP pour voir les métriques locales.</div>`;
+            return metrics.map(m => {
+              const _hasV = m.val != null;
+              return `<div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:11px;color:var(--fp-text-muted);min-width:120px;text-align:left">${m.label}</span>
+                <div class="fp-progress-track" style="flex:1;height:5px"><div class="fp-progress-fill" style="width:${_hasV ? m.val : 0}%;background:${_hasV ? m.color : 'transparent'}"></div></div>
+                <span style="font-size:11px;font-weight:700;color:${_hasV ? m.color : 'var(--fp-text-faint)'};min-width:28px;text-align:right">${_hasV ? m.val : '—'}</span>
+              </div>`;
+            }).join('');
+          })()}
         </div>
       </div>
     </div>
@@ -8163,14 +8307,14 @@ function renderTeam() {
           <div style="display:flex;flex-direction:column;gap:8px">
             ${(()=>{
               const _tm = STATE.team && STATE.team.length > 0 ? STATE.team : [];
-              const _stColors = { done:'#22c55e', inprogress:'#f59e0b', todo:'#94a3b8', blocked:'#ef4444' };
-              const _stLabels = { done:'Terminé', inprogress:'En cours', todo:'À faire', blocked:'Bloqué' };
+              const _stColors = { done:'#22c55e', inprogress:'#f59e0b', todo:'#94a3b8', blocked:'#ef4444', open:'#6366f1', in_progress:'#f59e0b' };
+              const _stLabels = { done:'Terminé', inprogress:'En cours', todo:'À faire', blocked:'Bloqué', open:'À faire', in_progress:'En cours', completed:'Terminé' };
               const _missions = (STATE.missions||[]).filter(m=>m.status!=='dismissed'&&m.status!=='stale').slice(0,4);
               if (_missions.length === 0) return '<div style="text-align:center;padding:16px 0;color:var(--fp-text-faint);font-size:12px">Aucune tâche assignée</div>';
               return _missions.map(m => {
                 const _col = _stColors[m.status] || '#94a3b8';
                 const _lbl = _stLabels[m.status] || m.status || 'À faire';
-                const _due = (m.dueDate||m.due_date) ? new Date(m.dueDate||m.due_date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}) : '—';
+                const _due = (m.dueDate||m.due_date) ? new Date(m.dueDate||m.due_date).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}) : '—';
                 const _who = m.assignedTo || m.assigned_to || (_tm[0]?.name || 'Vous');
                 return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--fp-inner-card);border-radius:8px;border:1px solid var(--fp-border)">
                   <div style="width:8px;height:8px;border-radius:50%;background:${_col};flex-shrink:0"></div>
@@ -8193,9 +8337,7 @@ function renderTeam() {
             <div class="fp-card-title" style="margin-bottom:0">${svgIcon('message-square').replace('stroke="currentColor"','stroke="#2563EB"')} Chat d\'équipe</div>
             <div style="display:flex;align-items:center;gap:6px">
               <select id="team-chat-channel" onchange="STATE.msgChannel=this.value;showToast('info','Canal : '+this.options[this.selectedIndex].text);render()" style="font-size:11px;padding:3px 8px;border-radius:8px;border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.08);color:#2563EB;cursor:pointer;font-weight:600">
-                <option value="general" ${(STATE.msgChannel||'general')==='general'?'selected':''} >#général</option>
-                <option value="seo" ${STATE.msgChannel==='seo'?'selected':''} >#seo</option>
-                <option value="rapports" ${STATE.msgChannel==='rapports'?'selected':''} >#rapports</option>
+                ${(STATE.channels && STATE.channels.length > 0 ? STATE.channels : ['general','seo','rapports']).map(c => `<option value="${escHtml(c)}" ${(STATE.msgChannel||'general')===c?'selected':''}>#${escHtml(c==='general'?'général':c)}</option>`).join('')}
               </select>
               <button onclick="openNewChannelPanel()" title="Créer ou gérer les canaux" style="font-size:11px;padding:3px 8px;border-radius:8px;border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.08);color:#2563EB;cursor:pointer;font-weight:600">+ Canal</button>
             </div>
@@ -8216,6 +8358,8 @@ function renderTeam() {
                 </div>
               </div>
             `).join('')}
+          </div>
+          <div id="fp-team-chat-attach-chips" style="display:${(STATE.teamChatPendingFiles&&STATE.teamChatPendingFiles.length>0)?'flex':'none'};flex-wrap:wrap;gap:5px;padding:6px 0 2px;border-top:1px solid var(--fp-border);padding-top:8px">
           </div>
           <div style="display:flex;gap:6px;border-top:1px solid var(--fp-border);padding-top:10px">
             <input type="file" id="team-chat-attach" style="display:none" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip" onchange="handleChatAttach(this)"/>
@@ -8322,11 +8466,13 @@ function renderBilling() {
     apiFetch('/api/billing/subscription').then(function(r) {
       if (!r || typeof r !== 'object') return;
       var hadStatus = (STATE.billing || {}).subscriptionStatus;
-      var _rawDate = r.currentPeriodEnd || r.trialEndsAt || null;
-      var _nextDate = _rawDate ? new Date(_rawDate).toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit',year:'numeric'}) : null;
+      var _rawDate = r.nextBillingDate || r.currentPeriodEnd || r.trialEndsAt || null;
+      var _nextDate = _rawDate ? new Date(_rawDate).toLocaleDateString(getLocale(), {day:'2-digit',month:'2-digit',year:'numeric'}) : null;
+      var _isTrialing2 = (r.subscriptionStatus || r.status || '').toLowerCase() === 'trialing';
+      var _nextLabel2  = _isTrialing2 ? "Fin d'essai" : 'Prochaine facturation';
       var _planAmtMap = { standard:29, pro:79, ultra:149, agency:149 };
       var _nextAmount = r.nextAmount || _planAmtMap[(r.plan||'').toLowerCase()] || null;
-      STATE.billing = Object.assign({}, STATE.billing || {}, r, { nextDate: _nextDate, nextAmount: _nextAmount });
+      STATE.billing = Object.assign({}, STATE.billing || {}, r, { nextDate: _nextDate, nextDateLabel: _nextLabel2, nextAmount: _nextAmount });
       // Re-render billing page only when subscription status changed (stale DB corrected by Stripe)
       if (hadStatus && hadStatus !== r.subscriptionStatus && STATE.route === 'billing') {
         var page = document.getElementById('fp-page');
@@ -8450,7 +8596,7 @@ function renderBilling() {
       <div class="fp-stat-row fp-mb-20">
     ${statCard('Plan actuel', plan, STATE.billing?.nextDate ? 'actif · renouvellement ' + STATE.billing.nextDate : 'actif · abonnement mensuel', 'up')}
         ${statCard('Coût mensuel', (_def?.priceEur ?? '') + '€', 'HT · abonnement mensuel', 'neutral')}
-        ${statCard('Prochaine facture', displayStat(STATE.billing?.nextDate || null, (()=>{ const _d=new Date(); _d.setMonth(_d.getMonth()+1); return '01/'+String(_d.getMonth()+1).padStart(2,'0')+'/'+_d.getFullYear(); })()), STATE.billing?.nextDate ? 'prochaine échéance' : PREVIEW_MODE ? 'dans 23 jours' : 'Voir facturation', 'neutral')}
+        ${statCard(STATE.billing?.nextDateLabel || 'Prochaine facture', STATE.billing?.nextDate || '—', STATE.billing?.nextDate ? (STATE.billing?.nextDateLabel || 'prochaine échéance') : PREVIEW_MODE ? 'dans 23 jours' : '—', 'neutral')}
         ${statCard('Sans engagement', 'Mensuel', 'résiliation à tout moment', 'up')}
       </div>
 
@@ -8507,7 +8653,7 @@ function renderBilling() {
             <tbody>
               ${(() => {
                 const _pd = _planDefs;
-                const _fmtNum = n => n >= 1000000 ? (n/1000000).toFixed(0)+' M' : n >= 1000 ? Math.round(n/1000).toLocaleString('fr-FR')+' k' : n.toLocaleString('fr-FR');
+                const _fmtNum = n => n >= 1000000 ? (n/1000000).toFixed(0)+' M' : n >= 1000 ? Math.round(n/1000).toLocaleString(getLocale())+' k' : n.toLocaleString(getLocale());
                 const _val = (id, key, fallback) => _pd.find(p=>p.id===id)?.limits?.[key] ?? fallback;
                 const _ai = (id) => { const c=_pd.find(p=>p.id===id)?.aiCredits; return c>=10000000?'10 000 000':_fmtNum(c); };
                 return [
@@ -8569,8 +8715,8 @@ function renderBilling() {
         const _bs  = STATE.billing || {};
         const _ss  = (typeof window.getBillingStatus === 'function' ? window.getBillingStatus() : (_bs.subscriptionStatus || _bs.status || ''));
         const _cap = !!_bs.cancelAtPeriodEnd;
-        const _ca  = _bs.cancelAt ? new Date(_bs.cancelAt * 1000).toLocaleDateString('fr-FR') : null;
-        const _te  = STATE.me && STATE.me.trialEndsAt ? new Date(STATE.me.trialEndsAt).toLocaleDateString('fr-FR') : null;
+        const _ca  = _bs.cancelAt ? new Date(_bs.cancelAt * 1000).toLocaleDateString(getLocale()) : null;
+        const _te  = STATE.me && STATE.me.trialEndsAt ? new Date(STATE.me.trialEndsAt).toLocaleDateString(getLocale()) : null;
 
         // ── Danger zone footer (always visible) ─────────────────────────────
         const _dangerZone = `<div style="border-top:1px solid var(--fp-border);margin-top:14px;padding-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div style="font-size:11px;color:var(--fp-text-muted)">Zone danger — action irréversible</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.25);color:#ef4444;font-size:11px" onclick="fpDeleteAccountModal()">🗑️ Supprimer mon compte</button></div>`;
@@ -8935,6 +9081,11 @@ function renderBilling() {
     };
 
     const cats = ['Tous', 'Monitoring', 'SEO', 'Local SEO', 'Conversion', 'Reporting', 'IA', 'Équipe', 'Storage', 'API', 'Ultra'];
+    // Count includes: hardcoded isIncluded() + backend includedInPlan:true items from billing API
+    const _backendIncluded = Array.isArray(STATE.billing?.addons)
+      ? STATE.billing.addons.filter(a => a.includedInPlan).length : 0;
+    const _frontendIncluded = allAddons.filter(a => isIncluded(a)).length;
+    const includedCount = Math.max(_frontendIncluded, _backendIncluded);
     const activeCount = allAddons.filter(a => a.active || isIncluded(a)).length;
 
     return `
@@ -8945,7 +9096,7 @@ function renderBilling() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Add-ons actifs', String(allAddons.filter(a=>a.active).length), 'activés manuellement', 'up')}
-        ${statCard('Inclus dans votre plan', String(allAddons.filter(a=>isIncluded(a)).length), 'sans coût additionnel', 'up')}
+        ${statCard('Add-ons inclus dans le plan', String(includedCount), 'sans coût additionnel', includedCount > 0 ? 'up' : 'neutral')}
         ${statCard('Modules IA dispo', String(allAddons.filter(a => a.cat === 'IA').length), 'modules d\'intelligence', 'up')}
         ${statCard('ROI estimé', '—', 'Connectez analytics', 'neutral')}
       </div>
@@ -9188,7 +9339,7 @@ function renderBilling() {
               <span style="font-size:14px;font-weight:800;color:var(--fp-text)">AI Credits</span>
               <span style="font-size:10px;font-weight:700;padding:1px 8px;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:#2563EB">IA Performante</span>
             </div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+' / '+fk(t)+' AI Credits consommés ce mois';})() : 'Chargement des crédits IA…'} · Réinitialisation le ${(function(){var d=STATE.aiCredits?.resetDate?new Date(STATE.aiCredits.resetDate):null;if(!d||Number.isNaN(d.getTime()))d=new Date(new Date().getFullYear(),new Date().getMonth()+1,1);return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'});}())}</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+' / '+fk(t)+' AI Credits consommés ce mois';})() : 'Chargement des crédits IA…'} · Réinitialisation le ${(function(){var d=STATE.aiCredits?.resetDate?new Date(STATE.aiCredits.resetDate):null;if(!d||Number.isNaN(d.getTime()))d=new Date(new Date().getFullYear(),new Date().getMonth()+1,1);return d.toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'});}())}</div>
           </div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('ai');setTimeout(()=>navigateSub('usage'),50)">Voir détails complets →</button>
         </div>
@@ -9889,6 +10040,34 @@ function renderAlertRules() {
   `;
 }
 
+/**
+ * fpIsConnected('ga4'|'gsc'|'gbp') — single source of truth for Google connection status.
+ * Consults STATE.connectors, STATE.ga4Status, STATE.gsc, STATE.googleConnected, STATE.gbp,
+ * and window.FP_DATA to avoid false-negative "not connected" states after page reload.
+ */
+window.fpIsConnected = function(service) {
+  const s = (service || '').toLowerCase();
+  if (s === 'ga4') {
+    if (window.FP_DATA?.ga4?.connected === true) return true;
+    if (STATE.ga4Status?.connected === true) return true;
+    if ((STATE.connectors || []).some(c => (c.key === 'ga4' || c.id === 'ga4') && (c.connected || c.status === 'active'))) return true;
+    return false;
+  }
+  if (s === 'gsc') {
+    if (STATE.gsc?.connected === true) return true;
+    if ((STATE.connectors || []).some(c => (c.key === 'gsc' || c.id === 'gsc') && (c.connected || c.status === 'active'))) return true;
+    return false;
+  }
+  if (s === 'gbp') {
+    if (STATE.gbp?.connected === true) return true;
+    if (STATE.googleConnected?.gbp?.connected === true) return true;
+    if (STATE.integrations?.google?.connected === true) return true;
+    if ((STATE.gbp?.listings || []).length > 0) return true;
+    return false;
+  }
+  return false;
+};
+
 function renderSettings() {
   if (STATE.loading) {
     return `<div class="fp-skeleton-page">
@@ -10303,13 +10482,13 @@ function renderSettings() {
       ? _lhList.map(function(l) {
           var isCur = !!(l.isCurrent || l.current);
           var rawDate = l.date || l.timestamp || null;
-          var locale = ({ 'pt-br':'pt-BR', fr:'fr-FR', en:'en-US', es:'es-ES', de:'de-DE', it:'it-IT', pt:'pt-PT', nl:'nl-NL', pl:'pl-PL', sv:'sv-SE', ro:'ro-RO', cs:'cs-CZ' })[String((STATE.settings && STATE.settings.language) || 'fr').toLowerCase()] || 'fr-FR';
+          var locale = getLocale();
           var dateStr = isCur ? 'Maintenant' : (rawDate ? new Date(rawDate).toLocaleString(locale,{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—');
           return { device: l.device||l.userAgent||'Appareil inconnu', location: 'Localisation inconnue', ip: l.ip||'***.***.***.***', date: dateStr, current: isCur };
         })
       : [];
     const loginHistory = _lhList
-      ? _lhList.map(l => ({ event: l.event||l.type||'Connexion', device: l.device||l.userAgent||'Appareil inconnu', ip: l.ip||'***.***.***.***', date: (l.date||l.timestamp) ? new Date(l.date||l.timestamp).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—', success: l.success !== false, current: !!(l.isCurrent||l.current) }))
+      ? _lhList.map(l => ({ event: l.event||l.type||'Connexion', device: l.device||l.userAgent||'Appareil inconnu', ip: l.ip||'***.***.***.***', date: (l.date||l.timestamp) ? new Date(l.date||l.timestamp).toLocaleString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—', success: l.success !== false, current: !!(l.isCurrent||l.current) }))
       : (PREVIEW_MODE ? [
           {event:'Connexion réussie',  device:'MacBook Pro · Chrome', ip:'82.65.xxx.xxx', date:'09/05 · 09h14', success:true  },
           {event:'Connexion réussie',  device:'iPhone 15 · Safari',   ip:'92.140.xxx.xxx',date:'08/05 · 18h42', success:true  },
@@ -10481,7 +10660,7 @@ function renderSettings() {
           trigger:  ((w.trigger_config||w.triggerConfig)?.description) || (w.trigger_type === 'schedule' || w.triggerType === 'schedule' ? 'Planifié' : w.trigger_type === 'event' || w.triggerType === 'event' ? 'Événement' : w.trigger_type || w.triggerType || '—'),
           action:   Array.isArray(w.actions) && w.actions[0] ? (w.actions[0].description || w.actions[0].type || '—') : '—',
           runs:     w.runs_count || w.runsCount || 0,
-          lastRun:  (w.last_run_at || w.lastRunAt) ? new Date(w.last_run_at || w.lastRunAt).toLocaleDateString('fr-FR') : 'Jamais',
+          lastRun:  (w.last_run_at || w.lastRunAt) ? new Date(w.last_run_at || w.lastRunAt).toLocaleDateString(getLocale()) : 'Jamais',
           category: w.category || 'Général',
         }))
       : [];
@@ -10883,9 +11062,9 @@ function renderSettings() {
     const runs      = intgData.runs || [];
     const incoming  = intgData.incomingWebhooks || [];
 
-    const gbpConn = !!(STATE.gbp?.connected);
-    const ga4Conn = !!(window.FP_DATA?.ga4?.connected);
-    const gscConn = !!(STATE.gsc?.connected);
+    const gbpConn = window.fpIsConnected ? window.fpIsConnected('gbp') : !!(STATE.gbp?.connected);
+    const ga4Conn = window.fpIsConnected ? window.fpIsConnected('ga4') : !!(window.FP_DATA?.ga4?.connected);
+    const gscConn = window.fpIsConnected ? window.fpIsConnected('gsc') : !!(STATE.gsc?.connected);
     const ghConn  = !!(STATE.github?.connected);
 
     const activeTab = window._intgTab || 'hub';
@@ -10991,10 +11170,10 @@ function renderSettings() {
             <div class="fp-card-title" style="margin-bottom:14px">🔍 Intégrations natives FlowPoint</div>
             <div style="display:flex;flex-direction:column;gap:0">
               ${[
-                {name:'Google Business Profile', icon:'🏢', connected:gbpConn, btn:gbpConn?"navigate('local-seo')"  :"typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.openConnect():navigate('local-seo')", desc:'Fiches GBP, avis, posts locaux'},
-                {name:'Google Analytics 4',      icon:'📈', connected:ga4Conn, btn:"navigate('analytics')",desc:'Sessions, conversions, temps réel'},
-                {name:'Google Search Console',   icon:'🔍', connected:gscConn, btn:"navigate('search-console')",desc:'Positions, impressions, CTR'},
-                {name:'Meta Ads',                icon:'📊', connected:false,   btn:"", comingSoon:true,           desc:'Campagnes Facebook & Instagram Ads'},
+                {name:'Google Business Profile', svc:'gbp', icon:'🏢', connected:gbpConn, btn:gbpConn?"navigate('local-seo')"  :"typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.openConnect():navigate('local-seo')", disconnectEndpoint:'/api/google/disconnect', desc:'Fiches GBP, avis, posts locaux'},
+                {name:'Google Analytics 4',      svc:'ga4', icon:'📈', connected:ga4Conn, btn:"navigate('analytics')", disconnectEndpoint:'/api/ga4/disconnect', desc:'Sessions, conversions, temps réel'},
+                {name:'Google Search Console',   svc:'gsc', icon:'🔍', connected:gscConn, btn:"navigate('search-console')", disconnectEndpoint:'/api/gsc/disconnect', desc:'Positions, impressions, CTR'},
+                {name:'Meta Ads',                svc:'meta',icon:'📊', connected:false,   btn:"", comingSoon:true, desc:'Campagnes Facebook & Instagram Ads'},
               ].map(n => `
                 <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
                   ${nativeSvgIcon(n.name)}
@@ -11007,6 +11186,7 @@ function renderSettings() {
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px"${n.comingSoon ? ' disabled title="Bientôt disponible"' : ''} onclick="${n.comingSoon ? '' : n.btn}">
                       ${n.connected?'Gérer':n.comingSoon?'Bientôt':'Connecter'}
                     </button>
+                    ${n.connected && n.disconnectEndpoint ? `<button class="fp-btn fp-btn-ghost fp-btn-sm fp-native-disconnect-btn" data-svc="${n.svc}" data-endpoint="${n.disconnectEndpoint}" data-name="${n.name}" style="font-size:10px;color:var(--fp-danger);border-color:rgba(239,68,68,0.3)">Déconnecter</button>` : ''}
                   </div>
                 </div>
               `).join('')}
@@ -11069,7 +11249,7 @@ function renderSettings() {
                             <span style="font-size:11px;font-weight:700;color:${successRate == null ? 'var(--fp-text-faint)' : successRate>=90?'var(--fp-success)':successRate>=70?'var(--fp-warning)':'var(--fp-danger)'}">${successRate == null ? '—' : successRate+'%'}</span>
                           </td>
                           <td style="text-align:center;font-size:10px;color:var(--fp-text-faint)">
-                            ${i.last_triggered_at ? new Date(i.last_triggered_at).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'Jamais'}
+                            ${i.last_triggered_at ? new Date(i.last_triggered_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'Jamais'}
                           </td>
                           <td style="text-align:center">${i.active?'<span style="color:var(--fp-success);font-size:11px">● Actif</span>':'<span style="color:var(--fp-text-faint);font-size:11px">○ Inactif</span>'}</td>
                           <td style="text-align:center">
@@ -11203,7 +11383,7 @@ function renderSettings() {
                         </td>
                         <td style="text-align:center;font-size:11px;color:var(--fp-text-faint)">${r.duration_ms ? r.duration_ms+'ms' : '—'}</td>
                         <td style="text-align:center;font-size:11px">${r.attempt||1}</td>
-                        <td style="font-size:10px;color:var(--fp-text-faint)">${r.triggered_at ? new Date(r.triggered_at).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</td>
+                        <td style="font-size:10px;color:var(--fp-text-faint)">${r.triggered_at ? new Date(r.triggered_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</td>
                         <td style="text-align:center">
                           ${r.status==='failed' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._retryRun('${escHtml(r.id)}')">↺ Retry</button>` : '—'}
                         </td>
@@ -11230,7 +11410,7 @@ function renderSettings() {
                         <div style="font-size:11px;color:var(--fp-text)">${escHtml(l.message||'')}</div>
                         ${l.integration_name ? `<div style="font-size:9px;color:var(--fp-text-faint)">via ${escHtml(l.integration_name)}</div>` : ''}
                       </div>
-                      <span style="font-size:9px;color:var(--fp-text-faint);flex-shrink:0">${l.created_at ? new Date(l.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : ''}</span>
+                      <span style="font-size:9px;color:var(--fp-text-faint);flex-shrink:0">${l.created_at ? new Date(l.created_at).toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}) : ''}</span>
                     </div>
                   `;
                 }).join('')}
@@ -11549,7 +11729,7 @@ function renderSettings() {
   const _typeColor={info:'#2563EB',success:'#22c55e',warning:'#f59e0b',error:'#ef4444',security:'#8b5cf6',billing:'#06b6d4'};
   const configTimeline=_actEntries.length>0
     ? _actEntries.map(a=>({
-        d:new Date(a.createdAt||a.date||Date.now()).toLocaleDateString('fr-FR'),
+        d:new Date(a.createdAt||a.date||Date.now()).toLocaleDateString(getLocale()),
         ev:a.label||a.action||a.message||a.description||'Activité',
         c:_typeColor[a.type||'info']||'#2563EB'
       }))
@@ -12144,8 +12324,8 @@ function renderAI() {
       : Math.round(usedCredits / Math.max(maxCreditsDB, 1) * 100);
     const pc           = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#2563EB';
     const resetDate    = liveCredits?.resetDate && !Number.isNaN(new Date(liveCredits.resetDate).getTime())
-      ? new Date(liveCredits.resetDate).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'})
-      : new Date(new Date().getFullYear(), new Date().getMonth()+1, 1).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'});
+      ? new Date(liveCredits.resetDate).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'})
+      : new Date(new Date().getFullYear(), new Date().getMonth()+1, 1).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'});
     const estCostEur   = liveCredits?.costEur != null ? Number(liveCredits.costEur).toFixed(3) : '0.000';
 
     const creditPackages = [
@@ -12751,7 +12931,7 @@ async function sendAIMessage(text) {
     const resp = await fetch('/api/ai/chat', _fpSessionFetchOptions({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, context, stream: true, history, provider: STATE.aiProvider || 'openai', conversationId: STATE._aiConversationId || undefined, enableTools: true }),
+      body: JSON.stringify({ message: text, context, stream: true, history, provider: STATE.aiProvider || 'openai', conversationId: STATE._aiConversationId || undefined, enableTools: true, language: (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr' }),
       signal: _ctrl.signal,
     }));
 
@@ -12759,12 +12939,18 @@ async function sendAIMessage(text) {
       const err = await resp.json().catch(() => ({}));
       const msg = resp.status === 401
         ? '⚠ Session expirée — <a href="/login.html" style="color:inherit;text-decoration:underline">reconnectez-vous</a> pour continuer.'
+        : resp.status === 402 && err.code === 'QUOTA_UNRESOLVABLE_ORG'
+        ? '⚠ Impossible de résoudre votre organisation — contactez le support.'
         : resp.status === 402
         ? '⚠ Crédits IA épuisés — passez à Ultra pour continuer.'
+        : resp.status === 403
+        ? '⚠ Module IA désactivé — activez-le dans Paramètres → IA Config.'
         : resp.status === 429
         ? '⚠ Trop de requêtes. Attendez quelques instants puis réessayez.'
         : resp.status === 503 && err.code === 'QUOTA_STATE_UNAVAILABLE'
         ? '⚠ Le suivi d\'usage IA est momentanément indisponible — réessayez dans quelques instants.'
+        : resp.status === 503 && (err.code === 'AI_NOT_CONFIGURED' || err.code === 'AI_UNAVAILABLE')
+        ? '⚠ Le service IA est temporairement indisponible — réessayez dans quelques instants.'
         : resp.status === 503 && err.code === 'PROVIDER_UNAVAILABLE'
         ? `⚠ Le fournisseur ${escHtml(err.provider || STATE.aiProvider || 'IA')} est temporairement indisponible — réessayez ou sélectionnez un autre fournisseur.`
         : resp.status === 503
@@ -12893,6 +13079,7 @@ async function fetchAuditAIInsights(auditRef) {
         url: audit.url,
         scores: { performance: audit.speed || 0, seo: audit.score || 0 },
         context,
+        language: (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr',
       }),
     });
     if (!resp.ok) { showToast('error', 'Erreur lors de l\'analyse IA'); return; }
@@ -13033,7 +13220,7 @@ function renderAuditDetailPanel(audit) {
             <option value="weekly" ${(sched?.frequency==='weekly'||!sched)?'selected':''}>Hebdomadaire</option>
             <option value="monthly" ${sched?.frequency==='monthly'?'selected':''}>Mensuel</option>
           </select>
-          ${sched ? `<span style="font-size:11px;color:var(--fp-text-muted)">→ ${new Date(sched.nextRun).toLocaleDateString('fr-FR',{day:'2-digit',month:'short'})}</span>` : ''}
+          ${sched ? `<span style="font-size:11px;color:var(--fp-text-muted)">→ ${new Date(sched.nextRun).toLocaleDateString(getLocale(),{day:'2-digit',month:'short'})}</span>` : ''}
         </div>
       </div>
 
@@ -13925,17 +14112,22 @@ function _getPlanLimits(planName) {
 }
 
 function changePlan(newPlan) {
-  const l = _getPlanLimits(newPlan);
-  if (!l) return;
-  if (!STATE.me) STATE.me = {};
-  STATE.me.plan = newPlan;
-  STATE.me.usage = STATE.me.usage || {};
-  STATE.me.usage.audit   = { used: STATE.me.usage.audit?.used   ?? 0, limit: l.audit   };
-  STATE.me.usage.monitor = { used: STATE.me.usage.monitor?.used ?? 0, limit: l.monitor };
-  STATE.me.usage.pdf     = { used: STATE.me.usage.pdf?.used     ?? 0, limit: l.pdf     };
+  // Close dropdown first
   document.getElementById('fp-plan-switcher-dd')?.remove();
-  render();
-  showToast('success', `Plan → ${newPlan}`);
+  // Route through the proper upgrade/checkout flow — never change plan locally only
+  if (typeof window.fpUpgradeOrCheckout === 'function') {
+    window.fpUpgradeOrCheckout(newPlan);
+  } else {
+    // Fallback: direct API call if fpUpgradeOrCheckout not yet defined
+    const _status = window.getBillingStatus ? window.getBillingStatus() : (STATE.billing?.subscriptionStatus || '');
+    if (_status === 'active' || _status === 'trialing') {
+      apiAction('POST', '/api/billing/upgrade', { plan: newPlan.toLowerCase() })
+        .then(() => { showToast('success', 'Plan mis à jour'); loadData().then(() => { navigate('billing'); navigateSub('plans'); }); })
+        .catch(() => showToast('error', 'Erreur lors du changement de plan.'));
+    } else {
+      fpGoToPricing(newPlan.toLowerCase());
+    }
+  }
 }
 
 function togglePlanDropdown() {
@@ -14271,7 +14463,7 @@ function bindBulkBarEvents() {
     if (!audits.length) return;
     const header = 'URL,Score SEO,Vitesse,Statut,Date';
     const rows = audits.map(a =>
-      `"${a.url}",${a.score},${a.speed},"${a.score>=70?'Bon':a.score>=45?'Moyen':'Mauvais'}","${new Date(a.date).toLocaleDateString('fr-FR')}"`
+      `"${a.url}",${a.score},${a.speed},"${a.score>=70?'Bon':a.score>=45?'Moyen':'Mauvais'}","${new Date(a.date).toLocaleDateString(getLocale())}"`
     );
     const csv = [header, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -14705,7 +14897,7 @@ function bindSectionEvents() {
       btn.textContent = '…';
       try {
         const host = (audit.url || '').replace(/^https?:\/\//, '').split('/')[0];
-        const name = `Audit ${host} — ${new Date().toLocaleDateString('fr-FR')}`;
+        const name = `Audit ${host} — ${new Date().toLocaleDateString(getLocale())}`;
         const res = await apiAction('POST', '/api/reports', { name, auditId: audit.id, format: 'PDF' });
         const r = res || { id: 'r' + Date.now(), name };
         STATE.reports.unshift(r);
@@ -15621,6 +15813,36 @@ function bindSectionEvents() {
     $$('[data-remove-member]').forEach(btn => btn.addEventListener('click', () => { const memberId = btn.dataset.removeMember; if (!memberId) return; window.fpDarkConfirm('Retirer ce membre de l\'équipe ?', async () => { const r = await apiAction('DELETE', `/api/team/${memberId}`).catch(() => null); if (r && !r.error) { STATE.team = (STATE.team || []).filter(t => t.id !== memberId); showToast('success', 'Membre retiré'); render(); } else { showToast('error', 'Erreur lors du retrait'); } }, 'Retirer le membre'); }));
     // sendChat listeners are bound in bindNewRouteEvents (team+chat sub-route only)
     // to avoid double-binding when re-rendering.
+    // Overview team panel chat send (only if sub-route is null = command center)
+    if (!STATE.subRoute) {
+      const _tcSend = $('#team-chat-send');
+      const _tcInput = $('#team-chat-input');
+      if (_tcSend && _tcInput) {
+        const _tcDoSend = async () => {
+          const typedMsg = _tcInput.value.trim();
+          const hasPending = (STATE.teamChatPendingFiles || []).length > 0;
+          if (!typedMsg && !hasPending) return;
+          const ch = STATE.msgChannel || 'general';
+          if (hasPending) await _sendTeamChatPending(typedMsg, ch);
+          if (typedMsg && !hasPending) {
+            const from = STATE.me?.firstName || 'Vous';
+            const now = new Date();
+            const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+            if (!STATE.channelMessages) STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
+            if (!STATE.channelMessages[ch]) STATE.channelMessages[ch] = [];
+            STATE.channelMessages[ch].push({ from, text: typedMsg, time, read: true, self: true });
+            STATE.teamChatHistory.push({ from, msg: typedMsg, time });
+            apiAction('POST', '/api/team/messages', { channel: ch, from, text: typedMsg }).catch(() => {});
+          }
+          _tcInput.value = '';
+          render();
+          setTimeout(() => { const msgs = $('#team-chat-msgs'); if (msgs) msgs.scrollTop = msgs.scrollHeight; }, 50);
+        };
+        _tcSend.addEventListener('click', _tcDoSend);
+        _tcInput.addEventListener('keydown', e => { if (e.key === 'Enter') _tcDoSend(); });
+        _renderTeamChatPendingChips();
+      }
+    }
   }
 
   if (route === 'settings') {
@@ -15987,7 +16209,7 @@ function initChartTooltips() {
         const daysAgo = n - 1 - idx;
         const d = new Date(today);
         d.setDate(d.getDate() - daysAgo);
-        const dateStr = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+        const dateStr = d.toLocaleDateString(getLocale(), { day: 'numeric', month: 'short' });
         const rows = hits.map(h => {
           const safeScore = Math.max(0, Math.min(100, Math.round(+h.dataset.score)));
           return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0">
@@ -16857,6 +17079,185 @@ async function init() {
     'action requise': 'action required', 'actions requises': 'actions required',
     'Toutes les optimisations sont actives': 'All optimizations are active',
     'Chargement de la page…': 'Loading page…', 'État de la page': 'Page status',
+    // Sidebar nav section labels
+    'Principal': 'Main', 'Performance': 'Performance', 'Analytics GA4': 'Analytics GA4',
+    'Intelligence': 'Intelligence', 'Opérations': 'Operations', 'Workspace': 'Workspace',
+    // Settings toggles
+    'Notifications en survol': 'Hover notifications',
+    'Conseils IA': 'AI tips',
+    'Liens dans un nouvel onglet': 'Links in new tab',
+    'Dashboard en arrière-plan': 'Background dashboard',
+    'Activités récentes': 'Recent activities',
+    'Confirmer les actions': 'Confirm actions',
+    'La préférence est sauvegardée et appliquée à l\'interface.': 'The preference is saved and applied to the interface.',
+    'Streaks': 'Streaks',
+    // Team page stat card labels
+    'Membres actifs': 'Active members',
+    'Rôles définis': 'Defined roles',
+    'Sièges disponibles': 'Available seats',
+    'Dernière activité': 'Last activity',
+    'Matrice de permissions': 'Permissions matrix',
+    'Rôles personnalisés': 'Custom roles',
+    // Banners
+    'Analyse IA · FlowPoint': 'AI Analysis · FlowPoint',
+    'Analyse IA': 'AI Analysis',
+    // Plan badge
+    'Plan Standard': 'Standard plan',
+    // Sidebar quota labels
+    'Audits': 'Audits',
+    'Monitors': 'Monitors',
+    'PDFs': 'PDFs',
+    'Exports': 'Exports',
+    'Sièges': 'Seats',
+    'Rapports': 'Reports',
+    // Streak labels
+    'Streak à démarrer': 'Streak to start',
+    'Optimisation quotidienne active': 'Daily optimization active',
+    'Connectez-vous chaque jour pour cumuler': 'Log in every day to accumulate',
+    // CRO recommendations static text (titles/details generated by the factory)
+    'Optimiser la vitesse de chargement': 'Optimize loading speed',
+    'Corriger les problèmes SEO critiques': 'Fix critical SEO issues',
+    'Simplifier les formulaires de contact': 'Simplify contact forms',
+    'Ajouter preuves sociales (avis, témoignages)': 'Add social proof (reviews, testimonials)',
+    'Mettre en place le suivi des micro-conversions': 'Set up micro-conversion tracking',
+    'Immédiat': 'Immediate',
+    'Arrêt des pertes': 'Loss prevention',
+    '1 semaine': '1 week',
+    '2 semaines': '2 weeks',
+    '1-2 jours': '1-2 days',
+    '1 jour': '1 day',
+    '2-3 jours': '2-3 days',
+    '1/2 jour': '½ day',
+    'Pilotage data': 'Data-driven steering',
+    'Trafic organique manqué': 'Missed organic traffic',
+    'Pertes directes en cours': 'Ongoing direct losses',
+    // fpSavePref toast messages
+    'Analyse locale désactivée — aucun concurrent affiché': 'Local analysis disabled — no competitors shown',
+    'Priorité locale standard — jusqu\'à 5 concurrents analysés': 'Standard local priority — up to 5 competitors analyzed',
+    'Mode agressif — tous les concurrents disponibles affichés': 'Aggressive mode — all available competitors displayed',
+    'Sécurité standard activée': 'Standard security enabled',
+    'Sécurité avancée — journalisation et alertes renforcées': 'Advanced security — enhanced logging and alerts',
+    'Mode silencieux — 1 suggestion max par section': 'Silent mode — max 1 suggestion per section',
+    'Suggestions IA normales (jusqu\'à 3 par section)': 'Normal AI suggestions (up to 3 per section)',
+    'Mode proactif — toutes les suggestions affichées': 'Proactive mode — all suggestions displayed',
+    'Rapports simplifiés (2–3 pages, KPIs essentiels)': 'Simplified reports (2–3 pages, essential KPIs)',
+    'Rapports client standard (5–8 pages)': 'Standard client reports (5–8 pages)',
+    'Rapports avancés — notes de réunion incluses par défaut': 'Advanced reports — meeting notes included by default',
+    'Erreur sauvegarde': 'Save error',
+    'Toutes les sessions fermées': 'All sessions closed',
+    'Format de date sauvegardé': 'Date format saved',
+    'Langue sauvegardée': 'Language saved',
+    // Sidebar/user card items
+    'Centre de contrôle': 'Control center',
+    'Tous UP': 'All UP',
+    // Activity panel
+    'Activité équipe': 'Team activity',
+    'Tous': 'All',
+    'Audits': 'Audits',
+    // notifications
+    'Activer les notifications push': 'Enable push notifications',
+    'Fermer le fil d\'activité': 'Close activity feed',
+    'Fil d\'activité équipe': 'Team activity feed',
+    // Float panel
+    'Détails': 'Details',
+    'Fermer le panneau': 'Close panel',
+    // Modal
+    'Raccourcis clavier': 'Keyboard shortcuts',
+    // HTML static elements
+    'Navigation principale': 'Main navigation',
+    'Contenu principal': 'Main content',
+    'Palette de commandes': 'Command palette',
+    'Réduire la sidebar': 'Collapse sidebar',
+    'Ouvrir le menu': 'Open menu',
+    'Basculer le thème': 'Toggle theme',
+    'Se déconnecter': 'Log out',
+    'Fil d\'activité': 'Activity feed',
+    'Assistant IA FlowPoint': 'FlowPoint AI Assistant',
+    'Chargement de FlowPoint…': 'Loading FlowPoint…',
+    // Billing page
+    'Prochaine facturation': 'Next billing',
+    'Fin d\'essai': 'Trial end',
+    // AI credits
+    'Réinitialisation le': 'Reset on',
+    // Security page
+    'Maintenant': 'Now',
+    // Other common
+    'Paramètre modifié': 'Setting changed',
+    'Profil sauvegardé !': 'Profile saved!',
+    'Clé régénérée ! Copiez-la maintenant.': 'Key regenerated! Copy it now.',
+    'Aucune activité à exporter pour le moment': 'No activity to export at this time',
+    // AI chat welcome
+    'Bonjour !': 'Hello!',
+    'Je suis votre assistant SEO FlowPoint.': 'I am your FlowPoint SEO assistant.',
+    'Posez-moi des questions sur vos sites, performances, opportunités ou demandez-moi de générer un rapport.': 'Ask me questions about your sites, performance, opportunities, or ask me to generate a report.',
+    'Score SEO moyen': 'Average SEO score',
+    'Actions prioritaires': 'Priority actions',
+    'Core Web Vitals': 'Core Web Vitals',
+    'Résumé exécutif': 'Executive summary',
+    // AI input placeholder
+    'Posez une question à votre expert SEO IA…': 'Ask a question to your AI SEO expert…',
+    'Message à l\'assistant IA': 'Message to AI assistant',
+    'Envoyer': 'Send',
+    'Effacer': 'Clear',
+    'Plein écran': 'Full screen',
+    'Ouvrir en plein écran': 'Open full screen',
+    'Effacer la conversation': 'Clear conversation',
+    'Fermer l\'assistant IA': 'Close AI assistant',
+    'Joindre un fichier': 'Attach a file',
+    'Retirer le fichier': 'Remove file',
+    // Topbar status
+    'Tous les systèmes OK': 'All systems OK',
+    // Score labels
+    'Bon': 'Good', 'Critique': 'Critical',
+    // Misc labels
+    'Avatar — bientôt disponible': 'Avatar — coming soon',
+    'Bientôt disponible': 'Coming soon',
+    'Ultra requis': 'Ultra required',
+    'Pro requis': 'Pro required',
+    'bientôt disponible': 'coming soon',
+    'Interne': 'Internal',
+    'Récemment': 'Recently',
+    'Il y a 2h': '2h ago',
+    // Settings save button text
+    'Sauvegarde…': 'Saving…',
+    'Sauvegarder': 'Save',
+    // Status labels
+    'À faire': 'To do', 'En cours': 'In progress', 'Terminée': 'Done',
+    'Ouverte': 'To do', 'open': 'To do', 'in_progress': 'In progress',
+    // Attachment chip
+    'Pièce jointe en attente': 'Pending attachment',
+    'Retirer la pièce jointe': 'Remove attachment',
+    // Channel creation
+    'Canal créé': 'Channel created',
+    // Competitor AI suggestions (Fix 2)
+    'Suggestions IA de concurrents': 'AI competitor suggestions',
+    'Connectez Google Business Profile pour obtenir des suggestions de concurrents locaux.': 'Connect Google Business Profile to get local competitor suggestions.',
+    'Chargement des suggestions…': 'Loading suggestions…',
+    'Charger les suggestions': 'Load suggestions',
+    'Aucun concurrent suggéré pour le moment.': 'No competitor suggestions at this time.',
+    'Menace forte': 'High threat',
+    'À surveiller': 'Monitor closely',
+    'Faible risque': 'Low risk',
+    // Competitor empty states (Fix 1)
+    'Ajoutez un concurrent pour voir les scores de domination': 'Add a competitor to see domination scores',
+    'Ajoutez un concurrent pour comparer les fréquences de publication': 'Add a competitor to compare publication frequencies',
+    'Ajoutez un concurrent pour voir l\'analyse des gaps thématiques': 'Add a competitor to see topic gap analysis',
+    'Ajoutez un concurrent pour comparer les scores de qualité de contenu': 'Add a competitor to compare content quality scores',
+    // Progression / achievements (Fix 4)
+    'Achievements débloqués': 'Achievements unlocked',
+    'débloqués': 'unlocked',
+    // Streak (Fix 5)
+    'Jours consécutifs': 'Consecutive days',
+    'Actions réalisées': 'Actions completed',
+    'Missions terminées': 'Missions completed',
+    // Local SEO domination (Fix 3)
+    'Territoire maîtrisé': 'Territory mastered',
+    'Connectez GBP pour voir les métriques locales.': 'Connect GBP to see local metrics.',
+    'Autorité régionale': 'Regional authority',
+    'Couverture visibilité': 'Visibility coverage',
+    'Force GBP': 'GBP strength',
+    'Note GBP': 'GBP rating',
+    '— vs concurrents': '— vs competitors',
   };
   var FP_I18N = {
     en: FP_I18N_EN,
@@ -16974,6 +17375,153 @@ async function init() {
     'Prochaine étape': 'Próximo paso', 'Progression': 'Progreso',
     'Score': 'Puntuación', 'Problèmes détectés': 'Problemas detectados', 'Résolu': 'Resuelto',
     'Jamais': 'Nunca', 'Maintenant': 'Ahora', 'il y a': 'hace',
+    // Sidebar nav section labels (ES)
+    'Principal': 'Principal', 'Opérations': 'Operaciones',
+    // Settings toggles (ES)
+    'Notifications en survol': 'Notificaciones al pasar el ratón',
+    'Conseils IA': 'Consejos IA',
+    'Liens dans un nouvel onglet': 'Abrir enlaces en nueva pestaña',
+    'Dashboard en arrière-plan': 'Dashboard en segundo plano',
+    'Activités récentes': 'Actividades recientes',
+    'Confirmer les actions': 'Confirmar acciones',
+    'La préférence est sauvegardée et appliquée à l\'interface.': 'La preferencia se guarda y aplica a la interfaz.',
+    'Streaks': 'Rachas',
+    // Team page (ES)
+    'Membres actifs': 'Miembros activos',
+    'Rôles définis': 'Roles definidos',
+    'Sièges disponibles': 'Asientos disponibles',
+    'Dernière activité': 'Última actividad',
+    'Matrice de permissions': 'Matriz de permisos',
+    'Rôles personnalisés': 'Roles personalizados',
+    // Banners (ES)
+    'Analyse IA · FlowPoint': 'Análisis IA · FlowPoint',
+    'Analyse IA': 'Análisis IA',
+    // Sidebar quota (ES)
+    'Audits': 'Auditorías',
+    'Sièges': 'Asientos',
+    'Rapports': 'Informes',
+    // Streak (ES)
+    'Streak à démarrer': 'Racha por iniciar',
+    'Optimisation quotidienne active': 'Optimización diaria activa',
+    'Connectez-vous chaque jour pour cumuler': 'Conéctese cada día para acumular',
+    // CRO titles (ES)
+    'Optimiser la vitesse de chargement': 'Optimizar la velocidad de carga',
+    'Corriger les problèmes SEO critiques': 'Corregir problemas SEO críticos',
+    'Simplifier les formulaires de contact': 'Simplificar los formularios de contacto',
+    'Ajouter preuves sociales (avis, témoignages)': 'Añadir prueba social (reseñas, testimonios)',
+    'Mettre en place le suivi des micro-conversions': 'Implementar seguimiento de micro-conversiones',
+    'Immédiat': 'Inmediato',
+    'Arrêt des pertes': 'Detener pérdidas',
+    '1 semaine': '1 semana',
+    '2 semaines': '2 semanas',
+    '1-2 jours': '1-2 días',
+    '1 jour': '1 día',
+    '2-3 jours': '2-3 días',
+    '1/2 jour': '½ día',
+    'Pilotage data': 'Gestión de datos',
+    'Trafic organique manqué': 'Tráfico orgánico perdido',
+    'Pertes directes en cours': 'Pérdidas directas en curso',
+    // Toast messages (ES)
+    'Erreur sauvegarde': 'Error al guardar',
+    'Toutes les sessions fermées': 'Todas las sesiones cerradas',
+    'Format de date sauvegardé': 'Formato de fecha guardado',
+    'Analyse locale désactivée — aucun concurrent affiché': 'Análisis local desactivado — sin competidores mostrados',
+    'Priorité locale standard — jusqu\'à 5 concurrents analysés': 'Prioridad local estándar — hasta 5 competidores analizados',
+    'Mode agressif — tous les concurrents disponibles affichés': 'Modo agresivo — todos los competidores disponibles mostrados',
+    'Sécurité standard activée': 'Seguridad estándar activada',
+    'Sécurité avancée — journalisation et alertes renforcées': 'Seguridad avanzada — registro y alertas mejorados',
+    'Mode silencieux — 1 suggestion max par section': 'Modo silencioso — máx. 1 sugerencia por sección',
+    'Suggestions IA normales (jusqu\'à 3 par section)': 'Sugerencias IA normales (hasta 3 por sección)',
+    'Mode proactif — toutes les suggestions affichées': 'Modo proactivo — todas las sugerencias mostradas',
+    'Rapports simplifiés (2–3 pages, KPIs essentiels)': 'Informes simplificados (2–3 páginas, KPIs esenciales)',
+    'Rapports client standard (5–8 pages)': 'Informes de cliente estándar (5–8 páginas)',
+    'Rapports avancés — notes de réunion incluses par défaut': 'Informes avanzados — notas de reunión incluidas por defecto',
+    // Sidebar/misc (ES)
+    'Centre de contrôle': 'Centro de control',
+    'Tous UP': 'Todos activos',
+    'Activité équipe': 'Actividad del equipo',
+    'Tous': 'Todos',
+    'Activer les notifications push': 'Activar notificaciones push',
+    "Fermer le fil d'activité": 'Cerrar el hilo de actividad',
+    "Fil d'activité équipe": 'Hilo de actividad del equipo',
+    'Fermer le panneau': 'Cerrar panel',
+    'Raccourcis clavier': 'Atajos de teclado',
+    'Navigation principale': 'Navegación principal',
+    'Contenu principal': 'Contenido principal',
+    'Palette de commandes': 'Paleta de comandos',
+    'Réduire la sidebar': 'Contraer barra lateral',
+    'Ouvrir le menu': 'Abrir menú',
+    'Basculer le thème': 'Cambiar tema',
+    'Se déconnecter': 'Cerrar sesión',
+    "Fil d'activité": 'Hilo de actividad',
+    'Assistant IA FlowPoint': 'Asistente IA FlowPoint',
+    'Chargement de FlowPoint…': 'Cargando FlowPoint…',
+    'Profil sauvegardé !': '¡Perfil guardado!',
+    'Clé régénérée ! Copiez-la maintenant.': '¡Clave regenerada! Cópiela ahora.',
+    'Aucune activité à exporter pour le moment': 'Sin actividad para exportar por ahora',
+    // AI chat (ES)
+    'Bonjour !': '¡Hola!',
+    'Je suis votre assistant SEO FlowPoint.': 'Soy su asistente SEO de FlowPoint.',
+    'Posez-moi des questions sur vos sites, performances, opportunités ou demandez-moi de générer un rapport.': 'Hágame preguntas sobre sus sitios, rendimiento, oportunidades o pídame generar un informe.',
+    'Score SEO moyen': 'Puntuación SEO media',
+    'Actions prioritaires': 'Acciones prioritarias',
+    'Résumé exécutif': 'Resumen ejecutivo',
+    'Posez une question à votre expert SEO IA…': 'Haga una pregunta a su experto SEO de IA…',
+    "Message à l'assistant IA": 'Mensaje al asistente IA',
+    'Effacer': 'Borrar',
+    'Plein écran': 'Pantalla completa',
+    "Ouvrir en plein écran": 'Abrir en pantalla completa',
+    'Effacer la conversation': 'Borrar conversación',
+    "Fermer l'assistant IA": 'Cerrar asistente IA',
+    'Joindre un fichier': 'Adjuntar archivo',
+    'Retirer le fichier': 'Quitar archivo',
+    'Tous les systèmes OK': 'Todos los sistemas OK',
+    'Bon': 'Bueno', 'Critique': 'Crítico',
+    'Avatar — bientôt disponible': 'Avatar — próximamente',
+    'Bientôt disponible': 'Próximamente',
+    'Ultra requis': 'Ultra requerido',
+    'Pro requis': 'Pro requerido',
+    'bientôt disponible': 'próximamente',
+    'Interne': 'Interno',
+    'Récemment': 'Recientemente',
+    'Sauvegarde…': 'Guardando…',
+    // Status labels
+    'À faire': 'Por hacer', 'En cours': 'En curso', 'Terminée': 'Terminada',
+    'Ouverte': 'Por hacer', 'open': 'Por hacer', 'in_progress': 'En curso',
+    // Attachment chip
+    'Pièce jointe en attente': 'Archivo adjunto pendiente',
+    'Retirer la pièce jointe': 'Quitar adjunto',
+    // Channel creation
+    'Canal créé': 'Canal creado',
+    // Competitor AI suggestions (Fix 2)
+    'Suggestions IA de concurrents': 'Sugerencias IA de competidores',
+    'Connectez Google Business Profile pour obtenir des suggestions de concurrents locaux.': 'Conecte Google Business Profile para obtener sugerencias de competidores locales.',
+    'Chargement des suggestions…': 'Cargando sugerencias…',
+    'Charger les suggestions': 'Cargar sugerencias',
+    'Aucun concurrent suggéré pour le moment.': 'Sin sugerencias de competidores por ahora.',
+    'Menace forte': 'Amenaza alta',
+    'À surveiller': 'A vigilar',
+    'Faible risque': 'Riesgo bajo',
+    // Competitor empty states (Fix 1)
+    'Ajoutez un concurrent pour voir les scores de domination': 'Añada un competidor para ver los puntos de dominación',
+    'Ajoutez un concurrent pour comparer les fréquences de publication': 'Añada un competidor para comparar frecuencias de publicación',
+    'Ajoutez un concurrent pour voir l\'analyse des gaps thématiques': 'Añada un competidor para ver el análisis de brechas temáticas',
+    'Ajoutez un concurrent pour comparer les scores de qualité de contenu': 'Añada un competidor para comparar puntuaciones de calidad de contenido',
+    // Progression / achievements (Fix 4)
+    'Achievements débloqués': 'Logros desbloqueados',
+    'débloqués': 'desbloqueados',
+    // Streak (Fix 5)
+    'Jours consécutifs': 'Días consecutivos',
+    'Actions réalisées': 'Acciones realizadas',
+    'Missions terminées': 'Misiones completadas',
+    // Local SEO domination (Fix 3)
+    'Territoire maîtrisé': 'Territorio dominado',
+    'Connectez GBP pour voir les métriques locales.': 'Conecte GBP para ver métricas locales.',
+    'Autorité régionale': 'Autoridad regional',
+    'Couverture visibilité': 'Cobertura de visibilidad',
+    'Force GBP': 'Fuerza GBP',
+    'Note GBP': 'Nota GBP',
+    '— vs concurrents': '— vs competidores',
     },
     de: {'Vue d\'ensemble':'Übersicht','Audits SEO':'SEO-Audits','Mots-clés':'Schlüsselwörter','Concurrents':'Wettbewerber','Rapports':'Berichte','Missions':'Aufgaben','Assistant IA':'KI-Assistent','Calendrier':'Kalender','Équipe':'Team','Paramètres':'Einstellungen','Facturation':'Abrechnung','Sécurité':'Sicherheit','Intégrations':'Integrationen','Notifications':'Benachrichtigungen','Alertes':'Warnungen','Croissance':'Wachstum','Trafic':'Traffic','Rechercher':'Suchen','Rechercher…':'Suchen…','Ajouter':'Hinzufügen','Annuler':'Abbrechen','Enregistrer':'Speichern','Sauvegarder':'Speichern','Supprimer':'Löschen','Modifier':'Bearbeiten','Fermer':'Schließen','Voir tout':'Alle anzeigen','Exporter':'Exportieren','Actualiser':'Aktualisieren','Chargement…':'Lädt…','Aucune donnée':'Keine Daten','Changer de plan':'Plan ändern','Plan actuel':'Aktueller Plan','Choisir':'Auswählen','Langue':'Sprache','Thème':'Design','Sombre':'Dunkel','Clair':'Hell','En cours':'In Bearbeitung','Terminé':'Erledigt','À faire':'Zu erledigen','Priorité':'Priorität','Statut':'Status','Actif':'Aktiv','Inactif':'Inaktiv','Envoyer':'Senden','Nouvelle conv.':'Neuer Chat','Complétées':'Abgeschlossen'},
     it: {'Vue d\'ensemble':'Panoramica','Audits SEO':'Audit SEO','Mots-clés':'Parole chiave','Concurrents':'Concorrenti','Rapports':'Report','Missions':'Attività','Assistant IA':'Assistente IA','Calendrier':'Calendario','Équipe':'Team','Paramètres':'Impostazioni','Facturation':'Fatturazione','Sécurité':'Sicurezza','Intégrations':'Integrazioni','Notifications':'Notifiche','Alertes':'Avvisi','Croissance':'Crescita','Trafic':'Traffico','Rechercher':'Cerca','Rechercher…':'Cerca…','Ajouter':'Aggiungi','Annuler':'Annulla','Enregistrer':'Salva','Sauvegarder':'Salva','Supprimer':'Elimina','Modifier':'Modifica','Fermer':'Chiudi','Voir tout':'Vedi tutto','Exporter':'Esporta','Actualiser':'Aggiorna','Chargement…':'Caricamento…','Aucune donnée':'Nessun dato','Changer de plan':'Cambia piano','Plan actuel':'Piano attuale','Choisir':'Scegli','Langue':'Lingua','Thème':'Tema','Sombre':'Scuro','Clair':'Chiaro','En cours':'In corso','Terminé':'Completato','À faire':'Da fare','Priorité':'Priorità','Statut':'Stato','Actif':'Attivo','Inactif':'Inattivo','Envoyer':'Invia','Nouvelle conv.':'Nuova chat','Complétées':'Completate'},
@@ -17008,7 +17556,8 @@ async function init() {
       var roots = [document.getElementById('fp-sidebar'), document.getElementById('fp-page'),
                    document.querySelector('.fp-topbar'), document.getElementById('fp-header'),
                    document.getElementById('fp-float-panel'), document.getElementById('fp-activity-panel'),
-                   document.getElementById('fp-cmd-palette'), document.getElementById('fp-toast-container')];
+                   document.getElementById('fp-cmd-palette'), document.getElementById('fp-toast-container'),
+                   document.getElementById('fp-ai-chat-panel'), document.getElementById('fp-shortcuts-modal')];
       document.querySelectorAll('.fp-confirm-overlay, .fp-modal-overlay').forEach(function(root) {
         roots.push(root);
       });
@@ -17143,7 +17692,7 @@ async function init() {
         try {
           const card = document.querySelector('[data-apikey-card="' + keyId + '"]');
           const dateEl = card && card.querySelector('div[style*="margin-top:6px"]');
-          if (dateEl) dateEl.textContent = 'Créée le ' + new Date().toLocaleDateString('fr-FR');
+          if (dateEl) dateEl.textContent = 'Créée le ' + new Date().toLocaleDateString(getLocale());
         } catch(e) {}
         showToast('success', 'Clé régénérée ! Copiez-la maintenant.');
         navigator.clipboard?.writeText(r.key).catch(() => {});
@@ -17627,6 +18176,56 @@ async function init() {
     else showToast('error', "Erreur lors de l'ajout");
   };
 
+  // ── Fix 2: AI Competitor Suggestions ────────────────────────────────────────
+  // Load suggestions from /api/competitors/suggestions and cache in STATE
+  window.fpLoadCompSuggestions = async function() {
+    const _btn = document.getElementById('fp-comp-sugg-refresh');
+    if (_btn) _btn.textContent = '…';
+    try {
+      const _r = await apiFetch('/api/competitors/suggestions');
+      if (_r && typeof _r === 'object') {
+        STATE._compSuggestions = Array.isArray(_r.suggestions) ? _r.suggestions : [];
+        STATE._compSuggestionsReason = _r.reason || null;
+        STATE._compSuggestionsLoaded = true;
+      }
+    } catch(_e) {
+      STATE._compSuggestionsLoaded = true;
+      STATE._compSuggestions = [];
+    }
+    // Refresh only the suggestions block if it exists, else full render
+    const _block = document.getElementById('fp-comp-suggestions-content');
+    if (_block && STATE.route === 'competitor' && !STATE.subRoute) {
+      // Re-render the inner content only
+      if (_btn) _btn.textContent = '↺ Actualiser';
+      render();
+    } else {
+      if (_btn) _btn.textContent = '↺ Actualiser';
+    }
+  };
+
+  // Pre-fill add-competitor panel with suggestion data
+  window.fpAddSuggestedCompetitor = function(data) {
+    if (typeof data === 'string') { try { data = JSON.parse(data); } catch(_) { data = {}; } }
+    window.FP_showAddCompetitor();
+    // Pre-fill fields after panel opens
+    requestAnimationFrame(function() {
+      const _n = document.getElementById('fp-comp-name');
+      const _u = document.getElementById('fp-comp-url');
+      const _t = document.getElementById('fp-comp-threat');
+      if (_n && data.name) _n.value = data.name;
+      if (_u && data.url) _u.value = data.url;
+      if (_t && data.threat) {
+        const _threatMap = { high: 'high', medium: 'medium', low: 'low', critical: 'critical' };
+        _t.value = _threatMap[data.threat] || 'medium';
+      }
+    });
+  };
+
+  // Auto-load suggestions when on competitor page if not yet loaded
+  if (STATE.route === 'competitor' && !STATE.subRoute && !STATE._compSuggestionsLoaded) {
+    window.fpLoadCompSuggestions();
+  }
+
   // Apply initial sidebar collapsed state (desktop only — on mobile the sidebar is a fixed drawer)
   if (STATE.sidebarCollapsed && window.innerWidth > 768) {
     $('#fp-sidebar')?.classList.add('collapsed');
@@ -17730,7 +18329,7 @@ function renderSubPageContent(route, sub) {
   if (route === 'traffic') {
     const ga4 = window.FP_DATA?.ga4 || {};
     const rows = ga4.sources?.rows || [];
-    const fmtN = n => n>=1000?(n/1000).toFixed(1)+'k':Math.round(n).toLocaleString('fr-FR');
+    const fmtN = n => n>=1000?(n/1000).toFixed(1)+'k':Math.round(n).toLocaleString(getLocale());
     const filterRows = (keyword) => rows.filter(r => {
       const ch = (r.dimensionValues?.[0]?.value||'').toLowerCase();
       return ch.includes(keyword);
@@ -17876,8 +18475,8 @@ function renderSubPageContent(route, sub) {
               return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
                 <td style="padding:7px 10px;font-weight:600;color:var(--fp-text)">${escHtml(ev)}</td>
                 <td style="padding:7px 10px"><span style="font-size:10px;padding:2px 6px;border-radius:4px;background:${color}18;color:${color}">${ch}</span></td>
-                <td style="padding:7px 10px;color:#22c55e;font-weight:800">${Math.round(c).toLocaleString('fr-FR')}</td>
-                <td style="padding:7px 10px">${Math.round(u).toLocaleString('fr-FR')}</td>
+                <td style="padding:7px 10px;color:#22c55e;font-weight:800">${Math.round(c).toLocaleString(getLocale())}</td>
+                <td style="padding:7px 10px">${Math.round(u).toLocaleString(getLocale())}</td>
                 <td style="padding:7px 10px"><span style="color:${parseFloat(rate)>5?'#22c55e':parseFloat(rate)>2?'#f59e0b':'#ef4444'};font-weight:700">${rate}%</span></td>
               </tr>`;
             }).join('')||`<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--fp-text-muted)">${_ga4Connected()?'Chargement…':'Connectez GA4 pour voir vos objectifs'}</td></tr>`}
@@ -17917,7 +18516,7 @@ function renderSubPageContent(route, sub) {
             <span style="font-size:11px;padding:3px 8px;border-radius:5px;background:${color}18;color:${color};font-weight:700">${escHtml(ch)}</span>
             <span style="color:var(--fp-text-faint);font-size:10px">→</span>
             <code style="font-size:11px;color:#2563EB;font-family:var(--fp-font-mono);flex:1;overflow:hidden;text-overflow:ellipsis">${escHtml(ev)}</code>
-            <span style="font-size:12px;font-weight:800;color:#22c55e">${c.toLocaleString('fr-FR')} conv.</span>
+            <span style="font-size:12px;font-weight:800;color:#22c55e">${c.toLocaleString(getLocale())} conv.</span>
           </div>`;
         }).join('') : `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint);font-size:12px">
             <div style="font-size:24px;margin-bottom:8px">🗺️</div>
@@ -17944,7 +18543,7 @@ function renderSubPageContent(route, sub) {
     const ga4     = window.FP_DATA?.ga4 || {};
     const devRows = ga4.audience?.devices?.rows || [];
     const geoRows = ga4.audience?.geo?.rows || [];
-    const fmtN    = n => n>=1000?(n/1000).toFixed(1)+'k':Math.round(n).toLocaleString('fr-FR');
+    const fmtN    = n => n>=1000?(n/1000).toFixed(1)+'k':Math.round(n).toLocaleString(getLocale());
 
     if (sub === 'geo') {
       const countryMap = {}; const cityMap = {};
@@ -18936,7 +19535,7 @@ function renderAuditsAnalysis() {
         const statLabel = h.score>=80?'Excellent':h.score>=70?'Bon':h.score>=50?'Moyen':'Critique';
         const statColor = scoreColor(h.score);
         return `<tr class="fp-hist-row" data-hist-audit-id="${escHtml(h.id)}" style="cursor:pointer">
-          <td style="color:var(--fp-text-muted);font-size:11px">${new Date(h.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'})}</td>
+          <td style="color:var(--fp-text-muted);font-size:11px">${new Date(h.date).toLocaleDateString(getLocale(),{day:'2-digit',month:'short',year:'numeric'})}</td>
           <td style="text-align:center"><div class="fp-score-bar-wrap" style="justify-content:center"><div class="fp-score-bar-track" style="width:60px"><div class="fp-score-bar-fill" style="width:${h.score}%;background:${scoreColor(h.score)}"></div></div><span class="fp-score-val" style="color:${scoreColor(h.score)}">${Math.round(h.score)}</span></div></td>
           <td style="text-align:center">${dEl}</td>
           <td style="text-align:center">${badge(statLabel, statColor)}</td>
@@ -19281,7 +19880,7 @@ function historyLineChart(points, trendLine) {
   const xLabelIdxs = [...new Set([0, ...points.map((_,i) => i).filter(i => i % step === 0), points.length - 1])];
   const xLabels = xLabelIdxs.map(i => {
     const d = new Date(points[i].date);
-    const label = d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+    const label = d.toLocaleDateString(getLocale(), { day: '2-digit', month: 'short' });
     return `<text x="${xi(i).toFixed(1)}" y="${(padT + innerH + 18).toFixed(1)}" fill="${_labelFill}" font-size="9" text-anchor="middle">${label}</text>`;
   }).join('');
 
@@ -19304,7 +19903,7 @@ function historyLineChart(points, trendLine) {
   ).join('');
 
   const hits = points.map((p, i) => {
-    const dStr = new Date(p.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+    const dStr = new Date(p.date).toLocaleDateString(getLocale(), { day: '2-digit', month: 'short', year: 'numeric' });
     return `<circle class="fp-hist-hit" cx="${xi(i).toFixed(1)}" cy="${yi(p.score).toFixed(1)}" r="10" fill="transparent" style="cursor:pointer"
       data-audit-id="${escHtml(p.id)}" data-score="${Math.round(p.score)}" data-date="${escHtml(dStr)}" data-origin="${escHtml(p.origin || 'manual')}"
       data-cx="${xi(i).toFixed(1)}" data-cy="${yi(p.score).toFixed(1)}"/>`;
@@ -19382,7 +19981,7 @@ function renderAuditsHistory() {
       ? `<span style="background:rgba(139,92,246,0.15);color:#8b5cf6;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid rgba(139,92,246,0.3)">Auto</span>`
       : `<span style="background:var(--fp-track);color:var(--fp-text-muted);font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px">Manuel</span>`;
     return `<tr class="fp-hist-row" data-hist-audit-id="${escHtml(h.id)}" style="cursor:pointer">
-      <td style="color:var(--fp-text-muted);font-size:12px">${new Date(h.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+      <td style="color:var(--fp-text-muted);font-size:12px">${new Date(h.date).toLocaleDateString(getLocale(), { day: '2-digit', month: 'short', year: 'numeric' })}</td>
       <td style="padding-right:20px"><div class="fp-score-bar-wrap"><div class="fp-score-bar-track"><div class="fp-score-bar-fill" style="width:${h.score}%;background:${scoreColor(h.score)}"></div></div><span class="fp-score-val" style="color:${scoreColor(h.score)}">${Math.round(h.score)}</span></div></td>
       <td style="text-align:center">${deltaEl}</td>
       <td style="text-align:center">${badge(scoreLabel(h.score), scoreColor(h.score))}</td>
@@ -19830,8 +20429,8 @@ function renderMonitorsIncidents() {
   const _monDown  = _monAll.filter(m => m.status === 'down');
   const _monWarn  = _monAll.filter(m => m.status === 'warn');
   const _nowInc   = new Date();
-  const _fmtT     = d => d.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
-  const _fmtD     = d => d.toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit', year:'numeric'});
+  const _fmtT     = d => d.toLocaleTimeString(getLocale(), {hour:'2-digit', minute:'2-digit'});
+  const _fmtD     = d => d.toLocaleDateString(getLocale(), {day:'2-digit', month:'2-digit', year:'numeric'});
   const incidents = _monAll.filter(m => m.status !== 'up').map((m, idx) => ({
     id: 'inc-' + idx,
     site: (m.url||m.name||'').replace(/^https?:\/\//,''),
@@ -19902,7 +20501,7 @@ function renderMonitorsIncidents() {
           ${((() => {
             const _incRaw = STATE.monitors?.flatMap(m => (m.incidents||[]).map(i=>({...i, monName: m.name||m.url||'Monitor'}))).sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(-5) || [];
             const _evList = _incRaw.length > 0
-              ? _incRaw.map(i => ({ day: new Date(i.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), label: (i.monName||'Monitor').replace(/^https?:\/\//,'').slice(0,20)+(i.duration?' '+i.duration:''), type: i.severity||'info' }))
+              ? _incRaw.map(i => ({ day: new Date(i.date).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}), label: (i.monName||'Monitor').replace(/^https?:\/\//,'').slice(0,20)+(i.duration?' '+i.duration:''), type: i.severity||'info' }))
               : (PREVIEW_MODE ? [
                   { day: '20/04', label: 'Monitor 1 — 3min', type: 'info' },
                   { day: '28/04', label: 'Monitor 2 — dégradé 12min', type: 'warning' },
@@ -19910,7 +20509,7 @@ function renderMonitorsIncidents() {
                   { day: '03/05', label: 'Monitor 3 — DOWN 44min', type: 'critical' },
                   { day: '07/05', label: 'Calme', type: 'ok' },
                   { day: '09/05', label: 'Aujourd\'hui', type: 'today' },
-                ] : [{ day: new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), label: 'Aucun incident', type: 'ok' }]);
+                ] : [{ day: new Date().toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}), label: 'Aucun incident', type: 'ok' }]);
             return _evList;
           })()).map(ev => `
             <div style="display:flex;flex-direction:column;align-items:center;gap:6px;max-width:80px">
@@ -20746,9 +21345,7 @@ function renderTeamChat() {
       <div style="border-top:1px solid var(--fp-border);padding:8px 14px 14px">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
           <select id="team-chat-channel-main" onchange="STATE.msgChannel=this.value;showToast('info','Canal : '+this.options[this.selectedIndex].text);navigateSub('chat')" style="font-size:11px;padding:4px 10px;border-radius:8px;border:1px solid var(--fp-border);background:var(--fp-bg-card);color:var(--fp-text);cursor:pointer;font-weight:600;flex:1">
-            <option value="general" ${(STATE.msgChannel||'general')==='general'?'selected':''} >#général</option>
-            <option value="seo" ${STATE.msgChannel==='seo'?'selected':''} >#seo</option>
-            <option value="rapports" ${STATE.msgChannel==='rapports'?'selected':''} >#rapports</option>
+            ${(STATE.channels && STATE.channels.length > 0 ? STATE.channels : ['general','seo','rapports']).map(c => `<option value="${escHtml(c)}" ${(STATE.msgChannel||'general')===c?'selected':''}>#${escHtml(c==='general'?'général':c)}</option>`).join('')}
           </select>
           <button onclick="openNewChannelPanel()" class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px">+ Canal</button>
         </div>
@@ -20757,6 +21354,8 @@ function renderTeamChat() {
           <label for="team-chat-attach-main" title="Joindre un fichier" style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:8px;width:32px;height:32px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="14"').replace('height="14"','height="14"')}</label>
           <input id="team-chat-input" class="fp-input" placeholder="Écrire un message… (@mention)" style="flex:1;height:32px;font-size:12px"/>
           <button id="team-chat-send" class="fp-btn fp-btn-primary fp-btn-sm" style="height:32px;padding:0 14px;flex-shrink:0;display:flex;align-items:center;gap:5px">${svgIcon('send').replace('width="14"','width="12"').replace('height="14"','height="12"')} Envoyer</button>
+        </div>
+        <div id="fp-team-chat-attach-chips-main" style="display:${(STATE.teamChatPendingFiles&&STATE.teamChatPendingFiles.length>0)?'flex':'none'};flex-wrap:wrap;gap:5px;padding-top:6px">
         </div>
       </div>
     </div>
@@ -20771,7 +21370,7 @@ function renderTeamActivity() {
     <div class="fp-timeline">
       ${(PREVIEW_MODE ? ACTIVITY_FEED : (STATE.activityEvents||[])).length === 0
         ? '<div style="padding:32px;text-align:center;color:var(--fp-text-faint);font-size:13px">Aucune activité enregistrée pour le moment. Les événements apparaîtront ici au fil de vos actions.</div>'
-        : (PREVIEW_MODE ? ACTIVITY_FEED : (STATE.activityEvents||[]).map(e => ({type:e.type==='monitor'?'info':e.type==='alert'?'warning':e.type==='audit'?'success':'info',icon:e.type==='monitor'?'activity':e.type==='alert'?'alert-triangle':e.type==='audit'?'trending-up':'zap',title:e.label||'Événement',desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'',time:e.createdAt?new Date(e.createdAt).toLocaleDateString('fr-FR'):'—'}))).map(item => {
+        : (PREVIEW_MODE ? ACTIVITY_FEED : (STATE.activityEvents||[]).map(e => ({type:e.type==='monitor'?'info':e.type==='alert'?'warning':e.type==='audit'?'success':'info',icon:e.type==='monitor'?'activity':e.type==='alert'?'alert-triangle':e.type==='audit'?'trending-up':'zap',title:e.label||'Événement',desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'',time:e.createdAt?new Date(e.createdAt).toLocaleDateString(getLocale()):'—'}))).map(item => {
         const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
         const c = colors[item.type] || '#2563EB';
         return `<div class="fp-timeline-item">
@@ -20796,16 +21395,16 @@ function renderTeamFiles() {
     name: f.name || 'Fichier',
     size: f.size ? (f.size > 1024*1024 ? (f.size/(1024*1024)).toFixed(1)+' MB' : Math.round(f.size/1024)+' KB') : '—',
     shared: f.sharedBy || _fn(0),
-    date: f.createdAt ? new Date(f.createdAt).toLocaleDateString('fr-FR') : new Date().toLocaleDateString('fr-FR'),
+    date: f.createdAt ? new Date(f.createdAt).toLocaleDateString(getLocale()) : new Date().toLocaleDateString(getLocale()),
     type: String(f.type||'pdf').split('/')[0].replace('application','pdf').replace('text','csv').replace('image','pdf'),
     color: {pdf:'#2563EB',xlsx:'#22c55e',zip:'#f59e0b',docx:'#8b5cf6',csv:'#22c55e'}[String(f.type||'pdf').split('/')[0].replace('application','pdf').replace('text','csv').replace('image','pdf')] || '#2563EB'
   })) : (PREVIEW_MODE ? [
-    { id:null, name:'Rapport_' + new Date().toLocaleString('fr-FR',{month:'long',year:'numeric'}).replace(' ','_') + '.pdf', size:'2.4 MB', shared:_fn(0), date:new Date(Date.now()-3*86400000).toLocaleDateString('fr-FR'), type:'pdf', color:'#2563EB' },
-    { id:null, name:'Audit_SEO_' + (STATE.audits&&STATE.audits.length>0?((STATE.audits[0].url||'').replace(/^https?:\/\//,'').split('.')[0]||'site'):'site') + '.xlsx', size:'890 KB', shared:_fn(1), date:new Date(Date.now()-4*86400000).toLocaleDateString('fr-FR'), type:'xlsx', color:'#22c55e' },
-    { id:null, name:'Photos_GBP.zip', size:'14.2 MB', shared:_fn(0), date:new Date(Date.now()-5*86400000).toLocaleDateString('fr-FR'), type:'zip', color:'#f59e0b' },
-    { id:null, name:'Plan_action_Q3_' + new Date().getFullYear() + '.docx', size:'320 KB', shared:_fn(1), date:new Date(Date.now()-8*86400000).toLocaleDateString('fr-FR'), type:'docx', color:'#8b5cf6' },
-    { id:null, name:'Checklist_SEO_Template.pdf', size:'180 KB', shared:_fn(2), date:new Date(Date.now()-21*86400000).toLocaleDateString('fr-FR'), type:'pdf', color:'#2563EB' },
-    { id:null, name:'Données_Analytics_Q1.csv', size:'440 KB', shared:_fn(0), date:new Date(Date.now()-25*86400000).toLocaleDateString('fr-FR'), type:'csv', color:'#22c55e' },
+    { id:null, name:'Rapport_' + new Date().toLocaleString(getLocale(),{month:'long',year:'numeric'}).replace(' ','_') + '.pdf', size:'2.4 MB', shared:_fn(0), date:new Date(Date.now()-3*86400000).toLocaleDateString(getLocale()), type:'pdf', color:'#2563EB' },
+    { id:null, name:'Audit_SEO_' + (STATE.audits&&STATE.audits.length>0?((STATE.audits[0].url||'').replace(/^https?:\/\//,'').split('.')[0]||'site'):'site') + '.xlsx', size:'890 KB', shared:_fn(1), date:new Date(Date.now()-4*86400000).toLocaleDateString(getLocale()), type:'xlsx', color:'#22c55e' },
+    { id:null, name:'Photos_GBP.zip', size:'14.2 MB', shared:_fn(0), date:new Date(Date.now()-5*86400000).toLocaleDateString(getLocale()), type:'zip', color:'#f59e0b' },
+    { id:null, name:'Plan_action_Q3_' + new Date().getFullYear() + '.docx', size:'320 KB', shared:_fn(1), date:new Date(Date.now()-8*86400000).toLocaleDateString(getLocale()), type:'docx', color:'#8b5cf6' },
+    { id:null, name:'Checklist_SEO_Template.pdf', size:'180 KB', shared:_fn(2), date:new Date(Date.now()-21*86400000).toLocaleDateString(getLocale()), type:'pdf', color:'#2563EB' },
+    { id:null, name:'Données_Analytics_Q1.csv', size:'440 KB', shared:_fn(0), date:new Date(Date.now()-25*86400000).toLocaleDateString(getLocale()), type:'csv', color:'#22c55e' },
   ] : []);
   const fileIcon = (type, color) => {
     const paths = {
@@ -20932,7 +21531,7 @@ function initPageAnimations(route, sub) {
         const p = Math.min(1, (now - t0) / dur);
         const ease = 1 - Math.pow(1 - p, 3);
         const v = target * ease;
-        el.textContent = prefix + (dec > 0 ? v.toFixed(dec) : Math.round(v).toLocaleString('fr-FR')) + suffix;
+        el.textContent = prefix + (dec > 0 ? v.toFixed(dec) : Math.round(v).toLocaleString(getLocale())) + suffix;
         if (p < 1) requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
@@ -21150,7 +21749,7 @@ function renderGrowthProjections() {
   const _stepP = _projResult ? Math.max(0.5, Math.min(4, _stepRaw)) : 0;
   const _p30 = Math.round(_stepP*4), _p60 = Math.round(_stepP*8), _p90 = Math.round(_stepP*12);
   const future = [0,1,2,3,4,5,6].map(function(i){ return Math.round(Math.min(99, avgSc + _stepP * i)); });
-  const months = (function(){ const arr=[]; const now=new Date(); for(let i=1;i<=6;i++){ const d=new Date(now.getFullYear(), now.getMonth()+i, 1); const m=d.toLocaleDateString('fr-FR',{month:'short'}); arr.push(m.charAt(0).toUpperCase()+m.slice(1)+' '+d.getFullYear()); } return arr; })();
+  const months = (function(){ const arr=[]; const now=new Date(); for(let i=1;i<=6;i++){ const d=new Date(now.getFullYear(), now.getMonth()+i, 1); const m=d.toLocaleDateString(getLocale(),{month:'short'}); arr.push(m.charAt(0).toUpperCase()+m.slice(1)+' '+d.getFullYear()); } return arr; })();
   const _hasTrend = _auditHP.length >= 2 && _stepRaw > 0;
   const scenarios = [
     { label:'🚀 Optimiste',  color:'#22c55e',          bg:'rgba(34,197,94,.07)',  border:'rgba(34,197,94,.2)',
@@ -21303,7 +21902,7 @@ function renderGrowthObjectives() {
   const _scoreTrend = _histRaw.length >= 2 ? (((_histRaw[_histRaw.length-1]-_histRaw[0]) >= 0 ? '+' : '') + Math.round(_histRaw[_histRaw.length-1]-_histRaw[0]) + ' pts') : '—';
   const _qNum = Math.floor(new Date().getMonth()/3)+1;
   const _qEndD = new Date(new Date().getFullYear(), _qNum*3, 0);
-  const _qEnd = _qEndD.toLocaleDateString('fr-FR', { day:'numeric', month:'short', year:'numeric' });
+  const _qEnd = _qEndD.toLocaleDateString(getLocale(), { day:'numeric', month:'short', year:'numeric' });
   const _daysLeft = Math.max(0, Math.ceil((_qEndD - new Date()) / 86400000));
   const objectives = [
     { icon:'📊', label:'Score moyen ≥ 80/100',         progress:avgSc, target:80,   unit:'pts',   inverse:false, status:'on-track', deadline:_qEnd,    trend:_scoreTrend,      next:'Optimiser 3 pages à fort potentiel',    detail:'Score actuel portefeuille', history:_scoreHist },
@@ -21428,7 +22027,7 @@ function renderGrowthObjectives() {
       <div class="fp-card-title" style="margin-bottom:14px">🎯 Objectifs personnalisés</div>
       <div style="display:flex;flex-direction:column;gap:10px">
         ${STATE.growthObjectives.map(function(o) {
-          const dl = o.deadline ? new Date(o.deadline).toLocaleDateString('fr-FR', { day:'numeric', month:'short', year:'numeric' }) : '—';
+          const dl = o.deadline ? new Date(o.deadline).toLocaleDateString(getLocale(), { day:'numeric', month:'short', year:'numeric' }) : '—';
           return '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">' +
             '<div style="flex:1">' +
               '<div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">'+escHtml(o.label||'Objectif')+'</div>' +
@@ -21450,12 +22049,18 @@ function renderGrowthCommandCenter() {
   const avgSc = avgScore();
   const monitorsUp = STATE.monitors.filter(function(m){return m.status==='up'||m.status==='UP';}).length;
   const monitorsTotal = STATE.monitors.length;
+  // Fix 4: use real progression data from /api/progression if available
+  const _progData = STATE.progression || null;
   // growthPts: uses real audit count only — null when no data (P1.4: never fabricate 0)
   const growthPts = avgSc > 0
     ? Math.min(99, Math.round(avgSc * 0.55 + STATE.audits.length * 4 + (monitorsTotal > 0 ? Math.round(monitorsUp / monitorsTotal * 100) * 0.15 : 0)))
     : (STATE.audits.length > 0 ? 0 : null);
   // P1.4: null-safe level — when no data, level stays 1 (Débutant), no fabricated score
-  const level = growthPts == null ? 1 : growthPts < 30 ? 1 : growthPts < 50 ? 2 : growthPts < 65 ? 3 : growthPts < 82 ? 4 : 5;
+  // Fix 4: level derived purely from achievements count when real data available
+  const _achievedCount = _progData && Array.isArray(_progData.achievements) ? _progData.achievements.filter(function(a){ return a.achieved; }).length : null;
+  const level = _achievedCount != null
+    ? (_achievedCount === 0 ? 1 : _achievedCount <= 1 ? 1 : _achievedCount <= 2 ? 2 : _achievedCount <= 3 ? 3 : _achievedCount <= 4 ? 4 : 5)
+    : (growthPts == null ? 1 : growthPts < 30 ? 1 : growthPts < 50 ? 2 : growthPts < 65 ? 3 : growthPts < 82 ? 4 : 5);
   const levelNames = ['Débutant','En croissance','Avancé','Expert','Élite'];
 
   // ── Sources de données réelles ──────────────────────────────
@@ -21572,7 +22177,7 @@ function renderGrowthCommandCenter() {
         return {
           type: o.type || 'Article',
           title: o.title || o.keyword || 'Opportunité de contenu',
-          kw: o.volume ? o.volume.toLocaleString('fr-FR') + ' rech./mois' : (o.estimatedCtrGain ? '+' + Math.round(o.estimatedCtrGain*100) + '% CTR estimé' : ''),
+          kw: o.volume ? o.volume.toLocaleString(getLocale()) + ' rech./mois' : (o.estimatedCtrGain ? '+' + Math.round(o.estimatedCtrGain*100) + '% CTR estimé' : ''),
           diff: (o.difficulty||50) < 35 ? 'Facile' : (o.difficulty||50) < 65 ? 'Moyen' : 'Difficile'
         };
       })
@@ -21602,14 +22207,19 @@ function renderGrowthCommandCenter() {
   const sevBg  = {high:'rgba(239,68,68,.08)',med:'rgba(245,158,11,.07)',low:'rgba(255,255,255,.03)'};
 
   const _completedMissions = (STATE.missions||[]).filter(function(m){ return m.status==='completed'||m.status==='done'; }).length;
-  const badges = [
-    {icon:'🏆', label:'1er Audit',      earned: (STATE.audits||[]).length > 0},
-    {icon:'🔥', label:'7j consécutifs', earned: (STATE.me?.streakDays||0) >= 7},
-    {icon:'⚡', label:'Quick Win × 5',  earned: _completedMissions >= 5},
-    {icon:'📈', label:'Score > 70',     earned: avgSc >= 70},
-    {icon:'🌍', label:'Local Expert',   earned: (_lseo.domScore||0) >= 80},
-    {icon:'💎', label:'Niveau Élite',   earned: level >= 5},
-  ];
+  // _progData already declared at top of renderGrowthCommandCenter
+  const _progAchievements = _progData && Array.isArray(_progData.achievements) ? _progData.achievements : null;
+  const _progStreak = STATE.streak || 0; // always from API now (Fix 5)
+  const badges = _progAchievements
+    ? _progAchievements.map(function(a) { return { icon: a.key === 'first_audit' ? '🏆' : a.key === 'streak_7' ? '🔥' : a.key === 'quickwin_5' ? '⚡' : a.key === 'score_70' ? '📈' : a.key === 'local_expert' ? '🌍' : a.key === 'elite' ? '💎' : '🎖️', label: a.label, earned: !!a.achieved, progress: a.progress, target: a.target }; })
+    : [
+      {icon:'🏆', label:'1er Audit',      earned: (STATE.audits||[]).length > 0},
+      {icon:'🔥', label:'7j consécutifs', earned: _progStreak >= 7},
+      {icon:'⚡', label:'Quick Win × 5',  earned: _completedMissions >= 5},
+      {icon:'📈', label:'Score > 70',     earned: avgSc >= 70},
+      {icon:'🌍', label:'Local Expert',   earned: (_lseo.domScore||0) >= 80},
+      {icon:'💎', label:'Niveau Élite',   earned: level >= 5},
+    ];
 
   const typeCol = {Article:'var(--fp-accent)',  'Page locale':'#22c55e', FAQ:'#8b5cf6','Page service':'#f59e0b'};
   const typeBg  = {Article:'rgba(37,99,235,.14)','Page locale':'rgba(34,197,94,.13)',FAQ:'rgba(139,92,246,.13)','Page service':'rgba(245,158,11,.13)'};
@@ -21746,7 +22356,7 @@ function renderGrowthCommandCenter() {
           </div>
           <div>
             <div style="font-size:13.5px;font-weight:700;color:#f1f5ff">Intelligence de Croissance IA</div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">Analyse temps réel · ${new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'long'})}</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">Analyse temps réel · ${new Date().toLocaleDateString(getLocale(),{day:'2-digit',month:'long'})}</div>
           </div>
         </div>
         <span class="fp-growth-ai-live">● IA Active</span>
@@ -22026,24 +22636,28 @@ function renderGrowthCommandCenter() {
           </div>
           <div class="fp-growth-streaks">
             ${(function(){
-              var _sd = STATE.me?.streakDays || 0;
-              var _ta = _completedMissions + (STATE.audits||[]).length + (STATE.monitors||[]).length;
-              var _ob = (STATE.missions||[]).filter(function(m){ return (m.status==='completed'||m.status==='done')&&m.category==='objective'; }).length;
+              // Fix 5: use STATE.streak from /api/me/streak, never from localStorage or streakDays
+              var _sd = STATE.streak || 0;
+              // Fix 4: use real counts from /api/progression if available
+              var _realAudits = _progData ? (_progData.auditsCount != null ? _progData.auditsCount : (STATE.audits||[]).length) : (STATE.audits||[]).length;
+              var _realMissions = _progData ? (_progData.missionsCompleted != null ? _progData.missionsCompleted : _completedMissions) : _completedMissions;
+              var _ta = _realMissions + _realAudits + (STATE.monitors||[]).length;
               return [
                 ['🔥', _sd,              'Jours consécutifs', '#f97316'],
                 ['⚡', Math.max(0,_ta),  'Actions réalisées', 'var(--fp-accent)'],
-                ['🎯', _completedMissions,'Missions terminées','#22c55e'],
+                ['🎯', _realMissions,    'Missions terminées','#22c55e'],
               ].map(function(r){ return '<div class="fp-growth-streak-item"><div style="font-size:20px">'+r[0]+'</div><div style="font-size:18px;font-weight:800;color:'+r[3]+';font-family:var(--fp-font-head)">'+r[1]+'</div><div style="font-size:9.5px;color:var(--fp-text-faint)">'+r[2]+'</div></div>'; }).join('');
             })()}
           </div>
         </div>
         <div>
-          <div style="font-size:12px;font-weight:600;color:var(--fp-text-soft);margin-bottom:12px">Achievements débloqués</div>
+          <div style="font-size:12px;font-weight:600;color:var(--fp-text-soft);margin-bottom:12px">Achievements ${_progAchievements ? '(' + _progAchievements.filter(a=>a.achieved).length + '/' + _progAchievements.length + ' débloqués)' : 'débloqués'}</div>
           <div class="fp-growth-badges-grid">
             ${badges.map(b=>`
-              <div class="fp-growth-badge-item ${b.earned?'earned':'locked'}">
-                <div style="font-size:20px">${b.icon}</div>
-                <div style="font-size:9.5px;text-align:center;line-height:1.2;color:${b.earned?'var(--fp-text-soft)':'var(--fp-text-faint)'}">${b.label}</div>
+              <div class="fp-growth-badge-item ${b.earned?'earned':'locked'}" title="${escHtml(b.label)}${b.progress!=null&&b.target!=null?' — '+b.progress+'/'+b.target:''}">
+                <div style="font-size:20px;${b.earned?'':'filter:grayscale(1);opacity:0.45'}">${b.icon}</div>
+                <div style="font-size:9.5px;text-align:center;line-height:1.2;color:${b.earned?'var(--fp-text-soft)':'var(--fp-text-faint)'}">${escHtml(b.label)}</div>
+                ${(!b.earned && b.progress != null && b.target != null) ? `<div style="width:100%;background:rgba(255,255,255,0.08);border-radius:2px;height:2px;margin-top:3px"><div style="height:100%;width:${Math.round(b.progress/b.target*100)}%;background:var(--fp-accent);border-radius:2px"></div></div>` : ''}
               </div>
             `).join('')}
           </div>
@@ -22333,7 +22947,7 @@ function renderCompetitor() {
                   <td style="text-align:center">
                     <div style="display:flex;align-items:center;justify-content:center;gap:6px">
                       <div style="width:48px;height:4px;background:var(--fp-track);border-radius:2px;flex-shrink:0"><div style="height:100%;width:${Math.round(k.vol/maxVol*100)}%;background:var(--fp-accent);border-radius:2px"></div></div>
-                      <span style="font-size:11px;font-weight:600;color:var(--fp-text);min-width:32px;text-align:right">${k.vol.toLocaleString('fr-FR')}</span>
+                      <span style="font-size:11px;font-weight:600;color:var(--fp-text);min-width:32px;text-align:right">${k.vol.toLocaleString(getLocale())}</span>
                     </div>
                   </td>
                   <td style="text-align:center;color:${posColor};font-weight:700">${k.yours ? '#' + k.yours : '—'}</td>
@@ -22412,29 +23026,42 @@ function renderCompetitor() {
   // SUB: CONTENT — Intelligence Contenu
   // ══════════════════════════════════════════════════════════
   if (sub === 'content') {
-    const topics = [
+    // Fix 1: topics and freq are only meaningful when competitors exist.
+    // We only show the demo topics table behind isDemoMode(); real mode shows empty state.
+    const _contentHasComps = comps.length > 0;
+    const topics = _contentHasComps || isDemoMode() ? [
       { topic: 'Guides pratiques locaux',   yours: false, comps: 3, vol: 340, type: 'Informationnel' },
       { topic: 'FAQ service client',         yours: false, comps: 2, vol: 220, type: 'FAQ'            },
       { topic: 'Comparatifs produits',       yours: true,  comps: 4, vol: 180, type: 'Commercial'     },
       { topic: 'Contenu saisonnier',         yours: false, comps: 3, vol: 290, type: 'Saisonnier'     },
       { topic: 'Témoignages vidéo',          yours: false, comps: 1, vol: 110, type: 'Social proof'   },
       { topic: 'Pages quartier par quartier',yours: false, comps: 2, vol: 480, type: 'Local'          },
-    ];
-    const freq = PREVIEW_MODE ? [
+    ] : [];
+    // Fréquence publication: only show "Vous" row with real data; competitor rows only if real comps exist
+    const _myPosts = null; // publication frequency not yet in STATE — show '—' for real data
+    const freq = isDemoMode() ? [
       { name: 'Concurrent A', posts: 12, color: '#ef4444' },
       { name: 'Concurrent B', posts: 8,  color: '#f59e0b' },
       { name: 'Vous',         posts: 4,  color: '#2563EB' },
       { name: 'Concurrent C', posts: 2,  color: '#8b5cf6' },
-    ] : [{ name: 'Vous', posts: 4, color: '#2563EB' }].concat(comps.slice(0,3).map((c,i) => ({name:c.name,posts:Math.max(1,8-i*3),color:['#ef4444','#f59e0b','#8b5cf6'][i]||'#64748b'})));
+    ] : _contentHasComps
+      ? comps.slice(0,3).map((c,i) => ({name:c.name,posts:null,color:['#ef4444','#f59e0b','#8b5cf6'][i]||'#64748b'}))
+      : [];
     return `
-      ${aiBlock("Les concurrents publient en moyenne <strong>7 contenus/mois</strong> vs vos 4. Points faibles de leur stratégie : <strong>aucun contenu hyperlocal</strong> par quartier et <strong>FAQ incomplètes</strong>. Créer 3 pages locales + une FAQ structurée peut générer <strong>+540 visites/mois</strong>.",
-        ['Plan de contenu IA', 'Créer les pages manquantes', 'Rapport contenu'])}
+      ${_contentHasComps
+        ? aiBlock("Analysez la stratégie de contenu de vos concurrents pour identifier les sujets non couverts et les opportunités de trafic.", ['Plan de contenu IA', 'Créer les pages manquantes', 'Rapport contenu'])
+        : `<div style="background:linear-gradient(135deg,rgba(6,182,212,0.08),rgba(37,99,235,0.06));border:1px solid rgba(6,182,212,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
+            <div style="font-size:24px">📝</div>
+            <div><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Intelligence contenu</div><div style="font-size:12px;color:var(--fp-text-muted)">Ajoutez des concurrents pour comparer vos stratégies de contenu et identifier les gaps thématiques.</div></div>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="window.FP_showAddCompetitor()">Ajouter un concurrent</button>
+          </div>`
+      }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Sujets non couverts', topics.filter(t => !t.yours).length, 'vs concurrents', 'down')}
-        ${statCard('Volume manquant', displayStat(null, '+1 330'), PREVIEW_MODE ? 'rech/mois potentielles' : 'Données de classement indisponibles', 'neutral')}
-        ${statCard('Fréquence pub.', displayStat(null, '4/mois'), PREVIEW_MODE ? 'vs 7 moy. concurrents' : 'Connectez analytics', 'neutral')}
-        ${statCard('Score qualité', displayStat(null, '68/100'), PREVIEW_MODE ? 'vs 74 moy. marché' : 'Connectez analytics', 'neutral')}
+        ${statCard('Sujets non couverts', _contentHasComps ? topics.filter(t => !t.yours).length : '—', _contentHasComps ? 'vs concurrents' : 'Ajoutez un concurrent pour analyser', 'down')}
+        ${statCard('Volume manquant', '—', 'Données de classement indisponibles', 'neutral')}
+        ${statCard('Fréquence pub.', '—', _contentHasComps ? '— vs concurrents' : 'Ajoutez un concurrent', 'neutral')}
+        ${statCard('Score qualité', myScore != null ? myScore + '/100' : '—', myScore != null ? 'score SEO — données contenu indisponibles' : 'Lancez un audit pour démarrer', 'neutral')}
       </div>
 
       <!-- PUBLICATION FREQUENCY -->
@@ -22443,18 +23070,26 @@ function renderCompetitor() {
           ${svgIcon('edit-3').replace('stroke="currentColor"','stroke="#06b6d4"')}
           Fréquence de publication (contenus/mois)
         </div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          ${freq.map(f => `
-            <div style="display:flex;align-items:center;gap:12px">
-              <span style="font-size:12px;color:var(--fp-text-soft);min-width:140px">${escHtml(f.name)}</span>
-              <div class="fp-progress-track" style="flex:1;height:10px;border-radius:5px">
-                <div class="fp-progress-fill" style="width:${f.posts/14*100}%;background:${f.color};border-radius:5px"></div>
-              </div>
-              <span style="font-size:13px;font-weight:800;color:${f.color};min-width:24px;text-align:right">${f.posts}</span>
-            </div>
-          `).join('')}
-          <div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">Objectif recommandé : <strong style="color:#22c55e">8+ contenus/mois</strong></div>
-        </div>
+        ${freq.length === 0
+          ? `<div style="padding:24px 16px;text-align:center;color:var(--fp-text-faint);font-size:12px">
+              <div style="font-size:24px;margin-bottom:8px">📅</div>
+              <div style="font-weight:600;margin-bottom:4px">Ajoutez un concurrent pour comparer les fréquences de publication</div>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="window.FP_showAddCompetitor()">Ajouter un concurrent</button>
+            </div>`
+          : `<div style="display:flex;flex-direction:column;gap:10px">
+              ${freq.map(f => {
+                const _hasP = f.posts != null;
+                return `<div style="display:flex;align-items:center;gap:12px">
+                  <span style="font-size:12px;color:var(--fp-text-soft);min-width:140px">${escHtml(f.name)}</span>
+                  <div class="fp-progress-track" style="flex:1;height:10px;border-radius:5px">
+                    ${_hasP ? `<div class="fp-progress-fill" style="width:${f.posts/14*100}%;background:${f.color};border-radius:5px"></div>` : ''}
+                  </div>
+                  <span style="font-size:13px;font-weight:800;color:${_hasP ? f.color : 'var(--fp-text-faint)'};min-width:24px;text-align:right">${_hasP ? f.posts : '—'}</span>
+                </div>`;
+              }).join('')}
+              <div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">Objectif recommandé : <strong style="color:#22c55e">8+ contenus/mois</strong></div>
+            </div>`
+        }
       </div>
 
       <!-- TOPIC GAPS -->
@@ -22463,49 +23098,62 @@ function renderCompetitor() {
           ${svgIcon('file-text').replace('stroke="currentColor"','stroke="#f59e0b"')}
           Analyse des gaps thématiques
         </div>
-        <div style="overflow-x:auto">
-          <table class="fp-data-table">
-            <thead><tr><th>Sujet</th><th style="text-align:center">Type</th><th style="text-align:center">Couverts par N concurrents</th><th style="text-align:center">Volume potentiel</th><th style="text-align:center">Vous</th><th style="text-align:center">Action</th></tr></thead>
-            <tbody>
-              ${topics.map(t => `<tr>
-                <td style="font-weight:600">${escHtml(t.topic)}</td>
-                <td style="text-align:center">${badge(t.type, '#64748b')}</td>
-                <td style="text-align:center;color:${t.comps>=3?'#ef4444':'#f59e0b'}">${t.comps}/${comps.length}</td>
-                <td style="text-align:center;font-weight:700;color:#22c55e">+${t.vol}</td>
-                <td style="text-align:center">${badge(t.yours?'✓ Couvert':'✗ Manquant', t.yours?'#22c55e':'#ef4444')}</td>
-                <td style="text-align:center">${!t.yours ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('missions');setTimeout(()=>document.querySelector('[data-action=new-mission]')?.click(),300)">Créer</button>` : '<span style="font-size:10px;color:#22c55e">OK</span>'}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
+        ${topics.length === 0
+          ? `<div style="padding:24px 16px;text-align:center;color:var(--fp-text-faint);font-size:12px">
+              <div style="font-size:24px;margin-bottom:8px">📊</div>
+              <div style="font-weight:600;margin-bottom:4px">Ajoutez un concurrent pour voir l'analyse des gaps thématiques</div>
+              <div style="font-size:11px;margin-bottom:12px">Les sujets couverts par vos concurrents et non par vous apparaîtront ici.</div>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_showAddCompetitor()">Ajouter un concurrent</button>
+            </div>`
+          : `<div style="overflow-x:auto">
+              <table class="fp-data-table">
+                <thead><tr><th>Sujet</th><th style="text-align:center">Type</th><th style="text-align:center">Couverts par N concurrents</th><th style="text-align:center">Volume potentiel</th><th style="text-align:center">Vous</th><th style="text-align:center">Action</th></tr></thead>
+                <tbody>
+                  ${topics.map(t => `<tr>
+                    <td style="font-weight:600">${escHtml(t.topic)}</td>
+                    <td style="text-align:center">${badge(t.type, '#64748b')}</td>
+                    <td style="text-align:center;color:${t.comps>=3?'#ef4444':'#f59e0b'}">${t.comps}/${comps.length||'—'}</td>
+                    <td style="text-align:center;font-weight:700;color:#22c55e">+${t.vol}</td>
+                    <td style="text-align:center">${badge(t.yours?'✓ Couvert':'✗ Manquant', t.yours?'#22c55e':'#ef4444')}</td>
+                    <td style="text-align:center">${!t.yours ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('missions');setTimeout(()=>document.querySelector('[data-action=new-mission]')?.click(),300)">Créer</button>` : '<span style="font-size:10px;color:#22c55e">OK</span>'}</td>
+                  </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>`
+        }
       </div>
 
       <!-- CONTENT QUALITY SCORING -->
       ${isPro ? `
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">Score qualité du contenu</div>
-        <div style="display:flex;flex-direction:column;gap:8px">
+        ${!_contentHasComps
+          ? `<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">Ajoutez un concurrent pour comparer les scores de qualité de contenu.</div>`
+          : `<div style="display:flex;flex-direction:column;gap:8px">
           ${[
-            { dim: 'Profondeur sémantique',  you: 68, comp: 74 },
-            { dim: 'Optimisation locale',     you: 42, comp: 61 },
-            { dim: 'Structuration HTML',      you: 78, comp: 65 },
-            { dim: 'Fraîcheur du contenu',    you: 55, comp: 72 },
-            { dim: 'Engagement estimé',       you: 61, comp: 68 },
-          ].map(d => `
-            <div style="display:flex;align-items:center;gap:10px">
+            { dim: 'Profondeur sémantique',  you: myScore != null ? Math.max(20, Math.min(99, Math.round(myScore * 0.9))) : null, comp: null },
+            { dim: 'Optimisation locale',     you: STATE.localSeo?.domScore != null ? Math.round(STATE.localSeo.domScore) : null, comp: null },
+            { dim: 'Structuration HTML',      you: myScore != null ? Math.max(20, Math.min(99, Math.round(myScore * 1.05))) : null, comp: null },
+            { dim: 'Fraîcheur du contenu',    you: null, comp: null },
+            { dim: 'Engagement estimé',       you: null, comp: null },
+          ].map(d => {
+            const _yv = d.you;
+            const _cv = d.comp;
+            const _diff = (_yv != null && _cv != null) ? _yv - _cv : null;
+            return `<div style="display:flex;align-items:center;gap:10px">
               <span style="font-size:11px;color:var(--fp-text-muted);min-width:160px">${d.dim}</span>
               <div style="flex:1;display:flex;flex-direction:column;gap:3px">
-                <div class="fp-progress-track" style="height:4px"><div class="fp-progress-fill" style="width:${d.you}%;background:#2563EB"></div></div>
-                <div class="fp-progress-track" style="height:4px"><div class="fp-progress-fill" style="width:${d.comp}%;background:#ef444466"></div></div>
+                <div class="fp-progress-track" style="height:4px"><div class="fp-progress-fill" style="width:${_yv??0}%;background:#2563EB"></div></div>
+                ${_cv != null ? `<div class="fp-progress-track" style="height:4px"><div class="fp-progress-fill" style="width:${_cv}%;background:#ef444466"></div></div>` : ''}
               </div>
-              <span style="font-size:11px;font-weight:700;color:${d.you>d.comp?'#22c55e':'#ef4444'};min-width:32px;text-align:right">${d.you>d.comp?'+':''}${d.you-d.comp}</span>
-            </div>
-          `).join('')}
+              <span style="font-size:11px;font-weight:700;color:${_diff!=null?(_diff>=0?'#22c55e':'#ef4444'):'var(--fp-text-faint)'};min-width:32px;text-align:right">${_diff!=null?((_diff>=0?'+':'')+_diff):(_yv!=null?_yv:'—')}</span>
+            </div>`;
+          }).join('')}
           <div style="display:flex;gap:16px;font-size:10px;color:var(--fp-text-faint);margin-top:4px">
             <span>▬ <span style="color:#2563EB">Vous</span></span>
-            <span>▬ <span style="color:#ef4444">Moy. concurrents</span></span>
+            ${_contentHasComps ? `<span>▬ <span style="color:#ef4444">Moy. concurrents</span></span>` : ''}
           </div>
-        </div>
+        </div>`}
       </div>
       ` : `<div class="fp-upsell-banner fp-upsell-banner--blue"><div class="fp-upsell-text"><strong>Analyse qualité contenu</strong> disponible en Pro</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`}
     `;
@@ -22869,10 +23517,17 @@ function renderCompetitor() {
   // ══════════════════════════════════════════════════════════
   // DEFAULT (null) — Command Center
   // ══════════════════════════════════════════════════════════
+  // Fix 1: domScores — use real data only; null when no competitors and not demo
+  const _domSeoVal  = (comps.length > 0 && myScore != null) ? Math.round(myScore)
+                    : (isDemoMode() ? 68 : null);
+  const _domLocVal  = (STATE.localSeo?.domScore != null) ? Math.round(STATE.localSeo.domScore)
+                    : (STATE.overview?.localScore != null ? Math.round(STATE.overview.localScore) : null);
+  const _domAuthVal = (comps.length > 0 && myAuth > 0) ? Math.round(Math.min(99, myAuth))
+                    : (isDemoMode() ? 42 : null);
   const domScores = [
-    { label: 'Domination SEO',    val: 68, color: '#2563EB',  icon: '🔍' },
-    { label: 'Domination locale', val: 54, color: '#f59e0b',  icon: '📍' },
-    { label: 'Autorité de marché',val: 42, color: '#8b5cf6',  icon: '🏆' },
+    { label: 'Score SEO', val: _domSeoVal, color: '#2563EB', icon: '🔍' },
+    { label: 'Visibilité locale', val: _domLocVal, color: '#f59e0b', icon: '📍' },
+    { label: 'Autorité domaine', val: _domAuthVal, color: '#8b5cf6', icon: '🏆' },
   ];
   const circ52 = 2 * Math.PI * 46;
 
@@ -22943,27 +23598,37 @@ function renderCompetitor() {
           🏆 Scores de domination marché
         </div>
         <div style="display:flex;flex-direction:column;gap:16px">
-          ${domScores.map(d => `
-            <div style="display:flex;align-items:center;gap:14px">
-              <div style="flex-shrink:0">
-                <svg width="64" height="64" viewBox="0 0 64 64">
-                  <circle cx="32" cy="32" r="24" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8"/>
-                  <circle cx="32" cy="32" r="24" fill="none" stroke="${d.color}" stroke-width="8"
-                    stroke-dasharray="${(circ52*d.val/100).toFixed(1)} ${(circ52*(1-d.val/100)).toFixed(1)}"
-                    stroke-dashoffset="${(circ52*0.25).toFixed(1)}"
-                    stroke-linecap="round" transform="rotate(-90 32 32)"/>
-                  <text x="32" y="37" text-anchor="middle" font-size="13" font-weight="800" fill="var(--fp-text)">${d.val}</text>
-                </svg>
-              </div>
-              <div style="flex:1">
-                <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${d.icon} ${d.label}</div>
-                <div class="fp-progress-track" style="height:5px">
-                  <div class="fp-progress-fill" style="width:${d.val}%;background:${d.color}"></div>
+          ${comps.length === 0 && !isDemoMode()
+            ? `<div style="padding:24px 16px;text-align:center;color:var(--fp-text-faint);font-size:12px">
+                <div style="font-size:24px;margin-bottom:8px">🏆</div>
+                <div style="font-weight:600;margin-bottom:4px">Ajoutez un concurrent pour voir les scores de domination</div>
+                <div style="font-size:11px">Les scores SEO, visibilité locale et autorité apparaîtront ici une fois vos concurrents configurés.</div>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="window.FP_showAddCompetitor()">Ajouter un concurrent</button>
+              </div>`
+            : domScores.map(d => {
+              const _hasVal = d.val != null && Number.isFinite(d.val);
+              const _faintColor = STATE.theme === 'light' ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.30)';
+              return `<div style="display:flex;align-items:center;gap:14px">
+                <div style="flex-shrink:0">
+                  <svg width="64" height="64" viewBox="0 0 64 64">
+                    <circle cx="32" cy="32" r="24" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8"/>
+                    ${_hasVal ? `<circle cx="32" cy="32" r="24" fill="none" stroke="${d.color}" stroke-width="8"
+                      stroke-dasharray="${(circ52*d.val/100).toFixed(1)} ${(circ52*(1-d.val/100)).toFixed(1)}"
+                      stroke-dashoffset="${(circ52*0.25).toFixed(1)}"
+                      stroke-linecap="round" transform="rotate(-90 32 32)"/>` : ''}
+                    <text x="32" y="37" text-anchor="middle" font-size="13" font-weight="800" fill="${_hasVal ? 'var(--fp-text)' : _faintColor}">${_hasVal ? d.val : '—'}</text>
+                  </svg>
                 </div>
-                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">Objectif : 80/100 · ${80-d.val > 0 ? '+' + (80-d.val) + ' pts nécessaires' : 'Objectif atteint'}</div>
-              </div>
-            </div>
-          `).join('')}
+                <div style="flex:1">
+                  <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${d.icon} ${d.label}</div>
+                  <div class="fp-progress-track" style="height:5px">
+                    <div class="fp-progress-fill" style="width:${_hasVal ? d.val : 0}%;background:${_hasVal ? d.color : 'transparent'}"></div>
+                  </div>
+                  <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${_hasVal ? ('Objectif : 80/100 · ' + (80 - d.val > 0 ? '+' + (80 - d.val) + ' pts nécessaires' : 'Objectif atteint')) : '— vs concurrents'}</div>
+                </div>
+              </div>`;
+            }).join('')
+          }
         </div>
       </div>
 
@@ -23164,6 +23829,62 @@ function renderCompetitor() {
           `).join('')}
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:10px" onclick="navigateSub('alerts')">Voir toutes les alertes →</button>
         </div>
+      </div>
+    </div>
+
+    <!-- FIX 2: AI SUGGESTIONS BLOCK -->
+    <div class="fp-card fp-mb-20" id="fp-comp-suggestions-block">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div class="fp-card-title" style="margin-bottom:0">
+          🤖 Suggestions IA de concurrents
+        </div>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="fpLoadCompSuggestions()" id="fp-comp-sugg-refresh">↺ Actualiser</button>
+      </div>
+      <div id="fp-comp-suggestions-content">
+        ${(function(){
+          const _sugg = STATE._compSuggestions;
+          const _reason = STATE._compSuggestionsReason;
+          const _loaded = STATE._compSuggestionsLoaded;
+          if (!_loaded) {
+            return `<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">
+              <div style="font-size:24px;margin-bottom:8px">🔍</div>
+              <div style="font-weight:600;margin-bottom:4px">Chargement des suggestions…</div>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="fpLoadCompSuggestions()">Charger les suggestions</button>
+            </div>`;
+          }
+          if (_reason === 'no_gbp_location') {
+            return `<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">
+              <div style="font-size:24px;margin-bottom:8px">📍</div>
+              <div style="font-weight:600;margin-bottom:4px">Connectez Google Business Profile pour obtenir des suggestions de concurrents locaux.</div>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:8px" onclick="navigate('local-seo')">Connecter GBP</button>
+            </div>`;
+          }
+          if (!_sugg || _sugg.length === 0) {
+            return `<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">
+              <div style="font-size:24px;margin-bottom:8px">✅</div>
+              <div style="font-weight:600;margin-bottom:4px">Aucun concurrent suggéré pour le moment.</div>
+              <div style="font-size:11px">Les suggestions apparaissent en fonction de votre zone géographique et secteur d'activité.</div>
+            </div>`;
+          }
+          const _tc2 = { high: '#ef4444', medium: '#f59e0b', low: '#22c55e' };
+          const _tl2 = { high: 'Menace forte', medium: 'À surveiller', low: 'Faible risque' };
+          return `<div style="display:flex;flex-direction:column;gap:8px">
+            ${_sugg.slice(0,6).map(s => `
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--fp-border);border-radius:10px;background:var(--fp-inner-card)">
+                <span style="width:8px;height:8px;border-radius:50%;background:${_tc2[s.threat]||'#64748b'};flex-shrink:0"></span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:13px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(s.name)}</div>
+                  <div style="font-size:11px;color:var(--fp-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(s.address||'')}${s.rating!=null?' · ⭐ '+s.rating+(s.userRatingsTotal?' ('+s.userRatingsTotal+' avis)':''): ''}</div>
+                  ${s.reason ? `<div style="font-size:10px;color:${_tc2[s.threat]||'#64748b'};margin-top:2px">${escHtml(s.reason)}</div>` : ''}
+                </div>
+                <div style="flex-shrink:0;display:flex;align-items:center;gap:8px">
+                  ${badge(_tl2[s.threat]||s.threat, _tc2[s.threat]||'#64748b')}
+                  <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpAddSuggestedCompetitor(this.dataset.comp)" data-comp="${escHtml(JSON.stringify({name:s.name,url:'',threat:s.threat,lat:s.lat,lng:s.lng,placeId:s.placeId}))}">Ajouter</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>`;
+        })()}
       </div>
     </div>
   `;
@@ -23662,14 +24383,14 @@ function renderConversion() {
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_REVENUE_LEAK_API.detect(window.FP_DATA?.activeSite)">Lancer la détection</button>
             </div>
            </div>`
-        : `${aiBlock("Perte de revenus estimée : <strong>" + totalLoss.toLocaleString('fr-FR') + "€/mois</strong> basée sur " + leaks.length + " signal(s) réel(s) détecté(s) (PageSpeed, uptime, trafic organique, comportemental).",
+        : `${aiBlock("Perte de revenus estimée : <strong>" + totalLoss.toLocaleString(getLocale()) + "€/mois</strong> basée sur " + leaks.length + " signal(s) réel(s) détecté(s) (PageSpeed, uptime, trafic organique, comportemental).",
             ["Créer le plan de correction", "Prioriser les actions", "Rapport de pertes"])}
 
           <div class="fp-stat-row fp-mb-20">
-            ${statCard("Perte estimée totale", totalLoss.toLocaleString('fr-FR') + "€/mois", "signaux réels uniquement", "down")}
+            ${statCard("Perte estimée totale", totalLoss.toLocaleString(getLocale()) + "€/mois", "signaux réels uniquement", "down")}
             ${statCard("Fuites critiques", String(leaks.filter(l => l.urg === "critical").length), "à corriger en urgence", "down")}
             ${statCard("Quick wins", String(leaks.filter(l => l.urg !== "critical").length), "correctifs < 1h", "up")}
-            ${statCard("Récupération potentielle", "+" + Math.round(totalLoss * 0.65).toLocaleString('fr-FR') + "€/mois", "estimation à 65%", "up")}
+            ${statCard("Récupération potentielle", "+" + Math.round(totalLoss * 0.65).toLocaleString(getLocale()) + "€/mois", "estimation à 65%", "up")}
           </div>`
       }
 
@@ -23915,7 +24636,7 @@ function renderConversion() {
   const sessions = _behConv ? [
     { label: "Engagement moyen",       val: (_behConv.avgEngagement || null) !== null ? _behConv.avgEngagement + '%' : '—', delta: "score session",  bad: (_behConv.avgEngagement || 100) < 60  },
     { label: "Rage clicks détectés",   val: _behConv.rageClicks !== undefined ? String(_behConv.rageClicks) : '—',           delta: "ce mois",         bad: (_behConv.rageClicks || 0) > 20     },
-    { label: "Sessions enregistrées",  val: _behConv.total ? _behConv.total.toLocaleString('fr-FR') : '—',                   delta: "total",           bad: false                               },
+    { label: "Sessions enregistrées",  val: _behConv.total ? _behConv.total.toLocaleString(getLocale()) : '—',                   delta: "total",           bad: false                               },
     { label: "Taux de rebond",          val: _behConv.bounceRate !== undefined ? _behConv.bounceRate + '%' : '—',            delta: "des sessions",    bad: (_behConv.bounceRate || 0) > 50     },
   ] : PREVIEW_MODE ? [
     { label: "Taux de scroll > 50%",   val: "48%",  delta: "-12%", bad: true  },
@@ -23965,8 +24686,8 @@ function renderConversion() {
     <div class="fp-stat-row fp-mb-20">
       ${statCard("Taux de conversion", displayStat(STATE.overview?.conversionRate ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : null, "0.23%"), PREVIEW_MODE ? "+0.04% vs M-1" : "Connectez analytics", "neutral", PREVIEW_MODE ? "Secteur : 0.18%" : "")}
       ${statCard("Clients/mois", displayStat(STATE.overview?.clientsPerMonth, "28"), PREVIEW_MODE ? "+4 vs M-1" : "Connectez analytics", "neutral")}
-      ${statCard("Revenu estimé", displayStat(STATE.overview?.revenue != null ? STATE.overview.revenue.toLocaleString('fr-FR') + "€/mois" : null, PREVIEW_MODE ? "3 220€/mois" : null), STATE.overview?.revenue != null ? "+400€ vs M-1" : PREVIEW_MODE ? "estimé ce mois" : "Connectez analytics", STATE.overview?.revenue != null ? "up" : "neutral")}
-      ${statCard("Perte rev. détectée", displayStat(leakTotal !== null ? leakTotal.toLocaleString('fr-FR') + "€/mois" : null, PREVIEW_MODE ? "5 070€/mois" : null), leakTotal !== null || PREVIEW_MODE ? "fuites actives détectées" : "Connectez analytics", leakTotal !== null ? "down" : "neutral")}
+      ${statCard("Revenu estimé", displayStat(STATE.overview?.revenue != null ? STATE.overview.revenue.toLocaleString(getLocale()) + "€/mois" : null, PREVIEW_MODE ? "3 220€/mois" : null), STATE.overview?.revenue != null ? "+400€ vs M-1" : PREVIEW_MODE ? "estimé ce mois" : "Connectez analytics", STATE.overview?.revenue != null ? "up" : "neutral")}
+      ${statCard("Perte rev. détectée", displayStat(leakTotal !== null ? leakTotal.toLocaleString(getLocale()) + "€/mois" : null, PREVIEW_MODE ? "5 070€/mois" : null), leakTotal !== null || PREVIEW_MODE ? "fuites actives détectées" : "Connectez analytics", leakTotal !== null ? "down" : "neutral")}
     </div>
 
     ${aiBlock(
@@ -24100,7 +24821,7 @@ function renderConversion() {
           if (_realLeaks && _realLeaks.length > 0) {
             return _realLeaks.slice(0, 4).map(l => {
               const lc = (l.impactScore||0) >= 75 ? '#ef4444' : '#f59e0b';
-              const lossStr = l.monthlyLoss ? l.monthlyLoss.toLocaleString('fr-FR') + '€/mois' : '—';
+              const lossStr = l.monthlyLoss ? l.monthlyLoss.toLocaleString(getLocale()) + '€/mois' : '—';
               return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
                 <div style="display:flex;align-items:center;gap:8px">
                   <div style="width:6px;height:6px;border-radius:50%;background:${lc};flex-shrink:0"></div>
@@ -24130,7 +24851,7 @@ function renderConversion() {
           return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez vos analytics pour détecter les fuites de revenus →</div>`;
         })()}
         <div style="margin-top:12px;padding:10px;background:rgba(239,68,68,0.08);border-radius:8px;text-align:center">
-          <div style="font-size:15px;font-weight:800;color:#ef4444">${leakTotal != null ? '-' + leakTotal.toLocaleString('fr-FR') + '€/mois' : PREVIEW_MODE ? '-5 070€/mois' : '—'}</div>
+          <div style="font-size:15px;font-weight:800;color:#ef4444">${leakTotal != null ? '-' + leakTotal.toLocaleString(getLocale()) + '€/mois' : PREVIEW_MODE ? '-5 070€/mois' : '—'}</div>
           <div style="font-size:10px;color:var(--fp-text-faint)">Perte totale estimée à corriger</div>
         </div>
       </div>
@@ -24229,7 +24950,7 @@ function renderAlertsCenter() {
         icon: ev.type === 'seo_score' ? 'trending-up' : isLatency ? 'activity' : isUptime ? 'bar-chart' : ev.type === 'monitor_down' ? 'wifi-off' : ev.type === 'monitor_up' ? 'check-circle' : 'wifi',
         title: isLatency ? 'Latence élevée — ' + escHtml(ev.siteUrl || ev.ruleName || '') : isUptime ? 'Uptime sous le seuil — ' + escHtml(ev.siteUrl || ev.ruleName || '') : 'Règle déclenchée : ' + escHtml(ev.ruleName || ev.type),
         desc: detailLine,
-        time: ev.triggeredAt ? new Date(ev.triggeredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—',
+        time: ev.triggeredAt ? new Date(ev.triggeredAt).toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' }) : '—',
         color: ev.severity === 'critical' ? '#ef4444' : ev.severity === 'info' ? '#22c55e' : '#f59e0b',
         ruleSource: ev.ruleName,
         impact: isLatency ? 'Performance dégradée' : isUptime ? 'Disponibilité sous le seuil' : 'Surveillance automatique active',
@@ -24288,7 +25009,7 @@ function renderAlertsCenter() {
         systems: m.status === 'down' ? ['Monitor', 'Uptime', 'Trafic'] : ['Performance', 'Core Web Vitals'],
         impact: m.status === 'down' ? 'Site inaccessible — impact client direct' : `Latence élevée : ${m.latency||'—'}ms — UX dégradée`,
         cause: m.status === 'down' ? 'Site inaccessible — vérification hébergeur requise' : `Latence anormale : ${m.latency||'—'}ms`,
-        since: new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' · ' + new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),
+        since: new Date().toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'}) + ' · ' + new Date().toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}),
         duration: 'En cours',
         steps: m.status === 'down'
           ? ['Vérifier le serveur hébergeur', 'Vérifier les DNS', 'Activer le mode maintenance']
@@ -24302,7 +25023,7 @@ function renderAlertsCenter() {
         systems: ['SEO', 'Audit', 'Rankings'],
         impact: `Score ${a.score}/100 — ${a.issues||0} problème${(a.issues||0) > 1 ? 's' : ''} non résolu${(a.issues||0) > 1 ? 's' : ''}`,
         cause: `Score audit faible (${a.score}/100) — optimisations urgentes requises`,
-        since: new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' · ' + new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),
+        since: new Date().toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'}) + ' · ' + new Date().toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}),
         duration: '—',
         steps: ['Corriger les balises title', 'Optimiser la vitesse mobile', 'Améliorer le maillage interne'],
         color: '#f59e0b',
@@ -25391,7 +26112,7 @@ function renderActivityFeed() {
     }));
     const _monProbsLog = (STATE.monitors || []).filter(m => m.status !== 'up');
     const _nowLog = new Date();
-    const _fmtLog = d => d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}) + ' · ' + d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    const _fmtLog = d => d.toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}) + ' · ' + d.toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'});
     const incidentsLog = _monProbsLog.map((m, i) => ({
       id: 'INC-' + String(i+1).padStart(3,'0'),
       title: (m.status === 'down' ? 'Monitor DOWN — ' : 'Latence élevée — ') + (m.url||m.name||'').replace(/^https?:\/\//,''),
@@ -25510,7 +26231,7 @@ function renderActivityFeed() {
     const automations = _rawWfs.map(wf => ({
       name:    wf.name || wf.title || 'Automatisation',
       freq:    wf.schedule || wf.frequency || '—',
-      last:    wf.lastRun ? new Date(wf.lastRun).toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit'}) + ' · ' + new Date(wf.lastRun).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '—',
+      last:    wf.lastRun ? new Date(wf.lastRun).toLocaleDateString(getLocale(), {day:'2-digit',month:'2-digit'}) + ' · ' + new Date(wf.lastRun).toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}) : '—',
       status:  wf.active !== false ? 'actif' : 'pause',
       runs:    typeof wf.totalRuns === 'number' ? wf.totalRuns : (typeof wf.runs === 'number' ? wf.runs : 0),
       success: typeof wf.successRuns === 'number' ? wf.successRuns : (typeof wf.success === 'number' ? wf.success : 0),
@@ -25521,7 +26242,7 @@ function renderActivityFeed() {
     const aiInsights = _aiEvts.slice(0, 8).map(e => ({
       icon: '🤖',
       title: e.label || 'Action IA',
-      applied: e.createdAt ? new Date(e.createdAt).toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit'}) : '—',
+      applied: e.createdAt ? new Date(e.createdAt).toLocaleDateString(getLocale(), {day:'2-digit',month:'2-digit'}) : '—',
       actions: e.metadata?.actionCount || 1,
       result: e.metadata?.result || e.metadata?.message || '—',
     }));
@@ -25621,16 +26342,16 @@ function renderActivityFeed() {
     const repActs = liveFeed.filter(a => a.cat === 'reports');
     const _stRH = (STATE.reports||[]);
     const reportHistory = _stRH.length > 0
-      ? _stRH.map(r=>({ name:r.name||r.title||'Rapport', type:r.type||'PDF', size:r.size||null, date:r.date?new Date(r.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}):'—', shared:r.shared||r.views||0, status:r.status||'Généré', color:r.color||'#2563EB' }))
+      ? _stRH.map(r=>({ name:r.name||r.title||'Rapport', type:r.type||'PDF', size:r.size||null, date:r.date?new Date(r.date).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}):'—', shared:r.shared||r.views||0, status:r.status||'Généré', color:r.color||'#2563EB' }))
       : (PREVIEW_MODE ? [
           { name:"Rapport SEO Executive "+CUR_MONTH,  type:'PDF',  size:'2.4 MB', date:"09/05", shared:3, status:'Partagé',    color:'#2563EB' },
           { name:"Export données trafic — CSV",       type:'CSV',  size:'840 KB', date:"08/05", shared:0, status:'Téléchargé', color:'#22c55e' },
-          { name:"Rapport Local SEO — "+(STATE.me?.firstName||STATE.me?.name||'Équipe'), type:'PDF', size:'3.1 MB', date:new Date(Date.now()-4*86400000).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), shared:2, status:'Partagé', color:'#f59e0b' },
+          { name:"Rapport Local SEO — "+(STATE.me?.firstName||STATE.me?.name||'Équipe'), type:'PDF', size:'3.1 MB', date:new Date(Date.now()-4*86400000).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}), shared:2, status:'Partagé', color:'#f59e0b' },
           { name:"Export conversions Q1-Q2 2026",     type:'XLSX', size:'1.2 MB', date:"01/05", shared:0, status:'Téléchargé', color:'#22c55e' },
         ] : []);
     const _stSched = (STATE.scheduledReports||[]);
     const scheduled = _stSched.length > 0
-      ? _stSched.map(s=>({ name:s.name||'Rapport planifié', next:s.nextRun?new Date(s.nextRun).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})+' · '+new Date(s.nextRun).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'—', status:s.active!==false?'actif':'pause', clients:s.clientCount||0 }))
+      ? _stSched.map(s=>({ name:s.name||'Rapport planifié', next:s.nextRun?new Date(s.nextRun).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'})+' · '+new Date(s.nextRun).toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}):'—', status:s.active!==false?'actif':'pause', clients:s.clientCount||0 }))
       : (PREVIEW_MODE ? [
           { name:"Rapport hebdo — lundi 8h",    next:"12/05 · 08h00", status:'actif', clients:3 },
           { name:"Rapport mensuel executive",   next:"01/06 · 07h00", status:'actif', clients:5 },
@@ -26115,7 +26836,7 @@ function renderDataExplorer() {
         ['Analyser les sources', 'Optimiser les référents', 'Plan trafic local'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Sessions totales', displayStat(STATE.overview?.sessions ? STATE.overview.sessions.toLocaleString('fr-FR') : null, '12 640'), PREVIEW_MODE ? '+18% vs M-1' : 'Connectez analytics', 'neutral')}
+        ${statCard('Sessions totales', displayStat(STATE.overview?.sessions ? STATE.overview.sessions.toLocaleString(getLocale()) : null, '12 640'), PREVIEW_MODE ? '+18% vs M-1' : 'Connectez analytics', 'neutral')}
         ${statCard('Meilleure source', displayStat(null, PREVIEW_MODE ? 'Google Maps' : '—'), PREVIEW_MODE ? 'Connectez analytics pour les détails' : 'Connectez analytics', PREVIEW_MODE ? 'up' : 'neutral')}
         ${statCard('Source en déclin', displayStat(null, 'Référents'), PREVIEW_MODE ? '-4% · rebond 58%' : 'Connectez analytics', 'neutral')}
         ${statCard('Qualité trafic moy.', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,'72/100'); })(), PREVIEW_MODE ? '+6 pts vs M-1' : 'score audits', 'neutral')}
@@ -26172,7 +26893,7 @@ function renderDataExplorer() {
                 const tc = s.trend > 10 ? '#22c55e' : s.trend > 0 ? '#f59e0b' : s.trend < 0 ? '#ef4444' : 'var(--fp-text-faint)';
                 return `<tr>
                   <td><div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:${s.color};flex-shrink:0"></span><strong>${escHtml(s.src)}</strong></div></td>
-                  <td style="text-align:center;font-weight:600">${s.sessions.toLocaleString('fr-FR')}</td>
+                  <td style="text-align:center;font-weight:600">${s.sessions.toLocaleString(getLocale())}</td>
                   <td style="text-align:center">
                     <div style="display:inline-flex;align-items:center;gap:6px">
                       <div class="fp-progress-track" style="width:48px;height:4px"><div class="fp-progress-fill" style="width:${s.pct}%;background:${s.color}"></div></div>
@@ -26259,7 +26980,7 @@ function renderDataExplorer() {
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Sessions analysées', displayStat(STATE.overview?.sessions ? STATE.overview.sessions.toLocaleString('fr-FR') : null, '12 640'), PREVIEW_MODE ? 'ce mois' : 'Connectez analytics', 'neutral')}
+        ${statCard('Sessions analysées', displayStat(STATE.overview?.sessions ? STATE.overview.sessions.toLocaleString(getLocale()) : null, '12 640'), PREVIEW_MODE ? 'ce mois' : 'Connectez analytics', 'neutral')}
         ${statCard('Taux engagement moy.', displayStat(null, '61%'), PREVIEW_MODE ? '+8% vs M-1' : 'Connectez analytics', 'neutral')}
         ${statCard('Abandons funnel', displayStat(null, '85%'), PREVIEW_MODE ? 'avant conversion' : 'Connectez analytics', 'neutral')}
         ${statCard('Durée session moy.', displayStat(null, '1m 52s'), PREVIEW_MODE ? '+18s vs M-1' : 'Connectez analytics', 'neutral')}
@@ -26277,11 +26998,11 @@ function renderDataExplorer() {
               <div style="width:130px;font-size:11px;color:var(--fp-text-muted);text-align:right;flex-shrink:0">${escHtml(s.stage)}</div>
               <div style="flex:1;background:var(--fp-inner-card);border-radius:6px;height:32px;overflow:hidden">
                 <div style="height:100%;width:${Math.max(2, s.users / 12640 * 100)}%;background:linear-gradient(90deg,${idx === 0 ? '#2563EB' : idx === 4 ? '#22c55e' : '#8b5cf6'}99,${idx === 0 ? '#2563EB' : idx === 4 ? '#22c55e' : '#8b5cf6'}33);border-radius:6px;display:flex;align-items:center;padding-left:8px">
-                  ${s.users >= 3000 ? `<span style="font-size:10px;font-weight:700;color:#fff">${s.users.toLocaleString('fr-FR')}</span>` : ''}
+                  ${s.users >= 3000 ? `<span style="font-size:10px;font-weight:700;color:#fff">${s.users.toLocaleString(getLocale())}</span>` : ''}
                 </div>
               </div>
               <div style="min-width:80px;text-align:right;flex-shrink:0">
-                <div style="font-size:12px;font-weight:800;color:${idx === 0 ? '#2563EB' : idx === 4 ? '#22c55e' : '#8b5cf6'}">${s.users.toLocaleString('fr-FR')}</div>
+                <div style="font-size:12px;font-weight:800;color:${idx === 0 ? '#2563EB' : idx === 4 ? '#22c55e' : '#8b5cf6'}">${s.users.toLocaleString(getLocale())}</div>
                 ${s.drop !== null ? `<div style="font-size:10px;color:#ef4444;font-weight:600">-${s.drop}%</div>` : ''}
               </div>
             </div>
@@ -26529,15 +27250,15 @@ function renderDataExplorer() {
       return rows.reduce((sum, p) => sum + Number(p.predictedTraffic ?? p.predictedValue ?? 0), 0);
     };
     const _hasForecast = !!(_fcData?.available && _realistic.length);
-    const fMonths = _hasForecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => new Date(p.date).toLocaleDateString('fr-FR',{month:'short'})) : [];
+    const fMonths = _hasForecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => new Date(p.date).toLocaleDateString(getLocale(),{month:'short'})) : [];
     const fTraffic = _hasForecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => Math.round(Number(p.predictedTraffic ?? p.predictedValue ?? 0))) : [];
     const fConv = [];
     const fRev = [];
     const maxF = fTraffic.length ? Math.max(...fTraffic, 1) : 1;
     const scenarios = _hasForecast ? [
-      { name: 'Scénario prudent', traffic: _scenarioValue('pessimistic').toLocaleString('fr-FR') + ' clics', conv: '—', rev: '—', color: '#64748b', desc: 'Projection GSC basse' },
-      { name: 'Scénario réaliste', traffic: _scenarioValue('realistic').toLocaleString('fr-FR') + ' clics', conv: '—', rev: '—', color: '#2563EB', desc: 'Tendance GSC observée' },
-      { name: 'Scénario ambitieux', traffic: _scenarioValue('optimistic').toLocaleString('fr-FR') + ' clics', conv: '—', rev: '—', color: '#22c55e', desc: 'Projection GSC haute' },
+      { name: 'Scénario prudent', traffic: _scenarioValue('pessimistic').toLocaleString(getLocale()) + ' clics', conv: '—', rev: '—', color: '#64748b', desc: 'Projection GSC basse' },
+      { name: 'Scénario réaliste', traffic: _scenarioValue('realistic').toLocaleString(getLocale()) + ' clics', conv: '—', rev: '—', color: '#2563EB', desc: 'Tendance GSC observée' },
+      { name: 'Scénario ambitieux', traffic: _scenarioValue('optimistic').toLocaleString(getLocale()) + ' clics', conv: '—', rev: '—', color: '#22c55e', desc: 'Projection GSC haute' },
     ] : [];
     return `
       ${isUltra && _hasForecast
@@ -26552,7 +27273,7 @@ function renderDataExplorer() {
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Trafic projeté', _hasForecast ? _scenarioValue('realistic').toLocaleString('fr-FR') : '—', _hasForecast ? '90 jours · source GSC' : 'Données insuffisantes', 'neutral')}
+        ${statCard('Trafic projeté', _hasForecast ? _scenarioValue('realistic').toLocaleString(getLocale()) : '—', _hasForecast ? '90 jours · source GSC' : 'Données insuffisantes', 'neutral')}
         ${statCard('Conversion', '—', 'Données GA4 requises', 'neutral')}
         ${statCard('Revenu', '—', 'Données de revenu requises', 'neutral')}
         ${statCard('Confiance', _hasForecast ? (_fcData.summary?.confidenceScore ?? '—') + '%' : '—', _hasForecast ? 'historique GSC' : 'Données insuffisantes', 'neutral')}
@@ -26736,7 +27457,7 @@ function renderDataExplorer() {
         <h1 style="display:flex;align-items:center;gap:10px">
           Business Intelligence Hub
         </h1>
-        <div class="fp-section-sub">Plateforme d\'intelligence business · ${totalEntries} entrées de données · ${trafficSources.reduce((s,t)=>s+t.sessions,0).toLocaleString('fr-FR')} sessions analysées</div>
+        <div class="fp-section-sub">Plateforme d\'intelligence business · ${totalEntries} entrées de données · ${trafficSources.reduce((s,t)=>s+t.sessions,0).toLocaleString(getLocale())} sessions analysées</div>
       </div>
       <div class="fp-section-actions">
         ${btn('Rapport complet', 'fp-btn fp-btn-primary fp-btn-sm', 'download', "onclick=\"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()\"" )}
@@ -26758,7 +27479,7 @@ function renderDataExplorer() {
     <!-- KPI STAT ROW -->
     <div class="fp-stat-row fp-mb-20">
       ${statCard('Entrées de données', String(totalEntries), 'multi-sources', 'neutral')}
-      ${statCard('Sessions analysées', displayStat(STATE.overview?.sessions ? STATE.overview.sessions.toLocaleString('fr-FR') : null, '12 640'), PREVIEW_MODE ? '+18% vs M-1' : 'Connectez analytics', 'neutral')}
+      ${statCard('Sessions analysées', displayStat(STATE.overview?.sessions ? STATE.overview.sessions.toLocaleString(getLocale()) : null, '12 640'), PREVIEW_MODE ? '+18% vs M-1' : 'Connectez analytics', 'neutral')}
       ${statCard('Insights IA générés', String(STATE.aiInsights?.length || 0), 'cette semaine', 'neutral')}
       ${statCard('Score business global', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,'68/100'); })(), PREVIEW_MODE ? '+4 pts ce mois' : 'score moyen portfolio', 'neutral')}
     </div>
@@ -27038,7 +27759,7 @@ function renderClientMode() {
     // Client mode reports and share links from STATE or PREVIEW_MODE demo
     const _cmRepts = (STATE.reports||[]).length>0 ? STATE.reports : null;
     const reports = _cmRepts
-      ? _cmRepts.map(r=>({ name:r.name||r.title||'Rapport', client:r.client||r.clientName||'—', type:r.type||'PDF', date:r.date?new Date(r.date).toLocaleDateString('fr-FR').slice(0,5):'—', views:r.views||0, shared:r.shared||false, status:r.status||'Généré', color:r.color||'#2563EB' }))
+      ? _cmRepts.map(r=>({ name:r.name||r.title||'Rapport', client:r.client||r.clientName||'—', type:r.type||'PDF', date:r.date?new Date(r.date).toLocaleDateString(getLocale()).slice(0,5):'—', views:r.views||0, shared:r.shared||false, status:r.status||'Généré', color:r.color||'#2563EB' }))
       : (PREVIEW_MODE ? [
           { name:"Rapport Executive "+CUR_MONTH, client:"Client A", type:'PDF', date:"09/05", views:4, shared:true,  status:'Partagé',  color:'#22c55e' },
           { name:"Rapport SEO local",             client:"Client B", type:'PDF', date:"07/05", views:2, shared:true,  status:'Lu',       color:'#2563EB' },
@@ -27047,7 +27768,7 @@ function renderClientMode() {
         ] : []);
     const _cmShareLinks = (STATE.shareLinks||[]).length>0 ? STATE.shareLinks : null;
     const shareLinks = _cmShareLinks
-      ? _cmShareLinks.map(s=>({ name:s.name||'Rapport partagé', url:s.url||'', expires:s.expiresAt?new Date(s.expiresAt).toLocaleDateString('fr-FR'):'—', views:s.views||0, active:s.active!==false }))
+      ? _cmShareLinks.map(s=>({ name:s.name||'Rapport partagé', url:s.url||'', expires:s.expiresAt?new Date(s.expiresAt).toLocaleDateString(getLocale()):'—', views:s.views||0, active:s.active!==false }))
       : (PREVIEW_MODE ? [
           { name:"Client A",             url:"share.flowpoint.pro/a-2026", expires:"30/06/2026", views:12, active:true  },
           { name:"Client B",             url:"share.flowpoint.pro/b-2026", expires:"15/06/2026", views:3,  active:true  },
@@ -27142,7 +27863,7 @@ function renderClientMode() {
       ? _stThr.map(t=>({ id:t.id||t._id||'t'+Math.random(), client:t.client||t.clientName||'Client', avatar:(t.client||'C').slice(0,2).toUpperCase(), color:t.color||'#2563EB', subject:t.subject||t.title||'Message', messages:(t.messages||[]), status:t.status||'actif', unread:t.unread||0 }))
       : (PREVIEW_MODE && clients.length>0 ? clients.slice(0,3).map((c,i)=>({ id:'t'+(i+1), client:c.name, avatar:c.avatar, color:c.color, subject:['Rapport '+CUR_MONTH+' — Vos questions','Mise à jour performance','Progression rankings'][i]||'Message', messages:[{ from:(STATE.me?.name||STATE.me?.firstName||'Agence')+' (Agence)', text:'Rapport '+CUR_MONTH+' disponible. Score '+(c.seoScore||STATE.overview?.seoScore||'—')+'/100.', time:'09/05 · 10h00', isClient:false }], status:i===1?'en attente':'actif', unread:i===1?1:0 })) : []);
     const approvals = (STATE.approvals||[]).length>0
-      ? (STATE.approvals||[]).map(a=>({ title:a.title||a.name||'Approbation', client:a.client||a.clientName||'—', due:a.due||a.dueDate?new Date(a.due||a.dueDate).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}):'—', status:a.status||'En attente', color:a.color||'#f59e0b' }))
+      ? (STATE.approvals||[]).map(a=>({ title:a.title||a.name||'Approbation', client:a.client||a.clientName||'—', due:a.due||a.dueDate?new Date(a.due||a.dueDate).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}):'—', status:a.status||'En attente', color:a.color||'#f59e0b' }))
       : (PREVIEW_MODE && clients.length>0 ? clients.slice(0,2).map((c,i)=>({ title:['Stratégie contenu Q3 2026','Budget publicité locale'][i]||'Approbation', client:c.name, due:['12/05','15/05'][i]||'—', status:'En attente', color:'#f59e0b' })) : []);
     return `
       ${aiBlock((()=>{const _ur=threads.filter(t=>t.unread>0);const _urC=_ur.length>0?escHtml(_ur[0].client):null;if(!threads.length)return 'Aucun fil de communication actif. Démarrez une conversation avec vos clients pour centraliser les échanges.';return (_urC?'<strong>'+_urC+'<\/strong> attend votre réponse — action urgente. ':'')+threads.length+' fil(s) actif(s), '+approvals.length+' approbation(s) en attente.';})(),
@@ -27230,7 +27951,7 @@ function renderClientMode() {
       {label:"Rapport de démarrage envoyé",done:false},{label:"Réunion kick-off réalisée",done:false},
     ];
     const onboardings = _stOnb.length > 0
-      ? _stOnb.map(o=>({ client:o.client||o.clientName||'Client', avatar:(o.client||'C').slice(0,2).toUpperCase(), color:o.color||'#2563EB', progress:o.progress||Math.round((o.steps||_DEFAULT_STEPS).filter(s=>s.done).length/((o.steps||_DEFAULT_STEPS).length||1)*100), status:o.status||'En cours', startDate:o.startDate||o.createdAt?new Date(o.startDate||o.createdAt).toLocaleDateString('fr-FR'):'—', steps:(o.steps||_DEFAULT_STEPS) }))
+      ? _stOnb.map(o=>({ client:o.client||o.clientName||'Client', avatar:(o.client||'C').slice(0,2).toUpperCase(), color:o.color||'#2563EB', progress:o.progress||Math.round((o.steps||_DEFAULT_STEPS).filter(s=>s.done).length/((o.steps||_DEFAULT_STEPS).length||1)*100), status:o.status||'En cours', startDate:o.startDate||o.createdAt?new Date(o.startDate||o.createdAt).toLocaleDateString(getLocale()):'—', steps:(o.steps||_DEFAULT_STEPS) }))
       : (PREVIEW_MODE ? clients.slice(0,3).map((c,i)=>({ client:c.name, avatar:c.avatar, color:c.color, progress:[100,67,33][i]||50, status:['Terminé','En cours','En retard'][i]||'En cours', startDate:['15/03/2026','01/04/2026','22/04/2026'][i]||'—', steps:_DEFAULT_STEPS.map((s,si)=>({...s,done:si<[6,3,2][i]})) })) : []);
     return `
       ${aiBlock(PREVIEW_MODE
@@ -27286,7 +28007,7 @@ function renderClientMode() {
       { title:"Connexion fiche GBP — nouveau client",  cat:"Onboarding",   client:"Onboarding",priority:'high',    status:'inprogress', assign:(STATE.team&&STATE.team.length>1?STATE.team[1].name:STATE.team&&STATE.team.length>0?STATE.team[0].name:'—') },
       { title:"Score SEO " + (STATE.audits&&STATE.audits.length>0?((STATE.audits.reduce((b,a)=>(a.score||0)>(b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')):'votre site') + " " + (STATE.audits&&STATE.audits.length>0?Math.max(...STATE.audits.map(a=>a.score||0)):82) + "/100 ✅", cat:"SEO", client:"SEO",  priority:'normal',  status:'done',       assign:(STATE.team&&STATE.team.length>0?STATE.team[0].name:'—') },
       { title:"Monitor configuré — 6 sites ✅",              cat:"Monitoring",    client:"Tous",                priority:'normal',  status:'done',       assign:"Système"   },
-      { title:"Rapport " + new Date().toLocaleString('fr-FR',{month:'long',year:'numeric'}) + " généré ✅", cat:"Reporting", client:STATE.audits&&STATE.audits.length>0?((STATE.audits[0].url||'').replace(/^https?:\/\//,'').split('/')[0]||'—'):'—', priority:'normal', status:'done', assign:(STATE.team&&STATE.team.length>0?STATE.team[0].name:'—') },
+      { title:"Rapport " + new Date().toLocaleString(getLocale(),{month:'long',year:'numeric'}) + " généré ✅", cat:"Reporting", client:STATE.audits&&STATE.audits.length>0?((STATE.audits[0].url||'').replace(/^https?:\/\//,'').split('/')[0]||'—'):'—', priority:'normal', status:'done', assign:(STATE.team&&STATE.team.length>0?STATE.team[0].name:'—') },
     ];
     const roadmap = [
       { title:"Domination Local Pack — zone cible", q:"Q2 2026",   done:true,  desc:"Local Pack #1 atteint sur 4 mots-clés"                },
@@ -27942,7 +28663,7 @@ function renderLocalSEOGBP() {
     author:    r.reviewer_name || 'Anonyme',
     stars:     r.rating || 1,
     text:      r.comment || '',
-    date:      r.create_time ? new Date(r.create_time).toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit',year:'2-digit'}) : '',
+    date:      r.create_time ? new Date(r.create_time).toLocaleDateString(getLocale(), {day:'2-digit',month:'2-digit',year:'2-digit'}) : '',
     replied:   Boolean(r.reply_comment),
     sentiment: (r.rating||0) >= 4 ? 'positive' : (r.rating||0) >= 3 ? 'neutral' : 'negative',
   })) : PREVIEW_MODE ? [
@@ -28045,7 +28766,7 @@ function renderLocalSEOGBP() {
         <span style="font-size:11px;color:#64748b">— ${escHtml(STATE.gbp?.email || '')} · ${STATE.gbp?.locations?.length || 0} établissement(s)</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:11px;color:#475569">Dernière sync : ${STATE.gbp?.lastSync ? new Date(STATE.gbp.lastSync).toLocaleString('fr-FR', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'jamais'}</span>
+        <span style="font-size:11px;color:#475569">Dernière sync : ${STATE.gbp?.lastSync ? new Date(STATE.gbp.lastSync).toLocaleString(getLocale(), {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'jamais'}</span>
         <button onclick="typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.sync():null" class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px">🔄 Sync</button>
       </div>
     </div>`}
@@ -28075,7 +28796,7 @@ function renderLocalSEOGBP() {
           ? statCard('Sans réponse', '14', 'à traiter en priorité (démo)', 'neutral')
           : statCard('Sans réponse', '—', 'Connectez GBP', 'neutral')}
       ${gbpConnected && totalImpressions > 0
-        ? statCard('Vues fiche', totalImpressions.toLocaleString('fr-FR'), 'impressions 30j', 'up')
+        ? statCard('Vues fiche', totalImpressions.toLocaleString(getLocale()), 'impressions 30j', 'up')
         : PREVIEW_MODE
           ? statCard('Vues fiche', '1 842', 'ce mois (démo)', 'neutral')
           : statCard('Vues fiche', '—', 'Connectez GBP', 'neutral')}
@@ -28084,9 +28805,9 @@ function renderLocalSEOGBP() {
     ${gbpConnected && totalCalls + totalWebClicks + totalDirReq > 0 ? `
     <!-- PERFORMANCE ROW — real data from Business Profile Performance API -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Appels téléphone', totalCalls.toLocaleString('fr-FR'), '30 derniers jours', totalCalls > 0 ? 'up' : 'neutral')}
-      ${statCard('Clics site web', totalWebClicks.toLocaleString('fr-FR'), '30 derniers jours', totalWebClicks > 0 ? 'up' : 'neutral')}
-      ${statCard('Demandes itinéraire', totalDirReq.toLocaleString('fr-FR'), '30 derniers jours', totalDirReq > 0 ? 'up' : 'neutral')}
+      ${statCard('Appels téléphone', totalCalls.toLocaleString(getLocale()), '30 derniers jours', totalCalls > 0 ? 'up' : 'neutral')}
+      ${statCard('Clics site web', totalWebClicks.toLocaleString(getLocale()), '30 derniers jours', totalWebClicks > 0 ? 'up' : 'neutral')}
+      ${statCard('Demandes itinéraire', totalDirReq.toLocaleString(getLocale()), '30 derniers jours', totalDirReq > 0 ? 'up' : 'neutral')}
       ${statCard('Établissements', String(gbpLocations.length), 'synchronisés', gbpLocations.length > 0 ? 'up' : 'neutral')}
     </div>` : `
     <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:12px">
@@ -28431,7 +29152,7 @@ function renderGrowthKeywords() {
                       ${k.current_position||k.pos ? `<span style="font-size:20px;font-weight:900;color:${posColor(k.current_position||k.pos)};font-family:var(--fp-font-head)">${k.current_position||k.pos}</span>` : `<span style="color:var(--fp-text-faint);font-size:11px">NR</span>`}
                     </td>
                     <td style="text-align:center">${trendBadge(k)}</td>
-                    <td style="text-align:center;font-size:12px;font-family:var(--fp-font-mono)">${(k.search_volume||k.vol||0).toLocaleString('fr-FR')}</td>
+                    <td style="text-align:center;font-size:12px;font-family:var(--fp-font-mono)">${(k.search_volume||k.vol||0).toLocaleString(getLocale())}</td>
                     <td style="text-align:center">${diffBar(k.difficulty||k.diff||0)}</td>
                     <td style="text-align:center">${intentBadge(k.intent)}</td>
                     <td class="fp-col-hide-sm" style="text-align:center;font-size:12px;color:var(--fp-success);font-weight:700">${k.best_position ? '#'+k.best_position : '—'}</td>
@@ -28494,10 +29215,10 @@ function renderGrowthKeywords() {
                       </div>
                     </td>
                     <td style="text-align:center"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${typeColors[o.type]||'#6b7280'}22;color:${typeColors[o.type]||'#6b7280'}">${typeLabels[o.type]||o.type}</span></td>
-                    <td style="text-align:center;font-size:12px">${(o.search_volume||0).toLocaleString('fr-FR')}</td>
+                    <td style="text-align:center;font-size:12px">${(o.search_volume||0).toLocaleString(getLocale())}</td>
                     <td style="text-align:center">${diffBar(o.difficulty)}</td>
                     <td style="text-align:center;font-size:12px;color:var(--fp-warning)">${parseFloat(o.cpc||0).toFixed(2)} €</td>
-                    <td style="text-align:center;font-size:12px;color:var(--fp-success)">+${(o.estimated_traffic||0).toLocaleString('fr-FR')}</td>
+                    <td style="text-align:center;font-size:12px;color:var(--fp-success)">+${(o.estimated_traffic||0).toLocaleString(getLocale())}</td>
                     <td style="font-size:11px;color:var(--fp-text-muted);max-width:200px">${o.ai_explanation ? escHtml(o.ai_explanation) : '—'}</td>
                     <td style="text-align:center">
                       <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px" onclick="window._trackFromOpp('${escHtml(o.keyword)}')">+ Tracker</button>
@@ -28530,7 +29251,7 @@ function renderGrowthKeywords() {
               <div style="display:flex;gap:16px">
                 <div><div style="font-size:18px;font-weight:800;color:${c.color||'var(--fp-accent)'}">${c.keyword_count||c.kw_count_live||0}</div><div style="font-size:10px;color:var(--fp-text-faint)">mots-clés</div></div>
                 ${c.avg_position ? `<div><div style="font-size:18px;font-weight:800;color:var(--fp-text)">${Math.round(c.avg_position)}</div><div style="font-size:10px;color:var(--fp-text-faint)">pos. moy.</div></div>` : ''}
-                ${c.total_volume ? `<div><div style="font-size:18px;font-weight:800;color:var(--fp-success)">${(c.total_volume||0).toLocaleString('fr-FR')}</div><div style="font-size:10px;color:var(--fp-text-faint)">vol. total</div></div>` : ''}
+                ${c.total_volume ? `<div><div style="font-size:18px;font-weight:800;color:var(--fp-success)">${(c.total_volume||0).toLocaleString(getLocale())}</div><div style="font-size:10px;color:var(--fp-text-faint)">vol. total</div></div>` : ''}
               </div>
               ${Array.isArray(c.keywords) && c.keywords.length ? `<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:4px">${c.keywords.slice(0,5).map(kw => `<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:${c.color||'#2563EB'}22;color:${c.color||'var(--fp-accent)'}">${escHtml(kw)}</span>`).join('')}${c.keywords.length>5?`<span style="font-size:10px;color:var(--fp-text-faint)">+${c.keywords.length-5}</span>`:''}</div>` : ''}
             </div>
@@ -28568,7 +29289,7 @@ function renderGrowthKeywords() {
                       ${a.change!=null?`<span style="font-size:12px;font-weight:700;color:${a.change>0?'var(--fp-success)':'var(--fp-danger)'}">${a.change>0?'▲ +':'▼ '}${Math.abs(a.change)}</span>`:'—'}
                     </td>
                     <td style="font-size:12px;color:var(--fp-text-muted)">${escHtml(a.message||'')}</td>
-                    <td style="text-align:center;font-size:10px;color:var(--fp-text-faint)">${a.triggered_at?new Date(a.triggered_at).toLocaleDateString('fr-FR'):''}</td>
+                    <td style="text-align:center;font-size:10px;color:var(--fp-text-faint)">${a.triggered_at?new Date(a.triggered_at).toLocaleDateString(getLocale()):''}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -28607,7 +29328,7 @@ function renderGrowthKeywords() {
       ${statCard('En hausse', stats.gainingPositions??0, 'positions ▲', 'up')}
       ${statCard('En baisse', stats.losingPositions??0, 'positions ▼', stats.losingPositions>0?'down':'neutral')}
       ${statCard('Pos. moy.', stats.avgPosition??'—', 'sur Google', 'neutral')}
-      ${statCard('Vol. total', (stats.totalVolume||0).toLocaleString('fr-FR'), 'recherches/mois', 'up')}
+      ${statCard('Vol. total', (stats.totalVolume||0).toLocaleString(getLocale()), 'recherches/mois', 'up')}
       ${statCard('Mots-clés suivis', kws.length||0, 'dans le suivi', 'neutral')}
       ${statCard('CTR moy.', stats.avgCtr!=null?(+stats.avgCtr).toFixed(1)+'%':'—', 'taux de clic', 'neutral')}
     </div>
@@ -29395,14 +30116,14 @@ function renderTeamPerformance() {
       <div class="fp-card-title" style="margin-bottom:14px">Tâches assignées</div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${(()=>{
-          const _stColors = { done:'#22c55e', inprogress:'#f59e0b', todo:'#94a3b8', blocked:'#ef4444' };
-          const _stLabels = { done:'Terminé', inprogress:'En cours', todo:'À faire', blocked:'Bloqué' };
+          const _stColors = { done:'#22c55e', inprogress:'#f59e0b', todo:'#94a3b8', blocked:'#ef4444', open:'#6366f1', in_progress:'#f59e0b' };
+          const _stLabels = { done:'Terminé', inprogress:'En cours', todo:'À faire', blocked:'Bloqué', open:'À faire', in_progress:'En cours', completed:'Terminée' };
           const _ms = (STATE.missions||[]).filter(m=>m.status!=='dismissed'&&m.status!=='stale').slice(0,3);
           if (_ms.length === 0) return '<div style="text-align:center;padding:16px 0;color:var(--fp-text-faint);font-size:12px">Aucune tâche assignée</div>';
           return _ms.map(m => {
             const _col = _stColors[m.status]||'#94a3b8';
             const _lbl = _stLabels[m.status]||m.status||'À faire';
-            const _due = (m.dueDate||m.due_date)?new Date(m.dueDate||m.due_date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}):'—';
+            const _due = (m.dueDate||m.due_date)?new Date(m.dueDate||m.due_date).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'}):'—';
             const _who = m.assignedTo||m.assigned_to||(metrics[0]?.name||'—');
             return `<div class="fp-opp-card">
               <div class="fp-opp-icon" style="background:rgba(37,99,235,0.1)">${svgIcon('check-square').replace('stroke="currentColor"','stroke="#2563EB"')}</div>
@@ -29584,7 +30305,7 @@ function renderSettingsAPI() {
           ${(()=>{
             const _pk  = STATE.settings?.publicApiKey  || STATE.me?.publicApiKey  || null;
             const _sk  = STATE.settings?.secretApiKey  || null;
-            const _fmtD = v => { try { return v ? new Date(v).toLocaleDateString('fr-FR') : null; } catch(e) { return null; } };
+            const _fmtD = v => { try { return v ? new Date(v).toLocaleDateString(getLocale()) : null; } catch(e) { return null; } };
             const _acctCreated = _fmtD(STATE.me?.createdAt) || STATE.settings?.apiKeyCreated || '—';
             const _pkCreated = _fmtD(STATE.settings?.publicApiKeyCreatedAt) || _acctCreated;
             const _skCreated = _fmtD(STATE.settings?.secretApiKeyCreatedAt) || (_sk ? _acctCreated : '—');
@@ -29675,13 +30396,21 @@ function bindNewRouteEvents() {
   if (route === 'team' && STATE.subRoute === 'chat') {
     const sendChat = async () => {
       const input = $('#team-chat-input');
-      if (!input?.value.trim()) return;
+      const typedMsg = input?.value.trim() || '';
+      const hasPending = (STATE.teamChatPendingFiles || []).length > 0;
+      if (!typedMsg && !hasPending) return;
       const now = new Date();
       const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-      const msg = input.value;
+      const msg = typedMsg;
       const from = STATE.me?.firstName || 'Vous';
       const ch = STATE.msgChannel || 'general';
-      input.value = '';
+      if (input) input.value = '';
+      // First flush pending file attachments (sends each as a message)
+      if (hasPending) {
+        await _sendTeamChatPending(msg, ch);
+        if (!msg) { navigateSub('chat'); setTimeout(() => { const msgs = $('#team-chat-msgs'); if(msgs) msgs.scrollTop = msgs.scrollHeight; }, 50); return; }
+      }
+      if (!msg) return;
        try {
          const serverMsg = await apiAction('POST', '/api/team/messages', { channel: ch, text: msg });
          const entry = {
@@ -29689,7 +30418,7 @@ function bindNewRouteEvents() {
            from: serverMsg?.from || from,
            msg: serverMsg?.text || msg,
            text: serverMsg?.text || msg,
-           time: serverMsg?.createdAt ? new Date(serverMsg.createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : time,
+           time: serverMsg?.createdAt ? new Date(serverMsg.createdAt).toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}) : time,
            createdAt: serverMsg?.createdAt || null,
            attachmentUrl: serverMsg?.attachmentUrl || null,
            attachmentName: serverMsg?.attachmentName || null,
@@ -29712,11 +30441,13 @@ function bindNewRouteEvents() {
          navigateSub('chat');
          setTimeout(() => { const msgs = $('#team-chat-msgs'); if(msgs) msgs.scrollTop = msgs.scrollHeight; }, 50);
        } catch(_) {
-         showToast('error', 'Échec de l’envoi du message');
+         showToast('error', 'Échec de l\'envoi du message');
        }
     };
     $('#team-chat-send')?.addEventListener('click', sendChat);
     $('#team-chat-input')?.addEventListener('keydown', e => { if(e.key==='Enter') sendChat(); });
+    // Render any pre-staged chips immediately on mount
+    _renderTeamChatPendingChips();
   }
 
   if (route === 'local-seo' && STATE.subRoute === 'checklist') {
@@ -30118,7 +30849,7 @@ function _ga4ChannelRow(ch, sessions, pct, color) {
       <div style="width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0"></div>
       <div style="font-size:11px;color:var(--fp-text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ch}</div>
       <div class="fp-progress-track" style="width:80px;height:5px"><div class="fp-progress-fill" style="width:${Math.min(pct,100)}%;background:${color}"></div></div>
-      <div style="font-size:11px;font-weight:700;color:var(--fp-text);min-width:36px;text-align:right">${sessions.toLocaleString('fr-FR')}</div>
+      <div style="font-size:11px;font-weight:700;color:var(--fp-text);min-width:36px;text-align:right">${sessions.toLocaleString(getLocale())}</div>
     </div>`;
 }
 
@@ -30253,7 +30984,7 @@ window._fpLiveAPI = {
       const cntEl = document.getElementById('fp-live-count');
       if (cntEl) { cntEl.textContent = String(rtData.activeUsers || 0); }
       const tsEl = document.getElementById('fp-live-last-update');
-      if (tsEl) { tsEl.textContent = 'Dernière MAJ : ' + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+      if (tsEl) { tsEl.textContent = 'Dernière MAJ : ' + new Date().toLocaleTimeString(getLocale(), {hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
       if (!window._fpLiveState.loaded || cntEl === null) render();
     } catch(e) {
       window._fpLiveState = { loading: false, loaded: true, data: window._fpLiveState.data, error: e.message || String(e) };
@@ -30389,7 +31120,7 @@ function renderGA4Analytics() {
     return d.length === 8 ? `${d.slice(6,8)}/${d.slice(4,6)}` : d;
   });
 
-  const fmtNum = n => n >= 1000000 ? (n/1000000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : Math.round(n).toLocaleString('fr-FR');
+  const fmtNum = n => n >= 1000000 ? (n/1000000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : Math.round(n).toLocaleString(getLocale());
   const fmtDur = s => { const m = Math.floor(s/60); const sec = Math.round(s%60); return `${m}m${sec.toString().padStart(2,'0')}s`; };
 
   const sub    = STATE.subRoute || ga4.sub || 'overview';
@@ -30516,7 +31247,7 @@ function renderGA4Analytics() {
         ${(() => {
           if (!_ga4Connected()) return `<div style="padding:16px;text-align:center"><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:10px">🔌 Connectez GA4 pour des insights basés sur vos vraies données.</div><div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:12px">L'IA analysera : sessions, conversions, rebond, sources de trafic.</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button></div>`;
           const _ins = [];
-          if (sessions > 0 && prevSess > 0) { const d=Math.round((sessions-prevSess)/prevSess*100); _ins.push({icon:d>=0?'📈':'📉',color:d>=0?'#22c55e':'#ef4444',title:`Sessions ${d>=0?'en hausse':'en baisse'} (${d>=0?'+':''}${d}%)`,desc:`${sessions.toLocaleString('fr-FR')} sessions vs ${prevSess.toLocaleString('fr-FR')} période précédente.`}); }
+          if (sessions > 0 && prevSess > 0) { const d=Math.round((sessions-prevSess)/prevSess*100); _ins.push({icon:d>=0?'📈':'📉',color:d>=0?'#22c55e':'#ef4444',title:`Sessions ${d>=0?'en hausse':'en baisse'} (${d>=0?'+':''}${d}%)`,desc:`${sessions.toLocaleString(getLocale())} sessions vs ${prevSess.toLocaleString(getLocale())} période précédente.`}); }
           if (bounce > 0) _ins.push({icon:bounce>50?'⚠️':'✅',color:bounce>50?'#f59e0b':'#22c55e',title:`Taux de rebond : ${bounce.toFixed(1)}%`,desc:bounce>50?'Taux élevé — optimisez le contenu et la vitesse de chargement.':'Bon engagement — les visiteurs explorent votre site.'});
           const _sr2=ga4.sources?.rows||[];if(_sr2.length){const _cm2={};_sr2.forEach(r=>{const ch=r.dimensionValues?.[0]?.value||'Other';const s2=parseFloat(r.metricValues?.[0]?.value||0);_cm2[ch]=(_cm2[ch]||0)+s2;});const _top=Object.entries(_cm2).sort((a,b)=>b[1]-a[1])[0];const _tot2=Object.values(_cm2).reduce((a,b)=>a+b,0)||1;if(_top)_ins.push({icon:'🎯',color:'#2563EB',title:`Canal principal : ${_top[0]}`,desc:`${Math.round(_top[1]/_tot2*100)}% de votre trafic. Diversifiez vos sources pour réduire la dépendance.`});}
           if (conversions > 0 && sessions > 0) { const cr=(conversions/sessions*100).toFixed(2); _ins.push({icon:'⚡',color:'#8b5cf6',title:`Taux de conversion : ${cr}%`,desc:parseFloat(cr)<2?'Sous la moyenne (2%). Analysez le parcours et les points de friction.':'Bonne performance de conversion.'}); }
@@ -30578,8 +31309,8 @@ function renderGA4Analytics() {
             const bnc   = parseFloat(r.metricValues?.[3]?.value || 0)*100;
             return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
               <td style="padding:8px 10px"><div style="font-weight:600;color:var(--fp-text);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(path)}">${escHtml(title.slice(0,40))}</div><div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(path.slice(0,40))}</div></td>
-              <td style="padding:8px 10px;font-weight:700">${views.toLocaleString('fr-FR')}</td>
-              <td style="padding:8px 10px">${users_.toLocaleString('fr-FR')}</td>
+              <td style="padding:8px 10px;font-weight:700">${views.toLocaleString(getLocale())}</td>
+              <td style="padding:8px 10px">${users_.toLocaleString(getLocale())}</td>
               <td style="padding:8px 10px"><span style="color:${bnc>50?'#ef4444':bnc>35?'#f59e0b':'#22c55e'}">${bnc.toFixed(1)}%</span></td>
               <td style="padding:8px 10px;font-size:11px">${fmtDur(dur)}</td>
             </tr>`;
@@ -30730,12 +31461,12 @@ function _renderGA4Pages() {
           return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
             <td style="padding:7px 10px"><div style="font-size:11px;font-family:var(--fp-font-mono);color:var(--fp-text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(path)}</div></td>
             <td style="padding:7px 10px"><div style="font-size:11px;color:var(--fp-text);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(title.slice(0,50))}</div></td>
-            <td style="padding:7px 10px;font-weight:700">${views.toLocaleString('fr-FR')}</td>
-            <td style="padding:7px 10px">${usrs.toLocaleString('fr-FR')}</td>
+            <td style="padding:7px 10px;font-weight:700">${views.toLocaleString(getLocale())}</td>
+            <td style="padding:7px 10px">${usrs.toLocaleString(getLocale())}</td>
             <td style="padding:7px 10px;font-size:11px">${fmtDur(dur)}</td>
             <td style="padding:7px 10px"><span style="color:${bnc>50?'#ef4444':bnc>35?'#f59e0b':'#22c55e'};font-weight:700">${bnc.toFixed(1)}%</span></td>
-            <td style="padding:7px 10px;font-size:11px">${entr.toLocaleString('fr-FR')}</td>
-            <td style="padding:7px 10px;font-size:11px">${exits.toLocaleString('fr-FR')}</td>
+            <td style="padding:7px 10px;font-size:11px">${entr.toLocaleString(getLocale())}</td>
+            <td style="padding:7px 10px;font-size:11px">${exits.toLocaleString(getLocale())}</td>
           </tr>`;
         }).join('')||`<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--fp-text-muted)">${_ga4Connected()?'Chargement…<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="window.FP_GA4_API&&window.FP_GA4_API.reload()">🔄 Charger</button>':'Connectez GA4'}</td></tr>`}</tbody>
       </table>
@@ -30765,9 +31496,9 @@ function _renderGA4Conversions() {
           return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
             <td style="padding:7px 10px;font-weight:700;color:var(--fp-text)">${escHtml(ev)}</td>
             <td style="padding:7px 10px"><span style="font-size:10px;padding:2px 7px;border-radius:6px;background:${(GA4_CHANNEL_COLORS[ch]||'#64748b')}18;color:${GA4_CHANNEL_COLORS[ch]||'#94a3b8'};font-weight:600">${escHtml(ch)}</span></td>
-            <td style="padding:7px 10px;font-weight:800;color:#22c55e;font-size:13px">${conv.toLocaleString('fr-FR')}</td>
-            <td style="padding:7px 10px">${usrs.toLocaleString('fr-FR')}</td>
-            <td style="padding:7px 10px">${sess.toLocaleString('fr-FR')}</td>
+            <td style="padding:7px 10px;font-weight:800;color:#22c55e;font-size:13px">${conv.toLocaleString(getLocale())}</td>
+            <td style="padding:7px 10px">${usrs.toLocaleString(getLocale())}</td>
+            <td style="padding:7px 10px">${sess.toLocaleString(getLocale())}</td>
           </tr>`;
         }).join('')||`<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--fp-text-muted)">${_ga4Connected()?'Chargement des conversions…':'Connectez GA4'}</td></tr>`}</tbody>
       </table>
@@ -30835,7 +31566,7 @@ function renderGA4Conversion() {
   const devices = data.devices    || [];
   const geo     = data.geo        || [];
 
-  const fmt    = n => (n != null && n !== '') ? Number(n).toLocaleString('fr-FR', {maximumFractionDigits:0}) : '—';
+  const fmt    = n => (n != null && n !== '') ? Number(n).toLocaleString(getLocale(), {maximumFractionDigits:0}) : '—';
   const fmtPct = n => n != null ? Number(n).toFixed(2) + '%' : '—';
   const fmtRev = n => (n != null && n > 0) ? Number(n).toFixed(2) + '\u202f€' : '—';
 
@@ -31072,7 +31803,7 @@ function renderGA4Traffic() {
         return `
           <div class="fp-card" style="border-top:3px solid ${color}">
             <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:8px">${ch}</div>
-            <div style="font-size:24px;font-weight:900;color:${color};font-family:var(--fp-font-head);margin-bottom:4px">${s.toLocaleString('fr-FR')}</div>
+            <div style="font-size:24px;font-weight:900;color:${color};font-family:var(--fp-font-head);margin-bottom:4px">${s.toLocaleString(getLocale())}</div>
             <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">sessions · ${pct}% du total</div>
             <div class="fp-progress-track" style="height:4px;margin-bottom:8px"><div class="fp-progress-fill" style="width:${pct}%;background:${color}"></div></div>
             <div style="display:flex;gap:8px;font-size:10px;color:var(--fp-text-faint)">
@@ -31103,10 +31834,10 @@ function renderGA4Traffic() {
             return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
               <td style="padding:7px 10px"><span style="font-size:10px;padding:2px 7px;border-radius:6px;background:${color}18;color:${color};font-weight:600">${ch}</span></td>
               <td style="padding:7px 10px;font-size:11px;font-family:var(--fp-font-mono);color:var(--fp-text-muted)">${escHtml(sm)}</td>
-              <td style="padding:7px 10px;font-weight:700">${s.toLocaleString('fr-FR')}</td>
-              <td style="padding:7px 10px">${u.toLocaleString('fr-FR')}</td>
+              <td style="padding:7px 10px;font-weight:700">${s.toLocaleString(getLocale())}</td>
+              <td style="padding:7px 10px">${u.toLocaleString(getLocale())}</td>
               <td style="padding:7px 10px"><span style="color:${b>50?'#ef4444':b>35?'#f59e0b':'#22c55e'};font-weight:700">${b.toFixed(1)}%</span></td>
-              <td style="padding:7px 10px;color:#22c55e;font-weight:700">${c.toLocaleString('fr-FR')}</td>
+              <td style="padding:7px 10px;color:#22c55e;font-weight:700">${c.toLocaleString(getLocale())}</td>
               <td style="padding:7px 10px;font-size:11px">${e.toFixed(1)}%</td>
             </tr>`;
           }).join('')||`<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--fp-text-muted)">${_ga4Connected()?'Chargement…':'Connectez GA4 pour voir les sources de trafic'}</td></tr>`}
@@ -31141,7 +31872,7 @@ function _fpFunnelEsc(s) {
 // Format ISO date to readable local string
 function _fpFunnelFmtDate(iso) {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleString('fr-FR', { dateStyle:'short', timeStyle:'short' }); } catch { return iso; }
+  try { return new Date(iso).toLocaleString(getLocale(), { dateStyle:'short', timeStyle:'short' }); } catch { return iso; }
 }
 
 // Render the funnel list section
@@ -31440,7 +32171,7 @@ function _fpFunnelRenderResult(result, funnelName) {
   const resSec = document.getElementById('fp-funnel-result-section');
   if (!resSec) return;
   const pct = n => n === null ? '—' : `${Math.round((n||0)*100)}%`;
-  const num = n => n === null ? '—' : Number(n).toLocaleString('fr-FR');
+  const num = n => n === null ? '—' : Number(n).toLocaleString(getLocale());
   resSec.style.display = 'block';
   resSec.innerHTML = `
     <div class="fp-card" style="padding:18px 20px;margin-top:16px">
@@ -31597,7 +32328,7 @@ function renderGA4Audience() {
   const devIcons = {'mobile':'📱','desktop':'🖥️','tablet':'📱','smart tv':'📺'};
   const devColors = {'mobile':'#8b5cf6','desktop':'#2563EB','tablet':'#f59e0b','smart tv':'#06b6d4'};
 
-  const fmtNum = n => n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?(n/1000).toFixed(1)+'k':Math.round(n).toLocaleString('fr-FR');
+  const fmtNum = n => n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?(n/1000).toFixed(1)+'k':Math.round(n).toLocaleString(getLocale());
 
   return `
     <div class="fp-section-header">
@@ -31762,7 +32493,7 @@ function renderGA4Campaigns() {
   if (_campS.error  && !(_campS.data?.campaigns) && !(window.FP_DATA?.ga4?.campaigns)) return _fpCampErrorSkeleton(_campS.error);
   const ga4  = _campS.data || window.FP_DATA?.ga4 || {};
   const rows = ga4.campaigns?.rows || [];
-  const fmtNum = n => n>=1000?(n/1000).toFixed(1)+'k':Math.round(n).toLocaleString('fr-FR');
+  const fmtNum = n => n>=1000?(n/1000).toFixed(1)+'k':Math.round(n).toLocaleString(getLocale());
   const fmtDur = s => `${Math.floor(s/60)}m${Math.round(s%60).toString().padStart(2,'0')}s`;
 
   const prevRows = ga4.campaigns?.totals || [];
@@ -31865,7 +32596,7 @@ function renderGA4Campaigns() {
           return Object.entries(_chConv).sort((a,b)=>b[1].conv-a[1].conv).slice(0,5).map(([ch,d]) => {
             const color=GA4_CHANNEL_COLORS[ch]||'#64748b';
             const cr=d.sess>0?(d.conv/d.sess*100).toFixed(1):'—';
-            return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div style="width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0"></div><div style="flex:1"><div style="font-size:11px;font-weight:600;color:var(--fp-text)">${ch}</div><div style="font-size:10px;color:var(--fp-text-faint)">${d.conv.toLocaleString('fr-FR')} conv. · ${d.sess.toLocaleString('fr-FR')} sessions</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:800;color:${parseFloat(cr)>3?'#22c55e':parseFloat(cr)>1?'#f59e0b':'#ef4444'}">${cr}%</div><div style="font-size:10px;color:var(--fp-text-faint)">taux conv.</div></div></div>`;
+            return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div style="width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0"></div><div style="flex:1"><div style="font-size:11px;font-weight:600;color:var(--fp-text)">${ch}</div><div style="font-size:10px;color:var(--fp-text-faint)">${d.conv.toLocaleString(getLocale())} conv. · ${d.sess.toLocaleString(getLocale())} sessions</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:800;color:${parseFloat(cr)>3?'#22c55e':parseFloat(cr)>1?'#f59e0b':'#ef4444'}">${cr}%</div><div style="font-size:10px;color:var(--fp-text-faint)">taux conv.</div></div></div>`;
           }).join('');
         })()}
       </div>
@@ -32540,7 +33271,7 @@ function renderCWVCards(cwv) {
       const pct = Math.min(100, (m.value / (m.poor * 1.5)) * 100);
       const markerLeft = Math.min(96, Math.max(4, pct));
       const color = { good:'#10b981','needs-improvement':'#f59e0b', poor:'#ef4444' }[cls];
-      const displayVal = m.key === 'cls' ? m.value.toFixed(3) : Math.round(m.value).toLocaleString('fr-FR');
+      const displayVal = m.key === 'cls' ? m.value.toFixed(3) : Math.round(m.value).toLocaleString(getLocale());
       return `<div class="fp-cwv-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <span style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--fp-text-faint)">${m.label}</span>
@@ -32794,8 +33525,8 @@ function renderPerformanceHistory() {
       })()}
     </svg>
     <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--fp-text-faint);margin-top:6px">
-      <span>${new Date(history[0]?.createdAt||Date.now()).toLocaleDateString('fr-FR')}</span>
-      <span>${new Date(history[history.length-1]?.createdAt||Date.now()).toLocaleDateString('fr-FR')}</span>
+      <span>${new Date(history[0]?.createdAt||Date.now()).toLocaleDateString(getLocale())}</span>
+      <span>${new Date(history[history.length-1]?.createdAt||Date.now()).toLocaleDateString(getLocale())}</span>
     </div>
   </div>
   <div class="fp-card">
@@ -32805,7 +33536,7 @@ function renderPerformanceHistory() {
         <th>Date</th><th>Performance</th><th>Accessibilité</th><th>SEO</th><th>Bonnes pratiques</th><th>LCP</th><th>CLS</th>
       </tr></thead>
       <tbody>${history.slice().reverse().slice(0,20).map(r=>`<tr>
-        <td style="font-size:12px;color:var(--fp-text-faint)">${new Date(r.createdAt).toLocaleDateString('fr-FR')}</td>
+        <td style="font-size:12px;color:var(--fp-text-faint)">${new Date(r.createdAt).toLocaleDateString(getLocale())}</td>
         <td><span style="color:${psiScoreColor(r.performance)};font-weight:700">${r.performance}</span></td>
         <td><span style="color:${psiScoreColor(r.accessibility)};font-weight:600">${r.accessibility}</span></td>
         <td><span style="color:${psiScoreColor(r.seo)};font-weight:600">${r.seo}</span></td>
@@ -32917,7 +33648,7 @@ function renderCoreWebVitals() {
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
       <div style="flex:1;min-width:200px">
         <div style="font-size:14px;font-weight:700;margin-bottom:4px">${escHtml(psi.url)}</div>
-        <div style="font-size:12px;color:var(--fp-text-faint)">Analysé le ${psi.analyzedAt ? new Date(psi.analyzedAt).toLocaleString('fr-FR') : 'récemment'}</div>
+        <div style="font-size:12px;color:var(--fp-text-faint)">Analysé le ${psi.analyzedAt ? new Date(psi.analyzedAt).toLocaleString(getLocale()) : 'récemment'}</div>
       </div>
       <div style="display:flex;gap:20px;flex-wrap:wrap">
         ${[
@@ -32947,7 +33678,7 @@ function renderCoreWebVitals() {
         const val = (cwv && Number.isFinite(cwv[key])) ? cwv[key] : null;
         const cls2 = val !== null ? cwvBadgeClass(key,val) : 'needs-improvement';
         const color = {good:'#10b981','needs-improvement':'#f59e0b',poor:'#ef4444'}[cls2] || 'var(--fp-text-faint)';
-        const display = val === null ? '—' : key==='cls' ? val.toFixed(3) : Math.round(val).toLocaleString('fr-FR');
+        const display = val === null ? '—' : key==='cls' ? val.toFixed(3) : Math.round(val).toLocaleString(getLocale());
         return `<div class="fp-cwv-card" style="cursor:pointer" onclick="navigateSub('${key}')">
           <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--fp-text-faint);margin-bottom:8px">${metricNames[key]}</div>
           <div style="font-size:32px;font-weight:800;color:${color};margin-bottom:4px">${display}<span style="font-size:14px;color:var(--fp-text-muted)">${val !== null ? units[key] : ''}</span></div>
@@ -33082,7 +33813,7 @@ function renderCWVComparison(mobile, desktop) {
           const dv = (desktop?.cwv && Number.isFinite(desktop.cwv[key])) ? desktop.cwv[key] : null;
           const diff = (mv !== null && dv !== null) ? mv - dv : null;
           const mcls = mv !== null ? cwvBadgeClass(key==='speedIndex'?'si':key, mv) : 'needs-improvement';
-          const fmt = v => v === null ? '<span style="color:var(--fp-text-faint)">N/A</span>' : key==='cls' ? v.toFixed(3) : Math.round(v).toLocaleString('fr-FR')+'ms';
+          const fmt = v => v === null ? '<span style="color:var(--fp-text-faint)">N/A</span>' : key==='cls' ? v.toFixed(3) : Math.round(v).toLocaleString(getLocale())+'ms';
           return `<tr>
             <td style="font-weight:600">${labels[key]||key}</td>
             <td style="font-weight:700;color:${{good:'#10b981','needs-improvement':'#f59e0b',poor:'#ef4444'}[mcls]}">${fmt(mv)}</td>
@@ -33595,6 +34326,43 @@ document.addEventListener('click', function _activityDelegation(e) {
     expandBtn.textContent = expanded ? 'Voir plus' : 'Voir moins';
     if (details) details.hidden = expanded;
   }
+});
+
+// ── Native integration disconnect buttons — document-level delegation ─────────
+// Handles .fp-native-disconnect-btn clicks from Settings > Intégrations natives.
+// Uses data-svc / data-endpoint / data-name attributes (no JSON in onclick).
+document.addEventListener('click', function _nativeDisconnectDelegation(e) {
+  var btn = e.target && e.target.closest && e.target.closest('.fp-native-disconnect-btn');
+  if (!btn) return;
+  var svc      = btn.dataset.svc      || '';
+  var endpoint = btn.dataset.endpoint || '';
+  var name     = btn.dataset.name     || svc;
+  if (!endpoint) return;
+  if (!confirm('Déconnecter ' + name + ' ? Cette action révoque l\'accès OAuth pour ce service.')) return;
+  btn.disabled = true;
+  btn.textContent = '…';
+  apiAction('POST', endpoint, {})
+    .then(function(r) {
+      if (r && r.ok === false) { showToast('error', r.error || 'Déconnexion impossible'); btn.disabled = false; btn.textContent = 'Déconnecter'; return; }
+      // Invalidate local state for this service
+      if (svc === 'ga4') { STATE.ga4Status = null; if (window.FP_DATA) window.FP_DATA.ga4 = null; }
+      if (svc === 'gsc') { STATE.gsc = null; }
+      if (svc === 'gbp') { STATE.gbp = null; STATE.googleConnected = null; }
+      // Also clear in connectors list
+      if (Array.isArray(STATE.connectors)) {
+        STATE.connectors = STATE.connectors.map(function(c) {
+          if (c.key === svc || c.id === svc) return Object.assign({}, c, { connected: false, status: 'inactive' });
+          return c;
+        });
+      }
+      showToast('success', name + ' déconnecté');
+      render();
+    })
+    .catch(function(err) {
+      showToast('error', 'Erreur déconnexion ' + name + ' : ' + ((err && err.message) || 'réessayez'));
+      btn.disabled = false;
+      btn.textContent = 'Déconnecter';
+    });
 });
 
 // ── BUG-W1-V32-005 — Audit polling controller ────────────────────────────────
@@ -34579,8 +35347,8 @@ function renderSearchConsole() {
 
   const statsRow = `
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Clics (30j)', (status.clicksTotal||0).toLocaleString('fr-FR'), 'Depuis GSC', 'up')}
-      ${statCard('Impressions (30j)', (status.impressionsTotal||0).toLocaleString('fr-FR'), 'Depuis GSC', 'up')}
+      ${statCard('Clics (30j)', (status.clicksTotal||0).toLocaleString(getLocale()), 'Depuis GSC', 'up')}
+      ${statCard('Impressions (30j)', (status.impressionsTotal||0).toLocaleString(getLocale()), 'Depuis GSC', 'up')}
       ${statCard('CTR moyen', (status.avgCTR||0).toFixed(2)+'%', 'Taux de clic', status.avgCTR > 3 ? 'up' : 'down')}
       ${statCard('Position moy.', (status.avgPosition||0).toFixed(1), 'Rang SERP', status.avgPosition < 10 ? 'up' : 'down')}
     </div>`;
@@ -34589,7 +35357,7 @@ function renderSearchConsole() {
     <div class="fp-gsc-site-header">
       <div>
         <div class="fp-section-title">Search Console</div>
-        <div class="fp-section-sub">Site : <strong>${escHtml(status.siteDisplayName||_gscSite())}</strong> · Dernière sync : ${status.lastSync ? new Date(status.lastSync).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'jamais'}</div>
+        <div class="fp-section-sub">Site : <strong>${escHtml(status.siteDisplayName||_gscSite())}</strong> · Dernière sync : ${status.lastSync ? new Date(status.lastSync).toLocaleString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'jamais'}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_GSC_API&&window.FP_GSC_API.sync().then(()=>showToast('success','Sync GSC lancée'))">
@@ -34621,7 +35389,7 @@ function renderSearchConsole() {
   }
 
   const _gscAiBlock = aiBlock(
-    `${(gsc.clicksTotal||0).toLocaleString('fr-FR')} clics · ${(gsc.impressionsTotal||0).toLocaleString('fr-FR')} impressions · CTR <strong>${(gsc.avgCTR||0).toFixed(2)}%</strong> · Position moyenne <strong>${(gsc.avgPosition||0).toFixed(1)}</strong>. ${(gsc.avgCTR||0) < 3 ? 'CTR faible — optimisez vos balises title et meta description.' : (gsc.avgPosition||0) > 20 ? 'Position éloignée du top 10 — ciblez vos mots-clés à fort potentiel.' : 'Bonne visibilité organique. Analysez vos top mots-clés pour de nouvelles opportunités.'}`,
+    `${(gsc.clicksTotal||0).toLocaleString(getLocale())} clics · ${(gsc.impressionsTotal||0).toLocaleString(getLocale())} impressions · CTR <strong>${(gsc.avgCTR||0).toFixed(2)}%</strong> · Position moyenne <strong>${(gsc.avgPosition||0).toFixed(1)}</strong>. ${(gsc.avgCTR||0) < 3 ? 'CTR faible — optimisez vos balises title et meta description.' : (gsc.avgPosition||0) > 20 ? 'Position éloignée du top 10 — ciblez vos mots-clés à fort potentiel.' : 'Bonne visibilité organique. Analysez vos top mots-clés pour de nouvelles opportunités.'}`,
     ['Optimiser le CTR', 'Top mots-clés', 'Opportunités manquées']
   );
   return `${siteHeader}${statsRow}${_gscAiBlock}${renderGSCOverview(keywords, pages, timeSeries, gsc)}`;
@@ -34669,8 +35437,8 @@ function renderGSCOverview(keywords, pages, timeSeries, gsc) {
           ${topKw.map(kw => `
             <div class="fp-gsc-table-row">
               <span style="font-size:11px;color:var(--fp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(String(kw.keyword||''))}">${escHtml(String(kw.keyword||''))}</span>
-              <span style="color:#2563EB;font-weight:700">${parseInt(String(kw.clicks||0)).toLocaleString('fr-FR')}</span>
-              <span style="color:var(--fp-text-muted)">${parseInt(String(kw.impressions||0)).toLocaleString('fr-FR')}</span>
+              <span style="color:#2563EB;font-weight:700">${parseInt(String(kw.clicks||0)).toLocaleString(getLocale())}</span>
+              <span style="color:var(--fp-text-muted)">${parseInt(String(kw.impressions||0)).toLocaleString(getLocale())}</span>
               <span style="color:${parseFloat(String(kw.ctr||0))>3?'#22c55e':'#f59e0b'}">${parseFloat(String(kw.ctr||0)).toFixed(1)}%</span>
               <span style="color:${parseFloat(String(kw.position||99))<10?'#22c55e':parseFloat(String(kw.position||99))<20?'#f59e0b':'#ef4444'}">${parseFloat(String(kw.position||0)).toFixed(1)}</span>
             </div>
@@ -34691,8 +35459,8 @@ function renderGSCOverview(keywords, pages, timeSeries, gsc) {
             const path = url.replace(/^https?:\/\/[^/]+/, '') || url;
             return `<div class="fp-gsc-table-row">
               <span style="font-size:11px;color:var(--fp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(url)}">${escHtml(path)}</span>
-              <span style="color:#2563EB;font-weight:700">${parseInt(String(pg.clicks||0)).toLocaleString('fr-FR')}</span>
-              <span style="color:var(--fp-text-muted)">${parseInt(String(pg.impressions||0)).toLocaleString('fr-FR')}</span>
+              <span style="color:#2563EB;font-weight:700">${parseInt(String(pg.clicks||0)).toLocaleString(getLocale())}</span>
+              <span style="color:var(--fp-text-muted)">${parseInt(String(pg.impressions||0)).toLocaleString(getLocale())}</span>
               <span style="color:${parseFloat(String(pg.ctr||0))>3?'#22c55e':'#f59e0b'}">${parseFloat(String(pg.ctr||0)).toFixed(1)}%</span>
               <span style="color:${parseFloat(String(pg.position||99))<10?'#22c55e':parseFloat(String(pg.position||99))<20?'#f59e0b':'#ef4444'}">${parseFloat(String(pg.position||0)).toFixed(1)}</span>
             </div>`;
@@ -34731,8 +35499,8 @@ function renderGSCKeywords(keywords, gsc) {
               return `<tr style="border-top:1px solid rgba(255,255,255,0.04);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
                 <td style="padding:8px 10px;font-size:11px;color:var(--fp-text-faint)">${i+1}</td>
                 <td style="padding:8px 10px;font-size:12px;color:var(--fp-text);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(String(kw.keyword||''))}</td>
-                <td style="padding:8px 10px;font-size:12px;font-weight:700;color:#2563EB;text-align:right">${parseInt(String(kw.clicks||0)).toLocaleString('fr-FR')}</td>
-                <td style="padding:8px 10px;font-size:12px;color:var(--fp-text-muted);text-align:right">${parseInt(String(kw.impressions||0)).toLocaleString('fr-FR')}</td>
+                <td style="padding:8px 10px;font-size:12px;font-weight:700;color:#2563EB;text-align:right">${parseInt(String(kw.clicks||0)).toLocaleString(getLocale())}</td>
+                <td style="padding:8px 10px;font-size:12px;color:var(--fp-text-muted);text-align:right">${parseInt(String(kw.impressions||0)).toLocaleString(getLocale())}</td>
                 <td style="padding:8px 10px;font-size:12px;font-weight:600;color:${ctr>3?'#22c55e':'#f59e0b'};text-align:right">${ctr.toFixed(2)}%</td>
                 <td style="padding:8px 10px;text-align:right"><span style="font-size:11px;font-weight:700;color:${posColor};background:${posColor}15;padding:2px 8px;border-radius:20px">${pos.toFixed(1)}</span></td>
               </tr>`;
@@ -34774,8 +35542,8 @@ function renderGSCPages(pages, gsc) {
               return `<tr style="border-top:1px solid rgba(255,255,255,0.04);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
                 <td style="padding:8px 10px;font-size:11px;color:var(--fp-text-faint)">${i+1}</td>
                 <td style="padding:8px 10px;font-size:12px;color:var(--fp-text);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(url)}">${escHtml(path)}</td>
-                <td style="padding:8px 10px;font-size:12px;font-weight:700;color:#2563EB;text-align:right">${parseInt(String(pg.clicks||0)).toLocaleString('fr-FR')}</td>
-                <td style="padding:8px 10px;font-size:12px;color:var(--fp-text-muted);text-align:right">${parseInt(String(pg.impressions||0)).toLocaleString('fr-FR')}</td>
+                <td style="padding:8px 10px;font-size:12px;font-weight:700;color:#2563EB;text-align:right">${parseInt(String(pg.clicks||0)).toLocaleString(getLocale())}</td>
+                <td style="padding:8px 10px;font-size:12px;color:var(--fp-text-muted);text-align:right">${parseInt(String(pg.impressions||0)).toLocaleString(getLocale())}</td>
                 <td style="padding:8px 10px;font-size:12px;font-weight:600;color:${ctr>3?'#22c55e':'#f59e0b'};text-align:right">${ctr.toFixed(2)}%</td>
                 <td style="padding:8px 10px;text-align:right"><span style="font-size:11px;font-weight:700;color:${posColor};background:${posColor}15;padding:2px 8px;border-radius:20px">${pos.toFixed(1)}</span></td>
               </tr>`;
@@ -34803,10 +35571,10 @@ function renderGSCImpressions(timeSeries, gsc) {
 
   return `
     <div class="fp-stat-row fp-mb-20" style="grid-template-columns:repeat(4,1fr)">
-      ${statCard('Clics 7j', sum7.clicks.toLocaleString('fr-FR'), '', 'up')}
-      ${statCard('Impressions 7j', sum7.impressions.toLocaleString('fr-FR'), '', 'up')}
-      ${statCard('Clics 30j', sum30.clicks.toLocaleString('fr-FR'), '', 'up')}
-      ${statCard('Impressions 30j', sum30.impressions.toLocaleString('fr-FR'), '', 'up')}
+      ${statCard('Clics 7j', sum7.clicks.toLocaleString(getLocale()), '', 'up')}
+      ${statCard('Impressions 7j', sum7.impressions.toLocaleString(getLocale()), '', 'up')}
+      ${statCard('Clics 30j', sum30.clicks.toLocaleString(getLocale()), '', 'up')}
+      ${statCard('Impressions 30j', sum30.impressions.toLocaleString(getLocale()), '', 'up')}
     </div>
 
     <div class="fp-card">
@@ -34829,8 +35597,8 @@ function renderGSCImpressions(timeSeries, gsc) {
               const pos = parseFloat(String(r.avg_position||0));
               return `<tr style="border-top:1px solid rgba(255,255,255,0.04);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
                 <td style="padding:7px 10px;font-size:12px;color:var(--fp-text)">${String(r.date||'')}</td>
-                <td style="padding:7px 10px;font-size:12px;font-weight:700;color:#2563EB;text-align:right">${parseInt(String(r.clicks||0)).toLocaleString('fr-FR')}</td>
-                <td style="padding:7px 10px;font-size:12px;color:var(--fp-text-muted);text-align:right">${parseInt(String(r.impressions||0)).toLocaleString('fr-FR')}</td>
+                <td style="padding:7px 10px;font-size:12px;font-weight:700;color:#2563EB;text-align:right">${parseInt(String(r.clicks||0)).toLocaleString(getLocale())}</td>
+                <td style="padding:7px 10px;font-size:12px;color:var(--fp-text-muted);text-align:right">${parseInt(String(r.impressions||0)).toLocaleString(getLocale())}</td>
                 <td style="padding:7px 10px;font-size:12px;color:${ctr>3?'#22c55e':'#f59e0b'};text-align:right">${ctr.toFixed(2)}%</td>
                 <td style="padding:7px 10px;font-size:12px;color:${pos<10?'#22c55e':'#f59e0b'};text-align:right">${pos.toFixed(1)}</td>
               </tr>`;
@@ -35843,6 +36611,9 @@ function _fpLoadStripeJs() {
   });
 }
 
+// Public alias — inline onclick="fpBuyAICredits('pack')" buttons use this
+window.fpBuyAICredits = function(pack) { return window._fpBuyAICredits(pack); };
+
 window._fpBuyAICredits = async function(pack) {
   showToast('info', 'Préparation du paiement…');
   var r;
@@ -35864,7 +36635,7 @@ window._fpBuyAICredits = async function(pack) {
   modal.id = 'fp-ai-pay-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
   modal.innerHTML = '<div style="background:var(--fp-card-bg,#111827);border:1px solid var(--fp-border);border-radius:16px;padding:24px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4)">'
-    + '<div style="font-size:16px;font-weight:800;color:var(--fp-text);margin-bottom:4px">Crédits IA — ' + Number(r.credits).toLocaleString('fr-FR') + '</div>'
+    + '<div style="font-size:16px;font-weight:800;color:var(--fp-text);margin-bottom:4px">Crédits IA — ' + Number(r.credits).toLocaleString(getLocale()) + '</div>'
     + '<div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:16px">Paiement unique de <strong style="color:var(--fp-text)">' + r.amountEur + '€</strong> — vos crédits sont ajoutés immédiatement après confirmation.</div>'
     + '<div id="fp-ai-pay-element" style="min-height:120px"></div>'
     + '<div id="fp-ai-pay-error" style="display:none;margin-top:10px;font-size:12px;color:#f87171"></div>'
@@ -36205,7 +36976,7 @@ function renderCRM() {
               <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card)">
                 <div style="flex:1">
                   <div style="font-size:13px;font-weight:600">${escHtml(i.name)}</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint)">Dernière sync : ${i.last_sync_at ? new Date(i.last_sync_at).toLocaleDateString('fr-FR') : 'Jamais'} · Contacts : ${i.synced_contacts||0}</div>
+                  <div style="font-size:10px;color:var(--fp-text-faint)">Dernière sync : ${i.last_sync_at ? new Date(i.last_sync_at).toLocaleDateString(getLocale()) : 'Jamais'} · Contacts : ${i.synced_contacts||0}</div>
                 </div>
                 ${syncEntities.map(ent => `
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px"
@@ -36257,7 +37028,7 @@ function renderCRM() {
                   <td style="text-align:center;font-size:12px;color:${l.records_failed>0?'var(--fp-danger)':'var(--fp-text-faint)'}">${l.records_failed||0}</td>
                   <td style="text-align:center;font-size:11px;color:var(--fp-text-faint)">${l.duration_ms?l.duration_ms+'ms':'—'}</td>
                   <td><span style="font-size:10px;font-weight:700;color:${l.status==='success'?'var(--fp-success)':l.status==='failed'?'var(--fp-danger)':'var(--fp-warning)'}">${l.status||'—'}</span></td>
-                  <td style="font-size:10px;color:var(--fp-text-faint)">${l.started_at?new Date(l.started_at).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</td>
+                  <td style="font-size:10px;color:var(--fp-text-faint)">${l.started_at?new Date(l.started_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</td>
                 </tr>`).join('')}
               </tbody>
             </table>
@@ -36388,7 +37159,7 @@ function renderMarketIntelligence() {
               ${trendDir(t.trend_direction)}
               <div style="flex:1;min-width:0">
                 <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(t.keyword)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${t.search_volume?.toLocaleString('fr-FR')||0} req/mois · ${t.geo||'France'}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">${t.search_volume?.toLocaleString(getLocale())||0} req/mois · ${t.geo||'France'}</div>
               </div>
               <div style="text-align:right">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-success)">+${t.growth_rate}%</div>
@@ -36410,7 +37181,7 @@ function renderMarketIntelligence() {
               <div style="display:flex;gap:6px;align-items:center">
                 <span style="font-size:9px;padding:2px 6px;border-radius:6px;background:${diffColor(o.difficulty)}22;color:${diffColor(o.difficulty)}">${o.difficulty}</span>
                 <span style="font-size:9px;color:var(--fp-text-faint)">${o.timeframe||''}</span>
-                ${o.estimated_traffic?`<span style="font-size:9px;color:var(--fp-success)">+${o.estimated_traffic.toLocaleString('fr-FR')} visites/mois</span>`:''}
+                ${o.estimated_traffic?`<span style="font-size:9px;color:var(--fp-success)">+${o.estimated_traffic.toLocaleString(getLocale())} visites/mois</span>`:''}
               </div>
             </div>
           `).join('')}
@@ -36444,7 +37215,7 @@ function renderMarketIntelligence() {
                 <td style="font-size:13px;font-weight:600">${escHtml(t.keyword)}</td>
                 <td style="text-align:center">${trendDir(t.trend_direction)}</td>
                 <td style="text-align:center;font-size:12px;font-weight:700;color:var(--fp-success)">+${t.growth_rate}%</td>
-                <td style="text-align:center;font-size:11px">${(t.search_volume||0).toLocaleString('fr-FR')}</td>
+                <td style="text-align:center;font-size:11px">${(t.search_volume||0).toLocaleString(getLocale())}</td>
                 <td style="text-align:center;font-size:12px;font-weight:700;color:${t.opportunity_score>=80?'var(--fp-success)':t.opportunity_score>=60?'var(--fp-warning)':'var(--fp-text-faint)'}">${t.opportunity_score}/100</td>
                 <td style="text-align:center"><span style="font-size:9px;color:${diffColor(t.competition_level)}">${t.competition_level}</span></td>
                 <td style="font-size:10px;color:var(--fp-text-faint)">${t.geo||'—'}</td>
@@ -36468,7 +37239,7 @@ function renderMarketIntelligence() {
               <span style="font-size:9px;padding:2px 8px;border-radius:8px;background:${diffColor(o.difficulty)}22;color:${diffColor(o.difficulty)}">${o.difficulty}</span>
               ${o.timeframe?`<span style="font-size:9px;padding:2px 8px;border-radius:8px;background:var(--fp-track);color:var(--fp-text-faint)">${o.timeframe}</span>`:''}
             </div>
-            ${o.estimated_traffic?`<div style="font-size:11px;color:var(--fp-success);font-weight:600">📈 +${(o.estimated_traffic).toLocaleString('fr-FR')} visites/mois estimées</div>`:''}
+            ${o.estimated_traffic?`<div style="font-size:11px;color:var(--fp-success);font-weight:600">📈 +${(o.estimated_traffic).toLocaleString(getLocale())} visites/mois estimées</div>`:''}
             <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:10px;margin-top:10px" onclick="_fpMQ(o.title||o.keyword||'Opportunité','Keywords','high',true)">⚡ Créer mission</button>
           </div>
         `).join('')}
@@ -36486,7 +37257,7 @@ function renderMarketIntelligence() {
             </div>
             <div style="text-align:right">
               <span style="font-size:9px;padding:2px 8px;border-radius:8px;background:${m.impact_level==='high'?'rgba(239,68,68,0.15)':'rgba(245,158,11,0.1)'};color:${m.impact_level==='high'?'var(--fp-danger)':'var(--fp-warning)'}">${m.impact_level}</span>
-              <div style="font-size:9px;color:var(--fp-text-faint);margin-top:3px">${m.detected_at?new Date(m.detected_at).toLocaleDateString('fr-FR'):''}</div>
+              <div style="font-size:9px;color:var(--fp-text-faint);margin-top:3px">${m.detected_at?new Date(m.detected_at).toLocaleDateString(getLocale()):''}</div>
             </div>
           </div>
         `).join('')}
@@ -36503,7 +37274,7 @@ function renderMarketIntelligence() {
         <div class="fp-card fp-mb-12">
           <div style="display:flex;justify-content:space-between;margin-bottom:12px">
             <div style="font-size:14px;font-weight:700">${escHtml(r.title)}</div>
-            <span style="font-size:10px;color:var(--fp-text-faint)">${r.generated_at?new Date(r.generated_at).toLocaleDateString('fr-FR'):''}</span>
+            <span style="font-size:10px;color:var(--fp-text-faint)">${r.generated_at?new Date(r.generated_at).toLocaleDateString(getLocale()):''}</span>
           </div>
           ${r.summary?`<div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6;white-space:pre-wrap">${escHtml(r.summary)}</div>`:''}
         </div>
@@ -36901,7 +37672,7 @@ function renderLocalDominationMaps() {
               <div class="fp-card-title" style="font-size:15px">${escHtml(activeHeatmap?.name || 'Heatmap')}</div>
               <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">
                 <span style="color:var(--fp-accent);font-weight:600">${escHtml(activeHeatmap?.keyword || '')}</span>
-                <span style="color:var(--fp-text-faint)"> · Grille ${activeHeatmap?.grid_size || 7}×${activeHeatmap?.grid_size || 7} · Rayon ${activeHeatmap?.radius_km || '—'} km · ${activeHeatmap?.generated_at ? new Date(activeHeatmap.generated_at).toLocaleDateString('fr-FR') : '—'}</span>
+                <span style="color:var(--fp-text-faint)"> · Grille ${activeHeatmap?.grid_size || 7}×${activeHeatmap?.grid_size || 7} · Rayon ${activeHeatmap?.radius_km || '—'} km · ${activeHeatmap?.generated_at ? new Date(activeHeatmap.generated_at).toLocaleDateString(getLocale()) : '—'}</span>
               </div>
             </div>
             <div style="display:flex;align-items:center;gap:10px">
@@ -37142,7 +37913,7 @@ function renderLocalCompetitorMap() {
               </div>
               <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(c.address || '')} · Position ${c.rank || '—'}</div>
               <div style="display:flex;gap:8px;margin-top:3px">
-                <span style="font-size:10px;color:var(--fp-warning)">⭐ ${parseFloat(c.rating || 0).toFixed(1)} (${Number(c.review_count || 0).toLocaleString('fr-FR')} avis)</span>
+                <span style="font-size:10px;color:var(--fp-warning)">⭐ ${parseFloat(c.rating || 0).toFixed(1)} (${Number(c.review_count || 0).toLocaleString(getLocale())} avis)</span>
                 <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(c.category || '')}</span>
               </div>
             </div>
@@ -37500,7 +38271,7 @@ function renderSettingsSSO() {
                   <td style="text-align:center"><span style="font-size:10px;font-weight:700;color:${a.success ? 'var(--fp-success)' : 'var(--fp-danger)'}">${a.success ? '✓ OK' : '✗ Échec'}</span></td>
                   <td style="font-size:10px;color:var(--fp-text-faint)">${a.ip_address || '—'}</td>
                   <td style="text-align:center"><span style="font-size:10px;color:${a.risk_score >= 70 ? 'var(--fp-danger)' : a.risk_score >= 40 ? 'var(--fp-warning)' : 'var(--fp-success)'}">${a.risk_score || 0}</span></td>
-                  <td style="font-size:10px;color:var(--fp-text-faint)">${a.created_at ? new Date(a.created_at).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</td>
+                  <td style="font-size:10px;color:var(--fp-text-faint)">${a.created_at ? new Date(a.created_at).toLocaleString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</td>
                 </tr>`).join('')}
               </tbody>
             </table>
@@ -37521,7 +38292,7 @@ function renderSettingsSSO() {
                 <div style="width:8px;height:8px;border-radius:50%;background:var(--fp-success)"></div>
                 <div style="flex:1">
                   <div style="font-size:12px;font-weight:600">${escHtml(s.email || s.user_id || '—')}</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint)">${s.provider || ''} · ${s.ip_address || ''} · ${s.last_active_at ? 'Actif ' + new Date(s.last_active_at).toLocaleString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : ''}</div>
+                  <div style="font-size:10px;color:var(--fp-text-faint)">${s.provider || ''} · ${s.ip_address || ''} · ${s.last_active_at ? 'Actif ' + new Date(s.last_active_at).toLocaleString(getLocale(),{hour:'2-digit',minute:'2-digit'}) : ''}</div>
                 </div>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window.FP_SSO_API && apiFetch('/api/sso/sessions/${s.id}/invalidate',{method:'POST',body:JSON.stringify({})}).then(()=>{showToast('success','Session révoquée');window.FP_SSO_API.load();render(STATE.currentSection)})">Révoquer</button>
               </div>
@@ -37974,7 +38745,7 @@ function renderGA4DataExplorer() {
                 ${cols.map(col => {
                   const v = row[col.key];
                   const isNum = col.type === 'number';
-                  const disp = v == null ? '<span style="color:var(--fp-text-faint)">—</span>' : escHtml(String(typeof v === 'number' ? (Number.isInteger(v) ? v.toLocaleString('fr-FR') : v.toLocaleString('fr-FR', {maximumFractionDigits:2})) : v));
+                  const disp = v == null ? '<span style="color:var(--fp-text-faint)">—</span>' : escHtml(String(typeof v === 'number' ? (Number.isInteger(v) ? v.toLocaleString(getLocale()) : v.toLocaleString(getLocale(), {maximumFractionDigits:2})) : v));
                   return `<td style="text-align:${isNum?'right':'left'};font-variant-numeric:tabular-nums">${disp}</td>`;
                 }).join('')}
               </tr>
@@ -38019,7 +38790,7 @@ function renderGA4Reports() {
       <p style="font-size:12px;color:var(--fp-text-muted);margin-top:2px">Générez, gérez et partagez vos rapports SEO</p></div>
       <div style="display:flex;gap:8px">
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpReportsAPI.refresh()" ${st.loading?'disabled':''}>🔄 Actualiser</button>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpReportsAPI.create({name:'Rapport SEO — '+new Date().toLocaleDateString('fr-FR'),format:'PDF'})">+ Nouveau rapport</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpReportsAPI.create({name:'Rapport SEO — '+new Date().toLocaleDateString(getLocale()),format:'PDF'})">+ Nouveau rapport</button>
       </div>
     </div>`;
 
@@ -38047,7 +38818,7 @@ function renderGA4Reports() {
         <div style="font-size:48px;margin-bottom:14px">📄</div>
         <div style="font-size:16px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Aucun rapport généré</div>
         <div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px">Créez votre premier rapport pour partager vos résultats SEO avec vos clients ou votre équipe.</div>
-        <button class="fp-btn fp-btn-primary" onclick="window._fpReportsAPI.create({name:'Rapport SEO — '+new Date().toLocaleDateString('fr-FR'),format:'PDF'})">Créer le premier rapport</button>
+        <button class="fp-btn fp-btn-primary" onclick="window._fpReportsAPI.create({name:'Rapport SEO — '+new Date().toLocaleDateString(getLocale()),format:'PDF'})">Créer le premier rapport</button>
       </div>`;
   }
 
@@ -38058,7 +38829,7 @@ function renderGA4Reports() {
     <div class="fp-stat-row fp-mb-20">
       ${statCard('Rapports totaux', String(reports.length), 'générés', 'neutral')}
       ${statCard('Partagés', String(shared), 'avec vos clients', shared > 0 ? 'up' : 'neutral')}
-      ${statCard('Dernier rapport', recent ? new Date(recent.date || recent.createdAt || Date.now()).toLocaleDateString('fr-FR') : '—', recent ? escHtml(String(recent.name || '').slice(0, 30)) : 'Aucun rapport', 'neutral')}
+      ${statCard('Dernier rapport', recent ? new Date(recent.date || recent.createdAt || Date.now()).toLocaleDateString(getLocale()) : '—', recent ? escHtml(String(recent.name || '').slice(0, 30)) : 'Aucun rapport', 'neutral')}
       ${statCard('Types PDF', String(reports.filter(r => (r.type||r.format||'PDF').toUpperCase()==='PDF').length), 'téléchargeables', 'neutral')}
     </div>`;
 
@@ -38086,7 +38857,7 @@ function renderGA4Reports() {
               const rId = r.id || r._id || '';
               const rName = String(r.name || r.title || 'Rapport');
               const rType = String(r.type || r.format || 'PDF').toUpperCase();
-              const rDate = r.date ? new Date(r.date).toLocaleDateString('fr-FR') : r.createdAt ? new Date(r.createdAt).toLocaleDateString('fr-FR') : '—';
+              const rDate = r.date ? new Date(r.date).toLocaleDateString(getLocale()) : r.createdAt ? new Date(r.createdAt).toLocaleDateString(getLocale()) : '—';
               const rShared = !!(r.shared || r.isShared);
               const rPages = r.pages != null ? Number(r.pages) : null;
               return `<tr>
@@ -38119,7 +38890,7 @@ function renderGA4Reports() {
           { label: 'Rapport Executive', icon: '📈', color: '#8b5cf6' },
           { label: 'Export données complet', icon: '📦', color: '#f59e0b' },
         ].map(t => `
-          <div style="padding:14px;border-radius:10px;border:1px solid ${t.color}25;background:${t.color}07;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="window._fpReportsAPI.create({name:'${escHtml(t.label)} — '+new Date().toLocaleDateString('fr-FR'),format:'PDF'})">
+          <div style="padding:14px;border-radius:10px;border:1px solid ${t.color}25;background:${t.color}07;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="window._fpReportsAPI.create({name:'${escHtml(t.label)} — '+new Date().toLocaleDateString(getLocale()),format:'PDF'})">
             <span style="font-size:22px;flex-shrink:0">${t.icon}</span>
             <div>
               <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(t.label)}</div>
@@ -38317,8 +39088,8 @@ function renderGA4ClientMode() {
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('missions')">Voir tout →</button>
         </div>
         ${_msList.length===0?`<div style="text-align:center;padding:24px;color:var(--fp-text-faint);font-size:12px">Aucune mission active</div>`:_msList.map(m=>{
-          const _c={'done':'#22c55e','inprogress':'#f59e0b','todo':'#94a3b8','blocked':'#ef4444'}[m.status]||'#94a3b8';
-          const _l={'done':'Terminé','inprogress':'En cours','todo':'À faire','blocked':'Bloqué'}[m.status]||m.status||'—';
+          const _c={'done':'#22c55e','inprogress':'#f59e0b','todo':'#94a3b8','blocked':'#ef4444','open':'#6366f1','in_progress':'#f59e0b'}[m.status]||'#94a3b8';
+          const _l={'done':'Terminé','inprogress':'En cours','todo':'À faire','blocked':'Bloqué','open':'À faire','in_progress':'En cours','completed':'Terminée'}[m.status]||'À faire';
           return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border);margin-bottom:8px">
             <div style="width:8px;height:8px;border-radius:50%;background:${_c};flex-shrink:0"></div>
             <div style="flex:1;min-width:0">
@@ -38332,8 +39103,66 @@ function renderGA4ClientMode() {
     return header + permsBanner + _prjHtml;
   }
   if (sub === 'analytics') {
-    return header + permsBanner + kpisRow + monitorsHtml;
+    // Client-facing analytics — GA4/GSC data only, no invented numbers
+    const ga4 = STATE.ga4Status || {};
+    const gsc = STATE.gsc || {};
+    const ga4Connected = window.fpIsConnected ? window.fpIsConnected('ga4') : !!ga4.connected;
+    const gscConnected = window.fpIsConnected ? window.fpIsConnected('gsc') : !!gsc.connected;
+    const _emptyState = (icon, title, desc) => `
+      <div style="text-align:center;padding:40px 20px;background:var(--fp-inner-card);border-radius:var(--fp-radius-lg);border:1px dashed var(--fp-border)">
+        <div style="font-size:32px;margin-bottom:10px">${icon}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:6px">${title}</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);max-width:320px;margin:0 auto 14px">${desc}</div>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings')">Connecter →</button>
+      </div>`;
+    const ga4Block = ga4Connected ? `
+      <div class="fp-card fp-mb-20">
+        <div class="fp-card-title" style="margin-bottom:14px">📊 Google Analytics 4</div>
+        <div class="fp-stat-row">
+          ${statCard('Sessions', ga4.sessions != null ? String(Math.round(ga4.sessions)) : '—', '30 derniers jours', 'neutral')}
+          ${statCard('Conversions', ga4.conversions != null ? String(Math.round(ga4.conversions)) : '—', 'Objectifs atteints', ga4.conversions > 0 ? 'up' : 'neutral')}
+          ${statCard('Taux de rebond', ga4.bounceRate != null ? Math.round(ga4.bounceRate) + '%' : '—', 'Moyenne 30j', ga4.bounceRate < 50 ? 'up' : 'neutral')}
+          ${statCard('Durée moy.', ga4.avgSessionDuration != null ? Math.round(ga4.avgSessionDuration) + 's' : '—', 'Par session', 'neutral')}
+        </div>
+      </div>` : _emptyState('📊', 'Google Analytics non connecté', 'Connectez Google Analytics 4 pour visualiser les sessions, conversions et comportement utilisateur.');
+    const gscBlock = gscConnected ? `
+      <div class="fp-card fp-mb-20">
+        <div class="fp-card-title" style="margin-bottom:14px">🔍 Google Search Console</div>
+        <div class="fp-stat-row">
+          ${statCard('Impressions', gsc.impressions != null ? String(Math.round(gsc.impressions)) : '—', '30 derniers jours', 'neutral')}
+          ${statCard('Clics', gsc.clicks != null ? String(Math.round(gsc.clicks)) : '—', 'Recherche organique', gsc.clicks > 0 ? 'up' : 'neutral')}
+          ${statCard('CTR moyen', gsc.ctr != null ? (gsc.ctr * 100).toFixed(1) + '%' : '—', 'Taux de clic', 'neutral')}
+          ${statCard('Position moy.', gsc.avgPosition != null ? gsc.avgPosition.toFixed(1) : '—', 'Rank Google', gsc.avgPosition < 10 ? 'up' : 'neutral')}
+        </div>
+      </div>` : _emptyState('🔍', 'Google Search Console non connectée', 'Connectez Google Search Console pour voir les impressions, clics et positions organiques.');
+    return header + permsBanner + ga4Block + gscBlock;
   }
+
+  if (sub === 'agency') {
+    // Agency Lab — audits table + shared reports + white-label status; no duplicated KPI/availability blocks
+    const wlBranding = (STATE.settings && STATE.settings.wlBranding && typeof STATE.settings.wlBranding === 'object')
+      ? STATE.settings.wlBranding : (typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('fp:wl-branding') || '{}') : {});
+    const wlEnabled = !!(wlBranding.logoUrl || wlBranding.agencyName || wlBranding.primaryColor);
+    const wlBlock = `
+      <div class="fp-card fp-mb-20">
+        <div class="fp-card-title" style="margin-bottom:14px">🎨 White-Label & Branding</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          ${wlEnabled
+            ? `<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:200px">
+                ${wlBranding.logoUrl ? `<img src="${escHtml(wlBranding.logoUrl)}" style="height:36px;max-width:80px;border-radius:6px;object-fit:contain" onerror="this.style.display='none'">` : `<div style="width:36px;height:36px;border-radius:8px;background:${wlBranding.primaryColor||'#2563EB'};display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:14px">${(wlBranding.agencyName||'A').charAt(0).toUpperCase()}</div>`}
+                <div>
+                  <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${escHtml(wlBranding.agencyName || 'Votre agence')}</div>
+                  <div style="font-size:11px;color:var(--fp-text-muted)">${wlBranding.primaryColor || '#2563EB'} · White-label actif</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:6px">${badge('White-label actif','#22c55e')}<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),50)">Modifier →</button></div>`
+            : `<div style="flex:1;color:var(--fp-text-muted);font-size:12px">Aucun branding configuré. Personnalisez logo, couleurs et nom d'agence dans les Paramètres → Workspace.</div>
+               <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),50)">Configurer →</button>`}
+        </div>
+      </div>`;
+    return header + permsBanner + auditsHtml + reportsHtml + wlBlock;
+  }
+
   // Default: Command Center — all sections
   return header + permsBanner + kpisRow + monitorsHtml + auditsHtml + reportsHtml;
 }

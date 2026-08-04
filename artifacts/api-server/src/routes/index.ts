@@ -65,6 +65,7 @@ import liveRouter from "./live.js";
 import conversionRouter from "./conversion.js";
 import dataExplorerRouter from "./data-explorer.js";
 import clientModeRouter from "./client-mode.js";
+import progressionRouter from "./progression.js";
 
 const router: IRouter = Router();
 
@@ -238,5 +239,6 @@ router.use("/live",        liveRouter);
 router.use("/conversion",  conversionRouter);
 router.use("/data-explorer", dataExplorerRouter);
 router.use("/client-mode", clientModeRouter);
+router.use(progressionRouter);
 
 export default router;

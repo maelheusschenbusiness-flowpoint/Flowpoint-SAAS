@@ -368,54 +368,154 @@ router.put("/me/addons", async (req: Request, res: Response): Promise<void> => {
   res.json({ ok: true, addons: currentAddons, limits });
 });
 
+// ── Streak helpers ─────────────────────────────────────────────────────────────
+
+type DbFn = (sql: string, vals?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+
+/**
+ * Record one row per org per day in user_activity_days (cheap upsert, idempotent).
+ * Timezone: from user_prefs.settings.timezone, fallback Europe/Brussels.
+ */
+async function recordActivityDay(db: DbFn, orgId: string): Promise<void> {
+  try {
+    let tz = "Europe/Brussels";
+    try {
+      const tzRow = await db(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+      const s = tzRow.rows[0]?.["settings"] as Record<string, unknown> | null;
+      if (s && typeof s["timezone"] === "string" && s["timezone"]) tz = s["timezone"];
+    } catch { /* non-fatal */ }
+    await db(
+      `INSERT INTO user_activity_days (org_id, user_id, day)
+       VALUES ($1, $1, (NOW() AT TIME ZONE $2)::date)
+       ON CONFLICT (org_id, user_id, day) DO NOTHING`,
+      [orgId, tz]
+    );
+  } catch { /* non-fatal — table may not exist yet on first boot */ }
+}
+
+/**
+ * Compute {current, best} streak from user_activity_days.
+ * Today counts if present; if today absent, start from yesterday
+ * so the streak never decreases during the same calendar day.
+ */
+async function computeStreakFromTable(db: DbFn, orgId: string, tz: string): Promise<{ current: number; best: number }> {
+  const actRes = await db(
+    `SELECT day::text AS d FROM user_activity_days
+     WHERE org_id=$1 AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
+     ORDER BY d DESC`,
+    [orgId, tz]
+  );
+  if (actRes.rows.length === 0) return { current: 0, best: 0 };
+
+  const activeDays = new Set(actRes.rows.map((row: Record<string, unknown>) => String(row["d"]).slice(0, 10)));
+  // today in the org's timezone
+  const todayStr = new Date().toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
+  const startOffset = activeDays.has(todayStr) ? 0 : 1;
+
+  let current = 0;
+  for (let d = startOffset; d < 365; d++) {
+    const dt = new Date(Date.now() - d * 86_400_000);
+    const dayStr = dt.toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
+    if (activeDays.has(dayStr)) { current++; } else { break; }
+  }
+
+  const sortedDays = Array.from(activeDays).sort();
+  let best = 0;
+  let run = 0;
+  for (let i = 0; i < sortedDays.length; i++) {
+    if (i === 0) { run = 1; }
+    else {
+      const prev = new Date(sortedDays[i - 1]!);
+      const curr = new Date(sortedDays[i]!);
+      const diff = Math.round((curr.getTime() - prev.getTime()) / 86_400_000);
+      run = diff === 1 ? run + 1 : 1;
+    }
+    if (run > best) best = run;
+  }
+  if (current > best) best = current;
+  return { current, best };
+}
+
+// ── GET /api/me/streak ─────────────────────────────────────────────────────────
+// Returns { current, best } from real user_activity_days rows.
+router.get("/me/streak", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  try {
+    await recordActivityDay(orgDb(req), orgId);
+    let tz = "Europe/Brussels";
+    try {
+      const tzRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+      const s = tzRow.rows[0]?.["settings"] as Record<string, unknown> | null;
+      if (s && typeof s["timezone"] === "string" && s["timezone"]) tz = s["timezone"];
+    } catch { /* non-fatal */ }
+    const streak = await computeStreakFromTable(orgDb(req), orgId, tz);
+    res.json(streak);
+  } catch {
+    res.json({ current: 0, best: 0 });
+  }
+});
+
 // ── GET /api/me/prefs ─────────────────────────────────────────────────────────
 router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   try {
+    // Record today's activity (cheap upsert, non-fatal)
+    recordActivityDay(orgDb(req), orgId).catch(() => {});
+
     const r = await orgDb(req)(`SELECT streak, pinned, checklist, settings FROM user_prefs WHERE org_id=$1`, [orgId]);
     const row = r.rows[0] ?? { streak: 0, pinned: {}, checklist: null, settings: null };
 
-    // Compute streak server-side from activity_logs so the value is accurate
-    // even on a fresh browser session. Walk backward from today; if today has no
-    // events yet, start from yesterday so a perfect chain through yesterday still
-    // shows a non-zero streak.
-    // IMPORTANT: when the query succeeds, the computed value is authoritative (even
-    // if 0 — a missed day correctly resets the streak). Only fall back to the stored
-    // value when the query itself throws (DB unavailable, table missing, etc.).
+    // Determine timezone
+    let tz = "Europe/Brussels";
+    const settingsObj = row["settings"] as Record<string, unknown> | null;
+    if (settingsObj && typeof settingsObj["timezone"] === "string" && settingsObj["timezone"]) {
+      tz = settingsObj["timezone"];
+    }
+
+    // Compute streak from user_activity_days (authoritative).
+    // Fall back to legacy activity_logs, then to stored value.
     let finalStreak: number;
     let querySucceeded = false;
     let computedStreak = 0;
     try {
-      const actRes = await orgDb(req)(
-        `SELECT DISTINCT DATE(created_at AT TIME ZONE 'UTC') AS d
-         FROM activity_logs
-         WHERE org_id = $1
-           AND created_at >= NOW() - INTERVAL '365 days'
-         ORDER BY d DESC`,
-        [orgId]
-      );
+      const { current } = await computeStreakFromTable(orgDb(req), orgId, tz);
       querySucceeded = true;
-      if (actRes.rows.length > 0) {
-        const activeDays = new Set(actRes.rows.map((r2: Record<string, unknown>) => String(r2["d"]).slice(0, 10)));
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const startOffset = activeDays.has(todayStr) ? 0 : 1;
-        let s = 0;
-        for (let d = startOffset; d < 365; d++) {
-          const dayStr = new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10);
-          if (activeDays.has(dayStr)) { s++; } else { break; }
-        }
-        computedStreak = s;
-      }
-      finalStreak = computedStreak;
+      computedStreak = current;
+      finalStreak = current;
     } catch {
-      // Query failed — fall back to stored value so UI is not broken during outages
-      finalStreak = typeof row["streak"] === "number" ? (row["streak"] as number) : 0;
+      // user_activity_days not yet available — fall back to activity_logs
+      try {
+        const actRes = await orgDb(req)(
+          `SELECT DISTINCT DATE(created_at AT TIME ZONE $2) AS d
+           FROM activity_logs
+           WHERE org_id = $1
+             AND created_at >= NOW() - INTERVAL '365 days'
+           ORDER BY d DESC`,
+          [orgId, tz]
+        );
+        querySucceeded = true;
+        if (actRes.rows.length > 0) {
+          const activeDays = new Set(actRes.rows.map((r2: Record<string, unknown>) => String(r2["d"]).slice(0, 10)));
+          const todayStr = new Date().toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
+          const startOffset = activeDays.has(todayStr) ? 0 : 1;
+          let s = 0;
+          for (let d = startOffset; d < 365; d++) {
+            const dt = new Date(Date.now() - d * 86_400_000);
+            const dayStr = dt.toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
+            if (activeDays.has(dayStr)) { s++; } else { break; }
+          }
+          computedStreak = s;
+        }
+        finalStreak = computedStreak;
+      } catch {
+        finalStreak = typeof row["streak"] === "number" ? (row["streak"] as number) : 0;
+      }
     }
 
     const storedStreak = typeof row["streak"] === "number" ? (row["streak"] as number) : 0;
     if (querySucceeded && computedStreak !== storedStreak) {
-      // Persist the corrected value asynchronously — non-fatal if it fails
       orgDb(req)(
         `INSERT INTO user_prefs (org_id, streak, updated_at)
          VALUES ($1, $2, now())
