@@ -45,21 +45,71 @@ export async function getDistanceMatrix(origins: string[], destinations: string[
  * (see local-maps-service.ts) stored in the heatmap_data table.
  * Returning null prevents fabricated rank numbers from misleading users.
  */
-export async function getHeatmapData(keyword: string, location: string, gridSize = 9): Promise<Array<{ lat: number; lng: number; rank: number | null }>> {
+export async function getHeatmapData(lat: number, lng: number, radius = 5000, keyword = "", gridSize = 9): Promise<Array<{ lat: number; lng: number; rank: number | null }>> {
   void keyword; // reserved for DataForSEO batch job
-  const geo = await geocodeAddress(location).catch(() => null);
-  if (!geo) return [];
-  const step = 0.01;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
+  // Grid spans the requested radius around the given coordinates.
+  // ~111km per degree of latitude; longitude degrees shrink with cos(lat).
   const half = Math.floor(gridSize / 2);
+  const latStep = half > 0 ? (radius / 111_000) / half : 0;
+  const lngStep = half > 0 ? (radius / (111_000 * Math.max(0.2, Math.cos(lat * Math.PI / 180)))) / half : 0;
   const points: Array<{ lat: number; lng: number; rank: number | null }> = [];
   for (let i = -half; i <= half; i++) {
     for (let j = -half; j <= half; j++) {
-      points.push({ lat: geo.lat + i * step, lng: geo.lng + j * step, rank: null });
+      points.push({ lat: lat + i * latStep, lng: lng + j * lngStep, rank: null });
     }
   }
   return points;
 }
 
-export async function analyzeCompetitors(lat: number, lng: number, keyword: string): Promise<unknown[]> {
-  return getNearbyPlaces(lat, lng, "establishment");
+export async function analyzeCompetitors(lat: number, lng: number, keyword: string, radius = 5000): Promise<unknown[]> {
+  void keyword; // type-based nearby search; keyword ranking comes from DataForSEO
+  return getNearbyPlaces(lat, lng, "establishment", radius);
+}
+
+/**
+ * Fetches full Google Place Details for a place the user clicked on the map.
+ * Returns a compact, frontend-ready shape: name, rating, review count,
+ * address, phone, website, opening status and a proxied photo URL.
+ */
+export async function getPlaceDetails(placeId: string): Promise<Record<string, unknown> | null> {
+  const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
+  if (!apiKey) throw new Error("Google Maps API key not configured");
+  const fields = [
+    "place_id", "name", "rating", "user_ratings_total", "formatted_address",
+    "formatted_phone_number", "website", "opening_hours", "photos", "types", "url",
+  ].join(",");
+  const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=${fields}&language=fr&key=${apiKey}`;
+  const res = await fetch(url);
+  const data = await res.json() as Record<string, unknown>;
+  const r = data["result"] as Record<string, unknown> | undefined;
+  if (!r) return null;
+  const photos = (r["photos"] as Array<Record<string, unknown>>) ?? [];
+  const photoRef = photos.length > 0 ? String(photos[0]["photo_reference"] ?? "") : "";
+  return {
+    placeId: String(r["place_id"] ?? placeId),
+    name: String(r["name"] ?? ""),
+    rating: typeof r["rating"] === "number" ? r["rating"] : null,
+    reviewCount: typeof r["user_ratings_total"] === "number" ? r["user_ratings_total"] : null,
+    address: r["formatted_address"] ?? null,
+    phone: r["formatted_phone_number"] ?? null,
+    website: r["website"] ?? null,
+    openNow: (r["opening_hours"] as Record<string, unknown>)?.["open_now"] ?? null,
+    types: (r["types"] as string[]) ?? [],
+    googleUrl: r["url"] ?? null,
+    photoUrl: photoRef ? `/api/maps/photo?ref=${encodeURIComponent(photoRef)}` : null,
+  };
+}
+
+/** Streams a Google Places photo (keeps the API key server-side). */
+export async function fetchPlacePhoto(photoRef: string, maxWidth = 400): Promise<{ contentType: string; body: Buffer } | null> {
+  const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
+  if (!apiKey) throw new Error("Google Maps API key not configured");
+  const url = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${encodeURIComponent(photoRef)}&key=${apiKey}`;
+  const res = await fetch(url, { redirect: "follow" });
+  if (!res.ok) return null;
+  const contentType = res.headers.get("content-type") || "image/jpeg";
+  if (!contentType.startsWith("image/")) return null;
+  const body = Buffer.from(await res.arrayBuffer());
+  return { contentType, body };
 }

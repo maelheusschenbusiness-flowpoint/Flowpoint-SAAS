@@ -299,10 +299,40 @@ async function listSchedules(req: Request, res: Response) {
 
 async function upcomingSchedules(req: Request, res: Response) {
   try {
-    const result = await req.orgDb(
-      `SELECT * FROM audit_schedules WHERE enabled = true ORDER BY next_run ASC LIMIT 3`,
+    // Self-heal stale schedules FIRST (across ALL enabled rows, not just the top 3):
+    // a next_run in the past must be rolled forward to the next FUTURE occurrence
+    // (never display "upcoming" audits dated yesterday). Healing before the final
+    // ORDER BY/LIMIT guarantees the response is the globally earliest 3 schedules.
+    const now = Date.now();
+    const staleResult = await req.orgDb(
+      `SELECT * FROM audit_schedules WHERE enabled = true`,
     );
-    res.json(result.rows.map(scheduleToPublic));
+    const parseNextRun = (v: unknown): { date: Date | null; numeric: boolean } => {
+      if (v == null) return { date: null, numeric: false };
+      // bigint epoch-ms comes back from pg as a digit string; timestamps as Date/ISO
+      if (typeof v === "number") return { date: new Date(v), numeric: true };
+      if (typeof v === "string" && /^\d+$/.test(v)) return { date: new Date(Number(v)), numeric: true };
+      const d = new Date(v as string);
+      return { date: isNaN(d.getTime()) ? null : d, numeric: false };
+    };
+    const healed = await Promise.all(staleResult.rows.map(async (row: Record<string, unknown>) => {
+      const { date: nextRun, numeric } = parseNextRun(row["next_run"]);
+      const freq = String(row["frequency"] || "weekly");
+      if (nextRun && !isNaN(nextRun.getTime()) && nextRun.getTime() < now && isValidFrequency(freq)) {
+        let rolled = new Date(nextRun);
+        let guard = 0;
+        while (rolled.getTime() < now && guard < 400) { rolled = computeNextRun(freq, rolled); guard++; }
+        try {
+          await req.orgDb(`UPDATE audit_schedules SET next_run=$1 WHERE id=$2`,
+            [numeric ? rolled.getTime() : rolled, row["id"]]);
+        } catch { /* non-fatal — still return corrected date */ }
+        return { ...row, next_run: rolled.toISOString() };
+      }
+      return row;
+    }));
+    const _t = (v: unknown) => { const p = parseNextRun(v); return p.date ? p.date.getTime() : Number.MAX_SAFE_INTEGER; };
+    healed.sort((a: Record<string, unknown>, b: Record<string, unknown>) => _t(a["next_run"]) - _t(b["next_run"]));
+    res.json(healed.slice(0, 3).map(scheduleToPublic));
   } catch { res.json([]); }
 }
 

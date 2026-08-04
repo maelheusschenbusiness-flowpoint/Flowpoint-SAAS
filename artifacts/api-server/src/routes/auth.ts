@@ -891,7 +891,9 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
 
       // ── Fire-and-forget: welcome + trial-started emails ─────────────────
       const { mailer: _mailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
-      if (_mailer) {
+      // Welcome email fires ONLY for genuinely new accounts — re-signup / login-link
+      // requests from existing users must never re-send it (was the "welcome 3 days later" bug).
+      if (_mailer && _signupIsNewAccount) {
         _mailer.sendWelcome({ to: normalizedEmail, name: fn }).catch(() => {});
         // Note: sendTrialStarted fires from the Stripe webhook when a real trial subscription
         // is created — NOT at signup (trial is no longer granted at signup).

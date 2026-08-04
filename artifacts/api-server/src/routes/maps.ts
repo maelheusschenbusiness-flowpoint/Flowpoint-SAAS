@@ -6,14 +6,23 @@ import {
   getDistanceMatrix,
   getHeatmapData,
   analyzeCompetitors,
+  getPlaceDetails,
+  fetchPlacePhoto,
 } from "../services/maps-service.js";
 
 const router = Router();
 
 router.get("/maps/config", (_req: Request, res: Response) => {
+  // SECURITY: never expose GOOGLE_MAPS_API_KEY (server-side Places/Geocoding key).
+  // The browser only ever receives a dedicated, referrer-restricted public key
+  // (GOOGLE_MAPS_PUBLIC_KEY) meant for the Maps JavaScript SDK. If it is not set,
+  // the map UI shows its "not configured" state while server-side features
+  // (place-details, photo proxy, nearby, geocode) keep working via the secret key.
+  const publicKey = process.env["GOOGLE_MAPS_PUBLIC_KEY"] ?? process.env["GOOGLE_MAPS_BROWSER_KEY"] ?? "";
   res.json({
-    configured: isMapsConfigured(),
-    apiKey: process.env["GOOGLE_MAPS_API_KEY"] ?? "",
+    configured: !!publicKey,
+    serverConfigured: isMapsConfigured(),
+    apiKey: publicKey,
   });
 });
 
@@ -94,6 +103,39 @@ router.get("/maps/competitors", async (req: Request, res: Response) => {
     res.json({ competitors, count: competitors.length, center: { lat, lng } });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Competitor analysis failed";
+    res.status(500).json({ error: msg });
+  }
+});
+
+router.get("/maps/place-details", async (req: Request, res: Response) => {
+  const placeId = (req.query["placeId"] as string) || "";
+  if (!placeId || placeId.length > 300) {
+    res.status(400).json({ error: "placeId required" }); return;
+  }
+  try {
+    const details = await getPlaceDetails(placeId);
+    if (!details) { res.status(404).json({ error: "Place not found" }); return; }
+    res.json(details);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Place details failed";
+    if (msg.includes("not configured")) { res.status(503).json({ error: msg }); return; }
+    res.status(500).json({ error: msg });
+  }
+});
+
+router.get("/maps/photo", async (req: Request, res: Response) => {
+  const ref = (req.query["ref"] as string) || "";
+  const width = Math.min(1200, Math.max(100, parseInt(req.query["w"] as string) || 400));
+  if (!ref || ref.length > 600) { res.status(400).json({ error: "ref required" }); return; }
+  try {
+    const photo = await fetchPlacePhoto(ref, width);
+    if (!photo) { res.status(404).json({ error: "Photo not found" }); return; }
+    res.setHeader("Content-Type", photo.contentType);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(photo.body);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Photo fetch failed";
+    if (msg.includes("not configured")) { res.status(503).json({ error: msg }); return; }
     res.status(500).json({ error: msg });
   }
 });

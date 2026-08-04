@@ -352,7 +352,7 @@ async function sendTrialEnding(opts: {
       body: `<p style="margin:0 0 16px;">Ton essai <strong>FlowPoint ${planLabel}</strong> se termine bientôt.</p>
              <p style="margin:0 0 16px;">Pour continuer à bénéficier de toutes tes fonctionnalités sans interruption, active ton abonnement maintenant.</p>
              <p style="margin:0;">À la fin de l'essai, ton compte passera automatiquement en plan gratuit limité.</p>`,
-      cta: { label: "Activer mon abonnement →", url: "https://app.flowpoint.pro/billing" },
+      cta: { label: "Activer mon abonnement →", url: "https://app.flowpoint.pro/dashboard.html#billing" },
       note: "Questions ? Réponds à cet e-mail, on te répond en quelques heures.",
     }),
   });
@@ -394,7 +394,7 @@ async function sendPaymentSucceeded(opts: {
       accentColor: "#16a34a",
       title,
       body,
-      cta: { label: "Accéder au portail facturation →", url: "https://app.flowpoint.pro/billing" },
+      cta: { label: "Accéder au portail facturation →", url: "https://app.flowpoint.pro/dashboard.html#billing" },
     }),
   });
 }
@@ -472,7 +472,7 @@ async function sendPaymentFailed(opts: {
       body: `<p style="margin:0 0 16px;">Le prélèvement pour ton abonnement <strong>FlowPoint ${planLabel}</strong> a échoué${opts.attemptCount && opts.attemptCount > 1 ? ` (tentative ${opts.attemptCount})` : ""}.</p>
              <p style="margin:0 0 16px;">Pour éviter la suspension de ton compte, mets à jour ton moyen de paiement. Une nouvelle tentative sera effectuée <strong>${retry}</strong>.</p>
              <p style="margin:0;">Si tu ne mets pas à jour ta carte, ton abonnement sera suspendu après 3 échecs.</p>`,
-      cta: { label: "Mettre à jour mon paiement →", url: "https://app.flowpoint.pro/billing" },
+      cta: { label: "Mettre à jour mon paiement →", url: "https://app.flowpoint.pro/dashboard.html#billing" },
       note: "🔒 Tes données sont conservées pendant 30 jours après suspension.",
     }),
   });
@@ -501,7 +501,7 @@ async function sendMonitorDown(opts: {
       body: `<p style="margin:0 0 16px;">Ton site <strong>${opts.url}</strong> ne répond plus depuis <strong>${since}</strong>${opts.statusCode ? ` (HTTP ${opts.statusCode})` : ""}.</p>
              <p style="margin:0 0 16px;">FlowPoint continue de surveiller et t'enverra une alerte dès le rétablissement.</p>
              <p style="margin:0;">Vérifie ton hébergeur, ton serveur, et tes logs de déploiement.</p>`,
-      cta: { label: "Voir le monitor →", url: "https://app.flowpoint.pro/monitors" },
+      cta: { label: "Voir le monitor →", url: "https://app.flowpoint.pro/dashboard.html#monitors" },
       note: "Pour désactiver ces alertes, modifie les règles d'alerte dans ton dashboard.",
     }),
   });
@@ -530,7 +530,7 @@ async function sendMonitorUp(opts: {
       title: `${opts.monitorName} est de nouveau UP`,
       body: `<p style="margin:0 0 16px;"><strong>${opts.url}</strong> répond à nouveau correctement${duration ? ` après <strong>${duration} d'interruption</strong>` : ""}.</p>
              <p style="margin:0;">L'incident est clos. Consulte l'historique de disponibilité depuis ton dashboard.</p>`,
-      cta: { label: "Voir l'historique →", url: "https://app.flowpoint.pro/monitors" },
+      cta: { label: "Voir l'historique →", url: "https://app.flowpoint.pro/dashboard.html#monitors" },
     }),
   });
 }
@@ -552,7 +552,7 @@ async function sendReportGenerated(opts: {
       title: `Ton rapport est prêt`,
       body: `<p style="margin:0 0 16px;">Le rapport <strong>${opts.reportName}</strong> a été généré avec succès.</p>
              <p style="margin:0;">Tu peux le télécharger, le partager avec un lien client, ou l'exporter en PDF depuis ton dashboard.</p>`,
-      cta: { label: "Accéder au rapport →", url: opts.reportUrl || "https://app.flowpoint.pro/reports" },
+      cta: { label: "Accéder au rapport →", url: opts.reportUrl || "https://app.flowpoint.pro/dashboard.html#reports" },
     }),
   });
 }
@@ -655,7 +655,7 @@ async function sendNewMissions(opts: {
       body: `<p style="margin:0 0 16px;">FlowPoint a analysé ${opts.siteUrl ? `<strong>${opts.siteUrl}</strong>` : "tes sites"} et généré ${opts.missions.length} mission${opts.missions.length > 1 ? "s" : ""} SEO prioritaire${opts.missions.length > 1 ? "s" : ""} :</p>
              <div style="background:#f8f9ff;border:1px solid #dde1f0;border-radius:8px;padding:0 12px;margin-bottom:16px;">${missionRows}</div>
              <p style="margin:0;">Traite les missions prioritaires en premier pour maximiser ton impact SEO.</p>`,
-      cta: { label: "Voir mes missions →", url: "https://app.flowpoint.pro/missions" },
+      cta: { label: "Voir mes missions →", url: "https://app.flowpoint.pro/dashboard.html#missions" },
     }),
   });
 }
@@ -683,7 +683,7 @@ async function sendSeoAlert(opts: {
       body: `<p style="margin:0 0 16px;">Le score SEO de <strong>${opts.url}</strong> ${op} le seuil de <strong>${opts.threshold}/100</strong>.</p>
              <p style="margin:0 0 16px;">Score actuel : <strong style="font-size:18px;">${opts.score}/100</strong></p>
              <p style="margin:0;">Lance un audit complet pour identifier les problèmes et générer des missions correctives.</p>`,
-      cta: { label: "Voir l'audit →", url: "https://app.flowpoint.pro/audits" },
+      cta: { label: "Voir l'audit →", url: "https://app.flowpoint.pro/dashboard.html#audits" },
     }),
   });
 }
@@ -712,7 +712,7 @@ async function sendSubscriptionCanceled(opts: {
       accentColor: "#64748b",
       title: `Confirmation d'annulation`,
       body,
-      cta: { label: "Voir mes options →", url: "https://app.flowpoint.pro/billing" },
+      cta: { label: "Voir mes options →", url: "https://app.flowpoint.pro/dashboard.html#billing" },
       note: "Si tu as annulé par erreur, connecte-toi et clique sur \"Réactiver\" pour rétablir ton abonnement.",
     }),
   });
@@ -885,7 +885,7 @@ async function sendAlertRule(opts: {
         <p style="margin:0 0 8px;font-size:14px;color:#4a5280;"><strong>Type&nbsp;:</strong> ${typeLabel}</p>
         <p style="margin:0 0 8px;font-size:14px;color:#4a5280;"><strong>Site&nbsp;:</strong> ${opts.siteUrl || "Tous les sites"}</p>
       `,
-      cta:  { label: "Voir les alertes →", url: "https://app.flowpoint.pro/#settings/alerts" },
+      cta:  { label: "Voir les alertes →", url: "https://app.flowpoint.pro/dashboard.html#settings" },
       note: "Gérez vos règles d'alerte depuis Paramètres → Notifications. Pour stopper ces emails, désactivez la règle correspondante.",
     }),
   });

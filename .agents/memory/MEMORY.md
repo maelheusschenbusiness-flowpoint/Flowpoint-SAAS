@@ -114,4 +114,5 @@
 - [AI usage tracking atomic](ai-usage-tracking-atomic.md) — log+monthly upsert in one tx gated on RETURNING; legacy orgIds via resolveCanonicalOrgUuid; AI tables UUID org_id + FK organizations
 - [Team messages pitfalls](team-messages-pitfalls.md) — never filter by org.created_at; normalize channels (strip #, lowercase); log swallowed GET errors
 - [Lot 398 fix patterns](lot398-fix-patterns.md) — activity icon fallback, canonical usage source, AI 503 codes, subscriber plan-change in dashboard, initial spinner, org_addons truth
+- [Google Maps POI + dark InfoWindows](gmaps-poi-place-details.md) — ev.stop() on placeId clicks, server-side place-details/photo proxy, .gm-style-iw dark CSS; audit_schedules.next_run is bigint epoch ms
 - [AI Agents Phase 6 — Monitors & Alertes](ai-agents-phase6.md) — 12 outils, 7 permissions, 8 destinations; batch undo MUST be before const id=snap["id"] line; delete_monitor 3 protections; 124/124 certifiés 2026-08-02

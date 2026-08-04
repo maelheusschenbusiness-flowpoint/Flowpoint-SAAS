@@ -678,13 +678,44 @@ function fpInsightAction(action) {
 }
 window.fpInsightAction = fpInsightAction;
 
+// Formats a monitor lastCheck value for display. Backend may send a raw ISO
+// timestamp or a preformatted relative string ("2 min"). Returns a clean
+// human string WITHOUT the "Il y a" prefix (callers add it when needed),
+// or null when the value is absent/unparseable.
+function fmtLastCheck(v) {
+  if (v == null || v === '' || v === '—') return null;
+  const s = String(v);
+  // ISO-like timestamp → relative french time
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return null;
+    const diffMs = Date.now() - d.getTime();
+    if (diffMs < 0 || diffMs > 365 * 86400000) return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'short' });
+    const mins = Math.round(diffMs / 60000);
+    if (mins < 1) return 'à l\u2019instant';
+    if (mins < 60) return mins + ' min';
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + ' h';
+    return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'short' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+  }
+  return s;
+}
+
 function exportActivityCsv() {
-  const rows = (STATE.activity || (PREVIEW_MODE ? ACTIVITY_FEED : []) || []).map(item =>
-    `"${(item.label || item.title || '').replace(/"/g,'""')}","${(item.type||'')}","${(item.time||item.date||'')}"`
+  const src = (STATE.activity && STATE.activity.length > 0 ? STATE.activity
+              : (STATE.activityEvents && STATE.activityEvents.length > 0 ? STATE.activityEvents
+              : (PREVIEW_MODE ? ACTIVITY_FEED : []))) || [];
+  if (src.length === 0) {
+    showToast('info', 'Aucune activité à exporter pour le moment');
+    return;
+  }
+  const rows = src.map(item =>
+    `"${(item.label || item.title || '').replace(/"/g,'""')}","${(item.type||'')}","${(item.time||item.date||item.createdAt||'')}"`
   );
   exportCsv('Label,Type,Date', rows, `activite-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
   showToast('success', `CSV exporté — ${rows.length} événement${rows.length>1?'s':''}`);
 }
+window.exportActivityCsv = exportActivityCsv;
 
 // Formats an invoice date — handles ISO strings and Stripe unix timestamps (seconds).
 // Respects STATE.settings.dateFormat via fmtDate(); falls back to fr-FR dd/mm/yyyy.
@@ -2542,8 +2573,6 @@ const CMD_ITEMS = [
   // ── Audits & Technique ────────────────────────────────────────────
   { cat:'Audits & Technique', label:'Audits SEO',              icon:'search',       route:'audits',             shortcut:'G A' },
   { cat:'Audits & Technique', label:'Audit technique',         icon:'shield',       route:'technical-audit',    shortcut:'' },
-  { cat:'Audits & Technique', label:'Analyse de code',         icon:'file',         route:'code-analysis',      shortcut:'' },
-  { cat:'Audits & Technique', label:'Santé du dépôt',          icon:'activity',     route:'repository-health',  shortcut:'' },
   { cat:'Audits & Technique', label:'Déploiements',            icon:'upload',       route:'deployments',        shortcut:'' },
   { cat:'Audits & Technique', label:'Intégration GitHub',      icon:'activity',     route:'github-integration', shortcut:'' },
   // ── Analyse & Performance ─────────────────────────────────────────
@@ -2967,6 +2996,7 @@ function openNewChannelPanel() {
     + '<button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" onclick="const n=document.getElementById(\'channel-name\')?.value?.trim();if(!n){showToast(\'warning\',\'Nommez le canal\');return;}showToast(\'success\',\'Canal #\'+n+\' créé !\');closeFloatPanel();">Créer le canal</button>';
   openFloatPanel('Nouveau canal', html);
 }
+window.openNewChannelPanel = openNewChannelPanel;
 
 function openAssignTaskModal() {
   const members = (STATE.team || []).filter(t => t.id !== STATE.me?.id).map(t => `<option value="${escHtml(t.id)}">${escHtml(t.name || t.email || 'Membre')}</option>`).join('');
@@ -3054,6 +3084,7 @@ async function handleChatAttach(input) {
   }
   showToast('success', `${files.length} fichier(s) envoyé(s) dans le chat !`);
 }
+window.handleChatAttach = handleChatAttach;
 
 // ─────────────────────────────────────────────────────────────────
 // EMOJI PICKER
@@ -3839,6 +3870,12 @@ function initLocalSEOMap() {
           '#fp-gmap .gm-style-mtc>div{background:#1e293b!important;border-color:#334155!important}',
           '#fp-gmap .gm-bundled-control button,#fp-gmap .gm-fullscreen-control{background:#1e293b!important;color:#e2e8f0!important}',
           '#fp-gmap .gm-svpc,#fp-gmap .gm-fullscreen-control img{filter:invert(1) brightness(0.8)}',
+          // Dark InfoWindows — Google renders them white by default
+          '#fp-gmap .gm-style-iw,#fp-gmap .gm-style-iw-c{background:#0f172a!important;color:#e2e8f0!important;box-shadow:0 8px 24px rgba(0,0,0,0.6)!important;border:1px solid #1e3a5f!important;border-radius:12px!important}',
+          '#fp-gmap .gm-style-iw-d{background:#0f172a!important;color:#e2e8f0!important;overflow:auto!important}',
+          '#fp-gmap .gm-style-iw-tc::after{background:#0f172a!important}',
+          '#fp-gmap .gm-style-iw button.gm-ui-hover-effect>span{background-color:#e2e8f0!important}',
+          '#fp-gmap .gm-style-iw a{color:#60a5fa!important}',
         ].join('');
         document.head.appendChild(s);
       });
@@ -3905,6 +3942,41 @@ function initLocalSEOMap() {
         icon: { path: google.maps.SymbolPath.CIRCLE, scale: 11, fillColor: '#22c55e', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 }
       });
     }
+
+    // ── POI click → rich FlowPoint place card (replaces Google's white popup) ──
+    const _poiIW = new google.maps.InfoWindow();
+    const _txtC = isLight ? '#0f172a' : '#e2e8f0';
+    const _mutC = isLight ? '#64748b' : '#94a3b8';
+    map.addListener('click', (ev) => {
+      if (!ev || !ev.placeId) return;
+      ev.stop(); // suppress Google's native white InfoWindow
+      const pid = ev.placeId;
+      _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:${_mutC};font-size:12px">Chargement des détails…</div>`);
+      _poiIW.setPosition(ev.latLng);
+      _poiIW.open(map);
+      apiFetch(`/api/maps/place-details?placeId=${encodeURIComponent(pid)}`).then(d => {
+        if (!d || d.error || !d.name) {
+          _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:${_mutC};font-size:12px">Détails indisponibles pour ce lieu.</div>`);
+          return;
+        }
+        const stars = d.rating != null ? '★'.repeat(Math.round(d.rating)) + '☆'.repeat(5 - Math.round(d.rating)) : '';
+        _poiIW.setContent(
+          `<div style="font-family:Inter,sans-serif;padding:10px;min-width:220px;max-width:280px;color:${_txtC}">`
+          + (d.photoUrl ? `<img src="${d.photoUrl}" alt="" style="width:100%;height:110px;object-fit:cover;border-radius:8px;margin-bottom:8px" onerror="this.remove()"/>` : '')
+          + `<strong style="font-size:13px">${escHtml(d.name)}</strong>`
+          + (d.rating != null ? `<div style="margin-top:4px;font-size:12px"><span style="color:#f59e0b">${stars}</span> <strong>${d.rating}</strong>${d.reviewCount != null ? ` <span style="color:${_mutC}">(${d.reviewCount} avis)</span>` : ''}</div>` : `<div style="margin-top:4px;font-size:11px;color:${_mutC}">Aucun avis Google</div>`)
+          + (d.address ? `<div style="margin-top:6px;font-size:11px;color:${_mutC};line-height:1.4">📍 ${escHtml(String(d.address))}</div>` : '')
+          + (d.phone ? `<div style="margin-top:4px;font-size:11px;color:${_mutC}">📞 ${escHtml(String(d.phone))}</div>` : '')
+          + (d.openNow != null ? `<div style="margin-top:4px;font-size:11px;font-weight:600;color:${d.openNow ? '#22c55e' : '#ef4444'}">${d.openNow ? '● Ouvert actuellement' : '● Fermé actuellement'}</div>` : '')
+          + `<div style="margin-top:8px;display:flex;gap:10px;font-size:11px">`
+          + (d.website ? `<a href="${escHtml(String(d.website))}" target="_blank" rel="noopener" style="text-decoration:none;font-weight:600">Site web ↗</a>` : '')
+          + (d.googleUrl ? `<a href="${escHtml(String(d.googleUrl))}" target="_blank" rel="noopener" style="text-decoration:none;font-weight:600">Google Maps ↗</a>` : '')
+          + `</div></div>`
+        );
+      }).catch(() => {
+        _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:${_mutC};font-size:12px">Détails indisponibles pour ce lieu.</div>`);
+      });
+    });
   });
 }
 
@@ -4327,12 +4399,7 @@ function renderSidebarStatus() {
   if (topTxt) topTxt.textContent = down > 0 ? `${down} DOWN` : _totMon > 0 ? 'Tous UP' : 'Aucun monitor';
   if (topStatus) topStatus.className = 'fp-topbar-status' + (down > 0 ? ' down' : '');
 
-  // Monitors badge in sidebar
-  const monBadge = $('#monitors-badge');
-  if (monBadge) {
-    if (down > 0) { monBadge.removeAttribute('hidden'); monBadge.textContent = String(down); }
-    else { monBadge.setAttribute('hidden', ''); monBadge.textContent = ''; }
-  }
+  // Monitors sidebar badge removed on user request — never show a red dot there.
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -4404,7 +4471,9 @@ function renderOverview() {
   const conversionRate  = STATE.overview?.conversionRate ?? STATE.overview?.conversionScore ?? null;
   const localScore = STATE.overview?.localScore > 0 ? STATE.overview.localScore
                    : STATE.overview?.seoScore   > 0 ? STATE.overview.seoScore
-                   : null;
+                   // Real audits exist but overview payload has no local/seo score yet →
+                   // derive from audit average so the gauge is never blank with real data.
+                   : ((STATE.audits||[]).length > 0 ? Math.round((STATE.audits.reduce((s,a)=>s+(Number(a.score)||0),0) / STATE.audits.length)) || null : null);
   const competitorPressure = STATE.overview?.competitorPressure
     ?? (STATE.competitors && STATE.competitors.length > 0
         ? Math.min(100, Math.round(STATE.competitors.filter(c => (c.domainRating||0) > 30).length / STATE.competitors.length * 100))
@@ -4446,7 +4515,7 @@ function renderOverview() {
       <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${STATE.theme==='light'?'rgba(0,0,0,0.10)':'rgba(255,255,255,0.08)'}" stroke-width="5"/>
       ${hasVal ? `<circle class="fp-score-ring-fill" data-ring-circ="${c.toFixed(1)}" data-ring-target-offset="${targetOffset}" cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="5"
         stroke-dasharray="${fill} ${empty}" stroke-linecap="round"
-        stroke-dashoffset="${c.toFixed(1)}"
+        stroke-dashoffset="${targetOffset}"
         transform="rotate(-90 ${size/2} ${size/2})"/>` : ''}
       <text x="${size/2}" y="${size/2+5}" text-anchor="middle" font-size="12" font-weight="900" fill="${_textColor}" font-family="Outfit,sans-serif">${_label}</text>
     </svg>`;
@@ -5523,7 +5592,7 @@ function renderMonitors() {
           <div class="fp-monitor-stats">
             <div><div class="fp-monitor-stat-label">Uptime</div><div class="fp-monitor-stat-value" style="color:#22c55e">${computeRealUptime(m)}%</div></div>
             <div><div class="fp-monitor-stat-label">Latence</div><div class="fp-monitor-stat-value" style="color:${m.latency != null && m.latency > 500 ? '#ef4444' : m.latency != null && m.latency > 200 ? '#f59e0b' : 'var(--fp-text)'}">${m.status === 'down' ? 'DOWN' : m.latency == null ? '—' : m.latency + 'ms'}</div></div>
-            <div><div class="fp-monitor-stat-label">Check</div><div style="font-size:11px;color:var(--fp-text-muted)">${m.lastCheck ? 'Il y a ' + m.lastCheck : 'Jamais vérifié'}</div></div>
+            <div><div class="fp-monitor-stat-label">Check</div><div style="font-size:11px;color:var(--fp-text-muted)">${fmtLastCheck(m.lastCheck) ? 'Il y a ' + fmtLastCheck(m.lastCheck) : 'Jamais vérifié'}</div></div>
           </div>
           <div class="fp-uptime-bars">${uptimeBars(m)}</div>
           <div class="fp-monitor-uptime30">
@@ -5698,7 +5767,7 @@ function renderMonitors() {
                 status: m.status === 'up' ? 'UP' : m.status === 'warn' ? 'SLOW' : 'DOWN',
                 latency: m.latency == null ? '—' : m.latency + 'ms',
                 rate: m.uptime != null ? m.uptime.toFixed(1) + '%' : '—',
-                last: m.lastCheck || '—',
+                last: fmtLastCheck(m.lastCheck) || '—',
               }));
               if (_eps.length === 0) return `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--fp-text-faint);font-size:13px">Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.</td></tr>`;
               return _eps.map(ep => {
@@ -6867,7 +6936,7 @@ function renderReports() {
     const incidents = _downMon.map(m => ({
       site: (m.url||m.name||'').replace(/^https?:\/\//,''),
       date: new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}) + ' · ' + new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),
-      dur: m.lastCheck || '—',
+      dur: fmtLastCheck(m.lastCheck) || '—',
       impact: m.status === 'down' ? 'Critique' : 'Moyen',
       cause: m.status === 'down' ? 'Site inaccessible — vérification requise' : `Latence élevée : ${m.latency||'—'}ms`,
       resolved: false,
@@ -12995,7 +13064,7 @@ function openMonitorPanel(monitor) {
     ${[
       {l:'Uptime',   v: monitor.uptime + '%',                                        c:'#22c55e'},
       {l:'Latence',  v: monitor.status==='down' ? 'Timeout' : monitor.latency == null ? '—' : monitor.latency + 'ms', c:'#f1f5ff'},
-      {l:'Dernier check', v: monitor.lastCheck ? 'Il y a ' + monitor.lastCheck : 'Jamais vérifié', c:'#94a3b8'},
+      {l:'Dernier check', v: fmtLastCheck(monitor.lastCheck) ? 'Il y a ' + fmtLastCheck(monitor.lastCheck) : 'Jamais vérifié', c:'#94a3b8'},
     ].map(s=>`
       <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
         <span style="font-size:13px;color:var(--fp-text-muted)">${s.l}</span>
@@ -19771,7 +19840,7 @@ function renderMonitorsIncidents() {
     site: (m.url||m.name||'').replace(/^https?:\/\//,''),
     start: _fmtT(_nowInc),
     end: null,
-    detected: m.lastCheck || _fmtT(_nowInc),
+    detected: fmtLastCheck(m.lastCheck) || _fmtT(_nowInc),
     notified: null,
     date: _fmtD(_nowInc),
     duration: 'En cours',
@@ -19787,7 +19856,7 @@ function renderMonitorsIncidents() {
       ? 'Site inaccessible — impact client direct et crawl Google potentiellement affecté.'
       : 'Dégradation UX — temps de réponse élevé pour les visiteurs.',
     services: ['Site web'],
-    ttd: m.lastCheck || '—',
+    ttd: fmtLastCheck(m.lastCheck) || '—',
     ttr: 'En cours',
     notifiedBool: false,
   }));
@@ -20844,7 +20913,12 @@ function initPageAnimations(route, sub) {
     // Workspace health ring animation — draw in from full offset to target
     document.querySelectorAll('.fp-workspace-health-ring, .fp-score-ring-fill').forEach(el => {
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (reduced) return;
+      if (reduced) {
+        // No animation — jump straight to the final arc so the ring is always visible.
+        const t = parseFloat(el.dataset.ringTargetOffset || '0');
+        if (Number.isFinite(t)) el.style.strokeDashoffset = String(t);
+        return;
+      }
       const targetOffset = parseFloat(el.dataset.ringTargetOffset || el.getAttribute('stroke-dashoffset') || '0');
       const circ = parseFloat(el.dataset.ringCirc || el.getAttribute('stroke-dasharray') || '238.76');
       // Start at full circle hidden, transition to target
@@ -24884,14 +24958,16 @@ function renderAlertsCenter() {
   const _tiWarn    = warnings.length;
   const _tiTotal   = allAlerts.length;
   const _tiMkCol   = (v) => v >= 70 ? '#22c55e' : v >= 50 ? '#f59e0b' : '#ef4444';
+  // No monitors, no audits, no alerts → no real signal → all derived scores stay null ("—").
+  const _tiHasData = _tiMonCnt > 0 || _tiTotal > 0 || (STATE.audits && STATE.audits.length > 0);
   // Threat / menace: fewer threats → higher score (inverted)
-  const _tiThreat  = Math.min(99, Math.max(1, 100 - (_tiCrit * 15 + _tiDown * 20 + _tiWarn * 4)));
+  const _tiThreat  = _tiHasData ? Math.min(99, Math.max(1, 100 - (_tiCrit * 15 + _tiDown * 20 + _tiWarn * 4))) : null;
   // Severity of incidents: fewer/no incidents → higher score
-  const _tiSev     = Math.min(99, Math.max(1, 100 - (_tiDown * 30 + _tiCrit * 8)));
+  const _tiSev     = _tiHasData ? Math.min(99, Math.max(1, 100 - (_tiDown * 30 + _tiCrit * 8))) : null;
   // Resolution score: how resolved vs total
-  const _tiRes     = _tiTotal === 0 ? 98 : Math.min(99, Math.max(1, 100 - Math.round((_tiCrit * 12 + _tiWarn * 4))));
+  const _tiRes     = !_tiHasData ? null : (_tiTotal === 0 ? 98 : Math.min(99, Math.max(1, 100 - Math.round((_tiCrit * 12 + _tiWarn * 4)))));
   // Business risk
-  const _tiBiz     = Math.min(99, Math.max(1, 100 - (_tiCrit * 10 + _tiDown * 18)));
+  const _tiBiz     = _tiHasData ? Math.min(99, Math.max(1, 100 - (_tiCrit * 10 + _tiDown * 18))) : null;
   // Monitor coverage — null when no monitors configured yet
   const _tiCov     = _tiMonCnt === 0 ? null : (_tiMonCnt >= 10 ? 96 : _tiMonCnt >= 6 ? 85 : _tiMonCnt >= 3 ? 72 : 58);
   // System health from avg audit score — null when no audits
@@ -24903,10 +24979,10 @@ function renderAlertsCenter() {
 
   const alertScores = [
     { label:'Stabilité',            val: _tiStab,   color: _tiStab   != null ? _tiMkCol(_tiStab)   : '#64748b', icon:'🛡️' },
-    { label:'Score menace',         val: _tiThreat,  color: _tiMkCol(_tiThreat), icon:'🚨' },
-    { label:'Résolution',           val: _tiRes,     color: _tiMkCol(_tiRes),    icon:'✅' },
-    { label:'Risque business',      val: _tiBiz,     color: _tiMkCol(_tiBiz),    icon:'💼' },
-    { label:'Sévérité incidents',   val: _tiSev,     color: _tiMkCol(_tiSev),    icon:'⚡' },
+    { label:'Score menace',         val: _tiThreat,  color: _tiThreat != null ? _tiMkCol(_tiThreat) : '#64748b', icon:'🚨' },
+    { label:'Résolution',           val: _tiRes,     color: _tiRes    != null ? _tiMkCol(_tiRes)    : '#64748b', icon:'✅' },
+    { label:'Risque business',      val: _tiBiz,     color: _tiBiz    != null ? _tiMkCol(_tiBiz)    : '#64748b', icon:'💼' },
+    { label:'Sévérité incidents',   val: _tiSev,     color: _tiSev    != null ? _tiMkCol(_tiSev)    : '#64748b', icon:'⚡' },
     { label:'Santé système',        val: _tiHealth,  color: _tiHealth != null ? _tiMkCol(_tiHealth) : '#64748b', icon:'🖥️' },
     { label:'Couverture monitoring', val: _tiCov,    color: _tiCov    != null ? _tiMkCol(_tiCov)    : '#64748b', icon:'📡' },
     { label:'Temps résolution moy.', val: _tiTTR,   color: _tiTTR    != null ? '#8b5cf6'            : '#64748b', icon:'⏱️' },
@@ -26024,16 +26100,16 @@ function renderDataExplorer() {
 
   const _behDE = window.FP_DATA && window.FP_DATA.behavioral && window.FP_DATA.behavioral.sessionStats;
   const _croDE = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.scores && window.FP_DATA.cro.scores[0];
-  const _avgSEO = typeof avgScore === 'function' ? avgScore() : 71;
+  const _avgSEO = (typeof avgScore === 'function' && (STATE.audits||[]).length > 0) ? avgScore() : null;
   const kpiScores = [
-    { label: 'Business Health',    val: Math.min(99, _avgSEO || 72),                                                                                           color: '#22c55e', icon: '🏢' },
-    { label: 'Growth Momentum',    val: Math.min(99, Math.round((_avgSEO || 64) * 0.9)),                                                                       color: '#2563EB', icon: '📈' },
+    { label: 'Business Health',    val: _avgSEO != null ? Math.min(99, _avgSEO) : null,                                                                        color: '#22c55e', icon: '🏢' },
+    { label: 'Growth Momentum',    val: _avgSEO != null ? Math.min(99, Math.round(_avgSEO * 0.9)) : null,                                                      color: '#2563EB', icon: '📈' },
     { label: 'Traffic Intel',      val: _behDE ? Math.min(99, 100 - (_behDE.bounceRate || 22)) : (PREVIEW_MODE ? 78 : null),                                    color: '#06b6d4', icon: '🚦' },
     { label: 'Conversion Intel',   val: _croDE ? Math.min(99, _croDE.overallScore || 44) : (PREVIEW_MODE ? 44 : null),                                          color: '#ef4444', icon: '🎯' },
-    { label: 'SEO Data Score',     val: Math.min(99, _avgSEO || 71),                                                                                           color: '#f59e0b', icon: '🔍' },
+    { label: 'SEO Data Score',     val: _avgSEO != null ? Math.min(99, _avgSEO) : null,                                                                        color: '#f59e0b', icon: '🔍' },
     { label: 'Perf. Stability',    val: _behDE ? Math.max(20, Math.min(99, 90 - Math.round((_behDE.rageClicks || 0) * 0.3))) : (PREVIEW_MODE ? 83 : null),     color: '#22c55e', icon: '⚡' },
     { label: 'Revenue Opportunity',val: _croDE ? Math.min(99, Math.round(_croDE.overallScore * 0.75)) : (PREVIEW_MODE ? 52 : null),                             color: '#8b5cf6', icon: '💰' },
-    { label: 'Local Visibility',   val: Math.min(99, Math.round((_avgSEO || 68) * 0.88)),                                                                      color: '#f97316', icon: '📍' },
+    { label: 'Local Visibility',   val: (STATE.overview?.localScore > 0) ? Math.min(99, Math.round(STATE.overview.localScore)) : (_avgSEO != null ? Math.min(99, Math.round(_avgSEO * 0.88)) : null),  color: '#f97316', icon: '📍' },
   ];
 
   const circ46 = 2 * Math.PI * 46;
@@ -26711,18 +26787,20 @@ function renderDataExplorer() {
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
         ${kpiScores.map(k => {
-          const filled = k.val / 100 * circ46;
+          const hasVal = k.val != null && Number.isFinite(k.val);
+          const circ24 = 2 * Math.PI * 24;
+          const filled = hasVal ? k.val / 100 * circ24 : 0;
+          const _txtCol = hasVal ? k.color : (STATE.theme==='light'?'rgba(0,0,0,0.25)':'rgba(255,255,255,0.30)');
           return `<div style="padding:14px;border-radius:12px;border:1px solid ${k.color}28;background:${k.color}07;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center">
             <svg width="64" height="64" viewBox="0 0 64 64" style="margin-bottom:2px">
-              <circle cx="32" cy="32" r="24" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="7"/>
-              <circle cx="32" cy="32" r="24" fill="none" stroke="${k.color}" stroke-width="7"
-                stroke-dasharray="${filled.toFixed(1)} ${(circ46-filled).toFixed(1)}"
-                stroke-dashoffset="${(circ46*0.25).toFixed(1)}"
-                stroke-linecap="round" transform="rotate(-90 32 32)"/>
-              <text x="32" y="36" text-anchor="middle" font-size="13" font-weight="800" fill="${k.color}">${k.val}</text>
+              <circle cx="32" cy="32" r="24" fill="none" stroke="${STATE.theme==='light'?'rgba(0,0,0,0.10)':'rgba(255,255,255,0.05)'}" stroke-width="7"/>
+              ${hasVal ? `<circle cx="32" cy="32" r="24" fill="none" stroke="${k.color}" stroke-width="7"
+                stroke-dasharray="${filled.toFixed(1)} ${(circ24-filled).toFixed(1)}"
+                stroke-linecap="round" transform="rotate(-90 32 32)"/>` : ''}
+              <text x="32" y="36" text-anchor="middle" font-size="13" font-weight="800" fill="${_txtCol}">${hasVal ? k.val : '—'}</text>
             </svg>
             <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft)">${k.icon} ${escHtml(k.label)}</div>
-            <div>${badge(k.val>=70?'Bon':k.val>=50?'Moyen':'Critique', k.color)}</div>
+            <div>${hasVal ? badge(k.val>=70?'Bon':k.val>=50?'Moyen':'Critique', k.color) : '<span style="font-size:10px;color:var(--fp-text-faint);font-style:italic">—</span>'}</div>
           </div>`;
         }).join('')}
       </div>
@@ -29290,7 +29368,7 @@ function renderTeamPerformance() {
     ${metrics.length === 0 ? `
       <div class="fp-card" style="text-align:center;padding:32px 20px">
         <div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:12px">Aucun membre dans l'équipe pour le moment</div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('team')">Inviter des membres</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('team');setTimeout(function(){window.fpOpenInvite&&window.fpOpenInvite()},120)">Inviter des membres</button>
       </div>
     ` : `
     <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px">
