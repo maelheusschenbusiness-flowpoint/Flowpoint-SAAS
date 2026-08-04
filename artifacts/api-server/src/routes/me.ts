@@ -29,6 +29,10 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
 
+  // Record today's activity for streak reliability — every dashboard load counts,
+  // regardless of whether /api/me/streak or /api/me/prefs is reached later.
+  recordActivityDay(orgDb(req), orgId).catch(() => {});
+
   // Canonical timezone from user_prefs.settings (written by PATCH /api/me/settings).
   // Queried unconditionally so it appears even when org_settings row is missing.
   let settingsTimezone: string | null = null;

@@ -728,6 +728,8 @@ function exportActivityCsv() {
   showToast('success', `${fpT('CSV export\u00e9')} \u2014 ${rows.length} ${fpT(rows.length>1?'\u00e9v\u00e9nements':'\u00e9v\u00e9nement')}`);
 }
 window.exportActivityCsv = exportActivityCsv;
+window.exportAuditsCsv   = exportAuditsCsv;
+window.exportReportsCsv  = exportReportsCsv;
 
 // Formats an invoice date — handles ISO strings and Stripe unix timestamps (seconds).
 // Respects STATE.settings.dateFormat via fmtDate(); falls back to fr-FR dd/mm/yyyy.
@@ -2619,8 +2621,6 @@ const CMD_ITEMS = [
   // ── Audits & Technique ────────────────────────────────────────────
   { cat:'Audits & Technique', label:'Audits SEO',              icon:'search',       route:'audits',             shortcut:'G A' },
   { cat:'Audits & Technique', label:'Audit technique',         icon:'shield',       route:'technical-audit',    shortcut:'' },
-  { cat:'Audits & Technique', label:'Déploiements',            icon:'upload',       route:'deployments',        shortcut:'' },
-  { cat:'Audits & Technique', label:'Intégration GitHub',      icon:'activity',     route:'github-integration', shortcut:'' },
   // ── Analyse & Performance ─────────────────────────────────────────
   { cat:'Analyse & Performance', label:'Analytics',            icon:'bar-chart',    route:'analytics',          shortcut:'' },
   { cat:'Analyse & Performance', label:'Trafic',               icon:'trending-up',  route:'traffic',            shortcut:'' },
@@ -2728,12 +2728,46 @@ function fuzzyMatch(text, pattern) {
   return pi === p.length;
 }
 
+// ── Palette: search index restricted to pages actually in the sidebar menu ──
+// Routes present in the sidebar nav (dashboard.html .fp-nav-item data-route) + AI.
+const MENU_ROUTES = new Set([
+  'overview','growth','missions','audits','monitors','local-seo',
+  'performance','core-web-vitals','technical-audit',
+  'analytics','traffic','funnels','audience','campaigns','live',
+  'competitor','conversion','data-explorer',
+  'reports','alerts-center','activity-feed','team','client-mode',
+  'billing','settings','ai',
+]);
+let _cmdIndexCache = null;
+function _cmdBuildIndex() {
+  if (_cmdIndexCache) return _cmdIndexCache;
+  // 1. Static items — keep only entries whose route is in the sidebar menu
+  const base = CMD_ITEMS.filter(i => !i.route || MENU_ROUTES.has(i.route));
+  // 2. Sub-pages: generate one entry per sub-nav tab of each menu page
+  const subs = [];
+  try {
+    if (typeof SUB_NAVS !== 'undefined' && typeof PAGE_NAMES !== 'undefined') {
+      MENU_ROUTES.forEach(route => {
+        const tabs = SUB_NAVS[route];
+        if (!Array.isArray(tabs)) return;
+        tabs.forEach(t => {
+          if (!t || !t.id) return;
+          const pageName = PAGE_NAMES[route] || route;
+          subs.push({ cat: 'Sous-pages', label: pageName + ' — ' + t.label, icon: 'activity', route, sub: t.id, shortcut: '' });
+        });
+      });
+    }
+  } catch(_) {}
+  _cmdIndexCache = [...base, ...subs];
+  return _cmdIndexCache;
+}
+
 // ── Palette: compute matched items from current query ──────────────────────
 function _cmdComputeItems() {
   const q = STATE.cmdQuery.toLowerCase().trim();
 
   // CMD_ITEMS: match label OR category OR aliases
-  const filtered = CMD_ITEMS.filter(i => {
+  const filtered = _cmdBuildIndex().filter(i => {
     if (!q) return true;
     const haystack = (i.label + ' ' + i.cat + ' ' + (i.aliases || '')).toLowerCase();
     return haystack.includes(q) || fuzzyMatch(i.label, q);
@@ -2921,7 +2955,7 @@ function highlightMatch(text, q) {
 
 function execCmdItem(item) {
   if (item.fn) { item.fn(); }
-  else if (item.route) { navigate(item.route); }
+  else if (item.route) { navigate(item.route, item.sub || null); }
   closeCmdPalette();
 }
 
@@ -4956,7 +4990,7 @@ function renderOverview() {
             <div style="font-size:13px;font-weight:700;margin-bottom:3px">IA Executive Summary — Pro requis</div>
             <div style="font-size:12px;color:var(--fp-text-muted)">Obtenez des analyses stratégiques IA, des prévisions d\'usage et des recommandations personnalisées.</div>
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button>
         </div>`
     }
 
@@ -5878,7 +5912,7 @@ function renderMonitors() {
           <div style="text-align:center;padding:16px 0">
             <div style="font-size:28px;margin-bottom:8px">🔮</div>
             <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Anticipez les pannes avant qu\'elles arrivent</div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra →</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra →</button>
           </div>
         `}
       </div>
@@ -6081,7 +6115,7 @@ function renderMissions() {
       return new Date(a.dueDate||a.date||0) - new Date(b.dueDate||b.date||0);
     });
 
-  const statusLabels = { todo:'À démarrer', inprogress:'En cours', done:'Complétées', in_progress:'En cours', completed:'Terminée' };
+  const statusLabels = { todo:'À démarrer', inprogress:'En cours', done:'Complétées', in_progress:'En cours', completed:'Terminée', open:'À démarrer', blocked:'Bloqué' };
   const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e', in_progress:'#2563EB', completed:'#22c55e' };
   const cats = ['SEO','Performance','Conversion','Local SEO','Concurrent'];
 
@@ -6240,7 +6274,7 @@ function renderMissions() {
               ${stepsTotal>0?`<div class="fp-mission-progress" style="margin:6px 0 0;height:3px"><div class="fp-mission-progress-bar" style="width:${pct}%"></div></div>`:''}
             </div>
             <div style="flex-shrink:0;text-align:right">
-              <span style="font-size:10px;font-weight:600;padding:3px 8px;border-radius:5px;background:${statusColors[m.status]||'#94a3b8'}22;color:${statusColors[m.status]||'#94a3b8'}">${statusLabels[m.status]||m.status}</span>
+              <span style="font-size:10px;font-weight:600;padding:3px 8px;border-radius:5px;background:${statusColors[m.status]||'#94a3b8'}22;color:${statusColors[m.status]||'#94a3b8'}">${statusLabels[m.status]||'À faire'}</span>
             </div>
             <div class="fp-hover-toolbar" style="top:50%;transform:translateY(-50%)">
               <button class="fp-hover-toolbar-btn mission-view" data-id="${m.id}" title="Détails & étapes">${svgIcon('eye')}</button>
@@ -6919,7 +6953,7 @@ function renderReports() {
               ? "Votre business affiche une trajectoire positive sur 4 mois : score SEO +12 pts, santé business +14 pts. <strong>Point critique</strong> : la conversion reste votre maillon faible. Action recommandée : corriger le formulaire mobile en priorité."
               : "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.",
             ['Rapport complet PDF', 'Plan actions prioritaires', 'Partager au client'])
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📈</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Rapports Executive — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Synthèses business IA, recommandations stratégiques et analyse de performance executive.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📈</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Rapports Executive — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Synthèses business IA, recommandations stratégiques et analyse de performance executive.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -7538,7 +7572,7 @@ function renderReports() {
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🤖</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA Reporting Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports narratifs IA, previsions avancees, detection d\'anomalies et recommandations strategiques.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
           </div>`
       }
 
@@ -7624,7 +7658,7 @@ function renderReports() {
       : `<div style="padding:14px 16px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
           <div style="font-size:22px">📋</div>
           <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Synthèses IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports narratifs automatiques, analyse business et recommandations stratégiques générées par IA.</div></div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
         </div>`
     }
 
@@ -7866,7 +7900,7 @@ function renderLocalSEO() {
             <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">Stratège IA Local — Plan Ultra requis</div>
             <div style="font-size:12px;color:var(--fp-text-muted)">Accédez aux recommandations IA personnalisées, aux prévisions de croissance et à la détection automatique des opportunités locales non exploitées.</div>
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="navigateSub('plans')">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
         </div>`
     }
 
@@ -8350,7 +8384,7 @@ function renderTeam() {
               if (_missions.length === 0) return '<div style="text-align:center;padding:16px 0;color:var(--fp-text-faint);font-size:12px">Aucune tâche assignée</div>';
               return _missions.map(m => {
                 const _col = _stColors[m.status] || '#94a3b8';
-                const _lbl = _stLabels[m.status] || m.status || 'À faire';
+                const _lbl = _stLabels[m.status] || 'À faire';
                 const _due = (m.dueDate||m.due_date) ? new Date(m.dueDate||m.due_date).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}) : '—';
                 const _who = m.assignedTo || m.assigned_to || (_tm[0]?.name || 'Vous');
                 return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--fp-inner-card);border-radius:8px;border:1px solid var(--fp-border)">
@@ -9046,8 +9080,16 @@ function renderBilling() {
       const key = _ADDON_STRIPE_KEYS[_a.name];
       if (!key) { fpGoToPricing(); return; }
       const _bStatus = (typeof getBillingStatus === 'function' ? getBillingStatus() : (STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || '');
-      // All paid add-ons use the same cart → Stripe checkout flow.  Never grant
-      // access directly from the dashboard: Stripe payment must happen first.
+      // Abonnés actifs : activation directe dans le dashboard — le backend ajoute
+      // l'item Stripe à l'abonnement (facturation immédiate) et annule si Stripe échoue.
+      // Seuls les comptes sans abonnement passent par le checkout.
+      if (_bStatus === 'active' || _bStatus === 'trialing') {
+        if (window.FP_ADDONS_API && typeof window.FP_ADDONS_API.activate === 'function') {
+          closeFloatPanel && closeFloatPanel();
+          window.FP_ADDONS_API.activate(key);
+          return;
+        }
+      }
       showToast('info', 'Ouverture du panier…');
       try {
         const cart = { plan: null, addons: {}, fromDashboard: true };
@@ -9055,6 +9097,14 @@ function renderBilling() {
         localStorage.setItem('fp_cart', JSON.stringify(cart));
         window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(key);
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'activation impossible')); }
+    };
+    // Désactivation in-dashboard : retire l'item Stripe puis met à jour la carte.
+    window.fpDeactivateAddonByName = function(addonName) {
+      const key = _ADDON_STRIPE_KEYS[addonName];
+      if (!key) { showToast('error', 'Add-on inconnu'); return; }
+      window.fpDarkConfirm
+        ? window.fpDarkConfirm('Désactiver cet add-on ? La facturation Stripe correspondante sera arrêtée.', function() { window.FP_ADDONS_API && window.FP_ADDONS_API.deactivate(key); }, 'Désactiver')
+        : (window.FP_ADDONS_API && window.FP_ADDONS_API.deactivate(key));
     };
     window._fpAllAddons = allAddons;
     window.fpShowAddonDetail = function(idx) {
@@ -9107,7 +9157,7 @@ function renderBilling() {
             ${isInc
               ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">✓ Déjà inclus</button>`
               : a.active
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" onclick="closeFloatPanel&&closeFloatPanel();fpGoToPricing()">Désactiver</button>`
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">Désactiver</button>`
                 : a.wizardFn
                   ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 Lancer →</button>`
                   : `<button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>`
@@ -9177,7 +9227,7 @@ function renderBilling() {
               ${inc
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">✓ Inclus</button>`
                 : a.active
-                  ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="fpGoToPricing()">Désactiver</button>`
+                  ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">Désactiver</button>`
                   : a.wizardFn
                     ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 Lancer →</button>`
                     : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">Activer →</button>`
@@ -9317,7 +9367,7 @@ function renderBilling() {
           })(),
           ['Ajouter des crédits', 'Voir prévisions 30j', 'Rapport usage complet']
           )
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Usage Analytics avancé — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions, alertes de seuil et analytics d\'utilisation détaillés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Usage Analytics avancé — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions, alertes de seuil et analytics d\'utilisation détaillés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -9497,7 +9547,7 @@ function renderBilling() {
             ? "IA Stratégiste activé — analyse complète du compte. <strong>3 opportunités d\'optimisation détectées</strong>. Priorité : activer Review Intelligence (ROI < 1 semaine). Prévision : dépassement plan dans 8 jours. White-Label non configuré — setup en 10 minutes."
             : "IA Stratégiste activé. <strong>" + strategies.length + " opportunité" + (strategies.length > 1 ? "s" : "") + " d\'optimisation identifiée" + (strategies.length > 1 ? "s" : "") + "</strong> à partir de vos données réelles.",
             ['Appliquer toutes les recommandations', 'Rapport ROI complet', 'Prévision 6 mois'])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Stratégiste complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse ROI, prévision d\'upgrade, et optimisation des coûts SaaS automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpGoToBillingPlans()">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Stratégiste complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse ROI, prévision d\'upgrade, et optimisation des coûts SaaS automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -9587,7 +9637,7 @@ function renderBilling() {
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:14px">
               ${['🏢 Multi-workspace','🔑 SSO SAML','🌐 Custom domain','🎨 Portail white-label','🧾 Facturation client','📋 Audit log RGPD','🚀 Onboarding dédié','🛡️ SLA 99.9% garanti'].map(f => `<div style="font-size:11px;padding:8px 12px;background:var(--fp-inner-card);border-radius:8px;border:1px solid rgba(255,255,255,0.07);color:var(--fp-text-soft)">${f}</div>`).join('')}
             </div>
-            <button class="fp-btn fp-btn-primary" onclick="navigateSub('plans')" style="width:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Débloquer Agency Lab → Passer Ultra (149€/mois)</button>
+            <button class="fp-btn fp-btn-primary" onclick="fpUpgradeCta('ultra')" style="width:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Débloquer Agency Lab → Passer Ultra (149€/mois)</button>
           </div>`
       }
 
@@ -9675,7 +9725,7 @@ function renderBilling() {
             : "Usage sain — toutes les ressources sont sous contrôle. <strong>3 add-ons IA recommandés</strong> pour maximiser l\'efficacité de votre agence. Sans engagement, résiliable à tout moment.",
           ['Optimiser mon plan', 'Voir les add-ons IA', 'Comparer les plans']
         )
-      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">💡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Billing Insights — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Recommandations IA, prévisions d\'usage et optimisation de coûts automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
+      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">💡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Billing Insights — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Recommandations IA, prévisions d\'usage et optimisation de coûts automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
     }
 
     <!-- HERO KPI ROW -->
@@ -9709,7 +9759,18 @@ function renderBilling() {
           ${[
             { label:'Coût mensuel',       val: isStd ? '29€' : isPro && !isUltra ? '79€' : '149€' },
             { label:'Sans engagement',    val: 'Mensuel — résiliation libre' },
-            { label:'Add-ons actifs',     val: (()=>{ const _a=STATE.billing?.addons; const _n=_a&&typeof _a==='object'?Object.values(_a).filter(Boolean).length:0; const _inc=_ud.includedAddonsCount ?? ({standard:1,pro:6,ultra:10}[_planKey2]??1); return _n+' actif'+(_n!==1?'s':'')+' · '+_inc+' inclus (plan)'; })() },
+            { label:'Add-ons actifs',     val: (()=>{
+                // Source of truth: /api/addons (FP_DATA.addons.active) — merged with the
+                // legacy STATE.billing.addons map so neither source under-counts.
+                const _merged = Object.assign({}, STATE.billing?.addons || {}, window.FP_DATA?.addons?.active || {});
+                const _defs = window.FP_DATA?.addons?.definitions || {};
+                const _activeKeys = Object.keys(_merged).filter(k => !!_merged[k]);
+                // Included = active add-ons granted by the plan; paid = the rest.
+                const _incActive = _activeKeys.filter(k => _defs[k] && _defs[k].includedInPlan === true || (_defs[k] && Array.isArray(_defs[k].includedIn) && _defs[k].includedIn.includes(_planKey2))).length;
+                const _n = _activeKeys.length;
+                const _inc = _ud.includedAddonsCount ?? _incActive;
+                return _n+' actif'+(_n!==1?'s':'')+' · '+_inc+' inclus (plan)';
+              })() },
             { label:'Prochaine facture',  val: STATE.billing?.nextDate || '—' },
           ].map(m => `<div style="padding:10px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">
             <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:3px">${escHtml(m.label)}</div>
@@ -10714,7 +10775,7 @@ function renderSettings() {
             (()=>{ const _act=workflows.filter(w=>w.active).length; return _act>0 ? `${_act} automation${_act>1?'s':''} active${_act>1?'s':''}. Consultez les statistiques d'exécution ci-dessous ou créez un nouveau workflow à partir d'un template.` : 'Aucune automation active pour le moment. Créez votre premier workflow à partir d\'un template pour automatiser rapports, alertes et audits.'; })(),
             ['Créer un workflow', 'Voir les templates']
           )
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Automatisations avancées — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Workflows multi-étapes, IA automation et triggers intelligents.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Automatisations avancées — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Workflows multi-étapes, IA automation et triggers intelligents.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -11558,7 +11619,7 @@ function renderSettings() {
             (()=>{ const _avail=aiModules.filter(m=>!((m.plan==='Pro'&&isStd)||(m.plan==='Ultra'&&!isUltra))); const _on=_avail.filter(m=>m.active); const _off=_avail.filter(m=>!m.active); return `IA Config Lab actif. <strong>${_avail.length} modules IA disponibles</strong> — ${_on.length} actif${_on.length>1?'s':''}.${_off.length?` Recommandation : activer le module <strong>${escHtml(_off[0].label)}</strong>.`:''} Intensité IA actuelle : ${escHtml(_savedIntensity)}.`; })(),
             ['Activer tous les modules', 'Optimiser l\'intensité IA', 'Rapport IA Lab']
           )
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Config Lab complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">IA Stratégiste, churn prevention, market intelligence et automation agressive.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing');setTimeout(()=>navigateSub('plans'),100)">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Config Lab complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">IA Stratégiste, churn prevention, market intelligence et automation agressive.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -11790,7 +11851,7 @@ function renderSettings() {
           (()=>{ const _todo=[]; if(!_has2fa)_todo.push('activer le 2FA'); if(_intAct===0)_todo.push('connecter vos intégrations (GA4, GSC)'); return `Workspace health <strong>${workspaceHealth}/100</strong>. `+(_todo.length?`<strong>${_todo.length} action${_todo.length>1?'s':''} prioritaire${_todo.length>1?'s':''}</strong> : ${_todo.join(' et ')}. `:'')+`${_wfAct} workflow${_wfAct===1?'':'s'} actif${_wfAct===1?'':'s'}.`; })(),
           ['Activer le 2FA', 'Connecter GSC', 'Rapport workspace complet']
         )
-      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔧</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Workspace Intelligence IA — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse de santé workspace, recommandations de configuration et audit de sécurité IA.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing');setTimeout(function(){navigateSub('plans');},50)">Passer Pro</button></div>`
+      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔧</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Workspace Intelligence IA — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse de santé workspace, recommandations de configuration et audit de sécurité IA.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
     }
 
     <!-- WORKSPACE HEALTH + STATUS CARDS -->
@@ -12301,7 +12362,7 @@ function renderAI() {
         <div style="font-size:28px;margin-bottom:8px">🧠</div>
         <div style="font-size:15px;font-weight:800;margin-bottom:6px">IA Stratégiste — Plan Ultra requis</div>
         <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:14px">Analyse stratégique complète, plans d\'action ROI et intelligence prédictive.</div>
-        <button class="fp-btn fp-btn-primary" onclick="navigateSub('plans')">Passer Ultra — 149€/mois →</button>
+        <button class="fp-btn fp-btn-primary" onclick="fpUpgradeCta('ultra')">Passer Ultra — 149€/mois →</button>
       </div>` : ''}
 
       <div style="${!isUltra ? 'opacity:0.55;pointer-events:none' : ''}">
@@ -14073,6 +14134,17 @@ window.fpGoToBillingPlans = function() {
   setTimeout(function() { navigateSub('plans'); }, 0);
 };
 
+// Upgrade CTA : abonnés actifs/en essai → upgrade direct via /api/billing/upgrade
+// (plan mis à jour immédiatement, sans passer par pricing) ; sinon onglet Plans.
+window.fpUpgradeCta = function(plan) {
+  var st = (STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || '';
+  if ((st === 'active' || st === 'trialing') && typeof window.fpUpgradeOrCheckout === 'function') {
+    window.fpUpgradeOrCheckout(plan);
+    return;
+  }
+  window.fpGoToBillingPlans();
+};
+
 function renderSubNav(items) {
   return `<nav class="fp-sub-nav" role="tablist">${items.map(t => `
     <button class="fp-sub-nav-item${(STATE.subRoute === t.id) ? ' active' : ''}"
@@ -14259,22 +14331,34 @@ function render() {
   if (_renderTimer) clearTimeout(_renderTimer);
   _renderTimer = setTimeout(() => { _renderTimer = null; _doRender(); }, 30);
 }
+let _fpLastRenderedKey = null;
 function _doRender() {
   const page = $('#fp-page');
   if (!page) return;
 
-  // Show circular spinner during navigation, hide after render
-  window.fpShowNavSpinner();
+  // Route-change detection: the overlay spinner + loading bar are ONLY for real
+  // navigation. Background data refreshes re-render the same route — showing the
+  // dark overlay there causes a grey flash/"vibration" after initial load.
+  const _renderKey = STATE.route + '||' + (STATE.subRoute || '');
+  const _isNavigation = _renderKey !== _fpLastRenderedKey;
+  _fpLastRenderedKey = _renderKey;
+  // Preserve scroll position on same-route re-renders (data refresh)
+  const _prevScrollTop = _isNavigation ? 0 : page.scrollTop;
 
-  // Page-transition loading bar (top of screen, iOS-compatible)
-  try {
-    const _old = document.querySelector('.fp-nav-loading');
-    if (_old) _old.remove();
-    const _bar = document.createElement('div');
-    _bar.className = 'fp-nav-loading';
-    document.body.appendChild(_bar);
-    setTimeout(() => { try { _bar.remove(); } catch(_){} }, 650);
-  } catch(_) {}
+  if (_isNavigation) {
+    // Show circular spinner during navigation, hide after render
+    window.fpShowNavSpinner();
+
+    // Page-transition loading bar (top of screen, iOS-compatible)
+    try {
+      const _old = document.querySelector('.fp-nav-loading');
+      if (_old) _old.remove();
+      const _bar = document.createElement('div');
+      _bar.className = 'fp-nav-loading';
+      document.body.appendChild(_bar);
+      setTimeout(() => { try { _bar.remove(); } catch(_){} }, 650);
+    } catch(_) {}
+  }
 
   // Update nav active — match primary route
   $$('.fp-nav-item, .fp-nav-ai').forEach(el => {
@@ -14400,6 +14484,10 @@ function _doRender() {
   updatePlanSwitcher();
   if (window.fpSyncAiBadge) window.fpSyncAiBadge();
   if (window.fpApplyTranslations) window.fpApplyTranslations();
+  // Restore scroll position on same-route re-renders (prevents jump/vibration)
+  if (!_isNavigation && _prevScrollTop > 0) {
+    try { page.scrollTop = _prevScrollTop; } catch(_) {}
+  }
   // Hide global nav spinner now that render is complete
   window.fpHideNavSpinner();
   // Remove the initial HTML spinner overlay (present before JS loaded) on first render
@@ -16638,337 +16726,7 @@ function bindGlobalEvents() {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────
-// INIT
-// ─────────────────────────────────────────────────────────────────
-async function init() {
-  // Apply theme immediately
-  applyTheme();
-  // Apply stored language preference before first render
-  try {
-    const _lang = (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr';
-    document.documentElement.lang = _lang.split('-')[0];
-  } catch(_) {}
-  // Apply free modules (compact mode, focus mode, etc.)
-  applyFreeModules();
-
-  // Restore last route immediately so first render shows correct page
-  try {
-    const savedRoute = localStorage.getItem('fp:last-route');
-    const savedSub   = localStorage.getItem('fp:last-sub');
-    if (savedRoute) STATE.route = savedRoute;
-    if (savedSub)   STATE.subRoute = savedSub || null;
-  } catch(e) {}
-
-  // P0.1: Hash wins over localStorage — resolve BEFORE loadData() so every render
-  // during data loading (including the initial skeleton render) uses the correct route.
-  try {
-    const _h0 = window.location.hash.slice(1);
-    if (_h0) { const _n0 = normalizeRoute(_h0, null); STATE.route = _n0.route; STATE.subRoute = _n0.subRoute; }
-  } catch(e) {}
-
-  // Restore AI chat history for this session
-  loadAIHistory();
-
-  // ── OAuth return: clear stale cache so status is re-fetched fresh ─────────
-  try {
-    const _href = window.location.href;
-    if (_href.includes('google_connected') || _href.includes('github_connected') ||
-        _href.includes('google_error')     || _href.includes('github_error')) {
-      sessionStorage.removeItem('fp-state-cache');
-      // Clean the URL so a page refresh does not repeat the cache-bust
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  } catch(_) {}
-
-  // Load data
-  await loadData();
-
-  // Missions rotation automatique toutes les 3 jours
-  (() => {
-    const lastKey = 'fp-mission-rotate-date';
-    const last = parseInt(localStorage.getItem(lastKey) || '0');
-    const now = Date.now();
-    const THREE_DAYS = 3 * 24 * 3600 * 1000;
-    if (now - last > THREE_DAYS && STATE.missions && STATE.missions.length > 1) {
-      const todo = STATE.missions.filter(m => m.status === 'todo');
-      for (let i = todo.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.abs(Math.sin(now + i) * 1000)) % (i + 1);
-        const ti = STATE.missions.indexOf(todo[i]), tj = STATE.missions.indexOf(todo[j]);
-        if (ti >= 0 && tj >= 0) { [STATE.missions[ti], STATE.missions[tj]] = [STATE.missions[tj], STATE.missions[ti]]; }
-      }
-      saveMissions();
-      localStorage.setItem(lastKey, String(now));
-    }
-  })();
-
-  // Update sidebar
-  renderSidebarStatus();
-  renderNotifications();
-
-  // Init messages badge (uses channels system)
-  { if (!STATE.channelMessages) STATE.channelMessages = PREVIEW_MODE ? JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT)) : {general:[],seo:[],rapports:[],support:[]};
-    const u = getMsgUnreadTotal();
-    const b = $('#fp-msg-badge'); if (b) { u > 0 ? (b.removeAttribute('hidden'), b.textContent = u) : b.setAttribute('hidden', ''); } }
-
-  // OS theme sync — listen for preference changes (only if no manual override)
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-    if (!STATE.themeManual) {
-      STATE.theme = e.matches ? 'dark' : 'light';
-      applyTheme();
-    }
-  });
-
-  // Route from hash — normalise aliases and sub-routes from URL
-  const hash = window.location.hash.slice(1);
-  if (hash) { const _n = normalizeRoute(hash, null); STATE.route = _n.route; STATE.subRoute = _n.subRoute; }
-
-  // Render
-  render();
-  // Re-apply theme AFTER render so JS inline fixes apply to freshly rendered elements (e.g. fp-live-cc)
-  applyTheme();
-  // Remove no-transition style after first render so transitions work normally
-  requestAnimationFrame(() => { const el = document.getElementById('fp-no-trans'); if (el) el.remove(); });
-  // Inject global keyframe animations that dashboard components reference by name.
-  // These are not in style.css (avoids flash-of-unstyled-content) so they live here,
-  // injected once at startup after the no-transition guard is lifted.
-  (function() {
-    if (document.getElementById('fp-global-anims')) return;
-    const _s = document.createElement('style');
-    _s.id = 'fp-global-anims';
-    _s.textContent = [
-      '@keyframes spin { to { transform: rotate(360deg); } }',
-      '@keyframes fp-fade-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }',
-      '@keyframes fp-skel { 0%,100%{opacity:.45} 50%{opacity:.9} }',
-      '.fp-skel-shimmer { background: linear-gradient(90deg,rgba(255,255,255,0.04) 0%,rgba(255,255,255,0.12) 50%,rgba(255,255,255,0.04) 100%); background-size:200% 100%; animation: fp-skel-slide 1.4s linear infinite; }',
-      '@keyframes fp-skel-slide { 0%{background-position:200% 0} 100%{background-position:-200% 0} }',
-    ].join('\n');
-    document.head.appendChild(_s);
-  }());
-
-  // Bind global events
-  bindGlobalEvents();
-
-  // Shortcuts modal content
-  renderShortcutsModal();
-
-  // Onboarding
-  showOnboarding();
-
-  // iOS Safari back-forward cache (bfcache): when user navigates back,
-  // Safari restores an old snapshot. Re-apply theme + re-render to fix stale UI.
-  window.addEventListener('pageshow', function(evt) {
-    if (evt.persisted) {
-      applyTheme();
-      render();
-    }
-  });
-
-  // Subscribe to Stripe billing SSE for real-time plan updates + activity events
-  // NOTE: render() is intentionally NOT called from SSE handlers — data updates
-  // are stored in STATE and a toast is shown; the user refreshes manually via
-  // the "Actualiser" button. This prevents all unwanted automatic re-renders.
-  (function subscribeBillingEvents() {
-    if (PREVIEW_MODE) return;
-    // Corruption guard: if activityLastSeen is in the future, reset it
-    if (STATE.activityLastSeen > Date.now() + 60000) {
-      STATE.activityLastSeen = 0;
-      localStorage.setItem('fp:activity-last-seen', '0');
-    }
-    let _sseBackoff = 1000;
-    function _sseConnect() {
-      try {
-        const _sseToken = _fpCurrentSessionToken();
-        const es = new EventSource('/api/billing/events' + (_sseToken ? '?token=' + encodeURIComponent(_sseToken) : ''));
-        es.onmessage = (e) => {
-          _sseBackoff = 1000; // reset backoff on successful message
-          try {
-            const msg = JSON.parse(e.data);
-            if (msg.type === 'plan_updated' && msg.plan && STATE.me) {
-              const prev = STATE.me.plan;
-              STATE.me.plan = msg.plan;
-              if (prev !== msg.plan) {
-                showToast('success', `Plan mis à jour : ${msg.plan} — actualisez pour voir les changements`);
-              }
-            } else if (msg.type === 'subscription_status' && STATE.me) {
-              STATE.me.subscriptionStatus = msg.status;
-              if (msg.status === 'past_due') showToast('warning','Paiement en retard — vérifiez votre facturation');
-            } else if (msg.type === 'audit:auto-complete' && msg.audit) {
-              const a = msg.audit;
-              if (!STATE.audits.find(x => x.id === a.id)) {
-                STATE.audits.unshift({ ...a, date: new Date().toISOString(), issues: 0, speed: 0, pinned: false });
-                showToast('success', `Audit terminé — ${escHtml(a.url)} · Score : ${a.score}/100`);
-              }
-            } else if (msg.type === 'activity:new' && msg.event) {
-              pushActivityEvent(msg.event);
-            }
-          } catch(err) {}
-        };
-        es.onerror = () => {
-          es.close();
-          _sseBackoff = Math.min(_sseBackoff * 2, 30000);
-          setTimeout(_sseConnect, _sseBackoff);
-        };
-      } catch(e) {
-        _sseBackoff = Math.min(_sseBackoff * 2, 30000);
-        setTimeout(_sseConnect, _sseBackoff);
-      }
-    }
-    _sseConnect();
-  })();
-
-  // 60s poll fallback — keeps badge + feed in sync even if SSE misses events
-  // (fires in addition to SSE; SSE resets _sseBackoff so they don't compete)
-  if (!PREVIEW_MODE) {
-    setInterval(async function _activityPoll() {
-      try {
-        const [actRes, notifRes] = await Promise.allSettled([
-          apiFetch('/api/activity',      { backgroundPoll: true }),
-          apiFetch('/api/notifications', { backgroundPoll: true }),
-        ]);
-        if (actRes.status === 'fulfilled' && Array.isArray(actRes.value)) {
-          // Merge new events from server (prepend anything newer than latest known)
-          const known = new Set(STATE.activityEvents.map(e => e.id || e.createdAt));
-          const fresh = actRes.value.filter(e => !known.has(e.id || e.createdAt));
-          if (fresh.length > 0) {
-            STATE.activityEvents = [...fresh, ...STATE.activityEvents].slice(0, 50);
-            if (!STATE.activityPanelOpen) updateActivityBadge();
-            else renderActivityList();
-          }
-        }
-        if (notifRes.status === 'fulfilled') {
-          const raw = notifRes.value;
-          const arr = Array.isArray(raw) ? raw : (Array.isArray(raw?.notifications) ? raw.notifications : []);
-          if (arr.length > 0) STATE.notifications = arr;
-        }
-      } catch(e) {}
-    }, 60000);
-  }
-
-  // Bind activity panel interactions
-  bindActivityPanel();
-  // Show initial unread badge
-  updateActivityBadge();
-
-  // Make key functions globally accessible (for inline onclick handlers in rendered HTML)
-  window.showToast = showToast;
-  window.closeFloatPanel = closeFloatPanel;
-  window.navigate = navigate;
-  window.navigateSub = navigateSub;
-  window.renderInvitePanel = renderInvitePanel;
-  window.downloadReportPdf = downloadReportPdf;
-  window.exportCsv = exportCsv;
-  window.fpApplyAlertTemplate = async function(idx, btn) {
-    const TMPL = [
-      { name: 'Latence critique (> 3s)', type: 'latency', operator: 'gt', threshold: 3000, durationMin: 0, channels: ['email'], siteUrls: [] },
-      { name: 'Score SEO critique (< 50)', type: 'seo_score', operator: 'lt', threshold: 50, durationMin: 0, channels: ['email'], siteUrls: [] },
-      { name: 'Chute ranking (> 5 positions)', type: 'keyword_ranking_drop', operator: 'gt', threshold: 5, durationMin: 0, channels: ['email'], siteUrls: [] },
-      { name: 'Latence élevée (> 1s)', type: 'latency', operator: 'gt', threshold: 1000, durationMin: 5, channels: ['email'], siteUrls: [] },
-      { name: 'Uptime faible (< 98%)', type: 'uptime', operator: 'lt', threshold: 98, durationMin: 10, channels: ['email', 'sms'], siteUrls: [] },
-    ];
-    const t = TMPL[idx];
-    if (!t) return;
-    if (btn) { btn.disabled = true; btn.textContent = 'Activation…'; }
-    try {
-      const rule = await apiAction('POST', '/api/alert-rules', t);
-      if (rule && !rule.error) {
-        STATE.alertRules = STATE.alertRules || [];
-        STATE.alertRules.push(rule);
-        // Do NOT set the hide key — other templates must remain visible (they show ✓ Activée).
-        // Only the "Masquer" button dismisses the template panel.
-        showToast('success', 'Template "' + t.name + '" activé !');
-        render(); // Re-render in place — activated template shows ✓, others stay visible
-      } else {
-        if (btn) { btn.disabled = false; btn.textContent = 'Activer'; }
-        showToast('error', (rule && rule.error) ? rule.error : 'Erreur lors de l\'activation');
-      }
-    } catch(e) {
-      if (btn) { btn.disabled = false; btn.textContent = 'Activer'; }
-      showToast('error', 'Erreur lors de l\'activation du template');
-    }
-  };
-  window.escHtml = escHtml;
-  window.applyThemeChoice = applyThemeChoice;
-  window.saveSettings = saveSettings;
-
-  // ── disconnectAllSessions: revokes server session + clears all local state ──
-  // BUG-2 FIX: calls POST /api/auth/logout to invalidate the server-side session
-  // token and clear the HttpOnly fp_token cookie, THEN clears localStorage.
-  // Idempotent: API failure never prevents local logout — user is always redirected.
-  window.disconnectAllSessions = async function() {
-    try {
-      await fetch('/api/auth/logout', _fpSessionFetchOptions({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      }));
-    } catch (_) { /* non-fatal — still clear local state */ }
-    ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid']
-      .forEach(function(k) { localStorage.removeItem(k); });
-    sessionStorage.clear(); // also clears fp_session_token + fp_tab_uid
-    showToast('success', 'Toutes les sessions fermées');
-    setTimeout(function() { window.location.href = '/login.html'; }, 1200);
-  };
-
-  // ── fpSavePref: named handler for settings pill/preset buttons ──
-  // Use via: onclick="fpSavePref(this)"
-  // Expects data-pref-key, data-pref-val, data-pref-lbl on the button.
-  window.fpSavePref = function(btn) {
-    var k = btn.dataset.prefKey;
-    var v = btn.dataset.prefVal;
-    var lbl = btn.dataset.prefLbl;
-    var s = {};
-    s[k] = v;
-    if (STATE.settings) STATE.settings[k] = v;
-    // Optimistic entry in the activity feed so the Command Center timeline reflects the change immediately
-    try {
-      STATE.activityEvents = STATE.activityEvents || [];
-      STATE.activityEvents.unshift({ id: 'local-' + Date.now(), type: 'settings', label: lbl || ('Paramètre modifié : ' + k), createdAt: new Date().toISOString() });
-    } catch(e) {}
-    apiAction('PATCH', '/api/me/prefs', { settings: s })
-      .then(function() {
-        // Context-aware toasts for each preset
-        var _toastMsg = lbl || (k + ' mis à jour');
-        if (k === 'localPriority') {
-          var _lpMsg = { off: 'Analyse locale désactivée — aucun concurrent affiché', standard: 'Priorité locale standard — jusqu\'à 5 concurrents analysés', aggressive: 'Mode agressif — tous les concurrents disponibles affichés' };
-          _toastMsg = _lpMsg[v] || lbl;
-        } else if (k === 'secLevel') {
-          var _slMsg = { standard: 'Sécurité standard activée', enterprise: 'Sécurité avancée — journalisation et alertes renforcées' };
-          _toastMsg = _slMsg[v] || lbl;
-        } else if (k === 'iaSuggestions') {
-          var _iaMsg = { low: 'Mode silencieux — 1 suggestion max par section', normal: 'Suggestions IA normales (jusqu\'à 3 par section)', proactive: 'Mode proactif — toutes les suggestions affichées' };
-          _toastMsg = _iaMsg[v] || lbl;
-        } else if (k === 'reportType') {
-          var _rtMsg = { simple: 'Rapports simplifiés (2–3 pages, KPIs essentiels)', client: 'Rapports client standard (5–8 pages)', enterprise: 'Rapports avancés — notes de réunion incluses par défaut' };
-          _toastMsg = _rtMsg[v] || lbl;
-        }
-        showToast('success', _toastMsg);
-        btn.parentElement.querySelectorAll('button').forEach(function(b) {
-          b.style.border = '1.5px solid var(--fp-border)';
-          b.style.background = 'transparent';
-          b.style.color = 'var(--fp-text-muted)';
-          b.innerHTML = escHtml(b.dataset.prefVal || b.textContent.trim());
-        });
-        btn.style.border = '1.5px solid #2563EB';
-        btn.style.background = 'rgba(37,99,235,0.12)';
-        btn.style.color = '#2563EB';
-        btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="3" style="margin-right:4px;vertical-align:middle" pointer-events="none"><polyline points="20 6 9 17 4 12"/></svg>' + escHtml(v);
-      })
-      .catch(function() { showToast('error', 'Erreur sauvegarde'); });
-  };
-
-  // ── fpSyncAiBadge: keep the sidebar/chat AI badges in sync with the stored provider ──
-  window.fpSyncAiBadge = function() {
-    var labels = { openai: 'GPT-5', anthropic: 'Claude', gemini: 'Gemini' };
-    var badge = labels[STATE.aiProvider] || 'GPT-5';
-    STATE.aiModel = badge;
-    var b = document.getElementById('fp-ai-badge');
-    if (b && b.textContent !== badge) b.textContent = badge;
-    var s = document.getElementById('fp-ai-chat-model-label');
-    if (s) s.textContent = badge + ' · FlowPoint Expert';
-  };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.fpSyncAiBadge);
-  else window.fpSyncAiBadge();
-
+// ── i18n moved to IIFE global scope (was inside init(); init can bail early) ──
   // ── Locale catalogs ─────────────────────────────────────────────────────
   // The dashboard is rendered from French source strings. A catalog per locale
   // keeps every supported language deterministic across rerenders; user content
@@ -18569,6 +18327,338 @@ async function init() {
     render();
   };
 
+// ─────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────
+async function init() {
+  // Apply theme immediately
+  applyTheme();
+  // Apply stored language preference before first render
+  try {
+    const _lang = (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr';
+    document.documentElement.lang = _lang.split('-')[0];
+  } catch(_) {}
+  // Apply free modules (compact mode, focus mode, etc.)
+  applyFreeModules();
+
+  // Restore last route immediately so first render shows correct page
+  try {
+    const savedRoute = localStorage.getItem('fp:last-route');
+    const savedSub   = localStorage.getItem('fp:last-sub');
+    if (savedRoute) STATE.route = savedRoute;
+    if (savedSub)   STATE.subRoute = savedSub || null;
+  } catch(e) {}
+
+  // P0.1: Hash wins over localStorage — resolve BEFORE loadData() so every render
+  // during data loading (including the initial skeleton render) uses the correct route.
+  try {
+    const _h0 = window.location.hash.slice(1);
+    if (_h0) { const _n0 = normalizeRoute(_h0, null); STATE.route = _n0.route; STATE.subRoute = _n0.subRoute; }
+  } catch(e) {}
+
+  // Restore AI chat history for this session
+  loadAIHistory();
+
+  // ── OAuth return: clear stale cache so status is re-fetched fresh ─────────
+  try {
+    const _href = window.location.href;
+    if (_href.includes('google_connected') || _href.includes('github_connected') ||
+        _href.includes('google_error')     || _href.includes('github_error')) {
+      sessionStorage.removeItem('fp-state-cache');
+      // Clean the URL so a page refresh does not repeat the cache-bust
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  } catch(_) {}
+
+  // Load data
+  await loadData();
+
+  // Missions rotation automatique toutes les 3 jours
+  (() => {
+    const lastKey = 'fp-mission-rotate-date';
+    const last = parseInt(localStorage.getItem(lastKey) || '0');
+    const now = Date.now();
+    const THREE_DAYS = 3 * 24 * 3600 * 1000;
+    if (now - last > THREE_DAYS && STATE.missions && STATE.missions.length > 1) {
+      const todo = STATE.missions.filter(m => m.status === 'todo');
+      for (let i = todo.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.abs(Math.sin(now + i) * 1000)) % (i + 1);
+        const ti = STATE.missions.indexOf(todo[i]), tj = STATE.missions.indexOf(todo[j]);
+        if (ti >= 0 && tj >= 0) { [STATE.missions[ti], STATE.missions[tj]] = [STATE.missions[tj], STATE.missions[ti]]; }
+      }
+      saveMissions();
+      localStorage.setItem(lastKey, String(now));
+    }
+  })();
+
+  // Update sidebar
+  renderSidebarStatus();
+  renderNotifications();
+
+  // Init messages badge (uses channels system)
+  { if (!STATE.channelMessages) STATE.channelMessages = PREVIEW_MODE ? JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT)) : {general:[],seo:[],rapports:[],support:[]};
+    const u = getMsgUnreadTotal();
+    const b = $('#fp-msg-badge'); if (b) { u > 0 ? (b.removeAttribute('hidden'), b.textContent = u) : b.setAttribute('hidden', ''); } }
+
+  // OS theme sync — listen for preference changes (only if no manual override)
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+    if (!STATE.themeManual) {
+      STATE.theme = e.matches ? 'dark' : 'light';
+      applyTheme();
+    }
+  });
+
+  // Route from hash — normalise aliases and sub-routes from URL
+  const hash = window.location.hash.slice(1);
+  if (hash) { const _n = normalizeRoute(hash, null); STATE.route = _n.route; STATE.subRoute = _n.subRoute; }
+
+  // Render
+  render();
+  // Re-apply theme AFTER render so JS inline fixes apply to freshly rendered elements (e.g. fp-live-cc)
+  applyTheme();
+  // Remove no-transition style after first render so transitions work normally
+  requestAnimationFrame(() => { const el = document.getElementById('fp-no-trans'); if (el) el.remove(); });
+  // Inject global keyframe animations that dashboard components reference by name.
+  // These are not in style.css (avoids flash-of-unstyled-content) so they live here,
+  // injected once at startup after the no-transition guard is lifted.
+  (function() {
+    if (document.getElementById('fp-global-anims')) return;
+    const _s = document.createElement('style');
+    _s.id = 'fp-global-anims';
+    _s.textContent = [
+      '@keyframes spin { to { transform: rotate(360deg); } }',
+      '@keyframes fp-fade-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }',
+      '@keyframes fp-skel { 0%,100%{opacity:.45} 50%{opacity:.9} }',
+      '.fp-skel-shimmer { background: linear-gradient(90deg,rgba(255,255,255,0.04) 0%,rgba(255,255,255,0.12) 50%,rgba(255,255,255,0.04) 100%); background-size:200% 100%; animation: fp-skel-slide 1.4s linear infinite; }',
+      '@keyframes fp-skel-slide { 0%{background-position:200% 0} 100%{background-position:-200% 0} }',
+    ].join('\n');
+    document.head.appendChild(_s);
+  }());
+
+  // Bind global events
+  bindGlobalEvents();
+
+  // Shortcuts modal content
+  renderShortcutsModal();
+
+  // Onboarding
+  showOnboarding();
+
+  // iOS Safari back-forward cache (bfcache): when user navigates back,
+  // Safari restores an old snapshot. Re-apply theme + re-render to fix stale UI.
+  window.addEventListener('pageshow', function(evt) {
+    if (evt.persisted) {
+      applyTheme();
+      render();
+    }
+  });
+
+  // Subscribe to Stripe billing SSE for real-time plan updates + activity events
+  // NOTE: render() is intentionally NOT called from SSE handlers — data updates
+  // are stored in STATE and a toast is shown; the user refreshes manually via
+  // the "Actualiser" button. This prevents all unwanted automatic re-renders.
+  (function subscribeBillingEvents() {
+    if (PREVIEW_MODE) return;
+    // Corruption guard: if activityLastSeen is in the future, reset it
+    if (STATE.activityLastSeen > Date.now() + 60000) {
+      STATE.activityLastSeen = 0;
+      localStorage.setItem('fp:activity-last-seen', '0');
+    }
+    let _sseBackoff = 1000;
+    function _sseConnect() {
+      try {
+        const _sseToken = _fpCurrentSessionToken();
+        const es = new EventSource('/api/billing/events' + (_sseToken ? '?token=' + encodeURIComponent(_sseToken) : ''));
+        es.onmessage = (e) => {
+          _sseBackoff = 1000; // reset backoff on successful message
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'plan_updated' && msg.plan && STATE.me) {
+              const prev = STATE.me.plan;
+              STATE.me.plan = msg.plan;
+              if (prev !== msg.plan) {
+                showToast('success', `Plan mis à jour : ${msg.plan} — actualisez pour voir les changements`);
+              }
+            } else if (msg.type === 'subscription_status' && STATE.me) {
+              STATE.me.subscriptionStatus = msg.status;
+              if (msg.status === 'past_due') showToast('warning','Paiement en retard — vérifiez votre facturation');
+            } else if (msg.type === 'audit:auto-complete' && msg.audit) {
+              const a = msg.audit;
+              if (!STATE.audits.find(x => x.id === a.id)) {
+                STATE.audits.unshift({ ...a, date: new Date().toISOString(), issues: 0, speed: 0, pinned: false });
+                showToast('success', `Audit terminé — ${escHtml(a.url)} · Score : ${a.score}/100`);
+              }
+            } else if (msg.type === 'activity:new' && msg.event) {
+              pushActivityEvent(msg.event);
+            }
+          } catch(err) {}
+        };
+        es.onerror = () => {
+          es.close();
+          _sseBackoff = Math.min(_sseBackoff * 2, 30000);
+          setTimeout(_sseConnect, _sseBackoff);
+        };
+      } catch(e) {
+        _sseBackoff = Math.min(_sseBackoff * 2, 30000);
+        setTimeout(_sseConnect, _sseBackoff);
+      }
+    }
+    _sseConnect();
+  })();
+
+  // 60s poll fallback — keeps badge + feed in sync even if SSE misses events
+  // (fires in addition to SSE; SSE resets _sseBackoff so they don't compete)
+  if (!PREVIEW_MODE) {
+    setInterval(async function _activityPoll() {
+      try {
+        const [actRes, notifRes] = await Promise.allSettled([
+          apiFetch('/api/activity',      { backgroundPoll: true }),
+          apiFetch('/api/notifications', { backgroundPoll: true }),
+        ]);
+        if (actRes.status === 'fulfilled' && Array.isArray(actRes.value)) {
+          // Merge new events from server (prepend anything newer than latest known)
+          const known = new Set(STATE.activityEvents.map(e => e.id || e.createdAt));
+          const fresh = actRes.value.filter(e => !known.has(e.id || e.createdAt));
+          if (fresh.length > 0) {
+            STATE.activityEvents = [...fresh, ...STATE.activityEvents].slice(0, 50);
+            if (!STATE.activityPanelOpen) updateActivityBadge();
+            else renderActivityList();
+          }
+        }
+        if (notifRes.status === 'fulfilled') {
+          const raw = notifRes.value;
+          const arr = Array.isArray(raw) ? raw : (Array.isArray(raw?.notifications) ? raw.notifications : []);
+          if (arr.length > 0) STATE.notifications = arr;
+        }
+      } catch(e) {}
+    }, 60000);
+  }
+
+  // Bind activity panel interactions
+  bindActivityPanel();
+  // Show initial unread badge
+  updateActivityBadge();
+
+  // Make key functions globally accessible (for inline onclick handlers in rendered HTML)
+  window.showToast = showToast;
+  window.closeFloatPanel = closeFloatPanel;
+  window.navigate = navigate;
+  window.navigateSub = navigateSub;
+  window.renderInvitePanel = renderInvitePanel;
+  window.downloadReportPdf = downloadReportPdf;
+  window.exportCsv = exportCsv;
+  window.fpApplyAlertTemplate = async function(idx, btn) {
+    const TMPL = [
+      { name: 'Latence critique (> 3s)', type: 'latency', operator: 'gt', threshold: 3000, durationMin: 0, channels: ['email'], siteUrls: [] },
+      { name: 'Score SEO critique (< 50)', type: 'seo_score', operator: 'lt', threshold: 50, durationMin: 0, channels: ['email'], siteUrls: [] },
+      { name: 'Chute ranking (> 5 positions)', type: 'keyword_ranking_drop', operator: 'gt', threshold: 5, durationMin: 0, channels: ['email'], siteUrls: [] },
+      { name: 'Latence élevée (> 1s)', type: 'latency', operator: 'gt', threshold: 1000, durationMin: 5, channels: ['email'], siteUrls: [] },
+      { name: 'Uptime faible (< 98%)', type: 'uptime', operator: 'lt', threshold: 98, durationMin: 10, channels: ['email', 'sms'], siteUrls: [] },
+    ];
+    const t = TMPL[idx];
+    if (!t) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Activation…'; }
+    try {
+      const rule = await apiAction('POST', '/api/alert-rules', t);
+      if (rule && !rule.error) {
+        STATE.alertRules = STATE.alertRules || [];
+        STATE.alertRules.push(rule);
+        // Do NOT set the hide key — other templates must remain visible (they show ✓ Activée).
+        // Only the "Masquer" button dismisses the template panel.
+        showToast('success', 'Template "' + t.name + '" activé !');
+        render(); // Re-render in place — activated template shows ✓, others stay visible
+      } else {
+        if (btn) { btn.disabled = false; btn.textContent = 'Activer'; }
+        showToast('error', (rule && rule.error) ? rule.error : 'Erreur lors de l\'activation');
+      }
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Activer'; }
+      showToast('error', 'Erreur lors de l\'activation du template');
+    }
+  };
+  window.escHtml = escHtml;
+  window.applyThemeChoice = applyThemeChoice;
+  window.saveSettings = saveSettings;
+
+  // ── disconnectAllSessions: revokes server session + clears all local state ──
+  // BUG-2 FIX: calls POST /api/auth/logout to invalidate the server-side session
+  // token and clear the HttpOnly fp_token cookie, THEN clears localStorage.
+  // Idempotent: API failure never prevents local logout — user is always redirected.
+  window.disconnectAllSessions = async function() {
+    try {
+      await fetch('/api/auth/logout', _fpSessionFetchOptions({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    } catch (_) { /* non-fatal — still clear local state */ }
+    ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid']
+      .forEach(function(k) { localStorage.removeItem(k); });
+    sessionStorage.clear(); // also clears fp_session_token + fp_tab_uid
+    showToast('success', 'Toutes les sessions fermées');
+    setTimeout(function() { window.location.href = '/login.html'; }, 1200);
+  };
+
+  // ── fpSavePref: named handler for settings pill/preset buttons ──
+  // Use via: onclick="fpSavePref(this)"
+  // Expects data-pref-key, data-pref-val, data-pref-lbl on the button.
+  window.fpSavePref = function(btn) {
+    var k = btn.dataset.prefKey;
+    var v = btn.dataset.prefVal;
+    var lbl = btn.dataset.prefLbl;
+    var s = {};
+    s[k] = v;
+    if (STATE.settings) STATE.settings[k] = v;
+    // Optimistic entry in the activity feed so the Command Center timeline reflects the change immediately
+    try {
+      STATE.activityEvents = STATE.activityEvents || [];
+      STATE.activityEvents.unshift({ id: 'local-' + Date.now(), type: 'settings', label: lbl || ('Paramètre modifié : ' + k), createdAt: new Date().toISOString() });
+    } catch(e) {}
+    apiAction('PATCH', '/api/me/prefs', { settings: s })
+      .then(function() {
+        // Context-aware toasts for each preset
+        var _toastMsg = lbl || (k + ' mis à jour');
+        if (k === 'localPriority') {
+          var _lpMsg = { off: 'Analyse locale désactivée — aucun concurrent affiché', standard: 'Priorité locale standard — jusqu\'à 5 concurrents analysés', aggressive: 'Mode agressif — tous les concurrents disponibles affichés' };
+          _toastMsg = _lpMsg[v] || lbl;
+        } else if (k === 'secLevel') {
+          var _slMsg = { standard: 'Sécurité standard activée', enterprise: 'Sécurité avancée — journalisation et alertes renforcées' };
+          _toastMsg = _slMsg[v] || lbl;
+        } else if (k === 'iaSuggestions') {
+          var _iaMsg = { low: 'Mode silencieux — 1 suggestion max par section', normal: 'Suggestions IA normales (jusqu\'à 3 par section)', proactive: 'Mode proactif — toutes les suggestions affichées' };
+          _toastMsg = _iaMsg[v] || lbl;
+        } else if (k === 'reportType') {
+          var _rtMsg = { simple: 'Rapports simplifiés (2–3 pages, KPIs essentiels)', client: 'Rapports client standard (5–8 pages)', enterprise: 'Rapports avancés — notes de réunion incluses par défaut' };
+          _toastMsg = _rtMsg[v] || lbl;
+        }
+        showToast('success', _toastMsg);
+        btn.parentElement.querySelectorAll('button').forEach(function(b) {
+          b.style.border = '1.5px solid var(--fp-border)';
+          b.style.background = 'transparent';
+          b.style.color = 'var(--fp-text-muted)';
+          b.innerHTML = escHtml(b.dataset.prefVal || b.textContent.trim());
+        });
+        btn.style.border = '1.5px solid #2563EB';
+        btn.style.background = 'rgba(37,99,235,0.12)';
+        btn.style.color = '#2563EB';
+        btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="3" style="margin-right:4px;vertical-align:middle" pointer-events="none"><polyline points="20 6 9 17 4 12"/></svg>' + escHtml(v);
+      })
+      .catch(function() { showToast('error', 'Erreur sauvegarde'); });
+  };
+
+  // ── fpSyncAiBadge: keep the sidebar/chat AI badges in sync with the stored provider ──
+  window.fpSyncAiBadge = function() {
+    var labels = { openai: 'GPT-5', anthropic: 'Claude', gemini: 'Gemini' };
+    var badge = labels[STATE.aiProvider] || 'GPT-5';
+    STATE.aiModel = badge;
+    var b = document.getElementById('fp-ai-badge');
+    if (b && b.textContent !== badge) b.textContent = badge;
+    var s = document.getElementById('fp-ai-chat-model-label');
+    if (s) s.textContent = badge + ' · FlowPoint Expert';
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.fpSyncAiBadge);
+  else window.fpSyncAiBadge();
+
+
   // ── applyDateFormatPref: store format so formatters can read it, then re-render ──
   window.applyDateFormatPref = function(val) {
     if (!val) return;
@@ -20011,15 +20101,29 @@ function renderOverviewQuickWins() {
     : (PREVIEW_MODE ? _previewQW : []);
   const totalGain = qw.filter(q=>!q.done).reduce((s,q)=>s+(parseInt(q.gain)||0),0);
   const totalTime = qw.filter(q=>!q.done).length;
+  // Durée totale estimée : somme réelle des fourchettes d'effort des actions
+  // affichées (ex. "5 min", "1-2h", "45 min") — jamais une constante.
+  const _effRange = (s) => {
+    const m = String(s||'').match(/(\d+)(?:\s*-\s*(\d+))?\s*(min|h)/i);
+    if (!m) return [0,0];
+    const mult = m[3].toLowerCase()==='h' ? 60 : 1;
+    const lo = parseInt(m[1],10)*mult;
+    const hi = (m[2]?parseInt(m[2],10):parseInt(m[1],10))*mult;
+    return [lo,hi];
+  };
+  const _effTot = qw.filter(q=>!q.done).reduce((acc,q)=>{ const r=_effRange(q.effort); return [acc[0]+r[0], acc[1]+r[1]]; },[0,0]);
+  const _fmtMin = (mn) => mn >= 60 ? (Math.round(mn/30)/2)+'h' : mn+' min';
+  const totalDuration = _effTot[1] <= 0 ? '—'
+    : (_effTot[0] === _effTot[1] ? '~'+_fmtMin(_effTot[0]) : '~'+_fmtMin(_effTot[0])+'-'+_fmtMin(_effTot[1]));
   return `
-    ${aiBlock(`Ces <strong>${qw.length} actions rapides</strong> peuvent vous faire gagner <strong>+${totalGain} points</strong> de score moyen collectif. La durée totale est de moins de 3 heures — commencez par les plus rapides.`,
+    ${aiBlock(`Ces <strong>${qw.length} actions rapides</strong> peuvent vous faire gagner <strong>+${totalGain} points</strong> de score moyen collectif.${_effTot[1]>0?` Durée totale estimée : <strong>${totalDuration}</strong> — commencez par les plus rapides.`:''}`,
       ['Me guider sur la première', 'Créer toutes les missions', 'Trier par gain'])}
 
     <div class="fp-card fp-mb-16" style="padding:14px 18px">
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;text-align:center">
         <div><div style="font-size:22px;font-weight:800;color:#22c55e;font-family:var(--fp-font-head)">+${totalGain}</div><div style="font-size:11px;color:var(--fp-text-faint)">points de score potentiels</div></div>
         <div><div style="font-size:22px;font-weight:800;color:#2563EB;font-family:var(--fp-font-head)">${qw.filter(q=>!q.done).length}</div><div style="font-size:11px;color:var(--fp-text-faint)">actions restantes</div></div>
-        <div><div style="font-size:22px;font-weight:800;color:#8b5cf6;font-family:var(--fp-font-head)">~3h</div><div style="font-size:11px;color:var(--fp-text-faint)">durée totale estimée</div></div>
+        <div><div style="font-size:22px;font-weight:800;color:#8b5cf6;font-family:var(--fp-font-head)">${totalDuration}</div><div style="font-size:11px;color:var(--fp-text-faint)">durée totale estimée</div></div>
       </div>
     </div>
 
@@ -20052,21 +20156,50 @@ function renderOverviewQuickWins() {
 }
 
 function renderOverviewChecklist() {
-  const done = (STATE.checklist || []).filter(c => c.done).length;
+  // Effective done state for main checklist — auto items reflect real data
+  const _mainEffDone = (c) => {
+    if (c.id === 'c1' && STATE.gbp?.completionScore != null) return STATE.gbp.completionScore >= 95;
+    if (c.id === 'c3' && STATE.gbp?.unansweredReviews != null) return Number(STATE.gbp.unansweredReviews) === 0;
+    return !!c.done;
+  };
+  const done = (STATE.checklist || []).filter(_mainEffDone).length;
   const total = (STATE.checklist || []).length;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   const _clsLS = STATE.checklistExtra || {};
   const _clItem = (id, defaultDone) => _clsLS[id] !== undefined ? _clsLS[id] : (PREVIEW_MODE ? defaultDone : false);
+  // ── Auto-verified items: derived from REAL org data, never manually togglable.
+  //    null = not verifiable (no data) → item stays manual.
+  const _autoChecks = (() => {
+    const audits = STATE.audits || [];
+    const gbp = STATE.gbp || null;
+    const rules = STATE.alertRules || [];
+    return {
+      // Performance technique — audit `speed` IS the PageSpeed Mobile score
+      tc1: audits.length > 0 ? audits.every(a => (a.speed || 0) >= 80) : null,
+      // tc3 (title uniqueness) stays MANUAL: the generic SEO score can't prove it.
+      // Présence locale — GBP completion score directly measures profile completeness
+      lo1: (gbp && gbp.completionScore != null) ? gbp.completionScore >= 90 : null,
+      // Réputation & avis — averageRating directly measures the stated criterion
+      re1: (gbp && gbp.averageRating != null) ? Number(gbp.averageRating) >= 4.5 : null,
+      // re2 (réponse < 48h) stays MANUAL: unanswered count can't prove response delay.
+      re5: rules.length > 0 ? rules.some(r => r.type === 'review_received' && r.enabled) : null,
+    };
+  })();
+  const _resolveItem = (id, manualDone) => {
+    const auto = _autoChecks[id];
+    if (auto !== null && auto !== undefined) return { done: auto, locked: true };
+    return { done: manualDone, locked: false };
+  };
   const extraCategories = [
     {
       cat: 'Performance technique',
       icon: 'zap',
       color: '#f59e0b',
       items: [
-        { id:'tc1', label:'Score PageSpeed Mobile > 80 sur tous les sites', done: _clItem('tc1', false) },
+        { id:'tc1', label:'Score PageSpeed Mobile > 80 sur tous les sites', ..._resolveItem('tc1', _clItem('tc1', false)) },
         { id:'tc2', label:'Images converties en WebP', done: _clItem('tc2', false) },
-        { id:'tc3', label:'Balise title unique sur chaque page', done: _clItem('tc3', STATE.audits && STATE.audits.length > 0 && STATE.audits.every(a => (a.score||0) >= 60)) },
+        { id:'tc3', label:'Balise title unique sur chaque page', ..._resolveItem('tc3', _clItem('tc3', false)) },
         { id:'tc4', label:'Sitemap XML soumis à Google Search Console', done: _clItem('tc4', false) },
         { id:'tc5', label:'Schema markup LocalBusiness en place', done: _clItem('tc5', false) },
       ]
@@ -20076,7 +20209,7 @@ function renderOverviewChecklist() {
       icon: 'map',
       color: '#22c55e',
       items: [
-        { id:'lo1', label:'Fiche GBP complète à 100% (photos, horaires, description)', done: _clsLS['lo1'] !== undefined ? _clsLS['lo1'] : (STATE.gbp?.completionScore != null ? STATE.gbp.completionScore >= 90 : false) },
+        { id:'lo1', label:'Fiche GBP complète à 100% (photos, horaires, description)', ..._resolveItem('lo1', _clItem('lo1', false)) },
         { id:'lo2', label:'Citations NAP cohérentes sur les 20 principaux annuaires', done: _clItem('lo2', false) },
         { id:'lo3', label:'Pages locales créées pour chaque zone géographique', done: _clItem('lo3', false) },
         { id:'lo4', label:'Mots-clés géolocalisés dans les balises h1', done: _clItem('lo4', false) },
@@ -20088,11 +20221,11 @@ function renderOverviewChecklist() {
       icon: 'star',
       color: '#8b5cf6',
       items: [
-        { id:'re1', label:'Note Google moyenne > 4.5 étoiles', done: _clsLS['re1'] !== undefined ? _clsLS['re1'] : (STATE.gbp?.averageRating != null ? STATE.gbp.averageRating >= 4.5 : false) },
-        { id:'re2', label:'Réponse à tous les avis < 48h', done: _clsLS['re2'] !== undefined ? _clsLS['re2'] : (STATE.gbp != null ? (STATE.gbp.unansweredReviews === 0 || STATE.overview?.gbpUnansweredCount === 0) : false) },
+        { id:'re1', label:'Note Google moyenne > 4.5 étoiles', ..._resolveItem('re1', _clItem('re1', false)) },
+        { id:'re2', label:'Réponse à tous les avis < 48h', ..._resolveItem('re2', _clItem('re2', false)) },
         { id:'re3', label:'Processus de collecte d\'avis en place', done: _clItem('re3', false) },
         { id:'re4', label:'Présence sur Trustpilot / PagesJaunes', done: _clItem('re4', false) },
-        { id:'re5', label:'Alertes Google My Business configurées', done: _clItem('re5', STATE.alertRules && STATE.alertRules.some(r => r.type === 'review_received' && r.enabled)) },
+        { id:'re5', label:'Alertes Google My Business configurées', ..._resolveItem('re5', _clItem('re5', false)) },
       ]
     },
     {
@@ -20153,14 +20286,22 @@ function renderOverviewChecklist() {
       </div>
       <div class="fp-progress-track" style="height:4px;margin-bottom:14px"><div class="fp-progress-fill" style="width:${pct}%;background:${pct>=80?'var(--fp-success)':pct>=50?'var(--fp-warning)':'var(--fp-danger)'}"></div></div>
       <div style="display:flex;flex-direction:column;gap:6px">
-        ${STATE.checklist.map(c => `
-          <div class="fp-check-item" data-check-id="${c.id}" style="display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:8px;cursor:pointer;transition:background 0.12s;border:1px solid ${c.done?'rgba(34,197,94,0.2)':'var(--fp-border)'}">
-            <div style="width:18px;height:18px;border-radius:5px;border:2px solid ${c.done?'var(--fp-success)':'var(--fp-border)'};background:${c.done?'rgba(34,197,94,0.15)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              ${c.done?'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--fp-success)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>':''}
+        ${STATE.checklist.map(c => {
+          // Auto-verify main checklist items from real GBP data when available
+          let _mAuto = null;
+          if (c.id === 'c1' && STATE.gbp?.completionScore != null) _mAuto = STATE.gbp.completionScore >= 95;
+          if (c.id === 'c3' && STATE.gbp?.unansweredReviews != null) _mAuto = Number(STATE.gbp.unansweredReviews) === 0;
+          const _locked = _mAuto !== null;
+          const _done = _locked ? _mAuto : c.done;
+          return `
+          <div class="fp-check-item" ${_locked?'':`data-check-id="${c.id}"`} style="display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:8px;${_locked?'':'cursor:pointer;'}transition:background 0.12s;border:1px solid ${_done?'rgba(34,197,94,0.2)':'var(--fp-border)'}" ${_locked?'title="Vérifié automatiquement à partir de vos données réelles"':''}>
+            <div style="width:18px;height:18px;border-radius:5px;border:2px solid ${_done?'var(--fp-success)':'var(--fp-border)'};background:${_done?'rgba(34,197,94,0.15)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              ${_done?'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--fp-success)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>':''}
             </div>
-            <span style="font-size:12px;color:${c.done?'var(--fp-text-muted)':'var(--fp-text)'};${c.done?'text-decoration:line-through':''}">${escHtml(c.label)}</span>
+            <span style="font-size:12px;color:${_done?'var(--fp-text-muted)':'var(--fp-text)'};${_done?'text-decoration:line-through':''};flex:1">${escHtml(c.label)}</span>
+            ${_locked?'<span style="font-size:8px;font-weight:700;letter-spacing:0.4px;padding:2px 5px;border-radius:4px;background:rgba(34,197,94,0.12);color:var(--fp-success);flex-shrink:0;text-transform:uppercase">auto</span>':''}
           </div>
-        `).join('')}
+        `;}).join('')}
       </div>
     </div>
 
@@ -20184,11 +20325,12 @@ function renderOverviewChecklist() {
           <div class="fp-progress-track" style="height:3px;margin-bottom:12px"><div class="fp-progress-fill" style="width:${catPct}%;background:${cat.color}"></div></div>
           <div style="display:flex;flex-direction:column;gap:5px">
             ${cat.items.map(item => `
-              <div style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;border-radius:6px;transition:background 0.1s" onclick="window._fpToggleChecklistExtra && window._fpToggleChecklistExtra(${JSON.stringify(item.id)},${item.done})" title="${item.done?'Coché — cliquer pour décocher':'Cliquer pour cocher'}">
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 0;${item.locked?'':'cursor:pointer;'}border-radius:6px;transition:background 0.1s" ${item.locked?'':`onclick="window._fpToggleChecklistExtra && window._fpToggleChecklistExtra(${JSON.stringify(item.id)},${item.done})"`} title="${item.locked?'Vérifié automatiquement à partir de vos données réelles':(item.done?'Coché — cliquer pour décocher':'Cliquer pour cocher')}">
                 <div style="width:16px;height:16px;border-radius:4px;border:2px solid ${item.done?cat.color:'var(--fp-border)'};background:${item.done?cat.color+'20':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
                   ${item.done?`<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="${cat.color}" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`:''}
                 </div>
-                <span style="font-size:11px;color:${item.done?'var(--fp-text-muted)':'var(--fp-text)'};${item.done?'text-decoration:line-through':''};line-height:1.4">${escHtml(item.label)}</span>
+                <span style="font-size:11px;color:${item.done?'var(--fp-text-muted)':'var(--fp-text)'};${item.done?'text-decoration:line-through':''};line-height:1.4;flex:1">${escHtml(item.label)}</span>
+                ${item.locked?`<span style="font-size:8px;font-weight:700;letter-spacing:0.4px;padding:2px 5px;border-radius:4px;background:${cat.color}15;color:${cat.color};flex-shrink:0;text-transform:uppercase" title="État calculé automatiquement">auto</span>`:''}
               </div>
             `).join('')}
           </div>
@@ -22685,9 +22827,11 @@ function renderGrowthProjections() {
   // Use the same deterministic helper as Command Center — no synthetic fallback slope
   const _projResult = computeGrowthProjection((STATE.overview && STATE.overview.auditHistory) || []);
   const _stepRaw = _projResult ? _projResult.stepPerWeek : 0;
-  const _stepP = _projResult ? Math.max(0.5, Math.min(4, _stepRaw)) : 0;
+  // Pente réelle bornée [-3,+4] pts/sem — une tendance plate ou négative reste
+  // visible telle quelle (pas de croissance minimale fabriquée).
+  const _stepP = _projResult ? Math.max(-3, Math.min(4, _stepRaw)) : 0;
   const _p30 = Math.round(_stepP*4), _p60 = Math.round(_stepP*8), _p90 = Math.round(_stepP*12);
-  const future = [0,1,2,3,4,5,6].map(function(i){ return Math.round(Math.min(99, avgSc + _stepP * i)); });
+  const future = [0,1,2,3,4,5,6].map(function(i){ return Math.round(Math.max(0, Math.min(99, avgSc + _stepP * i))); });
   const months = (function(){ const arr=[]; const now=new Date(); for(let i=1;i<=6;i++){ const d=new Date(now.getFullYear(), now.getMonth()+i, 1); const m=d.toLocaleDateString(getLocale(),{month:'short'}); arr.push(m.charAt(0).toUpperCase()+m.slice(1)+' '+d.getFullYear()); } return arr; })();
   const _hasTrend = _auditHP.length >= 2 && _stepRaw > 0;
   const scenarios = [
@@ -22702,8 +22846,9 @@ function renderGrowthProjections() {
       s30:Math.min(99,avgSc+Math.round(_stepP*2)), s60:Math.min(99,avgSc+Math.round(_stepP*4)),  s90:Math.min(99,avgSc+Math.round(_stepP*6)),  traffic:PREVIEW_MODE?'+6%':'—',  leads:PREVIEW_MODE?'+8%':'—',  roi:PREVIEW_MODE?'+380€':'—' },
   ];
   const monthData = months.map(function(m, i) {
-    const sc = Math.min(99, Math.round(avgSc + _stepP*4*(i+1)));
-    return { month:m, score:sc, delta:'+'+Math.max(0,sc-avgSc)+' pts' };
+    const sc = Math.max(0, Math.min(99, Math.round(avgSc + _stepP*4*(i+1))));
+    const _d = sc - avgSc;
+    return { month:m, score:sc, delta:(_d>=0?'+':'')+_d+' pts' };
   });
   const channels = PREVIEW_MODE ? [
     {ch:'Recherche organique',    now:68, p30:78, p90:88, color:'var(--fp-accent)'},
@@ -22813,29 +22958,51 @@ function renderGrowthProjections() {
 
     <div class="fp-card">
       <div class="fp-card-title" style="margin-bottom:14px">⚡ Impact des Quick Wins sur la projection</div>
-      ${aiBlock(PREVIEW_MODE ? 'En exécutant les <strong>4 Quick Wins actives</strong> cette semaine, votre projection à 30 jours passe de <strong>'+(avgSc+7)+'/100</strong> à <strong>'+(avgSc+11)+'/100</strong>. Gain : <strong>+4 pts supplémentaires</strong>.' : 'Exécutez vos premières optimisations pour voir l\'impact projeté sur votre score SEO.',['Voir Quick Wins'])}
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
-        ${!PREVIEW_MODE ? '<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">Aucune Quick Win enregistrée. Lancez un audit et exécutez les recommandations pour activer le suivi.</div>' : [
-          {title:'H1 page accueil optimisé',     gain:'+2 pts',  cum:avgSc+9,  col:'#22c55e'},
-          {title:'Schema FAQ sur 3 pages',        gain:'+3 pts',  cum:avgSc+10, col:'#22c55e'},
-          {title:'CLS mobile corrigé (2 sites)',  gain:'+2 pts',  cum:avgSc+10, col:'var(--fp-accent)'},
-          {title:'4 pages locales créées',        gain:'+4 pts',  cum:avgSc+11, col:'var(--fp-accent)'},
-        ].map((q, i) => `
-          <div class="fp-qw-item" style="display:flex;align-items:center;gap:12px;padding:9px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px">
-            <div style="width:20px;height:20px;border-radius:50%;background:rgba(37,99,235,.15);border:1px solid rgba(37,99,235,.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--fp-accent);flex-shrink:0">${i+1}</div>
-            <div style="flex:1;font-size:12px;font-weight:600">${q.title}</div>
-            <span style="font-size:12px;font-weight:700;color:${q.col}">${q.gain}</span>
-            <div style="font-size:11px;color:var(--fp-text-faint)">Cumul : <strong style="color:${q.col}">${q.cum}/100</strong></div>
-          </div>
-        `).join('')}
-      </div>
+      ${(function(){
+        // Calcul 100% déterministe — aucune analyse IA.
+        // Gain par quick win : nombre de points extrait du texte de la mission
+        // (regex "+N pts"), sinon barème fixe par priorité.
+        var _prioGain = { critical: 4, high: 3, medium: 2, low: 1 };
+        var _qwList = (STATE.missions || [])
+          .filter(function(m){ return (m.aiQuickWin || m.ai_quick_win) && m.status !== 'done' && m.status !== 'completed'; })
+          .slice(0, 6)
+          .map(function(m){
+            var _mt = String(m.title || '') + ' ' + String(m.gain || m.impact || '');
+            var _gm = _mt.match(/\+\s*(\d+)\s*(?:pts?|points?)/i);
+            var _g  = _gm ? parseInt(_gm[1],10) : (_prioGain[m.priority] || 2);
+            return { title: m.title || 'Quick Win', gain: _g };
+          });
+        var _base30 = _projResult ? _projResult.score30d : avgSc;
+        if (_qwList.length === 0) {
+          return '<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">Aucune Quick Win active. Lancez un audit et générez des missions Quick Win pour voir leur impact projeté (calcul déterministe à partir des gains de points).</div>';
+        }
+        var _totGain = _qwList.reduce(function(s,q){ return s+q.gain; }, 0);
+        var _cum = _base30;
+        var _rows = _qwList.map(function(q, i){
+          _cum = Math.min(99, _cum + q.gain);
+          var _col = i % 2 === 0 ? '#22c55e' : 'var(--fp-accent)';
+          return '<div class="fp-qw-item" style="display:flex;align-items:center;gap:12px;padding:9px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px">'+
+            '<div style="width:20px;height:20px;border-radius:50%;background:rgba(37,99,235,.15);border:1px solid rgba(37,99,235,.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--fp-accent);flex-shrink:0">'+(i+1)+'</div>'+
+            '<div style="flex:1;font-size:12px;font-weight:600">'+escHtml(q.title)+'</div>'+
+            '<span style="font-size:12px;font-weight:700;color:'+_col+'">+'+q.gain+' pts</span>'+
+            '<div style="font-size:11px;color:var(--fp-text-faint)">Cumul : <strong style="color:'+_col+'">'+_cum+'/100</strong></div>'+
+          '</div>';
+        }).join('');
+        var _summary = '<div style="padding:11px 14px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);border-radius:9px;font-size:12px;color:var(--fp-text-muted);line-height:1.6;margin-bottom:14px">En exécutant les <strong>'+_qwList.length+' Quick Wins actives</strong>, votre projection à 30 jours passe de <strong>'+_base30+'/100</strong> à <strong>'+Math.min(99,_base30+_totGain)+'/100</strong> (+'+_totGain+' pts, calcul déterministe basé sur les gains de points des missions).</div>';
+        return _summary + '<div style="display:flex;flex-direction:column;gap:8px">' + _rows + '</div>';
+      })()}
     </div>
   </div>`;
 }
 
 function renderGrowthObjectives() {
   const avgSc = avgScore();
-  const nbSites = Math.min(STATE.audits.length, 8);
+  // Distinct active sites under management (monitors + audited domains), uncapped.
+  const _siteHost = (u) => { try { return new URL(/^https?:\/\//.test(u) ? u : 'https://' + u).hostname.replace(/^www\./, ''); } catch (_) { return String(u || '').trim().toLowerCase(); } };
+  const nbSites = new Set(
+    [ ...(STATE.monitors || []).map(m => _siteHost(m.url || m.name || '')),
+      ...(STATE.audits || []).map(a => _siteHost(a.url || a.site || '')) ].filter(Boolean)
+  ).size;
   const _histRaw = ((STATE.overview && STATE.overview.auditHistory) || []).map(function(h){ return Number(h.avg || h.score || 0); });
   const _scoreHist = _histRaw.length >= 2 ? _histRaw.slice(-7) : Array(7).fill(avgSc);
   const _scoreTrend = _histRaw.length >= 2 ? (((_histRaw[_histRaw.length-1]-_histRaw[0]) >= 0 ? '+' : '') + Math.round(_histRaw[_histRaw.length-1]-_histRaw[0]) + ' pts') : '—';
@@ -22846,7 +23013,7 @@ function renderGrowthObjectives() {
   const objectives = [
     { icon:'📊', label:'Score moyen ≥ 80/100',         progress:avgSc, target:80,   unit:'pts',   inverse:false, status:'on-track', deadline:_qEnd,    trend:_scoreTrend,      next:'Optimiser 3 pages à fort potentiel',    detail:'Score actuel portefeuille', history:_scoreHist },
     ...(()=>{ const _mu=(STATE.monitors&&STATE.monitors.length>0?(STATE.monitors.reduce((s,m)=>s+(typeof m.uptime==='number'?m.uptime:100),0)/STATE.monitors.length):null); const _mp=_mu!=null?parseFloat(_mu.toFixed(1)):(PREVIEW_MODE?97.2:null); return _mp!=null?[{ icon:'✅', label:'Monitors UP ≥ 99.5%', progress:_mp, target:99.5, unit:'%', inverse:false, status:_mp>=99.5?'done':'at-risk', deadline:_qEnd, trend:'—', next:'Investiguer les monitors DOWN', detail:'Disponibilité moyenne portefeuille', history:Array(7).fill(_mp) }]:[];})(),
-    { icon:'🌐', label:'8 sites en portefeuille',       progress:nbSites,target:8,   unit:'sites', inverse:false, status:nbSites>=8?'done':'on-track', deadline:_qEnd, trend:'—', next:'Prospecter 2 nouveaux clients locaux', detail:'Sites actifs sous gestion', history:Array(7).fill(nbSites) },
+    ...(()=>{ const _cap = Number(STATE.me?.limits?.monitors) > 0 ? Number(STATE.me.limits.monitors) : null; const _tgt = _cap || Math.max(nbSites, 1); const _lbl = _cap ? 'Sites suivis — quota plan (' + _cap + ')' : 'Sites actifs en portefeuille'; return [{ icon:'🌐', label:_lbl, progress:nbSites, target:_tgt, unit:'sites', inverse:false, status:(_cap && nbSites>=_cap)?'done':'on-track', deadline:_qEnd, trend:'—', next: nbSites>0 ? 'Ajouter un nouveau site à suivre' : 'Ajouter votre premier site', detail:'Sites actifs sous gestion', history:Array(7).fill(nbSites) }]; })(),
     ...(()=>{ const _gbpR=STATE.gbp?.averageRating; const _rp=_gbpR!=null?parseFloat(parseFloat(_gbpR).toFixed(1)):(PREVIEW_MODE?4.2:null); const _ua=STATE.gbp?.unansweredReviews; return _rp!=null?[{ icon:'⭐', label:'Note Google ≥ 4.5★', progress:_rp, target:4.5, unit:'★', inverse:false, status:_rp>=4.5?'done':'at-risk', deadline:_qEnd, trend:'—', next:'Répondre aux '+(_ua!=null?_ua+' ':'')+'avis en attente', detail:'Moyenne avis Google portefeuille', history:Array(7).fill(_rp) }]:[];})(),
     ...(()=>{ const _cwv=STATE.overview?.coreWebVitals||(PREVIEW_MODE?72:null); return _cwv!=null?[{ icon:'📱', label:'Core Web Vitals ≥ 85/100', progress:_cwv, target:85, unit:'/100', inverse:false, status:_cwv>=85?'done':'on-track', deadline:_qEnd, trend:'—', next:'Optimiser CLS sur les sites prioritaires', detail:'Score CWV mobile moyen', history:Array(7).fill(_cwv) }]:[];})(),
   ];
@@ -22860,7 +23027,7 @@ function renderGrowthObjectives() {
     <div class="fp-section-header">
       <div><h1>Objectifs T${_qNum} ${new Date().getFullYear()}</h1><div class="fp-section-sub">${objectives.length} objectifs · ${_daysLeft} jours restants</div></div>
       <div class="fp-section-actions">
-        ${btn('+ Ajouter','fp-btn fp-btn-primary fp-btn-sm','plus','onclick="openFloatPanel(\'Nouvel objectif\',renderNewObjectivePanel());setupNewObjectivePanel()"')}
+        ${btn('Ajouter','fp-btn fp-btn-primary fp-btn-sm','plus','onclick="openFloatPanel(\'Nouvel objectif\',renderNewObjectivePanel());setupNewObjectivePanel()"')}
       </div>
     </div>
 
@@ -23009,7 +23176,7 @@ function renderGrowthCommandCenter() {
   const _comp1    = (STATE.competitors && STATE.competitors.length > 0) ? STATE.competitors[0] : null;
   // Projection — requires ≥2 real historical data points; null if insufficient
   const _proj = computeGrowthProjection((STATE.overview && STATE.overview.auditHistory) || []);
-  const _projStep = _proj ? Math.max(0.5, Math.min(4, _proj.stepPerWeek)) : 0;
+  const _projStep = _proj ? Math.max(-3, Math.min(4, _proj.stepPerWeek)) : 0;
   // Sparklines : audit history only — no proxy on SEO score
   const _auditH = ((STATE.overview && STATE.overview.auditHistory) || []).map(function(h){ return Number(h.avg || h.score || 0); });
   const sparkS = _auditH.length >= 2 ? _auditH.slice(-7) : null;
@@ -23045,7 +23212,11 @@ function renderGrowthCommandCenter() {
   const _gcRecs = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.recommendations;
   const wins = (_gcRecs && _gcRecs.length) ? _gcRecs.slice(0, 4).map(function(r, i) {
     const diff = r.priority === 'high' ? 1 : r.priority === 'medium' ? 2 : 3;
-    return { title: r.title, impact: '+' + Math.round((r.estimatedUplift || 0.08) * 100) + '%', roi: '+' + Math.round((r.estimatedUplift || 0.08) * 1200) + '€/mois', time: diff === 1 ? '15 min' : diff === 2 ? '45 min' : '2h', diff: diff, pct: [0,30,60,0][i] || 0 };
+    // Revenus estimés uniquement quand GA4 est connecté — jamais de montant inventé sinon
+    const _roiLbl = _ga4Connected()
+      ? '+' + Math.round((r.estimatedUplift || 0.08) * 1200) + '€/mois'
+      : 'Connectez GA4 pour estimer';
+    return { title: r.title, impact: '+' + Math.round((r.estimatedUplift || 0.08) * 100) + '%', roi: _roiLbl, time: diff === 1 ? '15 min' : diff === 2 ? '45 min' : '2h', diff: diff, pct: [0,30,60,0][i] || 0 };
   }) : (function() {
     const _aw = [];
     const _aud = STATE.audits || [];
@@ -23059,7 +23230,7 @@ function renderGrowthCommandCenter() {
     if (_low.length > 0) {
       var _s = _low[0].url||''; var _u = _s.replace(/^https?:\/\//,'').split('/')[0] || 'site';
       var _pts = Math.round((70-Math.min(70,_low[0].score||50))*0.5);
-      _aw.push({title:'Améliorer le score SEO de '+_u, impact:'+'+_pts+' pts', roi:'+'+(_pts*15)+'€/mois', time:'45 min', diff:2, pct:0});
+      _aw.push({title:'Améliorer le score SEO de '+_u, impact:'+'+_pts+' pts', roi:_ga4Connected() ? '+'+(_pts*15)+'€/mois' : '+'+_pts+' pts de score', time:'45 min', diff:2, pct:0});
     }
     if (_slow.length > 0) {
       var _s2 = _slow[0].url||''; var _u2 = _s2.replace(/^https?:\/\//,'').split('/')[0] || 'site';
@@ -23236,7 +23407,7 @@ function renderGrowthCommandCenter() {
               if (STATE.overview?.scoreChange7d != null) rows.push(['7 jours', STATE.overview.scoreChange7d>=0?'up':'down', (STATE.overview.scoreChange7d>=0?'+':'')+STATE.overview.scoreChange7d+' pts']);
               if (STATE.overview?.scoreChange30d != null) rows.push(['30 jours', STATE.overview.scoreChange30d>=0?'up':'down', (STATE.overview.scoreChange30d>=0?'+':'')+STATE.overview.scoreChange30d+' pts']);
               if (STATE.overview?.sectorMultiplier != null) rows.push(['vs secteur', 'up', STATE.overview.sectorMultiplier+'×']);
-              if (_proj) rows.push(['Prévision 30j', 'ai', '+'+Math.round(_projStep*4)+' pts estimés']);
+              if (_proj) rows.push(['Prévision 30j', 'ai', (Math.round(_projStep*4)>=0?'+':'')+Math.round(_projStep*4)+' pts estimés']);
               return rows.map(function(r) {
                 return '<div class="fp-growth-cmp-row"><span>'+r[0]+'</span><span class="val '+r[1]+'">'+r[2]+'</span></div>';
               }).join('');
@@ -23399,7 +23570,7 @@ function renderGrowthCommandCenter() {
         </div>
         <div class="fp-growth-fcast-stats">
           ${_proj
-            ? [['30 jours',_proj.score30d,'var(--fp-accent)','+'+Math.round(_projStep*4)+' pts'],['60 jours',_proj.score60d,'#22c55e','+'+Math.round(_projStep*8)+' pts'],['90 jours',_proj.score90d,'#8b5cf6','+'+Math.round(_projStep*12)+' pts']].map(([l,v,c,d])=>`
+            ? [['30 jours',_proj.score30d,'var(--fp-accent)',(Math.round(_projStep*4)>=0?'+':'')+Math.round(_projStep*4)+' pts'],['60 jours',_proj.score60d,'#22c55e',(Math.round(_projStep*8)>=0?'+':'')+Math.round(_projStep*8)+' pts'],['90 jours',_proj.score90d,'#8b5cf6',(Math.round(_projStep*12)>=0?'+':'')+Math.round(_projStep*12)+' pts']].map(([l,v,c,d])=>`
             <div class="fp-growth-fcast-stat">
               <div style="font-size:10px;color:var(--fp-text-faint)">Dans ${l}</div>
               <div style="font-size:18px;font-weight:800;color:${c};font-family:var(--fp-font-head);line-height:1.1">${v}<span style="font-size:11px">/100</span></div>
@@ -23655,7 +23826,7 @@ function renderGrowthCommandCenter() {
               _msgs.push('<strong>'+_ck+' mot(s)-clé(s)</strong> en positions 4–10 — très proches du top 3. Un contenu ciblé peut faire passer ces mots-clés en première page et doubler leur trafic.');
             }
             // Message 4 : projection
-            _msgs.push('En exécutant les <strong>'+wins.length+' Quick Win(s)</strong> identifiés, votre projection passe à <strong>+'+Math.round(_projStep*6)+' pts</strong> estimés sur les 30 prochains jours.');
+            _msgs.push('En exécutant les <strong>'+wins.length+' Quick Win(s)</strong> identifiés, votre projection passe à <strong>'+(Math.round(_projStep*6)>=0?'+':'')+Math.round(_projStep*6)+' pts</strong> estimés sur les 30 prochains jours.');
             return _msgs.slice(0,4).map(function(msg,i){ return '<div class="fp-growth-strategy-msg" style="animation-delay:'+(i*0.12)+'s"><div style="font-size:12.5px;color:var(--fp-text-soft);line-height:1.6">'+msg+'</div></div>'; }).join('');
           })()}
         </div>
@@ -24094,7 +24265,7 @@ function renderCompetitor() {
           </div>
         </div>`}
       </div>
-      ` : `<div class="fp-upsell-banner fp-upsell-banner--blue"><div class="fp-upsell-text"><strong>Analyse qualité contenu</strong> disponible en Pro</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`}
+      ` : `<div class="fp-upsell-banner fp-upsell-banner--blue"><div class="fp-upsell-text"><strong>Analyse qualité contenu</strong> disponible en Pro</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`}
     `;
   }
 
@@ -24388,7 +24559,7 @@ function renderCompetitor() {
         : `<div style="padding:14px 16px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🤖</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Analyse IA des menaces — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Détection automatique des menaces, forecasting et recommandations stratégiques.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
           </div>`
       }
 
@@ -24516,7 +24687,7 @@ function renderCompetitor() {
       : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
           <div style="font-size:24px">🤖</div>
           <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Stratège IA Concurrentiel — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Plans de bataille, forecasting, alertes menaces en temps réel et recommandations stratégiques personnalisées.</div></div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
         </div>`
     }
 
@@ -25040,7 +25211,7 @@ function renderConversion() {
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🔬</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">UX & Friction Lab — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rage clicks, dead clicks, heatmaps de friction et analyse comportementale avancée.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button>
           </div>`
       }
 
@@ -25207,7 +25378,7 @@ function renderConversion() {
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🎯</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">CTA Intelligence — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse de visibilité, CTR par CTA, performance mobile et suggestions IA.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button>
           </div>`
       }
 
@@ -25456,7 +25627,7 @@ function renderConversion() {
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🤖</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Stratège CRO IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Plans de bataille CRO personnalisés, forecasting, expériences intelligentes et recommandations stratégiques.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
           </div>`
       }
 
@@ -25617,7 +25788,7 @@ function renderConversion() {
       : `<div style="background:linear-gradient(135deg,rgba(37,99,235,0.08),rgba(139,92,246,0.06));border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
           <div style="font-size:24px">🤖</div>
           <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Stratège CRO IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Plans de conversion personnalisés, forecasting et recommandations business chaque semaine.</div></div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
         </div>`
     }
 
@@ -25980,7 +26151,7 @@ function renderAlertsCenter() {
               ? '<strong>' + incidents.length + ' incident' + (incidents.length > 1 ? 's' : '') + ' actif' + (incidents.length > 1 ? 's' : '') + '</strong> — action requise. ' + incidents.filter(i=>i.sev==='critical').length + ' critique' + (incidents.filter(i=>i.sev==='critical').length > 1 ? 's' : '') + ' en cours de traitement.'
               : 'Aucun incident actif — tous les sites sont opérationnels.',
             ['Plan de résolution IA', 'Rapport incident PDF', 'Alerter équipe'])
-        : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🚨</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Incident Response — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA des incidents, root cause analysis et plans de résolution automatiques.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🚨</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Incident Response — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA des incidents, root cause analysis et plans de résolution automatiques.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -26160,7 +26331,7 @@ function renderAlertsCenter() {
                 : `Performance surveillée sur ${monPerf.length} site${monPerf.length > 1 ? 's' : ''}.`,
             ['Diagnostiquer les performances', 'Optimiser Core Web Vitals', 'Rapport SLA']
           )
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Performance Alerts — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA des performances, alertes Core Web Vitals et monitoring SLA avancé.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Performance Alerts — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA des performances, alertes Core Web Vitals et monitoring SLA avancé.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -26446,7 +26617,7 @@ function renderAlertsCenter() {
             ? "Alerte concurrentielle" + (_lead&&_lead.sev==='critical'?' critique':'') + " : <strong>" + escHtml(_lead?.name||'Un concurrent') + " accélère fortement</strong> (+" + (_lead?.gain||0) + " positions). Risque perte Local Pack dans <strong>4-6 semaines</strong> sans contre-mesures. Action recommandée : renforcer GBP + publier contenu local immédiatement."
             : "Aucun concurrent configuré. Ajoutez des concurrents pour activer l'intelligence concurrentielle."),
             ['Plan contre-offensive IA', 'Ajouter un concurrent', 'Renforcer GBP'])
-        : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🎯</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Intelligence concurrentielle — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Alertes IA sur les mouvements concurrents, backlinks, contenu et local SEO.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🎯</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Intelligence concurrentielle — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Alertes IA sur les mouvements concurrents, backlinks, contenu et local SEO.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -26543,7 +26714,7 @@ function renderAlertsCenter() {
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🔮</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA Threat Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prédictions de risques, analyse de vulnérabilités business et alertes anticipées par IA.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
           </div>`
       }
 
@@ -26654,7 +26825,7 @@ function renderAlertsCenter() {
       : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
           <div style="font-size:22px">🛡️</div>
           <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">IA Alert Intelligence — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA des menaces, prédictions d\'incidents et plans de résolution automatiques.</div></div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
         </div>`
     }
 
@@ -26869,7 +27040,7 @@ function renderActivityFeed() {
       ${isPro
         ? aiBlock('Équipe active. <strong>' + _topMember + '</strong> · ' + _totalActs + ' événement(s) ce mois. Score SEO moyen : ' + (STATE.overview ? (STATE.overview.seoScore||STATE.overview.avgScore||0) : 0) + '/100.',
             ['Rapport équipe complet', 'Assigner des missions', 'Planifier une réunion'])
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">👥</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Analytics équipe — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Scores de productivité, contributions par membre et IA collaboration.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">👥</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Analytics équipe — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Scores de productivité, contributions par membre et IA collaboration.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -27193,7 +27364,7 @@ function renderActivityFeed() {
             ? _activeCount + " automatisation" + (_activeCount > 1 ? 's' : '') + " active" + (_activeCount > 1 ? 's' : '') + " — <strong>" + _totalSuccess + " exécution" + (_totalSuccess > 1 ? 's' : '') + " réussie" + (_totalSuccess > 1 ? 's' : '') + "</strong> au total. "
             : "Aucune automatisation configurée. ") + (aiInsights.length > 0 ? aiInsights.length + " action" + (aiInsights.length > 1 ? 's' : '') + " IA journalisée" + (aiInsights.length > 1 ? 's' : '') + "." : "Les actions IA apparaîtront ici dès leur exécution."),
             ['Créer une automatisation', 'Rapport IA complet', 'Voir les prévisions'])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🤖</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA & Automations — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Logs complets des actions IA, automatisations avancées et plans exécutés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🤖</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA & Automations — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Logs complets des actions IA, automatisations avancées et plans exécutés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -27393,7 +27564,7 @@ function renderActivityFeed() {
                 ? STATE.competitors.length + " concurrent" + (STATE.competitors.length > 1 ? "s" : "") + " suivi" + (STATE.competitors.length > 1 ? "s" : "") + " — les mouvements détectés apparaîtront ici au fil de la veille."
                 : "Aucun concurrent configuré. Ajoutez des concurrents pour activer la veille concurrentielle.")),
             ['Plan contre-offensive', 'Surveiller les backlinks', 'Rapport concurrent'])
-        : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🎯</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Veille concurrentielle — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Timeline des mouvements concurrents, alertes backlinks et opportunités marché.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🎯</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Veille concurrentielle — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Timeline des mouvements concurrents, alertes backlinks et opportunités marché.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -27480,7 +27651,7 @@ function renderActivityFeed() {
             ? "Performance opérationnelle solide — score global 71/100. <strong>Momentum en hausse</strong> depuis 3 semaines consécutives (+13 pts). Productivité équipe : " + (STATE.team&&STATE.team.length>0?escHtml(STATE.team[0].name||'Équipe')+' en tête':'activité en hausse') + ". Prévision : activité SEO +18% M+1."
             : "Les scores opérationnels et les prévisions seront calculés à partir de votre activité réelle (audits, monitors, missions).",
             ['Rapport ops complet', 'Optimiser la productivité', 'Voir les prévisions'])
-        : `<div style="background:linear-gradient(135deg,rgba(6,182,212,0.08),rgba(37,99,235,0.06));border:1px solid rgba(6,182,212,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🔬</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Ops Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions opérationnelles, scoring de productivité et intelligence stratégique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(6,182,212,0.08),rgba(37,99,235,0.06));border:1px solid rgba(6,182,212,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🔬</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Ops Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions opérationnelles, scoring de productivité et intelligence stratégique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -27612,7 +27783,7 @@ function renderActivityFeed() {
     ${isPro
       ? aiBlock((PREVIEW_MODE ? "Activité opérationnelle soutenue cette semaine — <strong>momentum en hausse +13 pts</strong>. " : "") + (STATE.audits&&STATE.audits.length>0?'Meilleur score portfolio : <strong>' + Math.max(...STATE.audits.map(a=>a.score||0)) + '/100</strong> sur ' + ((STATE.audits.reduce((b,a)=>(a.score||0)>(b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')) + '. ':(PREVIEW_MODE ? '' : 'Lancez vos premiers audits pour alimenter le fil d\'activité. ')) + (PREVIEW_MODE ? "Alerte concurrentielle active. <strong>38% des actions automatisées</strong> — objectif 60%." : liveFeed.length + " événement" + (liveFeed.length > 1 ? "s" : "") + " enregistré" + (liveFeed.length > 1 ? "s" : "") + " dans le workspace."),
           ['Rapport activité complet', 'Analyser la productivité', 'Voir les tendances'])
-      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">IA Activité Intelligence — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA de l\'activité, insights productivité et corrélations opérationnelles.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
+      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">IA Activité Intelligence — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA de l\'activité, insights productivité et corrélations opérationnelles.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
     }
 
     <!-- KPI CARDS -->
@@ -27914,7 +28085,7 @@ function renderDataExplorer() {
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🧬</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">User Behavior Lab — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Segmentation comportementale, flux utilisateur, scoring engagement et analyse de friction.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button>
           </div>`
       }
 
@@ -28030,7 +28201,7 @@ function renderDataExplorer() {
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">📊</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Dashboards personnalisés — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Créez et partagez des dashboards sur-mesure avec vos KPIs, vos widgets et votre branding.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button>
           </div>`
       }
 
@@ -28121,7 +28292,7 @@ function renderDataExplorer() {
         : `<div style="padding:14px 16px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🤖</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">IA Insights Center — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Insights stratégiques générés automatiquement, détection d\'anomalies et recommandations business.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
           </div>`
       }
 
@@ -28207,7 +28378,7 @@ function renderDataExplorer() {
           : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🔮</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Forecasting Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions trafic, conversion, revenue et ranking basées sur l\'IA et vos données historiques.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
           </div>`
       }
 
@@ -28309,7 +28480,7 @@ function renderDataExplorer() {
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">📋</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Exports avancés — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports PDF brandés, exports planifiés, white-label et générateur de rapports client.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button>
           </div>`
       }
 
@@ -28411,7 +28582,7 @@ function renderDataExplorer() {
       : `<div style="background:linear-gradient(135deg,rgba(6,182,212,0.07),rgba(37,99,235,0.06));border:1px solid rgba(6,182,212,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
           <div style="font-size:24px">🧠</div>
           <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA Business Intelligence — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Insights stratégiques automatiques, corrélations inter-métriques, anomalies et prévisions business.</div></div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
         </div>`
     }
 
@@ -28717,7 +28888,7 @@ function renderClientMode() {
       ${isPro
         ? aiBlock((()=>{const _nr=reports.filter(r=>r.status==='Non lu'||r.status==='non lu');const _np=reports.filter(r=>r.shared).length;if(!reports.length)return 'Aucun rapport généré ce mois. Créez votre premier rapport pour partager la progression avec vos clients.';return reports.length+' rapport(s) générés ce mois — <strong>'+_np+' partagés'+(_nr.length?' · '+_nr.length+' non lu(s)':'')+' </strong>.'+ (_nr.length ? ' Envoyez une mise à jour aux clients n\'ayant pas consulté leur rapport.' : ' Bonne progression — tous les rapports ont été consultés.');})(),
             ['Générer un rapport', 'Envoyer mise à jour', 'Planifier envoi auto'])
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📄</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Reporting avancé — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports white-label, envois automatiques et tracking d\'engagement client.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📄</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Reporting avancé — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports white-label, envois automatiques et tracking d\'engagement client.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -29030,7 +29201,7 @@ function renderClientMode() {
       ${isUltra
         ? aiBlock((()=>{const _highRisk=engagementData.sort((a,b)=>(b.churnRisk||0)-(a.churnRisk||0))[0];const _topEngage=engagementData.sort((a,b)=>(b.engScore||0)-(a.engScore||0))[0];if(!engagementData.length)return 'Ajoutez des clients pour activer l\'analyse engagement IA.';return 'Analyse engagement client IA. '+(_highRisk&&_highRisk.churnRisk>40?'<strong>'+escHtml(_highRisk.name||_highRisk.client||'Client')+' — risque churn '+(_highRisk.churnRisk||'?')+'%</strong> : action urgente. ':'')+(_topEngage&&_topEngage.churnRisk<20?escHtml(_topEngage.name||_topEngage.client||'Client')+' : engagement exemplaire '+(_topEngage.engScore||'?')+'%.':'');})(),
             ['Plan rétention', 'Rapport engagement', 'Stratégie satisfaction'])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Analytics & Engagement — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Détection churn IA, scoring engagement client et analyse relationnelle avancée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Analytics & Engagement — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Détection churn IA, scoring engagement client et analyse relationnelle avancée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -29228,7 +29399,7 @@ function renderClientMode() {
     ${isUltra
       ? aiBlock((()=>{if(!clients.length)return 'Aucun client configuré. Ajoutez vos clients pour accéder à l\'intelligence client IA.';const _sat=Math.round(clients.reduce((s,c)=>s+(c.satisfaction||c.seoScore||0),0)/clients.length);const _risk=clients.filter(c=>c.health==='critique'||c.health==='attention');return clients.length+' client(s) actif(s). Score satisfaction global <strong>'+_sat+'/100</strong>.'+(_risk.length?'Alerte : <strong>'+escHtml(_risk[0].name)+'</strong> nécessite une action immédiate.':'Tous les clients sont en bonne santé.')})(),
           ['Plan rétention clients', 'Rapport agence complet', 'Générer rapport executive'])
-      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🤝</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Client Intelligence IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse satisfaction, détection churn IA et stratégie relationnelle automatique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button></div>`
+      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🤝</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Client Intelligence IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse satisfaction, détection churn IA et stratégie relationnelle automatique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
     }
 
     <!-- KPI CARDS -->
@@ -29431,7 +29602,7 @@ function renderMonitorsSLA() {
           <div style="text-align:center;padding:20px">
             <div style="font-size:32px;margin-bottom:10px">🔮</div>
             <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Anticipez les violations SLA avant qu\'elles surviennent</div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra →</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra →</button>
           </div>
         `}
       </div>
@@ -30974,7 +31145,7 @@ function renderConversionHeatmap() {
         Visualisez en temps réel où cliquent vos visiteurs, leurs mouvements de souris et zones de friction — page par page.
       </div>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer à Ultra</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer à Ultra</button>
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="localStorage.setItem('fp:notify-heatmap','1');this.disabled=true;this.style.opacity='0.6';this.textContent='✓ Vous serez notifié'">Me notifier</button>
       </div>
     </div>
@@ -31061,7 +31232,7 @@ function renderTeamPerformance() {
           if (_ms.length === 0) return '<div style="text-align:center;padding:16px 0;color:var(--fp-text-faint);font-size:12px">Aucune tâche assignée</div>';
           return _ms.map(m => {
             const _col = _stColors[m.status]||'#94a3b8';
-            const _lbl = _stLabels[m.status]||m.status||'À faire';
+            const _lbl = _stLabels[m.status]||'À faire';
             const _due = (m.dueDate||m.due_date)?new Date(m.dueDate||m.due_date).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'}):'—';
             const _who = m.assignedTo||m.assigned_to||(metrics[0]?.name||'—');
             return `<div class="fp-opp-card">
@@ -38246,7 +38417,7 @@ function renderPermissions() {
       ${isUltra ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showCreateRoleModal()">+ Créer un rôle</button>` : ''}
     </div>
 
-    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Permissions avancées — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rôles personnalisés, matrice de permissions et audit de sécurité.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>` : ''}
+    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Permissions avancées — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rôles personnalisés, matrice de permissions et audit de sécurité.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>` : ''}
 
     ${aiBlock(
       `${stats.totalRoles||0} rôles configurés dont ${stats.customRoles||0} personnalisés. ${stats.securityAlerts>0?`<strong>${stats.securityAlerts} alerte${stats.securityAlerts>1?'s':''} sécurité</strong> dans les 24h.`:' Aucune alerte sécurité. Accès nominal.'}`,
@@ -39059,7 +39230,7 @@ function renderSettingsSSO() {
       ${isUltra ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showSSOProviderModal()">+ Configurer SSO</button>` : ''}
     </div>
 
-    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">SSO SAML — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Authentification Google Workspace (Pro) et SAML/Okta/Azure (Ultra).</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Pro</button></div>` : ''}
+    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">SSO SAML — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Authentification Google Workspace (Pro) et SAML/Okta/Azure (Ultra).</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>` : ''}
 
     ${aiBlock(
       `${stats.activeProviders || 0} provider${(stats.activeProviders || 0) > 1 ? 's' : ''} SSO actif${(stats.activeProviders || 0) > 1 ? 's' : ''}. ${stats.failedLogins || 0} tentative${(stats.failedLogins || 0) > 1 ? 's' : ''} échouée${(stats.failedLogins || 0) > 1 ? 's' : ''} détectée${(stats.failedLogins || 0) > 1 ? 's' : ''} (dernière heure). ${stats.suspiciousLogins > 0 ? '<strong>⚠️ ' + stats.suspiciousLogins + ' connexion(s) suspecte(s)</strong>' : 'Aucune activité suspecte.'}`,

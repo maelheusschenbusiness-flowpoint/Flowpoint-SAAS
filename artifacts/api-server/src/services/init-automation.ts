@@ -92,6 +92,12 @@ export async function initAutomationTables(): Promise<void> {
     await client.query(`ALTER TABLE workflow_runs ADD COLUMN IF NOT EXISTS output          JSONB`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_workflow_runs_org ON workflow_runs(org_id)`);
 
+    // Ensure all columns exist on automation_workflows (legacy tables predate these)
+    await client.query(`ALTER TABLE automation_workflows ADD COLUMN IF NOT EXISTS runs_count  INTEGER NOT NULL DEFAULT 0`);
+    await client.query(`ALTER TABLE automation_workflows ADD COLUMN IF NOT EXISTS last_run_at TIMESTAMP`);
+    await client.query(`ALTER TABLE automation_workflows ADD COLUMN IF NOT EXISTS category    TEXT DEFAULT 'general'`);
+    await client.query(`ALTER TABLE automation_workflows ADD COLUMN IF NOT EXISTS updated_at  TIMESTAMP DEFAULT NOW()`);
+
     // ── automation_integrations — columns added at runtime ────────────────────
     const aiCols: Array<[string, string]> = [
       ["type",          "TEXT NOT NULL DEFAULT 'outgoing'"],

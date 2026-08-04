@@ -30,7 +30,7 @@ export async function ensureDefaultWorkflows(orgId = "default"): Promise<void> {
   }
 }
 
-export async function executeWorkflow(workflowId: string, orgId?: string): Promise<{ success: boolean; runId: string }> {
+export async function executeWorkflow(workflowId: string, orgId?: string): Promise<{ success: boolean; runId: string; error?: string }> {
   const runId = `wr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   try {
     const [wf] = await db.select().from(automationWorkflowsTable).where(eq(automationWorkflowsTable.id, workflowId)).limit(1);
@@ -49,17 +49,33 @@ export async function executeWorkflow(workflowId: string, orgId?: string): Promi
     let stepsCompleted = 0;
     const actions = (wf.actions as Array<{ type: string; params?: Record<string, unknown> }>) ?? [];
 
+    let stepsFailed = 0;
+    const actionErrors: string[] = [];
     for (const action of actions) {
-      await executeAction(action.type, action.params ?? {}, wf.orgId);
-      stepsCompleted++;
+      try {
+        await executeAction(action.type, action.params ?? {}, wf.orgId);
+        stepsCompleted++;
+      } catch (actionErr) {
+        stepsFailed++;
+        const msg = actionErr instanceof Error ? actionErr.message : String(actionErr);
+        actionErrors.push(`${action?.type ?? "action"}: ${msg}`);
+        logger.warn({ err: actionErr, workflowId, actionType: action?.type }, "[Automation] Action failed — continuing with next action");
+      }
     }
+
+    // Failure semantics: a run with any failed action is NOT a success.
+    // All actions are still attempted, but the run is recorded as failed with
+    // the real per-action error messages so operational failures stay visible.
+    const runFailed = stepsFailed > 0;
+    const runStatus = runFailed ? "failed" : "success";
+    const runError  = runFailed ? actionErrors.join(" | ").slice(0, 2000) : null;
 
     const durationMs = Date.now() - start;
     const client = await (await import("@workspace/db")).pool.connect();
     try {
       await client.query(
-        `UPDATE workflow_runs SET status = 'success', ended_at = NOW(), duration_ms = $1, steps_completed = $2 WHERE id = $3`,
-        [durationMs, stepsCompleted, runId]
+        `UPDATE workflow_runs SET status = $1, ended_at = NOW(), duration_ms = $2, steps_completed = $3, steps_failed = $4, error = $5 WHERE id = $6`,
+        [runStatus, durationMs, stepsCompleted, stepsFailed, runError, runId]
       );
       await client.query(
         `UPDATE automation_workflows SET runs_count = runs_count + 1, last_run_at = NOW() WHERE id = $1`,
@@ -71,17 +87,27 @@ export async function executeWorkflow(workflowId: string, orgId?: string): Promi
 
     store.logActivity({
       type: "team",
-      label: `Workflow exécuté : ${wf.name}`,
+      label: runFailed
+        ? `Workflow en échec partiel : ${wf.name} (${stepsFailed}/${actions.length} action(s) en erreur)`
+        : `Workflow exécuté : ${wf.name}`,
       targetId: workflowId,
       targetType: "workflow",
-      metadata: { durationMs, stepsCompleted },
+      metadata: { durationMs, stepsCompleted, stepsFailed },
       orgId,
-    }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
+    }).catch(err => logger.warn({ err: err?.message }, "logActivity failed"));
 
-    store.broadcast({ type: "workflow:completed", workflowId, runId, durationMs }, orgId);
-    return { success: true, runId };
+    store.broadcast(
+      runFailed
+        ? { type: "workflow:failed", workflowId, runId, durationMs, error: runError }
+        : { type: "workflow:completed", workflowId, runId, durationMs },
+      orgId
+    );
+    return runFailed
+      ? { success: false, runId, error: runError ?? "Une ou plusieurs actions ont échoué" }
+      : { success: true, runId };
   } catch (err) {
     logger.error({ err, workflowId }, "[Automation] Workflow execution failed");
+    const errMsg = err instanceof Error ? err.message : String(err);
     const client = await (await import("@workspace/db")).pool.connect();
     try {
       await client.query(
@@ -91,7 +117,7 @@ export async function executeWorkflow(workflowId: string, orgId?: string): Promi
     } finally {
       client.release();
     }
-    return { success: false, runId };
+    return { success: false, runId, error: errMsg };
   }
 }
 
@@ -158,8 +184,8 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
         const mobile = await analyzePSI(targetUrl, "mobile", orgId);
         const desktop = await analyzePSI(targetUrl, "desktop", orgId);
         logger.info({ url: targetUrl, mobileScore: mobile.scores.performance, desktopScore: desktop.scores.performance }, "[Automation] run_audit complete");
-        store.logActivity({ type: "audit", label: `Audit automatique: ${targetUrl}`, targetId: targetUrl, targetType: "audit", metadata: { mobile: mobile.scores, desktop: desktop.scores }, orgId: orgId ?? "default" }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
-      } catch(err) { logger.error({ err }, "[Automation] run_audit failed"); }
+        store.logActivity({ type: "audit", label: `Audit automatique: ${targetUrl}`, targetId: targetUrl, targetType: "audit", metadata: { mobile: mobile.scores, desktop: desktop.scores }, orgId: orgId ?? "default" }).catch(err => logger.warn({ err: err?.message }, "logActivity failed"));
+      } catch(err) { logger.error({ err }, "[Automation] run_audit failed"); throw err; }
       break;
     }
     case "generate_recommendations": {
@@ -181,8 +207,8 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
           maxTokens: aiCfg.maxTokens,
         });
         logger.info({ url: auditData.url, provider: aiCfg.provider, model: aiCfg.model }, "[Automation] generate_recommendations complete");
-        store.logActivity({ type: "team", label: `Recommandations générées: ${auditData.url}`, targetId: auditData.url, targetType: "recommendations", orgId: o }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
-      } catch(err) { logger.error({ err }, "[Automation] generate_recommendations failed"); }
+        store.logActivity({ type: "team", label: `Recommandations générées: ${auditData.url}`, targetId: auditData.url, targetType: "recommendations", orgId: o }).catch(err => logger.warn({ err: err?.message }, "logActivity failed"));
+      } catch(err) { logger.error({ err }, "[Automation] generate_recommendations failed"); throw err; }
       break;
     }
     case "generate_report": {
@@ -218,7 +244,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
             reportUrl: "https://app.flowpoint.pro/reports",
           });
         }
-      } catch(err) { logger.error({ err }, "[Automation] generate_report failed"); }
+      } catch(err) { logger.error({ err }, "[Automation] generate_report failed"); throw err; }
       break;
     }
     case "analyze_competitors": {
@@ -244,7 +270,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
           maxTokens: aiCfg.maxTokens,
         });
         logger.info({ url: auditData.url, provider: aiCfg.provider, model: aiCfg.model }, "[Automation] analyze_competitors complete");
-      } catch(err) { logger.error({ err }, "[Automation] analyze_competitors failed"); }
+      } catch(err) { logger.error({ err }, "[Automation] analyze_competitors failed"); throw err; }
       break;
     }
     case "generate_market_insight": {
@@ -257,7 +283,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
     }
     case "create_incident": {
       logger.info("[Automation] create_incident — incident logged");
-       store.logActivity({ type: "team", label: "Incident automatique créé", targetType: "incident", orgId: orgId ?? "default" }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
+       store.logActivity({ type: "team", label: "Incident automatique créé", targetType: "incident", orgId: orgId ?? "default" }).catch(err => logger.warn({ err: err?.message }, "logActivity failed"));
       break;
     }
     case "create_dashboard": {
@@ -276,7 +302,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
           }
         } finally { client.release(); }
         logger.info({ counts, orgId: o }, "[Automation] export_all_data complete");
-      } catch(err) { logger.error({ err }, "[Automation] export_all_data failed"); }
+      } catch(err) { logger.error({ err }, "[Automation] export_all_data failed"); throw err; }
       break;
     }
     case "store_cloud": {
@@ -284,13 +310,14 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
       break;
     }
     default:
-      logger.info({ type }, "[Automation] Action logged (no handler)");
+      logger.error({ type }, "[Automation] Unknown action type");
+      throw new Error(`Type d'action inconnu : ${type}`);
   }
 }
 
 export async function getWorkflowsData(orgId = "default"): Promise<{
   workflows: Array<typeof automationWorkflowsTable.$inferSelect>;
-  recentRuns: Array<typeof workflowRunsTable.$inferSelect>;
+  recentRuns: Array<Record<string, unknown>>;
   stats: { active: number; totalRuns: number; successRate: number; timeSavedHours: number };
 }> {
   try {

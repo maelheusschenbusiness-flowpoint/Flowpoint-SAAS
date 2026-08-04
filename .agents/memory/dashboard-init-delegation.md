@@ -16,3 +16,5 @@ Evidence: `window.navigate` was confirmed present (set at both global scope line
 - Pattern: `document.addEventListener('click', function(e) { if (e.target.closest('#my-btn')) { ... } });`
 - The existing nav-button binding in `bindGlobalEvents()` (called from init()) is therefore also unreliable in headless Playwright — use hash navigation (`page.goto(DASH + '#route')`) to navigate in tests instead of clicking nav buttons.
 - Playwright certification: always use CJS (`.cjs`) not ESM (`.mjs`) — ESM causes `require is not defined` in the sandbox. Use `page.waitForRequest()` to intercept API calls, `page.locator().click()` for interactions, and URL hash for SPA navigation.
+
+**2026-08-04 :** le bloc i18n complet (catalogues FP_I18N_*, `window._fpTFn`, `fpApplyTranslations`, `applyLanguagePref`) était défini *à l'intérieur* de `init()` — si init() sortait tôt, aucune traduction ne s'appliquait (de/it/pl restaient en français). Déplacé au scope global de l'IIFE (juste avant `async function init()`). Toute définition `window.*` critique doit vivre au scope global, jamais dans init().

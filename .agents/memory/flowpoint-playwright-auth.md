@@ -33,3 +33,5 @@ The testing subagent may need explicit instructions to set the cookie via Playwr
 Do all functional testing via curl/API with `Authorization: Bearer <token>` header — the middleware also accepts Bearer tokens.
 
 **Why:** requireAuth middleware accepts EITHER `fp_token` cookie OR `Authorization: Bearer` header.
+
+**Lesson (2026-08-04):** the dashboard's auth token lives in per-tab sessionStorage, not localStorage; any browser automation must seed the sessionStorage token or requests intermittently 401 and redirect to login.

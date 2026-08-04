@@ -69,6 +69,7 @@ export type PersistOrgFields = {
   ownerEmail?: string | null;
   ownerFirstName?: string | null;
   orgName?: string | null;
+  website?: string | null;
 };
 
 /**
@@ -199,6 +200,7 @@ export async function persistOrgData(orgId: string, fields: PersistOrgFields): P
   if (fields.ownerEmail !== undefined)            { sets.push(`owner_email = $${n++}`);            vals.push(fields.ownerEmail); }
   if (fields.ownerFirstName !== undefined)        { sets.push(`owner_first_name = $${n++}`);       vals.push(fields.ownerFirstName); }
   if (fields.orgName !== undefined)               { sets.push(`name = $${n++}`);                   vals.push(fields.orgName); }
+  if (fields.website !== undefined)               { sets.push(`website = $${n++}`);                vals.push(fields.website || null); }
 
   if (sets.length === 0) return;
   sets.push("updated_at = NOW()");

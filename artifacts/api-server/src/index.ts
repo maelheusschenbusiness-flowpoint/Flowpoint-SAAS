@@ -157,6 +157,13 @@ async function main() {
         logger.warn({ err }, "[startup] phase1-users step failed (non-fatal)");
       });
 
+    // Automation schema self-heal — legacy Render DBs miss last_run_at/runs_count
+    // on automation_workflows, which made every workflow run report failure.
+    await runCriticalStartupStep("init-automation", initAutomationTables)
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] init-automation step failed (non-fatal)");
+      });
+
     // AI Agents Phase 1 — tables agent (idempotent, doit tourner à chaque boot)
     await runCriticalStartupStep("init-agent-tables", initAgentTables)
       .catch((err: unknown) => {
