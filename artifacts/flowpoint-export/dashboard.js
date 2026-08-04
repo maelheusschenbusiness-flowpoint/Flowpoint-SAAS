@@ -40,7 +40,9 @@
 // ─────────────────────────────────────────────────────────────────
 function _initLocale() {
   return ({'pt-br':'pt-BR',fr:'fr-FR',en:'en-US',es:'es-ES',de:'de-DE',it:'it-IT',pt:'pt-PT',nl:'nl-NL',pl:'pl-PL',sv:'sv-SE',ro:'ro-RO',cs:'cs-CZ'})[
-    String((typeof STATE !== 'undefined' && STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase()
+    // NOTE: never reference STATE here — this runs before `const STATE` (TDZ ReferenceError
+    // even under typeof) and crashes the whole IIFE, leaving the skeleton frozen.
+    String(localStorage.getItem('fp:language') || 'fr').toLowerCase()
   ] || 'fr-FR';
 }
 const CUR_MONTH = new Date().toLocaleDateString(_initLocale(),{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+new Date().getFullYear();

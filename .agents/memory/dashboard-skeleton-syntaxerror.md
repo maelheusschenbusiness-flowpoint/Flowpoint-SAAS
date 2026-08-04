@@ -41,3 +41,6 @@ t.includes("plan d'action")   // use double quotes for French strings
 - `node --check` after every edit — catches both issues instantly
 - French strings with apostrophes (`d'`, `l'`, `n'`) must use double quotes or `\'` escaping
 - Spread expressions `...((IIFE() || FALLBACK))` need paren count verification: open parens must match close parens
+
+## TDZ variant (2026-08-04)
+`typeof STATE` still throws a ReferenceError when `const STATE` is later in the SAME IIFE scope (temporal dead zone) — the `typeof x !== 'undefined'` guard only protects against *undeclared* globals, not TDZ. Any top-level code that runs before line ~89 (`const STATE = {`) must never mention STATE at all (not even under typeof); read localStorage instead. Symptom: whole IIFE dies, skeleton frozen on every page with `Cannot access 'STATE' before initialization`.
