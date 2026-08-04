@@ -66,6 +66,80 @@ async function loadOrgEmail(orgId: string): Promise<{ email: string | null; firs
   }
 }
 
+async function sendWelcomeOnce(orgId: string, email: string, name: string): Promise<void> {
+  const { pool: pgPool } = await import("@workspace/db");
+  const client = await pgPool.connect();
+  try {
+    // Claim only after activation. A failed provider call releases the claim,
+    // so a later Stripe delivery or lifecycle retry can safely try again.
+    const claim = await client.query(
+      `UPDATE organizations SET welcome_email_claimed_at = NOW()
+       WHERE id = $1 AND welcome_email_eligible_at IS NOT NULL
+         AND welcome_email_sent_at IS NULL
+         AND (welcome_email_claimed_at IS NULL OR welcome_email_claimed_at < NOW() - INTERVAL '15 minutes')
+       RETURNING id`,
+      [orgId],
+    );
+    if (!claim.rowCount) return;
+    const result = await mailer.sendWelcome({ to: email, name });
+    if (result.ok) {
+      await client.query(
+        `UPDATE organizations
+         SET welcome_email_sent_at = NOW(), welcome_email_claimed_at = NULL
+         WHERE id = $1`,
+        [orgId],
+      );
+      logger.info({ orgId, email, emailId: result.id }, "[Webhook] Welcome email delivered");
+      return;
+    }
+    await client.query(`UPDATE organizations SET welcome_email_claimed_at = NULL WHERE id = $1`, [orgId]);
+    logger.error({ orgId, email, error: result.error }, "[Webhook] Welcome email failed; claim released for retry");
+  } catch (err) {
+    await client.query(`UPDATE organizations SET welcome_email_claimed_at = NULL WHERE id = $1`, [orgId]).catch(() => {});
+    logger.error({ err, orgId, email }, "[Webhook] Welcome email lifecycle delivery failed");
+  } finally {
+    client.release();
+  }
+}
+
+async function sendTrialStartedOnce(opts: {
+  orgId: string; email: string; name: string; plan: string; trialEndsAt: string;
+}): Promise<void> {
+  const { pool: pgPool } = await import("@workspace/db");
+  const client = await pgPool.connect();
+  try {
+    const claim = await client.query(
+      `UPDATE organizations SET trial_started_email_claimed_at = NOW()
+       WHERE id = $1 AND trial_started_email_eligible_at IS NOT NULL
+         AND trial_started_email_sent_at IS NULL
+         AND (trial_started_email_claimed_at IS NULL OR trial_started_email_claimed_at < NOW() - INTERVAL '15 minutes')
+       RETURNING id`,
+      [opts.orgId],
+    );
+    if (!claim.rowCount) return;
+    const result = await mailer.sendTrialStarted({
+      to: opts.email, name: opts.name, plan: opts.plan, trialEndsAt: opts.trialEndsAt,
+    });
+    if (result.ok) {
+      await client.query(
+        `UPDATE organizations
+         SET trial_started_email_sent_at = NOW(), trial_started_email_claimed_at = NULL
+         WHERE id = $1`,
+        [opts.orgId],
+      );
+      logger.info({ orgId: opts.orgId, email: opts.email, emailId: result.id }, "[Webhook] Trial-started email delivered");
+      return;
+    }
+    await client.query(`UPDATE organizations SET trial_started_email_claimed_at = NULL WHERE id = $1`, [opts.orgId]);
+    logger.error({ orgId: opts.orgId, email: opts.email, error: result.error }, "[Webhook] Trial-started email failed; claim released for retry");
+  } catch (err) {
+    await client.query(`UPDATE organizations SET trial_started_email_claimed_at = NULL WHERE id = $1`, [opts.orgId]).catch(() => {});
+    logger.error({ err, orgId: opts.orgId, email: opts.email }, "[Webhook] Trial-started lifecycle delivery failed");
+  } finally {
+    client.release();
+  }
+}
+
 const router = Router();
 
 function parsePlanFromSubscription(subscription: Record<string, unknown>): string | null {
@@ -448,6 +522,22 @@ export async function activateNewSignup(opts: {
     }
   } else {
     logger.warn({ email }, "[Webhook/activate] Mailer not available — magic link NOT sent");
+  }
+
+  // Welcome is emitted only after the transaction above committed and the
+  // account is active. This is deliberately awaited/logged rather than
+  // fire-and-forget: failed activation onboarding must be observable, and a
+  // plain pre-registration must never receive it.
+  if (_mailer && newOrgId) {
+    const { pool: pgPool } = await import("@workspace/db");
+    await pgPool.query(
+      `UPDATE organizations
+       SET welcome_email_eligible_at = COALESCE(welcome_email_eligible_at, NOW())
+       WHERE id = $1`,
+      [newOrgId],
+    );
+    const recipientName = firstName || email.split("@")[0] || "Utilisateur";
+    await sendWelcomeOnce(newOrgId, email, recipientName);
   }
 }
 
@@ -845,6 +935,34 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       }
 
       await persistSubscriptionMeta(updatePayload);
+
+      // The Stripe subscription event is the single authoritative point for
+      // the trial-start notice. The webhook event guard above makes this
+      // idempotent across Stripe retries.
+      if (status === "trialing" && event.type === "customer.subscription.created") {
+        const { pool: pgPool } = await import("@workspace/db");
+        await pgPool.query(
+          `UPDATE organizations
+           SET trial_started_email_eligible_at = COALESCE(trial_started_email_eligible_at, NOW())
+           WHERE id = $1`,
+          [orgId],
+        );
+        const recipient = await loadOrgEmail(orgId);
+        if (recipient.email && updatePayload.trialStartedAt) {
+          const trialEnd = updatePayload.trialEndsAt;
+          if (trialEnd) {
+            await sendTrialStartedOnce({
+              orgId,
+              email: recipient.email,
+              name: recipient.firstName || recipient.email.split("@")[0] || "Utilisateur",
+              plan: newPlan || recipient.plan,
+              trialEndsAt: trialEnd,
+            });
+          } else {
+            logger.warn({ orgId, subscriptionId }, "[Webhook] Trial-started email skipped — Stripe did not supply trial_end");
+          }
+        }
+      }
 
       if (newPlan) {
         logger.info({ newPlan, status, orgId }, "[Webhook] Subscription updated — broadcasting plan change");

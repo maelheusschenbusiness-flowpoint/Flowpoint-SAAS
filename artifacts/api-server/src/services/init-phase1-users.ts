@@ -199,6 +199,26 @@ export async function initPhase1Users(): Promise<void> {
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS pending_plan_date         TEXT;`);
     // Jalon 5: trial-cron notification tracking moved from org_settings to organizations
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_ending_notified_at  TIMESTAMPTZ;`);
+    // Lifecycle email claims persist independently from Stripe webhook event
+    // idempotency so a temporary mail-provider failure can be retried safely.
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS welcome_email_sent_at TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_started_email_sent_at TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS welcome_email_eligible_at TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_started_email_eligible_at TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS welcome_email_claimed_at TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_started_email_claimed_at TIMESTAMPTZ;`);
+    // Existing organizations predate lifecycle tracking. Mark them delivered so
+    // deployment never sends an unexpected onboarding email to old accounts.
+    await run(client, `
+      UPDATE organizations
+      SET welcome_email_sent_at = COALESCE(welcome_email_sent_at, NOW()),
+          trial_started_email_sent_at = CASE
+            WHEN subscription_status = 'trialing' THEN COALESCE(trial_started_email_sent_at, NOW())
+            ELSE trial_started_email_sent_at
+          END
+      WHERE welcome_email_eligible_at IS NULL
+        AND trial_started_email_eligible_at IS NULL
+    `);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_sub_status_idx  ON organizations(subscription_status);`);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_stripe_cust_idx ON organizations(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;`);
 

@@ -37,6 +37,16 @@ function getFrom(): string {
   );
 }
 
+const APP_URL = (process.env["PUBLIC_URL"] || process.env["PUBLIC_BASE_URL"] || "https://app.flowpoint.pro").replace(/\/$/, "");
+const APP_LINKS = {
+  dashboard: `${APP_URL}/dashboard.html`,
+  billing: `${APP_URL}/dashboard.html#billing`,
+  monitors: `${APP_URL}/dashboard.html#monitors`,
+  reports: `${APP_URL}/dashboard.html#reports`,
+  alerts: `${APP_URL}/dashboard.html#settings`,
+  pricing: `${APP_URL}/pricing.html`,
+} as const;
+
 // ── SMTP transport (nodemailer) — used when RESEND_API_KEY is absent ──────────
 
 function getSmtpTransport(): nodemailer.Transporter | null {
@@ -145,7 +155,7 @@ function layout(opts: {
               <p style="margin:0 0 6px;font-size:13px;color:rgba(255,255,255,0.9);">
                 <a href="https://flowpoint.pro" style="color:#ffffff;text-decoration:none;font-weight:700;">flowpoint.pro</a>
                 &nbsp;·&nbsp;
-                <a href="https://app.flowpoint.pro" style="color:rgba(255,255,255,0.85);text-decoration:none;">Dashboard</a>
+                <a href="${APP_LINKS.dashboard}" style="color:rgba(255,255,255,0.85);text-decoration:none;">Dashboard</a>
                 &nbsp;·&nbsp;
                 <a href="mailto:support@flowpoint.pro" style="color:rgba(255,255,255,0.85);text-decoration:none;">Support</a>
               </p>
@@ -165,7 +175,8 @@ function layout(opts: {
  *
  * ALL conditions must hold simultaneously:
  *   1. TEST_MAIL_DIR is set        — explicit opt-in directory
- *   2. ENABLE_TEST_MAILER === "true" — second explicit opt-in (TEST_MAIL_DIR alone is NOT enough)
+ *   2. ENABLE_TEST_MAILER === "true" — second explicit opt-in
+ *   3. NODE_ENV is not production  — capture can never activate in production
  *   3. RENDER is not set           — never on Render.com deployments
  *   4. FLY_APP_NAME is not set     — never on Fly.io deployments
  *   5. REPLIT_DEPLOYMENT !== "1"   — never on Replit published/deployed instances
@@ -176,6 +187,7 @@ function layout(opts: {
 function isTestMailerEnabled(): boolean {
   if (!process.env["TEST_MAIL_DIR"])                       return false;
   if (process.env["ENABLE_TEST_MAILER"] !== "true")        return false;
+  if (process.env["NODE_ENV"] === "production")            return false;
   if (process.env["RENDER"])                               return false;
   if (process.env["FLY_APP_NAME"])                         return false;
   if (process.env["REPLIT_DEPLOYMENT"] === "1")            return false;
@@ -293,7 +305,7 @@ async function sendWelcome(opts: { to: string; name: string }): Promise<MailResu
                <li style="margin-bottom:8px;">Connecter <strong>Google Analytics & Search Console</strong></li>
              </ul>
              <p style="margin:0;">Commence dès maintenant — ton équipe FlowPoint est là si tu as besoin.</p>`,
-      cta: { label: "Accéder au dashboard →", url: "https://app.flowpoint.pro" },
+       cta: { label: "Accéder au dashboard →", url: APP_LINKS.dashboard },
       note: "💡 Tu peux répondre à cet e-mail pour contacter notre équipe.",
     }),
   });
@@ -326,7 +338,7 @@ async function sendTrialStarted(opts: {
                <li style="margin-bottom:6px;">Rapports white-label</li>
              </ul>
              <p style="margin:0;">Tu seras notifié 3 jours avant la fin de l'essai.</p>`,
-      cta: { label: "Explorer FlowPoint →", url: "https://app.flowpoint.pro" },
+       cta: { label: "Explorer FlowPoint →", url: APP_LINKS.dashboard },
       note: "Aucune carte bancaire requise pendant l'essai. Tu peux upgrader à tout moment.",
     }),
   });
@@ -352,7 +364,7 @@ async function sendTrialEnding(opts: {
       body: `<p style="margin:0 0 16px;">Ton essai <strong>FlowPoint ${planLabel}</strong> se termine bientôt.</p>
              <p style="margin:0 0 16px;">Pour continuer à bénéficier de toutes tes fonctionnalités sans interruption, active ton abonnement maintenant.</p>
              <p style="margin:0;">À la fin de l'essai, ton compte passera automatiquement en plan gratuit limité.</p>`,
-      cta: { label: "Activer mon abonnement →", url: "https://app.flowpoint.pro/dashboard.html#billing" },
+       cta: { label: "Activer mon abonnement →", url: APP_LINKS.billing },
       note: "Questions ? Réponds à cet e-mail, on te répond en quelques heures.",
     }),
   });
@@ -394,7 +406,7 @@ async function sendPaymentSucceeded(opts: {
       accentColor: "#16a34a",
       title,
       body,
-      cta: { label: "Accéder au portail facturation →", url: "https://app.flowpoint.pro/dashboard.html#billing" },
+       cta: { label: "Accéder au portail facturation →", url: APP_LINKS.billing },
     }),
   });
 }
@@ -443,7 +455,7 @@ async function sendPlanChanged(opts: {
       accentColor,
       title,
       body,
-      cta: { label: "Accéder à mon dashboard →", url: "https://app.flowpoint.pro" },
+       cta: { label: "Accéder à mon dashboard →", url: APP_LINKS.dashboard },
     }),
   });
 }
@@ -458,9 +470,12 @@ async function sendPaymentFailed(opts: {
   retryDate?: string;
 }): Promise<MailResult> {
   const planLabel = { standard: "Standard", pro: "Pro", ultra: "Ultra" }[opts.plan.toLowerCase()] ?? opts.plan;
-  const retry = opts.retryDate
+   const retry = opts.retryDate
     ? new Date(opts.retryDate).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })
-    : "dans quelques jours";
+    : null;
+   const retrySentence = retry
+     ? `Une nouvelle tentative sera effectuée <strong>${retry}</strong>.`
+     : "Stripe n’a pas communiqué de date de nouvelle tentative. Mets à jour ton moyen de paiement dès maintenant.";
   return send({
     to: opts.to,
     subject: "⚠️ Échec de paiement — action requise",
@@ -470,9 +485,9 @@ async function sendPaymentFailed(opts: {
       accentColor: "#dc2626",
       title: "Ton paiement n'a pas abouti",
       body: `<p style="margin:0 0 16px;">Le prélèvement pour ton abonnement <strong>FlowPoint ${planLabel}</strong> a échoué${opts.attemptCount && opts.attemptCount > 1 ? ` (tentative ${opts.attemptCount})` : ""}.</p>
-             <p style="margin:0 0 16px;">Pour éviter la suspension de ton compte, mets à jour ton moyen de paiement. Une nouvelle tentative sera effectuée <strong>${retry}</strong>.</p>
+             <p style="margin:0 0 16px;">Pour éviter la suspension de ton compte, mets à jour ton moyen de paiement. ${retrySentence}</p>
              <p style="margin:0;">Si tu ne mets pas à jour ta carte, ton abonnement sera suspendu après 3 échecs.</p>`,
-      cta: { label: "Mettre à jour mon paiement →", url: "https://app.flowpoint.pro/dashboard.html#billing" },
+       cta: { label: "Mettre à jour mon paiement →", url: APP_LINKS.billing },
       note: "🔒 Tes données sont conservées pendant 30 jours après suspension.",
     }),
   });
@@ -501,7 +516,7 @@ async function sendMonitorDown(opts: {
       body: `<p style="margin:0 0 16px;">Ton site <strong>${opts.url}</strong> ne répond plus depuis <strong>${since}</strong>${opts.statusCode ? ` (HTTP ${opts.statusCode})` : ""}.</p>
              <p style="margin:0 0 16px;">FlowPoint continue de surveiller et t'enverra une alerte dès le rétablissement.</p>
              <p style="margin:0;">Vérifie ton hébergeur, ton serveur, et tes logs de déploiement.</p>`,
-      cta: { label: "Voir le monitor →", url: "https://app.flowpoint.pro/dashboard.html#monitors" },
+       cta: { label: "Voir le monitor →", url: APP_LINKS.monitors },
       note: "Pour désactiver ces alertes, modifie les règles d'alerte dans ton dashboard.",
     }),
   });
@@ -530,7 +545,7 @@ async function sendMonitorUp(opts: {
       title: `${opts.monitorName} est de nouveau UP`,
       body: `<p style="margin:0 0 16px;"><strong>${opts.url}</strong> répond à nouveau correctement${duration ? ` après <strong>${duration} d'interruption</strong>` : ""}.</p>
              <p style="margin:0;">L'incident est clos. Consulte l'historique de disponibilité depuis ton dashboard.</p>`,
-      cta: { label: "Voir l'historique →", url: "https://app.flowpoint.pro/dashboard.html#monitors" },
+       cta: { label: "Voir l'historique →", url: APP_LINKS.monitors },
     }),
   });
 }
@@ -552,7 +567,7 @@ async function sendReportGenerated(opts: {
       title: `Ton rapport est prêt`,
       body: `<p style="margin:0 0 16px;">Le rapport <strong>${opts.reportName}</strong> a été généré avec succès.</p>
              <p style="margin:0;">Tu peux le télécharger, le partager avec un lien client, ou l'exporter en PDF depuis ton dashboard.</p>`,
-      cta: { label: "Accéder au rapport →", url: opts.reportUrl || "https://app.flowpoint.pro/dashboard.html#reports" },
+       cta: { label: "Accéder au rapport →", url: opts.reportUrl || APP_LINKS.reports },
     }),
   });
 }
@@ -582,7 +597,7 @@ async function sendTeamInvitation(opts: {
       body: `<p style="margin:0 0 16px;"><strong>${opts.inviterName}</strong> t'invite à rejoindre l'espace <strong>${org}</strong> en tant que <strong>${role}</strong>.</p>
              <p style="margin:0 0 16px;">FlowPoint est une plateforme SEO, monitoring et IA pour les équipes digitales.</p>
              <p style="margin:0;">Clique ci-dessous pour accepter l'invitation et accéder au dashboard.</p>`,
-      cta: { label: "Rejoindre l'équipe →", url: opts.inviteUrl || "https://app.flowpoint.pro" },
+       cta: { label: "Rejoindre l'équipe →", url: opts.inviteUrl || APP_LINKS.dashboard },
       note: "Si tu n'attendais pas cette invitation, ignore cet e-mail.",
     }),
   });
@@ -615,7 +630,7 @@ async function sendInvitationAccepted(opts: {
       title: `Nouvelle recrue dans l'équipe`,
       body: `<p style="margin:0 0 16px;"><strong>${memberName}</strong> a accepté ton invitation et a rejoint l'espace <strong>${org}</strong> en tant que <strong>${role}</strong>.</p>
              <p style="margin:0;">Tu peux maintenant collaborer ensemble directement depuis ton dashboard FlowPoint.</p>`,
-      cta: { label: "Voir l'équipe →", url: opts.dashboardUrl || "https://app.flowpoint.pro/dashboard.html#team" },
+       cta: { label: "Voir l'équipe →", url: opts.dashboardUrl || `${APP_URL}/dashboard.html#team` },
       note: "Cet e-mail t'a été envoyé car tu avais invité ce membre dans ton espace FlowPoint.",
     }),
   });
@@ -655,7 +670,7 @@ async function sendNewMissions(opts: {
       body: `<p style="margin:0 0 16px;">FlowPoint a analysé ${opts.siteUrl ? `<strong>${opts.siteUrl}</strong>` : "tes sites"} et généré ${opts.missions.length} mission${opts.missions.length > 1 ? "s" : ""} SEO prioritaire${opts.missions.length > 1 ? "s" : ""} :</p>
              <div style="background:#f8f9ff;border:1px solid #dde1f0;border-radius:8px;padding:0 12px;margin-bottom:16px;">${missionRows}</div>
              <p style="margin:0;">Traite les missions prioritaires en premier pour maximiser ton impact SEO.</p>`,
-      cta: { label: "Voir mes missions →", url: "https://app.flowpoint.pro/dashboard.html#missions" },
+       cta: { label: "Voir mes missions →", url: `${APP_URL}/dashboard.html#missions` },
     }),
   });
 }
@@ -683,7 +698,7 @@ async function sendSeoAlert(opts: {
       body: `<p style="margin:0 0 16px;">Le score SEO de <strong>${opts.url}</strong> ${op} le seuil de <strong>${opts.threshold}/100</strong>.</p>
              <p style="margin:0 0 16px;">Score actuel : <strong style="font-size:18px;">${opts.score}/100</strong></p>
              <p style="margin:0;">Lance un audit complet pour identifier les problèmes et générer des missions correctives.</p>`,
-      cta: { label: "Voir l'audit →", url: "https://app.flowpoint.pro/dashboard.html#audits" },
+       cta: { label: "Voir l'audit →", url: `${APP_URL}/dashboard.html#audits` },
     }),
   });
 }
@@ -712,7 +727,7 @@ async function sendSubscriptionCanceled(opts: {
       accentColor: "#64748b",
       title: `Confirmation d'annulation`,
       body,
-      cta: { label: "Voir mes options →", url: "https://app.flowpoint.pro/dashboard.html#billing" },
+       cta: { label: "Voir mes options →", url: APP_LINKS.billing },
       note: "Si tu as annulé par erreur, connecte-toi et clique sur \"Réactiver\" pour rétablir ton abonnement.",
     }),
   });
@@ -736,7 +751,7 @@ async function sendSubscriptionReactivated(opts: {
       title: `Ton abonnement est de nouveau actif`,
       body: `<p style="margin:0 0 16px;">Bonne nouvelle ! Ton abonnement <strong>FlowPoint ${planLabel}</strong> a été réactivé avec succès. Le renouvellement automatique est rétabli.</p>
              <p style="margin:0;">Tu conserves toutes tes données, configurations et add-ons. Rien n'a changé.</p>`,
-      cta: { label: "Retour au dashboard →", url: "https://app.flowpoint.pro" },
+       cta: { label: "Retour au dashboard →", url: APP_LINKS.dashboard },
     }),
   });
 }
@@ -764,7 +779,7 @@ async function sendTrialCanceled(opts: {
       accentColor: "#f59e0b",
       title: `Ton essai a été arrêté`,
       body,
-      cta: { label: "Voir les plans →", url: "https://app.flowpoint.pro/pricing.html" },
+       cta: { label: "Voir les plans →", url: APP_LINKS.pricing },
     }),
   });
 }
@@ -885,7 +900,7 @@ async function sendAlertRule(opts: {
         <p style="margin:0 0 8px;font-size:14px;color:#4a5280;"><strong>Type&nbsp;:</strong> ${typeLabel}</p>
         <p style="margin:0 0 8px;font-size:14px;color:#4a5280;"><strong>Site&nbsp;:</strong> ${opts.siteUrl || "Tous les sites"}</p>
       `,
-      cta:  { label: "Voir les alertes →", url: "https://app.flowpoint.pro/dashboard.html#settings" },
+      cta:  { label: "Voir les alertes →", url: APP_LINKS.alerts },
       note: "Gérez vos règles d'alerte depuis Paramètres → Notifications. Pour stopper ces emails, désactivez la règle correspondante.",
     }),
   });

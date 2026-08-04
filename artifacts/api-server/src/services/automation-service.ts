@@ -110,8 +110,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
   };
 
   switch (type) {
-    case "send_email":
-    case "send_welcome_email": {
+    case "send_email": {
       const recipient = await getRecipient();
       if (recipient) {
         const { mailer } = await import("./mailer.js");
@@ -123,15 +122,15 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
             reportName: "Rapport hebdomadaire",
             reportUrl: "https://app.flowpoint.pro/reports",
           });
-        } else {
-          await mailer.sendWelcome({
-            to: recipient.email,
-            name: recipient.name,
-          });
-        }
+        } else logger.warn({ workflowId: undefined, template }, "[Automation] Generic email action has no approved transactional template — skipped");
       }
       break;
     }
+    case "send_welcome_email":
+      // Welcome is lifecycle-only: it is emitted by successful account
+      // activation, never by a replayable automation workflow.
+      logger.warn("[Automation] send_welcome_email skipped — welcome emails are activation-only");
+      break;
     case "send_alert": {
       const recipient = await getRecipient();
       if (recipient) {

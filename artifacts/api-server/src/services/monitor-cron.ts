@@ -93,20 +93,22 @@ export async function evaluateAlertRulesForAudit(url: string, score: number, org
 
 // ── Trial-ending reminder (J-3) ───────────────────────────────────────────────
 //
-// Runs once at startup, then every 24 h.
+// Runs once at startup, then every 6 h.
 // Selects orgs where:
 //   • subscription_status = 'trialing'         → still on trial
-//   • trial_ends_at BETWEEN now+2d AND now+4d  → J-3 window (±1 day tolerance)
+//   • the UTC calendar end date is exactly three calendar days away
 //   • trial_ending_notified_at IS NULL          → not yet sent
 //   • email IS NOT NULL                         → can receive email
-// On success → marks trial_ending_notified_at = NOW() to prevent re-send.
+// An atomic UPDATE claim prevents two app instances from sending the same email.
 
 export async function checkTrialEndingReminders(): Promise<void> {
   logger.info("[trial-cron] Running trial-ending reminder check");
   const client = await pool.connect();
   try {
-    // Candidates: trialing, J-3 window, not yet notified, has email
-    // Jalon 5: read trial candidates from organizations (source of truth for billing state)
+    // Claim exactly J-3 candidates in one statement. The claim happens BEFORE
+    // delivery: a concurrent process cannot duplicate an important reminder.
+    // If delivery fails, the claim is cleared below so the next scheduled run
+    // can retry.
     const { rows } = await client.query<{
       org_id: string;
       email: string;
@@ -114,14 +116,22 @@ export async function checkTrialEndingReminders(): Promise<void> {
       plan: string;
       trial_ends_at: Date;
     }>(`
-      SELECT id AS org_id, owner_email AS email, owner_first_name AS first_name, plan, trial_ends_at
-      FROM organizations
-      WHERE subscription_status = 'trialing'
-        AND trial_ends_at IS NOT NULL
-        AND trial_ends_at BETWEEN (NOW() + INTERVAL '2 days') AND (NOW() + INTERVAL '4 days')
-        AND trial_ending_notified_at IS NULL
-        AND owner_email IS NOT NULL
-        AND owner_email != ''
+      WITH candidates AS (
+        SELECT id
+        FROM organizations
+        WHERE subscription_status = 'trialing'
+          AND trial_ends_at IS NOT NULL
+          AND (trial_ends_at AT TIME ZONE 'UTC')::date = ((NOW() AT TIME ZONE 'UTC')::date + 3)
+          AND trial_ending_notified_at IS NULL
+          AND owner_email IS NOT NULL
+          AND owner_email != ''
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE organizations o
+      SET trial_ending_notified_at = NOW()
+      FROM candidates c
+      WHERE o.id = c.id
+      RETURNING o.id AS org_id, o.owner_email AS email, o.owner_first_name AS first_name, o.plan, o.trial_ends_at
     `);
 
     if (rows.length === 0) {
@@ -132,8 +142,7 @@ export async function checkTrialEndingReminders(): Promise<void> {
     logger.info({ count: rows.length }, "[trial-cron] Trial-ending candidates found");
 
     for (const row of rows) {
-      const msLeft = new Date(row.trial_ends_at).getTime() - Date.now();
-      const daysLeft = Math.max(1, Math.round(msLeft / (1000 * 60 * 60 * 24)));
+       const daysLeft = 3;
 
       try {
         const result = await mailer.sendTrialEnding({
@@ -144,23 +153,25 @@ export async function checkTrialEndingReminders(): Promise<void> {
         });
 
         if (result.ok) {
-          // Mark as notified to avoid duplicate sends
-          // Jalon 5: mark as notified on organizations (source of truth)
-          await client.query(
-            `UPDATE organizations SET trial_ending_notified_at = NOW() WHERE id = $1`,
-            [row.org_id]
-          );
           logger.info(
             { orgId: row.org_id, email: row.email, daysLeft, emailId: result.id },
             "[trial-cron] Trial-ending email sent OK"
           );
         } else {
+          await client.query(
+            `UPDATE organizations SET trial_ending_notified_at = NULL WHERE id = $1`,
+            [row.org_id],
+          );
           logger.warn(
             { orgId: row.org_id, email: row.email, error: result.error },
             "[trial-cron] Trial-ending email FAILED (mailer error)"
           );
         }
       } catch (sendErr) {
+        await client.query(
+          `UPDATE organizations SET trial_ending_notified_at = NULL WHERE id = $1`,
+          [row.org_id],
+        ).catch(() => {});
         logger.error(
           { orgId: row.org_id, email: row.email, err: sendErr },
           "[trial-cron] Trial-ending email FAILED (unexpected error)"
@@ -169,6 +180,76 @@ export async function checkTrialEndingReminders(): Promise<void> {
     }
   } catch (err) {
     logger.warn({ err }, "[trial-cron] checkTrialEndingReminders query error (non-fatal) — skipping");
+  } finally {
+    client.release();
+  }
+}
+
+// Provider failures must not make lifecycle onboarding messages disappear
+// merely because Stripe has already acknowledged a webhook. Each email has a
+// durable claim on organizations; failed sends release that claim for this
+// bounded retry pass.
+export async function retryLifecycleEmails(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query<{
+      id: string; owner_email: string; owner_first_name: string | null; plan: string; trial_ends_at: Date | string | null;
+      welcome_email_sent_at: Date | null; trial_started_email_sent_at: Date | null;
+    }>(`
+      SELECT id, owner_email, owner_first_name, plan, trial_ends_at,
+             welcome_email_sent_at, trial_started_email_sent_at
+      FROM organizations
+      WHERE status = 'active' AND owner_email IS NOT NULL AND owner_email != ''
+        AND ((welcome_email_eligible_at IS NOT NULL AND welcome_email_sent_at IS NULL)
+          OR (subscription_status = 'trialing' AND trial_ends_at IS NOT NULL
+              AND trial_started_email_eligible_at IS NOT NULL AND trial_started_email_sent_at IS NULL))
+      ORDER BY updated_at ASC LIMIT 50
+    `);
+    for (const row of rows) {
+      const name = row.owner_first_name || row.owner_email.split("@")[0] || "Utilisateur";
+      if (!row.welcome_email_sent_at) {
+        const claim = await client.query(
+          `UPDATE organizations SET welcome_email_claimed_at = NOW()
+           WHERE id = $1 AND welcome_email_eligible_at IS NOT NULL
+             AND welcome_email_sent_at IS NULL
+             AND (welcome_email_claimed_at IS NULL OR welcome_email_claimed_at < NOW() - INTERVAL '15 minutes')
+           RETURNING id`,
+          [row.id],
+        );
+        if (claim.rowCount) {
+          const result = await mailer.sendWelcome({ to: row.owner_email, name });
+          await client.query(
+            result.ok
+              ? `UPDATE organizations SET welcome_email_sent_at = NOW(), welcome_email_claimed_at = NULL WHERE id = $1`
+              : `UPDATE organizations SET welcome_email_claimed_at = NULL WHERE id = $1`,
+            [row.id],
+          );
+        }
+      }
+      if (!row.trial_started_email_sent_at && row.trial_ends_at) {
+        const claim = await client.query(
+          `UPDATE organizations SET trial_started_email_claimed_at = NOW()
+           WHERE id = $1 AND trial_started_email_eligible_at IS NOT NULL
+             AND trial_started_email_sent_at IS NULL
+             AND (trial_started_email_claimed_at IS NULL OR trial_started_email_claimed_at < NOW() - INTERVAL '15 minutes')
+           RETURNING id`,
+          [row.id],
+        );
+        if (claim.rowCount) {
+          const result = await mailer.sendTrialStarted({
+            to: row.owner_email, name, plan: row.plan || "standard", trialEndsAt: new Date(row.trial_ends_at).toISOString(),
+          });
+          await client.query(
+            result.ok
+              ? `UPDATE organizations SET trial_started_email_sent_at = NOW(), trial_started_email_claimed_at = NULL WHERE id = $1`
+              : `UPDATE organizations SET trial_started_email_claimed_at = NULL WHERE id = $1`,
+            [row.id],
+          );
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, "[lifecycle-email-cron] Retry pass failed");
   } finally {
     client.release();
   }
@@ -256,7 +337,7 @@ export async function checkCalendarReminders(): Promise<void> {
   }
 }
 
-const TRIAL_CRON_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 h
+const TRIAL_CRON_INTERVAL_MS = 6 * 60 * 60 * 1000; // every 6 h, exact J-3 claim
 const MONITOR_HEALTH_INTERVAL_MS = 60 * 1000; // check every 1 min which monitors are due
 
 async function runMonitorHealthTick(): Promise<void> {
@@ -277,9 +358,11 @@ async function runMonitorHealthTick(): Promise<void> {
 export function startMonitorCron(): void {
   logger.info("[monitor-cron] Monitor cron started");
 
-  // Trial-ending check: run immediately, then every 24 h
+  // Trial-ending check: run immediately, then every 6 h
   void checkTrialEndingReminders();
   setInterval(() => void checkTrialEndingReminders(), TRIAL_CRON_INTERVAL_MS);
+  void retryLifecycleEmails();
+  setInterval(() => void retryLifecycleEmails(), TRIAL_CRON_INTERVAL_MS);
 
   // Monitor health: run immediately, then every minute (each monitor is only
   // actually re-checked once its own `frequency` window has elapsed).
