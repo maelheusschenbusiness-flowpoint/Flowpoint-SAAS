@@ -81,6 +81,8 @@ export interface ExecuteContext {
   conversationId: string;
   provider: string;
   model: string;
+  /** UI language requested by the user. Tool result text remains model-facing French. */
+  language?: string;
   effectivePerms: Set<string>;
   orgPlan: string;
 }

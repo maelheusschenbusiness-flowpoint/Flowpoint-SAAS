@@ -1049,6 +1049,7 @@ async function runToolCallingLoop(opts: {
   sseClose: () => void;
 }): Promise<ToolLoopResult> {
   const { provider, model, ctx } = opts;
+  const language = ctx.language ?? "fr";
   let messages = [...opts.messages] as import("../services/ai-multimodal.js").MultimodalMessage[];
   const undoTokens: Array<{ actionLogId: string; label: string }> = [];
   let toolsCalledTotal = 0;
@@ -1088,10 +1089,10 @@ async function runToolCallingLoop(opts: {
         const finalText = roundResult.text && roundResult.text.trim()
           ? roundResult.text
           : allFailed
-            ? "⚠ L'action demandée n'a pas pu aboutir. Réessayez ou reformulez votre demande."
+            ? toolLoopText(language, "action_failed")
             : someFailed
-              ? "L'action est partiellement terminée : certaines étapes ont échoué. Consultez la section concernée pour vérifier le résultat."
-              : "✅ Action effectuée. Consultez la section concernée pour voir le résultat, ou posez-moi une question de suivi.";
+              ? toolLoopText(language, "action_partial")
+              : toolLoopText(language, "action_complete");
         const chunks = finalText.match(/.{1,80}/gs) ?? [finalText];
         for (const chunk of chunks) {
           opts.sseWrite(`data: ${JSON.stringify({ delta: chunk })}\n\n`);
@@ -1150,7 +1151,7 @@ async function runToolCallingLoop(opts: {
 
       } else {
         // preview / full — store pending proposal, emit confirmation_request, suspend
-        const preview = buildConfirmationPreview(toolCall.name, toolCall.arguments);
+        const preview = buildConfirmationPreview(toolCall.name, toolCall.arguments, language);
         const proposal = await createPendingToolProposal({
           orgId: ctx.orgId, userId: ctx.userId, conversationId: ctx.conversationId,
           provider, model, toolName: toolCall.name, toolCallId: toolCall.id,
@@ -1185,11 +1186,55 @@ async function runToolCallingLoop(opts: {
 
   // Hit max rounds — emit a user-visible fallback message and close
   logger.warn({ rounds: MAX_TOOL_ROUNDS, ctx: ctx.conversationId }, "[tool-loop] max rounds reached");
-  opts.sseWrite(`data: ${JSON.stringify({ delta: "\n\nJe n'ai pas pu terminer cette action automatiquement. Reformulez votre demande ou ouvrez la section Missions pour agir directement." })}\n\n`);
+  opts.sseWrite(`data: ${JSON.stringify({ delta: "\n\n" + toolLoopText(language, "action_incomplete") })}\n\n`);
   return { suspended: false, finalTextEmitted: true, undoTokens, messages };
 }
 
-function buildConfirmationPreview(toolName: string, args: Record<string, unknown>): string {
+function toolLoopText(language: string, key: "action_failed" | "action_partial" | "action_complete" | "action_incomplete"): string {
+  const lang = language.split("-")[0].toLowerCase();
+  const texts: Record<string, Record<typeof key, string>> = {
+    en: {
+      action_failed: "⚠ The requested action could not be completed. Please try again or rephrase your request.",
+      action_partial: "The action was partially completed: some steps failed. Check the relevant section to verify the result.",
+      action_complete: "✅ Action completed. Check the relevant section to see the result, or ask me a follow-up question.",
+      action_incomplete: "I couldn't complete this action automatically. Rephrase your request or open the Missions section to act directly.",
+    },
+    es: {
+      action_failed: "⚠ No se pudo completar la acción solicitada. Inténtelo de nuevo o reformule su solicitud.",
+      action_partial: "La acción se completó parcialmente: algunos pasos fallaron. Consulte la sección correspondiente para verificar el resultado.",
+      action_complete: "✅ Acción completada. Consulte la sección correspondiente para ver el resultado o hágame una pregunta de seguimiento.",
+      action_incomplete: "No pude completar esta acción automáticamente. Reformule su solicitud o abra la sección Misiones para actuar directamente.",
+    },
+  };
+  const french: Record<typeof key, string> = {
+    action_failed: "⚠ L'action demandée n'a pas pu aboutir. Réessayez ou reformulez votre demande.",
+    action_partial: "L'action est partiellement terminée : certaines étapes ont échoué. Consultez la section concernée pour vérifier le résultat.",
+    action_complete: "✅ Action effectuée. Consultez la section concernée pour voir le résultat, ou posez-moi une question de suivi.",
+    action_incomplete: "Je n'ai pas pu terminer cette action automatiquement. Reformulez votre demande ou ouvrez la section Missions pour agir directement.",
+  };
+  return texts[lang]?.[key] ?? french[key];
+}
+
+function buildConfirmationPreview(toolName: string, args: Record<string, unknown>, language = "fr"): string {
+  const lang = language.split("-")[0].toLowerCase();
+  if (lang === "en") {
+    switch (toolName) {
+      case "create_mission": return `Create a mission titled "${args["title"] ?? "?"}"`;
+      case "update_mission": return `Update mission ID "${args["id"] ?? "?"}"`;
+      case "complete_mission": return `Mark mission ID "${args["id"] ?? "?"}" as completed`;
+      case "delete_mission": return `⚠ Permanently delete mission ID "${args["id"] ?? "?"}"`;
+      default: return `Run the "${toolName}" action`;
+    }
+  }
+  if (lang === "es") {
+    switch (toolName) {
+      case "create_mission": return `Crear una misión titulada "${args["title"] ?? "?"}"`;
+      case "update_mission": return `Modificar la misión ID "${args["id"] ?? "?"}"`;
+      case "complete_mission": return `Marcar la misión ID "${args["id"] ?? "?"}" como completada`;
+      case "delete_mission": return `⚠ Eliminar permanentemente la misión ID "${args["id"] ?? "?"}"`;
+      default: return `Ejecutar la acción "${toolName}"`;
+    }
+  }
   switch (toolName) {
     case "create_mission":
       return `Créer une mission intitulée "${args["title"] ?? "?"}"${args["priority"] ? ` (priorité: ${args["priority"]})` : ""}${args["category"] ? ` dans la catégorie "${args["category"]}"` : ""}`;
@@ -1522,6 +1567,7 @@ RÈGLES D'ACTION (obligatoires) :
       const toolCtx: ExecuteContext = {
         orgId, userId, conversationId,
         provider: selectedProvider, model: effectiveModel,
+        language: _langCode,
         effectivePerms, orgPlan,
       };
       const loopResult = await runToolCallingLoop({
@@ -1742,6 +1788,7 @@ router.post("/ai/conversations/:id/confirm", async (req: Request, res: Response)
   const userId = req.userId ?? "anonymous";
   const convId = String(req.params["id"] ?? "");
   const { proposalId } = req.body as { proposalId?: string };
+  const requestedLanguage = typeof req.body?.language === "string" ? req.body.language : "fr";
 
   if (!/^[a-zA-Z0-9_-]{1,64}$/.test(convId)) {
     res.status(400).json({ ok: false, error: "conversationId invalide" });
@@ -1796,6 +1843,7 @@ router.post("/ai/conversations/:id/confirm", async (req: Request, res: Response)
       orgId, userId, conversationId: convId,
       provider: String(prop["provider"] ?? "openai"),
       model: String(prop["model"] ?? "gpt-5-mini"),
+      language: requestedLanguage,
       effectivePerms, orgPlan,
     };
 

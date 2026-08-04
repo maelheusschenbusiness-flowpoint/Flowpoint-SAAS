@@ -12570,7 +12570,7 @@ function renderAI() {
           <option value="anthropic" ${STATE.aiProvider==='anthropic'?'selected':''}>Claude (Anthropic)</option>
           <option value="gemini" ${STATE.aiProvider==='gemini'?'selected':''}>Gemini (Google)</option>
         </select>
-        ${btn('Nouvelle conv.','fp-btn fp-btn-ghost fp-btn-sm','','onclick="window.fpClearAiChat()"')}
+        ${btn(fpT('Nouvelle conv.'),'fp-btn fp-btn-ghost fp-btn-sm','','onclick="window.fpClearAiChat()"')}
       </div>
     </div>
 
@@ -12612,7 +12612,7 @@ function renderAI() {
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
           <label for="ai-file-input" title="Joindre un fichier" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
-          <textarea class="fp-ai-input" id="ai-input" placeholder="Posez votre question… (moniteurs, SEO, conversions, rapports…)" rows="1" style="resize:none;overflow:hidden;line-height:1.5;max-height:120px"></textarea>
+          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow:hidden;line-height:1.5;max-height:120px"></textarea>
           <button class="fp-ai-send" id="ai-send">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
         </div>
       </div>
@@ -12721,13 +12721,13 @@ function renderAIMessages() {
   const renderConfirmCard = (cr) => {
     if (!cr || !cr.proposalId) return '';
     const isDestructive = cr.confirmationLevel === 'full';
-    const preview = escHtml(cr.preview || 'Confirmer cette action ?');
+    const preview = escHtml(cr.preview || fpT('Confirmer cette action ?'));
     const pid = escHtml(cr.proposalId);
     return `<div style="margin-top:8px;padding:10px 12px;border-radius:8px;background:${isDestructive ? 'rgba(239,68,68,0.07)' : 'rgba(37,99,235,0.07)'};border:1px solid ${isDestructive ? 'rgba(239,68,68,0.25)' : 'rgba(37,99,235,0.2)'};font-size:11px;color:var(--fp-text-soft)">
       <div style="font-weight:600;margin-bottom:8px;color:var(--fp-text);line-height:1.4">${isDestructive ? '⚠️ ' : ''}${preview}</div>
       <div style="display:flex;gap:6px">
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5${isDestructive ? ';background:#ef4444;border-color:#ef4444' : ''}" data-pid="${pid}" onclick="window.fpAiConfirmAction(this.dataset.pid, this)">Confirmer</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5" data-pid="${pid}" onclick="window.fpAiDismissConfirm(this.dataset.pid, this)">Ignorer</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5${isDestructive ? ';background:#ef4444;border-color:#ef4444' : ''}" data-pid="${pid}" onclick="window.fpAiConfirmAction(this.dataset.pid, this)">${escHtml(fpT('Confirmer'))}</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5" data-pid="${pid}" onclick="window.fpAiDismissConfirm(this.dataset.pid, this)">${escHtml(fpT('Ignorer'))}</button>
       </div>
     </div>`;
   };
@@ -12737,9 +12737,9 @@ function renderAIMessages() {
     if (!ut || !ut.actionLogId) return '';
     const logId = escHtml(ut.actionLogId);
     const expiresAt = escHtml(new Date(Date.now() + (ut.ttlMinutes || 30) * 60000).toISOString());
-    const label = ut.label ? escHtml(ut.label) : 'l\'action';
+    const label = ut.label ? escHtml(ut.label) : fpT('l\'action');
     return `<div style="margin-top:6px">
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:3px 10px;border-radius:20px;height:auto;line-height:1.5;color:#6b7280;border-color:rgba(107,114,128,0.3)" data-lid="${logId}" data-exp="${expiresAt}" onclick="window.fpAiUndoAction(this.dataset.lid, this.dataset.exp, this)" title="Annuler ${label} — disponible 30 min">↩ Annuler l'action</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:3px 10px;border-radius:20px;height:auto;line-height:1.5;color:#6b7280;border-color:rgba(107,114,128,0.3)" data-lid="${logId}" data-exp="${expiresAt}" onclick="window.fpAiUndoAction(this.dataset.lid, this.dataset.exp, this)" title="${escHtml(fpT('Annuler'))} ${label} — ${escHtml(fpT('disponible 30 min'))}">↩ ${escHtml(fpT('Annuler l\'action'))}</button>
     </div>`;
   };
 
@@ -16993,6 +16993,14 @@ async function init() {
     'À faire': 'To do', 'Priorité': 'Priority', 'Élevée': 'High', 'Moyenne': 'Medium',
     'Faible': 'Low', 'Statut': 'Status', 'Actif': 'Active', 'Inactif': 'Inactive',
     'Nouvelle conv.': 'New chat', 'Envoyer': 'Send',
+    'Posez votre question… (moniteurs, SEO, conversions, rapports…)': 'Ask your question… (monitors, SEO, conversions, reports…)',
+    'Confirmer cette action ?': 'Confirm this action?', 'Ignorer': 'Ignore',
+    'Annuler l\'action': 'Cancel action', 'Annulation…': 'Cancelling…', 'Annulé': 'Cancelled',
+    'Action annulée.': 'Action cancelled.', 'Action ignorée.': 'Action ignored.',
+    'Action effectuée.': 'Action completed.', 'Échec de l\'exécution.': 'Execution failed.',
+    'Session perdue': 'Session lost', 'En cours…': 'Processing…', 'Délai expiré': 'Time expired',
+    'Modifié — annulation impossible': 'Changed — unable to cancel', 'Non annulable': 'Cannot be cancelled',
+    'Déjà annulé': 'Already cancelled', 'disponible 30 min': 'available for 30 min', 'l\'action': 'the action',
     'Complétées': 'Completed', 'Basse': 'Low', 'Haute': 'High', 'Critique': 'Critical',
     'Général': 'General', 'Profil': 'Profile', 'Préférences': 'Preferences', 'Données': 'Data',
     'Automatisations': 'Automations', 'Workflows': 'Workflows', 'Webhooks': 'Webhooks',
@@ -17420,6 +17428,15 @@ async function init() {
     'Rechercher': 'Buscar', 'Rechercher…': 'Buscar…', 'Nouvel audit': 'Nueva auditoría',
     'Nouveau monitor': 'Nuevo monitor', 'Nouvelle mission': 'Nueva misión',
     'Ajouter': 'Añadir', 'Annuler': 'Cancelar', 'Enregistrer': 'Guardar', 'Sauvegarder': 'Guardar',
+    'Nouvelle conv.': 'Nueva conversación',
+    'Posez votre question… (moniteurs, SEO, conversions, rapports…)': 'Escriba su pregunta… (monitores, SEO, conversiones, informes…)',
+    'Confirmer': 'Confirmar', 'Confirmer cette action ?': '¿Confirmar esta acción?', 'Ignorer': 'Ignorar',
+    'Annuler l\'action': 'Cancelar la acción', 'Annulation…': 'Cancelando…', 'Annulé': 'Cancelado',
+    'Action annulée.': 'Acción cancelada.', 'Action ignorée.': 'Acción ignorada.',
+    'Action effectuée.': 'Acción completada.', 'Échec de l\'exécution.': 'Error de ejecución.',
+    'Session perdue': 'Sesión perdida', 'En cours…': 'Procesando…', 'Délai expiré': 'Tiempo agotado',
+    'Modifié — annulation impossible': 'Modificado — no se puede cancelar', 'Non annulable': 'No se puede cancelar',
+    'Déjà annulé': 'Ya cancelado', 'disponible 30 min': 'disponible durante 30 min', 'l\'action': 'la acción',
     'Supprimer': 'Eliminar', 'Modifier': 'Editar', 'Fermer': 'Cerrar', 'Voir tout': 'Ver todo',
     'Tout voir': 'Ver todo', 'Exporter': 'Exportar', 'Actualiser': 'Actualizar',
     'Chargement…': 'Cargando…', 'Aucune donnée': 'Sin datos', 'Pas de données': 'Sin datos',
@@ -33053,23 +33070,23 @@ window.apiAction   = apiAction;
 window.fpAiConfirmAction = async function(proposalId, btnEl) {
   if (!proposalId || !btnEl) return;
   var convId = STATE._aiConversationId || '';
-  if (!convId) { if (btnEl) btnEl.textContent = '⚠ Session perdue'; return; }
+  if (!convId) { if (btnEl) btnEl.textContent = '⚠ ' + fpT('Session perdue'); return; }
   btnEl.disabled = true;
   var origText = btnEl.textContent;
-  btnEl.textContent = 'En cours…';
+  btnEl.textContent = fpT('En cours…');
   try {
     var r = await apiFetch('/api/ai/conversations/' + encodeURIComponent(convId) + '/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ proposalId: proposalId }),
+      body: JSON.stringify({ proposalId: proposalId, language: (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr' }),
     });
     var msgIdx = STATE.aiMessages.findIndex(function(m) {
       return m.confirmRequest && m.confirmRequest.proposalId === proposalId;
     });
     if (msgIdx !== -1) {
       var resultText = r.ok
-        ? '✅ ' + (r.content || 'Action effectuée.')
-        : '⚠ ' + (r.error || 'Échec de l\'exécution.');
+        ? '✅ ' + (r.content || fpT('Action effectuée.'))
+        : '⚠ ' + (r.error || fpT('Échec de l\'exécution.'));
       STATE.aiMessages[msgIdx] = {
         from: 'ai',
         text: (STATE.aiMessages[msgIdx].text ? STATE.aiMessages[msgIdx].text + '\n\n' : '') + resultText,
@@ -33093,7 +33110,7 @@ window.fpAiDismissConfirm = function(proposalId, btnEl) {
   if (msgIdx !== -1) {
     STATE.aiMessages[msgIdx] = {
       from: 'ai',
-      text: (STATE.aiMessages[msgIdx].text ? STATE.aiMessages[msgIdx].text + '\n\n' : '') + '*(Action ignorée.)*',
+      text: (STATE.aiMessages[msgIdx].text ? STATE.aiMessages[msgIdx].text + '\n\n' : '') + '*(' + fpT('Action ignorée.') + ')*',
       streaming: false,
     };
     updateAIUI();
@@ -33106,12 +33123,12 @@ window.fpAiUndoAction = async function(logId, expiresAt, btnEl) {
   var now = Date.now();
   var exp = expiresAt ? new Date(expiresAt).getTime() : (now + 1);
   if (now >= exp) {
-    btnEl.textContent = 'Délai expiré';
+    btnEl.textContent = fpT('Délai expiré');
     btnEl.disabled = true;
     return;
   }
   btnEl.disabled = true;
-  btnEl.textContent = '↩ Annulation…';
+  btnEl.textContent = '↩ ' + fpT('Annulation…');
   try {
     var r = await apiFetch('/api/ai/actions/' + encodeURIComponent(logId) + '/undo', {
       method: 'POST',
@@ -33122,12 +33139,12 @@ window.fpAiUndoAction = async function(logId, expiresAt, btnEl) {
       return m.undoToken && m.undoToken.actionLogId === logId;
     });
     if (r.ok) {
-      btnEl.textContent = '✅ Annulé';
+      btnEl.textContent = '✅ ' + fpT('Annulé');
       btnEl.style.color = '#22c55e';
       if (msgIdx !== -1) {
         STATE.aiMessages[msgIdx] = {
           from: 'ai',
-          text: STATE.aiMessages[msgIdx].text + '\n\n✅ Action annulée.',
+          text: STATE.aiMessages[msgIdx].text + '\n\n✅ ' + fpT('Action annulée.'),
           streaming: false,
           undoToken: null,
         };
@@ -33135,23 +33152,23 @@ window.fpAiUndoAction = async function(logId, expiresAt, btnEl) {
       }
       STATE.missions = null; loadMissions && loadMissions().catch(function(){});
     } else if (r.code === 'PROPOSAL_STALE') {
-      btnEl.textContent = 'Modifié — annulation impossible';
+      btnEl.textContent = fpT('Modifié — annulation impossible');
       btnEl.style.color = '#ef4444';
       btnEl.disabled = true;
     } else if (r.code === 'UNDO_VERSION_UNAVAILABLE') {
-      btnEl.textContent = 'Non annulable';
+      btnEl.textContent = fpT('Non annulable');
       btnEl.style.color = '#ef4444';
       btnEl.disabled = true;
     } else if (r.code === 'ALREADY_UNDONE') {
-      btnEl.textContent = 'Déjà annulé';
+      btnEl.textContent = fpT('Déjà annulé');
       btnEl.disabled = true;
     } else {
-      btnEl.textContent = '↩ Annuler l\'action';
+      btnEl.textContent = '↩ ' + fpT('Annuler l\'action');
       btnEl.disabled = false;
     }
   } catch(e) {
     btnEl.disabled = false;
-    btnEl.textContent = '↩ Annuler l\'action';
+    btnEl.textContent = '↩ ' + fpT('Annuler l\'action');
   }
 };
 
@@ -33159,11 +33176,11 @@ window.fpAiUndoAction = async function(logId, expiresAt, btnEl) {
 window.fpAiPanelConfirm = async function(proposalId, convId, confirmBtn, card, msgId) {
   if (!proposalId || !confirmBtn) return;
   confirmBtn.disabled = true;
-  confirmBtn.textContent = 'En cours…';
+  confirmBtn.textContent = fpT('En cours…');
   try {
     var r = await (window.FP_AI_CHAT_API ? window.FP_AI_CHAT_API.confirmAction(convId, proposalId) : Promise.reject(new Error('API non dispo')));
     if (card) {
-      var resultText = r.ok ? '✅ ' + (r.content || 'Action effectuée.') : '⚠ ' + (r.error || 'Échec.');
+      var resultText = r.ok ? '✅ ' + (r.content || fpT('Action effectuée.')) : '⚠ ' + (r.error || fpT('Échec de l\'exécution.'));
       card.innerHTML = '<span style="font-size:11px;color:var(--fp-text-soft)">' + resultText + '</span>';
       if (r.ok && r.undoToken && r.undoToken.actionLogId) {
         var logId = r.undoToken.actionLogId;
@@ -33171,14 +33188,14 @@ window.fpAiPanelConfirm = async function(proposalId, convId, confirmBtn, card, m
         var undoBtn = document.createElement('button');
         undoBtn.className = 'fp-btn fp-btn-ghost fp-btn-sm';
         undoBtn.style.cssText = 'margin-top:6px;font-size:11px;padding:3px 10px;border-radius:20px;height:auto;line-height:1.5;color:#6b7280;border-color:rgba(107,114,128,0.3)';
-        undoBtn.textContent = '↩ Annuler l\'action';
+        undoBtn.textContent = '↩ ' + fpT('Annuler l\'action');
         undoBtn.onclick = function() { window.fpAiPanelUndo(logId, exp, undoBtn, card); };
         card.appendChild(undoBtn);
         if (r.ok) { window.FP_DATA && window.FP_DATA.missions && (window.FP_DATA.missions = null); }
       }
     }
   } catch(e) {
-    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirmer'; }
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = fpT('Confirmer'); }
   }
 };
 
@@ -33187,23 +33204,23 @@ window.fpAiPanelUndo = async function(logId, expiresAt, btn, card) {
   if (!logId || !btn) return;
   var now = Date.now();
   if (expiresAt && now >= new Date(expiresAt).getTime()) {
-    btn.textContent = 'Délai expiré'; btn.disabled = true; return;
+    btn.textContent = fpT('Délai expiré'); btn.disabled = true; return;
   }
-  btn.disabled = true; btn.textContent = '↩ Annulation…';
+  btn.disabled = true; btn.textContent = '↩ ' + fpT('Annulation…');
   try {
     var r = await (window.FP_AI_CHAT_API ? window.FP_AI_CHAT_API.undoAction(logId) : Promise.reject(new Error('API non dispo')));
     if (r.ok) {
-      btn.textContent = '✅ Annulé'; btn.style.color = '#22c55e';
-      if (card) { var s = card.querySelector('span'); if (s) s.textContent += ' — Annulé ✅'; }
+      btn.textContent = '✅ ' + fpT('Annulé'); btn.style.color = '#22c55e';
+      if (card) { var s = card.querySelector('span'); if (s) s.textContent += ' — ' + fpT('Annulé') + ' ✅'; }
     } else if (r.code === 'PROPOSAL_STALE') {
-      btn.textContent = 'Modifié — annulation impossible'; btn.style.color = '#ef4444'; btn.disabled = true;
+      btn.textContent = fpT('Modifié — annulation impossible'); btn.style.color = '#ef4444'; btn.disabled = true;
     } else if (r.code === 'UNDO_VERSION_UNAVAILABLE') {
-      btn.textContent = 'Non annulable'; btn.style.color = '#ef4444'; btn.disabled = true;
+      btn.textContent = fpT('Non annulable'); btn.style.color = '#ef4444'; btn.disabled = true;
     } else {
-      btn.textContent = '↩ Annuler l\'action'; btn.disabled = false;
+      btn.textContent = '↩ ' + fpT('Annuler l\'action'); btn.disabled = false;
     }
   } catch(e) {
-    btn.textContent = '↩ Annuler l\'action'; btn.disabled = false;
+    btn.textContent = '↩ ' + fpT('Annuler l\'action'); btn.disabled = false;
   }
 };
 
@@ -34877,10 +34894,10 @@ setTimeout(function() {
             var isD = cr.confirmationLevel === 'full';
             var card = document.createElement('div');
             card.style.cssText = 'margin-top:8px;padding:10px 12px;border-radius:8px;background:' + (isD ? 'rgba(239,68,68,0.07)' : 'rgba(37,99,235,0.07)') + ';border:1px solid ' + (isD ? 'rgba(239,68,68,0.25)' : 'rgba(37,99,235,0.2)') + ';font-size:11px';
-            card.innerHTML = '<div style="font-weight:600;margin-bottom:6px;color:var(--fp-text);line-height:1.4">' + (isD ? '⚠️ ' : '') + (cr.preview || 'Confirmer ?') + '</div>'
+            card.innerHTML = '<div style="font-weight:600;margin-bottom:6px;color:var(--fp-text);line-height:1.4">' + (isD ? '⚠️ ' : '') + (cr.preview || fpT('Confirmer cette action ?')) + '</div>'
               + '<div style="display:flex;gap:6px">'
-              + '<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5' + (isD ? ';background:#ef4444;border-color:#ef4444' : '') + '">Confirmer</button>'
-              + '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5">Ignorer</button>'
+              + '<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5' + (isD ? ';background:#ef4444;border-color:#ef4444' : '') + '">' + escHtml(fpT('Confirmer')) + '</button>'
+              + '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5">' + escHtml(fpT('Ignorer')) + '</button>'
               + '</div>';
             var btns = card.querySelectorAll('button');
             var pid = cr.proposalId;
@@ -34899,7 +34916,7 @@ setTimeout(function() {
             var undoBtn = document.createElement('button');
             undoBtn.className = 'fp-btn fp-btn-ghost fp-btn-sm';
             undoBtn.style.cssText = 'font-size:11px;padding:3px 10px;border-radius:20px;height:auto;line-height:1.5;color:#6b7280;border-color:rgba(107,114,128,0.3)';
-            undoBtn.textContent = '↩ Annuler l\'action';
+            undoBtn.textContent = '↩ ' + fpT('Annuler l\'action');
             undoBtn.addEventListener('click', function() { window.fpAiPanelUndo(logId, exp, undoBtn, bar); });
             bar.appendChild(undoBtn);
             el.appendChild(bar);

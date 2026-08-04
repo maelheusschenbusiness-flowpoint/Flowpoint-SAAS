@@ -2121,6 +2121,7 @@
             enableTools: true,
             context: { orgId: orgId, plan: window.FP_DATA && window.FP_DATA.me && window.FP_DATA.me.plan },
             conversationId: this._convId || undefined,
+            language: (window.STATE && window.STATE.settings && window.STATE.settings.language) || localStorage.getItem('fp:language') || 'fr',
           }),
         });
 
@@ -2237,7 +2238,7 @@
         return await window._fpFetch('/api/ai/conversations/' + conversationId + '/confirm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ proposalId: proposalId }),
+              body: JSON.stringify({ proposalId: proposalId, language: (window.STATE && window.STATE.settings && window.STATE.settings.language) || localStorage.getItem('fp:language') || 'fr' }),
         });
       } catch(e) {
         console.warn('[FP_AI_CHAT] confirmAction error', e);
