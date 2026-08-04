@@ -12,8 +12,9 @@ router.get("/addons", async (req: Request, res: Response) => {
     const dbData = await loadOrgData(orgId).catch(() => null);
     const plan = (dbData?.plan || "standard").toLowerCase();
     const orgAddons = await getOrgAddons(orgId);
-    // Use DB-sourced addons — never the store.me singleton (cross-tenant contamination risk)
-    const liveAddons = dbData?.addons ?? orgAddons ?? {};
+    // Use DB-sourced addons — never the store.me singleton (cross-tenant contamination risk).
+    // org_addons is the source of truth; legacy org_settings JSON only fills gaps.
+    const liveAddons = { ...(dbData?.addons ?? {}), ...(orgAddons ?? {}) };
     const quotas = getQuotaLimits(plan, liveAddons as Record<string, boolean | number>);
     res.json({
       addons: liveAddons,

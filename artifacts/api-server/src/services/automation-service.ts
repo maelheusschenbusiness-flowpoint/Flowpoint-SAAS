@@ -41,6 +41,7 @@ export async function executeWorkflow(workflowId: string, orgId?: string): Promi
     await db.insert(workflowRunsTable).values({
       id: runId,
       workflowId,
+      orgId: wf.orgId ?? orgId ?? "default",
       status: "running",
     });
 

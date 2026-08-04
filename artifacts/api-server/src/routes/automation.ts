@@ -114,7 +114,9 @@ router.post("/automation/workflows/:id/run", async (req: Request, res: Response)
     }
     const result = await executeWorkflow(id, org(req));
     if (!result.success) {
-      res.status(409).json({ error: "Workflow indisponible ou désactivé" }); return;
+      // The workflow exists and is enabled (checked above) — a failure here means
+      // execution itself failed, not that the workflow is unavailable.
+      res.status(500).json({ error: "L'exécution du workflow a échoué — réessayez ou consultez l'historique des runs.", runId: result.runId }); return;
     }
     store.logActivity({ type: "audit", label: `Workflow exécuté : ${id}`, targetId: id, targetType: "workflow", orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
     store.broadcast({ type: "fp:workflow:completed", workflowId: id }, org(req));

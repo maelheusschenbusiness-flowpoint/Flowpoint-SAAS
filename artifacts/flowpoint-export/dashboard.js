@@ -3248,10 +3248,16 @@ function renderActivityList() {
     const cfg = ACTIVITY_TYPE_CONFIG[e.type] || ACTIVITY_TYPE_CONFIG.system;
     const avatarColor = getAvatarColor(e.userName || 'U');
     const isNew = new Date(e.createdAt || e.created_at).getTime() > lastSeen;
+    // No "?" avatars: when there is no user name, show a type-relevant icon (clock fallback)
+    const _ini = getInitials(e.userName);
+    const _typeIconMap = { audit:'check', monitor:'wifi', alert:'alert', report:'file', team:'users', settings:'settings', mission:'target', export:'download', system:'clock' };
+    const _avatarInner = (_ini && _ini !== '?')
+      ? _ini
+      : svgIcon(_typeIconMap[e.type] || 'clock').replace('stroke="currentColor"', `stroke="${cfg.color}"`);
     return `
       <div class="fp-activity-item${isNew ? ' fp-activity-new' : ''}">
-        <div class="fp-activity-avatar" style="background:${avatarColor}20;color:${avatarColor}">
-          ${getInitials(e.userName)}
+        <div class="fp-activity-avatar" style="background:${avatarColor}20;color:${avatarColor};display:flex;align-items:center;justify-content:center">
+          ${_avatarInner}
         </div>
         <div class="fp-activity-body">
           <div class="fp-activity-panel-label">${escHtml(e.label)}</div>
@@ -4236,15 +4242,23 @@ function renderSidebarStatus() {
   if (usageEl) {
     const _usg  = me.usage  || {};
     const _lims = me.limits || {};
-    const _auditU = _usg.audit   || { used: 0, limit: _lims.audits    || 30  };
-    const _monU   = _usg.monitor || { used: 0, limit: _lims.monitors  || 10  };
-    const _pdfU   = _usg.pdf     || { used: 0, limit: _lims.reports   || 10  };
-    const _expU   = _usg.exports || { used: 0, limit: _lims.exports   || 30  };
+    // Canonical source: /api/billing/usage-details (same source as Facturation > Usage).
+    // Fall back to /api/me counters only when usage-details hasn't loaded yet.
+    const _ud = STATE.usageDetails || {};
+    const _pick = (udUsed, udLimit, meU, defLimit) => (
+      udUsed != null
+        ? { used: Number(udUsed) || 0, limit: Number(udLimit) || defLimit }
+        : (meU || { used: 0, limit: defLimit })
+    );
+    const _auditU = _pick(_ud.auditsUsed,  _ud.auditsLimit,  _usg.audit,   _lims.audits   || 30);
+    const _monU   = _pick(_ud.monitorsUsed,_ud.monitorsLimit,_usg.monitor, _lims.monitors || 10);
+    const _pdfU   = _pick(_ud.pdfExportsUsed != null ? _ud.pdfExportsUsed : _ud.reportsUsed, _ud.reportsLimit, _usg.pdf, _lims.reports || 10);
+    const _expU   = _pick(_ud.exportsUsed, _ud.exportsLimit, _usg.exports, _lims.exports  || 30);
     const _seatsUsed  = STATE.seatUsage?.used  ?? ((STATE.team||[]).length || 1);
     // Take max of seatUsage (API) and plan limits — prevents stale error-fallback (limit:1) from underreporting
     const _seatsLimit = Math.max(STATE.seatUsage?.limit ?? 0, _lims.teamMembers ?? 0, 1 + (me.addons?.extraSeats || 0)) || 1;
     const _seatsU = { used: _seatsUsed, limit: _seatsLimit };
-    const _rapU   = { used: me.usage?.reports?.used ?? 0, limit: _lims.reports ?? 30 };
+    const _rapU   = { used: _ud.reportsUsed ?? me.usage?.reports?.used ?? 0, limit: _ud.reportsLimit ?? _lims.reports ?? 30 };
     const bars = [
       { l:'Audits',   v:_auditU.used, max:_auditU.limit, c:'#2563EB' },
       { l:'Monitors', v:_monU.used,   max:_monU.limit,   c:'#22c55e' },
@@ -12683,8 +12697,12 @@ async function sendAIMessage(text) {
         ? '⚠ Crédits IA épuisés — passez à Ultra pour continuer.'
         : resp.status === 429
         ? '⚠ Trop de requêtes. Attendez quelques instants puis réessayez.'
+        : resp.status === 503 && err.code === 'QUOTA_STATE_UNAVAILABLE'
+        ? '⚠ Le suivi d\'usage IA est momentanément indisponible — réessayez dans quelques instants.'
+        : resp.status === 503 && err.code === 'PROVIDER_UNAVAILABLE'
+        ? `⚠ Le fournisseur ${escHtml(err.provider || STATE.aiProvider || 'IA')} est temporairement indisponible — réessayez ou sélectionnez un autre fournisseur.`
         : resp.status === 503
-        ? '⚠ Le service IA n\'est pas configuré. Contactez votre administrateur.'
+        ? '⚠ Le service IA est temporairement indisponible — réessayez dans quelques instants.'
         : resp.status >= 500
         ? `⚠ Erreur serveur (${resp.status}) — réessayez dans quelques instants.`
         : (err.error || '⚠ Le service IA est temporairement indisponible.');
@@ -13710,8 +13728,15 @@ async function fpGoToPricing(targetPlan) {
     showToast('Vous êtes déjà sur le plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + '.', 'info');
     return;
   }
-  // Always preserve the chosen plan in the cart so pricing visually preselects it.
-  // Existing subscribers still get their Stripe subscription updated at checkout.
+  // Existing subscribers change plan from Facturation > Plans inside the dashboard —
+  // never bounce them out to pricing.html.
+  const _subStatus = String(STATE.billing?.subscriptionStatus || STATE.billing?.status || STATE.me?.subscriptionStatus || '').toLowerCase();
+  const _isSubscribed = ['active','trialing','past_due'].includes(_subStatus);
+  if (_isSubscribed) {
+    window.fpGoToBillingPlans();
+    return;
+  }
+  // Non-subscribers: preserve the chosen plan in the cart so pricing visually preselects it.
   showToast('Chargement du parcours de paiement…', 'loading');
   const cart = { plan: plan, addons: {}, fromDashboard: true, upgradeFromDashboard: true };
   try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
@@ -14082,6 +14107,8 @@ function _doRender() {
   if (window.fpApplyTranslations) window.fpApplyTranslations();
   // Hide global nav spinner now that render is complete
   window.fpHideNavSpinner();
+  // Remove the initial HTML spinner overlay (present before JS loaded) on first render
+  (function(){ var s = document.getElementById('fp-initial-spinner'); if (s) { s.style.opacity = '0'; setTimeout(function(){ s.remove(); }, 300); } })();
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -35666,6 +35693,7 @@ window.FP_ADDONS_API = {
       const r = await apiFetch(`/api/addons/${encodeURIComponent(addonKey)}/activate`, { method: 'POST' });
       if (r?.ok) {
         if (window.FP_DATA?.addons) window.FP_DATA.addons.active = r.addons || window.FP_DATA.addons.active;
+        await this.load().catch(() => {});
         render();
         showToast('success', `Add-on ${addonKey} activé`);
       } else showToast('error', r?.error || 'Activation impossible');
@@ -35676,10 +35704,13 @@ window.FP_ADDONS_API = {
   async deactivate(addonKey) {
     try {
       const r = await apiFetch(`/api/addons/${encodeURIComponent(addonKey)}/deactivate`, { method: 'POST' });
-      if (r?.ok && window.FP_DATA?.addons?.active) {
-        window.FP_DATA.addons.active[addonKey] = false;
+      if (r?.ok) {
+        if (window.FP_DATA?.addons?.active) window.FP_DATA.addons.active[addonKey] = false;
+        await this.load().catch(() => {});
         render();
         showToast('success', `Add-on ${addonKey} désactivé`);
+      } else {
+        showToast('error', r?.error || 'Désactivation impossible');
       }
       return r;
     } catch(e) { showToast('error', String(e)); return null; }

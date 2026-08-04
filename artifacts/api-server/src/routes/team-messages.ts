@@ -10,18 +10,17 @@ type OrgReq = Request & {
 };
 const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+// Canonical channel form: bare lowercase name without '#' prefix ("general", "seo", …)
+const normChannel = (c: unknown): string =>
+  String(c ?? "general").trim().replace(/^#+/, "").toLowerCase() || "general";
 
 router.get("/team/messages", async (req, res) => {
   try {
-    const channel = (req.query.channel as string) || "general";
+    const channel = normChannel(req.query.channel);
     const r = await db(req)(
       `SELECT id, org_id, channel, sender_id, sender_name, content, type, attachment_url, attachment_name, created_at
        FROM team_messages
        WHERE org_id=$1 AND channel=$2
-         AND created_at >= COALESCE(
-           (SELECT created_at FROM organizations WHERE id=$1),
-           '-infinity'::timestamp
-         )
        ORDER BY created_at DESC LIMIT 100`,
       [org(req), channel]
     );
@@ -38,7 +37,8 @@ router.get("/team/messages", async (req, res) => {
       createdAt:      m.created_at,
     }));
     res.json(rows);
-  } catch {
+  } catch (err) {
+    console.error("[team-messages] GET failed:", (err as Error)?.message);
     res.json([]);
   }
 });
@@ -54,10 +54,6 @@ router.get("/team/messages/all", async (req, res) => {
           `SELECT id, org_id, channel, sender_id, sender_name, content, type, attachment_url, attachment_name, created_at
            FROM team_messages
            WHERE org_id=$1 AND channel=$2
-             AND created_at >= COALESCE(
-               (SELECT created_at FROM organizations WHERE id=$1),
-               '-infinity'::timestamp
-             )
            ORDER BY created_at DESC LIMIT 100`,
           [org(req), ch]
         );
@@ -73,19 +69,22 @@ router.get("/team/messages/all", async (req, res) => {
           attachmentName: m.attachment_name ?? null,
           createdAt:      m.created_at,
         }));
-      } catch {
+      } catch (err) {
+        console.error(`[team-messages] GET-all channel ${ch} failed:`, (err as Error)?.message);
         results[ch] = [];
       }
     }));
     res.json(results);
-  } catch {
+  } catch (err) {
+    console.error("[team-messages] GET-all failed:", (err as Error)?.message);
     res.json({ general: [], seo: [], rapports: [], support: [] });
   }
 });
 
 router.post("/team/messages", canWrite, async (req, res) => {
-  const { channel = "general", text, attachmentUrl, attachmentName } =
+  const { channel: rawChannel = "general", text, attachmentUrl, attachmentName } =
     req.body as { channel?: string; from?: string; text?: string; attachmentUrl?: string; attachmentName?: string };
+  const channel = normChannel(rawChannel);
   if (!text && !attachmentUrl) { res.status(400).json({ error: "text or attachmentUrl required" }); return; }
   const senderName = (req as OrgReq).orgContext?.email?.split("@")[0] || "Équipe";
   const id = "msg" + Date.now();
