@@ -3953,8 +3953,12 @@ function initLocalSEOMap() {
   if (typeof google !== 'undefined' && google.maps && _gmapsLoading) _gmapsLoading = false;
   loadGoogleMaps(() => {
     const mapEl = document.getElementById('fp-gmap');
-    if (!mapEl || mapEl._mapInited) return;
+    if (!mapEl || mapEl._mapInited || mapEl._fpMapInitialized) return;
     mapEl._mapInited = true;
+    mapEl._fpMapInitialized = true; // prevent FP_MAPS_API double-init
+    // Hide skeleton overlay immediately when dashboard.js initializes the map
+    const _gmapSkel = document.getElementById('fp-gmap-skeleton');
+    if (_gmapSkel) _gmapSkel.style.display = 'none';
     const isLight = document.documentElement.dataset.theme === 'light';
     const darkStyles = [
       { elementType:'geometry', stylers:[{color:'#0d1525'}] },

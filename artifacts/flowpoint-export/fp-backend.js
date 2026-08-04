@@ -1645,11 +1645,14 @@
 
     _tryInit: function (id) {
       var el = document.getElementById(id);
-      if (!el || el._fpMapInitialized) return;
+      if (!el) return;
       if (typeof google === 'undefined' || !google.maps) return;
-      el._fpMapInitialized = true;
+      // Always hide skeleton, even if the map was already inited by dashboard.js initLocalSEOMap
       var skeleton = document.getElementById(id + '-skeleton');
       if (skeleton) skeleton.style.display = 'none';
+      // Skip map creation if either guard flag is already set (cross-system guard)
+      if (el._fpMapInitialized || el._mapInited) return;
+      el._fpMapInitialized = true;
       if (id === 'fp-competitors-map' || el.dataset.mode === 'competitors') {
         this._initCompetitorsMap(el);
       } else {
