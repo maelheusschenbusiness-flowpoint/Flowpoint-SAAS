@@ -118,3 +118,5 @@
 - [Google signup pre-register continuation](google-signup-preregister.md) — pending_billing OAuth signup must carry a pending_signups token to signin.html plan screen, never a bare redirect
 - [google_product_connections per-product flags](google-product-connections.md) — GBP/GA4/GSC status/disconnect via per-product flags + resolveOrgId; token presence alone never decides
 - [AI Agents Phase 6 — Monitors & Alertes](ai-agents-phase6.md) — 12 outils, 7 permissions, 8 destinations; batch undo MUST be before const id=snap["id"] line; delete_monitor 3 protections; 124/124 certifiés 2026-08-02
+- [Bare :not([data-theme]) pitfall](css-not-theme-selector.md) — dark-only rules must be html:not([data-theme="light"]); bare :not() matches any ancestor and leaks into light mode
+- [Mobile viewport overflow / iOS zoom-out](mobile-viewport-overflow.md) — hidden absolute checkboxes escape scroll clips, fixed bars at left:sidebar-w inflate min-content; debug by hiding subtrees vs scrollWidth

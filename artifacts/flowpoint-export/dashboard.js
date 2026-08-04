@@ -3942,7 +3942,7 @@ function _showMapsBlockedFallback() {
   el.style.justifyContent = 'center';
   el.style.flexDirection = 'column';
   el.style.gap = '10px';
-  el.style.background = 'rgba(10,14,27,0.95)';
+  el.style.background = 'var(--fp-map-placeholder-bg, rgba(10,14,27,0.95))';
   el.innerHTML = '<div style="font-size:28px">🗺️</div>' +
     '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">Carte Google Maps bloquée</div>' +
     '<div style="font-size:12px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:280px;line-height:1.5">' +
@@ -3956,7 +3956,7 @@ function _showMapsBlockedFallback() {
 window.gm_authFailure = function() {
   const el = document.getElementById('fp-gmap');
   if (!el) return;
-  el.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100%;background:rgba(10,14,27,0.95)">' +
+  el.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100%;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95))">' +
     '<div style="font-size:28px">🗺️</div>' +
     '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">Carte indisponible sur ce domaine</div>' +
     '<div style="font-size:12px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:300px;line-height:1.5">La clé Google Maps n\'autorise pas ce domaine. Ajoutez-le dans les restrictions de la clé (Google Cloud Console).</div>' +
@@ -3993,7 +3993,7 @@ function loadGoogleMaps(cb) {
       const el = document.getElementById('fp-gmap');
       if (el && !el._mapInited) {
         el._mapBlocked = true;
-        el.style.cssText = 'display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:rgba(10,14,27,0.95)';
+        el.style.cssText = 'display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95))';
         el.innerHTML = '<div style="font-size:28px">🗺️</div>' +
           '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">Carte non configurée</div>' +
           '<div style="font-size:12px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:300px;line-height:1.5">La clé Google Maps n\'est pas encore configurée. Contactez votre administrateur.</div>';
@@ -30735,7 +30735,7 @@ function renderLocalSEOMap() {
       <!-- MAP CONTAINER -->
       <div class="fp-card" style="padding:0;overflow:hidden;position:relative;min-height:520px">
         <!-- Loading skeleton -->
-        <div id="fp-gmap-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,14,27,0.95);z-index:10;gap:12px;border-radius:var(--fp-radius-lg)">
+        <div id="fp-gmap-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px;border-radius:var(--fp-radius-lg)">
           <div style="width:48px;height:48px;border:3px solid rgba(37,99,235,0.2);border-top-color:#2563EB;border-radius:50%;animation:spin 1.4s linear infinite"></div>
           <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Chargement de la carte…</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Google Maps · Places · Heatmap</div>
@@ -31006,7 +31006,7 @@ function renderCompetitorsMap() {
     <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;margin-bottom:20px" id="fp-comp-map-layout">
       <!-- MAP -->
       <div class="fp-card" style="padding:0;overflow:hidden;position:relative;min-height:540px">
-        <div id="fp-competitors-map-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,14,27,0.95);z-index:10;gap:12px;border-radius:var(--fp-radius-lg)">
+        <div id="fp-competitors-map-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px;border-radius:var(--fp-radius-lg)">
           <div style="width:48px;height:48px;border:3px solid rgba(239,68,68,0.2);border-top-color:#ef4444;border-radius:50%;animation:spin 1.4s linear infinite"></div>
           <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Analyse concurrentielle en cours…</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Google Places API · Scoring IA</div>

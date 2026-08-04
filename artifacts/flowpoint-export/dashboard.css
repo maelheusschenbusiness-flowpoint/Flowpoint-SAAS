@@ -9,6 +9,7 @@
 
 /* ── DESIGN TOKENS ── */
 :root {
+  --fp-map-placeholder-bg: rgba(10,14,27,0.95);
   --fp-bg-inset:      rgba(255,255,255,0.04);
   --fp-bg-subtle:     rgba(255,255,255,0.02);
   --fp-bg-row-hover:  rgba(255,255,255,0.04);
@@ -86,6 +87,7 @@
   --fp-bg-sidebar:    rgba(255,255,255,0.97);
   --fp-bg-input:      rgba(0,0,0,0.04);
   --fp-bg-overlay:    rgba(248,250,255,0.75);
+  --fp-map-placeholder-bg: #eef2f9;
   --fp-bg-inset:      rgba(0,0,0,0.04);
   --fp-bg-subtle:     rgba(0,0,0,0.02);
   --fp-bg-row-hover:  rgba(37,99,235,0.03);
@@ -1751,7 +1753,11 @@ html:not([data-theme="light"]) .fp-toast {
   .fp-layout { grid-template-columns: 1fr; }
   .fp-sidebar {
     position: fixed;
-    left: -260px;
+    /* Fully off-screen: explicit width (auto width can exceed 260px and bleed
+       onto the left edge) + cushion for border/box-shadow */
+    width: var(--fp-sidebar-w);
+    left: calc(-1 * var(--fp-sidebar-w) - 24px);
+    overflow-x: hidden;
     top: var(--fp-topbar-h);
     bottom: 0;
     height: auto;
@@ -4033,6 +4039,10 @@ select.fp-select { cursor: pointer; }
   align-items: center;
   cursor: pointer;
   flex-shrink: 0;
+  /* Containing block for the visually-hidden absolute checkbox below —
+     without this the checkbox escapes scroll containers (e.g. the Audits
+     table wrap) and stretches the page width on mobile (iOS zoom-out). */
+  position: relative;
 }
 .fp-toggle-wrap input[type="checkbox"] {
   position: absolute;
@@ -4094,6 +4104,19 @@ select.fp-select { cursor: pointer; }
 }
 .fp-bulk-bar.fp-bulk-visible { transform: translateY(0); }
 .fp-bulk-bar:not(.fp-bulk-visible) { box-shadow: none; }
+@media (max-width: 768px) {
+  /* Sidebar is off-canvas on mobile: anchoring the bar at left:248px pushes its
+     min-content width past the viewport and makes iOS shrink the whole page
+     (Audits appeared zoomed-out at ~60%). Pin to the full viewport instead. */
+  .fp-bulk-bar {
+    left: 0 !important;
+    right: 0 !important;
+    max-width: 100vw;
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    box-sizing: border-box;
+  }
+}
 [data-theme="light"] .fp-bulk-bar { background: rgba(248,250,255,0.97); border-top-color: rgba(37,99,235,0.25); }
 
 .fp-bulk-count {
@@ -4409,7 +4432,7 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
 
   /* ── FIX 2: collapsed sidebar on mobile = fully hidden, same as closed ── */
   .fp-sidebar.collapsed {
-    left: calc(-1 * var(--fp-sidebar-w)) !important;
+    left: calc(-1 * var(--fp-sidebar-w) - 24px) !important;
     width: var(--fp-sidebar-w) !important;
     padding: 20px 0 16px !important;
     overflow-y: auto !important;
@@ -6303,27 +6326,27 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
 [data-theme="light"] .fp-insight-card-head { color: #0f172a !important; }
 
 /* ── M. DARK MODE : fp-card avec background #fff / blanc ─────────── */
-:not([data-theme="light"]) .fp-card[style*="background:#ffffff"],
-:not([data-theme="light"]) .fp-card[style*="background: #ffffff"],
-:not([data-theme="light"]) .fp-card[style*="background:#fff"],
-:not([data-theme="light"]) .fp-card[style*="background: #fff"] {
+html:not([data-theme="light"]) .fp-card[style*="background:#ffffff"],
+html:not([data-theme="light"]) .fp-card[style*="background: #ffffff"],
+html:not([data-theme="light"]) .fp-card[style*="background:#fff"],
+html:not([data-theme="light"]) .fp-card[style*="background: #fff"] {
   background: var(--fp-bg-card) !important;
 }
 
 /* ── N. DARK MODE : bandes/sections avec fond blanc inline ───────── */
-:not([data-theme="light"]) div[style*="background:#f8fafc"],
-:not([data-theme="light"]) div[style*="background: #f8fafc"],
-:not([data-theme="light"]) div[style*="background:#f1f5f9"],
-:not([data-theme="light"]) div[style*="background: #f1f5f9"],
-:not([data-theme="light"]) div[style*="background:#f8faff"],
-:not([data-theme="light"]) div[style*="background: #f8faff"] {
+html:not([data-theme="light"]) div[style*="background:#f8fafc"],
+html:not([data-theme="light"]) div[style*="background: #f8fafc"],
+html:not([data-theme="light"]) div[style*="background:#f1f5f9"],
+html:not([data-theme="light"]) div[style*="background: #f1f5f9"],
+html:not([data-theme="light"]) div[style*="background:#f8faff"],
+html:not([data-theme="light"]) div[style*="background: #f8faff"] {
   background: var(--fp-bg-card) !important;
 }
 
 /* ── O. DARK MODE : texte trop clair (var faint sur fond sombre) ─── */
 /* On garde les variables système — si bandes visibles c'est inline   */
-:not([data-theme="light"]) div[style*="color:#94a3b8"],
-:not([data-theme="light"]) span[style*="color:#94a3b8"] {
+html:not([data-theme="light"]) div[style*="color:#94a3b8"],
+html:not([data-theme="light"]) span[style*="color:#94a3b8"] {
   color: var(--fp-text-muted) !important;
 }
 
@@ -9051,17 +9074,17 @@ html[data-theme="light"] .fp-skel-block::after {
 
 /* ── V. DARK MODE : enforce card bg regardless of inline styles ──── */
 /* Fixes white-card regression on desktop dark mode                   */
-:not([data-theme="light"]) .fp-card,
-:not([data-theme="light"]) .fp-stat-card,
-:not([data-theme="light"]) .fp-kpi-card,
-:not([data-theme="light"]) .fp-gauge-card {
+html:not([data-theme="light"]) .fp-card,
+html:not([data-theme="light"]) .fp-stat-card,
+html:not([data-theme="light"]) .fp-kpi-card,
+html:not([data-theme="light"]) .fp-gauge-card {
   background: var(--fp-bg-card) !important;
   border-color: var(--fp-border) !important;
   color: var(--fp-text) !important;
 }
-:not([data-theme="light"]) .fp-card:hover,
-:not([data-theme="light"]) .fp-stat-card:hover,
-:not([data-theme="light"]) .fp-kpi-card:hover {
+html:not([data-theme="light"]) .fp-card:hover,
+html:not([data-theme="light"]) .fp-stat-card:hover,
+html:not([data-theme="light"]) .fp-kpi-card:hover {
   background: var(--fp-bg-card-hover) !important;
   border-color: var(--fp-border-hover) !important;
 }
@@ -9090,37 +9113,37 @@ html[data-theme="light"] .fp-skel-block::after {
    ─────────────────────────────────────────────────────────────────── */
 
 /* Dark mode — solid hover backgrounds, no transparency */
-:not([data-theme="light"]) .fp-card:hover,
+html:not([data-theme="light"]) .fp-card:hover,
 html:not([data-theme="light"]) .fp-card:hover {
   background: #1c1f29 !important;
   border-color: rgba(37, 99, 235, 0.28) !important;
   box-shadow: 0 4px 24px rgba(37, 99, 235, 0.10) !important;
 }
-:not([data-theme="light"]) .fp-stat-card:hover,
+html:not([data-theme="light"]) .fp-stat-card:hover,
 html:not([data-theme="light"]) .fp-stat-card:hover {
   background: #1c1f29 !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
 }
-:not([data-theme="light"]) .fp-kpi-card:hover,
+html:not([data-theme="light"]) .fp-kpi-card:hover,
 html:not([data-theme="light"]) .fp-kpi-card:hover {
   background: #1c1f29 !important;
   border-color: rgba(37, 99, 235, 0.30) !important;
   box-shadow: 0 4px 20px rgba(37, 99, 235, 0.12) !important;
 }
-:not([data-theme="light"]) .fp-gauge-card:hover,
+html:not([data-theme="light"]) .fp-gauge-card:hover,
 html:not([data-theme="light"]) .fp-gauge-card:hover {
   background: #1c1f29 !important;
   border-color: rgba(37, 99, 235, 0.30) !important;
 }
 
 /* Also fix the base dark card bg to be solid (plugs the underlying rgba) */
-:not([data-theme="light"]) .fp-card,
 html:not([data-theme="light"]) .fp-card,
-:not([data-theme="light"]) .fp-stat-card,
+html:not([data-theme="light"]) .fp-card,
 html:not([data-theme="light"]) .fp-stat-card,
-:not([data-theme="light"]) .fp-kpi-card,
+html:not([data-theme="light"]) .fp-stat-card,
 html:not([data-theme="light"]) .fp-kpi-card,
-:not([data-theme="light"]) .fp-gauge-card,
+html:not([data-theme="light"]) .fp-kpi-card,
+html:not([data-theme="light"]) .fp-gauge-card,
 html:not([data-theme="light"]) .fp-gauge-card {
   background: #16191f !important;
 }
@@ -9150,11 +9173,11 @@ html[data-theme="light"] .fp-stat-card:hover,
 }
 
 /* Also catch generic [class*=card]:hover that might set rgba backgrounds */
-:not([data-theme="light"]) .fp-monitor-card:hover,
+html:not([data-theme="light"]) .fp-monitor-card:hover,
 html:not([data-theme="light"]) .fp-monitor-card:hover {
   background: #1c1f29 !important;
 }
-:not([data-theme="light"]) .fp-kanban-card:hover,
+html:not([data-theme="light"]) .fp-kanban-card:hover,
 html:not([data-theme="light"]) .fp-kanban-card:hover {
   background: #1c1f29 !important;
 }
@@ -9164,7 +9187,7 @@ html:not([data-theme="light"]) .fp-kanban-card:hover {
    which gets the transparent rgba bg from dark mode. Ensure it's solid
    (handled by rule 1 above), but also cover any inner content cells.
    ─────────────────────────────────────────────────────────────────── */
-:not([data-theme="light"]) #dfs-local-rank-widget,
+html:not([data-theme="light"]) #dfs-local-rank-widget,
 html:not([data-theme="light"]) #dfs-local-rank-widget {
   background: transparent; /* inherits solid parent card */
 }
