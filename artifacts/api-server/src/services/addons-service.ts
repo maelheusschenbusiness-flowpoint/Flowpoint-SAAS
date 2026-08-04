@@ -78,18 +78,32 @@ export async function activateAddon(addonKey: string, orgId = "default"): Promis
 }
 
 export async function deactivateAddon(addonKey: string, orgId = "default"): Promise<boolean> {
+  if (!ADDON_DEFINITIONS[addonKey]) {
+    logger.warn({ addonKey }, "[Addons] Unknown addon key — deactivate ignored");
+    return false;
+  }
   try {
     const client = await (await import("@workspace/db")).pool.connect();
+    let rowCount = 0;
     try {
-      await client.query(
+      const result = await client.query(
         `UPDATE org_addons SET active = false, updated_at = NOW() WHERE org_id = $1 AND addon_key = $2`,
         [orgId, addonKey]
       );
+      rowCount = result.rowCount ?? 0;
     } finally {
       client.release();
     }
+    if (rowCount === 0) {
+      // No row existed — addon was never activated; treat as a no-op success so
+      // the caller doesn't attempt Stripe compensation for something that was never billed.
+      logger.info({ addonKey, orgId }, "[Addons] deactivateAddon: no row found — already inactive");
+      return false;
+    }
     applyAddonToStore(addonKey, false);
     store.broadcast({ type: "addon:deactivated", addonKey }, orgId);
+    store.logActivity({ type: "team", label: `Add-on désactivé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`, metadata: { addonKey }, orgId }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
+    logger.info({ addonKey, orgId }, "[Addons] Addon deactivated");
     return true;
   } catch (err) {
     logger.error({ err, addonKey }, "[Addons] Failed to deactivate addon");

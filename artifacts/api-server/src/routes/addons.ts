@@ -66,20 +66,44 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
 router.post("/addons/:key/deactivate", ownerOnly, async (req: Request, res: Response) => {
   const key = String(req.params["key"] ?? "");
   const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
-  // Stop Stripe billing BEFORE revoking access — never leave a customer paying
-  // for a feature that was just disabled.
+
+  // Validate key against known definitions before touching Stripe or DB.
+  if (!ADDON_DEFINITIONS[key]) {
+    res.status(400).json({ error: "Unknown addon key" }); return;
+  }
+
+  // Order: revoke in DB first, then remove from Stripe.
+  // If DB succeeds but Stripe fails → compensation: re-activate in DB (customer not yet billed).
+  // If DB fails → Stripe is never touched → nothing to compensate.
+  const ok = await deactivateAddon(key, orgId);
+  if (!ok) {
+    res.status(500).json({ ok: false, error: "La désactivation en base a échoué", addonKey: key });
+    return;
+  }
+
+  store.logActivity({ type: "billing", label: `Add-on désactivé : ${key}`, targetId: key, targetType: "addon", orgId }).catch(err => console.warn("[logActivity]", err?.message));
+  store.broadcast({ type: "fp:addon:deactivated", addonKey: key }, orgId);
+
+  // Now stop Stripe billing. If this fails, compensate by re-activating in DB so the two
+  // sides stay in sync — the customer must not keep paying for a disabled feature.
   const { syncAddonWithStripe } = await import("../services/addon-stripe-sync.js");
   const stripeSync = await syncAddonWithStripe(orgId, key, "deactivate");
   if (stripeSync.reason === "stripe_error") {
-    res.status(502).json({ error: "L'arrêt de la facturation Stripe a échoué — désactivation annulée", stripe: stripeSync });
+    // Stripe removal failed — re-activate in DB so the addon stays accessible while
+    // still billed; a sync error is raised so ops can retry the Stripe removal.
+    const { activateAddon } = await import("../services/addons-service.js");
+    await activateAddon(key, orgId).catch(() => {});
+    res.status(502).json({
+      ok: false,
+      error: "L'arrêt de la facturation Stripe a échoué — la désactivation a été annulée",
+      addonKey: key,
+      stripe: stripeSync,
+    });
     return;
   }
-  const ok = await deactivateAddon(key, orgId);
-  if (ok) {
-    store.logActivity({ type: "billing", label: `Add-on désactivé : ${key}`, targetId: key, targetType: "addon", orgId }).catch(err => console.warn("[logActivity]", err?.message));
-    store.broadcast({ type: "fp:addon:deactivated", addonKey: key }, orgId);
-  }
-  res.json({ ok, addonKey: key, stripe: stripeSync });
+
+  const freshAddons = await getOrgAddons(orgId);
+  res.json({ ok: true, addonKey: key, addons: freshAddons, stripe: stripeSync });
 });
 
 router.post("/addons/ai-credits/buy", async (req: Request, res: Response) => {
