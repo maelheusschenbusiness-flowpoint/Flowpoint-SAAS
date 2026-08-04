@@ -13,6 +13,8 @@ import {
   checkAndIncrementQuota,
   dfsRequest,
 } from "./dataforseo-service.js";
+import { loadOrgAIPrefs, resolveAIModel } from "./ai-prefs.js";
+import { aiChat } from "./ai-provider.js";
 
 export interface KeywordStats {
   total: number; top3: number; top10: number; top100: number;
@@ -79,10 +81,10 @@ async function batchSERP(
   }>>;
 }
 
-export async function syncOrgRankings(orgId: string): Promise<void> {
+export async function syncOrgRankings(orgId: string): Promise<{ configured: boolean; synced: number }> {
   if (!await isDataForSEOConfigured(orgId)) {
     logger.warn({ orgId }, "[keyword-engine] DataForSEO not configured — skipping rank sync");
-    return;
+    return { configured: false, synced: 0 };
   }
 
   const client = await pool.connect();
@@ -108,9 +110,10 @@ export async function syncOrgRankings(orgId: string): Promise<void> {
        LIMIT 100`,
       [orgId]
     );
-    if (kwRes.rows.length === 0) return;
+    if (kwRes.rows.length === 0) return { configured: true, synced: 0 };
 
     // Process in batches of 5 (balance quota vs speed)
+    let syncedCount = 0;
     const BATCH_SIZE = 5;
     for (let i = 0; i < kwRes.rows.length; i += BATCH_SIZE) {
       const batch = kwRes.rows.slice(i, i + BATCH_SIZE);
@@ -142,6 +145,7 @@ export async function syncOrgRankings(orgId: string): Promise<void> {
         const result = results[j];
 
         if (!result || result.status_code !== 20000) continue;
+        syncedCount++;
 
         const items = result.result?.[0]?.items ?? [];
 
@@ -189,7 +193,8 @@ export async function syncOrgRankings(orgId: string): Promise<void> {
         "[keyword-engine] SERP batch complete");
     }
 
-    logger.info({ orgId, total: kwRes.rows.length }, "[keyword-engine] syncOrgRankings done");
+    logger.info({ orgId, total: kwRes.rows.length, synced: syncedCount }, "[keyword-engine] syncOrgRankings done");
+    return { configured: true, synced: syncedCount };
   } finally {
     client.release();
   }
@@ -252,32 +257,124 @@ export async function getKeywordStats(orgId: string): Promise<KeywordStats> {
   }
 }
 
+const CLUSTER_COLORS = ["#2563EB", "#8b5cf6", "#22c55e", "#f59e0b", "#ef4444", "#06b6d4", "#ec4899", "#84cc16"];
+
 export async function generateClusters(
   orgId: string
 ): Promise<Array<{ id: string; name: string; intent: string; keywords: number; avgPosition: number }>> {
   const client = await pool.connect();
   try {
-    const res = await client.query(
-      `SELECT
-         COALESCE(cluster_id,'unclustered')    AS id,
-         COALESCE(cluster_id,'Non-classifié') AS name,
-         COALESCE(intent,'mixed')             AS intent,
-         COUNT(*)::int                        AS keywords,
-         ROUND(AVG(current_position)::numeric,1) AS avg_pos
+    const kwRes = await client.query<{
+      id: string; keyword: string; intent: string | null;
+      current_position: number | null; search_volume: number; difficulty: number;
+    }>(
+      `SELECT id, keyword, intent, current_position,
+              COALESCE(search_volume,0)::int AS search_volume,
+              COALESCE(difficulty,0)::int    AS difficulty
        FROM tracked_keywords
        WHERE org_id=$1 AND active=true
-       GROUP BY cluster_id, intent
-       ORDER BY keywords DESC`,
+       ORDER BY search_volume DESC NULLS LAST
+       LIMIT 200`,
       [orgId]
     );
-    return res.rows.map((r: Record<string, unknown>) => ({
-      id:          String(r["id"]),
-      name:        String(r["name"]),
-      intent:      String(r["intent"]),
-      keywords:    Number(r["keywords"]),
-      avgPosition: Number(r["avg_pos"] ?? 0),
-    }));
-  } catch { return []; } finally { client.release(); }
+    const rows = kwRes.rows;
+    if (rows.length < 2) return [];
+
+    // Real AI semantic clustering — fails explicitly if the AI provider is unavailable
+    const prefs = await loadOrgAIPrefs(orgId);
+    const aiCfg = resolveAIModel(prefs, "strategist");
+    const prompt = `Voici la liste des mots-clés SEO suivis (un par ligne) :
+${rows.map(r => `- ${r.keyword}`).join("\n")}
+
+Regroupe-les en clusters sémantiques cohérents (thématiques). Chaque mot-clé appartient à au plus un cluster. Retourne UNIQUEMENT un JSON de la forme :
+{"clusters":[{"name":"string (nom court en français)","intent":"informational|commercial|transactional|navigational","description":"string (1 phrase)","keywords":["mot-clé exact 1","mot-clé exact 2"]}]}
+Utilise les mots-clés EXACTEMENT tels qu'écrits. Entre 2 et 8 clusters.`;
+
+    const aiResult = await aiChat({
+      provider: aiCfg.provider,
+      model: aiCfg.model,
+      systemPrompt: "Tu clusterises des mots-clés SEO. Réponds UNIQUEMENT avec du JSON valide.",
+      messages: [{ role: "user", content: prompt }],
+      maxTokens: aiCfg.maxTokens,
+      json: true,
+    });
+    // Robust JSON extraction — some providers wrap JSON in prose or ``` fences
+    let rawText = String(aiResult.text || "").trim();
+    const fenceMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch?.[1]) rawText = fenceMatch[1].trim();
+    if (!rawText.startsWith("{")) {
+      const braceStart = rawText.indexOf("{");
+      const braceEnd = rawText.lastIndexOf("}");
+      if (braceStart >= 0 && braceEnd > braceStart) rawText = rawText.slice(braceStart, braceEnd + 1);
+    }
+    let parsed: { clusters?: Array<{ name?: string; intent?: string; description?: string; keywords?: string[] }> };
+    try {
+      parsed = JSON.parse(rawText);
+    } catch (parseErr) {
+      logger.warn({ orgId, sample: rawText.slice(0, 200) }, "[keyword-engine] AI cluster response was not valid JSON");
+      throw new Error("La réponse IA du clustering n'était pas exploitable — réessayez.");
+    }
+    const aiClusters = Array.isArray(parsed.clusters) ? parsed.clusters : [];
+    if (aiClusters.length === 0) {
+      throw new Error("Le clustering IA n'a produit aucun cluster exploitable.");
+    }
+
+    // Map AI keyword strings back to tracked rows (case-insensitive)
+    const byKeyword = new Map(rows.map(r => [r.keyword.trim().toLowerCase(), r]));
+    const validIntents = new Set(["informational", "commercial", "transactional", "navigational"]);
+
+    // Replace previous clustering atomically — a partial/invalid AI result must not erase valid clusters
+    await client.query("BEGIN");
+    await client.query(`DELETE FROM keyword_clusters WHERE org_id=$1`, [orgId]);
+    await client.query(`UPDATE tracked_keywords SET cluster_id=NULL, updated_at=NOW() WHERE org_id=$1`, [orgId]);
+
+    const out: Array<{ id: string; name: string; intent: string; keywords: number; avgPosition: number }> = [];
+    const stamp = Date.now();
+    let idx = 0;
+    for (const c of aiClusters) {
+      const members = (Array.isArray(c.keywords) ? c.keywords : [])
+        .map(k => byKeyword.get(String(k).trim().toLowerCase()))
+        .filter((r): r is NonNullable<typeof r> => Boolean(r));
+      if (members.length === 0) continue;
+
+      const id = `cl_${stamp}_${idx}`;
+      const name = String(c.name || `Cluster ${idx + 1}`).slice(0, 120);
+      const intent = validIntents.has(String(c.intent)) ? String(c.intent) : "mixed";
+      const positions = members.map(m => m.current_position).filter((p): p is number => p != null && Number.isFinite(Number(p)));
+      const avgPosition = positions.length ? Math.round((positions.reduce((a, b) => a + Number(b), 0) / positions.length) * 10) / 10 : 0;
+      const totalVolume = members.reduce((a, m) => a + Number(m.search_volume || 0), 0);
+      const avgVolume = Math.round(totalVolume / members.length);
+      const avgDifficulty = Math.round(members.reduce((a, m) => a + Number(m.difficulty || 0), 0) / members.length);
+      const color = CLUSTER_COLORS[idx % CLUSTER_COLORS.length];
+
+      await client.query(
+        `INSERT INTO keyword_clusters
+           (id, org_id, name, description, intent, keywords, keyword_count,
+            avg_position, avg_volume, avg_difficulty, total_volume, color, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,NOW(),NOW())`,
+        [id, orgId, name, String(c.description || "").slice(0, 500) || null, intent,
+         JSON.stringify(members.map(m => m.keyword)), members.length,
+         avgPosition || null, avgVolume, avgDifficulty, totalVolume, color]
+      );
+      await client.query(
+        `UPDATE tracked_keywords SET cluster_id=$1, updated_at=NOW() WHERE org_id=$2 AND id = ANY($3::text[])`,
+        [id, orgId, members.map(m => m.id)]
+      );
+
+      out.push({ id, name, intent, keywords: members.length, avgPosition });
+      idx++;
+    }
+    if (out.length === 0) {
+      await client.query("ROLLBACK");
+      throw new Error("Le clustering IA n'a associé aucun mot-clé suivi — réessayez.");
+    }
+    await client.query("COMMIT");
+    logger.info({ orgId, clusters: out.length }, "[keyword-engine] AI clustering persisted");
+    return out;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally { client.release(); }
 }
 
 export async function generateOpportunities(
@@ -286,7 +383,7 @@ export async function generateOpportunities(
   const client = await pool.connect();
   try {
     const res = await client.query(
-      `SELECT keyword, current_position AS position, search_volume AS volume, difficulty
+      `SELECT id, keyword, current_position AS position, search_volume AS volume, difficulty, intent
        FROM tracked_keywords
        WHERE org_id=$1 AND active=true
          AND current_position BETWEEN 4 AND 20
@@ -295,22 +392,52 @@ export async function generateOpportunities(
        LIMIT 20`,
       [orgId]
     );
-    return res.rows.map((r: Record<string, unknown>) => {
+    const opps = res.rows.map((r: Record<string, unknown>) => {
       const pos = Number(r["position"]);
       const vol = Number(r["volume"]);
+      const difficulty = Number(r["difficulty"] ?? 50);
       const potentialTraffic = pos <= 10
         ? Math.round(vol * (0.15 - (pos - 4) * 0.01))
         : Math.round(vol * 0.03);
+      // Deterministic score derived from real position/volume/difficulty only
+      const score = Math.max(1, Math.min(100,
+        Math.round((21 - pos) * 3 + Math.min(30, vol / 200) + (100 - difficulty) / 4)));
       return {
+        keywordId: String(r["id"]),
         keyword: String(r["keyword"]),
         position: pos,
         volume: vol,
         potentialTraffic,
-        difficulty: Number(r["difficulty"] ?? 50),
+        difficulty,
+        intent: r["intent"] ? String(r["intent"]) : null,
+        score,
+        type: pos <= 10 ? "quick_win" : "high_traffic",
         opportunity: pos <= 10 ? "Page 1 accessible" : "Progression top 10",
       };
     });
-  } catch { return []; } finally { client.release(); }
+
+    // Persist so GET /api/keywords/opportunities (keyword_opportunities) reflects the generation
+    await client.query(`DELETE FROM keyword_opportunities WHERE org_id=$1`, [orgId]);
+    for (const o of opps) {
+      await client.query(
+        `INSERT INTO keyword_opportunities
+           (id, org_id, keyword, search_volume, difficulty, intent, opportunity_score, type,
+            current_position, potential_position, estimated_traffic, ai_explanation, status, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'new',NOW(),NOW())
+         ON CONFLICT (id) DO UPDATE SET
+           search_volume=EXCLUDED.search_volume, difficulty=EXCLUDED.difficulty,
+           opportunity_score=EXCLUDED.opportunity_score, type=EXCLUDED.type,
+           current_position=EXCLUDED.current_position, potential_position=EXCLUDED.potential_position,
+           estimated_traffic=EXCLUDED.estimated_traffic, ai_explanation=EXCLUDED.ai_explanation, updated_at=NOW()`,
+        [`opp_${o.keywordId}`, orgId, o.keyword, o.volume, o.difficulty, o.intent, o.score, o.type,
+         o.position, o.position <= 10 ? 3 : 10, o.potentialTraffic,
+         o.opportunity + ` — position actuelle #${o.position}, ${o.volume.toLocaleString("fr-FR")} recherches/mois.`]
+      );
+    }
+    logger.info({ orgId, count: opps.length }, "[keyword-engine] opportunities persisted");
+    return opps.map(({ keyword, position, volume, potentialTraffic, difficulty, opportunity }) =>
+      ({ keyword, position, volume, potentialTraffic, difficulty, opportunity }));
+  } finally { client.release(); }
 }
 
 export async function getAIRecommendations(

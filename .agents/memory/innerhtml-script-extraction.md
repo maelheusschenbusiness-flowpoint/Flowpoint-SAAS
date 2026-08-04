@@ -15,9 +15,13 @@ When adding interactive modal functions or action handlers in dashboard.js rende
 2. **Always** put them in the global setup block (around line ~13930 in dashboard.js) alongside existing patterns like `_showCreateHeatmapModal`, `_showAddKeyword`, etc.
 3. The setup block comment pattern is: `// FunctionName — extracted from innerHTML <script> (scripts in innerHTML do NOT execute)`
 
+## Extraction alone is not enough — the setup block may never run
+The "global setup block" (near `window.apiAction = apiAction;`) lives inside a scope that can abort before reaching the assignments (init crash / early await failure). Verified in a browser: NONE of its `window.*` assignments existed after page load. Truly critical handlers must be assigned at IIFE module level (e.g. right after `window.STATE = STATE; window.render = render;` near the file end). The keywords handler block was moved there (2026-08-04). The heatmap/report/apiAction assignments still live in the fragile block.
+
 ## Known extractions already done
 - `window._showCreateHeatmapModal` — heatmap modal show
 - `window._submitCreateHeatmap` — heatmap POST to /api/local-maps/heatmaps
+- All keywords handlers (`_showAddKeyword`, `_submitAddKeyword`, `_syncKeywords`, `_genOpportunities`, `_genClusters`, `_kwDelete`, `_kwHistory`, `_trackFromOpp`, `_kwFilter`, `_kwSetFilter`, `_kwSetSort`, `_reloadKeywords`, `fpKwCitySuggestions`) — at module level near `window.STATE = STATE`
 - `window._showAnalyzeReviewModal` — review analyze modal show
 - `window._submitAnalyzeReview` — review POST to /api/review-intelligence/analyze
 - `window._showLoadRankingsModal` — rankings keyword/city modal

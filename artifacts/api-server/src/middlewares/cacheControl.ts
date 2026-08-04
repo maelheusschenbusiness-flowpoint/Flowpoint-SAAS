@@ -4,7 +4,9 @@ const _cache = new Map<string, { ts: number; data: unknown }>();
 
 export function withCache(ttlSeconds: number) {
   return (req: Request, res: Response, next: NextFunction) => {
-    const key = req.originalUrl || req.url;
+    // Key MUST include the org, otherwise org-scoped responses leak across tenants
+    const orgId = (req as Request & { orgId?: string }).orgId ?? "anon";
+    const key = `${orgId}:${req.originalUrl || req.url}`;
     const now = Date.now();
     const hit = _cache.get(key);
     if (hit && now - hit.ts < ttlSeconds * 1000) {

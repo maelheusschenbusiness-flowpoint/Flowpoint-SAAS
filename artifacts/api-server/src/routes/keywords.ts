@@ -147,9 +147,8 @@ router.get("/keywords/competitor-rankings", async (req, res) => {
 // GET /api/keywords/ai-recommendations
 router.get("/keywords/ai-recommendations", async (req, res) => {
   const orgId = getOrg(req);
-  const { domain = "monsite.fr" } = req.query as Record<string,string>;
   try {
-    const recs = await getAIRecommendations(orgId, domain);
+    const recs = await getAIRecommendations(orgId);
     res.json(recs);
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
@@ -196,13 +195,15 @@ router.post("/keywords/sync", canWrite, async (req, res) => {
   const orgId = getOrg(req);
   const t0 = Date.now();
   try {
-    await syncOrgRankings(orgId);
-    const cr = await (req as OrgReq).orgDb(
-      `SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`,
-      [orgId]
-    );
-    const synced = Number((cr.rows[0] as { n: number } | undefined)?.n ?? 0);
-    res.json({ ok: true, synced, durationMs: Date.now() - t0 });
+    const result = await syncOrgRankings(orgId);
+    if (!result.configured) {
+      res.json({
+        ok: false, configured: false, synced: 0,
+        error: "DataForSEO n'est pas configuré — la synchronisation des positions est impossible.",
+      });
+      return;
+    }
+    res.json({ ok: true, configured: true, synced: result.synced, durationMs: Date.now() - t0 });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
@@ -218,9 +219,8 @@ router.post("/keywords/cluster", canWrite, async (req, res) => {
 // POST /api/keywords/opportunities/generate
 router.post("/keywords/opportunities/generate", canWrite, async (req, res) => {
   const orgId = getOrg(req);
-  const { domain = "monsite.fr" } = req.body as { domain?: string };
   try {
-    const opps = await generateOpportunities(orgId, domain);
+    const opps = await generateOpportunities(orgId);
     res.json({ ok: true, opportunities: opps, count: opps.length });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
@@ -254,7 +254,7 @@ router.post("/keywords", canWrite, async (req, res) => {
     );
     const kw = r.rows[0];
     if (!kw) { res.status(409).json({ error: "Keyword already tracked", keyword }); return; }
-    store.logActivity({ type:"audit", label:`Keyword ajouté : ${keyword}`, targetId: String(kw["id"]), targetType:"keyword", orgId }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
+    store.logActivity({ type:"audit", label:`Keyword ajouté : ${keyword}`, targetId: String(kw["id"]), targetType:"keyword", orgId }).catch((err: Error) => logger.warn({ err: err?.message }, "logActivity failed"));
     res.status(201).json(kw);
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
@@ -292,7 +292,7 @@ router.delete("/keywords/:id", canWrite, async (req, res) => {
       `UPDATE tracked_keywords SET active = false, updated_at = now() WHERE id = $1 AND org_id = $2 RETURNING keyword`,
       [req.params.id, orgId]);
     if (deleted.rows.length > 0) {
-      store.logActivity({ type:"audit", label:`Keyword retiré : "${deleted.rows[0].keyword}"`, targetId:req.params.id, targetType:"keyword", orgId }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
+      store.logActivity({ type:"audit", label:`Keyword retiré : "${String(deleted.rows[0]?.["keyword"] ?? "")}"`, targetId:String(req.params.id), targetType:"keyword", orgId }).catch((err: Error) => logger.warn({ err: err?.message }, "logActivity failed"));
       res.json({ ok: true });
     } else {
       res.status(404).json({ error: "not found" });

@@ -2137,6 +2137,29 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE crm_sync_logs ADD COLUMN IF NOT EXISTS records_updated   INTEGER NOT NULL DEFAULT 0`);
     await run(client, `ALTER TABLE crm_sync_logs ADD COLUMN IF NOT EXISTS records_failed    INTEGER NOT NULL DEFAULT 0`);
     await run(client, `ALTER TABLE crm_sync_logs ADD COLUMN IF NOT EXISTS duration_ms       INTEGER`);
+    // keyword_clusters: columns required by AI clustering persistence (keyword-engine.generateClusters)
+    await run(client, `ALTER TABLE keyword_clusters ADD COLUMN IF NOT EXISTS keywords       JSONB`);
+    await run(client, `ALTER TABLE keyword_clusters ADD COLUMN IF NOT EXISTS keyword_count  INTEGER DEFAULT 0`);
+    await run(client, `ALTER TABLE keyword_clusters ADD COLUMN IF NOT EXISTS avg_position   REAL`);
+    await run(client, `ALTER TABLE keyword_clusters ADD COLUMN IF NOT EXISTS avg_volume     INTEGER DEFAULT 0`);
+    await run(client, `ALTER TABLE keyword_clusters ADD COLUMN IF NOT EXISTS avg_difficulty INTEGER DEFAULT 0`);
+    await run(client, `ALTER TABLE keyword_clusters ADD COLUMN IF NOT EXISTS total_volume   INTEGER DEFAULT 0`);
+    await run(client, `ALTER TABLE keyword_clusters ADD COLUMN IF NOT EXISTS ai_summary     TEXT`);
+    await run(client, `ALTER TABLE keyword_clusters ADD COLUMN IF NOT EXISTS color          TEXT DEFAULT '#2563EB'`);
+    await run(client, `ALTER TABLE keyword_clusters ADD COLUMN IF NOT EXISTS updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    // keyword_opportunities: columns required by generateOpportunities persistence
+    await run(client, `ALTER TABLE keyword_opportunities ADD COLUMN IF NOT EXISTS search_volume      INTEGER DEFAULT 0`);
+    await run(client, `ALTER TABLE keyword_opportunities ADD COLUMN IF NOT EXISTS difficulty         INTEGER DEFAULT 0`);
+    await run(client, `ALTER TABLE keyword_opportunities ADD COLUMN IF NOT EXISTS cpc                NUMERIC DEFAULT 0`);
+    await run(client, `ALTER TABLE keyword_opportunities ADD COLUMN IF NOT EXISTS intent             TEXT`);
+    await run(client, `ALTER TABLE keyword_opportunities ADD COLUMN IF NOT EXISTS opportunity_score  INTEGER DEFAULT 0`);
+    await run(client, `ALTER TABLE keyword_opportunities ADD COLUMN IF NOT EXISTS type               TEXT NOT NULL DEFAULT 'quick_win'`);
+    await run(client, `ALTER TABLE keyword_opportunities ADD COLUMN IF NOT EXISTS current_position   INTEGER`);
+    await run(client, `ALTER TABLE keyword_opportunities ADD COLUMN IF NOT EXISTS potential_position INTEGER`);
+    await run(client, `ALTER TABLE keyword_opportunities ADD COLUMN IF NOT EXISTS estimated_traffic  INTEGER DEFAULT 0`);
+    await run(client, `ALTER TABLE keyword_opportunities ADD COLUMN IF NOT EXISTS ai_explanation     TEXT`);
+    await run(client, `ALTER TABLE keyword_opportunities ADD COLUMN IF NOT EXISTS status             TEXT DEFAULT 'new'`);
+    await run(client, `ALTER TABLE keyword_opportunities ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
     logger.info("[init-data-tables] self-healing column ALTERs for v1/v2 schema gaps done");
 
     // ── Remove FORCE ROW LEVEL SECURITY from all raw-pool-accessed tables ─────

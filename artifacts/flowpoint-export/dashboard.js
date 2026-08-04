@@ -18786,11 +18786,6 @@ async function init() {
   // Calendar event panel — exposed so Playwright/external callers can open panel directly
   window.renderNewCalEventPanel = renderNewCalEventPanel;
   window.setupNewCalEventPanel = setupNewCalEventPanel;
-  // Keyword modal — defined here because <script> tags inside innerHTML do NOT execute in browsers
-  window._showAddKeyword = function() {
-    const m = document.getElementById('fp-kw-modal');
-    if (m) m.style.display = 'flex';
-  };
   // Local maps / heatmap modal — same reason
   window._showCreateHeatmapModal = function() {
     const m = document.getElementById('fp-heatmap-modal');
@@ -30225,6 +30220,14 @@ function renderGrowthKeywords() {
   const clusters = (STATE.keywordData && STATE.keywordData.clusters) || [];
   const unread = alerts.filter(a => !a.read).length;
 
+  // Location suggestions derived from the organization's country (free-text input, value used as typed)
+  const _kwOrgLoc = (STATE.me && STATE.me.location) || {};
+  const _kwCountry = String(_kwOrgLoc.country || '').trim();
+  const _kwLocSuggestions = (typeof window.fpKwCitySuggestions === 'function')
+    ? window.fpKwCitySuggestions(_kwCountry)
+    : (_kwCountry ? [_kwCountry] : []);
+  const _kwDefaultLoc = String(_kwOrgLoc.city || '').trim() || _kwCountry || '';
+
   const posColor = p => !p ? 'var(--fp-text-faint)' : p<=3?'var(--fp-success)':p<=10?'var(--fp-accent)':p<=20?'var(--fp-warning)':'var(--fp-text-muted)';
   const trendBadge = (k) => {
     const ch = k.position_change ?? (k.prev !== undefined ? k.prev - k.pos : 0);
@@ -30267,7 +30270,7 @@ function renderGrowthKeywords() {
               <option value="volume">Par volume</option>
               <option value="change">Par évolution</option>
             </select>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._syncKeywords()" id="kw-sync-btn">⟳ Sync</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" data-kw-sync onclick="window._syncKeywords()" id="kw-sync-btn">⟳ Sync</button>
           </div>
         </div>
         <div class="fp-card" style="padding:0">
@@ -30452,7 +30455,7 @@ function renderGrowthKeywords() {
         <div class="fp-section-sub">Suivi de positions Google · Rankings temps réel · IA sémantique</div>
       </div>
       <div class="fp-section-actions">
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._syncKeywords()" title="Synchroniser les positions">⟳ Synchroniser</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" data-kw-sync onclick="window._syncKeywords()" title="Synchroniser les positions">⟳ Synchroniser</button>
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showAddKeyword()">+ Ajouter un mot-clé</button>
       </div>
     </div>
@@ -30501,11 +30504,9 @@ function renderGrowthKeywords() {
           <input id="kw-add-url" class="fp-input" placeholder="URL à surveiller (optionnel)"/>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <select id="kw-add-device" class="fp-select"><option value="desktop">Desktop</option><option value="mobile">Mobile</option></select>
-            <select id="kw-add-location" class="fp-select">
-              <option value="France">France</option><option value="Paris">Paris</option><option value="Lyon">Lyon</option>
-              <option value="Marseille">Marseille</option><option value="Bordeaux">Bordeaux</option>
-            </select>
+            <input id="kw-add-location" class="fp-input" list="kw-loc-list" placeholder="Localisation (ville ou pays)" value="${escHtml(_kwDefaultLoc)}"/>
           </div>
+          <datalist id="kw-loc-list">${_kwLocSuggestions.map(c => `<option value="${escHtml(c)}"></option>`).join('')}</datalist>
           <input id="kw-add-tag" class="fp-input" placeholder="Tag (optionnel, ex: Local SEO)"/>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
@@ -30515,147 +30516,6 @@ function renderGrowthKeywords() {
       </div>
     </div>
 
-    <script>
-    window._kwTab = window._kwTab || 'rankings';
-
-    window._showAddKeyword = function() {
-      document.getElementById('fp-kw-modal').style.display = 'flex';
-    };
-
-    window._submitAddKeyword = async function() {
-      const keyword = document.getElementById('kw-add-keyword').value.trim();
-      if (!keyword) { showToast('error','Mot-clé requis'); return; }
-      const url = document.getElementById('kw-add-url').value.trim();
-      const device = document.getElementById('kw-add-device').value;
-      const location = document.getElementById('kw-add-location').value;
-      const tag = document.getElementById('kw-add-tag').value.trim();
-      try {
-        showToast('info','Ajout en cours…');
-        const r = await apiFetch('/api/keywords/track', { method:'POST', body:JSON.stringify({ keyword, url, device, location, tag }) });
-        document.getElementById('fp-kw-modal').style.display = 'none';
-        showToast('success','"' + keyword + '" ajouté au suivi !');
-        await window._reloadKeywords();
-        render(STATE.currentSection);
-      } catch(e) {
-        const msg = e?.message || String(e);
-        if (msg.includes('429') || msg.includes('Plan limit')) showToast('error','Limite du plan atteinte. Passez à un plan supérieur.');
-        else showToast('error', 'Erreur : ' + msg);
-      }
-    };
-
-    window._syncKeywords = async function() {
-      const btn = document.getElementById('kw-sync-btn');
-      if (btn) { btn.disabled = true; btn.textContent = '⟳ Sync…'; }
-      showToast('info','Synchronisation des positions…');
-      try {
-        const r = await apiFetch('/api/keywords/sync', { method:'POST' });
-        showToast('success', r.synced + ' mots-clés synchronisés en ' + Math.round((r.durationMs||0)/1000) + 's');
-        await window._reloadKeywords();
-        render(STATE.currentSection);
-      } catch(e) { showToast('error','Erreur de synchronisation'); }
-      if (btn) { btn.disabled = false; btn.textContent = '⟳ Sync'; }
-    };
-
-    window._kwDelete = function(id) {
-      if (!id) return;
-      window.fpDarkConfirm('Retirer ce mot-clé du suivi ?', async () => {
-        try {
-          await apiFetch('/api/keywords/' + id, { method:'DELETE' });
-          showToast('success','Mot-clé retiré');
-          await window._reloadKeywords();
-          render(STATE.currentSection);
-        } catch(e) { showToast('error','Erreur'); }
-      }, 'Retirer le mot-clé');
-    };
-
-    window._kwHistory = async function(id, kw) {
-      showToast('info','Chargement de l\'historique de "' + kw + '"…');
-      try {
-        const r = await apiFetch('/api/keywords/' + id + '/history?days=30');
-        const hist = r.history || [];
-        if (!hist.length) { showToast('info','Pas encore d\'historique pour ce mot-clé.'); return; }
-        showToast('success', hist.length + ' points d\'historique chargés');
-      } catch(e) { showToast('error','Erreur'); }
-    };
-
-    window._genOpportunities = async function() {
-      showToast('info','Génération des opportunités IA…');
-      try {
-        const domain = STATE.me?.website || STATE.audits?.[0]?.url;
-        if (!domain) { showToast('warning', 'Ajoutez d’abord un site ou lancez un audit pour générer des opportunités.'); return; }
-        const r = await apiFetch('/api/keywords/opportunities/generate', { method:'POST', body:JSON.stringify({ domain }) });
-        if (!r?.ok) { showToast('error', r?.error || 'Aucune opportunité n’a pu être générée.'); return; }
-        showToast(r.count ? 'success' : 'info', r.count ? r.count + ' opportunités générées !' : 'Aucune opportunité mesurable pour le moment.');
-        await window._reloadKeywords();
-        render(STATE.currentSection);
-      } catch(e) { showToast('error','Erreur : ' + e); }
-    };
-
-    window._genClusters = async function() {
-      showToast('info','Clustering sémantique IA en cours…');
-      try {
-        const r = await apiFetch('/api/keywords/cluster', { method:'POST' });
-        if (!r?.ok) { showToast('error', r?.error || 'Les clusters n’ont pas pu être générés.'); return; }
-        showToast(r.count ? 'success' : 'info', r.count ? r.count + ' clusters générés !' : 'Ajoutez au moins deux mots-clés suivis pour créer des clusters.');
-        await window._reloadKeywords();
-        render(STATE.currentSection);
-      } catch(e) { showToast('error','Erreur : ' + e); }
-    };
-
-    window._trackFromOpp = async function(kw) {
-      try {
-        await apiFetch('/api/keywords/track', { method:'POST', body:JSON.stringify({ keyword: kw }) });
-        showToast('success','"' + kw + '" ajouté au suivi !');
-        await window._reloadKeywords();
-        render(STATE.currentSection);
-      } catch(e) { showToast('error','Erreur'); }
-    };
-
-    window._kwFilter = function(v) {
-      const val = v.toLowerCase();
-      document.querySelectorAll('#kw-tbody tr').forEach(tr => {
-        tr.style.display = tr.textContent.toLowerCase().includes(val) ? '' : 'none';
-      });
-    };
-
-    window._kwSetFilter = async function(v) {
-      try {
-        const q = v ? '?filter=' + v : '';
-        const r = await apiFetch('/api/keywords' + q);
-        STATE.keywordData = STATE.keywordData || {};
-        STATE.keywordData.keywords = r.keywords || r;
-        render(STATE.currentSection);
-      } catch(e) { showToast('error','Erreur de filtre'); }
-    };
-
-    window._kwSetSort = async function(v) {
-      try {
-        const r = await apiFetch('/api/keywords?sortBy=' + v);
-        STATE.keywordData = STATE.keywordData || {};
-        STATE.keywordData.keywords = r.keywords || r;
-        render(STATE.currentSection);
-      } catch(e) {}
-    };
-
-    window._reloadKeywords = async function() {
-      try {
-        const [kwData, statsData, oppData, alertData, clusterData] = await Promise.allSettled([
-          apiFetch('/api/keywords'),
-          apiFetch('/api/keywords/stats'),
-          apiFetch('/api/keywords/opportunities'),
-          apiFetch('/api/keywords/alerts'),
-          apiFetch('/api/keywords/clusters'),
-        ]);
-        STATE.keywordData = STATE.keywordData || {};
-        if (kwData.status==='fulfilled')      STATE.keywordData.keywords    = kwData.value?.keywords || kwData.value || [];
-        if (statsData.status==='fulfilled')   STATE.keywordData.stats       = statsData.value || {};
-        if (oppData.status==='fulfilled')     STATE.keywordData.opportunities = oppData.value?.opportunities || [];
-        if (alertData.status==='fulfilled')   STATE.keywordData.alerts       = alertData.value?.alerts || [];
-        if (clusterData.status==='fulfilled') STATE.keywordData.clusters     = clusterData.value?.clusters || [];
-        STATE.keywords = STATE.keywordData.keywords;
-      } catch(e) { console.warn('[KW] reload error', e); }
-    };
-    </script>
   `;
 }
 
@@ -33904,6 +33764,172 @@ function renderGA4Live() {
 // pour mettre à jour le dashboard en temps réel sans modifier ce fichier.
 window.STATE     = STATE;
 window.render    = render;
+
+// ── Keywords section handlers — module level so they exist even if init() aborts early ──
+// Keyword modal — defined here because <script> tags inside innerHTML do NOT execute in browsers
+window._showAddKeyword = function() {
+  const m = document.getElementById('fp-kw-modal');
+  if (m) m.style.display = 'flex';
+};
+// ── Keywords section handlers — extracted from innerHTML <script> (scripts inside innerHTML never execute) ──
+window._kwTab = window._kwTab || 'rankings';
+
+// City suggestions derived from the organization's country (free-text location input)
+window.fpKwCitySuggestions = function(country) {
+  const c = String(country || '').trim().toLowerCase();
+  if (/^(belgique|belgium|belgi[eë]|be)$/.test(c))
+    return ['Belgique','Bruxelles','Anvers','Gand','Charleroi','Liège','Bruges','Namur','Louvain','Mons','Malines','Ostende'];
+  if (/^(suisse|switzerland|schweiz|ch)$/.test(c))
+    return ['Suisse','Genève','Lausanne','Zurich','Berne','Bâle','Fribourg','Neuchâtel'];
+  if (/^(luxembourg|lu)$/.test(c))
+    return ['Luxembourg','Luxembourg-Ville','Esch-sur-Alzette','Differdange'];
+  if (/^(canada|ca)$/.test(c))
+    return ['Canada','Montréal','Québec','Laval','Gatineau','Ottawa','Toronto'];
+  if (/^(france|fr)$/.test(c) || !c)
+    return ['France','Paris','Lyon','Marseille','Toulouse','Bordeaux','Lille','Nantes','Nice','Strasbourg','Montpellier','Rennes'];
+  return [String(country).trim()];
+};
+
+window._submitAddKeyword = async function() {
+  const keyword = (document.getElementById('kw-add-keyword')?.value || '').trim();
+  if (!keyword) { showToast('error','Mot-clé requis'); return; }
+  const url = (document.getElementById('kw-add-url')?.value || '').trim();
+  const device = document.getElementById('kw-add-device')?.value || 'desktop';
+  // Free-text location: the typed value is used as-is; fall back to the org's country
+  const location = (document.getElementById('kw-add-location')?.value || '').trim()
+    || String((STATE.me && STATE.me.location && STATE.me.location.country) || '').trim()
+    || 'France';
+  const tag = (document.getElementById('kw-add-tag')?.value || '').trim();
+  try {
+    showToast('info','Ajout en cours…');
+    await apiFetch('/api/keywords/track', { method:'POST', body:JSON.stringify({ keyword, url, device, location, tag }) });
+    const m = document.getElementById('fp-kw-modal');
+    if (m) m.style.display = 'none';
+    showToast('success','"' + keyword + '" ajouté au suivi !');
+    await window._reloadKeywords();
+    render(STATE.currentSection);
+  } catch(e) {
+    const msg = e?.message || String(e);
+    if (e?.status === 429 || msg.includes('Plan limit')) showToast('error','Limite du plan atteinte. Passez à un plan supérieur.');
+    else showToast('error', 'Erreur : ' + msg);
+  }
+};
+
+window._syncKeywords = async function() {
+  const btns = Array.prototype.slice.call(document.querySelectorAll('[data-kw-sync]'));
+  btns.forEach(b => { b.disabled = true; b.dataset.prevLabel = b.textContent; b.textContent = '⟳ Sync…'; });
+  showToast('info','Synchronisation des positions…');
+  try {
+    const r = await apiFetch('/api/keywords/sync', { method:'POST' });
+    if (r && r.configured === false) {
+      showToast('warning', r.error || 'DataForSEO n\'est pas configuré — synchronisation impossible.');
+    } else {
+      showToast('success', (r?.synced ?? 0) + ' mot' + ((r?.synced ?? 0) > 1 ? 's' : '') + '-clé(s) synchronisé(s) en ' + Math.round((r?.durationMs || 0) / 1000) + 's');
+      await window._reloadKeywords();
+      render(STATE.currentSection);
+      return;
+    }
+  } catch(e) { showToast('error','Erreur de synchronisation : ' + (e?.message || e)); }
+  btns.forEach(b => { b.disabled = false; b.textContent = b.dataset.prevLabel || '⟳ Synchroniser'; });
+};
+
+window._kwDelete = function(id) {
+  if (!id) return;
+  window.fpDarkConfirm('Retirer ce mot-clé du suivi ?', async () => {
+    try {
+      await apiFetch('/api/keywords/' + id, { method:'DELETE' });
+      showToast('success','Mot-clé retiré');
+      await window._reloadKeywords();
+      render(STATE.currentSection);
+    } catch(e) { showToast('error','Erreur'); }
+  }, 'Retirer le mot-clé');
+};
+
+window._kwHistory = async function(id, kw) {
+  showToast('info','Chargement de l\'historique de "' + kw + '"…');
+  try {
+    const r = await apiFetch('/api/keywords/' + id + '/history?days=30');
+    const hist = r?.history || [];
+    if (!hist.length) { showToast('info','Pas encore d\'historique pour ce mot-clé.'); return; }
+    showToast('success', hist.length + ' points d\'historique chargés');
+  } catch(e) { showToast('error','Erreur'); }
+};
+
+window._genOpportunities = async function() {
+  showToast('info','Génération des opportunités…');
+  try {
+    const r = await apiFetch('/api/keywords/opportunities/generate', { method:'POST', body:JSON.stringify({}) });
+    if (!r?.ok) { showToast('error', r?.error || 'Aucune opportunité n’a pu être générée.'); return; }
+    showToast(r.count ? 'success' : 'info', r.count ? r.count + ' opportunités générées !' : 'Aucune opportunité mesurable : il faut des mots-clés suivis positionnés entre la 4e et la 20e place avec du volume.');
+    await window._reloadKeywords();
+    render(STATE.currentSection);
+  } catch(e) { showToast('error','Erreur : ' + (e?.message || e)); }
+};
+
+window._genClusters = async function() {
+  showToast('info','Clustering sémantique IA en cours…');
+  try {
+    const r = await apiFetch('/api/keywords/cluster', { method:'POST' });
+    if (!r?.ok) { showToast('error', r?.error || 'Les clusters n’ont pas pu être générés.'); return; }
+    showToast(r.count ? 'success' : 'info', r.count ? r.count + ' clusters générés !' : 'Ajoutez au moins deux mots-clés suivis pour créer des clusters.');
+    await window._reloadKeywords();
+    render(STATE.currentSection);
+  } catch(e) { showToast('error','Erreur : ' + (e?.message || e)); }
+};
+
+window._trackFromOpp = async function(kw) {
+  try {
+    await apiFetch('/api/keywords/track', { method:'POST', body:JSON.stringify({ keyword: kw }) });
+    showToast('success','"' + kw + '" ajouté au suivi !');
+    await window._reloadKeywords();
+    render(STATE.currentSection);
+  } catch(e) { showToast('error','Erreur'); }
+};
+
+window._kwFilter = function(v) {
+  const val = v.toLowerCase();
+  document.querySelectorAll('#kw-tbody tr').forEach(tr => {
+    tr.style.display = tr.textContent.toLowerCase().includes(val) ? '' : 'none';
+  });
+};
+
+window._kwSetFilter = async function(v) {
+  try {
+    const q = v ? '?filter=' + v : '';
+    const r = await apiFetch('/api/keywords' + q, { force: true });
+    STATE.keywordData = STATE.keywordData || {};
+    STATE.keywordData.keywords = r?.keywords || r || [];
+    render(STATE.currentSection);
+  } catch(e) { showToast('error','Erreur de filtre'); }
+};
+
+window._kwSetSort = async function(v) {
+  try {
+    const r = await apiFetch('/api/keywords?sortBy=' + v, { force: true });
+    STATE.keywordData = STATE.keywordData || {};
+    STATE.keywordData.keywords = r?.keywords || r || [];
+    render(STATE.currentSection);
+  } catch(e) {}
+};
+
+window._reloadKeywords = async function() {
+  try {
+    const [kwData, statsData, oppData, alertData, clusterData] = await Promise.allSettled([
+      apiFetch('/api/keywords', { force: true }),
+      apiFetch('/api/keywords/stats', { force: true }),
+      apiFetch('/api/keywords/opportunities', { force: true }),
+      apiFetch('/api/keywords/alerts', { force: true }),
+      apiFetch('/api/keywords/clusters', { force: true }),
+    ]);
+    STATE.keywordData = STATE.keywordData || {};
+    if (kwData.status==='fulfilled')      STATE.keywordData.keywords      = kwData.value?.keywords || kwData.value || [];
+    if (statsData.status==='fulfilled')   STATE.keywordData.stats         = statsData.value || {};
+    if (oppData.status==='fulfilled')     STATE.keywordData.opportunities = oppData.value?.opportunities || [];
+    if (alertData.status==='fulfilled')   STATE.keywordData.alerts        = alertData.value?.alerts || [];
+    if (clusterData.status==='fulfilled') STATE.keywordData.clusters      = clusterData.value?.clusters || [];
+    STATE.keywords = STATE.keywordData.keywords;
+  } catch(e) { console.warn('[KW] reload error', e); }
+};
 
 // ─────────────────────────────────────────────────────────────────
 // getBillingStatus() — canonical read for the current subscription status.
