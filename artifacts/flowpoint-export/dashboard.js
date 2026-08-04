@@ -716,14 +716,14 @@ function exportActivityCsv() {
               : (STATE.activityEvents && STATE.activityEvents.length > 0 ? STATE.activityEvents
               : (PREVIEW_MODE ? ACTIVITY_FEED : []))) || [];
   if (src.length === 0) {
-    showToast('info', 'Aucune activité à exporter pour le moment');
+    showToast('info', fpT('Aucune activité à exporter pour le moment'));
     return;
   }
   const rows = src.map(item =>
     `"${(item.label || item.title || '').replace(/"/g,'""')}","${(item.type||'')}","${(item.time||item.date||item.createdAt||'')}"`
   );
-  exportCsv('Label,Type,Date', rows, `activite-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
-  showToast('success', `CSV exporté — ${rows.length} événement${rows.length>1?'s':''}`);
+  exportCsv(fpT('Label') + ',' + fpT('Type') + ',' + fpT('Date'), rows, `activite-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
+  showToast('success', `${fpT('CSV export\u00e9')} \u2014 ${rows.length} ${fpT(rows.length>1?'\u00e9v\u00e9nements':'\u00e9v\u00e9nement')}`);
 }
 window.exportActivityCsv = exportActivityCsv;
 
@@ -750,28 +750,28 @@ function exportInvoicesCsv() {
         { id:'FP-2026-003', date:'01 Mar 2026', plan:'Pro', amount:'79', status:'Payée' },
       ] : []);
   const rows = invoices.map(inv =>
-    `"${inv.id}","${inv.date}","${inv.plan}","${inv.amount}€","${inv.status}"`
+    `"${inv.id}","${inv.date}","${inv.plan}","${inv.amount}€","${fpT(inv.status||'—')}"`
   );
-  exportCsv('Numéro,Date,Plan,Montant,Statut', rows, `factures-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
-  showToast('success', `CSV exporté — ${rows.length} facture${rows.length>1?'s':''}`);
+  exportCsv(fpT('Num\u00e9ro') + ',' + fpT('Date') + ',Plan,' + fpT('Montant') + ',' + fpT('Statut'), rows, `factures-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
+  showToast('success', `${fpT('CSV export\u00e9')} \u2014 ${rows.length} ${fpT(rows.length>1?'factures':'facture')}`);
 }
 
 function exportReportsCsv() {
   const reports = STATE.reports || [];
   const rows = reports.map(r =>
-    `"${(r.name||'').replace(/"/g,'""')}","${r.type||'PDF'}","${fmtDate(r.date || r.createdAt)}","${r.pages||0} pages"`
+    `"${(r.name||'').replace(/"/g,'""')}","${r.type||'PDF'}","${fmtDate(r.date || r.createdAt)}","${r.pages||0} ${fpT('pages')}"`
   );
-  exportCsv('Nom,Format,Date,Pages', rows, `rapports-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
-  showToast('success', `CSV exporté — ${rows.length} rapport${rows.length>1?'s':''}`);
+  exportCsv(fpT('Nom') + ',Format,' + fpT('Date') + ',' + fpT('Pages'), rows, `rapports-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
+  showToast('success', `${fpT('CSV export\u00e9')} \u2014 ${rows.length} ${fpT(rows.length>1?'rapports':'rapport')}`);
 }
 
 function exportAuditsCsv(audits) {
   const list = audits || STATE.audits || [];
   const rows = list.map(a =>
-    `"${(a.url||'').replace(/"/g,'""')}",${a.score||0},${a.speed||0},"${a.score>=70?'Bon':a.score>=45?'Moyen':'Mauvais'}","${fmtDate(a.date || a.createdAt)}",${a.issues||0}`
+    `"${(a.url||'').replace(/"/g,'""')}",${a.score||0},${a.speed||0},"${scoreLabel(a.score>=45?a.score:0)}","${fmtDate(a.date || a.createdAt)}",${a.issues||0}`
   );
-  exportCsv('URL,Score SEO,Vitesse,Statut,Date,Problèmes', rows, `audits-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
-  showToast('success', `CSV exporté — ${rows.length} audit${rows.length>1?'s':''}`);
+  exportCsv('URL,' + fpT('Score SEO') + ',' + fpT('Vitesse') + ',' + fpT('Statut') + ',' + fpT('Date') + ',' + fpT('Probl\u00e8mes'), rows, `audits-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
+  showToast('success', `${fpT('CSV export\u00e9')} \u2014 ${rows.length} ${fpT(rows.length>1?'audits':'audit')}`);
 }
 
 async function loadAuditHistory(audit) {
@@ -1774,7 +1774,7 @@ const $ = (sel, ctx = document) => ctx.querySelector(sel);
 const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
 
 function scoreColor(s) { return s >= 70 ? '#22c55e' : s >= 40 ? '#f59e0b' : '#ef4444'; }
-function scoreLabel(s) { return s >= 70 ? 'Bon' : s >= 40 ? 'Moyen' : 'Critique'; }
+function scoreLabel(s) { return s >= 70 ? fpT('Bon') : s >= 40 ? fpT('Moyen') : fpT('Critique'); }
 function impactColor(i) { return i === 'Très élevé' ? '#ef4444' : i === 'Élevé' ? '#f59e0b' : '#22c55e'; }
 function statusBadgeColor(s) { return s === 'up' ? '#22c55e' : s === 'down' ? '#ef4444' : '#f59e0b'; }
 function statusLabel(s) { return s === 'up' ? 'UP' : s === 'down' ? 'DOWN' : 'LENT'; }
@@ -1786,6 +1786,12 @@ function getLocale() {
     String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase()
   ] || 'fr-FR';
 }
+
+// ── fpT: lightweight lookup for programmatic (non-DOM) string translation ──
+// Returns the translation for the current language, or the original string
+// for French or when no translation is found.  The full implementation is
+// installed by the FP_I18N IIFE below; this stub covers early calls.
+function fpT(str) { return (window._fpTFn && window._fpTFn(str)) || str; }
 
 function relDate(d) {
   const fmt = (STATE.settings && STATE.settings.dateFormat) || 'DD/MM/YYYY';
@@ -1813,11 +1819,11 @@ function normalizeAuditUrl(raw) {
 }
 function auditErrorMessage(error) {
   const msg = String(error?.message || error || '');
-  if (error?.code === 'QUOTA_EXCEEDED' || msg.includes('quota')) return 'Votre quota d’audits est atteint pour ce mois.';
-  if (error?.status === 429 || error?.code === 'RATE_LIMIT_EXCEEDED') return `Trop de lancements : réessayez${error?.retryAfterSeconds ? ' dans ' + Math.ceil(error.retryAfterSeconds / 60) + ' min' : ' dans quelques minutes'}.`;
-  if (error?.status === 409 || error?.code === 'DUPLICATE_AUDIT') return 'Un audit de cette URL est déjà en cours ou a déjà été lancé aujourd’hui.';
-  if (error?.status === 400 || error?.code === 'INVALID_AUDIT_URL') return 'URL invalide : entrez une adresse HTTP ou HTTPS valide.';
-  return 'Impossible de créer l’audit pour le moment. Réessayez dans un instant.';
+  if (error?.code === 'QUOTA_EXCEEDED' || msg.includes('quota')) return fpT('Votre quota d\u2019audits est atteint pour ce mois.');
+  if (error?.status === 429 || error?.code === 'RATE_LIMIT_EXCEEDED') return fpT('Trop de lancements : r\u00e9essayez') + (error?.retryAfterSeconds ? ' ' + fpT('dans') + ' ' + Math.ceil(error.retryAfterSeconds / 60) + ' min' : ' ' + fpT('dans quelques minutes')) + '.';
+  if (error?.status === 409 || error?.code === 'DUPLICATE_AUDIT') return fpT('Un audit de cette URL est d\u00e9j\u00e0 en cours ou a d\u00e9j\u00e0 \u00e9t\u00e9 lanc\u00e9 aujourd\u2019hui.');
+  if (error?.status === 400 || error?.code === 'INVALID_AUDIT_URL') return fpT('URL invalide : entrez une adresse HTTP ou HTTPS valide.');
+  return fpT('Impossible de cr\u00e9er l\u2019audit pour le moment. R\u00e9essayez dans un instant.');
 }
 function sanitizeNotes(raw) { return String(raw).replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim().slice(0,2000); }
 function unread() { return STATE.notifications.filter(n => !n.read).length; }
@@ -9362,21 +9368,21 @@ function renderBilling() {
                 ${svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="13"').replace('height="14"','height="13"')}
               </div>
               <span style="font-size:14px;font-weight:800;color:var(--fp-text)">AI Credits</span>
-              <span style="font-size:10px;font-weight:700;padding:1px 8px;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:#2563EB">IA Performante</span>
+              <span style="font-size:10px;font-weight:700;padding:1px 8px;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:#2563EB">${fpT('IA Performante')}</span>
             </div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+' / '+fk(t)+' AI Credits consommés ce mois';})() : 'Chargement des crédits IA…'} · Réinitialisation le ${(function(){var d=STATE.aiCredits?.resetDate?new Date(STATE.aiCredits.resetDate):null;if(!d||Number.isNaN(d.getTime()))d=new Date(new Date().getFullYear(),new Date().getMonth()+1,1);return d.toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'});}())}</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+' / '+fk(t)+' '+fpT('AI Credits consomm\u00e9s ce mois');})() : fpT('Chargement des cr\u00e9dits IA\u2026')} \u00b7 ${fpT('R\u00e9initialisation le')} ${(function(){var d=STATE.aiCredits?.resetDate?new Date(STATE.aiCredits.resetDate):null;if(!d||Number.isNaN(d.getTime()))d=new Date(new Date().getFullYear(),new Date().getMonth()+1,1);return d.toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'});}())}</div>
           </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('ai');setTimeout(()=>navigateSub('usage'),50)">Voir détails complets →</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('ai');setTimeout(()=>navigateSub('usage'),50)">${fpT('Voir d\u00e9tails complets \u2192')}</button>
         </div>
         <div style="height:8px;border-radius:99px;background:var(--fp-track);overflow:hidden;margin-bottom:8px">
           <div style="height:100%;width:${STATE.aiCredits ? Math.min(Math.round(STATE.aiCredits.used/Math.max((STATE.aiCredits.limit||0)+(STATE.aiCredits.extra||0),1)*100),100) : 0}%;background:linear-gradient(90deg,#2563EB,#3b82f6);border-radius:99px;transition:width 0.6s ease"></div>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <span style="font-size:10px;color:var(--fp-text-faint)">${STATE.aiCredits ? Math.round(STATE.aiCredits.used/Math.max((STATE.aiCredits.limit||0)+(STATE.aiCredits.extra||0),1)*100)+'% utilisé' : '…% utilisé'}</span>
-          <span style="font-size:10px;font-weight:700;color:#2563EB">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(Math.max(0,t-u.used))+' AI Credits restants';}()) : '…'}</span>
+          <span style="font-size:10px;color:var(--fp-text-faint)">${STATE.aiCredits ? Math.round(STATE.aiCredits.used/Math.max((STATE.aiCredits.limit||0)+(STATE.aiCredits.extra||0),1)*100)+'% '+fpT('utilis\u00e9') : '\u2026% '+fpT('utilis\u00e9')}</span>
+          <span style="font-size:10px;font-weight:700;color:#2563EB">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(Math.max(0,t-u.used))+' '+fpT('AI Credits restants');}()) : '\u2026'}</span>
         </div>
         <div>
-          <span style="font-size:11px;color:var(--fp-text-muted);font-weight:600;display:block;margin-bottom:8px">Acheter des AI Credits :</span>
+          <span style="font-size:11px;color:var(--fp-text-muted);font-weight:600;display:block;margin-bottom:8px">${fpT('Acheter des AI Credits')} :</span>
           <div style="display:flex;gap:8px;flex-wrap:nowrap;align-items:center">
             ${[
               { label:'+50k',  price:'4€',  pack:'ai_credits_50k',  credits:50000,  badge:null         },
@@ -12372,7 +12378,7 @@ function renderAI() {
           pct: Math.round(Number(f.credits)/totalBreakdownCredits*100),
           cost: Number(f.cost||0).toFixed(3),
         }))
-      : [{ cat:'Aucune utilisation ce mois', credits:0, color:'#64748b', pct:100, cost:'0.000' }];
+      : [{ cat:fpT('Aucune utilisation ce mois'), credits:0, color:'#64748b', pct:100, cost:'0.000' }];
 
     const rawDaily = liveCredits?.dailyHistory ?? Array(30).fill(0);
     const dailyHistory = rawDaily.length === 30 ? rawDaily : Array(30).fill(0);
@@ -12381,9 +12387,9 @@ function renderAI() {
     const alert90 = pct >= 90;
     const alert70 = pct >= 70 && pct < 90;
     const alertHtml = alert90
-      ? `<div style="padding:12px 16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:var(--fp-radius-md);margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:18px">🚨</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#ef4444">90% de vos AI Credits utilisés</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">Achetez un pack ou upgradez votre plan pour continuer à utiliser l\'IA sans interruption.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpGoToBillingPlans()">Upgrader →</button></div>`
+      ? `<div style="padding:12px 16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:var(--fp-radius-md);margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:18px">🚨</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#ef4444">${fpT('90% de vos AI Credits utilis\u00e9s')}</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${fpT('Achetez un pack ou upgradez votre plan pour continuer \u00e0 utiliser l\u2019IA sans interruption.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpGoToBillingPlans()">${fpT('Upgrader \u2192')}</button></div>`
       : alert70
-      ? `<div style="padding:12px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--fp-radius-md);margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:18px">⚡</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#f59e0b">70% de vos AI Credits consommés</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">Pensez à recharger avant la fin du mois.</div></div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="fpGoToBillingPlans()" style="margin-left:auto">Voir plans</button></div>`
+      ? `<div style="padding:12px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--fp-radius-md);margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:18px">⚡</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#f59e0b">${fpT('70% de vos AI Credits consomm\u00e9s')}</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${fpT('Pensez \u00e0 recharger avant la fin du mois.')}</div></div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="fpGoToBillingPlans()" style="margin-left:auto">${fpT('Voir plans')}</button></div>`
       : '';
 
     return `
@@ -12392,9 +12398,9 @@ function renderAI() {
           🤖 AI Credits — Usage
           ${isUnlimited ? `<span style="font-size:10px;font-weight:700;padding:2px 10px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.3);border-radius:20px;color:#8b5cf6">Ultra · Usage prioritaire</span>` : ''}
         </h1>
-        <div class="fp-section-sub">Plan ${plan} · Réinitialisation le ${resetDate} · ${isUnlimited ? 'Crédits illimités (prioritaire)' : fmtNum(remaining) + ' AI Credits restants'}</div></div>
+        <div class="fp-section-sub">Plan ${plan} · ${fpT('R\u00e9initialisation le')} ${resetDate} · ${isUnlimited ? fpT('Cr\u00e9dits illimit\u00e9s') + ' (prioritaire)' : fmtNum(remaining) + ' ' + fpT('AI Credits restants')}</div></div>
         ${!isUnlimited ? `<div class="fp-section-actions">
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing');setTimeout(function(){navigateSub('plans');},50)">Upgrader le plan →</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing');setTimeout(function(){navigateSub('plans');},50)">${fpT('Upgrader le plan \u2192')}</button>
         </div>` : ''}
       </div>
 
@@ -12402,20 +12408,20 @@ function renderAI() {
 
       <!-- STAT CARDS -->
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('AI Credits utilisés', fmtNum(usedCredits), 'ce mois', 'up')}
+        ${statCard(fpT('AI Credits utilis\u00e9s'), fmtNum(usedCredits), fpT('ce mois'), 'up')}
         ${isUnlimited
-          ? statCard('AI Credits', '∞', 'Illimité', 'up')
-          : statCard('AI Credits restants', fmtNum(remaining), 'sur ' + fmtNum(maxCredits) + ' alloués', remaining < 20000 ? 'down' : 'up')}
-        ${statCard('Statut IA', 'Performante', 'Haute qualité · Prioritaire', 'up')}
-        ${statCard('Consommation', pct + '%', 'du quota mensuel', pct > 70 ? 'down' : 'neutral')}
+          ? statCard('AI Credits', '\u221e', fpT('Illimit\u00e9'), 'up')
+          : statCard(fpT('AI Credits restants'), fmtNum(remaining), fpT('sur') + ' ' + fmtNum(maxCredits) + ' ' + fpT('allou\u00e9s'), remaining < 20000 ? 'down' : 'up')}
+        ${statCard(fpT('Statut IA'), fpT('Performante'), fpT('Haute qualit\u00e9 \u00b7 Prioritaire'), 'up')}
+        ${statCard(fpT('Consommation'), pct + '%', fpT('du quota mensuel'), pct > 70 ? 'down' : 'neutral')}
       </div>
 
       <!-- MAIN CREDITS BAR -->
       <div class="fp-card fp-mb-16" style="padding:20px 22px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
           <div>
-            <div style="font-size:14px;font-weight:800;color:var(--fp-text)">Quota mensuel — Plan ${plan}${isUnlimited ? ' · Crédits illimités' : ''}</div>
-            <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Réinitialisation automatique le 1er de chaque mois${isUnlimited ? ' · Usage raisonnable appliqué' : ''}</div>
+            <div style="font-size:14px;font-weight:800;color:var(--fp-text)">${fpT('Quota mensuel \u2014 Plan')} ${plan}${isUnlimited ? ' \u00b7 ' + fpT('Cr\u00e9dits illimit\u00e9s') : ''}</div>
+            <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${fpT('R\u00e9initialisation automatique le 1er de chaque mois')}${isUnlimited ? ' \u00b7 ' + fpT('Usage raisonnable appliqu\u00e9') : ''}</div>
           </div>
           <div style="text-align:right">
             <div style="font-size:22px;font-weight:900;color:${pc};font-family:var(--fp-font-head)">${fmtNum(usedCredits)} <span style="font-size:13px;font-weight:500;color:var(--fp-text-faint)">/ ${isUnlimited ? '∞' : fmtNum(maxCredits)}</span></div>
@@ -14486,9 +14492,9 @@ function bindBulkBarEvents() {
   document.getElementById('bulk-export-csv')?.addEventListener('click', () => {
     const audits = STATE.audits.filter(a => STATE.selectedAudits.has(a.id));
     if (!audits.length) return;
-    const header = 'URL,Score SEO,Vitesse,Statut,Date';
+    const header = 'URL,' + fpT('Score SEO') + ',' + fpT('Vitesse') + ',' + fpT('Statut') + ',' + fpT('Date');
     const rows = audits.map(a =>
-      `"${a.url}",${a.score},${a.speed},"${a.score>=70?'Bon':a.score>=45?'Moyen':'Mauvais'}","${new Date(a.date).toLocaleDateString(getLocale())}"`
+      `"${a.url}",${a.score},${a.speed},"${scoreLabel(a.score)}","${new Date(a.date).toLocaleDateString(getLocale())}"`
     );
     const csv = [header, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -17283,6 +17289,124 @@ async function init() {
     'Force GBP': 'GBP strength',
     'Note GBP': 'GBP rating',
     '— vs concurrents': '— vs competitors',
+    // ── Dynamic / programmatic strings (fpT calls) ──
+    // auditErrorMessage
+    'Votre quota d\u2019audits est atteint pour ce mois.': 'Your audit quota has been reached for this month.',
+    'Trop de lancements : r\u00e9essayez': 'Too many launches: try again',
+    'dans': 'in',
+    'dans quelques minutes': 'in a few minutes',
+    'Un audit de cette URL est d\u00e9j\u00e0 en cours ou a d\u00e9j\u00e0 \u00e9t\u00e9 lanc\u00e9 aujourd\u2019hui.': 'An audit of this URL is already running or was already launched today.',
+    'URL invalide : entrez une adresse HTTP ou HTTPS valide.': 'Invalid URL: enter a valid HTTP or HTTPS address.',
+    'Impossible de cr\u00e9er l\u2019audit pour le moment. R\u00e9essayez dans un instant.': 'Unable to create the audit right now. Please try again in a moment.',
+    // scoreLabel
+    'Bon': 'Good', 'Mauvais': 'Poor',
+    // CSV export headers & toasts
+    'Aucune activit\u00e9 \u00e0 exporter pour le moment': 'No activity to export right now',
+    'CSV export\u00e9': 'CSV exported',
+    '\u00e9v\u00e9nement': 'event', '\u00e9v\u00e9nements': 'events',
+    'facture': 'invoice', 'factures': 'invoices',
+    'rapport': 'report', 'rapports': 'reports',
+    'audit': 'audit', 'audits': 'audits',
+    'Label': 'Label', 'Type': 'Type', 'Date': 'Date',
+    'Num\u00e9ro': 'Number', 'Montant': 'Amount',
+    'Nom': 'Name', 'Format': 'Format', 'Pages': 'Pages', 'pages': 'pages',
+    'Score SEO': 'SEO Score', 'Vitesse': 'Speed', 'Probl\u00e8mes': 'Issues',
+    'Payée': 'Paid', 'Pay\u00e9e': 'Paid',
+    // AI credits
+    'IA Performante': 'High Performance AI',
+    'AI Credits consomm\u00e9s ce mois': 'AI Credits used this month',
+    'Chargement des cr\u00e9dits IA\u2026': 'Loading AI credits\u2026',
+    'R\u00e9initialisation le': 'Reset on',
+    'Voir d\u00e9tails complets \u2192': 'View full details \u2192',
+    'utilis\u00e9': 'used',
+    'AI Credits restants': 'AI Credits remaining',
+    'Acheter des AI Credits': 'Buy AI Credits',
+    'Aucune utilisation ce mois': 'No usage this month',
+    '90% de vos AI Credits utilis\u00e9s': '90% of your AI Credits used',
+    'Achetez un pack ou upgradez votre plan pour continuer \u00e0 utiliser l\u2019IA sans interruption.': 'Buy a pack or upgrade your plan to continue using AI without interruption.',
+    '70% de vos AI Credits consomm\u00e9s': '70% of your AI Credits consumed',
+    'Pensez \u00e0 recharger avant la fin du mois.': 'Consider reloading before the end of the month.',
+    'Voir plans': 'View plans',
+    'AI Credits utilis\u00e9s': 'AI Credits used',
+    'ce mois': 'this month',
+    'Illimit\u00e9': 'Unlimited',
+    'allou\u00e9s': 'allocated',
+    'Statut IA': 'AI Status',
+    'Performante': 'High Performance',
+    'Haute qualit\u00e9 \u00b7 Prioritaire': 'High quality \u00b7 Priority',
+    'du quota mensuel': 'of monthly quota',
+    'Adoption des fonctionnalit\u00e9s \u2014 Ce mois': 'Feature Adoption \u2014 This Month',
+    'Les statistiques d\u2019adoption s\u2019afficheront avec l\u2019activit\u00e9 de votre \u00e9quipe.': "Adoption statistics will appear with your team\u2019s activity.",
+    // GSC section
+    'Derni\u00e8re sync': 'Last sync',
+    'jamais': 'never',
+    'Synchroniser': 'Sync',
+    'Sites \u25be': 'Sites \u25be',
+    'D\u00e9connecter GSC ?': 'Disconnect GSC?',
+    'D\u00e9connecter GSC': 'Disconnect GSC',
+    'D\u00e9connecter': 'Disconnect',
+    'Sync GSC lanc\u00e9e': 'GSC sync started',
+    '\u00c9volution clics & impressions (30 derniers jours)': 'Clicks & impressions trend (last 30 days)',
+    'Clics': 'Clicks',
+    'Impressions': 'Impressions',
+    'Chargement du graphique\u2026': 'Loading chart\u2026',
+    'Top Mots-cl\u00e9s': 'Top Keywords',
+    'Voir tout \u2192': 'View all \u2192',
+    'Requ\u00eate': 'Query',
+    'Impr.': 'Impr.',
+    'Pos.': 'Pos.',
+    'Top Pages': 'Top Pages',
+    'Page': 'Page',
+    'Aucune donn\u00e9e \u2014 synchronisez GSC': 'No data \u2014 synchronize GSC',
+    'Position moyenne': 'Average position',
+    'CTR faible \u2014 optimisez vos balises title et meta description.': 'Low CTR \u2014 optimize your title tags and meta descriptions.',
+    'Position \u00e9loign\u00e9e du top 10 \u2014 ciblez vos mots-cl\u00e9s \u00e0 fort potentiel.': 'Far from the top 10 \u2014 target your high-potential keywords.',
+    'Bonne visibilit\u00e9 organique. Analysez vos top mots-cl\u00e9s pour de nouvelles opportunit\u00e9s.': 'Good organic visibility. Analyze your top keywords for new opportunities.',
+    'Optimiser le CTR': 'Optimize CTR',
+    'Top mots-cl\u00e9s': 'Top keywords',
+    'Opportunit\u00e9s manqu\u00e9es': 'Missed opportunities',
+    // Overview KPI labels
+    'Clics GSC': 'GSC Clicks',
+    'Sessions GA4': 'GA4 Sessions',
+    'Conversions': 'Conversions',
+    '30 derniers jours': 'Last 30 days',
+    // Data deletion panel
+    'Supprimer toutes les donn\u00e9es': 'Delete all data',
+    'irr\u00e9versible': 'irreversible',
+    'Supprimer d\u00e9finitivement': 'Delete permanently',
+    'Suppression\u2026': 'Deleting\u2026',
+    'Donn\u00e9es supprim\u00e9es': 'Data deleted',
+    // API key section
+    'Cl\u00e9 r\u00e9g\u00e9n\u00e9r\u00e9e ! Copiez-la maintenant.': 'Key regenerated! Copy it now.',
+    'Erreur r\u00e9g\u00e9n\u00e9ration': 'Regeneration error',
+    'Cl\u00e9 copi\u00e9e !': 'Key copied!',
+    'Impossible de copier automatiquement': 'Cannot copy automatically',
+    'Copiez manuellement': 'Copy manually',
+    'Cr\u00e9\u00e9e le': 'Created on',
+    // Overview traffic labels
+    'clics': 'clicks',
+    'impressions': 'impressions',
+    // AI usage detail strings
+    '90% de vos AI Credits utilis\u00e9s': '90% of your AI Credits used',
+    'Upgrader \u2192': 'Upgrade \u2192',
+    'Upgrader le plan \u2192': 'Upgrade plan \u2192',
+    'Ultra \u00b7 Usage prioritaire': 'Ultra \u00b7 Priority usage',
+    'Plan actuel': 'Current plan',
+    'Quota mensuel \u2014 Plan': 'Monthly quota \u2014 Plan',
+    'R\u00e9initialisation automatique le 1er de chaque mois': 'Automatic reset on the 1st of each month',
+    'Usage raisonnable appliqu\u00e9': 'Fair use policy applies',
+    'consomm\u00e9': 'consumed',
+    'Cr\u00e9\u00e9e le': 'Created on',
+    // Misc labels
+    'Aucune r\u00e9ponse \u2014 site hors ligne': 'No response \u2014 site offline',
+    'Analyse temps r\u00e9el': 'Real-time analysis',
+    'rech./mois': 'searches/month',
+    'taux conv.': 'conv. rate',
+    'vol. total': 'total volume',
+    'Il y a': 'ago',
+    '\u00c0 l\u2019instant': 'Just now',
+    'Jamais v\u00e9rifi\u00e9': 'Never checked',
+    'Derni\u00e8re sync :': 'Last sync:',
   };
   var FP_I18N = {
     en: FP_I18N_EN,
@@ -17547,6 +17671,94 @@ async function init() {
     'Force GBP': 'Fuerza GBP',
     'Note GBP': 'Nota GBP',
     '— vs concurrents': '— vs competidores',
+    // ── Dynamic / programmatic strings (fpT calls) — Spanish ──
+    // auditErrorMessage
+    'Votre quota d\u2019audits est atteint pour ce mois.': 'Ha alcanzado su cuota de auditor\u00edas para este mes.',
+    'Trop de lancements : r\u00e9essayez': 'Demasiados lanzamientos: int\u00e9ntelo de nuevo',
+    'dans': 'en',
+    'dans quelques minutes': 'en unos minutos',
+    'Un audit de cette URL est d\u00e9j\u00e0 en cours ou a d\u00e9j\u00e0 \u00e9t\u00e9 lanc\u00e9 aujourd\u2019hui.': 'Ya hay una auditor\u00eda de esta URL en curso o ya fue lanzada hoy.',
+    'URL invalide : entrez une adresse HTTP ou HTTPS valide.': 'URL inv\u00e1lida: introduzca una direcci\u00f3n HTTP o HTTPS v\u00e1lida.',
+    'Impossible de cr\u00e9er l\u2019audit pour le moment. R\u00e9essayez dans un instant.': 'No se puede crear la auditor\u00eda ahora mismo. Int\u00e9ntelo de nuevo en un momento.',
+    // scoreLabel
+    'Bon': 'Bueno', 'Mauvais': 'Malo',
+    // CSV export
+    'Aucune activit\u00e9 \u00e0 exporter pour le moment': 'No hay actividad para exportar ahora mismo',
+    'CSV export\u00e9': 'CSV exportado',
+    '\u00e9v\u00e9nement': 'evento', '\u00e9v\u00e9nements': 'eventos',
+    'facture': 'factura', 'factures': 'facturas',
+    'rapport': 'informe', 'rapports': 'informes',
+    'audit': 'auditor\u00eda', 'audits': 'auditor\u00edas',
+    'Num\u00e9ro': 'N\u00famero', 'Montant': 'Importe',
+    'Nom': 'Nombre', 'Format': 'Formato', 'Pages': 'P\u00e1ginas', 'pages': 'p\u00e1ginas',
+    'Score SEO': 'Puntuaci\u00f3n SEO', 'Vitesse': 'Velocidad', 'Probl\u00e8mes': 'Problemas',
+    'Payée': 'Pagada', 'Pay\u00e9e': 'Pagada',
+    // AI credits
+    'IA Performante': 'IA de Alto Rendimiento',
+    'AI Credits consomm\u00e9s ce mois': 'Cr\u00e9ditos IA utilizados este mes',
+    'Chargement des cr\u00e9dits IA\u2026': 'Cargando cr\u00e9ditos IA\u2026',
+    'R\u00e9initialisation le': 'Reinicio el',
+    'Voir d\u00e9tails complets \u2192': 'Ver detalles completos \u2192',
+    'utilis\u00e9': 'usado',
+    'AI Credits restants': 'Cr\u00e9ditos IA restantes',
+    'Acheter des AI Credits': 'Comprar Cr\u00e9ditos IA',
+    'Aucune utilisation ce mois': 'Sin uso este mes',
+    '90% de vos AI Credits utilis\u00e9s': '90% de sus Cr\u00e9ditos IA utilizados',
+    'Achetez un pack ou upgradez votre plan pour continuer \u00e0 utiliser l\u2019IA sans interruption.': 'Compre un paquete o actualice su plan para continuar usando la IA sin interrupciones.',
+    '70% de vos AI Credits consomm\u00e9s': '70% de sus Cr\u00e9ditos IA consumidos',
+    'Pensez \u00e0 recharger avant la fin du mois.': 'Considere recargar antes de fin de mes.',
+    'Voir plans': 'Ver planes',
+    'AI Credits utilis\u00e9s': 'Cr\u00e9ditos IA utilizados',
+    'ce mois': 'este mes',
+    'Illimit\u00e9': 'Ilimitado',
+    'allou\u00e9s': 'asignados',
+    'Adoption des fonctionnalit\u00e9s \u2014 Ce mois': 'Adopci\u00f3n de funciones \u2014 Este mes',
+    'Les statistiques d\u2019adoption s\u2019afficheront avec l\u2019activit\u00e9 de votre \u00e9quipe.': 'Las estad\u00edsticas de adopci\u00f3n se mostrar\u00e1n con la actividad de su equipo.',
+    // GSC
+    'Derni\u00e8re sync': '\u00daltima sincronizaci\u00f3n',
+    'jamais': 'nunca',
+    'Synchroniser': 'Sincronizar',
+    'Sites \u25be': 'Sitios \u25be',
+    'D\u00e9connecter GSC ?': '\u00bfDesconectar GSC?',
+    'D\u00e9connecter GSC': 'Desconectar GSC',
+    'D\u00e9connecter': 'Desconectar',
+    'Sync GSC lanc\u00e9e': 'Sincronizaci\u00f3n GSC iniciada',
+    '\u00c9volution clics & impressions (30 derniers jours)': 'Evoluci\u00f3n clics e impresiones (\u00faltimos 30 d\u00edas)',
+    'Clics': 'Clics',
+    'Impressions': 'Impresiones',
+    'Chargement du graphique\u2026': 'Cargando gr\u00e1fico\u2026',
+    'Top Mots-cl\u00e9s': 'Palabras clave principales',
+    'Voir tout \u2192': 'Ver todo \u2192',
+    'Requ\u00eate': 'Consulta',
+    'Impr.': 'Impr.',
+    'Pos.': 'Pos.',
+    'Top Pages': 'P\u00e1ginas principales',
+    'Page': 'P\u00e1gina',
+    'Aucune donn\u00e9e \u2014 synchronisez GSC': 'Sin datos \u2014 sincronice GSC',
+    'Position moyenne': 'Posici\u00f3n media',
+    'CTR faible \u2014 optimisez vos balises title et meta description.': 'CTR bajo \u2014 optimice sus etiquetas title y meta description.',
+    'Position \u00e9loign\u00e9e du top 10 \u2014 ciblez vos mots-cl\u00e9s \u00e0 fort potentiel.': 'Lejos del top 10 \u2014 apunte a sus palabras clave de alto potencial.',
+    'Bonne visibilit\u00e9 organique. Analysez vos top mots-cl\u00e9s pour de nouvelles opportunit\u00e9s.': 'Buena visibilidad org\u00e1nica. Analice sus palabras clave principales para nuevas oportunidades.',
+    'Optimiser le CTR': 'Optimizar CTR',
+    'Top mots-cl\u00e9s': 'Palabras clave principales',
+    'Opportunit\u00e9s manqu\u00e9es': 'Oportunidades perdidas',
+    // Overview KPI labels
+    'Clics GSC': 'Clics GSC',
+    'Sessions GA4': 'Sesiones GA4',
+    '30 derniers jours': '\u00daltimos 30 d\u00edas',
+    // Data deletion panel
+    'Supprimer toutes les donn\u00e9es': 'Eliminar todos los datos',
+    'Supprimer d\u00e9finitivement': 'Eliminar definitivamente',
+    'Suppression\u2026': 'Eliminando\u2026',
+    'Donn\u00e9es supprim\u00e9es': 'Datos eliminados',
+    // API key section
+    'Cl\u00e9 r\u00e9g\u00e9n\u00e9r\u00e9e ! Copiez-la maintenant.': '\u00a1Clave regenerada! C\u00f3piela ahora.',
+    'Cl\u00e9 copi\u00e9e !': '\u00a1Clave copiada!',
+    'Impossible de copier automatiquement': 'No se puede copiar autom\u00e1ticamente',
+    'Cr\u00e9\u00e9e le': 'Creada el',
+    // Overview traffic labels
+    'clics': 'clics',
+    'impressions': 'impresiones',
     },
     de: {'Vue d\'ensemble':'Übersicht','Audits SEO':'SEO-Audits','Mots-clés':'Schlüsselwörter','Concurrents':'Wettbewerber','Rapports':'Berichte','Missions':'Aufgaben','Assistant IA':'KI-Assistent','Calendrier':'Kalender','Équipe':'Team','Paramètres':'Einstellungen','Facturation':'Abrechnung','Sécurité':'Sicherheit','Intégrations':'Integrationen','Notifications':'Benachrichtigungen','Alertes':'Warnungen','Croissance':'Wachstum','Trafic':'Traffic','Rechercher':'Suchen','Rechercher…':'Suchen…','Ajouter':'Hinzufügen','Annuler':'Abbrechen','Enregistrer':'Speichern','Sauvegarder':'Speichern','Supprimer':'Löschen','Modifier':'Bearbeiten','Fermer':'Schließen','Voir tout':'Alle anzeigen','Exporter':'Exportieren','Actualiser':'Aktualisieren','Chargement…':'Lädt…','Aucune donnée':'Keine Daten','Changer de plan':'Plan ändern','Plan actuel':'Aktueller Plan','Choisir':'Auswählen','Langue':'Sprache','Thème':'Design','Sombre':'Dunkel','Clair':'Hell','En cours':'In Bearbeitung','Terminé':'Erledigt','À faire':'Zu erledigen','Priorité':'Priorität','Statut':'Status','Actif':'Aktiv','Inactif':'Inaktiv','Envoyer':'Senden','Nouvelle conv.':'Neuer Chat','Complétées':'Abgeschlossen'},
     it: {'Vue d\'ensemble':'Panoramica','Audits SEO':'Audit SEO','Mots-clés':'Parole chiave','Concurrents':'Concorrenti','Rapports':'Report','Missions':'Attività','Assistant IA':'Assistente IA','Calendrier':'Calendario','Équipe':'Team','Paramètres':'Impostazioni','Facturation':'Fatturazione','Sécurité':'Sicurezza','Intégrations':'Integrazioni','Notifications':'Notifiche','Alertes':'Avvisi','Croissance':'Crescita','Trafic':'Traffico','Rechercher':'Cerca','Rechercher…':'Cerca…','Ajouter':'Aggiungi','Annuler':'Annulla','Enregistrer':'Salva','Sauvegarder':'Salva','Supprimer':'Elimina','Modifier':'Modifica','Fermer':'Chiudi','Voir tout':'Vedi tutto','Exporter':'Esporta','Actualiser':'Aggiorna','Chargement…':'Caricamento…','Aucune donnée':'Nessun dato','Changer de plan':'Cambia piano','Plan actuel':'Piano attuale','Choisir':'Scegli','Langue':'Lingua','Thème':'Tema','Sombre':'Scuro','Clair':'Chiaro','En cours':'In corso','Terminé':'Completato','À faire':'Da fare','Priorité':'Priorità','Statut':'Stato','Actif':'Attivo','Inactif':'Inattivo','Envoyer':'Invia','Nouvelle conv.':'Nuova chat','Complétées':'Completate'},
@@ -17567,6 +17779,17 @@ async function init() {
     FP_I18N[locale] = Object.assign({}, FP_I18N_EN, FP_I18N[locale] || {});
   });
   FP_I18N['pt-br'] = FP_I18N.pt;
+  // ── window.fpT: full implementation replacing the stub defined above ──
+  // Used for programmatic (non-DOM) translation of dynamic strings (CSV
+  // headers, toast messages with interpolation, computed labels, etc.).
+  window._fpTFn = function(str) {
+    try {
+      var lang = String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase();
+      if (lang === 'fr') return str;
+      var cat = FP_I18N[lang] || null;
+      return (cat && Object.prototype.hasOwnProperty.call(cat, str) ? cat[str] : str);
+    } catch(e) { return str; }
+  };
   // Source-restore translation engine.
   // French is the canonical source. On first translation of a node we remember
   // its original French text (node.__fpSrc / el.__fpSrcPh / el.__fpSrcTi).
@@ -17717,7 +17940,7 @@ async function init() {
         try {
           const card = document.querySelector('[data-apikey-card="' + keyId + '"]');
           const dateEl = card && card.querySelector('div[style*="margin-top:6px"]');
-          if (dateEl) dateEl.textContent = 'Créée le ' + new Date().toLocaleDateString(getLocale());
+          if (dateEl) dateEl.textContent = fpT('Cr\u00e9\u00e9e le') + ' ' + new Date().toLocaleDateString(getLocale());
         } catch(e) {}
         showToast('success', 'Clé régénérée ! Copiez-la maintenant.');
         navigator.clipboard?.writeText(r.key).catch(() => {});
@@ -35395,14 +35618,14 @@ function renderSearchConsole() {
     <div class="fp-gsc-site-header">
       <div>
         <div class="fp-section-title">Search Console</div>
-        <div class="fp-section-sub">Site : <strong>${escHtml(status.siteDisplayName||_gscSite())}</strong> · Dernière sync : ${status.lastSync ? new Date(status.lastSync).toLocaleString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'jamais'}</div>
+        <div class="fp-section-sub">Site : <strong>${escHtml(status.siteDisplayName||_gscSite())}</strong> · ${fpT('Derni\u00e8re sync')} : ${status.lastSync ? new Date(status.lastSync).toLocaleString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : fpT('jamais')}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_GSC_API&&window.FP_GSC_API.sync().then(()=>showToast('success','Sync GSC lancée'))">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Synchroniser
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_GSC_API&&window.FP_GSC_API.sync().then(()=>showToast('success',fpT('Sync GSC lanc\u00e9e')))">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> ${fpT('Synchroniser')}
         </button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('connect')">Sites ▾</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-btn-danger" onclick="window.fpDarkConfirm('Déconnecter GSC ?',function(){window.FP_GSC_API&&window.FP_GSC_API.disconnect().then(()=>render());},'Déconnecter GSC')">Déconnecter</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('connect')">${fpT('Sites \u25be')}</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-btn-danger" onclick="window.fpDarkConfirm(fpT('D\u00e9connecter GSC ?'),function(){window.FP_GSC_API&&window.FP_GSC_API.disconnect().then(()=>render());},fpT('D\u00e9connecter GSC'))">${fpT('D\u00e9connecter')}</button>
       </div>
     </div>`;
 
@@ -35427,8 +35650,8 @@ function renderSearchConsole() {
   }
 
   const _gscAiBlock = aiBlock(
-    `${(gsc.clicksTotal||0).toLocaleString(getLocale())} clics · ${(gsc.impressionsTotal||0).toLocaleString(getLocale())} impressions · CTR <strong>${(gsc.avgCTR||0).toFixed(2)}%</strong> · Position moyenne <strong>${(gsc.avgPosition||0).toFixed(1)}</strong>. ${(gsc.avgCTR||0) < 3 ? 'CTR faible — optimisez vos balises title et meta description.' : (gsc.avgPosition||0) > 20 ? 'Position éloignée du top 10 — ciblez vos mots-clés à fort potentiel.' : 'Bonne visibilité organique. Analysez vos top mots-clés pour de nouvelles opportunités.'}`,
-    ['Optimiser le CTR', 'Top mots-clés', 'Opportunités manquées']
+    `${(gsc.clicksTotal||0).toLocaleString(getLocale())} ${fpT('clics')} \u00b7 ${(gsc.impressionsTotal||0).toLocaleString(getLocale())} ${fpT('impressions')} \u00b7 CTR <strong>${(gsc.avgCTR||0).toFixed(2)}%</strong> \u00b7 ${fpT('Position moyenne')} <strong>${(gsc.avgPosition||0).toFixed(1)}</strong>. ${(gsc.avgCTR||0) < 3 ? fpT('CTR faible \u2014 optimisez vos balises title et meta description.') : (gsc.avgPosition||0) > 20 ? fpT('Position \u00e9loign\u00e9e du top 10 \u2014 ciblez vos mots-cl\u00e9s \u00e0 fort potentiel.') : fpT('Bonne visibilit\u00e9 organique. Analysez vos top mots-cl\u00e9s pour de nouvelles opportunit\u00e9s.')}`,
+    [fpT('Optimiser le CTR'), fpT('Top mots-cl\u00e9s'), fpT('Opportunit\u00e9s manqu\u00e9es')]
   );
   return `${siteHeader}${statsRow}${_gscAiBlock}${renderGSCOverview(keywords, pages, timeSeries, gsc)}`;
 }
@@ -35441,14 +35664,14 @@ function renderGSCOverview(keywords, pages, timeSeries, gsc) {
   return `
     ${timeSeries.length ? `
     <div class="fp-card fp-mb-20">
-      <div class="fp-card-title">📈 Évolution clics & impressions (30 derniers jours)</div>
+      <div class="fp-card-title">📈 ${fpT('\u00c9volution clics & impressions (30 derniers jours)')}</div>
       <div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:3px;background:#2563EB;border-radius:2px"></div><span style="font-size:11px;color:var(--fp-text-muted)">Clics</span></div>
-        <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:3px;background:#f59e0b;border-radius:2px"></div><span style="font-size:11px;color:var(--fp-text-muted)">Impressions</span></div>
+        <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:3px;background:#2563EB;border-radius:2px"></div><span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Clics')}</span></div>
+        <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:3px;background:#f59e0b;border-radius:2px"></div><span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Impressions')}</span></div>
       </div>
       <div class="fp-gsc-chart" id="gsc-overview-chart">
         ${(() => {
-          if (!tsSample.length) return '<div style="padding:32px;text-align:center;color:var(--fp-text-faint);font-size:12px">Chargement du graphique…</div>';
+          if (!tsSample.length) return '<div style="padding:32px;text-align:center;color:var(--fp-text-faint);font-size:12px">'+fpT('Chargement du graphique\u2026')+'</div>';
           const maxImp = Math.max(...tsSample.map(r => parseInt(r.impressions||0)), 1);
           const maxClk = Math.max(...tsSample.map(r => parseInt(r.clicks||0)), 1);
           const w = 800, h = 160;
@@ -35466,12 +35689,12 @@ function renderGSCOverview(keywords, pages, timeSeries, gsc) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">🔑 Top Mots-clés</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('keywords')">Voir tout →</button>
+          <div class="fp-card-title" style="margin-bottom:0">🔑 ${fpT('Top Mots-cl\u00e9s')}</div>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('keywords')">${fpT('Voir tout \u2192')}</button>
         </div>
         ${topKw.length ? `
         <div class="fp-gsc-kw-table">
-          <div class="fp-gsc-table-header"><span>Requête</span><span>Clics</span><span>Impr.</span><span>CTR</span><span>Pos.</span></div>
+          <div class="fp-gsc-table-header"><span>${fpT('Requ\u00eate')}</span><span>${fpT('Clics')}</span><span>${fpT('Impr.')}</span><span>CTR</span><span>${fpT('Pos.')}</span></div>
           ${topKw.map(kw => `
             <div class="fp-gsc-table-row">
               <span style="font-size:11px;color:var(--fp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(String(kw.keyword||''))}">${escHtml(String(kw.keyword||''))}</span>
@@ -35481,17 +35704,17 @@ function renderGSCOverview(keywords, pages, timeSeries, gsc) {
               <span style="color:${parseFloat(String(kw.position||99))<10?'#22c55e':parseFloat(String(kw.position||99))<20?'#f59e0b':'#ef4444'}">${parseFloat(String(kw.position||0)).toFixed(1)}</span>
             </div>
           `).join('')}
-        </div>` : '<div style="padding:24px;text-align:center;color:var(--fp-text-faint);font-size:12px">Aucune donnée — synchronisez GSC</div>'}
+        </div>` : '<div style="padding:24px;text-align:center;color:var(--fp-text-faint);font-size:12px">'+fpT('Aucune donn\u00e9e \u2014 synchronisez GSC')+'</div>'}
       </div>
 
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">📄 Top Pages</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('pages')">Voir tout →</button>
+          <div class="fp-card-title" style="margin-bottom:0">📄 ${fpT('Top Pages')}</div>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('pages')">${fpT('Voir tout \u2192')}</button>
         </div>
         ${topPg.length ? `
         <div class="fp-gsc-kw-table">
-          <div class="fp-gsc-table-header"><span>Page</span><span>Clics</span><span>Impr.</span><span>CTR</span><span>Pos.</span></div>
+          <div class="fp-gsc-table-header"><span>${fpT('Page')}</span><span>${fpT('Clics')}</span><span>${fpT('Impr.')}</span><span>CTR</span><span>${fpT('Pos.')}</span></div>
           ${topPg.map(pg => {
             const url = String(pg.page||'');
             const path = url.replace(/^https?:\/\/[^/]+/, '') || url;
@@ -35503,7 +35726,7 @@ function renderGSCOverview(keywords, pages, timeSeries, gsc) {
               <span style="color:${parseFloat(String(pg.position||99))<10?'#22c55e':parseFloat(String(pg.position||99))<20?'#f59e0b':'#ef4444'}">${parseFloat(String(pg.position||0)).toFixed(1)}</span>
             </div>`;
           }).join('')}
-        </div>` : '<div style="padding:24px;text-align:center;color:var(--fp-text-faint);font-size:12px">Aucune donnée — synchronisez GSC</div>'}
+        </div>` : '<div style="padding:24px;text-align:center;color:var(--fp-text-faint);font-size:12px">'+fpT('Aucune donn\u00e9e \u2014 synchronisez GSC')+'</div>'}
       </div>
     </div>`;
 }
