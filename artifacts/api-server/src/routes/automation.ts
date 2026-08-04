@@ -116,13 +116,20 @@ router.post("/automation/workflows/:id/run", async (req: Request, res: Response)
     if (!result.success) {
       // The workflow exists and is enabled (checked above) — a failure here means
       // execution itself failed, not that the workflow is unavailable.
-      res.status(500).json({ error: "L'exécution du workflow a échoué — réessayez ou consultez l'historique des runs.", runId: result.runId }); return;
+      // Bug-6 fix: return the real error message from the run, not a generic string.
+      const runError = (result as { error?: string }).error
+        ?? "L'exécution du workflow a échoué — réessayez ou consultez l'historique des runs.";
+      console.error("[automation] workflow run failed", { workflowId: id, orgId: org(req), runId: result.runId, error: runError });
+      res.status(500).json({ error: runError, runId: result.runId });
+      return;
     }
     store.logActivity({ type: "audit", label: `Workflow exécuté : ${id}`, targetId: id, targetType: "workflow", orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
     store.broadcast({ type: "fp:workflow:completed", workflowId: id }, org(req));
     res.json(result);
-  } catch {
-    res.status(500).json({ error: "Failed to execute workflow" });
+  } catch (execErr) {
+    const errMsg = execErr instanceof Error ? execErr.message : String(execErr);
+    console.error("[automation] executeWorkflow threw", { workflowId: id, orgId: org(req), error: errMsg });
+    res.status(500).json({ error: errMsg || "Failed to execute workflow", runId: null });
   }
 });
 

@@ -176,6 +176,86 @@ export async function checkTrialEndingReminders(): Promise<void> {
 
 // ── Cron scheduler ────────────────────────────────────────────────────────────
 
+// ── Calendar event reminders ──────────────────────────────────────────────────
+//
+// Runs every minute. Selects calendar_events where reminder > 0 and the
+// notification window has opened (event_time - reminder minutes <= NOW()),
+// but the event hasn't passed more than 1 hour ago (avoids spamming stale events).
+// Notifications are deduplicated via a deterministic id that encodes both the
+// event id AND the minute-precision epoch of when the reminder fires:
+//   `cal_${event.id}_${reminderMinuteEpoch}`
+// This means a rescheduled event (new date/time or new reminder offset) gets a
+// fresh notification ID and will fire again, while an unchanged event that has
+// already notified is suppressed by ON CONFLICT DO NOTHING.
+
+export async function checkCalendarReminders(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    // Build an event datetime from the TEXT `date` (ISO date) and TEXT `start_time` (HH:MM or HH:MM:SS).
+    // When start_time is empty/null we default to 09:00 for the reminder window check.
+    const { rows } = await client.query<{
+      id: string;
+      title: string;
+      org_id: string;
+      reminder: number;
+      event_ts: Date;
+    }>(`
+      SELECT
+        id,
+        title,
+        org_id,
+        reminder,
+        (
+          (date::DATE)
+          + COALESCE(
+              NULLIF(start_time, '')::TIME,
+              '09:00:00'::TIME
+            )
+          - (reminder * INTERVAL '1 minute')
+        ) AS event_ts
+      FROM calendar_events
+      WHERE reminder > 0
+        AND date IS NOT NULL
+        AND date != ''
+    `);
+
+    const due = rows.filter(r => {
+      const ts = new Date(r.event_ts).getTime();
+      const now = Date.now();
+      // Window: reminder fired (ts <= now) but event was at most 1h in the past
+      return ts <= now && ts >= now - 60 * 60 * 1000;
+    });
+
+    if (due.length === 0) return;
+
+    logger.info({ count: due.length }, "[calendar-cron] Calendar reminders due");
+
+    for (const row of due) {
+      // Encode the reminder-fire instant at minute precision so that rescheduling
+      // the event (changing date, start_time, or reminder offset) produces a new
+      // ID and allows the notification to fire again.
+      const reminderMinuteEpoch = Math.floor(new Date(row.event_ts).getTime() / 60_000);
+      const notifId = `cal_${row.id}_${reminderMinuteEpoch}`;
+      // Idempotent insert — skip if this exact reminder instant was already sent
+      await client.query(
+        `INSERT INTO notifications (id, org_id, type, title, message, link, read, created_at)
+         VALUES ($1, $2, 'calendar_reminder', $3, $4, '/calendar', false, NOW())
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          notifId,
+          row.org_id,
+          `Rappel : ${row.title}`,
+          `Votre événement « ${row.title} » commence dans ${row.reminder} minute${row.reminder > 1 ? 's' : ''}.`,
+        ]
+      );
+    }
+  } catch (err) {
+    logger.warn({ err }, "[calendar-cron] checkCalendarReminders error (non-fatal)");
+  } finally {
+    client.release();
+  }
+}
+
 const TRIAL_CRON_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 h
 const MONITOR_HEALTH_INTERVAL_MS = 60 * 1000; // check every 1 min which monitors are due
 
@@ -205,4 +285,8 @@ export function startMonitorCron(): void {
   // actually re-checked once its own `frequency` window has elapsed).
   void runMonitorHealthTick();
   setInterval(() => void runMonitorHealthTick(), MONITOR_HEALTH_INTERVAL_MS);
+
+  // Calendar reminders: check every minute for events whose reminder window has opened.
+  void checkCalendarReminders();
+  setInterval(() => void checkCalendarReminders(), MONITOR_HEALTH_INTERVAL_MS);
 }

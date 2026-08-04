@@ -9217,7 +9217,7 @@ html:not([data-theme="light"]) #dfs-local-rank-widget {
   border-radius: 50%;
   border: 3px solid rgba(37,99,235,0.18);
   border-top-color: var(--fp-accent, #2563EB);
-  animation: fpSpin 0.7s linear infinite;
+  animation: fpSpin 0.9s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   #fp-nav-spinner .fp-nav-spin-ring {

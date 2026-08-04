@@ -155,7 +155,7 @@ async function callAIWithFallback(args: {
     }
   } else {
     const { resolveTaskProvider } = await import("../services/ai-providers/task-router.js");
-    const resolved = resolveTaskProvider(args.task, args.provider);
+    const resolved = resolveTaskProvider(args.task as import("../services/ai-providers/task-router.js").AITaskType, args.provider);
     provider = resolved.provider;
     model = args.model ?? resolved.model;
   }
@@ -1221,7 +1221,7 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { message, context, stream: wantStream = true, history = [], provider, model, enableTools } = req.body as {
+  const { message, context, stream: wantStream = true, history = [], provider, model, enableTools, language } = req.body as {
     message?: string;
     context?: Record<string, unknown>;
     stream?: boolean;
@@ -1230,6 +1230,8 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
     model?: string;
     /** Phase 2 — active les outils missions pour ce message (opt-in). */
     enableTools?: boolean;
+    /** BCP-47 language code (e.g. 'fr', 'es', 'en', 'de') from the frontend user preference. */
+    language?: string;
   };
 
   if (!message?.trim()) {
@@ -1429,11 +1431,27 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
   const allowedDestinations = filterDestinations(effectivePerms, orgPlan);
   const navPromptSection = buildNavPromptSection(allowedDestinations);
 
+  // Resolve the user's preferred language (sent by the frontend as a BCP-47 code).
+  // Falls back to French so existing behaviour is preserved when not provided.
+  const _langCode = (typeof language === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(language.trim()))
+    ? language.trim().toLowerCase()
+    : "fr";
+  const _langNames: Record<string, string> = {
+    fr: "français", en: "English", es: "español", de: "Deutsch", it: "italiano",
+    pt: "português", nl: "Nederlands", pl: "polski", sv: "svenska", ro: "română", cs: "čeština",
+    "pt-br": "português (Brasil)",
+  };
+  const _langInstruction = _langNames[_langCode]
+    ? (_langCode === "fr"
+        ? "Tu réponds en français"
+        : `You MUST respond in ${_langNames[_langCode]} (language code: ${_langCode}). All your text output must be in ${_langNames[_langCode]}, not in French. Adapt expressions and idioms naturally for a ${_langNames[_langCode]}-speaking audience.`)
+    : "Tu réponds en français";
+
   // Base consultant instructions. fpContext is appended separately below so the
   // attachment block can be added in one explicit place visible to both paths.
   const systemPromptBase = `Tu es le consultant SEO senior de FlowPoint. Tu as déjà analysé le compte — les données sont dans le contexte ci-dessous. Tu connais les scores, les problèmes, les sites et l'historique.
 
-Tu réponds en français, en consultant humain — pas en outil. Ton interlocuteur peut être un artisan, un dentiste, un restaurateur : adapte le vocabulaire à quelqu'un qui ne connaît pas le SEO.
+${_langInstruction}, en consultant humain — pas en outil. Ton interlocuteur peut être un artisan, un dentiste, un restaurateur : adapte le vocabulaire à quelqu'un qui ne connaît pas le SEO.
 
 ${STRICT_AI_RULE}
 
@@ -1603,10 +1621,14 @@ RÈGLES D'ACTION (obligatoires) :
       recordCompletedUsageDeferred({ feature: "chat", orgId, userId, model: effectiveModel as AIModel, provider: selectedProvider, tokensIn: estTokensIn, tokensOut: estTokensOut, latencyMs, success: true, requestId, metadata: usageMetadata });
     } catch (err) {
       logger.error({ err, provider: selectedProvider, model: effectiveModel }, "[AI] Streaming chat failed");
-      const errCode    = (err as Record<string, unknown>)?.code;
+      const errCode    = (err as Record<string, unknown>)?.code as string | undefined;
       const errProvider = (err as Record<string, unknown>)?.provider as string | undefined;
       if (errCode === "PROVIDER_UNAVAILABLE") {
         res.write(`data: ${JSON.stringify({ ok: false, code: "PROVIDER_UNAVAILABLE", provider: errProvider ?? selectedProvider })}\n\n`);
+      } else if (errCode === "AI_NOT_CONFIGURED") {
+        // Keys are set — this path means the provider instance couldn't be built (e.g. transient).
+        // Return AI_UNAVAILABLE so the client shows a friendly retry message, not "not configured".
+        res.write(`data: ${JSON.stringify({ ok: false, code: "AI_UNAVAILABLE", error: "Service IA temporairement indisponible" })}\n\n`);
       } else {
         res.write(`data: ${JSON.stringify({ error: "Erreur de generation IA" })}\n\n`);
       }
@@ -1657,10 +1679,12 @@ RÈGLES D'ACTION (obligatoires) :
       });
     } catch (err) {
       logger.error({ err, provider: selectedProvider, model: effectiveModel }, "[AI] Chat failed");
-      const errCode    = (err as Record<string, unknown>)?.code;
+      const errCode    = (err as Record<string, unknown>)?.code as string | undefined;
       const errProvider = (err as Record<string, unknown>)?.provider as string | undefined;
       if (errCode === "PROVIDER_UNAVAILABLE") {
         res.status(503).json({ ok: false, code: "PROVIDER_UNAVAILABLE", provider: errProvider ?? selectedProvider });
+      } else if (errCode === "AI_NOT_CONFIGURED") {
+        res.status(503).json({ ok: false, code: "AI_UNAVAILABLE", error: "Service IA temporairement indisponible" });
       } else {
         res.status(503).json(aiUnavailableJson());
       }
@@ -1881,12 +1905,13 @@ router.get("/ai/conversations/:id/timeline", async (req: Request, res: Response)
 
 // ── POST /ai/audit — full technical + SEO audit analysis ─────────────────────
 router.post("/ai/audit", aiRateLimit, async (req, res) => {
-  const { url, scores, issues, cwv } = req.body as {
+  const { url, scores, issues, cwv, language: auditLang } = req.body as {
     url?: string;
     scores?: Record<string, number>;
     issues?: string[];
     cwv?: Record<string, number>;
     context?: Record<string, unknown>;
+    language?: string;
   };
 
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
@@ -1987,7 +2012,11 @@ Après ces corrections je recommande :
 2. [Action 2 spécifique aux données]
 3. [Action 3 spécifique aux données]`;
 
-  const systemPrompt = `Tu es un consultant SEO senior intégré à FlowPoint. Tu as déjà analysé le site — réponds directement avec les résultats concrets, jamais de formules génériques. Chaque problème doit citer des données réelles. N'invente aucun chiffre. Si une donnée manque, dis-le en une ligne et continue.`;
+  const _auditLangCode = (typeof auditLang === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(auditLang.trim())) ? auditLang.trim().toLowerCase() : "fr";
+  const _auditLangInstruction = _auditLangCode === "fr"
+    ? "Tu es un consultant SEO senior intégré à FlowPoint. Tu réponds en français."
+    : `You are a senior SEO consultant integrated in FlowPoint. You MUST respond in ${({ en:"English",es:"Spanish",de:"German",it:"Italian",pt:"Portuguese",nl:"Dutch",pl:"Polish",sv:"Swedish",ro:"Romanian",cs:"Czech","pt-br":"Brazilian Portuguese" } as Record<string,string>)[_auditLangCode] || _auditLangCode}. All output must be in that language, not in French.`;
+  const systemPrompt = `${_auditLangInstruction} Tu as déjà analysé le site — réponds directement avec les résultats concrets, jamais de formules génériques. Chaque problème doit citer des données réelles. N'invente aucun chiffre. Si une donnée manque, dis-le en une ligne et continue.`;
 
   try {
     const aiResult = await callAIWithFallback({

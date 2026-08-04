@@ -311,7 +311,7 @@ router.get("/auth/me", requireAuth, async (req: Request, res: Response) => {
       const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS["standard"];
       const firstName = dbData.firstName || (req.orgContext?.email?.split("@")[0] ?? "");
       res.json({
-        id: dbData.id || orgId,
+        id: dbData.orgId || orgId,
         firstName,
         lastName: dbData.lastName ?? "",
         email: req.orgContext?.email ?? "",
@@ -972,7 +972,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   try {
     const { loadOrgSettings: _dupCheck } = await import("../services/org-settings.js");
     const _dup = await _dupCheck(normalizedEmail).catch(() => undefined);
-    if (_dup?.org_id) {
+    if (_dup?.orgId) {
       res.status(409).json({
         error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter sur /login.html.",
         redirectTo: "/login.html",
@@ -1002,7 +1002,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
         // Check if the account was actually created
         const { loadOrgSettings: _orgCheck } = await import("../services/org-settings.js");
         const _org = await _orgCheck(normalizedEmail).catch(() => undefined);
-        if (_org?.org_id) {
+        if (_org?.orgId) {
           // Case A: real account exists → login
           res.status(409).json({
             error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
@@ -1157,7 +1157,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const isStripeErr = err instanceof Error && (
-      (err as Record<string, unknown>)["type"] === "StripeInvalidRequestError" ||
+      (err as unknown as Record<string, unknown>)["type"] === "StripeInvalidRequestError" ||
       msg.includes("No such") || msg.includes("no such") ||
       msg.includes("resource_missing") || msg.includes("invalid_request")
     );
@@ -1213,21 +1213,19 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
 
   try {
     // S2a — users query
-    let userRow: Awaited<ReturnType<typeof pool.query<{ id: string; status: string; email_verified: boolean }>>>;
+    let userRow: { rows: Array<{ id: string; status: string; email_verified: boolean }> };
     try {
       userRow = await pool.query<{ id: string; status: string; email_verified: boolean }>(
         `SELECT id, status, email_verified FROM users WHERE email = $1`,
         [email]
-      );
+      ) as { rows: Array<{ id: string; status: string; email_verified: boolean }> };
     } catch (qErr) {
       logger.error({ err: qErr instanceof Error ? (qErr as Error).message : String(qErr) }, "login-verify: users query error");
       throw qErr; // re-throw to outer catch → 503
     }
 
     // S2b — organization_members JOIN organizations query
-    let memberRow: Awaited<ReturnType<typeof pool.query<{
-      organization_id: string; role: string; status: string; org_status: string; subscription_status: string;
-    }>>>;
+    let memberRow: { rows: Array<{ organization_id: string; role: string; status: string; org_status: string; subscription_status: string }> };
     try {
       memberRow = await pool.query<{
         organization_id: string; role: string; status: string; org_status: string; subscription_status: string;
@@ -1242,7 +1240,7 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
          ORDER BY om.joined_at ASC
          LIMIT 1`,
         [email]
-      );
+      ) as { rows: Array<{ organization_id: string; role: string; status: string; org_status: string; subscription_status: string }> };
     } catch (qErr) {
       logger.error({ err: qErr instanceof Error ? (qErr as Error).message : String(qErr) }, "login-verify: org_members query error");
       throw qErr;
@@ -1539,7 +1537,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
           firstName: user.name ? user.name.split(" ")[0] : undefined,
           plan: planFromState ?? "standard",
           subscriptionStatus: "pending_billing",
-          name: user.email ?? undefined,
+          orgName: user.email ?? undefined,
         });
         logger.info({ email: resolvedEmail, plan: planFromState }, "[Auth] Google login — new org created with pending_billing");
       }
@@ -1548,7 +1546,54 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       // it must complete Checkout before a valid dashboard session is issued.
       const googleOrgSettings = await _loadGoogleOrg(resolvedEmail);
       if (googleOrgSettings?.subscriptionStatus === "pending_billing") {
-        res.redirect(`${publicUrl}/signin.html?plan=${encodeURIComponent(planFromState ?? googleOrgSettings.plan ?? "standard")}`);
+        // Create a pending_signups record so checkout.html / checkout-payment.html
+        // can complete the Stripe flow identically to the email signup path.
+        // First, invalidate any stale pending token for this email.
+        const googleFirstName = user.name ? user.name.split(" ")[0] : "Google";
+        const googleLastName  = user.name && user.name.split(" ").length > 1
+          ? user.name.split(" ").slice(1).join(" ")
+          : "User";
+        let googlePreRegToken = "";
+        try {
+          const _gpClient = await pool.connect();
+          try {
+            // Invalidate any existing non-consumed pending signup for this email
+            await _gpClient.query(
+              `UPDATE pending_signups SET consumed_at = NOW()
+               WHERE email = $1 AND consumed_at IS NULL`,
+              [resolvedEmail],
+            );
+            // Insert a fresh pending_signups row
+            googlePreRegToken = generateToken();
+            await _gpClient.query(
+              `INSERT INTO pending_signups
+                 (token, email, first_name, last_name, company_name, country, address, city, postal_code, created_at, expires_at)
+               VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',NOW(),NOW() + INTERVAL '2 hours')
+               ON CONFLICT (token) DO NOTHING`,
+              [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, resolvedEmail],
+            );
+            logger.info({ email: resolvedEmail }, "[Auth] Google signup — pending_signups record created for checkout");
+          } finally {
+            _gpClient.release();
+          }
+        } catch (preRegErr) {
+          logger.error({ err: preRegErr, email: resolvedEmail }, "[Auth] Google signup — pending_signups creation failed (fatal)");
+          res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
+          return;
+        }
+        if (!googlePreRegToken) {
+          logger.error({ email: resolvedEmail }, "[Auth] Google signup — pre_reg_token is empty after insert, aborting");
+          res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
+          return;
+        }
+        const planParam = encodeURIComponent(planFromState ?? googleOrgSettings.plan ?? "standard");
+        const emailParam = encodeURIComponent(resolvedEmail);
+        const firstParam = encodeURIComponent(googleFirstName);
+        const lastParam  = encodeURIComponent(googleLastName);
+        const tokenParam = encodeURIComponent(googlePreRegToken);
+        res.redirect(
+          `${publicUrl}/signin.html?google_signup=1&plan=${planParam}&email=${emailParam}&first_name=${firstParam}&last_name=${lastParam}&pre_reg_token=${tokenParam}`,
+        );
         return;
       }
 
@@ -1652,7 +1697,7 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
           firstName: user.name ? user.name.split(" ")[0] : (user.login ?? undefined),
           plan: "standard",
           subscriptionStatus: "pending_billing",
-          name: user.login ?? undefined,
+          orgName: user.login ?? undefined,
         });
         logger.info({ login: user.login }, "[Auth] GitHub login — new org created with pending_billing");
       }

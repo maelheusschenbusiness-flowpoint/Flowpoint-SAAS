@@ -1165,8 +1165,9 @@ window.openNewWorkflowPanel = openNewWorkflowPanel;
 // ── Invitation d'équipe — contrôle de capacité des sièges ────────────────────
 function fpOpenInvite() {
   const me = STATE.me || {};
-  const _pending = (STATE.pendingInvitations || []).length;
-  const used  = (STATE.seatUsage?.used ?? ((STATE.team || []).length || 1)) + _pending;
+  // seatUsage.used already includes pending invitations (counted server-side).
+  // Only fall back to a manual count when seatUsage is not yet loaded.
+  const used  = STATE.seatUsage?.used ?? (((STATE.team || []).length || 1) + (STATE.pendingInvitations || []).length);
   const limit = STATE.seatUsage?.limit ?? (me?.limits?.teamMembers ?? (1 + (me?.addons?.extraSeats || 0)));
   if (limit && used >= limit) {
     openFloatPanel('Sièges épuisés', `
@@ -5933,8 +5934,14 @@ function renderMissionDetail(m) {
   const steps = m.steps || [];
   const done = steps.filter(s => s.done).length;
   const pct = steps.length ? Math.round((done / steps.length) * 100) : 0;
-  const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e', open:'#6366f1', in_progress:'#2563EB' };
-  const statusLabels = { todo:'À faire', inprogress:'En cours', done:'Terminé', open:'À faire', in_progress:'En cours', completed:'Terminée' };
+  const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e' };
+  const statusLabels = { todo:'À faire', inprogress:'En cours', done:'Terminé' };
+  // Normalize legacy status variants (open → todo, in_progress → inprogress, completed → done)
+  const effectiveStatus = m.status === 'in_progress' ? 'inprogress' : m.status === 'completed' ? 'done' : (m.status === 'open' || !statusLabels[m.status]) ? 'todo' : m.status;
+  const teamMembers = (STATE.team || []);
+  const assigneeOptions = teamMembers.map(tm =>
+    `<option value="${escHtml(tm.id)}"${m.assignedTo === tm.id ? ' selected' : ''}>${escHtml(tm.name || tm.email || tm.id)}</option>`
+  ).join('');
   return `
     <div class="fp-mission-detail-header">
       <div class="fp-mission-detail-icon">${svgIcon('target').replace('stroke="currentColor"','stroke="#2563EB"')}</div>
@@ -5943,8 +5950,29 @@ function renderMissionDetail(m) {
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
           ${badge(m.category,'#2563EB')}
           ${badge(m.impact, impactColor(m.impact))}
-          ${badge(statusLabels[m.status]||m.status, statusColors[m.status]||'#94a3b8')}
+          ${badge(statusLabels[effectiveStatus], statusColors[effectiveStatus])}
         </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      <div style="flex:1;min-width:140px">
+        <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--fp-text-muted);display:block;margin-bottom:4px">Statut</label>
+        <select class="fp-input mission-status-select" data-id="${m.id}" style="font-size:12px;padding:5px 8px;height:auto">
+          <option value="todo"${effectiveStatus==='todo'?' selected':''}>À faire</option>
+          <option value="inprogress"${effectiveStatus==='inprogress'?' selected':''}>En cours</option>
+          <option value="done"${effectiveStatus==='done'?' selected':''}>Terminé</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:140px">
+        <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--fp-text-muted);display:block;margin-bottom:4px">Assigné à</label>
+        ${teamMembers.length > 0
+          ? `<select class="fp-input mission-assignee-select" data-id="${m.id}" style="font-size:12px;padding:5px 8px;height:auto">
+               <option value="">— Non assigné —</option>
+               ${assigneeOptions}
+             </select>`
+          : `<div style="font-size:11px;color:var(--fp-text-faint);padding:6px 0">Aucun siège d'équipe — <a href="#" onclick="closeFloatPanel();navigate('billing');setTimeout(function(){navigateSub('plans')},80)" style="color:var(--fp-accent)">ajouter des membres</a></div>`
+        }
       </div>
     </div>
 
@@ -5967,10 +5995,7 @@ function renderMissionDetail(m) {
       </div>
     ` : `<div style="padding:12px 0;font-size:13px;color:var(--fp-text-faint)">Aucune étape définie pour cette mission.</div>`}
 
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="fp-btn fp-btn-primary fp-btn-sm mission-status-toggle" data-id="${m.id}" data-status="${m.status}">
-        ${m.status==='done'?'↩ Remettre en cours':'✓ Marquer terminé'}
-      </button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
       <button class="fp-btn fp-btn-ghost fp-btn-sm mission-delete-detail" data-id="${m.id}">
         ${svgIcon('trash')} Supprimer
       </button>
@@ -6044,8 +6069,8 @@ function renderMissions() {
       return new Date(a.dueDate||a.date||0) - new Date(b.dueDate||b.date||0);
     });
 
-  const statusLabels = { todo:'À démarrer', inprogress:'En cours', done:'Complétées', open:'À faire', in_progress:'En cours', completed:'Terminée' };
-  const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e', open:'#6366f1', in_progress:'#2563EB' };
+  const statusLabels = { todo:'À démarrer', inprogress:'En cours', done:'Complétées', in_progress:'En cours', completed:'Terminée' };
+  const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e', in_progress:'#2563EB', completed:'#22c55e' };
   const cats = ['SEO','Performance','Conversion','Local SEO','Concurrent'];
 
   const quickWins = STATE.missions.filter(m => m.aiQuickWin && m.status === 'todo').slice(0, 4);
@@ -10200,7 +10225,7 @@ function renderSettings() {
             ${[
               { key:'hoverNotifs',    label:'Notifications en survol',       desc:'Afficher les messages et alertes au passage de la souris',         icon:'message-circle' },
               { key:'streaks',        label:'Streaks',                        desc:'Activer ou désactiver les streaks d\'activité',                    icon:'trending-up' },
-              { key:'aiTips',         label:'Conseils IA',                    desc:'Enlever les recommandations automatiques',                         icon:'sparkles' },
+              { key:'aiTips',         label:'Conseils IA',                    desc:'Afficher les recommandations IA automatiques dans vos missions',  icon:'sparkles' },
               { key:'newTab',         label:'Liens dans un nouvel onglet',   desc:'Ouvrir les pages liées dans un nouvel onglet',                      icon:'arrow-up-right' },
               { key:'bgDashboard',    label:'Dashboard en arrière-plan',     desc:'Garder le dashboard ouvert en arrière-plan',                        icon:'monitor' },
               { key:'recentActivity', label:'Activités récentes',            desc:'Voir les dernières actions et événements',                           icon:'clock' },
@@ -19304,17 +19329,30 @@ function bindMissionDetailHandlers(missionId) {
     });
   });
 
-  panel.querySelector('.mission-status-toggle')?.addEventListener('click', () => {
+  panel.querySelector('.mission-status-select')?.addEventListener('change', function() {
     const m = STATE.missions.find(x => x.id === missionId);
     if (!m) return;
-    const wasNotDone = m.status !== 'done';
-    m.status = m.status === 'done' ? 'inprogress' : 'done';
+    const newStatus = this.value;
+    const wasDone = m.status === 'done';
+    m.status = newStatus;
+    if (newStatus === 'done' && !wasDone) {
+      logActivityEvent('team', `Mission terminée : ${m.title}`, { missionId: m.id });
+      showToast('success', 'Mission terminée ! 🎉');
+    }
     saveMissions();
-    if (wasNotDone) logActivityEvent('team', `Mission terminée : ${m.title}`, { missionId: m.id });
-    if (typeof window.FP_MISSIONS_API !== 'undefined') window.FP_MISSIONS_API.update(m.id, { status: m.status }).catch(() => {});
-    openFloatPanel('Mission — ' + m.title.slice(0, 32) + (m.title.length > 32 ? '…' : ''), renderMissionDetail(m));
-    bindMissionDetailHandlers(m.id);
+    if (typeof window.FP_MISSIONS_API !== 'undefined') window.FP_MISSIONS_API.update(m.id, { status: newStatus }).catch(() => {});
     render();
+  });
+
+  panel.querySelector('.mission-assignee-select')?.addEventListener('change', function() {
+    const m = STATE.missions.find(x => x.id === missionId);
+    if (!m) return;
+    const assignedTo = this.value || null;
+    m.assignedTo = assignedTo;
+    saveMissions();
+    if (typeof window.FP_MISSIONS_API !== 'undefined') window.FP_MISSIONS_API.update(m.id, { assignedTo }).catch(() => {});
+    const assignee = (STATE.team || []).find(t => t.id === assignedTo);
+    showToast('success', assignedTo ? `Assigné à ${assignee?.name || assignee?.email || assignedTo}` : 'Assignation retirée');
   });
 
   panel.querySelector('.mission-delete-detail')?.addEventListener('click', () => {

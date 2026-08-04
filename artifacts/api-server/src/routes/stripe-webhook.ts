@@ -9,6 +9,7 @@ import { logger } from "../lib/logger.js";
 import { getPlanForPriceId, getAddonForPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
 import { mailer } from "../services/mailer.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
+import { loadOrgSettings } from "../services/org-settings.js";
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
 // If orgId cannot be resolved, the caller must NOT invoke this function.
@@ -107,19 +108,119 @@ function parseAddonsFromSubscription(subscription: Record<string, unknown>): Rec
   return addons;
 }
 
-async function persistAddonsFromSubscription(subscription: Record<string, unknown>, orgId: string): Promise<void> {
+/**
+ * persistAddonsFromSubscription
+ *
+ * @param subscription  - The Stripe subscription object from the webhook event.
+ * @param orgId         - Resolved org UUID.
+ * @param stripeCustomerId - Stripe customer ID, used to aggregate all live subs when deactivating.
+ * @param reconcileDeactivations - When true (subscription.updated / deleted only) deactivate
+ *   paid org_addons that are absent from the UNION of all live subscriptions for this customer.
+ *   MUST be false for subscription.created to avoid wrongly revoking addons on other subs.
+ */
+async function persistAddonsFromSubscription(
+  subscription: Record<string, unknown>,
+  orgId: string,
+  stripeCustomerId: string | null,
+  reconcileDeactivations: boolean,
+): Promise<void> {
   if (!orgId || orgId === "default") return;
   const addons = parseAddonsFromSubscription(subscription);
-  if (Object.keys(addons).length === 0) return;
 
   try {
-    const { activateAddon } = await import("../services/addons-service.js");
+    const { activateAddon, deactivateAddon } = await import("../services/addons-service.js");
+    const { PLAN_INCLUDED_ADDONS: PIA, ADDON_PRICE_IDS: APIDS } = await import("../lib/plans.js");
+    const { loadOrgData } = await import("../services/org-data.js");
+    const orgInfo = await loadOrgData(orgId).catch(() => null);
+    const planName = (orgInfo?.plan ?? "standard").toLowerCase();
+    const planIncluded = PIA[planName] ?? new Set<string>();
+
+    // ── 1. Activate addons present in this subscription's items ──────────────
     for (const [key, val] of Object.entries(addons)) {
       if (val === true || (typeof val === "number" && val > 0)) {
         await activateAddon(key, orgId).catch(err =>
           logger.warn({ err, key, orgId }, "[Webhook] Failed to activate addon")
         );
       }
+    }
+
+    // ── 2. Deactivate stale paid addons — only for subscription.updated / deleted ──
+    // Never run on subscription.created: the newly-created add-on subscription
+    // would only contain the new addon, causing all other valid addons to be revoked.
+    if (!reconcileDeactivations) return;
+
+    // Build the UNION of all addon keys across ALL live subscriptions for this customer.
+    // "Live" = active | trialing | past_due (customer still has access).
+    let aggregateAddonKeys: Set<string>;
+    try {
+      if (!stripeCustomerId) {
+        // No customer ID available — cannot safely aggregate; skip deactivation (fail-open).
+        logger.warn({ orgId }, "[Webhook] reconcile: no stripeCustomerId — skipping deactivation to avoid false revocations");
+        return;
+      }
+
+      const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+      if (!stripeKey) {
+        logger.warn({ orgId }, "[Webhook] reconcile: no Stripe API key — skipping deactivation (fail-open)");
+        return;
+      }
+
+      const { default: Stripe } = await import("stripe");
+      const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+
+      const allSubs = await stripe.subscriptions.list({
+        customer: stripeCustomerId,
+        status: "all",
+        limit: 100,
+      });
+
+      // Filter to live subscriptions only
+      const liveSubs = allSubs.data.filter(s =>
+        s.status === "active" || s.status === "trialing" || s.status === "past_due"
+      );
+
+      aggregateAddonKeys = new Set<string>();
+      for (const sub of liveSubs) {
+        for (const item of sub.items.data) {
+          const priceId = item.price?.id;
+          if (!priceId) continue;
+          const { getAddonForPriceId } = await import("../lib/plans.js");
+          const addonKey = getAddonForPriceId(priceId);
+          if (addonKey) aggregateAddonKeys.add(addonKey);
+        }
+      }
+      logger.info({ orgId, stripeCustomerId, liveSubCount: liveSubs.length, addonUnion: Array.from(aggregateAddonKeys) },
+        "[Webhook] reconcile: built aggregate addon key union across all live subscriptions");
+    } catch (stripeErr) {
+      // Stripe API failure — fail-open: skip deactivation entirely, never revoke on incomplete data
+      logger.error({ stripeErr, orgId, stripeCustomerId }, "[Webhook] reconcile: Stripe subscription list failed — skipping deactivation (fail-open)");
+      return;
+    }
+
+    // ── 3. Deactivate paid addons absent from the aggregate union ────────────
+    const { pool: pgPool } = await import("@workspace/db");
+    const client = await pgPool.connect();
+    try {
+      const activeRows = await client.query<{ addon_key: string }>(
+        `SELECT addon_key FROM org_addons WHERE org_id = $1 AND active = true`,
+        [orgId]
+      );
+      for (const row of activeRows.rows) {
+        const key = row.addon_key;
+        // Never deactivate plan-included addons via subscription reconciliation
+        if (planIncluded.has(key)) continue;
+        // Only deactivate addons that have a Stripe price ID (paid add-ons)
+        if (!APIDS[key]) continue;
+        // If not found in ANY live subscription → deactivate
+        if (!aggregateAddonKeys.has(key)) {
+          await deactivateAddon(key, orgId).catch(err =>
+            logger.warn({ err, key, orgId }, "[Webhook] reconcile: Failed to deactivate removed addon")
+          );
+          logger.info({ key, orgId }, "[Webhook] reconcile: deactivated addon absent from all live subscriptions");
+        }
+      }
+    } finally {
+      client.release();
     }
   } catch (err) {
     logger.warn({ err, orgId }, "[Webhook] persistAddonsFromSubscription: non-critical failure");
@@ -218,18 +319,17 @@ export async function activateNewSignup(opts: {
   if (!_existing) {
     await upsertOrgSettings(orgId, {
       email,
-      name:               signupRow["company_name"] ?? "",
+      orgName:            (signupRow["company_name"] as string | undefined) ?? "",
       firstName,
-      lastName:           signupRow["last_name"]    ?? "",
-      country:            signupRow["country"]      ?? null,
-      city:               signupRow["city"]         ?? null,
-      address:            signupRow["address"]      ?? null,
-      postalCode:         signupRow["postal_code"]  ?? null,
-      phone:              signupRow["phone"]        ?? null,
-      vat:                signupRow["vat"]          ?? null,
+      lastName:           (signupRow["last_name"] as string | undefined)    ?? "",
+      country:            (signupRow["country"] as string | undefined)      ?? null,
+      city:               (signupRow["city"] as string | undefined)         ?? null,
+      address:            (signupRow["address"] as string | undefined)      ?? null,
+      postalCode:         (signupRow["postal_code"] as string | undefined)  ?? null,
+      phone:              (signupRow["phone"] as string | undefined)        ?? null,
+      vat:                (signupRow["vat"] as string | undefined)          ?? null,
       locationConfigured: !!(signupRow["city"] || signupRow["address"]),
       locationSource:     "manual",
-      _readonly_since:    new Date().toISOString(),
     });
     logger.info({ orgId }, "[Webhook/activate] org_settings profile row created");
   }
@@ -584,7 +684,17 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       }
 
       // P0-1: pass explicit orgId — never defaults to "default"
-      await persistSubscriptionMeta({ orgId, subscriptionStatus: "active", stripeCustomerId: customerId });
+      // Bug-1 fix: persist plan immediately from session.metadata.plan when valid,
+      // rather than waiting for the subscription.created/updated webhook.
+      const persistPayload: Parameters<typeof persistSubscriptionMeta>[0] = {
+        orgId,
+        subscriptionStatus: "active",
+        stripeCustomerId: customerId,
+      };
+      if (["standard","pro","ultra"].includes(planNorm)) {
+        persistPayload.plan = planNorm;
+      }
+      await persistSubscriptionMeta(persistPayload);
 
       if (["standard","pro","ultra"].includes(planNorm)) {
         store.broadcastPlanUpdate(planNorm, orgId);
@@ -741,8 +851,16 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         store.broadcastPlanUpdate(newPlan, orgId);
       }
 
-      // Persist activated add-ons to DB using the resolved orgId
-      await persistAddonsFromSubscription(obj, orgId);
+      // Persist activated add-ons to DB using the resolved orgId.
+      // Only reconcile deactivations on subscription.updated — never on subscription.created,
+      // because an add-on checkout creates a separate subscription whose item list only contains
+      // the new add-on; running deactivation on that event would wrongly revoke addons on
+      // the customer's base or other add-on subscriptions.
+      {
+        const subCustomerId = obj["customer"] ? String(obj["customer"]) : null;
+        const isCreated = event.type === "customer.subscription.created";
+        await persistAddonsFromSubscription(obj, orgId, subCustomerId, /* reconcileDeactivations */ !isCreated);
+      }
 
       // Provision plan-bundled add-ons (whiteLabel for Pro, customDomain for Ultra, etc.)
       // These are never Stripe subscription items because they are included at no extra charge.
@@ -803,9 +921,11 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       await persistSubscriptionMeta({ orgId, subscriptionStatus: "active" });
       store.broadcast({ type: "payment_succeeded" }, orgId);
 
-      // Persist active add-ons from subscription (if subscription is in the event)
+      // Persist active add-ons from subscription (if subscription is in the event).
+      // Invoice events are additive-only (no deactivation reconciliation here).
       if (obj["lines"]) {
-        await persistAddonsFromSubscription(obj, orgId).catch(() => {});
+        const invCustomerId = obj["customer"] ? String(obj["customer"]) : null;
+        await persistAddonsFromSubscription(obj, orgId, invCustomerId, /* reconcileDeactivations */ false).catch(() => {});
       }
 
       // ── Email routing based on billing_reason ─────────────────────────────
@@ -832,7 +952,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         try {
           const l = obj["lines"] as Record<string, unknown>;
           const d = (l["data"] as Array<Record<string, unknown>>)?.[0];
-          return d ? new Date(Number(d["period"]?.["end"] ?? 0) * 1000).toISOString() : undefined;
+          return d ? new Date(Number((d["period"] as Record<string, unknown>)?.["end"] ?? 0) * 1000).toISOString() : undefined;
         } catch { return undefined; }
       })();
       const recipientName = orgData.firstName || orgData.email.split("@")[0] || "Utilisateur";

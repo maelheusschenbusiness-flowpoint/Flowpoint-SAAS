@@ -1,7 +1,8 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
-// ── Expected columns for team_members (source of truth) ───────────────────────
+// Structural type matching pg.PoolClient — avoids importing "pg" directly
+// (pg lives in @workspace/db's private node_modules and is not hoisted).
 const TEAM_MEMBERS_EXPECTED: Array<{ col: string; sql: string }> = [
   { col: "id",                    sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS id                    TEXT        NOT NULL DEFAULT '';` },
   { col: "org_id",                sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS org_id                TEXT        NOT NULL DEFAULT 'default';` },
@@ -33,7 +34,7 @@ const TEAM_MEMBERS_EXPECTED: Array<{ col: string; sql: string }> = [
  * auto-repairs each missing column via ALTER TABLE, then verifies repair succeeded.
  * Every DDL failure is logged with full PostgreSQL error detail.
  */
-async function verifyTeamMembersSchema(client: import("pg").PoolClient): Promise<void> {
+async function verifyTeamMembersSchema(client: PoolClient): Promise<void> {
   try {
     const snapshot = await client.query<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns WHERE table_name='team_members' ORDER BY ordinal_position`
@@ -110,7 +111,7 @@ async function verifyTeamMembersSchema(client: import("pg").PoolClient): Promise
   }
 }
 
-async function run(client: import("pg").PoolClient, sql: string): Promise<void> {
+async function run(client: PoolClient, sql: string): Promise<void> {
   try {
     await client.query(sql);
   } catch (err: unknown) {
@@ -290,6 +291,21 @@ export async function initDataTables(): Promise<void> {
     `);
     await run(client, `ALTER TABLE google_oauth_states ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
     await run(client, `CREATE INDEX IF NOT EXISTS google_oauth_states_expires_idx ON google_oauth_states(expires_at);`);
+
+    // ── google_product_connections — per-product disconnect flags ─────────────
+    // Stores explicit connect/disconnect state per Google product (gbp/ga4/gsc)
+    // per org. This allows per-product disconnect while the shared OAuth token
+    // remains valid for the other products.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS google_product_connections (
+        org_id     TEXT        NOT NULL,
+        product    TEXT        NOT NULL,
+        connected  BOOLEAN     NOT NULL DEFAULT true,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (org_id, product)
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS google_product_connections_org_idx ON google_product_connections(org_id);`);
 
     // ── audit_schedules ───────────────────────────────────────────────────────
     await run(client, `
@@ -2084,6 +2100,16 @@ export async function initDataTables(): Promise<void> {
     // ga4_properties: property_name (service uses instead of display_name) + UNIQUE(org_id) for ON CONFLICT
     await run(client, `ALTER TABLE ga4_properties ADD COLUMN IF NOT EXISTS property_name TEXT`);
     await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS ga4_properties_org_idx ON ga4_properties(org_id)`);
+    // google_product_connections: ensure table exists (for installs created before this migration)
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS google_product_connections (
+        org_id     TEXT        NOT NULL,
+        product    TEXT        NOT NULL,
+        connected  BOOLEAN     NOT NULL DEFAULT true,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (org_id, product)
+      )
+    `);
     // gsc_sites: permission_level
     await run(client, `ALTER TABLE gsc_sites ADD COLUMN IF NOT EXISTS permission_level TEXT`);
     // gbp_posts: published_at
@@ -2572,3 +2598,11 @@ export async function initDataTables(): Promise<void> {
     client.release();
   }
 }
+
+interface DbClient {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query<T extends Record<string, unknown> = Record<string, unknown>>(queryText: string, values?: any[]): Promise<{ rows: T[]; rowCount: number | null }>;
+  release(err?: boolean | Error): void;
+}
+
+type PoolClient = DbClient;

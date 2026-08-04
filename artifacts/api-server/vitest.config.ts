@@ -34,6 +34,7 @@ export default defineConfig({
       "src/lib/plans.test.ts",
       "src/routes/white-label.test.ts",
       "src/services/addons-provisioning.test.ts",
+      "src/routes/stripe-webhook-addon-reconcile.test.ts",
     ],
     environment: "node",
     globals:     false,

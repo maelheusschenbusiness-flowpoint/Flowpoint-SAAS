@@ -34,6 +34,7 @@ import { discoverAndStoreProperties } from "../services/ga4-service.js";
 import { discoverAndStoreSites } from "../services/gsc-service.js";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
+import { resolveOrgId } from "../lib/resolve-org-id.js";
 
 // ── OAuth state store (DB-backed — multi-instance safe) ──────────────────────
 // States are persisted in `google_oauth_states` so any server instance can
@@ -146,6 +147,15 @@ async function handleGoogleCallback(req: Request, res: Response): Promise<void> 
       [`conn-google-${orgId}`, orgId]
     ).catch(e => logger.warn({ e }, "[google] Failed to update connectors table"));
 
+    // Clear any stale per-product disconnect flags so reconnecting Google
+    // restores all product connections to connected=true.
+    pool.query(
+      `INSERT INTO google_product_connections (org_id, product, connected, updated_at)
+         VALUES ($1, 'gbp', true, NOW()), ($1, 'ga4', true, NOW()), ($1, 'gsc', true, NOW())
+       ON CONFLICT (org_id, product) DO UPDATE SET connected = true, updated_at = NOW()`,
+      [orgId]
+    ).catch(e => logger.warn({ e }, "[google] Failed to clear stale product disconnect flags"));
+
     // Kick off background syncs (non-blocking)
     syncAll(orgId).catch(e => logger.warn({ e }, "[google] Background GBP sync failed"));
     discoverAndStoreProperties(orgId).catch(e => logger.warn({ e }, "[google] GA4 property discovery failed"));
@@ -168,9 +178,10 @@ googlePublicRouter.get("/google/oauth/callback", handleGoogleCallback);
 
 const router = Router();
 
-// Helper to extract orgId from authenticated request
+// Helper to extract orgId from authenticated request — uses the shared resolver
+// so all Google routes (GBP / GA4 / GSC) read from the same org bucket.
 function getOrgId(req: Request): string {
-  return (req as unknown as Record<string, string>)["orgId"] ?? "default";
+  return resolveOrgId(req);
 }
 
 // ── Connect / status ──────────────────────────────────────────────────────────
@@ -184,7 +195,8 @@ router.get("/google/connect", async (req: Request, res: Response) => {
     return;
   }
   try {
-    const orgId = getOrgId(req);
+    let orgId: string;
+    try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
     const state = crypto.randomBytes(16).toString("hex");
     await registerOAuthState(state, orgId);
     res.json({ ok: true, url: generateAuthUrl(state), state });
@@ -204,7 +216,8 @@ router.get("/google/oauth/start", async (req: Request, res: Response) => {
     return;
   }
   try {
-    const orgId = getOrgId(req);
+    let orgId: string;
+    try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
     const state = crypto.randomBytes(16).toString("hex");
     await registerOAuthState(state, orgId);
     res.json({ ok: true, url: generateAuthUrl(state), state });
@@ -215,26 +228,59 @@ router.get("/google/oauth/start", async (req: Request, res: Response) => {
 });
 
 router.get("/google/status", async (req: Request, res: Response) => {
+  let orgId: string;
+  try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
   try {
-    const status = await getGBPStatus(getOrgId(req));
-    res.json(status);
+    const status = await getGBPStatus(orgId);
+    // Respect per-product disconnect flag
+    const productRow = await pool.query(
+      `SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='gbp' LIMIT 1`,
+      [orgId]
+    ).catch(() => ({ rows: [] as Array<{ connected: boolean }> }));
+    const productFlag = productRow.rows[0];
+    // If product was explicitly disconnected (flag=false), override token-based status
+    const connected = productFlag !== undefined && !productFlag.connected
+      ? false
+      : status.connected;
+    res.json({ ...status, connected });
   } catch {
     res.status(500).json({ ok: false, error: "Failed to get Google status" });
   }
 });
 
 router.post("/google/disconnect", async (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+  let orgId: string;
+  try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
+
   const client = await pool.connect();
   try {
-    // P1-1: sequential queries on the same client — Promise.all on a single pg
-    // PoolClient triggers a "client.query() when already executing" deprecation
-    // warning (and can corrupt query state in older pg versions).
+    // Remove shared OAuth tokens → GBP, GA4, and GSC all lose their connection
     await client.query(`DELETE FROM google_accounts WHERE org_id=$1`, [orgId]);
     await client.query(`DELETE FROM google_tokens   WHERE org_id=$1`, [orgId]);
+
+    // Deactivate product-level resources
+    await client.query(`UPDATE ga4_properties SET is_active=false WHERE org_id=$1`, [orgId]);
+    await client.query(`UPDATE gsc_sites SET is_active=false WHERE org_id=$1`, [orgId]);
+
+    // Mark all Google product connections as disconnected
+    await client.query(
+      `INSERT INTO google_product_connections (org_id, product, connected, updated_at)
+       VALUES ($1,'gbp',false,NOW()),($1,'ga4',false,NOW()),($1,'gsc',false,NOW())
+       ON CONFLICT (org_id, product) DO UPDATE SET connected=false, updated_at=NOW()`,
+      [orgId]
+    ).catch(() => {}); // table created at boot; ignore if not yet created (first boot race)
+
+    // Update connectors table
+    await client.query(
+      `UPDATE connectors SET status='disconnected', connected=false, sync_status='idle'
+       WHERE org_id=$1 AND provider IN ('google','google-business-profile','gbp','google-analytics','ga4','google-search-console','gsc')`,
+      [orgId]
+    ).catch(() => {});
+
     store.logActivity({ type: "team", label: "Google déconnecté", targetType: "connector", orgId });
     res.json({ ok: true });
-  } catch {
+  } catch (e) {
+    logger.error({ e, orgId }, "[google] disconnect failed");
     res.status(500).json({ error: "Failed to disconnect" });
   } finally {
     client.release();

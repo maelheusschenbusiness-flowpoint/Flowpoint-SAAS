@@ -310,7 +310,7 @@ router.post("/billing/portal", billingPortalRateLimit, ownerOnly, async (req: Re
   if (diagnosticsEnabled) {
     logger.info({
       event:     "billing_portal_request_received",
-      requestId: (req as Record<string, unknown>)["id"]
+      requestId: (req as unknown as Record<string, unknown>)["id"]
                    ?? (req.headers["x-request-id"] as string | undefined)
                    ?? `portal-${Date.now()}`,
       orgId:     req.orgId ?? "default",
@@ -352,7 +352,7 @@ router.post("/billing/portal", billingPortalRateLimit, ownerOnly, async (req: Re
       logger.info({
         event:                    "billing_portal_customer_resolution",
         requestId:                (req.headers["x-request-id"] as string | undefined) ?? `portal-${Date.now()}`,
-        userId:                   (req as Record<string, unknown>)["userId"] ?? orgId,
+        userId:                   (req as unknown as Record<string, unknown>)["userId"] ?? orgId,
         orgId,
         dbStripeCustomerId,
         resolvedStripeCustomerId: customerId,
@@ -447,7 +447,7 @@ router.get("/billing/payment-methods", async (req: Request, res: Response) => {
             : (customer.invoice_settings.default_payment_method as { id: string }).id)
         : null;
 
-    const paymentMethods = pmList.data.map((pm) => ({
+    const paymentMethods = (pmList.data as Array<{ id: string; card?: { brand?: string; last4?: string; exp_month?: number; exp_year?: number } }>).map((pm) => ({
       id:       pm.id,
       brand:    pm.card?.brand ?? "card",
       last4:    pm.card?.last4 ?? "????",
@@ -525,10 +525,11 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
     // using auto-pagination so we never miss a live sub hidden behind page 2+.
     const TERMINAL = new Set(["canceled", "incomplete_expired"]);
     const allSubsArr = await stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "all" }).autoPagingToArray({ limit: 200 });
-    const liveSubs = allSubsArr.filter(s => !TERMINAL.has(s.status));
+    type StripeSub = { id: string; status: string; current_period_end: number; trial_end?: number | null };
+    const liveSubs = (allSubsArr as StripeSub[]).filter((s: StripeSub) => !TERMINAL.has(s.status));
     // Prefer active > trialing > any other live status
-    const sub = liveSubs.find(s => s.status === "active")
-      ?? liveSubs.find(s => s.status === "trialing")
+    const sub = liveSubs.find((s: StripeSub) => s.status === "active")
+      ?? liveSubs.find((s: StripeSub) => s.status === "trialing")
       ?? liveSubs[0];
     if (!sub) {
       // Self-heal: DB says active/trialing but Stripe has no non-canceled subscription.
@@ -635,9 +636,10 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
     // List ALL subscriptions using auto-pagination to detect every possible transition
     const CANCEL_TERMINAL = new Set(["canceled", "incomplete_expired"]);
     const allCancelSubsArr = await stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "all" }).autoPagingToArray({ limit: 200 });
-    const liveCancelSubs = allCancelSubsArr.filter(s => !CANCEL_TERMINAL.has(s.status));
-    const trialSub  = liveCancelSubs.find(s => s.status === "trialing");
-    const activeSub = liveCancelSubs.find(s => s.status === "active" || s.status === "past_due");
+    type CancelSub = { id: string; status: string; trial_end?: number | null; current_period_end: number };
+    const liveCancelSubs = (allCancelSubsArr as CancelSub[]).filter((s: CancelSub) => !CANCEL_TERMINAL.has(s.status));
+    const trialSub  = liveCancelSubs.find((s: CancelSub) => s.status === "trialing");
+    const activeSub = liveCancelSubs.find((s: CancelSub) => s.status === "active" || s.status === "past_due");
 
     if (!trialSub) {
       if (activeSub) {
@@ -763,7 +765,8 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
       // stripeCustomerId stored in the DB is orphaned. Clean it up immediately and
       // fall through to the noSubscription path so the frontend can start a fresh
       // checkout. All other Stripe errors are re-thrown to the outer catch → 500.
-      let openSessions: { data: unknown[] };
+      type OpenSession = { id: string; metadata?: Record<string, string>; url?: string | null };
+      let openSessions: { data: OpenSession[] };
       try {
         openSessions = await stripe.checkout.sessions.list({
           customer: billingCtx.stripeCustomerId,
@@ -801,7 +804,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         return;
       }
       const existingSession = (openSessions.data ?? []).find(
-        (s: { metadata?: Record<string, string>; url?: string | null }) =>
+        (s) =>
           s.metadata?.["reactivation"] === "true" &&
           s.metadata?.["targetPlan"]   === targetPlan &&
           s.url,
@@ -1131,15 +1134,30 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
 
   // ── No Stripe key or no customer → return DB state (already normalised) ───
   if (!stripeKey || !stripeCustomerId) {
+    const planIncludedNoStripe = PLAN_INCLUDED_ADDONS[plan.toLowerCase()] ?? new Set<string>();
+    const addonsNoStripe: Record<string, { active: boolean | number; includedInPlan: boolean }> = {};
+    for (const [key, val] of Object.entries(billingCtx.addons)) {
+      addonsNoStripe[key] = { active: val as boolean | number, includedInPlan: planIncludedNoStripe.has(key) };
+    }
+    for (const key of planIncludedNoStripe) {
+      if (!(key in addonsNoStripe)) {
+        addonsNoStripe[key] = { active: true, includedInPlan: true };
+      }
+    }
+    // nextBillingDate: trialEndsAt when trialing (no Stripe key available)
+    const nextBillingDateNoStripe =
+      normalisedStatus === "trialing" ? trialEndsAt : null;
     res.json({
       plan,
       status:            normalisedStatus,
       subscriptionStatus: normalisedStatus,
       trialEndsAt,
+      nextBillingDate:   nextBillingDateNoStripe,
       canStartTrial:     billingCtx.canStartTrial,
       hasPremiumAccess:  billingCtx.hasPremiumAccess,
       mustCompleteBilling: billingCtx.mustCompleteBilling,
-      addons:            billingCtx.addons,
+      addons:            addonsNoStripe,
+      addonsFlat:        billingCtx.addons,
       subscriptionId:    stripeSubscriptionId,
       stripeCustomerId,
       pendingPlan:       billingCtx.pendingPlan     ?? null,
@@ -1175,7 +1193,7 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
         if (stripeCustomerId) {
           // Use auto-pagination to find any live subscription across all pages
           const replacementArr = await stripe.subscriptions.list({ customer: stripeCustomerId, status: "all" }).autoPagingToArray({ limit: 200 });
-          replacementSub = replacementArr.find(s => !RM_TERMINAL.has(s.status));
+          replacementSub = (replacementArr as Array<{ id: string; status: string }>).find((s: { id: string; status: string }) => !RM_TERMINAL.has(s.status)) as typeof sub | undefined;
         }
         if (replacementSub) {
           // Customer has a live replacement subscription — adopt it instead of clearing
@@ -1256,11 +1274,33 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
       ? (sub.items?.data ?? []).reduce((t: number, it: { price?: { unit_amount?: number | null } | null; quantity?: number }) => t + ((it.price?.unit_amount ?? 0) * (it.quantity ?? 1)), 0) / 100
       : null;
 
+    // Bug-5 fix: compute nextBillingDate = trial end if trialing, else current_period_end
+    const nextBillingDateSub = (() => {
+      if (sub?.status === "trialing" && sub.trial_end) {
+        return new Date(sub.trial_end * 1000).toISOString();
+      }
+      const ts = sub?.current_period_end ?? null;
+      return ts ? new Date(ts * 1000).toISOString() : null;
+    })();
+
+    // Build addons with includedInPlan flags for dashboard
+    const planIncludedSub = PLAN_INCLUDED_ADDONS[plan.toLowerCase()] ?? new Set<string>();
+    const addonsWithFlagsSub: Record<string, { active: boolean | number; includedInPlan: boolean }> = {};
+    for (const [key, val] of Object.entries(billingCtx.addons)) {
+      addonsWithFlagsSub[key] = { active: val as boolean | number, includedInPlan: planIncludedSub.has(key) };
+    }
+    for (const key of planIncludedSub) {
+      if (!(key in addonsWithFlagsSub)) {
+        addonsWithFlagsSub[key] = { active: true, includedInPlan: true };
+      }
+    }
+
     res.json({
       plan,
       status:              reconciled,
       subscriptionStatus:  reconciled,
       trialEndsAt:         reconciledTrialEndsAt,
+      nextBillingDate:     nextBillingDateSub,
       nextAmount,
       // During trial, current_period_end may be undefined — fall back to trial_end
       currentPeriodEnd:    (() => {
@@ -1269,7 +1309,8 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
       })(),
       cancelAtPeriodEnd:   sub?.cancel_at_period_end ?? false,
       subscriptionId:      effectiveSubId ?? null,
-      addons:              billingCtx.addons,
+      addons:              addonsWithFlagsSub,
+      addonsFlat:          billingCtx.addons,
       stripeCustomerId,
       pendingPlan:         billingCtx.pendingPlan     ?? null,
       pendingPlanDate:     billingCtx.pendingPlanDate ?? null,
@@ -1930,9 +1971,24 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
   try {
     const stripe = await createStripeClient(stripeKey);
 
+    // Bug-2 fix: pass existing customer so Stripe doesn't create an orphan customer
+    // that the webhook can't map back to this org.
+    let addonCustomerId: string | undefined;
+    if (billingCtx.stripeCustomerId) {
+      addonCustomerId = billingCtx.stripeCustomerId;
+    } else {
+      // Ensure a customer exists so all future webhooks can resolve orgId
+      try {
+        addonCustomerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey);
+      } catch (custErr) {
+        logger.warn({ custErr, orgId }, "[Billing] addon-checkout: ensureStripeCustomer failed — proceeding without customer");
+      }
+    }
+
     const isAiCreditPack = AI_CREDIT_PACK_KEYS.has(addonKey);
     const session = await stripe.checkout.sessions.create({
       mode: isAiCreditPack ? "payment" : "subscription",
+      ...(addonCustomerId ? { customer: addonCustomerId } : {}),
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${publicUrl}/billing?addon_success=${encodeURIComponent(addonKey)}`,
       cancel_url:  `${publicUrl}/billing?addon_cancel=1`,

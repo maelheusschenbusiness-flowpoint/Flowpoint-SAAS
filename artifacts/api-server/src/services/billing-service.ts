@@ -3,7 +3,8 @@ import { store } from "./store.js";
 import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS } from "../lib/plans.js";
+import { loadBillingContext } from "./billing-context.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
 const _PLAN_PRESENTATION: Record<string, {
@@ -54,14 +55,69 @@ export const ADDON_CATALOG = [
 
 // ── Usage tracking ────────────────────────────────────────────────────────────
 export async function getUsageSummary(orgId = "default") {
-  // Always read from DB — never from store.me singleton
-  const orgData = await loadOrgData(orgId).catch(() => null);
-  const plan = (orgData?.plan || "standard").toLowerCase();
-  const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.standard;
+  // Bug-4 fix: use billing context (not raw orgData.addons) so plan-included addons
+  // are overlaid and returned with includedInPlan:true flags.
+  // Bug-5 fix: compute nextBillingDate from Stripe subscription or trialEndsAt.
+  const billingCtx = await loadBillingContext(orgId).catch(async () => {
+    // Fallback to raw org data if billing context fails
+    const orgData = await loadOrgData(orgId).catch(() => null);
+    return {
+      plan: orgData?.plan ?? "standard",
+      addons: (orgData?.addons ?? {}) as Record<string, boolean | number>,
+      subscriptionStatus: orgData?.subscriptionStatus ?? "inactive",
+      trialEndsAt: orgData?.trialEndsAt ?? null,
+      stripeSubscriptionId: orgData?.stripeSubscriptionId ?? null,
+      stripeCustomerId: orgData?.stripeCustomerId ?? null,
+      trialConsumedAt: null,
+    };
+  });
 
-  const addons = (orgData?.addons ?? {}) as Record<string, number | boolean>;
-  const extraMonitors = Number(addons["monitorsPack50"] ?? 0);
-  const extraSeats    = Number(addons["extraSeats"]    ?? 0);
+  const plan = (billingCtx.plan || "standard").toLowerCase();
+  const limits = PLAN_LIMITS[plan] || PLAN_LIMITS["standard"]!;
+
+  // Build addon list with includedInPlan flag for the dashboard
+  const planIncluded = PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>();
+  const addonsWithFlags: Record<string, { active: boolean | number; includedInPlan: boolean }> = {};
+  for (const [key, val] of Object.entries(billingCtx.addons)) {
+    addonsWithFlags[key] = {
+      active: val,
+      includedInPlan: planIncluded.has(key),
+    };
+  }
+  // Ensure all plan-included addons appear even if not explicitly in org_addons
+  for (const key of planIncluded) {
+    if (!(key in addonsWithFlags)) {
+      addonsWithFlags[key] = { active: true, includedInPlan: true };
+    }
+  }
+
+  const extraMonitors = Number(billingCtx.addons["monitorsPack50"] ?? 0);
+  const extraSeats    = Number(billingCtx.addons["extraSeats"]    ?? 0);
+
+  // Bug-5 fix: resolve nextBillingDate from Stripe when subscription exists
+  let nextBillingDate: string | null = null;
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  if (stripeKey && billingCtx.stripeSubscriptionId) {
+    try {
+      const { default: Stripe } = await import("stripe");
+      const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+      const sub = await stripe.subscriptions.retrieve(billingCtx.stripeSubscriptionId) as unknown as {
+        status: string;
+        trial_end: number | null;
+        current_period_end: number;
+      };
+      if (sub.status === "trialing" && sub.trial_end) {
+        nextBillingDate = new Date(sub.trial_end * 1000).toISOString();
+      } else if (sub.current_period_end) {
+        nextBillingDate = new Date(sub.current_period_end * 1000).toISOString();
+      }
+    } catch {
+      // Non-fatal — fall back to DB trialEndsAt
+      nextBillingDate = billingCtx.trialEndsAt ?? null;
+    }
+  } else if (billingCtx.subscriptionStatus === "trialing" && billingCtx.trialEndsAt) {
+    nextBillingDate = billingCtx.trialEndsAt;
+  }
 
   const client = await pool.connect();
   try {
@@ -91,9 +147,14 @@ export async function getUsageSummary(orgId = "default") {
         pdfs:     { used: pdfsUsed,     limit: limits.reports,  pct: Math.round((pdfsUsed     / Math.max(limits.reports,  1)) * 100) },
         seats:    { used: seatsUsed,    limit: limits.teamMembers + extraSeats, pct: Math.round((seatsUsed / Math.max(limits.teamMembers, 1)) * 100) },
       },
-      addons: orgData?.addons ?? {},
-      subscriptionStatus: orgData?.subscriptionStatus ?? "inactive",
-      trialEndsAt: orgData?.trialEndsAt ?? null,
+      // Bug-4 fix: addons includes plan-included items flagged with includedInPlan:true
+      addons: addonsWithFlags,
+      // Legacy flat addons map for backward-compat consumers
+      addonsFlat: billingCtx.addons,
+      subscriptionStatus: billingCtx.subscriptionStatus ?? "inactive",
+      trialEndsAt: billingCtx.trialEndsAt ?? null,
+      // Bug-5 fix: nextBillingDate exposed here
+      nextBillingDate,
     };
   } finally {
     client.release();

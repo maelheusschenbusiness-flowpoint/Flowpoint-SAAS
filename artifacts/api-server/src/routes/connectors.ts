@@ -5,6 +5,7 @@ import { store } from "../services/store.js";
 import { requireAdmin } from "../middlewares/requireAdmin.js";
 import crypto from "crypto";
 import { SYSTEM_CONNECTOR_SEEDS } from "../services/canonical-system-seeds.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -24,20 +25,58 @@ async function ensureSeed() {
 // Read-only: any authenticated user may list connectors (status only, no tokens)
 // Real-time Google/GA4/GSC status is overlaid from google_tokens / ga4_properties / gsc_sites.
 router.get("/connectors", async (req, res) => {
-  const orgId: string = (req as unknown as Record<string, string>)["orgId"] ?? "default";
+  // Use the org context set by middleware — never fall back to "default"
+  const orgId: string | undefined = req.orgContext?.orgId ?? req.orgId;
+
   try {
     await ensureSeed();
-    const [connectors, googleTok, ga4Prop, gscSite] = await Promise.allSettled([
+
+    // Only do per-org Google lookups when we have a real org
+    const hasOrg = !!orgId && orgId !== "default";
+
+    const [connectors, googleTok, ga4Prop, gscSite, gbpFlag, ga4Flag, gscFlag] = await Promise.allSettled([
       db.select().from(connectorsTable).limit(100),
-      pool.query(`SELECT 1 FROM google_tokens   WHERE org_id=$1 LIMIT 1`, [orgId]),
-      pool.query(`SELECT 1 FROM ga4_properties  WHERE org_id=$1 LIMIT 1`, [orgId]),
-      pool.query(`SELECT 1 FROM gsc_sites       WHERE org_id=$1 AND active=true LIMIT 1`, [orgId]),
+      hasOrg
+        ? pool.query(`SELECT 1 FROM google_tokens WHERE org_id=$1 LIMIT 1`, [orgId])
+        : Promise.resolve({ rows: [] }),
+      hasOrg
+        // is_active=true: token presence + active property = truly connected
+        ? pool.query(`SELECT 1 FROM ga4_properties WHERE org_id=$1 AND is_active=true LIMIT 1`, [orgId])
+        : Promise.resolve({ rows: [] }),
+      hasOrg
+        // is_active=true (correct column — not "active")
+        ? pool.query(`SELECT 1 FROM gsc_sites WHERE org_id=$1 AND is_active=true LIMIT 1`, [orgId])
+        : Promise.resolve({ rows: [] }),
+      hasOrg
+        ? pool.query(`SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='gbp' LIMIT 1`, [orgId])
+        : Promise.resolve({ rows: [] }),
+      hasOrg
+        ? pool.query(`SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='ga4' LIMIT 1`, [orgId])
+        : Promise.resolve({ rows: [] }),
+      hasOrg
+        ? pool.query(`SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='gsc' LIMIT 1`, [orgId])
+        : Promise.resolve({ rows: [] }),
     ]);
 
     const connList = connectors.status === "fulfilled" ? connectors.value : SEED;
-    const googleOK = googleTok.status === "fulfilled" && googleTok.value.rows.length > 0;
-    const ga4OK    = ga4Prop.status   === "fulfilled" && ga4Prop.value.rows.length   > 0;
-    const gscOK    = gscSite.status   === "fulfilled" && gscSite.value.rows.length   > 0;
+    if (connectors.status === "rejected") {
+      logger.warn({ err: connectors.reason }, "[connectors] GET /connectors: DB query failed, using seed");
+    }
+
+    const googleOK = googleTok.status === "fulfilled" && (googleTok.value as { rows: unknown[] }).rows.length > 0;
+    // GA4: token present + active property in DB = connected; token only = discovering (not yet connected)
+    const ga4OK    = ga4Prop.status   === "fulfilled" && (ga4Prop.value   as { rows: unknown[] }).rows.length > 0;
+    const gscOK    = gscSite.status   === "fulfilled" && (gscSite.value   as { rows: unknown[] }).rows.length > 0;
+
+    // Per-product disconnect flags
+    const gbpFlagRow = gbpFlag.status === "fulfilled" ? ((gbpFlag.value as { rows: Array<{ connected: boolean }> }).rows[0]) : undefined;
+    const ga4FlagRow = ga4Flag.status === "fulfilled" ? ((ga4Flag.value as { rows: Array<{ connected: boolean }> }).rows[0]) : undefined;
+    const gscFlagRow = gscFlag.status === "fulfilled" ? ((gscFlag.value as { rows: Array<{ connected: boolean }> }).rows[0]) : undefined;
+
+    // A product is disconnected if its flag is explicitly false
+    const gbpDisconnected = gbpFlagRow !== undefined && !gbpFlagRow.connected;
+    const ga4Disconnected = ga4FlagRow !== undefined && !ga4FlagRow.connected;
+    const gscDisconnected = gscFlagRow !== undefined && !gscFlagRow.connected;
 
     const GOOGLE_PROVIDERS = new Set(["google", "google-business-profile", "gbp"]);
     const GA4_PROVIDERS    = new Set(["google-analytics", "ga4", "google_analytics"]);
@@ -48,15 +87,16 @@ router.get("/connectors", async (req, res) => {
       let status    = c.status    ?? "disconnected";
 
       if (GOOGLE_PROVIDERS.has(c.provider)) {
-        connected = googleOK;
-        status    = googleOK ? "connected" : "disconnected";
+        connected = !gbpDisconnected && googleOK;
+        status    = connected ? "connected" : "disconnected";
       } else if (GA4_PROVIDERS.has(c.provider)) {
-        // GA4 uses the same Google OAuth token; mark connected if either token or property exists
-        connected = googleOK || ga4OK;
-        status    = (googleOK || ga4OK) ? "connected" : "disconnected";
+        // Token presence = connected (discovering allowed); respect disconnect flag
+        connected = !ga4Disconnected && (ga4OK || googleOK);
+        status    = connected ? "connected" : "disconnected";
       } else if (GSC_PROVIDERS.has(c.provider)) {
-        connected = googleOK || gscOK;
-        status    = (googleOK || gscOK) ? "connected" : "disconnected";
+        // Active site = connected; token only = discovering; respect disconnect flag
+        connected = !gscDisconnected && (gscOK || googleOK);
+        status    = connected ? "connected" : "disconnected";
       }
 
       return {
@@ -70,14 +110,15 @@ router.get("/connectors", async (req, res) => {
     });
 
     res.json(safe);
-  } catch {
+  } catch (err) {
+    logger.error({ err }, "[connectors] GET /connectors: unexpected error, returning seed");
     res.json(SEED);
   }
 });
 
 // Write operations require admin — connectors are instance-global resources
 router.post("/connectors/:provider/connect", requireAdmin, async (req: Request, res: Response) => {
-  const { provider } = req.params;
+  const provider = String(req.params["provider"]);
   const { webhookUrl, accessToken, config } = req.body as { webhookUrl?: string; accessToken?: string; config?: Record<string, unknown> };
 
   try {
@@ -118,7 +159,7 @@ router.post("/connectors/:provider/connect", requireAdmin, async (req: Request, 
 });
 
 router.post("/connectors/:provider/disconnect", requireAdmin, async (req: Request, res: Response) => {
-  const { provider } = req.params;
+  const provider = String(req.params["provider"]);
   try {
     await db.update(connectorsTable).set({
       status: "disconnected", connected: false, accessToken: null, refreshToken: null, webhookSecret: null, syncStatus: "idle",
@@ -131,7 +172,7 @@ router.post("/connectors/:provider/disconnect", requireAdmin, async (req: Reques
 });
 
 router.post("/connectors/:provider/sync", requireAdmin, async (req: Request, res: Response) => {
-  const { provider } = req.params;
+  const provider = String(req.params["provider"]);
   const syncOrgId: string = (req as unknown as Record<string, string>)["orgId"] ?? "default";
   try {
     const [conn] = await db.update(connectorsTable).set({
@@ -190,7 +231,7 @@ router.post("/connectors/github/webhook", async (req: Request, res: Response) =>
 });
 
 router.get("/connectors/:provider/oauth/start", requireAdmin, async (req: Request, res: Response) => {
-  const { provider } = req.params;
+  const provider = String(req.params["provider"]);
   // For Google providers, delegate to /api/google/connect which uses the full
   // scope set (GSC + GA4 + GBP + openid) and DB-backed state storage.
   if (["google", "google-analytics", "google-search-console", "gbp", "ga4", "gsc"].includes(provider)) {

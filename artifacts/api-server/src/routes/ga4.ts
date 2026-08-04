@@ -15,6 +15,7 @@ import {
   isGA4Connected,
 } from "../services/ga4-service.js";
 import { hasGoogleConnection } from "../services/google-service.js";
+import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -141,11 +142,20 @@ router.get("/ga4/status", async (req: Request, res: Response) => {
     const hasProperty  = await isGA4Connected(orgId);
     const stored       = hasProperty ? await getStoredProperty(orgId) : null;
     const hasTokens    = hasProperty ? true : await hasGoogleConnection(orgId);
-    const connected    = hasProperty || hasTokens;
+
+    // Check per-product disconnect flag
+    const productRow = await pool.query(
+      `SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='ga4' LIMIT 1`,
+      [orgId]
+    ).catch(() => ({ rows: [] as Array<{ connected: boolean }> }));
+    const productFlag = productRow.rows[0];
+    const productDisconnected = productFlag !== undefined && !productFlag.connected;
+
+    const connected = !productDisconnected && (hasProperty || hasTokens);
     res.json({
       ok: true,
       connected,
-      discovering: !hasProperty && hasTokens,
+      discovering: !productDisconnected && !hasProperty && hasTokens,
       propertyId:   stored?.propertyId   ?? null,
       propertyName: stored?.displayName  ?? null,
     });
@@ -190,6 +200,13 @@ router.post("/ga4/property", async (req: Request, res: Response) => {
       return;
     }
     await setStoredProperty(orgId, propertyId.trim(), propertyName || propertyId.trim());
+    // Re-enable product flag when user explicitly sets a property
+    pool.query(
+      `INSERT INTO google_product_connections (org_id, product, connected, updated_at)
+       VALUES ($1,'ga4',true,NOW())
+       ON CONFLICT (org_id, product) DO UPDATE SET connected=true, updated_at=NOW()`,
+      [orgId]
+    ).catch(() => {});
     res.json({ ok: true, propertyId: propertyId.trim() });
   } catch (e) {
     handleRouteError(res, e, "/ga4/property");
@@ -422,6 +439,27 @@ router.get("/ga4/export", async (req: Request, res: Response) => {
     });
   } catch (e) {
     handleRouteError(res, e, "/ga4/export");
+  }
+});
+
+// ── POST /api/ga4/disconnect ──────────────────────────────────────────────────
+
+router.post("/ga4/disconnect", async (req: Request, res: Response) => {
+  try {
+    const orgId = getOrgId(req);
+    // Deactivate stored property for this org
+    await pool.query(`UPDATE ga4_properties SET is_active=false WHERE org_id=$1`, [orgId]);
+    // Mark per-product disconnect flag so status endpoint reports disconnected
+    // even while the shared Google token remains valid for GBP/GSC.
+    await pool.query(
+      `INSERT INTO google_product_connections (org_id, product, connected, updated_at)
+       VALUES ($1,'ga4',false,NOW())
+       ON CONFLICT (org_id, product) DO UPDATE SET connected=false, updated_at=NOW()`,
+      [orgId]
+    ).catch(() => {}); // table created at boot; ignore if not yet created (first boot race)
+    res.json({ ok: true, message: "GA4 disconnected" });
+  } catch (e) {
+    handleRouteError(res, e, "/ga4/disconnect");
   }
 });
 

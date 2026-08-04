@@ -212,7 +212,21 @@ export async function syncGSCData(orgId: string): Promise<number> {
 
 // ── Read functions (from gsc_keyword_data) ────────────────────────────────────
 
-export async function getTopKeywords(orgId: string, limit = 20, days = 28): Promise<unknown[]> {
+export async function getTopKeywords(orgId: string, siteUrlOrLimit?: string | number, daysOrLimit?: number, limitArg?: number): Promise<unknown[]> {
+  // Supports two signatures:
+  //   getTopKeywords(orgId, limit?, days?)           — legacy
+  //   getTopKeywords(orgId, siteUrl, days, limit)    — new (siteUrl ignored for DB queries)
+  let days: number;
+  let limit: number;
+  if (typeof siteUrlOrLimit === "string") {
+    // new signature: (orgId, siteUrl, days, limit)
+    days  = daysOrLimit ?? 28;
+    limit = limitArg ?? 20;
+  } else {
+    // legacy: (orgId, limit?, days?)
+    limit = siteUrlOrLimit ?? 20;
+    days  = daysOrLimit ?? 28;
+  }
   const client = await pool.connect();
   try {
     const res = await client.query(
@@ -232,7 +246,21 @@ export async function getTopKeywords(orgId: string, limit = 20, days = 28): Prom
   } catch { return []; } finally { client.release(); }
 }
 
-export async function getTopPages(orgId: string, limit = 20, days = 28): Promise<unknown[]> {
+export async function getTopPages(orgId: string, siteUrlOrLimit?: string | number, daysOrLimit?: number, limitArg?: number): Promise<unknown[]> {
+  // Supports two signatures:
+  //   getTopPages(orgId, limit?, days?)           — legacy
+  //   getTopPages(orgId, siteUrl, days, limit)    — new (siteUrl ignored for DB queries)
+  let days: number;
+  let limit: number;
+  if (typeof siteUrlOrLimit === "string") {
+    // new signature: (orgId, siteUrl, days, limit)
+    days  = daysOrLimit ?? 28;
+    limit = limitArg ?? 20;
+  } else {
+    // legacy: (orgId, limit?, days?)
+    limit = siteUrlOrLimit ?? 20;
+    days  = daysOrLimit ?? 28;
+  }
   const client = await pool.connect();
   try {
     const res = await client.query(
@@ -253,8 +281,12 @@ export async function getTopPages(orgId: string, limit = 20, days = 28): Promise
 }
 
 export async function getImpressionsOverTime(
-  orgId: string, days = 28
+  orgId: string, siteUrlOrDays?: string | number, daysArg?: number
 ): Promise<Array<{ date: string; impressions: number; clicks: number; position: number; ctr: number }>> {
+  // Supports two signatures:
+  //   getImpressionsOverTime(orgId, days?)          — legacy
+  //   getImpressionsOverTime(orgId, siteUrl, days)  — new (siteUrl ignored for DB queries)
+  const days = typeof siteUrlOrDays === "string" ? (daysArg ?? 28) : (siteUrlOrDays ?? 28);
   const client = await pool.connect();
   try {
     const res = await client.query(
@@ -275,9 +307,21 @@ export async function getImpressionsOverTime(
 
 export async function querySearchAnalytics(
   orgId: string,
-  query: { dimensions: string[]; startDate: string; endDate: string; rowLimit?: number }
+  siteUrlOrQuery: string | { dimensions: string[]; startDate: string; endDate: string; rowLimit?: number },
+  queryArg?: { dimensions: string[]; startDate: string; endDate: string; rowLimit?: number }
 ): Promise<unknown[]> {
-  const siteUrl = await getActiveSite(orgId);
+  // Supports two signatures:
+  //   querySearchAnalytics(orgId, query)              — legacy
+  //   querySearchAnalytics(orgId, siteUrl, query)     — new
+  let siteUrlOverride: string | null = null;
+  let query: { dimensions: string[]; startDate: string; endDate: string; rowLimit?: number };
+  if (typeof siteUrlOrQuery === "string") {
+    siteUrlOverride = siteUrlOrQuery;
+    query = queryArg!;
+  } else {
+    query = siteUrlOrQuery;
+  }
+  const siteUrl = siteUrlOverride ?? (await getActiveSite(orgId));
   if (!siteUrl) return [];
 
   const token = await getValidToken(orgId).catch(() => null);
@@ -304,14 +348,14 @@ export async function querySearchAnalytics(
   } catch { return []; }
 }
 
-export async function getIndexingStatus(orgId: string): Promise<{ indexed: number; notIndexed: number; errors: number }> {
-  const siteUrl = await getActiveSite(orgId);
-  if (!siteUrl) return { indexed: 0, notIndexed: 0, errors: 0 };
+export async function getIndexingStatus(orgId: string, siteUrl?: string, _inspectionUrl?: string): Promise<{ indexed: number; notIndexed: number; errors: number }> {
+  const resolvedSiteUrl = siteUrl ?? (await getActiveSite(orgId));
+  if (!resolvedSiteUrl) return { indexed: 0, notIndexed: 0, errors: 0 };
   return { indexed: 0, notIndexed: 0, errors: 0 }; // requires Index Coverage API (separate quota)
 }
 
-export async function getSitemaps(orgId: string): Promise<unknown[]> {
-  const siteUrl = await getActiveSite(orgId);
+export async function getSitemaps(orgId: string, siteUrlOverride?: string): Promise<unknown[]> {
+  const siteUrl = siteUrlOverride ?? (await getActiveSite(orgId));
   if (!siteUrl) return [];
 
   const token = await getValidToken(orgId).catch(() => null);

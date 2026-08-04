@@ -444,14 +444,32 @@
   var errorParam = urlParams.get('error');
   if (errorParam) {
     var ERROR_MAP = {
-      access_denied:      "Accès refusé. Autorisez l'accès à votre compte Google.",
-      google_auth_failed: "Erreur d'authentification Google. Veuillez réessayer.",
-      github_auth_failed: "Erreur d'authentification GitHub. Veuillez réessayer.",
-      missing_code:       "Code OAuth manquant. Veuillez réessayer."
+      access_denied:         "Accès refusé. Autorisez l'accès à votre compte Google.",
+      google_auth_failed:    "Erreur d'authentification Google. Veuillez réessayer.",
+      github_auth_failed:    "Erreur d'authentification GitHub. Veuillez réessayer.",
+      missing_code:          "Code OAuth manquant. Veuillez réessayer.",
+      google_signup_retry:   "Une erreur temporaire s'est produite lors de la création de votre session d'inscription Google. Veuillez réessayer."
     };
     var msgEl = document.getElementById('signup-msg');
     if (msgEl) showMsg(msgEl, 'error', escHtml(ERROR_MAP[errorParam] || decodeURIComponent(errorParam).replace(/_/g,' ')));
-    history.replaceState({}, '', '/');
+    history.replaceState({}, '', '/signin.html');
+  }
+
+  /* ── Google OAuth signup continuation ──────────────────────────────────────
+     After Google OAuth for a new (pending_billing) account, the server redirects
+     here with ?google_signup=1&pre_reg_token=...&email=...&first_name=...&last_name=...
+     We skip the info form and go straight to the plan-selection step, exactly as
+     the email flow does after a successful /auth/pre-register POST.
+  ── */
+  var googleSignupParam = urlParams.get('google_signup');
+  var preRegTokenParam  = urlParams.get('pre_reg_token');
+  if (googleSignupParam === '1' && preRegTokenParam) {
+    _preRegisterToken = preRegTokenParam;
+    // Clean URL so a refresh doesn't re-trigger
+    history.replaceState({}, '', '/signin.html');
+    // Skip the info form, jump straight to plan selection
+    document.getElementById('signup-screen').style.display = 'none';
+    document.getElementById('plan-screen').style.display   = 'block';
   }
 
   /* ── Step 1: form submit → POST /auth/pre-register ── */

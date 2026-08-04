@@ -16,20 +16,34 @@ import {
 import { hasGoogleConnection } from "../services/google-service.js";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { resolveOrgId } from "../lib/resolve-org-id.js";
 
 const router = Router();
 
 function getOrgId(req: Request): string {
-  return (req as unknown as Record<string, string>)["orgId"] ?? "default";
+  return resolveOrgId(req);
 }
 
 router.get("/gsc/status", async (req: Request, res: Response) => {
+  let orgId: string;
+  try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
   try {
-    const orgId  = getOrgId(req);
     const status = await getGSCStatus(orgId);
-    // Also show as connected if Google tokens exist (site discovery in progress)
-    const connected = status.connected || await hasGoogleConnection(orgId);
-    res.json({ ok: true, ...status, connected, discovering: !status.connected && connected });
+    const hasToken = await hasGoogleConnection(orgId);
+
+    // Check per-product disconnect flag
+    const productRow = await pool.query(
+      `SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='gsc' LIMIT 1`,
+      [orgId]
+    ).catch(() => ({ rows: [] as Array<{ connected: boolean }> }));
+    const productFlag = productRow.rows[0];
+    const productDisconnected = productFlag !== undefined && !productFlag.connected;
+
+    // Connected = has active site AND not explicitly disconnected
+    const connected = !productDisconnected && (status.connected || hasToken);
+    const discovering = !productDisconnected && !status.connected && hasToken;
+
+    res.json({ ok: true, ...status, connected, discovering });
   } catch (e) {
     logger.error({ e }, "[GSC] /status failed");
     res.status(500).json({ ok: false, error: String(e) });
@@ -42,14 +56,16 @@ router.get("/gsc/sites", async (req: Request, res: Response) => {
     const sites = await listGSCSites(orgId);
     const activeSite = await getActiveSite(orgId);
     res.json({ ok: true, sites, activeSite });
-  } catch (e) {
+  } catch (e: any) {
+    if (e?.status === 401) { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
     logger.error({ e }, "[GSC] /sites failed");
     res.status(500).json({ ok: false, error: String(e) });
   }
 });
 
 router.post("/gsc/site", async (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+  let orgId: string;
+  try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
   const { siteUrl, displayName } = req.body as { siteUrl?: string; displayName?: string };
   if (!siteUrl?.trim()) {
     res.status(400).json({ ok: false, error: "siteUrl is required" });
@@ -57,6 +73,13 @@ router.post("/gsc/site", async (req: Request, res: Response) => {
   }
   try {
     await setActiveSite(orgId, siteUrl.trim(), displayName);
+    // Re-enable product flag when user explicitly sets a site
+    pool.query(
+      `INSERT INTO google_product_connections (org_id, product, connected, updated_at)
+       VALUES ($1,'gsc',true,NOW())
+       ON CONFLICT (org_id, product) DO UPDATE SET connected=true, updated_at=NOW()`,
+      [orgId]
+    ).catch(() => {});
     syncGSCData(orgId).catch(e => logger.warn({ e }, "[GSC] Background sync failed"));
     res.json({ ok: true, siteUrl: siteUrl.trim() });
   } catch (e) {
@@ -65,7 +88,8 @@ router.post("/gsc/site", async (req: Request, res: Response) => {
 });
 
 router.get("/gsc/analytics", async (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+  let orgId: string;
+  try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
   const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
 
@@ -111,7 +135,8 @@ router.get("/gsc/analytics", async (req: Request, res: Response) => {
 });
 
 router.get("/gsc/keywords", async (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+  let orgId: string;
+  try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
   const days  = Math.min(parseInt(req.query["days"] as string || "30"), 365);
   const limit = Math.min(parseInt(req.query["limit"] as string || "100"), 1000);
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
@@ -131,7 +156,8 @@ router.get("/gsc/keywords", async (req: Request, res: Response) => {
 });
 
 router.get("/gsc/pages", async (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+  let orgId: string;
+  try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
   const days  = Math.min(parseInt(req.query["days"] as string || "30"), 365);
   const limit = Math.min(parseInt(req.query["limit"] as string || "100"), 1000);
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
@@ -151,7 +177,8 @@ router.get("/gsc/pages", async (req: Request, res: Response) => {
 });
 
 router.get("/gsc/impressions", async (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+  let orgId: string;
+  try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
   const days  = Math.min(parseInt(req.query["days"] as string || "90"), 365);
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
 
@@ -170,7 +197,8 @@ router.get("/gsc/impressions", async (req: Request, res: Response) => {
 });
 
 router.post("/gsc/indexing", async (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+  let orgId: string;
+  try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
   const { inspectionUrl, siteUrl: reqSiteUrl } = req.body as { inspectionUrl?: string; siteUrl?: string };
   if (!inspectionUrl?.trim()) {
     res.status(400).json({ ok: false, error: "inspectionUrl is required" });
@@ -191,7 +219,8 @@ router.post("/gsc/indexing", async (req: Request, res: Response) => {
 });
 
 router.get("/gsc/sitemaps", async (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+  let orgId: string;
+  try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
   try {
     const siteUrl = qSiteUrl || (await getActiveSite(orgId));
@@ -207,9 +236,11 @@ router.get("/gsc/sitemaps", async (req: Request, res: Response) => {
 });
 
 router.post("/gsc/sync", async (req: Request, res: Response) => {
+  let orgId: string;
+  try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
   try {
-    const result = await syncGSCData(getOrgId(req));
-    res.json({ ok: true, ...result });
+    const result = await syncGSCData(orgId);
+    res.json({ ok: true, count: result });
   } catch (e) {
     logger.error({ e }, "[GSC] Manual sync failed");
     res.status(500).json({ ok: false, error: String(e) });
@@ -217,11 +248,21 @@ router.post("/gsc/sync", async (req: Request, res: Response) => {
 });
 
 router.post("/gsc/disconnect", async (req: Request, res: Response) => {
+  let orgId: string;
+  try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
   const client = await pool.connect();
   try {
-    await client.query(`UPDATE gsc_sites SET is_active=false WHERE org_id=$1`, [getOrgId(req)]);
+    await client.query(`UPDATE gsc_sites SET is_active=false WHERE org_id=$1`, [orgId]);
+    // Mark per-product flag so status endpoint reports disconnected even if shared token remains
+    await client.query(
+      `INSERT INTO google_product_connections (org_id, product, connected, updated_at)
+       VALUES ($1,'gsc',false,NOW())
+       ON CONFLICT (org_id, product) DO UPDATE SET connected=false, updated_at=NOW()`,
+      [orgId]
+    ).catch(() => {}); // table created at boot; ignore if not yet created (first boot race)
     res.json({ ok: true, message: "GSC disconnected" });
   } catch (e) {
+    logger.error({ e, orgId }, "[GSC] disconnect failed");
     res.status(500).json({ ok: false, error: String(e) });
   } finally {
     client.release();
@@ -229,9 +270,11 @@ router.post("/gsc/disconnect", async (req: Request, res: Response) => {
 });
 
 router.get("/gsc/logs", async (req: Request, res: Response) => {
+  let orgId: string;
+  try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
   const limit = Math.min(parseInt(req.query["limit"] as string || "20"), 100);
   try {
-    const logs = await getSyncLogs(getOrgId(req), limit);
+    const logs = await getSyncLogs(orgId, limit);
     res.json({ ok: true, logs });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
