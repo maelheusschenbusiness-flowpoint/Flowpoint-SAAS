@@ -731,6 +731,38 @@ window.exportActivityCsv = exportActivityCsv;
 window.exportAuditsCsv   = exportAuditsCsv;
 window.exportReportsCsv  = exportReportsCsv;
 
+// Complete organization export is generated server-side. This keeps the export
+// authenticated, org-scoped and complete instead of serialising the small
+// client-side STATE cache.
+async function fpDownloadOrgDataExport() {
+  try {
+    showToast('info', 'Préparation de votre export sécurisé…');
+    const token = (() => { try { return sessionStorage.getItem('fp_session_token') || ''; } catch (_) { return ''; } })();
+    const res = await fetch('/api/settings/data-export', {
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      let detail = '';
+      try { detail = (await res.json()).error || ''; } catch (_) {}
+      throw new Error(detail || `Export indisponible (${res.status})`);
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename="([^"]+)"/i);
+    const filename = match?.[1] || `flowpoint-export-${new Date().toISOString().slice(0,10)}.json`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = filename;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('success', 'Export complet téléchargé');
+  } catch (err) {
+    showToast('error', err?.message || 'Impossible de préparer l’export');
+  }
+}
+window.fpDownloadOrgDataExport = fpDownloadOrgDataExport;
+
 // Formats an invoice date — handles ISO strings and Stripe unix timestamps (seconds).
 // Respects STATE.settings.dateFormat via fmtDate(); falls back to fr-FR dd/mm/yyyy.
 function _fmtInvDate(v) {
@@ -11773,7 +11805,7 @@ function renderSettings() {
           </div>
           <div style="display:flex;flex-direction:column;gap:7px">
             ${[
-              {label:'Exporter toutes mes données',      icon:'download',  onclick:"(function(){const d={audits:STATE.audits||[],monitors:STATE.monitors||[],missions:STATE.missions||[]};const a=document.createElement('a');a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(d,null,2));a.download='flowpoint-export-'+new Date().toISOString().slice(0,10)+'.json';a.click();showToast('success','Export JSON téléchargé')})()"},
+              {label:'Exporter toutes mes données',      icon:'download',  onclick:"fpDownloadOrgDataExport()"},
               {label:'Historique des audits (CSV)',       icon:'file',      onclick:"(function(){const rows=STATE.audits||[];if(!rows.length){showToast('info','Aucun audit à exporter');return;}const csv='URL,Score,Date\\n'+rows.map(x=>(x.url||'')+','+(x.score!=null?x.score:'')+','+(x.date||'')).join('\\n');const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='audits-'+new Date().toISOString().slice(0,10)+'.csv';a.click();showToast('success','CSV exporté — '+rows.length+' audit'+(rows.length>1?'s':''))})()"},
               {label:'Importer une liste de sites',      icon:'upload',    onclick:"navigate('audits');setTimeout(()=>{document.getElementById('audit-url-input')&&document.getElementById('audit-url-input').focus()},300)"},
               {label:'Synchroniser GBP maintenant',      icon:'refresh',   onclick:"window.FP_GBP_API?(STATE.gbp&&STATE.gbp.connected?window.FP_GBP_API.load().then(()=>{showToast('success','GBP synchronisé');render(STATE.currentSection)}):window.FP_GBP_API.openConnect()):navigate('local-seo')"},

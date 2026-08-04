@@ -336,6 +336,23 @@ router.post("/missions", canWrite, async (req: Request, res: Response) => {
 
     if (!title) { res.status(400).json({ error: "title required" }); return; }
 
+    // Keep manual creation idempotent for an active mission with the same
+    // normalized title. Existing rows are preserved; this only prevents a
+    // double-click/retry from creating another copy for the same organization.
+    const normalizedTitle = String(title).trim();
+    const existing = await db(
+      `SELECT id FROM missions
+       WHERE org_id = $1
+         AND LOWER(TRIM(title)) = LOWER(TRIM($2))
+         AND status NOT IN ('done', 'completed', 'dismissed')
+       ORDER BY created_at DESC LIMIT 1`,
+      [org, normalizedTitle],
+    );
+    if (existing.rows[0]) {
+      res.status(409).json({ error: "Mission already exists", id: existing.rows[0].id });
+      return;
+    }
+
     const id = uid();
     const pScore = Number(priorityScore) || ({ critical: 90, high: 75, medium: 50, low: 25 }[(priority as string)] ?? 50);
 
@@ -344,7 +361,7 @@ router.post("/missions", canWrite, async (req: Request, res: Response) => {
         id, org_id, title, description, category, type, priority, priority_score,
         status, impact, effort, steps, due_date, assigned_to, source_type, created_at, updated_at, last_refreshed_at
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'manual',NOW(),NOW(),NOW())
-    `, [id, org, title, description || null, category, type, priority, pScore, status, impact, effort,
+    `, [id, org, normalizedTitle, description || null, category, type, priority, pScore, status, impact, effort,
         JSON.stringify(steps || []), (dueDate as string) || null, (assignedTo as string) || null]);
 
     const row = await db(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
