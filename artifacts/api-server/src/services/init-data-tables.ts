@@ -854,12 +854,16 @@ export async function initDataTables(): Promise<void> {
         predicted_revenue     NUMERIC     NOT NULL DEFAULT 0,
         confidence            INT         NOT NULL DEFAULT 75,
         scenario              TEXT        NOT NULL DEFAULT 'realistic',
+        source                TEXT        NOT NULL DEFAULT 'legacy',
         generated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (org_id, site_url, forecast_date, scenario)
       );
     `);
     // Additive migration: add org_id to existing rows that were inserted without it
     await run(client, `ALTER TABLE seo_forecasts ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    // Forecasts created before provenance existed are intentionally treated as
+    // legacy data and are never shown as real predictions.
+    await run(client, `ALTER TABLE seo_forecasts ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'legacy';`);
     await run(client, `CREATE INDEX IF NOT EXISTS seo_forecasts_org_site_idx ON seo_forecasts(org_id, site_url);`);
     // Drop old unique constraint that lacks org_id (idempotent — no-op if already gone)
     await run(client, `

@@ -6850,8 +6850,8 @@ function renderReports() {
       <div class="fp-stat-row fp-mb-20">
         ${(()=>{ const _seoAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return `
         ${statCard('Score SEO moyen', displayStat(_seoAvg !== null ? _seoAvg + '/100' : null, '74/100'), _seoAvg !== null ? 'score moyen portfolio' : PREVIEW_MODE ? '+12 pts en 5 mois' : 'Aucun audit', _seoAvg !== null ? (_seoAvg >= 70 ? 'up' : 'down') : 'neutral')}
-        ${statCard('Mots-clés Top 3', displayStat(null, '1'), PREVIEW_MODE ? '+1 vs M-1' : 'Connectez DataForSEO', 'neutral')}
-        ${statCard('Mots-clés Top 10', displayStat(null, '2'), PREVIEW_MODE ? '+1 vs M-1' : 'Connectez DataForSEO', 'neutral')}
+        ${statCard('Mots-clés Top 3', displayStat(null, '1'), PREVIEW_MODE ? '+1 vs M-1' : 'Données de classement indisponibles', 'neutral')}
+        ${statCard('Mots-clés Top 10', displayStat(null, '2'), PREVIEW_MODE ? '+1 vs M-1' : 'Données de classement indisponibles', 'neutral')}
         ${statCard('Opportunités SEO', displayStat(STATE.audits&&STATE.audits.length>0?String(STATE.audits.filter(a=>(a.score||0)<70).length):null, '2'), STATE.audits&&STATE.audits.length>0?'sites à améliorer':'à impact élevé', 'neutral')}
         `; })()}
       </div>
@@ -7715,10 +7715,10 @@ function renderLocalSEO() {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 18px;border-bottom:1px solid var(--fp-border);background:linear-gradient(90deg,rgba(37,99,235,0.06),transparent)">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:16px">🔍</span>
-          <span class="fp-card-title" style="margin-bottom:0">Intelligence DataForSEO — Local Pack Live</span>
+          <span class="fp-card-title" style="margin-bottom:0">Intelligence de visibilité locale</span>
           ${STATE.dfsStatus?.configured
             ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#22c55e">● API LIVE</span>`
-            : `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b">● DÉMO</span>`}
+            : `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b">● DONNÉES INDISPONIBLES</span>`}
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           ${STATE.dfsStatus ? `<span style="font-size:10px;color:#64748b">${STATE.dfsStatus.quota?.used||0}/${STATE.dfsStatus.quota?.limit||50} req aujourd\'hui</span>` : ''}
@@ -7751,10 +7751,7 @@ function renderLocalSEO() {
               <div style="font-size:10px;color:#64748b">${f.desc}</div>
             </div>
           </div>`).join('')}
-          ${!STATE.dfsStatus?.configured ? `
-          <div style="margin-top:12px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-size:11px;color:#f59e0b">
-            💡 Mode démo actif — connectez DataForSEO pour obtenir les rankings locaux en temps réel
-          </div>` : ''}
+          ${!STATE.dfsStatus?.configured ? `<div style="margin-top:12px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-size:11px;color:#f59e0b">Les données de classement sont temporairement indisponibles.</div>` : ''}
         </div>
       </div>
     </div>
@@ -11725,7 +11722,7 @@ function renderAI() {
       {name:'Monitors', icon:'📡', score:_mkSysScore(_monScore), status:_mkSysStatus(_monScore), color:_mkSysColor(_monScore), route:'monitors',
         detail:_monTotal>0?_monDown+' DOWN · '+_monTotal+' monitor(s) actif(s)':PREVIEW_MODE?'3 DOWN · Uptime moyen 97.2%':'Aucun monitor configuré'},
       {name:'Local SEO', icon:'📍', score:_mkSysScore(domScore!=null?Math.round(domScore*0.9):null), status:_mkSysStatus(domScore!=null?Math.round(domScore*0.9):null), color:_mkSysColor(domScore!=null?Math.round(domScore*0.9):null), route:'local-seo',
-        detail:STATE.dfsStatus?.configured?'DataForSEO connecté':PREVIEW_MODE?'2 zones non couvertes · GBP actif':'Connectez DataForSEO ou Google Business Profile'},
+        detail:STATE.dfsStatus?.configured?'Données de classement disponibles':PREVIEW_MODE?'2 zones non couvertes · GBP actif':'Données locales indisponibles'},
       {name:'Concurrents', icon:'🏁', score:_mkSysScore(_compScore), status:_mkSysStatus(_compScore), color:_mkSysColor(_compScore), route:'competitor',
         detail:STATE.competitors&&STATE.competitors.length>0?(STATE.competitors[0].name||'Concurrent #1')+' — '+STATE.competitors.length+' concurrent(s) suivi(s)':PREVIEW_MODE?'Concurrent #1 en progression cette semaine':'Aucun concurrent — Ajoutez des concurrents'},
       {name:'Conversion', icon:'💰', score:_mkSysScore(_convScore), status:_mkSysStatus(_convScore), color:_mkSysColor(_convScore), route:'conversion',
@@ -17524,7 +17521,7 @@ async function init() {
           <input id="rl-city" class="fp-input" placeholder="Ville (ex: Paris)" value="${STATE.me?.location?.city||''}" style="width:100%;box-sizing:border-box"/>
         </div>
         <div style="font-size:10px;color:var(--fp-text-faint,#64748b);margin-top:8px;padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border:1px solid rgba(37,99,235,0.15)">
-          ℹ️ Les résultats affichés proviennent de DataForSEO. Si le service n’est pas configuré, aucun classement ne sera inventé.
+          ℹ️ Les résultats proviennent de votre source de classement. Lorsqu’elle est indisponible, aucun classement n’est inventé.
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
           <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-rankings-modal').style.display='none'">Annuler</button>
@@ -17546,7 +17543,7 @@ async function init() {
         showToast('success','Rankings chargés !');
         render(STATE.currentSection);
       } else if (r?.reason === 'not_configured' || r?.configured === false) {
-        showToast('warning','Classements indisponibles : DataForSEO n’est pas configuré pour cette organisation.');
+        showToast('warning','Classements indisponibles pour cette organisation.');
       } else {
         showToast('info','Aucun classement local trouvé pour cette requête. Vérifiez le mot-clé et la ville.');
       }
@@ -19653,7 +19650,7 @@ function renderMonitorsPerformance() {
         const _goodCwv = STATE.audits ? STATE.audits.filter(a=>(a.speed||0)>=90).length : null;
         return [
           { l: 'Latence moy.',     v: _avgLat != null ? _avgLat+'ms' : (PREVIEW_MODE ? '319ms' : '—'),  c: _avgLat != null ? (_avgLat>400?'#ef4444':_avgLat>200?'#f59e0b':'#22c55e') : '#22c55e', sub: _avgLat != null ? 'latence monitors' : PREVIEW_MODE ? '-42ms vs hier' : 'Aucun monitor' },
-          { l: 'Score CWV moy.',   v: _cwvData != null ? _cwvData+'/100' : (PREVIEW_MODE ? '71/100' : '—'), c: _cwvData != null ? (_cwvData>=90?'#22c55e':_cwvData>=70?'#f59e0b':'#ef4444') : '#f59e0b', sub: _cwvData != null ? 'score Core Web Vitals' : PREVIEW_MODE ? '+3 pts ce mois' : 'Connectez DataForSEO' },
+          { l: 'Score CWV moy.',   v: _cwvData != null ? _cwvData+'/100' : (PREVIEW_MODE ? '71/100' : '—'), c: _cwvData != null ? (_cwvData>=90?'#22c55e':_cwvData>=70?'#f59e0b':'#ef4444') : '#f59e0b', sub: _cwvData != null ? 'score Core Web Vitals' : PREVIEW_MODE ? '+3 pts ce mois' : 'Données de performance indisponibles' },
           { l: 'LCP moyen',        v: PREVIEW_MODE ? '2.7s' : '—', c: '#f59e0b', sub: 'Cible : ≤2.5s' },
           { l: 'Sites "Good" CWV', v: _goodCwv != null ? _goodCwv+'/'+STATE.audits.length : (PREVIEW_MODE ? '2/5' : '—'), c: '#2563EB', sub: _goodCwv != null ? 'speed ≥ 90/100' : PREVIEW_MODE ? 'plombier + auto-moto' : 'Aucun audit' },
         ];
@@ -20378,7 +20375,7 @@ function renderLocalSEOCompetitors() {
             : STATE.llmVisibility?.status === 'ok' ? (STATE.llmVisibility.mentioned ? 'Marque mentionnée' : 'Non mentionné')
             : PREVIEW_MODE ? 'Score OpenAI' : 'Chargement…',
           STATE.llmVisibility?.status === 'ok' && STATE.llmVisibility.mentioned ? 'up' : 'neutral')}
-      ${statCard('DR domaine', myAuth > 0 ? myAuth : (PREVIEW_MODE ? '38' : '—'), myAuth > 0 ? 'depuis DataForSEO' : (PREVIEW_MODE ? 'Aperçu' : 'Connectez DataForSEO'), myAuth > 0 ? 'up' : 'neutral')}
+      ${statCard('DR domaine', myAuth > 0 ? myAuth : (PREVIEW_MODE ? '38' : '—'), myAuth > 0 ? 'depuis les données de classement' : (PREVIEW_MODE ? 'Aperçu' : 'Données de classement indisponibles'), myAuth > 0 ? 'up' : 'neutral')}
     </div>
 
     <!-- COMPETITOR TABLE -->
@@ -20573,31 +20570,16 @@ function renderLocalSEOOpportunities() {
     { id: 'o8', title: 'Page service — zone secondaire ciblée',         type: 'Page locale',   effort: '2h', potential: '+480 rech/mois', difficulty: 'Moyen', impact: 'Élevé',    icon: '📄', cat: 'pages'    },
   ] : [];
 
-  // Citations: status is always 'unknown' — we don't have real citation data from APIs.
-  // Show all as reference directories to check manually (no fake present/missing status).
-  const citations = [
-    { name: 'Pages Jaunes',    domain: 'pagesjaunes.fr',  da: 72, status: 'unknown',  type: 'Annuaire général' },
-    { name: 'Yelp France',     domain: 'yelp.fr',         da: 68, status: 'unknown',  type: 'Avis & resto'     },
-    { name: 'Hotfrog',         domain: 'hotfrog.fr',      da: 45, status: 'unknown',  type: 'Annuaire PME'     },
-    { name: 'Foursquare',      domain: 'foursquare.com',  da: 81, status: 'unknown',  type: 'Local discovery'  },
-    { name: 'Kompass',         domain: 'kompass.com',     da: 63, status: 'unknown',  type: 'B2B directory'    },
-    { name: 'Cylex',           domain: 'cylex.fr',        da: 41, status: 'unknown',  type: 'Annuaire local'   },
-  ];
-
-  const hyperlocal = [
-    { title: 'Cibler le quartier Marais (Paris 3-4)',        type: 'Micro-zone',  gain: '+120 vis/mois' },
-    { title: 'Créer une page pour la Fête de la Musique',    type: 'Événement',   gain: '+200 vis (juin)' },
-    { title: 'Contenu spécial rentrée scolaire',             type: 'Saisonnier',  gain: '+150 vis (sept.)' },
-    { title: 'Cibler "à proximité de la gare Saint-Lazare"', type: 'Géo-ciblage', gain: '+90 vis/mois' },
-  ];
+  const citations = Array.isArray(STATE.localSeo?.citations) ? STATE.localSeo.citations : [];
+  const hyperlocal = Array.isArray(STATE.localSeo?.hyperlocal) ? STATE.localSeo.hyperlocal : [];
 
   return `
-    ${aiBlock('J\'ai identifié <strong>8 opportunités non exploitées</strong> pouvant générer <strong>+1 169 visites/mois supplémentaires</strong> et <strong>+47% de trafic local</strong> en 60 jours. Priorité absolue : les 4 opportunités "Facile" à impact élevé.', ['Créer toutes les missions', 'Prioriser par impact', 'Rapport opportunités'])}
+    ${opps.length ? aiBlock('Opportunités calculées à partir des données locales disponibles. Les gains ne sont affichés que lorsqu’ils sont mesurés par la source.', ['Créer toutes les missions', 'Prioriser par impact', 'Rapport opportunités']) : `<div class="fp-card fp-mb-20" style="padding:20px;text-align:center;color:var(--fp-text-muted)">Aucune opportunité locale mesurée. Synchronisez vos données Google puis relancez l’analyse.</div>`}
 
     <!-- STATS -->
     <div class="fp-stat-row fp-mb-20">
       ${statCard('Opportunités totales', opps.length, 'non exploitées', 'down')}
-      ${statCard('Potentiel cumulé', displayStat(opps.length > 0 ? '+' + opps.reduce((s,o)=>s+(o.gain||0),0) : null, '+1 169'), 'visites/mois', 'up')}
+      ${statCard('Potentiel cumulé', displayStat(null, null), 'estimation indisponible', 'neutral')}
       ${statCard('Annuaires à vérifier', citations.length, 'répertoires locaux', 'neutral')}
       ${statCard('Faciles à faire', opps.filter(o => o.difficulty === 'Facile').length, 'moins de 1h chacune', 'up')}
     </div>
@@ -21966,7 +21948,7 @@ function renderGrowthCommandCenter() {
         </div>
         <div style="padding:9px 12px;background:rgba(245,158,11,.07);border-radius:8px;border:1px solid rgba(245,158,11,.2);margin-bottom:14px">
           <div style="font-size:11px;font-weight:600;color:#f59e0b;margin-bottom:2px">🔥 Action prioritaire</div>
-          <div style="font-size:11px;color:var(--fp-text-soft)">${PREVIEW_MODE ? 'Créer une page locale pour <strong>votre zone cible</strong> — potentiel +91 pts visibilité locale.' : 'Connectez DataForSEO pour voir vos opportunités locales.'}</div>
+          <div style="font-size:11px;color:var(--fp-text-soft)">${PREVIEW_MODE ? 'Créer une page locale pour <strong>votre zone cible</strong> — potentiel +91 pts visibilité locale.' : 'Données de classement indisponibles pour voir vos opportunités locales.'}</div>
         </div>
         <div style="font-size:11.5px;font-weight:600;color:var(--fp-text-soft);margin-bottom:7px">Google Business Profile</div>
         ${(function(){
@@ -22320,7 +22302,7 @@ function renderCompetitor() {
         ${statCard('Mots-clés suivis', _realKw.length > 0 ? String(_realKw.length) : displayStat(null, PREVIEW_MODE ? String(kwBattle.length) : '0'), 'dans le battlefield', 'neutral')}
         ${statCard('Vous en tête', kwBattle.filter(k => k.gap >= 0).length, 'positions gagnées', 'up')}
         ${statCard('Gaps détectés', kwBattle.filter(k => k.gap < -5).length, 'opportunités urgentes', 'down')}
-        ${statCard('Volume gagnable', displayStat(null, '+4 120'), PREVIEW_MODE ? 'recherches/mois' : 'Connectez DataForSEO', 'neutral')}
+        ${statCard('Volume gagnable', displayStat(null, '+4 120'), PREVIEW_MODE ? 'recherches/mois' : 'Données de classement indisponibles', 'neutral')}
       </div>
 
       <!-- BATTLEFIELD TABLE -->
@@ -22450,7 +22432,7 @@ function renderCompetitor() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Sujets non couverts', topics.filter(t => !t.yours).length, 'vs concurrents', 'down')}
-        ${statCard('Volume manquant', displayStat(null, '+1 330'), PREVIEW_MODE ? 'rech/mois potentielles' : 'Connectez DataForSEO', 'neutral')}
+        ${statCard('Volume manquant', displayStat(null, '+1 330'), PREVIEW_MODE ? 'rech/mois potentielles' : 'Données de classement indisponibles', 'neutral')}
         ${statCard('Fréquence pub.', displayStat(null, '4/mois'), PREVIEW_MODE ? 'vs 7 moy. concurrents' : 'Connectez analytics', 'neutral')}
         ${statCard('Score qualité', displayStat(null, '68/100'), PREVIEW_MODE ? 'vs 74 moy. marché' : 'Connectez analytics', 'neutral')}
       </div>
@@ -22562,14 +22544,14 @@ function renderCompetitor() {
       { site: 'yelp.fr',                 da: 68, type: 'Avis',   effort: '15 min', gained: true  },
     ] : [];
     return `
-      ${_blPlanRequired ? `<div style="padding:14px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔒</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">DataForSEO Advanced requis pour Backlink Intelligence</div><div style="font-size:12px;color:var(--fp-text-muted)">L\'endpoint backlinks n\'est pas disponible sur votre plan DataForSEO actuel. Mettez à niveau vers le plan Advanced pour accéder aux données de backlinks réelles.</div></div></div>` : ''}
-      ${aiBlock((blData.length > 1 ? "L'autorité de <strong>" + escHtml(blData[1].name) + "</strong> croît via des domaines locaux à fort DA." : "Analysez les backlinks de vos concurrents pour identifier des opportunités.") + (PREVIEW_MODE ? " Vous avez <strong>4 opportunités faciles de backlinks</strong> non exploitées (+14 DA potentiel). 2 backlinks perdus ce mois à récupérer en priorité." : (_blAvailable ? " Les données de backlinks sont chargées depuis DataForSEO." : " Connectez DataForSEO Advanced pour accéder aux données de backlinks réelles.")),
+      ${_blPlanRequired ? `<div style="padding:14px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔒</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Données de liens non disponibles</div><div style="font-size:12px;color:var(--fp-text-muted)">Les données de backlinks ne sont pas accessibles avec la configuration actuelle.</div></div></div>` : ''}
+      ${aiBlock((blData.length > 1 ? "L'autorité de <strong>" + escHtml(blData[1].name) + "</strong> croît via des domaines locaux à fort DA." : "Analysez les backlinks de vos concurrents pour identifier des opportunités.") + (PREVIEW_MODE ? " Vous avez <strong>4 opportunités faciles de backlinks</strong> non exploitées (+14 DA potentiel). 2 backlinks perdus ce mois à récupérer en priorité." : (_blAvailable ? " Les données de backlinks sont disponibles." : " Les données de backlinks ne sont pas encore disponibles.")),
         ['Voir les opportunités', 'Rapport backlinks', 'Alertes nouveaux liens'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Vos backlinks',     displayStat(_blReal?.totalBacklinks,  '127'), PREVIEW_MODE ? '+12 ce mois'   : (_blAvailable ? 'depuis DataForSEO' : 'Connectez DataForSEO'), _blAvailable ? 'up' : 'neutral')}
-        ${statCard('Domaines référents',displayStat(_blReal?.totalDomains,    '48'),  PREVIEW_MODE ? 'vs 81 leader'  : (_blAvailable ? 'depuis DataForSEO' : 'Connectez DataForSEO'), _blAvailable ? 'up' : 'neutral')}
-        ${statCard('Backlinks perdus',  displayStat(_blReal?.lostBacklinks,   '2'),   PREVIEW_MODE ? 'ce mois'       : (_blAvailable ? 'depuis DataForSEO' : 'Connectez DataForSEO'), _blAvailable ? 'down' : 'neutral')}
+        ${statCard('Vos backlinks',     displayStat(_blReal?.totalBacklinks,  '127'), PREVIEW_MODE ? '+12 ce mois'   : (_blAvailable ? 'depuis les données de classement' : 'Données de classement indisponibles'), _blAvailable ? 'up' : 'neutral')}
+        ${statCard('Domaines référents',displayStat(_blReal?.totalDomains,    '48'),  PREVIEW_MODE ? 'vs 81 leader'  : (_blAvailable ? 'depuis les données de classement' : 'Données de classement indisponibles'), _blAvailable ? 'up' : 'neutral')}
+        ${statCard('Backlinks perdus',  displayStat(_blReal?.lostBacklinks,   '2'),   PREVIEW_MODE ? 'ce mois'       : (_blAvailable ? 'depuis les données de classement' : 'Données de classement indisponibles'), _blAvailable ? 'down' : 'neutral')}
         ${statCard('Opportunités liens', linkOpps.filter(l => !l.gained).length, 'à exploiter', 'up')}
       </div>
 
@@ -22606,7 +22588,7 @@ function renderCompetitor() {
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">🔗 Opportunités de liens détectées</div>
           <div style="display:flex;flex-direction:column;gap:8px">
-            ${linkOpps.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez DataForSEO Advanced pour détecter des opportunités de liens</div>` : ''}${linkOpps.map(l => `
+            ${linkOpps.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Données de classement indisponibles Advanced pour détecter des opportunités de liens</div>` : ''}${linkOpps.map(l => `
               <div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;background:${l.gained?'rgba(34,197,94,0.05)':'rgba(37,99,235,0.05)'};border:1px solid ${l.gained?'rgba(34,197,94,0.15)':'rgba(37,99,235,0.15)'}">
                 <div style="flex:1">
                   <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(l.site)}</div>
@@ -22647,7 +22629,7 @@ function renderCompetitor() {
             </div>
           </div>`
             : `<div style="padding:16px;text-align:center;color:var(--fp-text-muted);font-size:12px">
-              Données de vélocité backlinks disponibles avec DataForSEO Advanced.
+              Données de vélocité backlinks disponibles avec les données de liens.
             </div>`
           }
         </div>
@@ -22677,7 +22659,7 @@ function renderCompetitor() {
         ] : []);
     const _lcAiMsg = localComp.length>0
       ? (()=>{const _ld=localComp.filter(z=>z.yours<=z.comp1);const _lw=localComp.filter(z=>z.yours<z.comp1);return _lw.length>0?'Vous gagnez sur <strong>'+_lw.length+' zone(s)</strong>. '+(_ld.length<localComp.length?'Zones à renforcer : <strong>'+localComp.filter(z=>z.yours>z.comp1).map(z=>z.city).slice(0,2).join(', ')+'</strong>.':'Excellente domination locale.'):'Renforcez votre présence locale pour dépasser '+(_comp1Nm?escHtml(_comp1Nm):'vos concurrents')+'.'})()
-      : 'Connectez votre DataForSEO et Google Business Profile pour obtenir la carte de domination locale.';
+      : 'Connectez votre vos sources de visibilité locale pour obtenir la carte de domination locale.';
     return `
       ${aiBlock(_lcAiMsg, ['Plan domination locale', 'Renforcer GBP', 'Comparer les zones'])}
 
@@ -22786,7 +22768,7 @@ function renderCompetitor() {
                   </td>
                   <td style="text-align:center">${hasComp?badge(winning?'Vous gagnez':'Concurrent devant', winning?'#22c55e':'#ef4444'):'<span style="font-size:10px;color:var(--fp-text-faint)">Données concurrent indisponibles</span>'}</td>
                 </tr>`;
-              }).join('') : `<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:11px">Connectez DataForSEO et configurez vos zones Local SEO pour lancer l'analyse concurrentielle par ville.</td></tr>`}
+              }).join('') : `<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:11px">Données de classement indisponibles et configurez vos zones Local SEO pour lancer l'analyse concurrentielle par ville.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -22826,7 +22808,7 @@ function renderCompetitor() {
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Alertes actives', alerts.filter(a => !a.read).length, 'non lues', 'down')}
         ${statCard('Menaces critiques', alerts.filter(a => a.severity === 'critical').length, 'ce mois', 'down')}
-        ${statCard('Nouveaux concurrents', displayStat(null, '1'), PREVIEW_MODE ? 'détecté ce mois' : 'Connectez DataForSEO', 'neutral')}
+        ${statCard('Nouveaux concurrents', displayStat(null, '1'), PREVIEW_MODE ? 'détecté ce mois' : 'Données de classement indisponibles', 'neutral')}
         ${statCard('Mouvements détectés', alerts.length, '30 derniers jours', 'neutral')}
       </div>
 
@@ -22900,7 +22882,7 @@ function renderCompetitor() {
   const weaknesses = _wkComps.map(c => ({
     comp: c.name,
     weak: c.weaknesses?.[0] || _threatWeakMap[c.threat || c.threatLevel] || 'Analyse en cours',
-    opp:  c.opportunities?.[0] || _threatOppMap[c.threat || c.threatLevel] || 'Connectez DataForSEO pour l\'analyse',
+    opp:  c.opportunities?.[0] || _threatOppMap[c.threat || c.threatLevel] || 'Données de classement indisponibles pour l\'analyse',
   }));
 
   const oppHijack = PREVIEW_MODE ? [
@@ -23148,7 +23130,7 @@ function renderCompetitor() {
           </div>
           <div style="display:flex;flex-direction:column;gap:6px">
             ${oppHijack.length === 0
-              ? `<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">Ajoutez vos concurrents et connectez DataForSEO pour détecter les opportunités à saisir.</div>`
+              ? `<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">Ajoutez vos concurrents puis synchronisez les données de classement pour détecter des opportunités.</div>`
               : oppHijack.map(o => {
               const oc = o.urgency === 'high' ? '#ef4444' : o.urgency === 'medium' ? '#f59e0b' : '#22c55e';
               return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:${o.urgency==='done'?'rgba(34,197,94,0.05)':'var(--fp-inner-card)'}">
@@ -24425,13 +24407,13 @@ function renderAlertsCenter() {
     return `
       ${aiBlock(PREVIEW_MODE
         ? "3 mots-clés ont perdu des positions cette semaine. Alerte critique : un mot-clé prioritaire a chuté de 5 places — probable mise à jour algo Google. Opportunité : un autre mot-clé progresse fortement (+7 positions)."
-        : "Connectez DataForSEO pour surveiller les fluctuations de positions de vos mots-clés en temps réel.",
+        : "Données de classement indisponibles pour surveiller les fluctuations de positions de vos mots-clés en temps réel.",
         ['Plan récupération rankings', 'Analyser les concurrents', 'Rapport SEO PDF'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Alertes SEO actives', displayStat(null, '4'), PREVIEW_MODE ? 'dont 2 critiques' : 'Connectez DataForSEO', 'neutral')}
-        ${statCard('Mots-clés en baisse', displayStat(null, '3'), PREVIEW_MODE ? 'cette semaine' : 'Connectez DataForSEO', 'neutral')}
-        ${statCard('Mots-clés en hausse', displayStat(null, '1'), PREVIEW_MODE ? 'optimisation réussie' : 'Connectez DataForSEO', 'neutral')}
+        ${statCard('Alertes SEO actives', displayStat(null, '4'), PREVIEW_MODE ? 'dont 2 critiques' : 'Données de classement indisponibles', 'neutral')}
+        ${statCard('Mots-clés en baisse', displayStat(null, '3'), PREVIEW_MODE ? 'cette semaine' : 'Données de classement indisponibles', 'neutral')}
+        ${statCard('Mots-clés en hausse', displayStat(null, '1'), PREVIEW_MODE ? 'optimisation réussie' : 'Données de classement indisponibles', 'neutral')}
         ${statCard('Trafic organique', displayStat(STATE.overview?.sessions ? '—' : null, '-23% lundi'), PREVIEW_MODE ? 'récupéré mardi' : 'Connectez analytics', 'neutral')}
       </div>
 
@@ -24713,7 +24695,7 @@ function renderAlertsCenter() {
         ${statCard('Alertes locales', String(gbpAlerts.length), 'en cours', gbpAlerts.length > 0 ? 'down' : 'neutral')}
         ${statCard('Avis sans réponse', _unanswered != null ? String(_unanswered) : '—', _unanswered != null ? 'risque note Google' : 'Connectez GBP', _unanswered > 0 ? 'down' : 'neutral')}
         ${statCard('Zones en recul', String(localDrops.length), 'cette semaine', 'down')}
-        ${statCard('Zone dominée', displayStat(STATE.dfsStatus?.configured ? 'Live' : null, PREVIEW_MODE ? '15e arr.' : '—'), STATE.dfsStatus?.configured ? 'Local Pack' : PREVIEW_MODE ? 'Local Pack #1' : 'Connectez DataForSEO', 'neutral')}
+        ${statCard('Zone dominée', displayStat(STATE.dfsStatus?.configured ? 'Live' : null, PREVIEW_MODE ? '15e arr.' : '—'), STATE.dfsStatus?.configured ? 'Local Pack' : PREVIEW_MODE ? 'Local Pack #1' : 'Données de classement indisponibles', 'neutral')}
       </div>
 
       <!-- GBP ALERTS -->
@@ -24810,8 +24792,8 @@ function renderAlertsCenter() {
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Mouvements détectés', String(compMovements.filter(c => c.sev !== 'info').length), 'dont 1 critique', 'down')}
         ${statCard('Menace critique', _lead ? escHtml(_lead.name) : '—', _lead ? '+' + _lead.gain + ' positions ce mois' : 'Aucun concurrent configuré', _lead ? 'down' : 'neutral')}
-        ${statCard('Concurrent en recul', displayStat(null, '1'), PREVIEW_MODE ? 'opportunité à saisir' : 'Connectez DataForSEO', 'neutral')}
-        ${statCard('Alerte backlinks', displayStat(null, '+180%'), PREVIEW_MODE ? 'activité anormale' : 'Connectez DataForSEO', 'neutral')}
+        ${statCard('Concurrent en recul', displayStat(null, '1'), PREVIEW_MODE ? 'opportunité à saisir' : 'Données de classement indisponibles', 'neutral')}
+        ${statCard('Alerte backlinks', displayStat(null, '+180%'), PREVIEW_MODE ? 'activité anormale' : 'Données de classement indisponibles', 'neutral')}
       </div>
 
       <!-- MOVEMENTS TABLE -->
@@ -25326,7 +25308,7 @@ function renderActivityFeed() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Actions SEO ce mois', seoActs.length > 0 ? String(seoActs.length) : '—', seoActs.length > 0 ? 'événements SEO' : 'Les données apparaîtront avec votre activité réelle', seoActs.length > 0 ? 'up' : 'neutral')}
-        ${statCard('Mots-clés améliorés', kws.length > 0 ? String(kws.filter(k=>(k.delta||0)>0).length) : '—', kws.length > 0 ? 'positions en hausse' : 'Connectez DataForSEO', 'neutral')}
+        ${statCard('Mots-clés améliorés', kws.length > 0 ? String(kws.filter(k=>(k.delta||0)>0).length) : '—', kws.length > 0 ? 'positions en hausse' : 'Données de classement indisponibles', 'neutral')}
         ${statCard('Score moyen portfolio', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return _a != null ? _a+'/100' : '—'; })(), STATE.audits&&STATE.audits.length>0 ? 'score moyen portfolio' : 'Lancez un premier audit', 'neutral')}
         ${statCard('Momentum SEO', '—', 'Les données apparaîtront avec votre activité réelle', 'neutral')}
       </div>
@@ -26540,24 +26522,29 @@ function renderDataExplorer() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'forecast') {
     const _fcData = window.FP_DATA && window.FP_DATA.forecast;
-    const _preds = _fcData && _fcData.predictions;
-    const _fcT = _preds && _preds.filter(p => p.scenario === 'base' && p.modelId && p.modelId.indexOf('traffic') > -1).slice(-6);
-    const _fcR = _preds && _preds.filter(p => p.scenario === 'base' && p.modelId && p.modelId.indexOf('revenue') > -1).slice(-6);
-    const fMonths = (_fcT && _fcT.length) ? _fcT.map(p => { try { return new Date(p.date + '-01').toLocaleDateString('fr-FR',{month:'short'}); } catch(e){ return p.date; } }) : ['Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov'];
-    const fTraffic   = (_fcT && _fcT.length) ? _fcT.map(p => Math.round(p.predictedValue)) : [13800, 15200, 14100, 16400, 17800, 19200];
-    const fConv      = [0.27, 0.30, 0.29, 0.34, 0.38, 0.40];
-    const fRev       = (_fcR && _fcR.length) ? _fcR.map(p => Math.round(p.predictedValue)) : [3240, 3800, 3400, 4420, 5140, 5920];
-    const maxF       = Math.max(...fTraffic);
-    const scenarios  = [
-      { name: 'Scénario conservateur',   traffic: '+8%',  conv: '+0.02%', rev: '+8%',  color: '#64748b', desc: 'Sans actions supplémentaires' },
-      { name: 'Scénario recommandé',     traffic: '+24%', conv: '+0.12%', rev: '+78%', color: '#2563EB', desc: 'Plan CRO + GBP + contenu local' },
-      { name: 'Scénario optimiste',      traffic: '+52%', conv: '+0.21%', rev: '+142%',color: '#22c55e', desc: 'Plan maximal + publicité payante' },
-    ];
+    const _points = _fcData?.forecasts || _fcData?.predictions || [];
+    const _realistic = _points.filter(p => p.scenario === 'realistic' || p.scenario === 'base').slice(0, 180);
+    const _scenarioValue = function(name) {
+      const rows = _points.filter(p => p.scenario === name).slice(0, 30);
+      return rows.reduce((sum, p) => sum + Number(p.predictedTraffic ?? p.predictedValue ?? 0), 0);
+    };
+    const _hasForecast = !!(_fcData?.available && _realistic.length);
+    const fMonths = _hasForecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => new Date(p.date).toLocaleDateString('fr-FR',{month:'short'})) : [];
+    const fTraffic = _hasForecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => Math.round(Number(p.predictedTraffic ?? p.predictedValue ?? 0))) : [];
+    const fConv = [];
+    const fRev = [];
+    const maxF = fTraffic.length ? Math.max(...fTraffic, 1) : 1;
+    const scenarios = _hasForecast ? [
+      { name: 'Scénario prudent', traffic: _scenarioValue('pessimistic').toLocaleString('fr-FR') + ' clics', conv: '—', rev: '—', color: '#64748b', desc: 'Projection GSC basse' },
+      { name: 'Scénario réaliste', traffic: _scenarioValue('realistic').toLocaleString('fr-FR') + ' clics', conv: '—', rev: '—', color: '#2563EB', desc: 'Tendance GSC observée' },
+      { name: 'Scénario ambitieux', traffic: _scenarioValue('optimistic').toLocaleString('fr-FR') + ' clics', conv: '—', rev: '—', color: '#22c55e', desc: 'Projection GSC haute' },
+    ] : [];
     return `
-      ${isUltra
-        ? aiBlock("Prévision trafic M+6 : <strong>+52% de sessions</strong> dans le scénario recommandé. La conversion devrait atteindre <strong>0.41%</strong> avec le plan CRO complet. Revenue forecast M+6 : <strong>+5 920€/mois</strong>. Confiance IA : 74% (basée sur 8 mois de données).",
-            ['Voir le plan recommandé', 'Simuler un scénario', 'Rapport prévision'])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
+      ${isUltra && _hasForecast
+        ? aiBlock(`Prévision construite à partir de Google Search Console. Confiance : <strong>${_fcData.summary?.confidenceScore ?? '—'}%</strong>. La conversion et le revenu restent indisponibles sans données analytiques mesurées.`, ['Simuler un scénario', 'Rapport prévision'])
+        : isUltra
+          ? `<div class="fp-card fp-mb-20" style="padding:22px;text-align:center"><div style="font-size:24px;margin-bottom:8px">📊</div><div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:6px">Prévision indisponible</div><div style="font-size:12px;color:var(--fp-text-muted)">${escHtml(_fcData?.reason || 'Au moins 14 jours de données Search Console sont nécessaires pour créer une prévision fiable.')}</div></div>`
+          : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🔮</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Forecasting Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions trafic, conversion, revenue et ranking basées sur l\'IA et vos données historiques.</div></div>
             <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button>
@@ -26565,10 +26552,10 @@ function renderDataExplorer() {
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Trafic M+6 (reco)', displayStat(null, '+24%'), PREVIEW_MODE ? '16 400 sessions prévues' : 'Connectez analytics', 'neutral')}
-        ${statCard('Conversion M+6', displayStat(null, null), PREVIEW_MODE ? 'avec plan CRO complet' : 'Connectez analytics', 'neutral')}
-        ${statCard('Revenue M+6', displayStat(null, '5 920€'), PREVIEW_MODE ? 'scénario recommandé' : 'Connectez analytics', 'neutral')}
-        ${statCard('Confiance IA', displayStat(null, '74%'), PREVIEW_MODE ? 'basé sur 8 mois' : 'Données insuffisantes', 'neutral')}
+        ${statCard('Trafic projeté', _hasForecast ? _scenarioValue('realistic').toLocaleString('fr-FR') : '—', _hasForecast ? '90 jours · source GSC' : 'Données insuffisantes', 'neutral')}
+        ${statCard('Conversion', '—', 'Données GA4 requises', 'neutral')}
+        ${statCard('Revenu', '—', 'Données de revenu requises', 'neutral')}
+        ${statCard('Confiance', _hasForecast ? (_fcData.summary?.confidenceScore ?? '—') + '%' : '—', _hasForecast ? 'historique GSC' : 'Données insuffisantes', 'neutral')}
       </div>
 
       <!-- TRAFFIC FORECAST CHART -->
@@ -28731,9 +28718,11 @@ function renderGrowthKeywords() {
     window._genOpportunities = async function() {
       showToast('info','Génération des opportunités IA…');
       try {
-        const domain = STATE.me?.website || STATE.me?.businessName || 'monsite.fr';
+        const domain = STATE.me?.website || STATE.audits?.[0]?.url;
+        if (!domain) { showToast('warning', 'Ajoutez d’abord un site ou lancez un audit pour générer des opportunités.'); return; }
         const r = await apiFetch('/api/keywords/opportunities/generate', { method:'POST', body:JSON.stringify({ domain }) });
-        showToast('success', r.count + ' opportunités générées !');
+        if (!r?.ok) { showToast('error', r?.error || 'Aucune opportunité n’a pu être générée.'); return; }
+        showToast(r.count ? 'success' : 'info', r.count ? r.count + ' opportunités générées !' : 'Aucune opportunité mesurable pour le moment.');
         await window._reloadKeywords();
         render(STATE.currentSection);
       } catch(e) { showToast('error','Erreur : ' + e); }
@@ -28743,7 +28732,8 @@ function renderGrowthKeywords() {
       showToast('info','Clustering sémantique IA en cours…');
       try {
         const r = await apiFetch('/api/keywords/cluster', { method:'POST' });
-        showToast('success', r.count + ' clusters générés !');
+        if (!r?.ok) { showToast('error', r?.error || 'Les clusters n’ont pas pu être générés.'); return; }
+        showToast(r.count ? 'success' : 'info', r.count ? r.count + ' clusters générés !' : 'Ajoutez au moins deux mots-clés suivis pour créer des clusters.');
         await window._reloadKeywords();
         render(STATE.currentSection);
       } catch(e) { showToast('error','Erreur : ' + e); }
@@ -34949,7 +34939,13 @@ window.FP_GBP_API = {
     try {
       const r = await apiFetch('/api/google/sync', { method: 'POST' });
       if (r?.ok) {
-        showToast('success', `GBP synchronisé — ${r.locationsCount||0} établissements, ${r.reviewsCount||0} avis`);
+        const locations = Number(r.locations ?? r.locationsCount ?? 0);
+        const reviews = Number(r.reviews ?? r.reviewsCount ?? 0);
+        if (!locations && !reviews) {
+          showToast('warning', 'Synchronisation terminée, mais aucune donnée Google n’a été reçue. Vérifiez la connexion Google.');
+        } else {
+          showToast('success', `Synchronisation terminée — ${locations} établissement${locations > 1 ? 's' : ''}, ${reviews} avis`);
+        }
         await this.load();
         render();
       } else {
@@ -35583,12 +35579,7 @@ window.FP_FORECAST_API = {
       const data = await apiFetch(url).catch(() => null);
       if (!data) return;
       window.FP_DATA = window.FP_DATA || {};
-      window.FP_DATA.forecast = {
-        models:      data.models      || [],
-        predictions: data.predictions || [],
-        snapshots:   data.snapshots   || [],
-        anomalies:   data.anomalies   || [],
-      };
+      window.FP_DATA.forecast = data;
     } catch(e) { console.warn('[FP_FORECAST_API] load error:', e); }
   },
 
@@ -35599,9 +35590,9 @@ window.FP_FORECAST_API = {
       const r = await apiFetch('/api/forecast/generate', { method: 'POST', body: JSON.stringify({ siteUrl }) });
       if (r?.ok) {
         window.FP_DATA = window.FP_DATA || {};
-        window.FP_DATA.forecast = { models: r.models || [], predictions: r.predictions || [], snapshots: r.snapshots || [], anomalies: r.anomalies || [] };
+        window.FP_DATA.forecast = r;
         render();
-        showToast('success', 'Prévisions IA générées sur 90 jours');
+        showToast('success', 'Prévisions de trafic générées à partir de vos données Search Console');
       } else showToast('error', r?.error || 'Erreur');
     } catch(e) { showToast('error', String(e)); }
   },
@@ -36741,7 +36732,7 @@ window._discoverLocalCompetitors = async function() {
   showToast('info', 'Recherche des concurrents locaux en cours…');
   try {
     const data = await window.FP_LOCAL_MAPS_API.discoverCompetitors({ keyword, location: place });
-    if (data?.configured === false) { showToast('warning', data.message || 'DataForSEO n’est pas configuré pour cette organisation.'); return; }
+    if (data?.configured === false) { showToast('warning', data.message || 'Les données de classement ne sont pas disponibles pour cette organisation.'); return; }
     if (!data?.ok) { showToast('error', data?.error || 'La recherche locale a échoué.'); return; }
     await window.FP_LOCAL_MAPS_API.load();
     render(STATE.currentSection);

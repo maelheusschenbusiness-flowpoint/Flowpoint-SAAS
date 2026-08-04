@@ -42,8 +42,11 @@ router.post("/forecast/generate", async (req: Request, res: Response) => {
     return;
   }
   try {
-    await generateForecasts(orgId, siteUrl);
-    const data = await getForecastData({ orgId, siteUrl });
+    const data = await generateForecasts(orgId, siteUrl);
+    if (!data.available) {
+      res.status(422).json({ ok: false, ...data });
+      return;
+    }
     res.json({ ok: true, ...data });
   } catch {
     res.status(500).json({ error: "Failed to generate forecasts" });

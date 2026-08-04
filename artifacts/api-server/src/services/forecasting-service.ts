@@ -3,6 +3,9 @@ import { pool } from "@workspace/db";
 export interface ForecastData {
   siteUrl: string;
   forecasts: ForecastPoint[];
+  available: boolean;
+  source: "gsc" | "stored" | "none";
+  reason?: string;
   summary: {
     expectedTrafficIn30d: number;
     expectedTrafficIn90d: number;
@@ -26,6 +29,9 @@ export interface ForecastPoint {
 const EMPTY_FORECAST: ForecastData = {
   siteUrl: "",
   forecasts: [],
+  available: false,
+  source: "none",
+  reason: "Données historiques insuffisantes pour générer une prévision.",
   summary: {
     expectedTrafficIn30d: 0,
     expectedTrafficIn90d: 0,
@@ -52,7 +58,9 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
     const client = await pool.connect();
     try {
       const res = await client.query(
-        `SELECT * FROM seo_forecasts WHERE org_id=$1 AND site_url=$2 ORDER BY forecast_date ASC LIMIT 90`,
+        `SELECT * FROM seo_forecasts
+         WHERE org_id=$1 AND site_url=$2 AND source='gsc'
+         ORDER BY forecast_date ASC, scenario ASC LIMIT 270`,
         [orgId, url]
       );
       if (res.rows.length > 0) {
@@ -74,6 +82,8 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
         return {
           siteUrl: url,
           forecasts,
+          available: realistic.length > 0,
+          source: "stored",
           summary: {
             expectedTrafficIn30d:     realTraffic30,
             expectedTrafficIn90d:     realTraffic90,
@@ -90,73 +100,68 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
     } finally { client.release(); }
   } catch { /* non-fatal */ }
 
-  // In production, never return fabricated numbers — return empty state.
-  if (process.env["NODE_ENV"] === "production") {
-    return { ...EMPTY_FORECAST, siteUrl: url, generatedAt: new Date().toISOString() };
-  }
-
-  // Dev/staging only: return a computed demo forecast.
-  return buildComputedForecast(url);
+  // A forecast is a business decision aid: never fabricate one in any environment.
+  return { ...EMPTY_FORECAST, siteUrl: url, generatedAt: new Date().toISOString() };
 }
 
-function buildComputedForecast(url: string): ForecastData {
-  const now = new Date();
-  const forecasts: ForecastPoint[] = [];
-  const baseTraffic = 350;
-  const baseCR = 0.028;
-
-  for (let i = 1; i <= 90; i++) {
-    const d = new Date(now);
-    d.setDate(d.getDate() + i);
-    const seasonality = 1 + 0.15 * Math.sin((d.getMonth() / 12) * 2 * Math.PI);
-    const growth = 1 + (i / 90) * 0.18;
-    const realistic = Math.round(baseTraffic * seasonality * growth);
-    for (const scenario of ["pessimistic", "realistic", "optimistic"] as const) {
-      const multiplier = scenario === "pessimistic" ? 0.8 : scenario === "optimistic" ? 1.25 : 1;
-      const traffic = Math.round(realistic * multiplier);
-      const conversions = Math.round(traffic * baseCR * (scenario === "optimistic" ? 1.15 : scenario === "pessimistic" ? 0.85 : 1));
-      forecasts.push({
-        date: d.toISOString().slice(0, 10),
-        predictedTraffic: traffic,
-        predictedConversions: conversions,
-        predictedRevenue: Math.round(conversions * 85),
-        confidence: scenario === "realistic" ? 78 : 55,
-        scenario,
-      });
-    }
-  }
-
-  const realistic = forecasts.filter(f => f.scenario === "realistic");
-  return {
-    siteUrl: url,
-    forecasts,
-    summary: {
-      expectedTrafficIn30d: realistic.slice(0, 30).reduce((s, f) => s + f.predictedTraffic, 0),
-      expectedTrafficIn90d: realistic.reduce((s, f) => s + f.predictedTraffic, 0),
-      expectedConversionsIn30d: realistic.slice(0, 30).reduce((s, f) => s + f.predictedConversions, 0),
-      expectedRevenueIn90d: realistic.reduce((s, f) => s + f.predictedRevenue, 0),
-      confidenceScore: 78,
-      growthScenarios: { pessimistic: -5, realistic: 18, optimistic: 35 },
-    },
-    generatedAt: new Date().toISOString(),
-  };
-}
-
-export async function generateForecasts(orgId: string, siteUrl: string): Promise<void> {
-  const forecast = buildComputedForecast(siteUrl);
+export async function generateForecasts(orgId: string, siteUrl: string): Promise<ForecastData> {
+  const client = await pool.connect();
   try {
-    const client = await pool.connect();
-    try {
-      for (const f of forecast.forecasts) {
-        await client.query(
-          `INSERT INTO seo_forecasts (id, org_id, site_url, forecast_date, predicted_traffic, predicted_conversions, predicted_revenue, confidence, scenario, generated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
-           ON CONFLICT (org_id, site_url, forecast_date, scenario) DO UPDATE SET
-             predicted_traffic=$5, predicted_conversions=$6, predicted_revenue=$7, confidence=$8, generated_at=NOW()`,
-          [`fc_${orgId}_${siteUrl}_${f.date}_${f.scenario}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 80),
-           orgId, siteUrl, f.date, f.predictedTraffic, f.predictedConversions, f.predictedRevenue, f.confidence, f.scenario]
-        );
+    const activeSite = await client.query(
+      `SELECT site_url FROM gsc_sites WHERE org_id=$1 AND is_active=true LIMIT 1`,
+      [orgId]
+    );
+    const gscSiteUrl = String(activeSite.rows[0]?.site_url || "");
+    if (!gscSiteUrl || gscSiteUrl !== siteUrl) {
+      return {
+        ...EMPTY_FORECAST,
+        siteUrl,
+        generatedAt: new Date().toISOString(),
+        reason: gscSiteUrl
+          ? "Sélectionnez le site actuellement actif dans Google Search Console pour générer une prévision."
+          : "Aucun site Google Search Console actif n’est disponible pour générer une prévision.",
+      };
+    }
+    const history = await client.query(
+      `SELECT date::date AS date, SUM(clicks)::int AS clicks
+       FROM gsc_keyword_data
+       WHERE org_id=$1 AND date >= CURRENT_DATE - INTERVAL '35 days'
+       GROUP BY date ORDER BY date ASC`,
+      [orgId]
+    );
+    if (history.rows.length < 14) {
+      return { ...EMPTY_FORECAST, siteUrl, generatedAt: new Date().toISOString(),
+        reason: "Au moins 14 jours de données Google Search Console sont nécessaires." };
+    }
+    const clicks = history.rows.map(r => Number(r.clicks) || 0);
+    const recent = clicks.slice(-14);
+    const previous = clicks.slice(-28, -14);
+    const baseline = recent.reduce((sum, value) => sum + value, 0) / recent.length;
+    const previousAverage = previous.length ? previous.reduce((sum, value) => sum + value, 0) / previous.length : baseline;
+    const dailyTrend = Math.max(-0.05, Math.min(0.05, (baseline - previousAverage) / Math.max(previousAverage, 1) / 14));
+    const confidence = Math.min(85, 45 + history.rows.length);
+    const forecasts: ForecastPoint[] = [];
+    const multipliers = { pessimistic: 0.9, realistic: 1, optimistic: 1.1 } as const;
+    for (let day = 1; day <= 90; day++) {
+      const date = new Date();
+      date.setUTCDate(date.getUTCDate() + day);
+      for (const scenario of Object.keys(multipliers) as ForecastPoint["scenario"][]) {
+        const traffic = Math.max(0, Math.round(baseline * Math.pow(1 + dailyTrend, day) * multipliers[scenario]));
+        forecasts.push({ date: date.toISOString().slice(0, 10), predictedTraffic: traffic,
+          predictedConversions: 0, predictedRevenue: 0, confidence, scenario });
       }
-    } finally { client.release(); }
-  } catch { /* non-fatal */ }
+    }
+    for (const f of forecasts) {
+      await client.query(
+        `INSERT INTO seo_forecasts (id, org_id, site_url, forecast_date, predicted_traffic, predicted_conversions, predicted_revenue, confidence, scenario, source, generated_at)
+           VALUES ($1,$2,$3,$4,$5,0,0,$6,$7,'gsc',NOW())
+         ON CONFLICT (org_id, site_url, forecast_date, scenario) DO UPDATE SET
+           predicted_traffic=$5, predicted_conversions=0, predicted_revenue=0, confidence=$6, source='gsc', generated_at=NOW()`,
+        [`fc_${orgId}_${siteUrl}_${f.date}_${f.scenario}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 80),
+          orgId, siteUrl, f.date, f.predictedTraffic, f.confidence, f.scenario]
+      );
+    }
+    const data = await getForecastData({ orgId, siteUrl });
+    return { ...data, available: true, source: "gsc", reason: "Trafic projeté à partir des clics Google Search Console. Conversion et revenu nécessitent GA4." };
+  } finally { client.release(); }
 }
