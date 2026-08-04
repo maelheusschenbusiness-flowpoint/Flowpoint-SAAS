@@ -3,27 +3,12 @@ import { requireOrgId } from "../lib/require-org-id.js";
 import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 import { pool } from "@workspace/db";
 import { computeNextRun, isValidFrequency } from "../services/schedule-utils.js";
-import { evaluateAlertRulesForAudit } from "../services/monitor-cron.js";
-import { store } from "../services/store.js";
-import { analyzePSI } from "../services/pagespeed-service.js";
+import { launchAudit, normalizeAuditUrl } from "../services/audit-runner.js";
+import { toScheduleRunValue, scheduleCreatedAtNowSql } from "../services/audit-schedule-cron.js";
 import { reportRateLimit as auditRateLimit } from "../middlewares/rateLimiter.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
-
-function normalizeAuditUrl(raw: unknown): string | null {
-  if (typeof raw !== "string" || !raw.trim()) return null;
-  const candidate = raw.trim().match(/^https?:\/\//i) ? raw.trim() : `https://${raw.trim()}`;
-  try {
-    const parsed = new URL(candidate);
-    if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname) return null;
-    parsed.hash = "";
-    if ((parsed.protocol === "https:" && parsed.port === "443") || (parsed.protocol === "http:" && parsed.port === "80")) parsed.port = "";
-    return parsed.toString().replace(/\/$/, "");
-  } catch {
-    return null;
-  }
-}
 
 // ── DB row → public shape ──────────────────────────────────────────────────────
 function auditToPublic(row: Record<string, unknown>) {
@@ -86,8 +71,6 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
   }
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
-  const auditId       = `a${Date.now()}`;
-  const dateStr       = new Date().toISOString();
 
   try {
     // Guard: audit running on same URL for this org today
@@ -101,73 +84,13 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
       res.status(409).json({ error: "Audit déjà lancé aujourd'hui", code: "DUPLICATE_AUDIT", duplicateId: dup.rows[0].id });
       return;
     }
-    await req.orgDb(
-      `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_at)
-       VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,NOW())`,
-      [auditId, normalizedUrl, (req.body as Record<string,unknown>)["name"] as string || "", dateStr, origin, orgId],
-    );
-
-    store.logActivity({
-      type: "audit", label: `Audit lancé : ${normalizedUrl}`,
-      targetId: auditId, targetType: "audit", metadata: { url: normalizedUrl, origin, type: type ?? "SEO complet" }, orgId,
-    }).catch(err => logger.error({ err }, "[audits] logActivity failed"));
-
-    // Async PSI analysis — runs after response is sent.
-    // Uses pool (superuser) intentionally: background UPDATE by id, not a cross-org read.
-    (async () => {
-      try {
-        const [mobile, desktop] = await Promise.allSettled([
-          analyzePSI(normalizedUrl, "mobile",  orgId),
-          analyzePSI(normalizedUrl, "desktop", orgId),
-        ]);
-        const m = mobile.status  === "fulfilled" ? mobile.value  : null;
-        const d = desktop.status === "fulfilled" ? desktop.value : null;
-        if (!m && !d) throw new Error("Both PSI requests failed");
-
-        const avg = (mv: number, dv: number, mw: number, dw: number) =>
-          m && d ? Math.round(mv * mw + dv * dw) : m ? mv : dv;
-
-        const weightedPerf = avg(m?.scores.performance ?? 0, d?.scores.performance ?? 0, 0.6, 0.4);
-        const weightedSeo  = avg(m?.scores.seo          ?? 0, d?.scores.seo          ?? 0, 0.6, 0.4);
-        const weightedA11y = avg(m?.scores.accessibility ?? 0, d?.scores.accessibility ?? 0, 0.5, 0.5);
-        const weightedBP   = avg(m?.scores.bestPractices ?? 0, d?.scores.bestPractices ?? 0, 0.5, 0.5);
-
-        const score  = Math.round(weightedPerf * 0.40 + weightedSeo * 0.30 + weightedA11y * 0.15 + weightedBP * 0.15);
-        const status: "ok" | "warn" | "error" = score >= 70 ? "ok" : score >= 50 ? "warn" : "error";
-        const speed  = d?.scores.performance ?? m?.scores.performance ?? 0;
-        const issues = (m?.criticalIssues.length ?? 0) + (d?.criticalIssues.length ?? 0);
-
-        // org_id guard: pool runs as postgres (superuser, BYPASSRLS) — RLS bypassed.
-        await pool.query(
-          `UPDATE audits SET score=$1, status=$2, speed=$3, issues=$4 WHERE id=$5 AND org_id=$6`,
-          [score, status, speed, issues, auditId, orgId],
-        );
-        evaluateAlertRulesForAudit(normalizedUrl, score, orgId).catch(() => {});
-        store.broadcast({ type: "audit:complete", auditId, score, status }, orgId);
-        store.logActivity({
-          type: "audit",
-          label: `Audit terminé : ${normalizedUrl} — Score ${score}/100`,
-          targetId: auditId,
-          targetType: "audit",
-          metadata: { url: normalizedUrl, score, status },
-          orgId,
-        }).catch(err => logger.error({ err }, "[audits] logActivity (complete) failed"));
-      } catch {
-        await pool.query(
-          `UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`,
-          [auditId, orgId],
-        ).catch(() => {});
-        store.broadcast({ type: "audit:error", auditId }, orgId);
-      }
-    })().catch(() => {});
-
-    const auditName = ((req.body as Record<string,unknown>)["name"] as string) || "";
-    // Cumulative usage accounting — never decremented on deletion
-    import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "audit_created")).catch(() => {});
-    res.status(201).json({
-      id: auditId, url: normalizedUrl, name: auditName, notes: "",
-      score: 0, status: "processing", speed: 0, date: dateStr, issues: 0, origin, type: type ?? "SEO complet",
+    // Shared runner (#437): identical path for manual and scheduled audits —
+    // insert, async PSI, alert rules, broadcast, activity, usage accounting.
+    const launched = await launchAudit({
+      orgId, url: normalizedUrl, origin,
+      name: ((req.body as Record<string,unknown>)["name"] as string) || "",
     });
+    res.status(201).json({ ...launched, type: type ?? "SEO complet" });
   } catch (err) {
     logger.error({ err }, "[audits] POST failed");
     res.status(500).json({ error: "La création de l’audit a échoué. Réessayez dans un instant.", code: "AUDIT_CREATE_FAILED" });
@@ -315,21 +238,17 @@ async function upcomingSchedules(req: Request, res: Response) {
       const d = new Date(v as string);
       return { date: isNaN(d.getTime()) ? null : d, numeric: false };
     };
-    const healed = await Promise.all(staleResult.rows.map(async (row: Record<string, unknown>) => {
-      const { date: nextRun, numeric } = parseNextRun(row["next_run"]);
-      const freq = String(row["frequency"] || "weekly");
-      if (nextRun && !isNaN(nextRun.getTime()) && nextRun.getTime() < now && isValidFrequency(freq)) {
-        let rolled = new Date(nextRun);
-        let guard = 0;
-        while (rolled.getTime() < now && guard < 400) { rolled = computeNextRun(freq, rolled); guard++; }
-        try {
-          await req.orgDb(`UPDATE audit_schedules SET next_run=$1 WHERE id=$2`,
-            [numeric ? rolled.getTime() : rolled, row["id"]]);
-        } catch { /* non-fatal — still return corrected date */ }
-        return { ...row, next_run: rolled.toISOString() };
+    // #437 — the scheduled-audit cron (audit-schedule-cron.ts) now OWNS advancing
+    // next_run: an overdue schedule means "fires within the next minute", so the
+    // old display-time roll-forward (which silently skipped the run) is removed.
+    // Display-only normalization: overdue rows show "imminent" via now + 1 min.
+    const healed = staleResult.rows.map((row: Record<string, unknown>) => {
+      const { date: nextRun } = parseNextRun(row["next_run"]);
+      if (nextRun && !isNaN(nextRun.getTime()) && nextRun.getTime() < now) {
+        return { ...row, next_run: new Date(now + 60_000).toISOString() };
       }
       return row;
-    }));
+    });
     const _t = (v: unknown) => { const p = parseNextRun(v); return p.date ? p.date.getTime() : Number.MAX_SAFE_INTEGER; };
     healed.sort((a: Record<string, unknown>, b: Record<string, unknown>) => _t(a["next_run"]) - _t(b["next_run"]));
     res.json(healed.slice(0, 3).map(scheduleToPublic));
@@ -344,7 +263,9 @@ async function createSchedule(req: Request, res: Response) {
   }
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
-  const nextRun = computeNextRun(frequency);
+  // Schema-aware: next_run is BIGINT epoch-ms on live DBs, TIMESTAMP on fresh
+  // installs — binding a raw Date to a BIGINT column is rejected by Postgres.
+  const nextRun = await toScheduleRunValue(computeNextRun(frequency));
   try {
     const existing = await req.orgDb(
       `SELECT id FROM audit_schedules WHERE url = $1 AND org_id = $2`,
@@ -358,9 +279,11 @@ async function createSchedule(req: Request, res: Response) {
       );
     } else {
       const id = `sched${Date.now()}`;
+      // created_at is also BIGINT epoch-ms on live DBs — NOW() would be rejected.
+      const createdAtSql = await scheduleCreatedAtNowSql();
       result = await req.orgDb(
         `INSERT INTO audit_schedules (id, url, frequency, next_run, enabled, org_id, created_at)
-         VALUES ($1,$2,$3,$4,true,$5,NOW()) RETURNING *`,
+         VALUES ($1,$2,$3,$4,true,$5,${createdAtSql}) RETURNING *`,
         [id, url, frequency, nextRun, orgId],
       );
     }
@@ -379,7 +302,7 @@ async function patchSchedule(req: Request, res: Response) {
   try {
     const result = await req.orgDb(
       `UPDATE audit_schedules SET frequency=$1, next_run=$2 WHERE id=$3 RETURNING *`,
-      [frequency, computeNextRun(frequency), req.params.id],
+      [frequency, await toScheduleRunValue(computeNextRun(frequency)), req.params.id],
     );
     if (!result.rowCount) { res.status(404).json({ error: "not found" }); return; }
     res.json(scheduleToPublic(result.rows[0]));

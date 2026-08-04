@@ -372,4 +372,23 @@ export function startMonitorCron(): void {
   // Calendar reminders: check every minute for events whose reminder window has opened.
   void checkCalendarReminders();
   setInterval(() => void checkCalendarReminders(), MONITOR_HEALTH_INTERVAL_MS);
+
+  // Scheduled audits: launch due audit_schedules rows every minute (#437).
+  void runScheduledAuditsTickSafe();
+  setInterval(() => void runScheduledAuditsTickSafe(), MONITOR_HEALTH_INTERVAL_MS);
+}
+
+async function runScheduledAuditsTickSafe(): Promise<void> {
+  const { markCronRun } = await import("../workers/cron-scheduler.js");
+  try {
+    const { runScheduledAuditsTick } = await import("./audit-schedule-cron.js");
+    const { due, launched, skippedDuplicates } = await runScheduledAuditsTick();
+    if (due > 0) {
+      logger.info({ due, launched, skippedDuplicates }, "[monitor-cron] scheduled audits tick");
+    }
+    markCronRun("audit-scheduler", "idle");
+  } catch (err) {
+    logger.warn({ err }, "[monitor-cron] runScheduledAuditsTickSafe failed (non-fatal)");
+    markCronRun("audit-scheduler", "error");
+  }
 }

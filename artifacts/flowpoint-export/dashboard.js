@@ -5503,6 +5503,7 @@ function renderAudits() {
       </div>
       <div class="fp-section-actions">
         ${btn('CSV','fp-btn fp-btn-ghost fp-btn-sm','download','id="audit-export-csv"')}
+        ${btn('PDF','fp-btn fp-btn-ghost fp-btn-sm','download','id="audit-export-doc"')}
         ${btn('Nouvel audit','fp-btn fp-btn-primary fp-btn-sm','plus','id="audit-new-btn"')}
       </div>
     </div>
@@ -13600,20 +13601,41 @@ function renderExportPanel() {
     <div class="fp-form-group">
       <label class="fp-form-label">Type d\'export</label>
       <div style="display:flex;flex-direction:column;gap:8px">
-        ${[{v:'audits',l:'Audits SEO (CSV)'},{v:'monitors',l:'Monitors & uptime (CSV)'},{v:'missions',l:'Missions (CSV)'},{v:'all',l:'Export complet (ZIP)'}].map(o=>`
+        ${[{v:'audits',l:'Audits SEO'},{v:'monitors',l:'Monitors & uptime'},{v:'missions',l:'Missions'},{v:'all',l:'Export complet'}].map(o=>`
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;border:1px solid var(--fp-border);border-radius:8px;font-size:12px;color:var(--fp-text-soft)">
             <input type="radio" name="exp-type" value="${o.v}" style="accent-color:#2563EB" ${o.v==='audits'?'checked':''}/> ${o.l}
           </label>
         `).join('')}
       </div>
     </div>
-    ${btn('Télécharger','fp-btn fp-btn-primary','download','id="exp-dl"')}
+    <div class="fp-form-group">
+      <label class="fp-form-label">Format</label>
+      <div style="display:flex;gap:8px">
+        ${[{v:'doc',l:'Document (PDF)'},{v:'csv',l:'CSV'}].map(o=>`
+          <label style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;border:1px solid var(--fp-border);border-radius:8px;font-size:12px;color:var(--fp-text-soft)">
+            <input type="radio" name="exp-format" value="${o.v}" style="accent-color:#2563EB" ${o.v==='doc'?'checked':''}/> ${o.l}
+          </label>
+        `).join('')}
+      </div>
+    </div>
+    ${btn('Exporter','fp-btn fp-btn-primary','download','id="exp-dl"')}
   `;
 }
 function setupExportPanel() {
   setTimeout(() => {
     $('#exp-dl')?.addEventListener('click', () => {
       const type = document.querySelector('input[name="exp-type"]:checked')?.value || 'audits';
+      const format = document.querySelector('input[name="exp-format"]:checked')?.value || 'doc';
+      if (format === 'doc') {
+        // #437 — unified branded document (White Label si configuré, sinon FlowPoint)
+        const docOpts = type === 'monitors' ? window.fpExportMonitorsDoc(STATE.monitors || [])
+                      : type === 'missions' ? window.fpExportMissionsDoc(STATE.missions || [])
+                      : type === 'all'      ? window.fpExportAllDoc()
+                      : window.fpExportAuditsDoc(STATE.audits || []);
+        closeFloatPanel();
+        window.fpOpenExportPreview(docOpts);
+        return;
+      }
       switch (type) {
         case 'audits':
           exportAuditsCsv(STATE.audits);
@@ -14874,6 +14896,16 @@ function bindSectionEvents() {
       );
       exportAuditsCsv(visible);
     });
+    $('#audit-export-doc')?.addEventListener('click', () => {
+      const q = STATE.auditFilter || '';
+      const scoreStatus = a => a.score >= 70 ? 'good' : a.score >= 45 ? 'medium' : 'bad';
+      const visible = STATE.audits.filter(a =>
+        !a.archived &&
+        (!q || a.url.includes(q)) &&
+        (STATE.auditStatusFilter === 'all' || scoreStatus(a) === STATE.auditStatusFilter)
+      );
+      window.fpOpenExportPreview(window.fpExportAuditsDoc(visible));
+    });
 
     // ── Bulk select ──
     const allVisibleIds = () => {
@@ -15046,26 +15078,13 @@ function bindSectionEvents() {
         });
       }, 50);
     }));
-    $$('.audit-export').forEach(btn => btn.addEventListener('click', async e => {
+    $$('.audit-export').forEach(btn => btn.addEventListener('click', e => {
       e.stopPropagation();
       const audit = STATE.audits.find(a => a.id === btn.dataset.id);
-      if (!audit) { exportAuditsCsv(STATE.audits); return; }
-      btn.disabled = true;
-      btn.textContent = '…';
-      try {
-        const host = (audit.url || '').replace(/^https?:\/\//, '').split('/')[0];
-        const name = `Audit ${host} — ${new Date().toLocaleDateString(getLocale())}`;
-        const res = await apiAction('POST', '/api/reports', { name, auditId: audit.id, format: 'PDF' });
-        const r = res || { id: 'r' + Date.now(), name };
-        STATE.reports.unshift(r);
-        refreshMeUsage();
-        showToast('success', 'Export PDF en cours…');
-        downloadReportPdf(r.id, name);
-      } catch(e2) {
-        exportAuditsCsv([audit]);
-      }
-      btn.disabled = false;
-      btn.textContent = '↓';
+      // #437 — branded export preview (dark-mode aware, White Label applied);
+      // the backend PDF report remains available from the audit detail panel.
+      if (!audit) { window.fpOpenExportPreview(window.fpExportAuditsDoc(STATE.audits)); return; }
+      window.fpOpenExportPreview(window.fpExportAuditDetailDoc(audit));
     }));
     $$('.audit-more').forEach(btn => btn.addEventListener('click', e => {
       e.stopPropagation();
@@ -33929,6 +33948,243 @@ window._reloadKeywords = async function() {
     if (clusterData.status==='fulfilled') STATE.keywordData.clusters      = clusterData.value?.clusters || [];
     STATE.keywords = STATE.keywordData.keywords;
   } catch(e) { console.warn('[KW] reload error', e); }
+};
+
+// ── Export documents (#437) — unified branded export system ─────────────────
+// Module level so the handlers exist even if init() aborts early.
+// Every export (audits, monitors, missions, complet) shares one modern layout
+// with White-Label branding when configured, FlowPoint fallback otherwise.
+function fpGetExportBranding() {
+  let wl = (STATE.settings && STATE.settings.wlBranding) || null;
+  if (!wl) { try { wl = JSON.parse(localStorage.getItem('fp:wl-branding') || 'null'); } catch(_) { wl = null; } }
+  wl = wl || {};
+  const name = String(wl.agencyName || '').trim();
+  const hex = v => /^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? v : null;
+  return {
+    name: name || 'FlowPoint',
+    isWL: !!name,
+    logoUrl: String(wl.logoUrl || '').trim(),
+    primary: hex(wl.primaryColor) || '#2563EB',
+    secondary: hex(wl.secondaryColor) || '#7c3aed',
+    footer: String(wl.footerMsg || '').trim() || ((name || 'FlowPoint') + ' — Document confidentiel'),
+  };
+}
+
+function fpBuildExportHtml(docOpts) {
+  const b = fpGetExportBranding();
+  const dateStr = new Date().toLocaleDateString(typeof getLocale === 'function' ? getLocale() : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  const esc = escHtml;
+  const kpis = (docOpts.kpis || []).map(k => `
+    <div style="flex:1;min-width:120px;background:${esc(k.color || b.primary)}0d;border:1px solid ${esc(k.color || b.primary)}26;border-radius:12px;padding:14px 16px">
+      <div style="font-size:24px;font-weight:800;color:${esc(k.color || b.primary)};line-height:1.1">${esc(String(k.value))}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px;font-weight:600">${esc(k.label)}</div>
+    </div>`).join('');
+  const cell = c => (c && typeof c === 'object')
+    ? `<span style="display:inline-block;font-size:10.5px;font-weight:700;color:${esc(c.c)};background:${esc(c.c)}1a;padding:2px 9px;border-radius:20px">${esc(String(c.t))}</span>`
+    : esc(String(c == null ? '—' : c));
+  const sections = (docOpts.sections || []).map(s => `
+    <section style="margin-top:26px;break-inside:avoid-page">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div style="width:4px;height:18px;border-radius:2px;background:${b.primary}"></div>
+        <h2 style="margin:0;font-size:15px;font-weight:800;color:#0f172a;letter-spacing:-0.01em">${esc(s.heading)}</h2>
+      </div>
+      ${s.description ? `<p style="margin:0 0 10px;font-size:12px;color:#64748b;line-height:1.55">${esc(s.description)}</p>` : ''}
+      ${s.table && s.table.rows.length ? `
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr>${s.table.head.map(h => `<th style="text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;border-bottom:2px solid ${b.primary}33">${esc(h)}</th>`).join('')}</tr></thead>
+          <tbody>${s.table.rows.map((r, i) => `<tr style="${i % 2 ? 'background:#f8fafc' : ''}">${r.map(c => `<td style="padding:8px 10px;color:#334155;border-bottom:1px solid #e2e8f0;vertical-align:top">${cell(c)}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>`
+      : s.table ? `<div style="padding:18px;border:1px dashed #cbd5e1;border-radius:10px;color:#94a3b8;font-size:12px;text-align:center">Aucune donnée disponible pour cette section.</div>` : ''}
+      ${s.html || ''}
+    </section>`).join('');
+  const logo = b.logoUrl
+    ? `<img src="${esc(b.logoUrl)}" alt="" style="height:38px;max-width:150px;object-fit:contain" onerror="this.style.display='none'"/>`
+    : `<div style="width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,${b.primary},${b.secondary});display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px">${esc(b.name.charAt(0).toUpperCase())}</div>`;
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"/>
+    <title>${esc(docOpts.title)} — ${esc(b.name)}</title>
+    <style>
+      @page { size: A4; margin: 12mm 11mm; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #eef2f7; font-family: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .sheet { max-width: 800px; margin: 24px auto; background: #fff; border-radius: 12px; box-shadow: 0 8px 40px rgba(15,23,42,0.12); padding: 34px 38px 28px; }
+      @media print { body { background: #fff; } .sheet { margin: 0; max-width: none; box-shadow: none; border-radius: 0; padding: 0; } }
+    </style></head><body>
+    <div class="sheet">
+      <header style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding-bottom:18px;border-bottom:3px solid ${b.primary}">
+        <div style="display:flex;align-items:center;gap:12px">
+          ${logo}
+          <div>
+            <div style="font-size:17px;font-weight:800;color:#0f172a;letter-spacing:-0.02em">${esc(b.name)}</div>
+            <div style="font-size:10.5px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.08em">${esc(docOpts.docKind || 'Export')}</div>
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:#94a3b8">${esc(dateStr)}</div>
+        </div>
+      </header>
+      <div style="margin-top:22px">
+        <h1 style="margin:0;font-size:22px;font-weight:800;color:#0f172a;letter-spacing:-0.02em">${esc(docOpts.title)}</h1>
+        ${docOpts.subtitle ? `<p style="margin:6px 0 0;font-size:12.5px;color:#64748b">${esc(docOpts.subtitle)}</p>` : ''}
+      </div>
+      ${kpis ? `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:20px">${kpis}</div>` : ''}
+      ${sections}
+      <footer style="margin-top:34px;padding-top:14px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;gap:12px;font-size:10px;color:#94a3b8">
+        <span>${esc(b.footer)}</span>
+        <span>Généré le ${esc(dateStr)}${b.isWL ? '' : ' · FlowPoint SEO Platform'}</span>
+      </footer>
+    </div>
+  </body></html>`;
+}
+
+window.fpOpenExportPreview = function(docOpts) {
+  document.getElementById('fp-export-preview-overlay')?.remove();
+  const b = fpGetExportBranding();
+  const overlay = document.createElement('div');
+  overlay.id = 'fp-export-preview-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(2,6,23,0.66);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="width:min(920px,96vw);height:min(860px,92vh);display:flex;flex-direction:column;background:var(--fp-bg-sidebar, var(--fp-bg));border:1px solid var(--fp-border);border-radius:16px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.45)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--fp-border)">
+        <div style="min-width:0">
+          <div style="font-size:14px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(docOpts.title)}</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">Aperçu d'export · ${escHtml(b.name)}${b.isWL ? ' (White Label)' : ''}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button id="fp-export-print" class="fp-btn fp-btn-primary fp-btn-sm">⬇ Imprimer / PDF</button>
+          <button id="fp-export-close" class="fp-btn fp-btn-ghost fp-btn-sm">Fermer</button>
+        </div>
+      </div>
+      <div style="flex:1;min-height:0;background:var(--fp-bg);padding:14px">
+        <iframe id="fp-export-frame" style="width:100%;height:100%;border:none;border-radius:10px;background:#eef2f7" title="Aperçu export"></iframe>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const frame = overlay.querySelector('#fp-export-frame');
+  frame.srcdoc = fpBuildExportHtml(docOpts);
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.querySelector('#fp-export-close').addEventListener('click', close);
+  overlay.querySelector('#fp-export-print').addEventListener('click', () => {
+    try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+    catch(_) { showToast('error', "Impossible d'ouvrir l'impression — réessayez"); }
+  });
+};
+
+window.fpExportScorePill = function(score) {
+  const s = Number(score || 0);
+  const c = s >= 70 ? '#16a34a' : s >= 50 ? '#d97706' : '#dc2626';
+  return { t: s + '/100', c };
+};
+
+window.fpExportAuditsDoc = function(audits) {
+  const list = Array.isArray(audits) ? audits : [];
+  const withScore = list.filter(a => Number(a.score) > 0);
+  const avg = withScore.length ? Math.round(withScore.reduce((s, a) => s + Number(a.score || 0), 0) / withScore.length) : null;
+  const issues = list.reduce((s, a) => s + Number(a.issues || 0), 0);
+  return {
+    title: 'Audits SEO', docKind: 'Rapport d\'audits', subtitle: `${list.length} audit${list.length > 1 ? 's' : ''} — état des sites analysés`,
+    kpis: [
+      { label: 'Audits', value: list.length },
+      { label: 'Score moyen', value: avg != null ? avg + '/100' : '—', color: avg != null ? (avg >= 70 ? '#16a34a' : avg >= 50 ? '#d97706' : '#dc2626') : undefined },
+      { label: 'Problèmes détectés', value: issues, color: issues > 0 ? '#d97706' : '#16a34a' },
+    ],
+    sections: [{
+      heading: 'Détail des audits',
+      table: {
+        head: ['URL', 'Score', 'Performance', 'Problèmes', 'Origine', 'Date'],
+        rows: list.slice(0, 200).map(a => [
+          a.url || '—',
+          window.fpExportScorePill(a.score),
+          a.speed != null ? a.speed + '/100' : '—',
+          String(a.issues ?? 0),
+          a.origin === 'scheduled' ? { t: 'Planifié', c: '#7c3aed' } : { t: 'Manuel', c: '#2563EB' },
+          a.date ? new Date(a.date).toLocaleDateString(typeof getLocale === 'function' ? getLocale() : 'fr-FR') : '—',
+        ]),
+      },
+    }],
+  };
+};
+
+window.fpExportAuditDetailDoc = function(audit) {
+  const a = audit || {};
+  const sched = (STATE.auditSchedules || []).find(s => s.url === a.url);
+  const infoRows = [
+    ['URL analysée', a.url || '—'],
+    ['Statut', a.status === 'ok' ? { t: 'OK', c: '#16a34a' } : a.status === 'warn' ? { t: 'À surveiller', c: '#d97706' } : a.status === 'processing' ? { t: 'En cours', c: '#2563EB' } : { t: 'Critique', c: '#dc2626' }],
+    ['Date de l\'audit', a.date ? new Date(a.date).toLocaleString(typeof getLocale === 'function' ? getLocale() : 'fr-FR') : '—'],
+    ['Origine', a.origin === 'scheduled' ? 'Audit planifié automatique' : 'Audit manuel'],
+  ];
+  if (sched) infoRows.push(['Planification', `Fréquence ${sched.frequency === 'daily' ? 'quotidienne' : sched.frequency === 'monthly' ? 'mensuelle' : 'hebdomadaire'}${sched.nextRun ? ' — prochain passage le ' + new Date(typeof sched.nextRun === 'string' && /^\d+$/.test(sched.nextRun) ? Number(sched.nextRun) : sched.nextRun).toLocaleDateString(typeof getLocale === 'function' ? getLocale() : 'fr-FR') : ''}`]);
+  return {
+    title: `Audit SEO — ${(a.url || '').replace(/^https?:\/\//, '')}`, docKind: 'Audit de site', subtitle: 'Synthèse des mesures PageSpeed Insights (mobile + desktop)',
+    kpis: [
+      { label: 'Score SEO global', value: (a.score ?? 0) + '/100', color: Number(a.score) >= 70 ? '#16a34a' : Number(a.score) >= 50 ? '#d97706' : '#dc2626' },
+      { label: 'Performance', value: a.speed != null ? a.speed + '/100' : '—' },
+      { label: 'Problèmes critiques', value: String(a.issues ?? 0), color: Number(a.issues) > 0 ? '#d97706' : '#16a34a' },
+    ],
+    sections: [{ heading: 'Informations', table: { head: ['Champ', 'Valeur'], rows: infoRows } }],
+  };
+};
+
+window.fpExportMonitorsDoc = function(monitors) {
+  const list = Array.isArray(monitors) ? monitors : [];
+  const up = list.filter(m => m.status === 'up').length;
+  return {
+    title: 'Monitors & Uptime', docKind: 'Rapport de disponibilité', subtitle: `${list.length} monitor${list.length > 1 ? 's' : ''} surveillé${list.length > 1 ? 's' : ''}`,
+    kpis: [
+      { label: 'Monitors', value: list.length },
+      { label: 'En ligne', value: up + '/' + list.length, color: up === list.length && list.length > 0 ? '#16a34a' : '#d97706' },
+    ],
+    sections: [{
+      heading: 'État des monitors',
+      table: {
+        head: ['Nom', 'URL', 'Statut', 'Uptime', 'Latence'],
+        rows: list.slice(0, 200).map(m => [
+          m.name || '—', m.url || '—',
+          m.status === 'up' ? { t: 'En ligne', c: '#16a34a' } : m.status === 'down' ? { t: 'Hors ligne', c: '#dc2626' } : { t: m.status || '—', c: '#64748b' },
+          m.uptime != null ? m.uptime + '%' : '—',
+          m.latency != null ? m.latency + ' ms' : '—',
+        ]),
+      },
+    }],
+  };
+};
+
+window.fpExportMissionsDoc = function(missions) {
+  const list = Array.isArray(missions) ? missions : [];
+  const done = list.filter(m => m.status === 'done' || m.status === 'completed').length;
+  return {
+    title: 'Missions SEO', docKind: 'Suivi des missions', subtitle: `${list.length} mission${list.length > 1 ? 's' : ''} — ${done} terminée${done > 1 ? 's' : ''}`,
+    kpis: [
+      { label: 'Missions', value: list.length },
+      { label: 'Terminées', value: done, color: '#16a34a' },
+      { label: 'En cours', value: list.length - done, color: '#2563EB' },
+    ],
+    sections: [{
+      heading: 'Détail des missions',
+      table: {
+        head: ['Titre', 'Catégorie', 'Statut', 'Impact', 'Échéance'],
+        rows: list.slice(0, 200).map(m => [
+          m.title || '—', m.category || '—',
+          m.status === 'done' || m.status === 'completed' ? { t: 'Terminée', c: '#16a34a' } : m.status === 'in_progress' || m.status === 'inprogress' ? { t: 'En cours', c: '#2563EB' } : { t: 'À faire', c: '#64748b' },
+          m.impact || '—', m.date || m.dueDate || '—',
+        ]),
+      },
+    }],
+  };
+};
+
+window.fpExportAllDoc = function() {
+  const auditsDoc = window.fpExportAuditsDoc(STATE.audits || []);
+  const monitorsDoc = window.fpExportMonitorsDoc(STATE.monitors || []);
+  const missionsDoc = window.fpExportMissionsDoc(STATE.missions || []);
+  return {
+    title: 'Export complet', docKind: 'Rapport global', subtitle: 'Audits SEO, monitors et missions — vue consolidée',
+    kpis: [...auditsDoc.kpis.slice(0, 2), monitorsDoc.kpis[1], missionsDoc.kpis[0]].filter(Boolean),
+    sections: [...auditsDoc.sections, ...monitorsDoc.sections, ...missionsDoc.sections],
+  };
 };
 
 // ─────────────────────────────────────────────────────────────────

@@ -170,18 +170,18 @@ router.get("/reports/:id/download", async (req: Request, res: Response) => {
     const mr = await db(req)(`SELECT name, url, status, uptime FROM monitors WHERE org_id=$1 ORDER BY name LIMIT 20`, [orgId]);
     monitors = mr.rows as typeof monitors;
     const misr = await db(req)(`SELECT title, status, priority, due_date FROM missions WHERE org_id=$1 ORDER BY created_at DESC LIMIT 20`, [orgId]);
-    missions = misr.rows.map(r => ({ title: r.title as string, status: r.status as string, priority: r.priority as string, dueDate: r.due_date as string }));
+    missions = misr.rows.map((r: Record<string, unknown>) => ({ title: r.title as string, status: r.status as string, priority: r.priority as string, dueDate: r.due_date as string }));
   } catch {}
 
-  // White-label branding (agency name, colors, footer) from user_prefs.settings.wlBranding
+  // White-label branding (agency name, colors, footer) from user_prefs.settings.wlBranding.
+  // #437: applied systematically to every export when configured (not only when the
+  // white_label flag is set); the PDF service falls back to FlowPoint branding otherwise.
   let wlBranding: import("../services/pdf.js").WlBranding | null = null;
-  if (report.white_label) {
-    try {
-      const pr = await db(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
-      const wl = (pr.rows[0]?.settings as Record<string, unknown> | undefined)?.wlBranding;
-      if (wl && typeof wl === "object") wlBranding = wl as import("../services/pdf.js").WlBranding;
-    } catch {}
-  }
+  try {
+    const pr = await db(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    const wl = (pr.rows[0]?.settings as Record<string, unknown> | undefined)?.wlBranding;
+    if (wl && typeof wl === "object") wlBranding = wl as import("../services/pdf.js").WlBranding;
+  } catch {}
 
   // Cumulative usage accounting — PDF export counted at download time
   import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "pdf_export")).catch(() => {});
@@ -244,7 +244,7 @@ router.get("/reports/:id/shares", async (req: Request, res: Response) => {
        FROM share_tokens WHERE report_id=$1 AND org_id=$2`,
       [req.params.id, org(req)]
     );
-    res.json(r.rows.map(row => ({
+    res.json(r.rows.map((row: Record<string, unknown>) => ({
       token:     row.token,
       reportId:  row.report_id,
       report:    JSON.parse(row.report_json  as string || "{}"),

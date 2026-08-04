@@ -8,18 +8,35 @@ interface MeetingNote { title: string; date: string; notes: string; site?: strin
 interface MonitorRow { name: string; url?: string; status?: string; uptime?: number | null; }
 interface MissionRow { title: string; status?: string; priority?: string; dueDate?: string | null; }
 
-// ── Logo fetch (http→buffer, guarded) ────────────────────────────────────────
+// ── Logo fetch (http→buffer, SSRF-hardened) ──────────────────────────────────
+// The logo URL is user-controlled config, so this fetch must never reach
+// loopback/private/internal addresses (same rules as monitor URL validation),
+// must not follow redirects (redirect-based rebinding), and is size/time capped.
+const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
+
 async function fetchLogoBuffer(logoUrl: string): Promise<Buffer | null> {
   if (!logoUrl || !/^https?:\/\//i.test(logoUrl)) return null;
   try {
+    const parsed = new URL(logoUrl);
+    if (!["http:", "https:"].includes(parsed.protocol)) return null;
+    const { isPrivateHost, checkDnsResolution } = await import("../middlewares/validateMonitorUrl.js");
+    if (isPrivateHost(parsed.hostname)) return null;
+    if (await checkDnsResolution(parsed.hostname) !== null) return null;
+
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 5000);
-    const res = await fetch(logoUrl, { signal: ctrl.signal });
+    // redirect:"manual" — a redirect could point at an internal address after
+    // the DNS check passed, so redirects are rejected outright.
+    const res = await fetch(logoUrl, { signal: ctrl.signal, redirect: "manual" });
     clearTimeout(timer);
     if (!res.ok) return null;
     const ct = res.headers.get("content-type") ?? "";
     if (!ct.startsWith("image/")) return null;
-    return Buffer.from(await res.arrayBuffer());
+    const len = Number(res.headers.get("content-length") || 0);
+    if (len > LOGO_MAX_BYTES) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > LOGO_MAX_BYTES) return null;
+    return buf;
   } catch {
     return null;
   }
@@ -256,27 +273,34 @@ export async function streamReportPdf(
       doc.moveDown(0.5);
     }
 
-    // ── Recommendations — conditional page break ───────────────────────────────
-    const REC_APPROX_H = 180; // approximate height needed for the section
-    if (doc.y > PAGE_H - FOOTER_H - REC_APPROX_H) {
-      doc.addPage();
-      doc.y = HEADER_H + 20;
-    } else {
-      doc.moveDown(0.5);
+    // Recommendations derived from the audited data only — never fabricated claims (#437).
+    const recs: Array<{ priority: string; title: string; desc: string }> = [];
+    if (audit) {
+      const speedScore = Number(audit.speed ?? 0);
+      const globalScore = Number(audit.score ?? 0);
+      const issueCount = Number(audit.issues ?? 0);
+      if (speedScore > 0 && speedScore < 70) {
+        recs.push({ priority: speedScore < 50 ? "CRITIQUE" : "HAUTE", title: "Améliorer la performance de chargement",
+          desc: `Le score performance mesuré est de ${speedScore}/100 sur ${audit.url}. Compresser les images, activer le lazy loading et réduire le JavaScript bloquant amélioreront les Core Web Vitals.` });
+      }
+      if (globalScore > 0 && globalScore < 70) {
+        recs.push({ priority: globalScore < 50 ? "CRITIQUE" : "HAUTE", title: "Corriger les fondamentaux SEO",
+          desc: `Le score SEO global mesuré est de ${globalScore}/100. Prioriser les corrections listées dans l'audit pour repasser au-dessus de 70/100.` });
+      }
+      if (issueCount > 0) {
+        recs.push({ priority: issueCount > 5 ? "HAUTE" : "MOYENNE", title: `Traiter les ${issueCount} problème${issueCount > 1 ? "s" : ""} détecté${issueCount > 1 ? "s" : ""}`,
+          desc: `L'audit a détecté ${issueCount} problème${issueCount > 1 ? "s" : ""} critique${issueCount > 1 ? "s" : ""} (mobile + desktop). Le détail est disponible dans la page Audits du tableau de bord.` });
+      }
+      if (recs.length === 0 && globalScore >= 70) {
+        recs.push({ priority: "MOYENNE", title: "Maintenir la trajectoire",
+          desc: `Score SEO mesuré : ${globalScore}/100. Poursuivre le suivi planifié pour détecter toute régression (Core Web Vitals, indexation, contenu).` });
+      }
     }
-
-    sectionHeading("Recommandations Prioritaires IA");
-
-    const recs = [
-      { priority: "CRITIQUE", title: "Optimiser les Core Web Vitals",
-        desc: "LCP > 3s détecté. Compresser les images et activer le lazy loading pour améliorer l'expérience utilisateur et le classement Google." },
-      { priority: "HAUTE",    title: "Enrichir le profil de backlinks",
-        desc: "Votre Domain Rating est inférieur à vos concurrents. Un plan de netlinking structuré peut améliorer significativement votre autorité." },
-      { priority: "HAUTE",    title: "Optimiser les balises méta",
-        desc: "Plusieurs pages manquent de titres et descriptions optimisées. Corriger ces éléments peut augmenter le CTR de 15–25%." },
-      { priority: "MOYENNE",  title: "Développer le maillage interne",
-        desc: "Renforcer les liens internes entre les pages thématiquement proches pour mieux distribuer le PageRank." },
-    ];
+    if (recs.length > 0) {
+    // Conditional page break — only when the section will actually render.
+    if (doc.y > PAGE_H - FOOTER_H - 180) { doc.addPage(); doc.y = HEADER_H + 20; }
+    else doc.moveDown(0.5);
+    sectionHeading("Recommandations Prioritaires");
 
     const priorityColors: Record<string, string> = { CRITIQUE: RED, HAUTE: AMBER, MOYENNE: BRAND };
     for (const rec of recs) {
@@ -295,6 +319,7 @@ export async function streamReportPdf(
         .text(rec.desc, MARGIN + 4, doc.y, { width: CONTENT_W - 4, indent: 8 });
       doc.moveDown(0.7);
     }
+    } // end if (recs.length > 0)
 
     // ── Apply header/footer to every page ─────────────────────────────────────
     const pageRange = doc.bufferedPageRange();

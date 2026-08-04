@@ -121,3 +121,5 @@
 - [Response cache org key](response-cache-org-key.md) — withCache keyed by URL only leaked org-scoped responses cross-tenant; cache keys must include req.orgId
 - [Bare :not([data-theme]) pitfall](css-not-theme-selector.md) — dark-only rules must be html:not([data-theme="light"]); bare :not() matches any ancestor and leaks into light mode
 - [Mobile viewport overflow / iOS zoom-out](mobile-viewport-overflow.md) — hidden absolute checkboxes escape scroll clips, fixed bars at left:sidebar-w inflate min-content; debug by hiding subtrees vs scrollWidth
+- [Scheduled audits cron](audit-schedule-cron.md) — atomic next_run<=now claim (never equality), bigint vs timestamp dual mode, only the cron advances next_run; audits status 'error' = low-score bucket too
+- [Export branding preview](export-branding-preview.md) — --fp-surface n'existe pas (use --fp-bg-sidebar); fpOpenExportPreview module-level; pdf.ts logo fetch SSRF-hardened via validateMonitorUrl helpers
