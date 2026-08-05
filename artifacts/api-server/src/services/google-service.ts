@@ -20,7 +20,6 @@ const SCOPES = [
   "https://www.googleapis.com/auth/webmasters.readonly",       // GSC
   "https://www.googleapis.com/auth/business.manage",            // GBP
   "https://www.googleapis.com/auth/analytics.readonly",         // GA4
-  "https://www.googleapis.com/auth/analytics.edit",             // GA4 admin (list properties)
 ].join(" ");
 
 // ── Encryption ────────────────────────────────────────────────────────────────
