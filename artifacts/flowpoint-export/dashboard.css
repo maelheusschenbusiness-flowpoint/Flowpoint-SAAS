@@ -1746,7 +1746,8 @@ html:not([data-theme="light"]) .fp-toast {
   30% { transform: translateY(-4px); opacity: 1; }
 }
 @keyframes fp-page-in { from { opacity:1; } to { opacity:1; } }
-.fp-page-animated {}
+/* Content wrapper must never animate from opacity:0 — it causes the invisible-frame flash */
+.fp-page-animated { animation: none !important; opacity: 1; }
 
 /* ── RESPONSIVE MOBILE ── */
 @media (max-width: 768px) {

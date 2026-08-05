@@ -1335,7 +1335,9 @@ async function loadData() {
     if (STATE.loading) {
       console.warn('[FP] loadData safety timeout — forcing render after 12s hang');
       STATE.loading = false;
-      render();
+      // Bypass the 30ms debounce — show content immediately so skeleton never stays permanently
+      if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
+      _doRender();
     }
   }, 12000);
   // ── Phase 0: Instant render from sessionStorage cache (stale-while-revalidate) ──
@@ -1469,7 +1471,10 @@ async function loadData() {
   // ── Phase 3: Early render with primary data so the UI is visible immediately ──
   clearTimeout(_loadSafetyTimer);
   STATE.loading = false;
-  render();
+  // Bypass the 30ms debounce — cancel any pending timer and render directly so there is
+  // zero gap between the last skeleton frame and the first content frame.
+  if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
+  _doRender();
   if (!STATE._notificationPoll) STATE._notificationPoll = setInterval(refreshNotifications, 30_000);
 
   // ── Phase 4: All secondary fetches in one parallel batch ─────────────────────
@@ -18644,15 +18649,15 @@ async function init() {
   const hash = window.location.hash.slice(1);
   if (hash) { const _n = normalizeRoute(hash, null); STATE.route = _n.route; STATE.subRoute = _n.subRoute; }
 
-  // Render
-  render();
-  // Re-apply theme AFTER render so JS inline fixes apply to freshly rendered elements (e.g. fp-live-cc)
+  // ── Final render after all setup is complete ──────────────────────────────────
+  // Order matters:
+  //   1. applyTheme() first so freshly rendered elements (fp-live-cc etc.) get correct theme vars
+  //   2. Inject global keyframe animations BEFORE the render so fp-fade-in etc. are already defined
+  //   3. Remove fp-no-trans SYNCHRONOUSLY — no rAF delay — to prevent the race where fp-no-trans
+  //      is lifted ~16ms BEFORE _doRender() fires, which allows content elements to animate from
+  //      opacity:0 and produce the "invisible flash" frame between skeleton and content.
+  //   4. Fire _doRender() directly (bypass the 30ms debounce) for a zero-gap transition.
   applyTheme();
-  // Remove no-transition style after first render so transitions work normally
-  requestAnimationFrame(() => { const el = document.getElementById('fp-no-trans'); if (el) el.remove(); });
-  // Inject global keyframe animations that dashboard components reference by name.
-  // These are not in style.css (avoids flash-of-unstyled-content) so they live here,
-  // injected once at startup after the no-transition guard is lifted.
   (function() {
     if (document.getElementById('fp-global-anims')) return;
     const _s = document.createElement('style');
@@ -18666,6 +18671,12 @@ async function init() {
     ].join('\n');
     document.head.appendChild(_s);
   }());
+  // Remove the no-transition guard synchronously so the final _doRender() paints with transitions
+  // already re-enabled — preventing any stale state from bleeding into the initial content frame.
+  (function(){ const _fnt = document.getElementById('fp-no-trans'); if (_fnt) _fnt.remove(); }());
+  // Cancel any pending debounced render and fire immediately
+  if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
+  _doRender();
 
   // Bind global events
   bindGlobalEvents();
