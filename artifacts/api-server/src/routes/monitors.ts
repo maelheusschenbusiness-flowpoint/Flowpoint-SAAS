@@ -166,7 +166,8 @@ async function saveCheckResult(
     );
     const okCount   = Number(uptimeRes.rows[0]?.ok_count ?? 0);
     const total     = Number(uptimeRes.rows[0]?.total    ?? 1);
-    const uptimePct = total > 0 ? Math.round((okCount / total) * 1000) / 10 : 100;
+    // NULL when no checks exist — never fabricate 100% for unmeasured monitors
+    const uptimePct = total > 0 ? Math.round((okCount / total) * 1000) / 10 : null;
     capturedUptimePct = uptimePct; // expose to post-commit scope
 
     // 3. Update monitor row

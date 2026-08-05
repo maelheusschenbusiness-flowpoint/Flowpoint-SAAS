@@ -2497,40 +2497,10 @@ function miniAreaChart(data, color = '#2563EB', w = '100%', h = 100) {
 }
 
 // Deterministic pseudo-random (no Math.random) — seed + index → [0,1)
-function seededRand(seed, i) {
-  const x = Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-// Generate 90 deterministic check results for a monitor (90 × 5min = 7.5h)
-function monitorCheckHistory(monitor, n = 90) {
-  const seed = monitor.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
-  const downtimeRate = 1 - (monitor.uptime / 100);
-  const checks = Array.from({length: n}, (_, i) => seededRand(seed, i) > downtimeRate ? 'up' : 'down');
-  if (monitor.status === 'down') { checks[n - 1] = 'down'; checks[n - 2] = 'down'; }
-  if (monitor.status === 'up' && checks[n - 1] === 'down') checks[n - 1] = 'up';
-  return checks;
-}
-
-// Uptime % computed from the deterministic check history
-function computeRealUptime(monitor) {
-  const checks = monitorCheckHistory(monitor);
-  const up = checks.filter(c => c === 'up').length;
-  return (up / checks.length * 100).toFixed(1);
-}
-
-// 7-point deterministic latency history for monitor sparkline
-// Uses check history so down events become 0ms data points
-function monitorLatencyData(monitor, n = 7) {
-  const seed = monitor.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0) + 100;
-  const base = monitor.latency || 150;
-  const history = monitorCheckHistory(monitor, n);
-  return Array.from({length: n}, (_, i) => {
-    if (history[i] === 'down') return 0;
-    const r = seededRand(seed, i);
-    return Math.max(10, Math.round(base * (0.65 + r * 0.7)));
-  });
-}
+// seededRand / monitorCheckHistory / computeRealUptime / monitorLatencyData
+// were removed — they fabricated synthetic latency/uptime history that is
+// never backed by real data. All monitor UI now uses m.uptime (DB rolling-30d)
+// and STATE.monitorsSummary (real daily ok/total counts) exclusively.
 
 // Sparkline specifically for monitor latency: red dots for 0ms (down) events
 function monitorSparklineSVG(data, baseColor = '#2563EB', w = 120, h = 22) {
@@ -28990,7 +28960,7 @@ function renderClientMode() {
       <!-- EXECUTIVE KPI -->
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Score SEO moyen', avg + '/100', avg > 0 ? 'score moyen portfolio' : '—', avg >= 70 ? 'up' : 'neutral')}
-        ${statCard('Disponibilité', (()=>{ const _mu2 = STATE.monitors && STATE.monitors.length > 0 ? (STATE.monitors.reduce((s,m)=>s+(typeof m.uptime==='number'?m.uptime:100),0)/STATE.monitors.length).toFixed(1) : null; return displayStat(_mu2!==null?_mu2+'%':null,'99.1%'); })(), 'SLA tenu', 'neutral')}
+        ${statCard('Disponibilité', (()=>{ const _measMons = STATE.monitors ? STATE.monitors.filter(m => typeof m.uptime === 'number' && m.uptime != null) : []; const _mu2 = _measMons.length > 0 ? (_measMons.reduce((s,m)=>s+m.uptime,0)/_measMons.length).toFixed(1) : null; return displayStat(_mu2!==null?_mu2+'%':null, null); })(), (()=>{ const _measMons = STATE.monitors ? STATE.monitors.filter(m => typeof m.uptime === 'number' && m.uptime != null) : []; return _measMons.length > 0 ? _measMons.length + '/' + (STATE.monitors||[]).length + ' monitors mesurés' : 'Données en cours…'; })(), 'neutral')}
         ${statCard('Missions', STATE.missions && STATE.missions.length > 0 ? STATE.missions.filter(m=>m.status==='done').length + '/' + STATE.missions.length : '—', 'complétées ce mois', 'up')}
         ${statCard('Note Google', displayStat(STATE.localSeo?.avgRating ? STATE.localSeo.avgRating.toFixed(1) + ' ⭐' : null, PREVIEW_MODE ? '4.4 ⭐' : '—'), PREVIEW_MODE ? '+0.2 vs M-1' : 'Connectez GBP', 'neutral')}
       </div>
@@ -29711,21 +29681,28 @@ function renderMonitorsSLA() {
   const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
   const monitors = STATE.monitors;
-  // slaData uses m.uptime (real DB value from monitor_checks rolling window)
-  // instead of the seededRand-based computeRealUptime (fabricated).
+  // slaData uses m.uptime (real DB rolling-30d value from monitor_checks).
+  // "Measured" = monitor has run at least one check, signaled by m.lastCheck != null.
+  // A newly created monitor starts with lastCheck=null (never checked) and uptime=100
+  // (DB default). We must NOT treat that fabricated 100 as real data — exclude from aggregates.
   const slaData = monitors.map(m => {
-    const up = m.uptime != null ? Math.min(100, parseFloat(String(m.uptime))) : 100;
-    const ok = up >= 99.0;
-    // Real downtime derived from actual uptime measured over 30-day rolling window
-    const downMin = ok ? 0 : Math.round((100 - up) / 100 * 30 * 24 * 60);
-    const risk = !ok ? 'Hors SLA' : up < 99.5 ? 'À risque' : 'Conforme';
-    return { m, up, ok, downMin, risk };
+    const measured = m.lastCheck != null; // true only after first check is recorded
+    const up = measured ? Math.min(100, parseFloat(String(m.uptime))) : null;
+    const ok = measured ? up >= 99.0 : null;
+    // Downtime estimation from rolling 30d window — labeled as estimate, not "ce mois"
+    const downMin = (!measured || ok) ? 0 : Math.round((100 - up) / 100 * 30 * 24 * 60);
+    const risk = !measured ? 'En attente' : !ok ? 'Hors SLA' : up < 99.5 ? 'À risque' : 'Conforme';
+    return { m, up, ok, downMin, risk, measured };
   });
-  const globalUptime = (slaData.reduce((s, sd) => s + sd.up, 0) / Math.max(1, slaData.length)).toFixed(2);
-  const slaOK = parseFloat(globalUptime) >= 99.0;
+  // Global uptime computed only from monitors with real measurements
+  const _measuredSla = slaData.filter(sd => sd.measured);
+  const globalUptime = _measuredSla.length > 0
+    ? (_measuredSla.reduce((s, sd) => s + sd.up, 0) / _measuredSla.length).toFixed(2)
+    : null;
+  const slaOK = globalUptime != null && parseFloat(globalUptime) >= 99.0;
 
-  // Build monthly uptime from STATE.monitorsSummary (30 days of real daily checks).
-  // Only months with actual check data are shown — never fabricated historical values.
+  // Build monthly uptime from STATE.monitorsSummary (real daily ok/total counts).
+  // Only months with actual check data are shown — no fabricated fallback.
   const _allDays = Object.values(STATE.monitorsSummary || {}).flat();
   const _monthMap = {};
   for (const d of _allDays) {
@@ -29736,12 +29713,13 @@ function renderMonitorsSLA() {
     _monthMap[mon].total += (d.total || 0);
   }
   const _realMonths = Object.keys(_monthMap).sort().filter(k => _monthMap[k].total > 0);
-  const months = _realMonths.length > 0
+  const hasRealMonthData = _realMonths.length > 0;
+  const months = hasRealMonthData
     ? _realMonths.map(k => { const [y, mo] = k.split('-'); return new Date(+y, +mo - 1).toLocaleString('fr-FR', { month: 'short' }); })
-    : [CUR_MONTH];
-  const uptimes = _realMonths.length > 0
-    ? _realMonths.map(k => _monthMap[k].total > 0 ? Math.round(_monthMap[k].ok / _monthMap[k].total * 1000) / 10 : 100)
-    : [parseFloat(globalUptime)];
+    : [];
+  const uptimes = hasRealMonthData
+    ? _realMonths.map(k => Math.round(_monthMap[k].ok / _monthMap[k].total * 1000) / 10)
+    : [];
 
   return `
     <div class="fp-section-header">
@@ -29756,17 +29734,19 @@ function renderMonitorsSLA() {
     </div>
 
     ${aiBlock(
-      slaOK
-        ? `SLA global respecté : <strong>${globalUptime}%</strong> uptime (cible 99,0%). Aucune violation ce mois. <strong>${slaData.filter(s => s.risk === 'Conforme').length}/${monitors.length}</strong> sites conformes. Tous les SLAs respectés ce mois.`
-        : `⚠ <strong>Violation SLA détectée.</strong> Uptime global : <strong>${globalUptime}%</strong> (cible 99,0%). ${slaData.filter(s => !s.ok).length} site(s) hors SLA — plan correctif requis.`,
+      globalUptime == null
+        ? `Aucune donnée de check disponible — les monitors n'ont pas encore de mesure. Les KPI SLA seront calculés après les premiers cycles de vérification automatique.`
+        : slaOK
+          ? `SLA global respecté : <strong>${globalUptime}%</strong> uptime sur 30 jours glissants (cible 99,0%). <strong>${_measuredSla.filter(s => s.risk === 'Conforme').length}/${_measuredSla.length}</strong> sites conformes parmi les sites mesurés.`
+          : `⚠ <strong>Violation SLA détectée.</strong> Uptime global (30j) : <strong>${globalUptime}%</strong> (cible 99,0%). ${_measuredSla.filter(s => !s.ok).length} site(s) hors SLA — plan correctif requis.`,
       ['Rapport SLA complet', 'Envoyer rapport client', 'Plan correctif']
     )}
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
       ${[
-        { l: 'SLA Global',       v: globalUptime + '%', c: slaOK ? '#22c55e' : '#ef4444', sub: 'Cible : 99.0%' },
-        { l: 'Sites conformes',  v: slaData.filter(s => s.ok).length + '/' + monitors.length, c: '#22c55e', sub: 'Au-dessus du seuil' },
-        { l: 'Downtime total',   v: (()=>{ const _d=slaData.reduce((s,sd)=>s+(sd.downMin||0),0); return _d===0?'0 min':_d<60?_d+' min':Math.round(_d/60)+'h '+(_d%60?_d%60+'min':''); })(), c: slaData.some(s=>!s.ok)?'#ef4444':'#22c55e', sub: 'Incidents ce mois' },
+        { l: 'SLA Global (30j)',  v: globalUptime != null ? globalUptime + '%' : '—', c: globalUptime == null ? '#94a3b8' : slaOK ? '#22c55e' : '#ef4444', sub: globalUptime != null ? 'Cible : 99.0%' : 'En attente de données' },
+        { l: 'Sites conformes',  v: globalUptime != null ? _measuredSla.filter(s => s.ok).length + '/' + _measuredSla.length : '—/' + monitors.length, c: '#22c55e', sub: _measuredSla.length < monitors.length ? (_measuredSla.length === 0 ? 'Aucune mesure encore' : _measuredSla.length + '/' + monitors.length + ' mesurés') : 'Tous mesurés' },
+        { l: 'Downtime estimé',  v: (()=>{ const _d=_measuredSla.reduce((s,sd)=>s+(sd.downMin||0),0); return _measuredSla.length===0?'—':_d===0?'0 min':_d<60?_d+' min':Math.round(_d/60)+'h '+(_d%60?_d%60+'min':''); })(), c: _measuredSla.some(s=>!s.ok)?'#ef4444':'#22c55e', sub: '30j glissants (estimation)' },
         { l: 'Page statut', v: (STATE.settings&&STATE.settings.statusPageUrl)?'Active':'Non config.', c: (STATE.settings&&STATE.settings.statusPageUrl)?'#22c55e':'#94a3b8', sub: (STATE.settings&&STATE.settings.statusPageUrl)||'Non configuré' },
       ].map(s => `
         <div class="fp-card fp-card-sm">
@@ -29778,9 +29758,10 @@ function renderMonitorsSLA() {
     </div>
 
     <div class="fp-grid-2 fp-mb-16">
-      <!-- Uptime chart -->
+      <!-- Uptime chart — only rendered when real check data exists -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">📊 Uptime historique${months.length > 1 ? ' — ' + months.length + ' mois' : months[0] === CUR_MONTH ? ' — ' + CUR_MONTH : ' — données réelles'}</div>
+        <div class="fp-card-title" style="margin-bottom:14px">📊 Uptime historique — ${hasRealMonthData ? months.length + ' mois (données réelles)' : 'en attente de données'}</div>
+        ${hasRealMonthData ? `
         <div style="display:flex;align-items:flex-end;gap:8px;height:90px;margin-bottom:8px">
           ${uptimes.map((v, i) => `
             <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%">
@@ -29799,6 +29780,13 @@ function renderMonitorsSLA() {
           <span><span style="color:#f59e0b">●</span> 99.0–99.5%</span>
           <span><span style="color:#ef4444">●</span> <99.0%</span>
         </div>
+        ` : `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:110px;background:var(--fp-inner-card);border-radius:8px">
+          <span style="font-size:24px">📡</span>
+          <span style="font-size:12px;color:var(--fp-text-muted)">Données en cours de collecte</span>
+          <span style="font-size:10px;color:var(--fp-text-faint)">L'historique mensuel apparaîtra après les premiers cycles de check.</span>
+        </div>
+        `}
       </div>
 
       <!-- SLA Risk Detection -->
@@ -29807,10 +29795,10 @@ function renderMonitorsSLA() {
         <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">Détection proactive des violations SLA à venir</div>
         ${isUltra ? `
           <div style="display:flex;flex-direction:column;gap:12px">
-            ${(slaData.length ? slaData : []).slice(0, 3).map(({ m, up, ok, downMin }) => {
-              const riskScore = ok ? Math.max(0, Math.round((99.5 - up) * 50)) : Math.min(95, Math.round((100 - up) * 20 + 40));
-              const rColor    = riskScore > 60 ? '#ef4444' : riskScore > 30 ? '#f59e0b' : '#22c55e';
-              const rMsg      = !ok ? `${downMin||0} min de downtime ce mois — SLA breach en cours` : riskScore > 30 ? 'Latence élevée récurrente — surveiller sous 30j' : 'Uptime stable · Aucun risque de violation SLA';
+            ${(slaData.length ? slaData : []).slice(0, 3).map(({ m, up, ok, downMin, measured }) => {
+              const riskScore = !measured ? 0 : ok ? Math.max(0, Math.round((99.5 - up) * 50)) : Math.min(95, Math.round((100 - up) * 20 + 40));
+              const rColor    = !measured ? '#94a3b8' : riskScore > 60 ? '#ef4444' : riskScore > 30 ? '#f59e0b' : '#22c55e';
+              const rMsg      = !measured ? 'Aucun check effectué encore — données en cours de collecte' : !ok ? `${downMin||0} min downtime (30j rolling) — SLA breach en cours` : riskScore > 30 ? 'Latence élevée récurrente — surveiller sous 30j' : 'Uptime stable · Aucun risque de violation SLA';
               const r = { site: (m.url||m.name||'').replace(/^https?:\/\//,''), risk: riskScore, msg: rMsg, color: rColor };
               return `
               <div>
@@ -29826,7 +29814,7 @@ function renderMonitorsSLA() {
             `}).join('')}
           </div>
           <div style="margin-top:14px;padding:10px;background:rgba(37,99,235,0.06);border-radius:8px;font-size:11px;color:var(--fp-text-muted)">
-            ✦ Prévision IA : uptime global stable à 99.1% les 30 prochains jours si aucun nouveau incident critique.
+            ✦ Prévision IA : indisponible — données insuffisantes pour générer une prévision fiable (historique < 7 jours requis).
           </div>
         ` : `
           <div style="text-align:center;padding:20px">
@@ -29847,7 +29835,7 @@ function renderMonitorsSLA() {
             <tr><th>Site</th><th style="text-align:center">Cible</th><th style="text-align:center">Uptime réel</th><th style="text-align:center">Downtime</th><th style="text-align:center">Incidents</th><th style="text-align:center">Risque</th><th style="text-align:center">Statut</th></tr>
           </thead>
           <tbody>
-            ${slaData.map(({ m, up, ok, downMin, risk }) => `
+            ${slaData.map(({ m, up, ok, downMin, risk, measured }) => `
               <tr>
                 <td>
                   <strong style="font-size:12px">${escHtml(m.name)}</strong>
@@ -29855,15 +29843,18 @@ function renderMonitorsSLA() {
                 </td>
                 <td style="text-align:center;color:var(--fp-text-muted)">99.0%</td>
                 <td style="text-align:center">
-                  <span style="font-weight:800;color:${ok ? '#22c55e' : up >= 98 ? '#f59e0b' : '#ef4444'}">${up}%</span>
-                  <div style="height:3px;background:var(--fp-track);border-radius:2px;width:60px;margin-top:3px;margin-left:auto;margin-right:auto">
-                    <div style="height:100%;width:${Math.min(100, up)}%;background:${ok ? '#22c55e' : '#ef4444'};border-radius:2px"></div>
-                  </div>
+                  ${measured
+                    ? `<span style="font-weight:800;color:${ok ? '#22c55e' : up >= 98 ? '#f59e0b' : '#ef4444'}">${up}%</span>
+                       <div style="height:3px;background:var(--fp-track);border-radius:2px;width:60px;margin-top:3px;margin-left:auto;margin-right:auto">
+                         <div style="height:100%;width:${Math.min(100, up)}%;background:${ok ? '#22c55e' : '#ef4444'};border-radius:2px"></div>
+                       </div>`
+                    : `<span style="color:var(--fp-text-faint);font-size:11px">En attente</span>`
+                  }
                 </td>
-                <td style="text-align:center">${downMin > 0 ? '<span style="color:#f59e0b">' + downMin + ' min</span>' : '<span style="color:#22c55e">0 min</span>'}</td>
-                <td style="text-align:center">${m.status === 'down' ? '<span style="color:#ef4444">1</span>' : '<span style="color:#22c55e">0</span>'}</td>
-                <td style="text-align:center">${badge(risk, risk === 'Conforme' ? '#22c55e' : risk === 'À risque' ? '#f59e0b' : '#ef4444')}</td>
-                <td style="text-align:center">${badge(ok ? 'SLA OK' : 'Hors SLA', ok ? '#22c55e' : '#ef4444')}</td>
+                <td style="text-align:center">${!measured ? '<span style="color:var(--fp-text-faint)">—</span>' : downMin > 0 ? '<span style="color:#f59e0b">' + downMin + ' min</span>' : '<span style="color:#22c55e">0 min</span>'}</td>
+                <td style="text-align:center">${m.status === 'down' ? '<span style="color:#ef4444;font-weight:600">En cours</span>' : '<span style="color:var(--fp-text-faint)">Aucun</span>'}</td>
+                <td style="text-align:center">${badge(risk, risk === 'Conforme' ? '#22c55e' : risk === 'À risque' ? '#f59e0b' : risk === 'En attente' ? '#94a3b8' : '#ef4444')}</td>
+                <td style="text-align:center">${!measured ? badge('Non mesuré', '#94a3b8') : badge(ok ? 'SLA OK' : 'Hors SLA', ok ? '#22c55e' : '#ef4444')}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -29891,7 +29882,7 @@ function renderMonitorsSLA() {
               { icon: '⏱️', title: 'Downtime total ce mois',  val: _fmtDown(totalDownMin), sub: totalDownMin > 0 ? downMons.length + ' site(s) hors SLA' : 'Aucun incident détecté', color: totalDownMin > 0 ? '#ef4444' : '#22c55e' },
               { icon: '🌐', title: 'Site le plus impacté',    val: worstSite && worstDown && worstDown.downMin > 0 ? _fmtDown(worstDown.downMin) : '—', sub: worstSite && worstDown && worstDown.downMin > 0 ? worstSite : 'Tous les sites conformes', color: worstDown && worstDown.downMin > 0 ? '#f59e0b' : '#22c55e' },
               { icon: '⚡', title: 'Latence moyenne',          val: avgLatency > 0 ? avgLatency + ' ms' : '—', sub: avgLatency > 500 ? 'Latence élevée — vérifier' : avgLatency > 0 ? 'Dans les seuils normaux' : 'Aucune mesure encore', color: avgLatency > 500 ? '#f59e0b' : '#22c55e' },
-              { icon: '📊', title: 'Monitors conformes',       val: slaData.filter(s => s.ok).length + '/' + monitors.length, sub: 'SLA 99% · ' + CUR_MONTH, color: slaData.every(s => s.ok) ? '#22c55e' : '#f59e0b' },
+              { icon: '📊', title: 'Monitors conformes',       val: _measuredSla.length === 0 ? '—' : _measuredSla.filter(s => s.ok).length + '/' + _measuredSla.length, sub: _measuredSla.length < monitors.length ? 'SLA 99% · ' + _measuredSla.length + '/' + monitors.length + ' mesurés' : 'SLA 99% · ' + CUR_MONTH, color: _measuredSla.length > 0 && _measuredSla.every(s => s.ok) ? '#22c55e' : '#f59e0b' },
             ];
           })().map(kpi => `
             <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--fp-inner-card);border-radius:8px">

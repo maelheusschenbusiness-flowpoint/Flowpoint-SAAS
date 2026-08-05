@@ -44,6 +44,12 @@ export async function initMonitorsTables(): Promise<void> {
     // Backfill: monitors that have never run a check had latency=0 set at creation time.
     // Convert those 0s to NULL so the UI can display "—" instead of "0 ms".
     await client.query(`UPDATE monitors SET latency = NULL WHERE last_check IS NULL AND latency = 0;`);
+    // uptime NULL = no checks yet (unmeasured); 100 is fabricated for new monitors.
+    // Drop NOT NULL so newly created monitors start with NULL uptime until first check.
+    await client.query(`ALTER TABLE monitors ALTER COLUMN uptime DROP NOT NULL;`);
+    await client.query(`ALTER TABLE monitors ALTER COLUMN uptime DROP DEFAULT;`);
+    // Backfill: monitors with last_check IS NULL have never been checked — set uptime=NULL.
+    await client.query(`UPDATE monitors SET uptime = NULL WHERE last_check IS NULL AND uptime = 100;`);
 
     // ── 2. monitor_checks ─────────────────────────────────────────────────────
     await client.query(`
