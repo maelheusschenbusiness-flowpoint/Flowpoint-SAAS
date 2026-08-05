@@ -136,7 +136,6 @@ export const PLAN_PRICE_IDS: Record<string, string> = {
 // ── Add-on price IDs (live Stripe — confirmed 23/06/2026) ────────────────────
 export const ADDON_PRICE_IDS: Record<string, string> = {
   // ── Monitoring ──────────────────────────────────────────────────────────────
-  monitorsPack10:       process.env["STRIPE_PRICE_ID_10MONITORS"]               ?? "price_1TYolz9eqtbj6iPBpcIOUuhn",
   monitorsPack50:       process.env["STRIPE_PRICE_ID_50MONITORS"]               ?? "price_1TYonA9eqtbj6iPB4t0y0qzn",
   globalMonitoring:     process.env["STRIPE_PRICE_ID_GLOBAL_MONITORING"]        ?? "price_1TYoo69eqtbj6iPBPJR4JfSY",
   slaMonitoring:        process.env["STRIPE_PRICE_ID_SLA_MONITORING_ADVANCED"]  ?? "price_1TYop19eqtbj6iPBK45u2xVZ",
@@ -216,7 +215,7 @@ export const FLAG_ADDONS = new Set([
 ]);
 
 export const QTY_ADDONS = new Set([
-  "monitorsPack10","monitorsPack50","gbpSlots10","extraSeats",
+  "monitorsPack50","gbpSlots10","extraSeats",
   "auditsPack200","auditsPack1000","pdfPack200","exportsPack1000",
   "aiCreditsPack50k","aiCreditsPack200k","aiCreditsPack500k",
 ]);

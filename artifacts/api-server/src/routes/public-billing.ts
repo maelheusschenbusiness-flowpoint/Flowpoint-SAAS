@@ -471,7 +471,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
    Used to create PaymentIntents for immediate add-on billing.
  ───────────────────────────────────────────────────────────────────────── */
 const ADDON_PRICES_EUR_CENTS: Record<string, number> = {
-  monitorsPack10:        900,  monitorsPack50:       2900,
+  monitorsPack50:       2900,
   globalMonitoring:     4900,  slaMonitoring:        1900,
   advancedSeoLab:       2900,  keywordDomination:    3900,
   backlinkIntelligence: 2400,  aiContentStrategist:  3400,

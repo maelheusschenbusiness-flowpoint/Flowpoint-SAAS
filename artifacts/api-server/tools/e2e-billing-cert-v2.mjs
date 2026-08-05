@@ -11,7 +11,7 @@
  * Flows:
  *   F2  AI 50K pack  (Standard plan ctx, payment_intent.succeeded)
  *   F1  Standard→Pro (customer.subscription.created)
- *   F3  monitorsPack10 add-on (customer.subscription.updated)
+ *   F3  monitorsPack50 add-on (customer.subscription.updated)
  *
  * Usage: node tools/e2e-billing-cert-v2.mjs
  */
@@ -31,14 +31,14 @@ const TEST_ORG_ID     = "e2ec0000-b222-4000-a000-000000000042";
 const TEST_EMAIL      = `e2ev2-${Date.now()}@cert-test.local`;
 const TEST_PRICE_PRO  = process.env.STRIPE_PRICE_ID_PRO;
 const TEST_PRICE_AI50 = process.env.STRIPE_PRICE_AI_50K;
-const TEST_PRICE_MON  = process.env.STRIPE_PRICE_ID_10MONITORS;
+const TEST_PRICE_MON  = process.env.STRIPE_PRICE_ID_50MONITORS;
 const STD_AI_CREDITS  = 100_000; // Standard plan monthly included
 const MONTH           = new Date().toISOString().slice(0, 7);
 
 if (!process.env.STRIPE_TEST_KEY)       throw new Error("STRIPE_TEST_KEY not set");
 if (!process.env.STRIPE_PRICE_ID_PRO)   throw new Error("STRIPE_PRICE_ID_PRO not set (test price)");
 if (!process.env.STRIPE_PRICE_AI_50K)   throw new Error("STRIPE_PRICE_AI_50K not set (test price)");
-if (!process.env.STRIPE_PRICE_ID_10MONITORS) throw new Error("STRIPE_PRICE_ID_10MONITORS not set (test price)");
+if (!process.env.STRIPE_PRICE_ID_50MONITORS) throw new Error("STRIPE_PRICE_ID_50MONITORS not set (test price)");
 
 const stripe = new Stripe(process.env.STRIPE_TEST_KEY, { apiVersion: "2026-04-22.dahlia" });
 const pool   = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -249,14 +249,14 @@ console.log(`    ${planSess.url}`);
 console.log(`    Carte test : 4242 4242 4242 4242  |  12/29  |  123`);
 
 // ════════════════════════════════════════════════════════════════════════════
-//  FLOW 3 — Add-on monitorsPack10 (customer.subscription.updated)
+//  FLOW 3 — Add-on monitorsPack50 (customer.subscription.updated)
 // ════════════════════════════════════════════════════════════════════════════
 console.log(`\n${"─".repeat(62)}`);
-console.log("  FLOW 3 — Add-on monitorsPack10 (subscription.updated webhook)");
+console.log("  FLOW 3 — Add-on monitorsPack50 (subscription.updated webhook)");
 console.log("─".repeat(62));
 
 const addonBefore = await dbOne(
-  `SELECT active FROM org_addons WHERE org_id=$1 AND addon_key='monitorsPack10'`,
+  `SELECT active FROM org_addons WHERE org_id=$1 AND addon_key='monitorsPack50'`,
   [TEST_ORG_ID]
 );
 // Monitor count comes from /api/usage quota, not a plan_limits column
@@ -266,14 +266,14 @@ const quotaBefore = await fetch(
 ).then(r => r.ok ? r.json() : null).catch(() => null);
 const monitorLimitBefore = quotaBefore?.monitors?.limit ?? "n/a";
 
-console.log(`  AVANT : monitorsPack10 active=${addonBefore?.active ?? false}`);
+console.log(`  AVANT : monitorsPack50 active=${addonBefore?.active ?? false}`);
 console.log(`          monitors limit (quota API) : ${monitorLimitBefore}`);
 
-// Add monitorsPack10 to existing subscription → fires customer.subscription.updated
+// Add monitorsPack50 to existing subscription → fires customer.subscription.updated
 const subItem = await stripe.subscriptionItems.create({
   subscription: sub.id,
   price:        TEST_PRICE_MON,
-  metadata:     { addonKey: "monitorsPack10", orgId: TEST_ORG_ID },
+  metadata:     { addonKey: "monitorsPack50", orgId: TEST_ORG_ID },
 });
 console.log(`\n  Stripe SubscriptionItem: ${subItem.id}  (price=${subItem.price.id})`);
 console.log("  → Stripe fires customer.subscription.updated to webhook endpoint");
@@ -281,7 +281,7 @@ console.log("  Attente livraison webhook Stripe...");
 
 const addonAfter = await waitFor("addon webhook", async () => {
   const r = await dbOne(
-    `SELECT addon_key, active, updated_at FROM org_addons WHERE org_id=$1 AND addon_key='monitorsPack10'`,
+    `SELECT addon_key, active, updated_at FROM org_addons WHERE org_id=$1 AND addon_key='monitorsPack50'`,
     [TEST_ORG_ID]
   );
   return r?.active === true ? r : null;
@@ -297,17 +297,17 @@ console.log(`    active   : ${addonBefore?.active ?? false} → ${addonAfter.act
 console.log(`    updated  : ${addonAfter.updated_at}`);
 console.log(`    Stripe subscription items :`);
 for (const it of subItems) console.log(`      • ${it}`);
-console.log(`    ${addonAfter.active ? "✓ PASS" : "✗ FAIL"} — monitorsPack10 activé via webhook réel Stripe`);
+console.log(`    ${addonAfter.active ? "✓ PASS" : "✗ FAIL"} — monitorsPack50 activé via webhook réel Stripe`);
 
 // Browser subscription checkout (for visual verification of add-on)
-// monitorsPack10 is a recurring price → must use mode:subscription
+// monitorsPack50 is a recurring price → must use mode:subscription
 const addonSess = await stripe.checkout.sessions.create({
   customer:    cus.id,
   mode:        "subscription",
   line_items:  [{ price: TEST_PRICE_MON, quantity: 1 }],
   success_url: `https://${process.env.REPLIT_DEV_DOMAIN}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
   cancel_url:  `https://${process.env.REPLIT_DEV_DOMAIN}/dashboard.html`,
-  metadata:    { orgId: TEST_ORG_ID, addonKey: "monitorsPack10" },
+  metadata:    { orgId: TEST_ORG_ID, addonKey: "monitorsPack50" },
 });
 console.log(`\n  URL navigateur (vérification visuelle Stripe Test) :`);
 console.log(`    ${addonSess.url}`);
@@ -361,7 +361,7 @@ console.log("  RÉSULTAT FINAL");
 console.log(line);
 console.log(`  Flow 1 (Standard→Pro)    : ${orgUpgraded.plan === "pro" ? "✓ PASS" : "✗ FAIL"}`);
 console.log(`  Flow 2 (AI 50K pack)     : ${f2ok ? "✓ PASS" : "✗ FAIL"}  (${fmt(availableAfter)} crédits disponibles)`);
-console.log(`  Flow 3 (monitorsPack10)  : ${addonAfter.active ? "✓ PASS" : "✗ FAIL"}`);
+console.log(`  Flow 3 (monitorsPack50)  : ${addonAfter.active ? "✓ PASS" : "✗ FAIL"}`);
 console.log(`  Intégrité production     : ${integrityOk ? "✓ PASS" : "⚠ ISSUES"}`);
 console.log(line + "\n");
 

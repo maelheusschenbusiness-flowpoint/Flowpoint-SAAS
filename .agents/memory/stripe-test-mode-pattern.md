@@ -62,3 +62,16 @@ If match succeeds but server still rejects → the stored env var has a wrong va
 ## E2E cert script location
 
 `artifacts/api-server/tools/e2e-billing-cert-v2.mjs` — requires pre-cleanup at top of script to wipe leftover data from crashed prior runs. Test org ID: `e2ec0000-b222-4000-a000-000000000042`.
+
+## monitorsPack10 — formally removed (not a real product)
+
+`monitorsPack10` was a partial abandoned implementation. The canonical product is `monitorsPack50` only.
+- Removed from: `ADDON_DEFINITIONS`, `plans.ts` price map, `QTY_ADDONS`, `public-billing.ts` unit prices.
+- Deleted env var: `STRIPE_PRICE_ID_10MONITORS`.
+
+## STRIPE_PRICE_ID_50MONITORS env var state after cert
+
+Set to test price `price_1U18LU9eqtbj6iPBlG1Ycg6Y` (Stripe test mode) for the cert.
+Live price fallback is hardcoded in plans.ts: `"price_1TYonA9eqtbj6iPB4t0y0qzn"`.
+Before going live: reset env var to the live price OR clear the env var to use the hardcoded fallback.
+Same for `STRIPE_TEST_MODE=true` — must be removed/set to false in production.
