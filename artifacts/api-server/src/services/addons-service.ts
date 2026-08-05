@@ -16,6 +16,7 @@ export const ADDON_DEFINITIONS: Record<string, {
   retention90d:        { name: "Rétention +90 jours",        category: "Storage",      description: "90 jours de données historiques",          price: "9€/mois",   isFlagAddon: true  },
   retention365d:       { name: "Rétention +365 jours",       category: "Storage",      description: "365 jours de données historiques",         price: "19€/mois",  isFlagAddon: true  },
   extraSeats:          { name: "+5 Sièges",                  category: "Team",         description: "+5 membres supplémentaires",               price: "14€/mois",  isFlagAddon: false },
+  monitorsPack10:      { name: "+10 Monitors",               category: "Monitoring",   description: "+10 monitors actifs",                      price: "9€/mois",   isFlagAddon: false },
   monitorsPack50:      { name: "+50 Monitors",               category: "Monitoring",   description: "+50 monitors actifs",                      price: "19€/mois",  isFlagAddon: false },
   auditsPack200:       { name: "+200 Audits",                category: "SEO",          description: "+200 audits mensuels",                     price: "9€/mois",   isFlagAddon: false },
   advancedSeoLab:      { name: "Advanced SEO Lab",           category: "SEO",          description: "Audit SEO avancé + recommandations IA",   price: "19€/mois",  isFlagAddon: true  },

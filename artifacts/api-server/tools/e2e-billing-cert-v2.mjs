@@ -76,6 +76,26 @@ console.log(`  TEST_PRICE_MON  : ${TEST_PRICE_MON}`);
 console.log(line);
 
 // ════════════════════════════════════════════════════════════════════════════
+//  PRE-CLEANUP — wipe any leftover data from crashed previous runs
+// ════════════════════════════════════════════════════════════════════════════
+console.log("\n[ PRE-CLEANUP — removing leftover data from prior runs ]");
+await dbRun(`DELETE FROM ai_credit_purchases WHERE org_id=$1`, [TEST_ORG_ID]);
+await dbRun(`DELETE FROM ai_monthly_usage    WHERE org_id=$1`, [TEST_ORG_ID]);
+await dbRun(`DELETE FROM org_addons          WHERE org_id=$1`, [TEST_ORG_ID]);
+await dbRun(`DELETE FROM billing_events      WHERE org_id=$1`, [TEST_ORG_ID]);
+await dbRun(`DELETE FROM organizations       WHERE id=$1`,     [TEST_ORG_ID]);
+console.log(`  Cleared all tables for test org ${TEST_ORG_ID}`);
+
+// Cancel any open Stripe subscriptions attached to a previous cert customer
+const prevCusList = await stripe.customers.list({ email: TEST_EMAIL, limit: 10 });
+for (const pc of prevCusList.data) {
+  const subs = await stripe.subscriptions.list({ customer: pc.id, status: "active", limit: 10 });
+  for (const s of subs.data) await stripe.subscriptions.cancel(s.id).catch(() => {});
+  await stripe.customers.del(pc.id).catch(() => {});
+}
+console.log(`  Cleaned ${prevCusList.data.length} prior Stripe customer(s) for ${TEST_EMAIL}`);
+
+// ════════════════════════════════════════════════════════════════════════════
 //  SETUP — test org + Stripe customer + test payment method
 // ════════════════════════════════════════════════════════════════════════════
 console.log("\n[ SETUP ]");
@@ -239,13 +259,15 @@ const addonBefore = await dbOne(
   `SELECT active FROM org_addons WHERE org_id=$1 AND addon_key='monitorsPack10'`,
   [TEST_ORG_ID]
 );
-const monitorLimitBefore = (await dbOne(
-  `SELECT COALESCE((plan_limits->>'monitors')::int, 50) AS monitors FROM organizations WHERE id=$1`,
-  [TEST_ORG_ID]
-))?.monitors ?? "n/a";
+// Monitor count comes from /api/usage quota, not a plan_limits column
+const quotaBefore = await fetch(
+  `http://localhost:8081/api/usage/quota`,
+  { headers: { "x-org-id": TEST_ORG_ID, "x-api-key": process.env.API_SECRET_KEY || "" } }
+).then(r => r.ok ? r.json() : null).catch(() => null);
+const monitorLimitBefore = quotaBefore?.monitors?.limit ?? "n/a";
 
 console.log(`  AVANT : monitorsPack10 active=${addonBefore?.active ?? false}`);
-console.log(`          monitors limit (plan) : ${monitorLimitBefore}`);
+console.log(`          monitors limit (quota API) : ${monitorLimitBefore}`);
 
 // Add monitorsPack10 to existing subscription → fires customer.subscription.updated
 const subItem = await stripe.subscriptionItems.create({
@@ -277,10 +299,11 @@ console.log(`    Stripe subscription items :`);
 for (const it of subItems) console.log(`      • ${it}`);
 console.log(`    ${addonAfter.active ? "✓ PASS" : "✗ FAIL"} — monitorsPack10 activé via webhook réel Stripe`);
 
-// Browser checkout session (for visual verification of add-on)
+// Browser subscription checkout (for visual verification of add-on)
+// monitorsPack10 is a recurring price → must use mode:subscription
 const addonSess = await stripe.checkout.sessions.create({
   customer:    cus.id,
-  mode:        "payment",
+  mode:        "subscription",
   line_items:  [{ price: TEST_PRICE_MON, quantity: 1 }],
   success_url: `https://${process.env.REPLIT_DEV_DOMAIN}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
   cancel_url:  `https://${process.env.REPLIT_DEV_DOMAIN}/dashboard.html`,
