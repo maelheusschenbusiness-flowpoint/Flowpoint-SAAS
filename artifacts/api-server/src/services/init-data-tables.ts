@@ -306,6 +306,28 @@ export async function initDataTables(): Promise<void> {
       )
     `);
     await run(client, `CREATE INDEX IF NOT EXISTS google_product_connections_org_idx ON google_product_connections(org_id);`);
+    // ── RLS for google_product_connections ────────────────────────────────────
+    await run(client, `ALTER TABLE google_product_connections ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE google_product_connections FORCE ROW LEVEL SECURITY`);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='google_product_connections' AND policyname='tenant_select') THEN
+          CREATE POLICY tenant_select ON google_product_connections FOR SELECT TO PUBLIC
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='google_product_connections' AND policyname='tenant_insert') THEN
+          CREATE POLICY tenant_insert ON google_product_connections FOR INSERT TO PUBLIC WITH CHECK (true);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='google_product_connections' AND policyname='tenant_update') THEN
+          CREATE POLICY tenant_update ON google_product_connections FOR UPDATE TO PUBLIC
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='google_product_connections' AND policyname='tenant_delete') THEN
+          CREATE POLICY tenant_delete ON google_product_connections FOR DELETE TO PUBLIC
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$
+    `);
 
     // ── audit_schedules ───────────────────────────────────────────────────────
     await run(client, `
@@ -2100,7 +2122,7 @@ export async function initDataTables(): Promise<void> {
     // ga4_properties: property_name (service uses instead of display_name) + UNIQUE(org_id) for ON CONFLICT
     await run(client, `ALTER TABLE ga4_properties ADD COLUMN IF NOT EXISTS property_name TEXT`);
     await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS ga4_properties_org_idx ON ga4_properties(org_id)`);
-    // google_product_connections: ensure table exists (for installs created before this migration)
+    // google_product_connections: ensure table exists + RLS (for installs created before this migration)
     await run(client, `
       CREATE TABLE IF NOT EXISTS google_product_connections (
         org_id     TEXT        NOT NULL,
@@ -2109,6 +2131,27 @@ export async function initDataTables(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (org_id, product)
       )
+    `);
+    await run(client, `ALTER TABLE google_product_connections ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE google_product_connections FORCE ROW LEVEL SECURITY`);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='google_product_connections' AND policyname='tenant_select') THEN
+          CREATE POLICY tenant_select ON google_product_connections FOR SELECT TO PUBLIC
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='google_product_connections' AND policyname='tenant_insert') THEN
+          CREATE POLICY tenant_insert ON google_product_connections FOR INSERT TO PUBLIC WITH CHECK (true);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='google_product_connections' AND policyname='tenant_update') THEN
+          CREATE POLICY tenant_update ON google_product_connections FOR UPDATE TO PUBLIC
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='google_product_connections' AND policyname='tenant_delete') THEN
+          CREATE POLICY tenant_delete ON google_product_connections FOR DELETE TO PUBLIC
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$
     `);
     // gsc_sites: permission_level
     await run(client, `ALTER TABLE gsc_sites ADD COLUMN IF NOT EXISTS permission_level TEXT`);
