@@ -305,24 +305,43 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
     }
 
     // For authenticated users (cookie/Bearer session, no preRegisterToken):
-    // resolve existing Stripe customer + set orgId so the webhook can map the
-    // completed checkout back to the org without relying on customer-metadata lookup.
+    // The /public/ router has no requireAuth middleware, so req.orgId is never set here.
+    // We resolve the session manually from the Bearer token or fp_token cookie so that:
+    //   (a) orgId is included in session metadata → webhook resolves the org deterministically
+    //   (b) existing Stripe customer is reused → no duplicate customer created
     if (!preRegisterToken) {
-      const _authOrgId = (req as Request & { orgId?: string }).orgId;
-      if (_authOrgId && _authOrgId !== "default") {
-        signupOrgId = _authOrgId; // included in session metadata.orgId below
-        try {
-          const { loadBillingContext: _csLbc } = await import("../services/billing-context.js");
-          const _authCtx = await _csLbc(_authOrgId);
-          if (_authCtx.stripeCustomerId) {
-            stripeCustomerId = _authCtx.stripeCustomerId;
-            logger.info({ customerId: stripeCustomerId, orgId: _authOrgId },
-              "[PublicBilling] checkout-session: Stripe Customer resolved from authenticated org");
-          }
-        } catch (_csErr) {
-          logger.warn({ _csErr, orgId: _authOrgId },
-            "[PublicBilling] checkout-session: billing-context load failed — customer not pre-linked");
+      try {
+        const _authHeader  = req.headers["authorization"];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const _cookieToken = (req as any).cookies?.["fp_token"];
+        let _sessionToken: string | undefined;
+        if (typeof _authHeader === "string" && _authHeader.startsWith("Bearer ")) {
+          _sessionToken = _authHeader.slice(7).trim();
+        } else if (typeof _cookieToken === "string" && _cookieToken.trim()) {
+          _sessionToken = _cookieToken.trim();
         }
+        if (_sessionToken) {
+          const { getSession } = await import("../services/sessions.js");
+          const _sess = await getSession(_sessionToken);
+          if (_sess?.orgId && _sess.orgId !== "default") {
+            signupOrgId = _sess.orgId; // included in session metadata.orgId below
+            try {
+              const { loadBillingContext: _csLbc } = await import("../services/billing-context.js");
+              const _authCtx = await _csLbc(_sess.orgId);
+              if (_authCtx.stripeCustomerId) {
+                stripeCustomerId = _authCtx.stripeCustomerId;
+                logger.info({ customerId: stripeCustomerId, orgId: _sess.orgId },
+                  "[PublicBilling] checkout-session: Stripe Customer resolved from authenticated session token");
+              }
+            } catch (_ctxErr) {
+              logger.warn({ _ctxErr, orgId: _sess.orgId },
+                "[PublicBilling] checkout-session: billing-context load failed — customer not pre-linked");
+            }
+          }
+        }
+      } catch (_optAuthErr) {
+        logger.warn({ _optAuthErr },
+          "[PublicBilling] checkout-session: optional session resolution failed (non-fatal)");
       }
     }
 

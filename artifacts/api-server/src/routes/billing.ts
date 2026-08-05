@@ -1606,7 +1606,8 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, ownerOnly,
       mode: "payment",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${publicUrl}/success.html?session_id={CHECKOUT_SESSION_ID}&type=ai_credits&pack=${encodeURIComponent(pack)}&credits=${packInfo.credits}`,
+      // checkout-return.html handles ai_credits type via billing/verify checkoutType field
+      success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url:  `${publicUrl}/dashboard.html#billing`,
       metadata: {
         type:           "ai_credits",

@@ -18716,21 +18716,76 @@ async function init() {
           _sseBackoff = 1000; // reset backoff on successful message
           try {
             const msg = JSON.parse(e.data);
-            if (msg.type === 'plan_updated' && msg.plan && STATE.me) {
-              const prev = STATE.me.plan;
-              STATE.me.plan = msg.plan;
-              if (prev !== msg.plan) {
-                showToast('success', `Plan mis à jour : ${msg.plan} — actualisez pour voir les changements`);
+            // ── Plan update (store broadcasts 'billing:plan_updated') ──────────────
+            if ((msg.type === 'plan_updated' || msg.type === 'billing:plan_updated') && msg.plan) {
+              const prev = (STATE.me && STATE.me.plan) || '';
+              const newPlan = msg.plan;
+              if (STATE.me)      STATE.me.plan = newPlan;
+              if (STATE.billing) STATE.billing.plan = newPlan.toLowerCase();
+              if (prev.toLowerCase() !== newPlan.toLowerCase()) {
+                showToast('success', `Plan mis à jour : ${newPlan} ✓`);
               }
-            } else if (msg.type === 'subscription_status' && STATE.me) {
-              STATE.me.subscriptionStatus = msg.status;
+              // Bust caches and reload billing data in background
+              try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+              _apiFetchCache && _apiFetchCache.clear();
+              loadData().catch(() => {});
+            // ── Subscription status change ─────────────────────────────────────────
+            } else if (msg.type === 'subscription_status') {
+              if (STATE.me) STATE.me.subscriptionStatus = msg.status;
+              if (STATE.billing) STATE.billing.subscriptionStatus = msg.status;
               if (msg.status === 'past_due') showToast('warning','Paiement en retard — vérifiez votre facturation');
+              else if (msg.status === 'active') {
+                try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+                _apiFetchCache && _apiFetchCache.clear();
+                loadData().catch(() => {});
+              }
+            // ── AI credits purchase confirmed ──────────────────────────────────────
+            } else if (msg.type === 'ai:credits_added') {
+              showToast('success', `Crédits IA ajoutés : +${Number(msg.credits || 0).toLocaleString()} ✓`);
+              try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+              _apiFetchCache && _apiFetchCache.clear();
+              // Reload AI credits from server then re-render the credits gauge
+              (async function() {
+                try { await loadAICredits(); } catch(_) {}
+                render();
+              })();
+            // ── Add-on activated ───────────────────────────────────────────────────
+            } else if (msg.type === 'addon:activated' || msg.type === 'fp:addon:activated') {
+              const addonKey = msg.addonKey || msg.addon_key || '';
+              if (addonKey) {
+                if (!STATE.addons) STATE.addons = {};
+                STATE.addons[addonKey] = true;
+                if (STATE.billing && STATE.billing.addons) STATE.billing.addons[addonKey] = true;
+              }
+              showToast('success', `Add-on activé ✓`);
+              try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+              _apiFetchCache && _apiFetchCache.clear();
+              loadData().catch(() => {});
+            // ── Add-on deactivated ─────────────────────────────────────────────────
+            } else if (msg.type === 'addon:deactivated' || msg.type === 'fp:addon:deactivated') {
+              const addonKey = msg.addonKey || msg.addon_key || '';
+              if (addonKey) {
+                if (STATE.addons) STATE.addons[addonKey] = false;
+                if (STATE.billing && STATE.billing.addons) STATE.billing.addons[addonKey] = false;
+              }
+              try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+              _apiFetchCache && _apiFetchCache.clear();
+              loadData().catch(() => {});
+            // ── Payment succeeded (invoice renewal) ────────────────────────────────
+            } else if (msg.type === 'payment_succeeded') {
+              try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+              _apiFetchCache && _apiFetchCache.clear();
+              if (STATE.billing) STATE.billing.subscriptionStatus = 'active';
+              if (STATE.me) STATE.me.subscriptionStatus = 'active';
+              render();
+            // ── Audit auto-complete ────────────────────────────────────────────────
             } else if (msg.type === 'audit:auto-complete' && msg.audit) {
               const a = msg.audit;
               if (!STATE.audits.find(x => x.id === a.id)) {
                 STATE.audits.unshift({ ...a, date: new Date().toISOString(), issues: 0, speed: 0, pinned: false });
                 showToast('success', `Audit terminé — ${escHtml(a.url)} · Score : ${a.score}/100`);
               }
+            // ── Activity feed push ─────────────────────────────────────────────────
             } else if (msg.type === 'activity:new' && msg.event) {
               pushActivityEvent(msg.event);
             }
@@ -38380,107 +38435,35 @@ window.FP_AI_CREDITS_API = {
   },
 };
 
-// ── Shared AI-credit purchase: in-app PaymentElement modal ────────────────────
+// ── Shared AI-credit purchase: Stripe Checkout redirect ───────────────────────
 // Called from both FP_ADDONS_API.buyCredits and FP_AI_CREDITS_API.buyCredits.
-// No redirect to checkout.stripe.com: the payment happens inside the dashboard.
-// The webhook credits the org on payment_intent.succeeded (metadata.type=ai_credits).
-function _fpLoadStripeJs() {
-  return new Promise(function(resolve, reject) {
-    if (typeof Stripe !== 'undefined') { resolve(); return; }
-    var s = document.createElement('script');
-    s.src = 'https://js.stripe.com/v3/';
-    s.onload = function() { resolve(); };
-    s.onerror = function() { reject(new Error('Stripe.js n\'a pas pu se charger (bloqueur de publicités ?)')); };
-    document.head.appendChild(s);
-  });
-}
+// Uses the Stripe-hosted Checkout page (redirect) so the purchase flow is
+// consistent with subscriptions. After payment the user lands on checkout-return.html
+// which reads checkoutType=ai_credits from billing/verify and shows "crédits ajoutés".
 
 // Public alias — inline onclick="fpBuyAICredits('pack')" buttons use this
 window.fpBuyAICredits = function(pack) { return window._fpBuyAICredits(pack); };
 
 window._fpBuyAICredits = async function(pack) {
-  showToast('info', 'Préparation du paiement…');
+  showToast('info', 'Redirection vers le paiement…');
   var r;
   try {
-    r = await apiFetch('/api/billing/ai-credits-intent', { method: 'POST', body: JSON.stringify({ pack }) });
+    r = await apiFetch('/api/billing/checkout-ai-credits', { method: 'POST', body: JSON.stringify({ pack }) });
   } catch(e) {
     showToast('error', 'Erreur lors de la création du paiement : ' + ((e && e.message) || 'réessayez'));
     return null;
   }
-  if (!r || !r.clientSecret || !r.publishableKey) {
-    showToast('error', (r && (r.error || r.detail)) || 'Erreur lors de la création du paiement');
-    return r || null;
-  }
-  try { await _fpLoadStripeJs(); } catch(e) { showToast('error', e.message); return null; }
-
-  // ── Modal ──
-  document.getElementById('fp-ai-pay-modal')?.remove();
-  var modal = document.createElement('div');
-  modal.id = 'fp-ai-pay-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
-  modal.innerHTML = '<div style="background:var(--fp-card-bg,#111827);border:1px solid var(--fp-border);border-radius:16px;padding:24px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4)">'
-    + '<div style="font-size:16px;font-weight:800;color:var(--fp-text);margin-bottom:4px">Crédits IA — ' + Number(r.credits).toLocaleString(getLocale()) + '</div>'
-    + '<div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:16px">Paiement unique de <strong style="color:var(--fp-text)">' + r.amountEur + '€</strong> — vos crédits sont ajoutés immédiatement après confirmation.</div>'
-    + '<div id="fp-ai-pay-element" style="min-height:120px"></div>'
-    + '<div id="fp-ai-pay-error" style="display:none;margin-top:10px;font-size:12px;color:#f87171"></div>'
-    + '<div style="display:flex;gap:8px;margin-top:18px">'
-    + '<button class="fp-btn fp-btn-ghost" style="flex:1" id="fp-ai-pay-cancel">Annuler</button>'
-    + '<button class="fp-btn fp-btn-primary" style="flex:1" id="fp-ai-pay-confirm" disabled>Payer ' + r.amountEur + '€</button>'
-    + '</div></div>';
-  document.body.appendChild(modal);
-  if (window.fpApplyTranslations) window.fpApplyTranslations();
-
-  var stripe, elements;
-  var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-  try {
-    stripe = Stripe(r.publishableKey);
-    elements = stripe.elements({ clientSecret: r.clientSecret, appearance: { theme: isDark ? 'night' : 'stripe', variables: { colorPrimary: '#2563eb', borderRadius: '10px' } } });
-    var pe = elements.create('payment');
-    pe.mount('#fp-ai-pay-element');
-    pe.on('ready', function() { document.getElementById('fp-ai-pay-confirm').disabled = false; });
-    pe.on('loaderror', function(ev) {
-      var errBox = document.getElementById('fp-ai-pay-error');
-      if (errBox) { errBox.style.display = 'block'; errBox.textContent = (ev && ev.error && ev.error.message) || 'Erreur de chargement du formulaire de paiement.'; }
-    });
-  } catch(e) {
-    modal.remove();
-    showToast('error', 'Erreur Stripe : ' + (e.message || e));
+  if (!r) {
+    showToast('error', 'Erreur lors de la création du paiement');
     return null;
   }
-
-  document.getElementById('fp-ai-pay-cancel').onclick = function() { modal.remove(); };
-  modal.addEventListener('click', function(ev) { if (ev.target === modal) modal.remove(); });
-
-  document.getElementById('fp-ai-pay-confirm').onclick = async function() {
-    var btn = this;
-    btn.disabled = true; btn.textContent = 'Paiement…';
-    var errBox = document.getElementById('fp-ai-pay-error');
-    try {
-      var result = await stripe.confirmPayment({ elements: elements, redirect: 'if_required' });
-      if (result.error) {
-        errBox.style.display = 'block';
-        errBox.textContent = result.error.message || 'Paiement refusé.';
-        btn.disabled = false; btn.textContent = 'Payer ' + r.amountEur + '€';
-        return;
-      }
-      modal.remove();
-      showToast('success', 'Paiement confirmé — vos crédits IA arrivent…');
-      try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-      // The webhook credits the org asynchronously — poll a few times then refresh.
-      var attempts = 0;
-      var poll = async function() {
-        attempts++;
-        try { await window.FP_AI_CREDITS_API.load(); } catch(_) {}
-        render();
-        if (attempts < 5) setTimeout(poll, 2500);
-      };
-      setTimeout(poll, 2000);
-    } catch(e) {
-      errBox.style.display = 'block';
-      errBox.textContent = (e && e.message) || 'Erreur lors du paiement.';
-      btn.disabled = false; btn.textContent = 'Payer ' + r.amountEur + '€';
-    }
-  };
+  if (r.url) {
+    // Redirect to Stripe Checkout (hosted page) — same flow as subscriptions.
+    // On success: checkout-return.html verifies session + shows "crédits ajoutés".
+    window.location.href = r.url;
+    return r;
+  }
+  showToast('error', (r.error || r.detail) || 'Erreur : URL de paiement manquante');
   return r;
 };
 
