@@ -520,7 +520,30 @@
     .then(function(res) {
       setLoading(signupBtn, false);
       if (!res.ok) {
-        showMsg(signupMsg, 'error', escHtml(res.data.error || 'Une erreur est survenue.'));
+        var errTxt = escHtml(res.data.error || 'Une erreur est survenue.');
+        var redir  = res.data.redirectTo || '';
+        if (redir === '/login.html') {
+          showMsg(signupMsg, 'error',
+            errTxt +
+            ' <a href="/login.html" id="signin-redir-link" ' +
+            'style="display:inline-block;margin-top:8px;font-weight:700;' +
+            'text-decoration:underline;color:inherit">' +
+            '→ Me connecter</a>'
+          );
+          var _secs = 3;
+          var _iv = setInterval(function() {
+            _secs--;
+            var lk = document.getElementById('signin-redir-link');
+            if (lk) lk.textContent = '→ Me connecter (' + _secs + 's)';
+            if (_secs <= 0) { clearInterval(_iv); window.location.href = '/login.html'; }
+          }, 1000);
+        } else if (redir) {
+          showMsg(signupMsg, 'error',
+            errTxt + ' <a href="' + escHtml(redir) + '" style="font-weight:700;text-decoration:underline;color:inherit">→ Continuer</a>'
+          );
+        } else {
+          showMsg(signupMsg, 'error', errTxt);
+        }
         return;
       }
       // Store token for the plan selection step

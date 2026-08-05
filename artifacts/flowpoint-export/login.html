@@ -305,7 +305,19 @@
         } else if (r.status === 503) {
           showError('Service e-mail indisponible. Connectez-vous avec Google.');
         } else {
-          showError(r.data.error || 'Une erreur est survenue. Veuillez r\u00E9essayer.');
+          var errMsg = r.data.error || 'Une erreur est survenue. Veuillez r\u00E9essayer.';
+          var dest   = r.data.redirectTo || '';
+          if (dest === '/signin.html') {
+            errorEl.innerHTML = errMsg.replace(/[<>&"]/g, function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) +
+              ' <a href="/signin.html" style="font-weight:700;text-decoration:underline;color:inherit">\u2192 Cr\u00E9er mon compte</a>';
+            errorEl.style.display = 'block';
+          } else if (dest) {
+            errorEl.innerHTML = errMsg.replace(/[<>&"]/g, function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) +
+              ' <a href="' + dest.replace(/"/g,'') + '" style="font-weight:700;text-decoration:underline;color:inherit">\u2192 Continuer</a>';
+            errorEl.style.display = 'block';
+          } else {
+            showError(errMsg);
+          }
         }
       })
       .catch(function () {
