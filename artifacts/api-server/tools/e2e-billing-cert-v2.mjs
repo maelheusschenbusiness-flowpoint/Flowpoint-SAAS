@@ -29,16 +29,16 @@ const { Pool }  = require(PG_PATH);
 // ── Config ───────────────────────────────────────────────────────────────────
 const TEST_ORG_ID     = "e2ec0000-b222-4000-a000-000000000042";
 const TEST_EMAIL      = `e2ev2-${Date.now()}@cert-test.local`;
-const TEST_PRICE_PRO  = process.env.STRIPE_PRICE_ID_PRO;
-const TEST_PRICE_AI50 = process.env.STRIPE_PRICE_AI_50K;
-const TEST_PRICE_MON  = process.env.STRIPE_PRICE_ID_50MONITORS;
+const TEST_PRICE_PRO  = process.env.STRIPE_TEST_PRICE_ID_PRO;
+const TEST_PRICE_AI50 = process.env.STRIPE_TEST_PRICE_AI_50K;
+const TEST_PRICE_MON  = process.env.STRIPE_TEST_PRICE_ID_50MONITORS;
 const STD_AI_CREDITS  = 100_000; // Standard plan monthly included
 const MONTH           = new Date().toISOString().slice(0, 7);
 
 if (!process.env.STRIPE_TEST_KEY)       throw new Error("STRIPE_TEST_KEY not set");
-if (!process.env.STRIPE_PRICE_ID_PRO)   throw new Error("STRIPE_PRICE_ID_PRO not set (test price)");
-if (!process.env.STRIPE_PRICE_AI_50K)   throw new Error("STRIPE_PRICE_AI_50K not set (test price)");
-if (!process.env.STRIPE_PRICE_ID_50MONITORS) throw new Error("STRIPE_PRICE_ID_50MONITORS not set (test price)");
+if (!process.env.STRIPE_TEST_PRICE_ID_PRO)   throw new Error("STRIPE_TEST_PRICE_ID_PRO not set (test price)");
+if (!process.env.STRIPE_TEST_PRICE_AI_50K)   throw new Error("STRIPE_TEST_PRICE_AI_50K not set (test price)");
+if (!process.env.STRIPE_TEST_PRICE_ID_50MONITORS) throw new Error("STRIPE_TEST_PRICE_ID_50MONITORS not set (test price)");
 
 const stripe = new Stripe(process.env.STRIPE_TEST_KEY, { apiVersion: "2026-04-22.dahlia" });
 const pool   = new Pool({ connectionString: process.env.DATABASE_URL });

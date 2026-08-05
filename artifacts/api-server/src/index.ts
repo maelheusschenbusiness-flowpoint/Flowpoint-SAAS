@@ -1,5 +1,6 @@
 import { env } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
+import { getStripeKey } from "./services/stripe-factory.js";
 import app from "./app.js";
 import { pool, probeAppUserRole } from "@workspace/db";
 import { initMissionsTables } from "./services/init-missions.js";
@@ -39,6 +40,59 @@ async function schemaAlreadyMigrated(): Promise<boolean> {
 }
 
 async function main() {
+  // ── 0. Stripe configuration safety guard ──────────────────────────────────
+  //
+  // Refuse to start if NODE_ENV=production is active with test-mode Stripe
+  // credentials.  This catches STRIPE_TEST_MODE=true accidentally left in the
+  // shared environment — a misconfiguration that would silently reject every
+  // real payment.
+  //
+  // Rules:
+  //   • active secret key  starts with sk_test_ → fatal
+  //   • publishable key    starts with pk_test_ → fatal
+  //   • Log mode (LIVE/TEST) at startup — never log key values
+  // ────────────────────────────────────────────────────────────────────────────
+  {
+    const activeKey  = getStripeKey();
+    const pubKey     = process.env["STRIPE_PUBLISHABLE_KEY"] ?? "";
+    const isTestKey  = activeKey.startsWith("sk_test_");
+    const isTestPub  = pubKey.startsWith("pk_test_");
+    const isProd     = env.NODE_ENV === "production";
+
+    if (isProd && isTestKey) {
+      logger.fatal(
+        "[Stripe] FATAL: NODE_ENV=production but the active Stripe secret key " +
+        "starts with sk_test_. Remove STRIPE_TEST_MODE from the shared " +
+        "environment before deploying. Server will not start."
+      );
+      process.exit(1);
+    }
+    if (isProd && isTestPub) {
+      logger.fatal(
+        "[Stripe] FATAL: NODE_ENV=production but STRIPE_PUBLISHABLE_KEY " +
+        "starts with pk_test_. Set STRIPE_PUBLISHABLE_KEY to a pk_live_ " +
+        "value before deploying. Server will not start."
+      );
+      process.exit(1);
+    }
+
+    // Safe startup log — mode only, never the key value
+    const stripeMode   = isTestKey ? "TEST" : "LIVE";
+    const webhookSec   = process.env["STRIPE_WEBHOOK_SECRET"]
+                      || process.env["STRIPE_WEBHOOK_SECRET_RENDER"]
+                      || "";
+    const webhookMode  = webhookSec
+      ? (isTestKey ? "TEST (test-endpoint secret active)" : "LIVE")
+      : "NOT CONFIGURED";
+    const pubDisplay   = pubKey
+      ? pubKey.slice(0, 7) + "…"   // e.g. "pk_live"  —  prefix only
+      : "not set";
+
+    logger.info(
+      `[Stripe] mode: ${stripeMode} | webhook: ${webhookMode} | publishable: ${pubDisplay}`
+    );
+  }
+
   // 1. Verify the DB is reachable before any init that assumes a connection.
   await runCriticalStartupStep("database connection", async () => {
     await pool.query("SELECT 1");

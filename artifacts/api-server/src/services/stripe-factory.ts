@@ -49,10 +49,15 @@ export async function createStripeClient(key: string): Promise<StripeAlike> {
 /**
  * Returns the correct Stripe secret key for the current environment.
  *
- * When STRIPE_TEST_MODE=true (dev only):
+ * When STRIPE_TEST_MODE=true AND the resolved key starts with sk_test_:
  *   • Uses STRIPE_TEST_KEY or STRIPE_TEST_SECRET_KEY — a completely isolated
  *     Stripe test account with its own webhook endpoint and signing secret.
- *   • Never activates in NODE_ENV=production regardless of the flag value.
+ *   • The sk_test_ prefix is the safety gate: a live key can never be
+ *     substituted as a test key even if STRIPE_TEST_MODE is mistakenly set.
+ *
+ * The startup guard in index.ts enforces an additional production rule:
+ *   if NODE_ENV=production and the resolved key is sk_test_, the server
+ *   refuses to start with a fatal log and process.exit(1).
  *
  * Otherwise: falls back to STRIPE_LIVE_API_KEY → STRIPE_SECRET_KEY (live mode).
  *
