@@ -712,9 +712,19 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       const meta = (obj["metadata"] as Record<string,string>) ?? {};
 
       // ── One-time AI credit pack purchase ──────────────────────────────────
-      if (meta["type"] === "ai_credits") {
-        const pack    = meta["pack"]    ?? "";
-        const credits = parseInt(meta["credits"] ?? "0", 10);
+      // Matches sessions from /billing/checkout-ai-credits (type=ai_credits) AND
+      // from /public/checkout-session for ai_credits_only checkout type.
+      if (meta["type"] === "ai_credits" || meta["flowpoint_checkout_type"] === "ai_credits_only") {
+        // For ai_credits_only (public checkout), parse pack key from ai_credits field.
+        const rawAiCreditsField = meta["ai_credits"] ?? "";
+        const packFromField = rawAiCreditsField.split(",").find(k => k.startsWith("aiCreditsPack"));
+        const AI_CREDITS_FROM_PACK: Record<string, number> = {
+          aiCreditsPack50k:  50000,
+          aiCreditsPack200k: 200000,
+          aiCreditsPack500k: 500000,
+        };
+        const pack    = meta["pack"] || packFromField || "";
+        const credits = parseInt(meta["credits"] ?? "0", 10) || (packFromField ? (AI_CREDITS_FROM_PACK[packFromField] ?? 0) : 0);
         const amountEurCents = parseInt(meta["amountEurCents"] ?? "0", 10);
         const sessionId      = String(obj["id"] ?? "");
         const paymentIntent  = String(obj["payment_intent"] ?? "");
@@ -730,7 +740,8 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
               return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
             })();
             try {
-              const purchaseId = `acp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+              // Deterministic id keyed on the Stripe session → idempotent on webhook replays
+              const purchaseId = `acp_${sessionId}`;
               await client.query(
                 `INSERT INTO ai_credit_purchases
                    (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)

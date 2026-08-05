@@ -1666,6 +1666,7 @@
   /* Only trust the explicit URL parameter — never re-activate fromDashboard
      from a stale fp_cart (user may arrive from signin.html / flowpoint.pro). */
   var fromDashboard = params.get('from') === 'dashboard';
+  var addonParam    = params.get('addon') || '';  // add-on key passed by fpActivateAddon fallback
 
   /* When NOT coming from the dashboard: clear any leftover cart so the page
      renders in its default state (no pre-selections, no back button).        */
@@ -1676,6 +1677,43 @@
 
   var cart = null;
   try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+
+  /* ── Addon-only mode: from dashboard with a specific add-on key ────────────
+     When the user is an active subscriber and fpActivateAddon fell back to
+     pricing.html (e.g. API unavailable), hide the plans section so they don't
+     see a confusing plan-selection UI.  The plans section reappears if the user
+     is NOT subscribed (they need to pick a plan first).                       */
+  if (addonParam) {
+    var _aoHidePlans = function() {
+      var bs = window._fpBillingState;
+      var isSubscribed = bs && (bs.status === 'active' || bs.status === 'trialing');
+      /* If billing state not yet loaded, we optimistically show plans (safe default).
+         We re-check once billing-state resolves via window._fpBillingState setter. */
+      if (isSubscribed) {
+        var ps = document.querySelector('.fp-plans-section');
+        var hero = document.querySelector('.fp-hero');
+        if (ps) ps.style.display = 'none';
+        if (hero) {
+          var badge = hero.querySelector('.fp-hero-badge');
+          var sub   = hero.querySelector('.fp-hero-sub');
+          if (badge) badge.textContent = '➕ Ajout d\'add-on à votre abonnement';
+          if (sub)   sub.textContent   = 'Sélectionnez l\'add-on ci-dessous et cliquez sur Finaliser.';
+        }
+      }
+    };
+    /* Run after DOM ready and again once billing-state resolves (may be async). */
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() { setTimeout(_aoHidePlans, 80); });
+    } else {
+      setTimeout(_aoHidePlans, 80);
+    }
+    /* Re-check when billing state arrives (the billing-state IIFE stores it globally). */
+    var _aoRetries = 0;
+    var _aoInterval = setInterval(function() {
+      _aoHidePlans();
+      if (++_aoRetries >= 8) clearInterval(_aoInterval);
+    }, 400);
+  }
 
   /* ── Override goToCheckout for active/trialing subscribers ────────────────────
      We override immediately and unconditionally when fromDashboard=true.

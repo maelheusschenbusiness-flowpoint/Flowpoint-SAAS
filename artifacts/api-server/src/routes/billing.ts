@@ -1578,6 +1578,7 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, ownerOnly,
         pack,
         credits:        String(packInfo.credits),
         amountEurCents: String(packInfo.amountEurCents),
+        orgId,          // explicit orgId so webhook never relies solely on customer-metadata lookup
       },
     });
 

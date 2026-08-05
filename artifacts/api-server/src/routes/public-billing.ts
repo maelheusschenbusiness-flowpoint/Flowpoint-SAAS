@@ -304,6 +304,28 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       }
     }
 
+    // For authenticated users (cookie/Bearer session, no preRegisterToken):
+    // resolve existing Stripe customer + set orgId so the webhook can map the
+    // completed checkout back to the org without relying on customer-metadata lookup.
+    if (!preRegisterToken) {
+      const _authOrgId = (req as Request & { orgId?: string }).orgId;
+      if (_authOrgId && _authOrgId !== "default") {
+        signupOrgId = _authOrgId; // included in session metadata.orgId below
+        try {
+          const { loadBillingContext: _csLbc } = await import("../services/billing-context.js");
+          const _authCtx = await _csLbc(_authOrgId);
+          if (_authCtx.stripeCustomerId) {
+            stripeCustomerId = _authCtx.stripeCustomerId;
+            logger.info({ customerId: stripeCustomerId, orgId: _authOrgId },
+              "[PublicBilling] checkout-session: Stripe Customer resolved from authenticated org");
+          }
+        } catch (_csErr) {
+          logger.warn({ _csErr, orgId: _authOrgId },
+            "[PublicBilling] checkout-session: billing-context load failed — customer not pre-linked");
+        }
+      }
+    }
+
     const { subscriptionItems, oneTimeItems, checkoutType } = buildLineItems(planKey, addons);
 
     const selectedAddonNames = addonKeys.join(",");
