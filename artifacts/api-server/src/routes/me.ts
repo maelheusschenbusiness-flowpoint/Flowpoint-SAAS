@@ -538,14 +538,47 @@ router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
 router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
-  const { streak, pinned, checklist, settings: rawSettings } = req.body as {
+  const { streak, pinned, checklist, settings: rawSettings, statusPageUrl } = req.body as {
     streak?: number; pinned?: Record<string, boolean>; checklist?: unknown; settings?: Record<string, unknown>;
+    statusPageUrl?: string; // convenience top-level alias — merged into settings.statusPageUrl
   };
-  // Strip any DataForSEO credentials from settings before storing in user_prefs
+  // ── statusPageUrl validation helper ──────────────────────────────────────────
+  // Returns the trimmed URL if it is a valid absolute http/https URL, "" if the
+  // intent is to clear the field, or null if the value is invalid and must be
+  // rejected.  Never allows javascript:, data:, or other schemes.
+  function validateStatusPageUrl(raw: string): string | null {
+    const trimmed = raw.trim();
+    if (trimmed === "") return "";          // explicit clear — allowed
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol === "https:" || parsed.protocol === "http:") return trimmed;
+    } catch {
+      // falls through to null
+    }
+    return null;                           // invalid — must be rejected
+  }
+
+  // Strip any DataForSEO credentials from settings before storing in user_prefs.
+  // IMPORTANT: also strip statusPageUrl from rawSettings so it cannot bypass the
+  // validated top-level field.  statusPageUrl is always written through the
+  // top-level path only, which is protocol-validated before the JSONB merge.
   let settings = rawSettings;
   if (settings && typeof settings === "object") {
-    const { dataForSEO: _, ...rest } = settings;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { dataForSEO: _dfs, statusPageUrl: _spUrl, ...rest } = settings;
     settings = rest;
+  }
+
+  // Convenience: top-level statusPageUrl is merged into settings so the value
+  // survives across devices (user_prefs row, not localStorage).
+  // Invalid non-empty values → 400 (no silent accept).
+  if (typeof statusPageUrl === "string") {
+    const validated = validateStatusPageUrl(statusPageUrl);
+    if (validated === null) {
+      res.status(400).json({ error: "statusPageUrl must be an absolute https:// or http:// URL or empty string" });
+      return;
+    }
+    settings = Object.assign({}, settings ?? {}, { statusPageUrl: validated });
   }
   try {
     await orgDb(req)(

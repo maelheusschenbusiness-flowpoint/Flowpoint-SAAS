@@ -13,12 +13,17 @@ import {
 const router = Router();
 
 router.get("/maps/config", (_req: Request, res: Response) => {
-  // SECURITY: never expose GOOGLE_MAPS_API_KEY (server-side Places/Geocoding key).
-  // The browser only ever receives a dedicated, referrer-restricted public key
-  // (GOOGLE_MAPS_PUBLIC_KEY) meant for the Maps JavaScript SDK. If it is not set,
-  // the map UI shows its "not configured" state while server-side features
-  // (place-details, photo proxy, nearby, geocode) keep working via the secret key.
-  const publicKey = process.env["GOOGLE_MAPS_PUBLIC_KEY"] ?? process.env["GOOGLE_MAPS_BROWSER_KEY"] ?? "";
+  // SECURITY: only ever expose a browser-restricted Maps JavaScript SDK key.
+  // GOOGLE_API_KEY is a server-side secret (Places/Geocoding/etc.) and must NEVER
+  // be sent to the browser — it may be authorized for far more than Maps JS.
+  // Configure a separate referrer-restricted key (GOOGLE_MAPS_PUBLIC_KEY or
+  // GOOGLE_MAPS_BROWSER_KEY) for the Maps JS SDK. If neither is set the browser
+  // shows a "not configured" placeholder; server-side endpoints keep working via
+  // the secret key, which stays on the server.
+  const publicKey =
+    process.env["GOOGLE_MAPS_PUBLIC_KEY"] ??
+    process.env["GOOGLE_MAPS_BROWSER_KEY"] ??
+    "";
   res.json({
     configured: !!publicKey,
     serverConfigured: isMapsConfigured(),

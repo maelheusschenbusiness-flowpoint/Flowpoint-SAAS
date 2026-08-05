@@ -1877,29 +1877,75 @@ function saveMissions() {
   // Pas de localStorage pour les données métier en production.
 }
 // ── Monitor preset apply (data-attr pattern — avoids JSON.stringify in onclick) ──
-window._applyMonitorPreset = async function(btn) {
+window._applyMonitorPreset = function(btn) {
   var pname = btn.dataset.pname || '';
   var pchecks = (btn.dataset.pchecks || '').split(',').filter(Boolean);
-  btn.disabled = true; btn.textContent = 'Application\u2026';
-  var created = 0;
-  for (var ci = 0; ci < pchecks.length; ci++) {
-    var ck = pchecks[ci];
-    var mons = STATE.monitors || [];
-    var baseUrl = mons.length > 0 ? mons[0].url : 'https://monsite.fr';
-    var monName = pname + ' \u2014 ' + ck;
-    var dup = mons.find(function(m){ return m.name === monName; });
-    if (dup) continue;
-    try {
-      var r = await apiAction('POST', '/api/monitors', { url: baseUrl, name: monName, alertEmail: (STATE.me && STATE.me.email) || '' });
-      STATE.monitors.push(r || { id: 'm' + Date.now() + ci, name: monName, url: baseUrl, status: 'up', uptime: 100, latency: 0, lastCheck: '\u00c0 l\u2019instant' });
-      created++;
-    } catch(e) {}
-  }
-  if (created > 0) {
-    showToast('success', 'Preset \u00ab' + pname + '\u00bb appliqu\u00e9 \u2014 ' + created + ' monitor(s) cr\u00e9\u00e9(s). Visibles dans la liste Monitors.');
-    setTimeout(function() { navigate('monitors'); }, 800);
-  } else { showToast('info', 'Preset \u00ab' + pname + '\u00bb \u2014 tous les monitors de ce preset sont d\u00e9j\u00e0 configur\u00e9s.'); }
-  btn.textContent = 'Appliqu\u00e9 \u2713'; btn.disabled = false;
+  var mons = STATE.monitors || [];
+  // Ask for URL before applying the preset so every created monitor has a real target.
+  var defaultUrl = mons.length > 0 ? mons[0].url : '';
+  openFloatPanel('Appliquer le preset \u00ab' + pname + '\u00bb',
+    '<div style="padding:4px">' +
+    '<div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:14px">Ce preset va cr\u00e9er <strong>' + pchecks.length + ' monitor(s)</strong> : ' + pchecks.join(', ') + '.</div>' +
+    '<div class="fp-form-group"><label class="fp-form-label">URL du site \u00e0 surveiller</label>' +
+    '<input class="fp-input" id="preset-url-input" placeholder="https://monsite.fr" value="' + escHtml(defaultUrl) + '"/></div>' +
+    '<div class="fp-form-group"><label class="fp-form-label">Fr\u00e9quence de v\u00e9rification</label>' +
+    '<select class="fp-select" id="preset-freq-select" style="width:100%">' +
+    '<option value="Toutes les 5 min" selected>Toutes les 5 min</option>' +
+    '<option value="Toutes les 15 min">Toutes les 15 min</option>' +
+    '<option value="Toutes les heures">Toutes les heures</option>' +
+    '</select></div>' +
+    '<button class="fp-btn fp-btn-primary" id="preset-apply-btn" style="width:100%">Cr\u00e9er les monitors</button>' +
+    '</div>'
+  );
+  setTimeout(function() {
+    var applyBtn = document.getElementById('preset-apply-btn');
+    if (!applyBtn) return;
+    applyBtn.addEventListener('click', async function() {
+      var url = (document.getElementById('preset-url-input') && document.getElementById('preset-url-input').value.trim()) || '';
+      if (!url) { showToast('warning', 'Entrez l\u2019URL du site \u00e0 surveiller'); return; }
+      var freq = (document.getElementById('preset-freq-select') && document.getElementById('preset-freq-select').value) || 'Toutes les 5 min';
+      applyBtn.disabled = true; applyBtn.textContent = 'Cr\u00e9ation\u2026';
+      if (!STATE.monitors) STATE.monitors = [];
+      var created = 0, duplicates = 0, errors = 0;
+      // The API enforces one monitor per URL per org. When a preset lists
+      // multiple check types for the same URL, only the first succeeds; the rest
+      // return 409. Each outcome is surfaced explicitly — no silent swallow.
+      for (var ci = 0; ci < pchecks.length; ci++) {
+        var ck = pchecks[ci];
+        // Create monitors with distinct names per check type.
+        // If all checks share one URL, only the first POST succeeds (201);
+        // subsequent ones get 409 "already monitored" which we surface.
+        var monName = pname + ' \u2014 ' + ck;
+        var already = STATE.monitors.find(function(m){ return m.name === monName; });
+        if (already) { duplicates++; continue; }
+        try {
+          var r = await apiAction('POST', '/api/monitors', { url: url, name: monName, alertEmail: (STATE.me && STATE.me.email) || '', frequency: freq });
+          STATE.monitors.push(r || { id: 'm' + Date.now() + ci, name: monName, url: url, status: 'pending', uptime: 100, latency: null, lastCheck: null, frequency: freq });
+          created++;
+        } catch(e) {
+          var eStatus = e && (e.status || (e.message && e.message.match(/409/) ? 409 : 0));
+          if (eStatus === 409) {
+            // URL already monitored for this org — this check type could not get
+            // its own monitor row. Reported to user, not silently dropped.
+            duplicates++;
+            console.info('[FP-preset] ' + ck + ' : URL already monitored (409) — check type shares existing monitor');
+          } else {
+            errors++;
+            console.warn('[FP-preset] ' + ck + ' creation failed:', e && e.message);
+          }
+        }
+      }
+      closeFloatPanel();
+      var parts = [];
+      if (created)    parts.push(created    + ' cr\u00e9\u00e9' + (created > 1 ? 's' : ''));
+      if (duplicates) parts.push(duplicates + ' d\u00e9j\u00e0 configur\u00e9' + (duplicates > 1 ? 's' : '') + ' (URL existante)');
+      if (errors)     parts.push(errors     + ' \u00e9chec' + (errors > 1 ? 's' : ''));
+      if (parts.length) {
+        showToast(created ? 'success' : duplicates ? 'info' : 'warning', 'Preset \u00ab' + pname + '\u00bb — ' + parts.join(', ') + '.');
+        navigate('monitors');
+      }
+    });
+  }, 50);
 };
 
 // ── Maintenance window edit (uses data-wname/data-wsched already on btn) ──
@@ -1960,43 +2006,84 @@ window._fpExportCampaigns = function() {
 
 window._fpSlaViewPage = function() {
   var u = (STATE.settings && STATE.settings.statusPageUrl) || '';
-  var title = u ? 'Modifier la page de statut' : 'Activer la page statut publique';
-  var btnLabel = u ? 'Mettre à jour' : 'Activer la page statut';
-  openFloatPanel(title,
+  var sp = (STATE.settings && STATE.settings.statusPage) || {};
+  var spTitle = sp.title || '';
+  var spDesc  = sp.description || '';
+  var spMonIds = sp.monitorIds || [];
+  var panelTitle = u ? 'Modifier la page de statut' : 'Configurer la page de statut';
+  var btnLabel = u ? 'Enregistrer les modifications' : 'Activer la page statut';
+  var monOptions = (STATE.monitors || []).map(function(m) {
+    var chk = spMonIds.length === 0 || spMonIds.indexOf(m.id) >= 0;
+    return '<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;cursor:pointer">' +
+      '<input type="checkbox" class="sp-mon-chk" data-mid="' + escHtml(m.id) + '" ' + (chk ? 'checked' : '') + '/>' +
+      escHtml(m.name || m.url || 'Monitor') + '</label>';
+  }).join('');
+  openFloatPanel(panelTitle,
     '<div style="padding:4px">' +
-    '<div class="fp-form-group"><label class="fp-form-label">URL de votre page de statut</label>' +
-    '<input class="fp-input" id="status-page-url-input" placeholder="https://status.monsite.fr" value="' + (u ? u.replace(/"/g,'&quot;') : '') + '"/></div>' +
-    '<p style="font-size:11px;color:var(--fp-text-muted)">Renseignez l\u2019URL o\u00f9 vos visiteurs pourront consulter le statut de vos services en temps r\u00e9el.</p>' +
-    (u ? '<div style="display:flex;gap:8px">' +
-      '<button class="fp-btn fp-btn-ghost" id="status-page-open-btn" style="flex:1">Ouvrir ↗</button>' +
-      '<button class="fp-btn fp-btn-ghost" id="status-page-clear-btn" style="flex:1;color:#ef4444">Supprimer</button>' +
-    '</div><div style="margin-top:8px">' : '') +
-    '<button class="fp-btn fp-btn-primary" id="status-page-save-btn" style="width:100%;margin-top:8px">' + btnLabel + '</button>' +
-    (u ? '</div>' : '') +
+    '<div class="fp-form-group"><label class="fp-form-label">Titre de la page statut</label>' +
+    '<input class="fp-input" id="sp-title-input" placeholder="Statut de nos services" value="' + escHtml(spTitle) + '"/></div>' +
+    '<div class="fp-form-group"><label class="fp-form-label">Description</label>' +
+    '<input class="fp-input" id="sp-desc-input" placeholder="Disponibilit\u00e9 en temps r\u00e9el" value="' + escHtml(spDesc) + '"/></div>' +
+    '<div class="fp-form-group"><label class="fp-form-label">URL publique de la page statut</label>' +
+    '<input class="fp-input" id="status-page-url-input" placeholder="https://status.monsite.fr" value="' + escHtml(u || '') + '"/></div>' +
+    (monOptions ? '<div class="fp-form-group"><label class="fp-form-label">Monitors affich\u00e9s</label>' +
+    '<div style="max-height:140px;overflow-y:auto;padding:4px;background:var(--fp-inner-card);border-radius:8px;border:1px solid var(--fp-border)">' + monOptions + '</div></div>' : '') +
+    '<button class="fp-btn fp-btn-primary" id="status-page-save-btn" style="width:100%;margin-top:10px">' + btnLabel + '</button>' +
+    (u ? '<div style="display:flex;gap:8px;margin-top:8px">' +
+      '<button class="fp-btn fp-btn-ghost fp-btn-sm" id="status-page-open-btn" style="flex:1">Ouvrir \u2197</button>' +
+      '<button class="fp-btn fp-btn-ghost fp-btn-sm" id="status-page-clear-btn" style="flex:1;color:#ef4444">Supprimer</button>' +
+    '</div>' : '') +
     '</div>'
   );
   setTimeout(function() {
     var saveBtn = document.getElementById('status-page-save-btn');
     if (!saveBtn) return;
-    saveBtn.addEventListener('click', function() {
-      var v = document.getElementById('status-page-url-input') && document.getElementById('status-page-url-input').value.trim();
-      if (!v) { showToast('warning', 'Entrez une URL'); return; }
+    saveBtn.addEventListener('click', async function() {
+      var newUrl  = (document.getElementById('status-page-url-input') && document.getElementById('status-page-url-input').value.trim()) || '';
+      var newTitle = (document.getElementById('sp-title-input') && document.getElementById('sp-title-input').value.trim()) || '';
+      var newDesc  = (document.getElementById('sp-desc-input') && document.getElementById('sp-desc-input').value.trim()) || '';
+      var checkedMids = Array.from(document.querySelectorAll('.sp-mon-chk:checked')).map(function(el) { return el.dataset.mid; });
+      // Validate BEFORE any state mutation or localStorage write.
+      if (newUrl) {
+        try {
+          var _p = new URL(newUrl);
+          if (_p.protocol !== 'https:' && _p.protocol !== 'http:') { showToast('warning', 'URL invalide — seules https:// et http:// sont accept\u00e9es'); return; }
+        } catch(_ue) { showToast('warning', 'URL invalide — format attendu\u00a0: https://status.monsite.fr'); return; }
+      }
+      // Only update state + canonical localStorage once URL is confirmed valid.
       STATE.settings = STATE.settings || {};
-      STATE.settings.statusPageUrl = v;
-      localStorage.setItem('fp-settings', JSON.stringify(STATE.settings));
-      apiAction('PATCH', '/api/me/prefs', { statusPageUrl: v }).catch(function(){});
-      showToast('success', 'Page statut configur\u00e9e');
+      STATE.settings.statusPageUrl = newUrl;
+      STATE.settings.statusPage = Object.assign({}, STATE.settings.statusPage || {}, {
+        title: newTitle, description: newDesc, monitorIds: checkedMids
+      });
+      // 'fp:settings' — canonical key used at initialization (STATE.settings load).
+      localStorage.setItem('fp:settings', JSON.stringify(STATE.settings));
+      try {
+        // statusPageUrl only at top-level — server strips it from settings{} before JSONB merge
+        // and validates protocol before accepting. settings{} contains only statusPage metadata.
+        await apiAction('PATCH', '/api/me/prefs', {
+          statusPageUrl: newUrl,
+          settings: { statusPage: STATE.settings.statusPage }
+        });
+        showToast('success', newUrl ? 'Page statut enregistr\u00e9e' : 'Configuration sauvegard\u00e9e');
+      } catch(_) { showToast('warning', 'Sauvegard\u00e9 localement — synchronisation \u00e9chou\u00e9e (r\u00e9essayez en ligne)'); }
       closeFloatPanel();
       render();
     });
     var openBtn = document.getElementById('status-page-open-btn');
-    if (openBtn && u) openBtn.addEventListener('click', function() { window.open(u, '_blank'); });
+    if (openBtn && u) openBtn.addEventListener('click', function() {
+      // Guard: only open absolute https/http URLs (prevent javascript: XSS via stored value)
+      try { var _op = new URL(u); if (_op.protocol !== 'https:' && _op.protocol !== 'http:') { showToast('warning', 'URL non sécurisée — impossible d\u2019ouvrir'); return; } } catch(_) { showToast('warning', 'URL invalide'); return; }
+      window.open(u, '_blank', 'noopener,noreferrer');
+    });
     var clearBtn = document.getElementById('status-page-clear-btn');
-    if (clearBtn) clearBtn.addEventListener('click', function() {
+    if (clearBtn) clearBtn.addEventListener('click', async function() {
       STATE.settings = STATE.settings || {};
       STATE.settings.statusPageUrl = '';
-      localStorage.setItem('fp-settings', JSON.stringify(STATE.settings));
-      apiAction('PATCH', '/api/me/prefs', { statusPageUrl: '' }).catch(function(){});
+      // Canonical key — same as used at init and in save handler.
+      localStorage.setItem('fp:settings', JSON.stringify(STATE.settings));
+      // statusPageUrl top-level only; server strips nested field before JSONB merge.
+      try { await apiAction('PATCH', '/api/me/prefs', { statusPageUrl: '' }); } catch(_) {}
       showToast('success', 'Page statut supprim\u00e9e');
       closeFloatPanel();
       render();
@@ -2473,27 +2560,51 @@ function monitorSparklineSVG(data, baseColor = '#2563EB', w = 120, h = 22) {
 }
 
 function monitorLatencyChartSVG(monitor) {
-  const N = 30;
+  // Use real daily availability data from STATE.monitorsSummary.
+  // We do NOT have per-check latency history from the API — only daily ok/total counts.
+  // We show an availability chart clearly labeled as such, never fabricated latency values.
+  // If latency history is needed in the future, add GET /monitors/:id/latency-history.
+  const summary = STATE.monitorsSummary && STATE.monitorsSummary[monitor.id];
+  const hasRealData = summary && summary.some(d => d.total > 0);
+
+  if (!hasRealData) {
+    // No real data yet — show an honest no-data state with current snapshot
+    const cur = monitor.latency;
+    return `<div style="margin-top:16px">
+      <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Historique de disponibilité</div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:90px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px dashed var(--fp-border)">
+        <span style="font-size:22px">📡</span>
+        <span style="font-size:11px;color:var(--fp-text-muted)">Données en cours de collecte…</span>
+        <span style="font-size:10px;color:var(--fp-text-faint)">L\'historique sera disponible après les premiers checks automatiques.</span>
+      </div>
+      ${cur != null ? `<div style="display:flex;gap:14px;margin-top:6px"><span style="font-size:11px;color:var(--fp-text-muted)">Latence actuelle&nbsp;<b style="color:#f1f5ff">${cur}ms</b></span></div>` : ''}
+    </div>`;
+  }
+
+  // Build an availability chart from real daily ok/total counts (30-day window).
+  const N = summary.length;
   const W = 320, H = 120, PL = 36, PR = 8, PT = 12, PB = 18;
-  const data = monitorLatencyData(monitor, N);
-  const upData = data.filter(v => v > 0);
-  const minV = upData.length ? Math.min(...upData) : 0;
-  const maxV = upData.length ? Math.max(...upData) : 0;
-  const avgV = upData.length ? Math.round(upData.reduce((a, b) => a + b, 0) / upData.length) : 0;
-  const iW = W - PL - PR;
-  const iH = H - PT - PB;
-  const range = maxV - minV || 1;
-  function xPos(i) { return PL + (i / (N - 1)) * iW; }
-  function yPos(v) { return v === 0 ? PT + iH : PT + (1 - (v - minV) / range) * iH; }
+  // Map ok/total → 0–100 availability %, using 0 to mark fully-down days
+  const data = summary.map(d => d.total === 0 ? null : Math.round(d.ok / d.total * 100));
+  const validPts = data.filter(v => v !== null);
+  const avgV = validPts.length ? Math.round(validPts.reduce((a, b) => a + b, 0) / validPts.length) : 0;
+  const minV = validPts.length ? Math.min(...validPts) : 0;
+
+  const iW = W - PL - PR, iH = H - PT - PB;
+  const range = 100 - minV || 1; // range within 0–100
+  function xPos(i) { return PL + (i / (N - 1 || 1)) * iW; }
+  function yPos(v) { return PT + (1 - (v - minV) / range) * iH; }
   const color = monitor.status === 'down' ? '#ef4444' : monitor.status === 'warn' ? '#f59e0b' : '#2563EB';
   const colorFill = monitor.status === 'down' ? 'rgba(239,68,68,0.10)' : monitor.status === 'warn' ? 'rgba(245,158,11,0.10)' : 'rgba(37,99,235,0.10)';
+
   const segments = [];
   let seg = [];
   data.forEach((v, i) => {
-    if (v === 0) { if (seg.length) { segments.push(seg); seg = []; } }
+    if (v === null) { if (seg.length) { segments.push(seg); seg = []; } }
     else { seg.push({ x: xPos(i), y: yPos(v), v, i }); }
   });
   if (seg.length) segments.push(seg);
+
   const linePaths = segments.map(s => {
     if (s.length === 1) return `<circle cx="${s[0].x.toFixed(1)}" cy="${s[0].y.toFixed(1)}" r="2.5" fill="${color}"/>`;
     const d = s.map((p, k) => `${k === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
@@ -2501,63 +2612,64 @@ function monitorLatencyChartSVG(monitor) {
     return `<path d="${area}" fill="${colorFill}" stroke="none"/>
       <path d="${d}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`;
   }).join('');
+
+  // Down markers for days with 0 availability
   const downMarkers = data.map((v, i) => {
-    if (v !== 0) return '';
+    if (v === null || v > 0) return '';
     const x = xPos(i).toFixed(1);
     return `<line x1="${x}" y1="${PT}" x2="${x}" y2="${PT+iH}" stroke="#ef4444" stroke-width="1" stroke-dasharray="3,2" opacity="0.45"/>
       <circle cx="${x}" cy="${(PT+iH).toFixed(1)}" r="3.5" fill="#ef4444" stroke="rgba(0,0,0,0.25)" stroke-width="1"/>`;
   }).join('');
-  const yAvg = upData.length ? yPos(avgV) : PT + iH;
-  const yMax = upData.length ? yPos(maxV) : PT + iH;
-  const yMin = upData.length ? yPos(minV) : PT + iH;
-  const annotations = upData.length ? `
+
+  const yAvg = validPts.length ? yPos(avgV) : PT + iH;
+  const annotations = validPts.length ? `
     <line x1="${PL}" y1="${yAvg.toFixed(1)}" x2="${W-PR}" y2="${yAvg.toFixed(1)}" stroke="#94a3b8" stroke-width="0.75" stroke-dasharray="4,3" opacity="0.5"/>
-    <text x="${(PL-3).toFixed(1)}" y="${(yMax+3.5).toFixed(1)}" font-size="7.5" fill="#64748b" text-anchor="end">${maxV}ms</text>
-    <text x="${(PL-3).toFixed(1)}" y="${(yMin-2).toFixed(1)}" font-size="7.5" fill="#64748b" text-anchor="end">${minV}ms</text>
-    <text x="${(PL-3).toFixed(1)}" y="${(yAvg+3.5).toFixed(1)}" font-size="7.5" fill="#94a3b8" text-anchor="end">${avgV}ms</text>` : '';
-  const xTicks = [0, 9, 19, 29].map(i => {
-    const lbl = i === 29 ? 'Maint.' : `-${N-1-i}`;
-    return `<text x="${xPos(i).toFixed(1)}" y="${(PT+iH+12).toFixed(1)}" font-size="7.5" fill="#475569" text-anchor="${i===0?'start':i===29?'end':'middle'}">${lbl}</text>`;
+    <text x="${(PL-3).toFixed(1)}" y="${(yPos(100)+3.5).toFixed(1)}" font-size="7.5" fill="#64748b" text-anchor="end">100%</text>
+    <text x="${(PL-3).toFixed(1)}" y="${(yAvg+3.5).toFixed(1)}" font-size="7.5" fill="#94a3b8" text-anchor="end">${avgV}%</text>` : '';
+
+  const xTicks = [0, Math.floor(N/3), Math.floor(2*N/3), N-1].map(i => {
+    const lbl = i === N-1 ? 'Auj.' : `-${N-1-i}j`;
+    return `<text x="${xPos(i).toFixed(1)}" y="${(PT+iH+12).toFixed(1)}" font-size="7.5" fill="#475569" text-anchor="${i===0?'start':i===N-1?'end':'middle'}">${lbl}</text>`;
   }).join('');
-  const latMarkers = data.map((v, i) => {
-    const x = xPos(i).toFixed(1);
-    const y = (v === 0 ? PT + iH : yPos(v)).toFixed(1);
-    const c = v === 0 ? '#ef4444' : color;
-    return `<circle class="fp-lat-marker" data-idx="${i}" cx="${x}" cy="${y}" r="3.5" fill="${c}" stroke="white" stroke-width="1.5" pointer-events="none" style="display:none"/>`;
-  }).join('');
-  const latHits = data.map((v, i) => {
-    const x = xPos(i).toFixed(1);
-    const y = (v === 0 ? PT + iH : yPos(v)).toFixed(1);
-    const c = v === 0 ? '#ef4444' : color;
-    return `<circle class="fp-lat-hit" cx="${x}" cy="${y}" r="8" fill="transparent" data-v="${v}" data-idx="${i}" data-total="${N}" data-color="${c}" style="cursor:crosshair"/>`;
-  }).join('');
+
+  const downDays = data.filter(v => v !== null && v === 0).length;
+  const N_fake = 30; // Keeping original N constant name safe
   return `<div style="margin-top:16px">
-    <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Latence — 30 derniers checks</div>
+    <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Disponibilité — ${N} derniers jours</div>
     <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible">
       <rect x="${PL}" y="${PT}" width="${iW}" height="${iH}" fill="rgba(255,255,255,0.015)" rx="2"/>
-      ${linePaths}${downMarkers}${annotations}${xTicks}${latMarkers}${latHits}
+      ${linePaths}${downMarkers}${annotations}${xTicks}
     </svg>
     <div style="display:flex;gap:14px;margin-top:6px">
-      ${upData.length ? `
-        <span style="font-size:11px;color:var(--fp-text-muted)">Min&nbsp;<b style="color:#22c55e">${minV}ms</b></span>
-        <span style="font-size:11px;color:var(--fp-text-muted)">Moy&nbsp;<b style="color:#f1f5ff">${avgV}ms</b></span>
-        <span style="font-size:11px;color:var(--fp-text-muted)">Max&nbsp;<b style="color:#f59e0b">${maxV}ms</b></span>
-      ` : `<span style="font-size:11px;color:#ef4444;font-weight:600">Aucune réponse — site hors ligne</span>`}
-      ${data.filter(v=>v===0).length ? `<span style="font-size:11px;color:#ef4444">${data.filter(v=>v===0).length} timeout${data.filter(v=>v===0).length>1?'s':''}</span>` : ''}
+      <span style="font-size:11px;color:var(--fp-text-muted)">Moy&nbsp;<b style="color:#f1f5ff">${avgV}%</b></span>
+      ${downDays ? `<span style="font-size:11px;color:#ef4444">${downDays} jour${downDays>1?'s':''} hors-ligne</span>` : '<span style="font-size:11px;color:#22c55e">Aucun incident</span>'}
+      ${monitor.latency != null ? `<span style="font-size:11px;color:var(--fp-text-muted)">Latence actuelle&nbsp;<b style="color:#f1f5ff">${monitor.latency}ms</b></span>` : ''}
     </div>
   </div>`;
 }
 
 function uptimeBars(monitor) {
-  const checks = monitorCheckHistory(monitor, 30);
-  const seed = monitor.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0) + 200;
-  return checks.map((status, i) => {
-    const isDown = status === 'down';
-    const isSlow = monitor.status === 'warn' && seededRand(seed, i) < 0.15;
-    const c = isDown ? '#ef4444' : isSlow ? '#f59e0b' : '#22c55e';
-    const opacity = isDown || isSlow ? 1 : 0.4 + seededRand(seed + 1, i) * 0.6;
-    return `<div class="fp-uptime-bar" style="background:${c};opacity:${opacity.toFixed(2)}"></div>`;
-  }).join('');
+  // Use real daily check data from STATE.monitorsSummary when available.
+  // Each entry: { date, ok, total }. Falls back to uniform bars from monitor.uptime.
+  const summary = STATE.monitorsSummary && STATE.monitorsSummary[monitor.id];
+  if (summary && summary.length > 0) {
+    return summary.map(d => {
+      let c, opacity;
+      if (!d || d.total === 0) { c = 'var(--fp-border)'; opacity = 0.5; }
+      else {
+        const ratio = d.ok / d.total;
+        if (ratio >= 0.99) { c = '#22c55e'; opacity = 0.5 + ratio * 0.5; }
+        else if (ratio >= 0.80) { c = '#f59e0b'; opacity = 1; }
+        else { c = '#ef4444'; opacity = 1; }
+      }
+      return `<div class="fp-uptime-bar" style="background:${c};opacity:${opacity.toFixed(2)}"></div>`;
+    }).join('');
+  }
+  // No summary yet — uniform bars based on real uptime stored in DB
+  const n = 30;
+  const up = monitor.uptime != null ? parseFloat(String(monitor.uptime)) : 100;
+  const c = up >= 99 ? '#22c55e' : up >= 90 ? '#f59e0b' : '#ef4444';
+  return Array.from({ length: n }, () => `<div class="fp-uptime-bar" style="background:${c};opacity:0.55"></div>`).join('');
 }
 
 // 30-day uptime sparkline bar chart using real daily aggregated data
@@ -3974,18 +4086,56 @@ window.gm_authFailure = function() {
   };
 })();
 
+// _gmapsLoadStart tracks when the current load attempt began; used to detect
+// stale loading state after navigation (SPA re-render creates a fresh #fp-gmap
+// element but _gmapsLoading might still be true from a previous attempt whose
+// callback ran against the old, already-removed element).
+let _gmapsLoadStart = 0;
+
+function _showMapsRetryFallback(reason) {
+  const el = document.getElementById('fp-gmap');
+  if (!el || el._mapInited || el._mapBlocked) return;
+  el._mapBlocked = true;
+  el.style.cssText = 'display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95))';
+  el.innerHTML = '<div style="font-size:28px">🗺️</div>' +
+    '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">' + (reason || 'Carte Google Maps indisponible') + '</div>' +
+    '<div style="font-size:11.5px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:300px;line-height:1.5" id="fp-gmap-retry-sub"></div>' +
+    '<button onclick="window._fpRetryGMaps && window._fpRetryGMaps()" style="padding:7px 18px;background:#2563EB;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">Réessayer</button>';
+  // Sub-message set separately to avoid escaping complexity
+  const sub = document.getElementById('fp-gmap-retry-sub');
+  if (sub) sub.textContent = 'Si un bloqueur de publicités est actif, désactivez-le sur cette page. Sinon, cliquez Réessayer.';
+}
+
+window._fpRetryGMaps = function() {
+  // Full reset: allow re-injection of the Maps script and re-init.
+  _gmapsLoading = false;
+  _gmapsKey = null;
+  _gmapsKeyFetchedAt = 0;
+  const el = document.getElementById('fp-gmap');
+  if (el) { el._mapInited = false; el._fpMapInitialized = false; el._mapBlocked = false; el.innerHTML = ''; }
+  initLocalSEOMap();
+};
+
 function loadGoogleMaps(cb) {
   if (typeof google !== 'undefined' && google.maps) { cb(); return; }
+  // If Maps is flagged as loading but the load started >15s ago, it is stale
+  // (script was abandoned mid-navigation or failed silently). Reset and retry.
+  if (_gmapsLoading && (Date.now() - _gmapsLoadStart) > 15000) {
+    _gmapsLoading = false;
+    console.debug('[FlowPoint] Resetting stale _gmapsLoading flag (>15s)');
+  }
   if (_gmapsLoading) {
     let _waited = 0;
     const t = setInterval(() => {
       _waited += 150;
       if (typeof google !== 'undefined' && google.maps) { clearInterval(t); cb(); return; }
-      if (_waited > 10000) { clearInterval(t); _showMapsBlockedFallback(); } // timeout after 10s
+      // After 12s waiting show retry instead of "blocked" (which is often wrong)
+      if (_waited > 12000) { clearInterval(t); _gmapsLoading = false; _showMapsRetryFallback('Carte Google Maps — délai dépassé'); }
     }, 150);
     return;
   }
   _gmapsLoading = true;
+  _gmapsLoadStart = Date.now();
   _fetchGmapsKey().then(key => {
     if (!key) {
       _gmapsLoading = false;
@@ -3996,18 +4146,18 @@ function loadGoogleMaps(cb) {
         el.style.cssText = 'display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95))';
         el.innerHTML = '<div style="font-size:28px">🗺️</div>' +
           '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">Carte non configurée</div>' +
-          '<div style="font-size:12px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:300px;line-height:1.5">La clé Google Maps n\'est pas encore configurée. Contactez votre administrateur.</div>';
+          '<div style="font-size:12px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:300px;line-height:1.5">Clé publique Google Maps manquante. Configurez <code>GOOGLE_MAPS_PUBLIC_KEY</code> ou <code>GOOGLE_MAPS_BROWSER_KEY</code> (clé restreinte par référent, distincte de la clé serveur). Contactez votre administrateur.</div>';
       }
       return;
     }
     window.__gmapsCb = () => { _gmapsLoading = false; cb(); };
     const s = document.createElement('script');
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=__gmapsCb`;
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=__gmapsCb&libraries=places`;
     s.async = true;
     // ERR_BLOCKED_BY_CLIENT: Brave Shield / uBlock blocks maps.googleapis.com
     s.onerror = () => {
       _gmapsLoading = false;
-      console.debug('[FlowPoint] Google Maps script blocked by browser extension (ERR_BLOCKED_BY_CLIENT)');
+      console.debug('[FlowPoint] Google Maps script blocked (ERR_BLOCKED_BY_CLIENT) or network error');
       _showMapsBlockedFallback();
     };
     document.head.appendChild(s);
@@ -5708,8 +5858,9 @@ function renderMonitors() {
   const avgLatency = _upMonsLat.length
     ? Math.round(_upMonsLat.reduce((s, m) => s + m.latency, 0) / _upMonsLat.length)
     : 0;
+  // avgUptime uses m.uptime (real DB rolling-30d value), not seededRand-based computeRealUptime.
   const avgUptime = (
-    monitors.reduce((s, m) => s + parseFloat(computeRealUptime(m)), 0) /
+    monitors.reduce((s, m) => s + (m.uptime != null ? parseFloat(String(m.uptime)) : 100), 0) /
     Math.max(1, monitors.length)
   ).toFixed(1);
 
@@ -5801,7 +5952,7 @@ function renderMonitors() {
           </div>
           <div class="fp-monitor-url">${escHtml(m.url)}</div>
           <div class="fp-monitor-stats">
-            <div><div class="fp-monitor-stat-label">Uptime</div><div class="fp-monitor-stat-value" style="color:#22c55e">${computeRealUptime(m)}%</div></div>
+            <div><div class="fp-monitor-stat-label">Uptime</div><div class="fp-monitor-stat-value" style="color:${m.uptime != null && parseFloat(String(m.uptime)) >= 99 ? '#22c55e' : m.uptime != null && parseFloat(String(m.uptime)) >= 90 ? '#f59e0b' : '#ef4444'}">${m.uptime != null ? parseFloat(String(m.uptime)).toFixed(1) : '—'}${m.uptime != null ? '%' : ''}</div></div>
             <div><div class="fp-monitor-stat-label">Latence</div><div class="fp-monitor-stat-value" style="color:${m.latency != null && m.latency > 500 ? '#ef4444' : m.latency != null && m.latency > 200 ? '#f59e0b' : 'var(--fp-text)'}">${m.status === 'down' ? 'DOWN' : m.latency == null ? '—' : m.latency + 'ms'}</div></div>
             <div><div class="fp-monitor-stat-label">Check</div><div style="font-size:11px;color:var(--fp-text-muted)">${fmtLastCheck(m.lastCheck) ? 'Il y a ' + fmtLastCheck(m.lastCheck) : 'Jamais vérifié'}</div></div>
           </div>
@@ -5819,8 +5970,23 @@ function renderMonitors() {
             ${uptime30SparklineSVG(m.id)}
           </div>
           <div class="fp-monitor-latency-spark">
-            ${monitorSparklineSVG(monitorLatencyData(m), m.status === 'down' ? '#ef4444' : m.status === 'warn' ? '#f59e0b' : '#2563EB', 120, 22)}
-            <span style="font-size:9px;color:var(--fp-text-faint)">latence 7 checks</span>
+            ${(() => {
+              // Show real 7-day availability from STATE.monitorsSummary.
+              // We do NOT fabricate latency; this sparkline represents availability (ok/total ratio).
+              const sum = STATE.monitorsSummary[m.id];
+              const hasData = sum && sum.some(d => d.total > 0);
+              if (hasData) {
+                // Map daily ok/total ratio to 0–100 bar heights; 0 = fully down day
+                const pts = sum.slice(-7).map(d => d.total === 0 ? 50 : Math.round(d.ok / d.total * 100));
+                const c = m.status === 'down' ? '#ef4444' : m.status === 'warn' ? '#f59e0b' : '#22c55e';
+                return monitorSparklineSVG(pts, c, 120, 22);
+              }
+              return `<div style="width:120px;height:22px;display:flex;align-items:center;justify-content:center"><span style="font-size:9px;color:var(--fp-text-faint)">données en cours…</span></div>`;
+            })()}
+            <span style="font-size:9px;color:var(--fp-text-faint)">${(() => {
+              const sum = STATE.monitorsSummary[m.id];
+              return sum && sum.some(d => d.total > 0) ? 'disponibilité 7j' : 'en attente de données';
+            })()}</span>
           </div>
           <div class="fp-hover-toolbar">
             <button class="fp-hover-toolbar-btn monitor-view"   data-id="${m.id}" title="Voir détails">${svgIcon('eye')}</button>
@@ -13795,7 +13961,7 @@ function setupNewMonitorPanel() {
         showToast('success', `Monitor créé pour ${escHtml(url)}`);
         addLocalNotification('monitor', '📡 Monitor créé', url + ' est maintenant surveillé');
         closeFloatPanel();
-        if (STATE.route === 'monitors') render();
+        navigate('monitors');
       } catch(e) { showToast('error','Erreur lors de la création du monitor'); }
     });
   }, 50);
@@ -21422,7 +21588,7 @@ function renderMonitorsPerformance() {
                 ? `<span class="fp-lat-badge fp-lat-down">▼ DOWN</span>`
                 : `<span class="fp-lat-badge" style="color:${m.latency>500?'#dc2626':m.latency>200?'#d97706':'#15803d'};border-color:${m.latency>500?'rgba(220,38,38,0.35)':m.latency>200?'rgba(217,119,6,0.35)':'rgba(21,128,61,0.30)'}">${m.latency}ms</span>`}
             </div>
-            <div class="fp-funnel-val">${computeRealUptime(m)}%</div>
+            <div class="fp-funnel-val">${m.uptime != null ? parseFloat(String(m.uptime)).toFixed(1) + '%' : '—'}</div>
           </div>
         `).join('')}
       </div>
@@ -29545,19 +29711,37 @@ function renderMonitorsSLA() {
   const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
   const monitors = STATE.monitors;
-  const globalUptime = (monitors.reduce((s, m) => s + parseFloat(computeRealUptime(m)), 0) / Math.max(1, monitors.length)).toFixed(2);
-  const slaOK = parseFloat(globalUptime) >= 99.0;
-
+  // slaData uses m.uptime (real DB value from monitor_checks rolling window)
+  // instead of the seededRand-based computeRealUptime (fabricated).
   const slaData = monitors.map(m => {
-    const up = parseFloat(computeRealUptime(m));
+    const up = m.uptime != null ? Math.min(100, parseFloat(String(m.uptime))) : 100;
     const ok = up >= 99.0;
+    // Real downtime derived from actual uptime measured over 30-day rolling window
     const downMin = ok ? 0 : Math.round((100 - up) / 100 * 30 * 24 * 60);
     const risk = !ok ? 'Hors SLA' : up < 99.5 ? 'À risque' : 'Conforme';
     return { m, up, ok, downMin, risk };
   });
+  const globalUptime = (slaData.reduce((s, sd) => s + sd.up, 0) / Math.max(1, slaData.length)).toFixed(2);
+  const slaOK = parseFloat(globalUptime) >= 99.0;
 
-  const months = ['Nov', 'Déc', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai'];
-  const uptimes = [97.4, 98.1, 98.8, 99.2, 99.4, 99.1, parseFloat(globalUptime)];
+  // Build monthly uptime from STATE.monitorsSummary (30 days of real daily checks).
+  // Only months with actual check data are shown — never fabricated historical values.
+  const _allDays = Object.values(STATE.monitorsSummary || {}).flat();
+  const _monthMap = {};
+  for (const d of _allDays) {
+    if (!d || !d.date) continue;
+    const mon = d.date.slice(0, 7); // YYYY-MM
+    if (!_monthMap[mon]) _monthMap[mon] = { ok: 0, total: 0 };
+    _monthMap[mon].ok += (d.ok || 0);
+    _monthMap[mon].total += (d.total || 0);
+  }
+  const _realMonths = Object.keys(_monthMap).sort().filter(k => _monthMap[k].total > 0);
+  const months = _realMonths.length > 0
+    ? _realMonths.map(k => { const [y, mo] = k.split('-'); return new Date(+y, +mo - 1).toLocaleString('fr-FR', { month: 'short' }); })
+    : [CUR_MONTH];
+  const uptimes = _realMonths.length > 0
+    ? _realMonths.map(k => _monthMap[k].total > 0 ? Math.round(_monthMap[k].ok / _monthMap[k].total * 1000) / 10 : 100)
+    : [parseFloat(globalUptime)];
 
   return `
     <div class="fp-section-header">
@@ -29596,7 +29780,7 @@ function renderMonitorsSLA() {
     <div class="fp-grid-2 fp-mb-16">
       <!-- Uptime chart -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">📊 Uptime historique — 7 mois</div>
+        <div class="fp-card-title" style="margin-bottom:14px">📊 Uptime historique${months.length > 1 ? ' — ' + months.length + ' mois' : months[0] === CUR_MONTH ? ' — ' + CUR_MONTH : ' — données réelles'}</div>
         <div style="display:flex;align-items:flex-end;gap:8px;height:90px;margin-bottom:8px">
           ${uptimes.map((v, i) => `
             <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%">
@@ -29695,14 +29879,19 @@ function renderMonitorsSLA() {
         <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">Impact des incidents sur vos KPI business</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${(() => {
-            const downMon = slaData.find(s => !s.ok);
-            const downSite = downMon ? (downMon.m.url||downMon.m.name||'').replace(/^https?:\/\//,'') : null;
-            const revLost  = downMon ? '~' + Math.round((downMon.downMin||0) * 0.08) + '€' : '—';
+            // Business Impact Engine — only real data from monitor checks.
+            // No fabricated percentages or revenue multipliers.
+            const totalDownMin = slaData.reduce((s, sd) => s + (sd.downMin || 0), 0);
+            const downMons = slaData.filter(s => !s.ok);
+            const worstDown = slaData.slice().sort((a, b) => (b.downMin||0) - (a.downMin||0))[0];
+            const worstSite = worstDown ? (worstDown.m.url||worstDown.m.name||'').replace(/^https?:\/\//,'').replace(/\/.*/,'') : null;
+            const avgLatency = monitors.length > 0 ? Math.round(monitors.reduce((s, m) => s + (Number(m.latency)||0), 0) / monitors.length) : 0;
+            const _fmtDown = min => min === 0 ? '0 min' : min < 60 ? min + ' min' : Math.floor(min/60) + 'h' + (min%60 ? ' ' + (min%60) + 'min' : '');
             return [
-              { icon: '💰', title: 'Perte revenue estimée', val: revLost,  sub: downSite ? 'Ce mois · ' + downSite : 'Aucun incident', color: downMon ? '#ef4444' : '#22c55e' },
-              { icon: '📉', title: 'Taux de rebond impact', val: downMon ? '+8%' : '—',  sub: 'Corrélé aux incidents de latence',   color: downMon ? '#f59e0b' : '#94a3b8' },
-              { icon: '🛒', title: 'Conversions perdues',   val: downMon ? '~' + Math.ceil((downMon.downMin||0)/8) : '0',   sub: 'Réservations non abouties',          color: downMon ? '#f59e0b' : '#22c55e' },
-              { icon: '⭐', title: 'Impact satisfaction',   val: downMon ? '-0.2★' : '—', sub: 'Projection note Google estimée',    color: '#94a3b8' },
+              { icon: '⏱️', title: 'Downtime total ce mois',  val: _fmtDown(totalDownMin), sub: totalDownMin > 0 ? downMons.length + ' site(s) hors SLA' : 'Aucun incident détecté', color: totalDownMin > 0 ? '#ef4444' : '#22c55e' },
+              { icon: '🌐', title: 'Site le plus impacté',    val: worstSite && worstDown && worstDown.downMin > 0 ? _fmtDown(worstDown.downMin) : '—', sub: worstSite && worstDown && worstDown.downMin > 0 ? worstSite : 'Tous les sites conformes', color: worstDown && worstDown.downMin > 0 ? '#f59e0b' : '#22c55e' },
+              { icon: '⚡', title: 'Latence moyenne',          val: avgLatency > 0 ? avgLatency + ' ms' : '—', sub: avgLatency > 500 ? 'Latence élevée — vérifier' : avgLatency > 0 ? 'Dans les seuils normaux' : 'Aucune mesure encore', color: avgLatency > 500 ? '#f59e0b' : '#22c55e' },
+              { icon: '📊', title: 'Monitors conformes',       val: slaData.filter(s => s.ok).length + '/' + monitors.length, sub: 'SLA 99% · ' + CUR_MONTH, color: slaData.every(s => s.ok) ? '#22c55e' : '#f59e0b' },
             ];
           })().map(kpi => `
             <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--fp-inner-card);border-radius:8px">
