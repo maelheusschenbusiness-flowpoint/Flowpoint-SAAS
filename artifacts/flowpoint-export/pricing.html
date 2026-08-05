@@ -1751,10 +1751,24 @@
       return;
     }
 
-    /* ── Non-subscriber without a plan → must select one first ─────────────  */
+    /* ── Non-subscriber without a plan → auto-select last plan or ask ──────  */
     if (!isSubscribed && !targetPlan) {
-      if (typeof showToast === 'function') showToast('Sélectionnez d\'abord un plan pour activer votre compte.', true);
-      return;
+      /* For canceled users coming from the dashboard (e.g. to add an add-on),
+         automatically restore their previous plan into the cart so they don't
+         hit a dead-end. They can still change the plan on the next screen.    */
+      var _prevPlan = bs && bs.plan && typeof PLAN_INFO !== 'undefined' && PLAN_INFO[bs.plan.toLowerCase()]
+        ? bs.plan.toLowerCase() : null;
+      if (_prevPlan) {
+        if (!currentCart) currentCart = { plan: null, addons: {}, _v: 1, _updatedAt: Date.now(), _orgId: _fpAuthOrgId };
+        currentCart.plan = _prevPlan;
+        currentCart._v = 1; currentCart._updatedAt = Date.now();
+        try { localStorage.setItem('fp_cart', JSON.stringify(currentCart)); } catch(e) {}
+        targetPlan = _prevPlan;
+        /* Fall through to non-subscriber-with-plan branch */
+      } else {
+        if (typeof showToast === 'function') showToast('Sélectionnez d\'abord un plan pour activer votre compte.', true);
+        return;
+      }
     }
 
     /* ── Non-subscriber with a plan (standard checkout) ── */

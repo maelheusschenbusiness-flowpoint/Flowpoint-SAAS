@@ -9018,7 +9018,8 @@ function renderBilling() {
 
         // ── Expiré (canceled / none — ancien abonné) ─────────────────────────
         if (_ss === 'canceled' || (_ss === 'none' && _bs.hadSubscription)) {
-          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">⚫ Expiré · Fonctionnalités Premium désactivées</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="window.location.href='/pricing.html'">Reprendre un abonnement</button></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.</div>${_dangerZone}</div>`;
+          const _resubPlan = (_bs.plan || (STATE.me && STATE.me.plan) || 'standard').toLowerCase();
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">⚫ Expiré · Fonctionnalités Premium désactivées</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpGoToPricing('${_resubPlan}')">Reprendre un abonnement</button></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.</div>${_dangerZone}</div>`;
         }
 
         // ── États actifs ─────────────────────────────────────────────────────
@@ -14324,14 +14325,16 @@ function normalizeRoute(route, subRoute) {
 async function fpGoToPricing(targetPlan) {
   const plan = (targetPlan || 'pro').toLowerCase();
   const currentPlan = ((STATE.billing && STATE.billing.plan) || (STATE.me && STATE.me.plan) || '').toLowerCase();
-  if (currentPlan && currentPlan === plan) {
+  const _subStatus = String(STATE.billing?.subscriptionStatus || STATE.billing?.status || STATE.me?.subscriptionStatus || '').toLowerCase();
+  const _isSubscribed = ['active','trialing','past_due'].includes(_subStatus);
+  // Only block "already on this plan" when the subscription is actually active —
+  // canceled/expired users on the same plan MUST be allowed to re-subscribe.
+  if (_isSubscribed && currentPlan && currentPlan === plan) {
     showToast('Vous êtes déjà sur le plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + '.', 'info');
     return;
   }
-  // Existing subscribers change plan from Facturation > Plans inside the dashboard —
+  // Existing active/trialing subscribers change plan via the dashboard Billing > Plans tab —
   // never bounce them out to pricing.html.
-  const _subStatus = String(STATE.billing?.subscriptionStatus || STATE.billing?.status || STATE.me?.subscriptionStatus || '').toLowerCase();
-  const _isSubscribed = ['active','trialing','past_due'].includes(_subStatus);
   if (_isSubscribed) {
     window.fpGoToBillingPlans();
     return;

@@ -691,22 +691,30 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
       }
     }
 
-    // For authenticated users (cookie session, no preRegisterToken): reuse the existing
-    // Stripe Customer from the org's billing context. This prevents duplicate customers
-    // when a subscriber enters the checkout flow to change plan or add an add-on.
+    // For authenticated users (cookie session, no preRegisterToken): resolve the Stripe
+    // Customer from the org's billing context. Uses ensureStripeCustomer to recover from
+    // deleted-customer scenarios (e.g. after an ops purge that removed the Stripe customer
+    // but left the DB record intact). This prevents "No such customer" 500 errors during
+    // checkout when the stored stripe_customer_id no longer exists in Stripe.
     if (!preRegCustomerId && !preRegisterToken) {
       const _authOrgId = (req as Request & { orgId?: string }).orgId;
       if (_authOrgId && _authOrgId !== "default") {
         try {
           const { loadBillingContext } = await import("../services/billing-context.js");
           const _authCtx = await loadBillingContext(_authOrgId);
-          if (_authCtx.stripeCustomerId) {
-            preRegCustomerId = _authCtx.stripeCustomerId;
-            logger.info({ customerId: preRegCustomerId, orgId: _authOrgId },
-              "[PublicBilling] payment-intent: reusing existing Stripe Customer for authenticated org");
+          if (_authCtx.stripeCustomerId || _authCtx.email) {
+            // Use ensureStripeCustomer instead of raw stripeCustomerId so that a deleted
+            // Stripe customer is automatically recreated rather than causing a 500.
+            const { ensureStripeCustomer: _ensureForPI } = await import("../services/ensure-stripe-customer.js");
+            const _ensuredId = await _ensureForPI(_authOrgId, _authCtx, stripeKey);
+            if (_ensuredId) {
+              preRegCustomerId = _ensuredId;
+              logger.info({ customerId: preRegCustomerId, orgId: _authOrgId, hadOldId: _authCtx.stripeCustomerId },
+                "[PublicBilling] payment-intent: ensured Stripe Customer for authenticated org");
+            }
           }
         } catch (_authCtxErr) {
-          logger.warn({ _authCtxErr }, "[PublicBilling] payment-intent: billing-context lookup failed for authenticated org (non-fatal)");
+          logger.warn({ _authCtxErr }, "[PublicBilling] payment-intent: billing-context/ensureStripeCustomer failed for authenticated org (non-fatal)");
         }
       }
     }
