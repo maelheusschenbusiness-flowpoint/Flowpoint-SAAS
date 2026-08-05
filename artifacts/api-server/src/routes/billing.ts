@@ -1140,7 +1140,8 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           limit:    5,
         });
         const _existSess = (_openSess.data ?? []).find(
-          (s) => s.metadata?.["reactivation"] === "true" && s.metadata?.["targetPlan"] === targetPlan && s.url,
+          (s: { metadata?: Record<string, string> | null; url?: string | null; id?: string }) =>
+            s.metadata?.["reactivation"] === "true" && s.metadata?.["targetPlan"] === targetPlan && s.url,
         );
         if (_existSess) {
           logger.info({ sessionId: _existSess.id, orgId, targetPlan }, "[Billing] reactivation (no-active-sub): returning existing open session");

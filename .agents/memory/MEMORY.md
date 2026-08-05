@@ -126,3 +126,5 @@
 - [Billing V5 checkout-session auth fix](billing-v5-checkout-auth.md) — public checkout-session was missing auth-user orgId/customer lookup; webhook fallback for ai_credits_only type
 - [Stripe webhook HMAC signing](stripe-webhook-hmac.md) — use raw whsec_... string directly as HMAC key (no strip, no base64 decode); whsec_ prefix is part of the key material
 - [checkout-return.html AI credits](checkout-return-ai-credits.md) — billing/verify returns checkoutType; ai_credits_only shows "tokens added" UI, redirects to dashboard.html#billing
+- [Stripe E2E cert tooling](stripe-e2e-cert-tooling.md) — tools/e2e-billing-cert.mjs; STRIPE_TEST_KEY secret; Content-Type must be application/json; secret order must match server
+- [Canceled sub 4 states](canceled-sub-4-states.md) — canceled block must query Stripe live before routing: cancel_at_period_end→fall-through, terminated+downgrade→DB-only, terminated+upgrade→reactivation checkout, orphaned→cleanup
