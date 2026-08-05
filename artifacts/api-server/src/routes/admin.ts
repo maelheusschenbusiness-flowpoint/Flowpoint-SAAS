@@ -620,6 +620,119 @@ router.get("/admin/team-schema-check", async (req: Request, res: Response): Prom
   }
 });
 
+// ── DELETE /api/admin/purge-account ──────────────────────────────────────────
+// Emergency ops endpoint — force-deletes ALL data for an account identified by
+// email when the normal DELETE /billing/account is blocked (e.g. Stripe customer
+// already deleted externally so subscriptions.list() throws resource_missing).
+// Auth: x-admin-key header required.
+router.delete("/admin/purge-account", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const { email } = req.body as { email?: string };
+  if (!email || typeof email !== "string" || !email.includes("@")) {
+    res.status(400).json({ ok: false, error: "email (string) required in body" });
+    return;
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const client = await pool.connect();
+  try {
+    // ── Resolve all org IDs for this email ────────────────────────────────────
+    // 1. Legacy: org_settings keyed by email directly
+    const legacyOrg = await client.query<{ org_id: string }>(
+      `SELECT org_id FROM org_settings WHERE lower(org_id) = $1`, [normalizedEmail]
+    );
+    // 2. New: organizations keyed by owner_email, or via users+organization_members
+    const uuidOrgs = await client.query<{ id: string }>(
+      `SELECT DISTINCT o.id::text
+       FROM organizations o
+       LEFT JOIN users u ON lower(u.email) = $1
+       LEFT JOIN organization_members om ON om.user_id = u.id
+       WHERE lower(o.owner_email) = $1
+          OR o.id::text = om.organization_id`,
+      [normalizedEmail]
+    );
+
+    const orgIds: string[] = [
+      ...legacyOrg.rows.map(r => r.org_id),
+      ...uuidOrgs.rows.map(r => r.id),
+    ].filter(Boolean);
+
+    const orgTables = [
+      "audits","audit_schedules","reports","report_exports",
+      "monitors","monitor_checks","monitor_incidents",
+      "alert_rules","alert_events","tracked_keywords","calendar_events",
+      "team_members","team_invitations","team_messages","team_files",
+      "user_sessions","google_oauth_states",
+      "automation_integrations","automation_workflows","automation_runs",
+      "automation_logs","workflow_runs","incoming_webhooks",
+      "missions","mission_history","mission_ai_logs",
+      "psi_cache","seo_forecasts","funnels","funnel_steps",
+      "ga4_accounts","gsc_keyword_data","gsc_page_data","gsc_sync_logs",
+      "google_tokens","github_connections",
+      "behavior_events","behavior_sessions",
+      "traffic_sources","traffic_losses","cro_scores","cro_experiments","revenue_leaks",
+      "local_pack_history",
+      "org_addons","org_checklist","org_monitor_quota","org_secrets",
+      "org_quota_usage","checkout_post_tokens",
+      "overview_insights_cache","overview_insights_rl",
+      "activity_log","share_tokens","growth_objectives",
+      "ai_usage_logs","ai_monthly_usage","ai_credit_purchases",
+      "ai_recommendations","onboarding_sessions","ai_workspace_profiles",
+      "ai_generated_missions","ai_setup_logs",
+    ];
+
+    // Verify which tables actually exist (avoids aborting tx on missing tables)
+    const existCheck = await client.query<{ tablename: string }>(
+      `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
+      [orgTables]
+    );
+    const existingSet = new Set(existCheck.rows.map(r => r.tablename));
+
+    await client.query("BEGIN");
+
+    const deleted: Record<string, number> = {};
+
+    for (const orgId of orgIds) {
+      for (const table of orgTables) {
+        if (!existingSet.has(table)) continue;
+        const r = await client.query(`DELETE FROM ${table} WHERE org_id = $1`, [orgId]);
+        if ((r.rowCount ?? 0) > 0) deleted[table] = (deleted[table] ?? 0) + (r.rowCount ?? 0);
+      }
+      // Cast UUID orgId for organizations table
+      await client.query(`DELETE FROM organizations WHERE id::text = $1`, [orgId]);
+      await client.query(`DELETE FROM org_settings WHERE org_id = $1`, [orgId]);
+    }
+
+    // Email-keyed tables
+    await client.query(`DELETE FROM pending_signups   WHERE lower(email) = $1`, [normalizedEmail]);
+    await client.query(`DELETE FROM magic_link_tokens WHERE lower(email) = $1`, [normalizedEmail]);
+
+    // Auth tables (users + membership)
+    await client.query(
+      `DELETE FROM organization_members
+       WHERE user_id IN (SELECT id FROM users WHERE lower(email) = $1)`,
+      [normalizedEmail]
+    );
+    const usersResult = await client.query(`DELETE FROM users WHERE lower(email) = $1`, [normalizedEmail]);
+
+    await client.query("COMMIT");
+
+    res.json({
+      ok: true,
+      email: normalizedEmail,
+      orgIdsPurged: orgIds,
+      usersDeleted: usersResult.rowCount ?? 0,
+      tableDeleted: deleted,
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
 // ── POST /api/admin/run-trial-cron — trigger trial-ending check immediately ──
 router.post("/admin/run-trial-cron", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
