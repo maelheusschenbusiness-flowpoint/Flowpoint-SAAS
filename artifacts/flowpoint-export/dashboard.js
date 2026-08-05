@@ -9183,12 +9183,21 @@ function renderBilling() {
           return;
         }
         if (r && r.reactivation && r.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
-        if (r && r.noSubscription) { fpGoToPricing(plan); return; }
+        if (r && r.noSubscription) {
+          // Server found no active Stripe subscription — navigate within dashboard to billing/plans
+          // so the user can start a fresh subscription. Never redirect to pricing.html here
+          // to avoid a race condition when STATE.billing hasn't loaded yet.
+          showToast('info', 'Abonnement introuvable — redirection vers les plans…');
+          navigate('billing');
+          setTimeout(function() { navigateSub('plans'); }, 100);
+          return;
+        }
         if (r && r.error === 'plan_already_active') { showToast('info', 'Vous êtes déjà sur ce plan.'); return; }
         showToast('error', (r && r.error) || 'Erreur lors du changement de plan.');
       } catch (e) {
         showToast('error', 'Erreur : ' + ((e && e.message) || 'changement impossible'));
-        fpGoToPricing(plan);
+        navigate('billing');
+        setTimeout(function() { navigateSub('plans'); }, 100);
       }
     };
     window.fpCancelSubscriptionModal = function() {
@@ -14533,36 +14542,19 @@ function updatePlanSwitcher() {
   </button>`;
 }
 
-// ── Global nav spinner helpers ────────────────────────────────────────────────
-let _fpNavSpinnerSafetyTimer = null;
-function _fpGetNavSpinner() {
-  let el = document.getElementById('fp-nav-spinner');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'fp-nav-spinner';
-    el.setAttribute('aria-hidden', 'true');
-    el.innerHTML = '<div class="fp-nav-spin-ring"></div>';
-    document.body.appendChild(el);
-  }
-  return el;
-}
+// ── Global nav transition helpers ─────────────────────────────────────────────
+// Replaced the unstable circular spinner with a deterministic page-content fade.
+// The thin loading bar at the top of the screen is kept for navigation feedback.
 window.fpShowNavSpinner = function() {
   try {
-    if (_fpNavSpinnerSafetyTimer) clearTimeout(_fpNavSpinnerSafetyTimer);
-    _fpGetNavSpinner().classList.add('fp-nav-spinner-visible');
-    // A renderer or a late network callback must never leave the overlay
-    // blocking the dashboard indefinitely.
-    _fpNavSpinnerSafetyTimer = setTimeout(() => window.fpHideNavSpinner(), 10000);
+    const page = document.getElementById('fp-page');
+    if (page) page.classList.add('fp-page-transitioning');
   } catch(_) {}
 };
 window.fpHideNavSpinner = function() {
   try {
-    if (_fpNavSpinnerSafetyTimer) {
-      clearTimeout(_fpNavSpinnerSafetyTimer);
-      _fpNavSpinnerSafetyTimer = null;
-    }
-    const el = document.getElementById('fp-nav-spinner');
-    if (el) el.classList.remove('fp-nav-spinner-visible');
+    const page = document.getElementById('fp-page');
+    if (page) page.classList.remove('fp-page-transitioning');
   } catch(_) {}
 };
 
@@ -38444,27 +38436,25 @@ window.FP_AI_CREDITS_API = {
 // Public alias — inline onclick="fpBuyAICredits('pack')" buttons use this
 window.fpBuyAICredits = function(pack) { return window._fpBuyAICredits(pack); };
 
-window._fpBuyAICredits = async function(pack) {
-  showToast('info', 'Redirection vers le paiement…');
-  var r;
-  try {
-    r = await apiFetch('/api/billing/checkout-ai-credits', { method: 'POST', body: JSON.stringify({ pack }) });
-  } catch(e) {
-    showToast('error', 'Erreur lors de la création du paiement : ' + ((e && e.message) || 'réessayez'));
-    return null;
-  }
-  if (!r) {
-    showToast('error', 'Erreur lors de la création du paiement');
-    return null;
-  }
-  if (r.url) {
-    // Redirect to Stripe Checkout (hosted page) — same flow as subscriptions.
-    // On success: checkout-return.html verifies session + shows "crédits ajoutés".
-    window.location.href = r.url;
-    return r;
-  }
-  showToast('error', (r.error || r.detail) || 'Erreur : URL de paiement manquante');
-  return r;
+// ── AI credit pack key mapping: API format → pricing/checkout addon key ──────
+var _fpAiCreditPackMap = {
+  'ai_credits_50k':  'aiCreditsPack50k',
+  'ai_credits_200k': 'aiCreditsPack200k',
+  'ai_credits_500k': 'aiCreditsPack500k',
+};
+
+window._fpBuyAICredits = function(pack) {
+  // Required flow: Dashboard → Pricing (AI Token Pack selected) → Stripe Checkout → Return
+  // Map API-format pack key to the addon key used by pricing.html / checkout.html
+  var addonKey = _fpAiCreditPackMap[pack] || pack;
+  var cart = { plan: null, addons: {}, fromDashboard: true };
+  cart.addons[addonKey] = 1;
+  try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
+  showToast('info', 'Ouverture de la page de paiement…');
+  // Small delay so the toast is visible before navigation
+  setTimeout(function() {
+    window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(addonKey);
+  }, 300);
 };
 
 // ── Cumulative usage tracking for client-side exports ─────────────────────────

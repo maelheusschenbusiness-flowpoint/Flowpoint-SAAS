@@ -1684,35 +1684,43 @@
      see a confusing plan-selection UI.  The plans section reappears if the user
      is NOT subscribed (they need to pick a plan first).                       */
   if (addonParam) {
-    var _aoHidePlans = function() {
-      var bs = window._fpBillingState;
-      var isSubscribed = bs && (bs.status === 'active' || bs.status === 'trialing');
-      /* If billing state not yet loaded, we optimistically show plans (safe default).
-         We re-check once billing-state resolves via window._fpBillingState setter. */
-      if (isSubscribed) {
-        var ps = document.querySelector('.fp-plans-section');
-        var hero = document.querySelector('.fp-hero');
-        if (ps) ps.style.display = 'none';
-        if (hero) {
-          var badge = hero.querySelector('.fp-hero-badge');
-          var sub   = hero.querySelector('.fp-hero-sub');
-          if (badge) badge.textContent = '➕ Ajout d\'add-on à votre abonnement';
-          if (sub)   sub.textContent   = 'Sélectionnez l\'add-on ci-dessous et cliquez sur Finaliser.';
-        }
+    /* Optimistic hide: user comes from the dashboard (fromDashboard=true) with an addon
+       URL param → they are already subscribed. Hide plans IMMEDIATELY so there is no
+       flash of the subscription plan cards. We re-show plans ONLY if billing state
+       explicitly confirms the user is NOT subscribed. */
+    var _hideHero = function() {
+      var hero = document.querySelector('.fp-hero');
+      if (hero) {
+        var badge = hero.querySelector('.fp-hero-badge');
+        var sub   = hero.querySelector('.fp-hero-sub');
+        if (badge) badge.textContent = '➕ Ajout d\'add-on à votre abonnement';
+        if (sub)   sub.textContent   = 'Sélectionnez l\'add-on ci-dessous et cliquez sur Finaliser.';
       }
     };
-    /* Run after DOM ready and again once billing-state resolves (may be async). */
+    var _applyAoState = function() {
+      var ps = document.querySelector('.fp-plans-section');
+      var bs = window._fpBillingState;
+      /* Billing state loaded and user is EXPLICITLY not subscribed → show plans */
+      if (bs && bs.status !== 'active' && bs.status !== 'trialing') {
+        if (ps) ps.style.display = '';
+        return;
+      }
+      /* fromDashboard + no billing state yet OR user is subscribed → hide plans */
+      if (ps) ps.style.display = 'none';
+      _hideHero();
+    };
+    /* Apply immediately on DOM ready */
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', function() { setTimeout(_aoHidePlans, 80); });
+      document.addEventListener('DOMContentLoaded', function() { _applyAoState(); });
     } else {
-      setTimeout(_aoHidePlans, 80);
+      _applyAoState();
     }
-    /* Re-check when billing state arrives (the billing-state IIFE stores it globally). */
+    /* Re-check when billing state arrives asynchronously */
     var _aoRetries = 0;
     var _aoInterval = setInterval(function() {
-      _aoHidePlans();
-      if (++_aoRetries >= 8) clearInterval(_aoInterval);
-    }, 400);
+      _applyAoState();
+      if (++_aoRetries >= 10) clearInterval(_aoInterval);
+    }, 300);
   }
 
   /* ── Override goToCheckout for active/trialing subscribers ────────────────────
@@ -1788,6 +1796,13 @@
 
       /* No existing subscription found server-side → use our own checkout pages */
       if (d.url || d.noSubscription) {
+        /* Subscribed users who get noSubscription (Stripe data mismatch): show error,
+           do NOT redirect to checkout.html (would fail with "Error creating checkout session"). */
+        if (d.noSubscription && isSubscribed) {
+          if (typeof showToast === 'function') showToast('Abonnement introuvable dans Stripe. Rechargez la page ou contactez le support.', true);
+          if (cartBtn) { cartBtn.disabled = false; cartBtn.textContent = 'Finaliser'; }
+          return;
+        }
         try { localStorage.setItem('fp_cart', JSON.stringify(currentCart || {})); } catch(e) {}
         window.location.href = '/checkout.html' + (targetPlan ? '?plan=' + encodeURIComponent(targetPlan) : '');
         return;

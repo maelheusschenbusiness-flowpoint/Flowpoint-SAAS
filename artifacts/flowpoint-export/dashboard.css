@@ -9218,37 +9218,16 @@ html:not([data-theme="light"]) #dfs-local-rank-widget {
 }
 
 /* ── GLOBAL CIRCULAR NAV SPINNER ── */
-#fp-nav-spinner {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  z-index: 99990;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(5, 8, 16, 0.35);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-  opacity: 0;
+/* ── Page-content fade transition (replaces unstable circular spinner) ────────
+   Applied by fpShowNavSpinner(), removed by fpHideNavSpinner() after render.
+   Deterministic: no animation loop, no timeout dependency, no flicker.        */
+#fp-page.fp-page-transitioning {
+  opacity: 0.55;
+  transition: opacity 0.12s ease;
   pointer-events: none;
-  transition: opacity 0.15s ease;
 }
-#fp-nav-spinner.fp-nav-spinner-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-#fp-nav-spinner .fp-nav-spin-ring {
-  width: 44px; height: 44px;
-  border-radius: 50%;
-  border: 3px solid rgba(37,99,235,0.18);
-  border-top-color: var(--fp-accent, #2563EB);
-  animation: fpSpin 0.9s linear infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  #fp-nav-spinner .fp-nav-spin-ring {
-    animation: none;
-    border-color: var(--fp-accent, #2563EB);
-    opacity: 0.6;
-  }
+#fp-page {
+  transition: opacity 0.12s ease;
 }
 
 /* ── WORKSPACE HEALTH RING ANIMATION ──

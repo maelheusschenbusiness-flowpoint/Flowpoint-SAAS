@@ -1124,6 +1124,53 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         });
         return;
       }
+
+      // stripeCustomerId exists but no active/trialing Stripe sub found:
+      // Treat as reactivation — create a checkout session reusing the existing customer.
+      // This handles data inconsistencies (DB shows "active" but Stripe has no active sub).
+      if (!isDowngrade) {
+        const _reactPriceId = PLAN_PRICE_IDS[targetPlan];
+        if (!_reactPriceId) {
+          res.status(400).json({ error: `Unknown plan: ${plan}` });
+          return;
+        }
+        const _reactBucket = Math.floor(Date.now() / (30 * 60 * 1000));
+        const _reactKey    = `fp-reactivation-${orgId}-${targetPlan}-${_reactBucket}`;
+        const _openSess = await stripe.checkout.sessions.list({
+          customer: billingCtx.stripeCustomerId!,
+          status:   "open",
+          limit:    5,
+        });
+        const _existSess = (_openSess.data ?? []).find(
+          (s) => s.metadata?.["reactivation"] === "true" && s.metadata?.["targetPlan"] === targetPlan && s.url,
+        );
+        if (_existSess) {
+          logger.info({ sessionId: _existSess.id, orgId, targetPlan }, "[Billing] reactivation (no-active-sub): returning existing open session");
+          res.json({ reactivation: true, checkoutUrl: _existSess.url, customerReused: true, targetPlan, idempotent: true });
+          return;
+        }
+        const _newSess = await stripe.checkout.sessions.create(
+          {
+            customer:    billingCtx.stripeCustomerId!,
+            mode:        "subscription",
+            line_items:  [{ price: _reactPriceId, quantity: 1 }],
+            success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url:  `${publicUrl}/pricing.html`,
+            metadata: {
+              plan:         targetPlan,
+              targetPlan,
+              orgId,
+              reactivation: "true",
+              userId:       String(req.userId ?? ""),
+            },
+            subscription_data: { metadata: { plan: targetPlan, orgId, reactivation: "true" } },
+          },
+          { idempotencyKey: _reactKey },
+        );
+        logger.info({ sessionId: _newSess.id, orgId, targetPlan, customerId: billingCtx.stripeCustomerId }, "[Billing] reactivation checkout (no-active-sub): session created");
+        res.json({ reactivation: true, checkoutUrl: _newSess.url, customerReused: true, targetPlan });
+        return;
+      }
     }
 
     // No existing sub:
