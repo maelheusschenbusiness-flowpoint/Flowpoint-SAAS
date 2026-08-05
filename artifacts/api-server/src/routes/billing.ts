@@ -265,14 +265,49 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
       return;
     }
 
-    const planMeta = (session.metadata?.["plan"] || "pro").toLowerCase();
+    // ── Detect checkout type from metadata ─────────────────────────────────────
+    // AI credits-only sessions must not be treated as plan subscriptions;
+    // the caller (checkout-return.html) uses checkoutType to show the right UI.
+    const sessionMeta = (session.metadata ?? {}) as Record<string, string>;
+    const checkoutType: string = sessionMeta["flowpoint_checkout_type"] ?? sessionMeta["type"] ?? "subscription";
+    const isAiCredits = checkoutType === "ai_credits_only" || checkoutType === "ai_credits";
+
+    // Credits field: parse from ai_credits metadata or credits field
+    let creditsGranted = 0;
+    if (isAiCredits) {
+      const rawCredits = sessionMeta["credits"] ?? "0";
+      creditsGranted = parseInt(rawCredits, 10) || 0;
+      if (!creditsGranted) {
+        // Try resolving from ai_credits pack key list
+        const AI_CREDITS_FROM_PACK: Record<string, number> = {
+          aiCreditsPack50k: 50000, aiCreditsPack200k: 200000, aiCreditsPack500k: 500000,
+        };
+        const packKey = (sessionMeta["ai_credits"] ?? "").split(",").find(k => k.startsWith("aiCreditsPack"));
+        if (packKey) creditsGranted = AI_CREDITS_FROM_PACK[packKey] ?? 0;
+        if (!creditsGranted) {
+          const packName = sessionMeta["pack"] ?? "";
+          creditsGranted = AI_CREDITS_FROM_PACK[packName] ?? 0;
+        }
+      }
+    }
+
     const orgIdVerify = req.orgId ?? "default";
+
+    // For AI credits: no plan update needed; webhook already credited the org.
+    // Return early with credits info so checkout-return.html can show proper confirmation.
+    if (isAiCredits) {
+      logger.info({ checkoutType, creditsGranted, sessionId, orgId: orgIdVerify }, "[Billing] AI credits session verified");
+      res.json({ ok: true, checkoutType, credits: creditsGranted });
+      return;
+    }
+
+    const planMeta = (sessionMeta["plan"] || sessionMeta["selected_plan"] || "pro").toLowerCase();
     if (["standard","pro","ultra"].includes(planMeta)) {
       store.broadcastPlanUpdate(planMeta, orgIdVerify);
     }
 
     let addonsMeta: Record<string, boolean | number> = {};
-    try { addonsMeta = JSON.parse(session.metadata?.["addons"] || "{}"); } catch {}
+    try { addonsMeta = JSON.parse(sessionMeta["addons"] || "{}"); } catch {}
 
     const activatedAddons: Record<string, unknown> = {};
     for (const key of FLAG_ADDONS) {
@@ -293,7 +328,7 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     }).catch(err => logger.error({ err }, "[Billing] Failed to persist billing state after checkout verify"));
     logger.info({ plan: planMeta, sessionId, orgId: orgIdVerify }, "[Billing] Checkout verified — plan activated");
 
-    res.json({ ok: true, plan: planMeta });
+    res.json({ ok: true, plan: planMeta, checkoutType });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to verify checkout session");
     res.status(500).json({ error: "Failed to verify checkout session" });

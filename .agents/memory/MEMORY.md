@@ -124,3 +124,5 @@
 - [Scheduled audits cron](audit-schedule-cron.md) — atomic next_run<=now claim (never equality), bigint vs timestamp dual mode, only the cron advances next_run; audits status 'error' = low-score bucket too
 - [Export branding preview](export-branding-preview.md) — --fp-surface n'existe pas (use --fp-bg-sidebar); fpOpenExportPreview module-level; pdf.ts logo fetch SSRF-hardened via validateMonitorUrl helpers
 - [Billing V5 checkout-session auth fix](billing-v5-checkout-auth.md) — public checkout-session was missing auth-user orgId/customer lookup; webhook fallback for ai_credits_only type
+- [Stripe webhook HMAC signing](stripe-webhook-hmac.md) — use raw whsec_... string directly as HMAC key (no strip, no base64 decode); whsec_ prefix is part of the key material
+- [checkout-return.html AI credits](checkout-return-ai-credits.md) — billing/verify returns checkoutType; ai_credits_only shows "tokens added" UI, redirects to dashboard.html#billing

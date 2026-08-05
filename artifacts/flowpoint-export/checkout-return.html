@@ -28,6 +28,7 @@
 </head>
 <body>
   <div class="fp-spinner" id="fp-spinner"></div>
+  <div class="fp-check" id="fp-check" style="display:none">✅</div>
   <div class="fp-title" id="fp-title">Finalisation de votre compte…</div>
   <div class="fp-sub" id="fp-sub">Merci de patienter quelques instants.</div>
 
@@ -158,6 +159,20 @@
       return;
     }
 
+    /* ── AI credits confirmation UI ──
+       Called when billing/verify reports checkoutType=ai_credits_only/ai_credits.
+       Shows a "tokens added" success screen then redirects to the billing tab.    */
+    function showAiCreditsSuccess(credits) {
+      document.getElementById('fp-spinner').style.display = 'none';
+      document.getElementById('fp-check').style.display = '';
+      var label = credits >= 500000 ? '500 000' : credits >= 200000 ? '200 000' : '50 000';
+      document.getElementById('fp-title').textContent = 'Crédits IA ajoutés !';
+      document.getElementById('fp-sub').innerHTML =
+        '<strong>' + (credits > 0 ? label : 'Vos') + ' crédits IA</strong> ont été ajoutés à votre compte.<br>' +
+        'Vous allez être redirigé vers le tableau de bord…';
+      setTimeout(function(){ window.location.href = '/dashboard.html#billing'; }, 2200);
+    }
+
     /* ── Existing user (reactivation / plan upgrade): verify via /api/billing/verify ──
        Skips checkout-complete (designed for new signups only) and goes straight to the
        verification endpoint that also persists the billing state as a webhook fallback.  */
@@ -169,6 +184,14 @@
       .then(function(r){ return r.json(); })
       .then(function(data) {
         try { localStorage.removeItem('fp_cart'); } catch(e) {}
+
+        /* ── AI credits purchase: webhook already credited the org — show confirmation ── */
+        var ct = data.checkoutType || '';
+        if (data.ok && (ct === 'ai_credits_only' || ct === 'ai_credits')) {
+          showAiCreditsSuccess(data.credits || 0);
+          return;
+        }
+
         if (data.ok) {
           /* billing/verify confirmed the subscription — go to dashboard for existing users,
              success page for new signups that fell through here.                         */
