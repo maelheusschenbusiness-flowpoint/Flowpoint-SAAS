@@ -60,9 +60,12 @@ export async function createStripeClient(key: string): Promise<StripeAlike> {
  * mode requires only an env-var flip, not code changes.
  */
 export function getStripeKey(): string {
-  if (process.env["STRIPE_TEST_MODE"] === "true" && process.env["NODE_ENV"] !== "production") {
+  // When STRIPE_TEST_MODE=true and a valid sk_test_ key is available,
+  // use it regardless of NODE_ENV. The sk_test_ prefix is the safety gate —
+  // a live key can never be substituted as a test key.
+  if (process.env["STRIPE_TEST_MODE"] === "true") {
     const testKey = process.env["STRIPE_TEST_KEY"] || process.env["STRIPE_TEST_SECRET_KEY"];
-    if (testKey) return testKey;
+    if (testKey?.startsWith("sk_test_")) return testKey;
   }
   return process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"] || "";
 }

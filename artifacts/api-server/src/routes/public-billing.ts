@@ -182,7 +182,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
   //   B (token absent)   → Authenticated or anonymous session: no customer pre-linked.
   const preRegisterToken = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken : "";
 
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
   const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
 
@@ -514,7 +514,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     postal_code: typeof _rawAddr.postal_code === "string" ? _rawAddr.postal_code.trim() : "",
     country:     typeof _rawAddr.country     === "string" ? _rawAddr.country.trim().toUpperCase() : "",
   } : null;
-  const stripeKey      = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey      = getStripeKey();
   const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
 
   if (!stripeKey) {
@@ -785,7 +785,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
 
   const _fcPreRegRaw = body?.preRegisterToken;
   const preRegisterToken = typeof _fcPreRegRaw === "string" ? _fcPreRegRaw.trim() : "";
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
 
   if (!stripeKey) {
     res.status(503).json({ error: "Payment service not configured." });

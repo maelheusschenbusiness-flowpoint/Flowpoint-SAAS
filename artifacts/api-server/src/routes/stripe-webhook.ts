@@ -9,6 +9,7 @@ import { logger } from "../lib/logger.js";
 import { getPlanForPriceId, getAddonForPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
 import { mailer } from "../services/mailer.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
+import { getStripeKey } from "../services/stripe-factory.js";
 import { loadOrgSettings } from "../services/org-settings.js";
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
@@ -233,7 +234,7 @@ async function persistAddonsFromSubscription(
         return;
       }
 
-      const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+      const stripeKey = getStripeKey();
       if (!stripeKey) {
         logger.warn({ orgId }, "[Webhook] reconcile: no Stripe API key — skipping deactivation (fail-open)");
         return;
@@ -542,23 +543,39 @@ export async function activateNewSignup(opts: {
 }
 
 async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
 
   let event: { type: string; data: { object: Record<string, unknown> } };
 
   if (stripeKey && webhookSecret) {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const sig = req.headers["stripe-signature"] as string;
+    const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+    if (!rawBody) { res.status(400).json({ error: "Raw body required" }); return; }
+    // Try live webhook secret first. If that fails and STRIPE_TEST_WEBHOOK_SECRET
+    // is configured, try the isolated test endpoint secret.  The secret's presence
+    // is the safety gate — it is a whsec_ issued by Stripe test mode and can only
+    // validate test-mode events.  getStripeKey() ensures sk_test_ is the active key.
+    const testWebhookSecret = process.env["STRIPE_TEST_WEBHOOK_SECRET"];
     try {
-      const { default: Stripe } = await import("stripe");
-      const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-      const sig = req.headers["stripe-signature"] as string;
-      const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
-      if (!rawBody) { res.status(400).json({ error: "Raw body required" }); return; }
       event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret) as unknown as typeof event;
-    } catch (err) {
-      logger.error({ err }, "[Webhook] Signature verification failed");
-      res.status(400).json({ error: "Webhook signature verification failed" });
-      return;
+    } catch (liveErr) {
+      if (testWebhookSecret) {
+        try {
+          event = stripe.webhooks.constructEvent(rawBody, sig, testWebhookSecret) as unknown as typeof event;
+          logger.info("[Webhook] Verified with Stripe test webhook secret (isolated env)");
+        } catch {
+          logger.error({ err: liveErr }, "[Webhook] Signature verification failed (live + test secrets both rejected)");
+          res.status(400).json({ error: "Webhook signature verification failed" });
+          return;
+        }
+      } else {
+        logger.error({ err: liveErr }, "[Webhook] Signature verification failed");
+        res.status(400).json({ error: "Webhook signature verification failed" });
+        return;
+      }
     }
   } else {
     if (process.env["NODE_ENV"] === "production") {
