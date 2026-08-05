@@ -144,6 +144,15 @@ async function sendTrialStartedOnce(opts: {
 const router = Router();
 
 function parsePlanFromSubscription(subscription: Record<string, unknown>): string | null {
+  // ── P0: Check subscription-level metadata first.
+  // All FlowPoint checkout sessions and direct API calls set metadata.plan on the subscription.
+  // This is the most reliable signal and handles both test-mode and live-mode price IDs.
+  const subMeta = subscription["metadata"] as Record<string, string> | undefined;
+  if (subMeta?.["plan"] && ["standard","pro","ultra"].includes(subMeta["plan"].toLowerCase())) {
+    return subMeta["plan"].toLowerCase();
+  }
+
+  // ── Fallback: derive plan from subscription items (price ID, price metadata, nickname)
   const items = subscription.items as { data?: Array<{ price?: { id?: string; nickname?: string; metadata?: Record<string, string> } }> } | undefined;
   if (!items?.data?.length) return null;
 
@@ -166,12 +175,28 @@ function parsePlanFromSubscription(subscription: Record<string, unknown>): strin
 // Returns the addon key→value map parsed from subscription items.
 function parseAddonsFromSubscription(subscription: Record<string, unknown>): Record<string, boolean | number> {
   const addons: Record<string, boolean | number> = {};
-  const items = subscription.items as { data?: Array<{ price?: { id?: string }; quantity?: number }> } | undefined;
+  const items = subscription.items as { data?: Array<{
+    price?: { id?: string };
+    quantity?: number;
+    metadata?: Record<string, string>;
+  }> } | undefined;
   if (!items?.data?.length) return addons;
 
   for (const item of items.data) {
     if (!item.price?.id) continue;
-    const addonKey = getAddonForPriceId(item.price.id);
+
+    // Primary: match by registered price ID in ADDON_PRICE_IDS
+    let addonKey = getAddonForPriceId(item.price.id);
+
+    // Fallback: item-level metadata.addonKey — set by addon-stripe-sync.ts and E2E tests.
+    // Validates the key against known addon sets to prevent arbitrary key injection.
+    if (!addonKey && item.metadata?.["addonKey"]) {
+      const metaKey = item.metadata["addonKey"];
+      if (FLAG_ADDONS.has(metaKey) || QTY_ADDONS.has(metaKey)) {
+        addonKey = metaKey;
+      }
+    }
+
     if (!addonKey) continue;
 
     if (FLAG_ADDONS.has(addonKey) && addonKey !== "whiteLabel") {

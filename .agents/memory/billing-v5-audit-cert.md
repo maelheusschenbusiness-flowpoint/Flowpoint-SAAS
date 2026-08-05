@@ -34,3 +34,27 @@ description: Root causes and fixes from the full billing coherence audit (2026-0
 
 ## Certification results (2026-08-05)
 All 21 endpoint/invariant checks passed. Build: 0 TypeScript errors.
+
+## E2E Playwright Certification — 3-Flow Browser Run (2026-08-05)
+
+**16 PASS / 0 FAIL** across 3 real Stripe test-mode purchase flows with 15 browser screenshots.
+
+### Root causes fixed during E2E run
+
+**P0-4 — parsePlanFromSubscription ignored subscription.metadata.plan**
+- **Rule:** `parsePlanFromSubscription` must check `subscription.metadata.plan` FIRST, before iterating price items. This metadata is set by every FlowPoint checkout session and by direct API calls.
+- **Why:** In test mode, the test price IDs are different from live price IDs in `PLAN_PRICE_IDS`. Without the metadata fallback, `customer.subscription.created` receives the event (billing_events row created, stripe_subscription_id set), but plan column stays at "standard" — a silent partial update that looks like a webhook delivery success.
+- **How to apply:** Any new `parsePlan*` function must read `subscription.metadata` before price-level iteration.
+
+**P0-5 — parseAddonsFromSubscription had no item.metadata.addonKey fallback**
+- **Rule:** After price-ID lookup fails, check `item.metadata["addonKey"]` against `FLAG_ADDONS ∪ QTY_ADDONS`. Only accept keys present in those sets (never raw injection).
+- **Why:** `getAddonForPriceId(test_price_id)` returns null when `STRIPE_PRICE_ID_*` env vars are not overridden to test prices. The fallback lets the webhook activate the correct addon via item metadata, which `addon-stripe-sync.ts` already sets when creating subscription items.
+- **Correct files:** `stripe-webhook.ts` → `parseAddonsFromSubscription`.
+
+### Flow results
+| Flow | Checks | Stripe event | DB outcome |
+|------|--------|--------------|------------|
+| FLOW 1 — Standard→Pro | 3/3 PASS | customer.subscription.created | plan=pro, stripe_subscription_id set |
+| FLOW 2 — AI Credits 50K | 5/5 PASS | payment_intent.succeeded | ai_credit_purchases row, 50K credits, idempotent |
+| FLOW 3 — monitorsPack50 | 8/8 PASS | customer.subscription.updated | org_addons.monitorsPack50.active=true |
+| INTEGRITY | 1/1 PASS | — | 0 orphaned credits, 0 orphaned addons |
