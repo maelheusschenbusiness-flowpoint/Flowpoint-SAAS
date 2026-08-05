@@ -779,58 +779,56 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
   try {
     const stripe = await createStripeClient(stripeKey);
 
-    // ── Reactivation: canceled subscription with an existing Stripe customer ─────
-    // When subscriptionStatus === "canceled" but stripeCustomerId is set, the org
-    // already has billing history. Route through a new Checkout Session that reuses
-    // the existing customer — do NOT start a new-user checkout flow.
+    // ── Canceled-subscription routing: determine exact Stripe state ─────────────
     //
-    // The webhook (checkout.session.completed / customer.subscription.created) is
-    // the SOLE source of truth; no local DB state is modified here.
+    // DB subscriptionStatus === "canceled" has four real sub-states that require
+    // different actions:
+    //
+    //  A) cancel_at_period_end = true — Stripe status is still "active"; the sub
+    //     is live until the period ends. Normal sub.items upgrade/downgrade applies.
+    //
+    //  B) Trialing subscription — same as A; Stripe shows "trialing".
+    //
+    //  C) Completely terminated — no active/trialing sub in Stripe. The billing
+    //     cycle is over. Downgrade → DB-only; upgrade → reactivation checkout.
+    //
+    //  D) Orphaned customer — customer ID in DB no longer exists in Stripe. Clean
+    //     it up and send user to fresh checkout.
+    //
+    // We always query Stripe when a customer ID is stored; the DB value alone is
+    // not authoritative enough to decide between these states.
+    //
     if (billingCtx.subscriptionStatus === "canceled" && billingCtx.stripeCustomerId) {
-      const priceId = PLAN_PRICE_IDS[targetPlan];
-      if (!priceId) {
-        res.status(400).json({ error: `Unknown plan: ${plan}` });
-        return;
-      }
-
-      // Idempotency: return an existing open session if one already exists for
-      // this customer + targetPlan (handles double-click / repeated calls).
-      //
-      // Guard: if the customer no longer exists in Stripe (resource_missing), the
-      // stripeCustomerId stored in the DB is orphaned. Clean it up immediately and
-      // fall through to the noSubscription path so the frontend can start a fresh
-      // checkout. All other Stripe errors are re-thrown to the outer catch → 500.
       type OpenSession = { id: string; metadata?: Record<string, string>; url?: string | null };
-      let openSessions: { data: OpenSession[] };
+
+      // Query live Stripe state: subscriptions + open checkout sessions in parallel.
+      let canceledBlockSub: { id: string; status: string } | undefined;
+      let openSessions:     OpenSession[] = [];
+
       try {
-        openSessions = await stripe.checkout.sessions.list({
-          customer: billingCtx.stripeCustomerId,
-          status:   "open",
-          limit:    5,
-        });
+        const [activeSubs, trialingSubs, openSess] = await Promise.all([
+          stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "active",   limit: 1 }),
+          stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "trialing", limit: 1 }),
+          stripe.checkout.sessions.list({ customer: billingCtx.stripeCustomerId, status: "open", limit: 5 }),
+        ]);
+        canceledBlockSub = activeSubs.data[0] ?? trialingSubs.data[0];
+        openSessions     = (openSess.data ?? []) as OpenSession[];
       } catch (listErr: unknown) {
         const stripeCode = (listErr as { code?: string })?.code;
         if (stripeCode !== "resource_missing") throw listErr;
 
+        // State D: orphaned customer — clear it from DB and redirect to fresh checkout.
         logger.warn(
           { orgId, stripeCustomerId: billingCtx.stripeCustomerId },
-          "[Billing] reactivation: stripeCustomerId orphaned (resource_missing) — clearing and falling back to new checkout",
+          "[Billing] canceled-check: stripeCustomerId orphaned (resource_missing) — clearing",
         );
-        // persistOrgData / upsertOrgSettings skip null values in their textCols loop
-        // and would leave the stale reference in place.  Use raw SQL so NULL is
-        // written unconditionally in both tables.
         try {
           const { pool: cleanPool } = await import("@workspace/db");
-          // org_settings.stripe_customer_id has a NOT NULL constraint; the schema
-          // convention is NULLIF(stripe_customer_id, '') at read-time, so '' means absent.
           await cleanPool.query(
-            `UPDATE org_settings  SET stripe_customer_id = '' WHERE org_id = $1`,
-            [orgId],
+            `UPDATE org_settings SET stripe_customer_id = '' WHERE org_id = $1`, [orgId],
           );
-          // organizations allows NULL; ignore UUID cast failures for non-UUID orgs
           await cleanPool.query(
-            `UPDATE organizations SET stripe_customer_id = NULL WHERE id = $1`,
-            [orgId],
+            `UPDATE organizations SET stripe_customer_id = NULL WHERE id = $1`, [orgId],
           ).catch(() => {});
         } catch (cleanErr: unknown) {
           logger.error({ cleanErr, orgId }, "[Billing] failed to clear orphaned stripeCustomerId");
@@ -838,75 +836,75 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         res.json({ noSubscription: true, redirectTo: "/checkout.html", plan });
         return;
       }
-      const existingSession = (openSessions.data ?? []).find(
-        (s) =>
-          s.metadata?.["reactivation"] === "true" &&
-          s.metadata?.["targetPlan"]   === targetPlan &&
-          s.url,
-      );
-      if (existingSession) {
+
+      if (canceledBlockSub) {
+        // State A/B: live subscription exists (e.g. cancel_at_period_end = true).
+        // Fall through to the stripeCustomerId block below — it will pick up this
+        // sub from a fresh Stripe call and apply the correct upgrade/downgrade logic.
+        // (One extra subscriptions.list call is an acceptable cost for correctness.)
         logger.info(
-          { sessionId: existingSession.id, orgId, targetPlan },
-          "[Billing] reactivation: returning existing open session (idempotent)",
+          { subId: canceledBlockSub.id, subStatus: canceledBlockSub.status, orgId },
+          "[Billing] canceled-check: live sub found (cancel_at_period_end?) — routing through normal upgrade path",
         );
-        res.json({
-          reactivation:   true,
-          checkoutUrl:    existingSession.url,
-          customerReused: true,
-          targetPlan,
-          idempotent:     true,
-        });
+        // No return — fall through
+      } else if (isDowngrade) {
+        // State C + downgrade: no live billing cycle to honour → DB-only plan update.
+        try {
+          await persistOrgData(orgId, { plan });
+        } catch (persistErr) {
+          logger.error({ persistErr, orgId, plan, currentPlan }, "[Billing] canceled-sub downgrade: persistOrgData failed");
+          res.status(500).json({ error: "Échec de la mise à jour du plan — veuillez réessayer." });
+          return;
+        }
+        logger.info({ plan, orgId, currentPlan }, "[Billing] canceled-sub downgrade — plan updated in DB immediately");
+        res.json({ ok: true, plan, downgrade: true, effective: "now", noSubDowngrade: true });
         return;
-      }
+      } else {
+        // State C + upgrade: reactivation checkout — reuse the existing Stripe customer.
+        // The webhook (checkout.session.completed) is the sole source of truth; no DB
+        // mutation happens here.
+        const priceId = PLAN_PRICE_IDS[targetPlan];
+        if (!priceId) {
+          res.status(400).json({ error: `Unknown plan: ${plan}` });
+          return;
+        }
 
-      // Create a new Checkout Session, reusing the existing Stripe customer.
-      // metadata.plan is consumed by the checkout.session.completed webhook to
-      // update the DB — no direct persistOrgData() call here.
-      //
-      // idempotencyKey: 30-minute bucket prevents duplicate sessions on concurrent
-      // requests while still allowing a fresh session after the window expires.
-      // The bucket is passed as the Stripe SDK second-argument idempotencyKey, which
-      // is enforced server-side by Stripe — the pre-flight .list() check above handles
-      // the common case; this closes the remaining race window atomically.
-      const idempotencyBucket = Math.floor(Date.now() / (30 * 60 * 1000));
-      const idempotencyKey    = `fp-reactivation-${orgId}-${targetPlan}-${idempotencyBucket}`;
+        const existingSession = openSessions.find(
+          (s) =>
+            s.metadata?.["reactivation"] === "true" &&
+            s.metadata?.["targetPlan"]   === targetPlan &&
+            s.url,
+        );
+        if (existingSession) {
+          logger.info({ sessionId: existingSession.id, orgId, targetPlan }, "[Billing] reactivation: returning existing open session (idempotent)");
+          res.json({ reactivation: true, checkoutUrl: existingSession.url, customerReused: true, targetPlan, idempotent: true });
+          return;
+        }
 
-      const session = await stripe.checkout.sessions.create(
-        {
-          customer:    billingCtx.stripeCustomerId,
-          mode:        "subscription",
-          line_items:  [{ price: priceId, quantity: 1 }],
-          success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url:  `${publicUrl}/pricing.html`,
-          metadata: {
-            plan:         targetPlan,   // consumed by checkout.session.completed webhook
-            targetPlan,                 // for idempotency lookup on subsequent calls
-            orgId,
-            reactivation: "true",
-            userId:       String(req.userId ?? ""),
-          },
-          subscription_data: {
+        const idempotencyBucket = Math.floor(Date.now() / (30 * 60 * 1000));
+        const idempotencyKey    = `fp-reactivation-${orgId}-${targetPlan}-${idempotencyBucket}`;
+        const session = await stripe.checkout.sessions.create(
+          {
+            customer:    billingCtx.stripeCustomerId,
+            mode:        "subscription",
+            line_items:  [{ price: priceId, quantity: 1 }],
+            success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url:  `${publicUrl}/pricing.html`,
             metadata: {
               plan:         targetPlan,
+              targetPlan,
               orgId,
               reactivation: "true",
+              userId:       String(req.userId ?? ""),
             },
+            subscription_data: { metadata: { plan: targetPlan, orgId, reactivation: "true" } },
           },
-        },
-        { idempotencyKey },
-      );
-
-      logger.info(
-        { sessionId: session.id, orgId, targetPlan, customerId: billingCtx.stripeCustomerId },
-        "[Billing] reactivation checkout session created",
-      );
-      res.json({
-        reactivation:   true,
-        checkoutUrl:    session.url,
-        customerReused: true,
-        targetPlan,
-      });
-      return;
+          { idempotencyKey },
+        );
+        logger.info({ sessionId: session.id, orgId, targetPlan, customerId: billingCtx.stripeCustomerId }, "[Billing] reactivation checkout session created");
+        res.json({ reactivation: true, checkoutUrl: session.url, customerReused: true, targetPlan });
+        return;
+      }
     }
 
     // ── Try to update existing subscription first (active OR trialing) ──────────
