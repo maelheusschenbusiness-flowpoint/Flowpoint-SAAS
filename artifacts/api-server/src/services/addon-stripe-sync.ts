@@ -8,7 +8,7 @@
  */
 import { ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 import { loadBillingContext } from "./billing-context.js";
-import { createStripeClient } from "./stripe-factory.js";
+import { createStripeClient, getStripeKey } from "./stripe-factory.js";
 import { logger } from "../lib/logger.js";
 
 /* PLAN_INCLUDED_ADDONS imported from plans.ts — single source of truth */
@@ -30,7 +30,9 @@ export async function syncAddonWithStripe(
   addonKey: string,
   action: "activate" | "deactivate"
 ): Promise<AddonSyncResult> {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  // Use getStripeKey() so STRIPE_TEST_MODE=true is honoured (test/live isolation).
+  // Never bypass getStripeKey() with raw env-var access — the test safety gate is in stripe-factory.ts.
+  const stripeKey = getStripeKey();
   if (!stripeKey) return { synced: false, reason: "no_stripe_key" };
   if (ONE_TIME_ADDONS.has(addonKey)) return { synced: false, reason: "one_time_addon" };
 

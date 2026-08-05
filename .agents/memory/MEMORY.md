@@ -130,3 +130,4 @@
 - [Checkout deleted-Stripe-customer fix](checkout-deleted-stripe-customer.md) — payment-intent endpoint must call ensureStripeCustomer, not use raw stripeCustomerId; fpGoToPricing guard blocks canceled-user re-subscription
 - [Stripe test-mode cert pattern](stripe-test-mode-pattern.md) — getStripeKey() uses sk_test_ prefix guard (NOT NODE_ENV); webhook fallback same; monitorsPack10 missing from ADDON_DEFINITIONS was root cause of addon failure
 - [Canceled sub 4 states](canceled-sub-4-states.md) — canceled block must query Stripe live before routing: cancel_at_period_end→fall-through, terminated+downgrade→DB-only, terminated+upgrade→reactivation checkout, orphaned→cleanup
+- [Billing V5 audit cert — P0/P1 fixes](billing-v5-audit-cert.md) — monitorsPack10 ghost in 6 frontend files; addon-stripe-sync raw env bypass; legacy duplicate webhook in billing.ts; ADDON_CATALOG price drift

@@ -9045,7 +9045,7 @@ function renderBilling() {
     const allAddons = [
       // ── Monitoring ──
       { cat:'Monitoring', name:'+10 Monitors',             price:'9€/mois',  icon:'📡', color:'#f59e0b', active:false, tag:'Populaire',      roi:'99.9% uptime garanti',           includedFrom:null,    desc:'Surveillez 10 sites supplémentaires en temps réel avec alertes SMS/email instantanées.', features:['10 monitors additionnels activés immédiatement','Alertes SMS + email en moins d\'1 min','Rapports de disponibilité hebdomadaires','Intégration Slack & Discord incluse','Historique uptime 30 jours'] },
-      { cat:'Monitoring', name:'+50 Monitors',             price:'29€/mois', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50),  tag:'Best value',      roi:'50 sites couverts',               includedFrom:null,    desc:'Pack monitoring massif pour agences. Alertes avancées, SLA, et rapport disponibilité.', features:['50 monitors simultanés','Alertes SMS prioritaires < 30 sec','Tableau de bord SLA automatique','Rapport PDF disponibilité mensuel','Escalade automatique par équipe'] },
+      { cat:'Monitoring', name:'+50 Monitors',             price:'19€/mois', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50),  tag:'Best value',      roi:'50 sites couverts',               includedFrom:null,    desc:'Pack monitoring massif pour agences. Alertes avancées, SLA, et rapport disponibilité.', features:['50 monitors simultanés','Alertes SMS prioritaires < 30 sec','Tableau de bord SLA automatique','Rapport PDF disponibilité mensuel','Escalade automatique par équipe'] },
       { cat:'Monitoring', name:'Global Monitoring',        price:'49€/mois', icon:'🌍', color:'#f59e0b', active:false, tag:'Ultra',      roi:'Monitoring 15 régions',           includedFrom:null,    desc:'Surveillez depuis 15 régions mondiales. Latence, CDN, et géo-disponibilité.', features:['15 régions de monitoring (EU, US, APAC…)','Latence par région en temps réel','Détection CDN et cache edge','Alertes géo-localisées','Rapport géo-disponibilité PDF'] },
       { cat:'Monitoring', name:'SLA Monitoring Avancé',    price:'19€/mois', icon:'🛡️', color:'#f59e0b', active:false, tag:'Pro',             roi:'SLA 99.9% garanti',               includedFrom:null,    desc:'Rapports SLA automatiques, incidents, et analytics disponibilité avancés.', features:['SLA tracking automatique par client','Rapport incidents horodaté','Score disponibilité mensuel','Alertes seuils SLA personnalisables','Export PDF pour vos clients'] },
       // ── SEO ──
@@ -9097,7 +9097,7 @@ function renderBilling() {
     };
 
     const _ADDON_STRIPE_KEYS = {
-      '+10 Monitors':'monitorsPack10', '+50 Monitors':'monitorsPack50',
+      '+50 Monitors':'monitorsPack50',
       'Global Monitoring':'globalMonitoring', 'SLA Monitoring Avancé':'slaMonitoring',
       'Advanced SEO Lab':'advancedSeoLab', 'Keyword Domination Engine':'keywordDomination',
       'Backlink Intelligence':'backlinkIntelligence', 'AI Content Strategist':'aiContentStrategist',

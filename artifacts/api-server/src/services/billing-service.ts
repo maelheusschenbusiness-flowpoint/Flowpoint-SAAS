@@ -41,16 +41,17 @@ export const PLAN_CONFIG = Object.fromEntries(
 );
 
 // ── Add-on catalog ────────────────────────────────────────────────────────────
+// ── Prices must match ADDON_DEFINITIONS in addons-service.ts AND the live Stripe product amounts.
+// Source of truth: plans.ts ADDON_PRICE_IDS for price IDs; ADDON_DEFINITIONS for display prices.
 export const ADDON_CATALOG = [
   { id: "aiCredits",       name: "Crédits IA",         icon: "🤖", price: 19,  unit: "+50k crédits/mois",  desc: "Crédits IA supplémentaires pour les analyses, rapports et recommandations" },
-  { id: "monitorsPack50",  name: "Extra Monitors",      icon: "📡", price: 9,   unit: "+50 monitors",        desc: "Ajoutez 50 monitors supplémentaires à votre abonnement" },
-  { id: "extraSeats",      name: "Sièges équipe",       icon: "👥", price: 12,  unit: "par siège/mois",     desc: "Ajoutez des membres d'équipe supplémentaires" },
+  { id: "monitorsPack50",  name: "Extra Monitors",      icon: "📡", price: 19,  unit: "+50 monitors",        desc: "Ajoutez 50 monitors supplémentaires à votre abonnement" },
+  { id: "extraSeats",      name: "Sièges équipe",       icon: "👥", price: 14,  unit: "par siège/mois",     desc: "Ajoutez des membres d'équipe supplémentaires" },
   { id: "exportsPack1000", name: "Exports pack",        icon: "📤", price: 14,  unit: "+1000 exports/mois", desc: "Exports CSV/Excel supplémentaires" },
   { id: "pdfPack200",      name: "PDF Reports pack",    icon: "📄", price: 12,  unit: "+200 PDF/mois",      desc: "Rapports PDF supplémentaires avec white-label" },
-  { id: "prioritySupport", name: "Support Prioritaire", icon: "⚡", price: 29,  unit: "< 2h garanti",        desc: "Support technique prioritaire avec SLA 2h" },
-  { id: "whiteLabel",      name: "White-Label",         icon: "🏷️", price: 39,  unit: "portail complet",    desc: "Portail client entièrement brandé à votre image" },
-  { id: "retention90d",    name: "Rétention 90 jours",  icon: "🗄️", price: 14,  unit: "/mois",              desc: "Conservation des données audit et analytics sur 90 jours" },
-  { id: "retention365d",   name: "Rétention 365 jours", icon: "🏛️", price: 29,  unit: "/mois",              desc: "Conservation des données sur 12 mois avec historique complet" },
+  { id: "whiteLabel",      name: "White-Label",         icon: "🏷️", price: 17,  unit: "portail complet",    desc: "Portail client entièrement brandé à votre image" },
+  { id: "retention90d",    name: "Rétention 90 jours",  icon: "🗄️", price: 9,   unit: "/mois",              desc: "Conservation des données audit et analytics sur 90 jours" },
+  { id: "retention365d",   name: "Rétention 365 jours", icon: "🏛️", price: 19,  unit: "/mois",              desc: "Conservation des données sur 12 mois avec historique complet" },
 ];
 
 // ── Usage tracking ────────────────────────────────────────────────────────────
