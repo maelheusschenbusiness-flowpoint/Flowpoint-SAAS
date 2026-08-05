@@ -2110,39 +2110,39 @@ router.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (req:
     const name       = billingCtx.firstName ?? email.split("@")[0] ?? "utilisateur";
 
     // ── Step 1: Cancel and delete Stripe resources ───────────────────────────
-    // If Stripe has an active subscription and cancellation fails → abort entirely.
-    // No local data is touched until Stripe is confirmed clean.
+    // The entire Stripe block is wrapped in a resource_missing guard:
+    // if the customer was already deleted externally (manual cleanup, test
+    // accounts, our cert purge script, etc.) subscriptions.list() will itself
+    // throw resource_missing — skip gracefully and proceed to DB cleanup.
+    // Any other Stripe error is still propagated so we never silently lose data.
     if (stripeKey && billingCtx.stripeCustomerId) {
       const stripe = await createStripeClient(stripeKey);
-
-      // Cancel every non-canceled subscription — propagate any Stripe error so
-      // we never delete local data when Stripe operations fail unexpectedly.
-      const subs = await stripe.subscriptions.list({
-        customer: billingCtx.stripeCustomerId,
-        status: "all",
-        limit: 10,
-      });
-      for (const sub of subs.data) {
-        if (sub.status !== "canceled") {
-          await stripe.subscriptions.cancel(sub.id);
-        }
-      }
-
-      // Delete Stripe customer — guard only this step for resource_missing:
-      // the customer may have already been deleted externally (test accounts,
-      // manual cleanup, duplicate calls). Anything else is a real Stripe error.
       try {
+        // Cancel every non-canceled subscription first.
+        const subs = await stripe.subscriptions.list({
+          customer: billingCtx.stripeCustomerId,
+          status: "all",
+          limit: 10,
+        });
+        for (const sub of subs.data) {
+          if (sub.status !== "canceled") {
+            await stripe.subscriptions.cancel(sub.id);
+          }
+        }
+        // Then delete the customer itself.
         await stripe.customers.del(billingCtx.stripeCustomerId);
         logger.info({ orgId, customerId: billingCtx.stripeCustomerId }, "[Billing/DeleteAccount] Stripe resources deleted");
-      } catch (delErr: unknown) {
-        const delCode = (delErr as { code?: string })?.code;
-        if (delCode === "resource_missing") {
+      } catch (stripeErr: unknown) {
+        const stripeCode = (stripeErr as { code?: string; raw?: { code?: string } })?.code
+          ?? (stripeErr as { raw?: { code?: string } })?.raw?.code;
+        if (stripeCode === "resource_missing") {
+          // Customer (and its subscriptions) already gone — safe to continue.
           logger.warn(
             { orgId, customerId: billingCtx.stripeCustomerId },
-            "[Billing/DeleteAccount] Stripe customer not found (resource_missing) — already deleted, skipping"
+            "[Billing/DeleteAccount] Stripe customer not found (resource_missing) — already deleted, continuing DB cleanup"
           );
         } else {
-          throw delErr;
+          throw stripeErr; // real Stripe error → abort, no DB changes
         }
       }
     }
@@ -2217,8 +2217,21 @@ router.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (req:
       // ── 2d. Delete the org itself (must be last — FK target) ──────────────
       await client.query(`DELETE FROM org_settings WHERE org_id = $1`, [orgId]);
 
+      // ── 2e. Auth tables — users + org membership ──────────────────────────
+      // organization_members before users (FK dependency).
+      // Look up user by email so this survives even when orgId is a UUID
+      // different from the email.
+      if (email) {
+        await client.query(
+          `DELETE FROM organization_members
+           WHERE user_id IN (SELECT id FROM users WHERE lower(email) = lower($1))`,
+          [email]
+        );
+        await client.query(`DELETE FROM users WHERE lower(email) = lower($1)`, [email]);
+      }
+
       await client.query("COMMIT");
-      logger.info({ orgId, tables: orgIdTables.length + 4 }, "[Billing/DeleteAccount] DB transaction committed");
+      logger.info({ orgId, tables: orgIdTables.length + 6 }, "[Billing/DeleteAccount] DB transaction committed");
     } catch (dbErr) {
       await client.query("ROLLBACK").catch(() => {});
       logger.error({ dbErr, orgId }, "[Billing/DeleteAccount] DB transaction rolled back");
