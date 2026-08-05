@@ -20,3 +20,17 @@ Scripts in `.local/`: `qa_scan.mjs` (per-section scan: console errors, NaN/undef
 - Key UI ids: `#mission-quick-add-btn`, `#monitor-new-btn`, mission panel `#nm2-*`, monitor panel `#nm-*`, float panel `#fp-float-panel` (close = `hidden` attribute, content stays in DOM).
 - `closeFloatPanel` only sets `hidden` — test closure via attribute, not element removal.
 - Google Maps in dev shows RefererNotAllowedMapError (key restriction, not a code bug); `window.gm_authFailure` handler + IntersectionObserver defensive shim added in dashboard.js near loadGoogleMaps.
+
+## addInitScript masks logout assertions
+
+`context.addInitScript` runs on **every** navigation, not just the first. Seeding
+the auth token unconditionally re-injects it after a post-logout/post-deletion
+redirect, so "did the app clear browser state?" always appears to fail.
+
+Scope the seeding to the page under test:
+`if (location.pathname.includes('dashboard')) { ...set token... }`
+
+Also: a background server started with `cmd &` in one ShellExec call is reaped
+before the next call. Start the server and run the suite in a single command.
+And `cd X && node ... &` backgrounds the *whole* `cd &&` chain, so the shell
+never changes directory — put `cd` on its own line.

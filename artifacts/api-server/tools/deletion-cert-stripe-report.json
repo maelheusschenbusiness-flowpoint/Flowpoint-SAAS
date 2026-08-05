@@ -1,0 +1,29 @@
+{
+  "certifiedAt": "2026-08-05T22:02:59.654Z",
+  "mode": "stripe_test_mode",
+  "orgId": "2afa8a2e-bcec-4691-add1-c9008683a65c",
+  "customerId": "cus_V1FO05K9bDEgBX",
+  "subscriptionId": "sub_1U1Cte9eqtbj6iPBSakcRHbt",
+  "invoiceId": "in_1U1Cte9eqtbj6iPB1KCOnV10",
+  "httpStatus": 200,
+  "httpBody": {
+    "ok": true,
+    "deleted": {
+      "rows": 9,
+      "tablesWithData": 6,
+      "tablesScanned": 171,
+      "usersDeleted": 1,
+      "stripeCustomer": true,
+      "subscriptionsCanceled": 1
+    }
+  },
+  "subscriptionStatusAfter": "canceled",
+  "customerDeleted": true,
+  "invoiceRetained": true,
+  "databaseClean": true,
+  "result": {
+    "pass": 10,
+    "fail": 0,
+    "notes": []
+  }
+}

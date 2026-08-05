@@ -9270,39 +9270,6 @@ function renderBilling() {
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'annulation impossible')); }
     };
 
-    window.fpDeleteAccountModal = function() {
-      if (document.getElementById('fp-delete-account-modal')) return;
-      const _m = document.createElement('div');
-      _m.id = 'fp-delete-account-modal';
-      _m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
-      _m.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:32px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);border:1px solid var(--fp-border)"><div style="font-size:36px;margin-bottom:12px;text-align:center">🗑️</div><div style="font-size:18px;font-weight:800;color:#ef4444;margin-bottom:8px;text-align:center">Supprimer définitivement mon compte</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:16px;text-align:center;line-height:1.6">Cette action est <strong style="color:#ef4444">irréversible</strong>. Les éléments suivants seront supprimés :</div><ul style="font-size:12px;color:var(--fp-text-muted);margin:0 0 16px 0;padding-left:20px;line-height:2"><li>Tous vos projets, audits et rapports</li><li>Tous vos monitors, alertes et concurrents</li><li>Toutes vos données SEO et analytics</li><li>Tous les membres de l'équipe</li><li>Toutes les clés API et intégrations</li><li>Votre abonnement Stripe (résilié immédiatement)</li></ul><div style="font-size:12px;color:var(--fp-text);margin-bottom:8px;font-weight:600">Tapez <code style="background:rgba(239,68,68,0.1);padding:2px 6px;border-radius:4px;color:#ef4444">SUPPRIMER</code> pour confirmer :</div><input id="fp-delete-confirm-input" type="text" placeholder="SUPPRIMER" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid rgba(239,68,68,0.4);border-radius:8px;background:var(--fp-bg,#0a1020);color:var(--fp-text);font-size:13px;margin-bottom:16px;outline:none"><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-delete-account-modal').remove()">Annuler</button><button class="fp-btn fp-btn-primary" id="fp-delete-confirm-btn" style="flex:1;background:#ef4444;border-color:#ef4444;opacity:0.4;cursor:not-allowed" disabled onclick="fpConfirmDeleteAccount()">Supprimer définitivement</button></div></div>`;
-      document.body.appendChild(_m);
-      const _inp = document.getElementById('fp-delete-confirm-input');
-      const _btn = document.getElementById('fp-delete-confirm-btn');
-      if (_inp && _btn) _inp.addEventListener('input', function() {
-        const ok = (_inp.value === 'SUPPRIMER');
-        _btn.disabled = !ok; _btn.style.opacity = ok ? '1' : '0.4'; _btn.style.cursor = ok ? 'pointer' : 'not-allowed';
-      });
-    };
-    window.fpConfirmDeleteAccount = function() {
-      const _inp = document.getElementById('fp-delete-confirm-input');
-      if (!_inp || _inp.value !== 'SUPPRIMER') return;
-      document.getElementById('fp-delete-account-modal')?.remove();
-      window.fpDarkConfirm('Dernière confirmation — cette action est irréversible et définitive. Continuer ?', async () => {
-        showToast('info', 'Suppression du compte en cours…');
-        try {
-          const r = await apiAction('DELETE', '/api/billing/account');
-          if (r && r.ok) {
-            showToast('success', 'Compte supprimé. Redirection…');
-            setTimeout(() => {
-              try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(e) {}
-              try { localStorage.clear(); sessionStorage.clear(); } catch(e) {}
-              window.location.href = '/';
-            }, 1800);
-          } else { showToast('error', (r && r.error) || 'Erreur lors de la suppression du compte'); }
-        } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible')); }
-      }, 'Supprimer définitivement');
-    };
     window.fpActivateAddon = async function(addonIdx) {
       const _a = window._fpAllAddons && window._fpAllAddons[addonIdx];
       if (!_a) { fpGoToPricing(); return; }
@@ -18961,6 +18928,46 @@ async function init() {
 
   // ── fpFmtDate: globally accessible date formatter wired to user's date format pref ──
   window.fpFmtDate = relDate;
+  // ── Account deletion — MUST live at IIFE global scope ──────────────────────
+  // The danger-zone buttons exist on both the Billing and Settings pages, and
+  // openDataDeletionPanel('account') delegates here. Defining these inside the
+  // billing render block made the Settings button a silent no-op whenever the
+  // billing page had not been rendered yet in that session.
+  window.fpDeleteAccountModal = function() {
+    if (document.getElementById('fp-delete-account-modal')) return;
+    const _m = document.createElement('div');
+    _m.id = 'fp-delete-account-modal';
+    _m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+    _m.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:32px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);border:1px solid var(--fp-border)"><div style="font-size:36px;margin-bottom:12px;text-align:center">🗑️</div><div style="font-size:18px;font-weight:800;color:#ef4444;margin-bottom:8px;text-align:center">Supprimer définitivement mon compte</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:16px;text-align:center;line-height:1.6">Cette action est <strong style="color:#ef4444">irréversible</strong>. Les éléments suivants seront supprimés :</div><ul style="font-size:12px;color:var(--fp-text-muted);margin:0 0 16px 0;padding-left:20px;line-height:2"><li>Tous vos projets, audits et rapports</li><li>Tous vos monitors, alertes et concurrents</li><li>Toutes vos données SEO et analytics</li><li>Tous les membres de l'équipe</li><li>Toutes les clés API et intégrations</li><li>Votre abonnement Stripe (résilié immédiatement)</li></ul><div style="font-size:12px;color:var(--fp-text);margin-bottom:8px;font-weight:600">Tapez <code style="background:rgba(239,68,68,0.1);padding:2px 6px;border-radius:4px;color:#ef4444">SUPPRIMER</code> pour confirmer :</div><input id="fp-delete-confirm-input" type="text" placeholder="SUPPRIMER" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid rgba(239,68,68,0.4);border-radius:8px;background:var(--fp-bg,#0a1020);color:var(--fp-text);font-size:13px;margin-bottom:16px;outline:none"><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-delete-account-modal').remove()">Annuler</button><button class="fp-btn fp-btn-primary" id="fp-delete-confirm-btn" style="flex:1;background:#ef4444;border-color:#ef4444;opacity:0.4;cursor:not-allowed" disabled onclick="fpConfirmDeleteAccount()">Supprimer définitivement</button></div></div>`;
+    document.body.appendChild(_m);
+    const _inp = document.getElementById('fp-delete-confirm-input');
+    const _btn = document.getElementById('fp-delete-confirm-btn');
+    if (_inp && _btn) _inp.addEventListener('input', function() {
+      const ok = (_inp.value === 'SUPPRIMER');
+      _btn.disabled = !ok; _btn.style.opacity = ok ? '1' : '0.4'; _btn.style.cursor = ok ? 'pointer' : 'not-allowed';
+    });
+  };
+  window.fpConfirmDeleteAccount = function() {
+    const _inp = document.getElementById('fp-delete-confirm-input');
+    if (!_inp || _inp.value !== 'SUPPRIMER') return;
+    document.getElementById('fp-delete-account-modal')?.remove();
+    window.fpDarkConfirm('Dernière confirmation — cette action est irréversible et définitive. Continuer ?', async () => {
+      showToast('info', 'Suppression du compte en cours…');
+      try {
+        const r = await apiAction('DELETE', '/api/billing/account');
+        if (r && r.ok) {
+          // Clear local auth state IMMEDIATELY. Deferring it to the redirect timer
+          // let an in-flight 401 bounce the tab to signin.html first, leaving the
+          // dead session token behind in sessionStorage.
+          try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(e) {}
+          try { localStorage.clear(); sessionStorage.clear(); } catch(e) {}
+          showToast('success', 'Compte supprimé. Redirection…');
+          setTimeout(() => { window.location.href = '/'; }, 1800);
+        } else { showToast('error', (r && r.error) || 'Erreur lors de la suppression du compte'); }
+      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible')); }
+    }, 'Supprimer définitivement');
+  };
+
   window.openDataDeletionPanel = function(kind) {
     const isAccount = kind === 'account';
     if (isAccount) { window.fpDeleteAccountModal && window.fpDeleteAccountModal(); return; }

@@ -1,0 +1,879 @@
+{
+  "certifiedAt": "2026-08-05T22:02:13.720Z",
+  "orgId": "9deb1f5e-7b04-495a-9de3-ac3c10dd7188",
+  "users": {
+    "owner": "cert-owner-1785967332276@deletion-cert.local",
+    "ownerId": "8cd0d300-2440-4dfd-9785-0cf569d0707f",
+    "memberId": "83d65d3a-42e1-43c9-a2e3-7613c6dd776c"
+  },
+  "endpoint": "DELETE /api/billing/account",
+  "httpStatus": 200,
+  "httpBody": {
+    "ok": true,
+    "deleted": {
+      "rows": 167,
+      "tablesWithData": 164,
+      "tablesScanned": 171,
+      "usersDeleted": 2,
+      "stripeCustomer": false,
+      "subscriptionsCanceled": 0
+    }
+  },
+  "durationMs": 327,
+  "tablesWithOwnershipColumn": 165,
+  "tablesSeeded": 160,
+  "tablesNotSeedable": [
+    {
+      "table": "team_invitations",
+      "reason": "duplicate key value violates unique constraint \"team_invitations_token_hash_unique_idx\""
+    },
+    {
+      "table": "funnel_steps",
+      "reason": "new row for relation \"funnel_steps\" violates check constraint \"funnel_steps_position_check\""
+    },
+    {
+      "table": "gbp_post_queue",
+      "reason": "insert or update on table \"gbp_post_queue\" violates foreign key constraint \"gbp_post_queue_post_id_fkey\""
+    },
+    {
+      "table": "org_member_permissions",
+      "reason": "new row for relation \"org_member_permissions\" violates check constraint \"org_member_permissions_mode_check\""
+    },
+    {
+      "table": "keyword_rankings",
+      "reason": "insert or update on table \"keyword_rankings\" violates foreign key constraint \"keyword_rankings_keyword_id_fkey"
+    }
+  ],
+  "rowsBefore": 167,
+  "rowsAfter": 0,
+  "matrix": [
+    {
+      "table": "user_sessions",
+      "rowsBefore": 2,
+      "rowsAfter": 0
+    },
+    {
+      "table": "organization_members",
+      "rowsBefore": 2,
+      "rowsAfter": 0
+    },
+    {
+      "table": "users",
+      "rowsBefore": 2,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_action_proposals",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_action_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "traffic_losses",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "activity_events_archive",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "google_product_connections",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "enterprise_sessions",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gbp_location_groups",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gbp_media_assets",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ga4_report_cache",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "keyword_clusters",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "local_visibility_scores",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "org_secrets",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "organization_auth",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "org_addons",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "team_channels",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "sso_providers",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "user_activity_days",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "pagespeed_results",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "permission_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_autopilot_grants",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "crm_sync_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "crm_integrations",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "crm_webhooks",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "crm_tokens",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "dataforseo_quota",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ga4_accounts",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ga4_properties",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_alerts",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "activity_events",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gbp_posts",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_chat_history",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "github_repos",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "github_connections",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "google_tokens",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "seo_serp_snapshots",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "growth_objectives",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "google_reviews",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "usage_events",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gsc_keyword_data",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gsc_sync_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gsc_page_data",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gsc_search_analytics",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gsc_sites",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "industry_signals",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "alert_events",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "incoming_webhooks",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "identity_mappings",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "keyword_history",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "share_tokens",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "keyword_opportunities",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "keywords",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "local_heatmaps",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "local_opportunities",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "login_audits",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "local_pack_history",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "market_opportunities",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "market_insights",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "mission_impact_scores",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "mission_priorities",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "monitors",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "monitor_incidents",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "org_auth_config",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_usage_pending_writes",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "org_checklist",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "overview_insights_rl",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "behavior_events",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "connectors",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "crm_field_mappings",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_workspace_profiles",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "cro_recommendations",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "cron_history",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "audits",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "custom_domains",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "cro_scores",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "cro_experiments",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "activity_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_generated_missions",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "notifications",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "subscription_analytics",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "pagespeed_history",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "funnels",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "automation_workflows",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "automation_templates",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "roles",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "reviews",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "auth_providers",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "reports",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_monthly_usage",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "seo_backlinks",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "seo_keywords",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "access_audits",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "report_exports",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "behavior_insights",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "google_sync_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "audit_trail",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "workflow_runs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_usage_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gbp_performance",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "bs_incidents",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "bs_monitor_stats",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "bs_monitors",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "bs_status_pages",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "geo_rankings",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "bs_heartbeats",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "onboarding_sessions",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "calendar_events",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "missions",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_credit_purchases",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "user_prefs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "team_members",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_setup_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "behavior_sessions",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "revenue_leaks",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "competitors",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "competitor_rankings",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "market_trends",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "audit_schedules",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "mission_ai_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "geo_tracking_snapshots",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_review_replies",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "google_locations",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "google_accounts",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "review_analysis",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "monitor_checks",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "alert_rules",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "google_oauth_states",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_recommendations",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "mission_history",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "seo_ai_mentions",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "sessions",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "checkout_post_tokens",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "tracked_keywords",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gbp_locations",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "seo_forecasts",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "team_files",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ranking_alerts",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "worker_failures",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "automation_integrations",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "reputation_scores",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "automation_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "billing_events",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "automation_runs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "behavior_site_tokens",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_market_reports",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "crm_sync_jobs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "mission_templates",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "competitor_movements",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "review_alerts",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "competitor_map_results",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "report_templates",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "github_analyses",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "org_permissions",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "org_roles",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "overview_insights_cache",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "seo_local_rankings",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "seo_competitors",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "seo_domain_metrics",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "team_messages",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "team_member_roles",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "organizations",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "org_settings",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    }
+  ],
+  "orphans": [],
+  "sessionRevoked": true,
+  "idempotent": true,
+  "result": {
+    "pass": 6,
+    "fail": 0,
+    "failures": []
+  }
+}
