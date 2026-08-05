@@ -167,14 +167,110 @@ async function generateTrendsFromDB(
   });
 }
 
-export async function analyzeReview(reviewText: string): Promise<{ sentiment: string; topics: string[]; urgency: string }> {
+interface AnalyzeInput {
+  id?: string;
+  author_name?: string;
+  rating?: number;
+  review_text: string;
+  language?: string;
+  location_id?: string;
+}
+
+interface AnalyzeResult {
+  sentiment: "positif" | "négatif" | "neutre";
+  score: number;
+  strengths: string[];
+  weaknesses: string[];
+  tips: string[];
+  suggestedReply: string;
+  topics: string[];
+  urgency: string;
+}
+
+export async function analyzeReview(
+  _orgId: string,
+  input: AnalyzeInput | string
+): Promise<AnalyzeResult> {
+  // Accept both legacy string form and new object form
+  const reviewText = typeof input === "string" ? input : (input.review_text ?? "");
+  const rating     = typeof input === "string" ? 3 : (input.rating ?? 3);
+  const authorName = typeof input === "string" ? "Anonyme" : (input.author_name || "Anonyme");
+  const firstName  = authorName.split(" ")[0];
+
   const lower = reviewText.toLowerCase();
-  const positive = ["excellent", "parfait", "super", "recommande", "satisfait"].some(w => lower.includes(w));
-  const negative = ["déçu", "mauvais", "problème", "lent", "cher"].some(w => lower.includes(w));
+
+  // ── Positive / Negative lexicon ──────────────────────────────
+  const positiveWords  = ["excellent", "parfait", "super", "recommande", "satisfait", "bien", "top", "merci", "génial", "formidable", "great", "perfect", "awesome", "love", "good"];
+  const negativeWords  = ["déçu", "mauvais", "problème", "lent", "cher", "nul", "horrible", "décevant", "attente", "jamais", "bad", "terrible", "worst", "awful", "disappointing"];
+
+  const posCount = positiveWords.filter(w => lower.includes(w)).length;
+  const negCount = negativeWords.filter(w => lower.includes(w)).length;
+
+  const sentimentRaw = (rating >= 4 || (posCount > negCount && rating >= 3))
+    ? "positif"
+    : (rating <= 2 || negCount > posCount)
+    ? "négatif"
+    : "neutre";
+
+  const score = Math.min(10, Math.max(1, Math.round(rating * 2)));
+
+  // ── Strengths / Weaknesses ────────────────────────────────────
+  const strengths: string[]   = [];
+  const weaknesses: string[]  = [];
+
+  if (sentimentRaw === "positif") {
+    if (lower.includes("service"))  strengths.push("Qualité de service saluée");
+    if (lower.includes("rapidité") || lower.includes("rapide") || lower.includes("vite")) strengths.push("Réactivité et rapidité appréciées");
+    if (lower.includes("résultat") || lower.includes("résultats")) strengths.push("Résultats concrets mentionnés");
+    if (lower.includes("équipe") || lower.includes("team"))  strengths.push("Travail d'équipe mis en avant");
+    if (strengths.length === 0) strengths.push("Expérience globalement positive");
+  } else if (sentimentRaw === "négatif") {
+    if (lower.includes("attente") || lower.includes("délai") || lower.includes("lent"))  weaknesses.push("Délais jugés trop longs");
+    if (lower.includes("cher") || lower.includes("prix") || lower.includes("tarif"))     weaknesses.push("Prix perçu comme élevé");
+    if (lower.includes("problème") || lower.includes("erreur") || lower.includes("bug")) weaknesses.push("Problèmes techniques signalés");
+    if (lower.includes("communication") || lower.includes("réponse"))                    weaknesses.push("Manque de communication");
+    if (weaknesses.length === 0) weaknesses.push("Insatisfaction générale exprimée");
+  } else {
+    strengths.push("Points positifs mentionnés");
+    weaknesses.push("Des axes d'amélioration sont identifiés");
+  }
+
+  // ── Tips ─────────────────────────────────────────────────────
+  const tips: string[] = [];
+  if (sentimentRaw === "positif") {
+    tips.push("Demandez à ce client de partager son avis sur Google pour renforcer votre réputation.");
+    if (!lower.includes("référence") && !lower.includes("recommande")) {
+      tips.push("Proposez-lui un programme de parrainage ou une offre fidélité.");
+    }
+  } else if (sentimentRaw === "négatif") {
+    tips.push("Répondez sous 24h pour montrer votre réactivité et limiter l'impact public.");
+    tips.push("Proposez une solution concrète ou un contact direct (email/téléphone).");
+  } else {
+    tips.push("Engagez la conversation pour mieux comprendre les attentes non satisfaites.");
+  }
+
+  // ── Suggested reply ───────────────────────────────────────────
+  let suggestedReply: string;
+  if (sentimentRaw === "positif") {
+    suggestedReply = `Merci ${firstName} pour ce retour très positif ! Votre satisfaction est notre plus belle récompense. Nous serons toujours là pour vous accompagner. À bientôt ! 🙏`;
+  } else if (sentimentRaw === "négatif") {
+    suggestedReply = `Bonjour ${firstName}, nous sommes sincèrement désolés que votre expérience n'ait pas été à la hauteur de vos attentes. Votre retour est précieux pour nous améliorer. Pouvez-vous nous contacter directement afin que nous trouvions ensemble une solution ? 🤝`;
+  } else {
+    suggestedReply = `Merci ${firstName} pour votre retour. Nous prenons note de vos remarques et mettons tout en œuvre pour améliorer continuellement notre service. N'hésitez pas à nous recontacter si vous avez des questions.`;
+  }
+
+  const topics = ["service", "qualité", "délais", "prix", "équipe", "résultats"]
+    .filter(t => lower.includes(t));
+
   return {
-    sentiment: positive && !negative ? "positive" : negative ? "negative" : "neutral",
-    topics: ["service", "qualité", "délais"].filter(t => lower.includes(t)),
-    urgency: negative ? "high" : "low",
+    sentiment: sentimentRaw,
+    score,
+    strengths,
+    weaknesses,
+    tips,
+    suggestedReply,
+    topics,
+    urgency: sentimentRaw === "négatif" ? "high" : "low",
   };
 }
 

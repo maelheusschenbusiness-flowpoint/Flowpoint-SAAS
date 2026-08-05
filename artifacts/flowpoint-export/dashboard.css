@@ -3201,7 +3201,7 @@ div[style*="overflow-x: auto"] {
 .fp-msg-channel-btn.active { background: var(--fp-accent-subtle); color: var(--fp-accent); }
 .fp-msg-list { flex: 1; max-height: 220px; overflow-y: auto; padding: 4px 0; }
 .fp-msg-item { padding: 7px 14px; gap: 9px; }
-.fp-msg-text { white-space: normal; line-height: 1.4; }
+.fp-msg-text { white-space: normal; line-height: 1.4; overflow: visible; padding: 7px 11px; }
 .fp-msg-compose {
   display: flex;
   gap: 6px;

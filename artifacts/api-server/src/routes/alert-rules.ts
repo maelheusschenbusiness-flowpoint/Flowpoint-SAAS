@@ -245,11 +245,16 @@ router.get("/alert-events/:id", async (req, res) => {
 // Must be before /alert-events GET to avoid Express consuming "resolve" as :id
 router.patch("/alert-events/:id/resolve", canWrite, async (req, res) => {
   try {
-    await db(req)(
+    const r = await db(req)(
       `UPDATE alert_events SET status='resolved', resolved_at=NOW()
        WHERE id=$1 AND org_id=$2 AND status='open'`,
       [req.params.id, org(req)],
     );
+    if ((r as { rowCount?: number }).rowCount === 0) {
+      // No open event found with that id — either already resolved, wrong id, or wrong org
+      res.status(404).json({ ok: false, error: "Alert event not found or already resolved" });
+      return;
+    }
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to resolve alert event" });

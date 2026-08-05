@@ -1223,11 +1223,44 @@ function fpOpenInvite() {
 }
 window.fpOpenInvite = fpOpenInvite;
 
+// UUID regexp — alert_events use proper UUIDs; synthetic IDs (al1, mon-0, seo-0) are not UUIDs
+const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function resolveIncident(incId) {
   STATE.resolvedIncidents = STATE.resolvedIncidents || {};
+  if (STATE.resolvedIncidents[incId]) return; // already resolved
   STATE.resolvedIncidents[incId] = true;
-  showToast('success', 'Incident marqué comme résolu ✓');
-  render();
+
+  if (_UUID_RE.test(String(incId))) {
+    // Real alert event — persist to backend, then sync STATE.alertEvents
+    apiAction('PATCH', '/api/alert-events/' + encodeURIComponent(incId) + '/resolve')
+      .then(r => {
+        if (r && r.ok) {
+          // Remove from STATE so the badge count and list update immediately
+          if (Array.isArray(STATE.alertEvents)) {
+            STATE.alertEvents = STATE.alertEvents.filter(ev => ev.id !== incId);
+          }
+          showToast('success', 'Incident résolu et enregistré ✓');
+          render();
+        } else {
+          // Revert optimistic update on failure
+          delete STATE.resolvedIncidents[incId];
+          showToast('error', r?.error || 'Impossible de résoudre l\'incident');
+          render();
+        }
+      })
+      .catch(() => {
+        delete STATE.resolvedIncidents[incId];
+        showToast('error', 'Erreur réseau — réessayez');
+        render();
+      });
+    // Optimistic re-render while API call is in flight
+    render();
+  } else {
+    // Synthetic incident (derived from monitor/audit state) — local acknowledgment only
+    showToast('success', 'Incident marqué comme traité ✓');
+    render();
+  }
 }
 
 function useReportTemplate(templateName) {
@@ -4513,8 +4546,20 @@ function bindMsgPanel(dd) {
     }).catch(() => {});
   };
 
-  send?.addEventListener('click', doSend);
-  input?.addEventListener('keydown', ke => { if (ke.key === 'Enter' && !ke.shiftKey) { ke.preventDefault(); doSend(); } });
+  let _msgSending = false;
+  const doSendGuarded = async (...args) => {
+    if (_msgSending) return;
+    _msgSending = true;
+    if (send) { send.disabled = true; send.style.opacity = '0.5'; }
+    try { await doSend(...args); } finally {
+      _msgSending = false;
+      // Button may have been re-rendered; grab fresh reference
+      const freshSend = dd.querySelector('#fp-msg-send');
+      if (freshSend) { freshSend.disabled = false; freshSend.style.opacity = ''; }
+    }
+  };
+  send?.addEventListener('click', doSendGuarded);
+  input?.addEventListener('keydown', ke => { if (ke.key === 'Enter' && !ke.shiftKey) { ke.preventDefault(); doSendGuarded(); } });
   input?.focus();
 }
 
@@ -18950,11 +18995,15 @@ async function init() {
   window._submitCreateHeatmap = async function() {
     const name = document.getElementById('hm-name')?.value.trim() || '';
     const keyword = document.getElementById('hm-keyword')?.value.trim() || '';
-    const lat = parseFloat(document.getElementById('hm-lat')?.value || '');
-    const lng = parseFloat(document.getElementById('hm-lng')?.value || '');
+    const _latRaw = document.getElementById('hm-lat')?.value.trim();
+    const _lngRaw = document.getElementById('hm-lng')?.value.trim();
+    // Lat/lng are optional: fall back to profile location, then Paris default
+    const lat = _latRaw ? parseFloat(_latRaw) : (STATE.me?.location?.latitude != null ? parseFloat(String(STATE.me.location.latitude)) : 48.8566);
+    const lng = _lngRaw ? parseFloat(_lngRaw) : (STATE.me?.location?.longitude != null ? parseFloat(String(STATE.me.location.longitude)) : 2.3522);
     const radius = parseFloat(document.getElementById('hm-radius')?.value || '5');
     const grid = parseInt(document.getElementById('hm-grid')?.value || '7', 10);
-    if (!name || !keyword || isNaN(lat) || isNaN(lng)) { showToast('error','Nom, mot-clé, latitude et longitude requis'); return; }
+    if (!name || !keyword) { showToast('error','Nom et mot-clé requis'); return; }
+    if (isNaN(lat) || isNaN(lng)) { showToast('error','Coordonnées géographiques invalides'); return; }
     showToast('info','Génération de la heatmap en cours…');
     const modal = document.getElementById('fp-heatmap-modal');
     if (modal) modal.style.display = 'none';
@@ -18985,7 +19034,24 @@ async function init() {
     try {
       const r = await window.FP_REVIEW_INTEL_API.analyzeReview({ authorName: author, rating, reviewText: text, language: lang });
       if (r?.ok) {
-        showToast('success','Avis analysé — sentiment : ' + (r.analysis?.sentiment || 'détecté'));
+        const a = r.analysis || {};
+        const sentColor = a.sentiment === 'positif' ? '#22c55e' : a.sentiment === 'négatif' ? '#ef4444' : '#f59e0b';
+        const renderList = (items) => (items||[]).map(it=>`<li style="font-size:12px;color:var(--fp-text-muted);margin-bottom:2px">${escHtml(it)}</li>`).join('');
+        openFloatPanel('📊 Analyse IA — résultat',
+          `<div style="display:flex;flex-direction:column;gap:14px;padding:4px 0">
+            <div style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;background:${sentColor}12;border:1px solid ${sentColor}30">
+              <div style="font-size:24px">${a.sentiment === 'positif' ? '😊' : a.sentiment === 'négatif' ? '😟' : '😐'}</div>
+              <div>
+                <div style="font-size:14px;font-weight:700;color:${sentColor}">Sentiment : ${escHtml(a.sentiment || 'neutre')}</div>
+                ${a.score != null ? `<div style="font-size:11px;color:var(--fp-text-muted)">Score : ${escHtml(String(a.score))}/10</div>` : ''}
+              </div>
+            </div>
+            ${(a.strengths||[]).length ? `<div><div style="font-size:11px;font-weight:700;color:#22c55e;margin-bottom:6px">✅ Points forts</div><ul style="margin:0;padding-left:16px">${renderList(a.strengths)}</ul></div>` : ''}
+            ${(a.weaknesses||[]).length ? `<div><div style="font-size:11px;font-weight:700;color:#ef4444;margin-bottom:6px">⚠ Points faibles</div><ul style="margin:0;padding-left:16px">${renderList(a.weaknesses)}</ul></div>` : ''}
+            ${(a.tips||[]).length ? `<div><div style="font-size:11px;font-weight:700;color:#2563EB;margin-bottom:6px">💡 Conseils</div><ul style="margin:0;padding-left:16px">${renderList(a.tips)}</ul></div>` : ''}
+            ${a.suggestedReply ? `<div style="padding:12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)"><div style="font-size:11px;font-weight:700;color:var(--fp-text-soft);margin-bottom:6px">💬 Réponse suggérée</div><div style="font-size:12px;color:var(--fp-text-muted);line-height:1.5">${escHtml(a.suggestedReply)}</div></div>` : ''}
+          </div>`
+        );
         await window.FP_REVIEW_INTEL_API.load();
         render(STATE.currentSection);
       } else showToast('error', r?.error || 'Erreur d\'analyse');
@@ -19261,7 +19327,7 @@ async function init() {
     div.id = 'fp-rankings-modal';
     div.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:2000;align-items:center;justify-content:center';
     div.innerHTML = `
-      <div style="width:400px;max-width:92vw;padding:24px;border-radius:14px;background:var(--fp-bg-card,#1a1f2e);border:1px solid var(--fp-border,rgba(255,255,255,0.08))">
+      <div style="width:400px;max-width:92vw;padding:24px;border-radius:14px;background:var(--fp-bg-sidebar);border:1px solid var(--fp-border,rgba(255,255,255,0.08))">
         <div style="font-size:16px;font-weight:700;margin-bottom:16px">🔎 Charger les rankings locaux</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <input id="rl-keyword" class="fp-input" placeholder="Mot-clé (ex: restaurant paris)" style="width:100%;box-sizing:border-box"/>
@@ -19298,7 +19364,6 @@ async function init() {
   };
   // Auto-missions generator — replaces undefined FP_DATAFORSEO_API.generateMissions()
   window._generateLocalMissions = async function() {
-    const domain = STATE.me?.domain || STATE.sites?.[0]?.url || 'votre-site.fr';
     const missions = [
       { title: 'Optimiser la fiche Google Business Profile', category: 'Local SEO', priority: 'high' },
       { title: 'Créer des citations locales manquantes', category: 'Local SEO', priority: 'high' },
@@ -19313,15 +19378,20 @@ async function init() {
         if (!STATE.missions) STATE.missions = [];
         const dup = STATE.missions.find(x => x.title.toLowerCase() === m.title.toLowerCase() && x.status !== 'done');
         if (!dup) {
-          const ms = { id: 'am_'+Date.now()+'_'+Math.random().toString(36).slice(2,5), ...m, status:'todo', createdAt:new Date().toISOString(), steps:[] };
-          STATE.missions.unshift(ms);
-          if (window.FP_MISSIONS_API?.create) { const s = await FP_MISSIONS_API.create(ms).catch(()=>null); if (s?.id) ms.id=s.id; }
-          created++;
+          // Always POST to the real API; fall back to local cache on failure
+          const payload = { ...m, status: 'todo', source: 'local-seo', steps: [] };
+          const s = await apiAction('POST', '/api/missions', payload).catch(() => null);
+          if (s && s.id) {
+            STATE.missions.unshift({ ...payload, id: s.id, createdAt: s.createdAt || new Date().toISOString() });
+            created++;
+          }
         }
       } catch(e) {}
     }
-    if (created > 0) { saveMissions(); showToast('success', created + ' missions locales créées ! Voir Missions →'); }
-    else showToast('warning', 'Toutes les missions existent déjà');
+    if (created > 0) {
+      showToast('success', created + ' missions locales créées !');
+      setTimeout(() => navigate('missions'), 900);
+    } else showToast('warning', 'Toutes les missions existent déjà');
   };
   // Satellite map toggle — toggles visual mode on the SVG map
   window._toggleSatelliteMode = function(btn) {
@@ -21694,31 +21764,71 @@ function renderMonitorsIncidents() {
   const _nowInc   = new Date();
   const _fmtT     = d => d.toLocaleTimeString(getLocale(), {hour:'2-digit', minute:'2-digit'});
   const _fmtD     = d => d.toLocaleDateString(getLocale(), {day:'2-digit', month:'2-digit', year:'numeric'});
-  const incidents = _monAll.filter(m => m.status !== 'up').map((m, idx) => ({
-    id: 'inc-' + idx,
-    site: (m.url||m.name||'').replace(/^https?:\/\//,''),
-    start: _fmtT(_nowInc),
-    end: null,
-    detected: fmtLastCheck(m.lastCheck) || _fmtT(_nowInc),
-    notified: null,
-    date: _fmtD(_nowInc),
-    duration: 'En cours',
-    type: m.status === 'down' ? 'DOWN' : 'DÉGRADATION (>500ms)',
-    severity: m.status === 'down' ? 'critical' : 'warning',
-    rootCause: m.status === 'down'
-      ? 'Site inaccessible — vérification auprès de l\'hébergeur requise.'
-      : `Latence élevée détectée : ${m.latency||'—'}ms. Vérifiez la charge serveur et le cache.`,
-    aiAnalysis: m.status === 'down'
-      ? `Monitor DOWN détecté. Uptime 30j : ${typeof m.uptime === 'number' ? m.uptime + '%' : '—'}. Vérifiez l'hébergeur, les DNS et le certificat SSL. Si le downtime dépasse 2h, le crawl Google peut être impacté.`
-      : `Latence anormalement élevée : ${m.latency||'—'}ms. Ce pattern peut indiquer une surcharge serveur ou un plugin bloquant. Activez le cache et compressez les ressources statiques.`,
-    impact: m.status === 'down'
-      ? 'Site inaccessible — impact client direct et crawl Google potentiellement affecté.'
-      : 'Dégradation UX — temps de réponse élevé pour les visiteurs.',
-    services: ['Site web'],
-    ttd: fmtLastCheck(m.lastCheck) || '—',
-    ttr: 'En cours',
-    notifiedBool: false,
-  }));
+  const _resolvedIds = STATE.resolvedIncidents || {};
+
+  // Primary source: real alert_events (monitor_down/latency/uptime) with real UUIDs
+  const _realMonEvents = (STATE.alertEvents || [])
+    .filter(ev => !ev.resolvedAt && ev.status !== 'resolved' &&
+      (ev.type === 'monitor_down' || ev.type === 'latency' || ev.type === 'uptime'))
+    .map(ev => ({
+      id: ev.id, // real UUID — will be persisted via API
+      site: (ev.siteUrl || ev.ruleName || '').replace(/^https?:\/\//, ''),
+      start: ev.triggeredAt ? _fmtT(new Date(ev.triggeredAt)) : '—',
+      end: null, detected: ev.triggeredAt ? _fmtT(new Date(ev.triggeredAt)) : '—',
+      notified: null, date: ev.triggeredAt ? _fmtD(new Date(ev.triggeredAt)) : _fmtD(_nowInc),
+      duration: 'En cours',
+      type: ev.type === 'monitor_down' ? 'DOWN' : 'DÉGRADATION',
+      severity: ev.severity === 'critical' ? 'critical' : 'warning',
+      rootCause: ev.message || 'Vérifiez l\'hébergeur, les DNS et le certificat SSL.',
+      aiAnalysis: ev.message || 'Analysez les logs serveur pour identifier la cause.',
+      impact: ev.type === 'monitor_down' ? 'Site inaccessible — impact client direct.' : 'Performance dégradée — UX impactée.',
+      services: ['Monitor', 'Uptime'],
+      ttd: ev.triggeredAt ? _fmtT(new Date(ev.triggeredAt)) : '—',
+      ttr: 'En cours', notifiedBool: false,
+      monitorId: ev.monitorId,
+    }));
+
+  // Real UUIDs covered by real events — avoid duplicate synthetic entries
+  const _coveredMonIds = _realMonEvents.map(e => e.monitorId).filter(Boolean);
+
+  // Synthetic fallback: monitors without a real alert event, using stable ID = 'mon-<monitor.id>'
+  const _syntheticIncidents = _monAll
+    .filter(m => m.status !== 'up')
+    .filter(m => !_coveredMonIds.includes(m.id))
+    .map(m => {
+      const synId = 'mon-' + (m.id || (m.url||'').replace(/\W/g,'_'));
+      if (_resolvedIds[synId]) return null; // user acknowledged — hide until status changes
+      return {
+        id: synId, // synthetic — local-only resolve
+        site: (m.url||m.name||'').replace(/^https?:\/\//, ''),
+        start: _fmtT(_nowInc),
+        end: null,
+        detected: fmtLastCheck(m.lastCheck) || _fmtT(_nowInc),
+        notified: null,
+        date: _fmtD(_nowInc),
+        duration: 'En cours',
+        type: m.status === 'down' ? 'DOWN' : 'DÉGRADATION (>500ms)',
+        severity: m.status === 'down' ? 'critical' : 'warning',
+        rootCause: m.status === 'down'
+          ? 'Site inaccessible — vérification auprès de l\'hébergeur requise.'
+          : `Latence élevée détectée : ${m.latency||'—'}ms. Vérifiez la charge serveur et le cache.`,
+        aiAnalysis: m.status === 'down'
+          ? `Monitor DOWN détecté. Uptime 30j : ${typeof m.uptime === 'number' ? m.uptime + '%' : '—'}. Vérifiez l'hébergeur, les DNS et le certificat SSL.`
+          : `Latence anormalement élevée : ${m.latency||'—'}ms. Activez le cache et compressez les ressources statiques.`,
+        impact: m.status === 'down'
+          ? 'Site inaccessible — impact client direct et crawl Google potentiellement affecté.'
+          : 'Dégradation UX — temps de réponse élevé pour les visiteurs.',
+        services: ['Site web'],
+        ttd: fmtLastCheck(m.lastCheck) || '—',
+        ttr: 'En cours',
+        notifiedBool: false,
+      };
+    })
+    .filter(Boolean);
+
+  // Merge: real alert events first (persisted UUIDs), then unresolved synthetic ones
+  const incidents = [..._realMonEvents, ..._syntheticIncidents];
+
   const sevColor = s => s === 'critical' ? '#ef4444' : s === 'warning' ? '#f59e0b' : '#94a3b8';
   const sevLabel = s => s === 'critical' ? 'Critique' : s === 'warning' ? 'Important' : 'Informatif';
   const sevEmoji = s => s === 'critical' ? '🔴' : s === 'warning' ? '🟡' : 'ℹ️';
@@ -26284,7 +26394,9 @@ function renderAlertsCenter() {
       time:"2j", color:'#22c55e', impact:"Positif" }] : []),
   ];
 
-  const allAlerts = [...ruleAlerts, ...staticAlerts];
+  // Filter staticAlerts: exclude any that have been locally acknowledged
+  const _acResolvedIds = STATE.resolvedIncidents || {};
+  const allAlerts = [...ruleAlerts, ...staticAlerts.filter(a => !_acResolvedIds[a.id])];
   const criticals = allAlerts.filter(a => a.sev === 'critical');
   const warnings  = allAlerts.filter(a => a.sev === 'warning');
 
@@ -26292,35 +26404,71 @@ function renderAlertsCenter() {
   // SUB: INCIDENT RESPONSE CENTER
   // ══════════════════════════════════════════════════════════
   if (sub === 'incidents') {
-    const incidents = [
-      ...(STATE.monitors || []).filter(m => m.status !== 'up').map((m, i) => ({
-        id: 'mon-' + i,
-        sev: m.status === 'down' ? 'critical' : 'warning',
-        status: m.status === 'down' ? 'Actif' : 'Surveillé',
-        title: (m.status === 'down' ? 'Monitor DOWN — ' : 'Latence élevée — ') + (m.url||m.name||'').replace(/^https?:\/\//,''),
-        systems: m.status === 'down' ? ['Monitor', 'Uptime', 'Trafic'] : ['Performance', 'Core Web Vitals'],
-        impact: m.status === 'down' ? 'Site inaccessible — impact client direct' : `Latence élevée : ${m.latency||'—'}ms — UX dégradée`,
-        cause: m.status === 'down' ? 'Site inaccessible — vérification hébergeur requise' : `Latence anormale : ${m.latency||'—'}ms`,
-        since: new Date().toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'}) + ' · ' + new Date().toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}),
+    // Primary: real alert events with persisted UUIDs (monitor_down / latency / uptime)
+    const _acNow = new Date();
+    const _acFmtT = d => d.toLocaleTimeString(getLocale(), {hour:'2-digit', minute:'2-digit'});
+    const _acFmtD = d => d.toLocaleDateString(getLocale(), {day:'2-digit', month:'2-digit', year:'numeric'});
+
+    const _realAcEvents = (STATE.alertEvents || [])
+      .filter(ev => !ev.resolvedAt && ev.status !== 'resolved' &&
+        (ev.type === 'monitor_down' || ev.type === 'latency' || ev.type === 'uptime'))
+      .map(ev => ({
+        id: ev.id, // real UUID — API-persisted resolve
+        sev: ev.severity === 'critical' ? 'critical' : 'warning',
+        status: 'Actif',
+        title: (ev.type === 'monitor_down' ? 'Monitor DOWN — ' : 'Latence — ') + escHtml(ev.siteUrl || ev.ruleName || ''),
+        systems: ev.type === 'monitor_down' ? ['Monitor', 'Uptime', 'Trafic'] : ['Performance', 'Core Web Vitals'],
+        impact: ev.message || (ev.type === 'monitor_down' ? 'Site inaccessible' : 'Performance dégradée'),
+        cause: ev.message || 'Vérifiez l\'hébergeur et les DNS.',
+        since: ev.triggeredAt ? _acFmtD(new Date(ev.triggeredAt)) + ' · ' + _acFmtT(new Date(ev.triggeredAt)) : '—',
         duration: 'En cours',
-        steps: m.status === 'down'
+        steps: ev.type === 'monitor_down'
           ? ['Vérifier le serveur hébergeur', 'Vérifier les DNS', 'Activer le mode maintenance']
           : ['Optimiser les images (WebP)', 'Activer le cache navigateur', 'Analyser les ressources bloquantes'],
-        color: m.status === 'down' ? '#ef4444' : '#f59e0b',
-      })),
-      ...(STATE.audits || []).filter(a => a.score < 50).slice(0, 2).map((a, i) => ({
-        id: 'seo-' + i,
-        sev: 'warning', status: 'Surveillé',
-        title: 'Score SEO critique — ' + (a.url||'').replace(/^https?:\/\//,''),
-        systems: ['SEO', 'Audit', 'Rankings'],
-        impact: `Score ${a.score}/100 — ${a.issues||0} problème${(a.issues||0) > 1 ? 's' : ''} non résolu${(a.issues||0) > 1 ? 's' : ''}`,
-        cause: `Score audit faible (${a.score}/100) — optimisations urgentes requises`,
-        since: new Date().toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'}) + ' · ' + new Date().toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}),
-        duration: '—',
-        steps: ['Corriger les balises title', 'Optimiser la vitesse mobile', 'Améliorer le maillage interne'],
-        color: '#f59e0b',
-      })),
+        color: ev.severity === 'critical' ? '#ef4444' : '#f59e0b',
+        monitorId: ev.monitorId,
+      }));
+
+    const _acCoveredMonIds = _realAcEvents.map(e => e.monitorId).filter(Boolean);
+
+    // Synthetic fallback: derived from monitor/audit state with stable IDs, filtered by resolved
+    const _syntheticAcEvents = [
+      ...(STATE.monitors || [])
+        .filter(m => m.status !== 'up')
+        .filter(m => !_acCoveredMonIds.includes(m.id))
+        .map(m => {
+          const synId = 'mon-' + (m.id || (m.url||'').replace(/\W/g,'_'));
+          if (_acResolvedIds[synId]) return null;
+          return {
+            id: synId, sev: m.status === 'down' ? 'critical' : 'warning',
+            status: m.status === 'down' ? 'Actif' : 'Surveillé',
+            title: (m.status === 'down' ? 'Monitor DOWN — ' : 'Latence élevée — ') + (m.url||m.name||'').replace(/^https?:\/\//, ''),
+            systems: m.status === 'down' ? ['Monitor', 'Uptime', 'Trafic'] : ['Performance', 'Core Web Vitals'],
+            impact: m.status === 'down' ? 'Site inaccessible — impact client direct' : `Latence élevée : ${m.latency||'—'}ms`,
+            cause: m.status === 'down' ? 'Vérification hébergeur requise' : `Latence : ${m.latency||'—'}ms`,
+            since: _acFmtD(_acNow) + ' · ' + _acFmtT(_acNow), duration: 'En cours',
+            steps: m.status === 'down' ? ['Vérifier le serveur hébergeur', 'Vérifier les DNS', 'Activer le mode maintenance'] : ['Optimiser les images', 'Activer le cache', 'Analyser les ressources bloquantes'],
+            color: m.status === 'down' ? '#ef4444' : '#f59e0b',
+          };
+        })
+        .filter(Boolean),
+      ...(STATE.audits || []).filter(a => a.score < 50).slice(0, 2).map((a, i) => {
+        const synId = 'seo-' + (a.id || i);
+        if (_acResolvedIds[synId]) return null;
+        return {
+          id: synId, sev: 'warning', status: 'Surveillé',
+          title: 'Score SEO critique — ' + (a.url||'').replace(/^https?:\/\//, ''),
+          systems: ['SEO', 'Audit', 'Rankings'],
+          impact: `Score ${a.score}/100 — ${a.issues||0} problème${(a.issues||0) > 1 ? 's' : ''} non résolu${(a.issues||0) > 1 ? 's' : ''}`,
+          cause: `Score audit faible (${a.score}/100) — optimisations urgentes`,
+          since: _acFmtD(_acNow) + ' · ' + _acFmtT(_acNow), duration: '—',
+          steps: ['Corriger les balises title', 'Optimiser la vitesse mobile', 'Améliorer le maillage interne'],
+          color: '#f59e0b',
+        };
+      }).filter(Boolean),
     ];
+
+    const incidents = [..._realAcEvents, ..._syntheticAcEvents];
     const rootCauses = PREVIEW_MODE ? [
       { icon: '🖥️', title: "Surcharge hébergeur",          prob: 78, color: '#ef4444', desc: "Le pic de trafic Maps (+21% ce mois) dépasse la capacité configurée" },
       { icon: '📱', title: "Régression mobile non détectée", prob: 64, color: '#f59e0b', desc: "Mise à jour CSS semaine 18 a cassé le formulaire sur iOS Safari" },
@@ -28729,19 +28877,40 @@ function renderDataExplorer() {
   // DEFAULT (null) — Data Command Center
   // ══════════════════════════════════════════════════════════
   const totalEntries = STATE.audits.length + STATE.monitors.length + STATE.missions.length;
-  const correlations = [
-    { a: 'Vitesse mobile',     b: 'Taux de conversion', strength: 84, dir: 'Positive', color: '#22c55e' },
-    { a: 'Trafic Maps',        b: 'Leads qualifiés',    strength: 91, dir: 'Positive', color: '#22c55e' },
-    { a: 'Rebond réseaux soc.',b: 'Perte de revenue',   strength: 73, dir: 'Négative', color: '#ef4444' },
-  ];
-  const patterns = [
-    { icon: '📉', title: 'Conversion week-end à 0%',        sev: 'critical', desc: 'Sam 3 mai et dim 4 mai — 0 client converti malgré 1 200 sessions' },
-    { icon: '📈', title: 'Pic trafic Maps +21% ce mois',    sev: 'positive', desc: 'Accélération confirmée depuis renforcement GBP avril' },
-    { icon: '⚠',  title: 'Taux rebond mobile en hausse +8%',sev: 'warning',  desc: 'Dégradation UX mobile corrélée avec chute conversion mobile' },
-    { icon: '🔗', title: 'Corrélation vitesse/conversion : 91%',  sev: 'warning',  desc: 'Pages lentes < 70/100 convertissent 2.4x moins bien — priorité optimisation' },
-    { icon: '🏆', title: 'Local Pack #1 — 4 mots-clés gagnés',    sev: 'positive', desc: (STATE.audits&&STATE.audits.length>0?((STATE.audits.reduce((b,a)=>(a.score||0)>(b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')):'votre site') + ' domine — renforcement GBP confirmé' },
-    ...(STATE.competitors && STATE.competitors.length > 0 ? [{ icon: '🎯', title: (escHtml(STATE.competitors[0].name||'Concurrent principal')) + ' — concurrent principal à surveiller', sev: 'warning', desc: 'Consultez la section Concurrents pour analyser ses mouvements récents' }] : PREVIEW_MODE ? [{ icon: '🎯', title: 'Concurrent principal accélère fortement', sev: 'critical', desc: '+12 positions + 180% backlinks ce mois — fenêtre d’action : 3 semaines' }] : []),
-  ];
+  // Corrélations et patterns : construits depuis données réelles uniquement (jamais hardcodés)
+  const _hasAuditData = STATE.audits && STATE.audits.length > 0;
+  const _hasCompetitors = STATE.competitors && STATE.competitors.length > 0;
+  const _hasBeh = !!(window.FP_DATA?.behavioral?.sessionStats);
+  const _hasCRO = !!(window.FP_DATA?.cro?.scores?.length);
+  const correlations = [];
+  if (_hasAuditData && _hasBeh) {
+    const avgSpd = Math.round(STATE.audits.reduce((s,a)=>s+(a.speed||0),0)/STATE.audits.length);
+    const bounceR = Math.round(window.FP_DATA.behavioral.sessionStats.bounceRate || 0);
+    correlations.push({ a: 'Vitesse mobile', b: 'Taux de rebond', strength: Math.max(30, Math.min(95, 100-bounceR)), dir: avgSpd>=70?'Positive':'Négative', color: avgSpd>=70?'#22c55e':'#ef4444' });
+  }
+  if (_hasAuditData && _hasCRO) {
+    const avgSc = Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length);
+    correlations.push({ a: 'Score SEO', b: 'Score conversion', strength: Math.max(30, Math.min(95, avgSc)), dir: 'Positive', color: '#2563EB' });
+  }
+  if (_hasCompetitors && _hasAuditData) {
+    correlations.push({ a: 'Score vs concurrents', b: 'Visibilité locale', strength: Math.max(30, Math.min(90, Math.round((STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length)*0.85))), dir: 'Positive', color: '#22c55e' });
+  }
+  const patterns = [];
+  if (_hasAuditData) {
+    const worst = STATE.audits.reduce((b,a)=>(a.score||100)<(b.score||100)?a:b, STATE.audits[0]);
+    if ((worst.score||100) < 50) patterns.push({ icon: '📉', title: 'Audit critique détecté', sev: 'critical', desc: (worst.url||'Un site').replace(/^https?:\/\//,'') + ' — score ' + (worst.score||0) + '/100 nécessite une attention immédiate' });
+  }
+  if (_hasBeh) {
+    const br = Math.round(window.FP_DATA.behavioral.sessionStats.bounceRate||0);
+    if (br > 55) patterns.push({ icon: '⚠', title: 'Taux de rebond élevé : ' + br + '%', sev: 'warning', desc: 'Au-dessus de 55% — vérifiez la pertinence des pages d\'entrée et la vitesse mobile.' });
+    else if (br > 0) patterns.push({ icon: '📈', title: 'Taux de rebond maîtrisé : ' + br + '%', sev: 'positive', desc: 'Engagement utilisateur satisfaisant sur vos pages principales.' });
+  }
+  if (_hasCompetitors) {
+    patterns.push({ icon: '🎯', title: escHtml(STATE.competitors[0].name||'Concurrent #1') + ' — à surveiller', sev: 'warning', desc: 'Consultez la section Concurrents pour analyser ses mouvements récents.' });
+  }
+  if (!_hasAuditData && !_hasBeh && !_hasCompetitors) {
+    patterns.push({ icon: '🔌', title: 'Données insuffisantes', sev: 'warning', desc: 'Lancez un audit SEO et connectez Google Analytics pour générer des patterns réels.' });
+  }
 
   return `
     <div class="fp-section-header">
@@ -39405,7 +39574,7 @@ function renderLocalDominationMaps() {
 
     <!-- CREATE HEATMAP MODAL -->
     <div id="fp-heatmap-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center">
-      <div class="fp-card" style="width:460px;max-width:92vw;padding:24px;background:var(--fp-bg-card,#1a1f2e);border:1px solid var(--fp-border)">
+      <div class="fp-card" style="width:460px;max-width:92vw;padding:24px;background:var(--fp-bg-sidebar);border:1px solid var(--fp-border)">
         <div style="font-size:16px;font-weight:700;margin-bottom:16px">🗺 Nouvelle heatmap de domination</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <input id="hm-name" class="fp-input" placeholder="Nom (ex: Paris Centre — Plomberie)"/>
@@ -39637,7 +39806,7 @@ function renderLocalSEOReviews() {
 
     <!-- ANALYZE REVIEW MODAL -->
     <div id="fp-review-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center">
-      <div class="fp-card" style="width:460px;max-width:92vw;padding:24px;background:var(--fp-bg-card,#1a1f2e);border:1px solid var(--fp-border)">
+      <div class="fp-card" style="width:460px;max-width:92vw;padding:24px;background:var(--fp-bg-sidebar);border:1px solid var(--fp-border)">
         <div style="font-size:16px;font-weight:700;margin-bottom:16px">⭐ Analyser un avis</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <input id="rv-author" class="fp-input" placeholder="Nom de l\'auteur"/>
@@ -40748,7 +40917,7 @@ function renderGA4ClientMode() {
       ? STATE.settings.wlBranding : (typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('fp:wl-branding') || '{}') : {});
     const wlEnabled = !!(wlBranding.logoUrl || wlBranding.agencyName || wlBranding.primaryColor);
     const wlBlock = `
-      <div class="fp-card fp-mb-20">
+      <div class="fp-card fp-mb-20" style="margin-top:20px">
         <div class="fp-card-title" style="margin-bottom:14px">🎨 White-Label & Branding</div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
           ${wlEnabled
