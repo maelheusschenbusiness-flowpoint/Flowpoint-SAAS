@@ -45,3 +45,24 @@ export async function createStripeClient(key: string): Promise<StripeAlike> {
   const { default: Stripe } = await import("stripe");
   return new Stripe(key, { apiVersion: "2026-04-22.dahlia" });
 }
+
+/**
+ * Returns the correct Stripe secret key for the current environment.
+ *
+ * When STRIPE_TEST_MODE=true (dev only):
+ *   • Uses STRIPE_TEST_KEY or STRIPE_TEST_SECRET_KEY — a completely isolated
+ *     Stripe test account with its own webhook endpoint and signing secret.
+ *   • Never activates in NODE_ENV=production regardless of the flag value.
+ *
+ * Otherwise: falls back to STRIPE_LIVE_API_KEY → STRIPE_SECRET_KEY (live mode).
+ *
+ * All billing routes must call getStripeKey() so that enabling/disabling test
+ * mode requires only an env-var flip, not code changes.
+ */
+export function getStripeKey(): string {
+  if (process.env["STRIPE_TEST_MODE"] === "true" && process.env["NODE_ENV"] !== "production") {
+    const testKey = process.env["STRIPE_TEST_KEY"] || process.env["STRIPE_TEST_SECRET_KEY"];
+    if (testKey) return testKey;
+  }
+  return process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"] || "";
+}

@@ -5,7 +5,7 @@ import { ownerOnly } from "../middlewares/requireRole.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
-import { createStripeClient } from "../services/stripe-factory.js";
+import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
 import { ensureStripeCustomer } from "../services/ensure-stripe-customer.js";
 import {
   getUsageSummary, getMRRData, getSubscriptionAnalytics,
@@ -146,7 +146,7 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
     return;
   }
 
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
   if (!stripeKey) {
@@ -243,7 +243,7 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
   const sessionId = String(req.query["session_id"] || "");
   if (!sessionId) { res.status(400).json({ error: "session_id required" }); return; }
 
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
 
   if (!stripeKey) {
     if (process.env["NODE_ENV"] === "production") {
@@ -337,7 +337,7 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
 
 // ── POST /billing/portal ─────────────────────────────────────────────────────
 router.post("/billing/portal", billingPortalRateLimit, ownerOnly, async (req: Request, res: Response) => {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
   const returnUrl = process.env["STRIPE_RETURN_URL"] || `${publicUrl}/dashboard`;
 
@@ -459,7 +459,7 @@ router.get("/billing/invoices", async (req: Request, res: Response) => {
 // ── GET /billing/payment-methods ─────────────────────────────────────────────
 router.get("/billing/payment-methods", async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const billingCtx = await loadBillingContext(orgId);
   const stripeCustomerId = billingCtx.stripeCustomerId ?? undefined;
 
@@ -542,7 +542,7 @@ router.post("/billing/coupon/validate", async (req: Request, res: Response) => {
 // ── POST /billing/cancel ─────────────────────────────────────────────────────
 router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) => {
   const { atPeriodEnd = true } = req.body as { atPeriodEnd?: boolean };
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const orgId = req.orgId ?? "default";
 
   const billingCtx = await loadBillingContext(orgId);
@@ -605,7 +605,7 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
 // ── POST /billing/reactivate ──────────────────────────────────────────────────
 // Removes cancel_at_period_end flag — restores automatic renewal.
 router.post("/billing/reactivate", ownerOnly, async (req: Request, res: Response) => {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const orgId = req.orgId ?? "default";
   const billingCtx = await loadBillingContext(orgId);
 
@@ -655,7 +655,7 @@ router.post("/billing/reactivate", ownerOnly, async (req: Request, res: Response
 // Cancels an active trial immediately or at period end.
 router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Response) => {
   const { atPeriodEnd = false } = req.body as { atPeriodEnd?: boolean };
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const orgId = req.orgId ?? "default";
   const billingCtx = await loadBillingContext(orgId);
 
@@ -750,7 +750,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
     return;
   }
 
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
   if (!stripeKey) {
@@ -1207,7 +1207,7 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
   const trialEndsAt           = billingCtx.trialEndsAt ?? null;
   const stripeCustomerId      = billingCtx.stripeCustomerId ?? null;
   const stripeSubscriptionId  = billingCtx.stripeSubscriptionId ?? null;
-  const stripeKey             = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey             = getStripeKey();
 
   // billingCtx.subscriptionStatus is already normalised by the state machine:
   // it NEVER returns "active" when stripeSubscriptionId is null.
@@ -1440,7 +1440,7 @@ router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
     return;
   }
 
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
   if (!stripeKey) {
@@ -1618,7 +1618,7 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, ownerOnly,
   const orgId = req.orgId ?? "default";
   const billingCtx = await loadBillingContext(orgId);
 
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
   if (!stripeKey) {
@@ -1695,7 +1695,7 @@ router.post("/billing/ai-credits-intent", billingCheckoutRateLimit, ownerOnly, a
   }
 
   const orgId = req.orgId ?? "default";
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const publishableKey = process.env["STRIPE_PUBLISHABLE_KEY"] ?? process.env["PUBLIC_STRIPE_API_KEY"] ?? "";
 
   if (!stripeKey || !publishableKey) {
@@ -1772,7 +1772,7 @@ router.get("/billing/events", async (req: Request, res: Response) => {
 
 // ── Stripe Webhook ────────────────────────────────────────────────────────────
 router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res: Response) => {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
 
   if (!stripeKey) {
@@ -1989,7 +1989,7 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
   const billingCtx = await loadBillingContext(orgId);
 
   const addonPriceId = ADDON_PRICE_IDS[addonKey];
-  const stripeKeyForAddonCheck = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKeyForAddonCheck = getStripeKey();
 
   if (stripeKeyForAddonCheck && billingCtx.stripeCustomerId) {
     try {
@@ -2031,7 +2031,7 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
     }
   }
 
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
   const priceId = ADDON_PRICE_IDS[addonKey];
@@ -2102,7 +2102,7 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
 //        (3) send confirmation email only after full success.
 router.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
 
   try {
     const billingCtx = await loadBillingContext(orgId);

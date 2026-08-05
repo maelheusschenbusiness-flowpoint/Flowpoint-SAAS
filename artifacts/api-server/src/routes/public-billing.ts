@@ -3,7 +3,7 @@ import { logger } from "../lib/logger.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
-import { createStripeClient } from "../services/stripe-factory.js";
+import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
 
 const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
 
