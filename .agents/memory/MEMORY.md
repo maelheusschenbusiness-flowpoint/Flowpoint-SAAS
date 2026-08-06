@@ -132,4 +132,6 @@
 - [Canceled sub 4 states](canceled-sub-4-states.md) — canceled block must query Stripe live before routing: cancel_at_period_end→fall-through, terminated+downgrade→DB-only, terminated+upgrade→reactivation checkout, orphaned→cleanup
 - [Billing V5 audit cert — P0/P1 fixes](billing-v5-audit-cert.md) — monitorsPack10 ghost in 6 frontend files; addon-stripe-sync raw env bypass; legacy duplicate webhook in billing.ts; ADDON_CATALOG price drift
 - [Account deletion pipeline](account-deletion-pipeline.md) — dynamic table discovery, per-table param binding, refuse-to-commit survivor check; Stripe before tx, storage after
+- [Google OAuth scope allowlist](google-oauth-scope-allowlist.md) — one canonical GOOGLE_INTEGRATION_SCOPES list; analytics read-only only; unit test + src/dist/frontend grep guard
+- [Production test session via PostgREST](prod-test-session-uuid.md) — prod sessions need UUID org_id + organizations/users rows; email-shaped org_id → 401 legacy_session
 - [dashboard.js global onclick scope](dashboard-global-onclick-scope.md) — window.* handlers used by >1 page must be at IIFE global scope; `window.fn && window.fn()` guards hide dead UI
