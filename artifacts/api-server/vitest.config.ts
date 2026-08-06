@@ -35,6 +35,7 @@ export default defineConfig({
       "src/routes/white-label.test.ts",
       "src/services/addons-provisioning.test.ts",
       "src/routes/stripe-webhook-addon-reconcile.test.ts",
+      "src/services/google-oauth-scopes.test.ts",
     ],
     environment: "node",
     globals:     false,

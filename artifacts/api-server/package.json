@@ -9,7 +9,9 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "migrate": "node ./build.mjs && node --enable-source-maps ./dist/migrate.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --reporter=verbose"
+    "test": "vitest run --reporter=verbose",
+    "test:google-oauth-scopes": "vitest run src/services/google-oauth-scopes.test.ts --reporter=verbose",
+    "assert:google-oauth-scopes": "node ./scripts/assert-google-oauth-scopes.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

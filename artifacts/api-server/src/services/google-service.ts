@@ -14,14 +14,27 @@ import { logger } from "../lib/logger.js";
 const GOOGLE_AUTH_BASE  = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL  = "https://oauth2.googleapis.com/token";
 
-// All 3 services requested in a single OAuth consent — user authorises once.
-const SCOPES = [
-  "openid", "email", "profile",
-  "https://www.googleapis.com/auth/webmasters.readonly",       // GSC
-  "https://www.googleapis.com/auth/business.manage",            // GBP
-  "https://www.googleapis.com/auth/analytics.readonly",         // GA4 Data API (reports/data)
-  "https://www.googleapis.com/auth/analytics.edit",             // GA4 Admin API (account/property discovery)
-].join(" ");
+/**
+ * Canonical scopes for the shared Google product connection.
+ *
+ * Keep Analytics read-only. GA4 account/property discovery and reporting are
+ * supported by the readonly scope; this flow must never request Analytics
+ * Admin write access.
+ *
+ * Both /api/google/connect and the legacy /api/google/oauth/start alias call
+ * generateAuthUrl(), so the exported allowlist is also the single source of
+ * truth used by regression tests.
+ */
+export const GOOGLE_INTEGRATION_SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/webmasters.readonly",
+  "https://www.googleapis.com/auth/business.manage",
+  "https://www.googleapis.com/auth/analytics.readonly",
+] as const;
+
+export const GOOGLE_INTEGRATION_SCOPE_SET = new Set<string>(GOOGLE_INTEGRATION_SCOPES);
 
 // ── Encryption ────────────────────────────────────────────────────────────────
 
@@ -60,7 +73,7 @@ export function generateAuthUrl(state: string): string {
     client_id:     process.env["GOOGLE_CLIENT_ID"] ?? "",
     redirect_uri:  process.env["GOOGLE_REDIRECT_URI"] ?? "",
     response_type: "code",
-    scope:         SCOPES,
+    scope:         GOOGLE_INTEGRATION_SCOPES.join(" "),
     access_type:   "offline",
     prompt:        "consent",   // always prompt so we always get a refresh_token
     state,
