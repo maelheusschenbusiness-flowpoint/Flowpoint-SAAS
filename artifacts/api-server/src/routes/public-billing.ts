@@ -4,7 +4,7 @@ import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 import type Stripe from "stripe";
-import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
+import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 
 const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
@@ -486,6 +486,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         metadata,
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
+      logger.warn(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
       const session = await stripe.checkout.sessions.create(sessionParams);
       respond(session as { id: string; url: string | null; client_secret: string | null });
       return;
@@ -503,6 +504,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         metadata,
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
+      logger.warn(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
       const session = await stripe.checkout.sessions.create(sessionParams);
       respond(session as { id: string; url: string | null; client_secret: string | null });
       return;
@@ -521,6 +523,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         metadata,
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
+      logger.warn(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
       const session = await stripe.checkout.sessions.create(sessionParams);
       respond(session as { id: string; url: string | null; client_secret: string | null });
       return;

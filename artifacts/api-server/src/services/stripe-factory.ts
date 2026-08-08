@@ -74,3 +74,18 @@ export function getStripeKey(): string {
   }
   return process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"] || "";
 }
+
+/** Temporary certification diagnostic; deliberately reveals no secret value. */
+export function getStripeCheckoutModeLog(key: string): {
+  stripeMode: "LIVE" | "TEST";
+  stripeKeyType: "sk_live" | "sk_test" | "unknown";
+  expectedSessionPrefix: "cs_live" | "cs_test" | "unknown";
+} {
+  const isTest = key.startsWith("sk_test_");
+  const isLive = key.startsWith("sk_live_");
+  return {
+    stripeMode: isTest ? "TEST" : "LIVE",
+    stripeKeyType: isTest ? "sk_test" : isLive ? "sk_live" : "unknown",
+    expectedSessionPrefix: isTest ? "cs_test" : isLive ? "cs_live" : "unknown",
+  };
+}

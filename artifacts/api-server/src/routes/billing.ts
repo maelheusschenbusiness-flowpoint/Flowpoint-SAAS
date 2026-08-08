@@ -5,7 +5,7 @@ import { ownerOnly } from "../middlewares/requireRole.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
-import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
+import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
 import { ensureStripeCustomer } from "../services/ensure-stripe-customer.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import {
@@ -218,6 +218,7 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
       logger.info({ plan, hasHadTrial, hasStripeSubHistory, orgId }, "[Billing] Skipping trial — prior subscription history");
     }
 
+    logger.warn(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
