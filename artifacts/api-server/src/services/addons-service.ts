@@ -2,42 +2,17 @@ import { db, orgAddonsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
+import { ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, FLAG_ADDONS, PLAN_DEFINITIONS } from "../lib/plans.js";
 
 export const ADDON_DEFINITIONS: Record<string, {
-  name: string;
-  category: string;
-  description: string;
-  price: string;
-  isFlagAddon: boolean;
-}> = {
-  whiteLabel:          { name: "White-Label Exports",        category: "Reporting",    description: "PDF 100% white-label",                    price: "17€/mois",  isFlagAddon: true  },
-  customDomain:        { name: "Custom Domain",              category: "Enterprise",   description: "Domaine personnalisé pour le portail",     price: "29€/mois",  isFlagAddon: true  },
-  prioritySupport:     { name: "Support Prioritaire",        category: "Support",      description: "Réponse < 4h, canal dédié",                price: "Inclus Pro", isFlagAddon: true  },
-  retention90d:        { name: "Rétention +90 jours",        category: "Storage",      description: "90 jours de données historiques",          price: "9€/mois",   isFlagAddon: true  },
-  retention365d:       { name: "Rétention +365 jours",       category: "Storage",      description: "365 jours de données historiques",         price: "19€/mois",  isFlagAddon: true  },
-  extraSeats:          { name: "+5 Sièges",                  category: "Team",         description: "+5 membres supplémentaires",               price: "14€/mois",  isFlagAddon: false },
-  monitorsPack50:      { name: "+50 Monitors",               category: "Monitoring",   description: "+50 monitors actifs",                      price: "19€/mois",  isFlagAddon: false },
-  auditsPack200:       { name: "+200 Audits",                category: "SEO",          description: "+200 audits mensuels",                     price: "9€/mois",   isFlagAddon: false },
-  advancedSeoLab:      { name: "Advanced SEO Lab",           category: "SEO",          description: "Audit SEO avancé + recommandations IA",   price: "19€/mois",  isFlagAddon: true  },
-  backlinkIntelligence:{ name: "Backlink Intelligence",      category: "SEO",          description: "Analyse de backlinks et autorité de domaine", price: "19€/mois", isFlagAddon: true  },
-  keywordDomination:   { name: "Keyword Domination Engine",  category: "SEO",          description: "Suivi et stratégie mots-clés avancée",     price: "19€/mois",  isFlagAddon: true  },
-  aiExecutiveReport:   { name: "AI Executive Reporting",     category: "IA",           description: "Résumés exécutifs IA automatiques",        price: "29€/mois",  isFlagAddon: true  },
-  aiForecasting:       { name: "AI Forecasting Engine",      category: "IA",           description: "Prévisions SEO/trafic/conversion 90j",     price: "39€/mois",  isFlagAddon: true  },
-  revenueLeak:         { name: "Revenue Leak AI",            category: "Conversion",   description: "Détection pertes revenus automatique",     price: "24€/mois",  isFlagAddon: true  },
-  aiCro:               { name: "AI CRO Strategist",          category: "Conversion",   description: "Recommandations CRO et A/B tests IA",      price: "29€/mois",  isFlagAddon: true  },
-  behavioralAI:        { name: "Behavioral AI",              category: "UX",           description: "Tracking comportemental + insights IA",    price: "19€/mois",  isFlagAddon: true  },
-  aiWorkflows:         { name: "AI Automation Workflows",    category: "Automation",   description: "Workflows IA multi-étapes",                price: "24€/mois",  isFlagAddon: true  },
-  marketIntelligence:  { name: "AI Market Intelligence",     category: "IA",           description: "Veille concurrentielle IA interne",        price: "49€/mois",  isFlagAddon: true  },
-  agencyPacks:         { name: "Agency Reporting Packs",     category: "Reporting",    description: "Templates rapports multi-clients",         price: "19€/mois",  isFlagAddon: true  },
-  reviewIntelligence:  { name: "Review Intelligence",        category: "Local SEO",    description: "Analyse avis et réponses IA",              price: "19€/mois",  isFlagAddon: true  },
-  ssoEnterprise:       { name: "SSO Enterprise",             category: "Enterprise",   description: "OAuth/JWT SSO interne",                    price: "49€/mois",  isFlagAddon: true  },
-  zapierIntegration:   { name: "Zapier/Make Integration",    category: "Integrations", description: "Webhooks Zapier et Make.com",              price: "14€/mois",  isFlagAddon: true  },
-  advancedWebhooks:    { name: "Advanced Webhooks",          category: "Integrations", description: "Webhooks configurables multi-events",      price: "9€/mois",   isFlagAddon: true  },
-  crmIntegration:      { name: "CRM Integrations",          category: "Integrations", description: "Sync CRM via webhooks internes",           price: "19€/mois",  isFlagAddon: true  },
-  aiCreditsPack50k:    { name: "+50k AI Credits",            category: "IA",           description: "Pack crédits IA supplémentaires",          price: "4€",        isFlagAddon: false },
-  aiCreditsPack200k:   { name: "+200k AI Credits",           category: "IA",           description: "Pack crédits IA best value",               price: "9€",        isFlagAddon: false },
-  aiCreditsPack500k:   { name: "+500k AI Credits",           category: "IA",           description: "Pack crédits IA Pro+",                     price: "19€",       isFlagAddon: false },
-};
+  name: string; category: string; description: string; price: string; isFlagAddon: boolean;
+}> = Object.fromEntries(Object.entries(CANONICAL_ADDON_DEFINITIONS).map(([key, definition]) => [key, {
+  name: definition.name,
+  category: definition.category,
+  description: definition.description,
+  price: `${definition.priceEur}€${definition.oneTime ? "" : "/mois"}`,
+  isFlagAddon: FLAG_ADDONS.has(key),
+}]));
 
 export async function activateAddon(addonKey: string, orgId = "default"): Promise<boolean> {
   if (!ADDON_DEFINITIONS[addonKey]) {
@@ -171,12 +146,14 @@ export async function addExtraAICredits(pack: "50k" | "200k" | "500k", orgId = "
 export function getQuotaLimits(plan: string, addons: Record<string, boolean | number>): {
   audits: number; monitors: number; reports: number; seats: number; retention: number;
 } {
-  const base: Record<string, { audits: number; monitors: number; reports: number; seats: number; retention: number }> = {
-    standard: { audits: 30,   monitors: 10,  reports: 30,   seats: 1,  retention: 30  },
-    pro:      { audits: 300,  monitors: 50,  reports: 300,  seats: 5,  retention: 90  },
-    ultra:    { audits: 1000, monitors: 300, reports: 1000, seats: 10, retention: 365 },
+  const definition = PLAN_DEFINITIONS[plan.toLowerCase()] ?? PLAN_DEFINITIONS["standard"];
+  const limits = {
+    audits: definition.limits.audits,
+    monitors: definition.limits.monitors,
+    reports: definition.limits.reports,
+    seats: definition.limits.teamMembers,
+    retention: definition.limits.retention,
   };
-  const limits = { ...(base[plan.toLowerCase()] ?? base.standard) };
 
   if (addons.monitorsPack50) limits.monitors += Number(addons.monitorsPack50) * 50;
   if (addons.auditsPack200)  limits.audits   += 200;

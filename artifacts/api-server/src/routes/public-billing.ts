@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
@@ -466,34 +466,6 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
   }
 });
 
-/* ─────────────────────────────────────────────────────────────────────────
-   EUR prices in cents — mirrors checkout.html / checkout-payment.html
-   Used to create PaymentIntents for immediate add-on billing.
- ───────────────────────────────────────────────────────────────────────── */
-const ADDON_PRICES_EUR_CENTS: Record<string, number> = {
-  monitorsPack50:       2900,
-  globalMonitoring:     4900,  slaMonitoring:        1900,
-  advancedSeoLab:       2900,  keywordDomination:    3900,
-  backlinkIntelligence: 2400,  aiContentStrategist:  3400,
-  gbpSlots10:           1900,  aiGbpPosting:         2900,
-  reviewIntelligence:   1900,  localDominationMaps:  2400,
-  aiCro:                3400,  behavioralAI:         4400,
-  revenueLeak:          2900,  abTestingAI:          2400,
-  whiteLabel:           1700,  agencyPacks:          4900,
-  aiExecutiveReport:    2400,  aiForecasting:        3900,
-  marketIntelligence:   4900,  aiWorkflows:          3400,
-  extraSeats:           3500,  enterprisePermissions:1900,
-  retention90d:          900,  retention365d:        1900,
-  advancedWebhooks:     1400,  zapierIntegration:    1900,
-  crmIntegration:       2900,  customDomain:          900,
-  ssoEnterprise:        4900,  aiWorkspaceLaunch:    4900,
-  prioritySupport:      2900,  auditsPack200:        1200,
-  auditsPack1000:       3900,  pdfPack200:           1200,
-  exportsPack1000:      1400,
-  /* AI credit packs (one-time) — 4€ / 9€ / 19€ */
-  aiCreditsPack50k:   400, aiCreditsPack200k:  900, aiCreditsPack500k: 1900,
-};
-
 /* ─── POST /api/public/payment-intent ────────────────────────────────────
    Creates a PaymentIntent (immediate add-on charge) or a SetupIntent
    (plan-only trial — no charge today, card saved for subscription).
@@ -536,7 +508,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   for (const key of addonKeys) {
     if (included.has(key)) continue; /* skip plan-included add-ons */
     const qty = Number((addons as AddonsMap)[key] || 1);
-    immediateAmountCents += (ADDON_PRICES_EUR_CENTS[key] || 0) * qty;
+    immediateAmountCents += (ADDON_DEFINITIONS[key]?.priceEur ?? 0) * 100 * qty;
   }
 
   // Derive orgId (= email) from pending_signups so the webhook can activate the account

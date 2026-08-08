@@ -3,7 +3,7 @@ import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuo
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
-import { PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS } from "../lib/plans.js";
 
 const router = Router();
 
@@ -22,10 +22,15 @@ router.get("/addons", async (req: Request, res: Response) => {
       if (!(key in liveAddons)) liveAddons[key] = true;
     }
     const quotas = getQuotaLimits(plan, liveAddons);
+    const catalog = Object.fromEntries(Object.entries(CANONICAL_ADDON_DEFINITIONS).map(([key, definition]) => [key, {
+      ...definition,
+      active: liveAddons[key] ?? false,
+      includedInPlan: planIncluded.has(key),
+    }]));
     res.json({
       addons: liveAddons,
       orgAddons,
-      definitions: ADDON_DEFINITIONS,
+      definitions: catalog,
       quotas,
       plan,
     });

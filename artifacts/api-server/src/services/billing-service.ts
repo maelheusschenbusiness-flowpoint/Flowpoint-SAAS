@@ -4,7 +4,7 @@ import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
 const _PLAN_PRESENTATION: Record<string, {
@@ -40,19 +40,41 @@ export const PLAN_CONFIG = Object.fromEntries(
   })
 );
 
-// ── Add-on catalog ────────────────────────────────────────────────────────────
-// ── Prices must match ADDON_DEFINITIONS in addons-service.ts AND the live Stripe product amounts.
-// Source of truth: plans.ts ADDON_PRICE_IDS for price IDs; ADDON_DEFINITIONS for display prices.
-export const ADDON_CATALOG = [
-  { id: "aiCredits",       name: "Crédits IA",         icon: "🤖", price: 19,  unit: "+50k crédits/mois",  desc: "Crédits IA supplémentaires pour les analyses, rapports et recommandations" },
-  { id: "monitorsPack50",  name: "Extra Monitors",      icon: "📡", price: 19,  unit: "+50 monitors",        desc: "Ajoutez 50 monitors supplémentaires à votre abonnement" },
-  { id: "extraSeats",      name: "Sièges équipe",       icon: "👥", price: 14,  unit: "par siège/mois",     desc: "Ajoutez des membres d'équipe supplémentaires" },
-  { id: "exportsPack1000", name: "Exports pack",        icon: "📤", price: 14,  unit: "+1000 exports/mois", desc: "Exports CSV/Excel supplémentaires" },
-  { id: "pdfPack200",      name: "PDF Reports pack",    icon: "📄", price: 12,  unit: "+200 PDF/mois",      desc: "Rapports PDF supplémentaires avec white-label" },
-  { id: "whiteLabel",      name: "White-Label",         icon: "🏷️", price: 17,  unit: "portail complet",    desc: "Portail client entièrement brandé à votre image" },
-  { id: "retention90d",    name: "Rétention 90 jours",  icon: "🗄️", price: 9,   unit: "/mois",              desc: "Conservation des données audit et analytics sur 90 jours" },
-  { id: "retention365d",   name: "Rétention 365 jours", icon: "🏛️", price: 19,  unit: "/mois",              desc: "Conservation des données sur 12 mois avec historique complet" },
-];
+// ── Add-on catalog (public, served by GET /api/billing/plans) ─────────────────
+// Names, prices, descriptions and billing type are DERIVED from ADDON_DEFINITIONS
+// in lib/plans.ts — the single source of truth. Only icon + unit are
+// presentation-only. NEVER restate a price or a name here: a second table is how
+// "14 € displayed / 35 € charged" divergences appear.
+// Keys must exist in ADDON_PRICE_IDS, otherwise checkout cannot collect them.
+const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
+  aiCreditsPack50k: { icon: "🤖", unit: "+50 000 crédits" },
+  monitorsPack50:   { icon: "📡", unit: "+50 monitors"    },
+  extraSeats:       { icon: "👥", unit: "+5 sièges"       },
+  exportsPack1000:  { icon: "📤", unit: "+1 000 exports"  },
+  pdfPack200:       { icon: "📄", unit: "+200 PDF"        },
+  whiteLabel:       { icon: "🏷️", unit: "portail complet"  },
+  retention90d:     { icon: "🗄️", unit: "/mois"            },
+  retention365d:    { icon: "🏛️", unit: "/mois"            },
+};
+
+export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, pres]) => {
+  const def = ADDON_DEFINITIONS[id];
+  if (!def) {
+    logger.error({ addonKey: id }, "[Billing] ADDON_CATALOG references an unknown add-on key — omitted");
+    return [];
+  }
+  return [{
+    id,
+    name:     def.name,
+    icon:     pres.icon,
+    price:    def.priceEur,
+    unit:     pres.unit,
+    desc:     def.description,
+    oneTime:  def.oneTime,
+    quantity: def.quantity,
+    priceId:  ADDON_PRICE_IDS[id] ?? "",
+  }];
+});
 
 // ── Usage tracking ────────────────────────────────────────────────────────────
 export async function getUsageSummary(orgId = "default") {

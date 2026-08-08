@@ -201,6 +201,62 @@ export const ADDON_PRICE_IDS: Record<string, string> = {
   aiCreditsPack500k:    process.env["STRIPE_PRICE_AI_500K"] ?? process.env["STRIPE_PRICE_ID_AI_CREDITS_500K"] ?? "price_1TknZP9eqtbj6iPBFLPnUbQ0",
 };
 
+export interface AddonDefinition {
+  name: string;
+  category: string;
+  description: string;
+  priceEur: number;
+  oneTime: boolean;
+  quantity: boolean;
+}
+
+/**
+ * Canonical public add-on catalogue.
+ * Stripe price IDs above control collection; this metadata controls every
+ * customer-facing label and amount. Frontends must obtain it from the API.
+ */
+export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
+  monitorsPack50:       { name: "+50 Monitors",             category: "Monitoring",   description: "+50 monitors actifs", priceEur: 19, oneTime: false, quantity: true },
+  globalMonitoring:     { name: "Global Monitoring",        category: "Monitoring",   description: "Monitoring géographique multi-régions", priceEur: 49, oneTime: false, quantity: false },
+  slaMonitoring:        { name: "SLA Monitoring Avancé",    category: "Monitoring",   description: "Suivi SLA et rapports de disponibilité", priceEur: 19, oneTime: false, quantity: false },
+  advancedSeoLab:       { name: "Advanced SEO Lab",         category: "SEO",          description: "Audit SEO avancé et recommandations IA", priceEur: 29, oneTime: false, quantity: false },
+  keywordDomination:    { name: "Keyword Domination Engine",category: "SEO",          description: "Suivi et stratégie mots-clés avancée", priceEur: 39, oneTime: false, quantity: false },
+  backlinkIntelligence: { name: "Backlink Intelligence",    category: "SEO",          description: "Analyse de backlinks", priceEur: 24, oneTime: false, quantity: false },
+  aiContentStrategist:  { name: "AI Content Strategist",    category: "SEO",          description: "Stratégie de contenu assistée par IA", priceEur: 34, oneTime: false, quantity: false },
+  gbpSlots10:           { name: "+10 Emplacements GBP",     category: "Local SEO",    description: "+10 fiches Google Business Profile", priceEur: 19, oneTime: false, quantity: true },
+  aiGbpPosting:         { name: "AI GBP Posting",           category: "Local SEO",    description: "Publication GBP assistée par IA", priceEur: 29, oneTime: false, quantity: false },
+  reviewIntelligence:   { name: "Review Intelligence",      category: "Local SEO",    description: "Analyse des avis et réponses IA", priceEur: 19, oneTime: false, quantity: false },
+  localDominationMaps:  { name: "Local Domination Maps",    category: "Local SEO",    description: "Cartographie de visibilité locale", priceEur: 24, oneTime: false, quantity: false },
+  aiCro:                { name: "AI CRO Strategist",        category: "Conversion",   description: "Recommandations CRO et A/B tests IA", priceEur: 34, oneTime: false, quantity: false },
+  behavioralAI:         { name: "Behavioral AI",            category: "Conversion",   description: "Analyse comportementale et insights IA", priceEur: 44, oneTime: false, quantity: false },
+  revenueLeak:          { name: "Revenue Leak AI",          category: "Conversion",   description: "Détection des pertes de revenus", priceEur: 29, oneTime: false, quantity: false },
+  abTestingAI:          { name: "AB Testing IA",            category: "Conversion",   description: "Expérimentation A/B assistée par IA", priceEur: 24, oneTime: false, quantity: false },
+  whiteLabel:           { name: "White-Label Exports",      category: "Reporting",    description: "Exports PDF à votre marque", priceEur: 17, oneTime: false, quantity: false },
+  agencyPacks:          { name: "Agency Reporting Packs",   category: "Reporting",    description: "Templates de rapports multi-clients", priceEur: 49, oneTime: false, quantity: false },
+  aiExecutiveReport:    { name: "AI Executive Reporting",   category: "Reporting",    description: "Résumés exécutifs IA", priceEur: 24, oneTime: false, quantity: false },
+  aiForecasting:        { name: "AI Forecasting Engine",    category: "IA",           description: "Prévisions SEO, trafic et conversion", priceEur: 39, oneTime: false, quantity: false },
+  marketIntelligence:   { name: "AI Market Intelligence",   category: "IA",           description: "Veille concurrentielle IA", priceEur: 49, oneTime: false, quantity: false },
+  aiWorkflows:          { name: "AI Automation Workflows",  category: "IA",           description: "Workflows IA multi-étapes", priceEur: 34, oneTime: false, quantity: false },
+  extraSeats:           { name: "+5 Sièges",                category: "Équipe",       description: "+5 membres supplémentaires", priceEur: 35, oneTime: false, quantity: true },
+  enterprisePermissions:{ name: "Enterprise Permissions",   category: "Équipe",       description: "Permissions avancées", priceEur: 19, oneTime: false, quantity: false },
+  retention90d:         { name: "Rétention 90 jours",       category: "Storage",      description: "90 jours de données historiques", priceEur: 9, oneTime: false, quantity: false },
+  retention365d:        { name: "Rétention 365 jours",      category: "Storage",      description: "365 jours de données historiques", priceEur: 19, oneTime: false, quantity: false },
+  advancedWebhooks:     { name: "Webhooks Avancés",          category: "API",          description: "Webhooks configurables", priceEur: 14, oneTime: false, quantity: false },
+  zapierIntegration:    { name: "Zapier / Make",             category: "API",          description: "Intégration Zapier et Make", priceEur: 19, oneTime: false, quantity: false },
+  crmIntegration:       { name: "Intégration CRM",           category: "API",          description: "Synchronisation CRM", priceEur: 29, oneTime: false, quantity: false },
+  customDomain:         { name: "Custom Domain",             category: "Enterprise",   description: "Domaine personnalisé pour le portail", priceEur: 9, oneTime: false, quantity: false },
+  ssoEnterprise:        { name: "SSO Enterprise",            category: "Enterprise",   description: "SSO SAML et OIDC", priceEur: 49, oneTime: false, quantity: false },
+  aiWorkspaceLaunch:    { name: "AI Workspace Launch",       category: "Enterprise",   description: "Configuration d'espace de travail par IA", priceEur: 49, oneTime: false, quantity: false },
+  prioritySupport:      { name: "Support Prioritaire",       category: "Support",      description: "Canal prioritaire", priceEur: 29, oneTime: false, quantity: false },
+  auditsPack200:        { name: "Pack audits +200",          category: "SEO",          description: "+200 audits mensuels", priceEur: 12, oneTime: false, quantity: true },
+  auditsPack1000:       { name: "Pack audits +1 000",        category: "SEO",          description: "+1 000 audits mensuels", priceEur: 39, oneTime: false, quantity: true },
+  pdfPack200:           { name: "Pack PDF +200",             category: "Reporting",    description: "+200 exports PDF", priceEur: 12, oneTime: false, quantity: true },
+  exportsPack1000:      { name: "Pack exports +1 000",       category: "Reporting",    description: "+1 000 exports", priceEur: 14, oneTime: false, quantity: true },
+  aiCreditsPack50k:     { name: "+50 000 crédits IA",        category: "IA",           description: "Pack de crédits IA", priceEur: 4, oneTime: true, quantity: true },
+  aiCreditsPack200k:    { name: "+200 000 crédits IA",       category: "IA",           description: "Pack de crédits IA", priceEur: 9, oneTime: true, quantity: true },
+  aiCreditsPack500k:    { name: "+500 000 crédits IA",       category: "IA",           description: "Pack de crédits IA", priceEur: 19, oneTime: true, quantity: true },
+};
+
 export const FLAG_ADDONS = new Set([
   "globalMonitoring","slaMonitoring",
   "advancedSeoLab","keywordDomination","backlinkIntelligence","aiContentStrategist",
