@@ -236,7 +236,9 @@
     aiCreditsPack200k:    { name: '+200 000 crédits IA',       price: 9,  oneTime: true },
     aiCreditsPack500k:    { name: '+500 000 crédits IA',       price: 19, oneTime: true }
   };
-  var PLAN_INCLUDED = { standard: [], pro: ['whiteLabel'], ultra: ['whiteLabel', 'agencyPacks'] };
+  // Server checkout is authoritative for add-on entitlements and pricing.
+  // Do not silently remove cart entries from a local plan-inclusion matrix.
+  var PLAN_INCLUDED = { standard: [], pro: [], ultra: [] };
 
   /* ── Trial days ── */
   var _trialDaysRemaining = 14;

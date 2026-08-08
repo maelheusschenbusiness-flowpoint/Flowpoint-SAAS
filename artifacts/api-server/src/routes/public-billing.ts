@@ -1249,11 +1249,12 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       logger.warn({ _fcPodErr }, "[PublicBilling] finalize: persistOrgData non-fatal (webhook will sync)");
     }
 
-    // ── Pre-registration: activate new user account (fire-and-forget) ─────────
+    // ── Pre-registration: activate new user account and deliver magic link ────
+    // A successful finalization must never claim that a login email was sent
+    // before the account, token and delivery have all completed successfully.
     const _fcActToken = preRegisterToken || intentMeta["pre_register_token"] || "";
     if (_fcActToken) {
-      (async () => {
-        try {
+      try {
           const { pool: _fcActPool } = await import("@workspace/db");
           const { randomBytes: _fcRb } = await import("crypto");
           const _fcActC0 = await _fcActPool.connect();
@@ -1337,23 +1338,31 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           } finally { _fcTokC.release(); }
           const _fcPubUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
           const { mailer: _fcMailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
-          if (_fcMailer) {
-            await _fcMailer.sendActivationMagicLink({
+          if (!_fcMailer) {
+            throw new Error("Activation email service unavailable");
+          }
+          const _fcMailResult = await _fcMailer.sendActivationMagicLink({
               to:           _fcAEmail,
               name:         _fcSignup["first_name"] || _fcAEmail.split("@")[0],
               plan:         planKey,
               magicLinkUrl: `${_fcPubUrl}/login-verify.html?token=${_fcMagicToken}`,
               isTrial:      grantTrial,
-            }).catch((_fcMailErr: unknown) => logger.error({ _fcMailErr }, "[PublicBilling] finalize: activation email failed"));
-            logger.info({ email: _fcAEmail }, "[PublicBilling] finalize: activation magic link sent");
+          });
+          if (!_fcMailResult?.ok) {
+            throw new Error(`Activation email was not delivered: ${_fcMailResult?.error ?? "unknown error"}`);
           }
-        } catch (_fcActTopErr) {
-          logger.error({ _fcActTopErr }, "[PublicBilling] finalize: pre-reg activation failed (payment confirmed — manual activation may be needed)");
-        }
-      })();
+            logger.info({ email: _fcAEmail }, "[PublicBilling] finalize: activation magic link sent");
+      } catch (_fcActTopErr) {
+        logger.error({ _fcActTopErr }, "[PublicBilling] finalize: pre-reg activation/link delivery failed");
+        res.status(502).json({
+          error: "Votre paiement est confirmé, mais le lien de connexion n'a pas pu être envoyé. Réessayez dans quelques instants ou contactez le support.",
+          code: "activation_email_failed",
+        });
+        return;
+      }
     }
 
-    res.json({ success: true, subscriptionId: planSubscription.id, addonSubscriptionId });
+    res.json({ success: true, subscriptionId: planSubscription.id, addonSubscriptionId, activationEmailSent: !!_fcActToken });
   } catch (err) {
     logger.error({ err }, "[PublicBilling] finalize-checkout failed");
     res.status(500).json({ error: "Erreur lors de la finalisation." });

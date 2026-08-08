@@ -9006,7 +9006,9 @@ function renderBilling() {
         const _ss  = (typeof window.getBillingStatus === 'function' ? window.getBillingStatus() : (_bs.subscriptionStatus || _bs.status || ''));
         const _cap = !!_bs.cancelAtPeriodEnd;
         const _ca  = _bs.cancelAt ? new Date(_bs.cancelAt * 1000).toLocaleDateString(getLocale()) : null;
-        const _te  = STATE.me && STATE.me.trialEndsAt ? new Date(STATE.me.trialEndsAt).toLocaleDateString(getLocale()) : null;
+        const _trialRaw = _bs.trialEndsAt || STATE.me?.trialEndsAt || _bs.nextBillingDate || _bs.currentPeriodEnd || null;
+        const _trialDate = _trialRaw ? new Date(_trialRaw) : null;
+        const _te = _trialDate && !isNaN(_trialDate.getTime()) ? _trialDate.toLocaleDateString(getLocale()) : null;
 
         // ── Danger zone footer (always visible) ─────────────────────────────
         const _dangerZone = `<div style="border-top:1px solid var(--fp-border);margin-top:14px;padding-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div style="font-size:11px;color:var(--fp-text-muted)">Zone danger — action irréversible</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.25);color:#ef4444;font-size:11px" onclick="fpDeleteAccountModal()">🗑️ Supprimer mon compte</button></div>`;
@@ -9025,7 +9027,7 @@ function renderBilling() {
         // ── États actifs ─────────────────────────────────────────────────────
         if (!(_ss === 'active' || _ss === 'trialing' || _cap)) return '';
         const _bc  = _cap ? '#ef4444' : _ss === 'trialing' ? '#f59e0b' : '#22c55e';
-        const _st  = _cap ? `⚠️ Annulation programmée · Accès jusqu'au ${_ca || '—'}` : _ss === 'trialing' ? `🎯 Essai gratuit · Expire le ${_te || '—'}` : `✅ Abonnement actif · Résiliation à tout moment`;
+        const _st  = _cap ? `⚠️ Annulation programmée · Accès jusqu'au ${_ca || '—'}` : _ss === 'trialing' ? (_te ? `🎯 Essai gratuit · Expire le ${_te}` : `🎯 Essai gratuit en cours · Date de fin en cours de synchronisation`) : `✅ Abonnement actif · Résiliation à tout moment`;
         const _btn = _cap
           ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="background:#22c55e;border-color:#22c55e;flex-shrink:0" onclick="fpReactivateSubscription()">Réactiver l'abonnement</button>`
           : _ss === 'trialing'
@@ -9044,7 +9046,6 @@ function renderBilling() {
     // includedFrom: 'pro' = included in Pro & Ultra | 'ultra' = Ultra only | null = always paid
     const allAddons = [
       // ── Monitoring ──
-      { cat:'Monitoring', name:'+10 Monitors',             price:'9€/mois',  icon:'📡', color:'#f59e0b', active:false, tag:'Populaire',      roi:'99.9% uptime garanti',           includedFrom:null,    desc:'Surveillez 10 sites supplémentaires en temps réel avec alertes SMS/email instantanées.', features:['10 monitors additionnels activés immédiatement','Alertes SMS + email en moins d\'1 min','Rapports de disponibilité hebdomadaires','Intégration Slack & Discord incluse','Historique uptime 30 jours'] },
       { cat:'Monitoring', name:'+50 Monitors',             price:'19€/mois', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50),  tag:'Best value',      roi:'50 sites couverts',               includedFrom:null,    desc:'Pack monitoring massif pour agences. Alertes avancées, SLA, et rapport disponibilité.', features:['50 monitors simultanés','Alertes SMS prioritaires < 30 sec','Tableau de bord SLA automatique','Rapport PDF disponibilité mensuel','Escalade automatique par équipe'] },
       { cat:'Monitoring', name:'Global Monitoring',        price:'49€/mois', icon:'🌍', color:'#f59e0b', active:false, tag:'Ultra',      roi:'Monitoring 15 régions',           includedFrom:null,    desc:'Surveillez depuis 15 régions mondiales. Latence, CDN, et géo-disponibilité.', features:['15 régions de monitoring (EU, US, APAC…)','Latence par région en temps réel','Détection CDN et cache edge','Alertes géo-localisées','Rapport géo-disponibilité PDF'] },
       { cat:'Monitoring', name:'SLA Monitoring Avancé',    price:'19€/mois', icon:'🛡️', color:'#f59e0b', active:false, tag:'Pro',             roi:'SLA 99.9% garanti',               includedFrom:null,    desc:'Rapports SLA automatiques, incidents, et analytics disponibilité avancés.', features:['SLA tracking automatique par client','Rapport incidents horodaté','Score disponibilité mensuel','Alertes seuils SLA personnalisables','Export PDF pour vos clients'] },
@@ -9064,7 +9065,7 @@ function renderBilling() {
       { cat:'Conversion', name:'Revenue Leak AI',         price:'29€/mois', icon:'💸', color:'#f97316', active:false, tag:'ROI',             roi:'Détecte fuites de revenus',       includedFrom:null,    desc:'IA de détection des pertes de conversion. Prioritise les quick wins revenue.', features:['Détection automatique des fuites de revenus','Quick wins classés par impact €','Analyse abandons de panier / formulaire','Alertes dégradation conversion','ROI estimé par correction'] },
       { cat:'Conversion', name:'AB Testing IA',           price:'24€/mois', icon:'🔀', color:'#f97316', active:false, tag:'Expérimentation', roi:'+22% conversion moyenne',         includedFrom:null,    desc:'Tests A/B automatisés par IA. Hypothèses générées, variantes créées, et gagnant sélectionné automatiquement.', features:['Hypothèses A/B générées par IA','Création automatique des variantes','Sélection du gagnant statistiquement validée','Calcul de significativité en temps réel','Rapport impact par test'] },
       // ── Reporting ──
-      { cat:'Reporting',  name:'White-Label Exports',     price:'17€/mois', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Standard inclus', roi:'Rapports à votre marque', includedFrom:'standard', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
+      { cat:'Reporting',  name:'White-Label Exports',     price:'17€/mois', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Rapports à votre marque', includedFrom:'pro', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
       { cat:'Reporting',  name:'Agency Reporting Packs',  price:'49€/mois', icon:'📦', color:'#eab308', active:false, tag:'Agence',          roi:'12 templates pro inclus',         includedFrom:null,    desc:'Bibliothèque de 12 templates agence premium. Rapports Executive, KPI, et Local SEO.', features:['12 templates premium (Executive, Local, SEO…)','Personnalisation par client','Envoi automatique PDF mensuel','Rapports multi-sites consolidés','Tableau de bord client dédié'] },
       { cat:'Reporting',  name:'AI Executive Reporting',  price:'24€/mois', icon:'📊', color:'#eab308', active:false, tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',     includedFrom:null,    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'] },
       // ── IA ──
@@ -9082,12 +9083,12 @@ function renderBilling() {
       { cat:'API',        name:'Zapier/Make Integration', price:'19€/mois', icon:'⚙️', color:'#14b8a6', active:false, tag:'No-code',         roi:'1000+ intégrations',              includedFrom:null,    desc:'Connectez FlowPoint à 1000+ applications. CRM, Slack, Notion, HubSpot, et plus.', features:['1000+ apps disponibles (Zapier + Make)','Triggers sur audits, alertes, rapports','Actions : créer tâche, envoyer email, notifier','Templates de zaps prêts à l\'emploi','Support no-code dédié'] },
       { cat:'API',        name:'CRM Intégrations',        price:'29€/mois', icon:'🏢', color:'#14b8a6', active:false, tag:'Ultra',      roi:'HubSpot, Salesforce, Pipedrive',  includedFrom:null,    desc:'Synchronisez vos données SEO avec votre CRM. Leads, opportunités, et reporting.', features:['Sync HubSpot, Salesforce, Pipedrive','Création de deals depuis les opportunités SEO','Enrichissement contacts avec data SEO','Mapping de champs personnalisable','Synchronisation bi-directionnelle en temps réel'] },
       // ── Enterprise ──
-      { cat:'Ultra', name:'Custom Domain',           price:'9€/mois',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Pro inclus', roi:'portal.votreagence.fr', includedFrom:'pro', desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
+      { cat:'Ultra', name:'Custom Domain',           price:'9€/mois',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Ultra inclus', roi:'portal.votreagence.fr', includedFrom:'ultra', desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
       { cat:'Ultra', name:'SSO SAML',          price:'49€/mois', icon:'🔑', color:'#6366f1', active:false, tag:'Enterprise',     roi:'SAML 2.0 / OIDC',                includedFrom:null, desc:'Single Sign-On enterprise. Compatible SAML 2.0, OIDC, Azure AD, et Okta.', features:['SSO SAML 2.0 et OIDC natif','Compatible Azure AD, Okta, Google Workspace','Provisioning/déprovisioning automatique (SCIM)','Logs de connexion centralisés','Support dédié configuration SSO'] },
       { cat:'Ultra', name:'AI Workspace Launch',     price:'49€/mois', icon:'🤖', color:'#6366f1', active:false, tag:'IA Setup',        roi:'Workspace auto en 2 min',         includedFrom:null,    desc:'L\'IA configure automatiquement votre workspace FlowPoint : dashboards, KPIs, alertes, missions et stratégie business.', features:['Configuration complète workspace en 2 min','KPIs et alertes adaptés à votre secteur','Missions et stratégie SEO pré-configurées','Dashboards personnalisés par votre métier','Accompagnement IA en continu'], wizardFn:'openAIWorkspaceLaunch' },
     ];
 
-    const currentPlan = (me.plan || '').toLowerCase();
+    const currentPlan = ((STATE.billing && STATE.billing.plan) || me.plan || '').toLowerCase();
     const planLevel = currentPlan === 'ultra' ? 2 : currentPlan === 'pro' ? 1 : 0;
     const isIncluded = a => {
       if (a.includedFrom === 'standard') return true;
@@ -9275,6 +9276,10 @@ function renderBilling() {
       if (!_a) { fpGoToPricing(); return; }
       const key = _ADDON_STRIPE_KEYS[_a.name];
       if (!key) { fpGoToPricing(); return; }
+      if (isIncluded(_a)) {
+        showToast('info', 'Cet add-on est déjà inclus dans votre plan.');
+        return;
+      }
       const _bStatus = (typeof getBillingStatus === 'function' ? getBillingStatus() : (STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || '');
       // Abonnés actifs : activation directe dans le dashboard — le backend ajoute
       // l'item Stripe à l'abonnement (facturation immédiate) et annule si Stripe échoue.
@@ -9282,7 +9287,13 @@ function renderBilling() {
       if (_bStatus === 'active' || _bStatus === 'trialing') {
         if (window.FP_ADDONS_API && typeof window.FP_ADDONS_API.activate === 'function') {
           closeFloatPanel && closeFloatPanel();
-          window.FP_ADDONS_API.activate(key);
+          const result = await window.FP_ADDONS_API.activate(key);
+          if (result?.ok) {
+            try { sessionStorage.removeItem('fp-state-cache'); } catch (_) {}
+            _apiFetchCache.clear();
+            _apiFetchInFlight.clear();
+            await loadData();
+          }
           return;
         }
       }
@@ -26428,43 +26439,10 @@ function renderAlertsCenter() {
       };
     });
 
-  // ── Dynamic alert feed derived from real monitors + audits ──────────────
-  const _alMonDown = (STATE.monitors || []).filter(m => m.status === 'down').slice(0, 1);
-  const _alMonWarn = (STATE.monitors || []).filter(m => m.status === 'warn').slice(0, 1);
-  const _alMonUp   = (STATE.monitors || []).filter(m => m.status === 'up').slice(0, 1);
-  const _alBadAudit = (STATE.audits || []).sort((a,b)=>(a.score||0)-(b.score||0))[0];
-  const _alGoodAudit= (STATE.audits || []).sort((a,b)=>(b.score||0)-(a.score||0))[0];
-  const staticAlerts = [
-    ...(_alMonDown.length > 0 ? [{ id:'al1', sev:'critical', cat:'Monitor', icon:'wifi-off',
-      title: 'Monitor DOWN — ' + (_alMonDown[0].url||_alMonDown[0].name||'').replace(/^https?:\/\//,''),
-      desc: 'Site inaccessible — impact client direct',
-      time:'En cours', color:'#ef4444', impact:'Élevé — trafic affecté' }] : []),
-    ...(_alBadAudit && (_alBadAudit.score||0) < 50 ? [{ id:'al2', sev:'critical', cat:'SEO', icon:'trending-down',
-      title: 'Score SEO critique — ' + (_alBadAudit.url||'').replace(/^https?:\/\//,''),
-      desc: `${_alBadAudit.score}/100 — ${_alBadAudit.issues||0} problèmes non résolus`,
-      time:'Récent', color:'#ef4444', impact:'Critique — risque ranking' }] : []),
-    ...(_alMonWarn.length > 0 ? [{ id:'al3', sev:'critical', cat:'Performance', icon:'activity',
-      title: 'Latence élevée — ' + (_alMonWarn[0].url||_alMonWarn[0].name||'').replace(/^https?:\/\//,''),
-      desc: `Répond en ${_alMonWarn[0].latency||'—'}ms (seuil 500ms) — Core Web Vitals dégradés`,
-      time:'En cours', color:'#ef4444', impact:'Moyen — UX mobile impactée' }] : []),
-    ...((()=>{ const _ua=STATE.gbp?.unansweredReviews; return (_ua>0||PREVIEW_MODE)?[{ id:'al4', sev:'critical', cat:'Local SEO', icon:'message-circle', title:(_ua!=null?_ua:'14')+' avis Google sans réponse', desc:(_ua!=null?_ua+' avis':'Avis')+' sur fiches GBP — impact note moyenne et confiance client', time:'1j', color:'#ef4444', impact:'Élevé — note en baisse' }]:[];})()),
-    ...((()=>{ const _nA=(STATE.audits||[]).length; const _plan=STATE.me?.plan||'Pro'; const _lim=_plan==='Standard'?50:_plan==='Pro'?150:300; if(_nA===0&&!PREVIEW_MODE)return[]; const _pct=Math.round(_nA/_lim*100); return (_pct>=70||PREVIEW_MODE)?[{ id:'al5', sev:'warning', cat:'Quota', icon:'alert-circle', title:'Quota audits à '+(_pct||80)+'% — '+(_nA||240)+'/'+(_lim||300)+' utilisés', desc:(_lim-_nA||60)+' audits restants ce mois — penser à optimiser les planifications', time:'2j', color:'#f59e0b', impact:'Faible — risque dépassement' }]:[];})()),
-    ...(PREVIEW_MODE?[{ id:'al6',  sev:'warning',   cat:'Concurrent', icon:'users',         title:"Concurrent principal +12 positions ce mois",      desc:"Concurrent en accélération locale — risque perte Local Pack",                time:"2j",      color:'#f59e0b', impact:"Moyen — pression concurrence" }]:[]),
-    ...(PREVIEW_MODE?[{ id:'al7', sev:'warning', cat:'Conversion', icon:'trending-down', title:"Conversion weekend à 0%", desc:"Aucun client détecté sur 1200 sessions — vérifiez les formulaires", time:"3j", color:'#f59e0b', impact:"Critique — revenue manqué" }]:[]),
-    ...(_alMonUp.length > 0 ? [{ id:'al8', sev:'info', cat:'Monitor', icon:'check-circle',
-      title: 'Monitor OK — ' + (_alMonUp[0].url||_alMonUp[0].name||'').replace(/^https?:\/\//,''),
-      desc: `Uptime ${typeof _alMonUp[0].uptime === 'number' ? _alMonUp[0].uptime + '%' : 'ok'} · Latence ${_alMonUp[0].latency||'—'}ms`,
-      time:'Récent', color:'#22c55e', impact:'OK' }] : []),
-    ...(PREVIEW_MODE?[{ id:'al9',  sev:'info',      cat:'Rapport',    icon:'file-text',     title:"Rapport mensuel prêt",                          desc:"Rapport SEO Executive " + CUR_MONTH + " — disponible",                       time:"Hier",    color:'#2563EB', impact:"Info — aucun risque"           }]:[]),
-    ...(_alGoodAudit && (_alGoodAudit.score||0) >= 70 ? [{ id:'al10', sev:'info', cat:'SEO', icon:'trending-up',
-      title: 'Score élevé — ' + (_alGoodAudit.url||'').replace(/^https?:\/\//,''),
-      desc: `${_alGoodAudit.score}/100 — audit complet réussi`,
-      time:"2j", color:'#22c55e', impact:"Positif" }] : []),
-  ];
-
-  // Filter staticAlerts: exclude any that have been locally acknowledged
-  const _acResolvedIds = STATE.resolvedIncidents || {};
-  const allAlerts = [...ruleAlerts, ...staticAlerts.filter(a => !_acResolvedIds[a.id])];
+  // The alert center only renders persisted alert events. Deriving synthetic
+  // alerts from monitors/audits made the sidebar count and the alert list tell
+  // different stories, and preview fallbacks could show alerts that never existed.
+  const allAlerts = ruleAlerts;
   const criticals = allAlerts.filter(a => a.sev === 'critical');
   const warnings  = allAlerts.filter(a => a.sev === 'warning');
 
@@ -26473,7 +26451,6 @@ function renderAlertsCenter() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'incidents') {
     // Primary: real alert events with persisted UUIDs (monitor_down / latency / uptime)
-    const _acNow = new Date();
     const _acFmtT = d => d.toLocaleTimeString(getLocale(), {hour:'2-digit', minute:'2-digit'});
     const _acFmtD = d => d.toLocaleDateString(getLocale(), {day:'2-digit', month:'2-digit', year:'numeric'});
 
@@ -26497,51 +26474,10 @@ function renderAlertsCenter() {
         monitorId: ev.monitorId,
       }));
 
-    const _acCoveredMonIds = _realAcEvents.map(e => e.monitorId).filter(Boolean);
-
-    // Synthetic fallback: derived from monitor/audit state with stable IDs, filtered by resolved
-    const _syntheticAcEvents = [
-      ...(STATE.monitors || [])
-        .filter(m => m.status !== 'up')
-        .filter(m => !_acCoveredMonIds.includes(m.id))
-        .map(m => {
-          const synId = 'mon-' + (m.id || (m.url||'').replace(/\W/g,'_'));
-          if (_acResolvedIds[synId]) return null;
-          return {
-            id: synId, sev: m.status === 'down' ? 'critical' : 'warning',
-            status: m.status === 'down' ? 'Actif' : 'Surveillé',
-            title: (m.status === 'down' ? 'Monitor DOWN — ' : 'Latence élevée — ') + (m.url||m.name||'').replace(/^https?:\/\//, ''),
-            systems: m.status === 'down' ? ['Monitor', 'Uptime', 'Trafic'] : ['Performance', 'Core Web Vitals'],
-            impact: m.status === 'down' ? 'Site inaccessible — impact client direct' : `Latence élevée : ${m.latency||'—'}ms`,
-            cause: m.status === 'down' ? 'Vérification hébergeur requise' : `Latence : ${m.latency||'—'}ms`,
-            since: _acFmtD(_acNow) + ' · ' + _acFmtT(_acNow), duration: 'En cours',
-            steps: m.status === 'down' ? ['Vérifier le serveur hébergeur', 'Vérifier les DNS', 'Activer le mode maintenance'] : ['Optimiser les images', 'Activer le cache', 'Analyser les ressources bloquantes'],
-            color: m.status === 'down' ? '#ef4444' : '#f59e0b',
-          };
-        })
-        .filter(Boolean),
-      ...(STATE.audits || []).filter(a => a.score < 50).slice(0, 2).map((a, i) => {
-        const synId = 'seo-' + (a.id || i);
-        if (_acResolvedIds[synId]) return null;
-        return {
-          id: synId, sev: 'warning', status: 'Surveillé',
-          title: 'Score SEO critique — ' + (a.url||'').replace(/^https?:\/\//, ''),
-          systems: ['SEO', 'Audit', 'Rankings'],
-          impact: `Score ${a.score}/100 — ${a.issues||0} problème${(a.issues||0) > 1 ? 's' : ''} non résolu${(a.issues||0) > 1 ? 's' : ''}`,
-          cause: `Score audit faible (${a.score}/100) — optimisations urgentes`,
-          since: _acFmtD(_acNow) + ' · ' + _acFmtT(_acNow), duration: '—',
-          steps: ['Corriger les balises title', 'Optimiser la vitesse mobile', 'Améliorer le maillage interne'],
-          color: '#f59e0b',
-        };
-      }).filter(Boolean),
-    ];
-
-    const incidents = [..._realAcEvents, ..._syntheticAcEvents];
-    const rootCauses = PREVIEW_MODE ? [
-      { icon: '🖥️', title: "Surcharge hébergeur",          prob: 78, color: '#ef4444', desc: "Le pic de trafic Maps (+21% ce mois) dépasse la capacité configurée" },
-      { icon: '📱', title: "Régression mobile non détectée", prob: 64, color: '#f59e0b', desc: "Mise à jour CSS semaine 18 a cassé le formulaire sur iOS Safari" },
-      { icon: '⚡', title: "Images non optimisées",          prob: 91, color: '#ef4444', desc: "6 images > 500KB chargées sans lazy loading ni compression WebP" },
-    ] : [];
+    // The incident center shares the same persisted source as the alert badge.
+    // Never invent incidents from local monitor/audit snapshots.
+    const incidents = _realAcEvents;
+    const rootCauses = [];
     return `
       <div data-fp-anchor="monitors-incidents"></div>
       ${isUltra
@@ -38376,7 +38312,11 @@ window.FP_ADDONS_API = {
         showToast('success', `Add-on ${addonKey} activé`);
       } else showToast('error', r?.error || 'Activation impossible');
       return r;
-    } catch(e) { showToast('error', String(e)); return null; }
+    } catch(e) {
+      const message = e && (e.error || e.message) ? (e.error || e.message) : 'Activation impossible';
+      showToast('error', String(message));
+      return null;
+    }
   },
 
   async deactivate(addonKey) {

@@ -301,7 +301,7 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
       return;
     }
 
-    const planMeta = (sessionMeta["plan"] || sessionMeta["selected_plan"] || "pro").toLowerCase();
+    const planMeta = (sessionMeta["selected_plan"] || sessionMeta["plan"] || "pro").toLowerCase();
     if (["standard","pro","ultra"].includes(planMeta)) {
       store.broadcastPlanUpdate(planMeta, orgIdVerify);
     }
@@ -320,11 +320,18 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     const billingCtx = await loadBillingContext(orgIdVerify);
 
     // Persist billing state to organizations (new source of truth) + mirror to org_settings
+    const subscription = typeof session.subscription === "object" && session.subscription
+      ? session.subscription as { id?: string; status?: string; trial_end?: number | null }
+      : null;
+    const trialEndsAt = subscription?.trial_end
+      ? new Date(subscription.trial_end * 1000).toISOString()
+      : billingCtx.trialEndsAt ?? undefined;
     await persistOrgData(orgIdVerify, {
       plan: planMeta,
-      subscriptionStatus: "active",
+      subscriptionStatus: subscription?.status ?? (trialEndsAt ? "trialing" : "active"),
       stripeCustomerId: session.customer ? String(session.customer) : (billingCtx.stripeCustomerId ?? undefined),
-      trialEndsAt: billingCtx.trialEndsAt ?? undefined,
+      stripeSubscriptionId: subscription?.id ?? billingCtx.stripeSubscriptionId ?? undefined,
+      trialEndsAt,
     }).catch(err => logger.error({ err }, "[Billing] Failed to persist billing state after checkout verify"));
     logger.info({ plan: planMeta, sessionId, orgId: orgIdVerify }, "[Billing] Checkout verified — plan activated");
 
@@ -1099,6 +1106,11 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         try {
           await persistOrgData(orgId, {
             plan,
+            subscriptionStatus: sub.status,
+            stripeSubscriptionId: sub.id,
+            trialEndsAt: isTrialing && sub.trial_end
+              ? new Date(sub.trial_end * 1000).toISOString()
+              : billingCtx.trialEndsAt ?? undefined,
             trialConsumedAt: new Date().toISOString(),
           });
         } catch (persistErr) {

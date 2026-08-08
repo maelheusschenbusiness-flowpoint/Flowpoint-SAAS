@@ -1158,12 +1158,9 @@
 
   /* —— Canonical add-on inclusion (Standard=1 | Pro=6 | Ultra=10 cumulative)
      Mirrors billing.ts, public-billing.ts, checkout.html PLAN_INCLUDED —— */
-  var PLAN_INCLUDED = {
-    standard: ['whiteLabel'],
-    pro:      ['whiteLabel', 'customDomain', 'advancedWebhooks', 'retention90d', 'advancedSeoLab', 'backlinkIntelligence'],
-    ultra:    ['whiteLabel', 'customDomain', 'advancedWebhooks', 'retention90d', 'advancedSeoLab', 'backlinkIntelligence',
-               'retention365d', 'keywordDomination', 'behavioralAI', 'aiForecasting']
-  };
+  /* Plan inclusions are populated from /api/billing/subscription. Never add a
+     parallel static list here: the API is the sole source of truth. */
+  var PLAN_INCLUDED = { standard: [], pro: [], ultra: [] };
 
   /* Add-on default bottom HTML for restoring after plan deselect */
   var ADDON_DEFAULT_BOTTOM = {
@@ -1200,6 +1197,17 @@
         bottom.innerHTML = ADDON_DEFAULT_BOTTOM[key];
       }
     });
+  }
+  function setIncludedAddonsFromServer(plan, addons) {
+    if (!plan || !addons) return;
+    var keys = Array.isArray(addons)
+      ? addons
+      : Object.keys(addons).filter(function(key) {
+          var value = addons[key];
+          return value && typeof value === 'object' && value.includedInPlan === true;
+        });
+    PLAN_INCLUDED[plan.toLowerCase()] = keys;
+    updateIncludedAddons(plan.toLowerCase());
   }
   /* Backward-compat alias */
   function updateWhiteLabel(plan) { updateIncludedAddons(plan); }
@@ -1590,7 +1598,7 @@
     });
 
     /* Show 'Inclus dans [Plan]' badge for all plan-included add-ons */
-    updateIncludedAddons(data.plan || '');
+    setIncludedAddonsFromServer(data.plan || '', data.addons || {});
   }
 
   /* ── Step 1: instant render from localStorage (visual cache, anti-flash) ── */

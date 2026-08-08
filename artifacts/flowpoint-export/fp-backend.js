@@ -773,7 +773,6 @@
   // ─── NAME → KEY mapping for add-ons activation ───────────────────────────────
   var FP_ADDON_NAME_MAP = {
     '+50 Monitors': 'monitorsPack50',
-    '+10 Monitors': 'monitorsPack50',
     'White-Label Exports': 'whiteLabel',
     'AI CRO Strategist': 'aiCro',
     'Revenue Leak AI': 'revenueLeak',

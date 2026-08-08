@@ -8976,9 +8976,8 @@ html[data-theme="light"] .fp-skel-shimmer {
   min-height: 320px;
   padding: 24px;
 }
-/* Hide all skeleton block children — spinner replaces them */
-.fp-skeleton-page > * { display: none !important; }
-/* Centered spinning ring via ::before */
+/* One canonical centered loading ring. Keep skeleton children visible when a
+   renderer supplies them instead of replacing the entire page with a fake ring. */
 .fp-skeleton-page::before {
   content: '';
   display: block;

@@ -40,6 +40,14 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
   if (!ADDON_DEFINITIONS[key]) {
     res.status(400).json({ error: "Unknown addon key" }); return;
   }
+  const dbData = await loadOrgData(orgId).catch(() => null);
+  const plan = String(dbData?.plan ?? "standard").toLowerCase();
+  if ((PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()).has(key)) {
+    // Included capabilities are entitlements, never a separately billable
+    // add-on. Do not call Stripe or create an org_addons duplicate.
+    res.json({ ok: true, addonKey: key, includedInPlan: true, addons: await getOrgAddons(orgId) });
+    return;
+  }
   // Bill the paid add-on on the existing Stripe subscription BEFORE granting access.
   // A Stripe failure must not result in a free paid feature.
   const { syncAddonWithStripe } = await import("../services/addon-stripe-sync.js");

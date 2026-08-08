@@ -26,9 +26,10 @@
       keysToRemove.forEach(function (k) { localStorage.removeItem(k); });
     } catch (e) { /* non-fatal */ }
     try {
-      var _next = sessionStorage.getItem('fp_next') || null;
+      // A magic link is a fresh account boundary. Never carry a previous
+      // account's destination into this new session: it can reopen an unrelated
+      // page (for example the Alert Command Center) after account recreation.
       sessionStorage.clear();
-      if (_next && _next.startsWith('/')) sessionStorage.setItem('fp_next', _next);
     } catch (e) { /* non-fatal */ }
   }
 
@@ -78,14 +79,10 @@
       } catch(e) { /* non-fatal */ }
       show('fp-success');
       setTimeout(function () {
-        var next = '/api/dashboard/';
-        try {
-          var stored = sessionStorage.getItem('fp_next');
-          if (stored && stored.startsWith('/')) {
-            next = stored;
-            sessionStorage.removeItem('fp_next');
-          }
-        } catch(e) {}
+        // The overview is the stable first screen for every magic-link session.
+        // Do not honour fp_next here: it is browser-local state and can belong
+        // to an account that has since been deleted and recreated.
+        var next = '/dashboard.html';
         // Cache-bust to prevent browser serving stale dashboard from disk cache
         var sep = next.indexOf('?') === -1 ? '?' : '&';
         window.location.replace(next + sep + '_cb=' + Date.now());

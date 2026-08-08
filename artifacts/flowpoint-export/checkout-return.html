@@ -83,7 +83,7 @@
       })
       .then(function(r){ return r.json().then(function(d){ return { status: r.status, data: d }; }); })
       .then(function(res) {
-        if (res.data.success) {
+          if (res.data.success) {
           try { localStorage.removeItem('fp_cart'); } catch(e) {}
           try { sessionStorage.removeItem('fp_pre_reg_token'); } catch(e) {}
           document.getElementById('fp-spinner').style.display = 'none';
@@ -119,12 +119,12 @@
                 else { window.location.href = '/dashboard.html?plan_activated=1'; }
               });
             })();
-          } else if (isNewSignup) {
+            } else if (isNewSignup) {
             /* New signup: account activated, magic link sent to email — no session yet */
             document.getElementById('fp-title').textContent = 'Compte activé ! Vérifiez vos emails';
             document.getElementById('fp-sub').innerHTML =
               'Votre abonnement est confirmé.<br>' +
-              'Un <strong>lien de connexion</strong> vous a été envoyé par email.<br>' +
+              'Un <strong>lien de connexion</strong> vient de vous être envoyé par email.<br>' +
               'Cliquez dessus pour accéder à votre tableau de bord.<br><br>' +
               '<a href="/login.html" class="fp-btn">Déjà connecté ? Se connecter →</a>';
           } else {
