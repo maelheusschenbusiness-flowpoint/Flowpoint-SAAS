@@ -186,59 +186,21 @@
 </div>
 
 <script>
+/* The payment page receives a quote with the Stripe intent. It deliberately
+   contains no plan/add-on prices or inclusion rules of its own. */
 (function () {
   'use strict';
-
-  /* ── Pricing reference (mirrors checkout.html) ── */
-  var PLAN_INFO = {
-    standard: { name: 'Plan Standard', price: 29 },
-    pro:      { name: 'Plan Pro',      price: 79 },
-    ultra:    { name: 'Plan Ultra',    price: 149 }
-  };
-  var ADDON_INFO = {
-    monitorsPack50:       { name: '+50 Monitors',              price: 19 },
-    globalMonitoring:     { name: 'Global Monitoring',         price: 49 },
-    slaMonitoring:        { name: 'SLA Monitoring Avancé',     price: 19 },
-    advancedSeoLab:       { name: 'Advanced SEO Lab',          price: 29 },
-    keywordDomination:    { name: 'Keyword Domination Engine', price: 39 },
-    backlinkIntelligence: { name: 'Backlink Intelligence',     price: 24 },
-    aiContentStrategist:  { name: 'AI Content Strategist',     price: 34 },
-    gbpSlots10:           { name: '+10 Emplacements GBP',      price: 19 },
-    aiGbpPosting:         { name: 'AI GBP Posting',            price: 29 },
-    reviewIntelligence:   { name: 'Review Intelligence',       price: 19 },
-    localDominationMaps:  { name: 'Local Domination Maps',     price: 24 },
-    aiCro:                { name: 'AI CRO Strategist',         price: 34 },
-    behavioralAI:         { name: 'Behavioral AI',             price: 44 },
-    revenueLeak:          { name: 'Revenue Leak AI',           price: 29 },
-    abTestingAI:          { name: 'AB Testing IA',             price: 24 },
-    whiteLabel:           { name: 'White-Label Exports',       price: 17 },
-    agencyPacks:          { name: 'Agency Reporting Packs',    price: 49 },
-    aiExecutiveReport:    { name: 'AI Executive Reporting',    price: 24 },
-    aiForecasting:        { name: 'AI Forecasting Engine',     price: 39 },
-    marketIntelligence:   { name: 'AI Market Intelligence',    price: 49 },
-    aiWorkflows:          { name: 'AI Automation Workflows',   price: 34 },
-    extraSeats:           { name: '+5 Sièges',                 price: 35 },
-    enterprisePermissions:{ name: 'Enterprise Permissions',    price: 19 },
-    retention90d:         { name: 'Rétention 90 jours',        price: 9  },
-    retention365d:        { name: 'Rétention 365 jours',       price: 19 },
-    advancedWebhooks:     { name: 'Webhooks Avancés',          price: 14 },
-    zapierIntegration:    { name: 'Zapier / Make',             price: 19 },
-    crmIntegration:       { name: 'Intégration CRM',           price: 29 },
-    customDomain:         { name: 'Custom Domain',             price: 9  },
-    ssoEnterprise:        { name: 'SSO Enterprise',            price: 49 },
-    aiWorkspaceLaunch:    { name: 'AI Workspace Launch',       price: 49 },
-    prioritySupport:      { name: 'Support Prioritaire',       price: 29 },
-    auditsPack200:        { name: 'Pack audits +200',          price: 12 },
-    auditsPack1000:       { name: 'Pack audits +1 000',        price: 39 },
-    pdfPack200:           { name: 'Pack PDF +200',             price: 12 },
-    exportsPack1000:      { name: 'Pack exports +1 000',       price: 14 },
-    aiCreditsPack50k:     { name: '+50 000 crédits IA',        price: 4,  oneTime: true },
-    aiCreditsPack200k:    { name: '+200 000 crédits IA',       price: 9,  oneTime: true },
-    aiCreditsPack500k:    { name: '+500 000 crédits IA',       price: 19, oneTime: true }
-  };
-  // Server checkout is authoritative for add-on entitlements and pricing.
-  // Do not silently remove cart entries from a local plan-inclusion matrix.
-  var PLAN_INCLUDED = { standard: [], pro: [], ultra: [] };
+  var cart=null, quote=null, stripe, elements, _paymentReady=false, _mode='setup';
+  try {cart=JSON.parse(localStorage.getItem('fp_cart')||'null');}catch(_){}
+  if(!cart||(!cart.plan&&!Object.keys(cart.addons||{}).length)){location.href='/checkout.html';return;}
+  function money(n,c){return new Intl.NumberFormat('fr-FR',{style:'currency',currency:c||'EUR'}).format((n||0)/100);}
+  function esc(v){var d=document.createElement('div');d.textContent=String(v);return d.innerHTML;}
+  function showAlert(msg){var e=document.getElementById('fp-alert');e.textContent=msg;e.classList.add('show');}
+  function setLoading(on,label){var b=document.getElementById('fp-pay-btn');b.disabled=on;document.getElementById('fp-spinner').style.display=on?'inline-block':'none';if(label)document.getElementById('fp-btn-text').textContent=label;}
+  function renderQuote(){
+    var rows=quote.lines.map(function(l){return '<div class="fp-sum-row"><span class="fp-sum-label">'+esc(l.name)+(l.quantity>1?' ×'+l.quantity:'')+(l.includedInPlan?'<span class="fp-sum-badge fp-badge-incl">Inclus</span>':l.interval==='one_time'?'<span class="fp-sum-badge fp-badge-now">Maintenant</span>':'')+'</span><span class="fp-sum-amount'+(l.includedInPlan?' muted':'')+'">'+(l.includedInPlan?'Inclus':money(l.amountMinor,quote.currency)+(l.interval==='month'?'/mois':''))+'</span></div>';}).join('');
+    document.getElementById('fp-summary-card').innerHTML='<div class="fp-card-title">Récapitulatif validé</div>'+rows+'<div class="fp-divider"></div><div class="fp-total-row"><span class="fp-total-lbl">Dû aujourd’hui</span><span class="fp-total-val">'+money(quote.amountDueTodayMinor,quote.currency)+'</span></div>'+(quote.recurringAmountMinor?'<div class="fp-total-row"><span class="fp-total-lbl">Mensuel après essai</span><span class="fp-total-val after">'+money(quote.recurringAmountMinor,quote.currency)+'<span class="fp-total-unit">/mois</span></span></div>':'');
+  }
 
   /* ── Trial days ── */
   var _trialDaysRemaining = 14;

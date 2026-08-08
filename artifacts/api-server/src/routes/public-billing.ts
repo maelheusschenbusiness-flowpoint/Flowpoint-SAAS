@@ -4,6 +4,7 @@ import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
+import { createBillingQuote } from "../services/billing-quote.js";
 
 const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
 
@@ -44,6 +45,28 @@ router.get("/billing/plans", async (req: Request, res: Response): Promise<void> 
     subscriptionStatus,
     trialEndsAt,
   });
+});
+
+/**
+ * Server-authoritative quote. This validates all customer selections and
+ * returns the exact price IDs and minor-unit totals later given to Stripe.
+ */
+router.post("/billing/quote", async (req: Request, res: Response): Promise<void> => {
+  const plan = parsePlanOrEmptyPub(req.body?.plan, res);
+  if (plan === null) return;
+  const addons = parseAddonsPub(req.body?.addons, res);
+  if (addons === null) return;
+  try {
+    const quote = createBillingQuote({ plan, addons });
+    if (!quote.lines.length) {
+      res.status(400).json({ error: "Sélectionnez un plan ou un add-on facturable." });
+      return;
+    }
+    res.json({ quote });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "INVALID_SELECTION";
+    res.status(400).json({ error: "Sélection non facturable.", code });
+  }
 });
 
 type AddonsMap = Record<string, boolean | number>;
@@ -175,6 +198,14 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
   if (plan === null) return;
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
+  let quote;
+  try {
+    quote = createBillingQuote({ plan, addons });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "INVALID_SELECTION";
+    res.status(400).json({ error: "Sélection non facturable.", code });
+    return;
+  }
   const source           = typeof req.body?.source === "string" ? req.body.source : "checkout_html";
   const embedded         = req.body?.embedded === true;
   // preRegisterToken: optional — two documented modes:
@@ -192,7 +223,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       res.status(503).json({ error: "Payment service not configured." });
       return;
     }
-    res.json({ url: `https://checkout.stripe.com/c/pay/test_mock_${plan}_${Date.now()}`, mock: true });
+    res.json({ url: `https://checkout.stripe.com/c/pay/test_mock_${plan}_${Date.now()}`, mock: true, quote });
     return;
   }
 
@@ -390,9 +421,9 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
     function respond(session: { id: string; url: string | null; client_secret: string | null }) {
       logger.info({ checkoutType, sessionId: session.id, embedded }, "[PublicBilling] Session created");
       if (embedded) {
-        res.json({ clientSecret: session.client_secret, publishableKey });
+        res.json({ clientSecret: session.client_secret, publishableKey, quote, sessionId: session.id });
       } else {
-        res.json({ url: session.url });
+        res.json({ url: session.url, quote, sessionId: session.id });
       }
     }
 
@@ -475,6 +506,14 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   if (plan === null) return;
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
+  let quote;
+  try {
+    quote = createBillingQuote({ plan, addons });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "INVALID_SELECTION";
+    res.status(400).json({ error: "Sélection non facturable.", code });
+    return;
+  }
   const preRegisterToken   = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
   const trialDaysRemaining = Number.isFinite(Number(req.body?.trialDaysRemaining)) ? Math.max(0, Math.min(90, Number(req.body.trialDaysRemaining))) : 0;
   /* Billing address collected from the checkout-payment.html form */
@@ -494,22 +533,13 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
       res.status(503).json({ error: "Payment service not configured." });
       return;
     }
-    res.json({ clientSecret: "seti_test_mock_secret", publishableKey: "pk_test_mock", mode: "setup", immediateAmount: 0, defaultValues: null });
+    res.json({ clientSecret: "seti_test_mock_secret", publishableKey: "pk_test_mock", mode: "setup", immediateAmount: 0, defaultValues: null, quote });
     return;
   }
 
   const planKey  = plan.toLowerCase();
   const hasPlan  = !!PLAN_PRICE_IDS[planKey];
-  const included = PLAN_INCLUDED_ADDONS[planKey] ?? new Set();
-  const addonKeys = Object.keys(addons as AddonsMap).filter(k => (addons as AddonsMap)[k]);
-
-  /* Calculate immediate charge (add-ons not included, any qty) */
-  let immediateAmountCents = 0;
-  for (const key of addonKeys) {
-    if (included.has(key)) continue; /* skip plan-included add-ons */
-    const qty = Number((addons as AddonsMap)[key] || 1);
-    immediateAmountCents += (ADDON_DEFINITIONS[key]?.priceEur ?? 0) * 100 * qty;
-  }
+  const immediateAmountCents = quote.amountDueTodayMinor;
 
   // Derive orgId (= email) from pending_signups so the webhook can activate the account
   let piOrgId: string | undefined;
@@ -705,7 +735,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
         metadata,
       });
       logger.info({ plan: planKey, addonCount: addonKeys.length, immediateAmountCents }, "[PublicBilling] PaymentIntent created");
-      res.json({ clientSecret: pi.client_secret, publishableKey, mode: "payment", immediateAmount: immediateAmountCents, defaultValues: _piDefaultValues });
+      res.json({ clientSecret: pi.client_secret, publishableKey, mode: "payment", immediateAmount: immediateAmountCents, defaultValues: _piDefaultValues, quote, paymentIntentId: pi.id });
       return;
     }
 
@@ -721,7 +751,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
         metadata,
       });
       logger.info({ plan: planKey, hasCustomer: !!preRegCustomerId }, "[PublicBilling] SetupIntent created");
-      res.json({ clientSecret: si.client_secret, publishableKey, mode: "setup", immediateAmount: 0, defaultValues: _piDefaultValues });
+      res.json({ clientSecret: si.client_secret, publishableKey, mode: "setup", immediateAmount: 0, defaultValues: _piDefaultValues, quote, setupIntentId: si.id });
       return;
     }
 
