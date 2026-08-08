@@ -1412,14 +1412,29 @@ async function loadData() {
   if (STATE.me?.plan) STATE.me.plan = STATE.me.plan.charAt(0).toUpperCase() + STATE.me.plan.slice(1);
 
   // ── Phase 2: Overview + plan definitions — resilient, any failure is non-blocking ──
-  const [_ovRes, _pdRes] = await Promise.allSettled([
+  const [_ovRes, _pdRes, _catRes] = await Promise.allSettled([
     apiFetch(getOverviewApiPath()),
     apiFetch('/api/plans/definitions').catch(() => null),
+    apiFetch('/api/plans/catalog').catch(() => null),
   ]);
   if (_ovRes.status === 'fulfilled') overview = _ovRes.value;
   if (_pdRes.status === 'fulfilled' && _pdRes.value && typeof _pdRes.value === 'object') {
     STATE.planDefs = _pdRes.value;
     try { sessionStorage.setItem('fp-plan-defs', JSON.stringify({ ..._pdRes.value, _ts: Date.now() })); } catch(_) {}
+  }
+  // ── Canonical billing catalogue — the only source of add-on prices and of the
+  //    plan-inclusion matrix. No price or inclusion may be hardcoded downstream. ──
+  if (_catRes.status === 'fulfilled' && _catRes.value && Array.isArray(_catRes.value.addons)) {
+    const _c = _catRes.value;
+    const _byKey = {};
+    _c.addons.forEach(a => { _byKey[a.key] = a; });
+    // Lowest tier that bundles each add-on; mirrors the server matrix exactly.
+    const _inclFrom = {};
+    ['standard', 'pro', 'ultra'].forEach(tier => {
+      ((_c.includedByPlan || {})[tier] || []).forEach(k => { if (!_inclFrom[k]) _inclFrom[k] = tier; });
+    });
+    STATE.billingCatalog = { raw: _c, addonsByKey: _byKey, includedFromByKey: _inclFrom, plans: _c.plans || [] };
+    try { sessionStorage.setItem('fp-billing-catalog', JSON.stringify({ ..._c, _ts: Date.now() })); } catch(_) {}
   }
 
   // ── Phase 3: Section data — each section fails independently, dashboard stays usable ──
@@ -9046,47 +9061,64 @@ function renderBilling() {
     // includedFrom: 'pro' = included in Pro & Ultra | 'ultra' = Ultra only | null = always paid
     const allAddons = [
       // ── Monitoring ──
-      { cat:'Monitoring', name:'+50 Monitors',             price:'19€/mois', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50),  tag:'Best value',      roi:'50 sites couverts',               includedFrom:null,    desc:'Pack monitoring massif pour agences. Alertes avancées, SLA, et rapport disponibilité.', features:['50 monitors simultanés','Alertes SMS prioritaires < 30 sec','Tableau de bord SLA automatique','Rapport PDF disponibilité mensuel','Escalade automatique par équipe'] },
-      { cat:'Monitoring', name:'Global Monitoring',        price:'49€/mois', icon:'🌍', color:'#f59e0b', active:false, tag:'Ultra',      roi:'Monitoring 15 régions',           includedFrom:null,    desc:'Surveillez depuis 15 régions mondiales. Latence, CDN, et géo-disponibilité.', features:['15 régions de monitoring (EU, US, APAC…)','Latence par région en temps réel','Détection CDN et cache edge','Alertes géo-localisées','Rapport géo-disponibilité PDF'] },
-      { cat:'Monitoring', name:'SLA Monitoring Avancé',    price:'19€/mois', icon:'🛡️', color:'#f59e0b', active:false, tag:'Pro',             roi:'SLA 99.9% garanti',               includedFrom:null,    desc:'Rapports SLA automatiques, incidents, et analytics disponibilité avancés.', features:['SLA tracking automatique par client','Rapport incidents horodaté','Score disponibilité mensuel','Alertes seuils SLA personnalisables','Export PDF pour vos clients'] },
+      { key:'monitorsPack50', cat:'Monitoring', name:'+50 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50),  tag:'Best value',      roi:'50 sites couverts',    desc:'Pack monitoring massif pour agences. Alertes avancées, SLA, et rapport disponibilité.', features:['50 monitors simultanés','Alertes SMS prioritaires < 30 sec','Tableau de bord SLA automatique','Rapport PDF disponibilité mensuel','Escalade automatique par équipe'] },
+      { key:'globalMonitoring', cat:'Monitoring', name:'Global Monitoring', icon:'🌍', color:'#f59e0b', active:false, tag:'Ultra',      roi:'Monitoring 15 régions',    desc:'Surveillez depuis 15 régions mondiales. Latence, CDN, et géo-disponibilité.', features:['15 régions de monitoring (EU, US, APAC…)','Latence par région en temps réel','Détection CDN et cache edge','Alertes géo-localisées','Rapport géo-disponibilité PDF'] },
+      { key:'slaMonitoring', cat:'Monitoring', name:'SLA Monitoring Avancé', icon:'🛡️', color:'#f59e0b', active:false, tag:'Pro',             roi:'SLA 99.9% garanti',    desc:'Rapports SLA automatiques, incidents, et analytics disponibilité avancés.', features:['SLA tracking automatique par client','Rapport incidents horodaté','Score disponibilité mensuel','Alertes seuils SLA personnalisables','Export PDF pour vos clients'] },
       // ── SEO ──
-      { cat:'SEO',        name:'Advanced SEO Lab',         price:'29€/mois', icon:'🔬', color:'#2563EB', active:false, tag:'Pro inclus',      roi:'+40% couverture sémantique',      includedFrom:'pro',    desc:'Lab SEO IA complet : analyse sémantique, gap analysis, et topical authority.', features:['Analyse sémantique IA par page','Gap analysis vs top 10 SERP','Score topical authority automatique','Suggestions de silos thématiques','Rapport couverture sémantique mensuel'] },
-      { cat:'SEO',        name:'Keyword Domination Engine',price:'39€/mois', icon:'🚀', color:'#2563EB', active:false, tag:'Ultra',           roi:'10× volume keywords trackés',     includedFrom:'ultra', desc:'Trackez 10 000+ mots-clés. IA de clustering, SERP features, et cannibalization.', features:['10 000 mots-clés trackés (vs 500 standard)','Clustering sémantique automatique','Détection cannibalisation IA','SERP Features tracker (PAA, featured snippets)','Alertes volatilité algo Google'] },
-      { cat:'SEO',        name:'Backlink Intelligence',    price:'24€/mois', icon:'🔗', color:'#2563EB', active:false, tag:'Pro inclus',      roi:'Analyse profil de liens',         includedFrom:'pro',    desc:'Analysez les backlinks de vos concurrents. Opportunités, toxiques, et outreach IA.', features:['Analyse backlinks concurrents en temps réel','Détection liens toxiques automatique','Opportunités d\'outreach IA','Score DA/DR de chaque domaine référent','Alertes nouveaux liens concurrents'] },
-      { cat:'SEO',        name:'AI Content Strategist',   price:'34€/mois', icon:'✍️', color:'#2563EB', active:false, tag:'IA',              roi:'+65% efficacité contenu',         includedFrom:null,    desc:'Stratégie de contenu IA. Briefs automatiques, SERP gap, et calendrier éditorial.', features:['Briefs SEO générés automatiquement par IA','Calendrier éditorial IA sur 3 mois','SERP gap par article ciblé','Score de pertinence avant publication','Intégration WordPress / Webflow'] },
+      { key:'advancedSeoLab', cat:'SEO',        name:'Advanced SEO Lab', icon:'🔬', color:'#2563EB', active:false, tag:'Pro inclus',      roi:'+40% couverture sémantique',    desc:'Lab SEO IA complet : analyse sémantique, gap analysis, et topical authority.', features:['Analyse sémantique IA par page','Gap analysis vs top 10 SERP','Score topical authority automatique','Suggestions de silos thématiques','Rapport couverture sémantique mensuel'] },
+      { key:'keywordDomination', cat:'SEO',        name:'Keyword Domination Engine', icon:'🚀', color:'#2563EB', active:false, tag:'Ultra',           roi:'10× volume keywords trackés', desc:'Trackez 10 000+ mots-clés. IA de clustering, SERP features, et cannibalization.', features:['10 000 mots-clés trackés (vs 500 standard)','Clustering sémantique automatique','Détection cannibalisation IA','SERP Features tracker (PAA, featured snippets)','Alertes volatilité algo Google'] },
+      { key:'backlinkIntelligence', cat:'SEO',        name:'Backlink Intelligence', icon:'🔗', color:'#2563EB', active:false, tag:'Pro inclus',      roi:'Analyse profil de liens',    desc:'Analysez les backlinks de vos concurrents. Opportunités, toxiques, et outreach IA.', features:['Analyse backlinks concurrents en temps réel','Détection liens toxiques automatique','Opportunités d\'outreach IA','Score DA/DR de chaque domaine référent','Alertes nouveaux liens concurrents'] },
+      { key:'aiContentStrategist', cat:'SEO',        name:'AI Content Strategist', icon:'✍️', color:'#2563EB', active:false, tag:'IA',              roi:'+65% efficacité contenu',    desc:'Stratégie de contenu IA. Briefs automatiques, SERP gap, et calendrier éditorial.', features:['Briefs SEO générés automatiquement par IA','Calendrier éditorial IA sur 3 mois','SERP gap par article ciblé','Score de pertinence avant publication','Intégration WordPress / Webflow'] },
       // ── Local SEO ──
-      { cat:'Local SEO',  name:'+10 Emplacements GBP',    price:'19€/mois', icon:'📍', color:'#22c55e', active:false, tag:'Local',           roi:'10 fiches GBP optimisées',        includedFrom:null,    desc:'Gérez 10 fiches Google Business Profile supplémentaires avec automatisation IA.', features:['10 fiches GBP gérées depuis FlowPoint','Publication de posts GBP automatisée','Synchronisation horaires et infos NAP','Alertes avis non répondus','Score complétude fiche en temps réel'] },
-      { cat:'Local SEO',  name:'AI GBP Posting',          price:'29€/mois', icon:'🤖', color:'#22c55e', active:false, tag:'IA Auto',         roi:'+42% engagement GBP',             includedFrom:null,    desc:'Posts GBP générés automatiquement par IA. Photos optimisées, horaires, et offres.', features:['Posts GBP rédigés et publiés par IA','Calendrier de publication automatique','Adaptation saisonnière et événements','Sélection automatique des meilleures photos','Rapport engagement mensuel'] },
-      { cat:'Local SEO',  name:'Review Intelligence',     price:'19€/mois', icon:'⭐', color:'#22c55e', active:false, tag:'Sentiment IA',    roi:'+38% note moyenne',               includedFrom:null,    desc:'IA de sentiment sur vos avis Google. Réponses automatiques et alertes critiques.', features:['Analyse sentiment de chaque avis','Réponses IA personnalisées en 1 clic','Alertes avis négatifs en temps réel','Rapport tendance note mensuel','Score réputation par établissement'] },
-      { cat:'Local SEO',  name:'Local Domination Maps',   price:'24€/mois', icon:'🗺️', color:'#22c55e', active:false, tag:'Heatmap',         roi:'Visibilité Maps 360°',             includedFrom:null,    desc:'Heatmaps de visibilité locale. Analysez votre présence dans le Local Pack par zone.', features:['Heatmap de visibilité Maps par zone','Analyse du Local Pack position par position','Comparaison vs concurrents sur la carte','Alertes perte de position Maps','Rapport visibilité locale hebdomadaire'] },
+      { key:'gbpSlots10', cat:'Local SEO',  name:'+10 Emplacements GBP', icon:'📍', color:'#22c55e', active:false, tag:'Local',           roi:'10 fiches GBP optimisées',    desc:'Gérez 10 fiches Google Business Profile supplémentaires avec automatisation IA.', features:['10 fiches GBP gérées depuis FlowPoint','Publication de posts GBP automatisée','Synchronisation horaires et infos NAP','Alertes avis non répondus','Score complétude fiche en temps réel'] },
+      { key:'aiGbpPosting', cat:'Local SEO',  name:'AI GBP Posting', icon:'🤖', color:'#22c55e', active:false, tag:'IA Auto',         roi:'+42% engagement GBP',    desc:'Posts GBP générés automatiquement par IA. Photos optimisées, horaires, et offres.', features:['Posts GBP rédigés et publiés par IA','Calendrier de publication automatique','Adaptation saisonnière et événements','Sélection automatique des meilleures photos','Rapport engagement mensuel'] },
+      { key:'reviewIntelligence', cat:'Local SEO',  name:'Review Intelligence', icon:'⭐', color:'#22c55e', active:false, tag:'Sentiment IA',    roi:'+38% note moyenne',    desc:'IA de sentiment sur vos avis Google. Réponses automatiques et alertes critiques.', features:['Analyse sentiment de chaque avis','Réponses IA personnalisées en 1 clic','Alertes avis négatifs en temps réel','Rapport tendance note mensuel','Score réputation par établissement'] },
+      { key:'localDominationMaps', cat:'Local SEO',  name:'Local Domination Maps', icon:'🗺️', color:'#22c55e', active:false, tag:'Heatmap',         roi:'Visibilité Maps 360°',    desc:'Heatmaps de visibilité locale. Analysez votre présence dans le Local Pack par zone.', features:['Heatmap de visibilité Maps par zone','Analyse du Local Pack position par position','Comparaison vs concurrents sur la carte','Alertes perte de position Maps','Rapport visibilité locale hebdomadaire'] },
       // ── Conversion ──
-      { cat:'Conversion', name:'AI CRO Strategist',       price:'34€/mois', icon:'📈', color:'#f97316', active:false, tag:'IA',              roi:'+28% taux conversion',            includedFrom:null,    desc:'Stratégiste CRO IA. Recommandations de tests A/B, friction analysis, et UX scoring.', features:['Score UX friction par page automatique','Hypothèses A/B générées par IA','Plan d\'action conversion priorisé','Analyse parcours utilisateur IA','Rapport ROI conversion mensuel'] },
-      { cat:'Conversion', name:'Behavioral AI',           price:'44€/mois', icon:'🧠', color:'#f97316', active:false, tag:'Ultra',           roi:'Analyse comportement IA',         includedFrom:'ultra', desc:'Heatmaps IA, session replay, et analyse comportementale prédictive en temps réel.', features:['Heatmaps clics/scroll en temps réel','Session replay anonymisé','Analyse comportementale prédictive IA','Segments d\'utilisateurs automatiques','Alertes friction critique instantanées'] },
-      { cat:'Conversion', name:'Revenue Leak AI',         price:'29€/mois', icon:'💸', color:'#f97316', active:false, tag:'ROI',             roi:'Détecte fuites de revenus',       includedFrom:null,    desc:'IA de détection des pertes de conversion. Prioritise les quick wins revenue.', features:['Détection automatique des fuites de revenus','Quick wins classés par impact €','Analyse abandons de panier / formulaire','Alertes dégradation conversion','ROI estimé par correction'] },
-      { cat:'Conversion', name:'AB Testing IA',           price:'24€/mois', icon:'🔀', color:'#f97316', active:false, tag:'Expérimentation', roi:'+22% conversion moyenne',         includedFrom:null,    desc:'Tests A/B automatisés par IA. Hypothèses générées, variantes créées, et gagnant sélectionné automatiquement.', features:['Hypothèses A/B générées par IA','Création automatique des variantes','Sélection du gagnant statistiquement validée','Calcul de significativité en temps réel','Rapport impact par test'] },
+      { key:'aiCro', cat:'Conversion', name:'AI CRO Strategist', icon:'📈', color:'#f97316', active:false, tag:'IA',              roi:'+28% taux conversion',    desc:'Stratégiste CRO IA. Recommandations de tests A/B, friction analysis, et UX scoring.', features:['Score UX friction par page automatique','Hypothèses A/B générées par IA','Plan d\'action conversion priorisé','Analyse parcours utilisateur IA','Rapport ROI conversion mensuel'] },
+      { key:'behavioralAI', cat:'Conversion', name:'Behavioral AI', icon:'🧠', color:'#f97316', active:false, tag:'Ultra',           roi:'Analyse comportement IA', desc:'Heatmaps IA, session replay, et analyse comportementale prédictive en temps réel.', features:['Heatmaps clics/scroll en temps réel','Session replay anonymisé','Analyse comportementale prédictive IA','Segments d\'utilisateurs automatiques','Alertes friction critique instantanées'] },
+      { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:false, tag:'ROI',             roi:'Détecte fuites de revenus',    desc:'IA de détection des pertes de conversion. Prioritise les quick wins revenue.', features:['Détection automatique des fuites de revenus','Quick wins classés par impact €','Analyse abandons de panier / formulaire','Alertes dégradation conversion','ROI estimé par correction'] },
+      { key:'abTestingAI', cat:'Conversion', name:'AB Testing IA', icon:'🔀', color:'#f97316', active:false, tag:'Expérimentation', roi:'+22% conversion moyenne',    desc:'Tests A/B automatisés par IA. Hypothèses générées, variantes créées, et gagnant sélectionné automatiquement.', features:['Hypothèses A/B générées par IA','Création automatique des variantes','Sélection du gagnant statistiquement validée','Calcul de significativité en temps réel','Rapport impact par test'] },
       // ── Reporting ──
-      { cat:'Reporting',  name:'White-Label Exports',     price:'17€/mois', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Rapports à votre marque', includedFrom:'pro', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
-      { cat:'Reporting',  name:'Agency Reporting Packs',  price:'49€/mois', icon:'📦', color:'#eab308', active:false, tag:'Agence',          roi:'12 templates pro inclus',         includedFrom:null,    desc:'Bibliothèque de 12 templates agence premium. Rapports Executive, KPI, et Local SEO.', features:['12 templates premium (Executive, Local, SEO…)','Personnalisation par client','Envoi automatique PDF mensuel','Rapports multi-sites consolidés','Tableau de bord client dédié'] },
-      { cat:'Reporting',  name:'AI Executive Reporting',  price:'24€/mois', icon:'📊', color:'#eab308', active:false, tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',     includedFrom:null,    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'] },
+      { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Rapports à votre marque', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
+      { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:false, tag:'Agence',          roi:'12 templates pro inclus',    desc:'Bibliothèque de 12 templates agence premium. Rapports Executive, KPI, et Local SEO.', features:['12 templates premium (Executive, Local, SEO…)','Personnalisation par client','Envoi automatique PDF mensuel','Rapports multi-sites consolidés','Tableau de bord client dédié'] },
+      { key:'aiExecutiveReport', cat:'Reporting',  name:'AI Executive Reporting', icon:'📊', color:'#eab308', active:false, tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'] },
       // ── IA ──
-      { cat:'IA',         name:'AI Forecasting Engine',   price:'39€/mois', icon:'🔮', color:'#8b5cf6', active:false, tag:'Prédictif',       roi:'Prévisions 6 mois',               includedFrom:'ultra', desc:'Modèle prédictif IA. Prévisions de trafic, rankings, et croissance sur 6 mois.', features:['Prévisions trafic 6 mois (précision ±8%)','Prévisions rankings par mot-clé','Modèle ML entraîné sur vos données','Alertes risques de baisse anticipés','Rapport prévisionnel PDF mensuel'] },
-      { cat:'IA',         name:'AI Market Intelligence',  price:'49€/mois', icon:'🌐', color:'#8b5cf6', active:false, tag:'Intelligence',    roi:'Veille marché automatique',       includedFrom:null,    desc:'Veille concurrentielle IA. Tendances marché, opportunités, et alertes sectorielles.', features:['Veille concurrentielle IA 24/7','Détection de tendances sectorielles','Alertes nouveaux entrants concurrents','Opportunités de marché automatiques','Newsletter IA hebdomadaire secteur'] },
-      { cat:'IA',         name:'AI Automation Workflows', price:'34€/mois', icon:'⚡', color:'#8b5cf6', active:false, tag:'Automation',      roi:'Économise 6h/semaine',            includedFrom:null,    desc:'Workflows d\'automatisation IA. Audits, rapports, et alertes entièrement automatisés.', features:['Workflows no-code drag-and-drop','Audits automatiques planifiés','Rapports envoyés sans intervention','Alertes conditionnelles avancées','Économie estimée 6h/semaine par agence'] },
+      { key:'aiForecasting', cat:'IA',         name:'AI Forecasting Engine', icon:'🔮', color:'#8b5cf6', active:false, tag:'Prédictif',       roi:'Prévisions 6 mois', desc:'Modèle prédictif IA. Prévisions de trafic, rankings, et croissance sur 6 mois.', features:['Prévisions trafic 6 mois (précision ±8%)','Prévisions rankings par mot-clé','Modèle ML entraîné sur vos données','Alertes risques de baisse anticipés','Rapport prévisionnel PDF mensuel'] },
+      { key:'marketIntelligence', cat:'IA',         name:'AI Market Intelligence', icon:'🌐', color:'#8b5cf6', active:false, tag:'Intelligence',    roi:'Veille marché automatique',    desc:'Veille concurrentielle IA. Tendances marché, opportunités, et alertes sectorielles.', features:['Veille concurrentielle IA 24/7','Détection de tendances sectorielles','Alertes nouveaux entrants concurrents','Opportunités de marché automatiques','Newsletter IA hebdomadaire secteur'] },
+      { key:'aiWorkflows', cat:'IA',         name:'AI Automation Workflows', icon:'⚡', color:'#8b5cf6', active:false, tag:'Automation',      roi:'Économise 6h/semaine',    desc:'Workflows d\'automatisation IA. Audits, rapports, et alertes entièrement automatisés.', features:['Workflows no-code drag-and-drop','Audits automatiques planifiés','Rapports envoyés sans intervention','Alertes conditionnelles avancées','Économie estimée 6h/semaine par agence'] },
       // ── Team ──
-      { cat:'Équipe',     name:'+5 Sièges',               price:'35€/mois', icon:'👥', color:'#06b6d4', active:me.addons?.extraSeats > 0, tag:'Collaboration', roi:'5 utilisateurs suppl.', includedFrom:null, desc:'Ajoutez 5 membres d\'équipe avec rôles et permissions granulaires.', features:['5 sièges supplémentaires immédiats','Rôles Admin / Editor / Viewer','Invitations par email en 1 clic','Permissions granulaires par workspace','Historique d\'activité par membre'] },
-      { cat:'Équipe',     name:'Permissions Avancées',  price:'19€/mois', icon:'🔐', color:'#06b6d4', active:false, tag:'Sécurité',        roi:'RBAC complet',                    includedFrom:null,    desc:'Contrôle d\'accès granulaire. Rôles custom, audit log, et permissions par workspace.', features:['Rôles personnalisés créés sur mesure','Audit log complet des actions','Permissions par section et par client','SSO compatible (Google Workspace)','Rapport accès mensuel pour conformité'] },
+      { key:'extraSeats', cat:'Équipe',     name:'+5 Sièges', icon:'👥', color:'#06b6d4', active:me.addons?.extraSeats > 0, tag:'Collaboration', roi:'5 utilisateurs suppl.', desc:'Ajoutez 5 membres d\'équipe avec rôles et permissions granulaires.', features:['5 sièges supplémentaires immédiats','Rôles Admin / Editor / Viewer','Invitations par email en 1 clic','Permissions granulaires par workspace','Historique d\'activité par membre'] },
+      { key:'enterprisePermissions', cat:'Équipe',     name:'Permissions Avancées', icon:'🔐', color:'#06b6d4', active:false, tag:'Sécurité',        roi:'RBAC complet',    desc:'Contrôle d\'accès granulaire. Rôles custom, audit log, et permissions par workspace.', features:['Rôles personnalisés créés sur mesure','Audit log complet des actions','Permissions par section et par client','SSO compatible (Google Workspace)','Rapport accès mensuel pour conformité'] },
       // ── Storage ──
-      { cat:'Storage',    name:'Rétention 90 jours',      price:'9€/mois',  icon:'🗄️', color:'#ef4444', active:false, tag:'Pro inclus',      roi:'3 mois d\'historique',            includedFrom:'pro',    desc:'Conservez 90 jours d\'historique pour tous vos audits, monitors, et rapports.', features:['90 jours d\'historique audits','Historique monitors et alertes','Export CSV de toutes les données','Comparaisons temporelles dans le dashboard','Aucune perte de données garantie'] },
-      { cat:'Storage',    name:'Rétention 365 jours',     price:'19€/mois', icon:'🗄️', color:'#ef4444', active:false, tag:'Ultra inclus',    roi:'1 an d\'historique complet',      includedFrom:'ultra',    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
+      { key:'retention90d', cat:'Storage',    name:'Rétention 90 jours',  icon:'🗄️', color:'#ef4444', active:false, tag:'Pro inclus',      roi:'3 mois d\'historique',    desc:'Conservez 90 jours d\'historique pour tous vos audits, monitors, et rapports.', features:['90 jours d\'historique audits','Historique monitors et alertes','Export CSV de toutes les données','Comparaisons temporelles dans le dashboard','Aucune perte de données garantie'] },
+      { key:'retention365d', cat:'Storage',    name:'Rétention 365 jours', icon:'🗄️', color:'#ef4444', active:false, tag:'Ultra inclus',    roi:'1 an d\'historique complet',    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
       // ── API ──
-      { cat:'API',        name:'Webhooks Avancés',        price:'14€/mois', icon:'🔔', color:'#14b8a6', active:false, tag:'Pro inclus',      roi:'Alertes temps réel',              includedFrom:'pro',    desc:'Webhooks personnalisables pour Slack, Discord, et systèmes tiers. Templates inclus.', features:['Webhooks illimités vers n\'importe quel endpoint','Templates Slack, Discord, Teams','Retry automatique en cas d\'échec','Logs de delivery en temps réel','Signatures HMAC pour la sécurité'] },
-      { cat:'API',        name:'Zapier/Make Integration', price:'19€/mois', icon:'⚙️', color:'#14b8a6', active:false, tag:'No-code',         roi:'1000+ intégrations',              includedFrom:null,    desc:'Connectez FlowPoint à 1000+ applications. CRM, Slack, Notion, HubSpot, et plus.', features:['1000+ apps disponibles (Zapier + Make)','Triggers sur audits, alertes, rapports','Actions : créer tâche, envoyer email, notifier','Templates de zaps prêts à l\'emploi','Support no-code dédié'] },
-      { cat:'API',        name:'CRM Intégrations',        price:'29€/mois', icon:'🏢', color:'#14b8a6', active:false, tag:'Ultra',      roi:'HubSpot, Salesforce, Pipedrive',  includedFrom:null,    desc:'Synchronisez vos données SEO avec votre CRM. Leads, opportunités, et reporting.', features:['Sync HubSpot, Salesforce, Pipedrive','Création de deals depuis les opportunités SEO','Enrichissement contacts avec data SEO','Mapping de champs personnalisable','Synchronisation bi-directionnelle en temps réel'] },
+      { key:'advancedWebhooks', cat:'API',        name:'Webhooks Avancés', icon:'🔔', color:'#14b8a6', active:false, tag:'Pro inclus',      roi:'Alertes temps réel',    desc:'Webhooks personnalisables pour Slack, Discord, et systèmes tiers. Templates inclus.', features:['Webhooks illimités vers n\'importe quel endpoint','Templates Slack, Discord, Teams','Retry automatique en cas d\'échec','Logs de delivery en temps réel','Signatures HMAC pour la sécurité'] },
+      { key:'zapierIntegration', cat:'API',        name:'Zapier/Make Integration', icon:'⚙️', color:'#14b8a6', active:false, tag:'No-code',         roi:'1000+ intégrations',    desc:'Connectez FlowPoint à 1000+ applications. CRM, Slack, Notion, HubSpot, et plus.', features:['1000+ apps disponibles (Zapier + Make)','Triggers sur audits, alertes, rapports','Actions : créer tâche, envoyer email, notifier','Templates de zaps prêts à l\'emploi','Support no-code dédié'] },
+      { key:'crmIntegration', cat:'API',        name:'CRM Intégrations', icon:'🏢', color:'#14b8a6', active:false, tag:'Ultra',      roi:'HubSpot, Salesforce, Pipedrive',    desc:'Synchronisez vos données SEO avec votre CRM. Leads, opportunités, et reporting.', features:['Sync HubSpot, Salesforce, Pipedrive','Création de deals depuis les opportunités SEO','Enrichissement contacts avec data SEO','Mapping de champs personnalisable','Synchronisation bi-directionnelle en temps réel'] },
       // ── Enterprise ──
-      { cat:'Ultra', name:'Custom Domain',           price:'9€/mois',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Ultra inclus', roi:'portal.votreagence.fr', includedFrom:'ultra', desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
-      { cat:'Ultra', name:'SSO SAML',          price:'49€/mois', icon:'🔑', color:'#6366f1', active:false, tag:'Enterprise',     roi:'SAML 2.0 / OIDC',                includedFrom:null, desc:'Single Sign-On enterprise. Compatible SAML 2.0, OIDC, Azure AD, et Okta.', features:['SSO SAML 2.0 et OIDC natif','Compatible Azure AD, Okta, Google Workspace','Provisioning/déprovisioning automatique (SCIM)','Logs de connexion centralisés','Support dédié configuration SSO'] },
-      { cat:'Ultra', name:'AI Workspace Launch',     price:'49€/mois', icon:'🤖', color:'#6366f1', active:false, tag:'IA Setup',        roi:'Workspace auto en 2 min',         includedFrom:null,    desc:'L\'IA configure automatiquement votre workspace FlowPoint : dashboards, KPIs, alertes, missions et stratégie business.', features:['Configuration complète workspace en 2 min','KPIs et alertes adaptés à votre secteur','Missions et stratégie SEO pré-configurées','Dashboards personnalisés par votre métier','Accompagnement IA en continu'], wizardFn:'openAIWorkspaceLaunch' },
+      { key:'customDomain', cat:'Ultra', name:'Custom Domain',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Ultra inclus', roi:'portal.votreagence.fr', desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
+      { key:'ssoEnterprise', cat:'Ultra', name:'SSO SAML', icon:'🔑', color:'#6366f1', active:false, tag:'Enterprise',     roi:'SAML 2.0 / OIDC', desc:'Single Sign-On enterprise. Compatible SAML 2.0, OIDC, Azure AD, et Okta.', features:['SSO SAML 2.0 et OIDC natif','Compatible Azure AD, Okta, Google Workspace','Provisioning/déprovisioning automatique (SCIM)','Logs de connexion centralisés','Support dédié configuration SSO'] },
+      { key:'aiWorkspaceLaunch', cat:'Ultra', name:'AI Workspace Launch', icon:'🤖', color:'#6366f1', active:false, tag:'IA Setup',        roi:'Workspace auto en 2 min',    desc:'L\'IA configure automatiquement votre workspace FlowPoint : dashboards, KPIs, alertes, missions et stratégie business.', features:['Configuration complète workspace en 2 min','KPIs et alertes adaptés à votre secteur','Missions et stratégie SEO pré-configurées','Dashboards personnalisés par votre métier','Accompagnement IA en continu'], wizardFn:'openAIWorkspaceLaunch' },
     ];
+
+    // ── Money and bundling are injected from the server catalogue; this file
+    //    only owns presentation metadata (icon, colour, copy). If the catalogue
+    //    failed to load we show "—" and block activation rather than guess. ──
+    const _fpEurMinor = m => {
+      const v = (Number(m) || 0) / 100;
+      return (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '€';
+    };
+    const _fpCat = STATE.billingCatalog || null;
+    allAddons.forEach(a => {
+      const d = _fpCat ? _fpCat.addonsByKey[a.key] : null;
+      a.catalogMissing = !d;
+      a.priceMinor     = d ? d.priceMinor : null;
+      a.oneTime        = d ? !!d.oneTime : false;
+      a.price          = d ? _fpEurMinor(d.priceMinor) + (d.oneTime ? '' : '/mois') : '—';
+      a.includedFrom   = (_fpCat && _fpCat.includedFromByKey[a.key]) || null;
+    });
 
     const currentPlan = ((STATE.billing && STATE.billing.plan) || me.plan || '').toLowerCase();
     const planLevel = currentPlan === 'ultra' ? 2 : currentPlan === 'pro' ? 1 : 0;
@@ -9097,24 +9129,9 @@ function renderBilling() {
       return false;
     };
 
-    const _ADDON_STRIPE_KEYS = {
-      '+50 Monitors':'monitorsPack50',
-      'Global Monitoring':'globalMonitoring', 'SLA Monitoring Avancé':'slaMonitoring',
-      'Advanced SEO Lab':'advancedSeoLab', 'Keyword Domination Engine':'keywordDomination',
-      'Backlink Intelligence':'backlinkIntelligence', 'AI Content Strategist':'aiContentStrategist',
-      '+10 Emplacements GBP':'gbpSlots10', 'AI GBP Posting':'aiGbpPosting',
-      'Review Intelligence':'reviewIntelligence', 'Local Domination Maps':'localDominationMaps',
-      'AI CRO Strategist':'aiCro', 'Behavioral AI':'behavioralAI',
-      'Revenue Leak AI':'revenueLeak', 'AB Testing IA':'abTestingAI',
-      'White-Label Exports':'whiteLabel', 'Agency Reporting Packs':'agencyPacks',
-      'AI Executive Reporting':'aiExecutiveReport', 'AI Forecasting Engine':'aiForecasting',
-      'AI Market Intelligence':'marketIntelligence', 'AI Automation Workflows':'aiWorkflows',
-      '+5 Sièges':'extraSeats', 'Permissions Avancées':'enterprisePermissions',
-      'Rétention 90 jours':'retention90d', 'Rétention 365 jours':'retention365d',
-      'Webhooks Avancés':'advancedWebhooks', 'Zapier/Make Integration':'zapierIntegration',
-      'CRM Intégrations':'crmIntegration', 'Custom Domain':'customDomain',
-      'SSO SAML':'ssoEnterprise', 'AI Workspace Launch':'aiWorkspaceLaunch',
-    };
+    // Name -> canonical catalogue key, derived from the array above so the
+    // mapping can never drift from it.
+    const _ADDON_STRIPE_KEYS = Object.fromEntries(allAddons.map(a => [a.name, a.key]));
     window._fpAddonStripeKeys = _ADDON_STRIPE_KEYS;
 
     // ── Billing lifecycle: upgrade / downgrade / cancel / reactivate ──────────
@@ -9321,7 +9338,6 @@ function renderBilling() {
       // currentPlan is already lowercase (set at line ~7766); comparisons must be lowercase too
       const planLvl = currentPlan === 'ultra' ? 2 : currentPlan === 'pro' ? 1 : 0;
       const incFn = x => {
-        if (x.price === 'Inclus') return true;
         if (x.includedFrom === 'standard') return true;
         if (x.includedFrom === 'pro'   && planLvl >= 1) return true;
         if (x.includedFrom === 'ultra' && planLvl >= 2) return true;
@@ -9384,7 +9400,7 @@ function renderBilling() {
 
     return `
       ${aiBlock(
-        `Vous avez <strong>${activeCount} add-ons actifs ou inclus</strong> dans votre plan ${escHtml(currentPlan)}. Recommandation IA : <strong>AI Forecasting Engine</strong> (39€/mois) peut améliorer votre planification growth. <strong>Review Intelligence</strong> est prioritaire si vous gérez des avis Google Business Profile.`,
+        `Vous avez <strong>${activeCount} add-ons actifs ou inclus</strong> dans votre plan ${escHtml(currentPlan)}. Recommandation IA : <strong>AI Forecasting Engine</strong> (${fpAddonPriceLabel('aiForecasting')}) peut améliorer votre planification growth. <strong>Review Intelligence</strong> est prioritaire si vous gérez des avis Google Business Profile.`,
         ['Ajouter AI Forecasting', 'Activer Review Intelligence', 'Voir ROI des add-ons']
       )}
 
@@ -9705,19 +9721,19 @@ function renderBilling() {
     const strategies = PREVIEW_MODE ? [
       {
         title:'Passage Ultra recommandé dans 6 semaines',
-        body:'Au rythme actuel, vos audits dépasseront 250/mois le 22 juin. Le passage Ultra (149€/mois) coûte +70€ mais génère 4h/semaine d\'économie d\'automatisation = 200€ de valeur temps. ROI positif en 1 mois.',
+        body:'Au rythme actuel, vos audits dépasseront 250/mois le 22 juin. Le passage Ultra (' + fpPlanPriceLabel('ultra') + ') coûte +' + fpPlanDeltaEur('pro','ultra') + '€ mais génère 4h/semaine d\'économie d\'automatisation = 200€ de valeur temps. ROI positif en 1 mois.',
         priority:'Haute', color:'#f59e0b', action:'Simuler Ultra',
         metrics:['Audits 76% de capacité', 'Seuil prévu J+8', 'ROI : +200€/mois'],
       },
       {
         title:'Review Intelligence — Quick Win immédiat',
-        body:'14 avis Google sans réponse détectés. Review Intelligence (19€/mois) automatise les réponses IA et améliore la note moyenne de +0.4 points — impact direct sur le Local Pack.',
+        body:'14 avis Google sans réponse détectés. Review Intelligence (' + fpAddonPriceLabel('reviewIntelligence') + ') automatise les réponses IA et améliore la note moyenne de +0.4 points — impact direct sur le Local Pack.',
         priority:'Urgente', color:'#ef4444', action:'Activer Review Intelligence',
         metrics:['14 sans réponse', '+0.4 note Google estimée', 'ROI < 1 semaine'],
       },
       {
         title:'AI CRO Strategist — Conversion non exploitée',
-        body:'Votre taux de conversion mobile est à 0.8% (benchmark secteur : 2.1%). AI CRO Strategist (34€/mois) détecterait les frictions et prioriserait les tests. Gain estimé : +1.3% conversion = +€€€.',
+        body:'Votre taux de conversion mobile est à 0.8% (benchmark secteur : 2.1%). AI CRO Strategist (' + fpAddonPriceLabel('aiCro') + ') détecterait les frictions et prioriserait les tests. Gain estimé : +1.3% conversion = +€€€.',
         priority:'Moyenne', color:'#2563EB', action:'Essayer AI CRO',
         metrics:['Conversion mobile 0.8%', 'Benchmark : 2.1%', 'Gain potentiel : +62%'],
       },
@@ -9732,7 +9748,7 @@ function renderBilling() {
       const _ua = STATE.gbp?.unansweredReviews;
       if (_ua > 0) arr.push({
         title:'Review Intelligence — Quick Win immédiat',
-        body:_ua + ' avis Google sans réponse détecté' + (_ua > 1 ? 's' : '') + '. Review Intelligence (19€/mois) automatise les réponses IA — impact direct sur votre visibilité locale.',
+        body:_ua + ' avis Google sans réponse détecté' + (_ua > 1 ? 's' : '') + '. Review Intelligence (' + fpAddonPriceLabel('reviewIntelligence') + ') automatise les réponses IA — impact direct sur votre visibilité locale.',
         priority:'Urgente', color:'#ef4444', action:'Activer Review Intelligence',
         metrics:[_ua + ' sans réponse', 'Réponses IA automatisées'],
       });
@@ -9844,7 +9860,7 @@ function renderBilling() {
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:14px">
               ${['🏢 Multi-workspace','🔑 SSO SAML','🌐 Custom domain','🎨 Portail white-label','🧾 Facturation client','📋 Audit log RGPD','🚀 Onboarding dédié','🛡️ SLA 99.9% garanti'].map(f => `<div style="font-size:11px;padding:8px 12px;background:var(--fp-inner-card);border-radius:8px;border:1px solid rgba(255,255,255,0.07);color:var(--fp-text-soft)">${f}</div>`).join('')}
             </div>
-            <button class="fp-btn fp-btn-primary" onclick="fpUpgradeCta('ultra')" style="width:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Débloquer Agency Lab → Passer Ultra (149€/mois)</button>
+            <button class="fp-btn fp-btn-primary" onclick="fpUpgradeCta('ultra')" style="width:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Débloquer Agency Lab → Passer Ultra (${fpPlanPriceLabel('ultra')})</button>
           </div>`
       }
 
@@ -12569,7 +12585,7 @@ function renderAI() {
         <div style="font-size:28px;margin-bottom:8px">🧠</div>
         <div style="font-size:15px;font-weight:800;margin-bottom:6px">IA Stratégiste — Plan Ultra requis</div>
         <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:14px">Analyse stratégique complète, plans d\'action ROI et intelligence prédictive.</div>
-        <button class="fp-btn fp-btn-primary" onclick="fpUpgradeCta('ultra')">Passer Ultra — 149€/mois →</button>
+        <button class="fp-btn fp-btn-primary" onclick="fpUpgradeCta('ultra')">Passer Ultra — ${fpPlanPriceLabel('ultra')} →</button>
       </div>` : ''}
 
       <div style="${!isUltra ? 'opacity:0.55;pointer-events:none' : ''}">
@@ -14474,11 +14490,19 @@ function togglePlanDropdown() {
     document.getElementById('fp-plan-switcher-dd').remove(); return;
   }
   const cur = STATE.me?.plan || 'Pro';
-  const plans = [
-    { n:'Standard', p:'29€/mois',  color:'#94a3b8', desc:'30 audits · 10 monitors' },
-    { n:'Pro',      p:'79€/mois',  color:'#2563EB', desc:'300 audits · IA Insights · PDF' },
-    { n:'Ultra',    p:'149€/mois', color:'#8b5cf6', desc:'1 000 audits · 300 monitors · API' },
-  ];
+  // Prices and limits come from the server catalogue; only the accent colour is local.
+  const _swColors = { standard:'#94a3b8', pro:'#2563EB', ultra:'#8b5cf6' };
+  const plans = ((STATE.billingCatalog && STATE.billingCatalog.plans) || []).map(p => {
+    const v = (Number(p.priceMinor) || 0) / 100;
+    return {
+      n: p.name,
+      p: (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '€/mois',
+      color: _swColors[p.id] || '#2563EB',
+      desc: p.limits ? `${p.limits.audits} audits · ${p.limits.monitors} monitors` : (p.tagline || ''),
+    };
+  });
+  // No catalogue → show nothing rather than a stale price.
+  if (!plans.length) return;
   const sw = document.getElementById('fp-plan-switcher');
   if (!sw) return;
   const dd = document.createElement('div');
@@ -34134,6 +34158,30 @@ function renderGA4Live() {
 // ─────────────────────────────────────────────────────────────────
 // fp-backend.js utilise window.STATE, window.render, window.showToast
 // pour mettre à jour le dashboard en temps réel sans modifier ce fichier.
+
+/* ── Billing copy helpers ─────────────────────────────────────────────────
+   Every price rendered in prose comes from the server catalogue, so marketing
+   text can never drift from what Stripe actually charges. Empty string when the
+   catalogue is unavailable — better a missing price than a wrong one. */
+function fpAddonPriceLabel(key) {
+  const d = STATE.billingCatalog && STATE.billingCatalog.addonsByKey[key];
+  if (!d) return '';
+  const v = (Number(d.priceMinor) || 0) / 100;
+  return (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '\u20ac' + (d.oneTime ? '' : '/mois');
+}
+function fpPlanPriceLabel(id) {
+  const p = ((STATE.billingCatalog && STATE.billingCatalog.plans) || []).find(x => x.id === id);
+  if (!p) return '';
+  const v = (Number(p.priceMinor) || 0) / 100;
+  return (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '\u20ac/mois';
+}
+function fpPlanDeltaEur(fromId, toId) {
+  const ps = (STATE.billingCatalog && STATE.billingCatalog.plans) || [];
+  const a = ps.find(x => x.id === fromId), b = ps.find(x => x.id === toId);
+  if (!a || !b) return '';
+  return String(Math.round((b.priceMinor - a.priceMinor) / 100));
+}
+
 window.STATE     = STATE;
 window.render    = render;
 

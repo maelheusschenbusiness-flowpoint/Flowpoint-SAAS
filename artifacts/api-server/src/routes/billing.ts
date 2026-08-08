@@ -7,6 +7,7 @@ import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../service
 import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
 import { ensureStripeCustomer } from "../services/ensure-stripe-customer.js";
+import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import {
   getUsageSummary, getMRRData, getSubscriptionAnalytics,
   startTrial, validateCoupon, getInvoices, trackBillingEvent,
@@ -96,28 +97,6 @@ function parseAddons(raw: unknown, res: Response): AddonsMap | null {
   return result;
 }
 
-function buildLineItems(plan: string, addons: AddonsMap): Array<{ price: string; quantity: number }> {
-  const items: Array<{ price: string; quantity: number }> = [];
-  const included = PLAN_INCLUDED_ADDONS[plan.toLowerCase()] ?? new Set<string>();
-
-  const planPriceId = PLAN_PRICE_IDS[plan.toLowerCase()];
-  if (planPriceId) items.push({ price: planPriceId, quantity: 1 });
-
-  for (const key of FLAG_ADDONS) {
-    if (!addons[key]) continue;
-    if (included.has(key)) continue;
-    const priceId = ADDON_PRICE_IDS[key];
-    if (priceId) items.push({ price: priceId, quantity: 1 });
-  }
-  for (const key of QTY_ADDONS) {
-    const qty = Number(addons[key] || 0);
-    if (qty <= 0) continue;
-    const priceId = ADDON_PRICE_IDS[key];
-    if (priceId) items.push({ price: priceId, quantity: qty });
-  }
-
-  return items;
-}
 
 router.post("/billing/create-checkout-session", billingCheckoutRateLimit, async (req: Request, res: Response) => {
   res.redirect(307, "/api/billing/checkout");
@@ -163,21 +142,6 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
   try {
     const stripe = await createStripeClient(stripeKey);
 
-    const lineItems = buildLineItems(plan, addons);
-
-    if (lineItems.length === 0) {
-      if (process.env["NODE_ENV"] !== "production") {
-        logger.warn(`[Billing] No price IDs configured for plan="${plan}" — returning mock checkout (dev only)`);
-        res.json({ url: `https://checkout.stripe.com/c/pay/test_mock_${plan}_${Date.now()}`, plan, mock: true });
-        return;
-      }
-      const errMsg = plan
-        ? `No Stripe price configured for plan "${plan}". Set STRIPE_PRICE_${plan.toUpperCase()} env var.`
-        : "No Stripe price configured for the selected add-ons. Contact support.";
-      res.status(400).json({ error: errMsg });
-      return;
-    }
-
     const customerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey);
 
     // Belt-and-suspenders Stripe-side check for stale DB subscription_status
@@ -213,10 +177,43 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
     }
     const grantTrial = !hasHadTrial && !hasStripeSubHistory;
 
+    /* Canonical quote — the single place line items, plan inclusions and trial
+       length are derived. This route used to build its own Stripe items and
+       hardcode a 14-day trial, which is exactly how the dashboard price and the
+       charged price drifted apart. */
+    let quote: BillingQuote;
+    try {
+      quote = createBillingQuote({
+        plan,
+        addons,
+        trialEligible: grantTrial,
+        mechanism: "checkout_session",
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "INVALID_SELECTION";
+      res.status(400).json({ error: "Sélection non facturable.", code });
+      return;
+    }
+
+    const lineItems = quoteToStripeLineItems(quote);
+
+    if (lineItems.length === 0) {
+      if (process.env["NODE_ENV"] !== "production") {
+        logger.warn(`[Billing] No price IDs configured for plan="${plan}" — returning mock checkout (dev only)`);
+        res.json({ url: `https://checkout.stripe.com/c/pay/test_mock_${plan}_${Date.now()}`, plan, mock: true });
+        return;
+      }
+      const errMsg = plan
+        ? `No Stripe price configured for plan "${plan}". Set STRIPE_PRICE_${plan.toUpperCase()} env var.`
+        : "No Stripe price configured for the selected add-ons. Contact support.";
+      res.status(400).json({ error: errMsg });
+      return;
+    }
+
     const subscriptionData: Record<string, unknown> = {};
-    if (grantTrial) {
-      subscriptionData["trial_period_days"] = 14;
-      logger.info({ plan, orgId }, "[Billing] Granting 14-day trial — confirmed first-time subscriber");
+    if (quote.trialEligible) {
+      subscriptionData["trial_period_days"] = quote.trialDays;
+      logger.info({ plan, orgId, trialDays: quote.trialDays }, "[Billing] Granting trial — confirmed first-time subscriber");
     } else {
       logger.info({ plan, hasHadTrial, hasStripeSubHistory, orgId }, "[Billing] Skipping trial — prior subscription history");
     }
@@ -231,7 +228,7 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
       metadata: { plan, addons: JSON.stringify(addons) },
     });
 
-    res.json({ url: session.url, plan });
+    res.json({ url: session.url, plan, quote });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to create Stripe checkout session");
     res.status(500).json({ error: "Failed to create checkout session" });

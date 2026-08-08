@@ -138,3 +138,4 @@
 - [dashboard.js global onclick scope](dashboard-global-onclick-scope.md) — window.* handlers used by >1 page must be at IIFE global scope; `window.fn && window.fn()` guards hide dead UI
 - [Add-on catalogue single source](addon-catalog-single-source.md) — ADDON_DEFINITIONS in lib/plans.ts is the only place a name/price may live; parallel tables drift into displayed-X/charged-Y bugs
 - [esbuild does not typecheck](esbuild-no-typecheck.md) — a green build can ship a ReferenceError from a missing import; run tsc --noEmit and grep for the files you touched
+- [Billing quote single source](billing-quote-single-source.md) — server owns all pricing; a quote is valid for ONE collection mechanism; "due today" ≠ what our PaymentIntent collects (plan self-invoices)

@@ -3,8 +3,9 @@ import { logger } from "../lib/logger.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
+import type Stripe from "stripe";
 import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
-import { createBillingQuote } from "../services/billing-quote.js";
+import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 
 const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
 
@@ -56,8 +57,12 @@ router.post("/billing/quote", async (req: Request, res: Response): Promise<void>
   if (plan === null) return;
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
+  /* A quote is only truthful for the path that will collect the money, so the
+     caller declares it. Defaults to the Payment Element used by checkout. */
+  const mechanism = req.body?.mechanism === "checkout_session" ? "checkout_session" as const : "payment_intent" as const;
   try {
-    const quote = createBillingQuote({ plan, addons });
+    const trialEligible = await resolveTrialEligibility(req);
+    const quote = createBillingQuote({ plan, addons, trialEligible, mechanism });
     if (!quote.lines.length) {
       res.status(400).json({ error: "Sélectionnez un plan ou un add-on facturable." });
       return;
@@ -136,6 +141,30 @@ function parsePlanOrEmptyPub(raw: unknown, res: Response): string | null {
   return p;
 }
 
+/**
+ * Server-authoritative trial eligibility.
+ *
+ * An authenticated org is checked against its billing context; a brand-new
+ * signup has no subscription history and is therefore eligible. The lookup
+ * fails closed (no trial) so the "due today" amount can never understate what
+ * Stripe is about to take.
+ */
+async function resolveTrialEligibility(req: Request): Promise<boolean> {
+  const authOrgId = (req as Request & { orgId?: string }).orgId;
+  if (authOrgId && authOrgId !== "default") {
+    try {
+      const { loadBillingContext } = await import("../services/billing-context.js");
+      const ctx = await loadBillingContext(authOrgId);
+      return ctx.canStartTrial === true;
+    } catch (err) {
+      logger.warn({ err, orgId: authOrgId }, "[PublicBilling] trial eligibility lookup failed — quoting without trial");
+      return false;
+    }
+  }
+  /* Anonymous / pre-registration: a new account has no subscription history. */
+  return true;
+}
+
 /* Add-ons that are one-time purchases (not subscription items) */
 const AI_CREDIT_PACKS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
 
@@ -198,9 +227,10 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
   if (plan === null) return;
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
-  let quote;
+  let quote: BillingQuote;
   try {
-    quote = createBillingQuote({ plan, addons });
+    const trialEligible = await resolveTrialEligibility(req);
+    quote = createBillingQuote({ plan, addons, trialEligible, mechanism: "checkout_session" });
   } catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_SELECTION";
     res.status(400).json({ error: "Sélection non facturable.", code });
@@ -291,7 +321,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
       if (!stripeCustomerId) {
         // Create Stripe Customer with full contact info (never empty)
-        const customerData: Parameters<typeof stripe.customers.create>[0] = {
+        const customerData: Stripe.CustomerCreateParams = {
           email: signupRow.email,
           name:  `${signupRow.first_name} ${signupRow.last_name}`.trim(),
           metadata: {
@@ -438,13 +468,19 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       // recurring prices → subscription items, one-time prices → first invoice only.
       // Do NOT use add_invoice_items (rejected by 2026-04-22.dahlia) nor
       // invoiceItems.create() (pending items persist if checkout is abandoned).
-      const allLineItems = [...subscriptionItems, ...oneTimeItems];
+      // Built from the quote, so Stripe is never asked to charge something the
+      // customer was not shown (and never for a bundled add-on).
+      const allLineItems = quoteToStripeLineItems(quote);
 
       const sessionParams = urlOrEmbedded({
         mode: "subscription",
         line_items: allLineItems,
         subscription_data: {
-          trial_period_days: 14,
+          /* Only grant the trial the server actually quoted. Hardcoding 14 here
+             gave an ineligible customer a free period the quote had already
+             charged them for — Stripe's invoice and our displayed total then
+             disagreed on day zero. */
+          ...(quote.trialEligible ? { trial_period_days: quote.trialDays } : {}),
           metadata,
         },
         metadata,
@@ -463,7 +499,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       }
       const sessionParams = urlOrEmbedded({
         mode: "payment",
-        line_items: oneTimeItems,
+        line_items: quoteToStripeLineItems(quote),
         metadata,
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
@@ -474,7 +510,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
     /* ── Case 3: addon_only (client with active plan) ── */
     if (checkoutType === "addon_only") {
-      const allItems = [...subscriptionItems, ...oneTimeItems];
+      const allItems = quoteToStripeLineItems(quote);
       if (allItems.length === 0) {
         res.status(400).json({ error: "Aucun add-on valide sélectionné." });
         return;
@@ -506,16 +542,19 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   if (plan === null) return;
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
-  let quote;
+  const preRegisterToken   = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
+  let quote: BillingQuote;
   try {
-    quote = createBillingQuote({ plan, addons });
+    const trialEligible = await resolveTrialEligibility(req);
+    quote = createBillingQuote({ plan, addons, trialEligible, mechanism: "payment_intent" });
   } catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_SELECTION";
     res.status(400).json({ error: "Sélection non facturable.", code });
     return;
   }
-  const preRegisterToken   = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
-  const trialDaysRemaining = Number.isFinite(Number(req.body?.trialDaysRemaining)) ? Math.max(0, Math.min(90, Number(req.body.trialDaysRemaining))) : 0;
+  /* Trial length comes from the server-validated quote — never from the browser,
+     so the "due today" figure shown to the customer always matches the charge. */
+  const trialDaysRemaining = quote.trialDays;
   /* Billing address collected from the checkout-payment.html form */
   const _rawAddr = req.body?.billingAddress && typeof req.body.billingAddress === "object" ? req.body.billingAddress : null;
   const billingAddress = _rawAddr ? {
@@ -539,7 +578,10 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
 
   const planKey  = plan.toLowerCase();
   const hasPlan  = !!PLAN_PRICE_IDS[planKey];
-  const immediateAmountCents = quote.amountDueTodayMinor;
+  /* NOT amountDueTodayMinor: the plan is due today when there is no trial, but
+     it is invoiced by its own subscription at creation. Collecting it here too
+     would debit the first month twice. Zero falls through to a SetupIntent. */
+  const immediateAmountCents = quote.paymentIntentAmountMinor;
 
   // Derive orgId (= email) from pending_signups so the webhook can activate the account
   let piOrgId: string | undefined;
@@ -734,7 +776,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
         automatic_payment_methods: { enabled: true, allow_redirects: "never" },
         metadata,
       });
-      logger.info({ plan: planKey, addonCount: addonKeys.length, immediateAmountCents }, "[PublicBilling] PaymentIntent created");
+      logger.info({ plan: planKey, addonCount: quote.lines.filter(l => l.kind === "addon").length, immediateAmountCents }, "[PublicBilling] PaymentIntent created");
       res.json({ clientSecret: pi.client_secret, publishableKey, mode: "payment", immediateAmount: immediateAmountCents, defaultValues: _piDefaultValues, quote, paymentIntentId: pi.id });
       return;
     }
@@ -1176,7 +1218,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         limit:    5,
       });
       const reusable = existingSubs.data.find(
-        s => s.status === "active" || s.status === "trialing" || s.status === "past_due"
+        (s: Stripe.Subscription) => s.status === "active" || s.status === "trialing" || s.status === "past_due"
       );
       if (reusable) {
         // Reuse — avoid duplicate subscription on page refresh / double-click

@@ -1162,19 +1162,48 @@
      parallel static list here: the API is the sole source of truth. */
   var PLAN_INCLUDED = { standard: [], pro: [], ultra: [] };
 
-  /* Add-on default bottom HTML for restoring after plan deselect */
-  var ADDON_DEFAULT_BOTTOM = {
-    whiteLabel:           '<div class="fp-addon-price">17\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'whiteLabel\',false)">Activer \u2192</button></div>',
-    customDomain:         '<div class="fp-addon-price">9\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'customDomain\',false)">Activer \u2192</button></div>',
-    advancedWebhooks:     '<div class="fp-addon-price">14\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'advancedWebhooks\',false)">Activer \u2192</button></div>',
-    retention90d:         '<div class="fp-addon-price">9\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'retention90d\',false)">Activer \u2192</button></div>',
-    advancedSeoLab:       '<div class="fp-addon-price">29\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'advancedSeoLab\',false)">Activer \u2192</button></div>',
-    backlinkIntelligence: '<div class="fp-addon-price">24\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'backlinkIntelligence\',false)">Activer \u2192</button></div>',
-    retention365d:        '<div class="fp-addon-price">19\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'retention365d\',false)">Activer \u2192</button></div>',
-    keywordDomination:    '<div class="fp-addon-price">39\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'keywordDomination\',false)">Activer \u2192</button></div>',
-    behavioralAI:         '<div class="fp-addon-price">44\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'behavioralAI\',false)">Activer \u2192</button></div>',
-    aiForecasting:        '<div class="fp-addon-price">39\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'aiForecasting\',false)">Activer \u2192</button></div>'
-  };
+  /* Add-on presentation lives in the markup; every price comes from
+     /api/plans/catalog. This map is rebuilt from the catalogue at load so no
+     amount can be hardcoded on this page. */
+  var ADDON_DEFAULT_BOTTOM = {};
+  var FP_CATALOG = null;
+
+  function _fpEur(minor) {
+    var v = (Number(minor) || 0) / 100;
+    return (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '\u20AC';
+  }
+
+  /* Overwrites every static SEO price with the canonical one and memorises the
+     restored markup (buttons included, so the quantity flag is preserved). */
+  function _fpBuildAddonBottoms(cat) {
+    var byKey = {};
+    cat.addons.forEach(function (a) { byKey[a.key] = a; });
+    var btns = document.querySelectorAll('button.fp-addon-btn[onclick*="addToCart"]');
+    Array.prototype.forEach.call(btns, function (btn) {
+      var m = (btn.getAttribute('onclick') || '').match(/addToCart\(this,'([A-Za-z0-9]+)'/);
+      if (!m) return;
+      var key = m[1];
+      var def = byKey[key];
+      var bottom = btn.closest('.fp-addon-bottom');
+      if (!def || !bottom) return;
+      var priceEl = bottom.querySelector('.fp-addon-price');
+      // Keep the unit wording already in the markup ("/ pack / mois", "/ mois"…);
+      // only the amount is authoritative and comes from the catalogue.
+      var unitSpan = priceEl ? priceEl.querySelector('span') : null;
+      var unit = unitSpan ? unitSpan.outerHTML : (def.oneTime ? '' : '<span> / mois</span>');
+      if (priceEl) priceEl.innerHTML = _fpEur(def.priceMinor) + unit;
+      var actions = bottom.querySelector('.fp-addon-actions');
+      ADDON_DEFAULT_BOTTOM[key] =
+        '<div class="fp-addon-price">' + _fpEur(def.priceMinor) + unit + '</div>' +
+        '<div class="fp-addon-actions">' + (actions ? actions.innerHTML : '') + '</div>';
+    });
+  }
+
+  function _fpApplyCatalogInclusions(cat) {
+    Object.keys(PLAN_INCLUDED).forEach(function (planId) {
+      PLAN_INCLUDED[planId] = (cat.includedByPlan && cat.includedByPlan[planId]) || [];
+    });
+  }
 
   /* Updates ALL plan-included addon bottom sections.
      Finds each addon button by its onclick key and replaces the fp-addon-bottom
@@ -1212,6 +1241,20 @@
   /* Backward-compat alias */
   function updateWhiteLabel(plan) { updateIncludedAddons(plan); }
   updateIncludedAddons('');
+
+  /* Canonical catalogue — sole source of add-on prices and plan inclusions. */
+  fetch('/api/plans/catalog')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (cat) {
+      if (!cat || !Array.isArray(cat.addons)) return;
+      FP_CATALOG = cat;
+      _fpBuildAddonBottoms(cat);
+      _fpApplyCatalogInclusions(cat);
+      var sel = document.querySelector('.fp-card.selected');
+      var selId = sel && sel.id ? sel.id.replace('card-', '') : '';
+      updateIncludedAddons(selId);
+    })
+    .catch(function () {});
 
   /* ── Restore cart from localStorage when redirected from dashboard ──────────
      Sets _cart data silently (plan + addons); visual state of the current plan

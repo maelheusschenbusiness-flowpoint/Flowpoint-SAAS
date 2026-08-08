@@ -186,96 +186,44 @@
 </div>
 
 <script>
-/* The payment page receives a quote with the Stripe intent. It deliberately
-   contains no plan/add-on prices or inclusion rules of its own. */
 (function () {
   'use strict';
-  var cart=null, quote=null, stripe, elements, _paymentReady=false, _mode='setup';
-  try {cart=JSON.parse(localStorage.getItem('fp_cart')||'null');}catch(_){}
-  if(!cart||(!cart.plan&&!Object.keys(cart.addons||{}).length)){location.href='/checkout.html';return;}
-  function money(n,c){return new Intl.NumberFormat('fr-FR',{style:'currency',currency:c||'EUR'}).format((n||0)/100);}
-  function esc(v){var d=document.createElement('div');d.textContent=String(v);return d.innerHTML;}
-  function showAlert(msg){var e=document.getElementById('fp-alert');e.textContent=msg;e.classList.add('show');}
-  function setLoading(on,label){var b=document.getElementById('fp-pay-btn');b.disabled=on;document.getElementById('fp-spinner').style.display=on?'inline-block':'none';if(label)document.getElementById('fp-btn-text').textContent=label;}
-  function renderQuote(){
-    var rows=quote.lines.map(function(l){return '<div class="fp-sum-row"><span class="fp-sum-label">'+esc(l.name)+(l.quantity>1?' ×'+l.quantity:'')+(l.includedInPlan?'<span class="fp-sum-badge fp-badge-incl">Inclus</span>':l.interval==='one_time'?'<span class="fp-sum-badge fp-badge-now">Maintenant</span>':'')+'</span><span class="fp-sum-amount'+(l.includedInPlan?' muted':'')+'">'+(l.includedInPlan?'Inclus':money(l.amountMinor,quote.currency)+(l.interval==='month'?'/mois':''))+'</span></div>';}).join('');
-    document.getElementById('fp-summary-card').innerHTML='<div class="fp-card-title">Récapitulatif validé</div>'+rows+'<div class="fp-divider"></div><div class="fp-total-row"><span class="fp-total-lbl">Dû aujourd’hui</span><span class="fp-total-val">'+money(quote.amountDueTodayMinor,quote.currency)+'</span></div>'+(quote.recurringAmountMinor?'<div class="fp-total-row"><span class="fp-total-lbl">Mensuel après essai</span><span class="fp-total-val after">'+money(quote.recurringAmountMinor,quote.currency)+'<span class="fp-total-unit">/mois</span></span></div>':'');
-  }
 
-  /* ── Trial days ── */
-  var _trialDaysRemaining = 14;
-  try {
-    var _tdRaw = sessionStorage.getItem('fp_trial_days');
-    if (_tdRaw !== null) _trialDaysRemaining = Math.max(0, parseInt(_tdRaw, 10) || 0);
-  } catch(e) {}
+  /* ──────────────────────────────────────────────────────────────────────
+     SOURCE UNIQUE DES PRIX : le devis serveur.
+     Cette page ne contient aucun catalogue, aucun prix et aucune matrice
+     d'inclusion. Le panier ne transporte qu'une SÉLECTION (plan + add-ons) ;
+     tous les montants affichés proviennent de `quote`, qui est exactement
+     l'objet ayant servi à créer l'intent Stripe.
+     ────────────────────────────────────────────────────────────────────── */
 
-  /* ── Cart ── */
+  /* ── Panier : sélection uniquement ── */
   var cart = null;
-  try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+  try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch (e) {}
   if (!cart || (!cart.plan && !Object.keys(cart.addons || {}).length)) {
     window.location.href = '/checkout.html';
     return;
   }
-  var plan     = cart.plan || null;
-  var addons   = cart.addons || {};
-  var included = plan ? (PLAN_INCLUDED[plan] || []) : [];
+  var plan   = cart.plan || '';
+  var addons = cart.addons || {};
 
-  /* ── Amounts ── */
-  var planPrice       = plan && PLAN_INFO[plan] ? PLAN_INFO[plan].price : 0;
-  var addonImmediate  = 0;
-  var oneTimeTotal    = 0;
-  Object.keys(addons).forEach(function (id) {
-    var info = ADDON_INFO[id];
-    if (!info || included.indexOf(id) !== -1) return;
-    var qty = Number(addons[id] || 1);
-    if (info.oneTime) { oneTimeTotal += info.price * qty; }
-    else              { addonImmediate += info.price * qty; }
-  });
-  var immediateTotal    = addonImmediate + oneTimeTotal;
-  var monthlyAfterTrial = planPrice;
-  var hasPlan           = !!(plan && PLAN_INFO[plan]);
-
-  /* ── Render summary ── */
-  (function renderSummary() {
-    var html = '<div class="fp-card-title">Récapitulatif</div>';
-    if (plan && PLAN_INFO[plan]) {
-      html += '<div class="fp-sum-row">' +
-        '<span class="fp-sum-label">' + PLAN_INFO[plan].name +
-          (_trialDaysRemaining > 0 ? '<span class="fp-sum-badge fp-badge-trial">14j offerts</span>' : '') +
-        '</span>' +
-        '<span class="fp-sum-amount">' + planPrice + '€/mois</span>' +
-      '</div>';
-    }
-    Object.keys(addons).forEach(function (id) {
-      var info = ADDON_INFO[id];
-      if (!info) return;
-      var qty = Number(addons[id] || 1);
-      if (included.indexOf(id) !== -1) {
-        html += '<div class="fp-sum-row">' +
-          '<span class="fp-sum-label">' + info.name + '<span class="fp-sum-badge fp-badge-incl">Inclus</span></span>' +
-          '<span class="fp-sum-amount muted">0€</span>' +
-        '</div>';
-      } else if (info.oneTime) {
-        html += '<div class="fp-sum-row">' +
-          '<span class="fp-sum-label">' + info.name + (qty > 1 ? ' ×' + qty : '') + '<span class="fp-sum-badge fp-badge-now">Maintenant</span></span>' +
-          '<span class="fp-sum-amount">' + (info.price * qty) + '€</span>' +
-        '</div>';
-      } else {
-        html += '<div class="fp-sum-row">' +
-          '<span class="fp-sum-label">' + info.name + (qty > 1 ? ' ×' + qty : '') + '<span class="fp-sum-badge fp-badge-now">Maintenant · mensuel</span></span>' +
-          '<span class="fp-sum-amount">' + (info.price * qty) + '€/mois</span>' +
-        '</div>';
-      }
-    });
-    html += '<div class="fp-divider"></div>';
-    html += '<div class="fp-total-row"><span class="fp-total-lbl">Dû aujourd\'hui</span><span class="fp-total-val">' + immediateTotal + '€</span></div>';
-    if (hasPlan) {
-      html += '<div class="fp-total-row"><span class="fp-total-lbl">Mensuel après essai</span><span class="fp-total-val after">' + monthlyAfterTrial + '€<span class="fp-total-unit">/mois</span></span></div>';
-    }
-    document.getElementById('fp-summary-card').innerHTML = html;
-  })();
+  /* ── État ── */
+  var quote         = null;   /* devis serveur — seule source de montants */
+  var stripe, elements;
+  var _paymentReady = false;
+  var _payBtnLabel  = 'Confirmer →';
+  var _mode         = 'setup';
 
   /* ── Helpers ── */
+  function eur(minor) {
+    var v = (Number(minor) || 0) / 100;
+    return (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '€';
+  }
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
   function showAlert(msg) {
     var el = document.getElementById('fp-alert');
     el.textContent = msg;
@@ -290,14 +238,6 @@
     spin.style.display = on ? 'inline-block' : 'none';
     if (label) txt.textContent = label;
   }
-
-  /* ── Init Stripe: Payment Element ── */
-  var stripe, elements;
-
-  var _paymentReady = false;
-  var _payBtnLabel  = 'Confirmer →';
-  var _mode         = 'setup';
-
   function _tryEnablePayBtn() {
     if (_paymentReady) {
       document.getElementById('fp-btn-text').textContent = _payBtnLabel;
@@ -305,30 +245,96 @@
     }
   }
 
-  async function initStripe() {
-    var preRegToken = '';
-    try { preRegToken = sessionStorage.getItem('fp_pre_reg_token') || ''; } catch(e) {}
+  /* ── Récapitulatif rendu exclusivement depuis le devis serveur ── */
+  function renderSummaryLoading() {
+    document.getElementById('fp-summary-card').innerHTML =
+      '<div class="fp-card-title">Récapitulatif</div>' +
+      '<div class="fp-sum-row"><span class="fp-sum-label muted">Calcul du montant…</span></div>';
+  }
 
+  function renderSummary(q) {
+    var html = '<div class="fp-card-title">Récapitulatif</div>';
+
+    (q.lines || []).forEach(function (line) {
+      var label = escHtml(line.name) + (line.quantity > 1 ? ' ×' + line.quantity : '');
+      var badge, amount;
+
+      if (line.includedInPlan) {
+        badge  = '<span class="fp-sum-badge fp-badge-incl">Inclus</span>';
+        amount = '<span class="fp-sum-amount muted">0€</span>';
+      } else if (line.kind === 'plan') {
+        badge = q.trialEligible && q.trialDays > 0
+          ? '<span class="fp-sum-badge fp-badge-trial">' + q.trialDays + 'j offerts</span>'
+          : '';
+        amount = '<span class="fp-sum-amount">' + eur(line.amountMinor) + '/mois</span>';
+      } else if (line.interval === 'one_time') {
+        badge  = '<span class="fp-sum-badge fp-badge-now">Maintenant</span>';
+        amount = '<span class="fp-sum-amount">' + eur(line.amountMinor) + '</span>';
+      } else {
+        badge = line.billedToday
+          ? '<span class="fp-sum-badge fp-badge-now">Maintenant · mensuel</span>'
+          : '<span class="fp-sum-badge fp-badge-trial">Après essai · mensuel</span>';
+        amount = '<span class="fp-sum-amount">' + eur(line.amountMinor) + '/mois</span>';
+      }
+
+      html += '<div class="fp-sum-row"><span class="fp-sum-label">' + label + badge + '</span>' + amount + '</div>';
+    });
+
+    html += '<div class="fp-divider"></div>';
+    html += '<div class="fp-total-row"><span class="fp-total-lbl">Dû aujourd\'hui</span>' +
+            '<span class="fp-total-val">' + eur(q.amountDueTodayMinor) + '</span></div>';
+
+    if (q.plan && q.recurringAmountMinor > 0) {
+      html += '<div class="fp-total-row"><span class="fp-total-lbl">' +
+              (q.trialEligible && q.trialDays > 0 ? 'Mensuel après essai' : 'Mensuel') +
+              '</span><span class="fp-total-val after">' + eur(q.recurringAmountMinor) +
+              '<span class="fp-total-unit">/mois</span></span></div>';
+    }
+
+    document.getElementById('fp-summary-card').innerHTML = html;
+  }
+
+  function renderTrialNote(q) {
+    if (!q.plan || !q.trialEligible || !q.trialDays) return;
+    var noteEl = document.getElementById('fp-trial-note');
+    if (!noteEl) return;
+    var daysLabel = q.trialDays === 1 ? '1\u00a0jour' : q.trialDays + '\u00a0jours';
+    noteEl.textContent = q.amountDueTodayMinor === 0
+      ? 'Aucun débit aujourd\'hui. Premier paiement après ' + daysLabel + '.'
+      : 'Add-ons facturés aujourd\'hui. Abonnement débité après ' + daysLabel + '.';
+    noteEl.style.display = 'block';
+  }
+
+  /* ── Init Stripe : un seul appel renvoie l'intent ET le devis ── */
+  async function initStripe() {
+    renderSummaryLoading();
+
+    var preRegToken = '';
+    try { preRegToken = sessionStorage.getItem('fp_pre_reg_token') || ''; } catch (e) {}
+
+    /* La durée d'essai n'est PAS envoyée : le serveur seul en décide. */
     var resp = await fetch('/api/public/payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        plan:               plan || '',
-        addons:             addons,
-        preRegisterToken:   preRegToken,
-        trialDaysRemaining: _trialDaysRemaining,
-        billingAddress:     null,
+        plan:             plan,
+        addons:           addons,
+        preRegisterToken: preRegToken,
+        billingAddress:   null,
       })
     });
 
-    /* Guard against non-JSON error responses (e.g. HTML 503 from reverse proxy) */
     var data;
-    try { data = await resp.json(); } catch(e) {
+    try { data = await resp.json(); } catch (e) {
       showAlert('Erreur réseau (' + resp.status + '). Vérifiez votre connexion et réessayez.');
       return;
     }
     if (!resp.ok) {
       showAlert(data.error || 'Erreur ' + resp.status + ' lors de la création du paiement.');
+      return;
+    }
+    if (!data.quote) {
+      showAlert('Devis serveur indisponible. Revenez au récapitulatif et réessayez.');
       return;
     }
     if (!data.clientSecret) {
@@ -340,19 +346,23 @@
       return;
     }
 
+    /* Le devis rendu est celui qui a produit l'intent : affichage == débit. */
+    quote = data.quote;
+    renderSummary(quote);
+    renderTrialNote(quote);
+
     _mode = data.mode || 'setup';
     _payBtnLabel = _mode === 'payment'
-      ? 'Payer ' + immediateTotal + '€ →'
+      ? 'Payer ' + eur(quote.totalMinor) + ' →'
       : 'Démarrer l\'essai gratuit →';
 
-    /* Guard: Stripe.js must be loaded (may be blocked by ad-blocker / CSP) */
     if (typeof Stripe === 'undefined') {
       showAlert('Stripe.js n\'a pas pu se charger. Désactivez votre bloqueur de publicités et réessayez.');
       return;
     }
 
     try { stripe = Stripe(data.publishableKey); }
-    catch(e) {
+    catch (e) {
       showAlert('[S1] Clé Stripe invalide : ' + (e.message || e));
       return;
     }
@@ -378,13 +388,13 @@
     };
 
     try { elements = stripe.elements({ clientSecret: data.clientSecret, appearance: appearance }); }
-    catch(e) {
+    catch (e) {
       showAlert('[S2] stripe.elements() : ' + (e.message || e));
       return;
     }
 
-    /* Payment Element — card + SEPA only (allow_redirects:'never' on intent).
-       P2-9: Pre-fill name + email from pending_signups via data.defaultValues. */
+    /* Payment Element — carte + SEPA uniquement (allow_redirects:'never').
+       Pré-remplissage nom + email depuis pending_signups via data.defaultValues. */
     var _peDefaultValues = {};
     if (data.defaultValues) {
       var _dv = data.defaultValues;
@@ -401,60 +411,47 @@
         defaultValues: Object.keys(_peDefaultValues).length ? _peDefaultValues : undefined,
       });
       paymentElement.mount('#fp-payment-element');
-    } catch(e) {
+    } catch (e) {
       showAlert('[S3] Payment Element : ' + (e.message || e));
       return;
     }
 
-    paymentElement.on('ready', function() {
+    paymentElement.on('ready', function () {
       _paymentReady = true;
       _tryEnablePayBtn();
     });
-    paymentElement.on('loaderror', function(e) {
+    paymentElement.on('loaderror', function (e) {
       console.error('[FlowPoint Payment] PaymentElement loaderror', e);
       showAlert('Impossible de charger le formulaire de paiement. Désactivez votre bloqueur de publicités et réessayez.');
     });
 
-    /* Safety fallback: enable button after 8s even if ready never fires */
-    setTimeout(function() {
+    /* Filet de sécurité : activer le bouton après 8s même si 'ready' ne part pas */
+    setTimeout(function () {
       _paymentReady = true;
       _tryEnablePayBtn();
     }, 8000);
 
     document.getElementById('fp-pay-btn').setAttribute('data-mode', _mode);
-
-    /* ── Trial note ── */
-    if (hasPlan && _trialDaysRemaining > 0) {
-      var noteEl = document.getElementById('fp-trial-note');
-      var daysLabel = _trialDaysRemaining === 1 ? '1\u00a0jour' : _trialDaysRemaining + '\u00a0jours';
-      noteEl.textContent = immediateTotal === 0
-        ? 'Aucun débit aujourd\'hui. Premier paiement après ' + daysLabel + '.'
-        : 'Add-ons facturés aujourd\'hui. Abonnement débité après ' + daysLabel + '.';
-      noteEl.style.display = 'block';
-    }
   }
 
-  /* ── Mount Stripe immediately on page load ── */
-  initStripe().catch(function(err) {
+  initStripe().catch(function (err) {
     console.error('[FlowPoint Payment] initStripe error', err);
     var msg = (err && (err.message || err.toString())) || 'erreur inconnue';
     showAlert('Erreur de chargement : ' + msg + '. Revenez au récapitulatif et réessayez.');
   });
 
-  /* ── Submit: stripe.confirmPayment/confirmSetup reads both elements automatically ── */
-  document.getElementById('fp-pay-btn').addEventListener('click', async function() {
+  /* ── Soumission ── */
+  document.getElementById('fp-pay-btn').addEventListener('click', async function () {
     if (this.disabled) return;
     hideAlert();
     setLoading(true, 'Vérification en cours…');
 
-    var mode       = this.getAttribute('data-mode') || 'payment';
-    var returnUrl  = window.location.origin + '/checkout-return.html';
+    var mode      = this.getAttribute('data-mode') || 'payment';
+    var returnUrl = window.location.origin + '/checkout-return.html';
 
     try {
       var result;
       if (mode === 'payment') {
-        /* elements contains both addressElement + paymentElement;
-           Stripe merges address into billing_details automatically */
         result = await stripe.confirmPayment({
           elements: elements,
           confirmParams: { return_url: returnUrl },
@@ -468,10 +465,12 @@
       if (result.error) {
         var msg = result.error.message || 'Le paiement a échoué. Vérifiez vos informations.';
         showAlert(msg);
-        setLoading(false, mode === 'payment' ? 'Payer ' + immediateTotal + '€ →' : 'Démarrer l\'essai gratuit →');
+        setLoading(false, mode === 'payment'
+          ? 'Payer ' + eur(quote ? quote.totalMinor : 0) + ' →'
+          : 'Démarrer l\'essai gratuit →');
       }
-      /* On success Stripe redirects to checkout-return.html automatically */
-    } catch(err) {
+      /* En cas de succès Stripe redirige vers checkout-return.html */
+    } catch (err) {
       console.error('[FlowPoint Payment]', err);
       showAlert('Une erreur est survenue. Réessayez ou contactez le support.');
       setLoading(false);
