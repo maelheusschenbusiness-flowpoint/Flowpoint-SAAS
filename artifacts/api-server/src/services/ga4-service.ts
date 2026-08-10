@@ -513,7 +513,7 @@ export async function getGA4Campaigns(
       limit: 30,
     });
 
-    const totals = data.totals ?? [];
+    const totals = (data.totals ?? []).map(t => ({ metricValues: t.metricValues ?? [] }));
     return { rows: data.rows ?? [], totals };
   } catch (e) {
     logger.warn({ e, orgId }, "[ga4] getGA4Campaigns failed");

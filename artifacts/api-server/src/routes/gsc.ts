@@ -4,6 +4,7 @@ import {
   listGSCSites,
   getActiveSite,
   setActiveSite,
+  verifySiteOwnership,
   syncGSCData,
   getTopKeywords,
   getTopPages,
@@ -22,6 +23,57 @@ const router = Router();
 
 function getOrgId(req: Request): string {
   return resolveOrgId(req);
+}
+
+/**
+ * Resolve the effective siteUrl for a request.
+ * - No override → org's active site.
+ * - Override    → must be a site the org owns (gsc_sites row), else "forbidden".
+ * Prevents callers from querying arbitrary GSC properties through our tokens.
+ */
+/**
+ * Resolves the effective GSC site for a request (override or active default)
+ * and requires VERIFIED provenance for it:
+ *  - a gsc_sites row whose permission_level was written from Google's own
+ *    sites/list (discovery or a previous live verification), excluding
+ *    'siteUnverifiedUser'; or
+ *  - a live sites/list check against the org's Google token (which backfills
+ *    permission_level on success).
+ * Raw row presence is NOT ownership — legacy rows persisted before the
+ * activation gate existed are live-verified, and quarantined (deactivated)
+ * if the token cannot access them.
+ */
+async function resolveSiteForOrg(orgId: string, requested?: string): Promise<
+  { ok: true; siteUrl: string | null } | { ok: false; error: "forbidden" }
+> {
+  const override = requested?.trim() || null;
+  const target = override ?? (await getActiveSite(orgId));
+  if (!target) return { ok: true, siteUrl: null };
+
+  const r = await pool.query(
+    `SELECT permission_level FROM gsc_sites WHERE org_id=$1 AND site_url=$2 LIMIT 1`,
+    [orgId, target]
+  ).catch(() => ({ rows: [] as Array<{ permission_level: string | null }> }));
+  const row = r.rows[0] as { permission_level: string | null } | undefined;
+
+  // An override must at minimum exist as an org row before we spend a live check on it.
+  if (override && !row) return { ok: false, error: "forbidden" };
+
+  const verifiedProvenance =
+    row?.permission_level != null && row.permission_level !== "siteUnverifiedUser";
+  if (verifiedProvenance) return { ok: true, siteUrl: target };
+
+  // Legacy/unverified row: live-verify against Google's site list for this org's token.
+  const owned = await verifySiteOwnership(orgId, target);
+  if (owned) return { ok: true, siteUrl: target };
+
+  // Quarantine: deactivate so it stops being the silent default, then reject.
+  await pool.query(
+    `UPDATE gsc_sites SET is_active=false WHERE org_id=$1 AND site_url=$2`,
+    [orgId, target]
+  ).catch(() => {});
+  logger.warn({ orgId, siteUrl: target }, "[GSC] quarantined unverifiable site row");
+  return { ok: false, error: "forbidden" };
 }
 
 router.get("/gsc/status", async (req: Request, res: Response) => {
@@ -72,6 +124,14 @@ router.post("/gsc/site", async (req: Request, res: Response) => {
     return;
   }
   try {
+    // Ownership gate: the site must be verified against this org's Google
+    // token (discovered list or live sites/list check) before it can be
+    // persisted or activated. Prevents poisoning gsc_sites with foreign sites.
+    const owned = await verifySiteOwnership(orgId, siteUrl.trim());
+    if (!owned) {
+      res.status(403).json({ ok: false, error: "siteUrl is not accessible with this organization's Google account" });
+      return;
+    }
     await setActiveSite(orgId, siteUrl.trim(), displayName);
     // Re-enable product flag when user explicitly sets a site
     pool.query(
@@ -94,7 +154,9 @@ router.get("/gsc/analytics", async (req: Request, res: Response) => {
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
 
   try {
-    const siteUrl = qSiteUrl || (await getActiveSite(orgId));
+    const resolved = await resolveSiteForOrg(orgId, qSiteUrl);
+    if (!resolved.ok) { res.status(403).json({ ok: false, error: "siteUrl does not belong to this organization" }); return; }
+    const siteUrl = resolved.siteUrl;
     if (!siteUrl) {
       res.status(400).json({ ok: false, error: "No GSC site selected. POST /api/gsc/site first." });
       return;
@@ -142,7 +204,9 @@ router.get("/gsc/keywords", async (req: Request, res: Response) => {
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
 
   try {
-    const siteUrl = qSiteUrl || (await getActiveSite(orgId));
+    const resolved = await resolveSiteForOrg(orgId, qSiteUrl);
+    if (!resolved.ok) { res.status(403).json({ ok: false, error: "siteUrl does not belong to this organization" }); return; }
+    const siteUrl = resolved.siteUrl;
     if (!siteUrl) {
       res.status(400).json({ ok: false, error: "No GSC site selected." });
       return;
@@ -163,7 +227,9 @@ router.get("/gsc/pages", async (req: Request, res: Response) => {
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
 
   try {
-    const siteUrl = qSiteUrl || (await getActiveSite(orgId));
+    const resolved = await resolveSiteForOrg(orgId, qSiteUrl);
+    if (!resolved.ok) { res.status(403).json({ ok: false, error: "siteUrl does not belong to this organization" }); return; }
+    const siteUrl = resolved.siteUrl;
     if (!siteUrl) {
       res.status(400).json({ ok: false, error: "No GSC site selected." });
       return;
@@ -183,7 +249,9 @@ router.get("/gsc/impressions", async (req: Request, res: Response) => {
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
 
   try {
-    const siteUrl = qSiteUrl || (await getActiveSite(orgId));
+    const resolved = await resolveSiteForOrg(orgId, qSiteUrl);
+    if (!resolved.ok) { res.status(403).json({ ok: false, error: "siteUrl does not belong to this organization" }); return; }
+    const siteUrl = resolved.siteUrl;
     if (!siteUrl) {
       res.status(400).json({ ok: false, error: "No GSC site selected." });
       return;
@@ -205,7 +273,9 @@ router.post("/gsc/indexing", async (req: Request, res: Response) => {
     return;
   }
   try {
-    const siteUrl = reqSiteUrl || (await getActiveSite(orgId));
+    const resolvedIdx = await resolveSiteForOrg(orgId, reqSiteUrl);
+    if (!resolvedIdx.ok) { res.status(403).json({ ok: false, error: "siteUrl does not belong to this organization" }); return; }
+    const siteUrl = resolvedIdx.siteUrl;
     if (!siteUrl) {
       res.status(400).json({ ok: false, error: "No GSC site selected." });
       return;
@@ -223,7 +293,9 @@ router.get("/gsc/sitemaps", async (req: Request, res: Response) => {
   try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
   try {
-    const siteUrl = qSiteUrl || (await getActiveSite(orgId));
+    const resolved = await resolveSiteForOrg(orgId, qSiteUrl);
+    if (!resolved.ok) { res.status(403).json({ ok: false, error: "siteUrl does not belong to this organization" }); return; }
+    const siteUrl = resolved.siteUrl;
     if (!siteUrl) {
       res.status(400).json({ ok: false, error: "No GSC site selected." });
       return;

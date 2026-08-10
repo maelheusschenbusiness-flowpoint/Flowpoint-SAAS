@@ -140,3 +140,4 @@
 - [esbuild does not typecheck](esbuild-no-typecheck.md) — a green build can ship a ReferenceError from a missing import; run tsc --noEmit and grep for the files you touched
 - [Billing quote single source](billing-quote-single-source.md) — server owns all pricing; a quote is valid for ONE collection mechanism; "due today" ≠ what our PaymentIntent collects (plan self-invoices)
 - [org_addons durable quantity](billing-addon-quantity.md) — QTY_ADDONS pack counts live in org_addons.quantity (one row per key, updated in place); all entitlement surfaces multiply per pack
+- [Google connection contract](google-connection-contract.md) — connection state is backend-only; data presence never proves connected; site overrides AND activation must be token-verified; no placeholder Google data

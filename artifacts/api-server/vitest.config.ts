@@ -39,6 +39,8 @@ export default defineConfig({
       "src/services/google-oauth-scopes.test.ts",
       "src/services/monitor-addon-quota.test.ts",
       "src/routes/addon-activate-quantity.test.ts",
+      "src/routes/gsc-site-ownership.test.ts",
+      "src/services/gsc-sync-ownership.test.ts",
     ],
     environment: "node",
     globals:     false,

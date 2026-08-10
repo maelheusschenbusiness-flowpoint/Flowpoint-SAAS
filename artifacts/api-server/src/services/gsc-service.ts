@@ -54,6 +54,75 @@ export async function getActiveSite(orgId: string): Promise<string | null> {
   } catch { return null; } finally { client.release(); }
 }
 
+/**
+ * Verifies that the org's Google token actually has access to `siteUrl`
+ * in Search Console. Checks previously token-discovered rows first
+ * (permission_level is only ever written from Google's own site list),
+ * then falls back to a live Google sites/list call.
+ * Never trusts caller input alone.
+ */
+export async function verifySiteOwnership(orgId: string, siteUrl: string): Promise<boolean> {
+  // 1. Token-discovered row (permission_level set by discoverAndStoreSites from Google's list)
+  const discovered = await pool.query(
+    `SELECT 1 FROM gsc_sites
+     WHERE org_id=$1 AND site_url=$2
+       AND permission_level IS NOT NULL
+       AND permission_level <> 'siteUnverifiedUser'
+     LIMIT 1`,
+    [orgId, siteUrl]
+  ).catch(() => ({ rows: [] as unknown[] }));
+  if (discovered.rows.length > 0) return true;
+
+  // 2. Live check against Google's own site list for this org's token
+  const token = await getValidToken(orgId).catch(() => null);
+  if (!token) return false;
+  try {
+    const res = await fetch(`${GSC_BASE}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok) return false;
+    const data = await res.json() as { siteEntry?: Array<{ siteUrl: string; permissionLevel: string }> };
+    const entry = (data.siteEntry ?? []).find(
+      s => s.siteUrl === siteUrl && s.permissionLevel !== "siteUnverifiedUser"
+    );
+    if (!entry) return false;
+    // Backfill verified provenance so future checks don't need a live call.
+    await pool.query(
+      `UPDATE gsc_sites SET permission_level=$3 WHERE org_id=$1 AND site_url=$2`,
+      [orgId, siteUrl, entry.permissionLevel]
+    ).catch(() => {});
+    return true;
+  } catch { return false; }
+}
+
+/**
+ * Fail-closed variant of getActiveSite: returns the active site ONLY if its
+ * provenance is verified (permission_level written from Google's sites/list,
+ * excluding 'siteUnverifiedUser') or a live token check confirms access.
+ * Unverifiable rows are quarantined (is_active=false) and null is returned,
+ * so no Google data request is ever issued for a poisoned legacy row.
+ */
+export async function getVerifiedActiveSite(orgId: string): Promise<string | null> {
+  const r = await pool.query(
+    `SELECT site_url, permission_level FROM gsc_sites WHERE org_id=$1 AND is_active=true LIMIT 1`,
+    [orgId]
+  ).catch(() => ({ rows: [] as Array<{ site_url: string; permission_level: string | null }> }));
+  const row = r.rows[0] as { site_url: string; permission_level: string | null } | undefined;
+  if (!row) return null;
+  if (row.permission_level != null && row.permission_level !== "siteUnverifiedUser") {
+    return row.site_url;
+  }
+  const owned = await verifySiteOwnership(orgId, row.site_url);
+  if (owned) return row.site_url;
+  await pool.query(
+    `UPDATE gsc_sites SET is_active=false WHERE org_id=$1 AND site_url=$2`,
+    [orgId, row.site_url]
+  ).catch(() => {});
+  logger.warn({ orgId, siteUrl: row.site_url }, "[gsc] quarantined unverifiable active site");
+  return null;
+}
+
 export async function setActiveSite(orgId: string, siteUrl: string, displayName?: string): Promise<void> {
   const client = await pool.connect();
   const id = `gsc_${orgId}_${Buffer.from(siteUrl).toString("base64url").slice(0, 40)}`;
@@ -109,7 +178,8 @@ export async function discoverAndStoreSites(orgId: string): Promise<number> {
 // ── Sync (write to gsc_keyword_data) ─────────────────────────────────────────
 
 export async function syncGSCData(orgId: string): Promise<number> {
-  const siteUrl = await getActiveSite(orgId);
+  // Fail-closed: only a provenance-verified active site may be synced.
+  const siteUrl = await getVerifiedActiveSite(orgId);
   if (!siteUrl) return 0;
 
   const token = await getValidToken(orgId).catch(() => null);
@@ -348,10 +418,52 @@ export async function querySearchAnalytics(
   } catch { return []; }
 }
 
-export async function getIndexingStatus(orgId: string, siteUrl?: string, _inspectionUrl?: string): Promise<{ indexed: number; notIndexed: number; errors: number }> {
+/**
+ * Real URL Inspection via Google Search Console URL Inspection API.
+ * Returns the live inspection result — never fabricated counts.
+ * When no inspectionUrl is given, returns notImplemented (bulk Index
+ * Coverage is a separate API we do not call — no fake zeros).
+ */
+export async function getIndexingStatus(orgId: string, siteUrl?: string, inspectionUrl?: string): Promise<
+  | { inspected: true; verdict: string; coverageState: string; lastCrawlTime: string | null; robotsTxtState: string | null; indexingState: string | null; googleCanonical: string | null }
+  | { inspected: false; reason: string }
+> {
   const resolvedSiteUrl = siteUrl ?? (await getActiveSite(orgId));
-  if (!resolvedSiteUrl) return { indexed: 0, notIndexed: 0, errors: 0 };
-  return { indexed: 0, notIndexed: 0, errors: 0 }; // requires Index Coverage API (separate quota)
+  if (!resolvedSiteUrl) return { inspected: false, reason: "no_site_selected" };
+  if (!inspectionUrl?.trim()) return { inspected: false, reason: "bulk_index_coverage_not_supported" };
+
+  const token = await getValidToken(orgId).catch(() => null);
+  if (!token) return { inspected: false, reason: "not_connected" };
+
+  const res = await fetch("https://searchconsole.googleapis.com/v1/urlInspection/index:inspect", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ inspectionUrl: inspectionUrl.trim(), siteUrl: resolvedSiteUrl }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "");
+    logger.warn({ status: res.status, errBody: errBody.slice(0, 300) }, "[GSC] urlInspection failed");
+    return { inspected: false, reason: `google_api_error_${res.status}` };
+  }
+  const data = await res.json() as {
+    inspectionResult?: {
+      indexStatusResult?: {
+        verdict?: string; coverageState?: string; lastCrawlTime?: string;
+        robotsTxtState?: string; indexingState?: string; googleCanonical?: string;
+      };
+    };
+  };
+  const idx = data.inspectionResult?.indexStatusResult;
+  return {
+    inspected: true,
+    verdict:        idx?.verdict        ?? "VERDICT_UNSPECIFIED",
+    coverageState:  idx?.coverageState  ?? "",
+    lastCrawlTime:  idx?.lastCrawlTime  ?? null,
+    robotsTxtState: idx?.robotsTxtState ?? null,
+    indexingState:  idx?.indexingState  ?? null,
+    googleCanonical: idx?.googleCanonical ?? null,
+  };
 }
 
 export async function getSitemaps(orgId: string, siteUrlOverride?: string): Promise<unknown[]> {

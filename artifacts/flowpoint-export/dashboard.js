@@ -327,7 +327,7 @@ function getMissionLibrarySuggested() {
   const hasAudits = STATE.audits && STATE.audits.length > 0;
   const avgSc = avgScore ? avgScore() : 0;
   const hasMonitors = STATE.monitors && STATE.monitors.length > 0;
-  const hasGbp = !!(STATE.gbp && (STATE.gbp.connected || (STATE.gbp.listings && STATE.gbp.listings.length > 0)));
+  const hasGbp = !!(STATE.gbp && STATE.gbp.connected);
   const scored = notAdded.map(t => {
     let score = t.impact === 'Très élevé' ? 40 : t.impact === 'Élevé' ? 30 : t.impact === 'Moyen' ? 20 : 10;
     if (t.category === 'SEO Technique' && hasAudits && avgSc < 75) score += 30;
@@ -4961,7 +4961,7 @@ function renderOverview() {
     const _gscConnected = (STATE.connectors || []).some(c => (c.key === 'gsc' || c.id === 'gsc') && (c.connected || c.status === 'active'));
     const _ga4Connected = (STATE.connectors || []).some(c => (c.key === 'ga4' || c.id === 'ga4') && (c.connected || c.status === 'active'));
     const _hasMonitorsDown = (STATE.monitors || []).some(m => m.status === 'down');
-    const _hasGbp = (STATE.localSeo?.listings || []).length > 0 || (STATE.localListings || []).length > 0;
+    const _hasGbp = !!(STATE.gbp && STATE.gbp.connected);
     const _hasKeywords = (STATE.keywords || []).length > 0;
     if (_hasMonitorsDown) {
       const _downList = (STATE.monitors || []).filter(m => m.status === 'down');
@@ -10428,10 +10428,10 @@ window.fpIsConnected = function(service) {
     return false;
   }
   if (s === 'gbp') {
+    // Backend-only source of truth: STATE.gbp.connected set by FP_GBP_API.load()
+    // from /api/google/status. Never infer connection from listing presence.
     if (STATE.gbp?.connected === true) return true;
-    if (STATE.googleConnected?.gbp?.connected === true) return true;
-    if (STATE.integrations?.google?.connected === true) return true;
-    if ((STATE.gbp?.listings || []).length > 0) return true;
+    if (STATE.googleConnected?.connected === true) return true;
     return false;
   }
   return false;
@@ -20850,7 +20850,7 @@ function renderMissionsAI() {
   const _avgSc = (typeof avgScore === 'function') ? avgScore() : 0;
   const hasMonitors = STATE.monitors && STATE.monitors.length > 0;
   const hasKeywords = STATE.keywords && STATE.keywords.length > 0;
-  const hasGbp = !!(STATE.gbp && (STATE.gbp.connected || (STATE.gbp.listings && STATE.gbp.listings.length > 0)));
+  const hasGbp = !!(STATE.gbp && STATE.gbp.connected);
   const hasCompetitors = STATE.competitors && STATE.competitors.length > 0;
   const hasSlow = hasAudits && STATE.audits.some(function(a){ return (a.speed || a.performanceScore || 100) < 65; });
   const unansweredReviews = (STATE.gbp && STATE.gbp.unansweredReviews > 0) ? STATE.gbp.unansweredReviews : null;
@@ -30266,38 +30266,54 @@ function renderLocalSEOGBP() {
 
   const gbpCirc = 2 * Math.PI * 40;
 
-  const completeness = [
-    { label: 'Description complète',       done: true  },
-    { label: 'Photos produits (15+)',       done: false },
-    { label: 'Heures ouverture à jour',     done: true  },
-    { label: 'Numéro de téléphone',         done: true  },
-    { label: 'Q&A complètes',               done: false },
-    { label: 'Attributs de service',        done: false },
-    { label: 'Catégories secondaires',      done: false },
-    { label: 'Site web lié',               done: true  },
-    { label: 'Posts réguliers (2+/sem)',    done: false },
-    { label: 'Réponses avis à jour',        done: false },
-  ];
-  const completePct = Math.round(completeness.filter(c => c.done).length / completeness.length * 100);
-  const gbpHealth = gbpConnected
+  // Completeness derived from REAL location fields — never a hardcoded checklist
+  const _loc0 = gbpLocations[0] || null;
+  const completeness = _loc0 ? [
+    { label: 'Nom de l\'établissement',   done: !!_loc0.name },
+    { label: 'Catégorie principale',      done: !!_loc0.primary_category },
+    { label: 'Numéro de téléphone',       done: !!_loc0.phone },
+    { label: 'Site web lié',              done: !!_loc0.website },
+    { label: 'Adresse géolocalisée',      done: _loc0.lat != null && _loc0.lng != null },
+    { label: 'Avis clients reçus',        done: totalReviews > 0 },
+    { label: 'Réponses avis à jour',      done: totalReviews > 0 && unanswered === 0 },
+  ] : [];
+  const completePct = completeness.length
+    ? Math.round(completeness.filter(c => c.done).length / completeness.length * 100)
+    : null;
+  const gbpHealth = gbpConnected && completePct !== null
     ? completePct
     : PREVIEW_MODE ? 71 : null;
 
-  const reviewKeywords = [
-    { word: 'professionnel', count: 8, sentiment: 'positive' },
-    { word: 'réactif',       count: 6, sentiment: 'positive' },
-    { word: 'qualité',       count: 7, sentiment: 'positive' },
-    { word: 'communication', count: 3, sentiment: 'negative' },
-    { word: 'délais',        count: 4, sentiment: 'mixed'    },
-  ];
+  // Real keyword extraction from live reviews — never hardcoded demo words
+  const reviewKeywords = (() => {
+    if (!reviews.length) return [];
+    const STOP = new Set(['les','des','une','pour','avec','dans','tres','très','est','son','ses','mais','pas','nous','vous','ils','elle','leur','sont','ete','été','avis','sur','par','aux','the','and','was','very','que','qui','plus','tout','bien','fait','service']);
+    const freq = {};
+    for (const r of reviews) {
+      const words = String(r.text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').match(/[a-z]{4,}/g) || [];
+      for (const w of words) {
+        if (STOP.has(w)) continue;
+        if (!freq[w]) freq[w] = { count: 0, pos: 0, neg: 0 };
+        freq[w].count++;
+        if (r.sentiment === 'positive') freq[w].pos++;
+        else if (r.sentiment === 'negative') freq[w].neg++;
+      }
+    }
+    return Object.entries(freq)
+      .filter(([, v]) => v.count >= 2)
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 6)
+      .map(([word, v]) => ({ word, count: v.count, sentiment: v.pos > v.neg ? 'positive' : v.neg > v.pos ? 'negative' : 'mixed' }));
+  })();
 
   const stars = n => '<span style="color:#f59e0b">' + '★'.repeat(n) + '</span><span style="color:rgba(255,255,255,0.12)">' + '★'.repeat(5-n) + '</span>';
 
-  const aiPosts = [
+  // AI post suggestions are only demo content in PREVIEW_MODE — never shown as real AI output
+  const aiPosts = PREVIEW_MODE ? [
     { title: 'Promotion de mai — jusqu\'à -20%',  type: 'Offre',      preview: 'Profitez de notre promotion exclusive ce mois-ci. Qualité garantie, prix réduits pour nos clients locaux.' },
     { title: 'Notre équipe vous accueille',        type: 'Actualité',  preview: 'Toute notre équipe est heureuse de vous retrouver. Nouveaux horaires disponibles ce mois-ci.' },
     { title: 'Témoignage client de la semaine',   type: 'Post',       preview: 'Merci à Marie pour son excellent retour. Votre satisfaction est notre priorité absolue.' },
-  ];
+  ] : [];
 
   return `
     <div class="fp-section-header">
@@ -30444,7 +30460,7 @@ function renderLocalSEOGBP() {
           <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#2563EB">${gbpConnected ? totalReviews : PREVIEW_MODE ? '47' : '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Avis total</div></div>
           <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:#8b5cf6">${gbpConnected ? (STATE.gbp?.photoCount ?? '—') : PREVIEW_MODE ? '24' : '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Photos</div></div>
         </div>
-        ${gbpConnected ? `
+        ${gbpConnected && completePct !== null ? `
         <div style="border-top:1px solid var(--fp-border);padding-top:14px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
             <span style="font-size:12px;font-weight:600;color:var(--fp-text-soft)">Complétude de la fiche</span>
@@ -30461,7 +30477,13 @@ function renderLocalSEOGBP() {
       <!-- COMPLETENESS CHECKLIST -->
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:12px">Optimisation de la fiche</div>
-        ${gbpConnected ? `
+        ${gbpConnected && !completeness.length ? `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:140px;gap:10px;opacity:0.6">
+          <div style="font-size:32px">⏳</div>
+          <div style="font-size:12px;color:var(--fp-text-muted);text-align:center">Aucune donnée d'établissement pour le moment.<br>Lancez une synchronisation GBP.</div>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_GBP_API&&window.FP_GBP_API.sync()">🔄 Synchroniser</button>
+        </div>
+        ` : gbpConnected ? `
         <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto">
           ${completeness.map(item => `
             <div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;background:${item.done?'rgba(34,197,94,0.04)':'rgba(239,68,68,0.03)'}">
@@ -31592,7 +31614,7 @@ function renderSettingsLocation() {
   const configured = !!(loc.locationConfigured || loc.city || loc.address);
   const srcLabel = loc.locationSource === 'gbp' ? '🏢 Sync GBP' : loc.locationSource === 'geolocation' ? '📡 GPS navigateur' : '✏️ Manuel';
   const serviceAreas = Array.isArray(loc.serviceArea) ? loc.serviceArea : [];
-  const gbpConnected = !!(STATE.integrations && STATE.integrations.google && STATE.integrations.google.connected);
+  const gbpConnected = window.fpIsConnected ? window.fpIsConnected('gbp') : !!(STATE.gbp && STATE.gbp.connected);
 
   const configBanner = !configured ? `
     <div style="background:linear-gradient(135deg,rgba(37,99,235,0.1),rgba(79,70,229,0.08));border:1px solid rgba(37,99,235,0.3);border-radius:12px;padding:20px 22px;margin-bottom:20px;display:flex;align-items:flex-start;gap:14px">
@@ -37498,18 +37520,36 @@ function renderGSCIndexing(gsc) {
         <button class="fp-btn fp-btn-primary" onclick="(async()=>{
           const url = document.getElementById('gsc-url-inspect')?.value?.trim();
           if (!url) return showToast('error','Entrez une URL valide');
-          showToast('info','Inspection en cours…');
+          const box = document.getElementById('gsc-inspect-result');
+          if (box) box.innerHTML = '<div style=\\'padding:24px;text-align:center;color:var(--fp-text-muted);font-size:12px\\'>⏳ Inspection Google en cours…</div>';
           try {
             const r = await apiFetch('/api/gsc/indexing', {method:'POST', body: JSON.stringify({inspectionUrl:url})});
-            showToast(r.ok?'success':'error', r.ok ? 'URL inspectée — voir console' : String(r.error));
-            if(window.__DEV__) console.log('[GSC Indexing]', r);
-          } catch(e) { showToast('error', String(e)); }
+            const ir = r && r.result;
+            if (!r || !r.ok || !ir) { if (box) box.innerHTML = '<div style=\\'padding:24px;text-align:center;color:#ef4444;font-size:12px\\'>Erreur : ' + escHtml(String((r&&r.error)||'inconnue')) + '</div>'; return; }
+            if (!ir.inspected) {
+              const msg = ir.reason === 'no_site_selected' ? 'Aucun site GSC sélectionné.' : ir.reason === 'not_connected' ? 'Google Search Console non connecté.' : 'Inspection indisponible (' + escHtml(String(ir.reason)) + ').';
+              if (box) box.innerHTML = '<div style=\\'padding:24px;text-align:center;color:var(--fp-text-muted);font-size:12px\\'>' + msg + '</div>';
+              return;
+            }
+            const isPass = ir.verdict === 'PASS';
+            if (box) box.innerHTML =
+              '<div style=\\'padding:18px;background:var(--fp-inner-card);border-radius:12px;border:1px solid ' + (isPass ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.3)') + '\\'>'
+              + '<div style=\\'font-size:14px;font-weight:800;color:' + (isPass ? '#22c55e' : '#f59e0b') + ';margin-bottom:10px\\'>' + (isPass ? '✓ Indexée par Google' : '⚠ ' + escHtml(ir.coverageState || ir.verdict)) + '</div>'
+              + '<div style=\\'display:grid;gap:6px;font-size:12px;color:var(--fp-text-muted)\\'>'
+              + '<div>État de couverture : <strong style=\\'color:var(--fp-text)\\'>' + escHtml(ir.coverageState || '—') + '</strong></div>'
+              + '<div>Dernier crawl : <strong style=\\'color:var(--fp-text)\\'>' + (ir.lastCrawlTime ? new Date(ir.lastCrawlTime).toLocaleString(getLocale()) : '—') + '</strong></div>'
+              + '<div>Robots.txt : <strong style=\\'color:var(--fp-text)\\'>' + escHtml(ir.robotsTxtState || '—') + '</strong></div>'
+              + '<div>Canonique Google : <strong style=\\'color:var(--fp-text)\\'>' + escHtml(ir.googleCanonical || '—') + '</strong></div>'
+              + '</div></div>';
+          } catch(e) { if (box) box.innerHTML = '<div style=\\'padding:24px;text-align:center;color:#ef4444;font-size:12px\\'>Erreur : ' + escHtml(String(e)) + '</div>'; }
         })()">Inspecter</button>
       </div>
+      <div id="gsc-inspect-result">
       <div style="padding:24px;background:var(--fp-inner-card);border-radius:12px;border:1px dashed rgba(255,255,255,0.1);text-align:center">
         <div style="font-size:32px;margin-bottom:12px">🔍</div>
         <div style="font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:6px">Statut d\'indexation</div>
-        <div style="font-size:12px;color:var(--fp-text-muted)">Entrez une URL ci-dessus pour obtenir son statut d\'indexation Google, les données de crawl, et les problèmes potentiels.</div>
+        <div style="font-size:12px;color:var(--fp-text-muted)">Entrez une URL ci-dessus pour obtenir son statut d\'indexation Google (verdict, crawl, canonique) via l\'API URL Inspection.</div>
+      </div>
       </div>
     </div>`;
 }
@@ -37571,7 +37611,7 @@ window.FP_GBP_API = {
         reviews: reviewsData?.reviews || [],
         performance: null,
       };
-      if (STATUS?.gbp?.locations?.length && !STATE.gbp.performance) {
+      if (STATE.gbp?.locations?.length && !STATE.gbp.performance) {
         const perfData = await apiFetch('/api/google/performance').catch(() => null);
         if (perfData?.ok) STATE.gbp.performance = perfData.data || null;
       }
