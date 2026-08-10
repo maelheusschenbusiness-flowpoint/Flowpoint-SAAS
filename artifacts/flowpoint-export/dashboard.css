@@ -21,6 +21,7 @@
   --fp-bg-sidebar:    rgba(13,21,37,0.97);
   --fp-bg-input:      rgba(255,255,255,0.04);
   --fp-bg-overlay:    rgba(5,8,16,0.75);
+  --fp-card-bg:       #0d1525; /* solid modal/dialog background (dark) */
 
   --fp-accent:        #2563EB;
   --fp-accent-dark:   #1d4ed8;
@@ -87,6 +88,7 @@
   --fp-bg-sidebar:    rgba(255,255,255,0.97);
   --fp-bg-input:      rgba(0,0,0,0.04);
   --fp-bg-overlay:    rgba(248,250,255,0.75);
+  --fp-card-bg:       #ffffff; /* solid modal/dialog background (light) */
   --fp-map-placeholder-bg: #eef2f9;
   --fp-bg-inset:      rgba(0,0,0,0.04);
   --fp-bg-subtle:     rgba(0,0,0,0.02);

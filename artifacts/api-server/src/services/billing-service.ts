@@ -4,7 +4,7 @@ import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS } from "../lib/plans.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, computeQtyAddonExtras } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
 const _PLAN_PRESENTATION: Record<string, {
@@ -48,6 +48,7 @@ export const PLAN_CONFIG = Object.fromEntries(
 // Keys must exist in ADDON_PRICE_IDS, otherwise checkout cannot collect them.
 const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   aiCreditsPack50k: { icon: "🤖", unit: "+50 000 crédits" },
+  monitorsPack10:   { icon: "📡", unit: "+10 monitors"    },
   monitorsPack50:   { icon: "📡", unit: "+50 monitors"    },
   extraSeats:       { icon: "👥", unit: "+5 sièges"       },
   exportsPack1000:  { icon: "📤", unit: "+1 000 exports"  },
@@ -114,8 +115,13 @@ export async function getUsageSummary(orgId = "default") {
     }
   }
 
-  const extraMonitors = Number(billingCtx.addons["monitorsPack50"] ?? 0);
-  const extraSeats    = Number(billingCtx.addons["extraSeats"]    ?? 0);
+  // Per-pack expansion via the canonical QTY_ADDON_GRANTS map (single source of truth).
+  const qtyExtras     = computeQtyAddonExtras(billingCtx.addons);
+  const extraMonitors = qtyExtras["monitors"]    ?? 0;
+  const extraAudits   = qtyExtras["audits"]      ?? 0;
+  const extraReports  = qtyExtras["reports"]     ?? 0;
+  const extraExports  = qtyExtras["exports"]     ?? 0;
+  const extraSeats    = qtyExtras["teamMembers"] ?? 0;
 
   // Bug-5 fix: resolve nextBillingDate from Stripe when subscription exists
   let nextBillingDate: string | null = null;
@@ -163,12 +169,12 @@ export async function getUsageSummary(orgId = "default") {
       plan,
       billing_period: new Date().toISOString().slice(0, 7),
       usage: {
-        audits:   { used: auditsUsed,   limit: limits.audits,   pct: Math.round((auditsUsed   / Math.max(limits.audits,   1)) * 100) },
-        monitors: { used: monitorsUsed, limit: limits.monitors + extraMonitors * 50, pct: Math.round((monitorsUsed / Math.max(limits.monitors, 1)) * 100) },
-        reports:  { used: reportsUsed,  limit: limits.reports,  pct: Math.round((reportsUsed  / Math.max(limits.reports,  1)) * 100) },
-        exports:  { used: exportsUsed,  limit: limits.exports,  pct: Math.round((exportsUsed  / Math.max(limits.exports ?? limits.reports, 1)) * 100) },
-        pdfs:     { used: pdfsUsed,     limit: limits.reports,  pct: Math.round((pdfsUsed     / Math.max(limits.reports,  1)) * 100) },
-        seats:    { used: seatsUsed,    limit: limits.teamMembers + extraSeats, pct: Math.round((seatsUsed / Math.max(limits.teamMembers, 1)) * 100) },
+        audits:   { used: auditsUsed,   limit: limits.audits + extraAudits,     pct: Math.round((auditsUsed   / Math.max(limits.audits + extraAudits,     1)) * 100) },
+        monitors: { used: monitorsUsed, limit: limits.monitors + extraMonitors, pct: Math.round((monitorsUsed / Math.max(limits.monitors + extraMonitors, 1)) * 100) },
+        reports:  { used: reportsUsed,  limit: limits.reports + extraReports,   pct: Math.round((reportsUsed  / Math.max(limits.reports + extraReports,   1)) * 100) },
+        exports:  { used: exportsUsed,  limit: limits.exports + extraExports,   pct: Math.round((exportsUsed  / Math.max((limits.exports ?? limits.reports) + extraExports, 1)) * 100) },
+        pdfs:     { used: pdfsUsed,     limit: limits.reports + extraReports,   pct: Math.round((pdfsUsed     / Math.max(limits.reports + extraReports,   1)) * 100) },
+        seats:    { used: seatsUsed,    limit: limits.teamMembers + extraSeats, pct: Math.round((seatsUsed    / Math.max(limits.teamMembers + extraSeats,  1)) * 100) },
       },
       // Bug-4 fix: addons includes plan-included items flagged with includedInPlan:true
       addons: addonsWithFlags,
@@ -203,29 +209,35 @@ export async function checkQuota(
   const resolvedOrgId = orgId && orgId !== "default" ? orgId : null;
 
   let plan = "standard";
-  let extraMonitors = 0;
-  let extraSeats = 0;
+  // Per-resource extra capacity from active quantity add-ons (canonical map).
+  let qtyExtras: Record<string, number> = {};
 
   if (resolvedOrgId) {
     try {
       const settings = await loadOrgSettings(resolvedOrgId);
       plan = (settings?.plan || "standard").toLowerCase();
 
-      // Load add-ons from DB for accurate quota expansion
-      // org_addons has no quantity column — each active row = 1 unit of the addon
+      // Load add-ons from DB for accurate quota expansion.
+      // org_addons.quantity holds the pack count for quantity add-ons (default 1).
       const { pool: pgPool } = await import("@workspace/db");
-      const addonsResult = await pgPool.query<{ addon_key: string }>(
-        `SELECT addon_key FROM org_addons WHERE org_id = $1 AND active = true`,
+      const addonsResult = await pgPool.query<{ addon_key: string; quantity: number | null }>(
+        `SELECT addon_key, quantity FROM org_addons WHERE org_id = $1 AND active = true`,
         [resolvedOrgId]
       );
+      const addonMap: Record<string, boolean | number> = {};
       for (const row of addonsResult.rows) {
-        if (row.addon_key === "monitorsPack50") extraMonitors += 50;
-        if (row.addon_key === "extraSeats")     extraSeats    += 5;
+        addonMap[row.addon_key] = Math.max(1, Number(row.quantity ?? 1));
       }
+      qtyExtras = computeQtyAddonExtras(addonMap);
     } catch (err) {
       logger.warn({ err, orgId: resolvedOrgId }, "[Billing] checkQuota: DB load failed — using standard limits");
     }
   }
+  const extraMonitors = qtyExtras["monitors"]    ?? 0;
+  const extraAudits   = qtyExtras["audits"]      ?? 0;
+  const extraReports  = qtyExtras["reports"]     ?? 0;
+  const extraExports  = qtyExtras["exports"]     ?? 0;
+  const extraSeats    = qtyExtras["teamMembers"] ?? 0;
 
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.standard;
 
@@ -245,7 +257,7 @@ export async function checkQuota(
               [resolvedOrgId]
             );
             usedCount = Number(r.rows[0]?.n ?? 0);
-            limit = limits.audits;
+            limit = limits.audits + extraAudits;
             break;
           }
           case "monitors": {
@@ -263,7 +275,7 @@ export async function checkQuota(
               [resolvedOrgId]
             );
             usedCount = Number(r.rows[0]?.n ?? 0);
-            limit = limits.reports;
+            limit = limits.reports + extraReports;
             break;
           }
           case "seats": {
@@ -276,7 +288,7 @@ export async function checkQuota(
             break;
           }
           case "exports": {
-            limit = limits.exports;
+            limit = limits.exports + extraExports;
             usedCount = 0; // exports tracked separately — not blocked here
             break;
           }

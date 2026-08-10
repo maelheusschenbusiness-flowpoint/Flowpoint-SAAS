@@ -9,7 +9,7 @@
  */
 
 import { pool } from "@workspace/db";
-import { PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, QTY_ADDONS } from "../lib/plans.js";
 import { loadOrgData } from "./org-data.js";
 import { normalizeSubscriptionStatus, statusGrantsAccess } from "../lib/subscription-state.js";
 import { logger } from "../lib/logger.js";
@@ -73,8 +73,8 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
     (async () => {
       const client = await pool.connect();
       try {
-        return await client.query<{ addon_key: string; active: boolean }>(
-          `SELECT addon_key, active FROM org_addons WHERE org_id = $1`,
+        return await client.query<{ addon_key: string; active: boolean; quantity: number | null }>(
+          `SELECT addon_key, active, quantity FROM org_addons WHERE org_id = $1`,
           [orgId],
         );
       } finally {
@@ -87,9 +87,14 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
   ]);
 
   // Construire la map addons depuis org_addons (source principale)
+  // Les add-ons quantité portent leur nombre de packs (quantity) pour que
+  // l'expansion de quota soit multipliée par pack.
   const addons: Record<string, boolean | number> = {};
   for (const row of addonsResult.rows) {
-    addons[row.addon_key] = row.active;
+    const qty = Number((row as { quantity?: number | null }).quantity ?? 1);
+    addons[row.addon_key] = row.active && QTY_ADDONS.has(row.addon_key)
+      ? Math.max(1, qty)
+      : row.active;
   }
 
   // Supplément : addons JSONB depuis organizations (legacy supplement)

@@ -2043,6 +2043,16 @@ async function dispatchTool(
 
     const genCreated: Record<string, unknown>[] = [];
     for (const rec of scored) {
+      // Dedup: never create a second active recommendation with the same title
+      // for this org — repeated generations were stacking identical entries.
+      const dupCheck = await pool.query(
+        `SELECT id FROM ai_recommendations
+         WHERE org_id = $1 AND title = $2 AND status = 'active'
+           AND (expires_at IS NULL OR expires_at > NOW())
+         LIMIT 1`,
+        [orgId, rec.title]
+      );
+      if (dupCheck.rows.length > 0) continue;
       const rId = `r${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       await pool.query(
         `INSERT INTO ai_recommendations (id, org_id, type, title, description, priority, status, source, metadata, created_at, updated_at)

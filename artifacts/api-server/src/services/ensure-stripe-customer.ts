@@ -177,6 +177,22 @@ async function _runWithLock(
             { orgId, customerId: candidateId, stripeMs: ms2, totalMs: Date.now() - t0 },
             "[ESC][DEBUG] Step 2 — retrieve OK, customer alive — reusing",
           );
+          // Backfill company name on existing customers created before the org
+          // name was known (signup happens before org settings are complete).
+          const _existing = customer as { name?: string | null; description?: string | null; metadata?: Record<string, string> };
+          const _company = settings?.orgName ?? hint?.orgName ?? null;
+          if (_company && (!_existing.description || _existing.metadata?.["company"] !== _company)) {
+            const _fullName = [settings?.firstName ?? hint?.firstName, _company].filter(Boolean).join(" ").trim();
+            stripe.customers.update(candidateId, {
+              ...(_fullName ? { name: _fullName } : {}),
+              description: _company,
+              metadata: { ..._existing.metadata, company: _company },
+            }).then(() => {
+              logger.info({ orgId, customerId: candidateId, company: _company }, "[ESC] backfilled company on existing Stripe customer");
+            }).catch((updErr: unknown) => {
+              logger.warn({ orgId, customerId: candidateId, err: updErr instanceof Error ? updErr.message : String(updErr) }, "[ESC] company backfill failed (non-fatal)");
+            });
+          }
           return candidateId;
         }
         logger.warn(

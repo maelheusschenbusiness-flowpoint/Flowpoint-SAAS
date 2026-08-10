@@ -2,7 +2,7 @@ import { db, orgAddonsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
-import { ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, FLAG_ADDONS, PLAN_DEFINITIONS } from "../lib/plans.js";
+import { ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, FLAG_ADDONS, QTY_ADDONS, PLAN_DEFINITIONS, computeQtyAddonExtras } from "../lib/plans.js";
 
 export const ADDON_DEFINITIONS: Record<string, {
   name: string; category: string; description: string; price: string; isFlagAddon: boolean;
@@ -14,11 +14,12 @@ export const ADDON_DEFINITIONS: Record<string, {
   isFlagAddon: FLAG_ADDONS.has(key),
 }]));
 
-export async function activateAddon(addonKey: string, orgId = "default"): Promise<boolean> {
+export async function activateAddon(addonKey: string, orgId = "default", quantity = 1): Promise<boolean> {
   if (!ADDON_DEFINITIONS[addonKey]) {
     logger.warn({ addonKey }, "[Addons] Unknown addon key");
     return false;
   }
+  const qty = Math.max(1, Math.floor(Number(quantity) || 1));
   try {
     const id = `oa_${orgId}_${addonKey}`;
     await db.insert(orgAddonsTable).values({
@@ -26,6 +27,7 @@ export async function activateAddon(addonKey: string, orgId = "default"): Promis
       orgId,
       addonKey,
       active: true,
+      quantity: qty,
       activatedAt: new Date(),
       metadata: { source: "manual" },
     }).onConflictDoNothing();
@@ -33,8 +35,8 @@ export async function activateAddon(addonKey: string, orgId = "default"): Promis
     const client = await (await import("@workspace/db")).pool.connect();
     try {
       await client.query(
-        `UPDATE org_addons SET active = true, activated_at = NOW(), updated_at = NOW() WHERE org_id = $1 AND addon_key = $2`,
-        [orgId, addonKey]
+        `UPDATE org_addons SET active = true, quantity = $3, activated_at = NOW(), updated_at = NOW() WHERE org_id = $1 AND addon_key = $2`,
+        [orgId, addonKey, qty]
       );
     } finally {
       client.release();
@@ -91,7 +93,14 @@ export async function getOrgAddons(orgId = "default"): Promise<Record<string, bo
     const rows = await db.select().from(orgAddonsTable).where(eq(orgAddonsTable.orgId, orgId));
     const result: Record<string, boolean | number> = {};
     for (const row of rows) {
-      result[row.addonKey] = row.active ?? false;
+      const active = row.active ?? false;
+      // Quantity add-ons carry their pack count so quota expansion multiplies
+      // per pack; flag add-ons stay boolean.
+      if (active && QTY_ADDONS.has(row.addonKey)) {
+        result[row.addonKey] = Math.max(1, Number((row as { quantity?: number }).quantity ?? 1));
+      } else {
+        result[row.addonKey] = active;
+      }
     }
     return result;
   } catch {
@@ -144,21 +153,20 @@ export async function addExtraAICredits(pack: "50k" | "200k" | "500k", orgId = "
 }
 
 export function getQuotaLimits(plan: string, addons: Record<string, boolean | number>): {
-  audits: number; monitors: number; reports: number; seats: number; retention: number;
+  audits: number; monitors: number; reports: number; exports: number; seats: number; retention: number;
 } {
   const definition = PLAN_DEFINITIONS[plan.toLowerCase()] ?? PLAN_DEFINITIONS["standard"];
+  // Canonical per-pack expansion — QTY_ADDON_GRANTS is the single source of truth.
+  const extras = computeQtyAddonExtras(addons);
   const limits = {
-    audits: definition.limits.audits,
-    monitors: definition.limits.monitors,
-    reports: definition.limits.reports,
-    seats: definition.limits.teamMembers,
+    audits:  definition.limits.audits      + (extras["audits"]      ?? 0),
+    monitors: definition.limits.monitors   + (extras["monitors"]    ?? 0),
+    reports: definition.limits.reports     + (extras["reports"]     ?? 0),
+    exports: definition.limits.exports     + (extras["exports"]     ?? 0),
+    seats:   definition.limits.teamMembers + (extras["teamMembers"] ?? 0),
     retention: definition.limits.retention,
   };
 
-  if (addons.monitorsPack50) limits.monitors += Number(addons.monitorsPack50) * 50;
-  if (addons.auditsPack200)  limits.audits   += 200;
-  if (addons.auditsPack1000) limits.audits   += 1000;
-  if (addons.extraSeats)     limits.seats    += Number(addons.extraSeats) * 5;
   if (addons.retention365d)  limits.retention = 365;
   else if (addons.retention90d) limits.retention = 90;
 

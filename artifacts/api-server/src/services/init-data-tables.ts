@@ -2224,6 +2224,8 @@ export async function initDataTables(): Promise<void> {
     // ── P0-5 self-healing ALTERs — always run (idempotent, protect drift) ────
     // org_addons.activated_at — used by billing addons service
     await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ`);
+    // org_addons.quantity — durable per-pack quantity for QTY_ADDONS (monitorsPack10/50, extraSeats…)
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`);
     // ai_monthly_usage extra columns (already in block above but repeat for safety)
     await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS credits_used NUMERIC    NOT NULL DEFAULT 0`);
     await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS cost_eur     NUMERIC    NOT NULL DEFAULT 0`);

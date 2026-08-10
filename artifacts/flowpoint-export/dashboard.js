@@ -4358,6 +4358,13 @@ const MSG_CHANNELS = [
   { id:'rapports', label:'Rapports' },
   { id:'support',  label:'Support' },
 ];
+// Dynamic channel list — synced with the team channels (STATE.channels).
+// Falls back to the 4 default channels when server channels haven't loaded yet.
+function getMsgChannels() {
+  const _defaults = { general:'Général', seo:'SEO', rapports:'Rapports', support:'Support' };
+  const chs = Array.isArray(STATE.channels) && STATE.channels.length ? STATE.channels : Object.keys(_defaults);
+  return chs.map(id => ({ id, label: _defaults[id] || (id.charAt(0).toUpperCase() + id.slice(1)) }));
+}
 const CHANNEL_MSGS_DEFAULT = {
   general:  [
     { from:'Sophie M.', text:'Le rapport client est prêt pour relecture.', time:'2h',  read:false, self:false },
@@ -4399,7 +4406,7 @@ function renderMsgDropdown() {
     <button class="fp-notif-mark-all" id="fp-msg-mark-all">Tout lu</button>
   </div>
   <div class="fp-msg-channels">
-    ${MSG_CHANNELS.map(c => {
+    ${getMsgChannels().map(c => {
       const u = (STATE.channelMessages[c.id]||[]).filter(m=>!m.read&&!m.self).length;
       return `<button class="fp-msg-channel-btn${c.id===ch?' active':''}" data-channel="${c.id}">${escHtml(c.label)}${u>0?`<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--fp-accent);flex-shrink:0"></span>`:''}
       </button>`;
@@ -4685,6 +4692,19 @@ function renderSidebarStatus() {
   const me = STATE.me;
   if (!me) return;
   const down = monitorsDown();
+
+  // Alerts badge — real unresolved alert events only (hidden when zero)
+  const alertsBadge = $('#alerts-badge');
+  if (alertsBadge) {
+    const _unresolved = (STATE.alertEvents || []).filter(e => !e.resolvedAt && e.status !== 'resolved').length;
+    if (_unresolved > 0) {
+      alertsBadge.textContent = _unresolved > 99 ? '99+' : String(_unresolved);
+      alertsBadge.style.display = '';
+    } else {
+      alertsBadge.textContent = '';
+      alertsBadge.style.display = 'none';
+    }
+  }
 
   // Status dot & text
   const dot = $('#global-status-dot');
@@ -8787,7 +8807,7 @@ function renderBilling() {
   }, 0);
   const sub  = STATE.subRoute;
   const me   = STATE.me;
-  if (!me) return '<div style="padding:60px 40px;text-align:center;color:var(--fp-text-muted);font-size:14px"><div style="width:42px;height:42px;margin:0 auto 14px;border-radius:50%;border:3px solid var(--fp-border);border-top-color:var(--fp-accent,#2563EB);animation:spin 0.9s linear infinite"></div>Chargement du profil…</div>';
+  if (!me) return '<div style="padding:60px 40px;text-align:center;color:var(--fp-text-muted);font-size:14px"><div style="width:42px;height:42px;margin:0 auto 14px;border-radius:50%;border:3px solid var(--fp-border);border-top-color:var(--fp-accent,#2563EB);animation:spin 0.9s linear infinite"></div>Chargement du profil…<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:16px" onclick="(function(){try{sessionStorage.removeItem(\'fp-state-cache\')}catch(_){};loadData()})()">Recharger</button></div>';
   const user   = STATE?.me?.user || STATE?.user || null;
   const plan = me?.plan || 'Standard';
   const _ud    = STATE.usageDetails || {};
@@ -8874,6 +8894,78 @@ function renderBilling() {
       return;
     }
     fpGoToPricing(_target);
+  };
+
+  // ── Billing lifecycle modals — hoisted to renderBilling scope so the
+  //    Plans tab buttons (Terminer l'essai, Annuler, Réactiver) always work,
+  //    even when the Add-ons tab was never rendered. ─────────────────────────
+  window.fpCancelSubscriptionModal = function() {
+    if (document.getElementById('fp-cancel-sub-modal')) return;
+    const _modal = document.createElement('div');
+    _modal.id = 'fp-cancel-sub-modal';
+    _modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    _modal.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">⚠️</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">Annuler l'abonnement</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.<br><br><strong style="color:var(--fp-text)">Toutes les fonctionnalités payantes seront désactivées après cette date.</strong></div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-sub-modal').remove()">Garder mon abonnement</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelSubscription()">Confirmer l'annulation</button></div></div>`;
+    document.body.appendChild(_modal);
+  };
+  window.fpConfirmCancelSubscription = async function() {
+    document.getElementById('fp-cancel-sub-modal')?.remove();
+    showToast('info', 'Annulation en cours…');
+    try {
+      const r = await apiAction('POST', '/api/billing/cancel', { atPeriodEnd: true });
+      if (r && r.ok) {
+        if (r.selfHealed) {
+          // DB was stale — subscription already gone in Stripe, now corrected
+          if (STATE.billing) STATE.billing.subscriptionStatus = 'canceled';
+          showToast('info', 'Abonnement déjà résilié — statut mis à jour');
+        } else {
+          showToast('success', 'Abonnement annulé — accès conservé jusqu\'à la fin de la période');
+          if (STATE.billing) STATE.billing.cancelAtPeriodEnd = true;
+        }
+        setTimeout(()=>navigateSub('plans'), 700);
+      } else { showToast('error', (r && r.error) || 'Erreur lors de l\'annulation'); }
+    } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'annulation impossible')); }
+  };
+  window.fpReactivateSubscription = async function() {
+    showToast('info', 'Réactivation en cours…');
+    try {
+      const r = await apiAction('POST', '/api/billing/reactivate');
+      if (r && r.ok) {
+        showToast('success', 'Abonnement réactivé — renouvellement automatique rétabli');
+        if (STATE.billing) STATE.billing.cancelAtPeriodEnd = false;
+        setTimeout(()=>navigateSub('plans'), 700);
+      } else { showToast('error', (r && r.error) || 'Erreur lors de la réactivation'); }
+    } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'réactivation impossible')); }
+  };
+  window.fpCancelTrialModal = function() {
+    if (document.getElementById('fp-cancel-trial-modal')) return;
+    const _modal = document.createElement('div');
+    _modal.id = 'fp-cancel-trial-modal';
+    _modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    _modal.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">🎯</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">Terminer l'essai gratuit</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.<br><br>Tu peux te réabonner à tout moment.</div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-trial-modal').remove()">Continuer l'essai</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelTrial()">Terminer l'essai</button></div></div>`;
+    document.body.appendChild(_modal);
+  };
+  window.fpConfirmCancelTrial = async function() {
+    document.getElementById('fp-cancel-trial-modal')?.remove();
+    showToast('info', 'Annulation de l\'essai en cours…');
+    try {
+      const r = await apiAction('POST', '/api/billing/cancel-trial', { atPeriodEnd: false });
+      if (r && r.ok) {
+        if (r.selfHealed) {
+          // DB was stale — trial already gone in Stripe, now corrected
+          if (STATE.billing) STATE.billing.subscriptionStatus = 'canceled';
+          showToast('info', 'Essai déjà terminé — statut mis à jour');
+          setTimeout(()=>navigateSub('plans'), 700);
+        } else {
+          showToast('success', 'Essai annulé');
+          setTimeout(()=>window.location.reload(), 1200);
+        }
+      } else if (r && r.transitioned) {
+        // Trial already converted to active paid subscription — route to regular cancel
+        if (STATE.billing) STATE.billing.subscriptionStatus = 'active';
+        showToast('info', 'Votre essai est déjà converti en abonnement actif');
+        setTimeout(()=>navigateSub('manage'), 800);
+      } else { showToast('error', (r && r.error) || 'Erreur lors de l\'annulation'); }
+    } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'annulation impossible')); }
   };
 
   // ══════════════════════════════════════════════════════════
@@ -9061,6 +9153,7 @@ function renderBilling() {
     // includedFrom: 'pro' = included in Pro & Ultra | 'ultra' = Ultra only | null = always paid
     const allAddons = [
       // ── Monitoring ──
+      { key:'monitorsPack10', cat:'Monitoring', name:'+10 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack10),  tag:'Starter',         roi:'10 sites couverts',    desc:'Étendez votre surveillance uptime avec 10 monitors supplémentaires. Cumulable sans limite.', features:['10 monitors simultanés','Vérification toutes les minutes','Alertes email instantanées','Historique uptime complet','Cumulable avec les autres packs'] },
       { key:'monitorsPack50', cat:'Monitoring', name:'+50 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50),  tag:'Best value',      roi:'50 sites couverts',    desc:'Pack monitoring massif pour agences. Alertes avancées, SLA, et rapport disponibilité.', features:['50 monitors simultanés','Alertes SMS prioritaires < 30 sec','Tableau de bord SLA automatique','Rapport PDF disponibilité mensuel','Escalade automatique par équipe'] },
       { key:'globalMonitoring', cat:'Monitoring', name:'Global Monitoring', icon:'🌍', color:'#f59e0b', active:false, tag:'Ultra',      roi:'Monitoring 15 régions',    desc:'Surveillez depuis 15 régions mondiales. Latence, CDN, et géo-disponibilité.', features:['15 régions de monitoring (EU, US, APAC…)','Latence par région en temps réel','Détection CDN et cache edge','Alertes géo-localisées','Rapport géo-disponibilité PDF'] },
       { key:'slaMonitoring', cat:'Monitoring', name:'SLA Monitoring Avancé', icon:'🛡️', color:'#f59e0b', active:false, tag:'Pro',             roi:'SLA 99.9% garanti',    desc:'Rapports SLA automatiques, incidents, et analytics disponibilité avancés.', features:['SLA tracking automatique par client','Rapport incidents horodaté','Score disponibilité mensuel','Alertes seuils SLA personnalisables','Export PDF pour vos clients'] },
@@ -9219,75 +9312,20 @@ function renderBilling() {
         setTimeout(function() { navigateSub('plans'); }, 100);
       }
     };
-    window.fpCancelSubscriptionModal = function() {
-      if (document.getElementById('fp-cancel-sub-modal')) return;
-      const _modal = document.createElement('div');
-      _modal.id = 'fp-cancel-sub-modal';
-      _modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
-      _modal.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">⚠️</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">Annuler l'abonnement</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.<br><br><strong style="color:var(--fp-text)">Toutes les fonctionnalités payantes seront désactivées après cette date.</strong></div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-sub-modal').remove()">Garder mon abonnement</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelSubscription()">Confirmer l'annulation</button></div></div>`;
-      document.body.appendChild(_modal);
-    };
-    window.fpConfirmCancelSubscription = async function() {
-      document.getElementById('fp-cancel-sub-modal')?.remove();
-      showToast('info', 'Annulation en cours…');
-      try {
-        const r = await apiAction('POST', '/api/billing/cancel', { atPeriodEnd: true });
-        if (r && r.ok) {
-          if (r.selfHealed) {
-            // DB was stale — subscription already gone in Stripe, now corrected
-            if (STATE.billing) STATE.billing.subscriptionStatus = 'canceled';
-            showToast('info', 'Abonnement déjà résilié — statut mis à jour');
-          } else {
-            showToast('success', 'Abonnement annulé — accès conservé jusqu\'à la fin de la période');
-            if (STATE.billing) STATE.billing.cancelAtPeriodEnd = true;
-          }
-          setTimeout(()=>navigateSub('plans'), 700);
-        } else { showToast('error', (r && r.error) || 'Erreur lors de l\'annulation'); }
-      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'annulation impossible')); }
-    };
-    window.fpReactivateSubscription = async function() {
-      showToast('info', 'Réactivation en cours…');
-      try {
-        const r = await apiAction('POST', '/api/billing/reactivate');
-        if (r && r.ok) {
-          showToast('success', 'Abonnement réactivé — renouvellement automatique rétabli');
-          if (STATE.billing) STATE.billing.cancelAtPeriodEnd = false;
-          setTimeout(()=>navigateSub('plans'), 700);
-        } else { showToast('error', (r && r.error) || 'Erreur lors de la réactivation'); }
-      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'réactivation impossible')); }
-    };
-    window.fpCancelTrialModal = function() {
-      if (document.getElementById('fp-cancel-trial-modal')) return;
-      const _modal = document.createElement('div');
-      _modal.id = 'fp-cancel-trial-modal';
-      _modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
-      _modal.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">🎯</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">Terminer l'essai gratuit</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.<br><br>Tu peux te réabonner à tout moment.</div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-trial-modal').remove()">Continuer l'essai</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelTrial()">Terminer l'essai</button></div></div>`;
-      document.body.appendChild(_modal);
-    };
-    window.fpConfirmCancelTrial = async function() {
-      document.getElementById('fp-cancel-trial-modal')?.remove();
-      showToast('info', 'Annulation de l\'essai en cours…');
-      try {
-        const r = await apiAction('POST', '/api/billing/cancel-trial', { atPeriodEnd: false });
-        if (r && r.ok) {
-          if (r.selfHealed) {
-            // DB was stale — trial already gone in Stripe, now corrected
-            if (STATE.billing) STATE.billing.subscriptionStatus = 'canceled';
-            showToast('info', 'Essai déjà terminé — statut mis à jour');
-            setTimeout(()=>navigateSub('plans'), 700);
-          } else {
-            showToast('success', 'Essai annulé');
-            setTimeout(()=>window.location.reload(), 1200);
-          }
-        } else if (r && r.transitioned) {
-          // Trial already converted to active paid subscription — route to regular cancel
-          if (STATE.billing) STATE.billing.subscriptionStatus = 'active';
-          showToast('info', 'Votre essai est déjà converti en abonnement actif');
-          setTimeout(()=>navigateSub('manage'), 800);
-        } else { showToast('error', (r && r.error) || 'Erreur lors de l\'annulation'); }
-      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'annulation impossible')); }
-    };
+    // (billing lifecycle modals hoisted above the Plans tab — see fpCancelTrialModal et al.)
 
+    // Quantity add-ons (recurring packs) — mirrors backend QTY_ADDONS minus one-time AI credits.
+    // For these, the detail panel shows a quantity selector whose value is sent to the server.
+    const _FP_QTY_ADDON_KEYS = { monitorsPack10:1, monitorsPack50:1, gbpSlots10:1, extraSeats:1, auditsPack200:1, auditsPack1000:1, pdfPack200:1, exportsPack1000:1 };
+    window._fpAddonQtyRead = function(key) {
+      const inp = document.getElementById('fp-addon-qty-' + key);
+      return Math.min(20, Math.max(1, parseInt(inp && inp.value, 10) || 1));
+    };
+    window._fpAddonQtyStep = function(key, delta) {
+      const inp = document.getElementById('fp-addon-qty-' + key);
+      if (!inp) return;
+      inp.value = Math.min(20, Math.max(1, (parseInt(inp.value, 10) || 1) + delta));
+    };
     window.fpActivateAddon = async function(addonIdx) {
       const _a = window._fpAllAddons && window._fpAllAddons[addonIdx];
       if (!_a) { fpGoToPricing(); return; }
@@ -9297,6 +9335,8 @@ function renderBilling() {
         showToast('info', 'Cet add-on est déjà inclus dans votre plan.');
         return;
       }
+      // Read the selected pack count BEFORE closing the panel (input lives inside it).
+      const _qty = _FP_QTY_ADDON_KEYS[key] ? window._fpAddonQtyRead(key) : 1;
       const _bStatus = (typeof getBillingStatus === 'function' ? getBillingStatus() : (STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || '');
       // Abonnés actifs : activation directe dans le dashboard — le backend ajoute
       // l'item Stripe à l'abonnement (facturation immédiate) et annule si Stripe échoue.
@@ -9304,7 +9344,7 @@ function renderBilling() {
       if (_bStatus === 'active' || _bStatus === 'trialing') {
         if (window.FP_ADDONS_API && typeof window.FP_ADDONS_API.activate === 'function') {
           closeFloatPanel && closeFloatPanel();
-          const result = await window.FP_ADDONS_API.activate(key);
+          const result = await window.FP_ADDONS_API.activate(key, _qty);
           if (result?.ok) {
             try { sessionStorage.removeItem('fp-state-cache'); } catch (_) {}
             _apiFetchCache.clear();
@@ -9317,7 +9357,7 @@ function renderBilling() {
       showToast('info', 'Ouverture du panier…');
       try {
         const cart = { plan: null, addons: {}, fromDashboard: true };
-        cart.addons[key] = 1;
+        cart.addons[key] = _qty;
         localStorage.setItem('fp_cart', JSON.stringify(cart));
         window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(key);
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'activation impossible')); }
@@ -9383,7 +9423,15 @@ function renderBilling() {
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">Désactiver</button>`
                 : a.wizardFn
                   ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 Lancer →</button>`
-                  : `<button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>`
+                  : `${_FP_QTY_ADDON_KEYS[a.key] ? `
+                    <div style="display:flex;align-items:center;gap:10px">
+                      <div style="display:flex;align-items:center;gap:4px" title="Nombre de packs">
+                        <button onclick="window._fpAddonQtyStep('${a.key}',-1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">−</button>
+                        <input id="fp-addon-qty-${a.key}" type="number" value="1" min="1" max="20" readonly style="width:38px;text-align:center;border:1px solid var(--fp-border);border-radius:6px;padding:3px 4px;font-size:13px;background:transparent;color:var(--fp-text)">
+                        <button onclick="window._fpAddonQtyStep('${a.key}',1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">+</button>
+                      </div>
+                      <button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>
+                    </div>` : `<button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>`}`
             }
           </div>
         </div>`
@@ -12165,7 +12213,7 @@ function renderAI() {
   }
   const sub  = STATE.subRoute;
   const me   = STATE.me;
-  if (!me) return '<div style="padding:60px 40px;text-align:center;color:var(--fp-text-muted);font-size:14px"><div style="width:42px;height:42px;margin:0 auto 14px;border-radius:50%;border:3px solid var(--fp-border);border-top-color:var(--fp-accent,#2563EB);animation:spin 0.9s linear infinite"></div>Chargement du profil…</div>';
+  if (!me) return '<div style="padding:60px 40px;text-align:center;color:var(--fp-text-muted);font-size:14px"><div style="width:42px;height:42px;margin:0 auto 14px;border-radius:50%;border:3px solid var(--fp-border);border-top-color:var(--fp-accent,#2563EB);animation:spin 0.9s linear infinite"></div>Chargement du profil…<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:16px" onclick="(function(){try{sessionStorage.removeItem(\'fp-state-cache\')}catch(_){};loadData()})()">Recharger</button></div>';
   const user   = STATE?.me?.user || STATE?.user || null;
   const _usage = me?.usage || {};
   const plan = me?.plan || 'Pro';
@@ -36163,7 +36211,7 @@ document.addEventListener('click', function _nativeDisconnectDelegation(e) {
   var endpoint = btn.dataset.endpoint || '';
   var name     = btn.dataset.name     || svc;
   if (!endpoint) return;
-  if (!confirm('Déconnecter ' + name + ' ? Cette action révoque l\'accès OAuth pour ce service.')) return;
+  var _doDisconnect = function() {
   btn.disabled = true;
   btn.textContent = '…';
   apiAction('POST', endpoint, {})
@@ -36188,6 +36236,12 @@ document.addEventListener('click', function _nativeDisconnectDelegation(e) {
       btn.disabled = false;
       btn.textContent = 'Déconnecter';
     });
+  };
+  if (window.fpDarkConfirm) {
+    window.fpDarkConfirm('Déconnecter ' + name + ' ? Cette action révoque l\'accès OAuth pour ce service.', _doDisconnect, 'Déconnecter ' + name);
+  } else if (confirm('Déconnecter ' + name + ' ? Cette action révoque l\'accès OAuth pour ce service.')) {
+    _doDisconnect();
+  }
 });
 
 // ── BUG-W1-V32-005 — Audit polling controller ────────────────────────────────
@@ -38349,10 +38403,13 @@ window.FP_ADDONS_API = {
     } catch(e) { console.warn('[FP_ADDONS_API] load error:', e); }
   },
 
-  async activate(addonKey) {
+  async activate(addonKey, quantity) {
     showToast('info', `Activation de ${addonKey}…`);
     try {
-      const r = await apiFetch(`/api/addons/${encodeURIComponent(addonKey)}/activate`, { method: 'POST' });
+      // quantity is only meaningful for quantity add-ons (packs); server clamps 1..20
+      // and ignores it for flag add-ons. Body is always sent for consistency.
+      const qty = Math.min(20, Math.max(1, parseInt(quantity, 10) || 1));
+      const r = await apiFetch(`/api/addons/${encodeURIComponent(addonKey)}/activate`, { method: 'POST', body: JSON.stringify({ quantity: qty }) });
       if (r?.ok) {
         if (window.FP_DATA?.addons) window.FP_DATA.addons.active = r.addons || window.FP_DATA.addons.active;
         await this.load().catch(() => {});

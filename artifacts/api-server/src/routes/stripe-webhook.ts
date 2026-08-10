@@ -236,9 +236,12 @@ async function persistAddonsFromSubscription(
     const planIncluded = PIA[planName] ?? new Set<string>();
 
     // ── 1. Activate addons present in this subscription's items ──────────────
+    // Quantity add-ons persist their Stripe line-item quantity to org_addons.quantity
+    // so entitlement surfaces expand per pack (e.g. 2× monitorsPack10 = +20 monitors).
     for (const [key, val] of Object.entries(addons)) {
       if (val === true || (typeof val === "number" && val > 0)) {
-        await activateAddon(key, orgId).catch(err =>
+        const qty = typeof val === "number" ? val : 1;
+        await activateAddon(key, orgId, qty).catch(err =>
           logger.warn({ err, key, orgId }, "[Webhook] Failed to activate addon")
         );
       }

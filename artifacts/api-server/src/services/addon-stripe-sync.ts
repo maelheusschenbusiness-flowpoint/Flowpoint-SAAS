@@ -28,7 +28,8 @@ export interface AddonSyncResult {
 export async function syncAddonWithStripe(
   orgId: string,
   addonKey: string,
-  action: "activate" | "deactivate"
+  action: "activate" | "deactivate",
+  quantity = 1
 ): Promise<AddonSyncResult> {
   // Use getStripeKey() so STRIPE_TEST_MODE=true is honoured (test/live isolation).
   // Never bypass getStripeKey() with raw env-var access — the test safety gate is in stripe-factory.ts.
@@ -52,15 +53,29 @@ export async function syncAddonWithStripe(
     const sub = await stripe.subscriptions.retrieve(ctx.stripeSubscriptionId, { expand: ["items.data.price"] });
     const existing = sub.items.data.find((it: { id: string; price?: { id?: string } }) => it.price?.id === priceId);
 
+    const qty = Math.max(1, Math.floor(Number(quantity) || 1));
     if (action === "activate") {
-      if (existing) return { synced: true, reason: "already_on_subscription" };
+      if (existing) {
+        // Item already on the subscription — align its quantity if it differs
+        // (e.g. user increases the pack count).
+        const existingQty = (existing as { quantity?: number }).quantity ?? 1;
+        if (existingQty !== qty) {
+          await stripe.subscriptionItems.update(existing.id, {
+            quantity: qty,
+            proration_behavior: "create_prorations",
+          });
+          logger.info({ orgId, addonKey, priceId, qty }, "[AddonSync] addon quantity updated on Stripe subscription");
+          return { synced: true, reason: "quantity_updated" };
+        }
+        return { synced: true, reason: "already_on_subscription" };
+      }
       await stripe.subscriptionItems.create({
         subscription: ctx.stripeSubscriptionId,
         price: priceId,
-        quantity: 1,
+        quantity: qty,
         proration_behavior: "create_prorations",
       });
-      logger.info({ orgId, addonKey, priceId }, "[AddonSync] addon added to Stripe subscription");
+      logger.info({ orgId, addonKey, priceId, qty }, "[AddonSync] addon added to Stripe subscription");
       return { synced: true, reason: "item_added" };
     }
 

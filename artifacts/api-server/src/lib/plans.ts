@@ -136,6 +136,7 @@ export const PLAN_PRICE_IDS: Record<string, string> = {
 // ── Add-on price IDs (live Stripe — confirmed 23/06/2026) ────────────────────
 export const ADDON_PRICE_IDS: Record<string, string> = {
   // ── Monitoring ──────────────────────────────────────────────────────────────
+  monitorsPack10:       process.env["STRIPE_PRICE_ID_10MONITORS"]               ?? "price_1TYolz9eqtbj6iPBpcIOUuhn",
   monitorsPack50:       process.env["STRIPE_PRICE_ID_50MONITORS"]               ?? "price_1TYonA9eqtbj6iPB4t0y0qzn",
   globalMonitoring:     process.env["STRIPE_PRICE_ID_GLOBAL_MONITORING"]        ?? "price_1TYoo69eqtbj6iPBPJR4JfSY",
   slaMonitoring:        process.env["STRIPE_PRICE_ID_SLA_MONITORING_ADVANCED"]  ?? "price_1TYop19eqtbj6iPBK45u2xVZ",
@@ -216,6 +217,7 @@ export interface AddonDefinition {
  * customer-facing label and amount. Frontends must obtain it from the API.
  */
 export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
+  monitorsPack10:       { name: "+10 Monitors",             category: "Monitoring",   description: "+10 monitors actifs", priceEur: 9, oneTime: false, quantity: true },
   monitorsPack50:       { name: "+50 Monitors",             category: "Monitoring",   description: "+50 monitors actifs", priceEur: 19, oneTime: false, quantity: true },
   globalMonitoring:     { name: "Global Monitoring",        category: "Monitoring",   description: "Monitoring géographique multi-régions", priceEur: 49, oneTime: false, quantity: false },
   slaMonitoring:        { name: "SLA Monitoring Avancé",    category: "Monitoring",   description: "Suivi SLA et rapports de disponibilité", priceEur: 19, oneTime: false, quantity: false },
@@ -271,10 +273,47 @@ export const FLAG_ADDONS = new Set([
 ]);
 
 export const QTY_ADDONS = new Set([
-  "monitorsPack50","gbpSlots10","extraSeats",
+  "monitorsPack10","monitorsPack50","gbpSlots10","extraSeats",
   "auditsPack200","auditsPack1000","pdfPack200","exportsPack1000",
   "aiCreditsPack50k","aiCreditsPack200k","aiCreditsPack500k",
 ]);
+
+/**
+ * QTY_ADDON_GRANTS — canonical per-pack quota grants for recurring quantity
+ * add-ons.  SINGLE SOURCE OF TRUTH: every entitlement surface (getQuotaLimits,
+ * checkQuota, getUsageSummary, /billing/usage-details) MUST derive pack
+ * expansion from this map — never hardcode per-addon branches locally.
+ *
+ * `resource` names match PlanLimits keys.  One-time AI credit packs are NOT
+ * here: they are consumed via ai_credit_purchases, not a recurring limit.
+ * gbpSlots10 expands GBP location slots (tracked outside PlanLimits — consumers
+ * that don't track GBP simply ignore the key).
+ */
+export const QTY_ADDON_GRANTS: Record<string, { resource: "monitors" | "audits" | "reports" | "exports" | "teamMembers" | "gbpLocations"; perPack: number }> = {
+  monitorsPack10:  { resource: "monitors",     perPack: 10 },
+  monitorsPack50:  { resource: "monitors",     perPack: 50 },
+  auditsPack200:   { resource: "audits",       perPack: 200 },
+  auditsPack1000:  { resource: "audits",       perPack: 1000 },
+  pdfPack200:      { resource: "reports",      perPack: 200 },
+  exportsPack1000: { resource: "exports",      perPack: 1000 },
+  extraSeats:      { resource: "teamMembers",  perPack: 5 },
+  gbpSlots10:      { resource: "gbpLocations", perPack: 10 },
+};
+
+/**
+ * computeQtyAddonExtras — expands an addons map (key → boolean|packCount) into
+ * per-resource extra capacity using QTY_ADDON_GRANTS.  `true` counts as 1 pack;
+ * numeric values count as pack counts; falsy/0 grants nothing.
+ */
+export function computeQtyAddonExtras(addons: Record<string, boolean | number>): Record<string, number> {
+  const extras: Record<string, number> = {};
+  for (const [key, grant] of Object.entries(QTY_ADDON_GRANTS)) {
+    const raw = addons[key];
+    const packs = raw === true ? 1 : Math.max(0, Math.floor(Number(raw) || 0));
+    if (packs > 0) extras[grant.resource] = (extras[grant.resource] ?? 0) + packs * grant.perPack;
+  }
+  return extras;
+}
 
 /**
  * PLAN_INCLUDED_ADDONS — single source of truth for which add-ons are bundled

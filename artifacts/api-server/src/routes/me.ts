@@ -359,6 +359,7 @@ router.put("/me/addons", async (req: Request, res: Response): Promise<void> => {
   if (typeof body.prioritySupport === "boolean") currentAddons.prioritySupport = body.prioritySupport;
   if (typeof body.customDomain    === "boolean") currentAddons.customDomain    = body.customDomain;
   if (typeof body.extraSeats      === "number" && body.extraSeats     >= 0) currentAddons.extraSeats     = Math.floor(body.extraSeats);
+  if (typeof body.monitorsPack10  === "number" && body.monitorsPack10 >= 0) currentAddons.monitorsPack10 = Math.floor(body.monitorsPack10);
   if (typeof body.monitorsPack50  === "number" && body.monitorsPack50 >= 0) currentAddons.monitorsPack50 = Math.floor(body.monitorsPack50);
 
   try {

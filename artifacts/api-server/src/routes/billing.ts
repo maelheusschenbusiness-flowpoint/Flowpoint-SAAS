@@ -218,7 +218,7 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
       logger.info({ plan, hasHadTrial, hasStripeSubHistory, orgId }, "[Billing] Skipping trial — prior subscription history");
     }
 
-    logger.warn(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
+    logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
@@ -1087,6 +1087,21 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         // ── Upgrade → immediate update ──────────────────────────────────────
         // Downgrades never reach this branch. During a trial, pin trial_end so
         // the remaining trial duration is not changed by the plan update.
+        //
+        // If a downgrade schedule is attached (user scheduled a downgrade then
+        // changed their mind and upgrades), release it first — otherwise Stripe
+        // rejects the items update or the schedule later overrides the upgrade.
+        if (sub.schedule) {
+          const attachedScheduleId = typeof sub.schedule === "string" ? sub.schedule : (sub.schedule as { id: string }).id;
+          try {
+            await stripe.subscriptionSchedules.release(attachedScheduleId);
+            logger.info({ scheduleId: attachedScheduleId, orgId }, "[Billing] released downgrade schedule before upgrade");
+            await persistOrgData(orgId, { pendingPlan: "", pendingPlanDate: "" }).catch(() => {});
+          } catch (relErr: unknown) {
+            const msg = relErr instanceof Error ? relErr.message : String(relErr);
+            logger.warn({ scheduleId: attachedScheduleId, orgId, err: msg }, "[Billing] failed to release schedule before upgrade — continuing");
+          }
+        }
         const prorationBehavior = isUpgrade && !isTrialing ? "create_prorations" : "none";
         await stripe.subscriptions.update(sub.id, {
           items: [
@@ -1523,7 +1538,19 @@ router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
 router.get("/billing/usage-details", async (req: Request, res: Response): Promise<void> => {
   const orgId = req.orgContext?.orgId ?? "default";
   const billingCtx = await loadBillingContext(orgId);
-  const limits = PLAN_LIMITS[billingCtx.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
+  const baseLimits = PLAN_LIMITS[billingCtx.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
+  // Expand limits with active add-ons (org_addons is the source of truth)
+  const limits = { ...baseLimits };
+  try {
+    const { getOrgAddons, getQuotaLimits } = await import("../services/addons-service.js");
+    const orgAddons = await getOrgAddons(orgId);
+    const q = getQuotaLimits(billingCtx.plan, orgAddons);
+    limits.monitors    = q.monitors;
+    limits.audits      = q.audits;
+    limits.reports     = q.reports;
+    limits.exports     = q.exports;
+    limits.teamMembers = q.seats;
+  } catch { /* fall back to base plan limits */ }
 
   let reportsUsed: number | null = null;
   let teamMembersUsed: number | null = null;
@@ -1782,8 +1809,14 @@ router.get("/billing/events", async (req: Request, res: Response) => {
 
 // ── POST /billing/addon-checkout ───────────────────────────────────────────────
 router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Request, res: Response): Promise<void> => {
-  const { addonKey = "", addonName = "" } = req.body as { addonKey?: string; addonName?: string; price?: string };
+  const { addonKey = "", addonName = "" } = req.body as { addonKey?: string; addonName?: string; price?: string; quantity?: unknown };
   if (!addonKey) { res.status(400).json({ error: "addonKey required" }); return; }
+  // Quantity is honoured only for quantity add-ons (QTY_ADDONS); flag add-ons are always 1.
+  const { QTY_ADDONS: _QTY } = await import("../lib/plans.js");
+  const _rawQty = (req.body as { quantity?: unknown }).quantity;
+  const checkoutQty = _QTY.has(addonKey)
+    ? Math.min(20, Math.max(1, Math.floor(Number(_rawQty ?? 1)) || 1))
+    : 1;
 
   const orgId = req.orgId ?? "default";
   const billingCtx = await loadBillingContext(orgId);
@@ -1872,10 +1905,10 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
     const session = await stripe.checkout.sessions.create({
       mode: isAiCreditPack ? "payment" : "subscription",
       ...(addonCustomerId ? { customer: addonCustomerId } : {}),
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [{ price: priceId, quantity: checkoutQty }],
       success_url: `${publicUrl}/billing?addon_success=${encodeURIComponent(addonKey)}`,
       cancel_url:  `${publicUrl}/billing?addon_cancel=1`,
-      metadata: { addonKey, addonName, orgId },
+      metadata: { addonKey, addonName, orgId, quantity: String(checkoutQty) },
     });
 
     const sessionId: string = typeof session.id === "string" ? session.id : String(session.id ?? "");

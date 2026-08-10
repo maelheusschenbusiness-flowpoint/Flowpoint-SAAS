@@ -437,6 +437,22 @@
     <!-- ── 8 add-ons toujours visibles ── -->
 
     <div class="fp-addon-card">
+      <div class="fp-addon-top"><span class="fp-addon-icon">📡</span><div class="fp-addon-name">+10 Monitors</div></div>
+      <div class="fp-addon-desc">Ajoutez 10 monitors supplémentaires à votre surveillance uptime. Vérification toutes les minutes. Cumulable sans limite.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">9€<span> / pack / mois</span></div>
+        <div class="fp-addon-actions">
+          <div class="fp-addon-qty">
+            <button class="fp-addon-qty-btn" onclick="changeQty('monitorsPack10',-1)">−</button>
+            <input id="qty-monitorsPack10" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
+            <button class="fp-addon-qty-btn" onclick="changeQty('monitorsPack10',1)">+</button>
+          </div>
+          <button class="fp-addon-btn" onclick="addToCart(this,'monitorsPack10',true)">Activer →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card">
       <div class="fp-addon-top"><span class="fp-addon-icon">📡</span><div class="fp-addon-name">+50 Monitors</div></div>
       <div class="fp-addon-desc">Étendez votre surveillance uptime avec 50 monitors supplémentaires. Vérification toutes les minutes. Cumulable sans limite.</div>
       <div class="fp-addon-bottom">

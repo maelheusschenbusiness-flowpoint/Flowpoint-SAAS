@@ -772,6 +772,7 @@
 
   // ─── NAME → KEY mapping for add-ons activation ───────────────────────────────
   var FP_ADDON_NAME_MAP = {
+    '+10 Monitors': 'monitorsPack10',
     '+50 Monitors': 'monitorsPack50',
     'White-Label Exports': 'whiteLabel',
     'AI CRO Strategist': 'aiCro',
@@ -1151,13 +1152,19 @@
       } catch (e) { console.warn('[FP] GBP reply error:', e.message); return null; }
     },
     disconnect: async function () {
-      if (!confirm('Déconnecter Google Business Profile ? Vos données locales seront supprimées.')) return;
-      try {
-        await apiAction('POST', '/api/google/disconnect', {});
-        if (typeof window.STATE !== 'undefined') window.STATE.gbp = { connected: false };
-        if (typeof window.showToast === 'function') window.showToast('info', 'Google Business Profile déconnecté');
-        if (typeof window.render === 'function') window.render();
-      } catch (e) { console.warn('[FP] GBP disconnect error:', e.message); }
+      var _doGbpDisconnect = async function () {
+        try {
+          await apiAction('POST', '/api/google/disconnect', {});
+          if (typeof window.STATE !== 'undefined') window.STATE.gbp = { connected: false };
+          if (typeof window.showToast === 'function') window.showToast('info', 'Google Business Profile déconnecté');
+          if (typeof window.render === 'function') window.render();
+        } catch (e) { console.warn('[FP] GBP disconnect error:', e.message); }
+      };
+      if (typeof window.fpDarkConfirm === 'function') {
+        window.fpDarkConfirm('Déconnecter Google Business Profile ? Vos données locales seront supprimées.', _doGbpDisconnect, 'Déconnecter GBP');
+      } else if (confirm('Déconnecter Google Business Profile ? Vos données locales seront supprimées.')) {
+        await _doGbpDisconnect();
+      }
     },
     openConnect: async function () {
       var url = await window.FP_GBP_API.getConnectUrl();

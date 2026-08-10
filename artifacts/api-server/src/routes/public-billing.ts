@@ -486,7 +486,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         metadata,
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
-      logger.warn(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
+      logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
       const session = await stripe.checkout.sessions.create(sessionParams);
       respond(session as { id: string; url: string | null; client_secret: string | null });
       return;
@@ -504,7 +504,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         metadata,
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
-      logger.warn(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
+      logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
       const session = await stripe.checkout.sessions.create(sessionParams);
       respond(session as { id: string; url: string | null; client_secret: string | null });
       return;
@@ -523,7 +523,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         metadata,
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
-      logger.warn(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
+      logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
       const session = await stripe.checkout.sessions.create(sessionParams);
       respond(session as { id: string; url: string | null; client_secret: string | null });
       return;

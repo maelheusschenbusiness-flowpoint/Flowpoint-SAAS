@@ -23,6 +23,7 @@ import { ADDON_PRICE_IDS } from "../lib/plans.js";
 
 // activated / deactivated key logs
 let activatedKeys: string[];
+let activatedQuantities: Record<string, number>;
 let deactivatedKeys: string[];
 // Rows that the fake org_addons table returns as "active"
 let activeOrgAddonRows: string[];
@@ -31,8 +32,9 @@ let mockStripeSubsList: Array<{ status: string; items: { data: Array<{ price: { 
 let stripeListShouldThrow: boolean;
 
 vi.mock("../services/addons-service.js", () => ({
-  activateAddon: vi.fn(async (key: string) => {
+  activateAddon: vi.fn(async (key: string, _orgId?: string, quantity?: number) => {
     activatedKeys.push(key);
+    activatedQuantities[key] = quantity ?? 1;
     return true;
   }),
   deactivateAddon: vi.fn(async (key: string) => {
@@ -176,10 +178,11 @@ async function testPersistAddons(
   const planName = ((orgInfo as { plan?: string } | null)?.plan ?? "standard").toLowerCase();
   const planIncluded = PLAN_INCLUDED_ADDONS[planName] ?? new Set<string>();
 
-  // Activate addons present in this subscription
+  // Activate addons present in this subscription (quantity add-ons persist their pack count)
   for (const [key, val] of Object.entries(addons)) {
     if (val === true || (typeof val === "number" && val > 0)) {
-      await activateAddon(key, orgId).catch(() => {});
+      const qty = typeof val === "number" ? val : 1;
+      await activateAddon(key, orgId, qty).catch(() => {});
     }
   }
 
@@ -237,6 +240,7 @@ async function testPersistAddons(
 
 beforeEach(() => {
   activatedKeys = [];
+  activatedQuantities = {};
   deactivatedKeys = [];
   activeOrgAddonRows = [];
   mockStripeSubsList = [];
@@ -289,6 +293,46 @@ describe("subscription.created — additive only, no deactivation", () => {
     expect(deactivatedKeys).toHaveLength(0);
     // Activation still happens for the present item
     expect(activatedKeys).toContain("advancedSeoLab");
+  });
+
+  it("persists Stripe line-item quantity for quantity add-ons (monitorsPack10 ×3)", async () => {
+    const priceId = ADDON_PRICE_IDS["monitorsPack10"]!;
+    const subObj = {
+      id: "sub_TEST_QTY",
+      status: "active",
+      customer: "cus_TEST",
+      items: { data: [{ price: { id: priceId }, quantity: 3 }] },
+    };
+
+    await testPersistAddons(subObj, "org-uuid-qty1", "cus_TEST", false);
+
+    expect(activatedKeys).toContain("monitorsPack10");
+    expect(activatedQuantities["monitorsPack10"]).toBe(3);
+  });
+
+  it("persists quantity for mixed monitor packs (+10 ×2 and +50 ×1) independently", async () => {
+    const subObj = {
+      id: "sub_TEST_QTY2",
+      status: "active",
+      customer: "cus_TEST",
+      items: {
+        data: [
+          { price: { id: ADDON_PRICE_IDS["monitorsPack10"]! }, quantity: 2 },
+          { price: { id: ADDON_PRICE_IDS["monitorsPack50"]! }, quantity: 1 },
+        ],
+      },
+    };
+
+    await testPersistAddons(subObj, "org-uuid-qty2", "cus_TEST", false);
+
+    expect(activatedQuantities["monitorsPack10"]).toBe(2);
+    expect(activatedQuantities["monitorsPack50"]).toBe(1);
+  });
+
+  it("defaults quantity to 1 when the Stripe item has no quantity field", async () => {
+    const subObj = makeSubObj([ADDON_PRICE_IDS["monitorsPack50"]!]);
+    await testPersistAddons(subObj, "org-uuid-qty3", "cus_TEST", false);
+    expect(activatedQuantities["monitorsPack50"]).toBe(1);
   });
 
   it("activates multiple addons when the created subscription has multiple items", async () => {

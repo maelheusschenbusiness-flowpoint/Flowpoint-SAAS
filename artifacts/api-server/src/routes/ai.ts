@@ -2650,11 +2650,19 @@ router.get("/ai/recommendations", async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
   const client = await pool.connect();
   try {
+    // DISTINCT ON (title): historical duplicates (same title generated several
+    // times) are collapsed to the most recent entry so the UI never shows
+    // repeated recommendations.
     const { rows } = await client.query(
       `SELECT id, type, title, description, priority, status, source, metadata, created_at, expires_at
-       FROM ai_recommendations
-       WHERE org_id = $1
-         AND (expires_at IS NULL OR expires_at > NOW())
+       FROM (
+         SELECT DISTINCT ON (title)
+                id, type, title, description, priority, status, source, metadata, created_at, expires_at
+         FROM ai_recommendations
+         WHERE org_id = $1
+           AND (expires_at IS NULL OR expires_at > NOW())
+         ORDER BY title, created_at DESC
+       ) dedup
        ORDER BY priority ASC, created_at DESC
        LIMIT 50`,
       [orgId]

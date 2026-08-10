@@ -247,6 +247,7 @@ export const orgAddonsTable = pgTable("org_addons", {
   orgId:       text("org_id").notNull().default("default"),
   addonKey:    text("addon_key").notNull(),
   active:      boolean("active").notNull().default(false),
+  quantity:    integer("quantity").notNull().default(1),
   activatedAt: timestamp("activated_at"),
   metadata:    jsonb("metadata").default({}),
   updatedAt:   timestamp("updated_at").defaultNow(),
