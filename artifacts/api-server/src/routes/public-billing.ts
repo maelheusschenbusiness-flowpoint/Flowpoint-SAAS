@@ -62,7 +62,8 @@ router.post("/billing/quote", async (req: Request, res: Response): Promise<void>
   const mechanism = req.body?.mechanism === "checkout_session" ? "checkout_session" as const : "payment_intent" as const;
   try {
     const trialEligible = await resolveTrialEligibility(req);
-    const quote = createBillingQuote({ plan, addons, trialEligible, mechanism });
+    const inclusionPlan = plan ? undefined : await resolveSubscriberPlan(req);
+    const quote = createBillingQuote({ plan, addons, trialEligible, mechanism, inclusionPlan });
     if (!quote.lines.length) {
       res.status(400).json({ error: "Sélectionnez un plan ou un add-on facturable." });
       return;
@@ -165,6 +166,28 @@ async function resolveTrialEligibility(req: Request): Promise<boolean> {
   return true;
 }
 
+/**
+ * Add-on-only carts (empty plan) from an authenticated subscriber: resolve the
+ * plan they already pay for so the quote honours plan-bundled inclusions.
+ * Server-side only — the browser never declares its own plan. Returns
+ * undefined for anonymous requests or lookup failures (quote then treats
+ * every add-on as payable, which can only over-charge an anonymous cart that
+ * should not exist in the first place — never under-charge).
+ */
+async function resolveSubscriberPlan(req: Request): Promise<string | undefined> {
+  const authOrgId = (req as Request & { orgId?: string }).orgId;
+  if (!authOrgId || authOrgId === "default") return undefined;
+  try {
+    const { loadBillingContext } = await import("../services/billing-context.js");
+    const ctx = await loadBillingContext(authOrgId);
+    const p = (ctx.plan || "").toLowerCase();
+    return ALLOWED_PLANS_PUB.has(p) ? p : undefined;
+  } catch (err) {
+    logger.warn({ err, orgId: authOrgId }, "[PublicBilling] subscriber plan lookup failed — quoting without inclusions");
+    return undefined;
+  }
+}
+
 /* Add-ons that are one-time purchases (not subscription items) */
 const AI_CREDIT_PACKS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
 
@@ -230,7 +253,8 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
   let quote: BillingQuote;
   try {
     const trialEligible = await resolveTrialEligibility(req);
-    quote = createBillingQuote({ plan, addons, trialEligible, mechanism: "checkout_session" });
+    const inclusionPlan = plan ? undefined : await resolveSubscriberPlan(req);
+    quote = createBillingQuote({ plan, addons, trialEligible, mechanism: "checkout_session", inclusionPlan });
   } catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_SELECTION";
     res.status(400).json({ error: "Sélection non facturable.", code });
@@ -549,7 +573,8 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   let quote: BillingQuote;
   try {
     const trialEligible = await resolveTrialEligibility(req);
-    quote = createBillingQuote({ plan, addons, trialEligible, mechanism: "payment_intent" });
+    const inclusionPlan = plan ? undefined : await resolveSubscriberPlan(req);
+    quote = createBillingQuote({ plan, addons, trialEligible, mechanism: "payment_intent", inclusionPlan });
   } catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_SELECTION";
     res.status(400).json({ error: "Sélection non facturable.", code });
@@ -1022,9 +1047,125 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       : 14;
 
     if (!PLAN_PRICE_IDS[planKey]) {
-      /* AI credits only — no subscription needed */
-      logger.info({ planKey }, "[PublicBilling] finalize: credits-only, no subscription");
-      res.json({ success: true, message: "Crédits activés." });
+      /* ── Add-on-only / AI-credits-only cart (no plan change) ────────────────
+         The dashboard sends subscribed users here with plan:"" — their existing
+         subscription is untouched. The PaymentIntent already charged month 1
+         (or the one-time packs). What remains server-side:
+           • AI credit packs  → credit them (idempotent on the intent id).
+           • Recurring add-ons → create the recurring subscription starting at
+             month 2 (trial_end +30d — month 1 was just paid) and activate
+             org_addons. Returning success without this would take the money
+             and grant nothing.                                                */
+      const _aoKeys = Object.keys(addonsResolved).filter(k => addonsResolved[k]);
+      const _aoCreditPacks = _aoKeys.filter(k => AI_CREDIT_PACKS.has(k));
+      const _aoRecurring   = _aoKeys.filter(k => !AI_CREDIT_PACKS.has(k) && ADDON_PRICE_IDS[k]);
+
+      if (_aoKeys.length === 0) {
+        logger.info({ planKey }, "[PublicBilling] finalize: empty cart, nothing to provision");
+        res.json({ success: true, message: "Rien à activer." });
+        return;
+      }
+
+      /* AI credit packs — same idempotency key as the webhook path (acp_pi_<id>)
+         so a webhook replay or a finalize retry can never double-credit. */
+      if (_aoCreditPacks.length > 0) {
+        const _aoCreditsMap: Record<string, number> = { aiCreditsPack50k: 50000, aiCreditsPack200k: 200000, aiCreditsPack500k: 500000 };
+        try {
+          const { pool: _aoPool } = await import("@workspace/db");
+          const _aoC = await _aoPool.connect();
+          try {
+            for (const pack of _aoCreditPacks) {
+              const credits = _aoCreditsMap[pack] ?? 0;
+              if (!credits) continue;
+              const def = ADDON_DEFINITIONS[pack];
+              await _aoC.query(
+                `INSERT INTO ai_credit_purchases
+                   (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 ON CONFLICT (id) DO NOTHING`,
+                [`acp_pi_${intentId}_${pack}`, _authenticatedOrgId, pack, credits,
+                 Math.round((def?.priceEur ?? 0) * 100), "", intentId]
+              );
+            }
+          } finally { _aoC.release(); }
+          logger.info({ orgId: _authenticatedOrgId, packs: _aoCreditPacks }, "[PublicBilling] finalize: AI credits credited (addon-only cart)");
+        } catch (aoCreditErr) {
+          logger.error({ aoCreditErr, orgId: _authenticatedOrgId }, "[PublicBilling] finalize: AI credit insert failed");
+          res.status(500).json({ error: "Paiement reçu mais crédits non appliqués. Contactez le support." });
+          return;
+        }
+      }
+
+      /* Recurring add-ons — subscription from month 2 + immediate entitlement */
+      if (_aoRecurring.length > 0) {
+        try {
+          /* Resolve the subscriber's Stripe customer (recovers deleted customers). */
+          const { loadBillingContext: _aoLbc } = await import("../services/billing-context.js");
+          const _aoCtx = await _aoLbc(_authenticatedOrgId);
+          const { ensureStripeCustomer: _aoEnsure } = await import("../services/ensure-stripe-customer.js");
+          const _aoCustomerId = intentCustomerId || await _aoEnsure(_authenticatedOrgId, _aoCtx, stripeKey);
+          if (!_aoCustomerId) throw new Error("no_stripe_customer");
+
+          await stripe.paymentMethods.attach(paymentMethodId!, { customer: _aoCustomerId }).catch(() => {});
+
+          const _aoItems = _aoRecurring.map(k => ({
+            price: ADDON_PRICE_IDS[k]!,
+            quantity: typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1,
+          }));
+          /* Idempotency: reuse a live add-on subscription already carrying the
+             exact same price set (page refresh / double-click on return page). */
+          const _aoExisting = await stripe.subscriptions.list({ customer: _aoCustomerId, status: "all", limit: 20 });
+          const _aoWanted = new Set(_aoItems.map(i => i.price));
+          const _aoReusable = _aoExisting.data.find((s: Stripe.Subscription) =>
+            (s.status === "active" || s.status === "trialing") &&
+            s.metadata?.["source"] === "checkout_payment_addons" &&
+            s.metadata?.["origin_intent"] === intentId &&
+            s.items.data.every(i => _aoWanted.has(i.price.id)));
+          let _aoSubId: string;
+          if (_aoReusable) {
+            _aoSubId = _aoReusable.id;
+            logger.info({ subscriptionId: _aoSubId }, "[PublicBilling] finalize: reusing addon subscription (idempotent)");
+          } else {
+            const _aoSub = await stripe.subscriptions.create({
+              customer:               _aoCustomerId,
+              items:                  _aoItems,
+              trial_end:              Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+              default_payment_method: paymentMethodId!,
+              metadata: {
+                addons:         JSON.stringify(Object.fromEntries(_aoRecurring.map(k => [k, addonsResolved[k]]))),
+                source:         "checkout_payment_addons",
+                origin_intent:  intentId,
+                flowpoint_cart: "true",
+                org_id:         _authenticatedOrgId,
+                orgId:          _authenticatedOrgId,
+              },
+            });
+            _aoSubId = _aoSub.id;
+          }
+
+          /* Immediate entitlement — the webhook reconciliation remains the
+             long-term source of truth, but the user just paid and must not
+             wait on webhook latency to use what they bought. */
+          const { activateAddon: _aoActivate } = await import("../services/addons-service.js");
+          for (const k of _aoRecurring) {
+            const qty = typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1;
+            await _aoActivate(k, _authenticatedOrgId, qty);
+          }
+          logger.info({ orgId: _authenticatedOrgId, addons: _aoRecurring, subscriptionId: _aoSubId },
+            "[PublicBilling] finalize: addon-only purchase provisioned");
+        } catch (aoErr) {
+          logger.error({ aoErr, orgId: _authenticatedOrgId, addons: _aoRecurring },
+            "[PublicBilling] finalize: addon provisioning failed after successful charge");
+          res.status(500).json({ error: "Paiement reçu mais add-on non activé. Contactez le support.", addonProvisioningFailed: true });
+          return;
+        }
+      }
+
+      res.json({
+        success: true,
+        checkoutType: _aoRecurring.length > 0 ? "addon_only" : "ai_credits_only",
+        message: _aoRecurring.length > 0 ? "Add-on activé." : "Crédits activés.",
+      });
       return;
     }
 

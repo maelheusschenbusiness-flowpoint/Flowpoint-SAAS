@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { db, revenueLeaksTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { logger } from "../lib/logger.js";
 
 export interface RevenueLeakData {
   leaks: RevenueLeakItem[];
@@ -110,6 +111,60 @@ export async function getRevenueLeakData(orgId: string, siteUrl?: string): Promi
   };
 }
 
+// ── AI generation ────────────────────────────────────────────────────────────
+// Revenue Leak Detector is an AI agent: leaks are generated per-site so two
+// sites never receive the same identical list. LEAK_TEMPLATES above are ONLY
+// a fallback when no AI provider is configured or the call fails.
+const VALID_LEAK_TYPES = new Set(["conversion", "performance", "seo", "ux", "local", "trust", "mobile"]);
+
+async function detectLeaksWithAI(siteUrl: string): Promise<Array<{
+  leakType: string; page: string; title: string; description: string;
+  estimatedMonthlyLoss: number; impactScore: number; fixDifficultyMin: number; quickFix: string;
+}> | null> {
+  try {
+    const { aiChatCompletion } = await import("../lib/openai-client.js");
+    const raw = await aiChatCompletion({
+      systemPrompt:
+        "Tu es un expert en détection de fuites de revenus (revenue leaks) pour sites web de PME francophones. " +
+        "Tu identifies des pertes de revenus PLAUSIBLES et SPÉCIFIQUES au site analysé (secteur déduit du domaine, " +
+        "parcours d'achat probable, pages critiques du métier). Réponds UNIQUEMENT en JSON.",
+      userPrompt:
+        `Site à analyser : ${siteUrl}\n` +
+        "Identifie 4 à 7 fuites de revenus probables pour ce site. " +
+        'Format JSON strict : {"leaks":[{"leakType":"conversion|performance|seo|ux|local|trust|mobile",' +
+        '"page":"/...","title":"...","description":"... (chiffres/benchmarks à l\'appui)",' +
+        '"estimatedMonthlyLoss":1200,"impactScore":75,"fixDifficultyMin":90,"quickFix":"action rapide concrète"}]} ' +
+        "estimatedMonthlyLoss en euros (100-5000), impactScore 1-100, fixDifficultyMin en minutes. Tout en français.",
+      json: true,
+      maxTokens: 1800,
+    });
+    const parsed = JSON.parse(raw) as { leaks?: unknown[] };
+    const leaks = Array.isArray(parsed.leaks) ? parsed.leaks : [];
+    const clean = leaks
+      .map((l) => {
+        const o = l as Record<string, unknown>;
+        const loss = Number(o["estimatedMonthlyLoss"]);
+        const impact = Number(o["impactScore"]);
+        const mins = Number(o["fixDifficultyMin"]);
+        return {
+          leakType:             VALID_LEAK_TYPES.has(String(o["leakType"])) ? String(o["leakType"]) : "conversion",
+          page:                 typeof o["page"] === "string" && (o["page"] as string).startsWith("/") ? (o["page"] as string).slice(0, 120) : "/",
+          title:                String(o["title"] ?? "").slice(0, 200),
+          description:          String(o["description"] ?? "").slice(0, 1000),
+          estimatedMonthlyLoss: Number.isFinite(loss) ? Math.min(Math.max(Math.round(loss), 50), 20000) : 800,
+          impactScore:          Number.isFinite(impact) ? Math.min(Math.max(Math.round(impact), 1), 100) : 50,
+          fixDifficultyMin:     Number.isFinite(mins) ? Math.min(Math.max(Math.round(mins), 10), 2400) : 120,
+          quickFix:             String(o["quickFix"] ?? "").slice(0, 500),
+        };
+      })
+      .filter((l) => l.title && l.description);
+    return clean.length >= 3 ? clean : null;
+  } catch (err) {
+    logger.warn({ err: (err as Error)?.message }, "[RevenueLeak] AI detection failed — falling back to templates");
+    return null;
+  }
+}
+
 export async function detectRevenueLeaks(orgId: string, siteUrl: string): Promise<void> {
   const existing = await db.select()
     .from(revenueLeaksTable)
@@ -118,7 +173,11 @@ export async function detectRevenueLeaks(orgId: string, siteUrl: string): Promis
 
   if (existing.length > 0) return;
 
-  for (const t of LEAK_TEMPLATES) {
+  // 1. AI-personalized detection (per-site, non-identical output)
+  const aiLeaks = await detectLeaksWithAI(siteUrl);
+  const rows = aiLeaks ?? LEAK_TEMPLATES;
+
+  for (const t of rows) {
     const id = randomUUID();
     await db.insert(revenueLeaksTable).values({
       id,
@@ -133,6 +192,7 @@ export async function detectRevenueLeaks(orgId: string, siteUrl: string): Promis
       fixDifficultyMin:     t.fixDifficultyMin,
       quickFix:             t.quickFix,
       status:               "active",
+      ...(aiLeaks ? { metadata: { source: "ai" } } : {}),
     }).onConflictDoNothing();
   }
 }

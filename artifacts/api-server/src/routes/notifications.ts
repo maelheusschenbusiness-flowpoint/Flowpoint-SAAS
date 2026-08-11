@@ -5,10 +5,22 @@ import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 
 const router = Router();
 
-type OrgReq = Request & { orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>; orgId?: string };
+type OrgReq = Request & {
+  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  orgId?: string;
+  orgContext?: { email?: string; userId?: string };
+};
 
 function getOrg(req: Request): string {
   return (req as OrgReq).orgId ?? "default";
+}
+
+// Identities under which the requester can be a notification recipient.
+// recipient_id may hold a userId or an email depending on how the member row
+// was created, so both are matched.
+function recipientIds(req: Request): string[] {
+  const ctx = (req as OrgReq).orgContext;
+  return [ctx?.userId, ctx?.email].filter((v): v is string => !!v);
 }
 
 function getOrganizationUuid(orgId: string): string | null {
@@ -23,17 +35,21 @@ router.get("/notifications", async (req: Request, res: Response) => {
     // notifications.org_id is TEXT, while organizations.id is UUID. Keep the
     // two parameter types independent so PostgreSQL never infers uuid = text.
     const organizationId = getOrganizationUuid(orgId);
+    // Org-wide rows (recipient_id IS NULL) + rows addressed to this requester.
+    // Other members' targeted rows (e.g. their chat alerts) are never returned.
+    const rids = recipientIds(req);
     const result = await (req as OrgReq).orgDb(
       `SELECT * FROM notifications
          WHERE org_id = $1
+           AND (recipient_id IS NULL OR recipient_id = ANY($3::text[]))
            AND created_at >= COALESCE(
               (SELECT created_at FROM organizations WHERE id = $2::uuid),
              '-infinity'::timestamptz
            )
        ORDER BY created_at DESC LIMIT 50`,
-       [orgId, organizationId],
+       [orgId, organizationId, rids],
     );
-    res.json(result.rows.map(n => ({
+    res.json(result.rows.map((n: Record<string, unknown>) => ({
       id:        n.id,
       type:      n.type,
       title:     n.title,
@@ -80,9 +96,14 @@ router.post("/notifications", canAdmin, async (req: Request, res: Response) => {
 
 router.patch("/notifications/:id/read", async (req: Request, res: Response) => {
   try {
+    // A member may only mark org-wide rows or their OWN targeted rows as read —
+    // never another recipient's (that would erase their chat alerts).
     const result = await (req as OrgReq).orgDb(
-      `UPDATE notifications SET read = true WHERE id = $1 AND org_id = $2 RETURNING *`,
-      [req.params.id, getOrg(req)],
+      `UPDATE notifications SET read = true
+        WHERE id = $1 AND org_id = $2
+          AND (recipient_id IS NULL OR recipient_id = ANY($3::text[]))
+        RETURNING *`,
+      [req.params.id, getOrg(req), recipientIds(req)],
     );
     const n = result.rows[0];
     res.json(n
@@ -98,7 +119,14 @@ router.patch("/notifications/:id/read", async (req: Request, res: Response) => {
 
 router.patch("/notifications/read-all", async (req: Request, res: Response) => {
   try {
-    await (req as OrgReq).orgDb(`UPDATE notifications SET read = true WHERE org_id = $1`, [getOrg(req)]);
+    // Scoped to org-wide rows + the requester's own targeted rows. Another
+    // member's per-recipient notifications (chat alerts) are left untouched.
+    await (req as OrgReq).orgDb(
+      `UPDATE notifications SET read = true
+        WHERE org_id = $1
+          AND (recipient_id IS NULL OR recipient_id = ANY($2::text[]))`,
+      [getOrg(req), recipientIds(req)],
+    );
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "[notifications] PATCH read-all failed");
@@ -111,8 +139,11 @@ router.patch("/notifications/read-all", async (req: Request, res: Response) => {
 router.delete("/notifications/:id", canWrite, async (req: Request, res: Response) => {
   try {
     const r = await (req as OrgReq).orgDb(
-      `DELETE FROM notifications WHERE id = $1 AND org_id = $2 RETURNING id`,
-      [req.params.id, getOrg(req)],
+      `DELETE FROM notifications
+        WHERE id = $1 AND org_id = $2
+          AND (recipient_id IS NULL OR recipient_id = ANY($3::text[]))
+        RETURNING id`,
+      [req.params.id, getOrg(req), recipientIds(req)],
     );
     if (!r.rows[0]) { res.status(404).json({ error: "Notification not found" }); return; }
     res.json({ ok: true });

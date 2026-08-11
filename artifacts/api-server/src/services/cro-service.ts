@@ -47,6 +47,60 @@ const CRO_ISSUE_TEMPLATES = [
   },
 ];
 
+// ── AI generation ────────────────────────────────────────────────────────────
+// The CRO Strategist is an AI agent: recommendations are generated per-site by
+// the model so two sites never get identical output. The static templates above
+// are ONLY a fallback when no AI provider is configured or the call fails, and
+// fallback rows are tagged source:"rules" so the UI can label them as generic.
+const VALID_CRO_TYPES = new Set(["cta", "form", "layout", "copy", "trust", "speed", "mobile"]);
+const VALID_PRIORITIES = new Set(["high", "medium", "low"]);
+
+async function generateCROWithAI(siteUrl: string): Promise<Array<{
+  page: string; type: string; priority: string; title: string;
+  description: string; implementation: string; estimatedUplift: number;
+}> | null> {
+  try {
+    const { aiChatCompletion } = await import("../lib/openai-client.js");
+    const raw = await aiChatCompletion({
+      systemPrompt:
+        "Tu es un consultant CRO senior spécialisé PME/agences francophones. " +
+        "Tu produis des recommandations d'optimisation de conversion CONCRÈTES et SPÉCIFIQUES au site analysé " +
+        "(secteur déduit du domaine, type de pages, vocabulaire du métier). Réponds UNIQUEMENT en JSON.",
+      userPrompt:
+        `Site à analyser : ${siteUrl}\n` +
+        "Génère 6 à 10 recommandations CRO réparties sur les pages probables du site " +
+        "(accueil, contact, services/produits, tarifs). " +
+        'Format JSON strict : {"recommendations":[{"page":"/","type":"cta|form|layout|copy|trust|speed|mobile",' +
+        '"priority":"high|medium|low","title":"...","description":"... (chiffres/benchmarks à l\'appui)",' +
+        '"implementation":"étapes concrètes","estimatedUplift":0.12}]} ' +
+        "estimatedUplift est un ratio entre 0.03 et 0.30. Tout le texte en français.",
+      json: true,
+      maxTokens: 2000,
+    });
+    const parsed = JSON.parse(raw) as { recommendations?: unknown[] };
+    const recs = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
+    const clean = recs
+      .map((r) => {
+        const o = r as Record<string, unknown>;
+        const uplift = Number(o["estimatedUplift"]);
+        return {
+          page:            typeof o["page"] === "string" && (o["page"] as string).startsWith("/") ? (o["page"] as string).slice(0, 120) : "/",
+          type:            VALID_CRO_TYPES.has(String(o["type"])) ? String(o["type"]) : "layout",
+          priority:        VALID_PRIORITIES.has(String(o["priority"])) ? String(o["priority"]) : "medium",
+          title:           String(o["title"] ?? "").slice(0, 200),
+          description:     String(o["description"] ?? "").slice(0, 1000),
+          implementation:  String(o["implementation"] ?? "").slice(0, 1000),
+          estimatedUplift: Number.isFinite(uplift) ? Math.min(Math.max(uplift, 0.01), 0.5) : 0.1,
+        };
+      })
+      .filter((r) => r.title && r.description);
+    return clean.length >= 3 ? clean : null;
+  } catch (err) {
+    logger.warn({ err: (err as Error)?.message }, "[CRO] AI generation failed — falling back to rule templates");
+    return null;
+  }
+}
+
 export async function generateCRORecommendations(orgId: string, siteUrl: string): Promise<void> {
   try {
     const existingCount = await db.select()
@@ -59,6 +113,32 @@ export async function generateCRORecommendations(orgId: string, siteUrl: string)
 
     if (existingCount.length > 0) return;
 
+    // 1. AI-personalized generation (per-site, non-identical output)
+    const aiRecs = await generateCROWithAI(siteUrl);
+    if (aiRecs) {
+      for (const r of aiRecs) {
+        await db.insert(croRecommendationsTable).values({
+          id:              randomUUID(),
+          orgId,
+          siteUrl,
+          page:            r.page,
+          type:            r.type,
+          priority:        r.priority,
+          title:           r.title,
+          description:     r.description,
+          implementation:  r.implementation,
+          estimatedUplift: r.estimatedUplift,
+          status:          "pending",
+          aiGenerated:     true,
+          source:          "ai",
+          metadata:        { confidence: 0.75, model: "openai" },
+        }).onConflictDoNothing();
+      }
+      await upsertCROScore(orgId, siteUrl, "/");
+      return;
+    }
+
+    // 2. Fallback: deterministic rule templates (AI unavailable) — tagged "rules"
     const pages = ["/", "/contact", "/services", "/tarifs"];
     for (const page of pages) {
       const pageHash = page.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) & 0xffff, 0);

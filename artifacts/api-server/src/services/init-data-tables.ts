@@ -365,6 +365,10 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
     await run(client, `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS link TEXT;`);
     await run(client, `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read BOOLEAN NOT NULL DEFAULT false;`);
+    // Per-recipient notifications (chat): NULL = org-wide, non-NULL = visible only
+    // to that member (matched against userId OR email). Read state is then
+    // per-recipient — one member's "mark all read" cannot clear another's alerts.
+    await run(client, `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_id TEXT;`);
     await run(client, `CREATE INDEX IF NOT EXISTS notifications_org_id_idx ON notifications(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS notifications_created_at_idx ON notifications(created_at);`);
     await run(client, `CREATE INDEX IF NOT EXISTS notifications_read_idx ON notifications(read);`);

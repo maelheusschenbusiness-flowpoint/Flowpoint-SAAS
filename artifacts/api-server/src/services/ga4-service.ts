@@ -162,22 +162,44 @@ export async function setStoredProperty(orgId: string, propertyId: string, displ
 // ── Discover from Google APIs (called after OAuth connect) ───────────────────
 
 /**
- * Discovers GA4 accounts+properties from the Google Admin API.
- * Does NOT store to DB (the DB schema only supports one property per org via UNIQUE(org_id)).
- * Returns the count of properties found — caller can then call setStoredProperty to activate one.
+ * Discovers GA4 accounts+properties from the Google Admin API and
+ * auto-activates the first found property for this org (mirroring the
+ * way discoverAndStoreSites auto-activates the first verified GSC site).
+ *
+ * Only runs when no property is already stored for the org — safe to call
+ * from fire-and-forget post-OAuth hooks without overwriting a user's choice.
+ *
+ * Returns the count of properties found.
  */
 export async function discoverAndStoreProperties(orgId: string): Promise<number> {
   const token = await getValidToken(orgId).catch(() => null);
   if (!token) return 0;
+
+  // Skip auto-discovery if the org already has an active property chosen.
+  const existing = await getStoredProperty(orgId);
+  if (existing) return 1; // already set, nothing to do
+
   try {
     const data = await ga4AdminGet<{ accounts?: Array<{ name: string }> }>(token, "/accounts");
     let count = 0;
+    let firstProperty: { name: string; displayName: string } | null = null;
+
     for (const account of (data.accounts ?? []).slice(0, 5)) {
       const propsData = await ga4AdminGet<{
         properties?: Array<{ name: string; displayName: string }>;
-      }>(token, `/properties?filter=parent:${account.name}`).catch(() => ({ properties: [] }));
-      count += (propsData.properties ?? []).length;
+      }>(token, `/properties?filter=parent:${account.name}`).catch(() => ({ properties: [] as Array<{ name: string; displayName: string }> }));
+      const props = propsData.properties ?? [];
+      count += props.length;
+      if (!firstProperty && props[0]) firstProperty = props[0];
     }
+
+    // Auto-activate the first discovered property (user can change later via POST /ga4/property)
+    if (firstProperty) {
+      const propertyId = firstProperty.name.split("/")[1] ?? firstProperty.name;
+      await setStoredProperty(orgId, propertyId, firstProperty.displayName ?? propertyId);
+      logger.info({ orgId, propertyId }, "[ga4] auto-activated first discovered property");
+    }
+
     return count;
   } catch (e) {
     logger.warn({ e, orgId }, "[ga4] discoverAndStoreProperties failed");

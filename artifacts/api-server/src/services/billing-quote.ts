@@ -33,6 +33,14 @@ export type BillingSelection = {
   trialEligible?: boolean;
   /** Defaults to the Payment Element path. */
   mechanism?: BillingMechanism;
+  /**
+   * Add-on-only purchases from an ACTIVE subscriber: the cart carries no plan
+   * (their subscription is untouched) but inclusion checks must still honour
+   * the plan they already pay for — otherwise an add-on bundled with their
+   * plan would be quoted at full price. Server-resolved, never from the
+   * browser. Ignored when `plan` is set.
+   */
+  inclusionPlan?: string;
 };
 
 export type QuoteLine = {
@@ -116,7 +124,10 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
   const trialEligible = hasPlan && selection.trialEligible === true;
   const mechanism: BillingMechanism = selection.mechanism ?? "payment_intent";
 
-  const included = PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>();
+  // Inclusions come from the plan being bought, or — for add-on-only carts of
+  // an existing subscriber — from the plan they already have (server-resolved).
+  const inclusionPlan = plan || (selection.inclusionPlan ?? "").trim().toLowerCase();
+  const included = PLAN_INCLUDED_ADDONS[inclusionPlan] ?? new Set<string>();
   const lines: QuoteLine[] = [];
 
   if (planDefinition) {

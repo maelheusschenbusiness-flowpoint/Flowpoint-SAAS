@@ -309,7 +309,7 @@
     Audits SEO, monitoring uptime, analytics GA4 et IA copilot — tout ce qu'il faut pour dominer les résultats de recherche et convertir votre trafic.
     Annulation à tout moment, sans engagement.
   </p>
-  <p style="font-size:13px;color:var(--text-muted);margin-top:4px;">Facturation mensuelle · Carte bancaire requise à l'activation</p>
+  <p style="font-size:13px;color:var(--text-muted);margin-top:4px;">Facturation mensuelle · Carte bancaire requise à l'activation · <a href="#fp-ai-credits" style="color:var(--blue);text-decoration:none" onclick="document.querySelector('.fp-credits-section')&&document.querySelector('.fp-credits-section').scrollIntoView({behavior:'smooth'});return false;">Packs de crédits IA en achat unique ⚡</a></p>
 </section>
 
 <!-- ── Plans ── -->
@@ -765,9 +765,9 @@
 </section>
 
 <!-- ── AI Credits Section ── -->
-<section class="fp-credits-section">
-  <h2 class="fp-section-title">Packs de crédits IA</h2>
-  <p class="fp-section-sub">Achat unique — crédits disponibles immédiatement, sans abonnement ni renouvellement. Cumulables à tout moment.</p>
+<section class="fp-credits-section" id="fp-ai-credits">
+  <h2 class="fp-section-title">⚡ Packs de crédits IA</h2>
+  <p class="fp-section-sub">Achat unique par carte — crédits ajoutés immédiatement à votre compte, sans abonnement ni renouvellement. Cumulables avec votre quota mensuel, utilisables sans limite de temps.</p>
 
   <div class="fp-credits-grid">
 
@@ -1873,24 +1873,42 @@
         return;
       }
 
-      /* Plan updated — clear cart, show confirmation, redirect to dashboard */
+      /* Plan updated server-side — clear cart, then VERIFY with the backend
+         before announcing success. The old flow showed "Plan X activé
+         immédiatement ✓" optimistically even if persistence lagged. */
       try { localStorage.removeItem('fp_cart'); } catch(e) {}
 
       var planLabel = targetPlan.charAt(0).toUpperCase() + targetPlan.slice(1);
-      var confirmMsg;
-      if (d.downgrade) {
-        confirmMsg = 'Plan ' + planLabel + ' actif le ' + (d.effectiveDate || 'à la prochaine échéance') + ' ✓';
-      } else {
-        confirmMsg = 'Plan ' + planLabel + ' activé immédiatement ✓';
-        if (d.removedIncludedAddons && d.removedIncludedAddons.length > 0) {
-          confirmMsg += ' · add-ons inclus retirés de la facturation';
-        }
-      }
-      if (typeof showToast === 'function') showToast(confirmMsg);
 
-      setTimeout(function() {
-        window.location.href = '/dashboard.html?plan_changed=1&plan=' + encodeURIComponent(targetPlan);
-      }, 2000);
+      function _finishUpgrade(confirmedPlan) {
+        var confirmMsg;
+        if (d.downgrade) {
+          confirmMsg = 'Plan ' + planLabel + ' actif le ' + (d.effectiveDate || 'à la prochaine échéance') + ' ✓';
+        } else if (confirmedPlan) {
+          confirmMsg = 'Plan ' + planLabel + ' activé ✓';
+          if (d.removedIncludedAddons && d.removedIncludedAddons.length > 0) {
+            confirmMsg += ' · add-ons inclus retirés de la facturation';
+          }
+        } else {
+          /* Server accepted the upgrade but confirmation fetch didn't confirm yet —
+             stay factual, the dashboard will show the authoritative state. */
+          confirmMsg = 'Changement de plan en cours — vérification dans le dashboard…';
+        }
+        if (typeof showToast === 'function') showToast(confirmMsg);
+        setTimeout(function() {
+          window.location.href = '/dashboard.html?plan_changed=1&plan=' + encodeURIComponent(targetPlan) + '#billing';
+        }, 1500);
+      }
+
+      if (d.downgrade) { _finishUpgrade(true); return; }
+      /* Confirm the new plan from the authoritative subscription endpoint */
+      fetch('/api/billing/subscription', { credentials: 'include' })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(sub) {
+          var confirmed = !!(sub && sub.plan && String(sub.plan).toLowerCase() === targetPlan.toLowerCase());
+          _finishUpgrade(confirmed);
+        })
+        .catch(function() { _finishUpgrade(false); });
     })
     .catch(function() {
       if (typeof showToast === 'function') showToast('Erreur réseau — réessayez', true);

@@ -1915,7 +1915,18 @@ function auditErrorMessage(error) {
   return fpT('Impossible de cr\u00e9er l\u2019audit pour le moment. R\u00e9essayez dans un instant.');
 }
 function sanitizeNotes(raw) { return String(raw).replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim().slice(0,2000); }
-function unread() { return STATE.notifications.filter(n => !n.read).length; }
+// Chat notifications are org-wide rows; the sender must not be notified of
+// their own message. Filter out chat notifs whose senderId matches us.
+function _isOwnChatNotif(n) {
+  if (!n || n.type !== 'chat' || !n.link) return false;
+  try {
+    const meta = typeof n.link === 'string' ? JSON.parse(n.link) : n.link;
+    if (!meta || !meta.senderId) return false;
+    const me = STATE.me || {};
+    return [me.userId, me.id, me.email].filter(Boolean).map(String).indexOf(String(meta.senderId)) >= 0;
+  } catch(_) { return false; }
+}
+function unread() { return STATE.notifications.filter(n => !n.read && !_isOwnChatNotif(n)).length; }
 function addLocalNotification(type, title, body) {
   const n = { id: 'local_' + Date.now(), type, title, body, read: false, createdAt: new Date().toISOString() };
   if (!Array.isArray(STATE.notifications)) STATE.notifications = [];
@@ -4394,6 +4405,41 @@ function getMsgUnreadTotal() {
   return Object.values(STATE.channelMessages).flat().filter(m => !m.read && !m.self).length;
 }
 
+// ── Global chat notification helpers (called from fp-backend.js SSE handler) ──
+// Refreshes the header messages badge from anywhere (not only inside the panel).
+window._fpRefreshMsgBadge = function() {
+  try {
+    const u = getMsgUnreadTotal();
+    const b = document.getElementById('fp-msg-badge');
+    if (b) { u > 0 ? (b.removeAttribute('hidden'), b.textContent = u) : b.setAttribute('hidden',''); }
+  } catch(_) {}
+};
+// Short two-tone chime via WebAudio — no asset file needed. Rate-limited to
+// avoid a sound storm on bulk message arrival; silent if audio is blocked.
+window._fpPlayChatSound = function() {
+  try {
+    const now = Date.now();
+    if (window._fpLastChatSound && now - window._fpLastChatSound < 1500) return;
+    window._fpLastChatSound = now;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!window._fpAudioCtx) window._fpAudioCtx = new Ctx();
+    const ctx = window._fpAudioCtx;
+    if (ctx.state === 'suspended') { ctx.resume().catch(() => {}); }
+    const t0 = ctx.currentTime;
+    [[880, 0], [1174.66, 0.12]].forEach(([freq, dt]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, t0 + dt);
+      gain.gain.exponentialRampToValueAtTime(0.12, t0 + dt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.25);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(t0 + dt); osc.stop(t0 + dt + 0.3);
+    });
+  } catch(_) {}
+};
+
 function renderMsgDropdown() {
   const msgs = getChMsgs();
   const ch = STATE.msgChannel || 'general';
@@ -4606,7 +4652,7 @@ function renderNotifications() {
   const showHidden = STATE._notifShowHidden || false;
 
   const typeColors = { error:'#ef4444', success:'#22c55e', warning:'#f59e0b', info:'#2563EB' };
-  const visible = STATE.notifications.filter(n => showHidden ? hiddenIds.includes(n.id||n.title) : !hiddenIds.includes(n.id||n.title));
+  const visible = STATE.notifications.filter(n => !_isOwnChatNotif(n)).filter(n => showHidden ? hiddenIds.includes(n.id||n.title) : !hiddenIds.includes(n.id||n.title));
 
   dropdown.innerHTML = `
     <div class="fp-notif-header">
@@ -8797,11 +8843,24 @@ function renderBilling() {
       var _nextLabel2  = _isTrialing2 ? "Fin d'essai" : 'Prochaine facturation';
       var _planAmtMap = { standard:29, pro:79, ultra:149, agency:149 };
       var _nextAmount = r.nextAmount || _planAmtMap[(r.plan||'').toLowerCase()] || null;
+      var hadPlan = ((STATE.billing || {}).plan || (STATE.me || {}).plan || '').toLowerCase();
       STATE.billing = Object.assign({}, STATE.billing || {}, r, { nextDate: _nextDate, nextDateLabel: _nextLabel2, nextAmount: _nextAmount });
-      // Re-render billing page only when subscription status changed (stale DB corrected by Stripe)
-      if (hadStatus && hadStatus !== r.subscriptionStatus && STATE.route === 'billing') {
-        var page = document.getElementById('fp-page');
-        if (page) page.innerHTML = renderBilling();
+      // Keep STATE.me.plan in sync — Stripe is the authority after an upgrade.
+      var newPlan = (r.plan || '').toLowerCase();
+      var planChanged = !!(newPlan && hadPlan && newPlan !== hadPlan);
+      if (planChanged && STATE.me) {
+        STATE.me.plan = r.plan.charAt(0).toUpperCase() + r.plan.slice(1).toLowerCase();
+        try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+      }
+      // Re-render when subscription status OR plan changed (stale DB corrected by Stripe).
+      // Use the global render() so the sub-nav tabs are preserved — replacing
+      // #fp-page.innerHTML directly drops the Billing tab bar.
+      var statusChanged = hadStatus && hadStatus !== r.subscriptionStatus;
+      if ((statusChanged || planChanged) && STATE.route === 'billing') {
+        try { render(); } catch(_) {
+          var page = document.getElementById('fp-page');
+          if (page) page.innerHTML = renderBilling();
+        }
       }
     }).catch(function() {});
   }, 0);
@@ -9337,23 +9396,12 @@ function renderBilling() {
       }
       // Read the selected pack count BEFORE closing the panel (input lives inside it).
       const _qty = _FP_QTY_ADDON_KEYS[key] ? window._fpAddonQtyRead(key) : 1;
-      const _bStatus = (typeof getBillingStatus === 'function' ? getBillingStatus() : (STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || '');
-      // Abonnés actifs : activation directe dans le dashboard — le backend ajoute
-      // l'item Stripe à l'abonnement (facturation immédiate) et annule si Stripe échoue.
-      // Seuls les comptes sans abonnement passent par le checkout.
-      if (_bStatus === 'active' || _bStatus === 'trialing') {
-        if (window.FP_ADDONS_API && typeof window.FP_ADDONS_API.activate === 'function') {
-          closeFloatPanel && closeFloatPanel();
-          const result = await window.FP_ADDONS_API.activate(key, _qty);
-          if (result?.ok) {
-            try { sessionStorage.removeItem('fp-state-cache'); } catch (_) {}
-            _apiFetchCache.clear();
-            _apiFetchInFlight.clear();
-            await loadData();
-          }
-          return;
-        }
-      }
+      // Add-on payant : TOUJOURS via la page Tarifs avec le panier pré-rempli
+      // (même mécanique que les crédits IA). L'utilisateur voit le prix, confirme,
+      // et le paiement passe par le tunnel standard — plus d'activation directe
+      // qui pouvait échouer avec des erreurs Stripe hors contexte.
+      // Son plan actuel est conservé : le panier ne contient jamais de plan.
+      closeFloatPanel && closeFloatPanel();
       showToast('info', 'Ouverture du panier…');
       try {
         const cart = { plan: null, addons: {}, fromDashboard: true };
@@ -18645,10 +18693,14 @@ async function init() {
   try {
     const _href = window.location.href;
     if (_href.includes('google_connected') || _href.includes('github_connected') ||
-        _href.includes('google_error')     || _href.includes('github_error')) {
+        _href.includes('google_error')     || _href.includes('github_error')     ||
+        _href.includes('plan_changed')     || _href.includes('checkout=success')) {
       sessionStorage.removeItem('fp-state-cache');
+      // plan_changed: also purge in-memory API caches so /api/me and
+      // /api/billing/subscription are re-fetched with the NEW plan.
+      try { _apiFetchCache.clear(); _apiFetchInFlight.clear(); } catch(_) {}
       // Clean the URL so a page refresh does not repeat the cache-bust
-      window.history.replaceState({}, '', window.location.pathname);
+      window.history.replaceState({}, '', window.location.pathname + (window.location.hash || ''));
     }
   } catch(_) {}
 
@@ -18871,7 +18923,13 @@ async function init() {
         if (notifRes.status === 'fulfilled') {
           const raw = notifRes.value;
           const arr = Array.isArray(raw) ? raw : (Array.isArray(raw?.notifications) ? raw.notifications : []);
-          if (arr.length > 0) STATE.notifications = arr;
+          if (arr.length > 0) {
+            const hadUnread = STATE.notifications.filter(n => !n.read).length;
+            STATE.notifications = arr;
+            const nowUnread = arr.filter(n => !n.read).length;
+            // Refresh the bell badge when new unread notifications arrive
+            if (nowUnread !== hadUnread) { try { renderNotifications(); } catch(_) {} }
+          }
         }
       } catch(e) {}
     }, 60000);
@@ -32338,10 +32396,26 @@ window._fpAnalyticsState = {};
 window._fpTrafficState   = {};
 window._fpCampaignsState = {};
 
+// ── Skeleton watchdog ────────────────────────────────────────────────────
+// Bounded loading time for every GA4 sub-page loader. If a load is still
+// marked loading after `ms`, force an error state and re-render so the user
+// sees a retry button instead of an infinite skeleton (covers hung fetches,
+// swallowed rejections and any path that never resets loading:false).
+function _fpLoadWatchdog(stateName, ms) {
+  setTimeout(function() {
+    var st = window[stateName];
+    if (st && st.loading) {
+      window[stateName] = { loading: false, loaded: true, data: st.data || null, error: 'Délai de chargement dépassé — le serveur ne répond pas.' };
+      try { render(); } catch(_) {}
+    }
+  }, ms || 20000);
+}
+
 window._fpAnalyticsAPI = {
   async loadAll(days) {
     const d = (Number.isInteger(days) && days > 0) ? days : 30;
     window._fpAnalyticsState = { loading: true, loaded: false, data: window._fpAnalyticsState.data || null, error: null };
+    _fpLoadWatchdog('_fpAnalyticsState');
     render();
     try {
       const [ov, pages, conv, audience] = await Promise.all([
@@ -32374,6 +32448,7 @@ window._fpTrafficAPI = {
   async loadAll(days) {
     const d = (Number.isInteger(days) && days > 0) ? days : 30;
     window._fpTrafficState = { loading: true, loaded: false, data: window._fpTrafficState.data || null, error: null };
+    _fpLoadWatchdog('_fpTrafficState');
     render();
     try {
       const sources = await apiFetch('/api/traffic/sources?days=' + d).catch(() => null);
@@ -32394,6 +32469,7 @@ window._fpCampaignsAPI = {
   async loadAll(days) {
     const d = (Number.isInteger(days) && days > 0) ? days : 30;
     window._fpCampaignsState = { loading: true, loaded: false, data: window._fpCampaignsState.data || null, error: null };
+    _fpLoadWatchdog('_fpCampaignsState');
     render();
     try {
       const campaigns = await apiFetch('/api/campaigns/?days=' + d).catch(() => null);
@@ -32419,6 +32495,7 @@ window._fpAudienceAPI = {
   async loadAll(days) {
     const d = (Number.isInteger(days) && days > 0) ? days : 30;
     window._fpAudienceState = { loading: true, loaded: false, data: window._fpAudienceState.data || null, error: null };
+    _fpLoadWatchdog('_fpAudienceState');
     render();
     try {
       const res = await apiFetch(`/api/audience/overview?days=${d}`);
@@ -32443,6 +32520,7 @@ window._fpLiveAPI = {
   async refresh() {
     if (window.STATE?.subRoute !== 'live') { this.stopPolling(); return; }
     window._fpLiveState = { loading: !window._fpLiveState.loaded, loaded: window._fpLiveState.loaded, data: window._fpLiveState.data || null, error: null };
+    if (window._fpLiveState.loading) _fpLoadWatchdog('_fpLiveState');
     try {
       const res = await apiFetch('/api/live/realtime', { backgroundPoll: true });
       if (!res?.ok) throw new Error(res?.error || 'Erreur realtime');
@@ -32481,6 +32559,7 @@ window._fpConversionAPI = {
   async loadAll(days) {
     const d = (Number.isInteger(days) && days > 0) ? days : 30;
     window._fpConversionState = { loading: true, loaded: false, days: d, data: window._fpConversionState.data || null, error: null };
+    _fpLoadWatchdog('_fpConversionState');
     render();
     try {
       const [status, overview, events, landingPages, sources, devices, geo] = await Promise.all([

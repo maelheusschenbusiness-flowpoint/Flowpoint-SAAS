@@ -141,3 +141,6 @@
 - [Billing quote single source](billing-quote-single-source.md) — server owns all pricing; a quote is valid for ONE collection mechanism; "due today" ≠ what our PaymentIntent collects (plan self-invoices)
 - [org_addons durable quantity](billing-addon-quantity.md) — QTY_ADDONS pack counts live in org_addons.quantity (one row per key, updated in place); all entitlement surfaces multiply per pack
 - [Google connection contract](google-connection-contract.md) — connection state is backend-only; data presence never proves connected; site overrides AND activation must be token-verified; no placeholder Google data
+- [Chat self/recipient pattern](chat-self-recipient-pattern.md) — SSE broadcast must send senderId, never self:true; each client computes self; sender-side chat notif filtering is client-side
+- [Maps browser key boundary](maps-browser-key-fallback.md) — /maps/config serializes ONLY GOOGLE_MAPS_PUBLIC_KEY/BROWSER_KEY; server keys (GOOGLE_MAPS_API_KEY/GOOGLE_API_KEY) never reach the browser; visible error card when absent
+- [Add-on-only checkout flow](addon-only-checkout-flow.md) — empty-plan carts must quote via subscriber's real plan (inclusionPlan) and finalize must provision recurring add-ons, not just credits

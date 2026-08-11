@@ -690,7 +690,14 @@
       var msgData = data.message || data;
       if (!window.STATE.channelMessages) window.STATE.channelMessages = {};
       if (!window.STATE.channelMessages[ch]) window.STATE.channelMessages[ch] = [];
-      var isSelf = msgData.self || false;
+      // Recipient-side "self" computation: the SSE broadcast reaches every
+      // client of the org, so the server can't decide per-recipient. Compare
+      // the stable senderId against our own identity (userId or email).
+      var me = window.STATE.me || {};
+      var myIds = [me.userId, me.id, me.email].filter(Boolean).map(String);
+      var isSelf = msgData.senderId != null
+        ? myIds.indexOf(String(msgData.senderId)) >= 0
+        : (msgData.self || false);
       var serverId = msgData.id;
       var existingIndex = window.STATE.channelMessages[ch].findIndex(function (m) {
         return (serverId && m.id === serverId) ||
@@ -702,6 +709,9 @@
         text: msgData.text || '',
         time: msgData.createdAt ? new Date(msgData.createdAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : 'À l\'instant',
         createdAt: msgData.createdAt || null,
+        senderId: msgData.senderId || null,
+        attachmentUrl: msgData.attachmentUrl || null,
+        attachmentName: msgData.attachmentName || null,
         read: isSelf,
         self: isSelf,
       };
@@ -713,6 +723,11 @@
       window.STATE.channelMessages[ch].unshift({
         ...normalizedMessage,
       });
+      // Teammate message: refresh the header badge, play the chat sound.
+      if (!isSelf) {
+        if (typeof window._fpRefreshMsgBadge === 'function') { try { window._fpRefreshMsgBadge(); } catch(_) {} }
+        if (typeof window._fpPlayChatSound === 'function') { try { window._fpPlayChatSound(); } catch(_) {} }
+      }
       if (window.STATE.route === 'team' && typeof window.render === 'function') window.render();
     });
 
@@ -1609,10 +1624,31 @@
       return this._key;
     },
 
+    // Replaces the loading skeleton with a visible error state instead of an
+    // infinite spinner when the key is missing, the script fails to load, or
+    // Google rejects the key (gm_authFailure).
+    _showMapError: function (title, detail) {
+      ['fp-gmap', 'fp-competitors-map'].forEach(function (id) {
+        var skeleton = document.getElementById(id + '-skeleton');
+        if (!skeleton) return;
+        skeleton.innerHTML =
+          '<div style="font-size:32px">🗺️</div>' +
+          '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">' + title + '</div>' +
+          '<div style="font-size:11px;color:var(--fp-text-muted,#94a3b8);max-width:320px;text-align:center;line-height:1.5">' + detail + '</div>';
+        skeleton.style.display = 'flex';
+      });
+    },
+
     loadScript: function (key) {
       if (this._loaded || this._loading) return;
       this._loading = true;
       var self = this;
+      // Google calls this global when the key is invalid / referer blocked / billing off.
+      window.gm_authFailure = function () {
+        console.warn('[FP Maps] Google rejected the Maps API key (gm_authFailure)');
+        self._showMapError('Clé Google Maps refusée',
+          'Google a rejeté la clé (restrictions de domaine, API Maps JavaScript non activée ou facturation désactivée). Vérifiez la configuration de la clé dans Google Cloud Console.');
+      };
       window.__fpGMapsReady = function () {
         self._loaded = true;
         self._loading = false;
@@ -1622,14 +1658,24 @@
       var s = document.createElement('script');
       s.src = 'https://maps.googleapis.com/maps/api/js?key=' + key + '&libraries=places,visualization&callback=__fpGMapsReady&loading=async';
       s.async = true;
-      s.onerror = function () { self._loading = false; console.warn('[FP Maps] Failed to load Google Maps script'); };
+      s.onerror = function () {
+        self._loading = false;
+        console.warn('[FP Maps] Failed to load Google Maps script');
+        self._showMapError('Impossible de charger Google Maps',
+          'Le script Google Maps n\u2019a pas pu être téléchargé (réseau ou blocage). Rechargez la page pour réessayer.');
+      };
       document.head.appendChild(s);
     },
 
     init: async function () {
       var key = await this.loadConfig();
       this._startObserver();
-      if (!key) { console.warn('[FP Maps] GOOGLE_MAPS_API_KEY not configured'); return; }
+      if (!key) {
+        console.warn('[FP Maps] No browser Maps key from /api/maps/config (GOOGLE_MAPS_PUBLIC_KEY / GOOGLE_MAPS_BROWSER_KEY)');
+        this._showMapError('Carte non configurée',
+          'Aucune clé Google Maps navigateur n\u2019est configurée. Créez une clé Maps JavaScript restreinte par référent dans Google Cloud Console et ajoutez-la comme GOOGLE_MAPS_PUBLIC_KEY dans les variables d\u2019environnement.');
+        return;
+      }
       if (this._loaded) { this._tryInit('fp-gmap'); this._tryInit('fp-competitors-map'); }
       else this.loadScript(key);
     },
@@ -1642,6 +1688,12 @@
           var el = document.getElementById(id);
           if (el && !el._fpMapInitialized) {
             if (self._loaded) self._tryInit(id);
+            else if (self._key === '') {
+              // Config resolved with no key — show the visible error state
+              // instead of leaving the skeleton spinning forever.
+              self._showMapError('Carte non configurée',
+                'Aucune clé Google Maps navigateur n\u2019est configurée. Créez une clé Maps JavaScript restreinte par référent dans Google Cloud Console et ajoutez-la comme GOOGLE_MAPS_PUBLIC_KEY dans les variables d\u2019environnement.');
+            }
             else self._pendingInits.add(id);
           }
         });

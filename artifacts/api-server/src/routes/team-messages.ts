@@ -11,6 +11,12 @@ type OrgReq = Request & {
 };
 const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+// Stable identity of the requester — used to persist sender_id and to compute
+// per-recipient "self" on reads. Prefers userId, falls back to email.
+const requesterId = (req: Request): string => {
+  const ctx = (req as OrgReq).orgContext;
+  return String(ctx?.userId || ctx?.email || "user");
+};
 // Canonical channel form: bare lowercase name without '#' prefix ("general", "seo", …)
 const normChannel = (c: unknown): string =>
   String(c ?? "general").trim().replace(/^#+/, "").toLowerCase() || "general";
@@ -23,6 +29,9 @@ const mapMsg = (m: Record<string, unknown>, self = false) => ({
   self,
   read:           true,
   type:           m["type"],
+  // Stable sender identity so each client can compute "self" locally
+  // (SSE broadcast is org-wide — the server cannot know who each recipient is).
+  senderId:       m["sender_id"] ?? null,
   attachmentUrl:  m["attachment_url"]  ?? null,
   attachmentName: m["attachment_name"] ?? null,
   createdAt:      m["created_at"],
@@ -105,7 +114,8 @@ router.get("/team/messages", async (req, res) => {
        ORDER BY created_at DESC LIMIT 100`,
       [org(req), channel]
     );
-    res.json(r.rows.reverse().map((m: Record<string, unknown>) => mapMsg(m)));
+    const me = requesterId(req);
+    res.json(r.rows.reverse().map((m: Record<string, unknown>) => mapMsg(m, String(m["sender_id"] ?? "") === me)));
   } catch (err) {
     console.error("[team-messages] GET failed:", (err as Error)?.message);
     res.json([]);
@@ -137,7 +147,8 @@ router.get("/team/messages/all", async (req, res) => {
            ORDER BY created_at DESC LIMIT 100`,
           [org(req), ch]
         );
-        results[ch] = r.rows.reverse().map((m: Record<string, unknown>) => mapMsg(m));
+        const me = requesterId(req);
+        results[ch] = r.rows.reverse().map((m: Record<string, unknown>) => mapMsg(m, String(m["sender_id"] ?? "") === me));
       } catch (err) {
         console.error(`[team-messages] GET-all channel ${ch} failed:`, (err as Error)?.message);
         results[ch] = [];
@@ -157,6 +168,7 @@ router.post("/team/messages", canWrite, async (req, res) => {
   const channel = normChannel(rawChannel);
   if (!text && !attachmentUrl) { res.status(400).json({ error: "text or attachmentUrl required" }); return; }
   const senderName = (req as OrgReq).orgContext?.email?.split("@")[0] ?? "Équipe";
+  const senderId = requesterId(req);
   const id = "msg" + Date.now();
   try {
     // Auto-persist the channel so it always appears in the channel list
@@ -169,11 +181,11 @@ router.post("/team/messages", canWrite, async (req, res) => {
 
     await db(req)(
       `INSERT INTO team_messages (id, org_id, channel, sender_id, sender_name, content, type, attachment_url, attachment_name)
-       VALUES ($1,$2,$3,'user',$4,$5,'text',$6,$7)`,
-       [id, org(req), channel, senderName, text ?? "", attachmentUrl ?? null, attachmentName ?? null]
+       VALUES ($1,$2,$3,$4,$5,$6,'text',$7,$8)`,
+       [id, org(req), channel, senderId, senderName, text ?? "", attachmentUrl ?? null, attachmentName ?? null]
     );
     const r = await db(req)(
-      `SELECT id, channel, sender_name, content, type, attachment_url, attachment_name, created_at
+      `SELECT id, channel, sender_id, sender_name, content, type, attachment_url, attachment_name, created_at
        FROM team_messages WHERE id=$1`,
       [id]
     );
@@ -181,8 +193,41 @@ router.post("/team/messages", canWrite, async (req, res) => {
     const msg = row
       ? mapMsg(row, true)
       : { id, channel, from: senderName, text: text ?? "", self: true, read: true, type: "text",
-          attachmentUrl: attachmentUrl ?? null, attachmentName: attachmentName ?? null };
-    store.broadcast({ type: "chat:message", channel, message: msg }, org(req));
+          senderId, attachmentUrl: attachmentUrl ?? null, attachmentName: attachmentName ?? null };
+    // SSE broadcast goes to EVERY client of the org, including teammates —
+    // self:true would suppress their unread badge. Send self:false + senderId;
+    // each client compares senderId to its own identity to decide "self".
+    store.broadcast({ type: "chat:message", channel, message: { ...msg, self: false, read: false } }, org(req));
+    // Persist PER-RECIPIENT notification rows so offline teammates see the
+    // message in their notification feed. One row per active member (excluding
+    // the sender), each with its own read state — one member marking all read
+    // can never clear another member's chat alert. Fire-and-forget.
+    (async () => {
+      const senderEmail = (req as OrgReq).orgContext?.email ?? "";
+      const members = await db(req)(
+        `SELECT COALESCE(NULLIF(user_id, ''), email) AS rid, email, user_id
+           FROM team_members
+          WHERE org_id = $1 AND status = 'active'`,
+        [org(req)]
+      );
+      const title = `Nouveau message de ${senderName} dans #${channel}`;
+      const body  = (text ?? attachmentName ?? "Pièce jointe").slice(0, 300);
+      const link  = JSON.stringify({ route: "team", sub: "chat", channel, senderId });
+      let n = 0;
+      for (const m of members.rows) {
+        const rid = String(m["rid"] ?? "");
+        if (!rid) continue;
+        // Exclude the sender under any of their identities (userId or email)
+        if (rid === senderId || String(m["email"] ?? "") === senderId ||
+            String(m["user_id"] ?? "") === senderId ||
+            (senderEmail && (rid === senderEmail || String(m["email"] ?? "") === senderEmail))) continue;
+        await db(req)(
+          `INSERT INTO notifications (id, org_id, type, title, message, read, link, recipient_id, created_at)
+           VALUES ($1, $2, 'chat', $3, $4, false, $5, $6, NOW())`,
+          [`ntf_chat_${id}_${n++}`, org(req), title, body, link, rid]
+        );
+      }
+    })().catch(() => {});
     res.status(201).json(msg);
   } catch {
     res.status(500).json({ error: "Failed to send message" });
