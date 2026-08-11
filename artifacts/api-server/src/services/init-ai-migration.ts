@@ -135,6 +135,161 @@ export async function initAiMigration(): Promise<void> {
         WHERE idempotency_key IS NOT NULL
     `);
 
+    // ── 018 : align AI billing tables with the code contract ────────────────────
+    // Production (Supabase) predates the current schema: ai_credit_purchases was
+    // created with (credits_added, uuid id), ai_monthly_usage lacks request_count/
+    // credits_limit/credits_extra, ai_usage_logs has uuid id/user_id, and ai_alerts
+    // never existed. The AI engine inserts deterministic TEXT ids (amu_…, aul_…,
+    // acp_…) and selects these columns — any gap throws in the quota preflight and
+    // every chat request returns 503 QUOTA_STATE_UNAVAILABLE.
+    // All statements are guarded/idempotent: no-ops on an already-correct schema.
+
+    // ai_credit_purchases — id uuid→TEXT (code inserts 'acp_<sessionId>')
+    await run("ai_credit_purchases id type TEXT", `
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='ai_credit_purchases'
+            AND column_name='id' AND data_type='uuid'
+        ) THEN
+          ALTER TABLE public.ai_credit_purchases ALTER COLUMN id DROP DEFAULT;
+          ALTER TABLE public.ai_credit_purchases ALTER COLUMN id TYPE TEXT USING id::text;
+        END IF;
+      END $$
+    `);
+    await run("ai_credit_purchases pack column", `
+      ALTER TABLE public.ai_credit_purchases ADD COLUMN IF NOT EXISTS pack TEXT NOT NULL DEFAULT ''
+    `);
+    await run("ai_credit_purchases credits column", `
+      ALTER TABLE public.ai_credit_purchases ADD COLUMN IF NOT EXISTS credits INTEGER NOT NULL DEFAULT 0
+    `);
+    await run("ai_credit_purchases amount_eur_cents column", `
+      ALTER TABLE public.ai_credit_purchases ADD COLUMN IF NOT EXISTS amount_eur_cents INTEGER NOT NULL DEFAULT 0
+    `);
+    await run("ai_credit_purchases stripe_payment_intent column", `
+      ALTER TABLE public.ai_credit_purchases ADD COLUMN IF NOT EXISTS stripe_payment_intent TEXT
+    `);
+    // One-time backfill: legacy credits_added → credits (only where credits is still 0)
+    await run("ai_credit_purchases credits backfill", `
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='ai_credit_purchases'
+            AND column_name='credits_added'
+        ) THEN
+          UPDATE public.ai_credit_purchases
+             SET credits = credits_added
+           WHERE credits = 0 AND credits_added IS NOT NULL AND credits_added <> 0;
+        END IF;
+      END $$
+    `);
+
+    // ai_monthly_usage — id uuid→TEXT (code inserts 'amu_<org>_<month>')
+    await run("ai_monthly_usage id type TEXT", `
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='ai_monthly_usage'
+            AND column_name='id' AND data_type='uuid'
+        ) THEN
+          ALTER TABLE public.ai_monthly_usage ALTER COLUMN id DROP DEFAULT;
+          ALTER TABLE public.ai_monthly_usage ALTER COLUMN id TYPE TEXT USING id::text;
+        END IF;
+      END $$
+    `);
+    await run("ai_monthly_usage request_count column", `
+      ALTER TABLE public.ai_monthly_usage ADD COLUMN IF NOT EXISTS request_count INTEGER NOT NULL DEFAULT 0
+    `);
+    await run("ai_monthly_usage credits_limit column", `
+      ALTER TABLE public.ai_monthly_usage ADD COLUMN IF NOT EXISTS credits_limit INTEGER NOT NULL DEFAULT 100000
+    `);
+    await run("ai_monthly_usage credits_extra column", `
+      ALTER TABLE public.ai_monthly_usage ADD COLUMN IF NOT EXISTS credits_extra INTEGER NOT NULL DEFAULT 0
+    `);
+    // ON CONFLICT (org_id, month) requires this unique index. Dedupe first so the
+    // index build can never fail on legacy duplicate rows (keep the newest row).
+    await run("ai_monthly_usage dedupe org+month", `
+      DELETE FROM public.ai_monthly_usage a
+      USING public.ai_monthly_usage b
+      WHERE a.org_id = b.org_id AND a.month = b.month
+        AND a.ctid < b.ctid
+    `);
+    await run("ai_monthly_usage org+month unique index", `
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_monthly_usage_org_month
+        ON public.ai_monthly_usage (org_id, month)
+    `);
+
+    // ai_usage_logs — id/user_id uuid→TEXT (code inserts 'aul_…' and session user ids)
+    await run("ai_usage_logs id type TEXT", `
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='ai_usage_logs'
+            AND column_name='id' AND data_type='uuid'
+        ) THEN
+          ALTER TABLE public.ai_usage_logs ALTER COLUMN id DROP DEFAULT;
+          ALTER TABLE public.ai_usage_logs ALTER COLUMN id TYPE TEXT USING id::text;
+        END IF;
+      END $$
+    `);
+    await run("ai_usage_logs user_id type TEXT", `
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='ai_usage_logs'
+            AND column_name='user_id' AND data_type='uuid'
+        ) THEN
+          ALTER TABLE public.ai_usage_logs ALTER COLUMN user_id DROP DEFAULT;
+          ALTER TABLE public.ai_usage_logs ALTER COLUMN user_id TYPE TEXT USING user_id::text;
+        END IF;
+      END $$
+    `);
+
+    // ai_alerts — read by getAIUsageStats, written by quota alerting; missing in prod
+    await run("ai_alerts table", `
+      CREATE TABLE IF NOT EXISTS public.ai_alerts (
+        id            TEXT PRIMARY KEY,
+        org_id        TEXT NOT NULL DEFAULT 'default',
+        alert_type    TEXT NOT NULL,
+        message       TEXT NOT NULL,
+        threshold     INTEGER,
+        current_value INTEGER,
+        triggered_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        resolved_at   TIMESTAMPTZ,
+        metadata      JSONB
+      )
+    `);
+    await run("ai_alerts org index", `
+      CREATE INDEX IF NOT EXISTS ai_alerts_org_idx
+        ON public.ai_alerts (org_id, triggered_at DESC)
+    `);
+    await run("ai_alerts RLS", `ALTER TABLE public.ai_alerts ENABLE ROW LEVEL SECURITY`);
+    await tenantPolicies("ai_alerts");
+
+    // Tenant policies for the three AI billing tables — uuid-safe (org_id::text).
+    // Guarded IF NOT EXISTS: no-op where policies already exist (local dev).
+    for (const tbl of ["ai_credit_purchases", "ai_monthly_usage", "ai_usage_logs"]) {
+      const defs = [
+        { name: "tenant_select", cmd: "FOR SELECT USING" },
+        { name: "tenant_insert", cmd: "FOR INSERT WITH CHECK" },
+        { name: "tenant_update", cmd: "FOR UPDATE USING" },
+        { name: "tenant_delete", cmd: "FOR DELETE USING" },
+      ];
+      for (const p of defs) {
+        await runPolicy(`${tbl} ${p.name} (uuid-safe)`, `
+          DO $$ BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_policies
+              WHERE schemaname='public' AND tablename='${tbl}' AND policyname='${p.name}'
+            ) THEN
+              CREATE POLICY ${p.name} ON public.${tbl} ${p.cmd}
+                (org_id::text = current_setting('app.current_org_id', true));
+            END IF;
+          END $$
+        `);
+      }
+    }
+
     // ── 017 : onboarding_sessions ────────────────────────────────────────────────
     // Columns: exactly what POST /api/ai-workspace-launch writes and
     //          GET /api/ai-workspace-launch/:sessionId reads.
