@@ -30,12 +30,13 @@ const TOOL_BY_NAME: Map<string, import("./mission-tools.js").ToolDef> = new Map(
   ..._MISSION_TOOL_BY_NAME, ...CALENDAR_TOOL_BY_NAME, ...AUDIT_TOOL_BY_NAME, ...RECOMMENDATION_TOOL_BY_NAME,
   ...MONITOR_TOOL_BY_NAME,
 ]);
-const TOOL_ARG_SCHEMAS: Record<string, { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } }> = {
-  ..._MISSION_ARG_SCHEMAS,
-  ...(CALENDAR_ARG_SCHEMAS       as Record<string, { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } }>),
-  ...(AUDIT_ARG_SCHEMAS          as Record<string, { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } }>),
-  ...(RECOMMENDATION_ARG_SCHEMAS as Record<string, { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } }>),
-  ...(MONITOR_ARG_SCHEMAS        as Record<string, { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } }>),
+type SafeParseSchema = { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } };
+const TOOL_ARG_SCHEMAS: Record<string, SafeParseSchema> = {
+  ...(_MISSION_ARG_SCHEMAS       as Record<string, SafeParseSchema>),
+  ...(CALENDAR_ARG_SCHEMAS       as Record<string, SafeParseSchema>),
+  ...(AUDIT_ARG_SCHEMAS          as Record<string, SafeParseSchema>),
+  ...(RECOMMENDATION_ARG_SCHEMAS as Record<string, SafeParseSchema>),
+  ...(MONITOR_ARG_SCHEMAS        as Record<string, SafeParseSchema>),
 };
 
 // ── Snapshot helpers ─────────────────────────────────────────────────────────
@@ -154,7 +155,7 @@ export async function executeTool(
   }
   const parseResult = schema.safeParse(call.arguments);
   if (!parseResult.success) {
-    const issues = parseResult.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join(", ");
+    const issues = (parseResult.error?.issues ?? []).map(i => `${i.path.join(".")}: ${i.message}`).join(", ");
     await logActionLog({ id: logId, ...ctx, tool: call.name, args: call.arguments,
       confirmationLevel: toolDef.confirmationLevel, result: "error",
       error: `Validation failed: ${issues}` });

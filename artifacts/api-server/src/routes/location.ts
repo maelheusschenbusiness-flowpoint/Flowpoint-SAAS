@@ -95,21 +95,69 @@ router.put("/org/location", async (req: Request, res: Response): Promise<void> =
 });
 
 // ── POST /api/org/geocode ─────────────────────────────────────────────────────
-// address → lat/lng  OR  lat+lng → address  (uses Nominatim/OSM, no API key)
+// address → lat/lng  OR  lat+lng → address
+// Primary: Google Geocoding API (GOOGLE_MAPS_API_KEY — server key).
+// Nominatim/OSM is an EXPLICIT opt-in fallback (ALLOW_NOMINATIM_FALLBACK=true)
+// and never silently masks a Google error: every Google failure is logged with
+// its raw status before any fallback is attempted.
+
+type GeoOut = {
+  ok: true; address: string | null; city: string | null; postalCode: string | null;
+  country: string | null; countryCode: string | null; latitude: number; longitude: number;
+};
+
+function parseGoogleGeoResult(result: Record<string, unknown>): Omit<GeoOut, "ok" | "latitude" | "longitude"> {
+  const comps = (result["address_components"] as Array<Record<string, unknown>>) ?? [];
+  const find = (type: string): Record<string, unknown> | undefined =>
+    comps.find(c => ((c["types"] as string[]) ?? []).includes(type));
+  const cityComp    = find("locality") ?? find("postal_town") ?? find("administrative_area_level_2");
+  const postalComp  = find("postal_code");
+  const countryComp = find("country");
+  return {
+    address:     (result["formatted_address"] as string) ?? null,
+    city:        cityComp    ? String(cityComp["long_name"] ?? "") || null : null,
+    postalCode:  postalComp  ? String(postalComp["long_name"] ?? "") || null : null,
+    country:     countryComp ? String(countryComp["long_name"] ?? "") || null : null,
+    countryCode: countryComp ? (String(countryComp["short_name"] ?? "").toUpperCase() || null) : null,
+  };
+}
+
+async function googleGeocode(params: string): Promise<{ ok: boolean; status: string; result?: Record<string, unknown> }> {
+  const key = process.env["GOOGLE_MAPS_API_KEY"] ?? "";
+  if (!key) return { ok: false, status: "NO_SERVER_KEY" };
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?${params}&language=fr&key=${key}`;
+  const r = await fetch(url);
+  if (!r.ok) return { ok: false, status: `HTTP_${r.status}` };
+  const data = await r.json() as { status: string; results?: Array<Record<string, unknown>> };
+  if (data.status === "OK" && data.results?.[0]) return { ok: true, status: "OK", result: data.results[0] };
+  return { ok: false, status: data.status };
+}
+
 router.post("/org/geocode", async (req: Request, res: Response): Promise<void> => {
   const { address, lat, lng } = req.body as {
     address?: string;
     lat?:     number;
     lng?:     number;
   };
+  const allowNominatim = process.env["ALLOW_NOMINATIM_FALLBACK"] === "true";
 
   try {
     if (lat !== undefined && lng !== undefined) {
-      // ── Reverse geocoding ─────────────────────────────────────────────────
+      // ── Reverse geocoding (Google primary) ────────────────────────────────
+      const g = await googleGeocode(`latlng=${Number(lat)},${Number(lng)}`);
+      if (g.ok && g.result) {
+        const loc = ((g.result["geometry"] as Record<string, unknown>)?.["location"] ?? {}) as Record<string, number>;
+        res.json({ ok: true, ...parseGoogleGeoResult(g.result), latitude: loc.lat ?? Number(lat), longitude: loc.lng ?? Number(lng) });
+        return;
+      }
+      logger.warn({ googleStatus: g.status }, "[location] Google reverse geocoding failed");
+      if (!allowNominatim) {
+        res.status(g.status === "ZERO_RESULTS" ? 404 : 502).json({ ok: false, error: g.status === "ZERO_RESULTS" ? "Aucune adresse trouvée pour ces coordonnées" : "Le géocodage Google a échoué — réessayez dans quelques instants" });
+        return;
+      }
+      // Explicit opt-in fallback
       const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${Number(lat)}&lon=${Number(lng)}&accept-language=fr`;
-      const r = await fetch(url, {
-        headers: { "User-Agent": "FlowPoint/1.0 (contact@flowpoint.pro)" },
-      });
+      const r = await fetch(url, { headers: { "User-Agent": "FlowPoint/1.0 (contact@flowpoint.pro)" } });
       if (!r.ok) throw new Error(`Nominatim reverse ${r.status}`);
       const data = await r.json() as Record<string, unknown>;
       const addr = (data.address ?? {}) as Record<string, string>;
@@ -125,12 +173,26 @@ router.post("/org/geocode", async (req: Request, res: Response): Promise<void> =
       });
 
     } else if (address?.trim()) {
-      // ── Forward geocoding ─────────────────────────────────────────────────
+      // ── Forward geocoding (Google primary) ────────────────────────────────
+      const g = await googleGeocode(`address=${encodeURIComponent(address.trim())}`);
+      if (g.ok && g.result) {
+        const loc = ((g.result["geometry"] as Record<string, unknown>)?.["location"] ?? {}) as Record<string, number>;
+        res.json({ ok: true, ...parseGoogleGeoResult(g.result), latitude: loc.lat, longitude: loc.lng });
+        return;
+      }
+      logger.warn({ googleStatus: g.status }, "[location] Google forward geocoding failed");
+      if (g.status === "ZERO_RESULTS") {
+        res.status(404).json({ ok: false, error: "Adresse introuvable — vérifiez l'adresse saisie" });
+        return;
+      }
+      if (!allowNominatim) {
+        res.status(502).json({ ok: false, error: "Le géocodage Google a échoué — réessayez dans quelques instants" });
+        return;
+      }
+      // Explicit opt-in fallback
       const encoded = encodeURIComponent(address.trim());
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&limit=1&accept-language=fr&addressdetails=1`;
-      const r = await fetch(url, {
-        headers: { "User-Agent": "FlowPoint/1.0 (contact@flowpoint.pro)" },
-      });
+      const r = await fetch(url, { headers: { "User-Agent": "FlowPoint/1.0 (contact@flowpoint.pro)" } });
       if (!r.ok) throw new Error(`Nominatim search ${r.status}`);
       const data = await r.json() as Record<string, unknown>[];
       if (!data[0]) {

@@ -4168,6 +4168,19 @@ function loadGoogleMaps(cb) {
     }, 150);
     return;
   }
+  // NEVER inject the Maps JS API twice: fp-backend.js (FP_MAPS_API) may have
+  // already added the script. A second <script> load resets the google.maps
+  // namespace mid-flight ("google.maps.Map is not a constructor"). If any Maps
+  // script tag exists, wait for google.maps instead of injecting another one.
+  if (document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]')) {
+    let _waited = 0;
+    const t = setInterval(() => {
+      _waited += 150;
+      if (typeof google !== 'undefined' && google.maps && google.maps.Map) { clearInterval(t); cb(); return; }
+      if (_waited > 12000) { clearInterval(t); _showMapsRetryFallback('Carte Google Maps — délai dépassé'); }
+    }, 150);
+    return;
+  }
   _gmapsLoading = true;
   _gmapsLoadStart = Date.now();
   _fetchGmapsKey().then(key => {
@@ -5052,7 +5065,7 @@ function renderOverview() {
       opps.push({ title: `Corriger ${_critIssues} erreur${_critIssues > 1 ? 's' : ''} critique${_critIssues > 1 ? 's' : ''}`, score: Math.max(10, 80 - _critIssues * 3), roi: 'Impact SEO direct', type: 'Technique', color: '#ef4444', icon: '⚠️', desc: `${_critIssues} problème${_critIssues > 1 ? 's' : ''} bloquant${_critIssues > 1 ? 's' : ''} l'indexation — correctifs prioritaires` });
     }
     if (!_gscConnected) {
-      opps.push({ title: 'Débloquer vos positions réelles sur Google', score: 90, roi: 'Données SEO complètes', type: 'SEO', color: '#22c55e', icon: '🔗', desc: 'Connectez Google Search Console pour voir vos mots-clés, impressions et clics réels' });
+      opps.push({ title: 'Débloquer vos positions réelles sur Google', score: 90, roi: fpT('Données SEO complètes'), type: 'SEO', color: '#22c55e', icon: '🔗', desc: 'Connectez Google Search Console pour voir vos mots-clés, impressions et clics réels' });
     }
     if (_hasKeywords) {
       const _page2 = (STATE.keywords || []).filter(k => k.position > 10 && k.position <= 20);
@@ -5264,7 +5277,7 @@ function renderOverview() {
           (down > 0 ? '<span style="color:#ef4444">⚠ ' + down + ' monitor(s) DOWN — intervention requise.</span> ' : (totalMonitors > 0 ? 'Monitoring optimal. ' : '')) +
           (avg > 0 && avg < 70 ? 'Priorité : corriger les sites sous 65/100 pour améliorer le score moyen. ' : (avg >= 70 ? 'Score portfolio en bonne santé. ' : '')) +
           (STATE.competitors && STATE.competitors.length > 0 ? 'Analyse concurrentielle disponible pour ' + STATE.competitors.length + ' concurrent(s). ' : '') +
-          (STATE.keywords && STATE.keywords.length > 0 ? STATE.keywords.length + ' mots-clés suivis — consultez les opportunités de croissance.' : 'Ajoutez des mots-clés pour activer le suivi de positionnement.'),
+          (STATE.keywords && STATE.keywords.length > 0 ? STATE.keywords.length + ' ' + fpT('mots-clés suivis — consultez les opportunités de croissance.') : fpT('Ajoutez des mots-clés pour activer le suivi de positionnement.')),
           [(STATE.competitors&&STATE.competitors.length>0?"Analyser les concurrents":"Ajouter des concurrents"), "Créer les missions", "Générer rapport exécutif", "Voir les alertes"]
         )
       : `<div style="padding:18px 20px;background:linear-gradient(135deg,rgba(37,99,235,0.08),rgba(139,92,246,0.05));border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;gap:14px;align-items:center">
@@ -9050,7 +9063,7 @@ function renderBilling() {
       )}
 
       <div class="fp-stat-row fp-mb-20">
-    ${statCard('Plan actuel', plan, STATE.billing?.nextDate ? 'actif · renouvellement ' + STATE.billing.nextDate : 'actif · abonnement mensuel', 'up')}
+    ${statCard('Plan actuel', plan, STATE.billing?.nextDate ? fpT('actif · renouvellement') + ' ' + STATE.billing.nextDate : fpT('actif · abonnement mensuel'), 'up')}
         ${statCard('Coût mensuel', (_def?.priceEur ?? '') + '€', 'HT · abonnement mensuel', 'neutral')}
         ${statCard(STATE.billing?.nextDateLabel || 'Prochaine facture', STATE.billing?.nextDate || '—', STATE.billing?.nextDate ? (STATE.billing?.nextDateLabel || 'prochaine échéance') : PREVIEW_MODE ? 'dans 23 jours' : '—', 'neutral')}
         ${statCard('Sans engagement', 'Mensuel', 'résiliation à tout moment', 'up')}
@@ -9682,7 +9695,7 @@ function renderBilling() {
             const _live=usages.filter(u=>!u.na&&Number.isFinite(u.v)&&Number.isFinite(u.max)&&u.max>0);
             const _top=_live.slice().sort((a,b)=>Math.round(b.v/b.max*100)-Math.round(a.v/a.max*100))[0];
             const _topPct=_top?Math.round(_top.v/_top.max*100):null;
-            return 'Analyse usage '+CUR_MONTH+'. '+(_crit.length?'<strong>'+_crit.length+' ressource(s) en alerte prévision (&gt;80%)</strong> — action recommandée dans les 8 prochains jours. ':'')+(_top&&_topPct!=null?escHtml(_top.label||'Usage')+' à <strong>'+_topPct+'%</strong> — ressource la plus sollicitée. ':'')+(_crit.length===0?'Consommation stable sur toutes les ressources.':'');
+            return fpT('Analyse usage')+' '+CUR_MONTH+'. '+(_crit.length?'<strong>'+_crit.length+' '+fpT('ressource(s) en alerte prévision (&gt;80%)')+'</strong> — '+fpT('action recommandée dans les 8 prochains jours.')+' ':'')+(_top&&_topPct!=null?escHtml(_top.label||'Usage')+' '+fpT('à')+' <strong>'+_topPct+'%</strong> — '+fpT('ressource la plus sollicitée.')+' ':'')+(_crit.length===0?fpT('Consommation stable sur toutes les ressources.'):'');
           })(),
           ['Ajouter des crédits', 'Voir prévisions 30j', 'Rapport usage complet']
           )
@@ -12160,14 +12173,14 @@ function renderSettings() {
         <h1 style="display:flex;align-items:center;gap:10px">
           Settings Command Center
         </h1>
-        <div class="fp-section-sub">Workspace health ${workspaceHealth}/100 · ${_intAct} intégration${_intAct===1?'':'s'} active${_intAct===1?'':'s'} · ${_wfAct} workflow${_wfAct===1?'':'s'} actif${_wfAct===1?'':'s'}</div>
+        <div class="fp-section-sub">Workspace health ${workspaceHealth}/100 · ${_intAct} ${fpT(_intAct===1?'intégration active':'intégrations actives')} · ${_wfAct} ${fpT(_wfAct===1?'workflow actif':'workflows actifs')}</div>
       </div>
     </div>
 
     <!-- AI INTELLIGENCE -->
     ${isPro
       ? aiBlock(
-          (()=>{ const _todo=[]; if(!_has2fa)_todo.push('activer le 2FA'); if(_intAct===0)_todo.push('connecter vos intégrations (GA4, GSC)'); return `Workspace health <strong>${workspaceHealth}/100</strong>. `+(_todo.length?`<strong>${_todo.length} action${_todo.length>1?'s':''} prioritaire${_todo.length>1?'s':''}</strong> : ${_todo.join(' et ')}. `:'')+`${_wfAct} workflow${_wfAct===1?'':'s'} actif${_wfAct===1?'':'s'}.`; })(),
+          (()=>{ const _todo=[]; if(!_has2fa)_todo.push(fpT('activer le 2FA')); if(_intAct===0)_todo.push(fpT('connecter vos intégrations (GA4, GSC)')); return `Workspace health <strong>${workspaceHealth}/100</strong>. `+(_todo.length?`<strong>${_todo.length} ${fpT(_todo.length>1?'actions prioritaires':'action prioritaire')}</strong> : ${_todo.join(' ' + fpT('et') + ' ')}. `:'')+`${_wfAct} ${fpT(_wfAct===1?'workflow actif':'workflows actifs')}.`; })(),
           ['Activer le 2FA', 'Connecter GSC', 'Rapport workspace complet']
         )
       : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔧</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Workspace Intelligence IA — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse de santé workspace, recommandations de configuration et audit de sécurité IA.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
@@ -17625,6 +17638,180 @@ function bindGlobalEvents() {
     'Rapport conversion': 'Conversion report',
     // Reports → Executive
     'Prochain envoi auto :': 'Next auto send:',
+    // ── Overview onboarding & empty states ──
+    'Ajouter des concurrents': 'Add competitors',
+    'Analyser les concurrents': 'Analyze competitors',
+    'Créer les missions': 'Create missions',
+    'Générer rapport exécutif': 'Generate executive report',
+    'Démarrez en 3 étapes pour activer votre tableau de bord': 'Get started in 3 steps to activate your dashboard',
+    'Analysez votre premier site et obtenez un score instantané': 'Analyze your first site and get an instant score',
+    '2. Ajouter un monitor': '2. Add a monitor',
+    'Surveillez la disponibilité de vos sites 24/7': 'Monitor your sites\u2019 availability 24/7',
+    '3. Créer une mission': '3. Create a mission',
+    'Planifiez vos actions SEO et suivez leur avancement': 'Plan your SEO actions and track their progress',
+    '↑ Aucun monitor': '↑ No monitors',
+    '→ Aucune complétée': '→ None completed',
+    'Missions complétées': 'Completed missions',
+    '→ Créez votre première mission': '→ Create your first mission',
+    'Analytics non connecté': 'Analytics not connected',
+    'Connectez Google Analytics 4 pour voir trafic, conversions et revenus réels': 'Connect Google Analytics 4 to see real traffic, conversions and revenue',
+    'Mise à jour en temps réel': 'Real-time updates',
+    'Aucun événement récent': 'No recent events',
+    "Voir toute l'activité →": 'View all activity →',
+    'Voir 3 de plus →': 'View 3 more →',
+    'Débloquer vos positions réelles sur Google': 'Unlock your real Google rankings',
+    'Connectez Google Search Console pour voir vos mots-clés, impressions et clics réels': 'Connect Google Search Console to see your real keywords, impressions and clicks',
+    'Générer des missions IA personnalisées': 'Generate personalized AI missions',
+    '2 opportunités identifiées': '2 opportunities identified',
+    'Connecter Google Search Console pour débloquer vos données de trafic': 'Connect Google Search Console to unlock your traffic data',
+    'Données SEO réelles + keywords': 'Real SEO data + keywords',
+    'Connecter Google Analytics 4 pour suivre vos conversions': 'Connect Google Analytics 4 to track your conversions',
+    'Entonnoir + taux de conv. réels': 'Real funnel + conversion rates',
+    'IA Prédictif': 'Predictive AI',
+    'Pas encore assez de données pour générer une prévision.': 'Not enough data yet to generate a forecast.',
+    'Les prévisions apparaîtront après la collecte des premières données.': 'Forecasts will appear once the first data is collected.',
+    'Streak 1 jour': '1-day streak',
+    "Encore 80 pts pour atteindre l'objectif Elite": '80 pts left to reach the Elite goal',
+    '5 audits réalisés': '5 audits completed',
+    '10 audits réalisés': '10 audits completed',
+    'Premier moniteur configuré': 'First monitor configured',
+    'Première mission complétée': 'First mission completed',
+    '10 missions complétées': '10 missions completed',
+    'Premier rapport généré': 'First report generated',
+    'Premier mot-clé suivi': 'First keyword tracked',
+    '10 mots-clés suivis': '10 keywords tracked',
+    'Premier concurrent ajouté': 'First competitor added',
+    '3 jours consécutifs': '3 days in a row',
+    '7 jours consécutifs': '7 days in a row',
+    '30 jours consécutifs': '30 days in a row',
+    'Connectez vos premiers sites pour voir les insights IA ici.': 'Connect your first sites to see AI insights here.',
+    'Rapport Exécutif': 'Executive Report',
+    'Analyser Concurrents': 'Analyze Competitors',
+    'Créer Mission': 'Create Mission',
+    'Voir les Alertes': 'View Alerts',
+    'Aucune activité récente — les événements apparaissent ici en temps réel': 'No recent activity — events appear here in real time',
+    'Tous les audits →': 'All audits →',
+    // ── Billing → Plans ──
+    'IA Stratégiste': 'AI Strategist',
+    'Voir les fonctionnalités': 'View features',
+    'Comparer les plans': 'Compare plans',
+    '↑ résiliation à tout moment': '↑ cancel anytime',
+    'Démarrage': 'Starter',
+    'Recommandé': 'Recommended',
+    'Pour les indépendants et PME': 'For freelancers and SMBs',
+    'Pour les agences et équipes growth': 'For agencies and growth teams',
+    'Pour les grandes agences et entreprises': 'For large agencies and enterprises',
+    '/mois · sans engagement': '/month · no commitment',
+    '30 audits/mois': '30 audits/month',
+    '300 audits/mois': '300 audits/month',
+    '1 000 audits/mois': '1,000 audits/month',
+    '30 rapports PDF/mois': '30 PDF reports/month',
+    '300 rapports PDF/mois': '300 PDF reports/month',
+    '1 000 rapports PDF/mois': '1,000 PDF reports/month',
+    '30 exports/mois': '30 exports/month',
+    '300 exports/mois': '300 exports/month',
+    '1 000 exports/mois': '1,000 exports/month',
+    "1 membre d'équipe": '1 team member',
+    "5 membres d'équipe": '5 team members',
+    "10 membres d'équipe": '10 team members',
+    '100 000 crédits IA/mois': '100,000 AI credits/month',
+    '500 000 crédits IA/mois': '500,000 AI credits/month',
+    '10 000 000 crédits IA/mois': '10,000,000 AI credits/month',
+    'Local SEO basique': 'Basic Local SEO',
+    'Local SEO avancé': 'Advanced Local SEO',
+    'Support email 48h': '48h email support',
+    'Support prioritaire 4h': '4h priority support',
+    'Support dédié < 1h': 'Dedicated support < 1h',
+    'Onboarding dédié': 'Dedicated onboarding',
+    'Facturation client': 'Client billing',
+    'Passer Standard →': 'Upgrade to Standard →',
+    'Passer Pro →': 'Upgrade to Pro →',
+    'Passer Ultra →': 'Upgrade to Ultra →',
+    'IA Stratégiste complet': 'Full AI Strategist',
+    'API illimitée': 'Unlimited API',
+    'Rétention 365 jours': '365-day retention',
+    'Rétention 90 jours': '90-day retention',
+    'Rétention 30 jours': '30-day retention',
+    'Agency Lab complet': 'Full Agency Lab',
+    '📊 Comparaison détaillée des plans': '📊 Detailed plan comparison',
+    'Standard — 29€/mois': 'Standard — €29/month',
+    'Pro — 79€/mois': 'Pro — €79/month',
+    'Ultra — 149€/mois': 'Ultra — €149/month',
+    'Fonctionnalité': 'Feature',
+    'Audits / mois': 'Audits / month',
+    '✓ Illimitée': '✓ Unlimited',
+    'Dédié <1h': 'Dedicated <1h',
+    'Rétention': 'Retention',
+    'AI Crédits / mois': 'AI credits / month',
+    '✓ Avancés': '✓ Advanced',
+    'Résiliation': 'Cancellation',
+    'Plan actuel': 'Current plan',
+    // ── Billing → Usage ──
+    'Ajouter des crédits': 'Add credits',
+    'Voir prévisions 30j': 'View 30-day forecast',
+    'Rapport usage complet': 'Full usage report',
+    '↑ des ressources utilisées': '↑ of resources used',
+    'Prévision 30j': '30-day forecast',
+    '→ usage moyen prévu': '→ expected average usage',
+    '↑ adapté à votre usage actuel': '↑ suited to your current usage',
+    'Prévision 30j :': '30-day forecast:',
+    'Non instrumenté': 'Not instrumented',
+    '📈 Adoption des fonctionnalités — Ce mois': '📈 Feature adoption — This month',
+    "Les statistiques d'adoption s'afficheront avec l'activité de votre équipe.": 'Adoption statistics will appear with your team\u2019s activity.',
+    // ── Settings hub ──
+    'Rapport workspace complet': 'Full workspace report',
+    '7 actions requises pour atteindre 100': '7 actions required to reach 100',
+    'Timeline des modifications': 'Change timeline',
+    'Profil, branding, apparence, préréglages': 'Profile, branding, appearance, presets',
+    'Équipe & Permissions': 'Team & Permissions',
+    'Membres, rôles, matrice accès': 'Members, roles, access matrix',
+    'Centre Sécurité': 'Security Center',
+    '2FA non activé': '2FA not enabled',
+    'Aucun workflow actif': 'No active workflows',
+    'Aucune connectée': 'None connected',
+    '⚠ À compléter': '⚠ To complete',
+    'API & Développeurs': 'API & Developers',
+    'Clés API et webhooks': 'API keys and webhooks',
+    'Modules IA et préférences': 'AI modules and preferences',
+    'Données & Rétention': 'Data & Retention',
+    'Stockage et rétention': 'Storage and retention',
+    // ── Programmatic (fpT) strings — dynamically composed sentences ──
+    'mots-clés suivis — consultez les opportunités de croissance.': 'keywords tracked — check the growth opportunities.',
+    'Ajoutez des mots-clés pour activer le suivi de positionnement.': 'Add keywords to enable rank tracking.',
+    'Données SEO complètes': 'Complete SEO data',
+    'Analyse usage': 'Usage analysis',
+    'ressource(s) en alerte prévision (&gt;80%)': 'resource(s) with forecast alert (&gt;80%)',
+    'action recommandée dans les 8 prochains jours.': 'action recommended within the next 8 days.',
+    'à': 'at',
+    'ressource la plus sollicitée.': 'most-used resource.',
+    'Consommation stable sur toutes les ressources.': 'Consumption stable across all resources.',
+    'intégration active': 'active integration',
+    'intégrations actives': 'active integrations',
+    'workflow actif': 'active workflow',
+    'workflows actifs': 'active workflows',
+    'activer le 2FA': 'enable 2FA',
+    'connecter vos intégrations (GA4, GSC)': 'connect your integrations (GA4, GSC)',
+    'action prioritaire': 'priority action',
+    'actions prioritaires': 'priority actions',
+    'et': 'and',
+    // ── Billing plans — stat cards & AI block fragments (split by <strong>) ──
+    'actif · abonnement mensuel': 'active · monthly subscription',
+    'actif · renouvellement': 'active · renews',
+    'HT · abonnement mensuel': 'excl. VAT · monthly subscription',
+    'Coût mensuel': 'Monthly cost',
+    'Prochaine facture': 'Next invoice',
+    'prochaine échéance': 'next due date',
+    'Sans engagement': 'No commitment',
+    'Mensuel': 'Monthly',
+    'résiliation à tout moment': 'cancel anytime',
+    'dans 23 jours': 'in 23 days',
+    'actif. Si votre équipe dépasse 5 sièges ou si vos audits approchent la limite mensuelle, le plan Ultra devient pertinent — comparez les fonctionnalités ci-dessous.': 'active. If your team exceeds 5 seats or your audits approach the monthly limit, the Ultra plan becomes relevant — compare the features below.',
+    "actif. Le passage à Pro débloque davantage d'audits, l'IA avancée et les rapports client — comparez les plans ci-dessous.": 'active. Upgrading to Pro unlocks more audits, advanced AI and client reports — compare the plans below.',
+    'IA Insights': 'AI Insights',
+    'IA Insights Pro': 'AI Insights Pro',
+    'White-label rapports': 'White-label reports',
+    'White-label portail': 'White-label portal',
+    '✓ Complet': '✓ Full',
   };
   var FP_I18N = {
     en: FP_I18N_EN,

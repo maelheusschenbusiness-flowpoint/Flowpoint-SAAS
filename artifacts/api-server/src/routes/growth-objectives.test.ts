@@ -65,7 +65,8 @@ function makeApp(orgId: string, db: Db) {
   app.use(express.json());
 
   // Simulate requireAuth + withOrgDb middleware
-  app.use((req: Request & { orgId?: string; orgDb?: Db }, _res: Response, next: NextFunction) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  app.use((req: Request & { orgId?: string; orgDb?: any }, _res: Response, next: NextFunction) => {
     req.orgId = orgId;
     req.orgDb = db;
     next();

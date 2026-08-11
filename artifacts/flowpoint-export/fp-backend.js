@@ -1641,8 +1641,30 @@
 
     loadScript: function (key) {
       if (this._loaded || this._loading) return;
-      this._loading = true;
       var self = this;
+      // If another loader (dashboard.js loadGoogleMaps) already injected the
+      // Maps JS script, never add a second one — double injection resets the
+      // google.maps namespace ("google.maps.Map is not a constructor").
+      // Just wait for the existing script to finish loading.
+      if (document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]')) {
+        this._loading = true;
+        var waited = 0;
+        var t = setInterval(function () {
+          waited += 150;
+          if (typeof google !== 'undefined' && google.maps && google.maps.Map) {
+            clearInterval(t);
+            self._loaded = true;
+            self._loading = false;
+            self._pendingInits.forEach(function (id) { self._tryInit(id); });
+            self._pendingInits.clear();
+          } else if (waited > 15000) {
+            clearInterval(t);
+            self._loading = false;
+          }
+        }, 150);
+        return;
+      }
+      this._loading = true;
       // Google calls this global when the key is invalid / referer blocked / billing off.
       window.gm_authFailure = function () {
         console.warn('[FP Maps] Google rejected the Maps API key (gm_authFailure)');

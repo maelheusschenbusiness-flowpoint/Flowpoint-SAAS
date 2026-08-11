@@ -15,9 +15,9 @@ import { logger } from "../lib/logger.js";
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface DimValue   { value?: string }
-interface MetricValue { value?: string }
+export interface MetricValue { value?: string }
 
-interface GA4Row {
+export interface GA4Row {
   dimensionValues?: DimValue[];
   metricValues?:   MetricValue[];
 }

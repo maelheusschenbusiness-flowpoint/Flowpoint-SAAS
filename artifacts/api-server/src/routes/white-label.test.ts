@@ -40,8 +40,9 @@ async function buildApp() {
   // Inject orgId + a minimal orgDb stub (returns empty rows)
   app.use((req, _res, next) => {
     (req as express.Request & { orgId: string; orgDb: unknown }).orgId = "test-org";
-    (req as express.Request & { orgDb: (sql: string, vals?: unknown[]) => Promise<{ rows: unknown[] }> }).orgDb =
-      async () => ({ rows: [] });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (req as express.Request & { orgDb: any }).orgDb =
+      async (_sql: string, _vals?: unknown[]) => ({ rows: [] as unknown[] });
     next();
   });
 

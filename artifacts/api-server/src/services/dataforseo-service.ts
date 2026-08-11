@@ -60,44 +60,54 @@ export async function dfsRequest<T>(path: string, body: unknown, orgId = "defaul
   return res.json() as Promise<T>;
 }
 
-// ── Quota management ──────────────────────────────────────────────────────────
+// ── Quota management (in-memory + async DB persistence) ───────────────────────
 
-export async function checkAndIncrementQuota(orgId = "default", units = 1): Promise<boolean> {
+/** In-memory quota counters: key = "orgId:YYYY-MM-DD" */
+const _quotaMemory = new Map<string, number>();
+
+function _quotaKey(orgId: string): string {
+  return `${orgId}:${new Date().toISOString().slice(0, 10)}`;
+}
+
+function _quotaResetAt(): string {
+  const d = new Date();
+  d.setHours(24, 0, 0, 0);
+  return d.toISOString();
+}
+
+/** Async DB upsert — fire-and-forget from sync callers */
+async function _persistQuota(orgId: string, today: string, used: number): Promise<void> {
   const client = await pool.connect();
   try {
-    const today = new Date().toISOString().slice(0, 10);
-    const res = await client.query(
+    await client.query(
       `INSERT INTO dataforseo_quota (org_id, date, requests_used, created_at)
        VALUES ($1,$2,$3,NOW())
        ON CONFLICT (org_id, date)
-       DO UPDATE SET requests_used = dataforseo_quota.requests_used + $3
-       RETURNING requests_used`,
-      [orgId, today, units]
+       DO UPDATE SET requests_used = GREATEST(dataforseo_quota.requests_used, $3)`,
+      [orgId, today, used]
     );
-    return Number(res.rows[0]?.requests_used ?? 0) <= MAX_DAILY_REQUESTS;
-  } catch { return true; } finally { client.release(); }
+  } catch { /* non-fatal */ } finally { client.release(); }
 }
 
-export async function getQuotaUsage(
-  orgId = "default"
-): Promise<{ used: number; limit: number; resetAt: string }> {
-  const client = await pool.connect();
-  try {
-    const today = new Date().toISOString().slice(0, 10);
-    const res = await client.query(
-      `SELECT requests_used FROM dataforseo_quota WHERE org_id=$1 AND date=$2`,
-      [orgId, today]
-    );
-    const reset = new Date();
-    reset.setHours(24, 0, 0, 0);
-    return {
-      used:    Number(res.rows[0]?.requests_used ?? 0),
-      limit:   MAX_DAILY_REQUESTS,
-      resetAt: reset.toISOString(),
-    };
-  } catch {
-    return { used: 0, limit: MAX_DAILY_REQUESTS, resetAt: new Date().toISOString() };
-  } finally { client.release(); }
+export async function checkAndIncrementQuota(orgId = "default", planOrUnits?: string | number, units = 1): Promise<boolean> {
+  // Callers pass either (orgId, plan, units) or the shorthand (orgId, units).
+  const effectiveUnits = typeof planOrUnits === "number" ? planOrUnits : units;
+  const key = _quotaKey(orgId);
+  const current = (_quotaMemory.get(key) ?? 0) + effectiveUnits;
+  _quotaMemory.set(key, current);
+  _persistQuota(orgId, new Date().toISOString().slice(0, 10), current).catch(() => {});
+  return current <= MAX_DAILY_REQUESTS;
+}
+
+export function getQuotaUsage(
+  orgId = "default", _plan?: string
+): { used: number; limit: number; resetAt: string } {
+  const key = _quotaKey(orgId);
+  return {
+    used:    _quotaMemory.get(key) ?? 0,
+    limit:   MAX_DAILY_REQUESTS,
+    resetAt: _quotaResetAt(),
+  };
 }
 
 // ── Keywords ──────────────────────────────────────────────────────────────────
@@ -136,7 +146,7 @@ export async function getSERP(
     const data = await dfsRequest<DFSResult>("/serp/google/organic/live/regular", [{
       keyword, location_name: location, language_code: lang, depth: 10,
     }], orgId);
-    return data[0]?.result?.[0] as unknown[] ?? [];
+    return (data[0]?.result?.[0] as unknown as unknown[]) ?? [];
   } catch { return []; }
 }
 
@@ -166,18 +176,24 @@ export async function getCompetitors(
 
 export async function getBacklinks(
   domain: string, orgId = "default"
-): Promise<{ referring_domains: number; backlinks: number; domain_rank: number }> {
-  if (!await isDataForSEOConfigured(orgId)) return { referring_domains: 0, backlinks: 0, domain_rank: 0 };
+): Promise<{ referring_domains: number; backlinks: number; domain_rank: number; total: number; dofollow: number; items: Record<string, unknown>[] }> {
+  const empty = { referring_domains: 0, backlinks: 0, domain_rank: 0, total: 0, dofollow: 0, items: [] };
+  if (!await isDataForSEOConfigured(orgId)) return empty;
   try {
-    type DFSResult = Array<{ result?: Array<Record<string, number>> }>;
+    type DFSResult = Array<{ result?: Array<Record<string, unknown>> }>;
     const data = await dfsRequest<DFSResult>("/backlinks/summary/live", [{ target: domain }], orgId);
     const r = data[0]?.result?.[0] ?? {};
+    const total    = Number(r["backlinks"]          ?? 0);
+    const dofollow = Number(r["dofollow_links"]      ?? 0);
     return {
-      referring_domains: r["referring_domains"] ?? 0,
-      backlinks:         r["backlinks"]          ?? 0,
-      domain_rank:       r["rank"]               ?? 0,
+      referring_domains: Number(r["referring_domains"] ?? 0),
+      backlinks:         total,
+      domain_rank:       Number(r["rank"]              ?? 0),
+      total,
+      dofollow,
+      items:             (r["items"] as Record<string, unknown>[] | undefined) ?? [],
     };
-  } catch { return { referring_domains: 0, backlinks: 0, domain_rank: 0 }; }
+  } catch { return empty; }
 }
 
 export async function getDomainMetrics(
@@ -350,7 +366,7 @@ export async function getContentOptimization(
 // ── SEO Missions (generated from competitor gap analysis) ─────────────────────
 
 export async function generateSEOMissions(
-  orgId: string, domain: string, keywords: string[]
+  orgId: string, domain: string, keywords: string[] = []
 ): Promise<unknown[]> {
   if (!await isDataForSEOConfigured(orgId) || keywords.length === 0) return [];
   try {
@@ -375,4 +391,9 @@ export async function generateSEOMissions(
       actionPlan:       ["Créer du contenu optimisé", "Obtenir des backlinks ciblés", "Améliorer l'UX de la page"],
     }));
   } catch { return []; }
+}
+
+/** Refresh cached domain metrics for a given domain (used by cron). */
+export async function refreshSEOCache(domain: string, orgId = "default"): Promise<void> {
+  await getDomainMetrics(domain, orgId).catch(() => {});
 }

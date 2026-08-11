@@ -24,11 +24,17 @@ export interface PSIResult {
   criticalIssues: Array<{ id: string; title: string; description: string; score: number }>;
   opportunities: Array<{ id: string; title: string; savings: number }>;
   analyzedAt: string;
+  /** Convenience top-level aliases for scores (populated by getPSIHistory rows) */
+  performance?: number;
+  accessibility?: number;
+  seo?: number;
+  bestPractices?: number;
+  lcp?: number;
 }
 
 const PSI_ENDPOINT = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
 
-export async function analyzePSI(url: string, strategy: "mobile" | "desktop", _orgId?: string): Promise<PSIResult> {
+export async function analyzePSI(url: string, strategy: "mobile" | "desktop", _orgId?: string, _force?: boolean): Promise<PSIResult> {
   const apiKey = process.env["PAGESPEED_API_KEY"] ?? process.env["GOOGLE_API_KEY"] ?? "";
   const endpoint = `${PSI_ENDPOINT}?url=${encodeURIComponent(url)}&strategy=${strategy}${apiKey ? `&key=${apiKey}` : ""}`;
 
@@ -95,7 +101,7 @@ async function cachePSIResult(url: string, strategy: string, result: PSIResult):
   } catch { /* non-fatal */ }
 }
 
-export async function getPSIHistory(url: string, days = 30): Promise<PSIResult[]> {
+export async function getPSIHistory(url: string, strategy: "mobile" | "desktop" = "mobile", _orgId?: string, days = 30): Promise<PSIResult[]> {
   try {
     const client = await pool.connect();
     try {
@@ -118,7 +124,7 @@ export async function getPSIHistory(url: string, days = 30): Promise<PSIResult[]
   } catch { return []; }
 }
 
-export async function getLatestPSIResult(url: string, strategy: "mobile" | "desktop" = "mobile"): Promise<PSIResult | null> {
+export async function getLatestPSIResult(url: string, strategy: "mobile" | "desktop" = "mobile", _orgId?: string): Promise<PSIResult | null> {
   try {
     const client = await pool.connect();
     try {
@@ -139,6 +145,6 @@ export async function getLatestPSIResult(url: string, strategy: "mobile" | "desk
   } catch { return null; }
 }
 
-export function invalidatePSICache(_url: string): void {
+export function invalidatePSICache(_url: string, _orgId?: string): void {
   // Cache invalidation is handled by TTL in DB
 }

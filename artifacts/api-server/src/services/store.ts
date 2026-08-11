@@ -5,6 +5,10 @@ export interface ActivityLog {
   id?: string;
   /** Tenant org — required for proper isolation. Defaults to "default" if omitted. */
   orgId?: string;
+  /** Optional user ID performing the action (used by ai-workspace-launch and similar). */
+  userId?: string;
+  /** Optional display name for the user performing the action. */
+  userName?: string;
   type: string;
   label: string;
   targetId?: string;

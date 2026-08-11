@@ -25,8 +25,8 @@ const router = Router();
 
 function withQuota(handler: (req: import("express").Request, res: import("express").Response) => Promise<void>) {
   return async (req: import("express").Request, res: import("express").Response): Promise<void> => {
-    const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
-    const plan  = ((req as Record<string, unknown>)["me"] as Record<string,string> | undefined)?.plan ?? "Pro";
+    const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
+    const plan  = ((req as unknown as Record<string, unknown>)["me"] as Record<string,string> | undefined)?.plan ?? "Pro";
 
     if (!checkAndIncrementQuota(orgId, plan)) {
       const { used, limit } = getQuotaUsage(orgId, plan);
@@ -45,8 +45,8 @@ function withQuota(handler: (req: import("express").Request, res: import("expres
 // ── GET /api/seo/status ───────────────────────────────────────────────────────
 
 router.get("/seo/status", async (req, res) => {
-  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
-  const plan  = ((req as Record<string, unknown>)["me"] as Record<string,string> | undefined)?.plan ?? "Pro";
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
+  const plan  = ((req as unknown as Record<string, unknown>)["me"] as Record<string,string> | undefined)?.plan ?? "Pro";
   const { used, limit } = getQuotaUsage(orgId, plan);
   res.json({
     configured: await isDataForSEOConfigured(orgId),
@@ -57,7 +57,7 @@ router.get("/seo/status", async (req, res) => {
 // ── GET /api/seo/keywords ─────────────────────────────────────────────────────
 
 router.get("/seo/keywords", withQuota(async (req, res) => {
-  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { keyword = "seo local", location = "France", language = "fr" } = req.query as Record<string,string>;
   try {
     const data = await getKeywordSuggestions(keyword, location, language, orgId);
@@ -70,7 +70,7 @@ router.get("/seo/keywords", withQuota(async (req, res) => {
 // ── GET /api/seo/serp ─────────────────────────────────────────────────────────
 
 router.get("/seo/serp", withQuota(async (req, res) => {
-  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { keyword = "seo local", location = "France", language = "fr" } = req.query as Record<string,string>;
   try {
     const data = await getSERP(keyword, location, language, orgId);
@@ -83,7 +83,7 @@ router.get("/seo/serp", withQuota(async (req, res) => {
 // ── GET /api/seo/competitors ──────────────────────────────────────────────────
 
 router.get("/seo/competitors", withQuota(async (req, res) => {
-  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { domain = "exemple.fr" } = req.query as Record<string,string>;
   try {
     const data = await getCompetitors(domain, orgId);
@@ -96,7 +96,7 @@ router.get("/seo/competitors", withQuota(async (req, res) => {
 // ── GET /api/seo/backlinks ────────────────────────────────────────────────────
 
 router.get("/seo/backlinks", withQuota(async (req, res) => {
-  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { domain = "exemple.fr" } = req.query as Record<string,string>;
   try {
     const data = await getBacklinks(domain, orgId);
@@ -109,7 +109,7 @@ router.get("/seo/backlinks", withQuota(async (req, res) => {
 // ── GET /api/seo/domain-metrics ───────────────────────────────────────────────
 
 router.get("/seo/domain-metrics", withQuota(async (req, res) => {
-  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { domain = "exemple.fr" } = req.query as Record<string,string>;
   try {
     const data = await getDomainMetrics(domain, orgId);
@@ -122,7 +122,7 @@ router.get("/seo/domain-metrics", withQuota(async (req, res) => {
 // ── GET /api/seo/keyword-difficulty ──────────────────────────────────────────
 
 router.get("/seo/keyword-difficulty", withQuota(async (req, res) => {
-  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { keyword = "seo local" } = req.query as Record<string,string>;
   try {
     const difficulty = await getKeywordDifficulty(keyword, orgId);
@@ -135,7 +135,7 @@ router.get("/seo/keyword-difficulty", withQuota(async (req, res) => {
 // ── GET /api/seo/local-rank ───────────────────────────────────────────────────
 
 router.get("/seo/local-rank", withQuota(async (req, res) => {
-  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { keyword = "restaurant", location = "Paris" } = req.query as Record<string,string>;
   try {
     const data = await getLocalPackRank(keyword, location, orgId);
@@ -148,7 +148,7 @@ router.get("/seo/local-rank", withQuota(async (req, res) => {
 // ── GET /api/seo/maps ─────────────────────────────────────────────────────────
 
 router.get("/seo/maps", withQuota(async (req, res) => {
-  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { keyword = "restaurant", location = "Paris" } = req.query as Record<string,string>;
   try {
     const data = await getGoogleMapsResults(keyword, location, orgId);
@@ -174,7 +174,7 @@ router.get("/seo/ai-mentions", withQuota(async (req, res) => {
 // ── POST /api/seo/content-optimization ───────────────────────────────────────
 
 router.post("/seo/content-optimization", canWrite, withQuota(async (req, res) => {
-  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { url } = req.body as { url?: string };
   if (!url) { res.status(400).json({ error: "url required" }); return; }
   try {
@@ -191,7 +191,7 @@ router.post("/seo/content-optimization", canWrite, withQuota(async (req, res) =>
 // ── POST /api/seo/generate-missions ──────────────────────────────────────────
 
 router.post("/seo/generate-missions", canWrite, async (req, res) => {
-  const orgId  = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId  = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { domain } = req.body as { domain?: string };
   if (!domain) { res.status(400).json({ error: "domain required" }); return; }
   try {
@@ -206,10 +206,10 @@ router.post("/seo/generate-missions", canWrite, async (req, res) => {
 
 // ── GET /local-seo/status ────────────────────────────────────────────────────────
 router.get("/local-seo/status", async (req, res) => {
-  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   try {
     // Check if GBP/GMB data or location is configured
-    const db = (req as Record<string, unknown>)["orgDb"] as ((sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>) | undefined;
+    const db = (req as unknown as Record<string, unknown>)["orgDb"] as ((sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>) | undefined;
     if (!db) { res.json({ configured: false, source: "none" }); return; }
     const locRow = await db(
       `SELECT address, city, latitude, longitude FROM organizations WHERE id=$1`, [orgId]
@@ -235,7 +235,7 @@ router.get("/local-seo/status", async (req, res) => {
 // Returns citation health data — structured from DataForSEO backlinks or fallback
 router.get("/local-seo/citations", async (req, res) => {
   const domain = req.query.domain as string | undefined;
-  const orgId  = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId  = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   try {
     if (domain && await isDataForSEOConfigured(orgId)) {
       const allowed = await checkAndIncrementQuota(orgId, "citations", 1).catch(() => false);
@@ -271,7 +271,7 @@ router.get("/local-seo/citations", async (req, res) => {
 // Returns grid-pack positions when DataForSEO is configured, empty array otherwise.
 router.post("/local-seo/rankings", canWrite, async (req, res) => {
   const { keyword, location } = req.body as { keyword?: string; location?: string };
-  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   if (!keyword || !location) {
     res.status(400).json({ ok: false, error: "keyword and location are required" });
     return;
@@ -294,7 +294,7 @@ router.post("/local-seo/rankings", canWrite, async (req, res) => {
 
 router.get("/seo/llm-visibility", withQuota(async (req, res) => {
   const { domain = "exemple.fr", sector } = req.query as Record<string,string>;
-  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   try {
     const data = await checkLLMVisibility(domain, sector, orgId);
     res.json(data);

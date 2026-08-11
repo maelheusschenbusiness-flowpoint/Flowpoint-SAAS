@@ -14,6 +14,12 @@ export interface OrgAuthConfig {
   orgId: string; ssoRequired: boolean; allowMagicLink: boolean;
   allowPassword: boolean; sessionTtlHours: number; mfaEnabled: boolean;
   allowedDomains: string[];
+  /** alias: enforceSso maps to ssoRequired at the route layer */
+  enforceSso?: boolean;
+  enforceMfa?: boolean;
+  sessionTimeout?: number;
+  ipWhitelist?: string[];
+  loginMessage?: string;
 }
 
 export interface LoginAudit {
@@ -48,37 +54,62 @@ export async function getSSODashboard(orgId: string): Promise<{
   } finally { client.release(); }
 }
 
-export async function createSSOProvider(orgId: string, data: {
-  type: SSOProviderType; name: string; clientId?: string; issuer?: string; defaultRole?: string;
+export async function createSSOProvider(orgId: string, planOrData?: string | {
+  providerType?: string; type?: SSOProviderType; name?: string; domain?: string;
+  clientId?: string; clientSecret?: string; metadataUrl?: string; ssoUrl?: string;
+  scopes?: string[]; autoProvision?: boolean; defaultRoleId?: string;
+  issuer?: string; defaultRole?: string;
+}, data?: {
+  providerType?: string; type?: SSOProviderType; name?: string; domain?: string;
+  clientId?: string; clientSecret?: string; metadataUrl?: string; ssoUrl?: string;
+  scopes?: string[]; autoProvision?: boolean; defaultRoleId?: string;
+  issuer?: string; defaultRole?: string;
 }): Promise<SSOProvider> {
+  // Resolve overloaded call: (orgId, plan, data) or (orgId, data)
+  const resolvedData = typeof planOrData === "object" && planOrData !== null ? planOrData : (data ?? {});
   const client = await pool.connect();
   try {
-    const id = `sso_${orgId}_${data.type}_${Date.now()}`;
+    const provType = resolvedData.type ?? (resolvedData.providerType as SSOProviderType | undefined);
+    const id = `sso_${orgId}_${provType ?? "unknown"}_${Date.now()}`;
     await client.query(
       `INSERT INTO sso_providers (id, org_id, type, name, client_id, issuer, enabled, default_role, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,true,$7,NOW())`,
-      [id, orgId, data.type, data.name, data.clientId ?? null, data.issuer ?? null, data.defaultRole ?? "member"]
+      [id, orgId, provType, resolvedData.name, resolvedData.clientId ?? null, resolvedData.issuer ?? null, resolvedData.defaultRole ?? "member"]
     );
     const res = await client.query(`SELECT * FROM sso_providers WHERE id=$1`, [id]);
     return res.rows[0];
   } finally { client.release(); }
 }
 
-export async function updateSSOProvider(id: string, data: Partial<{ name: string; clientId: string; issuer: string; enabled: boolean; defaultRole: string }>): Promise<SSOProvider> {
+export async function updateSSOProvider(orgId: string, id: string, data: Partial<{ name: string; clientId: string; issuer: string; enabled: boolean; enforce_sso: boolean; domain: string; auto_provision: boolean; defaultRole: string }> = {}): Promise<SSOProvider> {
   const client = await pool.connect();
   try {
-    if (data.name !== undefined) await client.query(`UPDATE sso_providers SET name=$1 WHERE id=$2`, [data.name, id]);
-    if (data.enabled !== undefined) await client.query(`UPDATE sso_providers SET enabled=$1 WHERE id=$2`, [data.enabled, id]);
-    if (data.defaultRole !== undefined) await client.query(`UPDATE sso_providers SET default_role=$1 WHERE id=$2`, [data.defaultRole, id]);
-    const res = await client.query(`SELECT * FROM sso_providers WHERE id=$1`, [id]);
+    // Tenant isolation: every mutation is scoped to org_id — an SSO provider id
+    // from another organization must never be reachable, even for admins.
+    if (data.name !== undefined) {
+      const r = await client.query(`UPDATE sso_providers SET name=$1 WHERE id=$2 AND org_id=$3`, [data.name, id, orgId]);
+      if (r.rowCount === 0) throw Object.assign(new Error("SSO provider not found"), { statusCode: 404 });
+    }
+    if (data.enabled !== undefined) {
+      const r = await client.query(`UPDATE sso_providers SET enabled=$1 WHERE id=$2 AND org_id=$3`, [data.enabled, id, orgId]);
+      if (r.rowCount === 0) throw Object.assign(new Error("SSO provider not found"), { statusCode: 404 });
+    }
+    if (data.defaultRole !== undefined) {
+      const r = await client.query(`UPDATE sso_providers SET default_role=$1 WHERE id=$2 AND org_id=$3`, [data.defaultRole, id, orgId]);
+      if (r.rowCount === 0) throw Object.assign(new Error("SSO provider not found"), { statusCode: 404 });
+    }
+    const res = await client.query(`SELECT * FROM sso_providers WHERE id=$1 AND org_id=$2`, [id, orgId]);
+    if (!res.rows[0]) throw Object.assign(new Error("SSO provider not found"), { statusCode: 404 });
     return res.rows[0];
   } finally { client.release(); }
 }
 
-export async function deleteSSOProvider(id: string): Promise<void> {
+export async function deleteSSOProvider(orgId: string, id: string): Promise<void> {
   const client = await pool.connect();
-  try { await client.query(`DELETE FROM sso_providers WHERE id=$1`, [id]); }
-  finally { client.release(); }
+  try {
+    const r = await client.query(`DELETE FROM sso_providers WHERE id=$1 AND org_id=$2`, [id, orgId]);
+    if (r.rowCount === 0) throw Object.assign(new Error("SSO provider not found"), { statusCode: 404 });
+  } finally { client.release(); }
 }
 
 export async function getOrgAuthConfig(orgId: string): Promise<OrgAuthConfig | null> {
@@ -109,25 +140,33 @@ export async function upsertOrgAuthConfig(orgId: string, data: Partial<OrgAuthCo
   } finally { client.release(); }
 }
 
-export async function logLoginAttempt(opts: {
-  orgId: string; email: string; method: string; success: boolean;
-  ip?: string; userAgent?: string; failureReason?: string;
+export async function logLoginAttempt(optsOrOrgId: {
+  orgId?: string; email?: string; method?: string; provider?: string; success?: boolean;
+  ip?: string; ipAddress?: string; userAgent?: string; userId?: string; failureReason?: string;
+} | string, opts?: {
+  orgId?: string; email?: string; method?: string; provider?: string; success?: boolean;
+  ip?: string; ipAddress?: string; userAgent?: string; userId?: string; failureReason?: string;
 }): Promise<void> {
+  // Resolve overloaded call: (orgId, opts) or (opts)
+  const resolvedOpts = typeof optsOrOrgId === "string" ? (opts ?? {}) : optsOrOrgId;
+  const orgId   = typeof optsOrOrgId === "string" ? optsOrOrgId : (resolvedOpts.orgId ?? "default");
+  const method  = resolvedOpts.method ?? resolvedOpts.provider ?? "email";
   const client = await pool.connect();
   try {
     const id = `audit_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     await client.query(
       `INSERT INTO login_audits (id, org_id, email, method, success, ip, user_agent, failure_reason, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())`,
-      [id, opts.orgId, opts.email, opts.method, opts.success, opts.ip ?? null, opts.userAgent ?? null, opts.failureReason ?? null]
+      [id, orgId, resolvedOpts.email, method, resolvedOpts.success ?? true, resolvedOpts.ip ?? resolvedOpts.ipAddress ?? null, resolvedOpts.userAgent ?? null, resolvedOpts.failureReason ?? null]
     );
   } catch (err) { logger.debug({ err }, "[sso] logLoginAttempt error"); }
   finally { client.release(); }
 }
 
-export async function invalidateSession(token: string): Promise<void> {
+export async function invalidateSession(orgId: string, token: string): Promise<void> {
   const client = await pool.connect();
-  try { await client.query(`DELETE FROM user_sessions WHERE token=$1`, [token]); }
+  // Tenant isolation: only sessions belonging to the caller's org may be revoked.
+  try { await client.query(`DELETE FROM user_sessions WHERE token=$1 AND org_id=$2`, [token, orgId]); }
   finally { client.release(); }
 }
 

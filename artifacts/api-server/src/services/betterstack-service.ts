@@ -394,7 +394,7 @@ async function syncMonitorsToDB(monitors: BSMonitor[], orgId: string): Promise<v
           synced_at = NOW(),
           updated_at = NOW()
       `, [
-        `bs_${m.id}`, orgId, m.id, a.pronounceable_name || a.url || 'Monitor', a.url, a.monitor_type, a.status,
+        `bs_${m.id}`, orgId, m.id, a.pronunciation_name || a.url || 'Monitor', a.url, a.monitor_type, a.status,
         a.check_frequency, JSON.stringify(a.regions || []), a.paused,
         parseFloat(a.uptime_percentage || "100"),
         a.avg_response_time || null, sslDays,

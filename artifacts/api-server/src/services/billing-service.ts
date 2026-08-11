@@ -450,7 +450,16 @@ export async function startTrial(plan: string = "pro", days: number = 14, orgId 
 }
 
 // ── Coupon validation ─────────────────────────────────────────────────────────
-export async function validateCoupon(code: string) {
+export async function validateCoupon(code: string): Promise<{
+  valid: boolean;
+  error?: string;
+  id?: string;
+  name?: string;
+  type?: string;
+  discount?: number;
+  duration?: string;
+  mock?: boolean;
+}> {
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   if (!stripeKey) {
     if (process.env["NODE_ENV"] === "production") {
@@ -483,7 +492,21 @@ export async function validateCoupon(code: string) {
 }
 
 // ── Invoices ──────────────────────────────────────────────────────────────────
-export async function getInvoices(limit: number = 20, stripeCustomerId?: string) {
+export async function getInvoices(limit: number = 20, stripeCustomerId?: string): Promise<{
+  invoices: Array<{
+    id: string | null | undefined;
+    number: string | null | undefined;
+    amount: number;
+    currency: string;
+    status: string | null | undefined;
+    date: string;
+    pdfUrl: string | null | undefined;
+    hostedUrl: string | null | undefined;
+    period: { start: string | null; end: string | null };
+  }>;
+  mock?: boolean;
+  error?: string;
+}> {
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const customerId = stripeCustomerId ?? null;
   if (!stripeKey || !customerId) {

@@ -4,6 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { aiRateLimit } from "../middlewares/rateLimiter.js";
+import { isAiMigrationComplete } from "../services/init-ai-migration.js";
 import {
   consumeAICredits,
   checkAIQuota,
@@ -72,6 +73,20 @@ import { undoAction } from "../agent/undo.js";
 
 const router = Router();
 // aiRateLimit applied per POST route below — GET endpoints (history, usage, recommendations) are not rate-limited
+
+// ── AI schema-readiness gate ─────────────────────────────────────────────────
+// If the startup AI migration failed (legacy schema not repaired), quota/usage
+// writes would silently fail while the server accepts traffic. Fail-closed:
+// every AI POST endpoint refuses with 503 until the migration has completed.
+router.use("/ai", (req: Request, res: Response, next: () => void): void => {
+  if (req.method !== "POST" || isAiMigrationComplete()) { next(); return; }
+  logger.error("[AI gate] rejecting AI request — schema migration incomplete");
+  res.status(503).json({
+    error: "AI temporarily unavailable",
+    code: "AI_SCHEMA_NOT_READY",
+    message: "AI usage tracking schema is not ready. Retry shortly or contact support if this persists.",
+  });
+});
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 const AI_RATE_LIMIT = 30;

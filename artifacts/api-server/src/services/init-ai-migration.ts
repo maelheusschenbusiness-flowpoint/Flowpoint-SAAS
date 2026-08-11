@@ -4,6 +4,18 @@ import { logger } from "../lib/logger.js";
 const LOG = "[AI migration]";
 
 /**
+ * True only after initAiMigration() has fully completed, including the
+ * post-migration contract verification. AI endpoints that write quota/usage
+ * state MUST check this and refuse service (503) while false — otherwise a
+ * failed schema repair silently breaks billing writes while the server
+ * accepts traffic.
+ */
+let aiMigrationComplete = false;
+export function isAiMigrationComplete(): boolean {
+  return aiMigrationComplete;
+}
+
+/**
  * Applies AI-specific DDL migrations at startup.
  *
  * Design contract:
@@ -144,19 +156,98 @@ export async function initAiMigration(): Promise<void> {
     // every chat request returns 503 QUOTA_STATE_UNAVAILABLE.
     // All statements are guarded/idempotent: no-ops on an already-correct schema.
 
+    // ── Helper: uuid→TEXT column conversion with full dependency dance ──────────
+    // PostgreSQL rejects ALTER COLUMN TYPE when ANY of these depend on the column:
+    //  - a policy on the table (SQLSTATE 0A000) — legacy Supabase policies often
+    //    reference user_id/org_id/id;
+    //  - a FOREIGN KEY on this table using the column, or a FK from another table
+    //    referencing it (type mismatch after conversion) — e.g. a legacy
+    //    ai_usage_logs.user_id → auth.users(id) FK;
+    //  - a view selecting the column.
+    // The whole DO block is one transaction: either the column ends up TEXT with
+    // all blockers removed, or nothing changed. Canonical tenant policies are
+    // recreated unconditionally further below (outside this helper).
+    // Dropped legacy FKs/views are NOT recreated: the code contract writes
+    // synthetic TEXT ids ('aul_…'/'amu_…'/'acp_…') that can never satisfy a FK to
+    // a uuid column, and no view over these tables is part of the app contract.
+    const convertUuidColsToText = async (table: string, columns: string[]) => {
+      const colList = columns.map((c) => `'${c}'`).join(", ");
+      await run(`${table} uuid→TEXT (${columns.join(", ")})`, `
+        DO $$
+        DECLARE
+          pol RECORD;
+          col RECORD;
+          dep RECORD;
+          needs_convert BOOLEAN := FALSE;
+        BEGIN
+          IF to_regclass('public.${table}') IS NULL THEN RETURN; END IF;
+
+          SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='${table}'
+              AND column_name IN (${colList}) AND data_type='uuid'
+          ) INTO needs_convert;
+          IF NOT needs_convert THEN RETURN; END IF;
+
+          -- 1) Policies referencing any column block ALTER COLUMN TYPE: drop all.
+          --    Canonical tenant policies are recreated after conversion.
+          FOR pol IN
+            SELECT policyname FROM pg_policies
+            WHERE schemaname='public' AND tablename='${table}'
+          LOOP
+            EXECUTE format('DROP POLICY IF EXISTS %I ON public.${table}', pol.policyname);
+          END LOOP;
+
+          FOR col IN
+            SELECT c.column_name, a.attnum
+            FROM information_schema.columns c
+            JOIN pg_attribute a
+              ON a.attrelid = 'public.${table}'::regclass
+             AND a.attname  = c.column_name
+            WHERE c.table_schema='public' AND c.table_name='${table}'
+              AND c.column_name IN (${colList}) AND c.data_type='uuid'
+          LOOP
+            -- 2a) FKs ON this table that use the column
+            FOR dep IN
+              SELECT conname FROM pg_constraint
+              WHERE conrelid = 'public.${table}'::regclass
+                AND contype = 'f'
+                AND col.attnum = ANY (conkey)
+            LOOP
+              RAISE NOTICE '[AI migration] dropping FK % on ${table} (blocks % type change)', dep.conname, col.column_name;
+              EXECUTE format('ALTER TABLE public.${table} DROP CONSTRAINT %I', dep.conname);
+            END LOOP;
+            -- 2b) FKs FROM other tables referencing this column
+            FOR dep IN
+              SELECT conname, conrelid::regclass::text AS reftable
+              FROM pg_constraint
+              WHERE confrelid = 'public.${table}'::regclass
+                AND contype = 'f'
+                AND col.attnum = ANY (confkey)
+            LOOP
+              RAISE NOTICE '[AI migration] dropping inbound FK % from % (references ${table}.%)', dep.conname, dep.reftable, col.column_name;
+              EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', dep.reftable, dep.conname);
+            END LOOP;
+            -- 2c) Views selecting the column
+            FOR dep IN
+              SELECT DISTINCT view_schema, view_name
+              FROM information_schema.view_column_usage
+              WHERE table_schema='public' AND table_name='${table}'
+                AND column_name = col.column_name
+            LOOP
+              RAISE NOTICE '[AI migration] dropping view %.% (blocks ${table}.% type change)', dep.view_schema, dep.view_name, col.column_name;
+              EXECUTE format('DROP VIEW IF EXISTS %I.%I CASCADE', dep.view_schema, dep.view_name);
+            END LOOP;
+            -- 3) Convert
+            EXECUTE format('ALTER TABLE public.${table} ALTER COLUMN %I DROP DEFAULT', col.column_name);
+            EXECUTE format('ALTER TABLE public.${table} ALTER COLUMN %I TYPE TEXT USING %I::text', col.column_name, col.column_name);
+          END LOOP;
+        END $$
+      `);
+    };
+
     // ai_credit_purchases — id uuid→TEXT (code inserts 'acp_<sessionId>')
-    await run("ai_credit_purchases id type TEXT", `
-      DO $$ BEGIN
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_schema='public' AND table_name='ai_credit_purchases'
-            AND column_name='id' AND data_type='uuid'
-        ) THEN
-          ALTER TABLE public.ai_credit_purchases ALTER COLUMN id DROP DEFAULT;
-          ALTER TABLE public.ai_credit_purchases ALTER COLUMN id TYPE TEXT USING id::text;
-        END IF;
-      END $$
-    `);
+    await convertUuidColsToText("ai_credit_purchases", ["id"]);
     await run("ai_credit_purchases pack column", `
       ALTER TABLE public.ai_credit_purchases ADD COLUMN IF NOT EXISTS pack TEXT NOT NULL DEFAULT ''
     `);
@@ -185,18 +276,7 @@ export async function initAiMigration(): Promise<void> {
     `);
 
     // ai_monthly_usage — id uuid→TEXT (code inserts 'amu_<org>_<month>')
-    await run("ai_monthly_usage id type TEXT", `
-      DO $$ BEGIN
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_schema='public' AND table_name='ai_monthly_usage'
-            AND column_name='id' AND data_type='uuid'
-        ) THEN
-          ALTER TABLE public.ai_monthly_usage ALTER COLUMN id DROP DEFAULT;
-          ALTER TABLE public.ai_monthly_usage ALTER COLUMN id TYPE TEXT USING id::text;
-        END IF;
-      END $$
-    `);
+    await convertUuidColsToText("ai_monthly_usage", ["id"]);
     await run("ai_monthly_usage request_count column", `
       ALTER TABLE public.ai_monthly_usage ADD COLUMN IF NOT EXISTS request_count INTEGER NOT NULL DEFAULT 0
     `);
@@ -220,30 +300,7 @@ export async function initAiMigration(): Promise<void> {
     `);
 
     // ai_usage_logs — id/user_id uuid→TEXT (code inserts 'aul_…' and session user ids)
-    await run("ai_usage_logs id type TEXT", `
-      DO $$ BEGIN
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_schema='public' AND table_name='ai_usage_logs'
-            AND column_name='id' AND data_type='uuid'
-        ) THEN
-          ALTER TABLE public.ai_usage_logs ALTER COLUMN id DROP DEFAULT;
-          ALTER TABLE public.ai_usage_logs ALTER COLUMN id TYPE TEXT USING id::text;
-        END IF;
-      END $$
-    `);
-    await run("ai_usage_logs user_id type TEXT", `
-      DO $$ BEGIN
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_schema='public' AND table_name='ai_usage_logs'
-            AND column_name='user_id' AND data_type='uuid'
-        ) THEN
-          ALTER TABLE public.ai_usage_logs ALTER COLUMN user_id DROP DEFAULT;
-          ALTER TABLE public.ai_usage_logs ALTER COLUMN user_id TYPE TEXT USING user_id::text;
-        END IF;
-      END $$
-    `);
+    await convertUuidColsToText("ai_usage_logs", ["id", "user_id"]);
 
     // ai_alerts — read by getAIUsageStats, written by quota alerting; missing in prod
     await run("ai_alerts table", `
@@ -267,8 +324,11 @@ export async function initAiMigration(): Promise<void> {
     await tenantPolicies("ai_alerts");
 
     // Tenant policies for the three AI billing tables — uuid-safe (org_id::text).
-    // Guarded IF NOT EXISTS: no-op where policies already exist (local dev).
+    // Drop + recreate unconditionally: this corrects pre-existing policies with
+    // incompatible predicates (legacy Supabase policies) AND restores the policies
+    // dropped by convertUuidColsToText above. Idempotent — same end state on rerun.
     for (const tbl of ["ai_credit_purchases", "ai_monthly_usage", "ai_usage_logs"]) {
+      await run(`${tbl} RLS enable`, `ALTER TABLE public.${tbl} ENABLE ROW LEVEL SECURITY`);
       const defs = [
         { name: "tenant_select", cmd: "FOR SELECT USING" },
         { name: "tenant_insert", cmd: "FOR INSERT WITH CHECK" },
@@ -276,15 +336,11 @@ export async function initAiMigration(): Promise<void> {
         { name: "tenant_delete", cmd: "FOR DELETE USING" },
       ];
       for (const p of defs) {
-        await runPolicy(`${tbl} ${p.name} (uuid-safe)`, `
+        await runPolicy(`${tbl} ${p.name} (uuid-safe, canonical)`, `
           DO $$ BEGIN
-            IF NOT EXISTS (
-              SELECT 1 FROM pg_policies
-              WHERE schemaname='public' AND tablename='${tbl}' AND policyname='${p.name}'
-            ) THEN
-              CREATE POLICY ${p.name} ON public.${tbl} ${p.cmd}
-                (org_id::text = current_setting('app.current_org_id', true));
-            END IF;
+            EXECUTE 'DROP POLICY IF EXISTS ${p.name} ON public.${tbl}';
+            EXECUTE 'CREATE POLICY ${p.name} ON public.${tbl} ${p.cmd}
+              (org_id::text = current_setting(''app.current_org_id'', true))';
           END $$
         `);
       }
@@ -436,6 +492,96 @@ export async function initAiMigration(): Promise<void> {
       );
     }
 
+    // ── Billing-tables contract verification ────────────────────────────────────
+    // The AI engine writes TEXT ids ('aul_…', 'amu_…', 'acp_…') and the quota
+    // preflight selects these columns. Verify the FULL contract — every required
+    // column exists with the required type, RLS is enabled, and each tenant
+    // policy's actual predicate matches the canonical org_id::text form — and
+    // throw otherwise so the caller can fail startup / gate AI endpoints.
+    const problems: string[] = [];
+
+    // 1) Required columns exist with the required type.
+    const requiredCols: Array<{ table: string; column: string; types: string[] }> = [
+      { table: "ai_credit_purchases", column: "id",                    types: ["text"] },
+      { table: "ai_credit_purchases", column: "org_id",                types: ["text", "character varying", "uuid"] },
+      { table: "ai_credit_purchases", column: "pack",                  types: ["text"] },
+      { table: "ai_credit_purchases", column: "credits",               types: ["integer"] },
+      { table: "ai_credit_purchases", column: "amount_eur_cents",      types: ["integer"] },
+      { table: "ai_credit_purchases", column: "stripe_payment_intent", types: ["text"] },
+      { table: "ai_monthly_usage",    column: "id",                    types: ["text"] },
+      { table: "ai_monthly_usage",    column: "org_id",                types: ["text", "character varying", "uuid"] },
+      { table: "ai_monthly_usage",    column: "month",                 types: ["text", "character varying"] },
+      { table: "ai_monthly_usage",    column: "request_count",         types: ["integer"] },
+      { table: "ai_monthly_usage",    column: "credits_limit",         types: ["integer"] },
+      { table: "ai_monthly_usage",    column: "credits_extra",         types: ["integer"] },
+      { table: "ai_usage_logs",       column: "id",                    types: ["text"] },
+      { table: "ai_usage_logs",       column: "user_id",               types: ["text"] },
+      { table: "ai_usage_logs",       column: "org_id",                types: ["text", "character varying", "uuid"] },
+      { table: "ai_usage_logs",       column: "idempotency_key",       types: ["text"] },
+    ];
+    const colRes = await client.query<{ table_name: string; column_name: string; data_type: string }>(`
+      SELECT table_name, column_name, data_type
+      FROM information_schema.columns
+      WHERE table_schema='public'
+        AND table_name IN ('ai_credit_purchases','ai_monthly_usage','ai_usage_logs')
+    `);
+    const colType = new Map(colRes.rows.map(r => [`${r.table_name}.${r.column_name}`, r.data_type]));
+    for (const rc of requiredCols) {
+      const actual = colType.get(`${rc.table}.${rc.column}`);
+      if (actual === undefined) {
+        problems.push(`${rc.table}.${rc.column} missing`);
+      } else if (!rc.types.includes(actual)) {
+        problems.push(`${rc.table}.${rc.column} is ${actual}, expected ${rc.types.join("|")}`);
+      }
+    }
+
+    // 2) RLS enabled on all three tables.
+    const rlsRes = await client.query<{ relname: string; relrowsecurity: boolean }>(`
+      SELECT c.relname, c.relrowsecurity
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname='public'
+        AND c.relname IN ('ai_credit_purchases','ai_monthly_usage','ai_usage_logs')
+    `);
+    for (const r of rlsRes.rows) {
+      if (!r.relrowsecurity) problems.push(`${r.relname}: RLS not enabled`);
+    }
+    if (rlsRes.rows.length < 3) problems.push("one or more AI billing tables missing from pg_class");
+
+    // 3) Each tenant policy exists AND its actual qual/with_check is canonical.
+    //    Normalize whitespace; accept pg's ::text decoration on the GUC name.
+    // pg deparses the stored predicate: TEXT org_id columns yield
+    //   (org_id = current_setting('app.current_org_id'::text, true))
+    // while uuid/varchar columns yield a parenthesized cast:
+    //   ((org_id)::text = current_setting('app.current_org_id'::text, true))
+    const canonical = /\(?\s*\(?org_id\)?\s*(::text)?\s*=\s*current_setting\('app\.current_org_id'(::text)?,\s*true\)/;
+    const polRes = await client.query<{ tablename: string; policyname: string; qual: string | null; with_check: string | null }>(`
+      SELECT tablename, policyname, qual, with_check
+      FROM pg_policies
+      WHERE schemaname='public'
+        AND tablename IN ('ai_credit_purchases','ai_monthly_usage','ai_usage_logs')
+        AND policyname IN ('tenant_select','tenant_insert','tenant_update','tenant_delete')
+    `);
+    const polMap = new Map(polRes.rows.map(r => [`${r.tablename}.${r.policyname}`, r]));
+    for (const tbl of ["ai_credit_purchases", "ai_monthly_usage", "ai_usage_logs"]) {
+      for (const pol of ["tenant_select", "tenant_insert", "tenant_update", "tenant_delete"]) {
+        const row = polMap.get(`${tbl}.${pol}`);
+        if (!row) { problems.push(`${tbl}.${pol} policy missing`); continue; }
+        // INSERT policies carry the predicate in with_check; others in qual.
+        const predicate = (pol === "tenant_insert" ? row.with_check : row.qual) ?? "";
+        if (!canonical.test(predicate.replace(/\s+/g, " "))) {
+          problems.push(`${tbl}.${pol} predicate non-canonical: ${predicate.slice(0, 120)}`);
+        }
+      }
+    }
+
+    if (problems.length > 0) {
+      throw new Error(
+        `${LOG} Post-migration contract check failed — ${problems.join("; ")}`
+      );
+    }
+
+    aiMigrationComplete = true;
     logger.info(`${LOG} complete`);
   } finally {
     client.release();

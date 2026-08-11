@@ -33,13 +33,14 @@ export interface ToolParameterSchema {
 
 export interface ToolPropertySchema {
   type: string | string[];
-  description: string;
+  description?: string;
   enum?: string[];
   items?: { type: string; enum?: string[] };
   minimum?: number;
   maximum?: number;
   minItems?: number;
   maxItems?: number;
+  maxLength?: number;
 }
 
 // ── Catalogue d'outils — Phase 2 : Missions seulement ─────────────────────

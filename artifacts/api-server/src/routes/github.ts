@@ -21,7 +21,7 @@ router.get("/github/status", async (req: Request, res: Response) => {
     configured: isGitHubConfigured(),
     login: conn?.login || null,
     name: conn?.name || null,
-    connectedAt: conn?.connected_at || null,
+    connectedAt: conn?.connectedAt || null,
   });
 });
 
@@ -86,7 +86,7 @@ router.get("/github/repos", async (req: Request, res: Response) => {
   if (!conn) { res.status(403).json({ error: "GitHub not connected. Call /api/github/auth first." }); return; }
 
   try {
-    const repos = await getUserRepos(conn.access_token);
+    const repos = await getUserRepos(conn.accessToken);
     res.json({ repos: repos.slice(0, 50) });
   } catch (err) {
     logger.error({ err }, "[GitHub] Failed to fetch repos");
@@ -104,15 +104,18 @@ router.get("/github/commits/:owner/:repo", async (req: Request, res: Response) =
   if (!conn) { res.status(403).json({ error: "GitHub not connected" }); return; }
 
   try {
-    const commits = await getRepoCommits(conn.access_token, owner, repo, days);
+    const commits = await getRepoCommits(conn.accessToken, owner, repo, days);
 
     const byDay = new Map<string, number>();
     const byAuthor = new Map<string, number>();
     commits.forEach(c => {
-      const day = (c.commit?.author?.date || "").slice(0, 10);
+      const commit = c as Record<string, unknown>;
+      const commitData = commit["commit"] as Record<string, unknown> | undefined;
+      const author = commitData?.["author"] as Record<string, unknown> | undefined;
+      const day = ((author?.["date"] as string) || "").slice(0, 10);
       if (day) byDay.set(day, (byDay.get(day) || 0) + 1);
-      const author = c.commit?.author?.name || "Unknown";
-      byAuthor.set(author, (byAuthor.get(author) || 0) + 1);
+      const authorName = (author?.["name"] as string) || "Unknown";
+      byAuthor.set(authorName, (byAuthor.get(authorName) || 0) + 1);
     });
 
     res.json({
@@ -120,13 +123,18 @@ router.get("/github/commits/:owner/:repo", async (req: Request, res: Response) =
       days,
       byDay: Object.fromEntries(byDay),
       byAuthor: Array.from(byAuthor.entries()).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })),
-      recent: commits.slice(0, 20).map(c => ({
-        sha: c.sha.slice(0, 7),
-        message: c.commit.message.split("\n")[0].slice(0, 100),
-        author: c.commit.author.name,
-        date: c.commit.author.date,
-        url: `https://github.com/${owner}/${repo}/commit/${c.sha}`,
-      })),
+      recent: commits.slice(0, 20).map(c => {
+        const commit = c as Record<string, unknown>;
+        const commitData = commit["commit"] as Record<string, unknown>;
+        const author = commitData["author"] as Record<string, unknown>;
+        return {
+          sha: (commit["sha"] as string).slice(0, 7),
+          message: (commitData["message"] as string).split("\n")[0].slice(0, 100),
+          author: author["name"] as string,
+          date: author["date"] as string,
+          url: `https://github.com/${owner}/${repo}/commit/${commit["sha"]}`,
+        };
+      }),
     });
   } catch (err) {
     logger.error({ err }, "[GitHub] Failed to fetch commits");
@@ -144,15 +152,15 @@ router.get("/github/deployments/:owner/:repo", async (req: Request, res: Respons
 
   try {
     const [deployments, releases, runs] = await Promise.all([
-      getRepoDeployments(conn.access_token, owner, repo).catch(() => []),
-      getRepoReleases(conn.access_token, owner, repo).catch(() => []),
-      getWorkflowRuns(conn.access_token, owner, repo).catch(() => ({ workflow_runs: [] })),
+      getRepoDeployments(conn.accessToken, owner, repo).catch(() => []),
+      getRepoReleases(conn.accessToken, owner, repo).catch(() => []),
+      getWorkflowRuns(conn.accessToken, owner, repo).catch(() => []),
     ]);
 
     res.json({
       deployments: deployments.slice(0, 20),
       releases: releases.slice(0, 10),
-      workflowRuns: runs.workflow_runs.slice(0, 15),
+      workflowRuns: runs.slice(0, 15),
     });
   } catch (err) {
     logger.error({ err }, "[GitHub] Failed to fetch deployments");
@@ -170,7 +178,7 @@ router.post("/github/analysis/:owner/:repo", async (req: Request, res: Response)
 
   try {
     logger.info({ owner, repo }, "[GitHub] Starting repo analysis");
-    const analysis = await analyzeRepo(conn.access_token, owner, repo);
+    const analysis = await analyzeRepo(conn.accessToken, owner, repo);
     res.json({ ok: true, analysis });
   } catch (err) {
     logger.error({ err }, "[GitHub] Repo analysis failed");
@@ -199,7 +207,7 @@ router.get("/github/issues/:owner/:repo", async (req: Request, res: Response) =>
 
   try {
     const issues = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=30&labels=bug,security`, {
-      headers: { "Authorization": `Bearer ${conn.access_token}`, "Accept": "application/vnd.github+json" },
+      headers: { "Authorization": `Bearer ${conn.accessToken}`, "Accept": "application/vnd.github+json" },
     }).then(r => r.json()) as Array<{ id: number; title: string; state: string; labels: Array<{ name: string; color: string }>; created_at: string; html_url: string }>;
 
     res.json({
@@ -235,7 +243,7 @@ router.get("/github/health/:owner/:repo", async (req: Request, res: Response) =>
   if (!conn) { res.status(403).json({ error: "GitHub not connected. No cached analysis available." }); return; }
 
   try {
-    const analysis = await analyzeRepo(conn.access_token, owner, repo);
+    const analysis = await analyzeRepo(conn.accessToken, owner, repo);
     res.json({ health: analysis.health, fromCache: false, analyzedAt: analysis.analyzedAt });
   } catch (err) {
     logger.error({ err }, "[GitHub] Failed to compute health");
@@ -252,8 +260,8 @@ router.get("/github/contributors/:owner/:repo", async (req: Request, res: Respon
   if (!conn) { res.status(403).json({ error: "GitHub not connected" }); return; }
 
   try {
-    const contributors = await getRepoContributors(conn.access_token, owner, repo);
-    const branches = await getRepoBranches(conn.access_token, owner, repo).catch(() => []);
+    const contributors = await getRepoContributors(conn.accessToken, owner, repo);
+    const branches = await getRepoBranches(conn.accessToken, owner, repo).catch(() => []);
     res.json({ contributors: contributors.slice(0, 30), branches: branches.slice(0, 30) });
   } catch (err) {
     logger.error({ err }, "[GitHub] Failed to fetch contributors");

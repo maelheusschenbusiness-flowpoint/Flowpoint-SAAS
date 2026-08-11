@@ -403,7 +403,7 @@ router.patch("/missions/:id", canWrite, async (req: Request, res: Response) => {
   try {
     const db = orgDb(req);
     const org = orgId(req);
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     const existing = await db(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
     if (!existing.rows[0]) { res.status(404).json({ error: "Mission not found" }); return; }
@@ -483,7 +483,7 @@ router.delete("/missions/:id", canWrite, async (req: Request, res: Response) => 
 
     await store.logActivity({
       type: "report", label: `Mission supprimée : ${existing.rows[0].title}`,
-      targetId: req.params.id, targetType: "mission",
+      targetId: String(req.params.id), targetType: "mission",
       metadata: { category: existing.rows[0].category }, orgId: org,
     }).catch(() => {});
 

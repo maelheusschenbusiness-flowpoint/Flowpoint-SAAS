@@ -63,7 +63,7 @@ const fixtures = new Map<string, { sequence: number[]; pos: number }>();
 // Monitors call this URL directly — no auth required; protected only by qaGuard.
 // Returns the next HTTP status code in the sequence (cycles when exhausted).
 router.get("/qa/fixture/:id", qaGuard, (req: Request, res: Response) => {
-  const f = fixtures.get(req.params["id"] ?? "");
+  const f = fixtures.get(String(req.params["id"] ?? ""));
   if (!f || f.sequence.length === 0) {
     res.status(200).send("OK");
     return;
@@ -92,7 +92,7 @@ router.post("/qa/fixture", qaGuard, (req: Request, res: Response) => {
 
 // PATCH /qa/fixture/:id/reset — reset position to 0
 router.patch("/qa/fixture/:id/reset", qaGuard, (req: Request, res: Response) => {
-  const f = fixtures.get(req.params["id"] ?? "");
+  const f = fixtures.get(String(req.params["id"] ?? ""));
   if (!f) { res.status(404).json({ error: "Fixture not found" }); return; }
   f.pos = 0;
   res.json({ ok: true, pos: 0 });
@@ -100,7 +100,7 @@ router.patch("/qa/fixture/:id/reset", qaGuard, (req: Request, res: Response) => 
 
 // DELETE /qa/fixture/:id — remove fixture
 router.delete("/qa/fixture/:id", qaGuard, (req: Request, res: Response) => {
-  fixtures.delete(req.params["id"] ?? "");
+  fixtures.delete(String(req.params["id"] ?? ""));
   res.json({ ok: true });
 });
 
@@ -304,7 +304,7 @@ export { router as qaFixturesRouter };
 // Public subset — only the fixture probe endpoint (no auth required)
 const publicQaRouter = Router();
 publicQaRouter.get("/qa/fixture/:id", qaGuard, (req: Request, res: Response) => {
-  const f = fixtures.get(req.params["id"] ?? "");
+  const f = fixtures.get(String(req.params["id"] ?? ""));
   if (!f || f.sequence.length === 0) { res.status(200).send("OK"); return; }
   const code = f.sequence[f.pos % f.sequence.length]!;
   f.pos++;

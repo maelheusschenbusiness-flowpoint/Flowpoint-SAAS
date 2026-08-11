@@ -1,6 +1,6 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
-import { refreshSEOCache, generateSEOMissions } from "./dataforseo-service.js";
+import { generateSEOMissions, refreshSEOCache } from "../services/dataforseo-service.js";
 
 export function startDataForSEOCron(): void {
   // Refresh every 6 hours
@@ -26,7 +26,7 @@ export function startDataForSEOCron(): void {
       }
 
       for (const domain of domains) {
-        await refreshSEOCache(domain).catch(e =>
+        await refreshSEOCache(domain).catch((e: unknown) =>
           logger.warn({ domain, e }, "[DataForSEO Cron] refresh error"),
         );
         await generateSEOMissions("default", domain).catch(() => {});

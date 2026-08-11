@@ -69,7 +69,7 @@ router.post("/review-intelligence/reply", canWrite, async (req, res) => {
 router.post("/review-intelligence/reply/:reviewId", canWrite, async (req, res) => {
   const { tone = "professional", language = "fr" } = req.body as { tone?: string; language?: string };
   try {
-    const reply = await generateReply(org(req), req.params.reviewId, tone, language);
+    const reply = await generateReply(org(req), String(req.params.reviewId), tone, language);
     res.json({ ok: true, reply });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
@@ -107,7 +107,7 @@ router.patch("/review-intelligence/alerts/:id/resolve", canWrite, async (req, re
 
 router.post("/review-intelligence/sync/:locationId", canWrite, async (req, res) => {
   try {
-    const result = await syncReviewsFromGBP(org(req), req.params.locationId);
+    const result = await syncReviewsFromGBP(org(req), String(req.params.locationId));
     res.json({ ok: true, ...result });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });

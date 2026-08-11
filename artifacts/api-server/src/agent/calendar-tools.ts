@@ -378,7 +378,7 @@ export const CALENDAR_TOOLS: ToolDef[] = [
       "Pour supprimer un seul événement NON récurrent, utiliser delete_calendar_event. " +
       "Confirmation obligatoire avant suppression. Annulation possible dans les 30 minutes.",
     requiredPermission: "calendar.write",
-    confirmationLevel: "confirm",
+    confirmationLevel: "full",
     isWrite: true,
     parameters: {
       type: "object",

@@ -4,8 +4,8 @@
  */
 
 import Stripe from "stripe";
-import { logger } from "../logger.js";
-import { TIMEOUTS } from "../config.js";
+import { logger } from "../lib/logger.js";
+import { TIMEOUTS } from "../lib/config.js";
 
 let _stripe: Stripe | null = null;
 let _stripeKey: string | undefined;
@@ -16,7 +16,7 @@ export function getStripeClient(): Stripe | null {
   if (!_stripe || _stripeKey !== key) {
     _stripeKey = key;
     _stripe = new Stripe(key, {
-      apiVersion: '2025-04-30.basil',
+      apiVersion: '2026-04-22.dahlia',
       timeout: TIMEOUTS.stripe,
       maxNetworkRetries: 2,
     });

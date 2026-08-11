@@ -7,7 +7,7 @@ export interface LLMVisibilityResult {
   checkedAt: string;
 }
 
-export async function checkLLMVisibility(url: string, keyword: string): Promise<LLMVisibilityResult> {
+export async function checkLLMVisibility(url: string, keyword: string, _orgId?: string): Promise<LLMVisibilityResult> {
   const domain = (() => { try { return new URL(url).hostname; } catch { return url; } })();
 
   const models = [

@@ -86,4 +86,4 @@ export async function generateMarketReport(orgId: string): Promise<Record<string
   return { id, ...dashboard };
 }
 
-export async function detectCompetitorMovements(_orgId: string): Promise<void> {}
+export async function detectCompetitorMovements(_orgId: string, _domain?: string): Promise<void> {}

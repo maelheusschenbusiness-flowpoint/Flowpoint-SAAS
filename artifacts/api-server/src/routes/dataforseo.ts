@@ -3,8 +3,8 @@
  * Handles auth, retry, timeout for SERP, Local Pack, and Maps endpoints.
  */
 
-import { logger } from "../logger.js";
-import { TIMEOUTS, RETRY_CONFIG } from "../config.js";
+import { logger } from "../lib/logger.js";
+import { TIMEOUTS, RETRY_CONFIG } from "../lib/config.js";
 
 const BASE_URL = 'https://api.dataforseo.com/v3';
 

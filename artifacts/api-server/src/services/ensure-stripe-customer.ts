@@ -226,7 +226,8 @@ async function _runWithLock(
         query: `metadata['orgId']:'${orgId}'`,
         limit: 5,
       });
-      orphan = search.data.find((c) => !(c as { deleted?: boolean }).deleted) ?? null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      orphan = search.data.find((c: any) => !(c as { deleted?: boolean }).deleted) ?? null;
       logger.debug(
         { orgId, found: !!orphan, orphanId: orphan?.id ?? null, stripeMs: Date.now() - t3 },
         "[ESC][DEBUG] Step 3 — metadata search complete",

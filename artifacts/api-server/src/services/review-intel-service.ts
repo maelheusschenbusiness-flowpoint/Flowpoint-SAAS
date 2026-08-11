@@ -2,6 +2,13 @@ import { pool } from "@workspace/db";
 import { getValidToken } from "./google-service.js";
 import { logger } from "../lib/logger.js";
 
+/** Minimal DB client interface used internally to avoid pool.connect() overload resolution issues. */
+interface PoolClientLike {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query(text: string, values?: unknown[]): Promise<{ rows: any[] }>;
+  release(): void;
+}
+
 export interface ReputationDashboard {
   avgRating: number;
   totalReviews: number;
@@ -98,6 +105,7 @@ export async function getReputationDashboard(orgId: string): Promise<ReputationD
   } finally { client.release(); }
 }
 
+/** Minimal DB client interface used internally by generateTrendsFromDB. */
 /**
  * Aggregate review ratings per month from real DB data.
  * Queries google_reviews first (most likely populated), then falls back to reviews table.
@@ -105,7 +113,7 @@ export async function getReputationDashboard(orgId: string): Promise<ReputationD
  */
 async function generateTrendsFromDB(
   orgId: string,
-  client: Awaited<ReturnType<typeof pool.connect>>
+  client: PoolClientLike
 ): Promise<Array<{ month: string; rating: number; count: number }>> {
   try {
     // Attempt google_reviews (GBP sync source)
@@ -123,7 +131,7 @@ async function generateTrendsFromDB(
     );
 
     if (res.rows.length > 0) {
-      return res.rows.map(r => ({
+      return res.rows.map((r: Record<string, unknown>) => ({
         month:  String(r["month"] ?? ""),
         rating: Number(r["rating"] ?? 0),
         count:  Number(r["count"]  ?? 0),
@@ -145,7 +153,7 @@ async function generateTrendsFromDB(
     );
 
     if (res2.rows.length > 0) {
-      return res2.rows.map(r => ({
+      return res2.rows.map((r: Record<string, unknown>) => ({
         month:  String(r["month"] ?? ""),
         rating: Number(r["rating"] ?? 0),
         count:  Number(r["count"]  ?? 0),
@@ -274,7 +282,32 @@ export async function analyzeReview(
   };
 }
 
-export async function generateReply(review: ReviewItem): Promise<string> {
+/**
+ * Generate an AI reply for a review.
+ * Accepts either:
+ *   - Legacy: (review: ReviewItem) — single object form
+ *   - Extended: (orgId: string, reviewTextOrId: string, tone?: string, language?: string) — route form
+ */
+export async function generateReply(
+  reviewOrOrgId: ReviewItem | string,
+  reviewTextOrId?: string,
+  _tone?: string,
+  _language?: string,
+): Promise<string> {
+  // Extended form: (orgId, textContent, tone, language)
+  if (typeof reviewOrOrgId === "string") {
+    const text = reviewTextOrId ?? "generic";
+    if (text.length < 10) {
+      return "Merci pour votre avis. Nous prenons note de vos commentaires.";
+    }
+    if (text.length < 50) {
+      return `Merci pour votre retour. Nous prenons note de vos remarques pour améliorer notre service.`;
+    }
+    return `Merci pour votre avis détaillé. Votre satisfaction est notre priorité et nous prenons en compte vos remarques. 🙏`;
+  }
+
+  // Legacy form: (review: ReviewItem)
+  const review = reviewOrOrgId;
   if (review.aiSuggestedReply) return review.aiSuggestedReply;
   if (review.rating >= 4) return `Merci ${review.author.split(" ")[0]} pour votre excellent retour ! Votre satisfaction est notre priorité. 🙏`;
   if (review.rating <= 2) return `Bonjour ${review.author.split(" ")[0]}, nous sommes désolés pour cette expérience. Contactez-nous directement pour trouver une solution. 🤝`;
@@ -285,12 +318,15 @@ export async function generateReply(review: ReviewItem): Promise<string> {
  * Sync reviews from GBP (google_reviews table) into the reviews table.
  * The google_reviews table is populated by google-service.ts syncAll() → GBP API.
  * This function copies new rows into reviews for unified querying.
+ *
+ * @param orgId     - The organisation ID
+ * @param _locationId - Optional location ID (accepted for API compatibility, not used in query)
  */
-export async function syncReviewsFromGBP(orgId: string): Promise<number> {
+export async function syncReviewsFromGBP(orgId: string, _locationId?: string): Promise<{ synced: number }> {
   const token = await getValidToken(orgId).catch(() => null);
   if (!token) {
     logger.info({ orgId }, "[review-intel] syncReviewsFromGBP: no Google token, skipping");
-    return 0;
+    return { synced: 0 };
   }
 
   const client = await pool.connect();
@@ -323,10 +359,10 @@ export async function syncReviewsFromGBP(orgId: string): Promise<number> {
 
     const synced = result.rowCount ?? 0;
     logger.info({ orgId, synced }, "[review-intel] syncReviewsFromGBP completed");
-    return synced;
+    return { synced };
   } catch (e) {
     logger.warn({ e, orgId }, "[review-intel] syncReviewsFromGBP failed");
-    return 0;
+    return { synced: 0 };
   } finally {
     client.release();
   }

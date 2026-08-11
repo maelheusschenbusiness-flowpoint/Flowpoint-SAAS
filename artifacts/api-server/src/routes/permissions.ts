@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
+const errStatus = (err: unknown): number => (err && typeof err === "object" && typeof (err as { statusCode?: unknown }).statusCode === "number") ? (err as { statusCode: number }).statusCode : 500;
+const errMsg = (err: unknown): string => errStatus(err) === 500 ? safeErrMsg(err) : (err instanceof Error ? err.message : String(err));
 import { requireAdmin } from "../middlewares/requireAdmin.js";
 import { getRoles, createRole, updateRole, deleteRole, assignRole, getPermissionLogs, getAccessAudits, logAccess, getPermissionsStats, ALL_RESOURCES, ALL_ACTIONS } from "../services/permissions-service.js";
 
@@ -11,14 +13,14 @@ router.get("/permissions", requireAdmin, async (req, res) => {
   try {
     const [roles, stats] = await Promise.all([getRoles(org(req)), getPermissionsStats(org(req))]);
     res.json({ roles, stats, resources: ALL_RESOURCES, actions: ALL_ACTIONS, plan: plan(req) });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 router.get("/permissions/roles", requireAdmin, async (req, res) => {
   try {
     const roles = await getRoles(org(req));
     res.json({ roles, count: roles.length });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 router.post("/roles/create", requireAdmin, async (req, res) => {
@@ -38,18 +40,18 @@ router.post("/roles/create", requireAdmin, async (req, res) => {
 
 router.patch("/roles/update/:id", requireAdmin, async (req, res) => {
   try {
-    await updateRole(org(req), req.params.id, req.body as Partial<{ name: string; description: string; color: string; permissions: string[] }>);
-    await logAccess(org(req), 'system', 'role.updated', 'permissions', { roleId: req.params.id });
+    await updateRole(org(req), req.params["id"] as string, req.body as Partial<{ name: string; description: string; color: string; permissions: string[] }>);
+    await logAccess(org(req), 'system', 'role.updated', 'permissions', { roleId: req.params["id"] as string });
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 router.delete("/roles/delete/:id", requireAdmin, async (req, res) => {
   try {
-    await deleteRole(org(req), req.params.id);
-    await logAccess(org(req), 'system', 'role.deleted', 'permissions', { roleId: req.params.id });
+    await deleteRole(org(req), req.params["id"] as string);
+    await logAccess(org(req), 'system', 'role.deleted', 'permissions', { roleId: req.params["id"] as string });
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 router.patch("/team/permissions", requireAdmin, async (req, res) => {
@@ -59,7 +61,7 @@ router.patch("/team/permissions", requireAdmin, async (req, res) => {
     await assignRole(org(req), userId, roleId, grantedBy);
     await logAccess(org(req), grantedBy, 'role.assigned', 'team', { userId, roleId });
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 router.get("/access/logs", requireAdmin, async (req, res) => {
@@ -67,7 +69,7 @@ router.get("/access/logs", requireAdmin, async (req, res) => {
   try {
     const [logs, audits] = await Promise.all([getPermissionLogs(org(req), limit), getAccessAudits(org(req), limit)]);
     res.json({ logs, audits, count: logs.length });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 // NOTE: POST /team/invite is handled by teamRouter (routes/team.ts) which does

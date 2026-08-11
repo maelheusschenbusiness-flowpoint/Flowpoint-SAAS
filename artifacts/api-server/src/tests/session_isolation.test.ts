@@ -97,7 +97,7 @@ async function req(
 // ── S1: Bearer A + Cookie B → Account A on all endpoints ────────────────────
 
 async function testS1(a: { orgId: string; token: string; email: string },
-                      b: { orgId: string; token: string }) {
+                      b: { orgId: string; token: string; email?: string }) {
   report.push("\nS1 — Bearer A + Cookie B → all responses belong to Account A");
 
   const endpoints = [

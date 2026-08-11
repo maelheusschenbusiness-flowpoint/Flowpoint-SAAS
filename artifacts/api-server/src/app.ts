@@ -44,20 +44,18 @@ app.use(
 app.use(requestId);
 
 // ── 2. Structured HTTP logging ────────────────────────────────────────────────
-app.use(
-  pinoHttp({
-    logger,
-    genReqId: (req) => (req as { id?: string }).id ?? "unknown",
-    serializers: {
-      req(req) {
-        return { id: req.id, method: req.method, url: req.url?.split("?")[0] };
-      },
-      res(res) {
-        return { statusCode: res.statusCode };
-      },
-    },
-  }),
-);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const pinoMiddleware = (pinoHttp as any)({
+  logger,
+  genReqId: (req: { id?: string }) => req.id ?? "unknown",
+  serializers: {
+    req: (req: { id?: string; method?: string; url?: string }) => ({
+      id: req.id, method: req.method, url: req.url?.split("?")[0],
+    }),
+    res: (res: { statusCode?: number }) => ({ statusCode: res.statusCode }),
+  },
+}) as import("express").RequestHandler;
+app.use(pinoMiddleware);
 
 // ── 3. Security headers ───────────────────────────────────────────────────────
 app.use(

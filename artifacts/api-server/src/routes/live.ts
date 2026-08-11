@@ -52,7 +52,7 @@ router.get("/realtime", async (req: Request, res: Response) => {
   try {
     const orgId = getOrgId(req);
     const data = await getLiveRealtime(orgId);
-    res.json({ ok: true, source: "ga4", ...data });
+    res.json({ ok: true, ...data, source: "ga4" });
   } catch (e) {
     handleError(res, e, "GET /live/realtime");
   }

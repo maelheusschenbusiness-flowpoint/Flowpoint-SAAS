@@ -152,7 +152,7 @@ Réponds UNIQUEMENT avec le JSON array.`;
   }
 }
 
-export async function runMissionEngine(orgId = "default"): Promise<number> {
+export async function runMissionEngine(orgId = "default", _trigger?: string): Promise<Record<string, unknown>> {
   const client = await pool.connect();
   try {
     const existing = await client.query(
@@ -160,9 +160,9 @@ export async function runMissionEngine(orgId = "default"): Promise<number> {
       [orgId]
     );
     const count = Number(existing.rows[0]?.count ?? 0);
-    if (count >= 10) return 0;
+    if (count >= 10) return { inserted: 0 };
     const slots = Math.max(0, 8 - count);
-    if (slots === 0) return 0;
+    if (slots === 0) return { inserted: 0 };
 
     // Read real audit data from DB
     let auditData: Array<{id: string; url: string; score: number; speed: number; issues: number; criticalIssues: string[]; opportunities: string[]}> = [];
@@ -281,10 +281,10 @@ export async function runMissionEngine(orgId = "default"): Promise<number> {
       ).catch(err => logger.warn({ err, id }, "[mission-engine] Insert failed — skipping"));
       inserted++;
     }
-    return inserted;
+    return { inserted };
   } catch (err) {
     logger.error({ err }, "[mission-engine] runMissionEngine failed");
-    return 0;
+    return { inserted: 0 };
   } finally {
     client.release();
   }

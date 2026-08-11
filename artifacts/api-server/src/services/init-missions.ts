@@ -103,7 +103,7 @@ export async function initMissionsTables(): Promise<void> {
     `);
     logger.info("Missions tables initialized");
   } catch (err) {
-    logger.error("Failed to init missions tables", { err });
+    logger.error({ err }, "Failed to init missions tables");
     throw err;
   } finally {
     client.release();

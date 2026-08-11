@@ -51,7 +51,7 @@ router.get("/query", async (req: Request, res: Response) => {
     });
     res.json(result);
   } catch (err) {
-    logger.warn("[data-explorer] query error:", (err as Error).message);
+    logger.warn({ err: (err as Error).message }, "[data-explorer] query error");
     res.status(500).json({ error: "Query failed" });
   }
 });
@@ -90,7 +90,7 @@ router.get("/export", async (req: Request, res: Response) => {
       res.json(result);
     }
   } catch (err) {
-    logger.warn("[data-explorer] export error:", (err as Error).message);
+    logger.warn({ err: (err as Error).message }, "[data-explorer] export error");
     res.status(500).json({ error: "Export failed" });
   }
 });

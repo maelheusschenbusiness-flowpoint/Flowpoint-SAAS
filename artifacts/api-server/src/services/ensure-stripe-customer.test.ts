@@ -440,8 +440,8 @@ describe("ensureStripeCustomer — v4", async () => {
 
       // Simulate UPDATE failure — make client.query throw on UPDATE
       const { pool } = await import("@workspace/db");
-      const originalConnect = (pool.connect as MockInstance).getMockImplementation();
-      (pool.connect as MockInstance).mockImplementationOnce(async () => {
+      const originalConnect = (pool.connect as unknown as MockInstance).getMockImplementation();
+      (pool.connect as unknown as MockInstance).mockImplementationOnce(async () => {
         const client = await (originalConnect ? originalConnect() : Promise.resolve(makeFakeClient([])));
         const originalQuery = client.query;
         let updateCallCount = 0;

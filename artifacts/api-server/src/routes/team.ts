@@ -946,7 +946,7 @@ router.post("/organizations/:id/switch", async (req: Request, res: Response) => 
   const currentOrg = requireOrg(req, res);
   if (!currentOrg) return;
 
-  const targetOrgId = req.params.id;
+  const targetOrgId = req.params["id"] as string;
   const callerEmail = req.orgContext?.email ?? "";
 
   if (!callerEmail) {

@@ -44,6 +44,7 @@ export default defineConfig({
       "src/services/ga4-property-discovery.test.ts",
       "src/routes/chat-notifications.test.ts",
       "src/routes/addon-only-checkout.test.ts",
+      "src/tests/cross_tenant_rbac_sso.test.ts",
     ],
     environment: "node",
     globals:     false,

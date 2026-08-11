@@ -40,6 +40,36 @@ async function schemaAlreadyMigrated(): Promise<boolean> {
 }
 
 async function main() {
+  // ── 0-pre. Google Maps server key aliasing ─────────────────────────────────
+  //
+  // FLOWPOINT_MAP_BACKEND is the canonical name for the new server-side Maps
+  // key (API-restricted only, no referer restriction). All backend Maps code
+  // reads GOOGLE_MAPS_API_KEY. Alias once here so neither the services nor the
+  // routes need to be aware of the env-var rename.
+  //
+  // Rules:
+  //  • FLOWPOINT_MAP_BACKEND takes precedence over whatever GOOGLE_MAPS_API_KEY
+  //    happens to contain (the old key was referer-restricted and useless for
+  //    server calls).
+  //  • GOOGLE_MAPS_PUBLIC_KEY is the browser key; it must never be overwritten.
+  //  • This block never logs key values — only presence.
+  {
+    const backendKey = process.env["FLOWPOINT_MAP_BACKEND"];
+    if (backendKey) {
+      process.env["GOOGLE_MAPS_API_KEY"] = backendKey;
+      logger.info("[Maps] GOOGLE_MAPS_API_KEY aliased from FLOWPOINT_MAP_BACKEND (server key, no referer restriction)");
+    } else if (process.env["GOOGLE_MAPS_API_KEY"]) {
+      logger.warn("[Maps] FLOWPOINT_MAP_BACKEND not set — falling back to existing GOOGLE_MAPS_API_KEY (may be referer-restricted)");
+    } else {
+      logger.warn("[Maps] No Maps server key configured (FLOWPOINT_MAP_BACKEND / GOOGLE_MAPS_API_KEY) — Geocoding/Places/Distance Matrix disabled");
+    }
+    // Audit: ensure the browser key is distinct from the server key
+    const browserKey = process.env["GOOGLE_MAPS_PUBLIC_KEY"] ?? "";
+    if (backendKey && browserKey && backendKey === browserKey) {
+      logger.warn("[Maps] FLOWPOINT_MAP_BACKEND and GOOGLE_MAPS_PUBLIC_KEY are identical — the server key should be a separate credential");
+    }
+  }
+
   // ── 0. Stripe configuration safety guard ──────────────────────────────────
   //
   // Refuse to start if NODE_ENV=production is active with test-mode Stripe
@@ -237,7 +267,10 @@ async function main() {
     // Add it here so ai_recommendations / ai_workspace_profiles etc. are always present.
     await runCriticalStartupStep("AI migration", initAiMigration)
       .catch((err: unknown) => {
-        logger.warn({ err }, "[startup] AI migration step failed (non-fatal)");
+        // Non-fatal for the rest of the app, but AI POST endpoints are gated on
+        // isAiMigrationComplete() and will return 503 AI_SCHEMA_NOT_READY until
+        // a successful run — quota/usage writes can never silently break.
+        logger.error({ err }, "[startup] AI migration FAILED — AI endpoints disabled (503 AI_SCHEMA_NOT_READY) until schema is repaired");
       });
 
     // AI Agents Phase 3 — colonnes calendrier IA (idempotent: IF NOT EXISTS)

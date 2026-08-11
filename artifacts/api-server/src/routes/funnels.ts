@@ -39,7 +39,7 @@ function assertValidUUID(id: string): void {
 
 // ── Org context extraction ────────────────────────────────────────────────────
 
-interface OrgReq extends Request {
+interface OrgReq {
   orgId?: string;
   orgContext?: { orgId?: string };
 }

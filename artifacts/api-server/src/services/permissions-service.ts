@@ -54,40 +54,62 @@ export async function getRoles(orgId: string): Promise<Role[]> {
   } catch { return SYSTEM_ROLES; } finally { client.release(); }
 }
 
-export async function createRole(orgId: string, data: { name: string; description?: string; permissions: Record<string, string[]> }): Promise<Role> {
+export async function createRole(orgId: string, planOrData?: string | { name: string; description?: string; color?: string; permissions?: string[] | Record<string, string[]>; parentRoleId?: string }, data?: { name?: string; description?: string; color?: string; permissions?: string[] | Record<string, string[]>; parentRoleId?: string }): Promise<Role> {
+  // Resolve overloaded call: (orgId, plan, data) or (orgId, data)
+  const resolvedData: { name?: string; description?: string; color?: string; permissions?: string[] | Record<string, string[]>; parentRoleId?: string } =
+    typeof planOrData === "object" && planOrData !== null ? planOrData : (data ?? {});
   const client = await pool.connect();
   try {
     const id = `role_${orgId}_${Date.now()}`;
     await client.query(
       `INSERT INTO roles (id, org_id, name, description, is_system, permissions, created_at)
        VALUES ($1,$2,$3,$4,false,$5,NOW())`,
-      [id, orgId, data.name, data.description ?? null, JSON.stringify(data.permissions)]
+      [id, orgId, resolvedData.name, resolvedData.description ?? null, JSON.stringify(resolvedData.permissions ?? {})]
     );
     const res = await client.query(`SELECT * FROM roles WHERE id=$1`, [id]);
     return res.rows[0];
   } finally { client.release(); }
 }
 
-export async function updateRole(id: string, data: Partial<{ name: string; description: string; permissions: Record<string, string[]> }>): Promise<Role> {
+export async function updateRole(orgId: string, id: string, data: Partial<{ name: string; description: string; color: string; permissions: string[] | Record<string, string[]> }> = {}): Promise<Role> {
   const client = await pool.connect();
   try {
-    if (data.name) await client.query(`UPDATE roles SET name=$1, updated_at=NOW() WHERE id=$2`, [data.name, id]);
-    if (data.permissions) await client.query(`UPDATE roles SET permissions=$1, updated_at=NOW() WHERE id=$2`, [JSON.stringify(data.permissions), id]);
-    const res = await client.query(`SELECT * FROM roles WHERE id=$1`, [id]);
+    // Tenant isolation: every mutation is scoped to org_id — a role id from
+    // another organization must never be reachable, even for admins.
+    if (data.name) {
+      const r = await client.query(`UPDATE roles SET name=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3`, [data.name, id, orgId]);
+      if (r.rowCount === 0) throw Object.assign(new Error("Role not found"), { statusCode: 404 });
+    }
+    if (data.permissions) {
+      const r = await client.query(`UPDATE roles SET permissions=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3`, [JSON.stringify(data.permissions), id, orgId]);
+      if (r.rowCount === 0) throw Object.assign(new Error("Role not found"), { statusCode: 404 });
+    }
+    const res = await client.query(`SELECT * FROM roles WHERE id=$1 AND org_id=$2`, [id, orgId]);
+    if (!res.rows[0]) throw Object.assign(new Error("Role not found"), { statusCode: 404 });
     return res.rows[0];
   } finally { client.release(); }
 }
 
-export async function deleteRole(id: string): Promise<void> {
+export async function deleteRole(orgId: string, id: string): Promise<void> {
   const client = await pool.connect();
-  try { await client.query(`DELETE FROM roles WHERE id=$1 AND is_system=false`, [id]); }
-  finally { client.release(); }
+  try {
+    const r = await client.query(`DELETE FROM roles WHERE id=$1 AND org_id=$2 AND is_system=false`, [id, orgId]);
+    if (r.rowCount === 0) throw Object.assign(new Error("Role not found"), { statusCode: 404 });
+  } finally { client.release(); }
 }
 
-export async function assignRole(userId: string, roleId: string): Promise<void> {
+export async function assignRole(orgId: string, userId: string, roleId: string, _grantedBy?: string): Promise<void> {
   const client = await pool.connect();
-  try { await client.query(`UPDATE team_members SET role_id=$1, updated_at=NOW() WHERE user_id=$2`, [roleId, userId]); }
-  finally { client.release(); }
+  try {
+    // Role must belong to the caller's org (system role ids are org-agnostic),
+    // and the member row update is org-scoped.
+    if (!roleId.startsWith("role_admin") && !roleId.startsWith("role_member") && !roleId.startsWith("role_viewer")) {
+      const owns = await client.query(`SELECT 1 FROM roles WHERE id=$1 AND org_id=$2`, [roleId, orgId]);
+      if (owns.rowCount === 0) throw Object.assign(new Error("Role not found"), { statusCode: 404 });
+    }
+    const r = await client.query(`UPDATE team_members SET role_id=$1, updated_at=NOW() WHERE user_id=$2 AND org_id=$3`, [roleId, userId, orgId]);
+    if (r.rowCount === 0) throw Object.assign(new Error("Member not found"), { statusCode: 404 });
+  } finally { client.release(); }
 }
 
 export async function getPermissionLogs(orgId: string, limit = 50): Promise<PermissionLog[]> {
@@ -105,14 +127,27 @@ export async function getAccessAudits(orgId: string, limit = 50): Promise<Permis
   return getPermissionLogs(orgId, limit);
 }
 
-export async function logAccess(opts: { orgId: string; userId: string; resource: string; action: string; allowed: boolean; reason?: string }): Promise<void> {
+export async function logAccess(
+  optsOrOrgId: { orgId: string; userId: string; resource: string; action: string; allowed: boolean; reason?: string } | string,
+  userId?: string,
+  action?: string,
+  resource?: string,
+  _metadata?: Record<string, unknown>,
+): Promise<void> {
+  // Resolve overloaded call: (opts) or (orgId, userId, action, resource, metadata)
+  const orgId    = typeof optsOrOrgId === "string" ? optsOrOrgId : optsOrOrgId.orgId;
+  const resolvedUserId   = typeof optsOrOrgId === "string" ? (userId ?? "system") : optsOrOrgId.userId;
+  const resolvedAction   = typeof optsOrOrgId === "string" ? (action ?? "") : optsOrOrgId.action;
+  const resolvedResource = typeof optsOrOrgId === "string" ? (resource ?? "") : optsOrOrgId.resource;
+  const allowed  = typeof optsOrOrgId === "string" ? true : optsOrOrgId.allowed;
+  const reason   = typeof optsOrOrgId === "string" ? null : (optsOrOrgId.reason ?? null);
   const client = await pool.connect();
   try {
     const id = `perm_${Date.now()}_${Math.random().toString(36).slice(2, 4)}`;
     await client.query(
       `INSERT INTO permission_logs (id, org_id, user_id, resource, action, allowed, reason, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,NOW()) ON CONFLICT DO NOTHING`,
-      [id, opts.orgId, opts.userId, opts.resource, opts.action, opts.allowed, opts.reason ?? null]
+      [id, orgId, resolvedUserId, resolvedResource, resolvedAction, allowed, reason]
     );
   } catch (err) { logger.debug({ err }, "[permissions] logAccess error"); }
   finally { client.release(); }

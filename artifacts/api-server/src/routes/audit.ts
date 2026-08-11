@@ -5,7 +5,7 @@
  */
 
 import { pool } from "@workspace/db";
-import { logger } from "./logger.js";
+import { logger } from "../lib/logger.js";
 
 export type AuditAction =
   | 'auth.login' | 'auth.logout' | 'auth.failed' | 'auth.sso_login'

@@ -4,9 +4,9 @@
  */
 
 import OpenAI from "openai";
-import { logger } from "../logger.js";
-import { TIMEOUTS, RETRY_CONFIG, AI_LIMITS, normalizePlan } from "../config.js";
-import { store } from "../../services/store.js";
+import { logger } from "../lib/logger.js";
+import { TIMEOUTS, RETRY_CONFIG, AI_LIMITS, normalizePlan } from "../lib/config.js";
+import { store } from "../services/store.js";
 import { resolveOpenAIConnection, aiConfigured } from "../lib/openai-client.js";
 
 let _client: OpenAI | null = null;

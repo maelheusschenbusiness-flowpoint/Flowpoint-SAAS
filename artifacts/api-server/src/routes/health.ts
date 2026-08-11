@@ -104,7 +104,7 @@ router.get("/healthz/deep", async (_req, res) => {
       3000,
       s => s === 200  // 401 = invalid key → "down"
     );
-    if (checks.stripe.httpStatus === 401) checks.stripe.detail = "HTTP 401 — invalid Stripe secret key";
+    if ((checks.stripe as ProbeResult).httpStatus === 401) checks.stripe.detail = "HTTP 401 — invalid Stripe secret key";
   } else {
     checks.stripe = { status: "degraded", latencyMs: 0, detail: "STRIPE_SECRET_KEY not set — checkout disabled in production" };
   }

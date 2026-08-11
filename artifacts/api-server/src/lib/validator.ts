@@ -32,14 +32,14 @@ export function validate<T extends z.ZodTypeAny>(
       return;
     }
     // Attach parsed data back to request
-    (req as Record<string, unknown>)[`validated_${target}`] = result.data as unknown;
+    (req as unknown as Record<string, unknown>)[`validated_${target}`] = result.data as unknown;
     next();
   };
 }
 
 /** Get validated data attached by validate() middleware */
 export function validated<T>(req: Request, target: ValidateTarget = 'body'): T {
-  return (req as Record<string, unknown>)[`validated_${target}`] as T;
+  return (req as unknown as Record<string, unknown>)[`validated_${target}`] as T;
 }
 
 // ── Shared schemas ────────────────────────────────────────────────────────────

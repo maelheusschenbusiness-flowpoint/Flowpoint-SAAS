@@ -5,6 +5,7 @@
 import { Router, type Request, type Response } from "express";
 import { requireOrgId } from "../lib/require-org-id.js";
 import { loadOrgSettings } from "../services/org-settings.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -21,7 +22,7 @@ router.get("/security/score", async (req: Request, res: Response): Promise<void>
   if (!orgId) return;
   try {
     const settings = await loadOrgSettings(orgId);
-    const twoFaOn  = !!(settings as Record<string, unknown>)?.twoFactorEnabled;
+    const twoFaOn  = !!(settings as unknown as Record<string, unknown>)?.twoFactorEnabled;
     const hasPlan  = !!settings?.plan;
 
     const checks = [

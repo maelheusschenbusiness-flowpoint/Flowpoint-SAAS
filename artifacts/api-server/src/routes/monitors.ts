@@ -145,7 +145,7 @@ async function saveCheckResult(
 
   // BUG-W2-ALT-003 B3: hoisted so latency/uptime rule evaluation (post-commit)
   // can access the real values computed inside the withOrgDb transaction.
-  let capturedUptimePct = 100;
+  let capturedUptimePct: number | null = 100;
 
   await withOrgDb(orgId, async (client) => {
     // 1. Insert check record
@@ -241,20 +241,25 @@ async function saveCheckResult(
   // Fire-and-forget notifications AFTER the transaction has committed and
   // its client has been released — never touch the transaction's client here.
   if (notifyAfterCommit) {
+    type NotifyPayload =
+      | { kind: "down"; mon: Record<string, unknown> | undefined }
+      | { kind: "up"; mon: Record<string, unknown> | undefined; downDurationMin: number };
+    const _notify = notifyAfterCommit as NotifyPayload;
     (async () => {
       try {
         const { mailer } = await import("../services/mailer.js");
         const { store } = await import("../services/store.js");
-        const mon = notifyAfterCommit!.mon;
+        const mon = _notify.mon;
         if (!mon) return;
 
-        const isDown = notifyAfterCommit!.kind === "down";
+        const isDown = _notify.kind === "down";
         const notifTitle = isDown
           ? `Monitor DOWN : ${String(mon.name)}`
           : `Monitor rétabli : ${String(mon.name)}`;
+        const downDurationMin = isDown ? 0 : (_notify as { kind: "up"; mon: Record<string, unknown> | undefined; downDurationMin: number }).downDurationMin;
         const notifMessage = isDown
           ? `${String(mon.url)} est inaccessible.`
-          : `${String(mon.url)} est de nouveau opérationnel (indisponible ${notifyAfterCommit!.downDurationMin ?? 0} min).`;
+          : `${String(mon.url)} est de nouveau opérationnel (indisponible ${downDurationMin ?? 0} min).`;
 
         // Write to notifications table so the dashboard bell shows it — awaited for reliability
         const _notifClient = await pool.connect();
@@ -283,7 +288,7 @@ async function saveCheckResult(
           label: notifTitle,
           targetId: monitorId,
           targetType: "monitor",
-          metadata: { url: String(mon.url), kind: notifyAfterCommit!.kind },
+          metadata: { url: String(mon.url), kind: _notify.kind },
           orgId,
         }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
@@ -321,7 +326,7 @@ async function saveCheckResult(
               to: recipient,
               monitorName: String(mon.name),
               url: String(mon.url),
-              downDurationMin: notifyAfterCommit!.downDurationMin ?? 0,
+              downDurationMin: downDurationMin ?? 0,
             });
           }
         }
@@ -701,7 +706,7 @@ router.patch("/monitors/:id", canWrite, async (req: Request, res: Response) => {
 // ── POST /monitors/:id/check  (alias: /ping) ──────────────────────────────────
 
 async function handleCheck(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const id = req.params["id"] as string;
   try {
     // ── QA injection path ────────────────────────────────────────────────────
     // Must run BEFORE req.orgDb: service credential has orgId="default" so the
@@ -738,7 +743,7 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
           ok:         !!q.ok,
           statusCode: Number(q.statusCode) || (q.ok ? 200 : 503),
           latencyMs:  Math.max(1, Number(q.latencyMs) || 10),
-          error:      typeof q.error === "string" ? q.error : undefined,
+          error:      typeof q.error === "string" ? q.error : null,
         };
         const { newStatus } = await saveCheckResult(id, orgId, previousStatus, result);
         const updated = await client.query(`SELECT * FROM monitors WHERE id = $1`, [id]);
@@ -874,7 +879,7 @@ router.post("/monitors/:id/test-sms", canAdmin, async (req: Request, res: Respon
 // RLS ensures cross-org deletes are silently blocked.
 
 router.delete("/monitors/:id", canAdmin, async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params["id"] as string;
   try {
     const existing = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
     if (existing.rowCount === 0) { res.status(404).json({ error: "Monitor not found" }); return; }
@@ -889,7 +894,7 @@ router.delete("/monitors/:id", canAdmin, async (req: Request, res: Response) => 
       label: `Monitor supprimé : ${String(m["name"])} (${String(m["url"])})`,
       targetId: id, targetType: "monitor",
       metadata: { url: m["url"], name: m["name"] },
-      orgId: String(m["org_id"] ?? (req as Record<string, unknown>)["orgId"] ?? "default"),
+      orgId: String(m["org_id"] ?? (req as unknown as Record<string, unknown>)["orgId"] ?? "default"),
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
     res.json({ ok: true });

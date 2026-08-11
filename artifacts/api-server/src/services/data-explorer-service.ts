@@ -40,12 +40,23 @@ function pct(a: unknown, b: unknown): number {
   return total > 0 ? Math.round((safe(a) / total) * 100 * 10) / 10 : 0;
 }
 
+// ── Date helpers ─────────────────────────────────────────────────────────────
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+function dateRange(days: number): { startDate: string; endDate: string } {
+  const end = new Date();
+  const start = new Date(Date.now() - days * 86400000);
+  return { startDate: toDateStr(start), endDate: toDateStr(end) };
+}
+
 // ── GA4 Traffic ─────────────────────────────────────────────────────────────
 async function queryGA4Traffic(orgId: string, opts: DEQueryOpts): Promise<DEResult> {
   const days = opts.days ?? 30;
   let rows: Record<string, unknown>[] = [];
   try {
-    const raw = await getGA4Sources(orgId, days);
+    const { startDate, endDate } = dateRange(days);
+    const raw = await getGA4Sources(orgId, startDate, endDate);
     if (Array.isArray(raw)) {
       const totalSessions = (raw as Record<string, unknown>[]).reduce((s, x) => s + safe(x.sessions), 0);
       rows = raw.map((r: Record<string, unknown>) => ({
@@ -73,7 +84,8 @@ async function queryGA4Pages(orgId: string, opts: DEQueryOpts): Promise<DEResult
   const days = opts.days ?? 30;
   let rows: Record<string, unknown>[] = [];
   try {
-    const raw = await getGA4Pages(orgId, days);
+    const { startDate, endDate } = dateRange(days);
+    const raw = await getGA4Pages(orgId, startDate, endDate);
     if (Array.isArray(raw)) {
       rows = raw.map((r: Record<string, unknown>) => ({
         page: String(r.page ?? r.pagePath ?? "—"),
@@ -98,7 +110,8 @@ async function queryGA4Overview(orgId: string, opts: DEQueryOpts): Promise<DERes
   const days = opts.days ?? 30;
   let rows: Record<string, unknown>[] = [];
   try {
-    const raw = await getGA4Overview(orgId, days);
+    const { startDate, endDate } = dateRange(days);
+    const raw = await getGA4Overview(orgId, startDate, endDate);
     if (raw && typeof raw === "object") {
       const obj = raw as Record<string, unknown>;
       rows = [{
@@ -130,7 +143,8 @@ async function queryGA4Conversions(orgId: string, opts: DEQueryOpts): Promise<DE
   const days = opts.days ?? 30;
   let rows: Record<string, unknown>[] = [];
   try {
-    const raw = await getGA4Conversions(orgId, days);
+    const { startDate, endDate } = dateRange(days);
+    const raw = await getGA4Conversions(orgId, startDate, endDate);
     if (Array.isArray(raw)) {
       rows = raw.map((r: Record<string, unknown>) => ({
         event: String(r.eventName ?? r.event ?? "—"),
@@ -153,13 +167,16 @@ async function queryGSCKeywords(orgId: string, opts: DEQueryOpts): Promise<DERes
   try {
     const raw = await getTopKeywords(orgId, 200, days);
     if (Array.isArray(raw)) {
-      rows = raw.map((r: Record<string, unknown>) => ({
-        keyword: String(r.keyword ?? r.query ?? "—"),
-        clicks: safe(r.clicks),
-        impressions: safe(r.impressions),
-        ctr: safe(r.ctr ?? 0),
-        position: safe(r.position),
-      }));
+      rows = raw.map((item: unknown) => {
+        const r = item as Record<string, unknown>;
+        return {
+          keyword: String(r.keyword ?? r.query ?? "—"),
+          clicks: safe(r.clicks),
+          impressions: safe(r.impressions),
+          ctr: safe(r.ctr ?? 0),
+          position: safe(r.position),
+        };
+      });
     }
   } catch { rows = []; }
   return applyOpts(rows, "gsc_keywords", days, opts, [
@@ -178,13 +195,16 @@ async function queryGSCPages(orgId: string, opts: DEQueryOpts): Promise<DEResult
   try {
     const raw = await getGSCTopPages(orgId, 200, days);
     if (Array.isArray(raw)) {
-      rows = raw.map((r: Record<string, unknown>) => ({
-        page: String(r.page ?? (Array.isArray(r.keys) ? r.keys[0] : "—") ?? "—"),
-        clicks: safe(r.clicks),
-        impressions: safe(r.impressions),
-        ctr: safe(r.ctr ?? 0),
-        position: safe(r.position),
-      }));
+      rows = raw.map((item: unknown) => {
+        const r = item as Record<string, unknown>;
+        return {
+          page: String(r.page ?? (Array.isArray(r.keys) ? r.keys[0] : "—") ?? "—"),
+          clicks: safe(r.clicks),
+          impressions: safe(r.impressions),
+          ctr: safe(r.ctr ?? 0),
+          position: safe(r.position),
+        };
+      });
     }
   } catch { rows = []; }
   return applyOpts(rows, "gsc_pages", days, opts, [

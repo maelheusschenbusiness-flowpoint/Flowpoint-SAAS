@@ -51,7 +51,7 @@ export async function getPostsDashboard(orgId: string): Promise<{
         scheduled: posts.filter(p => p.status === "scheduled").length,
         draft: posts.filter(p => p.status === "draft").length,
         thisMonth: posts.filter(p => {
-          const d = new Date(p.createdAt);
+          const d = new Date(p.created_at);
           const now = new Date();
           return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
         }).length,
@@ -119,7 +119,7 @@ export async function generateAiPost(orgId: string, data?: { locationId?: string
   return { type: postType, content: parsed.content, callToAction: parsed.callToAction || ctaByType[postType] || "En savoir plus" };
 }
 
-export async function publishPost(postId: string): Promise<{ ok: boolean; publishedAt: string }> {
+export async function publishPost(_orgId: string, postId: string): Promise<{ ok: boolean; publishedAt: string }> {
   const client = await pool.connect();
   try {
     const now = new Date().toISOString();
@@ -131,7 +131,7 @@ export async function publishPost(postId: string): Promise<{ ok: boolean; publis
   } finally { client.release(); }
 }
 
-export async function deletePost(postId: string): Promise<void> {
+export async function deletePost(_orgId: string, postId: string): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query(`DELETE FROM gbp_posts WHERE id=$1`, [postId]);

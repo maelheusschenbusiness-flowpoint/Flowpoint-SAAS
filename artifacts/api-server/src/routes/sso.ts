@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
+const errStatus = (err: unknown): number => (err && typeof err === "object" && typeof (err as { statusCode?: unknown }).statusCode === "number") ? (err as { statusCode: number }).statusCode : 500;
+const errMsg = (err: unknown): string => errStatus(err) === 500 ? safeErrMsg(err) : (err instanceof Error ? err.message : String(err));
 import { requireAdmin } from "../middlewares/requireAdmin.js";
 import {
   SSO_PROVIDER_TYPES, getSSODashboard, createSSOProvider,
@@ -98,7 +100,7 @@ router.get("/sso/providers", requireAdmin, async (req, res) => {
   try {
     const data = await getSSODashboard(org(req));
     res.json({ providers: (data as { providers: unknown[] }).providers });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 router.post("/sso/providers", requireAdmin, async (req, res) => {
@@ -131,23 +133,23 @@ router.post("/sso/providers", requireAdmin, async (req, res) => {
 
 router.patch("/sso/providers/:id", requireAdmin, async (req, res) => {
   try {
-    await updateSSOProvider(org(req), req.params.id, req.body as Partial<{ enabled: boolean; enforce_sso: boolean; domain: string; auto_provision: boolean }>);
+    await updateSSOProvider(org(req), req.params["id"] as string, req.body as Partial<{ enabled: boolean; enforce_sso: boolean; domain: string; auto_provision: boolean }>);
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 router.delete("/sso/providers/:id", requireAdmin, async (req, res) => {
   try {
-    await deleteSSOProvider(org(req), req.params.id);
+    await deleteSSOProvider(org(req), req.params["id"] as string);
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 router.get("/sso/auth-config", requireAdmin, async (req, res) => {
   try {
     const config = await getOrgAuthConfig(org(req));
     res.json({ config });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 router.put("/sso/auth-config", requireAdmin, async (req, res) => {
@@ -158,7 +160,7 @@ router.put("/sso/auth-config", requireAdmin, async (req, res) => {
   try {
     await upsertOrgAuthConfig(org(req), { allowedDomains, enforceSso, enforceMfa, sessionTimeout, ipWhitelist, loginMessage });
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 router.get("/sso/login-audits", requireAdmin, async (req, res) => {
@@ -166,7 +168,7 @@ router.get("/sso/login-audits", requireAdmin, async (req, res) => {
   try {
     const logs = await getLoginAudits(org(req), limit);
     res.json({ logs, count: logs.length });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 router.post("/sso/login-audit", requireAdmin, async (req, res) => {
@@ -178,21 +180,21 @@ router.post("/sso/login-audit", requireAdmin, async (req, res) => {
   try {
     await logLoginAttempt(org(req), { userId, email, provider, success, ipAddress, userAgent: req.headers['user-agent'], failureReason });
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 router.get("/sso/sessions", requireAdmin, async (req, res) => {
   try {
     const data = await getSSODashboard(org(req));
-    res.json({ sessions: (data as { active_sessions: unknown[] }).active_sessions });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+    res.json({ sessions: (data as unknown as { active_sessions: unknown[] }).active_sessions });
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 router.post("/sso/sessions/:id/invalidate", requireAdmin, async (req, res) => {
   try {
-    await invalidateSession(org(req), req.params.id);
+    await invalidateSession(org(req), req.params["id"] as string);
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
 // NOTE: SAML ACS, init, metadata, capabilities are on publicSsoRouter (no auth needed).

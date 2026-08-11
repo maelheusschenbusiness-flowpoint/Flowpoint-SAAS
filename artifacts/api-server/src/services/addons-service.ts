@@ -44,7 +44,7 @@ export async function activateAddon(addonKey: string, orgId = "default", quantit
 
     applyAddonToStore(addonKey, true);
     store.broadcast({ type: "addon:activated", addonKey }, orgId);
-    store.logActivity({ type: "team", label: `Add-on activé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`, metadata: { addonKey }, orgId }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
+    store.logActivity({ type: "team", label: `Add-on activé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`, metadata: { addonKey }, orgId }).catch(err => logger.warn({ err: err?.message }, "logActivity failed"));
 
     logger.info({ addonKey, orgId }, "[Addons] Addon activated");
     return true;
@@ -79,7 +79,7 @@ export async function deactivateAddon(addonKey: string, orgId = "default"): Prom
     }
     applyAddonToStore(addonKey, false);
     store.broadcast({ type: "addon:deactivated", addonKey }, orgId);
-    store.logActivity({ type: "team", label: `Add-on désactivé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`, metadata: { addonKey }, orgId }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
+    store.logActivity({ type: "team", label: `Add-on désactivé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`, metadata: { addonKey }, orgId }).catch(err => logger.warn({ err: err?.message }, "logActivity failed"));
     logger.info({ addonKey, orgId }, "[Addons] Addon deactivated");
     return true;
   } catch (err) {
