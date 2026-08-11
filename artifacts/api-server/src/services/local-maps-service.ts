@@ -1,4 +1,5 @@
 import { pool } from "@workspace/db";
+import { logger } from "../lib/logger.js";
 
 export interface Heatmap {
   id: string; org_id: string; name: string; keyword: string;
@@ -28,10 +29,17 @@ export interface MapsDashboard {
   recommendations: Array<{ title: string; description: string; impact: string; effort: string }>;
 }
 
-// ── Server-side geocoding (Google or Nominatim fallback) ─────────────────────
+// ── Server-side geocoding (Google, with explicit Nominatim opt-in fallback) ───
+//
+// Google Maps server calls have one canonical credential:
+//   GOOGLE_MAPS_API_KEY
+//
+// Nominatim is deliberately not an implicit error-swallowing fallback. Enable
+// it only when the operator explicitly sets ALLOW_NOMINATIM_FALLBACK=true.
 async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
-  // Try Google Geocoding API first (if key configured)
-  const googleKey = process.env["GOOGLE_API_KEY"] ?? process.env["GOOGLE_MAPS_KEY"] ?? "";
+  const googleKey = process.env["GOOGLE_MAPS_API_KEY"] ?? "";
+  const allowNominatimFallback = process.env["ALLOW_NOMINATIM_FALLBACK"] === "true";
+
   if (googleKey) {
     try {
       const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${googleKey}&language=fr`;
@@ -45,11 +53,26 @@ async function geocodeAddress(address: string): Promise<{ lat: number; lng: numb
           const loc = data.results[0].geometry.location;
           return { lat: loc.lat, lng: loc.lng };
         }
+        if (!allowNominatimFallback) {
+          logger.warn({ googleStatus: data.status }, "[local-maps] Google geocoding rejected the request; Nominatim fallback is disabled");
+          return null;
+        }
+      } else if (!allowNominatimFallback) {
+        logger.warn({ status: r.status }, "[local-maps] Google geocoding HTTP failure; Nominatim fallback is disabled");
+        return null;
       }
-    } catch { /* fall through to Nominatim */ }
+    } catch (err) {
+      if (!allowNominatimFallback) {
+        logger.warn({ err }, "[local-maps] Google geocoding failed; Nominatim fallback is disabled");
+        return null;
+      }
+    }
+  } else if (!allowNominatimFallback) {
+    logger.warn("[local-maps] GOOGLE_MAPS_API_KEY is missing; Nominatim fallback is disabled");
+    return null;
   }
 
-  // Fallback: Nominatim / OSM (no API key required)
+  // Explicit fallback: Nominatim / OSM (no API key required).
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=fr`;
     const ctrl = new AbortController();
@@ -63,7 +86,9 @@ async function geocodeAddress(address: string): Promise<{ lat: number; lng: numb
       const data = await r.json() as Array<{ lat: string; lon: string }>;
       if (data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    logger.warn({ err }, "[local-maps] Nominatim fallback failed");
+  }
 
   return null;
 }

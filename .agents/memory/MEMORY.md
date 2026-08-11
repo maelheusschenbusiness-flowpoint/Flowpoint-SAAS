@@ -145,3 +145,4 @@
 - [Maps browser key boundary](maps-browser-key-fallback.md) — /maps/config serializes ONLY GOOGLE_MAPS_PUBLIC_KEY/BROWSER_KEY; server keys (GOOGLE_MAPS_API_KEY/GOOGLE_API_KEY) never reach the browser; visible error card when absent
 - [Add-on-only checkout flow](addon-only-checkout-flow.md) — empty-plan carts must quote via subscriber's real plan (inclusionPlan) and finalize must provision recurring add-ons, not just credits
 - [organizations UUID joins](organizations-uuid-joins.md) — organizations.id is uuid; joins vs text org_id need ::text; QA orgs must be randomUUID with an organizations row or AI routes 402
+- [Maps server key state](maps-server-key-state.md) — GOOGLE_MAPS_API_KEY holds the referer-restricted browser key; all backend Maps REST calls REQUEST_DENIED until a real server key is set; code is correct, don't touch it
