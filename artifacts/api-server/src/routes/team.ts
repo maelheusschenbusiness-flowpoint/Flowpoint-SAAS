@@ -71,7 +71,7 @@ function buildInviteUrl(rawToken: string, email: string): string {
 }
 
 /** Resolve plan seat limit — reads from organizations (Jalon 1 source of truth).
- *  Falls back to org_settings.plan_id when the webhook has not yet updated organizations.plan,
+ *  Falls back to org_settings.plan when the webhook has not yet updated organizations.plan,
  *  taking whichever source gives the higher teamMembers limit (avoids blocking invites after upgrade).
  */
 async function getOrgSeatLimit(orgId: string): Promise<{ limit: number; plan: string }> {
@@ -79,10 +79,10 @@ async function getOrgSeatLimit(orgId: string): Promise<{ limit: number; plan: st
     const r = await pool.query<{ plan: string; legacy_plan: string }>(
       `SELECT
          COALESCE(NULLIF(o.plan,''), 'standard')              AS plan,
-         COALESCE(NULLIF(os.plan_id,''), '')                  AS legacy_plan
+         COALESCE(NULLIF(os.plan,''), '')                     AS legacy_plan
        FROM organizations o
-       LEFT JOIN org_settings os ON os.org_id = o.id
-       WHERE o.id = $1 LIMIT 1`,
+       LEFT JOIN org_settings os ON os.org_id = o.id::text
+       WHERE o.id::text = $1 LIMIT 1`,
       [orgId]
     );
     const plan1  = (r.rows[0]?.plan        ?? "standard").toLowerCase();
@@ -170,7 +170,7 @@ publicTeamRouter.get("/team/invitations/validate", async (req: Request, res: Res
     try {
       // Jalon 6: read org name from organizations (source of truth)
       const orgR = await pool.query<{ org_name: string }>(
-        `SELECT COALESCE(NULLIF(name,''), id) AS org_name
+        `SELECT COALESCE(NULLIF(name,''), id::text) AS org_name
          FROM organizations WHERE id = $1 LIMIT 1`,
         [inv.org_id]
       );
@@ -885,7 +885,7 @@ router.get("/organizations", async (req: Request, res: Response) => {
 
   try {
     const currentOrg = await pool.query<{ id: string; name: string; slug: string; plan: string }>(
-      `SELECT id, COALESCE(NULLIF(name,''), id) AS name, slug, plan
+      `SELECT id, COALESCE(NULLIF(name,''), id::text) AS name, slug, plan
        FROM organizations WHERE id = $1 LIMIT 1`,
       [org]
     );
@@ -914,7 +914,7 @@ router.get("/organizations", async (req: Request, res: Response) => {
                 COALESCE(NULLIF(o.name,''), tm.org_id) AS org_name,
                 o.slug, o.plan
          FROM team_members tm
-         JOIN organizations o ON o.id = tm.org_id
+         JOIN organizations o ON o.id::text = tm.org_id
          WHERE lower(tm.email) = lower($1)
            AND tm.status = 'active'
            AND tm.org_id != $2
@@ -968,14 +968,14 @@ router.post("/organizations/:id/switch", async (req: Request, res: Response) => 
         [targetOrgId, callerEmail]
       ),
       pool.query<{ plan: string }>(
-        `SELECT plan FROM organizations WHERE id = $1 AND owner_user_id = $2 LIMIT 1`,
+        `SELECT plan FROM organizations WHERE id::text = $1 AND owner_user_id = $2 LIMIT 1`,
         [targetOrgId, callerEmail]
       ),
       // Jalon 3: prefer organization_members as authoritative role source
       pool.query<{ role: string }>(
         `SELECT om.role FROM organization_members om
          JOIN users u ON u.id = om.user_id
-         WHERE om.organization_id = $1 AND lower(u.email) = lower($2) AND om.status = 'active'
+         WHERE om.organization_id::text = $1 AND lower(u.email) = lower($2) AND om.status = 'active'
          LIMIT 1`,
         [targetOrgId, callerEmail]
       ),
