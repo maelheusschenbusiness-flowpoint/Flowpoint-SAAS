@@ -1655,8 +1655,10 @@
             clearInterval(t);
             self._loaded = true;
             self._loading = false;
-            self._pendingInits.forEach(function (id) { self._tryInit(id); });
             self._pendingInits.clear();
+            // Init containers already in the DOM too (direct navigation:
+            // no mutation ever fires, so _pendingInits alone is not enough).
+            self._tryInit('fp-gmap'); self._tryInit('fp-competitors-map');
           } else if (waited > 15000) {
             clearInterval(t);
             self._loading = false;
@@ -1674,8 +1676,10 @@
       window.__fpGMapsReady = function () {
         self._loaded = true;
         self._loading = false;
-        self._pendingInits.forEach(function (id) { self._tryInit(id); });
         self._pendingInits.clear();
+        // Init containers already in the DOM too (direct navigation:
+        // no mutation ever fires, so _pendingInits alone is not enough).
+        self._tryInit('fp-gmap'); self._tryInit('fp-competitors-map');
       };
       var s = document.createElement('script');
       s.src = 'https://maps.googleapis.com/maps/api/js?key=' + key + '&libraries=places,visualization&callback=__fpGMapsReady&loading=async';
@@ -2180,7 +2184,11 @@
       // While the saved-address geocode is pending, only record the new
       // radius/keyword — the geocode callback loads with these current values.
       if (inst.centerPending) return;
-      if (inst.center) this._loadCompetitorMarkers(mapId, inst.center.lat, inst.center.lng, radiusM, kw);
+      if (inst.center) {
+        this._loadCompetitorMarkers(mapId, inst.center.lat, inst.center.lng, radiusM, kw);
+        // Keep the heatmap extent in sync with the new radius on the main map.
+        if (mapId === 'fp-gmap') this._loadHeatmapLayer(mapId, inst.center.lat, inst.center.lng, radiusM, kw);
+      }
     },
 
     toggleHeatmap: function (mapId, btn) {
