@@ -268,51 +268,97 @@ const MOCK_MISSIONS = [
 ];
 
 // ─────────────────────────────────────────────────────────────────
-// MISSION LIBRARY — 150+ rotating templates
+// MISSION LIBRARY — 200+ rotating templates, simple & actionable
 // ─────────────────────────────────────────────────────────────────
 const MISSION_LIBRARY = {
   'SEO Technique': [
-    { title:'Corriger les redirections 301/302 cassées', impact:'Très élevé', effort:'1h', gain:'+12 pts SEO', steps:['Lister toutes les redirections avec Screaming Frog','Identifier les chaînes de redirections (> 2 sauts)','Mettre à jour les URLs directement dans le CMS','Vérifier l\'absence d\'erreurs 404 résiduelles'] },
-    { title:'Implémenter le balisage Schema.org LocalBusiness', impact:'Élevé', effort:'45 min', gain:'+8% CTR', steps:['Générer le JSON-LD Schema.org sur schema.org/LocalBusiness','Ajouter le nom, adresse, téléphone, horaires et coordonnées GPS','Injecter le script dans le <head> de chaque page','Valider avec l\'outil Rich Results Test de Google'] },
-    { title:'Optimiser le fichier robots.txt', impact:'Moyen', effort:'30 min', gain:'Meilleure crawlabilité', steps:['Télécharger le robots.txt actuel','Vérifier que les ressources CSS/JS ne sont pas bloquées','Ajouter une directive Sitemap: avec l\'URL complète du sitemap','Tester via l\'outil d\'inspection robots.txt de Google Search Console'] },
-    { title:'Créer et soumettre un sitemap XML complet', impact:'Élevé', effort:'45 min', gain:'Indexation +40%', steps:['Générer un sitemap XML avec toutes les URLs prioritaires','Exclure les pages doublons (paramètres UTM, pagination)','Soumettre le sitemap dans Google Search Console','Planifier une mise à jour automatique mensuelle'] },
-    { title:'Mettre en place les balises canoniques', impact:'Élevé', effort:'1h30', gain:'Élimination du contenu dupliqué', steps:['Identifier les pages avec contenu dupliqué via audit','Ajouter la balise <link rel="canonical"> sur chaque doublon','Vérifier les canoniques auto-référencées sur les pages uniques','Contrôler dans Search Console l\'absence d\'anomalies'] },
-    { title:'Améliorer le score Core Web Vitals (LCP)', impact:'Très élevé', effort:'3h', gain:'+20 pts PageSpeed', steps:['Analyser le LCP actuel via PageSpeed Insights','Identifier les images non optimisées (convertir en WebP)','Activer la compression gzip/Brotli côté serveur','Implémenter le lazy loading sur les images hors-écran'] },
-    { title:'Corriger les erreurs de crawl Google Search Console', impact:'Élevé', effort:'1h', gain:'Couverture indexation +30%', steps:['Exporter la liste des erreurs depuis Search Console','Catégoriser : 404, serveur, redirigé, exclues','Corriger les 404 critiques en priorité (+ haut trafic)','Soumettre à l\'inspection les pages corrigées'] },
-    { title:'Optimiser les balises meta description', impact:'Moyen', effort:'2h', gain:'+6% CTR organique', steps:['Identifier les pages sans meta description via audit','Rédiger des descriptions de 150-160 caractères avec CTA','Inclure le mot-clé principal dans les 50 premiers caractères','Vérifier l\'unicité de chaque description'] },
+    { title:'Ajouter une balise title sur chaque page', impact:'Élevé', effort:'20 min', gain:'+8% CTR', steps:['Ouvrir l\'éditeur de votre CMS et lister les pages sans title','Rédiger un titre de 50-60 caractères avec le mot-clé principal'] },
+    { title:'Corriger les liens 404 internes', impact:'Élevé', effort:'30 min', gain:'+5 pts SEO', steps:['Copier l\'URL de votre site dans le champ ci-dessous et lancer l\'audit','Corriger ou rediriger les 5 premiers liens cassés trouvés'] },
+    { title:'Soumettre votre sitemap dans Google Search Console', impact:'Élevé', effort:'15 min', gain:'Indexation +30%', steps:['Ouvrir Search Console → Sitemaps','Coller l\'URL de votre sitemap.xml et cliquer Soumettre'] },
+    { title:'Ajouter les balises méta description manquantes', impact:'Moyen', effort:'30 min', gain:'+5% CTR', steps:['Identifier les 5 pages les plus visitées sans meta description','Écrire 1-2 phrases de 150 caractères max avec un verbe d\'action'] },
+    { title:'Vérifier que le SSL est actif et valide', impact:'Élevé', effort:'10 min', gain:'Confiance utilisateur ↑', steps:['Taper votre URL dans un navigateur et vérifier le cadenas vert','Si absent, contacter votre hébergeur pour activer Let\'s Encrypt gratuitement'] },
+    { title:'Ajouter une balise H1 sur toutes vos pages', impact:'Moyen', effort:'20 min', gain:'+4 pts SEO', steps:['Ouvrir chaque page clé et vérifier qu\'une seule balise H1 existe','Reformuler le H1 pour inclure le mot-clé de la page'] },
+    { title:'Compresser les images lourdes du site', impact:'Élevé', effort:'25 min', gain:'+15 pts PageSpeed', steps:['Identifier les images > 200 Ko dans les médias du CMS','Utiliser squoosh.app pour les recompresser avant ré-upload'] },
+    { title:'Activer la mise en cache du navigateur', impact:'Moyen', effort:'20 min', gain:'Vitesse +20%', steps:['Demander à votre hébergeur d\'activer le cache HTTP','Ou installer un plugin cache (WP Super Cache, W3 Total Cache)'] },
+    { title:'Vérifier que le site est indexable', impact:'Très élevé', effort:'10 min', gain:'Visibilité Google ↑', steps:['Taper site:votredomaine.com dans Google et noter le nombre de pages','Si moins de 5 résultats, vérifier que robots.txt n\'interdit pas l\'indexation'] },
+    { title:'Ajouter un lien vers le sitemap dans robots.txt', impact:'Moyen', effort:'10 min', gain:'Crawl amélioré', steps:['Ouvrir votresite.com/robots.txt','Ajouter la ligne : Sitemap: https://votresite.com/sitemap.xml'] },
+    { title:'Vérifier la compatibilité mobile de votre site', impact:'Très élevé', effort:'15 min', gain:'+ranking mobile', steps:['Taper l\'URL dans search.google.com/test/mobile-friendly','Corriger les erreurs listées (taille de texte, zone tactile)'] },
+    { title:'Corriger les pages en erreur 404', impact:'Élevé', effort:'20 min', gain:'Expérience utilisateur ↑', steps:['Aller dans Search Console → Couverture → Erreurs','Créer une redirection 301 depuis les pages supprimées vers une page existante'] },
   ],
   'Local SEO': [
-    { title:'Optimiser la fiche Google Business Profile', impact:'Très élevé', effort:'1h', gain:'+35% appels', steps:['Vérifier et compléter toutes les informations NAP','Ajouter 10+ photos professionnelles récentes','Rédiger une description de 750 caractères avec mots-clés','Activer les messages et Questions/Réponses'] },
-    { title:'Lancer une campagne de demande d\'avis Google', impact:'Élevé', effort:'2h', gain:'+15 avis/mois', steps:['Créer un lien court vers la page d\'avis Google','Rédiger un SMS/email de demande d\'avis (max 3 lignes)','Sélectionner 20 clients récents satisfaits','Envoyer et suivre les taux de conversion'] },
-    { title:'Corriger les incohérences NAP sur les annuaires', impact:'Élevé', effort:'3h', gain:'+10 pts local', steps:['Auditer les citations sur Pages Jaunes, Yelp, Mappy, etc.','Lister toutes les incohérences de nom/adresse/téléphone','Corriger manuellement les 10 principaux annuaires','Utiliser un outil de citation management pour le suivi'] },
-    { title:'Créer des Google Posts hebdomadaires', impact:'Moyen', effort:'30 min/sem', gain:'+12% engagement', steps:['Définir un calendrier de publication (1 post/semaine)','Créer 4 posts types : offre, actualité, événement, produit','Inclure une photo + CTA + mots-clés locaux dans chaque post','Analyser les stats d\'engagement après 1 mois'] },
-    { title:'Surveiller et répondre à tous les avis Google', impact:'Élevé', effort:'20 min/j', gain:'Réputation +20%', steps:['Activer les notifications d\'avis Google Business','Créer des templates de réponse (positif/négatif/neutre)','Répondre à chaque avis sous 24h maximum','Escalader les avis négatifs répétitifs vers le management'] },
-    { title:'Créer 5 pages locales géociblées', impact:'Très élevé', effort:'4h', gain:'+40 leads/mois', steps:['Cibler 5 zones géographiques à fort potentiel','Rédiger 500 mots uniques par page avec balisage local','Ajouter schema markup + carte Google Maps intégrée','Lier les pages depuis la page d\'accueil et le footer'] },
-    { title:'Audit et optimisation des photos Google Business', impact:'Moyen', effort:'1h', gain:'+25% clics sur la fiche', steps:['Supprimer les photos floues ou obsolètes','Uploader 20+ photos : façade, intérieur, équipe, produits','Nommer les fichiers avec les mots-clés locaux','Demander à 5 clients de publier des photos'] },
+    { title:'Mettre à jour les horaires sur Google Business', impact:'Élevé', effort:'10 min', gain:'+15% appels', steps:['Ouvrir business.google.com et sélectionner votre fiche','Mettre à jour les horaires d\'ouverture et cocher les jours fériés'] },
+    { title:'Ajouter 5 nouvelles photos sur votre fiche Google', impact:'Moyen', effort:'20 min', gain:'+25% clics', steps:['Prendre 5 photos actuelles de votre commerce ou service','Les uploader dans business.google.com → Photos'] },
+    { title:'Répondre aux 5 derniers avis Google', impact:'Élevé', effort:'15 min', gain:'Réputation +10%', steps:['Ouvrir la section Avis de votre fiche Google Business','Rédiger une réponse personnalisée à chacun (merci, prénom, sujet)'] },
+    { title:'Demander un avis à 3 clients satisfaits', impact:'Élevé', effort:'10 min', gain:'+3 avis/sem', steps:['Copier votre lien d\'avis Google (Format : g.page/votre-fiche/review)','Envoyer par SMS ou WhatsApp à 3 clients récents avec une phrase simple'] },
+    { title:'Rédiger une description complète de votre fiche GBP', impact:'Moyen', effort:'20 min', gain:'+12% conversions', steps:['Ouvrir l\'édition de votre fiche Google Business','Écrire 2-3 phrases sur vos services, votre zone, et ce qui vous différencie'] },
+    { title:'Vérifier la cohérence NAP sur votre site', impact:'Élevé', effort:'15 min', gain:'+8 pts local', steps:['Comparer le nom, adresse, téléphone sur votre site vs Google Business','Corriger toute différence dans le footer ou la page Contact'] },
+    { title:'Créer un post Google Business cette semaine', impact:'Moyen', effort:'15 min', gain:'+8% engagement', steps:['Ouvrir business.google.com → Posts','Publier une offre, actualité ou événement avec une photo et un bouton CTA'] },
+    { title:'Ajouter vos services sur Google Business', impact:'Élevé', effort:'20 min', gain:'+20% apparitions', steps:['Ouvrir votre fiche → modifier → Services','Ajouter chaque prestation avec un titre et une description courte'] },
+    { title:'Corriger votre inscription sur Pages Jaunes', impact:'Moyen', effort:'15 min', gain:'+5 pts citations', steps:['Chercher votre entreprise sur pagesjaunes.fr','Mettre à jour l\'adresse et le téléphone si différents de Google'] },
+    { title:'Inscrire votre entreprise sur Yelp', impact:'Moyen', effort:'20 min', gain:'+citations locales', steps:['Créer ou revendiquer votre fiche sur biz.yelp.fr','Renseigner les informations NAP identiques à Google Business'] },
+    { title:'Ajouter des attributs à votre fiche Google', impact:'Moyen', effort:'10 min', gain:'+visibilité filtres', steps:['Ouvrir votre fiche → Modifier → Plus d\'informations','Cocher les attributs applicables : WiFi, parking, accessibilité...'] },
+    { title:'Créer une page de localisation sur votre site', impact:'Élevé', effort:'30 min', gain:'+20 recherches locales', steps:['Créer une page "Nous trouver" avec votre adresse, carte Google Maps et horaires','Ajouter le schema markup LocalBusiness pour cette page'] },
   ],
   'Contenu': [
-    { title:'Créer un guide "Comment choisir..." pour votre secteur', impact:'Élevé', effort:'3h', gain:'+500 visites/mois', steps:['Identifier les 10 questions fréquentes clients (FAQ)','Rédiger un guide de 1500 mots avec structure H2/H3','Optimiser pour les featured snippets Google','Partager sur les réseaux sociaux et newsletter'] },
-    { title:'Optimiser les 5 pages les plus visitées', impact:'Très élevé', effort:'4h', gain:'+15% conversions', steps:['Exporter le top 5 pages via Google Analytics','Analyser le taux de rebond et le temps passé','Ajouter des CTA visibles, des témoignages et des FAQ','Améliorer la lisibilité (paragraphes courts, listes à puces)'] },
-    { title:'Produire 4 articles de blog SEO optimisés', impact:'Élevé', effort:'8h', gain:'+200 visites organiques', steps:['Rechercher 4 requêtes longue traîne à fort potentiel','Rédiger un plan détaillé pour chaque article','Rédiger 800-1200 mots par article + images optimisées','Intégrer le maillage interne vers les pages clés'] },
-    { title:'Créer une FAQ structurée sur la page d\'accueil', impact:'Moyen', effort:'1h30', gain:'+8% CTR via rich snippets', steps:['Lister les 8 questions les plus fréquentes clients','Rédiger des réponses courtes (50-100 mots chacune)','Ajouter le schema markup FAQPage en JSON-LD','Soumettre à l\'outil Rich Results Test'] },
-    { title:'Mettre à jour et republier les anciens articles', impact:'Moyen', effort:'4h', gain:'+35% trafic existant', steps:['Identifier les 5 articles avec fort trafic mais rang en chute','Actualiser les données et statistiques citées','Ajouter 300-500 mots de contenu frais','Changer la date de publication et soumettre à indexation'] },
+    { title:'Rédiger une FAQ sur votre page d\'accueil', impact:'Moyen', effort:'30 min', gain:'+6% CTR', steps:['Lister les 5 questions les plus posées par vos clients','Répondre en 2-3 phrases claires sur la page d\'accueil ou d\'une section dédiée'] },
+    { title:'Ajouter un témoignage client récent', impact:'Moyen', effort:'15 min', gain:'+8% conversions', steps:['Contacter un client satisfait par SMS pour demander 2 lignes de témoignage','L\'ajouter avec son prénom et activité sur la page d\'accueil'] },
+    { title:'Mettre à jour la page "À propos"', impact:'Moyen', effort:'20 min', gain:'Confiance +15%', steps:['Ouvrir votre page À propos et vérifier si les infos sont à jour','Ajouter une photo récente, les dernières réalisations ou la date de création'] },
+    { title:'Créer une page de service manquante', impact:'Élevé', effort:'45 min', gain:'+visibilité Google', steps:['Identifier un service proposé mais non listé sur votre site','Créer une page avec titre H1, 200 mots de description et un CTA'] },
+    { title:'Ajouter un appel à l\'action (CTA) visible', impact:'Élevé', effort:'15 min', gain:'+10% conversions', steps:['Identifier la page la plus visitée sans bouton CTA clair','Ajouter un bouton "Nous contacter" ou "Demander un devis" bien visible'] },
+    { title:'Publier un article de blog court', impact:'Élevé', effort:'45 min', gain:'+visite organique', steps:['Choisir une question que posent vos clients','Rédiger 300-500 mots de réponse claire avec un titre H1 accrocheur'] },
+    { title:'Optimiser votre page Contact', impact:'Moyen', effort:'20 min', gain:'+12% formulaires', steps:['Vérifier que le formulaire fonctionne en envoyant un test','Ajouter votre numéro de téléphone en gros et un lien WhatsApp si applicable'] },
+    { title:'Ajouter des images alt sur vos photos', impact:'Moyen', effort:'20 min', gain:'+5 pts SEO', steps:['Ouvrir la bibliothèque de médias de votre CMS','Ajouter un texte alt descriptif sur les 10 images sans description'] },
+    { title:'Créer une page de tarifs lisible', impact:'Élevé', effort:'30 min', gain:'+20% leads qualifiés', steps:['Créer ou améliorer une page Tarifs avec vos offres et prix publics','Ajouter un bouton de contact ou de devis sous chaque offre'] },
+    { title:'Vérifier l\'orthographe des 3 pages principales', impact:'Moyen', effort:'15 min', gain:'Crédibilité +10%', steps:['Copier le texte de chaque page dans languagetool.org','Corriger les fautes identifiées directement dans votre CMS'] },
   ],
   'Monitoring': [
-    { title:'Configurer des alertes de temps de réponse avancées', impact:'Élevé', effort:'30 min', gain:'MTTR -60%', steps:['Identifier les seuils critiques pour chaque service','Configurer des alertes palier : warn à 500ms, crit à 2s','Tester chaque alerte avec une simulation de charge','Documenter les procédures de réponse aux incidents'] },
-    { title:'Mettre en place le monitoring SSL/certificats', impact:'Élevé', effort:'20 min', gain:'Zéro expiration surprise', steps:['Ajouter la vérification SSL sur chaque monitor existant','Configurer une alerte 30j avant expiration','Créer un calendrier de renouvellement annuel','Automatiser le renouvellement avec Let\'s Encrypt'] },
-    { title:'Créer un dashboard de status public', impact:'Moyen', effort:'1h', gain:'Support -40%', steps:['Choisir une page de statut accessible publiquement','Lister les 5 services principaux à monitorer','Configurer la mise à jour automatique du statut','Partager le lien avec les clients'] },
-    { title:'Auditer les performances de toutes les URLs monitorées', impact:'Moyen', effort:'1h', gain:'Performance +25%', steps:['Lancer un test PageSpeed sur chaque URL monitorée','Identifier les 3 URLs avec le plus mauvais score','Prioriser les corrections par impact utilisateur','Planifier un point de suivi dans 30 jours'] },
+    { title:'Activer un monitor sur votre site principal', impact:'Très élevé', effort:'5 min', gain:'Alertes panne instantanées', steps:['Copier l\'URL de votre site dans le champ Nouveau Monitor','Configurer l\'alerte email avec votre adresse professionnelle'] },
+    { title:'Tester le monitor après configuration', impact:'Élevé', effort:'10 min', gain:'Fiabilité alerte ↑', steps:['Vérifier dans FlowPoint que le monitor affiche Statut : UP','Cliquer "Forcer un check" pour confirmer que l\'alerte email arrive bien'] },
+    { title:'Monitorer la page de contact ou de devis', impact:'Élevé', effort:'5 min', gain:'Zéro formulaire cassé', steps:['Ajouter l\'URL de votre page Contact dans un nouveau monitor','Définir une alerte si le temps de réponse dépasse 3 secondes'] },
+    { title:'Configurer une alerte de latence', impact:'Moyen', effort:'10 min', gain:'Performance surveillée', steps:['Ouvrir les paramètres du monitor → Seuil alerte latence','Régler à 1 500 ms pour être alerté avant que les visiteurs remarquent'] },
+    { title:'Ajouter un second email d\'alerte', impact:'Moyen', effort:'5 min', gain:'Redondance alertes', steps:['Ouvrir Configuration Monitors → Email alerte','Ajouter l\'email d\'un collègue ou d\'une boîte partagée en backup'] },
+    { title:'Vérifier l\'historique d\'uptime de ce mois', impact:'Faible', effort:'5 min', gain:'Rapport client prêt', steps:['Ouvrir FlowPoint → Monitors → Incidents','Noter le pourcentage d\'uptime pour le mentionner dans votre prochain rapport client'] },
+    { title:'Créer une fenêtre de maintenance pour les mises à jour', impact:'Moyen', effort:'10 min', gain:'Zéro fausse alerte', steps:['Ouvrir Monitors → Configuration → Fenêtres de maintenance','Ajouter le créneau habituel de mise à jour (ex: dimanche 2h-4h)'] },
+    { title:'Monitorer la page de paiement ou de réservation', impact:'Très élevé', effort:'5 min', gain:'Zéro vente perdue', steps:['Ajouter l\'URL de votre page de paiement ou panier dans un monitor','Configurer une alerte immédiate (< 1 min) si elle devient inaccessible'] },
   ],
   'Rapports & Clients': [
-    { title:'Créer un rapport White Label pour votre client principal', impact:'Élevé', effort:'2h', gain:'Satisfaction client +30%', steps:['Activer le branding White Label dans les paramètres','Configurer le logo, couleurs et nom de domaine client','Générer un rapport avec les données du dernier mois','Envoyer le rapport en PDF et en lien partageable'] },
-    { title:'Mettre en place un reporting automatique mensuel', impact:'Moyen', effort:'1h', gain:'8h/mois gagnées', steps:['Définir les métriques clés à inclure dans le rapport','Configurer l\'envoi automatique le 1er de chaque mois','Créer un template personnalisé par client','Tester avec un envoi de rapport test'] },
-    { title:'Créer des dashboards personnalisés par client', impact:'Élevé', effort:'3h', gain:'Rétention client +25%', steps:['Lister les KPIs importants pour chaque client','Créer un dashboard avec les widgets pertinents','Partager l\'accès en lecture seule avec les contacts clients','Programmer un point mensuel de revue des métriques'] },
+    { title:'Générer un rapport PDF ce mois-ci', impact:'Moyen', effort:'10 min', gain:'Client informé', steps:['Ouvrir FlowPoint → Rapports → Nouveau rapport','Sélectionner la période, le site et cliquer Générer PDF'] },
+    { title:'Envoyer le rapport mensuel à votre client', impact:'Élevé', effort:'15 min', gain:'Fidélisation +20%', steps:['Générer le rapport PDF dans FlowPoint','L\'envoyer par email avec 2-3 points clés résumés en texte'] },
+    { title:'Activer le branding White Label sur un rapport', impact:'Moyen', effort:'10 min', gain:'Image professionnelle ↑', steps:['Aller dans Paramètres → White Label','Uploader votre logo et configurer votre couleur principale'] },
+    { title:'Créer un modèle de rapport réutilisable', impact:'Moyen', effort:'20 min', gain:'2h gagnées/mois', steps:['Dans FlowPoint → Rapports, configurer les sections à inclure','Sauvegarder comme modèle et l\'utiliser pour tous vos clients'] },
+    { title:'Partager un rapport en lien public', impact:'Moyen', effort:'5 min', gain:'Transparence client ↑', steps:['Générer le rapport, puis cliquer "Partager le lien"','Copier l\'URL et l\'envoyer à votre client (pas besoin de PDF)'] },
+    { title:'Planifier l\'envoi automatique du rapport', impact:'Élevé', effort:'10 min', gain:'8h/mois économisées', steps:['Dans les paramètres du rapport, activer "Envoi automatique"','Choisir le 1er du mois et l\'email de votre client'] },
+    { title:'Ajouter une note personnalisée dans le rapport', impact:'Moyen', effort:'10 min', gain:'Relation client ↑', steps:['Avant de générer le rapport, ouvrir la section "Note personnalisée"','Écrire 3-4 lignes sur les actions prévues le mois suivant'] },
   ],
   'Croissance': [
-    { title:'Analyser et optimiser le tunnel de conversion', impact:'Très élevé', effort:'4h', gain:'+20% conversions', steps:['Installer Google Tag Manager + suivi d\'objectifs Analytics','Mapper le parcours utilisateur étape par étape','Identifier les pages avec fort taux d\'abandon','A/B tester les 2 pages les plus critiques'] },
-    { title:'Mettre en place le suivi des positions de mots-clés', impact:'Élevé', effort:'1h', gain:'Visibilité stratégique', steps:['Lister les 20 mots-clés principaux à tracker','Configurer le suivi quotidien dans FlowPoint','Créer un rapport de positions hebdomadaire','Définir des alertes en cas de chute > 5 positions'] },
-    { title:'Créer une stratégie de liens internes optimisée', impact:'Moyen', effort:'2h', gain:'+18% autorité de domaine', steps:['Cartographier les pages orphelines (sans liens entrants)','Identifier les pages pilier à renforcer','Ajouter 2-3 liens contextuels depuis les articles récents','Vérifier l\'ancre text avec les mots-clés cibles'] },
-    { title:'Lancer une campagne de netlinking local', impact:'Très élevé', effort:'5h', gain:'+30 DA en 3 mois', steps:['Identifier 20 sites locaux partenaires potentiels','Rédiger une proposition de partenariat personnalisée','Proposer un échange d\'articles invités ou de liens','Suivre les nouvelles acquisitions de backlinks dans GSC'] },
+    { title:'Identifier votre mot-clé principal', impact:'Très élevé', effort:'15 min', gain:'Ciblage SEO amélioré', steps:['Réfléchir à ce que vos clients cherchent dans Google pour vous trouver','Taper ce mot-clé dans Google et noter les concurrents présents'] },
+    { title:'Ajouter ce mot-clé dans le titre de votre page d\'accueil', impact:'Élevé', effort:'10 min', gain:'+10% visibilité', steps:['Ouvrir l\'éditeur de votre page d\'accueil','Modifier le titre (H1) pour inclure naturellement votre mot-clé principal'] },
+    { title:'Lancer votre premier audit SEO', impact:'Très élevé', effort:'5 min', gain:'Score SEO mesuré', steps:['Copier l\'URL de votre site dans le champ Audit SEO de FlowPoint','Cliquer Lancer pour obtenir votre score et les premières recommandations'] },
+    { title:'Analyser votre concurrent principal', impact:'Élevé', effort:'20 min', gain:'Avantage concurrentiel ↑', steps:['Ouvrir FlowPoint → Concurrents et ajouter l\'URL de votre concurrent n°1','Comparer son score SEO avec le vôtre et noter 2 points où il vous dépasse'] },
+    { title:'Ajouter votre site dans Google Search Console', impact:'Très élevé', effort:'15 min', gain:'Données trafic réelles', steps:['Ouvrir search.google.com/search-console et cliquer "Commencer"','Vérifier la propriété via l\'ajout d\'une balise HTML ou un fichier TXT'] },
+    { title:'Créer un lien interne depuis un article vers la page clé', impact:'Moyen', effort:'10 min', gain:'+autorité interne', steps:['Identifier votre page la plus importante (ex: page de service)','Dans un article récent, ajouter naturellement un lien hypertexte vers elle'] },
+    { title:'Mettre à jour votre ancienne page la plus visitée', impact:'Élevé', effort:'30 min', gain:'+trafic organique', steps:['Voir dans Google Analytics ou Search Console la page la plus visitée','Actualiser les informations datées et ajouter 100 mots de contenu frais'] },
+    { title:'Déposer un backlink sur un annuaire local gratuit', impact:'Moyen', effort:'15 min', gain:'+1 lien entrant', steps:['Chercher "annuaire [votre ville/secteur] gratuit" dans Google','Créer une fiche avec votre URL, NAP et description en 5 minutes'] },
+    { title:'Connecter Google Analytics à votre site', impact:'Très élevé', effort:'20 min', gain:'Mesure du trafic activée', steps:['Créer une propriété GA4 sur analytics.google.com','Copier le code de suivi et l\'installer via votre CMS ou GTM'] },
+  ],
+  'Réputation': [
+    { title:'Répondre aux avis négatifs avec empathie', impact:'Très élevé', effort:'15 min', gain:'Image récupérée', steps:['Ouvrir les avis Google de votre fiche Business','Répondre à chaque avis négatif : "Merci pour votre retour, nous vous contactons"'] },
+    { title:'Envoyer une demande d\'avis après chaque vente', impact:'Élevé', effort:'10 min', gain:'+5 avis/mois', steps:['Créer un message type WhatsApp ou SMS de 3 lignes','Copier votre lien d\'avis Google et l\'intégrer dans le message'] },
+    { title:'Signaler un avis abusif ou faux à Google', impact:'Moyen', effort:'10 min', gain:'Réputation protégée', steps:['Trouver l\'avis suspect sur votre fiche Google Business','Cliquer les 3 points → "Signaler un avis" et sélectionner la raison appropriée'] },
+    { title:'Partager vos avis 5 étoiles sur les réseaux', impact:'Moyen', effort:'15 min', gain:'Preuve sociale +20%', steps:['Copier un avis 5 étoiles récent (avec accord implicite si c\'est un avis Google public)','Le publier sur votre page Facebook ou Instagram avec une belle mise en page'] },
+    { title:'Créer un template de réponse aux avis positifs', impact:'Faible', effort:'15 min', gain:'Temps réponse -50%', steps:['Rédiger 3 variantes de réponse chaleureuse pour les avis 5 étoiles','Les sauvegarder dans un fichier texte pour les réutiliser et personnaliser'] },
+    { title:'Ajouter un badge "Note Google" sur votre site', impact:'Moyen', effort:'20 min', gain:'+confiance visiteurs', steps:['Trouver votre note moyenne dans Google Business','L\'afficher visuellement sur votre site dans la section En-tête ou footer'] },
+    { title:'Vérifier votre e-réputation sur la première page Google', impact:'Élevé', effort:'10 min', gain:'Risques identifiés', steps:['Chercher votre nom d\'entreprise dans Google en mode navigation privée','Si un avis négatif apparaît en première page, créer du contenu positif pour le repousser'] },
+  ],
+  'Performance Web': [
+    { title:'Tester la vitesse de votre site', impact:'Élevé', effort:'10 min', gain:'Score mesuré', steps:['Ouvrir pagespeed.web.dev et entrer l\'URL de votre site','Lire le rapport Mobile — noter les 2 premières recommandations'] },
+    { title:'Passer toutes les images en format WebP', impact:'Élevé', effort:'30 min', gain:'+15 pts PageSpeed', steps:['Exporter vos images clés et les convertir sur squoosh.app','Les ré-uploader dans votre CMS à la place des originaux'] },
+    { title:'Activer le lazy loading sur les images', impact:'Moyen', effort:'15 min', gain:'Chargement initial -30%', steps:['Installer un plugin de lazy loading (Lazy Load de a3rev sur WordPress)','Ou ajouter l\'attribut loading="lazy" sur les balises <img> de vos pages'] },
+    { title:'Réduire le nombre de plugins actifs', impact:'Moyen', effort:'20 min', gain:'Performance +10%', steps:['Lister tous les plugins ou scripts actifs sur votre site','Désactiver ceux non utilisés depuis > 6 mois'] },
+    { title:'Activer la compression GZIP ou Brotli', impact:'Élevé', effort:'15 min', gain:'Taille pages -70%', steps:['Demander à votre hébergeur si la compression est activée','Sinon, installer W3 Total Cache ou Cloudflare (gratuit)'] },
+    { title:'Minifier les fichiers CSS et JavaScript', impact:'Moyen', effort:'15 min', gain:'Vitesse +8%', steps:['Sur WordPress, activer la minification dans WP Rocket ou LiteSpeed Cache','Ou utiliser le service gratuit Cloudflare qui minifie automatiquement'] },
+    { title:'Réduire les redirections inutiles', impact:'Moyen', effort:'20 min', gain:'Temps de chargement -0.5s', steps:['Utiliser l\'outil Redirect Checker pour analyser vos URLs principales','Corriger les chaînes de redirections (A→B→C) en lien direct (A→C)'] },
+    { title:'Utiliser un CDN pour servir les fichiers statiques', impact:'Élevé', effort:'20 min', gain:'Vitesse mondiale +40%', steps:['Activer Cloudflare gratuit sur votre domaine (cloudflare.com)','Activer le mode proxy (nuage orange) sur vos enregistrements DNS'] },
   ],
 };
 
@@ -947,7 +993,7 @@ async function bindAuditPanelBtns(audit) {
       rerunBtn.disabled = true;
       rerunBtn.textContent = 'Audit en cours…';
       try {
-        const res = await apiAction('POST', '/api/audits', { url: audit.url });
+        const res = await apiAction('POST', '/api/audits', { url: audit.url, force: true });
         if (res) {
           const idx = STATE.audits.findIndex(x => x.id === audit.id);
           if (idx >= 0) STATE.audits.splice(idx, 1);
@@ -1443,39 +1489,23 @@ async function loadData() {
     try { sessionStorage.setItem('fp-billing-catalog', JSON.stringify({ ..._c, _ts: Date.now() })); } catch(_) {}
   }
 
-  // ── Phase 3: Section data — each section fails independently, dashboard stays usable ──
-  // classifySectionError maps an Error message to a type code for per-section rendering
+  // ── classifySectionError helper ──────────────────────────────────────────────
   function classifySectionError(reason) {
     if (!reason) return 'unknown';
     const msg = reason.message || String(reason);
-    if (/401/.test(msg)) return 'session';    // expired token / re-login required
-    if (/403/.test(msg)) return 'permission'; // insufficient rights
-    if (/404/.test(msg)) return 'route';      // backend route missing
-    if (/5\d\d/.test(msg)) return 'server';   // 5xx backend error
-    if (/timeout|abort|network|fetch/i.test(msg)) return 'network'; // connectivity
+    if (/401/.test(msg)) return 'session';
+    if (/403/.test(msg)) return 'permission';
+    if (/404/.test(msg)) return 'route';
+    if (/5\d\d/.test(msg)) return 'server';
+    if (/timeout|abort|network|fetch/i.test(msg)) return 'network';
     return 'unknown';
   }
   STATE.sectionErrors = {};
-  const [_auRes, _moRes, _reRes, _teRes] = await Promise.allSettled([
-    apiFetch('/api/audits'), apiFetch('/api/monitors'),
-    apiFetch('/api/reports'), apiFetch('/api/team'),
-  ]);
-  if (_auRes.status === 'fulfilled') { audits   = _auRes.value; } else { STATE.sectionErrors.audits   = classifySectionError(_auRes.reason); console.warn('[FP] /api/audits failed:', _auRes.reason?.message || _auRes.reason); }
-  if (_moRes.status === 'fulfilled') { monitors = _moRes.value; } else { STATE.sectionErrors.monitors = classifySectionError(_moRes.reason); console.warn('[FP] /api/monitors failed:', _moRes.reason?.message || _moRes.reason); }
-  if (_reRes.status === 'fulfilled') { reports  = _reRes.value; } else { STATE.sectionErrors.reports  = classifySectionError(_reRes.reason); console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason); }
-  if (_teRes.status === 'fulfilled') { team     = _teRes.value; } else { STATE.sectionErrors.team     = classifySectionError(_teRes.reason); console.warn('[FP] /api/team failed:', _teRes.reason?.message || _teRes.reason); }
 
-  const _aud = normArr(audits,   'audits');   STATE.audits   = (_aud   && _aud.length   > 0) ? _aud   : (PREVIEW_MODE ? MOCK_AUDITS   : []);
-  const _mon = normArr(monitors, 'monitors'); STATE.monitors = (_mon   && _mon.length   > 0) ? _mon   : (PREVIEW_MODE ? MOCK_MONITORS : []);
-  const _rep = normArr(reports,  'reports');  STATE.reports  = (_rep   && _rep.length   > 0) ? _rep   : (PREVIEW_MODE ? MOCK_REPORTS  : []);
-  const _team= normArr(team,     'members');  STATE.team     = (_team  && _team.length  > 0) ? _team  : (PREVIEW_MODE ? MOCK_TEAM     : []);
-  STATE.pendingInvitations = (team && Array.isArray(team.pendingInvitations)) ? team.pendingInvitations : [];
-  STATE.seatUsage          = (team && team.seatUsage) ? team.seatUsage : null;
-
+  // ── Pre-set overview/GBP state so first render has real overview data ─────
   STATE.calendarEvents = [];
   STATE.clients = [];
   STATE.overview = overview;
-  // Map GBP fields from overview response to STATE.gbp (used throughout dashboard)
   if (overview && typeof overview === 'object') {
     STATE.gbp = {
       connected:        !!overview.gbpConnected,
@@ -1487,16 +1517,41 @@ async function loadData() {
       locations:        [],
     };
   }
-  if (!STATE.historySiteUrl && STATE.audits.length > 0) STATE.historySiteUrl = STATE.audits[0].url;
+  // Section data pre-set to empty arrays — first render shows proper empty states,
+  // not shimmering skeletons. Background phase fills in real data and re-renders.
+  STATE.audits   = PREVIEW_MODE ? MOCK_AUDITS   : [];
+  STATE.monitors = PREVIEW_MODE ? MOCK_MONITORS : [];
+  STATE.reports  = PREVIEW_MODE ? MOCK_REPORTS  : [];
+  STATE.team     = PREVIEW_MODE ? MOCK_TEAM     : [];
+  STATE.pendingInvitations = [];
+  STATE.seatUsage = null;
 
-  // ── Phase 3: Early render with primary data so the UI is visible immediately ──
+  // ── Early render: UI is fully interactive after /api/me + overview ────────
   clearTimeout(_loadSafetyTimer);
   STATE.loading = false;
-  // Bypass the 30ms debounce — cancel any pending timer and render directly so there is
-  // zero gap between the last skeleton frame and the first content frame.
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
   _doRender();
   if (!STATE._notificationPoll) STATE._notificationPoll = setInterval(refreshNotifications, 30_000);
+
+  // ── Phase 3 (background): section data — never blocks interactivity ───────
+  // audits/monitors/reports/team load in parallel after the UI is already shown.
+  Promise.allSettled([
+    apiFetch('/api/audits'), apiFetch('/api/monitors'),
+    apiFetch('/api/reports'), apiFetch('/api/team'),
+  ]).then(function([_auRes, _moRes, _reRes, _teRes]) {
+    if (_auRes.status === 'fulfilled') { audits   = _auRes.value; } else { STATE.sectionErrors.audits   = classifySectionError(_auRes.reason); console.warn('[FP] /api/audits failed:', _auRes.reason?.message || _auRes.reason); }
+    if (_moRes.status === 'fulfilled') { monitors = _moRes.value; } else { STATE.sectionErrors.monitors = classifySectionError(_moRes.reason); console.warn('[FP] /api/monitors failed:', _moRes.reason?.message || _moRes.reason); }
+    if (_reRes.status === 'fulfilled') { reports  = _reRes.value; } else { STATE.sectionErrors.reports  = classifySectionError(_reRes.reason); console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason); }
+    if (_teRes.status === 'fulfilled') { team     = _teRes.value; } else { STATE.sectionErrors.team     = classifySectionError(_teRes.reason); console.warn('[FP] /api/team failed:', _teRes.reason?.message || _teRes.reason); }
+    const _aud = normArr(audits,   'audits');   STATE.audits   = (_aud  && _aud.length  > 0) ? _aud  : (PREVIEW_MODE ? MOCK_AUDITS   : []);
+    const _mon = normArr(monitors, 'monitors'); STATE.monitors = (_mon  && _mon.length  > 0) ? _mon  : (PREVIEW_MODE ? MOCK_MONITORS : []);
+    const _rep = normArr(reports,  'reports');  STATE.reports  = (_rep  && _rep.length  > 0) ? _rep  : (PREVIEW_MODE ? MOCK_REPORTS  : []);
+    const _tem = normArr(team,     'members');  STATE.team     = (_tem  && _tem.length  > 0) ? _tem  : (PREVIEW_MODE ? MOCK_TEAM     : []);
+    STATE.pendingInvitations = (team && Array.isArray(team.pendingInvitations)) ? team.pendingInvitations : [];
+    STATE.seatUsage          = (team && team.seatUsage) ? team.seatUsage : null;
+    if (!STATE.historySiteUrl && STATE.audits.length > 0) STATE.historySiteUrl = STATE.audits[0].url;
+    render();
+  }).catch(function(err) { console.warn('[FP] Phase 3 background fetch error:', err); });
 
   // ── Phase 4: All secondary fetches in one parallel batch ─────────────────────
   const _domain = (STATE.audits[0] && (() => { try { return new URL(STATE.audits[0].url).hostname; } catch(_){ return ''; } })()) || '';
@@ -15036,7 +15091,7 @@ function bindBulkBarEvents() {
     let done = 0, ok = 0, fail = 0;
     await Promise.allSettled(audits.map(async a => {
       try {
-        const res = await apiAction('POST', '/api/audits', { url: a.url });
+        const res = await apiAction('POST', '/api/audits', { url: a.url, force: true });
         if (res) {
           const idx = STATE.audits.findIndex(x => x.id === a.id);
           if (idx >= 0) STATE.audits.splice(idx, 1);
@@ -24256,9 +24311,17 @@ function renderMonitorsConfig() {
     { icon: '🔗', name: 'Webhook',  active: isPro,   detail: isPro ? ((STATE.settings&&STATE.settings.webhookUrl)||'URL non configurée') : 'Disponible à partir de Pro', color: isPro ? '#2563EB' : '#64748b', gate: 'Pro' },
     { icon: '📢', name: 'PagerDuty',active: isUltra, detail: isUltra ? 'Intégration active' : 'Disponible Ultra', color: isUltra ? '#f59e0b' : '#64748b', gate: 'Ultra' },
   ];
+  const _nextMaint = function(dow, hour) {
+    var now = new Date();
+    var diff = (dow - now.getDay() + 7) % 7;
+    if (diff === 0 && now.getHours() >= hour) diff = 7;
+    var d = new Date(now); d.setDate(d.getDate() + diff); d.setHours(hour, 0, 0, 0);
+    var lbl = d.toLocaleDateString('fr-FR', {day:'numeric', month:'short'}).replace('.','');
+    return lbl + ' ' + String(hour).padStart(2,'0') + ':00';
+  };
   const windows = [
-    { name: 'Déploiement hebdo',  schedule: 'Dimanche 02:00–04:00', sites: 'Tous les sites',         next: '11 mai 02:00' },
-    { name: 'Maintenance OVH',    schedule: 'Lundi 23:00–01:00',    sites: (STATE.monitors&&STATE.monitors.length>0?(STATE.monitors[0].url||STATE.monitors[0].name||'').replace(/^https?:\/\//,''):'Tous les sites'), next: '13 mai 23:00' },
+    { name: 'Déploiement hebdo',  schedule: 'Dimanche 02:00–04:00', sites: 'Tous les sites',         next: _nextMaint(0, 2) },
+    { name: 'Maintenance OVH',    schedule: 'Lundi 23:00–01:00',    sites: (STATE.monitors&&STATE.monitors.length>0?(STATE.monitors[0].url||STATE.monitors[0].name||'').replace(/^https?:\/\//,''):'Tous les sites'), next: _nextMaint(1, 23) },
   ];
 
   return `
@@ -25389,19 +25452,34 @@ function renderGrowthProjections() {
   const future = [0,1,2,3,4,5,6].map(function(i){ return Math.round(Math.max(0, Math.min(99, avgSc + _stepP * i))); });
   const months = (function(){ const arr=[]; const now=new Date(); for(let i=1;i<=6;i++){ const d=new Date(now.getFullYear(), now.getMonth()+i, 1); const m=d.toLocaleDateString(getLocale(),{month:'short'}); arr.push(m.charAt(0).toUpperCase()+m.slice(1)+' '+d.getFullYear()); } return arr; })();
   const _hasTrend = _auditHP.length >= 2 && _stepRaw > 0;
+  // When no measurable trend (< 2 audits or flat history), apply scenario-specific
+  // baseline gains so scenarios are always differentiated and actionable.
+  // Optimiste: assumes user follows all Quick Wins (+3 pts/month).
+  // Réaliste:  assumes some actions taken (+1.5 pts/month).
+  // Prudent:   status quo — no change (forces comparison to be meaningful).
+  const _optMin  = _hasTrend ? 0 : 3;   // pts/month optimiste minimum
+  const _realMin = _hasTrend ? 0 : 1.5; // pts/month réaliste minimum
   const scenarios = [
     { label:'🚀 Optimiste',  color:'#22c55e',          bg:'rgba(34,197,94,.07)',  border:'rgba(34,197,94,.2)',
       desc:'Toutes les Quick Wins exécutées + 2 audits/mois',
-      s30:Math.min(99,avgSc+Math.round(_stepP*6)), s60:Math.min(99,avgSc+Math.round(_stepP*12)), s90:Math.min(99,avgSc+Math.round(_stepP*18)), traffic:PREVIEW_MODE?'+28%':'—', leads:PREVIEW_MODE?'+35%':'—', roi:PREVIEW_MODE?'+1 840€':'—' },
+      s30:Math.min(99,avgSc+Math.max(Math.round(_stepP*6),  Math.round(_optMin*1))),
+      s60:Math.min(99,avgSc+Math.max(Math.round(_stepP*12), Math.round(_optMin*2))),
+      s90:Math.min(99,avgSc+Math.max(Math.round(_stepP*18), Math.round(_optMin*3))),
+      traffic:PREVIEW_MODE?'+28%':'—', leads:PREVIEW_MODE?'+35%':'—', roi:PREVIEW_MODE?'+1 840€':'—' },
     { label:'📈 Réaliste',   color:'var(--fp-accent)',  bg:'rgba(37,99,235,.07)', border:'rgba(37,99,235,.2)',
       desc:'Rythme actuel maintenu, corrections critiques faites',
-      s30:Math.min(99,avgSc+_p30), s60:Math.min(99,avgSc+_p60), s90:Math.min(99,avgSc+_p90), traffic:PREVIEW_MODE?'+18%':'—', leads:PREVIEW_MODE?'+22%':'—', roi:PREVIEW_MODE?'+1 240€':'—' },
+      s30:Math.min(99,avgSc+Math.max(_p30, Math.round(_realMin*1))),
+      s60:Math.min(99,avgSc+Math.max(_p60, Math.round(_realMin*2))),
+      s90:Math.min(99,avgSc+Math.max(_p90, Math.round(_realMin*3))),
+      traffic:PREVIEW_MODE?'+18%':'—', leads:PREVIEW_MODE?'+22%':'—', roi:PREVIEW_MODE?'+1 240€':'—' },
     { label:'⚠️ Prudent',   color:'#f59e0b',           bg:'rgba(245,158,11,.06)', border:'rgba(245,158,11,.2)',
       desc:'Sans action supplémentaire, croissance organique seule',
-      s30:Math.min(99,avgSc+Math.round(_stepP*2)), s60:Math.min(99,avgSc+Math.round(_stepP*4)),  s90:Math.min(99,avgSc+Math.round(_stepP*6)),  traffic:PREVIEW_MODE?'+6%':'—',  leads:PREVIEW_MODE?'+8%':'—',  roi:PREVIEW_MODE?'+380€':'—' },
+      s30:Math.min(99,avgSc+Math.round(_stepP*2)), s60:Math.min(99,avgSc+Math.round(_stepP*4)),  s90:Math.min(99,avgSc+Math.round(_stepP*6)),
+      traffic:PREVIEW_MODE?'+6%':'—',  leads:PREVIEW_MODE?'+8%':'—',  roi:PREVIEW_MODE?'+380€':'—' },
   ];
+  const _monthStep = Math.max(_stepP * 4, _realMin);
   const monthData = months.map(function(m, i) {
-    const sc = Math.max(0, Math.min(99, Math.round(avgSc + _stepP*4*(i+1))));
+    const sc = Math.max(0, Math.min(99, Math.round(avgSc + _monthStep*(i+1))));
     const _d = sc - avgSc;
     return { month:m, score:sc, delta:(_d>=0?'+':'')+_d+' pts' };
   });

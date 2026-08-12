@@ -60,7 +60,7 @@ router.get("/audits", async (req: Request, res: Response) => {
 // ── POST /audits ──────────────────────────────────────────────────────────────
 
 router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Response) => {
-  const { url, origin = "manual", type } = req.body as { url?: string; origin?: string; type?: string };
+  const { url, origin = "manual", type, force } = req.body as { url?: string; origin?: string; type?: string; force?: boolean };
   const normalizedUrl = normalizeAuditUrl(url);
   if (!normalizedUrl) {
     res.status(400).json({
@@ -74,15 +74,18 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
 
   try {
     // Guard: audit running on same URL for this org today
+    // Skipped when force=true (user explicitly retrying an existing audit).
     // BUG-005 fix: audits.date is TEXT — compare via created_at (TIMESTAMP) to avoid
     // "operator does not exist: text >= timestamp with time zone" PostgreSQL error.
-    const dup = await req.orgDb(
-      `SELECT id FROM audits WHERE org_id = $1 AND url = $2 AND created_at >= date_trunc('day', now()) LIMIT 1`,
-      [orgId, normalizedUrl]
-    );
-    if (dup.rows.length) {
-      res.status(409).json({ error: "Audit déjà lancé aujourd'hui", code: "DUPLICATE_AUDIT", duplicateId: dup.rows[0].id });
-      return;
+    if (!force) {
+      const dup = await req.orgDb(
+        `SELECT id FROM audits WHERE org_id = $1 AND url = $2 AND created_at >= date_trunc('day', now()) LIMIT 1`,
+        [orgId, normalizedUrl]
+      );
+      if (dup.rows.length) {
+        res.status(409).json({ error: "Audit déjà lancé aujourd'hui", code: "DUPLICATE_AUDIT", duplicateId: dup.rows[0].id });
+        return;
+      }
     }
     // Shared runner (#437): identical path for manual and scheduled audits —
     // insert, async PSI, alert rules, broadcast, activity, usage accounting.

@@ -154,3 +154,5 @@
 - [AI confirmation card conversationId](ai-confirmation-card-convid.md) — confirmation_request SSE must embed conversationId (arrives before _ai frame); confirm handlers prefer card ID; TOOL_LABELS map for previews; errors visible in chat
 - [Dashboard i18n engine](dashboard-i18n-engine.md) — every visible French string must be an exact FP_I18N key or built from fpT() fragments; composites never match; notif dropdown is a translation root
 - [Stripe dahlia period end](stripe-dahlia-period-end.md) — 2026-04-22.dahlia: current_period_end lives on subscription ITEMS not sub; use subPeriodEnd(); never pass start_date:"now" to schedule phase 0
+- [Phase 3 background loading](dashboard-phase3-background.md) — Phase 3 (audits/monitors/reports/team) is non-blocking; `STATE.loading=false` fires after Phase 2 only; fp-backend watchdogs check `!STATE.loading`
+- [Audit retry force parameter](audit-retry-force.md) — POST /api/audits must include `force:true` on retry to bypass 409 DUPLICATE_AUDIT same-day guard

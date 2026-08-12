@@ -2970,7 +2970,7 @@
       if (!page) return;
       var hasSkeleton = !!page.querySelector('#fp-loading-skeleton');
       var hasRealContent = !!page.querySelector('.fp-hero-cmd, .fp-stat-card, .fp-card, .fp-gauge-card, .fp-stat-row, .fp-page-section, .fp-overview-grid');
-      var stateReady = window.STATE && window.STATE.me;
+      var stateReady = window.STATE && window.STATE.me && !window.STATE.loading;
       if ((hasSkeleton || !hasRealContent) && stateReady && window.render) {
         console.debug('[FP] ' + label + ': skeleton/blank detected — forcing re-render');
         try { window.render(); } catch(e) {
@@ -3128,8 +3128,8 @@
         // Vrai contenu présent → OK
         if (hasContent && !hasSkeleton) { clearInterval(_id); return; }
 
-        // STATE prêt mais skeleton encore là → forcer le rendu une fois puis arrêter
-        if (window.STATE && window.STATE.me && typeof window.render === 'function') {
+        // STATE prêt et chargement terminé mais skeleton encore là → forcer le rendu une fois puis arrêter
+        if (window.STATE && window.STATE.me && !window.STATE.loading && typeof window.render === 'function') {
           clearInterval(_id);
           console.debug('[FP v8d] Forçage render() à t=' + _t + 'ms');
           try { window.render(); } catch(e) { console.error('[FP v8d] render() échoué:', e); }
