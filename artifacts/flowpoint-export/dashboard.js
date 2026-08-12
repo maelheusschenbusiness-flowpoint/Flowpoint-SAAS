@@ -4934,20 +4934,7 @@ function renderOverview() {
   const me = STATE.me;
   if (!me) {
     if (STATE.loading) {
-      return `<div style="padding:24px;animation:fp-fade-in 0.3s ease">
-        <div style="height:160px;border-radius:var(--fp-radius-xl);background:var(--fp-card);margin-bottom:24px;position:relative;overflow:hidden">
-          <div class="fp-skel-shimmer" style="position:absolute;inset:0"></div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
-          ${Array.from({length:4},()=>`<div style="height:64px;border-radius:12px;background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>`).join('')}
-        </div>
-        <div style="height:52px;border-radius:var(--fp-radius-lg);background:var(--fp-card);margin-bottom:20px;position:relative;overflow:hidden">
-          <div class="fp-skel-shimmer" style="position:absolute;inset:0"></div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-          ${Array.from({length:6},()=>`<div style="height:120px;border-radius:var(--fp-radius-lg);background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>`).join('')}
-        </div>
-      </div>`;
+      return renderPageSkeleton();
     }
     return '';
   }
@@ -5766,18 +5753,28 @@ function _sectionErrorBanner(section) {
   </div>`;
 }
 
+
+/* ── Shared Overview-style page skeleton ─────────────────────────────────
+   Replicates the Overview loading phase (structured shimmer blocks) on any
+   page. Never renders a spinner ring. Config keys:
+     hero (bool), stats (n), statH, toolbar (bool), sidebar (bool),
+     cards (n), cardCols, cardH, rows (n), rowH                         */
+function renderPageSkeleton(cfg) {
+  const c = Object.assign({ hero: true, stats: 4, statH: 64, toolbar: true, sidebar: false, cards: 6, cardCols: 3, cardH: 120, rows: 0, rowH: 72 }, cfg || {});
+  const shim = h => `<div style="height:${h}px;border-radius:var(--fp-radius-lg);background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>`;
+  let out = '<div style="padding:24px;animation:fp-fade-in 0.3s ease">';
+  if (c.hero) out += `<div style="height:160px;border-radius:var(--fp-radius-xl);background:var(--fp-card);margin-bottom:24px;position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>`;
+  if (c.stats > 0) out += `<div style="display:grid;grid-template-columns:repeat(${c.stats},1fr);gap:12px;margin-bottom:24px">${Array.from({length:c.stats},()=>shim(c.statH)).join('')}</div>`;
+  if (c.toolbar) out += `<div style="margin-bottom:20px">${shim(52)}</div>`;
+  if (c.sidebar) out += `<div style="display:grid;grid-template-columns:1fr 3fr;gap:20px;margin-bottom:20px">${shim(300)}<div style="display:flex;flex-direction:column;gap:12px">${Array.from({length:5},()=>shim(52)).join('')}</div></div>`;
+  if (c.cards > 0) out += `<div style="display:grid;grid-template-columns:repeat(${c.cardCols},1fr);gap:12px;margin-bottom:20px">${Array.from({length:c.cards},()=>shim(c.cardH)).join('')}</div>`;
+  if (c.rows > 0) out += `<div style="display:flex;flex-direction:column;gap:10px">${Array.from({length:c.rows},()=>shim(c.rowH)).join('')}</div>`;
+  return out + '</div>';
+}
+
 function renderAudits() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
-        ${Array.from({length:3},()=>'<div class="fp-skel-block" style="height:64px"></div>').join('')}
-      </div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${Array.from({length:5},()=>'<div class="fp-skel-block" style="height:68px"></div>').join('')}
-      </div>
-    </div>`;
+    return renderPageSkeleton({ rows: 5, rowH: 68, stats: 3, cards: 0 });
   }
   const _auditErrBanner = _sectionErrorBanner('audits');
   const q = STATE.auditFilter;
@@ -5980,16 +5977,7 @@ function renderAudits() {
 /* ── MONITORS ── */
 function renderMonitors() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
-        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:64px"></div>').join('')}
-      </div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:72px"></div>').join('')}
-      </div>
-    </div>`;
+    return renderPageSkeleton({ rows: 4, rowH: 72, cards: 0 });
   }
   const _monErrBanner = _sectionErrorBanner('monitors');
   const plan = STATE.me?.plan || 'Pro';
@@ -6418,13 +6406,7 @@ function _missionCatIcon(cat) {
 
 function renderMissions() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${Array.from({length:5},()=>'<div class="fp-skel-block" style="height:80px"></div>').join('')}
-      </div>
-    </div>`;
+    return renderPageSkeleton({ stats: 0, rows: 5, rowH: 80, cards: 0 });
   }
   const impactRank = { 'Très élevé': 4, 'Élevé': 3, 'Moyen': 2, 'Faible': 1 };
   const isLib = STATE.missionView === 'library';
@@ -7198,13 +7180,7 @@ function setupEditCalEventPanel(ev) {
 /* ── REPORTS ── */
 function renderReports() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:72px"></div>').join('')}
-      </div>
-    </div>`;
+    return renderPageSkeleton({ stats: 0, rows: 4, rowH: 72, cards: 0 });
   }
   const _repErrBanner = _sectionErrorBanner('reports');
   const sub = STATE.subRoute;
@@ -8162,13 +8138,7 @@ function renderReports() {
 /* ── LOCAL SEO ── */
 function renderLocalSEO() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
-        ${Array.from({length:3},()=>'<div class="fp-skel-block" style="height:80px"></div>').join('')}
-      </div>
-    </div>`;
+    return renderPageSkeleton({ stats: 3, statH: 80, cards: 0 });
   }
   const plan = STATE.me?.plan || 'Pro';
   const isStd  = plan === 'Standard';
@@ -8629,12 +8599,7 @@ function renderLocalSEO() {
 /* ── TEAM ── */
 function renderTeam() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:60px"></div>').join('')}
-      </div>
-    </div>`;
+    return renderPageSkeleton({ stats: 0, toolbar: false, rows: 4, rowH: 60, cards: 0 });
   }
   // Ensure all team-related STATE arrays are initialized
   if (!Array.isArray(STATE.teamChatHistory))  STATE.teamChatHistory  = [];
@@ -8866,13 +8831,7 @@ function renderTeam() {
 /* ── BILLING ── */
 function renderBilling() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
-        ${Array.from({length:3},()=>'<div class="fp-skel-block" style="height:80px"></div>').join('')}
-      </div>
-      <div class="fp-skel-block" style="height:200px"></div>
-    </div>`;
+    return renderPageSkeleton({ stats: 3, statH: 80, toolbar: false, cards: 0, rows: 1, rowH: 200 });
   }
   // ── Stripe-sync on every billing page render ───────────────────────────────
   // Fires a background call to reconcile DB ↔ Stripe so management buttons
@@ -8910,7 +8869,7 @@ function renderBilling() {
   }, 0);
   const sub  = STATE.subRoute;
   const me   = STATE.me;
-  if (!me) return '<div style="padding:60px 40px;text-align:center;color:var(--fp-text-muted);font-size:14px"><div style="width:42px;height:42px;margin:0 auto 14px;border-radius:50%;border:3px solid var(--fp-border);border-top-color:var(--fp-accent,#2563EB);animation:spin 0.9s linear infinite"></div>Chargement du profil…<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:16px" onclick="(function(){try{sessionStorage.removeItem(\'fp-state-cache\')}catch(_){};loadData()})()">Recharger</button></div>';
+  if (!me) return renderPageSkeleton({ stats: 0, toolbar: false, cards: 0, rows: 2, rowH: 160 }) + '<div style="text-align:center;padding:8px 0 24px;color:var(--fp-text-muted);font-size:13px">' + fpT('Chargement du profil…') + '<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:12px" onclick="(function(){try{sessionStorage.removeItem(\'fp-state-cache\')}catch(_){};loadData()})()">' + fpT('Recharger') + '</button></div>';
   const user   = STATE?.me?.user || STATE?.user || null;
   const plan = me?.plan || 'Standard';
   const _ud    = STATE.usageDetails || {};
@@ -10245,12 +10204,7 @@ function renderBilling() {
 /* ── SETTINGS ── */
 function renderAlertRules() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:64px"></div>').join('')}
-      </div>
-    </div>`;
+    return renderPageSkeleton({ stats: 0, toolbar: false, rows: 4, rowH: 64, cards: 0 });
   }
   const rules = STATE.alertRules;
   const typeLabels = { seo_score: 'Score SEO', latency: 'Latence', uptime: 'Uptime', monitor_down: 'Monitor DOWN', keyword_ranking_drop: 'Chute ranking' };
@@ -10531,15 +10485,7 @@ window.fpIsConnected = function(service) {
 
 function renderSettings() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div style="display:grid;grid-template-columns:1fr 3fr;gap:20px">
-        <div class="fp-skel-block" style="height:300px"></div>
-        <div style="display:flex;flex-direction:column;gap:12px">
-          ${Array.from({length:5},()=>'<div class="fp-skel-block" style="height:52px"></div>').join('')}
-        </div>
-      </div>
-    </div>`;
+    return renderPageSkeleton({ stats: 0, toolbar: false, sidebar: true, cards: 0 });
   }
   const sub  = STATE.subRoute;
   const s    = STATE.settings;
@@ -12298,14 +12244,11 @@ function renderSettings() {
 /* ── AI ASSISTANT ── */
 function renderAI() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div class="fp-skel-block" style="height:200px"></div>
-    </div>`;
+    return renderPageSkeleton({ stats: 0, toolbar: false, cards: 0, rows: 1, rowH: 200 });
   }
   const sub  = STATE.subRoute;
   const me   = STATE.me;
-  if (!me) return '<div style="padding:60px 40px;text-align:center;color:var(--fp-text-muted);font-size:14px"><div style="width:42px;height:42px;margin:0 auto 14px;border-radius:50%;border:3px solid var(--fp-border);border-top-color:var(--fp-accent,#2563EB);animation:spin 0.9s linear infinite"></div>Chargement du profil…<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:16px" onclick="(function(){try{sessionStorage.removeItem(\'fp-state-cache\')}catch(_){};loadData()})()">Recharger</button></div>';
+  if (!me) return renderPageSkeleton({ stats: 0, toolbar: false, cards: 0, rows: 2, rowH: 160 }) + '<div style="text-align:center;padding:8px 0 24px;color:var(--fp-text-muted);font-size:13px">' + fpT('Chargement du profil…') + '<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:12px" onclick="(function(){try{sessionStorage.removeItem(\'fp-state-cache\')}catch(_){};loadData()})()">' + fpT('Recharger') + '</button></div>';
   const user   = STATE?.me?.user || STATE?.user || null;
   const _usage = me?.usage || {};
   const plan = me?.plan || 'Pro';
@@ -26358,13 +26301,7 @@ function renderGrowthCommandCenter() {
 
 function renderGrowth() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
-        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:120px"></div>').join('')}
-      </div>
-    </div>`;
+    return renderPageSkeleton({ stats: 0, cards: 4, cardCols: 2, cardH: 120 });
   }
   // Lazy-load keyword stats + local-seo needed by Command Center (fire-and-forget, deduped)
   loadGrowthData();
@@ -26380,13 +26317,7 @@ function renderGrowth() {
 // ─────────────────────────────────────────────────────────────────
 function renderCompetitor() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:72px"></div>').join('')}
-      </div>
-    </div>`;
+    return renderPageSkeleton({ stats: 0, rows: 4, rowH: 72, cards: 0 });
   }
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
@@ -27521,13 +27452,7 @@ function renderCompetitor() {
 // ─────────────────────────────────────────────────────────────────
 function renderConversion() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-        ${Array.from({length:6},()=>'<div class="fp-skel-block" style="height:80px"></div>').join('')}
-      </div>
-    </div>`;
+    return renderPageSkeleton({ stats: 0, cards: 6, cardCols: 3, cardH: 80 });
   }
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
@@ -33139,7 +33064,7 @@ function renderLocalSEOMap() {
       <div class="fp-card" style="padding:0;overflow:hidden;position:relative;min-height:520px">
         <!-- Loading skeleton -->
         <div id="fp-gmap-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px;border-radius:var(--fp-radius-lg)">
-          <div style="width:48px;height:48px;border:3px solid rgba(37,99,235,0.2);border-top-color:#2563EB;border-radius:50%;animation:spin 1.4s linear infinite"></div>
+          <div style="position:absolute;inset:0;pointer-events:none"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div><div style="width:220px;height:12px;border-radius:6px;background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>
           <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Chargement de la carte…</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Google Maps · Places · Heatmap</div>
         </div>
@@ -33414,7 +33339,7 @@ function renderCompetitorsMap() {
       <!-- MAP -->
       <div class="fp-card" style="padding:0;overflow:hidden;position:relative;min-height:540px">
         <div id="fp-competitors-map-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px;border-radius:var(--fp-radius-lg)">
-          <div style="width:48px;height:48px;border:3px solid rgba(239,68,68,0.2);border-top-color:#ef4444;border-radius:50%;animation:spin 1.4s linear infinite"></div>
+          <div style="position:absolute;inset:0;pointer-events:none"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div><div style="width:220px;height:12px;border-radius:6px;background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>
           <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Analyse concurrentielle en cours…</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Google Places API · Scoring IA</div>
         </div>
@@ -34638,38 +34563,38 @@ window._fpConversionAPI = {
 
 // ── Loading / Error skeleton helpers ──────────────────────────────────────────
 function _fpConvLoadingSkeleton() {
-  return '<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1><div class="fp-section-sub">Chargement des données…</div></div></div><div style="text-align:center;padding:60px 24px"><div style="font-size:36px;margin-bottom:12px">⏳</div><div style="font-size:14px;font-weight:600;color:var(--fp-text-muted)">Chargement des Conversions en cours…</div><div style="font-size:12px;color:var(--fp-text-faint);margin-top:6px">Connexion à Google Analytics 4</div></div>';
+  return '<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1><div class="fp-section-sub">Chargement des données…</div></div></div>' + renderPageSkeleton({ hero: false, stats: 4, statH: 80, toolbar: false, cards: 4, cardCols: 2, cardH: 160, rows: 0 });
 }
 function _fpConvErrorSkeleton(err) {
   return '<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1></div></div><div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:12px">⚠️</div><div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">Erreur de chargement</div><div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">'+escHtml(String(err||'Erreur inconnue'))+'</div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpConversionAPI.refresh()">🔄 Réessayer</button></div>';
 }
 
 function _fpAnaLoadingSkeleton() {
-  return '<div class="fp-section-header"><div><h1>📊 Analytics GA4</h1><div class="fp-section-sub">Chargement des données…</div></div></div><div style="text-align:center;padding:60px 24px"><div style="font-size:36px;margin-bottom:12px">⏳</div><div style="font-size:14px;font-weight:600;color:var(--fp-text-muted)">Chargement des Analytics en cours…</div><div style="font-size:12px;color:var(--fp-text-faint);margin-top:6px">Connexion à Google Analytics 4</div></div>';
+  return '<div class="fp-section-header"><div><h1>📊 Analytics GA4</h1><div class="fp-section-sub">Chargement des données…</div></div></div>' + renderPageSkeleton({ hero: false, stats: 4, statH: 80, toolbar: false, cards: 4, cardCols: 2, cardH: 160, rows: 0 });
 }
 function _fpAnaErrorSkeleton(err) {
   return '<div class="fp-section-header"><div><h1>📊 Analytics GA4</h1></div></div><div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:12px">⚠️</div><div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">Erreur de chargement</div><div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">'+escHtml(String(err||'Erreur inconnue'))+'</div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpAnalyticsAPI.loadAll()">🔄 Réessayer</button></div>';
 }
 function _fpTrafLoadingSkeleton() {
-  return '<div class="fp-section-header"><div><h1>🚦 Trafic &amp; Sources</h1><div class="fp-section-sub">Chargement des données…</div></div></div><div style="text-align:center;padding:60px 24px"><div style="font-size:36px;margin-bottom:12px">⏳</div><div style="font-size:14px;font-weight:600;color:var(--fp-text-muted)">Chargement du Trafic en cours…</div><div style="font-size:12px;color:var(--fp-text-faint);margin-top:6px">Connexion à Google Analytics 4</div></div>';
+  return '<div class="fp-section-header"><div><h1>🚦 Trafic &amp; Sources</h1><div class="fp-section-sub">Chargement des données…</div></div></div>' + renderPageSkeleton({ hero: false, stats: 4, statH: 80, toolbar: false, cards: 4, cardCols: 2, cardH: 160, rows: 0 });
 }
 function _fpTrafErrorSkeleton(err) {
   return '<div class="fp-section-header"><div><h1>🚦 Trafic &amp; Sources</h1></div></div><div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:12px">⚠️</div><div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">Erreur de chargement</div><div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">'+escHtml(String(err||''))+'</div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpTrafficAPI.loadAll()">🔄 Réessayer</button></div>';
 }
 function _fpCampLoadingSkeleton() {
-  return '<div class="fp-section-header"><div><h1>📡 Campagnes &amp; Attribution</h1><div class="fp-section-sub">Chargement des données…</div></div></div><div style="text-align:center;padding:60px 24px"><div style="font-size:36px;margin-bottom:12px">⏳</div><div style="font-size:14px;font-weight:600;color:var(--fp-text-muted)">Chargement des Campagnes en cours…</div><div style="font-size:12px;color:var(--fp-text-faint);margin-top:6px">Connexion à Google Analytics 4</div></div>';
+  return '<div class="fp-section-header"><div><h1>📡 Campagnes &amp; Attribution</h1><div class="fp-section-sub">Chargement des données…</div></div></div>' + renderPageSkeleton({ hero: false, stats: 4, statH: 80, toolbar: false, cards: 4, cardCols: 2, cardH: 160, rows: 0 });
 }
 function _fpCampErrorSkeleton(err) {
   return '<div class="fp-section-header"><div><h1>📡 Campagnes &amp; Attribution</h1></div></div><div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:12px">⚠️</div><div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">Erreur de chargement</div><div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">'+escHtml(String(err||''))+'</div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpCampaignsAPI.loadAll()">🔄 Réessayer</button></div>';
 }
 function _fpAudLoadingSkeleton() {
-  return '<div class="fp-section-header"><div><h1>👥 Audience</h1><div class="fp-section-sub">Chargement des données…</div></div></div><div style="text-align:center;padding:60px 24px"><div style="font-size:36px;margin-bottom:12px">⏳</div><div style="font-size:14px;font-weight:600;color:var(--fp-text-muted)">Chargement de l\'Audience en cours…</div><div style="font-size:12px;color:var(--fp-text-faint);margin-top:6px">Connexion à Google Analytics 4</div></div>';
+  return '<div class="fp-section-header"><div><h1>👥 Audience</h1><div class="fp-section-sub">Chargement des données…</div></div></div>' + renderPageSkeleton({ hero: false, stats: 4, statH: 80, toolbar: false, cards: 4, cardCols: 2, cardH: 160, rows: 0 });
 }
 function _fpAudErrorSkeleton(err) {
   return '<div class="fp-section-header"><div><h1>👥 Audience</h1></div></div><div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:12px">⚠️</div><div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">Erreur de chargement</div><div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">'+escHtml(String(err||''))+'</div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpAudienceAPI.loadAll()">🔄 Réessayer</button></div>';
 }
 function _fpLiveLoadingSkeleton() {
-  return '<div class="fp-section-header"><div><h1>Live Analytics</h1><div class="fp-section-sub">Chargement des données temps réel…</div></div></div><div style="text-align:center;padding:60px 24px"><div style="font-size:36px;margin-bottom:12px">⏳</div><div style="font-size:14px;font-weight:600;color:var(--fp-text-muted)">Chargement Live en cours…</div><div style="font-size:12px;color:var(--fp-text-faint);margin-top:6px">Connexion à Google Analytics 4</div></div>';
+  return '<div class="fp-section-header"><div><h1>Live Analytics</h1><div class="fp-section-sub">Chargement des données temps réel…</div></div></div>' + renderPageSkeleton({ hero: false, stats: 4, statH: 80, toolbar: false, cards: 4, cardCols: 2, cardH: 160, rows: 0 });
 }
 function _fpLiveErrorSkeleton(err) {
   return '<div class="fp-section-header"><div><h1>Live Analytics</h1></div></div><div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:12px">⚠️</div><div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">Erreur de chargement</div><div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">'+escHtml(String(err||''))+'</div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpLiveAPI.startPolling()">🔄 Réessayer</button></div>';
@@ -36389,6 +36314,7 @@ function fpPlanDeltaEur(fromId, toId) {
 
 window.STATE     = STATE;
 window.render    = render;
+window.renderPageSkeleton = renderPageSkeleton;
 
 // ── Keywords section handlers — module level so they exist even if init() aborts early ──
 // Keyword modal — defined here because <script> tags inside innerHTML do NOT execute in browsers
@@ -41690,7 +41616,7 @@ function renderLocalDominationMaps() {
       </div>
       <div style="position:relative">
         <div id="fp-gmap-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px">
-          <div style="width:48px;height:48px;border:3px solid rgba(37,99,235,0.2);border-top-color:#2563EB;border-radius:50%;animation:spin 1.4s linear infinite"></div>
+          <div style="position:absolute;inset:0;pointer-events:none"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div><div style="width:220px;height:12px;border-radius:6px;background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>
           <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Chargement de la carte…</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Google Maps · Places · Heatmap</div>
         </div>
@@ -41986,7 +41912,7 @@ function renderLocalCompetitorMap() {
       </div>
       <div style="position:relative">
         <div id="fp-competitors-map-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px">
-          <div style="width:48px;height:48px;border:3px solid rgba(239,68,68,0.2);border-top-color:#ef4444;border-radius:50%;animation:spin 1.4s linear infinite"></div>
+          <div style="position:absolute;inset:0;pointer-events:none"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div><div style="width:220px;height:12px;border-radius:6px;background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>
           <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Analyse concurrentielle en cours…</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Google Places API · Scoring IA</div>
         </div>
@@ -42880,11 +42806,7 @@ function renderGA4DataExplorer() {
 // ══════════════════════════════════════════════════════════════════════
 function renderGA4Reports() {
   if (STATE.loading) {
-    return `<div class="fp-skeleton-page">
-      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
-      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
-      ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:72px;margin-bottom:8px"></div>').join('')}
-    </div>`;
+    return renderPageSkeleton({ stats: 0, rows: 4, rowH: 72, cards: 0 });
   }
 
   const st = window._fpReportsState || {};

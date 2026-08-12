@@ -8970,33 +8970,14 @@ html[data-theme="light"] .fp-skel-shimmer {
   animation: fpSkeleton 1.6s infinite linear;
 }
 
-/* ══ Section-level skeleton page — spinner ══════════════════════════ */
+/* ══ Section-level skeleton page ═════════════════════════════════════
+   Legacy container kept for safety (no JS emits it anymore since the
+   renderPageSkeleton() unification). The spinner ring ::before was
+   REMOVED on purpose — loading states must always be the Overview-style
+   structured shimmer skeleton, never a lone spinning circle. */
 .fp-skeleton-page {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   min-height: 320px;
   padding: 24px;
-}
-/* One canonical centered loading ring. Keep skeleton children visible when a
-   renderer supplies them instead of replacing the entire page with a fake ring. */
-.fp-skeleton-page::before {
-  content: '';
-  display: block;
-  width: 44px;
-  height: 44px;
-  border: 3.5px solid rgba(255, 255, 255, 0.08);
-  border-top-color: #2563EB;
-  border-radius: 50%;
-  animation: fpSpin 0.9s linear infinite;
-  will-change: transform;
-  transform: translateZ(0);
-  transition: none;
-  flex-shrink: 0;
-}
-html[data-theme="light"] .fp-skeleton-page::before {
-  border-color: rgba(0, 0, 0, 0.08);
-  border-top-color: #2563EB;
 }
 .fp-skel-block {
   border-radius: var(--fp-radius-lg);

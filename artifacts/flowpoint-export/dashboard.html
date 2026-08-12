@@ -28,8 +28,9 @@
   </script>
   <style id="fp-no-trans">*,*::before,*::after{transition:none!important;animation-duration:0.001ms!important}
   #fp-gmap *,#fp-gmap *::before,#fp-gmap *::after{transition:unset!important;animation-duration:unset!important}
-  /* Exemptions: keep these spinners at their correct speed even during the no-transition window */
-  #fp-initial-spinner,#fp-initial-spinner *,.fp-skeleton-page::before{animation-duration:0.9s!important}</style>
+  /* Exemptions: keep loading indicators at their correct speed even during the no-transition window */
+  #fp-initial-spinner,#fp-initial-spinner *{animation-duration:0.9s!important}
+  .fp-skel-shimmer,.fp-skeleton,.fp-skel-block::after{animation-duration:1.6s!important}</style>
   <style id="fp-critical">
     /* ── CRITICAL LIGHT MODE — inline, no cache dependency, covers all persistent elements ── */
     html[data-theme="light"] body { background:#f8faff!important; }
