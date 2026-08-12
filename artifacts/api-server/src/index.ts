@@ -40,33 +40,22 @@ async function schemaAlreadyMigrated(): Promise<boolean> {
 }
 
 async function main() {
-  // ── 0-pre. Google Maps server key aliasing ─────────────────────────────────
+  // ── 0-pre. Google Maps key audit ───────────────────────────────────────────
   //
-  // FLOWPOINT_MAP_BACKEND is the canonical name for the new server-side Maps
-  // key (API-restricted only, no referer restriction). All backend Maps code
-  // reads GOOGLE_MAPS_API_KEY. Alias once here so neither the services nor the
-  // routes need to be aware of the env-var rename.
-  //
-  // Rules:
-  //  • FLOWPOINT_MAP_BACKEND takes precedence over whatever GOOGLE_MAPS_API_KEY
-  //    happens to contain (the old key was referer-restricted and useless for
-  //    server calls).
-  //  • GOOGLE_MAPS_PUBLIC_KEY is the browser key; it must never be overwritten.
-  //  • This block never logs key values — only presence.
+  // GOOGLE_MAPS_API_KEY  = server key (API-restricted, no referer restriction)
+  //                        used by Geocoding/Places/Distance Matrix/photo proxy.
+  // GOOGLE_MAPS_PUBLIC_KEY = browser key (referer-restricted), the ONLY key
+  //                        /api/maps/config may ever serialize to the frontend.
+  // The two MUST be distinct credentials. This block never logs key values —
+  // only presence and equality.
   {
-    const backendKey = process.env["FLOWPOINT_MAP_BACKEND"];
-    if (backendKey) {
-      process.env["GOOGLE_MAPS_API_KEY"] = backendKey;
-      logger.info("[Maps] GOOGLE_MAPS_API_KEY aliased from FLOWPOINT_MAP_BACKEND (server key, no referer restriction)");
-    } else if (process.env["GOOGLE_MAPS_API_KEY"]) {
-      logger.warn("[Maps] FLOWPOINT_MAP_BACKEND not set — falling back to existing GOOGLE_MAPS_API_KEY (may be referer-restricted)");
-    } else {
-      logger.warn("[Maps] No Maps server key configured (FLOWPOINT_MAP_BACKEND / GOOGLE_MAPS_API_KEY) — Geocoding/Places/Distance Matrix disabled");
-    }
-    // Audit: ensure the browser key is distinct from the server key
+    const serverKey = process.env["GOOGLE_MAPS_API_KEY"] ?? "";
     const browserKey = process.env["GOOGLE_MAPS_PUBLIC_KEY"] ?? "";
-    if (backendKey && browserKey && backendKey === browserKey) {
-      logger.warn("[Maps] FLOWPOINT_MAP_BACKEND and GOOGLE_MAPS_PUBLIC_KEY are identical — the server key should be a separate credential");
+    if (!serverKey) {
+      logger.warn("[Maps] GOOGLE_MAPS_API_KEY not set — Geocoding/Places/Distance Matrix disabled");
+    }
+    if (serverKey && browserKey && serverKey === browserKey) {
+      logger.warn("[Maps] GOOGLE_MAPS_API_KEY and GOOGLE_MAPS_PUBLIC_KEY are identical — the server key must be a separate, non-referer-restricted credential");
     }
   }
 

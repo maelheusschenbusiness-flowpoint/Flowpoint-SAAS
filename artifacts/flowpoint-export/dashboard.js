@@ -4237,11 +4237,14 @@ function initLocalSEOMap() {
       { featureType:'landscape', elementType:'geometry', stylers:[{color:'#0a1525'}] },
       { featureType:'administrative', elementType:'geometry.stroke', stylers:[{color:'#1d3055'}] },
     ];
+    // NaN-safe coordinate parsing: null/undefined/''/non-numeric → null, never NaN
+    const _num = v => { const n = (v === null || v === undefined || v === '') ? NaN : Number(v); return Number.isFinite(n) ? n : null; };
     const _wLoc = STATE.me?.location;
-    const _hasCoords = _wLoc?.latitude != null && _wLoc?.longitude != null;
+    const _locLat = _num(_wLoc?.latitude), _locLng = _num(_wLoc?.longitude);
+    const _hasCoords = _locLat != null && _locLng != null;
     const _fallbackCity = (_wLoc?.city || _wLoc?.address || '');
     const center = _hasCoords
-      ? { lat: Number(_wLoc.latitude), lng: Number(_wLoc.longitude) }
+      ? { lat: _locLat, lng: _locLng }
       : _fallbackCity
         ? null
         : { lat:48.8566, lng:2.3522 };
@@ -4318,9 +4321,9 @@ function initLocalSEOMap() {
           { name:'Concurrent D', lat:48.843, lng:2.359, score:58, reviews:45,  threat:'Faible',  color:'#22c55e' },
           { name:'Concurrent E', lat:48.855, lng:2.372, score:71, reviews:112, threat:'Modérée', color:'#f59e0b' },
         ] : []
-    ).forEach(c => {
+    ).filter(c => Number.isFinite(Number(c.lat)) && Number.isFinite(Number(c.lng))).forEach(c => {
       const mk = new google.maps.Marker({
-        position:{lat:c.lat,lng:c.lng}, map, title:c.name,
+        position:{lat:Number(c.lat),lng:Number(c.lng)}, map, title:c.name,
         icon:{ path:google.maps.SymbolPath.CIRCLE, scale:9, fillColor:c.color, fillOpacity:0.9, strokeColor:'#fff', strokeWeight:2 }
       });
       const iw = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:190px"><strong style="font-size:13px">${c.name}</strong><div style="display:flex;gap:16px;margin-top:8px"><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.score}</div><div style="font-size:10px;color:#94a3b8">Score SEO</div></div><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.reviews}</div><div style="font-size:10px;color:#94a3b8">Avis Google</div></div></div><div style="margin-top:8px;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block;background:${c.color}22;color:${c.color}">Menace: ${c.threat}</div></div>` });
@@ -4330,8 +4333,8 @@ function initLocalSEOMap() {
     // Geolocation marker — only from stored coordinates (no browser permission prompt).
     // Users set their location via Settings > Localisation or the Workspace address fields.
     if (STATE._geoMarker) { try { STATE._geoMarker.setMap(null); } catch(_){} STATE._geoMarker = null; }
-    if (STATE._lastUserLat != null && STATE._lastUserLng != null) {
-      const userPos = { lat: STATE._lastUserLat, lng: STATE._lastUserLng };
+    if (_num(STATE._lastUserLat) != null && _num(STATE._lastUserLng) != null) {
+      const userPos = { lat: _num(STATE._lastUserLat), lng: _num(STATE._lastUserLng) };
       STATE._geoMarker = new google.maps.Marker({
         position: userPos, map, zIndex: 20, title: 'Vous \u00eates ici',
         icon: { path: google.maps.SymbolPath.CIRCLE, scale: 11, fillColor: '#22c55e', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 }
@@ -31238,8 +31241,8 @@ function renderLocalSEOMap() {
   const me = STATE.me || {};
   const locs = STATE.gbp?.locations || [];
   const firstLoc = locs[0];
-  const defLat = firstLoc?.lat ?? 48.8566;
-  const defLng = firstLoc?.lng ?? 2.3522;
+  const defLat = Number.isFinite(Number(firstLoc?.lat)) ? Number(firstLoc.lat) : 48.8566;
+  const defLng = Number.isFinite(Number(firstLoc?.lng)) ? Number(firstLoc.lng) : 2.3522;
   const defName = firstLoc?.name ?? (me.businessName || 'Mon établissement');
   const defAddr = firstLoc?.address ?? '';
   const defKeyword = me.businessType ?? 'restaurant';
@@ -31521,8 +31524,8 @@ function renderCompetitorsMap() {
   const me = STATE.me || {};
   const locs = STATE.gbp?.locations || [];
   const firstLoc = locs[0];
-  const defLat = firstLoc?.lat ?? 48.8566;
-  const defLng = firstLoc?.lng ?? 2.3522;
+  const defLat = Number.isFinite(Number(firstLoc?.lat)) ? Number(firstLoc.lat) : 48.8566;
+  const defLng = Number.isFinite(Number(firstLoc?.lng)) ? Number(firstLoc.lng) : 2.3522;
   const defKeyword = me.businessType ?? 'restaurant';
   const competitors = (window.FP_DATA && window.FP_DATA.mapsCompetitors) || [];
 

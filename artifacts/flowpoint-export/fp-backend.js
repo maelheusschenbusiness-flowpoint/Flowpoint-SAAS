@@ -1766,9 +1766,15 @@
       return level === 'critical' ? '#ef4444' : level === 'high' ? '#f59e0b' : level === 'medium' ? '#2563EB' : '#22c55e';
     },
 
+    // NaN-safe coordinate parsing: null/undefined/''/'NaN'/non-numeric → fallback, never NaN
+    _finite: function (v, fallback) {
+      var n = (v === null || v === undefined || v === '') ? NaN : Number(v);
+      return isFinite(n) ? n : fallback;
+    },
+
     _initMainMap: function (el) {
-      var lat = parseFloat(el.dataset.lat || '48.8566');
-      var lng = parseFloat(el.dataset.lng || '2.3522');
+      var lat = this._finite(el.dataset.lat, 48.8566);
+      var lng = this._finite(el.dataset.lng, 2.3522);
       var radius = parseInt(el.dataset.radius || '3000');
       var keyword = el.dataset.keyword || '';
       var name = el.dataset.name || 'Mon établissement';
@@ -1817,8 +1823,8 @@
     },
 
     _initCompetitorsMap: function (el) {
-      var lat = parseFloat(el.dataset.lat || '48.8566');
-      var lng = parseFloat(el.dataset.lng || '2.3522');
+      var lat = this._finite(el.dataset.lat, 48.8566);
+      var lng = this._finite(el.dataset.lng, 2.3522);
       var radius = parseInt(el.dataset.radius || '5000');
       var keyword = el.dataset.keyword || '';
 
@@ -1875,10 +1881,13 @@
         var map = inst.map;
         var infoWin = new google.maps.InfoWindow();
 
-        data.competitors.forEach(function (c) {
+        data.competitors.filter(function (c) {
+          // Never build a LatLng from NaN/undefined/null/non-numeric values
+          return c && isFinite(Number(c.lat)) && isFinite(Number(c.lng));
+        }).forEach(function (c) {
           var color = self._threatColor(c.threatLevel);
           var marker = new google.maps.Marker({
-            position: { lat: c.lat, lng: c.lng },
+            position: { lat: Number(c.lat), lng: Number(c.lng) },
             map: map,
             icon: self._makeCompetitorIcon(color),
             title: c.name,
@@ -1926,8 +1935,10 @@
 
         if (inst.heatLayer) inst.heatLayer.setMap(null);
 
-        var pts = data.zones.map(function (z) {
-          return { location: new google.maps.LatLng(z.lat, z.lng), weight: z.weight };
+        var pts = data.zones.filter(function (z) {
+          return z && isFinite(Number(z.lat)) && isFinite(Number(z.lng));
+        }).map(function (z) {
+          return { location: new google.maps.LatLng(Number(z.lat), Number(z.lng)), weight: isFinite(Number(z.weight)) ? Number(z.weight) : 1 };
         });
 
         inst.heatLayer = new google.maps.visualization.HeatmapLayer({
@@ -1946,11 +1957,11 @@
       if (!address) return;
       try {
         var geo = await apiAction('POST', '/api/maps/geocode', { address: address });
-        if (!geo || !geo.lat) { if (typeof window.showToast === 'function') window.showToast('error', 'Adresse introuvable'); return; }
+        if (!geo || !isFinite(Number(geo.lat)) || !isFinite(Number(geo.lng))) { if (typeof window.showToast === 'function') window.showToast('error', 'Adresse introuvable'); return; }
         var inst = this._mapInstances['fp-gmap'];
         if (inst && inst.map) {
-          inst.map.setCenter({ lat: geo.lat, lng: geo.lng });
-          inst.center = { lat: geo.lat, lng: geo.lng };
+          inst.map.setCenter({ lat: Number(geo.lat), lng: Number(geo.lng) });
+          inst.center = { lat: Number(geo.lat), lng: Number(geo.lng) };
           inst.map.setZoom(15);
           var kw = (document.getElementById('fp-map-keyword') || {}).value || '';
           this._loadCompetitorMarkers('fp-gmap', geo.lat, geo.lng, inst.radius, kw);
