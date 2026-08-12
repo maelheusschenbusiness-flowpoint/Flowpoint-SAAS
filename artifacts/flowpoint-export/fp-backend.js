@@ -1840,14 +1840,19 @@
       var lat = this._finite(loc.latitude, null);
       var lng = this._finite(loc.longitude, null);
       if (lat !== null && lng !== null) return { lat: lat, lng: lng, source: 'saved' };
+      // Saved Settings location has an address but no usable coordinates:
+      // the saved address is the user's explicit choice, so it must win over
+      // GBP/dataset coordinates. Callers geocode it and re-center; dataset
+      // coords only serve as the temporary center until the geocode resolves.
+      var needsGeocode = !!this._savedAddressQuery();
       lat = this._finite(el && el.dataset ? el.dataset.lat : null, null);
       lng = this._finite(el && el.dataset ? el.dataset.lng : null, null);
       // The renderers bake the Paris fallback into data-lat/lng when nothing is
       // configured — treat those exact values as "no real coordinates".
       if (lat !== null && lng !== null && !(Math.abs(lat - 48.8566) < 1e-9 && Math.abs(lng - 2.3522) < 1e-9)) {
-        return { lat: lat, lng: lng, source: 'dataset' };
+        return { lat: lat, lng: lng, source: 'dataset', needsGeocode: needsGeocode };
       }
-      return { lat: 48.8566, lng: 2.3522, source: 'fallback' };
+      return { lat: 48.8566, lng: 2.3522, source: 'fallback', needsGeocode: needsGeocode };
     },
 
     _savedAddressQuery: function () {
@@ -1970,7 +1975,7 @@
       var self = this;
       self._loadCompetitorMarkers('fp-gmap', lat, lng, radius, keyword);
       self._loadHeatmapLayer('fp-gmap', lat, lng, radius, keyword);
-      if (c.source === 'fallback') self._geocodeSavedAddress('fp-gmap', businessMarker, radiusCircle, radius, keyword);
+      if (c.source === 'fallback' || c.needsGeocode) self._geocodeSavedAddress('fp-gmap', businessMarker, radiusCircle, radius, keyword);
     },
 
     _initCompetitorsMap: function (el) {
@@ -2007,7 +2012,7 @@
       this._mapInstances['fp-competitors-map'] = inst;
 
       this._loadCompetitorMarkers('fp-competitors-map', lat, lng, radius, keyword);
-      if (c.source === 'fallback') this._geocodeSavedAddress('fp-competitors-map', bizMarker, bizCircle, radius, keyword);
+      if (c.source === 'fallback' || c.needsGeocode) this._geocodeSavedAddress('fp-competitors-map', bizMarker, bizCircle, radius, keyword);
     },
 
     _loadCompetitorMarkers: async function (mapId, lat, lng, radius, keyword) {
