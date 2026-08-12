@@ -62,9 +62,57 @@ export async function getHeatmapData(lat: number, lng: number, radius = 5000, ke
   return points;
 }
 
+/** Haversine distance in meters between two coordinates. */
+function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const toRad = (d: number) => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(a)));
+}
+
+/**
+ * Returns nearby competitors in the flat shape the frontend map expects:
+ * { placeId, name, vicinity, lat, lng, rating, reviewCount, distanceM, seoScore, threatLevel }.
+ *
+ * The previous version returned raw Google Nearby Search results
+ * (geometry.location nesting) which made every marker fail with
+ * "InvalidValueError: setPosition: in property lat: not a number".
+ *
+ * seoScore is a local-visibility heuristic DERIVED from real Google data
+ * (rating + review volume), never random: rating drives up to 60 pts,
+ * review count (log scale) up to 40 pts. Places without coordinates are
+ * dropped instead of producing NaN markers.
+ */
 export async function analyzeCompetitors(lat: number, lng: number, keyword: string, radius = 5000): Promise<unknown[]> {
   void keyword; // type-based nearby search; keyword ranking comes from DataForSEO
-  return getNearbyPlaces(lat, lng, "establishment", radius);
+  const raw = await getNearbyPlaces(lat, lng, "establishment", radius) as Array<Record<string, unknown>>;
+  const out: Array<Record<string, unknown>> = [];
+  for (const p of raw) {
+    const loc = ((p["geometry"] as Record<string, unknown>)?.["location"] ?? {}) as Record<string, unknown>;
+    const plat = Number(loc["lat"]);
+    const plng = Number(loc["lng"]);
+    if (!Number.isFinite(plat) || !Number.isFinite(plng)) continue; // never emit NaN markers
+    const rating = typeof p["rating"] === "number" ? p["rating"] : null;
+    const reviewCount = typeof p["user_ratings_total"] === "number" ? p["user_ratings_total"] : 0;
+    const seoScore = Math.min(100, Math.round(((rating ?? 0) / 5) * 60 + Math.min(40, Math.log10(reviewCount + 1) * 13)));
+    const threatLevel = seoScore >= 80 ? "critical" : seoScore >= 60 ? "high" : seoScore >= 40 ? "medium" : "low";
+    out.push({
+      placeId: String(p["place_id"] ?? ""),
+      name: String(p["name"] ?? ""),
+      vicinity: String(p["vicinity"] ?? ""),
+      lat: plat,
+      lng: plng,
+      rating,
+      reviewCount,
+      distanceM: haversineM(lat, lng, plat, plng),
+      seoScore,
+      threatLevel,
+      types: (p["types"] as string[]) ?? [],
+    });
+  }
+  return out;
 }
 
 /**

@@ -2086,6 +2086,27 @@ export async function initDataTables(): Promise<void> {
       logger.info("[init-data-tables] missing-production-tables-v3: already applied — skipping");
     }
 
+    // ── Self-heal: competitor_map_results ──────────────────────────────────────
+    // This table was added to the missing-production-tables-v3 block AFTER some
+    // deployments had already recorded v3 in schema_migrations, so the gated
+    // CREATE was skipped forever on those DBs (prod 500 on GET
+    // /api/local-maps/competitors). Always-run CREATE IF NOT EXISTS repairs it.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS competitor_map_results (
+        id TEXT PRIMARY KEY, org_id TEXT NOT NULL DEFAULT 'default',
+        keyword TEXT NOT NULL, location TEXT NOT NULL, place_id TEXT NOT NULL,
+        name TEXT NOT NULL, address TEXT, category TEXT, rating REAL,
+        review_count INTEGER NOT NULL DEFAULT 0, rank INTEGER,
+        photo_url TEXT, authority_score INTEGER NOT NULL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT 'dataforseo_maps', fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(org_id, keyword, location, place_id)
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS competitor_map_results_org_idx ON competitor_map_results(org_id, fetched_at DESC)`);
+    await run(client, `ALTER TABLE competitor_map_results ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE competitor_map_results NO FORCE ROW LEVEL SECURITY`);
+
     // ── Self-healing column additions for tables created by v1/v2 migrations ──
     // These always run (idempotent ADD COLUMN IF NOT EXISTS) to repair existing
     // installs that had the old incomplete schemas from v1/v2 migrations.
