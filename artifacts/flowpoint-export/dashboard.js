@@ -9036,6 +9036,57 @@ function renderBilling() {
     } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'annulation impossible')); }
   };
 
+  // ── Hoist upgrade helpers so Plans tab buttons work even when Addons tab has never rendered.
+  if (typeof window._fpResyncBillingState !== 'function') {
+    window._fpResyncBillingState = function() {
+      try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+      _apiFetchCache.clear(); _apiFetchInFlight.clear();
+      return loadData().then(function(){ navigate('billing'); navigateSub('plans'); })
+        .catch(function(){ navigate('billing'); setTimeout(function(){ navigateSub('plans'); }, 100); });
+    };
+  }
+  if (typeof window._fpDoUpgrade !== 'function') {
+    window._fpDoUpgrade = async function(plan) {
+      showToast('info', 'Mise à jour du plan en cours…');
+      try {
+        const r = await apiAction('POST', '/api/billing/upgrade', { plan });
+        if (r && r.downgrade) {
+          const _date = r.effectiveDate || 'la prochaine échéance';
+          const _when = r.trialDowngrade ? 'à la fin de votre essai' : 'à la prochaine échéance';
+          showToast('success', 'Downgrade programmé ' + _when + ' (' + _date + ')');
+          if (STATE.billing) { STATE.billing.pendingPlan = plan; STATE.billing.pendingPlanDate = _date; }
+          try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+          _apiFetchCache.clear(); _apiFetchInFlight.clear();
+          loadData().then(function(){ navigate('billing'); navigateSub('plans'); }).catch(function(){ navigate('billing'); navigateSub('plans'); });
+          return;
+        }
+        if (r && r.upgraded) {
+          const _planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
+          const _msg = r.noSubDowngrade ? 'Plan changé vers ' + _planLabel + ' ✓' : 'Plan mis à jour → ' + _planLabel + ' ✓';
+          showToast('success', _msg);
+          if (STATE.me) STATE.me.plan = _planLabel;
+          if (STATE.billing) STATE.billing.plan = plan.toLowerCase();
+          render();
+          try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+          _apiFetchCache.clear(); _apiFetchInFlight.clear();
+          loadData().then(function(){ navigate('billing'); navigateSub('plans'); }).catch(function(){ navigate('billing'); navigateSub('plans'); });
+          return;
+        }
+        if (r && r.reactivation && r.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
+        if (r && r.noSubscription) { showToast('info', 'Abonnement introuvable — redirection vers les plans…'); navigate('billing'); setTimeout(function(){ navigateSub('plans'); }, 100); return; }
+        if (r && r.error === 'plan_already_active') { showToast('info', 'Vous êtes déjà sur ce plan.'); return; }
+        showToast('error', (r && (r.message || r.error)) || 'Le changement de plan a échoué. Réessayez.');
+        window._fpResyncBillingState();
+      } catch(e) {
+        const _rawMsg = (e && e.message) || '';
+        const _isToken = /^[a-z0-9_]+$/.test(_rawMsg);
+        if (e && e.code === 'plan_already_active') { showToast('info', (!_isToken && _rawMsg) || 'Vous êtes déjà sur ce plan.'); return; }
+        showToast('error', (!_isToken && _rawMsg) || 'Le changement de plan a échoué. Réessayez.');
+        window._fpResyncBillingState();
+      }
+    };
+  }
+
   // ══════════════════════════════════════════════════════════
   // SUB: PLANS & ABONNEMENTS
   // ══════════════════════════════════════════════════════════
@@ -12844,7 +12895,7 @@ function renderAI() {
       <div class="fp-card fp-mb-16" style="padding:20px 22px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
           <div>
-            <div style="font-size:14px;font-weight:800;color:var(--fp-text)">${fpT('Quota mensuel \u2014 Plan')} ${plan}${isUnlimited ? ' \u00b7 ' + fpT('Cr\u00e9dits illimit\u00e9s') : ''}</div>
+            <div style="font-size:14px;font-weight:800;color:var(--fp-text)">${fpT('Quota mensuel \u2014 Cr\u00e9dits IA inclus')}${isUnlimited ? ' \u00b7 ' + fpT('Cr\u00e9dits illimit\u00e9s') : ''}</div>
             <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${fpT('R\u00e9initialisation automatique le 1er de chaque mois')}${isUnlimited ? ' \u00b7 ' + fpT('Usage raisonnable appliqu\u00e9') : ''}</div>
           </div>
           <div style="text-align:right">
@@ -12885,7 +12936,7 @@ function renderAI() {
           </div>
           <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:10px;color:var(--fp-text-faint)">Rechargement des AI Credits</span>
-            <span style="font-size:11px;font-weight:700;color:#2563EB">01/06/2026</span>
+            <span style="font-size:11px;font-weight:700;color:#2563EB">${(function(){var d=new Date();d.setDate(1);d.setMonth(d.getMonth()+1);var m=d.toLocaleDateString('fr-FR',{month:'long'});var y=d.getFullYear();return '1er '+m.charAt(0).toUpperCase()+m.slice(1)+' '+y;})()}</span>
           </div>
         </div>
 
@@ -12989,11 +13040,7 @@ function renderAI() {
         <div class="fp-section-sub"><span style="color:#2563EB;font-weight:700">IA Performante</span> · Contexte complet workspace · Réponses &lt; 3s</div>
       </div>
       <div class="fp-section-actions">
-        <select id="fp-ai-provider-select" class="fp-select" style="font-size:11px;color:#2563EB;font-weight:700;border-color:rgba(37,99,235,0.4);background:rgba(37,99,235,0.06)" onchange="(function(sel){const v=sel.options[sel.selectedIndex].value;const labels={openai:'GPT-5',anthropic:'Claude',gemini:'Gemini'};const badge=labels[v]||v;STATE.aiModel=badge;STATE.aiProvider=v;try{localStorage.setItem('fp:ai-provider',v);}catch(_){}const b=document.getElementById('fp-ai-badge');if(b)b.textContent=badge;const s=document.getElementById('fp-ai-chat-model-label');if(s)s.textContent=badge+' · FlowPoint Expert';showToast('success','Modèle IA : '+badge)})(this)">
-          <option value="openai" ${STATE.aiProvider==='openai'||!STATE.aiProvider?'selected':''}>ChatGPT</option>
-          <option value="anthropic" ${STATE.aiProvider==='anthropic'?'selected':''}>Claude (Anthropic)</option>
-          <option value="gemini" ${STATE.aiProvider==='gemini'?'selected':''}>Gemini (Google)</option>
-        </select>
+        <select id="fp-ai-provider-select" class="fp-select" style="font-size:11px;color:var(--fp-text-muted);font-weight:600;opacity:0.65;cursor:not-allowed" disabled title="Choix du fournisseur IA — bientôt disponible"><option>🔒 Fournisseur IA — bientôt disponible</option></select>
         ${btn(fpT('Nouvelle conv.'),'fp-btn fp-btn-ghost fp-btn-sm','','onclick="window.fpClearAiChat()"')}
       </div>
     </div>
@@ -21784,6 +21831,11 @@ function renderSubPageContent(route, sub) {
     if (sub === 'gbp')             return renderLocalSEOGBP();
   }
   if (route === 'reports') {
+    // renderReports() handles exec/seo/monitoring/local/conversion/client/ai via STATE.subRoute.
+    if (sub === 'exec' || sub === 'seo' || sub === 'monitoring' || sub === 'local' ||
+        sub === 'conversion' || sub === 'client' || sub === 'ai') {
+      return renderReports();
+    }
     if (sub === 'history')   return renderReportsHistory();
     if (sub === 'templates') return renderReportsTemplates();
   }
@@ -36933,7 +36985,9 @@ window.fpAiPanelConfirm = async function(proposalId, convId, confirmBtn, card, m
   confirmBtn.disabled = true;
   confirmBtn.textContent = fpT('En cours…');
   try {
-    var r = await (window.FP_AI_CHAT_API ? window.FP_AI_CHAT_API.confirmAction(convId, proposalId) : Promise.reject(new Error('API non dispo')));
+    var _confirmPromise = window.FP_AI_CHAT_API ? window.FP_AI_CHAT_API.confirmAction(convId, proposalId) : Promise.reject(new Error('API non dispo'));
+    var _confirmTimeout = new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('Délai dépassé (15s) — réessayez')); }, 15000); });
+    var r = await Promise.race([_confirmPromise, _confirmTimeout]);
     if (card) {
       var resultText = r.ok ? '✅ ' + (r.content || fpT('Action effectuée.')) : '⚠ ' + (r.error || fpT('Échec de l\'exécution.'));
       card.innerHTML = '<span style="font-size:11px;color:var(--fp-text-soft)">' + resultText + '</span>';

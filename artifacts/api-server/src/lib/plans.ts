@@ -325,12 +325,12 @@ export function computeQtyAddonExtras(addons: Record<string, boolean | number>):
  *   • No key here unless it also has a price ID in ADDON_PRICE_IDS
  *   • One-time credit packs must never appear here
  *
- * Standard plan: white-label is in the "locked" feature list → NOT included.
+ * Standard plan: white-label is included (unlocked for Standard and above).
  * Pro plan: white-label is a listed feature; customDomain is NOT (ultra only).
  * Ultra plan: adds customDomain + retention365d + advanced AI add-ons.
  */
 export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
-  standard: new Set<string>([]),
+  standard: new Set<string>(["whiteLabel"]),
   pro: new Set<string>([
     "whiteLabel",
     "advancedWebhooks",
