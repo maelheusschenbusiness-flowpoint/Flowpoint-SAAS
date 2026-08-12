@@ -4199,7 +4199,7 @@ function loadGoogleMaps(cb) {
     }
     window.__gmapsCb = () => { _gmapsLoading = false; cb(); };
     const s = document.createElement('script');
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=__gmapsCb&libraries=places`;
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=__gmapsCb&libraries=places,visualization`;
     s.async = true;
     // ERR_BLOCKED_BY_CLIENT: Brave Shield / uBlock blocks maps.googleapis.com
     s.onerror = () => {
@@ -16277,8 +16277,12 @@ function bindSectionEvents() {
       const c = STATE.checklist.find(x => x.id === item.dataset.checkId);
       if (c) { c.done = !c.done; saveChecklist(); render(); }
     }));
-    // Init Google Map after DOM is ready
-    setTimeout(initLocalSEOMap, 50);
+    // Init Google Map after DOM is ready — Aperçu only. The 'map' and
+    // 'competitors-map' sub-pages are owned by FP_MAPS_API (fp-backend.js):
+    // it loads real ranking competitors + heatmap from /api/maps/*, while
+    // initLocalSEOMap would claim the container first (cross-guard flags)
+    // and draw synthetic offset markers instead.
+    if (!STATE.subRoute) setTimeout(initLocalSEOMap, 50);
   }
 
   if (route === 'team') {
@@ -39761,6 +39765,15 @@ function renderLocalDominationMaps() {
 
   const activeHeatmap = heatmaps[0];
 
+  // Interactive Google Map — saved Settings > Localisation coords win over GBP, then Paris fallback
+  const _gLoc = STATE.me?.location || {};
+  const _gLocs = STATE.gbp?.locations || [];
+  const _gFirst = _gLocs[0];
+  const _gLat = Number.isFinite(Number(_gLoc.latitude)) && _gLoc.latitude !== null && _gLoc.latitude !== '' ? Number(_gLoc.latitude) : (Number.isFinite(Number(_gFirst?.lat)) ? Number(_gFirst.lat) : 48.8566);
+  const _gLng = Number.isFinite(Number(_gLoc.longitude)) && _gLoc.longitude !== null && _gLoc.longitude !== '' ? Number(_gLoc.longitude) : (Number.isFinite(Number(_gFirst?.lng)) ? Number(_gFirst.lng) : 2.3522);
+  const _gName = _gFirst?.name ?? (STATE.me?.businessName || 'Mon établissement');
+  const _gKeyword = STATE.me?.businessType ?? activeHeatmap?.keyword ?? 'restaurant';
+
   return `
     <div class="fp-section-header">
       <div>
@@ -39770,6 +39783,37 @@ function renderLocalDominationMaps() {
       <div class="fp-section-actions">
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_LOCAL_MAPS_API?.load().then(()=>render(STATE.currentSection))">⟳ Actualiser</button>
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showCreateHeatmapModal()">+ Nouvelle heatmap</button>
+      </div>
+    </div>
+
+    <!-- INTERACTIVE GOOGLE MAP (FP_MAPS_API auto-init via MutationObserver) -->
+    <div class="fp-card fp-mb-16" style="padding:0;overflow:hidden;position:relative;min-height:520px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:12px 16px;border-bottom:1px solid var(--fp-border)">
+        <div class="fp-card-title" style="margin-bottom:0">📍 Carte interactive — concurrents & zone de chalandise</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input id="fp-map-keyword" type="text" placeholder="Secteur ex: boulangerie" value="${escHtml(_gKeyword)}"
+            style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text);font-size:12px;padding:6px 10px;width:150px"
+            onkeydown="if(event.key==='Enter')typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-gmap',this.value)">
+          <select id="fp-map-radius" onchange="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.setRadius('fp-gmap',parseInt(this.value))"
+            style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:5px 8px">
+            <option value="1000">1 km</option>
+            <option value="3000" selected>3 km</option>
+            <option value="5000">5 km</option>
+            <option value="10000">10 km</option>
+          </select>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.recenter('fp-gmap')">🎯 Recentrer</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-gmap',document.getElementById('fp-map-keyword')?.value||'')">🔍 Analyser</button>
+        </div>
+      </div>
+      <div style="position:relative">
+        <div id="fp-gmap-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px">
+          <div style="width:48px;height:48px;border:3px solid rgba(37,99,235,0.2);border-top-color:#2563EB;border-radius:50%;animation:spin 1.4s linear infinite"></div>
+          <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Chargement de la carte…</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">Google Maps · Places · Heatmap</div>
+        </div>
+        <div id="fp-gmap" style="width:100%;height:520px"
+          data-lat="${_gLat}" data-lng="${_gLng}" data-radius="3000" data-keyword="${escHtml(_gKeyword)}"
+          data-name="${escHtml(_gName)}"></div>
       </div>
     </div>
 
@@ -39993,6 +40037,12 @@ function renderLocalCompetitorMap() {
   const authColor = (s) => s >= 80 ? 'var(--fp-success)' : s >= 60 ? 'var(--fp-warning)' : s >= 40 ? 'var(--fp-accent)' : 'var(--fp-text-faint)';
   const location = STATE.me?.location || {};
   const configuredLocation = [location.city, location.address].filter(Boolean).join(', ');
+  // Interactive Google Map — saved Settings > Localisation coords win over GBP, then Paris fallback
+  const _cLocs = STATE.gbp?.locations || [];
+  const _cFirst = _cLocs[0];
+  const _cLat = Number.isFinite(Number(location.latitude)) && location.latitude !== null && location.latitude !== '' ? Number(location.latitude) : (Number.isFinite(Number(_cFirst?.lat)) ? Number(_cFirst.lat) : 48.8566);
+  const _cLng = Number.isFinite(Number(location.longitude)) && location.longitude !== null && location.longitude !== '' ? Number(location.longitude) : (Number.isFinite(Number(_cFirst?.lng)) ? Number(_cFirst.lng) : 2.3522);
+  const _cKeyword = STATE.me?.businessType ?? 'restaurant';
   return `
     <div class="fp-section-header">
       <div>
@@ -40033,16 +40083,49 @@ function renderLocalCompetitorMap() {
       </div>
     </div>
 
+    <!-- INTERACTIVE COMPETITORS GOOGLE MAP (FP_MAPS_API auto-init via MutationObserver) -->
+    <div class="fp-card fp-mb-16" style="padding:0;overflow:hidden;position:relative;min-height:540px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:12px 16px;border-bottom:1px solid var(--fp-border)">
+        <div class="fp-card-title" style="margin-bottom:0">🏴 Carte des concurrents — menace & positions</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input id="fp-comp-keyword" type="text" placeholder="Secteur d'activité" value="${escHtml(_cKeyword)}"
+            style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text);font-size:12px;padding:6px 10px;width:150px"
+            onkeydown="if(event.key==='Enter')typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-competitors-map',this.value)">
+          <select id="fp-comp-radius" onchange="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.setRadius('fp-competitors-map',parseInt(this.value))"
+            style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:5px 8px">
+            <option value="2000">2 km</option>
+            <option value="5000" selected>5 km</option>
+            <option value="10000">10 km</option>
+            <option value="20000">20 km</option>
+          </select>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-competitors-map',document.getElementById('fp-comp-keyword')?.value||'')">🔍 Analyser</button>
+        </div>
+      </div>
+      <div style="position:relative">
+        <div id="fp-competitors-map-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px">
+          <div style="width:48px;height:48px;border:3px solid rgba(239,68,68,0.2);border-top-color:#ef4444;border-radius:50%;animation:spin 1.4s linear infinite"></div>
+          <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Analyse concurrentielle en cours…</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">Google Places API · Scoring IA</div>
+        </div>
+        <div id="fp-competitors-map" style="width:100%;height:540px"
+          data-lat="${_cLat}" data-lng="${_cLng}" data-radius="5000" data-keyword="${escHtml(_cKeyword)}"
+          data-mode="competitors"></div>
+        <!-- Legend overlay -->
+        <div style="position:absolute;bottom:12px;left:12px;background:rgba(10,14,27,0.88);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;z-index:5">
+          <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);margin-bottom:6px">LÉGENDE</div>
+          ${[
+            {c:'#ef4444',l:'Critique — score > 75'},
+            {c:'#f59e0b',l:'Élevé — score 55-74'},
+            {c:'#2563EB',l:'Moyen — score 35-54'},
+            {c:'#22c55e',l:'Faible — score < 35'},
+            {c:'#8b5cf6',l:'Votre établissement'},
+          ].map(x=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><div style="width:10px;height:10px;border-radius:50%;background:${x.c};flex-shrink:0"></div><span style="font-size:10px;color:var(--fp-text-muted)">${x.l}</span></div>`).join('')}
+        </div>
+      </div>
+    </div>
+
     <!-- COMPETITOR LIST -->
     <div class="fp-card">
-      <div style="position:relative;height:220px;border-radius:12px;overflow:hidden;background:linear-gradient(135deg,rgba(37,99,235,0.06) 0%,rgba(34,197,94,0.04) 100%);border:1px solid rgba(255,255,255,0.08);margin-bottom:16px;display:flex;align-items:center;justify-content:center">
-        <div style="text-align:center">
-          <div style="font-size:32px;margin-bottom:8px">🗺</div>
-          <div style="font-size:12px;color:var(--fp-text-muted)">${competitors.length ? `${competitors.length} concurrents locaux trouvés` : 'Aucun concurrent local chargé'}</div>
-          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${configuredLocation ? 'Utilisez « Découvrir des concurrents » pour interroger les données disponibles.' : 'Configurez un emplacement avant de lancer une recherche locale.'}</div>
-        </div>
-        ${configuredLocation ? `<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:22px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))" title="Emplacement configuré">📍</div>` : ''}
-      </div>
 
       <!-- Competitor cards -->
       <div style="display:flex;flex-direction:column;gap:6px">

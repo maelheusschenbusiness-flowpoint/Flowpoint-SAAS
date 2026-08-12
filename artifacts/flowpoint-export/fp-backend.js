@@ -2054,16 +2054,11 @@
           inst.markers.push(marker);
         });
 
-        // Update side panel UI
-        var self2 = this;
-        if (typeof window.render === 'function' && window.STATE) {
-          var route = window.STATE.route;
-          var sub = window.STATE.sub;
-          if ((route === 'local-seo') && (sub === 'map' || sub === 'competitors-map')) {
-            window.render();
-            setTimeout(function () { self2._tryInit(mapId); }, 100);
-          }
-        }
+        // NOTE: do NOT call window.render() here — a full re-render replaces the
+        // map container, destroys this map instance, and the MutationObserver
+        // re-init would re-trigger this load in an infinite loop. Markers are
+        // drawn directly on the live map; list UIs read FP_DATA.mapsCompetitors
+        // on their own next render.
       } catch (e) { console.warn('[FP Maps] competitor load error:', e.message); }
     },
 
