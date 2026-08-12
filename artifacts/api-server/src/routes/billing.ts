@@ -45,6 +45,38 @@ const KNOWN_ADDON_KEYS = new Set<string>([...FLAG_ADDONS, ...QTY_ADDONS]);
 const MAX_ADDON_QTY    = 500;
 const AI_CREDIT_PACK_KEYS = new Set<string>(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
 
+/**
+ * Read a subscription's current period end (epoch seconds), tolerant of the
+ * Stripe API version 2026-04-22.dahlia change that moved `current_period_end`
+ * off the subscription object and onto each subscription item.
+ *
+ * Order of resolution:
+ *   1. sub.current_period_end            — older API versions
+ *   2. sub.items.data[*].current_period_end (max) — 2026-04-22.dahlia+
+ *   3. sub.trial_end                     — trialing subs whose period aligns to trial
+ *
+ * Returns null when none is available.
+ */
+export function subPeriodEnd(sub: unknown): number | null {
+  if (!sub || typeof sub !== "object") return null;
+  const s = sub as {
+    current_period_end?: number | null;
+    trial_end?: number | null;
+    items?: { data?: Array<{ current_period_end?: number | null }> } | null;
+  };
+  if (typeof s.current_period_end === "number") return s.current_period_end;
+  const items = s.items?.data ?? [];
+  let maxItemEnd: number | null = null;
+  for (const it of items) {
+    if (typeof it.current_period_end === "number") {
+      maxItemEnd = maxItemEnd === null ? it.current_period_end : Math.max(maxItemEnd, it.current_period_end);
+    }
+  }
+  if (maxItemEnd !== null) return maxItemEnd;
+  if (typeof s.trial_end === "number") return s.trial_end;
+  return null;
+}
+
 /** Validates and normalises a plan string. Sends 400 + returns null on failure. */
 function parsePlan(raw: unknown, res: Response): string | null {
   if (raw === undefined || raw === null || raw === "") {
@@ -584,13 +616,14 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
 
     if (atPeriodEnd) {
       await stripe.subscriptions.update(sub.id, { cancel_at_period_end: true });
+      const _cancelAt = subPeriodEnd(sub);
       if (email) {
         mailer.sendSubscriptionCanceled({
           to: email, name: email.split("@")[0], plan: billingCtx.plan,
-          cancelDate: new Date(sub.current_period_end * 1000).toLocaleDateString("fr-FR"),
+          cancelDate: _cancelAt ? new Date(_cancelAt * 1000).toLocaleDateString("fr-FR") : null,
         }).catch(() => {});
       }
-      res.json({ ok: true, cancelAtPeriodEnd: true, cancelAt: sub.current_period_end });
+      res.json({ ok: true, cancelAtPeriodEnd: true, cancelAt: _cancelAt });
     } else {
       await stripe.subscriptions.cancel(sub.id);
       await persistOrgData(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
@@ -779,7 +812,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
   const targetIncluded = PLAN_INCLUDED_ADDONS[targetPlan] ?? new Set<string>();
   const planPriceIdSet  = new Set(Object.values(PLAN_PRICE_IDS).filter(Boolean));
 
-  type SubItem = { id: string; price: { id: string }; quantity?: number };
+  type SubItem = { id: string; price: { id: string }; quantity?: number; current_period_end?: number | null };
 
   try {
     const stripe = await createStripeClient(stripeKey);
@@ -966,12 +999,25 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             return !addonKey || !targetIncluded.has(addonKey);
           });
 
-          // Compute effective date early — guard null/undefined for trialing subscriptions
-          // During trial, current_period_end may be undefined; fall back to trial_end
-          const _periodEndTs = sub.current_period_end ?? (isTrialing ? sub.trial_end : undefined);
+          // Compute effective date early.
+          // API version 2026-04-22.dahlia moved current_period_end onto the
+          // subscription ITEMS; subPeriodEnd() resolves it from item/trial_end.
+          const _periodEndTs = subPeriodEnd(sub) ?? (isTrialing ? sub.trial_end ?? undefined : undefined);
           const effectiveDate = _periodEndTs
             ? new Date(_periodEndTs * 1000).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
             : "la prochaine échéance";
+
+          // A downgrade schedule cannot be created without a concrete period end
+          // (Stripe rejects phase 0 with no end_date). If we cannot determine one,
+          // fail with a clear, actionable message instead of a generic 500.
+          if (!_periodEndTs) {
+            logger.error({ subId: sub.id, orgId, targetPlan }, "[Billing] downgrade: could not resolve subscription period end");
+            res.status(422).json({
+              error: "Impossible de déterminer la date de fin de période de votre abonnement. Réessayez dans quelques minutes ou contactez le support.",
+              code: "downgrade_period_unresolved",
+            });
+            return;
+          }
 
           // ── Idempotency: if subscription already has an active schedule, skip ──
           if (sub.schedule) {
@@ -995,12 +1041,17 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           try {
             const schedule = await stripe.subscriptionSchedules.create({ from_subscription: sub.id });
             scheduleId = schedule.id;
+            // The current (phase 0) start_date is fixed by Stripe when the schedule
+            // is created from the live subscription. Passing "now" is rejected with
+            // "You can not modify the start date of the current phase" — reuse the
+            // existing phase-0 start_date instead.
+            const _existingPhase0Start = (schedule as { phases?: Array<{ start_date?: number }> }).phases?.[0]?.start_date;
             await stripe.subscriptionSchedules.update(scheduleId, {
               end_behavior: "release",
               phases: [
                 {
-                  start_date:         "now" as unknown as number,
-                  end_date:           sub.current_period_end,
+                  start_date:         (_existingPhase0Start ?? ("now" as unknown as number)),
+                  end_date:           _periodEndTs,
                   items:              [
                     { price: currentPriceId ?? undefined, quantity: 1 },
                     ...currentAddonPrices,
@@ -1219,7 +1270,18 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
     res.json({ noSubscription: true, redirectTo: "/checkout.html", plan });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to upgrade");
-    res.status(500).json({ error: "Failed to process upgrade" });
+    // Surface a specific, actionable message rather than a generic 500.
+    // The frontend shows res.error verbatim; keep it user-readable (French).
+    const _e = err as { code?: string; type?: string; message?: string } | undefined;
+    const _code = _e?.code ?? _e?.type ?? "";
+    let _msg = "Le changement de plan a échoué. Réessayez dans quelques instants.";
+    if (_code === "card_declined")            _msg = "Votre carte a été refusée. Vérifiez votre moyen de paiement puis réessayez.";
+    else if (_code === "resource_missing")    _msg = "Abonnement introuvable côté Stripe. Rechargez la page ou contactez le support.";
+    else if (_code === "rate_limit")          _msg = "Trop de requêtes — patientez quelques secondes puis réessayez.";
+    else if (typeof _e?.message === "string" && /invalid|phase|schedule/i.test(_e.message))
+      _msg = "La planification du changement de plan a échoué. Réessayez ou contactez le support.";
+    logger.error({ err, code: _code, orgId, targetPlan }, "[Billing] Failed to upgrade");
+    res.status(500).json({ error: _msg, code: _code || undefined });
   }
 });
 
@@ -1385,7 +1447,7 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
       if (sub?.status === "trialing" && sub.trial_end) {
         return new Date(sub.trial_end * 1000).toISOString();
       }
-      const ts = sub?.current_period_end ?? null;
+      const ts = subPeriodEnd(sub);
       return ts ? new Date(ts * 1000).toISOString() : null;
     })();
 
@@ -1408,9 +1470,10 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
       trialEndsAt:         reconciledTrialEndsAt,
       nextBillingDate:     nextBillingDateSub,
       nextAmount,
-      // During trial, current_period_end may be undefined — fall back to trial_end
+      // dahlia moved current_period_end onto items — subPeriodEnd resolves it,
+      // with trial_end as the final fallback for trialing subscriptions.
       currentPeriodEnd:    (() => {
-        const ts = sub?.current_period_end ?? sub?.trial_end ?? null;
+        const ts = subPeriodEnd(sub);
         return ts ? new Date(ts * 1000).toISOString() : null;
       })(),
       cancelAtPeriodEnd:   sub?.cancel_at_period_end ?? false,

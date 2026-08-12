@@ -1435,6 +1435,10 @@
       qty = inp ? (parseInt(inp.value) || 1) : 1;
     }
     _cart.addons[addonId] = qty;
+    /* Persist immediately so the cart survives refreshes AND so the periodic
+       billing-state refresh (applyBillingState) can see cart membership and
+       keep this button on "✓ Dans le panier" instead of resetting it. */
+    try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch(e) {}
     btn.textContent = '✓ Dans le panier';
     btn.style.background = 'rgba(16,185,129,0.15)';
     btn.style.borderColor = 'rgba(16,185,129,0.35)';
@@ -1629,8 +1633,19 @@
       }
     });
 
-    /* ── Mark active add-ons; fully reset inactive ones ── */
+    /* ── Mark active add-ons; reset inactive ones — but the CART wins over
+       the reset. Precedence per button:
+         1. backend-active            → "✓ Actif" (disabled)
+         2. in local cart (fp_cart)   → "✓ Dans le panier" (kept selected)
+         3. neither                   → "Activer →" (default)
+       Without rule 2, every periodic billing refresh wiped the user's cart
+       selection visuals while fp_cart still held the items.               ── */
     var active = data.addons || {};
+    var cartAddons = {};
+    try {
+      var _fc = JSON.parse(localStorage.getItem('fp_cart') || 'null');
+      if (_fc && _fc.addons) cartAddons = _fc.addons;
+    } catch(e) {}
     /* Scan all add-on buttons in the DOM */
     document.querySelectorAll('button[onclick*="addToCart"]').forEach(function(btn) {
       var m = (btn.getAttribute('onclick') || '').match(/addToCart\s*\(\s*this\s*,\s*'([^']+)'/);
@@ -1643,8 +1658,16 @@
         btn.style.borderColor = 'rgba(16,185,129,0.3)';
         btn.style.color = '#34d399';
         btn.style.cursor = 'default';
+      } else if (cartAddons[key]) {
+        /* In the local cart and not backend-active — keep the cart visual */
+        btn.disabled = false;
+        btn.textContent = '\u2713 Dans le panier';
+        btn.style.background = 'rgba(16,185,129,0.15)';
+        btn.style.borderColor = 'rgba(16,185,129,0.35)';
+        btn.style.color = '#34d399';
+        btn.style.cursor = '';
       } else {
-        /* Backend says not active — reset to default */
+        /* Backend says not active and not in cart — reset to default */
         btn.disabled = false;
         btn.style.background = '';
         btn.style.borderColor = '';

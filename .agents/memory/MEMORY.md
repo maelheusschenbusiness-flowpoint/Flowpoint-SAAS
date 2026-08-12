@@ -153,3 +153,4 @@
 - [Service orgId scoping](service-orgid-scoping.md) — mutations taking orgId must enforce it in SQL (AND org_id=$n + rowCount 404); accepting-and-discarding orgId on superuser pool = cross-tenant hole; vitest include list must name new test files
 - [AI confirmation card conversationId](ai-confirmation-card-convid.md) — confirmation_request SSE must embed conversationId (arrives before _ai frame); confirm handlers prefer card ID; TOOL_LABELS map for previews; errors visible in chat
 - [Dashboard i18n engine](dashboard-i18n-engine.md) — every visible French string must be an exact FP_I18N key or built from fpT() fragments; composites never match; notif dropdown is a translation root
+- [Stripe dahlia period end](stripe-dahlia-period-end.md) — 2026-04-22.dahlia: current_period_end lives on subscription ITEMS not sub; use subPeriodEnd(); never pass start_date:"now" to schedule phase 0

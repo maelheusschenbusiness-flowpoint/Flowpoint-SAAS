@@ -535,9 +535,15 @@ async function apiFetch(path, opts = {}) {
       if (isGet) _apiFetchInFlight.delete(path);
       let detail = null;
       try { detail = await res.json(); } catch (_) {}
-      const err = new Error(detail?.error || `HTTP ${res.status}`);
+      // Prefer the user-facing `message` (always French prose) over `error`:
+      // some endpoints return a machine token in `error` (e.g. "plan_already_active")
+      // plus a French `message` — showing the raw token to the user is a bug.
+      const err = new Error(detail?.message || detail?.error || `HTTP ${res.status}`);
       err.status = res.status;
-      err.code = detail?.code;
+      // Preserve a machine-readable code: explicit `code` field wins; otherwise
+      // a token-shaped `error` (snake_case, no spaces) doubles as the code.
+      err.code = detail?.code
+        || (typeof detail?.error === 'string' && /^[a-z0-9_]+$/.test(detail.error) ? detail.error : undefined);
       err.retryAfterSeconds = detail?.details?.retryAfterSeconds;
       throw err;
     }
@@ -8951,7 +8957,7 @@ function renderBilling() {
       else {
         apiAction('POST', '/api/billing/upgrade', { plan: _target })
           .then(() => window.location.reload())
-          .catch(() => showToast('error', 'Erreur lors du changement de plan.'));
+          .catch((e) => showToast('error', (e && e.message) || 'Le changement de plan a échoué. Réessayez.'));
       }
       return;
     }
@@ -9338,7 +9344,10 @@ function renderBilling() {
             : 'Plan mis à jour → ' + _planLabel + ' ✓';
           showToast('success', _msg);
           // ── Immediate optimistic STATE update (before loadData completes) ──
-          // Prevents a flash of the old plan while the API round-trip is in flight.
+          // Both keys MUST stay in lockstep: STATE.me.plan (Title Case, read by the
+          // AI Credits header, sidebar Facturation card, profile) and
+          // STATE.billing.plan (lowercase, read by the Billing tab). Setting only
+          // one produced the "Pro on one page, Ultra on another" drift.
           if (STATE.me)      STATE.me.plan      = _planLabel;
           if (STATE.billing) STATE.billing.plan = plan.toLowerCase();
           render();
@@ -9347,6 +9356,8 @@ function renderBilling() {
           _apiFetchCache.clear();
           _apiFetchInFlight.clear();
           // Reload from the server (authoritative), then navigate to plans sub-page.
+          // The server response is the single source of truth — the optimistic
+          // values above are overwritten by whatever loadData() fetches.
           loadData().then(function() {
             navigate('billing');
             navigateSub('plans');
@@ -9367,12 +9378,44 @@ function renderBilling() {
           return;
         }
         if (r && r.error === 'plan_already_active') { showToast('info', 'Vous êtes déjà sur ce plan.'); return; }
-        showToast('error', (r && r.error) || 'Erreur lors du changement de plan.');
+        // ── Failure with a recognized-but-non-success shape ──
+        // The server always returns a specific `error` string on failure now;
+        // surface it verbatim. Never leave optimistic state behind — re-fetch
+        // the authoritative billing state so every page stays consistent.
+        showToast('error', (r && (r.message || r.error)) || 'Le changement de plan a échoué. Réessayez.');
+        _fpResyncBillingState();
       } catch (e) {
-        showToast('error', 'Erreur : ' + ((e && e.message) || 'changement impossible'));
+        // Non-2xx responses throw from apiFetch BEFORE the r.* checks above can
+        // run. err.code carries the machine token, e.message the French prose.
+        // Never surface a machine token to the user: if the message is exactly a
+        // snake_case token (endpoint sent error:"some_token" with no French
+        // `message`), substitute the localized fallback instead.
+        const _rawMsg = (e && e.message) || '';
+        const _isToken = /^[a-z0-9_]+$/.test(_rawMsg);
+        if (e && e.code === 'plan_already_active') {
+          showToast('info', (!_isToken && _rawMsg) || 'Vous êtes déjà sur ce plan.');
+          return;
+        }
+        showToast('error', (!_isToken && _rawMsg) || 'Le changement de plan a échoué. Réessayez.');
+        // Re-fetch authoritative state so no stale optimistic plan lingers.
+        _fpResyncBillingState();
+      }
+    };
+
+    // Re-fetch the authoritative billing/plan state and re-render every surface.
+    // Used after any plan-change failure so the dashboard never shows a plan the
+    // server did not actually apply.
+    window._fpResyncBillingState = function() {
+      try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+      _apiFetchCache.clear();
+      _apiFetchInFlight.clear();
+      return loadData().then(function() {
+        navigate('billing');
+        navigateSub('plans');
+      }).catch(function() {
         navigate('billing');
         setTimeout(function() { navigateSub('plans'); }, 100);
-      }
+      });
     };
     // (billing lifecycle modals hoisted above the Plans tab — see fpCancelTrialModal et al.)
 
@@ -14577,7 +14620,7 @@ function changePlan(newPlan) {
     if (_status === 'active' || _status === 'trialing') {
       apiAction('POST', '/api/billing/upgrade', { plan: newPlan.toLowerCase() })
         .then(() => { showToast('success', 'Plan mis à jour'); loadData().then(() => { navigate('billing'); navigateSub('plans'); }); })
-        .catch(() => showToast('error', 'Erreur lors du changement de plan.'));
+        .catch((e) => showToast('error', (e && e.message) || 'Le changement de plan a échoué. Réessayez.'));
     } else {
       fpGoToPricing(newPlan.toLowerCase());
     }
@@ -18333,6 +18376,7 @@ function bindGlobalEvents() {
     "Erreur lors de la sauvegarde": "Save error",
     "Erreur lors de la suppression": "Deletion error",
     "Erreur lors du changement de plan.": "Error changing plan.",
+    "Le changement de plan a échoué. Réessayez.": "The plan change failed. Please try again.",
     "Erreur lors du relancement": "Relaunch error",
     "Erreur lors du retrait": "Removal error",
     "Erreur lors du scan IA": "AI scan error",

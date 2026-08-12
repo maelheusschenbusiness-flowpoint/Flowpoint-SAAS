@@ -133,12 +133,20 @@ export async function getUsageSummary(orgId = "default") {
       const sub = await stripe.subscriptions.retrieve(billingCtx.stripeSubscriptionId) as unknown as {
         status: string;
         trial_end: number | null;
-        current_period_end: number;
+        current_period_end?: number | null;
+        items?: { data?: Array<{ current_period_end?: number | null }> } | null;
       };
+      // API version 2026-04-22.dahlia moved current_period_end onto the items.
+      const _cpe = typeof sub.current_period_end === "number"
+        ? sub.current_period_end
+        : (sub.items?.data ?? []).reduce<number | null>(
+            (m, it) => (typeof it.current_period_end === "number" ? (m === null ? it.current_period_end : Math.max(m, it.current_period_end)) : m),
+            null,
+          );
       if (sub.status === "trialing" && sub.trial_end) {
         nextBillingDate = new Date(sub.trial_end * 1000).toISOString();
-      } else if (sub.current_period_end) {
-        nextBillingDate = new Date(sub.current_period_end * 1000).toISOString();
+      } else if (_cpe) {
+        nextBillingDate = new Date(_cpe * 1000).toISOString();
       }
     } catch {
       // Non-fatal — fall back to DB trialEndsAt
