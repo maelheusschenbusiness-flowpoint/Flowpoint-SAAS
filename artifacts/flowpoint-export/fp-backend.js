@@ -1863,22 +1863,35 @@
     // When only an address (no coordinates) is saved in Settings, geocode it
     // server-side and re-center the map + business marker + circle, then reload
     // the data layers around the real position.
-    _geocodeSavedAddress: function (mapId, marker, circle, radius, keyword) {
-      var q = this._savedAddressQuery();
-      if (!q) return;
+    _geocodeSavedAddress: function (mapId, marker, circle, radius, keyword, tempCenter) {
       var self = this;
+      // Data layers are NOT loaded before this resolves (the caller skips the
+      // initial load when a geocode is pending), so the first competitors/
+      // heatmap drawn are always for the saved address — never for temporary
+      // GBP/fallback coordinates. On any failure we fall back to tempCenter.
+      var loadAt = function (p) {
+        self._loadCompetitorMarkers(mapId, p.lat, p.lng, radius, keyword);
+        if (mapId === 'fp-gmap') self._loadHeatmapLayer(mapId, p.lat, p.lng, radius, keyword);
+      };
+      var q = this._savedAddressQuery();
+      if (!q) { if (tempCenter) loadAt(tempCenter); return; }
       apiAction('POST', '/api/maps/geocode', { address: q }).then(function (geo) {
-        if (!geo || !isFinite(Number(geo.lat)) || !isFinite(Number(geo.lng))) return;
-        var p = { lat: Number(geo.lat), lng: Number(geo.lng) };
         var inst = self._mapInstances[mapId];
         if (!inst || !inst.map) return;
+        if (!geo || !isFinite(Number(geo.lat)) || !isFinite(Number(geo.lng))) {
+          if (tempCenter) loadAt(tempCenter);
+          return;
+        }
+        var p = { lat: Number(geo.lat), lng: Number(geo.lng) };
         inst.center = p;
         inst.map.setCenter(p);
         if (marker) marker.setPosition(p);
         if (circle) circle.setCenter(p);
-        self._loadCompetitorMarkers(mapId, p.lat, p.lng, radius, keyword);
-        if (mapId === 'fp-gmap') self._loadHeatmapLayer(mapId, p.lat, p.lng, radius, keyword);
-      }).catch(function () {});
+        loadAt(p);
+      }).catch(function () {
+        var inst = self._mapInstances[mapId];
+        if (inst && inst.map && tempCenter) loadAt(tempCenter);
+      });
     },
 
     // Rich, Google-Maps-like competitor card. `d` is the optional Place
@@ -1973,9 +1986,15 @@
       this._mapInstances['fp-gmap'] = inst;
 
       var self = this;
-      self._loadCompetitorMarkers('fp-gmap', lat, lng, radius, keyword);
-      self._loadHeatmapLayer('fp-gmap', lat, lng, radius, keyword);
-      if (c.source === 'fallback' || c.needsGeocode) self._geocodeSavedAddress('fp-gmap', businessMarker, radiusCircle, radius, keyword);
+      if (c.source === 'fallback' || c.needsGeocode) {
+        // Saved address must win: don't load layers at temporary coordinates.
+        // The geocode callback loads them at the resolved position (or at the
+        // temporary center only if geocoding fails).
+        self._geocodeSavedAddress('fp-gmap', businessMarker, radiusCircle, radius, keyword, { lat: lat, lng: lng });
+      } else {
+        self._loadCompetitorMarkers('fp-gmap', lat, lng, radius, keyword);
+        self._loadHeatmapLayer('fp-gmap', lat, lng, radius, keyword);
+      }
     },
 
     _initCompetitorsMap: function (el) {
@@ -2008,18 +2027,26 @@
         radius: radius,
       });
 
-      var inst = { map: map, markers: [], circle: null, center: { lat: lat, lng: lng }, radius: radius };
+      var inst = { map: map, markers: [], circle: bizCircle, radiusVisible: true, center: { lat: lat, lng: lng }, radius: radius };
       this._mapInstances['fp-competitors-map'] = inst;
 
-      this._loadCompetitorMarkers('fp-competitors-map', lat, lng, radius, keyword);
-      if (c.source === 'fallback' || c.needsGeocode) this._geocodeSavedAddress('fp-competitors-map', bizMarker, bizCircle, radius, keyword);
+      if (c.source === 'fallback' || c.needsGeocode) {
+        this._geocodeSavedAddress('fp-competitors-map', bizMarker, bizCircle, radius, keyword, { lat: lat, lng: lng });
+      } else {
+        this._loadCompetitorMarkers('fp-competitors-map', lat, lng, radius, keyword);
+      }
     },
 
     _loadCompetitorMarkers: async function (mapId, lat, lng, radius, keyword) {
       var inst = this._mapInstances[mapId];
       if (!inst) return;
+      // Per-map request version: a stale response (older request resolving
+      // after a newer one, e.g. temp-center vs geocoded, or rapid radius
+      // changes) must never clear/redraw markers or overwrite FP_DATA.
+      var reqV = (inst._compReq = (inst._compReq || 0) + 1);
       try {
         var data = await apiFetch('/api/maps/competitors?lat=' + lat + '&lng=' + lng + '&radius=' + radius + '&keyword=' + encodeURIComponent(keyword));
+        if (inst._compReq !== reqV || this._mapInstances[mapId] !== inst) return;
         if (!data || !data.competitors) return;
         window.FP_DATA = window.FP_DATA || {};
         window.FP_DATA.mapsCompetitors = data.competitors;
@@ -2070,8 +2097,10 @@
     _loadHeatmapLayer: async function (mapId, lat, lng, radius, keyword) {
       var inst = this._mapInstances[mapId];
       if (!inst || !inst.map) return;
+      var reqV = (inst._heatReq = (inst._heatReq || 0) + 1);
       try {
         var data = await apiFetch('/api/maps/heatmap?lat=' + lat + '&lng=' + lng + '&radius=' + radius + '&keyword=' + encodeURIComponent(keyword));
+        if (inst._heatReq !== reqV || this._mapInstances[mapId] !== inst) return;
         if (!data || !data.zones) return;
         window.FP_DATA = window.FP_DATA || {};
         window.FP_DATA.mapsHeatmap = data.zones;
