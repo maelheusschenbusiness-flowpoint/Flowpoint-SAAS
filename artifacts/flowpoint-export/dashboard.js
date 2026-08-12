@@ -4197,6 +4197,19 @@ function loadGoogleMaps(cb) {
       }
       return;
     }
+    // Re-check AFTER the async key fetch: FP_MAPS_API may have injected the
+    // Maps script during the fetch (check-then-act race across the await gap
+    // causes double injection → "google.maps.Map is not a constructor").
+    if (document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]')) {
+      _gmapsLoading = false;
+      let _waited2 = 0;
+      const t2 = setInterval(() => {
+        _waited2 += 150;
+        if (typeof google !== 'undefined' && google.maps && google.maps.Map) { clearInterval(t2); cb(); return; }
+        if (_waited2 > 12000) { clearInterval(t2); _showMapsRetryFallback('Carte Google Maps — délai dépassé'); }
+      }, 150);
+      return;
+    }
     window.__gmapsCb = () => { _gmapsLoading = false; cb(); };
     const s = document.createElement('script');
     s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=__gmapsCb&libraries=places,visualization`;
