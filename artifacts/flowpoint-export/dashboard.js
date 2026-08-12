@@ -1517,8 +1517,17 @@ async function loadData() {
       locations:        [],
     };
   }
-  // Section data pre-set to empty arrays — first render shows proper empty states,
-  // not shimmering skeletons. Background phase fills in real data and re-renders.
+  // ── Phase 3: route-aware data loading ─────────────────────────────────────
+  // STATE.route is already set from localStorage + URL hash before loadData().
+  // We fetch the active section's data BEFORE unlocking so the loader never
+  // disappears to reveal an empty section. All other sections fill in background.
+  const _activeRoute = STATE.route || 'overview';
+  const _needsAudits   = ['audits','technical-audit','recommendations','croissance','growth','missions','competitor','performance','core-web-vitals','analytics','traffic','campaigns','audience','funnels','conversion','live','seo'].includes(_activeRoute);
+  const _needsMonitors = ['monitors','alerts-center'].includes(_activeRoute);
+  const _needsReports  = ['reports'].includes(_activeRoute);
+  const _needsTeam     = ['team','activity-feed'].includes(_activeRoute);
+
+  // Pre-set sections to empty (shows clean empty state, never shimmering skeleton)
   STATE.audits   = PREVIEW_MODE ? MOCK_AUDITS   : [];
   STATE.monitors = PREVIEW_MODE ? MOCK_MONITORS : [];
   STATE.reports  = PREVIEW_MODE ? MOCK_REPORTS  : [];
@@ -1526,32 +1535,54 @@ async function loadData() {
   STATE.pendingInvitations = [];
   STATE.seatUsage = null;
 
-  // ── Early render: UI is fully interactive after /api/me + overview ────────
+  // Shared helper — writes one section API response into STATE
+  const _applySection = function(key, val) {
+    if (key === 'audits')   { audits = val;   const _a = normArr(val,'audits');   STATE.audits   = (_a&&_a.length>0)?_a:(PREVIEW_MODE?MOCK_AUDITS:[]);   if (!STATE.historySiteUrl && STATE.audits.length>0) STATE.historySiteUrl = STATE.audits[0].url; }
+    if (key === 'monitors') { monitors = val; const _m = normArr(val,'monitors'); STATE.monitors = (_m&&_m.length>0)?_m:(PREVIEW_MODE?MOCK_MONITORS:[]); }
+    if (key === 'reports')  { reports  = val; const _r = normArr(val,'reports');  STATE.reports  = (_r&&_r.length>0)?_r:(PREVIEW_MODE?MOCK_REPORTS:[]);  }
+    if (key === 'team')     { team     = val; const _t = normArr(val,'members');  STATE.team     = (_t&&_t.length>0)?_t:(PREVIEW_MODE?MOCK_TEAM:[]);     STATE.pendingInvitations = Array.isArray(val&&val.pendingInvitations)?val.pendingInvitations:[]; STATE.seatUsage = (val&&val.seatUsage)||null; }
+  };
+
+  // ── 3a: critical — active section data (blocking, before unlock) ──────────
+  if (!PREVIEW_MODE) {
+    const _critKeys = [], _critUrls = [];
+    if (_needsAudits)   { _critKeys.push('audits');   _critUrls.push('/api/audits'); }
+    if (_needsMonitors) { _critKeys.push('monitors'); _critUrls.push('/api/monitors'); }
+    if (_needsReports)  { _critKeys.push('reports');  _critUrls.push('/api/reports'); }
+    if (_needsTeam)     { _critKeys.push('team');     _critUrls.push('/api/team'); }
+    if (_critKeys.length > 0) {
+      const _critResults = await Promise.allSettled(_critUrls.map(function(u) { return apiFetch(u); }));
+      _critResults.forEach(function(res, i) {
+        if (res.status === 'fulfilled') { _applySection(_critKeys[i], res.value); }
+        else { STATE.sectionErrors[_critKeys[i]] = classifySectionError(res.reason); console.warn('[FP] /api/' + _critKeys[i] + ' (critical) failed:', res.reason?.message||res.reason); }
+      });
+    }
+  }
+
+  // ── Unlock UI — active section has real data; loader disappears ───────────
   clearTimeout(_loadSafetyTimer);
   STATE.loading = false;
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
   _doRender();
   if (!STATE._notificationPoll) STATE._notificationPoll = setInterval(refreshNotifications, 30_000);
 
-  // ── Phase 3 (background): section data — never blocks interactivity ───────
-  // audits/monitors/reports/team load in parallel after the UI is already shown.
-  Promise.allSettled([
-    apiFetch('/api/audits'), apiFetch('/api/monitors'),
-    apiFetch('/api/reports'), apiFetch('/api/team'),
-  ]).then(function([_auRes, _moRes, _reRes, _teRes]) {
-    if (_auRes.status === 'fulfilled') { audits   = _auRes.value; } else { STATE.sectionErrors.audits   = classifySectionError(_auRes.reason); console.warn('[FP] /api/audits failed:', _auRes.reason?.message || _auRes.reason); }
-    if (_moRes.status === 'fulfilled') { monitors = _moRes.value; } else { STATE.sectionErrors.monitors = classifySectionError(_moRes.reason); console.warn('[FP] /api/monitors failed:', _moRes.reason?.message || _moRes.reason); }
-    if (_reRes.status === 'fulfilled') { reports  = _reRes.value; } else { STATE.sectionErrors.reports  = classifySectionError(_reRes.reason); console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason); }
-    if (_teRes.status === 'fulfilled') { team     = _teRes.value; } else { STATE.sectionErrors.team     = classifySectionError(_teRes.reason); console.warn('[FP] /api/team failed:', _teRes.reason?.message || _teRes.reason); }
-    const _aud = normArr(audits,   'audits');   STATE.audits   = (_aud  && _aud.length  > 0) ? _aud  : (PREVIEW_MODE ? MOCK_AUDITS   : []);
-    const _mon = normArr(monitors, 'monitors'); STATE.monitors = (_mon  && _mon.length  > 0) ? _mon  : (PREVIEW_MODE ? MOCK_MONITORS : []);
-    const _rep = normArr(reports,  'reports');  STATE.reports  = (_rep  && _rep.length  > 0) ? _rep  : (PREVIEW_MODE ? MOCK_REPORTS  : []);
-    const _tem = normArr(team,     'members');  STATE.team     = (_tem  && _tem.length  > 0) ? _tem  : (PREVIEW_MODE ? MOCK_TEAM     : []);
-    STATE.pendingInvitations = (team && Array.isArray(team.pendingInvitations)) ? team.pendingInvitations : [];
-    STATE.seatUsage          = (team && team.seatUsage) ? team.seatUsage : null;
-    if (!STATE.historySiteUrl && STATE.audits.length > 0) STATE.historySiteUrl = STATE.audits[0].url;
-    render();
-  }).catch(function(err) { console.warn('[FP] Phase 3 background fetch error:', err); });
+  // ── 3b: background — remaining sections (non-blocking) ───────────────────
+  if (!PREVIEW_MODE) {
+    const _bgKeys = [], _bgUrls = [];
+    if (!_needsAudits)   { _bgKeys.push('audits');   _bgUrls.push('/api/audits'); }
+    if (!_needsMonitors) { _bgKeys.push('monitors'); _bgUrls.push('/api/monitors'); }
+    if (!_needsReports)  { _bgKeys.push('reports');  _bgUrls.push('/api/reports'); }
+    if (!_needsTeam)     { _bgKeys.push('team');     _bgUrls.push('/api/team'); }
+    if (_bgUrls.length > 0) {
+      Promise.allSettled(_bgUrls.map(function(u) { return apiFetch(u); })).then(function(_bgResults) {
+        _bgResults.forEach(function(res, i) {
+          if (res.status === 'fulfilled') { _applySection(_bgKeys[i], res.value); }
+          else { STATE.sectionErrors[_bgKeys[i]] = classifySectionError(res.reason); console.warn('[FP] /api/' + _bgKeys[i] + ' (bg) failed:', res.reason?.message||res.reason); }
+        });
+        render();
+      }).catch(function(err) { console.warn('[FP] Phase 3 background fetch error:', err); });
+    }
+  }
 
   // ── Phase 4: All secondary fetches in one parallel batch ─────────────────────
   const _domain = (STATE.audits[0] && (() => { try { return new URL(STATE.audits[0].url).hostname; } catch(_){ return ''; } })()) || '';
