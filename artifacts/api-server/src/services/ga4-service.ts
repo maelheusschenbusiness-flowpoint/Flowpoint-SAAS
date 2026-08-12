@@ -122,14 +122,45 @@ export async function listGA4Properties(accountId: string, orgId?: string): Prom
   }
 }
 
+/**
+ * Canonical GA4 connection state shared by all GA4 surfaces.
+ *
+ * OAuth tokens mean the product is connected while property discovery is
+ * still in progress. An explicit per-product disconnect always wins.
+ */
+export async function getGA4ConnectionStatus(orgId: string): Promise<{
+  connected: boolean;
+  discovering: boolean;
+}> {
+  const [propertyResult, tokenResult, productResult] = await Promise.all([
+    pool.query(
+      `SELECT 1 FROM ga4_properties WHERE org_id=$1 AND is_active=true LIMIT 1`,
+      [orgId],
+    ).catch(() => ({ rows: [] as unknown[] })),
+    pool.query(
+      `SELECT 1 FROM google_tokens WHERE org_id=$1 LIMIT 1`,
+      [orgId],
+    ).catch(() => ({ rows: [] as unknown[] })),
+    pool.query(
+      `SELECT connected FROM google_product_connections
+       WHERE org_id=$1 AND product='ga4' LIMIT 1`,
+      [orgId],
+    ).catch(() => ({ rows: [] as Array<{ connected: boolean }> })),
+  ]);
+
+  const hasProperty = propertyResult.rows.length > 0;
+  const hasTokens = tokenResult.rows.length > 0;
+  const productDisconnected = productResult.rows[0]?.connected === false;
+  const connected = !productDisconnected && (hasProperty || hasTokens);
+
+  return {
+    connected,
+    discovering: connected && !hasProperty && hasTokens,
+  };
+}
+
 export async function isGA4Connected(orgId: string): Promise<boolean> {
-  const client = await pool.connect();
-  try {
-    const res = await client.query(
-      `SELECT 1 FROM ga4_properties WHERE org_id=$1 AND is_active=true LIMIT 1`, [orgId]
-    );
-    return res.rows.length > 0;
-  } catch { return false; } finally { client.release(); }
+  return (await getGA4ConnectionStatus(orgId)).connected;
 }
 
 export async function getStoredProperty(orgId: string): Promise<{ propertyId: string; displayName: string } | null> {

@@ -12,9 +12,8 @@ import {
   getGA4Campaigns,
   getStoredProperty,
   setStoredProperty,
-  isGA4Connected,
+  getGA4ConnectionStatus,
 } from "../services/ga4-service.js";
-import { hasGoogleConnection } from "../services/google-service.js";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
@@ -138,24 +137,13 @@ function handleRouteError(res: Response, e: unknown, label: string): void {
 
 router.get("/ga4/status", async (req: Request, res: Response) => {
   try {
-    const orgId        = getOrgId(req);
-    const hasProperty  = await isGA4Connected(orgId);
-    const stored       = hasProperty ? await getStoredProperty(orgId) : null;
-    const hasTokens    = hasProperty ? true : await hasGoogleConnection(orgId);
-
-    // Check per-product disconnect flag
-    const productRow = await pool.query(
-      `SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='ga4' LIMIT 1`,
-      [orgId]
-    ).catch(() => ({ rows: [] as Array<{ connected: boolean }> }));
-    const productFlag = productRow.rows[0];
-    const productDisconnected = productFlag !== undefined && !productFlag.connected;
-
-    const connected = !productDisconnected && (hasProperty || hasTokens);
+    const orgId = getOrgId(req);
+    const { connected, discovering } = await getGA4ConnectionStatus(orgId);
+    const stored = connected ? await getStoredProperty(orgId) : null;
     res.json({
       ok: true,
       connected,
-      discovering: !productDisconnected && !hasProperty && hasTokens,
+      discovering,
       propertyId:   stored?.propertyId   ?? null,
       propertyName: stored?.displayName  ?? null,
     });

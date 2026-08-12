@@ -10,6 +10,7 @@
  * Division-by-zero always returns null.
  */
 import {
+  getGA4ConnectionStatus,
   isGA4Connected,
   getGA4Overview,
   getGA4Conversions,
@@ -29,8 +30,8 @@ function pct(n: number, d: number): number | null {
 }
 
 export async function getConversionStatus(orgId: string) {
-  const connected = await isGA4Connected(orgId).catch(() => false);
-  return { connected, source: "ga4" as const };
+  const { connected, discovering } = await getGA4ConnectionStatus(orgId);
+  return { connected, discovering, source: "ga4" as const };
 }
 
 export async function getConversionOverview(

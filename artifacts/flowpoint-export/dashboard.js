@@ -29332,7 +29332,7 @@ function renderDataExplorer() {
           const circ24 = 2 * Math.PI * 24;
           const filled = hasVal ? k.val / 100 * circ24 : 0;
           const _txtCol = hasVal ? k.color : (STATE.theme==='light'?'rgba(0,0,0,0.25)':'rgba(255,255,255,0.30)');
-          return `<div style="padding:14px;border-radius:12px;border:1px solid ${k.color}28;background:${k.color}07;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center">
+          return `<div style="min-height:166px;box-sizing:border-box;padding:14px;border-radius:12px;border:1px solid ${k.color}28;background:${k.color}07;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center">
             <svg width="64" height="64" viewBox="0 0 64 64" style="margin-bottom:2px">
               <circle cx="32" cy="32" r="24" fill="none" stroke="${STATE.theme==='light'?'rgba(0,0,0,0.10)':'rgba(255,255,255,0.05)'}" stroke-width="7"/>
               ${hasVal ? `<circle cx="32" cy="32" r="24" fill="none" stroke="${k.color}" stroke-width="7"
@@ -29340,8 +29340,8 @@ function renderDataExplorer() {
                 stroke-linecap="round" transform="rotate(-90 32 32)"/>` : ''}
               <text x="32" y="36" text-anchor="middle" font-size="13" font-weight="800" fill="${_txtCol}">${hasVal ? k.val : '—'}</text>
             </svg>
-            <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft)">${k.icon} ${escHtml(k.label)}</div>
-            <div>${hasVal ? badge(k.val>=70?'Bon':k.val>=50?'Moyen':'Critique', k.color) : '<span style="font-size:10px;color:var(--fp-text-faint);font-style:italic">—</span>'}</div>
+            <div style="height:30px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--fp-text-soft)">${k.icon} ${escHtml(k.label)}</div>
+            <div style="margin-top:auto;min-height:24px;display:flex;align-items:center;justify-content:center">${hasVal ? badge(k.val>=70?'Bon':k.val>=50?'Moyen':'Critique', k.color) : '<span style="font-size:10px;color:var(--fp-text-faint);font-style:italic">—</span>'}</div>
           </div>`;
         }).join('')}
       </div>
@@ -31884,7 +31884,7 @@ function renderTeamPerformance() {
       `).join('')}
     </div>
     `}
-    <div class="fp-card">
+    <div class="fp-card" style="margin-top:20px">
       <div class="fp-card-title" style="margin-bottom:14px">Tâches assignées</div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${(()=>{
@@ -32817,7 +32817,22 @@ window._fpConversionAPI = {
         apiFetch('/api/conversion/devices?days=' + d).catch(() => null),
         apiFetch('/api/conversion/geo?days=' + d).catch(() => null),
       ]);
-      const connected = status?.connected ?? overview?.connected ?? false;
+      const statusConnected = status && typeof status.connected === 'boolean' ? status.connected : null;
+      const overviewConnected = overview && typeof overview.connected === 'boolean' ? overview.connected : null;
+      // A missing or malformed status response is not proof of disconnection.
+      // Keep the page in a retryable state instead of showing "Connecter GA4".
+      if (statusConnected === null && overviewConnected !== true) {
+        window._fpConversionState = {
+          loading: false,
+          loaded: true,
+          days: d,
+          data: null,
+          error: 'Statut GA4 indisponible — réessayez dans un instant.',
+        };
+        render();
+        return;
+      }
+      const connected = statusConnected ?? overviewConnected;
       const data = {
         connected,
         source: 'ga4',
