@@ -1463,12 +1463,84 @@ async function loadData() {
   if (!STATE.me) { clearTimeout(_loadSafetyTimer); showFatalError('/api/me n\'a pas répondu.'); return; }
   if (STATE.me?.plan) STATE.me.plan = STATE.me.plan.charAt(0).toUpperCase() + STATE.me.plan.slice(1);
 
-  // ── Phase 2: Overview + plan definitions — resilient, any failure is non-blocking ──
-  const [_ovRes, _pdRes, _catRes] = await Promise.allSettled([
+  // ── Route-critical data map: endpoints that must be ready before the loader disappears ──
+  // Routes not listed here are satisfied by Phase 2 (overview + me) alone.
+  // Audit-heavy routes include 'audits' so STATE.audits is populated before first render.
+  const _ROUTE_CRITICAL_KEYS = {
+    // Audit-primary routes
+    'audits':            ['audits'],
+    'technical-audit':   ['audits'],
+    'performance':       ['audits'],
+    'core-web-vitals':   ['audits'],
+    'local-seo':         ['audits'],
+    'seo':               ['audits'],
+    // Monitor/alert routes
+    'monitors':          ['monitors'],
+    'alerts-center':     ['alertRules', 'alertEvents'],
+    'alerts':            ['alertRules', 'alertEvents'],
+    // Reports / team
+    'reports':           ['reports'],
+    'team':              ['team'],
+    // Growth / intelligence — audits needed for comparison metrics (latest audit score/speed)
+    'growth':            ['audits', 'keywords'],
+    'keywords':          ['audits', 'keywords'],
+    'competitor':        ['audits', 'competitors'],
+    'competitors':       ['audits', 'competitors'],
+    'conversion':        ['audits'],
+    // GA4 analytics routes — audits used for context cards and comparison
+    'analytics':         ['audits'],
+    'traffic':           ['audits'],
+    'funnels':           ['audits'],
+    'audience':          ['audits'],
+    'campaigns':         ['audits'],
+    'live':              ['audits'],
+    // API-module routes
+    'missions':          ['missions'],
+    // Operational feeds
+    'activity-feed':     ['activity'],
+    'activity':          ['activity'],
+    'client-mode':       ['clientMode'],
+  };
+  const _criticalKeys = new Set(_ROUTE_CRITICAL_KEYS[STATE.route] || []);
+  // _preloaded: key → value (or absent when not in critical set). Prevents double-fetch.
+  const _preloaded = {};
+
+  // Build the fetch promises for the active route's critical data
+  const _critFetchKeys = [..._criticalKeys];
+  const _critFetchPromises = _critFetchKeys.map(key => {
+    switch (key) {
+      case 'audits':      return apiFetch('/api/audits').catch(() => null);
+      case 'monitors':    return apiFetch('/api/monitors').catch(() => null);
+      case 'reports':     return apiFetch('/api/reports').catch(() => null);
+      case 'team':        return apiFetch('/api/team').catch(() => null);
+      case 'alertRules':  return apiFetch('/api/alert-rules').catch(() => null);
+      case 'alertEvents': return apiFetch('/api/alert-events').catch(() => null);
+      case 'activity':    return apiFetch('/api/activity').catch(() => null);
+      case 'clientMode':  return Promise.all([
+                            apiFetch('/api/client-mode/status').catch(() => null),
+                            apiFetch('/api/client-mode/kpis').catch(() => null),
+                            apiFetch('/api/client-mode/reports').catch(() => []),
+                            apiFetch('/api/client-mode/audits').catch(() => []),
+                          ]);
+      case 'missions':    return (window.FP_MISSIONS_API ? window.FP_MISSIONS_API.load() : Promise.resolve(null)).catch(() => null);
+      case 'keywords':    return (window.FP_KEYWORDS_API ? window.FP_KEYWORDS_API.load() : Promise.resolve(null)).catch(() => null);
+      case 'competitors': return (window.FP_COMPETITORS_API ? window.FP_COMPETITORS_API.load() : Promise.resolve(null)).catch(() => null);
+      default:            return Promise.resolve(null);
+    }
+  });
+
+  // ── Phase 2: Overview + plan definitions + active-route critical data — all parallel ──
+  const [_ovRes, _pdRes, _catRes, ..._critResults] = await Promise.allSettled([
     apiFetch(getOverviewApiPath()),
     apiFetch('/api/plans/definitions').catch(() => null),
     apiFetch('/api/plans/catalog').catch(() => null),
+    ..._critFetchPromises,
   ]);
+  // Map critical results back to their keys
+  _critFetchKeys.forEach((key, i) => {
+    const _r = _critResults[i];
+    _preloaded[key] = (_r && _r.status === 'fulfilled') ? _r.value : null;
+  });
   if (_ovRes.status === 'fulfilled') overview = _ovRes.value;
   if (_pdRes.status === 'fulfilled' && _pdRes.value && typeof _pdRes.value === 'object') {
     STATE.planDefs = _pdRes.value;
@@ -1517,72 +1589,90 @@ async function loadData() {
       locations:        [],
     };
   }
-  // ── Phase 3: route-aware data loading ─────────────────────────────────────
-  // STATE.route is already set from localStorage + URL hash before loadData().
-  // We fetch the active section's data BEFORE unlocking so the loader never
-  // disappears to reveal an empty section. All other sections fill in background.
-  const _activeRoute = STATE.route || 'overview';
-  const _needsAudits   = ['audits','technical-audit','recommendations','croissance','growth','missions','competitor','performance','core-web-vitals','analytics','traffic','campaigns','audience','funnels','conversion','live','seo'].includes(_activeRoute);
-  const _needsMonitors = ['monitors','alerts-center'].includes(_activeRoute);
-  const _needsReports  = ['reports'].includes(_activeRoute);
-  const _needsTeam     = ['team','activity-feed'].includes(_activeRoute);
-
-  // Pre-set sections to empty (shows clean empty state, never shimmering skeleton)
+  // Section data: use preloaded data for the active route; fall back to empty arrays
+  // for all other sections so the first render shows proper empty states, not shimmers.
+  // Background Phase 3 fills in non-active sections and re-renders.
   STATE.audits   = PREVIEW_MODE ? MOCK_AUDITS   : [];
   STATE.monitors = PREVIEW_MODE ? MOCK_MONITORS : [];
   STATE.reports  = PREVIEW_MODE ? MOCK_REPORTS  : [];
   STATE.team     = PREVIEW_MODE ? MOCK_TEAM     : [];
   STATE.pendingInvitations = [];
   STATE.seatUsage = null;
-
-  // Shared helper — writes one section API response into STATE
-  const _applySection = function(key, val) {
-    if (key === 'audits')   { audits = val;   const _a = normArr(val,'audits');   STATE.audits   = (_a&&_a.length>0)?_a:(PREVIEW_MODE?MOCK_AUDITS:[]);   if (!STATE.historySiteUrl && STATE.audits.length>0) STATE.historySiteUrl = STATE.audits[0].url; }
-    if (key === 'monitors') { monitors = val; const _m = normArr(val,'monitors'); STATE.monitors = (_m&&_m.length>0)?_m:(PREVIEW_MODE?MOCK_MONITORS:[]); }
-    if (key === 'reports')  { reports  = val; const _r = normArr(val,'reports');  STATE.reports  = (_r&&_r.length>0)?_r:(PREVIEW_MODE?MOCK_REPORTS:[]);  }
-    if (key === 'team')     { team     = val; const _t = normArr(val,'members');  STATE.team     = (_t&&_t.length>0)?_t:(PREVIEW_MODE?MOCK_TEAM:[]);     STATE.pendingInvitations = Array.isArray(val&&val.pendingInvitations)?val.pendingInvitations:[]; STATE.seatUsage = (val&&val.seatUsage)||null; }
-  };
-
-  // ── 3a: critical — active section data (blocking, before unlock) ──────────
-  if (!PREVIEW_MODE) {
-    const _critKeys = [], _critUrls = [];
-    if (_needsAudits)   { _critKeys.push('audits');   _critUrls.push('/api/audits'); }
-    if (_needsMonitors) { _critKeys.push('monitors'); _critUrls.push('/api/monitors'); }
-    if (_needsReports)  { _critKeys.push('reports');  _critUrls.push('/api/reports'); }
-    if (_needsTeam)     { _critKeys.push('team');     _critUrls.push('/api/team'); }
-    if (_critKeys.length > 0) {
-      const _critResults = await Promise.allSettled(_critUrls.map(function(u) { return apiFetch(u); }));
-      _critResults.forEach(function(res, i) {
-        if (res.status === 'fulfilled') { _applySection(_critKeys[i], res.value); }
-        else { STATE.sectionErrors[_critKeys[i]] = classifySectionError(res.reason); console.warn('[FP] /api/' + _critKeys[i] + ' (critical) failed:', res.reason?.message||res.reason); }
-      });
+  // Apply critical-route preloaded data so first render is already full ──────
+  if ('audits' in _preloaded) {
+    const _pAud = normArr(_preloaded.audits, 'audits');
+    STATE.audits = (_pAud && _pAud.length > 0) ? _pAud : (PREVIEW_MODE ? MOCK_AUDITS : []);
+    if (!STATE.historySiteUrl && STATE.audits.length > 0) STATE.historySiteUrl = STATE.audits[0].url;
+  }
+  if ('monitors' in _preloaded) {
+    const _pMon = normArr(_preloaded.monitors, 'monitors');
+    STATE.monitors = (_pMon && _pMon.length > 0) ? _pMon : (PREVIEW_MODE ? MOCK_MONITORS : []);
+  }
+  if ('reports' in _preloaded) {
+    const _pRep = normArr(_preloaded.reports, 'reports');
+    STATE.reports = (_pRep && _pRep.length > 0) ? _pRep : (PREVIEW_MODE ? MOCK_REPORTS : []);
+    // Also hydrate the Reports API module state so renderGA4Reports() doesn't re-fetch
+    if (window._fpReportsState) {
+      window._fpReportsState = { loading: false, loaded: true, reports: Array.isArray(_pRep) ? _pRep : [], error: null };
     }
   }
+  if ('team' in _preloaded) {
+    const _pTeam = _preloaded.team;
+    const _pTem = normArr(_pTeam, 'members');
+    STATE.team = (_pTem && _pTem.length > 0) ? _pTem : (PREVIEW_MODE ? MOCK_TEAM : []);
+    STATE.pendingInvitations = (_pTeam && Array.isArray(_pTeam.pendingInvitations)) ? _pTeam.pendingInvitations : [];
+    STATE.seatUsage = (_pTeam && _pTeam.seatUsage) ? _pTeam.seatUsage : null;
+  }
+  if ('alertRules'  in _preloaded) STATE.alertRules    = Array.isArray(_preloaded.alertRules)  ? _preloaded.alertRules  : [];
+  if ('alertEvents' in _preloaded) STATE.alertEvents   = Array.isArray(_preloaded.alertEvents) ? _preloaded.alertEvents : [];
+  if ('activity'    in _preloaded) STATE.activityEvents = Array.isArray(_preloaded.activity)   ? _preloaded.activity    : [];
+  if ('clientMode'  in _preloaded) {
+    const [_cmStatus, _cmKpis, _cmReports, _cmAudits] = Array.isArray(_preloaded.clientMode) ? _preloaded.clientMode : [];
+    // Hydrate the Client Mode API module state so renderGA4ClientMode() doesn't re-fetch
+    if (window._fpCMState !== undefined) {
+      window._fpCMState = {
+        loading: false, loaded: true,
+        status:  _cmStatus  || null,
+        kpis:    _cmKpis    || null,
+        reports: Array.isArray(_cmReports) ? _cmReports : [],
+        audits:  Array.isArray(_cmAudits)  ? _cmAudits  : [],
+        error:   null,
+      };
+    }
+  }
+  if ('missions'    in _preloaded) STATE.missions = _preloaded.missions ?? (PREVIEW_MODE ? MOCK_MISSIONS : []);
+  if ('keywords'    in _preloaded && _preloaded.keywords)    STATE.keywords    = _preloaded.keywords;
+  if ('competitors' in _preloaded && _preloaded.competitors) STATE.competitors = _preloaded.competitors;
 
-  // ── Unlock UI — active section has real data; loader disappears ───────────
+  // ── Early render: UI is fully interactive — critical-route data is now ready ──
   clearTimeout(_loadSafetyTimer);
   STATE.loading = false;
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
   _doRender();
   if (!STATE._notificationPoll) STATE._notificationPoll = setInterval(refreshNotifications, 30_000);
 
-  // ── 3b: background — remaining sections (non-blocking) ───────────────────
-  if (!PREVIEW_MODE) {
-    const _bgKeys = [], _bgUrls = [];
-    if (!_needsAudits)   { _bgKeys.push('audits');   _bgUrls.push('/api/audits'); }
-    if (!_needsMonitors) { _bgKeys.push('monitors'); _bgUrls.push('/api/monitors'); }
-    if (!_needsReports)  { _bgKeys.push('reports');  _bgUrls.push('/api/reports'); }
-    if (!_needsTeam)     { _bgKeys.push('team');     _bgUrls.push('/api/team'); }
-    if (_bgUrls.length > 0) {
-      Promise.allSettled(_bgUrls.map(function(u) { return apiFetch(u); })).then(function(_bgResults) {
-        _bgResults.forEach(function(res, i) {
-          if (res.status === 'fulfilled') { _applySection(_bgKeys[i], res.value); }
-          else { STATE.sectionErrors[_bgKeys[i]] = classifySectionError(res.reason); console.warn('[FP] /api/' + _bgKeys[i] + ' (bg) failed:', res.reason?.message||res.reason); }
-        });
-        render();
-      }).catch(function(err) { console.warn('[FP] Phase 3 background fetch error:', err); });
-    }
-  }
+  // ── Phase 3 (background): section data — never blocks interactivity ───────
+  // audits/monitors/reports/team load in parallel after the UI is already shown.
+  // Keys already promoted to Phase 2 (critical route) are resolved immediately.
+  Promise.allSettled([
+    'audits'   in _preloaded ? Promise.resolve(_preloaded.audits)   : apiFetch('/api/audits'),
+    'monitors' in _preloaded ? Promise.resolve(_preloaded.monitors) : apiFetch('/api/monitors'),
+    'reports'  in _preloaded ? Promise.resolve(_preloaded.reports)  : apiFetch('/api/reports'),
+    'team'     in _preloaded ? Promise.resolve(_preloaded.team)     : apiFetch('/api/team'),
+  ]).then(function([_auRes, _moRes, _reRes, _teRes]) {
+    if (_auRes.status === 'fulfilled') { audits   = _auRes.value; } else { STATE.sectionErrors.audits   = classifySectionError(_auRes.reason); console.warn('[FP] /api/audits failed:', _auRes.reason?.message || _auRes.reason); }
+    if (_moRes.status === 'fulfilled') { monitors = _moRes.value; } else { STATE.sectionErrors.monitors = classifySectionError(_moRes.reason); console.warn('[FP] /api/monitors failed:', _moRes.reason?.message || _moRes.reason); }
+    if (_reRes.status === 'fulfilled') { reports  = _reRes.value; } else { STATE.sectionErrors.reports  = classifySectionError(_reRes.reason); console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason); }
+    if (_teRes.status === 'fulfilled') { team     = _teRes.value; } else { STATE.sectionErrors.team     = classifySectionError(_teRes.reason); console.warn('[FP] /api/teams failed:', _teRes.reason?.message || _teRes.reason); }
+    const _aud = normArr(audits,   'audits');   STATE.audits   = (_aud  && _aud.length  > 0) ? _aud  : (PREVIEW_MODE ? MOCK_AUDITS   : []);
+    const _mon = normArr(monitors, 'monitors'); STATE.monitors = (_mon  && _mon.length  > 0) ? _mon  : (PREVIEW_MODE ? MOCK_MONITORS : []);
+    const _rep = normArr(reports,  'reports');  STATE.reports  = (_rep  && _rep.length  > 0) ? _rep  : (PREVIEW_MODE ? MOCK_REPORTS  : []);
+    const _tem = normArr(team,     'members');  STATE.team     = (_tem  && _tem.length  > 0) ? _tem  : (PREVIEW_MODE ? MOCK_TEAM     : []);
+    STATE.pendingInvitations = (team && Array.isArray(team.pendingInvitations)) ? team.pendingInvitations : [];
+    STATE.seatUsage          = (team && team.seatUsage) ? team.seatUsage : null;
+    if (!STATE.historySiteUrl && STATE.audits.length > 0) STATE.historySiteUrl = STATE.audits[0].url;
+    render();
+  }).catch(function(err) { console.warn('[FP] Phase 3 background fetch error:', err); });
 
   // ── Phase 4: All secondary fetches in one parallel batch ─────────────────────
   const _domain = (STATE.audits[0] && (() => { try { return new URL(STATE.audits[0].url).hostname; } catch(_){ return ''; } })()) || '';
@@ -1594,9 +1684,9 @@ async function loadData() {
     apiFetch('/api/audits/schedule'),
     apiFetch('/api/billing/usage-details'),
     apiFetch('/api/audits/upcoming'),
-    apiFetch('/api/alert-rules'),
-    apiFetch('/api/alert-events'),
-    apiFetch('/api/activity'),
+    'alertRules'  in _preloaded ? Promise.resolve(_preloaded.alertRules)  : apiFetch('/api/alert-rules'),
+    'alertEvents' in _preloaded ? Promise.resolve(_preloaded.alertEvents) : apiFetch('/api/alert-events'),
+    'activity'    in _preloaded ? Promise.resolve(_preloaded.activity)    : apiFetch('/api/activity'),
     apiFetch('/api/team/messages/all'),
     apiFetch('/api/me/prefs'),
     apiFetch('/api/me/storage').catch(() => null),
@@ -1604,7 +1694,7 @@ async function loadData() {
     apiFetch('/api/notifications'),
     _domain ? apiFetch('/api/seo/backlinks?domain='      + encodeURIComponent(_domain)) : Promise.resolve(null),
     _domain ? apiFetch('/api/seo/llm-visibility?domain=' + encodeURIComponent(_domain)) : Promise.resolve(null),
-    apiFetch('/api/reports/clients'),
+    'clients' in _preloaded ? Promise.resolve(_preloaded.clients) : apiFetch('/api/reports/clients'),
     apiFetch('/api/calendar-events'),
   ]);
 
@@ -1713,16 +1803,23 @@ async function loadData() {
   // Legacy localStorage value ignored to prevent stale data overriding server value.
 
   // ── Phase 5: API module data — all parallel ───────────────────────────────────
+  // Keys already promoted to Phase 2 (critical route) are skipped to avoid double-fetch.
   await Promise.allSettled([
-    window.FP_MISSIONS_API
-      ? window.FP_MISSIONS_API.load().then(r => { STATE.missions = r ?? (PREVIEW_MODE ? MOCK_MISSIONS : []); })
-      : Promise.resolve().then(() => { STATE.missions = PREVIEW_MODE ? MOCK_MISSIONS : []; }),
-    window.FP_KEYWORDS_API
-      ? window.FP_KEYWORDS_API.load().then(r => { if (r) STATE.keywords = r; })
-      : Promise.resolve(),
-    window.FP_COMPETITORS_API
-      ? window.FP_COMPETITORS_API.load().then(r => { if (r) STATE.competitors = r; })
-      : Promise.resolve(),
+    'missions' in _preloaded
+      ? Promise.resolve()
+      : (window.FP_MISSIONS_API
+        ? window.FP_MISSIONS_API.load().then(r => { STATE.missions = r ?? (PREVIEW_MODE ? MOCK_MISSIONS : []); })
+        : Promise.resolve().then(() => { STATE.missions = PREVIEW_MODE ? MOCK_MISSIONS : []; })),
+    'keywords' in _preloaded
+      ? Promise.resolve()
+      : (window.FP_KEYWORDS_API
+        ? window.FP_KEYWORDS_API.load().then(r => { if (r) STATE.keywords = r; })
+        : Promise.resolve()),
+    'competitors' in _preloaded
+      ? Promise.resolve()
+      : (window.FP_COMPETITORS_API
+        ? window.FP_COMPETITORS_API.load().then(r => { if (r) STATE.competitors = r; })
+        : Promise.resolve()),
     window.FP_CONNECTORS_API
       ? window.FP_CONNECTORS_API.load().then(r => { if (r) STATE.connectors = r; })
       : Promise.resolve(),
