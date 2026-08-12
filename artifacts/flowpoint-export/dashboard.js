@@ -9794,10 +9794,10 @@ function renderBilling() {
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('ai');setTimeout(()=>navigateSub('usage'),50)">${fpT('Voir d\u00e9tails complets \u2192')}</button>
         </div>
         <div style="height:8px;border-radius:99px;background:var(--fp-track);overflow:hidden;margin-bottom:8px">
-          <div style="height:100%;width:${STATE.aiCredits ? Math.min(Math.round(STATE.aiCredits.used/Math.max((STATE.aiCredits.limit||0)+(STATE.aiCredits.extra||0),1)*100),100) : 0}%;background:linear-gradient(90deg,#2563EB,#3b82f6);border-radius:99px;transition:width 0.6s ease"></div>
+          <div style="height:100%;width:${STATE.aiCredits ? (function(){var u=STATE.aiCredits,p=u.used/Math.max((u.limit||0)+(u.extra||0),1)*100;return p>0?Math.min(Math.max(p,0.5),100):0;}()) : 0}%;background:linear-gradient(90deg,#2563EB,#3b82f6);border-radius:99px;transition:width 0.6s ease"></div>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <span style="font-size:10px;color:var(--fp-text-faint)">${STATE.aiCredits ? Math.round(STATE.aiCredits.used/Math.max((STATE.aiCredits.limit||0)+(STATE.aiCredits.extra||0),1)*100)+'% '+fpT('utilis\u00e9') : '\u2026% '+fpT('utilis\u00e9')}</span>
+          <span style="font-size:10px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,p=u.used/Math.max((u.limit||0)+(u.extra||0),1)*100;return (p>0&&p<1?Math.max(p,0.1).toFixed(1):Math.round(p))+'% '+fpT('utilis\u00e9');}()) : '\u2026% '+fpT('utilis\u00e9')}</span>
           <span style="font-size:10px;font-weight:700;color:#2563EB">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(Math.max(0,t-u.used))+' '+fpT('AI Credits restants');}()) : '\u2026'}</span>
         </div>
         <div>
@@ -11988,7 +11988,7 @@ function renderSettings() {
       <div class="fp-stat-row fp-mb-20">
         ${(()=>{ const _unlocked=aiModules.filter(m=>!((m.plan==='Pro'&&isStd)||(m.plan==='Ultra'&&!isUltra))); const _on=_unlocked.filter(m=>m.active).length; return statCard('Modules IA actifs', _on + '/' + _unlocked.length, _unlocked.length<aiModules.length ? (aiModules.length-_unlocked.length)+' verrouillés (plan)' : 'modules configurés', _on>0?'up':'neutral'); })()}
         ${statCard('Intensité IA', _savedIntensity, 'recommandations mesurées', 'up')}
-        ${statCard('AI Credits', STATE.aiCredits ? (function(){var u=STATE.aiCredits,fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(u.limit);}()) : '…/…', PREVIEW_MODE ? '41% utilisés ce mois' : (STATE.aiCredits ? Math.round(STATE.aiCredits.used/Math.max(STATE.aiCredits.limit,1)*100)+'% utilisés' : 'Chargement…'), 'neutral')}
+        ${statCard('AI Credits', STATE.aiCredits ? (function(){var u=STATE.aiCredits,fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(u.limit);}()) : '…/…', PREVIEW_MODE ? '41% utilisés ce mois' : (STATE.aiCredits ? (function(){var u=STATE.aiCredits,p=u.used/Math.max(u.limit,1)*100;return (p>0&&p<1?Math.max(p,0.1).toFixed(1):Math.round(p))+'% utilisés';}()) : 'Chargement…'), 'neutral')}
         ${statCard('Précision IA', displayStat(null, PREVIEW_MODE ? '87%' : '—'), PREVIEW_MODE ? '87% recommandations pertinentes' : 'Analyse en cours', 'neutral')}
       </div>
 
@@ -12780,9 +12780,17 @@ function renderAI() {
     const usedCredits  = liveCredits ? liveCredits.used  : 0;
     const maxCreditsDB = liveCredits ? (liveCredits.limit + (liveCredits.extra || 0)) : maxCredits;
     const remaining    = isUnlimited ? maxCredits - usedCredits : Math.max(0, maxCreditsDB - usedCredits);
-    const pct          = isUnlimited
-      ? Math.round(usedCredits / Math.max(maxCredits, 1) * 100)
-      : Math.round(usedCredits / Math.max(maxCreditsDB, 1) * 100);
+    const pctRaw       = isUnlimited
+      ? usedCredits / Math.max(maxCredits, 1) * 100
+      : usedCredits / Math.max(maxCreditsDB, 1) * 100;
+    // Jamais « 0% » quand des crédits ont été consommés : 0 < x < 1 → une décimale
+    // (ex. « 0.2% »). Les valeurs ≥ 1 restent arrondies à l'entier comme avant.
+    const pct          = Math.round(pctRaw);
+    const pctLabel     = (pctRaw > 0 && pctRaw < 1)
+      ? (Math.max(pctRaw, 0.1)).toFixed(1) + '%'
+      : pct + '%';
+    // Largeur de barre : sliver visible dès qu'il y a consommation (min 0.5%).
+    const pctBarW      = pctRaw > 0 ? Math.min(Math.max(pctRaw, 0.5), 100) : 0;
     const pc           = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#2563EB';
     const resetDate    = liveCredits?.resetDate && !Number.isNaN(new Date(liveCredits.resetDate).getTime())
       ? new Date(liveCredits.resetDate).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'})
@@ -12843,7 +12851,7 @@ function renderAI() {
           ? statCard('AI Credits', '\u221e', fpT('Illimit\u00e9'), 'up')
           : statCard(fpT('AI Credits restants'), fmtNum(remaining), fpT('sur') + ' ' + fmtNum(maxCredits) + ' ' + fpT('allou\u00e9s'), remaining < 20000 ? 'down' : 'up')}
         ${statCard(fpT('Statut IA'), fpT('Performante'), fpT('Haute qualit\u00e9 \u00b7 Prioritaire'), 'up')}
-        ${statCard(fpT('Consommation'), pct + '%', fpT('du quota mensuel'), pct > 70 ? 'down' : 'neutral')}
+        ${statCard(fpT('Consommation'), pctLabel, fpT('du quota mensuel'), pct > 70 ? 'down' : 'neutral')}
       </div>
 
       <!-- MAIN CREDITS BAR -->
@@ -12855,11 +12863,11 @@ function renderAI() {
           </div>
           <div style="text-align:right">
             <div style="font-size:22px;font-weight:900;color:${pc};font-family:var(--fp-font-head)">${fmtNum(usedCredits)} <span style="font-size:13px;font-weight:500;color:var(--fp-text-faint)">/ ${isUnlimited ? '∞' : fmtNum(maxCredits)}</span></div>
-            <div style="font-size:11px;color:${pc};font-weight:700">${pct}% consommé</div>
+            <div style="font-size:11px;color:${pc};font-weight:700">${pctLabel} ${fpT('consommé')}</div>
           </div>
         </div>
         <div style="height:10px;border-radius:99px;background:var(--fp-track);overflow:hidden;margin-bottom:8px;position:relative">
-          <div style="height:100%;width:${Math.min(pct,100)}%;background:linear-gradient(90deg,${pc},${pc}cc);border-radius:99px;transition:width 0.6s ease"></div>
+          <div style="height:100%;width:${pctBarW}%;background:linear-gradient(90deg,${pc},${pc}cc);border-radius:99px;transition:width 0.6s ease"></div>
           ${pct < 70 ? `<div style="position:absolute;top:0;left:70%;width:1px;height:100%;background:rgba(245,158,11,0.6)"></div>` : ''}
           ${pct < 90 ? `<div style="position:absolute;top:0;left:90%;width:1px;height:100%;background:rgba(239,68,68,0.6)"></div>` : ''}
         </div>
