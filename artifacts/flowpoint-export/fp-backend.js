@@ -1826,6 +1826,8 @@
         streetViewControl: false,
         fullscreenControl: true,
         zoomControl: false,
+        cameraControl: false, // newer Maps API: camera widget embeds its own zoom +/-
+        rotateControl: false,
         gestureHandling: 'cooperative',
       };
     },

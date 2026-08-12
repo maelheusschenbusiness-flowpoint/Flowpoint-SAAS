@@ -4260,6 +4260,8 @@ function initLocalSEOMap() {
       mapTypeControlOptions:_mtcOpts,
       streetViewControl:false, fullscreenControl:true,
       zoomControl:false, // no +/- buttons — wheel/gesture zoom only
+      cameraControl:false, // newer Maps API: camera widget embeds its own zoom +/-
+      rotateControl:false,
       gestureHandling:'cooperative',
     });
     STATE._gmap = map;
