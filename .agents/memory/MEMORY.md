@@ -146,6 +146,7 @@
 - [Add-on-only checkout flow](addon-only-checkout-flow.md) — empty-plan carts must quote via subscriber's real plan (inclusionPlan) and finalize must provision recurring add-ons, not just credits
 - [organizations UUID joins](organizations-uuid-joins.md) — organizations.id is uuid; joins vs text org_id need ::text; QA orgs must be randomUUID with an organizations row or AI routes 402
 - [Maps server key state](maps-server-key-state.md) — FLOWPOINT_MAP_BACKEND is the server key, aliased to GOOGLE_MAPS_API_KEY at startup; GOOGLE_MAPS_PUBLIC_KEY browser-only; all 6 backend Maps surfaces certified live
+- [Maps controls & competitor cards](maps-controls-competitor-cards.md) — zoomControl:false needs cameraControl:false too; guard ControlPosition undefined; tiles never render on localhost (referer key); click-time place-details card upgrade
 - [Maps JS double injection](maps-double-injection.md) — dashboard.js + fp-backend.js both load Maps JS; second script tag resets google.maps mid-flight; both loaders now check for existing script tag first
 - [uuid→TEXT migration dance](uuid-to-text-migration-dance.md) — ALTER COLUMN TYPE blockers: ALL policies + both-direction FKs + views + defaults, one tx; pg_policies deparse has 2 predicate forms; AI 503 gate until migration verified
 - [tsc-noEmit zero errors](uuid-to-text-migration-dance.md) — api-server now typechecks clean; adding a dep to package.json can shift pnpm type resolution and spawn TS2742 "not portable" — pin @types/express-serve-static-core as devDep
