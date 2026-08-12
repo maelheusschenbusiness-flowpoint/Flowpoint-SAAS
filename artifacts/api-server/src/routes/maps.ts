@@ -134,7 +134,10 @@ router.get("/maps/place-details", async (req: Request, res: Response) => {
 router.get("/maps/photo", async (req: Request, res: Response) => {
   const ref = (req.query["ref"] as string) || "";
   const width = Math.min(1200, Math.max(100, parseInt(req.query["w"] as string) || 400));
-  if (!ref || ref.length > 600) { res.status(400).json({ error: "ref required" }); return; }
+  // Google photo_reference values routinely run 600-700 chars (Nearby Search
+  // refs observed at 644-671); 1000 keeps a sane DoS bound without rejecting
+  // legitimate refs.
+  if (!ref || ref.length > 1000) { res.status(400).json({ error: "ref required" }); return; }
   try {
     const photo = await fetchPlacePhoto(ref, width);
     if (!photo) { res.status(404).json({ error: "Photo not found" }); return; }
