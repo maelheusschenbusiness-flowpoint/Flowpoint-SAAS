@@ -4248,17 +4248,26 @@ function initLocalSEOMap() {
       : _fallbackCity
         ? null
         : { lat:48.8566, lng:2.3522 };
+    // ControlPosition/MapTypeControlStyle can be undefined with async Maps
+    // bootstrap — omit position/style then (defaults are top-left horizontal bar).
+    const _mtcOpts = { mapTypeIds: ['roadmap','satellite','terrain'] };
+    if (google.maps.ControlPosition) _mtcOpts.position = google.maps.ControlPosition.TOP_LEFT;
+    if (google.maps.MapTypeControlStyle) _mtcOpts.style = google.maps.MapTypeControlStyle.HORIZONTAL_BAR;
     const map = new google.maps.Map(mapEl, {
       zoom:14, center,
       styles: isLight ? [] : darkStyles,
-      mapTypeControl:true, streetViewControl:false, fullscreenControl:true,
+      mapTypeControl:true,
+      mapTypeControlOptions:_mtcOpts,
+      streetViewControl:false, fullscreenControl:true,
+      zoomControl:false, // no +/- buttons — wheel/gesture zoom only
       gestureHandling:'cooperative',
     });
     STATE._gmap = map;
     STATE._gmapDark = darkStyles;
-    // Dark mode: style Google Maps native map-type controls (Plan / Satellite)
+    // Dark mode: style Google Maps native map-type controls (Plan / Satellite / Relief)
+    // Injected immediately (not on tilesloaded) so controls never flash light.
     if (!isLight) {
-      google.maps.event.addListenerOnce(map, 'tilesloaded', () => {
+      (() => {
         if (document.getElementById('fp-gmap-dark-ctrl')) return;
         const s = document.createElement('style');
         s.id = 'fp-gmap-dark-ctrl';
@@ -4266,8 +4275,12 @@ function initLocalSEOMap() {
           '#fp-gmap .gm-style-mtc button{background:#1e293b!important;color:#e2e8f0!important;border-color:#334155!important;box-shadow:none!important}',
           '#fp-gmap .gm-style-mtc button:hover{background:#334155!important}',
           '#fp-gmap .gm-style-mtc>div{background:#1e293b!important;border-color:#334155!important}',
+          '#fp-gmap .gm-style-mtc li,#fp-gmap .gm-style-mtc label{background:#1e293b!important;color:#e2e8f0!important}',
           '#fp-gmap .gm-bundled-control button,#fp-gmap .gm-fullscreen-control{background:#1e293b!important;color:#e2e8f0!important}',
           '#fp-gmap .gm-svpc,#fp-gmap .gm-fullscreen-control img{filter:invert(1) brightness(0.8)}',
+          // Keyboard-shortcuts / attribution bar — dark, not white
+          '#fp-gmap .gm-style-cc>div{background:rgba(13,17,23,0.72)!important}',
+          '#fp-gmap .gm-style-cc a,#fp-gmap .gm-style-cc span,#fp-gmap .gm-style-cc button{color:#94a3b8!important}',
           // Dark InfoWindows — Google renders them white by default
           '#fp-gmap .gm-style-iw,#fp-gmap .gm-style-iw-c{background:#0f172a!important;color:#e2e8f0!important;box-shadow:0 8px 24px rgba(0,0,0,0.6)!important;border:1px solid #1e3a5f!important;border-radius:12px!important}',
           '#fp-gmap .gm-style-iw-d{background:#0f172a!important;color:#e2e8f0!important;overflow:auto!important}',
@@ -4276,7 +4289,7 @@ function initLocalSEOMap() {
           '#fp-gmap .gm-style-iw a{color:#60a5fa!important}',
         ].join('');
         document.head.appendChild(s);
-      });
+      })();
     }
     // Business marker (only if we have a center)
     let bm = null;
@@ -31241,10 +31254,14 @@ function renderLocalSEOMap() {
   const me = STATE.me || {};
   const locs = STATE.gbp?.locations || [];
   const firstLoc = locs[0];
-  const defLat = Number.isFinite(Number(firstLoc?.lat)) ? Number(firstLoc.lat) : 48.8566;
-  const defLng = Number.isFinite(Number(firstLoc?.lng)) ? Number(firstLoc.lng) : 2.3522;
+  // Saved Settings > Localisation/Workspace coordinates win over GBP, then Paris fallback
+  const _svLoc = me.location || {};
+  const _svLat = Number.isFinite(Number(_svLoc.latitude)) && _svLoc.latitude !== null && _svLoc.latitude !== '' ? Number(_svLoc.latitude) : null;
+  const _svLng = Number.isFinite(Number(_svLoc.longitude)) && _svLoc.longitude !== null && _svLoc.longitude !== '' ? Number(_svLoc.longitude) : null;
+  const defLat = _svLat != null ? _svLat : (Number.isFinite(Number(firstLoc?.lat)) ? Number(firstLoc.lat) : 48.8566);
+  const defLng = _svLng != null ? _svLng : (Number.isFinite(Number(firstLoc?.lng)) ? Number(firstLoc.lng) : 2.3522);
   const defName = firstLoc?.name ?? (me.businessName || 'Mon établissement');
-  const defAddr = firstLoc?.address ?? '';
+  const defAddr = firstLoc?.address ?? [_svLoc.address, _svLoc.city].filter(Boolean).join(', ');
   const defKeyword = me.businessType ?? 'restaurant';
   const mapsReady = typeof window.FP_MAPS_API !== 'undefined';
   const competitors = (window.FP_DATA && window.FP_DATA.mapsCompetitors) || [];
@@ -31524,8 +31541,12 @@ function renderCompetitorsMap() {
   const me = STATE.me || {};
   const locs = STATE.gbp?.locations || [];
   const firstLoc = locs[0];
-  const defLat = Number.isFinite(Number(firstLoc?.lat)) ? Number(firstLoc.lat) : 48.8566;
-  const defLng = Number.isFinite(Number(firstLoc?.lng)) ? Number(firstLoc.lng) : 2.3522;
+  // Saved Settings > Localisation/Workspace coordinates win over GBP, then Paris fallback
+  const _svLoc = me.location || {};
+  const _svLat = Number.isFinite(Number(_svLoc.latitude)) && _svLoc.latitude !== null && _svLoc.latitude !== '' ? Number(_svLoc.latitude) : null;
+  const _svLng = Number.isFinite(Number(_svLoc.longitude)) && _svLoc.longitude !== null && _svLoc.longitude !== '' ? Number(_svLoc.longitude) : null;
+  const defLat = _svLat != null ? _svLat : (Number.isFinite(Number(firstLoc?.lat)) ? Number(firstLoc.lat) : 48.8566);
+  const defLng = _svLng != null ? _svLng : (Number.isFinite(Number(firstLoc?.lng)) ? Number(firstLoc.lng) : 2.3522);
   const defKeyword = me.businessType ?? 'restaurant';
   const competitors = (window.FP_DATA && window.FP_DATA.mapsCompetitors) || [];
 

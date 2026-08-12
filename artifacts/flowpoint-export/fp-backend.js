@@ -1772,23 +1772,173 @@
       return isFinite(n) ? n : fallback;
     },
 
+    _esc: function (s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+      });
+    },
+
+    _isLight: function () { return document.documentElement.dataset.theme === 'light'; },
+
+    // Dark-mode CSS for Google's native controls (map-type buttons, fullscreen,
+    // keyboard-shortcuts/attribution bar) and InfoWindows on both map containers.
+    _injectDarkCss: function () {
+      if (this._isLight()) return;
+      if (document.getElementById('fp-maps-dark-ctrl')) return;
+      var css = [];
+      ['#fp-gmap', '#fp-competitors-map'].forEach(function (sel) {
+        css.push(
+          sel + ' .gm-style-mtc button{background:#1e293b!important;color:#e2e8f0!important;border-color:#334155!important;box-shadow:none!important}',
+          sel + ' .gm-style-mtc button:hover{background:#334155!important}',
+          sel + ' .gm-style-mtc>div{background:#1e293b!important;border-color:#334155!important}',
+          sel + ' .gm-style-mtc li,' + sel + ' .gm-style-mtc label{background:#1e293b!important;color:#e2e8f0!important}',
+          sel + ' .gm-bundled-control button,' + sel + ' .gm-fullscreen-control{background:#1e293b!important;color:#e2e8f0!important}',
+          sel + ' .gm-svpc,' + sel + ' .gm-fullscreen-control img{filter:invert(1) brightness(0.8)}',
+          sel + ' .gm-style-cc>div{background:rgba(13,17,23,0.72)!important}',
+          sel + ' .gm-style-cc a,' + sel + ' .gm-style-cc span,' + sel + ' .gm-style-cc button{color:#94a3b8!important}',
+          sel + ' .gm-style-iw,' + sel + ' .gm-style-iw-c{background:#0f172a!important;color:#e2e8f0!important;box-shadow:0 8px 24px rgba(0,0,0,0.6)!important;border:1px solid #1e3a5f!important;border-radius:12px!important}',
+          sel + ' .gm-style-iw-d{background:#0f172a!important;color:#e2e8f0!important;overflow:auto!important}',
+          sel + ' .gm-style-iw-tc::after{background:#0f172a!important}',
+          sel + ' .gm-style-iw button.gm-ui-hover-effect>span{background-color:#e2e8f0!important}',
+          sel + ' .gm-style-iw a{color:#60a5fa!important}'
+        );
+      });
+      var s = document.createElement('style');
+      s.id = 'fp-maps-dark-ctrl';
+      s.textContent = css.join('');
+      document.head.appendChild(s);
+    },
+
+    // Shared map options: no +/- zoom buttons (wheel/gesture zoom stays),
+    // map-type buttons (Plan/Satellite/Relief) top-left, fullscreen kept.
+    _mapOptions: function (center, zoom) {
+      // ControlPosition/MapTypeControlStyle can be undefined with async Maps
+      // bootstrap — omit position/style then (defaults are top-left horizontal bar).
+      var mtc = { mapTypeIds: ['roadmap', 'satellite', 'terrain'] };
+      if (google.maps.ControlPosition) mtc.position = google.maps.ControlPosition.TOP_LEFT;
+      if (google.maps.MapTypeControlStyle) mtc.style = google.maps.MapTypeControlStyle.HORIZONTAL_BAR;
+      return {
+        center: center,
+        zoom: zoom,
+        styles: this._isLight() ? [] : FP_MAPS_DARK_STYLE,
+        mapTypeControl: true,
+        mapTypeControlOptions: mtc,
+        streetViewControl: false,
+        fullscreenControl: true,
+        zoomControl: false,
+        gestureHandling: 'cooperative',
+      };
+    },
+
+    // Business center resolution: saved workspace/localisation coordinates win,
+    // then the element's dataset, then the Paris fallback. Returns source so
+    // callers know when to geocode the saved address instead.
+    _bizCenter: function (el) {
+      var loc = (window.STATE && window.STATE.me && window.STATE.me.location) || {};
+      var lat = this._finite(loc.latitude, null);
+      var lng = this._finite(loc.longitude, null);
+      if (lat !== null && lng !== null) return { lat: lat, lng: lng, source: 'saved' };
+      lat = this._finite(el && el.dataset ? el.dataset.lat : null, null);
+      lng = this._finite(el && el.dataset ? el.dataset.lng : null, null);
+      // The renderers bake the Paris fallback into data-lat/lng when nothing is
+      // configured — treat those exact values as "no real coordinates".
+      if (lat !== null && lng !== null && !(Math.abs(lat - 48.8566) < 1e-9 && Math.abs(lng - 2.3522) < 1e-9)) {
+        return { lat: lat, lng: lng, source: 'dataset' };
+      }
+      return { lat: 48.8566, lng: 2.3522, source: 'fallback' };
+    },
+
+    _savedAddressQuery: function () {
+      var loc = (window.STATE && window.STATE.me && window.STATE.me.location) || {};
+      return [loc.address, loc.city, loc.postalCode, loc.country].filter(Boolean).join(', ');
+    },
+
+    // When only an address (no coordinates) is saved in Settings, geocode it
+    // server-side and re-center the map + business marker + circle, then reload
+    // the data layers around the real position.
+    _geocodeSavedAddress: function (mapId, marker, circle, radius, keyword) {
+      var q = this._savedAddressQuery();
+      if (!q) return;
+      var self = this;
+      apiAction('POST', '/api/maps/geocode', { address: q }).then(function (geo) {
+        if (!geo || !isFinite(Number(geo.lat)) || !isFinite(Number(geo.lng))) return;
+        var p = { lat: Number(geo.lat), lng: Number(geo.lng) };
+        var inst = self._mapInstances[mapId];
+        if (!inst || !inst.map) return;
+        inst.center = p;
+        inst.map.setCenter(p);
+        if (marker) marker.setPosition(p);
+        if (circle) circle.setCenter(p);
+        self._loadCompetitorMarkers(mapId, p.lat, p.lng, radius, keyword);
+        if (mapId === 'fp-gmap') self._loadHeatmapLayer(mapId, p.lat, p.lng, radius, keyword);
+      }).catch(function () {});
+    },
+
+    // Rich, Google-Maps-like competitor card. `d` is the optional Place
+    // Details payload (photo, phone, open/closed, website); when null the card
+    // renders from the Nearby Search fields already on `c`.
+    _competitorCardHtml: function (c, color, d) {
+      var esc = this._esc;
+      var light = this._isLight();
+      var txt = light ? '#0f172a' : '#e2e8f0';
+      var mut = light ? '#64748b' : '#94a3b8';
+      var rating = d && d.rating != null ? d.rating : c.rating;
+      var reviews = d && d.reviewCount != null ? d.reviewCount : c.reviewCount;
+      var address = (d && d.address) || c.vicinity || '';
+      var stars = '';
+      if (rating != null && isFinite(Number(rating))) {
+        var r = Math.round(Number(rating));
+        stars = '★'.repeat(Math.max(0, Math.min(5, r))) + '☆'.repeat(Math.max(0, 5 - Math.max(0, Math.min(5, r))));
+      }
+      var dist = isFinite(Number(c.distanceM))
+        ? (c.distanceM < 1000 ? c.distanceM + ' m' : (c.distanceM / 1000).toFixed(1) + ' km')
+        : '';
+      var threatLabel = c.threatLevel === 'critical' ? 'Critique' : c.threatLevel === 'high' ? 'Élevé' : c.threatLevel === 'medium' ? 'Moyen' : 'Faible';
+      var html = '<div style="font-family:Inter,sans-serif;padding:8px;min-width:230px;max-width:280px;color:' + txt + '">';
+      if (d && d.photoUrl) {
+        html += '<img src="' + esc(d.photoUrl) + '" alt="" style="width:100%;height:110px;object-fit:cover;border-radius:8px;margin-bottom:8px" onerror="this.remove()"/>';
+      }
+      html += '<div style="font-weight:700;font-size:13px;line-height:1.3">' + esc(c.name) + '</div>';
+      if (rating != null && isFinite(Number(rating))) {
+        html += '<div style="margin-top:4px;font-size:12px"><span style="color:#f59e0b;letter-spacing:1px">' + stars + '</span> <strong>' + Number(rating).toFixed(1) + '</strong>'
+          + (reviews != null ? ' <span style="color:' + mut + '">(' + esc(reviews) + ' avis)</span>' : '') + '</div>';
+      } else {
+        html += '<div style="margin-top:4px;font-size:11px;color:' + mut + '">Aucun avis Google</div>';
+      }
+      if (address) html += '<div style="margin-top:6px;font-size:11px;color:' + mut + ';line-height:1.4">📍 ' + esc(address) + (dist ? ' · ' + dist : '') + '</div>';
+      else if (dist) html += '<div style="margin-top:6px;font-size:11px;color:' + mut + '">📏 ' + dist + '</div>';
+      if (d && d.phone) html += '<div style="margin-top:4px;font-size:11px;color:' + mut + '">📞 ' + esc(d.phone) + '</div>';
+      if (d && d.openNow != null) {
+        html += '<div style="margin-top:4px;font-size:11px;font-weight:600;color:' + (d.openNow ? '#22c55e' : '#ef4444') + '">' + (d.openNow ? '● Ouvert actuellement' : '● Fermé actuellement') + '</div>';
+      }
+      html += '<div style="margin-top:8px;padding:3px 8px;border-radius:4px;background:' + color + '20;color:' + color + ';font-size:10px;font-weight:700;display:inline-block">Menace ' + esc(threatLabel) + ' · Score ' + esc(c.seoScore) + '/100</div>';
+      var links = [];
+      if (d && d.website) links.push('<a href="' + esc(String(d.website)) + '" target="_blank" rel="noopener" style="text-decoration:none;font-weight:600;color:#60a5fa">Site web ↗</a>');
+      if (d && d.googleUrl) links.push('<a href="' + esc(String(d.googleUrl)) + '" target="_blank" rel="noopener" style="text-decoration:none;font-weight:600;color:#60a5fa">Google Maps ↗</a>');
+      if (links.length) html += '<div style="margin-top:8px;display:flex;gap:10px;font-size:11px">' + links.join('') + '</div>';
+      html += '</div>';
+      return html;
+    },
+
+    _bizCardHtml: function (name) {
+      var light = this._isLight();
+      var txt = light ? '#0f172a' : '#e2e8f0';
+      var mut = light ? '#64748b' : '#94a3b8';
+      return '<div style="font-family:Inter,sans-serif;padding:6px 8px;min-width:150px;color:' + txt + '">'
+        + '<div style="font-weight:700;font-size:13px">📍 ' + this._esc(name) + '</div>'
+        + '<div style="font-size:10px;color:' + mut + ';margin-top:2px">Votre établissement</div>'
+        + '</div>';
+    },
+
     _initMainMap: function (el) {
-      var lat = this._finite(el.dataset.lat, 48.8566);
-      var lng = this._finite(el.dataset.lng, 2.3522);
+      var c = this._bizCenter(el);
+      var lat = c.lat, lng = c.lng;
       var radius = parseInt(el.dataset.radius || '3000');
       var keyword = el.dataset.keyword || '';
       var name = el.dataset.name || 'Mon établissement';
 
-      var map = new google.maps.Map(el, {
-        center: { lat: lat, lng: lng },
-        zoom: 14,
-        styles: FP_MAPS_DARK_STYLE,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: true,
-        zoomControl: true,
-        zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
-      });
+      this._injectDarkCss();
+      var map = new google.maps.Map(el, this._mapOptions({ lat: lat, lng: lng }, 14));
 
       var businessMarker = new google.maps.Marker({
         position: { lat: lat, lng: lng },
@@ -1798,9 +1948,7 @@
         zIndex: 1000,
       });
 
-      var infoWindow = new google.maps.InfoWindow({
-        content: '<div style="color:#111;font-weight:700;font-size:13px;padding:4px 8px">' + name + '<br><span style="font-size:10px;color:#666;font-weight:400">Votre établissement</span></div>',
-      });
+      var infoWindow = new google.maps.InfoWindow({ content: this._bizCardHtml(name) });
       businessMarker.addListener('click', function () { infoWindow.open(map, businessMarker); });
 
       var radiusCircle = new google.maps.Circle({
@@ -1820,34 +1968,29 @@
       var self = this;
       self._loadCompetitorMarkers('fp-gmap', lat, lng, radius, keyword);
       self._loadHeatmapLayer('fp-gmap', lat, lng, radius, keyword);
+      if (c.source === 'fallback') self._geocodeSavedAddress('fp-gmap', businessMarker, radiusCircle, radius, keyword);
     },
 
     _initCompetitorsMap: function (el) {
-      var lat = this._finite(el.dataset.lat, 48.8566);
-      var lng = this._finite(el.dataset.lng, 2.3522);
+      var c = this._bizCenter(el);
+      var lat = c.lat, lng = c.lng;
       var radius = parseInt(el.dataset.radius || '5000');
       var keyword = el.dataset.keyword || '';
 
-      var map = new google.maps.Map(el, {
-        center: { lat: lat, lng: lng },
-        zoom: 13,
-        styles: FP_MAPS_DARK_STYLE,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: true,
-        zoomControl: true,
-        zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
-      });
+      this._injectDarkCss();
+      var map = new google.maps.Map(el, this._mapOptions({ lat: lat, lng: lng }, 13));
 
-      new google.maps.Marker({
+      var bizMarker = new google.maps.Marker({
         position: { lat: lat, lng: lng },
         map: map,
         icon: this._makeBusinessIcon(),
         zIndex: 1000,
         title: 'Mon établissement',
       });
+      var bizIW = new google.maps.InfoWindow({ content: this._bizCardHtml('Mon établissement') });
+      bizMarker.addListener('click', function () { bizIW.open(map, bizMarker); });
 
-      new google.maps.Circle({
+      var bizCircle = new google.maps.Circle({
         strokeColor: '#8b5cf6',
         strokeOpacity: 0.4,
         strokeWeight: 2,
@@ -1862,6 +2005,7 @@
       this._mapInstances['fp-competitors-map'] = inst;
 
       this._loadCompetitorMarkers('fp-competitors-map', lat, lng, radius, keyword);
+      if (c.source === 'fallback') this._geocodeSavedAddress('fp-competitors-map', bizMarker, bizCircle, radius, keyword);
     },
 
     _loadCompetitorMarkers: async function (mapId, lat, lng, radius, keyword) {
@@ -1894,19 +2038,16 @@
             zIndex: c.seoScore,
           });
           marker.addListener('click', function () {
-            infoWin.setContent(
-              '<div style="color:#111;padding:6px 8px;max-width:220px">' +
-              '<div style="font-weight:700;font-size:13px;margin-bottom:4px">' + c.name + '</div>' +
-              '<div style="font-size:11px;color:#666;margin-bottom:4px">' + (c.vicinity || '') + '</div>' +
-              '<div style="display:flex;gap:10px;font-size:11px">' +
-              '<span>★ ' + c.rating + '</span>' +
-              '<span>' + c.reviewCount + ' avis</span>' +
-              '<span>' + (c.distanceM < 1000 ? c.distanceM + 'm' : (c.distanceM/1000).toFixed(1) + 'km') + '</span>' +
-              '</div>' +
-              '<div style="margin-top:6px;padding:3px 8px;border-radius:4px;background:' + color + '20;color:' + color + ';font-size:10px;font-weight:700;display:inline-block">Score SEO: ' + c.seoScore + ' · ' + c.threatLevel + '</div>' +
-              '</div>'
-            );
+            infoWin.setContent(self._competitorCardHtml(c, color, null));
             infoWin.open(map, marker);
+            // Enrich with full Place Details (photo, exact rating, open/closed,
+            // phone, website) — photo always flows through the server proxy.
+            if (c.placeId) {
+              apiFetch('/api/maps/place-details?placeId=' + encodeURIComponent(c.placeId)).then(function (d) {
+                if (!d || d.error || !d.name) return;
+                infoWin.setContent(self._competitorCardHtml(c, color, d));
+              }).catch(function () {});
+            }
           });
           inst.markers.push(marker);
         });

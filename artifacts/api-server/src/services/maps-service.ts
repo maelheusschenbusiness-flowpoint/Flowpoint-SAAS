@@ -22,10 +22,11 @@ export async function geocodeAddress(address: string): Promise<{
   };
 }
 
-export async function getNearbyPlaces(lat: number, lng: number, type: string, radius = 5000): Promise<unknown[]> {
+export async function getNearbyPlaces(lat: number, lng: number, type: string, radius = 5000, keyword = ""): Promise<unknown[]> {
   const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
   if (!apiKey) throw new Error("Google Maps API key not configured");
-  const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}&key=${apiKey}`;
+  const kw = keyword.trim() ? `&keyword=${encodeURIComponent(keyword.trim())}` : "";
+  const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}${kw}&key=${apiKey}`;
   const res = await fetch(url);
   const data = await res.json() as Record<string, unknown>;
   return (data["results"] as unknown[]) ?? [];
@@ -86,8 +87,9 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
  * dropped instead of producing NaN markers.
  */
 export async function analyzeCompetitors(lat: number, lng: number, keyword: string, radius = 5000): Promise<unknown[]> {
-  void keyword; // type-based nearby search; keyword ranking comes from DataForSEO
-  const raw = await getNearbyPlaces(lat, lng, "establishment", radius) as Array<Record<string, unknown>>;
+  // The keyword filters Nearby Search so "restaurant" returns actual
+  // restaurants (real potential competitors), not every establishment.
+  const raw = await getNearbyPlaces(lat, lng, "establishment", radius, keyword) as Array<Record<string, unknown>>;
   const out: Array<Record<string, unknown>> = [];
   for (const p of raw) {
     const loc = ((p["geometry"] as Record<string, unknown>)?.["location"] ?? {}) as Record<string, unknown>;
