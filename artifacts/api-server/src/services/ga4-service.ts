@@ -159,8 +159,17 @@ export async function getGA4ConnectionStatus(orgId: string): Promise<{
   };
 }
 
+/**
+ * "Ready to query" gate for GA4 data consumers (traffic, audience,
+ * campaigns, live, conversion…). Requires an ACTIVE property — OAuth
+ * tokens alone (discovery still in progress) are NOT enough, because
+ * getGA4Context needs a property and would return empty data while the
+ * UI shows "connected". Surfaces that want to show a "connecting…"
+ * state should use getGA4ConnectionStatus().discovering instead.
+ */
 export async function isGA4Connected(orgId: string): Promise<boolean> {
-  return (await getGA4ConnectionStatus(orgId)).connected;
+  const { connected, discovering } = await getGA4ConnectionStatus(orgId);
+  return connected && !discovering;
 }
 
 export async function getStoredProperty(orgId: string): Promise<{ propertyId: string; displayName: string } | null> {
