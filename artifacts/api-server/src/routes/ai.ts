@@ -1176,6 +1176,10 @@ async function runToolCallingLoop(opts: {
         opts.sseWrite(`data: ${JSON.stringify({
           confirmation_request: {
             proposalId: proposal?.proposalId ?? null,
+            // The conversationId travels WITH the card so the client can confirm
+            // even if its global conversation state was never set (race: this
+            // event arrives before the final `_ai` frame) or was lost on reload.
+            conversationId: ctx.conversationId,
             toolName: toolCall.name,
             confirmationLevel: toolDef.confirmationLevel,
             preview,
@@ -1230,15 +1234,48 @@ function toolLoopText(language: string, key: "action_failed" | "action_partial" 
   return texts[lang]?.[key] ?? french[key];
 }
 
-function buildConfirmationPreview(toolName: string, args: Record<string, unknown>, language = "fr"): string {
+export function buildConfirmationPreview(toolName: string, args: Record<string, unknown>, language = "fr"): string {
   const lang = language.split("-")[0].toLowerCase();
+  // Human-readable fallback labels for every confirmable tool — the card must
+  // NEVER surface a raw tool name like « Exécuter l'action "run_audit" ».
+  const TOOL_LABELS: Record<string, { fr: string; en: string; es: string }> = {
+    run_audit:                    { fr: "Lancer un audit SEO complet", en: "Run a full SEO audit", es: "Lanzar una auditoría SEO completa" },
+    rerun_audit:                  { fr: "Relancer l'audit de ce site", en: "Re-run the audit for this site", es: "Repetir la auditoría de este sitio" },
+    create_missions_from_audit:   { fr: "Créer des missions à partir de l'audit", en: "Create missions from the audit", es: "Crear misiones a partir de la auditoría" },
+    delete_audit:                 { fr: "⚠ Supprimer définitivement cet audit", en: "⚠ Permanently delete this audit", es: "⚠ Eliminar definitivamente esta auditoría" },
+    create_calendar_event:        { fr: "Créer un événement dans le calendrier", en: "Create a calendar event", es: "Crear un evento en el calendario" },
+    update_calendar_event:        { fr: "Modifier un événement du calendrier", en: "Update a calendar event", es: "Modificar un evento del calendario" },
+    move_calendar_event:          { fr: "Déplacer un événement du calendrier", en: "Move a calendar event", es: "Mover un evento del calendario" },
+    delete_calendar_event:        { fr: "⚠ Supprimer un événement du calendrier", en: "⚠ Delete a calendar event", es: "⚠ Eliminar un evento del calendario" },
+    reschedule_week:              { fr: "Replanifier la semaine", en: "Reschedule the week", es: "Replanificar la semana" },
+    optimize_schedule:            { fr: "Optimiser le planning", en: "Optimize the schedule", es: "Optimizar la agenda" },
+    create_recurring_event:       { fr: "Créer un événement récurrent", en: "Create a recurring event", es: "Crear un evento recurrente" },
+    update_recurring_event:       { fr: "Modifier un événement récurrent", en: "Update a recurring event", es: "Modificar un evento recurrente" },
+    delete_recurring_series:      { fr: "⚠ Supprimer une série d'événements récurrents", en: "⚠ Delete a recurring event series", es: "⚠ Eliminar una serie de eventos recurrentes" },
+    acknowledge_incident:         { fr: "Accuser réception de l'incident", en: "Acknowledge the incident", es: "Confirmar recepción del incidente" },
+    resolve_incident:             { fr: "Marquer l'incident comme résolu", en: "Mark the incident as resolved", es: "Marcar el incidente como resuelto" },
+    create_missions_from_incident:{ fr: "Créer des missions à partir de l'incident", en: "Create missions from the incident", es: "Crear misiones a partir del incidente" },
+    configure_monitor:            { fr: "Configurer un monitor de surveillance", en: "Configure a monitoring check", es: "Configurar un monitor de supervisión" },
+    suspend_monitor:              { fr: "⚠ Suspendre la surveillance de ce monitor", en: "⚠ Suspend this monitor", es: "⚠ Suspender este monitor" },
+    resume_monitor:               { fr: "Réactiver la surveillance de ce monitor", en: "Resume this monitor", es: "Reactivar este monitor" },
+    delete_monitor:               { fr: "⚠ Supprimer définitivement ce monitor", en: "⚠ Permanently delete this monitor", es: "⚠ Eliminar definitivamente este monitor" },
+    generate_recommendations:     { fr: "Générer des recommandations SEO", en: "Generate SEO recommendations", es: "Generar recomendaciones SEO" },
+    generate_seo_strategy:        { fr: "Générer une stratégie SEO", en: "Generate an SEO strategy", es: "Generar una estrategia SEO" },
+    create_missions_from_strategy:{ fr: "Créer des missions à partir de la stratégie", en: "Create missions from the strategy", es: "Crear misiones a partir de la estrategia" },
+  };
+  const langKey = (lang === "en" || lang === "es") ? lang : "fr";
   if (lang === "en") {
     switch (toolName) {
       case "create_mission": return `Create a mission titled "${args["title"] ?? "?"}"`;
       case "update_mission": return `Update mission ID "${args["id"] ?? "?"}"`;
       case "complete_mission": return `Mark mission ID "${args["id"] ?? "?"}" as completed`;
       case "delete_mission": return `⚠ Permanently delete mission ID "${args["id"] ?? "?"}"`;
-      default: return `Run the "${toolName}" action`;
+      case "run_audit": return `Run a full SEO audit of ${args["url"] ?? "your site"} — takes 30-60 seconds`;
+      case "rerun_audit": return `Re-run the SEO audit (a new entry will be created)`;
+      case "configure_monitor": return args["monitor_id"]
+        ? `Update the monitor settings${args["name"] ? ` for "${args["name"]}"` : ""}${args["url"] ? ` (${args["url"]})` : ""}`
+        : `Create a new monitor${args["url"] ? ` for ${args["url"]}` : ""}${args["name"] ? ` named "${args["name"]}"` : ""}`;
+      default: return TOOL_LABELS[toolName]?.en ?? `Run the "${toolName}" action`;
     }
   }
   if (lang === "es") {
@@ -1247,7 +1284,12 @@ function buildConfirmationPreview(toolName: string, args: Record<string, unknown
       case "update_mission": return `Modificar la misión ID "${args["id"] ?? "?"}"`;
       case "complete_mission": return `Marcar la misión ID "${args["id"] ?? "?"}" como completada`;
       case "delete_mission": return `⚠ Eliminar permanentemente la misión ID "${args["id"] ?? "?"}"`;
-      default: return `Ejecutar la acción "${toolName}"`;
+      case "run_audit": return `Lanzar una auditoría SEO completa de ${args["url"] ?? "su sitio"} — tarda 30-60 segundos`;
+      case "rerun_audit": return `Repetir la auditoría SEO (se creará una nueva entrada)`;
+      case "configure_monitor": return args["monitor_id"]
+        ? `Modificar la configuración del monitor${args["name"] ? ` "${args["name"]}"` : ""}${args["url"] ? ` (${args["url"]})` : ""}`
+        : `Crear un nuevo monitor${args["url"] ? ` para ${args["url"]}` : ""}${args["name"] ? ` llamado "${args["name"]}"` : ""}`;
+      default: return TOOL_LABELS[toolName]?.es ?? `Ejecutar la acción "${toolName}"`;
     }
   }
   switch (toolName) {
@@ -1259,8 +1301,16 @@ function buildConfirmationPreview(toolName: string, args: Record<string, unknown
       return `Marquer la mission ID "${args["id"] ?? "?"}" comme terminée`;
     case "delete_mission":
       return `⚠ Supprimer définitivement la mission ID "${args["id"] ?? "?"}"`;
+    case "run_audit":
+      return `Lancer un audit SEO complet de ${args["url"] ?? "votre site"} — l'analyse prend 30 à 60 secondes`;
+    case "rerun_audit":
+      return `Relancer l'audit SEO (une nouvelle entrée sera créée)`;
+    case "configure_monitor":
+      return args["monitor_id"]
+        ? `Modifier la configuration du monitor${args["name"] ? ` "${args["name"]}"` : ""}${args["url"] ? ` (${args["url"]})` : ""}`
+        : `Créer un nouveau monitor${args["url"] ? ` pour ${args["url"]}` : ""}${args["name"] ? ` nommé "${args["name"]}"` : ""}`;
     default:
-      return `Exécuter l'action "${toolName}"`;
+      return TOOL_LABELS[toolName]?.[langKey] ?? `Exécuter l'action "${toolName}"`;
   }
 }
 
@@ -1362,8 +1412,21 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
   let resolvedEconomyTier: EconomyTier = "NORMAL";
 
   try {
+    // Single retry on transient DB failure — one blip (pool timeout, rolling
+    // restart) must not surface « suivi d'usage IA indisponible » to the user.
+    // ORG_NOT_CANONICAL is deterministic: no retry for it.
+    const loadUsage = async () => {
+      try {
+        return await getOrCreateMonthlyUsage(orgId);
+      } catch (err) {
+        if ((err as Error & { code?: string })?.code === "ORG_NOT_CANONICAL") throw err;
+        logger.warn({ err, orgId }, "[AI] quota state read failed — retrying once");
+        await new Promise((r) => setTimeout(r, 250));
+        return await getOrCreateMonthlyUsage(orgId);
+      }
+    };
     const [rawUsage, orgThresholds] = await Promise.all([
-      getOrCreateMonthlyUsage(orgId),
+      loadUsage(),
       loadOrgEconomyThresholds(orgId),
     ]);
 

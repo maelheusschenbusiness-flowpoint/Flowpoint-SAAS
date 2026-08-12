@@ -2543,7 +2543,9 @@
         });
       } catch(e) {
         console.warn('[FP_AI_CHAT] confirmAction error', e);
-        return { ok: false, error: 'Erreur réseau' };
+        // Propager le vrai message serveur (proposition expirée, déjà traitée…)
+        // plutôt qu'un générique « Erreur réseau » qui masque la cause.
+        return { ok: false, error: (e && e.message) || 'Erreur réseau', status: e && e.status };
       }
     },
 

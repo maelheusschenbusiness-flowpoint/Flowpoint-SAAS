@@ -151,3 +151,4 @@
 - [uuid→TEXT migration dance](uuid-to-text-migration-dance.md) — ALTER COLUMN TYPE blockers: ALL policies + both-direction FKs + views + defaults, one tx; pg_policies deparse has 2 predicate forms; AI 503 gate until migration verified
 - [tsc-noEmit zero errors](uuid-to-text-migration-dance.md) — api-server now typechecks clean; adding a dep to package.json can shift pnpm type resolution and spawn TS2742 "not portable" — pin @types/express-serve-static-core as devDep
 - [Service orgId scoping](service-orgid-scoping.md) — mutations taking orgId must enforce it in SQL (AND org_id=$n + rowCount 404); accepting-and-discarding orgId on superuser pool = cross-tenant hole; vitest include list must name new test files
+- [AI confirmation card conversationId](ai-confirmation-card-convid.md) — confirmation_request SSE must embed conversationId (arrives before _ai frame); confirm handlers prefer card ID; TOOL_LABELS map for previews; errors visible in chat

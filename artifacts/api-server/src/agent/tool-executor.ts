@@ -251,7 +251,7 @@ async function dispatchTool(
     );
     if (dup.rows[0]) {
       return { toolCallId: logId, toolName: name, ok: false,
-        content: `Une mission intitulée "${title}" existe déjà (ID: ${dup.rows[0].id}). Utilise update_mission pour la modifier.`,
+        content: `Une mission intitulée "${title}" existe déjà (ID: ${dup.rows[0].id}). Demandez-moi de la modifier si besoin.`,
         actionLogId: logId };
     }
 
@@ -299,7 +299,7 @@ async function dispatchTool(
     const snapshot = await snapMission(id, orgId);
     if (!snapshot) {
       return { toolCallId: logId, toolName: name, ok: false,
-        content: `Mission ID "${id}" introuvable dans votre organisation. Utilise search_mission pour trouver l'ID correct.`,
+        content: `Mission ID "${id}" introuvable dans votre organisation. Demandez-moi de rechercher la mission pour retrouver le bon identifiant.`,
         actionLogId: logId };
     }
 
@@ -621,7 +621,7 @@ async function dispatchTool(
     const snap = await snapCalendarEvent(id, orgId, pool);
     if (!snap) {
       return { toolCallId: logId, toolName: name, ok: false,
-        content: `Événement ID "${id}" introuvable. Utilise search_calendar_event pour trouver l'ID exact.`,
+        content: `Événement ID "${id}" introuvable. Demandez-moi de rechercher l'événement dans le calendrier pour retrouver le bon identifiant.`,
         actionLogId: logId };
     }
 
@@ -705,7 +705,7 @@ async function dispatchTool(
     const snap = await snapCalendarEvent(id, orgId, pool);
     if (!snap) {
       return { toolCallId: logId, toolName: name, ok: false,
-        content: `Événement ID "${id}" introuvable. Utilise search_calendar_event pour trouver l'ID exact.`,
+        content: `Événement ID "${id}" introuvable. Demandez-moi de rechercher l'événement dans le calendrier pour retrouver le bon identifiant.`,
         actionLogId: logId };
     }
 
@@ -774,7 +774,7 @@ async function dispatchTool(
     const snap = await snapCalendarEvent(id, orgId, pool);
     if (!snap) {
       return { toolCallId: logId, toolName: name, ok: false,
-        content: `Événement ID "${id}" introuvable. Utilise search_calendar_event pour trouver l'ID exact.`,
+        content: `Événement ID "${id}" introuvable. Demandez-moi de rechercher l'événement dans le calendrier pour retrouver le bon identifiant.`,
         actionLogId: logId };
     }
 
@@ -1499,7 +1499,7 @@ async function dispatchTool(
     if (dupCheck.rows.length > 0) {
       const dupId = (dupCheck.rows[0] as Record<string, unknown>)["id"];
       return { toolCallId: logId, toolName: name, ok: false,
-        content: `Un audit pour ${url} existe déjà (ID : ${dupId}). Utilisez summarize_audit pour voir les résultats ou rerun_audit pour forcer une nouvelle analyse.`,
+        content: `Un audit pour ${url} a déjà été réalisé au cours des dernières 24 heures. Consultez ses résultats dans la page Audits SEO, ou demandez-moi de relancer l'audit pour forcer une nouvelle analyse.`,
         actionLogId: logId };
     }
 
@@ -1558,7 +1558,7 @@ async function dispatchTool(
       snapshot: null, versionAfter: null, durationMs: Date.now() - t0 });
 
     return { toolCallId: logId, toolName: name, ok: true,
-      content: `Audit lancé pour ${url} (ID : ${auditId}). L'analyse PageSpeed prend 30 à 60 secondes. Utilisez summarize_audit(${auditId}) une fois terminé pour voir le score et les problèmes.`,
+      content: `Audit lancé pour ${url}. L'analyse prend 30 à 60 secondes — le score et les problèmes détectés apparaîtront dans la page Audits SEO. Vous pouvez aussi me demander un résumé de l'audit une fois l'analyse terminée.`,
       data: { auditId, url, status: "processing" },
       actionLogId: logId };
   }
@@ -1962,7 +1962,7 @@ async function dispatchTool(
 
     if (!recRows.rows.length) {
       return { toolCallId: logId, toolName: name2, ok: true,
-        content: `Aucune recommandation trouvée (statut: ${statusF}). Utilisez generate_recommendations pour en créer.`, actionLogId: logId };
+        content: `Aucune recommandation trouvée (statut: ${statusF}). Demandez-moi de générer des recommandations SEO pour en créer.`, actionLogId: logId };
     }
     const recLines = (recRows.rows as Record<string, unknown>[]).map(rec => {
       const meta = (rec["metadata"] as Record<string, unknown>) ?? {};
@@ -2033,7 +2033,7 @@ async function dispatchTool(
     }
     if (!candidates.length) {
       return { toolCallId: logId, toolName: name2, ok: true,
-        content: "Données insuffisantes pour générer des recommandations. Commencez par lancer un audit SEO (run_audit) et ajoutez des mots-clés à suivre.",
+        content: "Données insuffisantes pour générer des recommandations. Commencez par lancer un audit SEO et ajoutez des mots-clés à suivre.",
         actionLogId: logId };
     }
     const scored = candidates
@@ -2100,7 +2100,7 @@ async function dispatchTool(
 
     if (!prioR.rows.length) {
       return { toolCallId: logId, toolName: name2, ok: true,
-        content: "Aucune recommandation active. Utilisez generate_recommendations pour en créer.", actionLogId: logId };
+        content: "Aucune recommandation active. Demandez-moi de générer des recommandations SEO pour en créer.", actionLogId: logId };
     }
     const prioRecs = prioR.rows as Record<string, unknown>[];
     const prioBuckets: Record<string, typeof prioRecs> = {
@@ -2133,7 +2133,7 @@ async function dispatchTool(
     const expRecId = args["recommendationId"] as string;
     const expSnap  = await snapRecommendation(expRecId, orgId, pool);
     if (!expSnap) return { toolCallId: logId, toolName: name2, ok: false,
-      content: `Recommandation ${expRecId} introuvable. Utilisez search_recommendations pour trouver l'ID.`, actionLogId: logId };
+      content: `Recommandation ${expRecId} introuvable. Demandez-moi de rechercher les recommandations pour retrouver le bon identifiant.`, actionLogId: logId };
 
     const expMeta = (expSnap["metadata"] as Record<string, unknown>) ?? {};
     const effort  = Number(expMeta["effort"] ?? 50);
@@ -2178,7 +2178,7 @@ async function dispatchTool(
       .filter(x => !planFocus || String((x["metadata"] as Record<string, unknown>)?.["category"] ?? "").toLowerCase().includes(planFocus));
     if (!planRecs.length) {
       return { toolCallId: logId, toolName: name2, ok: true,
-        content: "Aucune recommandation disponible pour créer un plan. Lancez d'abord generate_recommendations.", actionLogId: logId };
+        content: "Aucune recommandation disponible pour créer un plan. Demandez-moi d'abord de générer des recommandations SEO.", actionLogId: logId };
     }
     const planBuckets: Record<number, typeof planRecs> = {};
     for (let w = 1; w <= planWeeks; w++) planBuckets[w] = [];
@@ -2253,7 +2253,7 @@ async function dispatchTool(
         `Horizon : ${stratHorizonLabel} | Axes : ${stratFocus}`,
         `Score SEO moyen : ${sAvgScore}/100 | Mots-clés Top 10 : ${sKwTop10}/${sKwRows.length}`,
         ``,
-        `Utilisez create_missions_from_strategy avec strategyId="${stratId}" pour créer les missions correspondantes.`,
+        `Demandez-moi de créer les missions de cette stratégie pour les ajouter à votre plan d'action.`,
       ].join("\n"),
       data: { strategyId: stratId, title: stratTitle },
       actionLogId: logId, navProposal: navStratProposal };
@@ -2286,7 +2286,7 @@ async function dispatchTool(
         `Adapté si : ambitions nationales, fort volume de recherche, contenu à large diffusion.`,
         ``,
         `Recommandation : ${hasLocal ? `l'approche "${cmpA}" semble plus adaptée à votre présence actuelle.` : `l'approche "${cmpB}" offre plus de potentiel avec vos données actuelles.`}`,
-        `Pour approfondir, utilisez generate_seo_strategy avec l'axe choisi.`,
+        `Pour approfondir, demandez-moi de générer une stratégie SEO sur l'axe choisi.`,
       ].join("\n"),
       data: { strategyA: cmpA, strategyB: cmpB, hasLocalKeywords: hasLocal }, actionLogId: logId };
   }
@@ -2322,7 +2322,7 @@ async function dispatchTool(
     }
     if (!msSourceRecs.length) {
       return { toolCallId: logId, toolName: name2, ok: false,
-        content: "Aucune recommandation active. Utilisez generate_recommendations ou generate_seo_strategy d'abord.", actionLogId: logId };
+        content: "Aucune recommandation active. Demandez-moi d'abord de générer des recommandations ou une stratégie SEO.", actionLogId: logId };
     }
 
     const msToday = new Date().toISOString().slice(0, 10);
@@ -2386,7 +2386,7 @@ async function dispatchTool(
     if (!dimSnap) return { toolCallId: logId, toolName: name2, ok: false,
       content: `Recommandation ${dimRecId} introuvable.`, actionLogId: logId };
     if (dimSnap["status"] === "dismissed") return { toolCallId: logId, toolName: name2, ok: false,
-      content: `La recommandation [${dimRecId}] est déjà ignorée. Utilisez restore_recommendation pour la restaurer.`, actionLogId: logId };
+      content: `La recommandation [${dimRecId}] est déjà ignorée. Demandez-moi de la restaurer si besoin.`, actionLogId: logId };
 
     const dimMetaOld = (dimSnap["metadata"] as Record<string, unknown>) ?? {};
     const dimMetaNew = { ...dimMetaOld, dismiss_reason: dimReason, dismissed_at: new Date().toISOString() };
@@ -2398,7 +2398,7 @@ async function dispatchTool(
       tool: name2, args, confirmationLevel: "none", result: "ok",
       snapshot: dimSnap, versionAfter: null, durationMs: Date.now() - t0 });
     return { toolCallId: logId, toolName: name2, ok: true,
-      content: `Recommandation [${dimRecId}] "${dimSnap["title"]}" ignorée${dimReason ? ` (motif : ${dimReason})` : ""}. Utilisez restore_recommendation pour la restaurer.`,
+      content: `Recommandation [${dimRecId}] "${dimSnap["title"]}" ignorée${dimReason ? ` (motif : ${dimReason})` : ""}. Demandez-moi de la restaurer si besoin.`,
       data: { recommendationId: dimRecId }, actionLogId: logId };
   }
 
@@ -2545,9 +2545,9 @@ async function dispatchTool(
       `Uptime monitor   : ${fmtUptimePct(eiMonRow?.["uptime"])} | Latence moy : ${eiMonRow?.["latency"] ?? "?"}ms`,
       ``,
       `Recommandations :`,
-      `• Utilisez create_missions_from_incident pour créer les missions de correction.`,
-      !isResolved ? `• Utilisez resolve_incident pour marquer l'incident comme résolu.` : "",
-      `• Vérifiez les checks récents avec search_incidents pour détecter une récurrence.`,
+      `• Demandez-moi de créer les missions de correction à partir de cet incident.`,
+      !isResolved ? `• Demandez-moi de marquer l'incident comme résolu quand ce sera fait.` : "",
+      `• Demandez-moi de rechercher les incidents récents pour détecter une récurrence.`,
     ].filter(l => l !== "");
 
     return { toolCallId: logId, toolName: name2, ok: true,
@@ -2774,7 +2774,7 @@ async function dispatchTool(
       omLines.push("");
     }
 
-    omLines.push("ℹ️ Ces recommandations sont des propositions. Utilisez configure_monitor / suspend_monitor / delete_monitor pour les appliquer.");
+    omLines.push("ℹ️ Ces recommandations sont des propositions. Demandez-moi de configurer, suspendre ou supprimer un monitor pour les appliquer.");
     return { toolCallId: logId, toolName: name2, ok: true,
       content: omLines.join("\n"),
       data: { monitorsAnalyzed: omMons.length, incidentDataDays: 30 }, actionLogId: logId };
@@ -2865,7 +2865,7 @@ async function dispatchTool(
       targetId: susId, targetType: "organization", metadata: { provider, model, tool: name2 }, orgId }).catch(() => {});
 
     return { toolCallId: logId, toolName: name2, ok: true,
-      content: `Monitor [${susId}] "${susSnap["name"]}" suspendu.${susReason ? ` Motif : ${susReason}` : ""} Utilisez resume_monitor pour le réactiver.`,
+      content: `Monitor [${susId}] "${susSnap["name"]}" suspendu.${susReason ? ` Motif : ${susReason}` : ""} Demandez-moi de le réactiver quand vous le souhaitez.`,
       data: { monitorId: susId }, actionLogId: logId };
   }
 

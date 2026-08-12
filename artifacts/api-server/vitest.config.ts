@@ -20,6 +20,8 @@ export default defineConfig({
       "src/services/ai-usage-tracking-db.test.ts",
       "src/services/ai-usage-failclosed.test.ts",
       "src/routes/ai-chat-failclosed.test.ts",
+      "src/routes/ai-confirmation-preview.test.ts",
+      "src/agent/tool-executor-user-text.test.ts",
       "src/services/ai-attachments.test.ts",
       "src/services/ai-attachments-db.test.ts",
       "src/services/ai-attachment-parser.test.ts",

@@ -13153,10 +13153,14 @@ function renderAIMessages() {
     const isDestructive = cr.confirmationLevel === 'full';
     const preview = escHtml(cr.preview || fpT('Confirmer cette action ?'));
     const pid = escHtml(cr.proposalId);
+    // The conversationId travels with the card (data-cid) so Confirmer works even
+    // if the global STATE._aiConversationId was lost (page reload, race) —
+    // fixes the « Session perdue » dead-end.
+    const cid = escHtml(cr.conversationId || '');
     return `<div style="margin-top:8px;padding:10px 12px;border-radius:8px;background:${isDestructive ? 'rgba(239,68,68,0.07)' : 'rgba(37,99,235,0.07)'};border:1px solid ${isDestructive ? 'rgba(239,68,68,0.25)' : 'rgba(37,99,235,0.2)'};font-size:11px;color:var(--fp-text-soft)">
       <div style="font-weight:600;margin-bottom:8px;color:var(--fp-text);line-height:1.4">${isDestructive ? '⚠️ ' : ''}${preview}</div>
       <div style="display:flex;gap:6px">
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5${isDestructive ? ';background:#ef4444;border-color:#ef4444' : ''}" data-pid="${pid}" onclick="window.fpAiConfirmAction(this.dataset.pid, this)">${escHtml(fpT('Confirmer'))}</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5${isDestructive ? ';background:#ef4444;border-color:#ef4444' : ''}" data-pid="${pid}" data-cid="${cid}" onclick="window.fpAiConfirmAction(this.dataset.pid, this)">${escHtml(fpT('Confirmer'))}</button>
         <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5" data-pid="${pid}" onclick="window.fpAiDismissConfirm(this.dataset.pid, this)">${escHtml(fpT('Ignorer'))}</button>
       </div>
     </div>`;
@@ -13199,9 +13203,9 @@ function renderAIMessages() {
         ${_aiAvatar}
       </div>
       <div style="max-width:78%;min-width:0">
-        <div style="padding:9px 13px;border-radius:${isAI ? '4px 12px 12px 12px' : '12px 4px 12px 12px'};background:${isAI ? 'var(--fp-inner-card)' : '#2563EB'};border:1px solid ${isAI ? 'rgba(255,255,255,0.07)' : 'rgba(37,99,235,0.5)'};font-size:12px;color:${isAI ? 'var(--fp-text-soft)' : '#ffffff'};${isAI ? '' : 'text-shadow:0 1px 4px rgba(0,0,0,0.5);'}line-height:1.6">
+        ${(m.text || m.streaming || !(isAI && m.confirmRequest)) ? `<div style="padding:9px 13px;border-radius:${isAI ? '4px 12px 12px 12px' : '12px 4px 12px 12px'};background:${isAI ? 'var(--fp-inner-card)' : '#2563EB'};border:1px solid ${isAI ? 'rgba(255,255,255,0.07)' : 'rgba(37,99,235,0.5)'};font-size:12px;color:${isAI ? 'var(--fp-text-soft)' : '#ffffff'};${isAI ? '' : 'text-shadow:0 1px 4px rgba(0,0,0,0.5);'}line-height:1.6">
            ${m.text ? escHtml(m.text).replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--fp-text)">$1</strong>').replace(/\n/g,'<br>') : ''}${m.streaming && isAI ? '<span class="fp-ai-typing fp-ai-typing-inline" aria-label="L\'IA écrit"><span class="fp-ai-typing-dot"></span><span class="fp-ai-typing-dot"></span><span class="fp-ai-typing-dot"></span></span>' : ''}
-        </div>
+        </div>` : ''}
         ${isAI && !m.streaming && m.confirmRequest ? renderConfirmCard(m.confirmRequest) : ''}
         ${isAI && !m.streaming && m.undoToken ? renderUndoButton(m.undoToken) : ''}
         ${isAI && !m.streaming && !m.confirmRequest ? (m.proposal && m.proposal.actions && m.proposal.actions.length ? renderProposalActions(m.proposal) : renderChips(dedupedChips)) : ''}
@@ -13455,8 +13459,12 @@ async function sendAIMessage(text) {
           } else if (parsed.confirmation_request) {
             // SSE fermé après cet événement — stocker et afficher immédiatement la carte
             _confirmReq = parsed.confirmation_request;
+            // Le serveur envoie le conversationId AVEC la carte — le mémoriser
+            // immédiatement pour que Confirmer fonctionne toujours (fix « Session perdue »).
+            if (_confirmReq.conversationId) STATE._aiConversationId = _confirmReq.conversationId;
             STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: false, proposal: _proposal, confirmRequest: _confirmReq };
             STATE.aiLoading = false;
+            saveAIHistory();
             updateAIUI();
           } else if (parsed.undo_available) {
             _undoToken = parsed.undo_available;
@@ -34995,36 +35003,63 @@ window.apiAction   = apiAction;
 /** Confirme une action en attente depuis la carte de confirmation dans le chat principal. */
 window.fpAiConfirmAction = async function(proposalId, btnEl) {
   if (!proposalId || !btnEl) return;
-  var convId = STATE._aiConversationId || '';
-  if (!convId) { if (btnEl) btnEl.textContent = '⚠ ' + fpT('Session perdue'); return; }
+  // Priorité : conversationId embarqué dans la carte (data-cid), puis celui du
+  // message stocké, puis l'état global. Ne jamais bloquer sur « Session perdue »
+  // tant qu'une de ces sources existe.
+  var _cardMsg = STATE.aiMessages.find(function(m) {
+    return m.confirmRequest && m.confirmRequest.proposalId === proposalId;
+  });
+  var convId = (btnEl.dataset && btnEl.dataset.cid)
+    || (_cardMsg && _cardMsg.confirmRequest && _cardMsg.confirmRequest.conversationId)
+    || STATE._aiConversationId || '';
+  if (!convId) {
+    btnEl.disabled = true;
+    btnEl.textContent = '⚠ ' + fpT('Session expirée — renvoyez votre demande');
+    return;
+  }
   btnEl.disabled = true;
   var origText = btnEl.textContent;
   btnEl.textContent = fpT('En cours…');
+  var msgIdx = STATE.aiMessages.findIndex(function(m) {
+    return m.confirmRequest && m.confirmRequest.proposalId === proposalId;
+  });
+  function _applyResult(ok, text, undoToken) {
+    if (msgIdx !== -1) {
+      STATE.aiMessages[msgIdx] = {
+        from: 'ai',
+        text: (STATE.aiMessages[msgIdx].text ? STATE.aiMessages[msgIdx].text + '\n\n' : '') + text,
+        streaming: false,
+        undoToken: (ok && undoToken) ? undoToken : null,
+      };
+      saveAIHistory();
+      updateAIUI();
+    }
+  }
   try {
     var r = await apiFetch('/api/ai/conversations/' + encodeURIComponent(convId) + '/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ proposalId: proposalId, language: (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr' }),
     });
-    var msgIdx = STATE.aiMessages.findIndex(function(m) {
-      return m.confirmRequest && m.confirmRequest.proposalId === proposalId;
-    });
-    if (msgIdx !== -1) {
-      var resultText = r.ok
-        ? '✅ ' + (r.content || fpT('Action effectuée.'))
-        : '⚠ ' + (r.error || fpT('Échec de l\'exécution.'));
-      STATE.aiMessages[msgIdx] = {
-        from: 'ai',
-        text: (STATE.aiMessages[msgIdx].text ? STATE.aiMessages[msgIdx].text + '\n\n' : '') + resultText,
-        streaming: false,
-        undoToken: (r.ok && r.undoToken) ? r.undoToken : null,
-      };
-      if (r.ok) { STATE.missions = null; loadMissions && loadMissions().catch(function(){}); }
-      updateAIUI();
+    if (!r) { // apiFetch renvoie null sur 401 (redirection en cours)
+      btnEl.disabled = false;
+      btnEl.textContent = origText;
+      return;
     }
+    var resultText = r.ok
+      ? '✅ ' + (r.content || fpT('Action effectuée.'))
+      : '⚠ ' + (r.error || fpT('Échec de l\'exécution.'));
+    _applyResult(r.ok, resultText, r.undoToken);
+    if (r.ok) { STATE.missions = null; loadMissions && loadMissions().catch(function(){}); }
   } catch(e) {
-    btnEl.disabled = false;
-    btnEl.textContent = origText;
+    // Erreur visible dans le fil — ne jamais restaurer silencieusement le bouton.
+    var status = e && e.status;
+    var errText = status === 410 ? '⚠ ' + fpT('Cette proposition a expiré — renvoyez votre demande.')
+      : status === 409 ? '⚠ ' + (e.message || fpT('Cette action a déjà été traitée.'))
+      : status === 404 ? '⚠ ' + fpT('Proposition introuvable — renvoyez votre demande.')
+      : '⚠ ' + (e && e.message ? e.message : fpT('Échec de l\'exécution.')) ;
+    _applyResult(false, errText, null);
+    console.error('[AI Chat] confirmAction failed:', status, e && e.message);
   }
 };
 
@@ -35101,6 +35136,12 @@ window.fpAiUndoAction = async function(logId, expiresAt, btnEl) {
 /** Confirme une action depuis le panel flottant IA. */
 window.fpAiPanelConfirm = async function(proposalId, convId, confirmBtn, card, msgId) {
   if (!proposalId || !confirmBtn) return;
+  // Fallback : si le convId passé est vide, tenter la source globale.
+  if (!convId) convId = (window.FP_AI_CHAT_API && window.FP_AI_CHAT_API._convId) || (window.STATE && window.STATE._aiConversationId) || '';
+  if (!convId) {
+    if (card) card.innerHTML = '<span style="font-size:11px;color:#ef4444">⚠ ' + fpT('Session expirée — renvoyez votre demande') + '</span>';
+    return;
+  }
   confirmBtn.disabled = true;
   confirmBtn.textContent = fpT('En cours…');
   try {
@@ -35121,7 +35162,14 @@ window.fpAiPanelConfirm = async function(proposalId, convId, confirmBtn, card, m
       }
     }
   } catch(e) {
-    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = fpT('Confirmer'); }
+    // Erreur visible dans la carte — jamais de retour silencieux au bouton Confirmer.
+    console.error('[AI Panel] confirmAction failed:', e && e.message);
+    if (card) {
+      card.innerHTML = '<span style="font-size:11px;color:#ef4444">⚠ ' + escHtml((e && e.message) || fpT('Échec de l\'exécution.')) + '</span>';
+    } else if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = fpT('Confirmer');
+    }
   }
 };
 
@@ -36822,7 +36870,11 @@ setTimeout(function() {
             if (!msgId) msgId = appendMessage('assistant', cr.preview || '', false);
             var el = document.getElementById(msgId);
             if (!el || !cr.proposalId) return;
-            var convId = window.FP_AI_CHAT_API && window.FP_AI_CHAT_API._convId || '';
+            // conversationId embarqué dans l'événement (prioritaire) — le _convId
+            // global peut ne pas encore être défini quand cet événement arrive
+            // (la trame _ai est émise APRÈS confirmation_request côté serveur).
+            var convId = cr.conversationId || (window.FP_AI_CHAT_API && window.FP_AI_CHAT_API._convId) || '';
+            if (cr.conversationId && window.FP_AI_CHAT_API) window.FP_AI_CHAT_API._convId = cr.conversationId;
             var isD = cr.confirmationLevel === 'full';
             var card = document.createElement('div');
             card.style.cssText = 'margin-top:8px;padding:10px 12px;border-radius:8px;background:' + (isD ? 'rgba(239,68,68,0.07)' : 'rgba(37,99,235,0.07)') + ';border:1px solid ' + (isD ? 'rgba(239,68,68,0.25)' : 'rgba(37,99,235,0.2)') + ';font-size:11px';
