@@ -300,6 +300,8 @@ router.post("/missions/generate", canWrite, async (req: Request, res: Response) 
       return;
     }
     const result = await runMissionEngine(oid, "manual");
+    // Surface AI-unavailable flag so the frontend can show a specific warning
+    // instead of silently succeeding with fallback-template missions.
     res.json({ ok: true, ...result });
 
     // Fire-and-forget: new missions email — use org-scoped data, never store.me singleton

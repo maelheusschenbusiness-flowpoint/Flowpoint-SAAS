@@ -50,16 +50,26 @@ function deriveTrafficImpact(score: number, issues: number, speed: number): numb
   return null;
 }
 
+/** Result from the data-driven AI generation step. */
+interface AiGenerationResult {
+  missions: MissionTemplate[];
+  /** true only when the AI provider call or response parsing failed — not for config/DB errors */
+  aiUnavailable: boolean;
+}
+
 async function generateDataDrivenMissions(orgId: string, auditData: Array<{
   url: string; score: number; speed: number; issues: number;
   criticalIssues: string[]; opportunities: string[];
-}>): Promise<MissionTemplate[]> {
+}>): Promise<AiGenerationResult> {
+  let kwLine = "";
+  let compLine = "";
+
+  // ── Outer try: config/import/DB setup errors ──────────────────────────────
+  // These are NOT AI-provider failures; return gracefully without aiUnavailable.
   try {
     const { aiChat } = await import("./ai-provider.js");
 
-    // Fetch keywords and competitors for richer context
-    let kwLine = "";
-    let compLine = "";
+    // Fetch keywords and competitors for richer context (already resilient via allSettled)
     try {
       const [kwRes, compRes] = await Promise.allSettled([
         pool.query(
@@ -79,7 +89,7 @@ async function generateDataDrivenMissions(orgId: string, auditData: Array<{
         const comps = compRes.value.rows as Array<{name: string; domain_rating: number}>;
         compLine = `Concurrents : ${comps.map(c => `${c.name} DR=${c.domain_rating}`).join(", ")}`;
       }
-    } catch { /* ignore */ }
+    } catch { /* ignore — context enrichment is best-effort */ }
 
     const auditSummary = auditData.map(a =>
       `URL: ${a.url} | Score: ${a.score}/100 | Performance: ${a.speed}/100 | Issues: ${a.issues}` +
@@ -118,37 +128,53 @@ Réponds UNIQUEMENT avec le JSON array.`;
 
     const prefs = await loadOrgAIPrefs(orgId);
     const aiCfg = resolveAIModel(prefs, "mission_generation");
-    const result = await aiChat({
-      provider: aiCfg.provider,
-      model: aiCfg.model,
-      systemPrompt: "Tu génères des missions SEO JSON basées sur des données réelles. Réponds UNIQUEMENT avec du JSON valide.",
-      messages: [{ role: "user", content: prompt }],
-      maxTokens: aiCfg.maxTokens,
-      json: true,
-    });
-    const raw = result.text || "{}";
-    const parsed = JSON.parse(raw);
-    const arr = Array.isArray(parsed) ? parsed : (parsed.missions ?? parsed.data ?? []);
-    if (!Array.isArray(arr) || arr.length === 0) return [];
 
-    return arr.map((m: Record<string, unknown>) => ({
-      title: String(m["title"] ?? "Mission SEO"),
-      category: String(m["category"] ?? "seo"),
-      type: String(m["type"] ?? "technical"),
-      priority: String(m["priority"] ?? "medium"),
-      impact: String(m["impact"] ?? "medium"),
-      effort: String(m["effort"] ?? "medium"),
-      estimatedTrafficImpact: typeof m["estimatedTrafficImpact"] === "number" ? m["estimatedTrafficImpact"] :
-        (String(m["impact"] ?? "") === "high" ? 15 : String(m["impact"] ?? "") === "medium" ? 8 : 3),
-      estimatedRevenueImpact: null,
-      aiExplanation: String(m["aiExplanation"] ?? ""),
-      aiActionSteps: Array.isArray(m["aiActionSteps"]) ? (m["aiActionSteps"] as string[]).map(String) : [],
-      aiQuickWin: Boolean(m["aiQuickWin"] ?? false),
-      priorityScore: Number(m["priorityScore"] ?? 70),
-    })) as MissionTemplate[];
-  } catch (err) {
-    logger.warn({ err }, "[mission-engine] AI generation failed — using templates");
-    return [];
+    // ── Inner try: ONLY the provider call + response parsing ──────────────────
+    // Failures here are genuine AI-provider outages → aiUnavailable: true
+    try {
+      const result = await aiChat({
+        provider: aiCfg.provider,
+        model: aiCfg.model,
+        systemPrompt: "Tu génères des missions SEO JSON basées sur des données réelles. Réponds UNIQUEMENT avec du JSON valide.",
+        messages: [{ role: "user", content: prompt }],
+        maxTokens: aiCfg.maxTokens,
+        json: true,
+      });
+      const raw = result.text || "{}";
+      let parsed: unknown;
+      try { parsed = JSON.parse(raw); } catch {
+        logger.warn("[mission-engine] AI returned invalid JSON — treating as provider unavailable");
+        return { missions: [], aiUnavailable: true };
+      }
+      const arr = Array.isArray(parsed) ? parsed : ((parsed as Record<string, unknown>)?.missions ?? (parsed as Record<string, unknown>)?.data ?? []);
+      if (!Array.isArray(arr) || arr.length === 0) {
+        logger.warn("[mission-engine] AI returned empty missions array — treating as provider unavailable");
+        return { missions: [], aiUnavailable: true };
+      }
+      const missions = arr.map((m: Record<string, unknown>) => ({
+        title: String(m["title"] ?? "Mission SEO"),
+        category: String(m["category"] ?? "seo"),
+        type: String(m["type"] ?? "technical"),
+        priority: String(m["priority"] ?? "medium"),
+        impact: String(m["impact"] ?? "medium"),
+        effort: String(m["effort"] ?? "medium"),
+        estimatedTrafficImpact: typeof m["estimatedTrafficImpact"] === "number" ? m["estimatedTrafficImpact"] :
+          (String(m["impact"] ?? "") === "high" ? 15 : String(m["impact"] ?? "") === "medium" ? 8 : 3),
+        estimatedRevenueImpact: null,
+        aiExplanation: String(m["aiExplanation"] ?? ""),
+        aiActionSteps: Array.isArray(m["aiActionSteps"]) ? (m["aiActionSteps"] as string[]).map(String) : [],
+        aiQuickWin: Boolean(m["aiQuickWin"] ?? false),
+        priorityScore: Number(m["priorityScore"] ?? 70),
+      })) as MissionTemplate[];
+      return { missions, aiUnavailable: false };
+    } catch (providerErr) {
+      logger.warn({ err: providerErr }, "[mission-engine] AI provider call failed — using templates");
+      return { missions: [], aiUnavailable: true };
+    }
+  } catch (setupErr) {
+    // Config/import/DB error before the provider call — NOT an AI outage
+    logger.warn({ err: setupErr }, "[mission-engine] AI generation setup error (config/DB) — using templates");
+    return { missions: [], aiUnavailable: false };
   }
 }
 
@@ -160,9 +186,9 @@ export async function runMissionEngine(orgId = "default", _trigger?: string): Pr
       [orgId]
     );
     const count = Number(existing.rows[0]?.count ?? 0);
-    if (count >= 10) return { inserted: 0 };
+    if (count >= 10) return { inserted: 0, generationMode: "none" };
     const slots = Math.max(0, 8 - count);
-    if (slots === 0) return { inserted: 0 };
+    if (slots === 0) return { inserted: 0, generationMode: "none" };
 
     // Read real audit data from DB
     let auditData: Array<{id: string; url: string; score: number; speed: number; issues: number; criticalIssues: string[]; opportunities: string[]}> = [];
@@ -217,12 +243,25 @@ export async function runMissionEngine(orgId = "default", _trigger?: string): Pr
       logger.warn({ err }, "[mission-engine] Failed to read audit data — using templates");
     }
 
-    // Generate data-driven missions if we have audit data, else use templates
+    // Generate data-driven missions if we have audit data, else use templates.
+    // generationMode tracks what actually produced missions for accurate frontend messaging:
+    //   "ai"               — LLM provider returned valid missions
+    //   "data_derived"     — AI provider failed; fallback templates built from real audit data
+    //   "generic_templates"— No audit data (or no data-derived templates); static templates used
+    //   "none"             — Cap already reached; nothing inserted
     let templates: MissionTemplate[] = [];
+    let generationMode: string = "generic_templates"; // default until overridden below
+    let aiUnavailable = false; // set ONLY when the AI provider itself fails
     if (auditData.length > 0) {
-      templates = await generateDataDrivenMissions(orgId, auditData);
-      if (templates.length === 0) {
-        // AI generation failed — build lightweight templates from audit data
+      const aiResult = await generateDataDrivenMissions(orgId, auditData);
+      if (aiResult.missions.length > 0) {
+        templates = aiResult.missions;
+        generationMode = "ai";
+        // aiUnavailable stays false — provider succeeded
+      } else {
+        // AI generation failed — aiUnavailable reflects whether it was a provider failure
+        aiUnavailable = aiResult.aiUnavailable;
+        generationMode = "data_derived";
         templates = auditData.flatMap(a => {
           const t: MissionTemplate[] = [];
           if (a.criticalIssues.length > 0) {
@@ -253,6 +292,9 @@ export async function runMissionEngine(orgId = "default", _trigger?: string): Pr
     const usingGenericTemplates = templates.length === 0;
     if (usingGenericTemplates) {
       templates = MISSION_TEMPLATES;
+      // Audit-derived fallback also produced nothing — we're using fully generic templates.
+      // Override mode so the frontend never claims "audit data" was the source.
+      generationMode = "generic_templates";
     }
 
     // Generic fallback templates are not derived from any specific audit — keep source null
@@ -263,7 +305,10 @@ export async function runMissionEngine(orgId = "default", _trigger?: string): Pr
     let inserted = 0;
     for (const t of templates.slice(0, slots)) {
       const id = `m_${orgId}_${t.title.replace(/[^a-z0-9]/gi, "_").toLowerCase().slice(0, 30)}_${Date.now()}`;
-      await client.query(
+      // Count only a genuinely new row: ON CONFLICT DO NOTHING sets rowCount to 0 for duplicates
+      // (those are not errors — the mission already exists). Any real DB failure throws and is
+      // caught by the outer runMissionEngine try/catch, which re-throws to produce HTTP 500.
+      const insertResult = await client.query(
         `INSERT INTO missions (id, org_id, title, description, category, type, priority, priority_score,
           status, impact, effort, estimated_traffic_impact, estimated_revenue_impact,
           ai_explanation, ai_action_steps, ai_quick_win, source_url, source_audit_id, due_date, created_at, updated_at)
@@ -278,14 +323,18 @@ export async function runMissionEngine(orgId = "default", _trigger?: string): Pr
           t.aiExplanation, JSON.stringify(t.aiActionSteps), t.aiQuickWin,
           primarySourceUrl, primarySourceAuditId,
         ]
-      ).catch(err => logger.warn({ err, id }, "[mission-engine] Insert failed — skipping"));
-      inserted++;
+      );
+      if ((insertResult.rowCount ?? 0) === 1) inserted++;
     }
-    return { inserted };
+    return { inserted, generationMode, aiUnavailable };
   } catch (err) {
-    logger.error({ err }, "[mission-engine] runMissionEngine failed");
-    return { inserted: 0 };
+    // Unexpected DB/network/engine failure — re-throw so the route returns HTTP 500.
+    // The frontend treats 500 as a generic scan error, correctly distinct from an AI
+    // provider failure (which is handled inline above as aiUnavailable:true + HTTP 200).
+    logger.error({ err }, "[mission-engine] runMissionEngine failed — re-throwing for HTTP 500");
+    throw err;
   } finally {
+    // finally always runs — client is released even when we re-throw above
     client.release();
   }
 }

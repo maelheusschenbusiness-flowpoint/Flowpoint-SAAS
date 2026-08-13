@@ -5154,14 +5154,15 @@ function renderOverview() {
   const _scoreVals = [avg, localScore, growthMomentum].filter(v => v != null && Number.isFinite(v));
   const globalScore = _scoreVals.length > 0 ? Math.round(_scoreVals.reduce((a,b) => a+b, 0) / _scoreVals.length) : null;
 
-  const missionsCompleted = STATE.missions.filter(m => m.status === 'done' || m.done === true).length;
-  const missionsActive    = STATE.missions.filter(m => m.status !== 'done' && !m.done).length;
+  const _missions         = Array.isArray(STATE.missions) ? STATE.missions : [];
+  const missionsCompleted = _missions.filter(m => m.status === 'done' || m.done === true).length;
+  const missionsActive    = _missions.filter(m => m.status !== 'done' && !m.done).length;
   const realStreak        = STATE.streak || 0;
 
   const _seoTrend = (() => { const d = STATE.overview?.seoTrendDelta; return d != null ? (d > 0 ? '+' : '') + d + 'pt' : '—'; })();
   const _growthTrend = (() => { const g = STATE.overview?.organicGrowthPct; return g != null ? (g > 0 ? '+' : '') + g + '%' : '—'; })();
   const healthMetrics = [
-    { label:'SEO Health',         val:STATE.audits.length > 0 ? avg : null, max:100, color:'#2563EB',  icon:'🔍', trend:_seoTrend,   unit:'/100', route:'audits' },
+    { label:'SEO Health',         val:(STATE.audits||[]).length > 0 ? avg : null, max:100, color:'#2563EB',  icon:'🔍', trend:_seoTrend,   unit:'/100', route:'audits' },
     { label:'Conversion GA4',     val:conversionRate,      max:100, color:'#22c55e',  icon:'⚡', trend:conversionRate != null ? conversionRate.toFixed(2)+'%' : '—', unit:'%', route:'conversion' },
     { label:'Monitoring',         val:pingOk,              max:100, color:pingOk===100?'#22c55e':'#ef4444', icon:'📡', trend:down>0?'-'+down:'OK', unit:'%', route:'monitors' },
     { label:'Local Visibility',   val:localScore,          max:100, color:'#f59e0b',  icon:'📍', trend:'—',         unit:'%',    route:'local-seo' },
@@ -5194,7 +5195,7 @@ function renderOverview() {
 
   const _catIcon = c => c==='local_seo'?'📍':c==='seo'?'🔍':c==='performance'?'⚡':c==='conversion'?'🎯':'⚙️';
   const _priColor = p => p==='critical'?'#ef4444':p==='high'?'#f59e0b':p==='medium'?'#2563EB':'#8b5cf6';
-  const _liveMissions = (!PREVIEW_MODE && STATE.missions && STATE.missions.length > 0)
+  const _liveMissions = (!PREVIEW_MODE && Array.isArray(STATE.missions) && STATE.missions.length > 0)
     ? STATE.missions.filter(m => m.status !== 'done' && m.status !== 'dismissed')
     : null;
 
@@ -5502,7 +5503,7 @@ function renderOverview() {
     <!-- ═══════════════════════════════════════════════════════ -->
     <!-- FIRST-TIME EMPTY STATE: no audits + no monitors -->
     <!-- ═══════════════════════════════════════════════════════ -->
-    ${STATE.audits.length === 0 && STATE.monitors.length === 0 && STATE.missions.length === 0 ? `
+    ${(STATE.audits||[]).length === 0 && (STATE.monitors||[]).length === 0 && _missions.length === 0 ? `
     <div style="padding:20px;background:linear-gradient(135deg,rgba(37,99,235,0.07),rgba(139,92,246,0.04));border:1px solid rgba(37,99,235,0.18);border-radius:var(--fp-radius-xl);margin-bottom:20px">
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
         <div style="font-size:32px">🚀</div>
@@ -15988,18 +15989,63 @@ function bindSectionEvents() {
     // AI Scan handler
     window._doAiScan = async () => {
       if (typeof window.FP_MISSIONS_API === 'undefined') { showToast('warning','API non disponible'); return; }
-      const btn = $('#mission-ai-scan') || $('#mission-ai-scan-empty');
-      if (btn) { btn.disabled = true; btn.textContent = 'Scan en cours…'; }
+      const _scanBtns = [$('#mission-ai-scan'), $('#mission-ai-scan-empty'), $('#mission-regen-btn')].filter(Boolean);
+      const _origLabels = _scanBtns.map(b => b.textContent);
+      _scanBtns.forEach(b => { b.disabled = true; b.textContent = 'Scan en cours…'; });
       showToast('info', 'Scan IA en cours…');
+      const _restoreBtn = () => _scanBtns.forEach((b, i) => { b.disabled = false; b.textContent = _origLabels[i]; });
       try {
         const res = await window.FP_MISSIONS_API.generate();
         if (res?.ok) {
+          const inserted = res.inserted || 0;
           const newMissions = await window.FP_MISSIONS_API.load();
-          if (newMissions) { STATE.missions = newMissions; }
+          if (Array.isArray(newMissions)) { STATE.missions = newMissions; }
           render();
-          showToast('success', `${res.generated || 0} nouvelles missions générées · ${res.total || 0} actives`);
-        } else { showToast('error','Erreur lors du scan IA'); }
-      } catch(e) { showToast('error','Erreur lors du scan IA'); }
+          const _mode = res.generationMode || 'unknown';
+          if (res.aiUnavailable) {
+            // AI provider failed — fallback templates may have been inserted; never claim "par l'IA".
+            // This branch takes priority over mode checks because aiUnavailable signals a real
+            // provider failure even when generationMode is "none" (engine-level catch).
+            if (inserted > 0) {
+              // generic_templates means no audit data was available — do not claim "audit data" as source.
+              const _src = _mode === 'generic_templates'
+                ? 'des missions de base ont été créées (IA temporairement indisponible).'
+                : `${inserted} mission${inserted > 1 ? 's' : ''} créée${inserted > 1 ? 's' : ''} depuis vos données d'audit (IA temporairement indisponible).`;
+              showToast('warning', _mode === 'generic_templates' ? `${inserted} mission${inserted > 1 ? 's' : ''} de base créée${inserted > 1 ? 's' : ''} (IA temporairement indisponible).` : _src);
+            } else {
+              showToast('warning', 'Service IA temporairement indisponible — réessayez dans quelques instants.');
+            }
+          } else if (_mode === 'none' || inserted === 0) {
+            // Cap reached (>= 8 active missions) or no slots — nothing inserted.
+            showToast('info', 'Aucune nouvelle mission — vous avez déjà 8 missions actives ou plus.');
+          } else if (_mode === 'generic_templates') {
+            // No audit data available — static templates used, AI was never invoked.
+            showToast('info', `${inserted} mission${inserted > 1 ? 's' : ''} de base créée${inserted > 1 ? 's' : ''} — lancez un audit pour des missions personnalisées.`);
+          } else if (_mode === 'data_derived') {
+            // Audit data was available but AI provider failed/was unavailable for setup reasons;
+            // fallback templates were built from real audit data — do not claim AI generation.
+            showToast('success', `${inserted} mission${inserted > 1 ? 's' : ''} créée${inserted > 1 ? 's' : ''} depuis vos données d'audit.`);
+          } else {
+            // generationMode === 'ai' → LLM provider was called and returned valid missions
+            showToast('success', `${inserted} nouvelle${inserted > 1 ? 's' : ''} mission${inserted > 1 ? 's' : ''} générée${inserted > 1 ? 's' : ''} par l\'IA`);
+          }
+        } else {
+          showToast('error', 'Erreur lors du scan IA — réessayez dans quelques instants.');
+        }
+      } catch(e) {
+        // Reachable HTTP error codes from POST /missions/generate:
+        //   402 — AI credit quota exhausted (emitted before runMissionEngine is called)
+        //   403 — write permission denied by canWrite middleware (not AI-module setting)
+        //   500 — unexpected server/DB error
+        // AI provider failures always return HTTP 200 with aiUnavailable:true (handled above).
+        const _status = e?.status;
+        const _msg = _status === 402
+          ? '⚠️ Quota IA atteint ce mois-ci — passez au plan supérieur pour continuer.'
+          : 'Erreur lors du scan IA — réessayez dans quelques instants.';
+        showToast('error', _msg);
+      } finally {
+        _restoreBtn();
+      }
     };
     $('#mission-ai-scan')?.addEventListener('click', window._doAiScan);
     $('#mission-ai-scan-empty')?.addEventListener('click', window._doAiScan);
@@ -40356,9 +40402,9 @@ window.FP_MISSIONS_API = {
   },
 
   async generate() {
-    try {
-      return await apiFetch('/api/missions/generate', { method: 'POST', body: '{}' });
-    } catch(e) { console.warn('[FP_MISSIONS_API] generate error:', e); return null; }
+    // Let HTTP errors propagate so _doAiScan can inspect err.status / err.code
+    // (402 = quota, 503 = AI unavailable, 403 = module disabled)
+    return await apiFetch('/api/missions/generate', { method: 'POST', body: '{}' });
   },
 
   async create(mission) {
