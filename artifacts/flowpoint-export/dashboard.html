@@ -86,8 +86,21 @@
       -webkit-backdrop-filter:none!important;
     }
     /* ── PRE-RENDER SKELETON — visible while JS loads, replaced by render() ── */
-    .fp-pre-skel { border-radius:12px; background:rgba(255,255,255,0.05); }
-    html[data-theme="light"] .fp-pre-skel { background:rgba(0,0,0,0.07); }
+    @keyframes fpPreSlide {
+      0%   { background-position: 200% center; }
+      100% { background-position: -200% center; }
+    }
+    .fp-pre-skel {
+      border-radius: 12px;
+      background: linear-gradient(90deg,rgba(255,255,255,0.04) 25%,rgba(255,255,255,0.09) 50%,rgba(255,255,255,0.04) 75%);
+      background-size: 200% 100%;
+      animation: fpPreSlide 2.2s ease-in-out infinite;
+    }
+    html[data-theme="light"] .fp-pre-skel {
+      background: linear-gradient(90deg,rgba(0,0,0,0.05) 25%,rgba(0,0,0,0.11) 50%,rgba(0,0,0,0.05) 75%);
+      background-size: 200% 100%;
+      animation: fpPreSlide 2.2s ease-in-out infinite;
+    }
   </style>
   <base href="/"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>

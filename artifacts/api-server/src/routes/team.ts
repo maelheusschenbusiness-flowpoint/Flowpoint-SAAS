@@ -21,7 +21,7 @@ import { logger }                               from "../lib/logger.js";
 import { randomBytes, createHash, randomUUID }  from "crypto";
 import { pool }                                from "@workspace/db";
 import { canAdmin }                             from "../middlewares/requireRole.js";
-import { createSession, invalidateAllSessions } from "../services/sessions.js";
+import { createSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
 import { PLAN_LIMITS }                          from "../lib/plans.js";
 
 // ── Public router (registered before requireAuth in index.ts) ─────────────────
@@ -337,6 +337,16 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
       { orgId: inv.org_id.slice(0, 20), maskedEmail: maskEmail(email), role: inv.role },
       "[team/accept] invitation accepted — member created"
     );
+
+    // Set the session cookie so browser navigation (refresh, new tab) stays auth'd.
+    const _isProd = !!(process.env["RENDER_SERVICE_NAME"] || process.env["NODE_ENV"] === "production");
+    res.cookie("fp_token", sessionToken, {
+      httpOnly: true,
+      secure:   _isProd,
+      sameSite: _isProd ? "none" : "lax",
+      maxAge:   SESSION_TTL_MS,
+      path:     "/",
+    });
 
     res.json({
       ok:           true,

@@ -376,7 +376,7 @@
       const d = await r.json().catch(() => ({}));
 
       if (r.ok && d.ok && d.sessionToken) {
-        localStorage.setItem('fp-session-token', d.sessionToken);
+        sessionStorage.setItem('fp_session_token', d.sessionToken);
         document.getElementById('successSub').textContent =
           'Bienvenue ' + (d.email || acceptEmail) + ' ! Redirection en cours…';
         setState('success');

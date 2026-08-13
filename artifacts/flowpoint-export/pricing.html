@@ -1294,9 +1294,15 @@
        use readyState to run immediately if DOM is already available.          */
     function _fpMarkCartItems() {
       updateCartBadge();
-      /* ── Immediately mark current plan from fp_dashboard_state (anti-flash) ── */
+      /* ── Immediately mark current plan from fp_dashboard_state (anti-flash) ──
+         Only run when the user has an active session; skip for unauthenticated
+         visitors who happen to have stale localStorage from a previous session. */
+      var _hasActiveSession = !!(
+        (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fp_session_token')) ||
+        (typeof localStorage   !== 'undefined' && localStorage.getItem('fp-session-token'))
+      );
       try {
-        var _ds = JSON.parse(localStorage.getItem('fp_dashboard_state') || 'null');
+        var _ds = _hasActiveSession ? JSON.parse(localStorage.getItem('fp_dashboard_state') || 'null') : null;
         if (_ds && _ds.plan) {
           var _planKey = _ds.plan.toLowerCase();
           var _status  = (_ds.subscriptionStatus || _ds.status || '').toLowerCase();

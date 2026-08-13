@@ -1,3 +1,6 @@
+- [Accept-invitation session & role bugs](accept-invitation-session-bugs.md) — token key mismatch + missing cookie in accept flow; me.ts fallback was "owner" not "member"
+- [Skeleton shimmer animation pattern](skeleton-shimmer-animation.md) — shimmer needs fpSlide (background-position) not fpSkeleton (opacity); 2.2s ease-in-out for coherent rhythm
+- [Pricing plan auth guard](pricing-plan-auth-guard.md) — anti-flash localStorage read must check _hasActiveSession before marking current plan
 - [Stripe webhook secret key name](stripe-webhook-secret-key.md) — must read STRIPE_WEBHOOK_SECRET || STRIPE_WEBHOOK_SECRET_RENDER; only the _RENDER name is set in prod secrets
 - [github_connections real schema](github-service-schema.md) — github_user_id NOT NULL, connected_at not installed_at; exchangeCodeForToken returns string not object; getGitHubUser returns avatarUrl camelCase
 - [Test setup — orgDb + dbContext](test-setup-orgdb.md) — routes using req.orgDb need BOTH orgContext AND dbContext in test server; orgContext alone leaves req.orgDb undefined

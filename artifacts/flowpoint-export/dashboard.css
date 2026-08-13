@@ -8943,6 +8943,15 @@ html[data-theme="light"] .fp-gauge-card {
   color: #2563EB;
 }
 
+/* ══ Sliding shimmer keyframe — consistent left-to-right sweep ═══════
+   Used by fp-skel-shimmer and fp-skel-block::after.
+   2.2 s ease-in-out: slow enough to read, no vibration/jitter.
+   ═══════════════════════════════════════════════════════════════════ */
+@keyframes fpSlide {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+
 /* ══ Skeleton shimmer loader (fp-skel-shimmer) ══════════════════════
    Usage: <div style="position:relative;overflow:hidden">
             <div class="fp-skel-shimmer" style="position:absolute;inset:0"></div>
@@ -8951,21 +8960,21 @@ html[data-theme="light"] .fp-gauge-card {
 .fp-skel-shimmer {
   background: linear-gradient(90deg,
     rgba(255,255,255,0.04) 25%,
-    rgba(255,255,255,0.10) 50%,
+    rgba(255,255,255,0.11) 50%,
     rgba(255,255,255,0.04) 75%
   );
   background-size: 200% 100%;
-  animation: fpSkeleton 1.6s infinite linear;
+  animation: fpSlide 2.2s ease-in-out infinite;
   border-radius: inherit;
 }
 html[data-theme="light"] .fp-skel-shimmer {
   background: linear-gradient(90deg,
     rgba(0,0,0,0.05) 25%,
-    rgba(0,0,0,0.12) 50%,
+    rgba(0,0,0,0.13) 50%,
     rgba(0,0,0,0.05) 75%
   );
   background-size: 200% 100%;
-  animation: fpSkeleton 1.6s infinite linear;
+  animation: fpSlide 2.2s ease-in-out infinite;
 }
 
 /* ══ Section-level skeleton page ═════════════════════════════════════
@@ -8989,19 +8998,20 @@ html[data-theme="light"] .fp-skel-shimmer {
   inset: 0;
   background: linear-gradient(90deg,
     rgba(255,255,255,0.04) 25%,
-    rgba(255,255,255,0.10) 50%,
+    rgba(255,255,255,0.11) 50%,
     rgba(255,255,255,0.04) 75%
   );
   background-size: 200% 100%;
-  animation: fpSkeleton 1.6s infinite linear;
+  animation: fpSlide 2.2s ease-in-out infinite;
 }
 html[data-theme="light"] .fp-skel-block::after {
   background: linear-gradient(90deg,
     rgba(0,0,0,0.04) 25%,
-    rgba(0,0,0,0.10) 50%,
+    rgba(0,0,0,0.11) 50%,
     rgba(0,0,0,0.04) 75%
   );
   background-size: 200% 100%;
+  animation: fpSlide 2.2s ease-in-out infinite;
 }
 
 /* ── FIX: Cards inside inline-styled modal overlays need an opaque background ──
