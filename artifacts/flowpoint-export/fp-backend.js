@@ -32,13 +32,23 @@
   // Bootstrap the per-tab token before any integration preload starts.
   // fp-backend.js is loaded before dashboard.js, so its timers could otherwise
   // call protected endpoints while dashboard.js was still restoring the token.
+  //
+  // IMPORTANT: we ALWAYS call session-restore (even when sessionStorage already
+  // has a token) because the stored token may be stale — e.g. after the user
+  // logged in from another tab which invalidated the previous session.  We send
+  // the existing token as a Bearer so the server validates it first and falls
+  // back to the HttpOnly cookie if the Bearer has expired.  The server returns
+  // the canonical valid token, which we (re)store so subsequent apiFetch calls
+  // use a fresh, verified token and never hit a foreground 401 on hard refresh.
   var _sessionReady = (async function () {
-    if (_sessionToken()) return true;
+    var _existingToken = _sessionToken();
     try {
+      var _headers = { 'Content-Type': 'application/json' };
+      if (_existingToken) _headers['Authorization'] = 'Bearer ' + _existingToken;
       var response = await fetch('/api/auth/session-restore', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _headers,
       });
       if (response.ok) {
         var data = await response.json().catch(function () { return null; });
@@ -50,7 +60,13 @@
           return true;
         }
       }
-    } catch (_) { /* dashboard.js will retry its own bootstrap */ }
+      // 401 means neither Bearer nor cookie is valid — clear the stale token so
+      // dashboard.js gets a clean start and shows the login page cleanly.
+      if (response.status === 401 && _existingToken) {
+        try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
+        try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
+      }
+    } catch (_) { /* network error — dashboard.js will handle via /api/me 401 */ }
     return false;
   })();
 

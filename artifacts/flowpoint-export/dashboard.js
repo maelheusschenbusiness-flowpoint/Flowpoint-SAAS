@@ -1417,31 +1417,44 @@ async function loadData() {
     }
   } catch(_) {}
   // ── Phase 0.5: Session restore — per-tab token bootstrap ────────────────────
-  // When a tab is opened by typing the URL, from a bookmark, or by duplicating
-  // a tab in some browsers, sessionStorage is empty.  Without a per-tab token
-  // apiFetch() falls back to the shared HttpOnly cookie, which always reflects
-  // the LAST account that logged in — causing all tabs to show the same user.
-  // Fix: ask the server to echo back the cookie's token so we can store it in
-  // sessionStorage.  Each tab then sends its OWN Bearer and stays on its own
-  // account across refreshes.
-  if (!sessionStorage.getItem('fp_session_token')) {
-    try {
-      const _sr = await fetch('/api/auth/session-restore', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (_sr.ok) {
-        const _srData = await _sr.json().catch(() => null);
-        if (_srData && _srData.token) {
-          sessionStorage.setItem('fp_session_token', _srData.token);
-          if (!sessionStorage.getItem('fp_tab_uid')) {
-            sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
-          }
+  // Session bootstrap — runs on EVERY page load, including hard refreshes.
+  //
+  // Why always (not just when sessionStorage is empty):
+  //   The token already in sessionStorage may be stale — e.g. after re-login
+  //   from another tab which called invalidateAllSessions(), or after the 24h
+  //   TTL.  A stale Bearer makes /api/me return 401 → redirect to login on
+  //   every hard refresh.
+  //
+  //   By always calling session-restore and forwarding the existing Bearer, the
+  //   server validates it first (fast cache/DB hit).  If it is stale the server
+  //   falls back to the HttpOnly cookie and returns a fresh token which we store
+  //   in sessionStorage — recovering silently without a login redirect.
+  //   If both Bearer and cookie are gone, the server returns 401 and the
+  //   /api/me call below will handle the redirect to login as expected.
+  try {
+    const _existingToken = (() => { try { return sessionStorage.getItem('fp_session_token') || ''; } catch(_) { return ''; } })();
+    const _srHeaders = { 'Content-Type': 'application/json' };
+    if (_existingToken) _srHeaders['Authorization'] = `Bearer ${_existingToken}`;
+    const _sr = await fetch('/api/auth/session-restore', {
+      method: 'POST',
+      credentials: 'include',
+      headers: _srHeaders,
+    });
+    if (_sr.ok) {
+      const _srData = await _sr.json().catch(() => null);
+      if (_srData && _srData.token) {
+        sessionStorage.setItem('fp_session_token', _srData.token);
+        if (!sessionStorage.getItem('fp_tab_uid')) {
+          sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
         }
       }
-    } catch(_srErr) { /* non-fatal — cookie auth continues as before */ }
-  }
+    } else if (_sr.status === 401 && _existingToken) {
+      // Neither Bearer nor cookie is valid — clear the stale token so apiFetch
+      // stops sending it; the /api/me 401 handler will redirect to login.
+      try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
+      try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
+    }
+  } catch(_srErr) { /* network error — /api/me 401 will handle redirect if needed */ }
 
   // ── Phase 1: Critical identity — /api/me is mandatory; everything else is resilient ──
   let me = null, overview = null, audits = null, monitors = null, reports = null, team = null;
@@ -2076,7 +2089,12 @@ function relDate(d) {
   const dt = new Date(d);
   const locale = getLocale();
   if (fmt === 'MM/DD/YYYY') return dt.toLocaleDateString('en-US');
-  if (fmt === 'YYYY-MM-DD') return dt.toISOString().slice(0, 10);
+  if (fmt === 'YYYY-MM-DD') {
+    const _y = dt.getFullYear();
+    const _mo = String(dt.getMonth() + 1).padStart(2, '0');
+    const _d  = String(dt.getDate()).padStart(2, '0');
+    return `${_y}-${_mo}-${_d}`;
+  }
   return dt.toLocaleDateString(locale);
 }
 function fmtDate(value) {
@@ -6570,7 +6588,7 @@ function renderMissionDetail(m) {
         ${svgIcon('trash')} Supprimer
       </button>
     </div>
-    <div style="font-size:11px;color:var(--fp-text-faint);margin-top:14px">Échéance : ${escHtml(m.date)}</div>
+    <div style="font-size:11px;color:var(--fp-text-faint);margin-top:14px">Échéance : ${fmtDate(m.date)}</div>
   `;
 }
 
@@ -9934,7 +9952,7 @@ function renderBilling() {
             <tbody>
               ${invoices.map(inv => `<tr>
                 <td style="font-family:var(--fp-font-mono);font-size:10px;font-weight:700;color:var(--fp-accent)">${escHtml(inv.id)}</td>
-                <td style="text-align:center;font-size:11px;color:var(--fp-text-muted)">${escHtml(inv.date)}</td>
+                <td style="text-align:center;font-size:11px;color:var(--fp-text-muted)">${escHtml(inv.date ? fmtDate(inv.date) : "—")}</td>
                 <td style="text-align:center">${badge(inv.plan, '#2563EB')}</td>
                 <td style="text-align:center;font-size:10px;color:var(--fp-text-faint);max-width:180px">${escHtml(inv.addons)}</td>
                 <td style="text-align:center;font-weight:800;font-family:var(--fp-font-mono)">${escHtml(inv.amount)}€</td>
@@ -23182,7 +23200,7 @@ function renderMissionsFiltered(status) {
           <div style="width:10px;height:10px;border-radius:50%;background:${m.status==='done'?'var(--fp-success)':m.status==='inprogress'?'var(--fp-warning)':'var(--fp-text-faint)'};flex-shrink:0"></div>
           <div style="flex:1">
             <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(m.title)}</div>
-            <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${escHtml(m.category)} · Impact ${escHtml(m.impact)} · ${escHtml(m.date)}</div>
+            <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${escHtml(m.category)} · Impact ${escHtml(m.impact)} · ${fmtDate(m.date)}</div>
           </div>
           ${badge(m.impact, m.impact==='Très élevé'?'danger':m.impact==='Élevé'?'warning':'neutral')}
         </div>
@@ -27392,7 +27410,7 @@ function renderCompetitor() {
                 <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.5">${escHtml(a.msg)}</div>
               </div>
               <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
-                <span style="font-size:10px;color:var(--fp-text-faint)">${a.date}</span>
+                <span style="font-size:10px;color:var(--fp-text-faint)">${fmtDate(a.date)}</span>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:2px 6px" onclick="(async()=>{const r=await apiAction('POST','/api/ai/chat',{message:'Génère un plan de réponse concurrentielle court et actionnable en 3 points.'}).catch(()=>null);openFloatPanel('Plan de réponse IA',\`<div style='font-size:13px;line-height:1.7;color:var(--fp-text)'>\${r?.reply||'1. Auditer la page concurrente ciblée.\\n2. Créer du contenu différenciant sur vos points forts.\\n3. Surveiller les backlinks et renforcer votre maillage interne.'}</div>\`);})()">Répondre</button>
               </div>
             </div>
@@ -27734,7 +27752,7 @@ function renderCompetitor() {
                 <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft)">${escHtml(m.comp)}</div>
                 <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml(m.msg)}</div>
               </div>
-              <span style="font-size:10px;color:var(--fp-text-faint);flex-shrink:0">${m.date}</span>
+              <span style="font-size:10px;color:var(--fp-text-faint);flex-shrink:0">${fmtDate(m.date)}</span>
             </div>
           `).join('')}
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:10px" onclick="navigateSub('alerts')">Voir toutes les alertes →</button>
@@ -29909,7 +29927,7 @@ function renderActivityFeed() {
             <div style="font-size:20px;margin-bottom:6px">${m.icon}</div>
             <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${escHtml(m.title)}</div>
             <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(m.detail)}</div>
-            <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${escHtml(m.date)}</div>
+            <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${fmtDate(m.date)}</div>
           </div>`).join('')}
         </div>
       </div>
@@ -30249,7 +30267,7 @@ function renderActivityFeed() {
                 </div>
                 <div style="flex:1;min-width:0">
                   <div style="font-size:11px;font-weight:600;color:var(--fp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint)">${r.type} · ${r.size} · ${escHtml(r.date)}</div>
+                  <div style="font-size:10px;color:var(--fp-text-faint)">${r.type} · ${r.size} · ${fmtDate(r.date)}</div>
                 </div>
                 ${badge(r.status, r.status === 'Partagé' ? '#2563EB' : r.status === 'Envoyé auto' ? '#8b5cf6' : '#22c55e')}
               </div>
@@ -30345,7 +30363,7 @@ function renderActivityFeed() {
               <div class="fp-timeline-body">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
                   ${badge(m.sev === 'critical' ? 'Critique' : m.sev === 'warning' ? 'Alerte' : m.sev === 'positive' ? 'Opportunité' : 'Info', c)}
-                  <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(m.comp)} · ${escHtml(m.date)}</span>
+                  <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(m.comp)} · ${fmtDate(m.date)}</span>
                 </div>
                 <div class="fp-timeline-title">${escHtml(m.event)}</div>
                 <div class="fp-timeline-desc">${escHtml(m.detail)}</div>
@@ -31097,7 +31115,7 @@ function renderDataExplorer() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${escHtml(a.title)}</div>
                 <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5">${escHtml(a.desc)}</div>
               </div>
-              <span style="font-size:10px;color:var(--fp-text-faint);flex-shrink:0">${a.date}</span>
+              <span style="font-size:10px;color:var(--fp-text-faint);flex-shrink:0">${fmtDate(a.date)}</span>
             </div>`;
           }).join('')}
         </div>

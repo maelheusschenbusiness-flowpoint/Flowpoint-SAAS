@@ -151,3 +151,4 @@
 - [Stripe dahlia period end](stripe-dahlia-period-end.md) — 2026-04-22.dahlia: current_period_end lives on subscription ITEMS not sub; use subPeriodEnd(); never pass start_date:"now" to schedule phase 0
 - [Phase 3 background loading](dashboard-phase3-background.md) — Phase 3 (audits/monitors/reports/team) is non-blocking; `STATE.loading=false` fires after Phase 2 only; fp-backend watchdogs check `!STATE.loading`
 - [Audit retry force parameter](audit-retry-force.md) — POST /api/audits must include `force:true` on retry to bypass 409 DUPLICATE_AUDIT same-day guard
+- [Hard refresh session recovery](hard-refresh-session-recovery.md) — session-restore must fall back to cookie when Bearer is stale; both _sessionReady and dashboard init must always call session-restore (never skip when token exists)

@@ -1046,6 +1046,26 @@ router.patch("/ai/config", async (req: Request, res: Response): Promise<void> =>
 
 const MAX_TOOL_ROUNDS = 6;
 
+/**
+ * Builds a provider-native "user" message that instructs the LLM to synthesise
+ * tool results into a complete final answer rather than stopping silently.
+ * Each provider uses a different native message shape:
+ *   OpenAI    → { role, content: string }
+ *   Anthropic → { role, content: [{type:'text', text}] }
+ *   Gemini    → { role: 'user', parts: [{text}] }
+ */
+function makeSynthesisUserMessage(provider: AIProviderId, language: string): unknown {
+  const text =
+    language.startsWith("fr")
+      ? "Analyse maintenant tous les résultats obtenus et réponds de façon complète et détaillée à la demande initiale. Identifie ce qui manque si nécessaire. Produis une vraie synthèse — ne dis pas simplement que l'action est effectuée."
+      : language.startsWith("es")
+      ? "Analiza ahora todos los resultados obtenidos y responde de forma completa y detallada a la solicitud inicial. Produce una síntesis real, no solo indiques que la acción fue completada."
+      : "Now analyze all the tool results and provide a comprehensive, detailed final answer to the original request. Identify what is missing if needed. Produce a real synthesis — do not just say the action is done.";
+  if (provider === "openai")    return { role: "user", content: text };
+  if (provider === "anthropic") return { role: "user", content: [{ type: "text", text }] };
+  return { role: "user", parts: [{ text }] }; // Gemini
+}
+
 interface ToolLoopResult {
   /** true = la connexion SSE a été fermée (confirmation_request ou erreur). */
   suspended: boolean;
@@ -1104,24 +1124,60 @@ async function runToolCallingLoop(opts: {
     if (!roundResult.hasToolCalls) {
       // No tool calls this round
       if (toolsCalledTotal > 0) {
-        // Emit final text as delta events (tools were used in earlier rounds).
-        // Never end with an empty bubble: if the provider returned no text after
-        // tool execution, emit an explicit completion message instead.
+        // ── Case A: LLM produced text — emit it directly ──────────────────────
+        if (roundResult.text?.trim()) {
+          const chunks = roundResult.text.match(/.{1,80}/gs) ?? [roundResult.text];
+          for (const chunk of chunks) {
+            opts.sseWrite(`data: ${JSON.stringify({ delta: chunk })}\n\n`);
+          }
+          return { suspended: false, finalTextEmitted: true, undoTokens, messages };
+        }
+
+        // ── Case B: LLM returned EMPTY text after tool results ────────────────
+        // This is the "Action effectuée" regression: after receiving tool results
+        // the provider stopped without producing a synthesis. Force one extra round
+        // WITHOUT tools so the LLM MUST write a text answer based on what it found.
+        // Pipeline: INTENT→TOOLS→RESULTS→[synthesis round]→FINAL ANSWER
+        if (nativeMessages) {
+          logger.info({ provider, toolsCalledTotal, round }, "[tool-loop] empty text after tools — forcing synthesis round");
+          const synthNative = [
+            ...(nativeMessages as unknown[]),
+            makeSynthesisUserMessage(provider, language),
+          ];
+          try {
+            const synthResult = await aiChatWithTools({
+              provider, model,
+              tools: [],   // ← no tools: the LLM MUST produce text
+              nativeMessages: synthNative,
+              systemPrompt: carriedSystemPrompt,
+              maxTokens: 4096,
+            });
+            if (synthResult.text?.trim()) {
+              logger.info({ provider, toolsCalledTotal }, "[tool-loop] synthesis round produced final answer");
+              const chunks = synthResult.text.match(/.{1,80}/gs) ?? [synthResult.text];
+              for (const chunk of chunks) {
+                opts.sseWrite(`data: ${JSON.stringify({ delta: chunk })}\n\n`);
+              }
+              return { suspended: false, finalTextEmitted: true, undoTokens, messages };
+            }
+            logger.warn({ provider, toolsCalledTotal }, "[tool-loop] synthesis round also returned empty text");
+          } catch (synthErr) {
+            logger.warn({ err: synthErr, provider }, "[tool-loop] synthesis round threw — using generic fallback");
+          }
+        }
+
+        // ── Case C: ultimate fallback — only if synthesis itself failed ────────
         const allFailed = toolsSucceeded === 0 && toolsFailed > 0;
         const someFailed = toolsFailed > 0 && toolsSucceeded > 0;
-        const finalText = roundResult.text && roundResult.text.trim()
-          ? roundResult.text
-          : allFailed
-            ? toolLoopText(language, "action_failed")
-            : someFailed
-              ? toolLoopText(language, "action_partial")
-              : toolLoopText(language, "action_complete");
-        const chunks = finalText.match(/.{1,80}/gs) ?? [finalText];
-        for (const chunk of chunks) {
+        const fallbackText = allFailed
+          ? toolLoopText(language, "action_failed")
+          : someFailed
+          ? toolLoopText(language, "action_partial")
+          : toolLoopText(language, "action_complete");
+        logger.warn({ provider, toolsCalledTotal }, "[tool-loop] all synthesis paths exhausted — emitting fallback");
+        const fbChunks = fallbackText.match(/.{1,80}/gs) ?? [fallbackText];
+        for (const chunk of fbChunks) {
           opts.sseWrite(`data: ${JSON.stringify({ delta: chunk })}\n\n`);
-        }
-        if (!roundResult.text?.trim()) {
-          logger.warn({ provider, toolsCalledTotal }, "[tool-loop] empty final text after tools — fallback emitted");
         }
         return { suspended: false, finalTextEmitted: true, undoTokens, messages };
       }
@@ -2165,9 +2221,69 @@ router.post("/ai/conversations/:id/confirm", async (req: Request, res: Response)
       [proposalId]
     ).catch(() => {});
 
+    // ── Post-confirm synthesis ────────────────────────────────────────────────
+    // After executing the confirmed tool, call the LLM once (no tools, short
+    // context) to produce a contextual final answer: what was done, whether the
+    // result is satisfactory, what to do next.  Falls back to the raw tool
+    // content if the LLM call fails.  The synthesis is also persisted to history
+    // so multi-turn conversations remain coherent after a confirmation.
+    let synthesisContent: string | undefined;
+    if (execResult.ok) {
+      try {
+        // Load the last 8 history rows (≈4 turns) for conversation context
+        const { rows: histRows } = await pool.query<{ role: string; content: string }>(
+          `SELECT role, content FROM ai_chat_history
+           WHERE org_id = $1 AND conversation_id = $2
+           ORDER BY created_at DESC LIMIT 8`,
+          [orgId, convId]
+        );
+        const histMessages: MultimodalMessage[] = histRows.reverse().map(r => ({
+          role: r.role as "user" | "assistant",
+          content: r.content,
+        }));
+
+        const synthSys =
+          requestedLanguage.startsWith("fr")
+            ? "Tu es l'assistant FlowPoint. Tu viens d'exécuter une action confirmée par l'utilisateur. Réponds de façon contextuelle et utile : résume ce qui a été fait, indique si le résultat est satisfaisant, et guide l'utilisateur vers la prochaine étape pertinente. Ne répète pas le résultat technique brut — produis une vraie réponse finale."
+            : "You are the FlowPoint assistant. You just executed a user-confirmed action. Respond usefully: summarise what was done, confirm the result is correct, and guide toward the next relevant step. Do not repeat the raw technical output — produce a real final answer.";
+
+        const toolLabel = buildConfirmationPreview(toolName, args, requestedLanguage);
+        const synthUserMsg =
+          requestedLanguage.startsWith("fr")
+            ? `L'action « ${toolLabel} » vient d'être exécutée avec succès.\n\nRésultat obtenu :\n${execResult.content}\n\nFournis maintenant une synthèse claire, contextuelle et utile.`
+            : `The action "${toolLabel}" was just executed successfully.\n\nResult:\n${execResult.content}\n\nNow provide a clear, contextual, and useful synthesis.`;
+
+        const synthMessages: MultimodalMessage[] = [
+          ...histMessages,
+          { role: "user" as const, content: synthUserMsg },
+        ];
+
+        const synthResult = await aiChat({
+          provider:       toolCtx.provider as AIProviderId,
+          model:          toolCtx.model,
+          strictProvider: false,
+          systemPrompt:   synthSys,
+          messages:       synthMessages,
+          maxTokens:      1024,
+        });
+        if (synthResult.text?.trim()) {
+          synthesisContent = synthResult.text.trim();
+          // Persist the synthesis so follow-up turns have coherent history
+          persistChatMessage({
+            orgId, userId, role: "assistant",
+            content: synthesisContent,
+            feature: "chat", model: toolCtx.model, conversationId: convId,
+          }).catch(() => {});
+          logger.info({ traceId, proposalId, toolName }, "[agent/confirm] synthesis produced final answer");
+        }
+      } catch (synthErr) {
+        logger.warn({ err: synthErr, proposalId, toolName }, "[agent/confirm] synthesis failed — using raw tool content");
+      }
+    }
+
     res.json({
       ok: execResult.ok,
-      content: execResult.content,
+      content: synthesisContent ?? execResult.content,
       // Bridge: when the executor rejects (ok:false), the frontend checks `r.error` for
       // the user-facing rejection message.  Executors set `content` (not `error`) on
       // failure, so we mirror `content` into `error` here to prevent "Échec de

@@ -963,7 +963,46 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     return;
   }
 
-  // ── Guard: reject if account already exists in org_settings ─────────────────
+  // ── Guard: reject if the email is already tied to an active account ──────────
+  // Checks three surfaces in priority order:
+  //   1. users table (active status) — covers both owners and team members
+  //   2. organization_members (active row) — invited users who completed sign-up
+  //   3. org_settings (legacy table) — pre-migration accounts
+  // Any positive match → redirect to /login.html so the user signs in normally
+  // rather than accidentally creating a duplicate account or being shown the
+  // pricing plan screen when they should land on the dashboard.
+  try {
+    const _activeUser = await pool.query<{ id: string; status: string }>(
+      `SELECT id, status FROM users WHERE email = $1 LIMIT 1`,
+      [normalizedEmail]
+    );
+    if (_activeUser.rows.length > 0 && _activeUser.rows[0]?.status === "active") {
+      res.status(409).json({
+        error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
+        redirectTo: "/login.html",
+      });
+      return;
+    }
+
+    // Also catch invited team members who may have no org_settings row
+    const _activeMember = await pool.query(
+      `SELECT om.id FROM organization_members om
+       JOIN users u ON u.id = om.user_id
+       WHERE u.email = $1 AND om.status = 'active' LIMIT 1`,
+      [normalizedEmail]
+    );
+    if (_activeMember.rows.length > 0) {
+      res.status(409).json({
+        error: "Cette adresse est déjà associée à une organisation FlowPoint. Veuillez vous connecter.",
+        redirectTo: "/login.html",
+      });
+      return;
+    }
+  } catch (_activeCheckErr) {
+    logger.warn({ err: _activeCheckErr, email: normalizedEmail }, "[Auth/PreRegister] active-user guard failed (non-fatal)");
+  }
+
+  // ── Guard: reject if account already exists in org_settings (legacy) ──────
   try {
     const { loadOrgSettings: _dupCheck } = await import("../services/org-settings.js");
     const _dup = await _dupCheck(normalizedEmail).catch(() => undefined);
@@ -1755,18 +1794,32 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
     typeof authHeader === "string" && authHeader.startsWith("Bearer ")
       ? authHeader.slice(7).trim()
       : undefined;
-  // Bearer takes priority over cookie — mirrors the same order as requireAuth
-  // and orgContext so that a tab with its own Bearer token always gets its own
-  // session back, not the shared cookie's session.
-  const provided = bearerToken || cookieToken;
+  // Resolution order:
+  //   1. Bearer token (per-tab sessionStorage) — validate it first.
+  //   2. Cookie (fp_token) — fallback when Bearer is absent or stale.
+  //      This is the critical recovery path: a hard refresh may still have
+  //      a valid cookie even when the Bearer in sessionStorage has gone stale
+  //      (e.g. after re-login from another tab invalidated the old session).
+  //      Without this fallback the client gets an immediate 401 and bounces to login.
+  let session = null;
+  let provided: string | undefined;
 
-  if (!provided) {
-    res.status(401).json({ error: "no_session" });
-    return;
+  if (bearerToken) {
+    session = await getSession(bearerToken);
+    if (session) {
+      provided = bearerToken;
+    } else if (cookieToken && cookieToken !== bearerToken) {
+      // Bearer stale — try cookie as fallback
+      session = await getSession(cookieToken);
+      if (session) provided = cookieToken;
+    }
+  } else if (cookieToken) {
+    session = await getSession(cookieToken);
+    if (session) provided = cookieToken;
   }
-  const session = await getSession(provided);
-  if (!session) {
-    // Stale / expired — clear the cookie so the browser doesn't keep retrying
+
+  if (!session || !provided) {
+    // Neither token is valid — clear the cookie so the browser stops retrying
     const isProd = isDeployedProd();
     if (cookieToken) {
       res.clearCookie("fp_token", {
@@ -1779,9 +1832,9 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
     res.status(401).json({ error: "session_expired" });
     return;
   }
-  // Return the token so the client can store it in sessionStorage.
-  // The cookie remains the primary auth mechanism; sessionStorage is a per-tab
-  // override that takes priority over the shared cookie in apiFetch().
+  // Return the canonical valid token so the client can (re)store it in sessionStorage.
+  // If the Bearer was stale and the cookie was used, the client receives the cookie's
+  // token and updates sessionStorage — recovering silently without a login redirect.
   res.json({ token: provided, email: session.email, orgId: session.orgId });
 });
 
