@@ -89,7 +89,7 @@
     .fp-pre-skel { border-radius:12px; background:rgba(255,255,255,0.05); }
     html[data-theme="light"] .fp-pre-skel { background:rgba(0,0,0,0.07); }
   </style>
-  <base href="/api/dashboard/"/>
+  <base href="/"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
   <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
   <title>Dashboard — FlowPoint</title>
@@ -374,17 +374,6 @@
 
     <!-- PAGE CONTENT -->
     <main class="fp-page" id="fp-page" role="main" aria-label="Contenu principal">
-      <!-- Initial global spinner — present in HTML before any JS runs; hidden after first render -->
-      <div id="fp-initial-spinner" aria-hidden="true" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:rgba(10,14,24,0.55);backdrop-filter:blur(2px);transition:opacity .25s ease">
-        <div style="width:42px;height:42px;border-radius:50%;border:3px solid rgba(255,255,255,0.15);border-top-color:#2563EB;animation:fp-init-spin 0.9s linear infinite"></div>
-        <div id="fp-spinner-text" style="font-size:12px;color:rgba(255,255,255,0.75);font-family:Inter,system-ui,sans-serif">Chargement de FlowPoint…</div>
-      </div>
-      <script>(function(){try{var l=localStorage.getItem('fp:language')||'fr';var m={'es':'Cargando FlowPoint…','en':'Loading FlowPoint…','de':'FlowPoint wird geladen…','it':'Caricamento FlowPoint…','pt':'A carregar FlowPoint…','nl':'FlowPoint laden…','pl':'Ładowanie FlowPoint…','sv':'Laddar FlowPoint…','ro':'Se încarcă FlowPoint…','cs':'Načítání FlowPoint…'};var el=document.getElementById('fp-spinner-text');if(el&&m[l])el.textContent=m[l];}catch(e){}})();</script>
-      <style>@keyframes fp-init-spin{to{transform:rotate(360deg)}}</style>
-      <script>
-        // Safety net: never leave the initial spinner up more than 12s even if JS fails later
-        (function(){ setTimeout(function(){ var s=document.getElementById('fp-initial-spinner'); if(s){ s.style.opacity='0'; setTimeout(function(){ s.remove(); },300); } }, 12000); })();
-      </script>
       <!-- Pre-render skeleton — replaced immediately by render() when JS executes -->
       <div id="fp-prerender" style="padding:28px 32px;display:flex;flex-direction:column;gap:14px;pointer-events:none" aria-hidden="true">
         <div class="fp-pre-skel" style="height:48px;width:320px;max-width:100%"></div>
