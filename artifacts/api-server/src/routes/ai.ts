@@ -1045,6 +1045,14 @@ router.patch("/ai/config", async (req: Request, res: Response): Promise<void> =>
 // (confirmation_request) ou terminé (réponse finale après tool calls).
 
 const MAX_TOOL_ROUNDS = 6;
+const ROUND_TIMEOUT_MS  = 35_000;  // max wait for each LLM round
+const TOOL_TIMEOUT_MS   = 95_000;  // max wait for a single tool call (≥ PSI 58 s)
+const LOOP_DEADLINE_MS  = 180_000; // hard cap for the entire tool-calling session
+
+/** Conversations currently being processed — blocks double submissions. */
+const _activeExecutions = new Set<string>();
+/** Conversations explicitly cancelled by the client. */
+const _cancelledConversations = new Set<string>();
 
 /**
  * Builds a provider-native "user" message that instructs the LLM to synthesise
@@ -1090,6 +1098,8 @@ async function runToolCallingLoop(opts: {
   ctx: ExecuteContext;
   sseWrite: (data: string) => void;
   sseClose: () => void;
+  /** Returns true when the client disconnected or explicitly requested cancellation. */
+  isCancelled?: () => boolean;
 }): Promise<ToolLoopResult> {
   const { provider, model, ctx } = opts;
   const language = ctx.language ?? "fr";
@@ -1102,20 +1112,51 @@ async function runToolCallingLoop(opts: {
   let nativeMessages: unknown[] | undefined;
   // System prompt carried separately for Anthropic/Gemini (not part of their native messages array)
   let carriedSystemPrompt: string | undefined;
+  const loopDeadline = Date.now() + LOOP_DEADLINE_MS;
+
+  const _cancelMsg = (lang: string) => lang.startsWith("fr")
+    ? "⏹ Génération interrompue."
+    : lang.startsWith("es") ? "⏹ Generación interrumpida."
+    : "⏹ Generation cancelled.";
+  const _timeoutMsg = (lang: string) => lang.startsWith("fr")
+    ? "⏱ Le fournisseur IA ne répond pas. Réessayez dans quelques instants."
+    : lang.startsWith("es") ? "⏱ El proveedor de IA no responde. Inténtelo de nuevo."
+    : "⏱ The AI provider is not responding. Please try again in a moment.";
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    // ── Cancellation / overall deadline checks ─────────────────────────────
+    if (opts.isCancelled?.()) {
+      opts.sseWrite(`data: ${JSON.stringify({ delta: "\n\n" + _cancelMsg(language) })}\n\n`);
+      return { suspended: false, finalTextEmitted: true, undoTokens, messages };
+    }
+    if (Date.now() > loopDeadline) {
+      logger.warn({ round, provider }, "[tool-loop] overall deadline reached");
+      opts.sseWrite(`data: ${JSON.stringify({ delta: "\n\n" + _timeoutMsg(language) })}\n\n`);
+      return { suspended: false, finalTextEmitted: true, undoTokens, messages };
+    }
+
     let roundResult: ToolCallingResult;
     try {
-      roundResult = await aiChatWithTools(
-        nativeMessages
-          ? { provider, model, tools: ALL_TOOLS, nativeMessages, systemPrompt: carriedSystemPrompt, maxTokens: 4096 }
-          : { provider, model, tools: ALL_TOOLS, messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[], maxTokens: 4096 }
-      );
+      roundResult = await Promise.race([
+        aiChatWithTools(
+          nativeMessages
+            ? { provider, model, tools: ALL_TOOLS, nativeMessages, systemPrompt: carriedSystemPrompt, maxTokens: 4096 }
+            : { provider, model, tools: ALL_TOOLS, messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[], maxTokens: 4096 }
+        ),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("ROUND_TIMEOUT")), ROUND_TIMEOUT_MS)
+        ),
+      ]);
       // Carry system prompt for Anthropic/Gemini continuation rounds
       if (round === 0 && roundResult.systemPrompt) {
         carriedSystemPrompt = roundResult.systemPrompt;
       }
     } catch (err) {
+      if ((err as Error).message === "ROUND_TIMEOUT") {
+        logger.warn({ round, provider }, "[tool-loop] LLM round timed out");
+        opts.sseWrite(`data: ${JSON.stringify({ delta: "\n\n" + _timeoutMsg(language) })}\n\n`);
+        return { suspended: false, finalTextEmitted: true, undoTokens, messages };
+      }
       logger.error({ err, round, provider }, "[tool-loop] aiChatWithTools failed");
       // Fail gracefully — let caller proceed with normal stream
       return { suspended: false, finalTextEmitted: false, undoTokens, messages };
@@ -1217,8 +1258,23 @@ async function runToolCallingLoop(opts: {
       })}\n\n`);
 
       if (toolDef.confirmationLevel === "none") {
-        // Execute immediately
-        const execResult = await executeTool(toolCall, ctx);
+        // Execute with per-tool timeout (allows long async tools like run_audit ≤ 95 s)
+        const execResult = await Promise.race([
+          executeTool(toolCall, ctx),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("TOOL_TIMEOUT")), TOOL_TIMEOUT_MS)
+          ),
+        ]).catch((err: Error) => {
+          const isTimeout = err.message === "TOOL_TIMEOUT";
+          logger.warn({ toolName: toolCall.name, isTimeout }, "[tool-loop] tool execution failed/timed out");
+          return {
+            toolCallId: toolCall.id, toolName: toolCall.name, ok: false,
+            content: isTimeout
+              ? `L'outil ${toolCall.name} a dépassé le délai d'attente (${TOOL_TIMEOUT_MS / 1000}s). Réessayez votre demande.`
+              : `L'outil ${toolCall.name} a rencontré une erreur inattendue.`,
+            actionLogId: null,
+          };
+        });
         toolsCalledTotal++;
         if (execResult.ok) toolsSucceeded++; else toolsFailed++;
         opts.sseWrite(`data: ${JSON.stringify({
@@ -1231,7 +1287,7 @@ async function runToolCallingLoop(opts: {
         }
 
         // If navigate_to returned a nav proposal, emit it
-        if (execResult.navProposal) {
+        if ("navProposal" in execResult && execResult.navProposal) {
           opts.sseWrite(`data: ${JSON.stringify({ action_proposal: execResult.navProposal })}\n\n`);
         }
 
@@ -1867,20 +1923,41 @@ DONNÉES MANQUANTES — règle stricte :
     const hasAnyToolPermission = ALL_TOOLS.some(
       (t) => effectivePerms.has(t.requiredPermission)
     );
+    // ── Duplicate-execution guard ─────────────────────────────────────────────
+    if (_activeExecutions.has(conversationId)) {
+      res.write(`data: ${JSON.stringify({ error: "Une réponse est déjà en cours pour cette conversation. Attendez qu'elle se termine ou annulez-la." })}\n\n`);
+      res.write(`data: [DONE]\n\n`);
+      res.end();
+      return;
+    }
+    _activeExecutions.add(conversationId);
+
+    // ── Client-disconnect cancellation ────────────────────────────────────────
+    let _clientGone = false;
+    req.on("close", () => { _clientGone = true; });
+    const _safeWrite = (data: string) => { if (!res.writableEnded) res.write(data); };
+    const isCancelled = () => _clientGone || _cancelledConversations.has(conversationId);
+
+    // Auto-cleanup: remove from active set when SSE response finishes (any path)
+    res.on("finish", () => _activeExecutions.delete(conversationId));
+
     if (enableTools && hasAnyToolPermission) {
       const toolCtx: ExecuteContext = {
         orgId, userId, conversationId,
         provider: selectedProvider, model: effectiveModel,
         language: _langCode,
         effectivePerms, orgPlan,
+        sseWrite: _safeWrite,
+        isCancelled,
       };
       const loopResult = await runToolCallingLoop({
         provider: selectedProvider,
         model:    effectiveModel,
         messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[],
         ctx:      toolCtx,
-        sseWrite: (data) => res.write(data),
-        sseClose: () => { /* no-op — caller handles close below */ },
+        sseWrite: _safeWrite,
+        sseClose: () => { if (!res.writableEnded) { res.write("data: [DONE]\n\n"); res.end(); } },
+        isCancelled,
       });
       toolLoopUndoTokens = loopResult.undoTokens;
 
@@ -2088,6 +2165,17 @@ DONNÉES MANQUANTES — règle stricte :
   }
 }
 router.post("/ai/chat", aiRateLimit, chatHandler);
+
+// ── POST /ai/conversations/:id/cancel — client-side stop button ──────────────
+router.post("/ai/conversations/:id/cancel", async (req: Request, res: Response): Promise<void> => {
+  const conversationId = String(req.params["id"] ?? "");
+  if (!conversationId) { res.status(400).json({ ok: false, error: "conversationId required" }); return; }
+  _cancelledConversations.add(conversationId);
+  // Auto-clear after 60 s to avoid unbounded growth
+  setTimeout(() => _cancelledConversations.delete(conversationId), 60_000);
+  logger.info({ conversationId }, "[AI] conversation cancelled by client");
+  res.json({ ok: true, cancelled: true });
+});
 
 // ── GET /ai/actions — liste des action logs de l'org ─────────────────────────
 router.get("/ai/actions", async (req: Request, res: Response): Promise<void> => {

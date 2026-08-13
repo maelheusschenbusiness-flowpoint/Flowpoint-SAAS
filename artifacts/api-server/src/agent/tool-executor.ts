@@ -89,6 +89,10 @@ export interface ExecuteContext {
   language?: string;
   effectivePerms: Set<string>;
   orgPlan: string;
+  /** Emit an SSE frame to the client (used for keepalive during long async tools). */
+  sseWrite?: (data: string) => void;
+  /** Returns true when the client disconnected or explicitly cancelled. */
+  isCancelled?: () => boolean;
 }
 
 function uid(prefix = "al"): string {
@@ -1529,15 +1533,24 @@ async function dispatchTool(
         actionLogId: logId };
     }
 
-    // Prevent duplicate within 24 h
+    // Check for a recent duplicate — return existing data so the LLM can use it immediately
     const dupCheck = await pool.query(
-      `SELECT id FROM audits WHERE org_id=$1 AND url=$2 AND created_at > NOW() - INTERVAL '24 hours' LIMIT 1`,
+      `SELECT id, score, status FROM audits WHERE org_id=$1 AND url=$2 AND created_at > NOW() - INTERVAL '24 hours' ORDER BY created_at DESC LIMIT 1`,
       [orgId, url]
     );
     if (dupCheck.rows.length > 0) {
-      const dupId = (dupCheck.rows[0] as Record<string, unknown>)["id"];
-      return { toolCallId: logId, toolName: name, ok: false,
-        content: `Un audit pour ${url} a déjà été réalisé au cours des dernières 24 heures. Consultez ses résultats dans la page Audits SEO, ou demandez-moi de relancer l'audit pour forcer une nouvelle analyse.`,
+      const ex = dupCheck.rows[0] as Record<string, unknown>;
+      const exId     = String(ex["id"]);
+      const exScore  = Number(ex["score"] ?? 0);
+      const exStatus = String(ex["status"] ?? "");
+      if (exStatus === "processing") {
+        // Existing audit still running — fall through and await it via keepalive poll below
+        // (handled after the insert block by reusing exId)
+        return await _awaitAuditCompletion(exId, orgId, url, logId, name, ctx);
+      }
+      return { toolCallId: logId, toolName: name, ok: true,
+        content: `Un audit récent (< 24 h) est disponible pour ${url}.\nScore : ${exScore}/100 — Statut : ${fmtAuditStatus(exStatus, exScore)} — ID : ${exId}.\nDemandez-moi le résumé détaillé de cet audit, ou preciser "rerun" pour forcer une nouvelle analyse.`,
+        data: { auditId: exId, url, status: exStatus, score: exScore },
         actionLogId: logId };
     }
 
@@ -1549,8 +1562,8 @@ async function dispatchTool(
       [auditId, orgId, url, url, today, origin]
     );
 
-    // Background PSI — fire and forget, exact same weighted formula as routes/audits.ts
-    (async () => {
+    // Launch PSI in the background, await result with keepalive (up to 58 s)
+    const _psiPromise = (async () => {
       try {
         const [mobRes, deskRes] = await Promise.allSettled([
           analyzePSI(url, "mobile",  orgId),
@@ -1586,19 +1599,72 @@ async function dispatchTool(
           metadata: { score: finalScore, status: finalStatus, provider, model }, orgId,
         }).catch(() => {});
       } catch (err) {
-        logger.warn({ err, auditId, url }, "[audit-tool] background PSI failed");
+        logger.warn({ err, auditId, url }, "[audit-tool] PSI failed");
         await pool.query(`UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`, [auditId, orgId]).catch(() => {});
       }
     })();
+
+    // Await PSI with 58 s timeout (SSE keepalive every 5 s keeps connection alive)
+    const _keepalive = ctx.sseWrite
+      ? setInterval(() => { try { ctx.sseWrite!(": keepalive\n\n"); } catch(_) {} }, 5_000)
+      : null;
+    let _timedOut = false;
+    try {
+      await Promise.race([_psiPromise, new Promise<void>(r => setTimeout(() => { _timedOut = true; r(); }, 58_000))]);
+    } finally {
+      if (_keepalive) clearInterval(_keepalive);
+    }
 
     await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
       tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "ok",
       snapshot: null, versionAfter: null, durationMs: Date.now() - t0 });
 
+    if (_timedOut) {
+      return { toolCallId: logId, toolName: name, ok: true,
+        content: `L'audit pour ${url} est en cours d'analyse (ID : ${auditId}). L'analyse PageSpeed prend plus de temps que prévu — le résultat sera disponible dans la page Audits SEO dans quelques instants. Vous pouvez me demander un résumé une fois l'analyse terminée.`,
+        data: { auditId, url, status: "processing" }, actionLogId: logId };
+    }
+
+    // Re-read the final state from DB (psiPromise updated it)
+    const fin = await pool.query(`SELECT score, status FROM audits WHERE id=$1 AND org_id=$2`, [auditId, orgId]);
+    const finRow = fin.rows[0] as Record<string, unknown> | undefined;
+    const finScore  = Number(finRow?.["score"] ?? 0);
+    const finStatus = String(finRow?.["status"] ?? "error");
     return { toolCallId: logId, toolName: name, ok: true,
-      content: `Audit lancé pour ${url}. L'analyse prend 30 à 60 secondes — le score et les problèmes détectés apparaîtront dans la page Audits SEO. Vous pouvez aussi me demander un résumé de l'audit une fois l'analyse terminée.`,
-      data: { auditId, url, status: "processing" },
-      actionLogId: logId };
+      content: `✅ Audit terminé pour ${url}.\n\n**Score SEO global : ${finScore}/100** — ${fmtAuditStatus(finStatus, finScore)}\nID : ${auditId}\n\nDemandez-moi le résumé complet (problèmes critiques, recommandations, détail par critère) pour approfondir.`,
+      data: { auditId, url, status: finStatus, score: finScore }, actionLogId: logId };
+  }
+
+  // ── _awaitAuditCompletion — poll DB for an in-progress audit (internal helper) ─
+  async function _awaitAuditCompletion(
+    auditId: string, orgId: string, url: string,
+    logId: string, toolName: string, ctx: ExecuteContext
+  ): Promise<ToolExecutionResult> {
+    const _kp = ctx.sseWrite
+      ? setInterval(() => { try { ctx.sseWrite!(": keepalive\n\n"); } catch(_) {} }, 5_000)
+      : null;
+    const deadline = Date.now() + 58_000;
+    let row: Record<string, unknown> | undefined;
+    try {
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 3_000));
+        const r = await pool.query(`SELECT score, status FROM audits WHERE id=$1 AND org_id=$2`, [auditId, orgId]);
+        row = r.rows[0] as Record<string, unknown> | undefined;
+        if (row && String(row["status"]) !== "processing") break;
+      }
+    } finally {
+      if (_kp) clearInterval(_kp);
+    }
+    const score  = Number(row?.["score"] ?? 0);
+    const status = String(row?.["status"] ?? "processing");
+    if (status === "processing") {
+      return { toolCallId: logId, toolName, ok: true,
+        content: `L'audit pour ${url} (ID : ${auditId}) est toujours en cours d'analyse. Vérifiez la page Audits SEO dans quelques instants.`,
+        data: { auditId, url, status: "processing" }, actionLogId: logId };
+    }
+    return { toolCallId: logId, toolName, ok: true,
+      content: `✅ Audit terminé pour ${url}.\n\n**Score SEO global : ${score}/100** — ${fmtAuditStatus(status, score)}\nID : ${auditId}\n\nDemandez-moi le résumé complet pour approfondir.`,
+      data: { auditId, url, status, score }, actionLogId: logId };
   }
 
   // ── rerun_audit ───────────────────────────────────────────────────────────
@@ -1619,8 +1685,8 @@ async function dispatchTool(
       [newId, orgId, url, url, today]
     );
 
-    // Background PSI — same as run_audit
-    (async () => {
+    // Await PSI with keepalive (same pattern as run_audit)
+    const _rerunPsi = (async () => {
       try {
         const [mobRes, deskRes] = await Promise.allSettled([
           analyzePSI(url, "mobile", orgId), analyzePSI(url, "desktop", orgId),
@@ -1645,17 +1711,37 @@ async function dispatchTool(
           [score, st, speed, issues, newId, orgId]
         );
       } catch (err) {
-        logger.warn({ err, newId }, "[audit-tool] rerun background PSI failed");
+        logger.warn({ err, newId }, "[audit-tool] rerun PSI failed");
         await pool.query(`UPDATE audits SET status='error' WHERE id=$1 AND org_id=$2`, [newId, orgId]).catch(() => {});
       }
     })();
 
+    const _rerunKp = ctx.sseWrite
+      ? setInterval(() => { try { ctx.sseWrite!(": keepalive\n\n"); } catch(_) {} }, 5_000)
+      : null;
+    let _rerunTimedOut = false;
+    try {
+      await Promise.race([_rerunPsi, new Promise<void>(r => setTimeout(() => { _rerunTimedOut = true; r(); }, 58_000))]);
+    } finally {
+      if (_rerunKp) clearInterval(_rerunKp);
+    }
+
     await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
       tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "ok",
       snapshot: existing, versionAfter: null, durationMs: Date.now() - t0 });
+
+    if (_rerunTimedOut) {
+      return { toolCallId: logId, toolName: name, ok: true,
+        content: `Nouvel audit lancé pour ${url} (ID : ${newId}). L'analyse prend plus de temps que prévu — le résultat sera disponible dans la page Audits SEO.`,
+        data: { auditId: newId, url, status: "processing" }, actionLogId: logId };
+    }
+    const rerunFin = await pool.query(`SELECT score, status FROM audits WHERE id=$1 AND org_id=$2`, [newId, orgId]);
+    const rerunRow = rerunFin.rows[0] as Record<string, unknown> | undefined;
+    const rerunScore  = Number(rerunRow?.["score"] ?? 0);
+    const rerunStatus = String(rerunRow?.["status"] ?? "error");
     return { toolCallId: logId, toolName: name, ok: true,
-      content: `Nouvel audit lancé pour ${url} (ID : ${newId}). L'analyse prend 30 à 60 secondes.`,
-      data: { auditId: newId, url, status: "processing" }, actionLogId: logId };
+      content: `✅ Audit re-lancé pour ${url}.\n\n**Score SEO global : ${rerunScore}/100** — ${fmtAuditStatus(rerunStatus, rerunScore)}\nID : ${newId}\n\nDemandez-moi le résumé complet pour approfondir.`,
+      data: { auditId: newId, url, status: rerunStatus, score: rerunScore }, actionLogId: logId };
   }
 
   // ── compare_audits ────────────────────────────────────────────────────────

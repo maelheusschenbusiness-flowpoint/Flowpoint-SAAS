@@ -13303,6 +13303,7 @@ function renderAI() {
           <label for="ai-file-input" title="Joindre un fichier" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
           <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow:hidden;line-height:1.5;max-height:120px"></textarea>
           <button class="fp-ai-send" id="ai-send">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
+          <button id="ai-stop" title="Arrêter la génération" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
       </div>
     </div>
@@ -13669,6 +13670,8 @@ async function sendAIMessage(text) {
         ? '⚠ Crédits IA épuisés — passez à Ultra pour continuer.'
         : resp.status === 403
         ? '⚠ Module IA désactivé — activez-le dans Paramètres → IA Config.'
+        : resp.status === 409
+        ? '⚠ Une réponse est déjà en cours — attendez qu\'elle se termine ou cliquez ⏹ pour l\'arrêter.'
         : resp.status === 429
         ? '⚠ Trop de requêtes. Attendez quelques instants puis réessayez.'
         : resp.status === 503 && err.code === 'QUOTA_STATE_UNAVAILABLE'
@@ -13752,9 +13755,14 @@ async function sendAIMessage(text) {
     }
   } catch(e) {
     console.error('[AI Chat] sendAIMessage error:', e.name, e.message, e);
-    const errMsg = (e.name === 'AbortError') ? '⚠ La requête IA a été annulée (délai dépassé).'
-      : (e instanceof TypeError) ? '⚠ Connexion impossible — vérifiez votre réseau et réessayez.'
+    const errMsg = (e.name === 'AbortError' && STATE._aiStopRequested)
+      ? '⏹ Génération interrompue.'
+      : (e.name === 'AbortError')
+      ? '⏱ La requête IA a dépassé le délai d\'attente — réessayez dans un instant.'
+      : (e instanceof TypeError)
+      ? '⚠ Connexion impossible — vérifiez votre réseau et réessayez.'
       : '⚠ Le service IA est temporairement indisponible. Veuillez réessayer dans quelques instants.';
+    STATE._aiStopRequested = false;
     STATE.aiMessages[streamIdx] = { from:'ai', text: errMsg, streaming: false };
   }
 
@@ -13779,7 +13787,37 @@ function updateAIUI() {
   });
   const sendBtn = $('#ai-send') || $('#ai-panel-send');
   if (sendBtn) sendBtn.disabled = STATE.aiLoading;
+
+  // Show/hide Stop button alongside the send button when streaming
+  ['#ai-stop', '#ai-panel-stop'].forEach(function(sel) {
+    const el = $(sel);
+    if (el) el.style.display = STATE.aiLoading ? 'inline-flex' : 'none';
+  });
 }
+
+/** Load (or reload) missions from the server and update STATE. Called after AI write actions. */
+window.loadMissions = async function loadMissions() {
+  try {
+    const r = await apiFetch('/api/missions');
+    if (r && Array.isArray(r.missions)) {
+      STATE.missions = r.missions;
+      if (STATE.currentSection === 'missions') render();
+    }
+  } catch(e) { console.warn('[AI] loadMissions failed:', e && e.message); }
+};
+
+/** Stop the in-flight AI generation — calls the server cancel endpoint then aborts the SSE. */
+window.fpAiStop = function fpAiStop() {
+  STATE._aiStopRequested = true;
+  var convId = STATE._aiConversationId;
+  if (convId) {
+    apiFetch('/api/ai/conversations/' + encodeURIComponent(convId) + '/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      .catch(function() {});
+  }
+  if (STATE._aiStreamCtrl) {
+    try { STATE._aiStreamCtrl.abort('user_stop'); } catch(_) {}
+  }
+};
 
 /* ── PANEL CONTENTS ── */
 async function fetchAuditAIInsights(auditRef) {
@@ -14626,6 +14664,7 @@ function renderAIPanelContent() {
     <div class="fp-ai-input-row">
       <input class="fp-ai-input" id="ai-panel-input" placeholder="Posez votre question…" style="font-size:11px"/>
       <button class="fp-ai-send" id="ai-panel-send">${svgIcon('send').replace('width="14"','width="13"').replace('height="14"','height="13"')}</button>
+      <button id="ai-panel-stop" title="Arrêter" style="display:none;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:13px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
     </div>
   `;
 }
