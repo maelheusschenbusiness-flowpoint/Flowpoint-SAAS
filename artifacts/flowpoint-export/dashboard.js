@@ -4737,6 +4737,8 @@ function bindMsgPanel(dd) {
     if (b) { u > 0 ? (b.removeAttribute('hidden'), b.textContent = u) : b.setAttribute('hidden',''); }
   };
   refreshBadge();
+  // Scroll message list to bottom whenever the panel is opened or re-rendered
+  setTimeout(() => { const ml = dd.querySelector('#fp-msg-list'); if (ml) ml.scrollTop = ml.scrollHeight; }, 50);
 
   dd.querySelectorAll('.fp-msg-channel-btn').forEach(btn => {
     btn.addEventListener('click', e => { e.stopPropagation(); STATE.msgChannel = btn.dataset.channel; dd.innerHTML = renderMsgDropdown(); bindMsgPanel(dd); });
@@ -36620,6 +36622,9 @@ function fpPlanDeltaEur(fromId, toId) {
 window.STATE     = STATE;
 window.render    = render;
 window.renderPageSkeleton = renderPageSkeleton;
+// Exposed so fp-backend.js SSE handlers can live-update the messages dropdown
+window.renderMsgDropdown = renderMsgDropdown;
+window.bindMsgPanel      = bindMsgPanel;
 
 // ── Keywords section handlers — module level so they exist even if init() aborts early ──
 // Keyword modal — defined here because <script> tags inside innerHTML do NOT execute in browsers

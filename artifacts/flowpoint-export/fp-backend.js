@@ -668,6 +668,7 @@
           time: data.createdAt ? new Date(data.createdAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : 'À l\'instant',
         });
         if (typeof window.render === 'function') window.render();
+        setTimeout(function() { var c = document.getElementById('team-chat-msgs'); if (c) c.scrollTop = c.scrollHeight; }, 50);
         return;
       }
       window.STATE.channelMessages[ch].unshift({
@@ -679,7 +680,17 @@
         read: isSelf,
         self: isSelf,
       });
+      if (typeof window._fpRefreshMsgBadge === 'function') { try { window._fpRefreshMsgBadge(); } catch(_) {} }
       if (typeof window.render === 'function') window.render();
+      setTimeout(function() {
+        var c = document.getElementById('team-chat-msgs'); if (c) c.scrollTop = c.scrollHeight;
+        var dd = document.getElementById('fp-msg-dropdown');
+        if (dd && dd.offsetParent !== null && typeof window.renderMsgDropdown === 'function') {
+          dd.innerHTML = window.renderMsgDropdown();
+          if (typeof window.bindMsgPanel === 'function') window.bindMsgPanel(dd);
+          var ml = dd.querySelector('#fp-msg-list'); if (ml) ml.scrollTop = ml.scrollHeight;
+        }
+      }, 50);
     });
 
     // ── Chat SSE (nouveau format depuis /api/team/messages) ──
@@ -718,6 +729,7 @@
       if (existingIndex >= 0) {
         window.STATE.channelMessages[ch][existingIndex] = Object.assign({}, window.STATE.channelMessages[ch][existingIndex], normalizedMessage);
         if (window.STATE.route === 'team' && typeof window.render === 'function') window.render();
+        setTimeout(function() { var c = document.getElementById('team-chat-msgs'); if (c) c.scrollTop = c.scrollHeight; }, 50);
         return;
       }
       window.STATE.channelMessages[ch].unshift({
@@ -729,6 +741,16 @@
         if (typeof window._fpPlayChatSound === 'function') { try { window._fpPlayChatSound(); } catch(_) {} }
       }
       if (window.STATE.route === 'team' && typeof window.render === 'function') window.render();
+      // Live update dropdown if open + scroll both chat containers to bottom
+      setTimeout(function() {
+        var c = document.getElementById('team-chat-msgs'); if (c) c.scrollTop = c.scrollHeight;
+        var dd = document.getElementById('fp-msg-dropdown');
+        if (dd && dd.offsetParent !== null && typeof window.renderMsgDropdown === 'function') {
+          dd.innerHTML = window.renderMsgDropdown();
+          if (typeof window.bindMsgPanel === 'function') window.bindMsgPanel(dd);
+          var ml = dd.querySelector('#fp-msg-list'); if (ml) ml.scrollTop = ml.scrollHeight;
+        }
+      }, 50);
     });
 
     // ── Audit terminé ──
