@@ -2633,6 +2633,116 @@
   // SECTION v8 — AI PANEL LAYOUT SHIFT + REALTIME + DATA CONNECTIONS
   // ══════════════════════════════════════════════════════════════════════════
 
+  // ─── URL DETECTION — Suggestion "Analyser ce site ?" ─────────────────────
+  // Watches AI chat inputs for URL patterns; shows an action chip when detected.
+  // The AI can also trigger analyze_url autonomously via tool-calling when the
+  // user mentions a URL without clicking the chip.
+  ;(function initUrlDetection() {
+    'use strict';
+
+    var URL_RE = /https?:\/\/[^\s"'<>()[\]{}|\\^`\u0000-\u0020]+|(?:^|\s)((?:[a-z0-9-]+\.)+[a-z]{2,})(?:\/[^\s]*)?/gi;
+    var CHIP_ID = 'fp-url-analyze-chip';
+
+    function extractFirstUrl(text) {
+      URL_RE.lastIndex = 0;
+      var m = URL_RE.exec(text);
+      if (!m) return null;
+      var raw = (m[0] || '').trim();
+      if (!raw.startsWith('http://') && !raw.startsWith('https://')) raw = 'https://' + raw;
+      try { new URL(raw); return raw; } catch(_) { return null; }
+    }
+
+    function showUrlChip(inputEl, url) {
+      var existing = document.getElementById(CHIP_ID);
+      if (existing) existing.remove();
+
+      var chip = document.createElement('button');
+      chip.id = CHIP_ID;
+      chip.className = 'fp-ai-chip';
+      chip.title = 'Demander à l\'IA d\'analyser cette page';
+      chip.style.cssText = 'position:absolute;bottom:calc(100% + 6px);left:0;z-index:200;' +
+        'display:flex;align-items:center;gap:6px;padding:5px 10px;font-size:11px;' +
+        'background:var(--fp-accent,#2563EB);color:#fff;border:none;border-radius:20px;' +
+        'cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(37,99,235,0.3);' +
+        'animation:fpFadeIn 0.2s ease';
+      chip.innerHTML = '🔍 <span>Analyser ce site ?</span>';
+      chip.setAttribute('data-url', url);
+
+      chip.addEventListener('click', function() {
+        var targetUrl = chip.getAttribute('data-url');
+        chip.remove();
+        if (inputEl && typeof inputEl.blur === 'function') inputEl.blur();
+        // Inject the analyze command into the input and trigger send
+        var analysisMsg = 'Lis et résume le contenu de ce site pour moi : ' + targetUrl;
+        var sendBtn = inputEl && (
+          inputEl.closest('.fp-ai-input-row')?.querySelector('#ai-send') ||
+          inputEl.closest('.fp-ai-panel')?.querySelector('#ai-panel-send, [type="submit"]')
+        );
+        if (inputEl) inputEl.value = analysisMsg;
+        if (sendBtn) {
+          sendBtn.click();
+        } else if (window.FP_AI_CHAT_API && typeof window.FP_AI_CHAT_API.sendMessage === 'function') {
+          window.FP_AI_CHAT_API.sendMessage(analysisMsg, {}).catch(function(){});
+        }
+      });
+
+      // Position relative to parent of input
+      var parent = inputEl.parentElement;
+      if (parent && getComputedStyle(parent).position === 'static') {
+        parent.style.position = 'relative';
+      }
+      if (parent) parent.appendChild(chip);
+    }
+
+    function hideUrlChip() {
+      var existing = document.getElementById(CHIP_ID);
+      if (existing) existing.remove();
+    }
+
+    function attachUrlListener(inputEl) {
+      if (!inputEl || inputEl._fpUrlListened) return;
+      inputEl._fpUrlListened = true;
+
+      inputEl.addEventListener('input', function() {
+        var url = extractFirstUrl(inputEl.value || '');
+        if (url) showUrlChip(inputEl, url);
+        else hideUrlChip();
+      });
+
+      inputEl.addEventListener('blur', function() {
+        // Delay to allow chip click to fire first
+        setTimeout(hideUrlChip, 200);
+      });
+    }
+
+    function scanAndAttach() {
+      ['ai-input', 'ai-panel-input'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) attachUrlListener(el);
+      });
+    }
+
+    // Expose as utility on FP_AI_CHAT_API
+    if (window.FP_AI_CHAT_API) {
+      window.FP_AI_CHAT_API.detectUrls = function(text) {
+        URL_RE.lastIndex = 0;
+        var urls = [];
+        var m;
+        while ((m = URL_RE.exec(text)) !== null) {
+          var raw = (m[0] || '').trim();
+          if (!raw.startsWith('http://') && !raw.startsWith('https://')) raw = 'https://' + raw;
+          try { new URL(raw); urls.push(raw); } catch(_) { /* skip */ }
+        }
+        return urls;
+      };
+    }
+
+    // Scan on load, then watch for dynamic DOM additions
+    scanAndAttach();
+    var _obs2 = new MutationObserver(function() { scanAndAttach(); });
+    _obs2.observe(document.body || document.documentElement, { childList: true, subtree: true });
+  })();
+
   // ─── AI PANEL LAYOUT SHIFT ────────────────────────────────────────────────
   // MutationObserver watches for #fp-ai-chat-panel entering/leaving the DOM
   // or becoming visible, then toggles body.fp-ai-open for CSS grid adaptation.

@@ -47,6 +47,7 @@ export const PERMISSION_CATALOG = [
   "analytics.read",
   "conversion.read",
   "activity.read",
+  "web.read",                  // Phase 7 — analyse d'URL externe via l'outil analyze_url
 ] as const;
 
 export type Permission = (typeof PERMISSION_CATALOG)[number];

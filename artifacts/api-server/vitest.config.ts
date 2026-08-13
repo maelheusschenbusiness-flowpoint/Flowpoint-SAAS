@@ -49,6 +49,9 @@ export default defineConfig({
       "src/routes/addon-only-checkout.test.ts",
       "src/routes/billing-period-end.test.ts",
       "src/tests/cross_tenant_rbac_sso.test.ts",
+      // Phase 7 — analyze_url SSRF IPv6 + IPv4 classification
+      "src/services/url-fetcher-ipv6.test.ts",
+      "src/services/url-fetcher-ipv4.test.ts",
     ],
     environment: "node",
     globals:     false,
