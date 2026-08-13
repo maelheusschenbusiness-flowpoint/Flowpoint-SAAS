@@ -9250,3 +9250,86 @@ html:not([data-theme="light"]) #dfs-local-rank-widget {
     transition: none;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   DARK MODE UNIVERSAL FIX — toutes les surfaces carte-like
+   Étend la protection !important à TOUTES les classes de cartes.
+   Doit rester EN FIN DE FICHIER pour maximiser la cascade.
+   ══════════════════════════════════════════════════════════════════ */
+
+html:not([data-theme="light"]) .fp-monitor-card,
+html:not([data-theme="light"]) .fp-addon-card,
+html:not([data-theme="light"]) .fp-plan-card,
+html:not([data-theme="light"]) .fp-competitor-row,
+html:not([data-theme="light"]) .fp-opp-card,
+html:not([data-theme="light"]) .fp-site-sparkline-card,
+html:not([data-theme="light"]) .fp-growth-win-card,
+html:not([data-theme="light"]) .fp-integration-card,
+html:not([data-theme="light"]) .fp-lib-card,
+html:not([data-theme="light"]) .fp-kanban-card,
+html:not([data-theme="light"]) .fp-table-wrap,
+html:not([data-theme="light"]) .fp-alert-item,
+html:not([data-theme="light"]) .fp-monitor-item,
+html:not([data-theme="light"]) .fp-quick-add,
+html:not([data-theme="light"]) .fp-cwv-card,
+html:not([data-theme="light"]) .fp-audit-issue-card,
+html:not([data-theme="light"]) .fp-alert-rule-row,
+html:not([data-theme="light"]) .fp-bilan-item {
+  background: var(--fp-bg-card) !important;
+  color: var(--fp-text) !important;
+}
+
+/* Restaurer la teinte de statut sur les états spéciaux */
+html:not([data-theme="light"]) .fp-addon-card.active {
+  background: rgba(34, 197, 94, 0.06) !important;
+  border-color: rgba(34, 197, 94, 0.25) !important;
+}
+html:not([data-theme="light"]) .fp-plan-card.current {
+  background: rgba(37, 99, 235, 0.07) !important;
+  border-color: rgba(37, 99, 235, 0.35) !important;
+}
+html:not([data-theme="light"]) .fp-integration-card.connected {
+  background: rgba(34, 197, 94, 0.05) !important;
+  border-color: rgba(34, 197, 94, 0.22) !important;
+}
+html:not([data-theme="light"]) .fp-integration-card.error {
+  background: rgba(239, 68, 68, 0.05) !important;
+  border-color: rgba(239, 68, 68, 0.22) !important;
+}
+html:not([data-theme="light"]) .fp-monitor-card.down {
+  border-color: rgba(239, 68, 68, 0.30) !important;
+}
+
+/* Hover sur les nouvelles classes */
+html:not([data-theme="light"]) .fp-monitor-card:hover,
+html:not([data-theme="light"]) .fp-addon-card:hover,
+html:not([data-theme="light"]) .fp-opp-card:hover,
+html:not([data-theme="light"]) .fp-competitor-row:hover,
+html:not([data-theme="light"]) .fp-integration-card:hover,
+html:not([data-theme="light"]) .fp-kanban-card:hover,
+html:not([data-theme="light"]) .fp-growth-win-card:hover {
+  background: var(--fp-bg-card-hover) !important;
+}
+
+/* Catch-all : backgrounds blancs/gris clairs inline sur les divs
+   (JS génère parfois des inline style="background:#ffffff")        */
+html:not([data-theme="light"]) div[style*="background:#ffffff"],
+html:not([data-theme="light"]) div[style*="background: #ffffff"],
+html:not([data-theme="light"]) div[style*="background-color:#ffffff"],
+html:not([data-theme="light"]) div[style*="background-color: #ffffff"],
+html:not([data-theme="light"]) section[style*="background:#ffffff"],
+html:not([data-theme="light"]) section[style*="background: #ffffff"] {
+  background: var(--fp-bg-card) !important;
+}
+
+/* Gris clairs inline (f8fafc, f1f5f9, f8faff, eef2ff) */
+html:not([data-theme="light"]) div[style*="background:#f8fafc"],
+html:not([data-theme="light"]) div[style*="background: #f8fafc"],
+html:not([data-theme="light"]) div[style*="background:#f1f5f9"],
+html:not([data-theme="light"]) div[style*="background: #f1f5f9"],
+html:not([data-theme="light"]) div[style*="background:#f8faff"],
+html:not([data-theme="light"]) div[style*="background: #f8faff"],
+html:not([data-theme="light"]) div[style*="background:#eef2ff"],
+html:not([data-theme="light"]) div[style*="background: #eef2ff"] {
+  background: var(--fp-bg-inset) !important;
+}
