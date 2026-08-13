@@ -1042,7 +1042,7 @@ router.patch("/ai/config", async (req: Request, res: Response): Promise<void> =>
 // Émet des événements SSE directement sur `res`, retourne si l'SSE est suspendu
 // (confirmation_request) ou terminé (réponse finale après tool calls).
 
-const MAX_TOOL_ROUNDS = 3;
+const MAX_TOOL_ROUNDS = 6;
 
 interface ToolLoopResult {
   /** true = la connexion SSE a été fermée (confirmation_request ou erreur). */
@@ -1053,6 +1053,12 @@ interface ToolLoopResult {
   undoTokens: Array<{ actionLogId: string; label: string }>;
   /** Messages mis à jour avec les injections d'outils (pour continuer le stream). */
   messages: import("../services/ai-multimodal.js").MultimodalMessage[];
+  /**
+   * Round-0 produced text with no tool calls. Text is NOT yet emitted or persisted —
+   * the caller must route it through NavMarkerFilter, persistChatMessage, and usage
+   * tracking (identical finalization to aiStream path) WITHOUT making a second LLM call.
+   */
+  round0Text?: string;
 }
 
 async function runToolCallingLoop(opts: {
@@ -1117,7 +1123,16 @@ async function runToolCallingLoop(opts: {
         }
         return { suspended: false, finalTextEmitted: true, undoTokens, messages };
       }
-      // Round 0, no tool calls → fall through to normal stream
+      // Round 0, no tool calls → if the LLM produced text, hand it back to the caller
+      // so it can route the text through NavMarkerFilter, persistChatMessage, and usage
+      // tracking — identical to the aiStream finalization path — WITHOUT making a second
+      // (duplicate) LLM call.  Emitting text here and returning finalTextEmitted:true would
+      // bypass nav-marker processing, assistant persistence, and accurate usage recording.
+      if (roundResult.text?.trim()) {
+        logger.info({ provider, round: 0 }, "[tool-loop] round 0 text-only — returning to caller for full finalization (nav, persist, usage)");
+        return { suspended: false, finalTextEmitted: false, undoTokens, messages, round0Text: roundResult.text };
+      }
+      // No text AND no tools in round 0 → fall through to normal stream (empty response)
       return { suspended: false, finalTextEmitted: false, undoTokens, messages };
     }
 
@@ -1570,18 +1585,127 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
         : `You MUST respond in ${_langNames[_langCode]} (language code: ${_langCode}). All your text output must be in ${_langNames[_langCode]}, not in French. Adapt expressions and idioms naturally for a ${_langNames[_langCode]}-speaking audience.`)
     : "Tu réponds en français";
 
+  // ── Target URL/domain detection (Phase 13 — cible explicite ≠ dashboard) ────
+  // If the user's message contains an external URL or domain, it is the TARGET of
+  // the analysis. This is NOT the FlowPoint dashboard. Detect before prompt build.
+  //
+  // Self-host check uses HOSTNAME-LEVEL matching (not substring) to prevent false
+  // positives such as "notflowpoint.io" or "flowpoint.io.attacker.com" being
+  // classified as self-hosted.  A candidate hostname is considered self-hosted only
+  // when it is an EXACT match or a proper subdomain (hostname.endsWith('.'+selfHost)).
+  const _SELF_HOST_EXACT = new Set([
+    "localhost", "127.0.0.1", "::1", "0.0.0.0",
+    "flowpoint.io", "flowpoint.pro",
+  ]);
+  // Dynamic: strip protocol from dev/prod domains and add as exact self-hosts
+  const _devDomain = (process.env.REPLIT_DEV_DOMAIN ?? "").replace(/^https?:\/\//, "").split("/")[0].toLowerCase();
+  const _appDomain = (process.env.REPLIT_APP_DOMAIN ?? "").replace(/^https?:\/\//, "").split("/")[0].toLowerCase();
+  if (_devDomain) _SELF_HOST_EXACT.add(_devDomain);
+  if (_appDomain) _SELF_HOST_EXACT.add(_appDomain);
+
+  function _isSelfHost(urlOrDomain: string): boolean {
+    // Extract hostname from full URL or bare domain
+    let hostname: string;
+    try {
+      hostname = new URL(
+        urlOrDomain.startsWith("http") ? urlOrDomain : `https://${urlOrDomain}`
+      ).hostname.toLowerCase();
+    } catch {
+      hostname = urlOrDomain.replace(/^https?:\/\//, "").split(/[/?#]/)[0].toLowerCase();
+    }
+    // Exact match or proper subdomain of a known self-host
+    for (const sh of _SELF_HOST_EXACT) {
+      if (hostname === sh || hostname.endsWith(`.${sh}`)) return true;
+    }
+    // Generic: any *.replit.dev / *.replit.app / *.repl.co suffix
+    if (hostname.endsWith(".replit.dev") || hostname.endsWith(".replit.app") || hostname.endsWith(".repl.co")) return true;
+    return false;
+  }
+
+  const _externalUrlMatch = typeof message === "string"
+    ? message.match(/https?:\/\/([^\s<>"',]+)/i)
+    : null;
+  const _externalUrlRaw = _externalUrlMatch
+    ? _externalUrlMatch[0].replace(/[.,;!?)]+$/, "")
+    : null;
+  const _externalUrl = _externalUrlRaw && !_isSelfHost(_externalUrlRaw) ? _externalUrlRaw : null;
+
+  // Also catch bare domain patterns when no http:// prefix (e.g. "analyse example.com")
+  const _bareDomainMatch = !_externalUrl && typeof message === "string"
+    ? message.match(/\b([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.(?:com|fr|net|org|io|co|uk|de|es|it|be|ch|ca|au|nl|pt|pl|se|dk|fi|no|ru|jp|in|br|mx))\b/i)
+    : null;
+  const _bareDomain = _bareDomainMatch && !_isSelfHost(_bareDomainMatch[0]) ? _bareDomainMatch[0] : null;
+
+  // The resolved target (full URL preferred, bare domain as fallback)
+  const _detectedTarget: string | null = _externalUrl ?? _bareDomain ?? null;
+
+  // Detect whether the user's message expresses an audit / analysis / diagnostic intent.
+  // run_audit must ONLY be mandated when BOTH a target is detected AND the intent is explicitly
+  // audit-like. A message that merely mentions a URL without asking for an audit (e.g.
+  // "qu'est-ce que example.com ?" or "comment contacter example.com ?") should NOT trigger an
+  // unsolicited audit-confirmation flow.
+  const _messageLC = typeof message === "string" ? message.toLowerCase() : "";
+  // AUDIT INTENT: only explicit action verbs that request an audit/analysis directed at a site.
+  // Deliberately excludes topic words (seo, score, performance, problème, rapport, référencement,
+  // ranking, check, review, test, report) which can appear in questions that do NOT request an audit.
+  // A message like "comment améliorer le SEO d'example.com ?" should NOT mandate run_audit.
+  const _AUDIT_ACTION_VERBS = [
+    "audit", "audite", "auditer",             // "fais un audit", "audite ce site"
+    "analyse", "analyser", "analysez",        // "analyse https://…", "analyser ce site"
+    "vérifie", "vérifier",                    // "vérifie ce site"
+    "examine", "examiner",                    // "examine ce site"
+    "scanne", "scanner",                      // "scanne ce site"
+    "crawl",                                  // technical crawl request
+    "diagnostic", "diagnostique",             // "fais un diagnostic de"
+    "inspecte", "inspecter",                  // "inspecte ce site"
+    "évalue", "évaluer",                      // "évalue le seo de ce site"
+  ];
+  const _hasAuditIntent = _detectedTarget !== null &&
+    _AUDIT_ACTION_VERBS.some(kw => _messageLC.includes(kw));
+
+  // TARGET_OVERRIDE block: injected at the TOP of the system prompt when a target is detected.
+  // Two modes:
+  //  • Audit intent detected → mandate run_audit immediately (original behaviour)
+  //  • URL present but NO audit intent → set the CIBLE without forcing run_audit
+  const _targetOverrideBlock = _detectedTarget
+    ? _hasAuditIntent
+      ? `\n⚠ CIBLE EXPLICITE + INTENTION AUDIT : ${_detectedTarget}
+L'utilisateur demande une analyse ou un audit de ce site. RÈGLE ABSOLUE : appelle run_audit("${_detectedTarget}") IMMÉDIATEMENT. Ne génère aucun texte avant d'avoir les résultats de l'outil.
+Le contexte "DONNÉES RÉELLES DU COMPTE" ci-dessous = référence du compte FlowPoint de l'utilisateur. Ce n'est PAS le site à analyser.\n`
+      : `\n⚠ URL MENTIONNÉE DANS LA DEMANDE : ${_detectedTarget}
+Ta réponse doit porter sur CE SITE et non sur le dashboard FlowPoint — mais n'appelle run_audit que si l'utilisateur demande explicitement un audit, une analyse SEO ou un diagnostic. Si la demande est une question générale ou une discussion, réponds directement sans lancer d'outil.\n`
+    : "";
+
   // Base consultant instructions. fpContext is appended separately below so the
   // attachment block can be added in one explicit place visible to both paths.
-  const systemPromptBase = `Tu es le consultant SEO senior de FlowPoint. Tu as déjà analysé le compte — les données sont dans le contexte ci-dessous. Tu connais les scores, les problèmes, les sites et l'historique.
-
-${_langInstruction}, en consultant humain — pas en outil. Ton interlocuteur peut être un artisan, un dentiste, un restaurateur : adapte le vocabulaire à quelqu'un qui ne connaît pas le SEO.
-
+  const systemPromptBase = `Tu es le consultant SEO senior et copilote opérationnel de FlowPoint. ${_langInstruction}, en consultant humain — jamais en assistant générique. Ton interlocuteur peut être un artisan, un dentiste, un restaurateur : adapte le vocabulaire à quelqu'un qui ne connaît pas le SEO.
+${_targetOverrideBlock}
 ${STRICT_AI_RULE}
 
-RÈGLES D'ACTION (obligatoires) :
-- Tu ne dis JAMAIS "je lance", "je fais", "c'est en cours" sans avoir réellement appelé l'outil correspondant dans ce même tour. Si aucun outil n'est disponible pour l'action demandée, dis-le clairement et indique où le faire manuellement dans l'app.
-- Si l'utilisateur fournit une URL et demande une analyse/un audit, appelle immédiatement l'outil run_audit avec cette URL (ne réponds pas par du texte seul).
-- Si une action nécessite une confirmation, appelle l'outil : la confirmation sera présentée automatiquement à l'utilisateur.
+INTENTION + CIBLE (identifie-les avant de répondre) :
+- INTENTION : que veut faire l'utilisateur ? (audit, analyse, création, modification, surveillance, comparaison, recherche, mission, recommandation, question simple)
+- CIBLE : sur quoi porte la demande ? (URL/site externe, page précise, domaine, concurrent, mot-clé, fiche GBP, propriété GA4, site GSC, audit existant, monitor, rapport, mission, membre d'équipe, données du compte)
+- RÈGLE ABSOLUE : si une URL ou un domaine externe est présent dans le message, la CIBLE = ce site. Jamais le dashboard FlowPoint par défaut.
+- Le contexte "DONNÉES RÉELLES DU COMPTE" ci-dessous = informations sur le COMPTE de l'utilisateur (son historique, ses outils, ses scores). Ce n'est PAS automatiquement l'objet de la demande.
+- Exemples corrects :
+  · "Fais un audit de https://example.com" → intent=audit, cible=example.com → appelle run_audit("https://example.com")
+  · "Analyse mes monitors" → intent=surveillance, cible=monitors du compte → appelle search_monitors()
+  · "Pourquoi mon score baisse ?" → intent=analyse, cible=données du compte → utilise le contexte
+
+RÈGLES D'ACTION (obligatoires, par priorité) :
+1. Si l'utilisateur fournit une URL/domaine externe ET demande explicitement un audit, une analyse SEO, une comparaison ou un diagnostic → appelle IMMÉDIATEMENT run_audit avec cette URL. Si l'URL est simplement mentionnée dans une question générale (ex : "qu'est-ce que example.com ?", "comment contacter example.com ?"), réponds directement sans lancer run_audit.
+2. Tu ne dis JAMAIS "je lance", "je fais", "c'est en cours" sans avoir réellement appelé l'outil correspondant dans ce même tour. Si l'outil n'est pas disponible, dis-le clairement et indique où agir manuellement.
+3. Si une action nécessite une confirmation, appelle l'outil — la confirmation sera présentée automatiquement à l'utilisateur. N'explique pas l'action avant de l'avoir soumise.
+4. AUTONOMIE BORNÉE — après un run_audit ou tout outil de lecture : génère un résumé textuel et ATTENDS la prochaine instruction de l'utilisateur. Ne chaîne PAS automatiquement vers des outils à confirmation (create_missions_from_audit, delete_audit, delete_calendar_event, delete_monitor, etc.) sauf si le message de l'utilisateur les demande EXPLICITEMENT dans le même tour.
+5. Pour les analyses multi-étapes (audit → missions, analyse → création) : enchaîne les outils de lecture sans interruption, mais interromps la chaîne avant toute action de création/suppression/modification qui nécessite une confirmation, sauf demande explicite dans le même message.
+6. Lorsque tu utilises plusieurs outils dans un même tour, résume les résultats de façon synthétique — ne liste pas mécaniquement les sorties brutes.
+
+DONNÉES MANQUANTES — règle stricte :
+- Si les données nécessaires ne sont pas dans le contexte ET qu'aucun outil ne peut les récupérer : déclare-le explicitement ("Je n'ai pas accès aux données GA4/GSC/GBP pour cette analyse — connectez [service] depuis les Paramètres.").
+- INTERDIT : inventer des métriques, estimations, chiffres, positions, trafic, conversions, revenus, incidents — aucune donnée sans source réelle.
+- Toute estimation doit être explicitement présentée comme estimation ("environ", "probablement"), jamais comme mesure réelle.
+- Ne jamais présenter des données du compte FlowPoint comme si elles concernaient un site externe analysé.
+
 === DONNÉES RÉELLES DU COMPTE ===`;
 
   // Step 3B: attachment block (security-prefixed, XML-delimited).
@@ -1672,7 +1796,53 @@ RÈGLES D'ACTION (obligatoires) :
           metadata: { ...usageMetadata, toolCalling: true } });
         return;
       }
-      // Round 0 had no tool calls → fall through to normal aiStream below
+      // Round 0 had no tool calls AND no text → fall through to normal aiStream below.
+      // But if round0Text is set: the LLM answered from context without any tool call.
+      // Route through full finalization (nav-marker, persistChatMessage, recordCompletedUsage)
+      // — identical to aiStream finalization — without making a duplicate LLM call.
+      if (loopResult.round0Text !== undefined) {
+        const r0NavFilter = new NavMarkerFilter();
+        const r0Safe = r0NavFilter.push(loopResult.round0Text);
+        if (r0Safe) res.write(`data: ${JSON.stringify({ delta: r0Safe })}\n\n`);
+        const { remaining: r0Rem, markerJson: r0MarkerJson } = r0NavFilter.flush();
+        if (r0Rem) res.write(`data: ${JSON.stringify({ delta: r0Rem })}\n\n`);
+        const r0Reply = loopResult.round0Text;
+        if (r0MarkerJson) {
+          const r0Nav = validateNavAction(r0MarkerJson, effectivePerms, orgPlan);
+          if (r0Nav) {
+            const r0Proposal = await createNavigationProposal({
+              orgId, userId, conversationId,
+              provider: selectedProvider, model: effectiveModel,
+              navActions: [r0Nav],
+            });
+            if (r0Proposal) res.write(`data: ${JSON.stringify({ action_proposal: r0Proposal })}\n\n`);
+          }
+        }
+        // No undo tokens for text-only round-0 (no write tools were called)
+        res.write(`data: ${JSON.stringify({ _ai: aiMeta })}\n\n`);
+        res.write(`data: [DONE]\n\n`);
+        res.end();
+        const r0Latency = Date.now() - t0;
+        const r0EstIn  = Math.ceil(messages.reduce((s, m) => {
+          const c = m.content;
+          if (typeof c === "string") return s + c.length;
+          return s + (c as { type: string; text?: string }[]).reduce(
+            (cs, b) => cs + (b.type === "text" ? (b.text?.length ?? 0) : 50), 0);
+        }, 0) / 4);
+        const r0EstOut = Math.ceil(r0Reply.length / 4);
+        persistChatMessage({
+          orgId, userId, role: "assistant",
+          content: extractNavMarker(r0Reply).cleanText,
+          feature: "chat", model: effectiveModel,
+          tokensUsed: r0EstOut, conversationId,
+        }).catch(err => logger.warn({ err }, "[AI] persistChatMessage (round0 assistant) failed"));
+        recordCompletedUsageDeferred({
+          feature: "chat", orgId, userId, model: effectiveModel as AIModel,
+          provider: selectedProvider, tokensIn: r0EstIn, tokensOut: r0EstOut,
+          latencyMs: r0Latency, success: true, requestId, metadata: usageMetadata,
+        });
+        return;
+      }
     }
 
     try {

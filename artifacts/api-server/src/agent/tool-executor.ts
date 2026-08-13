@@ -1491,6 +1491,41 @@ async function dispatchTool(
     const origin = (args["origin"] as string) ?? "agent";
     if (!url.startsWith("http://") && !url.startsWith("https://")) url = `https://${url}`;
 
+    // ── Self-host / internal-host guard (executor-level, not just prompt-level) ──
+    // Reject any attempt to audit a Replit workspace, localhost, or known FlowPoint domain.
+    // This is a second line of defence: the LLM prompt already discourages self-audits,
+    // but the executor rejects them regardless of what the model was instructed to do.
+    const _AUDIT_SELF_HOST_EXACT = new Set<string>([
+      "localhost", "127.0.0.1", "0.0.0.0", "::1",
+      "flowpoint.ai", "flowpoint.app", "flowpoint.io",
+      "replit.com", "replit.dev", "replit.app", "repl.co",
+    ]);
+    // Add dynamic Replit workspace domains
+    const _devD = (process.env.REPLIT_DEV_DOMAIN ?? "").replace(/^https?:\/\//, "").split("/")[0].toLowerCase();
+    const _appD = (process.env.REPLIT_APP_DOMAIN ?? "").replace(/^https?:\/\//, "").split("/")[0].toLowerCase();
+    if (_devD) _AUDIT_SELF_HOST_EXACT.add(_devD);
+    if (_appD) _AUDIT_SELF_HOST_EXACT.add(_appD);
+
+    let _auditHostname = "";
+    try {
+      _auditHostname = new URL(url).hostname.toLowerCase();
+    } catch { _auditHostname = url.replace(/^https?:\/\//, "").split(/[/?#]/)[0].toLowerCase(); }
+    const _isSelfAuditTarget = (() => {
+      for (const sh of _AUDIT_SELF_HOST_EXACT) {
+        if (_auditHostname === sh || _auditHostname.endsWith(`.${sh}`)) return true;
+      }
+      // Wildcard suffix checks
+      if (_auditHostname.endsWith(".replit.dev") || _auditHostname.endsWith(".replit.app") || _auditHostname.endsWith(".repl.co")) return true;
+      // Private/link-local ranges (basic guard)
+      if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(_auditHostname)) return true;
+      return false;
+    })();
+    if (_isSelfAuditTarget) {
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `L'audit ne peut pas être lancé sur ce domaine (hôte interne, espace de travail ou domaine réservé). Fournissez l'URL d'un site public externe pour lancer un audit SEO.`,
+        actionLogId: logId };
+    }
+
     // Prevent duplicate within 24 h
     const dupCheck = await pool.query(
       `SELECT id FROM audits WHERE org_id=$1 AND url=$2 AND created_at > NOW() - INTERVAL '24 hours' LIMIT 1`,
