@@ -4479,8 +4479,8 @@ function initLocalSEOMap() {
       mapTypeControl:true,
       mapTypeControlOptions:_mtcOpts,
       streetViewControl:false, fullscreenControl:true,
-      zoomControl:false, // no +/- buttons — wheel/gesture zoom only
-      cameraControl:false, // newer Maps API: camera widget embeds its own zoom +/-
+      zoomControl:true,
+      cameraControl:true,
       rotateControl:false,
       gestureHandling:'cooperative',
     });
@@ -5805,18 +5805,23 @@ function renderOverview() {
         </div>
 
         <!-- Achievements -->
-        <div style="display:flex;flex-direction:column;gap:6px">
-          ${achievements.map(a => `
-            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:${a.unlocked?a.color+'08':'var(--fp-inner-card)'};border:1px solid ${a.unlocked?a.color+'22':'rgba(255,255,255,0.05)'};opacity:${a.unlocked?1:0.5}">
+        ${(function(){
+          const _achTpl = a => `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:${a.unlocked?a.color+'08':'var(--fp-inner-card)'};border:1px solid ${a.unlocked?a.color+'22':'rgba(255,255,255,0.05)'};opacity:${a.unlocked?1:0.5}">
               <div style="font-size:18px">${a.icon}</div>
               <div style="flex:1">
                 <div style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(a.title)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(a.desc)}</div>
               </div>
               ${a.unlocked ? `<div style="font-size:10px;font-weight:700;color:${a.color}">✓</div>` : `<div style="font-size:10px;color:var(--fp-text-faint)">🔒</div>`}
-            </div>
-          `).join('')}
-        </div>
+            </div>`;
+          const _LIMIT = 5;
+          const _rest = achievements.slice(_LIMIT);
+          return `<div style="display:flex;flex-direction:column;gap:6px">
+            ${achievements.slice(0, _LIMIT).map(_achTpl).join('')}
+            ${_rest.length > 0 ? `<div id="fp-badges-more" style="display:none;flex-direction:column;gap:6px">${_rest.map(_achTpl).join('')}</div>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:4px;font-size:11px" onclick="(function(btn){var el=document.getElementById('fp-badges-more');if(!el)return;var show=el.style.display==='none';el.style.display=show?'flex':'none';if(show)el.style.flexDirection='column';el.style.gap='6px';btn.textContent=show?'Voir moins ↑':'Voir plus (${_rest.length}) ↓';})(this)">Voir plus (${_rest.length}) ↓</button>` : ''}
+          </div>`;
+        })()}
       </div>
 
       <!-- DAILY DIGEST -->
@@ -6630,8 +6635,10 @@ function renderMissions() {
     STATE.missionFilter = 'all';
   }
 
+  if (!Array.isArray(STATE.missions)) STATE.missions = [];
   const filtered = STATE.missions
     .filter(m => {
+      if (!m) return false;
       if (m.status === 'dismissed' || m.status === 'stale') return false;
       if (STATE.missionFilter !== 'all' && m.status !== STATE.missionFilter) return false;
       if (STATE.missionCatFilter) {
@@ -6641,7 +6648,7 @@ function renderMissions() {
       }
       if (STATE.missionSearch) {
         const q = STATE.missionSearch.toLowerCase();
-        if (!fuzzyMatch(m.title.toLowerCase(), q) && !(m.aiExplanation||m.description||'').toLowerCase().includes(q)) return false;
+        if (!fuzzyMatch((m.title||'').toLowerCase(), q) && !(m.aiExplanation||m.description||'').toLowerCase().includes(q)) return false;
       }
       return true;
     })
@@ -21863,6 +21870,12 @@ async function init() {
     try {
       const r = await apiAction('POST', '/api/local-seo/rankings', { keyword: kw, location: city });
       if (r?.ok || r?.rankings) {
+        if (r.rankings) {
+          if (!STATE.localSeo) STATE.localSeo = {};
+          STATE.localSeo.rankings = r.rankings;
+          STATE.localSeo.rankingKeyword = kw;
+          STATE.localSeo.rankingCity = city;
+        }
         showToast('success','Rankings chargés !');
         render(STATE.currentSection);
       } else if (r?.reason === 'not_configured' || r?.configured === false) {
@@ -24575,11 +24588,11 @@ function renderMonitorsConfig() {
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;padding-top:14px;border-top:1px solid var(--fp-border)">
         <div>
           <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:7px">Intervalle de check</div>
-          <select class="fp-select" style="width:100%">
-            <option>Toutes les 30s (Ultra)</option>
-            <option>Toutes les 1 min (Pro)</option>
-            <option selected>Toutes les 5 min</option>
-            <option>Toutes les 10 min</option>
+          <select class="fp-select" style="width:100%" onchange="(function(s){if((s.value==='30s'&&!${isUltra})||(s.value==='1m'&&!${isPro})){showToast('info',s.value==='30s'?'Intervalle 30s — plan Ultra requis':'Intervalle 1 min — plan Pro requis');s.value='5m';}else{showToast('success','Intervalle sauvegardé');}})(this)">
+            <option value="30s"${isUltra?'':' disabled style="color:#64748b"'}>Toutes les 30s${isUltra?'':' (Ultra requis)'}</option>
+            <option value="1m"${isPro?'':' disabled style="color:#64748b"'}>Toutes les 1 min${isPro?'':' (Pro requis)'}</option>
+            <option value="5m" selected>Toutes les 5 min</option>
+            <option value="10m">Toutes les 10 min</option>
           </select>
         </div>
         <div>
@@ -26045,7 +26058,7 @@ function renderGrowthCommandCenter() {
     // Revenus estimés uniquement quand GA4 est connecté — jamais de montant inventé sinon
     const _roiLbl = _ga4Connected()
       ? '+' + Math.round((r.estimatedUplift || 0.08) * 1200) + '€/mois'
-      : 'Connectez GA4 pour estimer';
+      : '';
     return { title: r.title, impact: '+' + Math.round((r.estimatedUplift || 0.08) * 100) + '%', roi: _roiLbl, time: diff === 1 ? '15 min' : diff === 2 ? '45 min' : '2h', diff: diff, pct: [0,30,60,0][i] || 0 };
   }) : (function() {
     const _aw = [];
@@ -26350,7 +26363,7 @@ function renderGrowthCommandCenter() {
             </div>
             <div class="fp-growth-win-title">${escHtml(w.title)}</div>
             <div class="fp-growth-win-meta">
-              <span>💰 ${w.roi}</span>
+              ${w.roi?`<span>💰 ${w.roi}</span>`:''}
               <span>⏱ ${w.time}</span>
             </div>
             ${w.pct>0?`<div class="fp-growth-win-prog"><div style="width:${w.pct}%;background:var(--fp-accent);height:100%;border-radius:2px;transition:width .8s ease"></div></div><div style="font-size:9.5px;color:var(--fp-text-faint);margin-bottom:6px">${w.pct}% complété</div>`:''}
@@ -26507,7 +26520,7 @@ function renderGrowthCommandCenter() {
           if ((_lseo.photoCount||99) < 10) _gi.push({t:'Photos < 10 — profil incomplet', s:'med'});
           var _dpd = _lseo.lastGbpPostDaysAgo ?? null;
           if (_dpd !== null && _dpd > 14) _gi.push({t:'Posts GBP inactifs depuis '+(_dpd>21?Math.round(_dpd/7)+' semaines':_dpd+' jours'), s:'med'});
-          if (!_lseo.gbpConnected && !_lseo.domScore) _gi.push({t:'Google Business Profile non connecté', s:'high'});
+          if (!STATE.gbp?.connected && !_lseo.gbpConnected && !_lseo.domScore) _gi.push({t:'Google Business Profile non connecté', s:'high'});
           if (_gi.length===0 && (_lseo.domScore||0)>0) _gi.push({t:'Profil GBP à jour ✓', s:'ok'});
           var _sevCol = {high:'var(--fp-danger)',med:'var(--fp-warning)',ok:'#22c55e'};
           return _gi.map(function(g){ return '<div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--fp-text-muted);margin-bottom:5px"><span style="color:'+(_sevCol[g.s]||'var(--fp-warning)')+'">●</span>'+g.t+'</div>'; }).join('');
@@ -35052,15 +35065,6 @@ function renderGA4Analytics() {
         : ['Connecter GA4', 'Voir la démo']
     )}
 
-    ${aiBlock(
-      _ga4Connected()
-        ? sessions > 0
-          ? `<strong>${fmtNum(sessions)}</strong> sessions · <strong>${fmtNum(users)}</strong> utilisateurs sur 30 jours. Taux de conversion : <strong>${sessions ? ((conversions||0)/sessions*100).toFixed(2) : '0.00'}%</strong>. ${conversions > 0 ? 'Bonne performance de conversion. Analysez les sources les plus rentables.' : 'Aucune conversion trackée — configurez les événements GA4.'}`
-          : "Données GA4 chargées. Sélectionnez une période ou actualisez pour voir vos métriques."
-        : "Connectez Google Analytics 4 pour accéder à l'analyse complète de votre trafic, conversions et audience.",
-      _ga4Connected() ? ['Voir le trafic','Analyser l\'audience','Rapport analytics'] : ['Connecter GA4','Voir la démo','En savoir plus']
-    )}
-
     <!-- KPI CARDS -->
     <div class="fp-stat-row fp-mb-20">
       ${_ga4KPICard('📈', 'Sessions', sessions>0?fmtNum(sessions):(_ga4Connected()?'0':'—'), _ga4Connected()&&sessions>0&&prevSess>0?_ga4PctChange(sessions, prevSess):null, 'vs période préc.')}
@@ -35821,7 +35825,7 @@ function _fpFunnelStepRow(idx, step) {
   const matchOpts = ['EXACT','BEGINS_WITH','ENDS_WITH','CONTAINS','REGEXP','PARTIAL_REGEXP'];
   const mtSel = (sel, cur) => matchOpts.map(m => `<option value="${m}" ${m===cur?'selected':''}>${m}</option>`).join('');
 
-  return `<div class="fp-funnel-step-row" style="background:var(--fp-bg-secondary,#f8fafc);border:1px solid var(--fp-border);border-radius:8px;padding:12px 14px;margin-bottom:8px" data-step-idx="${idx}">
+  return `<div class="fp-funnel-step-row" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:12px 14px;margin-bottom:8px" data-step-idx="${idx}">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
       <span style="font-size:12px;font-weight:700;color:var(--fp-text-muted);width:22px;text-align:center">${pos}</span>
       <input class="fp-input" style="flex:1" placeholder="Nom de l'étape" value="${_fpFunnelEsc(name)}" data-field="step-name-${idx}">
@@ -41989,6 +41993,9 @@ function renderLocalDominationMaps() {
             <option value="3000" selected>3 km</option>
             <option value="5000">5 km</option>
             <option value="10000">10 km</option>
+            <option value="20000">20 km</option>
+            <option value="50000">50 km</option>
+            <option value="100000">100 km</option>
           </select>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.recenter('fp-gmap')">🎯 Recentrer</button>
           <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-gmap',document.getElementById('fp-map-keyword')?.value||'')">🔍 Analyser</button>
