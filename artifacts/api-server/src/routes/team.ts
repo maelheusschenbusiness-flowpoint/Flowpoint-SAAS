@@ -260,6 +260,22 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
       [now, inv.id]
     );
 
+    // ── Upsert into users so login-verify can find this member on reconnect ──
+    // Without this, the invited member cannot use the magic-link flow after their
+    // first session expires (login-verify falls through to legacy 404).
+    await client.query(
+      `INSERT INTO users (id, email, status, email_verified, auth_provider, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, 'active', true, 'magic_link', NOW(), NOW())
+       ON CONFLICT (email) DO UPDATE
+         SET email_verified = true,
+             status         = CASE
+                                WHEN users.status = 'suspended' THEN 'suspended'
+                                ELSE 'active'
+                              END,
+             updated_at     = NOW()`,
+      [email]
+    );
+
     // Create active team member
     const memberId  = randomUUID();
     const nowIso    = now.toISOString();
@@ -289,10 +305,15 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
       ]
     );
 
-    await client.query("COMMIT");
+    // ── Set RLS context so organization_members FORCE ROW LEVEL SECURITY policies pass ──
+    // The policy checks: organization_id = current_setting('app.current_org_id', true).
+    // FORCE ROW LEVEL SECURITY applies to ALL users (including superusers/BYPASSRLS),
+    // so setting the GUC alone is sufficient — no role change needed or attempted.
+    // We use set_config() with the parameterized form to avoid string interpolation.
+    await client.query(`SELECT set_config('app.current_org_id', $1, true)`, [inv.org_id]);
 
-    // Jalon 3 — dual-write accepted member to organization_members (fire-and-forget)
-    pool.query(
+    // ── Dual-write to organization_members (inside transaction, users row now guaranteed) ──
+    await client.query(
       `INSERT INTO organization_members
              (id, organization_id, user_id, role, status, joined_at, created_at, updated_at)
        SELECT gen_random_uuid(), $1, u.id, $2, 'active', NOW(), NOW(), NOW()
@@ -300,7 +321,9 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
        ON CONFLICT (organization_id, user_id)
          DO UPDATE SET role = EXCLUDED.role, status = 'active', updated_at = NOW()`,
       [inv.org_id, inv.role, email]
-    ).catch(err => logger.warn({ err: (err as Error).message }, "[team/accept] org_members dual-write failed (non-fatal)"));
+    );
+
+    await client.query("COMMIT");
 
     // Create session for the newly accepted member
     const sessionToken = await createSession({

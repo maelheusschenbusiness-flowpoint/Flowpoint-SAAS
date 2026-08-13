@@ -1,3 +1,4 @@
+- [Invite accept RLS pattern](invite-accept-rls-pattern.md) — SET LOCAL "app.current_org_id" + try/catch SET ROLE needed before any org_members DML in raw pool.connect() tx
 - [Accept-invitation session & role bugs](accept-invitation-session-bugs.md) — token key mismatch + missing cookie in accept flow; me.ts fallback was "owner" not "member"
 - [Skeleton shimmer animation pattern](skeleton-shimmer-animation.md) — shimmer needs fpSlide (background-position) not fpSkeleton (opacity); 2.2s ease-in-out for coherent rhythm
 - [Pricing plan auth guard](pricing-plan-auth-guard.md) — anti-flash localStorage read must check _hasActiveSession before marking current plan
