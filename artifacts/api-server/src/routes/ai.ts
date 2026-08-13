@@ -2095,8 +2095,23 @@ router.post("/ai/conversations/:id/confirm", async (req: Request, res: Response)
       effectivePerms, orgPlan,
     };
 
+    // Stable trace ID for production log correlation: prefer a client-supplied
+    // X-Request-Id header (set by dashboard.js on POST), fall back to a compact timestamp token.
+    const traceId = (req.headers["x-request-id"] as string | undefined)
+      ?? `tr${Date.now().toString(36)}`;
+
+    logger.info(
+      { traceId, proposalId, orgId, userId, convId, toolName, argsUrl: (args["url"] as string | undefined) ?? null },
+      "[agent/confirm] dispatching tool"
+    );
+
     const toolCall: AIToolCall = { id: toolCallId, name: toolName, arguments: args };
     const execResult = await executeTool(toolCall, toolCtx);
+
+    logger.info(
+      { traceId, proposalId, orgId, toolName, ok: execResult.ok, content: execResult.content?.slice(0, 120) },
+      "[agent/confirm] tool execution complete"
+    );
 
     // Mark proposal as confirmed
     await pool.query(
@@ -2107,15 +2122,22 @@ router.post("/ai/conversations/:id/confirm", async (req: Request, res: Response)
     res.json({
       ok: execResult.ok,
       content: execResult.content,
+      // Bridge: when the executor rejects (ok:false), the frontend checks `r.error` for
+      // the user-facing rejection message.  Executors set `content` (not `error`) on
+      // failure, so we mirror `content` into `error` here to prevent "Échec de
+      // l'exécution." from appearing when a more specific reason is available.
+      ...(!execResult.ok ? { error: execResult.content || "Échec de l'exécution." } : {}),
       data: execResult.data ?? null,
       undoToken: execResult.ok && execResult.undoLabel
         ? { actionLogId: execResult.actionLogId, label: execResult.undoLabel, ttlMinutes: 30 }
         : null,
       navProposal: execResult.navProposal ?? null,
+      traceId,
     });
   } catch (err) {
-    logger.error({ err, proposalId, orgId }, "[agent] confirm failed");
-    res.status(500).json({ ok: false, error: "Erreur lors de l'exécution" });
+    const traceId = (req.headers["x-request-id"] as string | undefined) ?? `tr${Date.now().toString(36)}`;
+    logger.error({ err, proposalId, orgId, traceId }, "[agent] confirm failed");
+    res.status(500).json({ ok: false, error: "Erreur lors de l'exécution", traceId });
   }
 });
 

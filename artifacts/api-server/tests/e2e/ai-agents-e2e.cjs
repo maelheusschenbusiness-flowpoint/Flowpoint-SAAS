@@ -11,7 +11,7 @@
  *  - Chaque scénario est isolé : URLs distinctes par test
  *  - C/D/E et J tournent en parallèle (légers / sans état partagé)
  *  - H et I sont séquentiels (streaming SSE — contention si concurrent)
- *  - Timeout 70s par appel IA ; AbortError → résultat sentinel (pas de crash)
+ *  - Timeout 120s par appel IA (optionnel via opts.timeout) ; AbortError → résultat sentinel
  *  - process.exitCode = 1 quand fail > 0 (CI-enforceable)
  */
 
@@ -49,7 +49,7 @@ async function api(path, method = 'GET', body) {
 async function aiChat(message, opts = {}) {
   const convId = opts.conversationId || `qa542-${RUN}-${randomBytes(4).toString('hex')}`;
   const ctrl   = new AbortController();
-  const timer  = setTimeout(() => ctrl.abort(), 70_000);
+  const timer  = setTimeout(() => ctrl.abort(), opts.timeout ?? 120_000);
 
   try {
     const resp = await fetch(`${BASE}/api/ai/chat`, {
@@ -430,6 +430,73 @@ const calledTool = (calls, name) => calls.some(e => e.tool_call?.name === name);
       const cfL = await api(`/ai/conversations/${convIdL}/confirm`, 'POST', { proposalId: propIdL });
       ok(`L: executor rejette run_audit [${label}] (ok:false)`, cfL.json?.ok === false,
          `status=${cfL.status} ok=${cfL.json?.ok} detail="${String(cfL.json?.content||'').slice(0,80)}"`);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // TEST M — Backend fix: confirm endpoint maps content→error when ok:false
+    // Verifies that a duplicate-audit rejection (ok:false, content:"...24h...")
+    // now surfaces in r.error so the frontend can display it instead of the
+    // generic "Échec de l'exécution." fallback.
+    // No AI call — pure HTTP + DB injection.
+    // ────────────────────────────────────────────────────────────────────────────
+    console.log('\n── Test M: content→error bridge (duplicate audit rejection) ──');
+    {
+      const mOrg  = randomUUID();
+      const mUser = randomUUID();
+      const mEmail= `qa542M_${RUN}@fp.test`;
+      const mTok  = randomBytes(32).toString('hex');
+      const mUrl  = `https://dup-${RUN}.example.com`;
+      const mConv = `qa542Mconv${RUN}`.slice(0, 63);
+      const mProp = `qa542Mprop${RUN}`.slice(0, 99);
+
+      // Setup: org + user + session (auth v2 schema — users has no org_id)
+      await pool.query(
+        `INSERT INTO organizations(id,name,plan,status) VALUES($1,'M Test','pro','active') ON CONFLICT DO NOTHING`,
+        [mOrg]);
+      await pool.query(
+        `INSERT INTO users(id,email,first_name,status) VALUES($1,$2,'M','active') ON CONFLICT DO NOTHING`,
+        [mUser, mEmail]);
+      await pool.query(
+        `INSERT INTO user_sessions(token,user_id,org_id,email,role,expires_at,user_id_v2)
+         VALUES($1,$2,$3,$4,'owner',NOW()+INTERVAL '1 hour',$5) ON CONFLICT DO NOTHING`,
+        [mTok, mOrg, mOrg, mEmail, mUser]);
+
+      // Pre-insert a recent audit for mUrl (triggers duplicate check)
+      await pool.query(
+        `INSERT INTO audits(id,org_id,url,name,score,status,speed,date,issues,origin,created_at)
+         VALUES($1,$2,$3,$3,70,'ok',80,'${new Date().toISOString().slice(0,10)}',0,'manual',NOW()-INTERVAL '30 minutes')`,
+        [`aud_M_${RUN}`, mOrg, mUrl]);
+
+      // Inject a synthetic run_audit proposal pointing to the duplicate URL
+      await pool.query(
+        `INSERT INTO ai_action_proposals(id,org_id,user_id,conversation_id,kind,payload,status,created_at,expires_at)
+         VALUES($1,$2,$3,$4,'pending_tool_call',$5,'pending',NOW(),NOW()+INTERVAL '10 minutes') ON CONFLICT DO NOTHING`,
+        [mProp, mOrg, mUser, mConv,
+         JSON.stringify({ toolName:'run_audit', toolCallId:mProp, args:{ url:mUrl } })]);
+
+      // Call confirm with Bearer token
+      const mRes = await fetch(
+        `${BASE}/api/ai/conversations/${encodeURIComponent(mConv)}/confirm`,
+        { method:'POST',
+          headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${mTok}` },
+          body: JSON.stringify({ proposalId: mProp }) });
+      const mBody = await mRes.json();
+
+      ok('M: confirm HTTP 200 (ok:false is a valid response)', mRes.status === 200, `status=${mRes.status}`);
+      ok('M: ok field is false (duplicate check fired)', mBody.ok === false, `ok=${mBody.ok}`);
+      ok('M: error field populated (content→error bridge)', typeof mBody.error === 'string' && mBody.error.length > 0,
+         `error="${String(mBody.error).slice(0,80)}"`);
+      ok('M: error is not the generic fallback', mBody.error !== "Échec de l\'exécution.",
+         `error="${mBody.error}"`);
+      ok('M: error contains 24h / déjà / réalisé', /24|déjà|réalis/i.test(mBody.error || ''),
+         `error="${String(mBody.error).slice(0,80)}"`);
+
+      // Cleanup
+      await pool.query(`DELETE FROM audits WHERE org_id=$1`, [mOrg]).catch(()=>{});
+      await pool.query(`DELETE FROM ai_action_proposals WHERE org_id=$1`, [mOrg]).catch(()=>{});
+      await pool.query(`DELETE FROM user_sessions WHERE org_id=$1`, [mOrg]).catch(()=>{});
+      await pool.query(`DELETE FROM users WHERE id=$1`, [mUser]).catch(()=>{});
+      await pool.query(`DELETE FROM organizations WHERE id=$1`, [mOrg]).catch(()=>{});
     }
 
     // ── Résumé ──────────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { mailer } from "./mailer.js";
+import { store } from "./store.js";
 
 // ── SEO Alert evaluation ──────────────────────────────────────────────────────
 
@@ -41,6 +42,8 @@ export async function evaluateAlertRulesForAudit(url: string, score: number, org
               siteUrl:     url,
               dedupeKey,
             });
+            // Push real-time SSE so the frontend sidebar badge refreshes immediately
+            store.broadcast({ type: "alert:update", eventType: "seo_score", siteUrl: url }, orgId);
           } catch (aeErr) {
             logger.warn({ err: aeErr }, "[monitor-cron] alert_event write failed (non-fatal)");
           }

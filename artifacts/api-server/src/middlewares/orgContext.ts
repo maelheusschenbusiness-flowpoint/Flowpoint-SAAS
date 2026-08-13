@@ -94,8 +94,8 @@ async function _orgContext(req: Request, res: Response, next: NextFunction): Pro
         // For API calls return structured JSON so the frontend JS can handle it.
         // For page/browser navigation redirect to signin so the user sees the login
         // form rather than raw JSON text.
-        // Note: /api/dashboard* serves dashboard HTML (not JSON) — treat as page navigation.
-        const isDashboardPage = req.url?.startsWith("/api/dashboard");
+        // Note: /dashboard serves dashboard HTML (not JSON) — treat as page navigation.
+        const isDashboardPage = req.url?.startsWith("/dashboard");
         const isApiCall       = req.url?.startsWith("/api/") && !isDashboardPage;
         if (isApiCall) {
           res.status(401).json({ error: "session_expired", reason: "legacy_session" });

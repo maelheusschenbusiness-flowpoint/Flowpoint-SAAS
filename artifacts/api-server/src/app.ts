@@ -232,31 +232,31 @@ function servePage(file: string) {
 }
 
 // ── Favicon — serve all assets explicitly, never cached ──
-app.get(["/favicon.svg", "/api/dashboard/favicon.svg"], (_req: Request, res: Response): void => {
+app.get("/favicon.svg", (_req: Request, res: Response): void => {
   res.setHeader("Content-Type", "image/svg+xml");
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.setHeader("Expires", "0");
   res.sendFile(path.join(dashboardDir, "favicon.svg"));
 });
-app.get(["/favicon.ico", "/api/dashboard/favicon.ico"], (_req: Request, res: Response): void => {
+app.get("/favicon.ico", (_req: Request, res: Response): void => {
   res.setHeader("Content-Type", "image/x-icon");
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.setHeader("Expires", "0");
   res.sendFile(path.join(dashboardDir, "favicon.ico"));
 });
-app.get(["/favicon-32x32.png", "/api/dashboard/favicon-32x32.png"], (_req: Request, res: Response): void => {
+app.get("/favicon-32x32.png", (_req: Request, res: Response): void => {
   res.setHeader("Content-Type", "image/png");
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.setHeader("Expires", "0");
   res.sendFile(path.join(dashboardDir, "favicon-32x32.png"));
 });
-app.get(["/favicon-16x16.png", "/api/dashboard/favicon-16x16.png"], (_req: Request, res: Response): void => {
+app.get("/favicon-16x16.png", (_req: Request, res: Response): void => {
   res.setHeader("Content-Type", "image/png");
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.setHeader("Expires", "0");
   res.sendFile(path.join(dashboardDir, "favicon-16x16.png"));
 });
-app.get(["/apple-touch-icon.png", "/api/dashboard/apple-touch-icon.png"], (_req: Request, res: Response): void => {
+app.get("/apple-touch-icon.png", (_req: Request, res: Response): void => {
   res.setHeader("Content-Type", "image/png");
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.setHeader("Expires", "0");
@@ -310,7 +310,7 @@ app.get("/index.html", (_req: Request, res: Response) => res.redirect(301, "/sig
 app.get("/", (_req: Request, res: Response) => res.redirect(301, "/signin.html"));
 app.get(["/index", "/signup", "/inscription", "/signin", "/signin.html"], servePage("signin.html"));
 // Dashboard — primary app entry point (authenticated)
-app.get(["/dashboard", "/dashboard.html", "/api/dashboard", "/api/dashboard/", "/api/dashboard/dashboard.html"], servePage("dashboard.html"));
+app.get(["/dashboard", "/dashboard.html"], servePage("dashboard.html"));
 // Login (kept for direct link access / legacy)
 app.get(["/login", "/login.html"], servePage("login.html"));
 // Login verify (magic-link callback)
@@ -399,8 +399,13 @@ app.get("/.well-known/security.txt", (_req: Request, res: Response): void => {
   );
 });
 
+// ── Legacy /api/dashboard/* aliases — redirect to canonical URL ──────────────
+// These routes were removed; redirect any lingering bookmarks to /dashboard.html
+app.get(["/api/dashboard", "/api/dashboard/", "/api/dashboard/dashboard.html"], (_req: Request, res: Response) => {
+  res.redirect(301, "/dashboard.html");
+});
+
 app.use("/", staticCache, express.static(dashboardDir, { index: false }));
-app.use("/api/dashboard", staticCache, express.static(dashboardDir));
 
 // ── 10. All API routes ────────────────────────────────────────────────────────
 app.use("/api", router);

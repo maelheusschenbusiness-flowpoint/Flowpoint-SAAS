@@ -368,6 +368,9 @@ async function saveCheckResult(
                 dedupeKey:  `mon_down_${orgId}_${monitorId}_${String(rule["id"])}`,
               });
             }
+            // Push SSE so every connected client refreshes STATE.alertEvents immediately
+            // (without this, the sidebar badge only updates on page reload).
+            store.broadcast({ type: "alert:update", monitorId, status: "down", siteUrl: monUrl }, orgId);
           } finally { rClient.release(); }
         } else {
           // Resolve open monitor_down events for this monitor
@@ -393,6 +396,8 @@ async function saveCheckResult(
                 monitorId,
               });
             }
+            // Notify connected clients to refresh alert state (resolved events)
+            store.broadcast({ type: "alert:update", monitorId, status: "up", siteUrl: monUrl }, orgId);
           } finally { rClient.release(); }
         }
       } catch { /* non-fatal */ }

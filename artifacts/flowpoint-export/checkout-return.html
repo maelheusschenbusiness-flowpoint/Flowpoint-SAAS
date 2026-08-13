@@ -11,7 +11,7 @@
   <meta name="robots" content="noindex, nofollow"/>
   <meta id="fp-meta-tc" name="theme-color" content="#050810"/>
   <title>Vérification du paiement — FlowPoint</title>
-  <script>(function(){try{var d=window.matchMedia('(prefers-color-scheme:dark)').matches;document.documentElement.setAttribute('data-theme',d?'dark':'light');var m=document.getElementById('fp-meta-tc');if(m)m.content=d?'#050810':'#f8faff';}catch(e){}})();</script>
+  <script>(function(){try{var t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme')||(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#050810';}catch(e){}})();</script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root { --bg: #0b1120; --surface: #111827; --border: rgba(255,255,255,0.08); --blue: #2563eb; --text: #f1f5f9; --text-soft: #94a3b8; --green: #34d399; }
@@ -24,9 +24,19 @@
     .fp-sub { font-size: 14px; color: var(--text-soft); max-width: 340px; line-height: 1.55; }
     .fp-check { font-size: 42px; }
     .fp-btn { display: inline-flex; align-items: center; justify-content: center; padding: 12px 24px; background: linear-gradient(135deg,#2563eb,#4f46e5); color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; text-decoration: none; margin-top: 6px; }
+    .fp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; margin-bottom: 12px; }
+    .fp-logo-name { font-size: 19px; font-weight: 700; color: var(--text); letter-spacing: -.3px; }
   </style>
 </head>
 <body>
+  <a href="/" class="fp-logo" aria-label="FlowPoint">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="36" height="36" aria-hidden="true">
+      <defs><linearGradient id="fp-cr-g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/></linearGradient></defs>
+      <rect x="0" y="0" width="48" height="48" rx="10" ry="10" fill="url(#fp-cr-g)"/>
+      <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></g>
+    </svg>
+    <span class="fp-logo-name">FlowPoint</span>
+  </a>
   <div class="fp-spinner" id="fp-spinner"></div>
   <div class="fp-check" id="fp-check" style="display:none">✅</div>
   <div class="fp-title" id="fp-title">Finalisation de votre compte…</div>

@@ -2074,7 +2074,7 @@ router.get("/auth/dev-login", async (req: Request, res: Response) => {
   const email    = (req.query["email"]  as string) || "test@flowpoint.pro";
   const orgId    = (req.query["orgId"]  as string) || "default";
   const role     = (req.query["role"]   as string) || "admin";
-  const redirect = (req.query["redirect"] as string) || "/api/dashboard/";
+  const redirect = (req.query["redirect"] as string) || "/dashboard.html";
   try {
     const token = await createSession({
       userId: email, orgId, email, role,

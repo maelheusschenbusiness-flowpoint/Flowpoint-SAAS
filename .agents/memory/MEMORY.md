@@ -4,13 +4,10 @@
 - [Router catch-all plan gate pattern](router-catchall-plangate.md) — router.use(requireFeature()) with no path prefix intercepts ALL unmatched routes; always path-scope it
 - [Nav item delegation fix](nav-delegation-fix.md) — nav + infinite-skeleton regressions share root cause: delegation must be at IIFE global scope, not inside bindGlobalEvents()
 - [FlowPoint production context](flowpoint-context.md) — 10-phase spec, full mock inventory, P0/P1/P2 blockers; read before any session
-- [Billing/activity P1 fixes](billing-activity-p1-fixes.md) — 3 commits: store.me eliminated from billing, session revocation awaited, activity_logs org-scoped
 - [org_settings → organizations migration](org-settings-migration-complete.md) — 7 jalons done; organizations is sole billing source; column name map; what still reads org_settings (profile only)
 - [Auth migration v2 — Stripe-gated signup](auth-migration-v2.md) — schema (users/org_members/orgs), 6-check login-verify, Stripe-only activation; 10/10 validated 2026-07-27
 - [pool.query() org_id audit](pool-query-orgid-audit.md) — all pool.query() on tenant tables need explicit org_id; RLS bypassed for postgres superuser; pg_class.relforcerowsecurity not pg_tables.forcedrowsecurity
-- [Billing P0 fixes](billing-p0-fixes.md) — 6 P0 fixes implemented 2026-07-24; patterns for webhook orgId, planGate DB-first, checkQuota async, email from DB
 - [Stripe checkout add_invoice_items](stripe-checkout-invoice-items.md) — add_invoice_items invalid in checkout.sessions.create() (2026-04-22.dahlia); use stripe.invoiceItems.create() before session instead
-- [Billing audit findings](billing-audit-findings.md) — store.me singleton contamination, persistSubscriptionMeta orgId="default" bug, full P0/P1 list + reliability estimates
 - [ensureStripeCustomer pattern](ensure-stripe-customer.md) — P0 service at services/ensure-stripe-customer.ts; DB-first, concurrency lock, deleted-customer recovery, metadata search before create
 - [GA4 funnel v1alpha service](ga4-funnel-service-pattern.md) — runConfiguredFunnel via v1alpha; setGA4FunnelBaseUrl for QA; google_tokens UNIQUE(org_id,account_id) not org_id alone
 - [displayStat helper pattern](displaystat-pattern.md) — canonical guard for fabricated metrics in dashboard.js; use displayStat(liveVal, previewFallback) not raw literals; PREVIEW_MODE gates subtitles.
@@ -22,7 +19,6 @@
 - [Public vs Protected Routes](public-routes-pattern.md) — behavioral snippet/event/session and SSO SAML endpoints must be on publicBehavioralRouter/publicSsoRouter before requireAuth in routes/index.ts
 - [Alert rules extended types](alert-rules-types.md) — monitor_down and keyword_ranking_drop added; monitor_down fires on state transition (no threshold), keyword_ranking_drop fires when drop > N positions
 - [alert_events operator nullable](alert-events-operator.md) — operator column must be NULL-able; event-based types (monitor_down/up) have no operator; DROP NOT NULL in init-data-tables.ts
-- [FlowPoint audit session findings](flowpoint-audit-hardening.md) — billing-service needs prod guard (throw/503) when Stripe key missing; SSRF runs after auth (401 before URL validation = correct); auth rate limit 10/15min per IP; ai-worker buildFallbackResult returns generic recs tagged mock:true on OpenAI failure
 - [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
 - [AI provider strict mode](ai-provider-strict-mode.md) — strictProvider=true dans aiChat/aiStream désactive fallback cross-provider; uniquement /ai/chat; matrice provider×mode dans ai-provider-matrix.ts
@@ -43,7 +39,6 @@
 - [QA self-contained session pattern](qa-self-contained-sessions.md) — all QA suites use pg + randomBytes; ensureOrg+createSession in each file; RUN=Date.now() suffix; ultra plan for Lot B (10 seats); E2E group needs SEPARATE fresh org to avoid quota saturation
 - [FlowPoint billing production state](flowpoint-billing-prod.md) — NODE_ENV=production, mock=false confirmed; plans.ts has live price IDs with env var overrides; webhook rejects unsigned in prod (correct)
 - [FlowPoint Playwright auth](flowpoint-playwright-auth.md) — HttpOnly cookie blocks testing subagent; use Bearer header for API tests instead
-- [GET :id routes missing](get-id-routes.md) — monitors/competitors/keywords/reports/alert-rules all lacked GET :id; added in one pass
 - [Billing store.me singleton email bug](billing-email-singleton.md) — store.me.email is always null; use req.orgContext?.email instead
 - [Render boot errors — org_settings schema gaps](render-boot-errors.md) — 3 startup errors fixed: RLS conditional, trial_ends_at/email/first_name columns, cron catch level
 - [withOrgDb Supabase role degradation](withorgdb-supabase.md) — SET LOCAL ROLE app_user must be try/caught; Supabase DATABASE_URL user may not have the role granted; GUC-only mode still enforces RLS
@@ -70,7 +65,6 @@
 - [QA fixture injection pattern](qa-fixture-injection.md) — _qa_result MUST use apiSvc() (X-Api-Key), not api() (Bearer→403); isQaFixturesEnabled() multi-condition guard; guard Phase 1 needs server restart without flag
 - [audits.date TEXT column](audits-date-column.md) — audits.date is TEXT NOT NULL DEFAULT ''; never compare it to a timestamp; use created_at (TIMESTAMP) for date-range duplicate checks
 - [_doRender crash pattern](dorender-crash-pattern.md) — nav/breadcrumb updated BEFORE html=renderXxx(); if renderer throws, page.innerHTML is never written and old DOM stays; fix: try/catch around switch block
-- [Wave 2 Lot B investigation context](lotb-investigation-context.md) — MON-001/ALT-002/ALT-003/REP-001/MON-002 each need targeted investigation before any code; constraints per bug documented
 - [Monitor check rule eval scope](monitor-check-rule-eval.md) — latency/uptime evaluation must be a standalone fire-and-forget IIFE after every check; NOT inside if(notifyAfterCommit)
 - [Alert rules enabled vs active](alert-rules-enabled-field.md) — backend returns `enabled` (boolean), never `active`; dashboard.js had 3 r.active refs on alertRules (L3684, L4161, L16074) — all fixed to r.enabled
 - [activity.ts parameterized SQL](activity-sql-params.md) — GET /api/activity now supports limit(1-200)/page/type via SQL; id included in SELECT for 60s-poll dedup; always returns array (backward compat)
@@ -78,10 +72,6 @@
 - [Wave 3 RBAC pattern](wave3-rbac.md) — requireRole exports, role matrix, ALLOWED roles, organizations table
 - [Alert-events service-only gate](alert-events-service-gate.md) — POST /alert-events blocked for user sessions via userId check (not role); service bypass in routes/index.ts allows userId="service" past org-context gate
 - [QA harness run order](qa-harness.md) — never parallelize purge with suite runs; purge deletes session tokens mid-test; always purge LAST after all suites; B3 _qa_result calls must use apiSvc()
-- [Lot B team QA isolation](lot-b-qa-isolation.md) — GROUP 15 needs its own org (G15_ORG); ultra plan saturates with accumulated members from prior groups; DB constraint test must use same org_id as first insert ($2=G15_ORG not ORG)
-- [Lot 4B audit findings](lot4b-audit-findings.md) — P0: behavior_events/sessions/traffic_losses RLS=(true), getRevenueLeakData ignores siteUrl, getCROData superuser pool; P1: funnel steps 2-5 fake ratios, 27 PREVIEW_MODE occurrences, CRO templates not AI
-- [Drizzle schema vs actual DB mismatches](drizzle-schema-mismatches.md) — behaviorSessions/croScores/croExperiments/revenueLeaks had wrong columns; fixes required
-- [Wave 4 Part 1 — Acquisition routes](wave4-part1-acquisition.md) — analytics/traffic/campaigns thin-wrapper services + 12 endpoints; dashboard.js API modules pattern; QA orgs use user_sessions (not sessions), organizations lacks trial_ends_at
 - [Overview insights quota-vs-no_data order](overview-insights-priority.md) — quota_exhausted must be checked BEFORE no_data; "0" string from COUNT(*) is truthy, use Number(x)>0 for DB row guards
 - [Overview insights RL + fixed credits](overview-insights-rl.md) — PG SELECT FOR UPDATE mutex; fixedCreditCost:500 bypasses gpt-4o-mini multiplier (0.4); cache hits skip slot; QA: bust in-process hot cache by changing audit score (new context hash)
 - [P0 auth isolation fixes](auth-isolation-fixes.md) — store.me global singleton causes cross-user leakage; me.ts fallback must use safe defaults; login-verify.js must purgeUserCache before redirect
@@ -113,11 +103,12 @@
 - [Cumulative usage events + addon Stripe sync](billing-usage-events.md) — usage never decrements on delete (GREATEST(live,events)); paid addons add/remove Stripe subscription items on activate/deactivate
 - [AI usage tracking atomic](ai-usage-tracking-atomic.md) — log+monthly upsert in one tx gated on RETURNING; legacy orgIds via resolveCanonicalOrgUuid; AI tables UUID org_id + FK organizations
 - [Team messages pitfalls](team-messages-pitfalls.md) — never filter by org.created_at; normalize channels (strip #, lowercase); log swallowed GET errors
-- [Lot 398 fix patterns](lot398-fix-patterns.md) — activity icon fallback, canonical usage source, AI 503 codes, subscriber plan-change in dashboard, initial spinner, org_addons truth
 - [Google Maps POI + dark InfoWindows](gmaps-poi-place-details.md) — ev.stop() on placeId clicks, server-side place-details/photo proxy, .gm-style-iw dark CSS; audit_schedules.next_run is bigint epoch ms
 - [Google signup pre-register continuation](google-signup-preregister.md) — pending_billing OAuth signup must carry a pending_signups token to signin.html plan screen, never a bare redirect
 - [google_product_connections per-product flags](google-product-connections.md) — GBP/GA4/GSC status/disconnect via per-product flags + resolveOrgId; token presence alone never decides
 - [AI Agents Phase 6 — Monitors & Alertes](ai-agents-phase6.md) — 12 outils, 7 permissions, 8 destinations; batch undo MUST be before const id=snap["id"] line; delete_monitor 3 protections; 124/124 certifiés 2026-08-02
+- [Confirm endpoint content→error bridge](confirm-endpoint-error-field.md) — executor sets content (not error) on ok:false; confirm must mirror to error field; fail-closed permissions must be fail-open for missing table
+- [SSE two registries — store vs events.ts](sse-two-registries-bug.md) — store.broadcast() and /api/events are DISJOINT; events.ts must bridge via store.addSseClient() on connect + removeSseClient on close
 - [Response cache org key](response-cache-org-key.md) — withCache keyed by URL only leaked org-scoped responses cross-tenant; cache keys must include req.orgId
 - [Bare :not([data-theme]) pitfall](css-not-theme-selector.md) — dark-only rules must be html:not([data-theme="light"]); bare :not() matches any ancestor and leaks into light mode
 - [Mobile viewport overflow / iOS zoom-out](mobile-viewport-overflow.md) — hidden absolute checkboxes escape scroll clips, fixed bars at left:sidebar-w inflate min-content; debug by hiding subtrees vs scrollWidth

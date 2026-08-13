@@ -2536,11 +2536,18 @@
      */
     confirmAction: async function(conversationId, proposalId) {
       try {
-        return await window._fpFetch('/api/ai/conversations/' + conversationId + '/confirm', {
+        // Generate a per-request trace ID so backend logs can be correlated with UI events.
+        var _traceId = 'tr' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        var resp = await window._fpFetch('/api/ai/conversations/' + conversationId + '/confirm', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ proposalId: proposalId, language: (window.STATE && window.STATE.settings && window.STATE.settings.language) || localStorage.getItem('fp:language') || 'fr' }),
+          headers: { 'Content-Type': 'application/json', 'X-Request-Id': _traceId },
+          body: JSON.stringify({ proposalId: proposalId, language: (window.STATE && window.STATE.settings && window.STATE.settings.language) || localStorage.getItem('fp:language') || 'fr' }),
         });
+        // When ok:false, prefer content (executor rejection reason) then error field, then generic.
+        if (resp && resp.ok === false && !resp.error && resp.content) {
+          resp.error = resp.content;
+        }
+        return resp;
       } catch(e) {
         console.warn('[FP_AI_CHAT] confirmAction error', e);
         // Propager le vrai message serveur (proposition expirée, déjà traitée…)
@@ -2747,6 +2754,21 @@
       // Legacy format support
       if (data.type === 'team:message' || data.type === 'chat') {
         try { document.dispatchEvent(new CustomEvent('fp:team:message', { detail: data })); } catch(_) {}
+      }
+      // ── Alert events — re-fetch and refresh sidebar badge in real time ──────────────
+      if (data.type === 'alert:update' || data.type === 'alert:new') {
+        if (window.STATE && typeof window.apiFetch === 'function') {
+          window.apiFetch('/api/alert-events').then(function(events) {
+            if (!Array.isArray(events)) return;
+            window.STATE.alertEvents = events;
+            if (typeof window.renderSidebarStatus === 'function') {
+              try { window.renderSidebarStatus(); } catch(_) {}
+            }
+            if (window.STATE.route === 'alerts-center' || window.STATE.route === 'alerts') {
+              if (typeof window.render === 'function') { try { window.render(); } catch(_) {} }
+            }
+          }).catch(function() {});
+        }
       }
     }
 

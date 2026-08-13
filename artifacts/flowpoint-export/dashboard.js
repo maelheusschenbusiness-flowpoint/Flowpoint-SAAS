@@ -20998,9 +20998,8 @@ async function init() {
     _s.textContent = [
       '@keyframes spin { to { transform: rotate(360deg); } }',
       '@keyframes fp-fade-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }',
-      '@keyframes fp-skel { 0%,100%{opacity:.45} 50%{opacity:.9} }',
-      '.fp-skel-shimmer { background: linear-gradient(90deg,rgba(255,255,255,0.04) 0%,rgba(255,255,255,0.12) 50%,rgba(255,255,255,0.04) 100%); background-size:200% 100%; animation: fp-skel-slide 1.4s linear infinite; }',
-      '@keyframes fp-skel-slide { 0%{background-position:200% 0} 100%{background-position:-200% 0} }',
+      '@keyframes fp-skel { 0%,100%{opacity:.48} 50%{opacity:.62} }',
+      '.fp-skel-shimmer { background:rgba(255,255,255,0.04); animation:fp-skel 3s ease-in-out infinite; }',
     ].join('\n');
     document.head.appendChild(_s);
   }());
@@ -37086,9 +37085,11 @@ window.fpAiConfirmAction = async function(proposalId, btnEl) {
     }
   }
   try {
+    // Generate a per-request trace ID so backend logs can be correlated.
+    var _confirmTraceId = 'tr' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     var r = await apiFetch('/api/ai/conversations/' + encodeURIComponent(convId) + '/confirm', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Request-Id': _confirmTraceId },
       body: JSON.stringify({ proposalId: proposalId, language: (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr' }),
     });
     if (!r) { // apiFetch renvoie null sur 401 (redirection en cours)
@@ -37096,9 +37097,10 @@ window.fpAiConfirmAction = async function(proposalId, btnEl) {
       btnEl.textContent = origText;
       return;
     }
+    // When ok:false, prefer r.content (executor rejection reason) then r.error, then fallback.
     var resultText = r.ok
       ? '✅ ' + (r.content || fpT('Action effectuée.'))
-      : '⚠ ' + (r.error || fpT('Échec de l\'exécution.'));
+      : '⚠ ' + (r.content || r.error || fpT('Échec de l\'exécution.'));
     _applyResult(r.ok, resultText, r.undoToken);
     if (r.ok) { STATE.missions = null; loadMissions && loadMissions().catch(function(){}); }
   } catch(e) {
@@ -37199,7 +37201,8 @@ window.fpAiPanelConfirm = async function(proposalId, convId, confirmBtn, card, m
     var _confirmTimeout = new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('Délai dépassé (15s) — réessayez')); }, 15000); });
     var r = await Promise.race([_confirmPromise, _confirmTimeout]);
     if (card) {
-      var resultText = r.ok ? '✅ ' + (r.content || fpT('Action effectuée.')) : '⚠ ' + (r.error || fpT('Échec de l\'exécution.'));
+      // When ok:false, prefer r.content (executor rejection reason) then r.error, then fallback.
+      var resultText = r.ok ? '✅ ' + (r.content || fpT('Action effectuée.')) : '⚠ ' + (r.content || r.error || fpT('Échec de l\'exécution.'));
       card.innerHTML = '<span style="font-size:11px;color:var(--fp-text-soft)">' + resultText + '</span>';
       if (r.ok && r.undoToken && r.undoToken.actionLogId) {
         var logId = r.undoToken.actionLogId;

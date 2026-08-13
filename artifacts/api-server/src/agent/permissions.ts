@@ -112,6 +112,15 @@ export async function resolveEffectivePermissions(
       else if (r.mode === "revoke") bundle.delete(r.permission);
     }
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // If the table simply does not exist yet (first deploy before init-agent-tables runs),
+    // return the role bundle rather than locking out all AI tools. The table holds only
+    // *overrides* on top of role defaults; an absent table means "no overrides" → safe to
+    // fall back to the role bundle.  For any other DB error, remain fail-closed.
+    if (msg.includes("does not exist") || msg.includes("relation") && msg.includes("not exist")) {
+      logger.warn({ orgId }, "[agent] org_member_permissions table absent — returning role bundle (no overrides)");
+      return bundle;
+    }
     logger.error({ err, orgId }, "[agent] org_member_permissions unreadable — FAIL CLOSED (zéro permission agent)");
     return new Set<string>();
   }

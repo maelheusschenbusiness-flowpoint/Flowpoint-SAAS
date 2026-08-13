@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
+import { store } from "../services/store.js";
 
 const router = Router();
 
@@ -61,6 +62,14 @@ router.get("/events", (req: Request, res: Response) => {
 
   const orgSet = getOrgClients(orgId);
   orgSet.add(res);
+
+  // ── BRIDGE: register this client in store._sseByOrg so store.broadcast()
+  // (used by team chat, audit events, billing updates, etc.) reaches /api/events
+  // clients. Without this bridge the two SSE registries are completely disjoint.
+  const storeSend = (data: string): void => {
+    try { res.write(data); } catch { orgSet.delete(res); store.removeSseClient(orgId, storeSend); }
+  };
+  store.addSseClient(orgId, storeSend);
 
   // Send initial welcome + org-scoped monitor snapshot
   (async () => {
@@ -136,12 +145,14 @@ router.get("/events", (req: Request, res: Response) => {
     clearInterval(heartbeat);
     clearInterval(monitorPoll);
     orgSet.delete(res);
+    store.removeSseClient(orgId, storeSend);
   });
 
   req.on("error", () => {
     clearInterval(heartbeat);
     clearInterval(monitorPoll);
     orgSet.delete(res);
+    store.removeSseClient(orgId, storeSend);
   });
 });
 
