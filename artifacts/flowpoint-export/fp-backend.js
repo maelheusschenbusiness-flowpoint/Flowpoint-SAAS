@@ -2740,6 +2740,14 @@
       if (!data || !data.type) return;
       if (data.type === 'monitor_update' && data.monitor) handleMonitorUpdate(data.monitor);
       if (data.type === 'notification'   && data.notification) handleNotificationUpdate(data.notification);
+      // ── Team chat — dispatch CustomEvent so fp-backend chat handler picks it up ──
+      if (data.type === 'chat:message') {
+        try { document.dispatchEvent(new CustomEvent('fp:chat:message', { detail: data })); } catch(_) {}
+      }
+      // Legacy format support
+      if (data.type === 'team:message' || data.type === 'chat') {
+        try { document.dispatchEvent(new CustomEvent('fp:team:message', { detail: data })); } catch(_) {}
+      }
     }
 
     function handleMonitorUpdate(monitor) {

@@ -13223,7 +13223,11 @@ function renderAI() {
         <div class="fp-section-sub"><span style="color:#2563EB;font-weight:700">IA Performante</span> · Contexte complet workspace · Réponses &lt; 3s</div>
       </div>
       <div class="fp-section-actions">
-        <select id="fp-ai-provider-select" class="fp-select" style="font-size:11px;color:var(--fp-text-muted);font-weight:600;opacity:0.65;cursor:not-allowed" disabled title="Choix du fournisseur IA — bientôt disponible"><option>🔒 Fournisseur IA — bientôt disponible</option></select>
+        <select id="fp-ai-provider-select" class="fp-select" style="font-size:11px;font-weight:600" title="Fournisseur IA" onchange="(function(v){STATE.aiProvider=v;try{localStorage.setItem('fp:ai-provider',v);}catch(_){}if(typeof window.fpSyncAiBadge==='function')window.fpSyncAiBadge();})(this.value)">
+          <option value="openai"    ${STATE.aiProvider==='openai'    ?'selected':''}>🤖 GPT-5 — OpenAI</option>
+          <option value="anthropic" ${STATE.aiProvider==='anthropic' ?'selected':''}>🟣 Claude — Anthropic</option>
+          <option value="gemini"    ${STATE.aiProvider==='gemini'    ?'selected':''}>💎 Gemini — Google</option>
+        </select>
         ${btn(fpT('Nouvelle conv.'),'fp-btn fp-btn-ghost fp-btn-sm','','onclick="window.fpClearAiChat()"')}
       </div>
     </div>
