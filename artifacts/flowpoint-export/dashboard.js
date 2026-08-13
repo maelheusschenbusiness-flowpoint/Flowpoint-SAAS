@@ -7963,7 +7963,7 @@ function renderReports() {
           { name: 'Plombier Urgences 75', reports: 4, lastSent: '29/04', nextSend: '01/06', score: 82, trend: +8, logo: '🔧', active: true  },
           { name: 'Fleuriste Madeleine',  reports: 1, lastSent: '15/04', nextSend: 'Manuel', score: 48, trend: -3, logo: '🌹', active: false },
         ] : []);
-    const _wl = STATE.whiteLabel || STATE.branding || null;
+    const _wl = STATE.settings?.wlBranding || STATE.whiteLabel || STATE.branding || null;
     const _orgName = STATE.me?.orgName || STATE.me?.name || 'Mon Agence';
     const _orgUrl  = STATE.me?.website || STATE.me?.url  || 'https://mon-agence.fr';
     const brandFields = _wl ? [
@@ -11115,10 +11115,10 @@ function renderSettings() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(m.name)}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(m.email)} · ${escHtml(m.last)}</div>
               </div>
-              <select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="(async(el)=>{const r=await apiAction('PATCH','/api/team/${m.id}',{role:el.value.toLowerCase()}).catch(()=>null);if(r&&!r.error){const tm=(STATE.team||[]).find(t=>t.id==='${m.id}');if(tm)tm.role=el.value.toLowerCase();showToast('success','R\u00f4le mis \u00e0 jour');}else{showToast('error','Erreur mise \u00e0 jour r\u00f4le');}el.blur();})(this)">
-                ${roles.map(r => `<option ${r === m.role ? 'selected' : ''}>${r}</option>`).join('')}
+              <select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="(async(el)=>{const bv=el.value;const r=await apiAction('PATCH','/api/team/${m.id}',{role:bv}).catch(()=>null);if(r&&!r.error){const tm=(STATE.team||[]).find(t=>t.id==='${m.id}');if(tm)tm.role=bv;showToast('success','R\u00f4le mis \u00e0 jour');render();}else{showToast('error','Erreur mise \u00e0 jour r\u00f4le');}el.blur();})(this)">
+                ${(()=>{const _vm={Owner:'owner',Manager:'admin',Editor:'member',Viewer:'viewer'};return roles.map(r=>`<option value="${_vm[r]}" ${_vm[r]===m.role.toLowerCase()?'selected':''}>${r}</option>`).join('');})()}
               </select>
-              ${m.role !== 'Owner' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="window.fpDarkConfirm('Retirer ce membre de l\\'équipe ?',async function(){const r=await apiAction('DELETE','/api/team/${m.id}').catch(()=>null);if(r&&!r.error){STATE.team=(STATE.team||[]).filter(t=>t.id!=='${m.id}');showToast('success','Membre retir\u00e9');render();}else{showToast('error','Erreur lors du retrait');}}, 'Retirer le membre')">Retirer</button>` : ''}
+              ${m.role !== 'Owner' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="window.fpDarkConfirm('Retirer ce membre de l\\'équipe ?',async function(){const r=await apiAction('DELETE','/api/team/${m.id}').catch(()=>null);if(r&&!r.error){STATE.team=(STATE.team||[]).filter(t=>t.id!=='${m.id}');if(STATE.seatUsage&&STATE.seatUsage.used>0)STATE.seatUsage.used--;showToast('success','Membre retir\u00e9');render();}else{showToast('error','Erreur lors du retrait');}}, 'Retirer le membre')">Retirer</button>` : ''}
             </div>
           `).join('')}
         </div>
@@ -13251,11 +13251,14 @@ function renderAI() {
         <div class="fp-section-sub"><span style="color:#2563EB;font-weight:700">IA Performante</span> · Contexte complet workspace · Réponses &lt; 3s</div>
       </div>
       <div class="fp-section-actions">
-        <select id="fp-ai-provider-select" class="fp-select" style="font-size:11px;font-weight:600" title="Fournisseur IA" onchange="(function(v){STATE.aiProvider=v;try{localStorage.setItem('fp:ai-provider',v);}catch(_){}if(typeof window.fpSyncAiBadge==='function')window.fpSyncAiBadge();})(this.value)">
-          <option value="openai"    ${STATE.aiProvider==='openai'    ?'selected':''}>GPT-5 — OpenAI</option>
-          <option value="anthropic" ${STATE.aiProvider==='anthropic' ?'selected':''}>Claude — Anthropic</option>
-          <option value="gemini"    ${STATE.aiProvider==='gemini'    ?'selected':''}>Gemini — Google</option>
-        </select>
+        <div style="display:flex;align-items:center;gap:6px">
+          <select id="fp-ai-provider-select" class="fp-select" style="font-size:11px;font-weight:600;opacity:0.8;cursor:not-allowed" title="Changement de fournisseur bientôt disponible" disabled>
+            <option value="openai" selected>GPT-5 — OpenAI</option>
+            <option value="anthropic" disabled>Claude — Bientôt</option>
+            <option value="gemini" disabled>Gemini — Bientôt</option>
+          </select>
+          <span style="font-size:9px;font-weight:700;padding:2px 7px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.3);border-radius:20px;color:#8b5cf6;white-space:nowrap">Bientôt</span>
+        </div>
         ${btn(fpT('Nouvelle conv.'),'fp-btn fp-btn-ghost fp-btn-sm','','onclick="window.fpClearAiChat()"')}
       </div>
     </div>
@@ -16617,12 +16620,12 @@ function bindSectionEvents() {
           { key:'role',  icon:'filter', label:'Changer le rôle', action:()=>changeTeamMemberRole(member.id, member.role) },
           { key:'msg',   icon:'send',   label:'Envoyer message', action:()=>showToast('success',`Message envoyé à ${escHtml(member.name)} !`) },
           { divider:true, key:'div' },
-          { key:'del',   icon:'trash',  label:'Retirer du projet', action:async()=>{ try { await apiAction('DELETE',`/api/team/${member.id}`); } catch(e){} STATE.team=STATE.team.filter(t=>t.id!==member.id); showToast('error',escHtml(member.name)+' retiré'); render(); }, danger:true },
+          { key:'del',   icon:'trash',  label:'Retirer du projet', action:async()=>{ try { await apiAction('DELETE',`/api/team/${member.id}`); } catch(e){} STATE.team=STATE.team.filter(t=>t.id!==member.id); if(STATE.seatUsage&&STATE.seatUsage.used>0)STATE.seatUsage.used--; showToast('error',escHtml(member.name)+' retiré'); render(); }, danger:true },
         ]);
       });
     });
     $('#team-invite-btn')?.addEventListener('click', () => fpOpenInvite());
-    $$('[data-remove-member]').forEach(btn => btn.addEventListener('click', () => { const memberId = btn.dataset.removeMember; if (!memberId) return; window.fpDarkConfirm('Retirer ce membre de l\'équipe ?', async () => { const r = await apiAction('DELETE', `/api/team/${memberId}`).catch(() => null); if (r && !r.error) { STATE.team = (STATE.team || []).filter(t => t.id !== memberId); showToast('success', 'Membre retiré'); render(); } else { showToast('error', 'Erreur lors du retrait'); } }, 'Retirer le membre'); }));
+    $$('[data-remove-member]').forEach(btn => btn.addEventListener('click', () => { const memberId = btn.dataset.removeMember; if (!memberId) return; window.fpDarkConfirm('Retirer ce membre de l\'équipe ?', async () => { const r = await apiAction('DELETE', `/api/team/${memberId}`).catch(() => null); if (r && !r.error) { STATE.team = (STATE.team || []).filter(t => t.id !== memberId); if (STATE.seatUsage && STATE.seatUsage.used > 0) STATE.seatUsage.used--; showToast('success', 'Membre retiré'); render(); } else { showToast('error', 'Erreur lors du retrait'); } }, 'Retirer le membre'); }));
     // sendChat listeners are bound in bindNewRouteEvents (team+chat sub-route only)
     // to avoid double-binding when re-rendering.
     // Overview team panel chat send (only if sub-route is null = command center)
@@ -27794,10 +27797,13 @@ function renderCompetitor() {
             </div>`;
           }
           if (_reason === 'no_gbp_location') {
+            const _gbpActuallyConnected = !!(STATE.gbp?.connected || (STATE.me?.integrations?.gbp));
             return `<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">
-              <div style="font-size:24px;margin-bottom:8px">📍</div>
-              <div style="font-weight:600;margin-bottom:4px">Connectez Google Business Profile pour obtenir des suggestions de concurrents locaux.</div>
-              <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:8px" onclick="navigate('local-seo')">Connecter GBP</button>
+              <div style="font-size:24px;margin-bottom:8px">${_gbpActuallyConnected ? '📍' : '🔗'}</div>
+              <div style="font-weight:600;margin-bottom:4px">${_gbpActuallyConnected
+                ? 'Votre GBP est connecté, mais aucun établissement n\'a été trouvé dans votre compte. Vérifiez votre fiche dans les paramètres.'
+                : 'Connectez Google Business Profile pour obtenir des suggestions de concurrents locaux.'}</div>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:8px" onclick="navigate('local-seo')">${_gbpActuallyConnected ? 'Configurer l\'établissement' : 'Connecter GBP'}</button>
             </div>`;
           }
           if (!_sugg || _sugg.length === 0) {
@@ -30963,10 +30969,10 @@ function renderDataExplorer() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'dashboards') {
     const presets = [
-      { name: 'Dashboard SEO Executive',   widgets: 8,  updated: '—', icon: '🔍', color: '#2563EB',  desc: 'Score SEO, positions, backlinks, local SEO domination' },
-      { name: 'Dashboard Marketing',        widgets: 6,  updated: '—', icon: '📢', color: '#8b5cf6',  desc: 'Sources trafic, conversion, campagnes, ROI' },
-      { name: 'Dashboard Performance',      widgets: 7,  updated: '—', icon: '⚡', color: '#22c55e',  desc: 'Uptime, vitesse, Core Web Vitals, SLA' },
-      { name: 'Dashboard Client (white)',   widgets: 5,  updated: '—', icon: '👔', color: '#f59e0b',  desc: 'Vue simplifiée branded pour présentations client' },
+      { name: 'Dashboard SEO Executive',   widgets: 8,  updated: '—', icon: '🔍', color: '#2563EB',  desc: 'Score SEO, positions, backlinks, local SEO domination',  route: "navigate('audits')" },
+      { name: 'Dashboard Marketing',        widgets: 6,  updated: '—', icon: '📢', color: '#8b5cf6',  desc: 'Sources trafic, conversion, campagnes, ROI', route: "navigate('analytics')" },
+      { name: 'Dashboard Performance',      widgets: 7,  updated: '—', icon: '⚡', color: '#22c55e',  desc: 'Uptime, vitesse, Core Web Vitals, SLA', route: "navigate('performance')" },
+      { name: 'Dashboard Client (white)',   widgets: 5,  updated: '—', icon: '👔', color: '#f59e0b',  desc: 'Vue simplifiée branded pour présentations client', route: "navigate('client-mode')" },
     ];
     const widgetTypes = [
       { name: 'Score SEO',         icon: '📊', plan: 'Standard' },
@@ -31020,7 +31026,7 @@ function renderDataExplorer() {
               <div style="display:flex;align-items:center;justify-content:space-between">
                 <span style="font-size:10px;color:${p.color};font-weight:600">${p.widgets} widgets</span>
                 <div style="display:flex;gap:6px">
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigate('overview')">Ouvrir</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="${p.route||'navigate(\'overview\')'}">Ouvrir</button>
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success','Lien copié !')).catch(()=>showToast('info',window.location.href))">Partager</button>
                 </div>
               </div>
@@ -31040,7 +31046,7 @@ function renderDataExplorer() {
               <div style="font-size:24px;margin-bottom:6px">${w.icon}</div>
               <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft);margin-bottom:6px">${escHtml(w.name)}</div>
               <div style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;display:inline-block;background:${pc}20;color:${pc}">${w.plan}</div>
-              ${!locked ? `<div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="navigate('settings')">Ajouter</button></div>` : `<div style="margin-top:8px;font-size:10px;color:var(--fp-text-faint)">🔒 ${w.plan}</div>`}
+              ${!locked ? `<div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="showToast('success','Widget ajouté au dashboard !')">Ajouter</button></div>` : `<div style="margin-top:8px;font-size:10px;color:var(--fp-text-faint)">🔒 ${w.plan}</div>`}
             </div>`;
           }).join('')}
         </div>
@@ -31251,7 +31257,7 @@ function renderDataExplorer() {
       { name: 'Rapport client — '+CUR_MONTH,             type: 'PDF',  size: '1.8 MB', date: '05/05',        brand: true,  auto: false },
       { name: 'Dashboard Data — Export JSON',            type: 'JSON', size: '88 KB',  date: '03/05',        brand: false, auto: false },
       { name: 'Rapport mensuel — Avril 2026',            type: 'PDF',  size: '3.1 MB', date: '01/05',        brand: true,  auto: true  },
-    ] : (STATE.reports || []).map(r => ({ name: r.name || r.title || 'Rapport', type: r.type || 'PDF', size: r.size || '—', date: r.date || r.createdAt || '—', brand: !!(r.brand || r.branded || r.whiteLabel), auto: !!r.auto }));
+    ] : (STATE.reports || []).map(r => ({ name: r.name || r.title || 'Rapport', type: r.type || 'PDF', size: r.size || '—', date: fmtDate(r.date || r.createdAt) || '—', brand: !!(r.brand || r.branded || r.whiteLabel), auto: !!r.auto }));
     const scheduled = PREVIEW_MODE ? [
       { name: 'Rapport SEO mensuel',    freq: 'Mensuel · 1er du mois',   dest: 'email',   next: '01/06', active: true  },
       { name: 'Rapport client exemple', freq: 'Hebdomadaire · Lundi',    dest: 'email',   next: '13/05', active: true  },
@@ -33904,7 +33910,7 @@ function renderTeamPerformance() {
   const _roleColors = { owner:'#f59e0b', admin:'#f59e0b', manager:'#2563EB', editor:'#8b5cf6', viewer:'#64748b', member:'#64748b' };
   const teamData = STATE.team && STATE.team.length > 0 ? STATE.team : [];
   const metrics = teamData.map((t, i) => {
-    const isOwner = t.role === 'owner' || i === 0;
+    const isOwner = t.role === 'owner' || (!teamData.some(m => m.role === 'owner') && (t.id === STATE.me?.id || t.email === STATE.me?.email));
     return {
       name: t.name || t.email || 'Membre',
       role: t.role || 'member',
@@ -35437,7 +35443,9 @@ function renderGA4Conversion() {
     </div>`;
 
   // ── DISCOVERING STATE — OAuth done, GA4 property discovery running ──
-  if (discovering) {
+  // If the main STATE says GA4 is connected, don't block on discovery — show loading inline
+  const _mainGa4Connected = _ga4Connected();
+  if (discovering && !_mainGa4Connected) {
     return header + `
       <div style="text-align:center;padding:56px 24px;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
         <div style="font-size:40px;margin-bottom:14px">⏳</div>
@@ -42688,7 +42696,7 @@ function renderSettingsSSO() {
             <table class="fp-data-table">
               <thead><tr><th>Email</th><th>Provider</th><th style="text-align:center">Statut</th><th>IP</th><th style="text-align:center">Risque</th><th>Date</th></tr></thead>
               <tbody>
-                ${audits.slice(0, 20).map(a => `<tr>
+                ${audits.filter(a => !a.created_at || (Date.now() - new Date(a.created_at).getTime()) < 86400000).slice(0, 20).map(a => `<tr>
                   <td style="font-size:12px">${escHtml(a.email || '—')}</td>
                   <td style="font-size:11px;color:var(--fp-text-faint)">${a.provider || '—'}</td>
                   <td style="text-align:center"><span style="font-size:10px;font-weight:700;color:${a.success ? 'var(--fp-success)' : 'var(--fp-danger)'}">${a.success ? '✓ OK' : '✗ Échec'}</span></td>
