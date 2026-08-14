@@ -1018,6 +1018,14 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       });
       return;
     }
+    // Non-active org_settings shell (pending_billing / none / canceled / etc.) left by old
+    // server code or a failed activation — clean it up so it never blocks a fresh attempt.
+    if (_dup?.orgId && !_isActiveAccount) {
+      pool.query(
+        `DELETE FROM org_settings WHERE lower(org_id::text) = lower($1)`,
+        [normalizedEmail]
+      ).catch((e: unknown) => logger.warn({ e }, "[Auth/PreRegister] stale org_settings cleanup (guard) failed (non-fatal)"));
+    }
   } catch (_dupErr) {
     logger.warn({ err: _dupErr, email: normalizedEmail }, "[Auth/PreRegister] duplicate check failed (non-fatal)");
   }
