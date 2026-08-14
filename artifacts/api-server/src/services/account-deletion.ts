@@ -591,6 +591,35 @@ export async function deleteAccount(target: DeletionTarget): Promise<DeletionRep
       });
     }
 
+    // ── 2e-bis. Pending (never-activated) users by email ─────────────────
+    // Users with status='pending' were never added to organization_members,
+    // so they are absent from fullyDeleted and not caught above.
+    // Delete them explicitly so re-registration with the same email works.
+    if (email) {
+      const _puBefore = await client.query(
+        `SELECT COUNT(*)::int AS n FROM users WHERE lower(email)=lower($1) AND status='pending'`,
+        [email],
+      );
+      const _puCount = (_puBefore.rows[0] as { n: number }).n;
+      if (_puCount > 0) {
+        const _puDel = (await client.query(
+          `DELETE FROM users WHERE lower(email)=lower($1) AND status='pending'`,
+          [email],
+        )) as unknown as { rowCount: number };
+        const _puAfter = await client.query(
+          `SELECT COUNT(*)::int AS n FROM users WHERE lower(email)=lower($1) AND status='pending'`,
+          [email],
+        );
+        tableRecords.push({
+          table: "users",
+          predicate: "lower(email)=lower($1) AND status='pending'",
+          rowsBefore: _puCount,
+          rowsDeleted: _puDel.rowCount ?? 0,
+          rowsAfter: (_puAfter.rows[0] as { n: number }).n,
+        });
+      }
+    }
+
     for (const [table, pred] of [
       ["org_settings", "org_id::text = $1"],
       ["organizations", "id::text = $1"],
@@ -614,6 +643,37 @@ export async function deleteAccount(target: DeletionTarget): Promise<DeletionRep
         rowsDeleted: del.rowCount ?? 0,
         rowsAfter: (after.rows[0] as { n: number }).n,
       });
+    }
+
+    // ── 2e-ter. Legacy email-keyed org_settings (org_id = email, not UUID) ──
+    // Old server code wrote org_settings with org_id = email (not UUID).
+    // The UUID-based deletion above misses these. Delete by email to ensure
+    // re-registration with the same address is never blocked after deletion.
+    if (email) {
+      const _osEmailBefore = await client.query(
+        `SELECT COUNT(*)::int AS n FROM org_settings
+         WHERE lower(org_id::text) = lower($1) AND org_id::text <> $2`,
+        [email, orgId],
+      );
+      const _osEmailCount = (_osEmailBefore.rows[0] as { n: number }).n;
+      if (_osEmailCount > 0) {
+        const _osEmailDel = (await client.query(
+          `DELETE FROM org_settings WHERE lower(org_id::text) = lower($1) AND org_id::text <> $2`,
+          [email, orgId],
+        )) as unknown as { rowCount: number };
+        const _osEmailAfter = await client.query(
+          `SELECT COUNT(*)::int AS n FROM org_settings
+           WHERE lower(org_id::text) = lower($1) AND org_id::text <> $2`,
+          [email, orgId],
+        );
+        tableRecords.push({
+          table: "org_settings",
+          predicate: "lower(org_id::text)=lower($email) [legacy email-keyed]",
+          rowsBefore: _osEmailCount,
+          rowsDeleted: _osEmailDel.rowCount ?? 0,
+          rowsAfter: (_osEmailAfter.rows[0] as { n: number }).n,
+        });
+      }
     }
 
     // ── 2f. Refuse to commit if anything survived ─────────────────────────
