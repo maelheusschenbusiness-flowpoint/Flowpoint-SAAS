@@ -1032,7 +1032,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     const _pendClient = await pool.connect();
     try {
       const _pend = await _pendClient.query(
-        `SELECT token FROM pending_signups
+        `SELECT token, stripe_customer_id FROM pending_signups
          WHERE email = $1 AND expires_at > NOW() AND consumed_at IS NULL
          LIMIT 1`,
         [normalizedEmail]
@@ -1051,11 +1051,35 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
           return;
         }
         // Case B: checkout was abandoned — invalidate stale token, allow retry
+        const _staleCustomerId = (_pend.rows[0] as { token: string; stripe_customer_id: string | null })?.stripe_customer_id ?? null;
         await _pendClient.query(
           `UPDATE pending_signups SET consumed_at = NOW()
            WHERE email = $1 AND consumed_at IS NULL`,
           [normalizedEmail]
         );
+        // Clean up any stale org_settings rows left by old server versions
+        // (e.g. pending_billing shell created by older Render code). Non-fatal.
+        await _pendClient.query(
+          `DELETE FROM org_settings
+           WHERE lower(org_id::text) = lower($1)
+             AND (subscription_status IS NULL
+               OR subscription_status = ''
+               OR subscription_status = 'pending_billing'
+               OR subscription_status = 'none')`,
+          [normalizedEmail]
+        ).catch((e: unknown) => logger.warn({ e }, "[Auth/PreRegister] stale org_settings cleanup failed (non-fatal)"));
+        // Fire-and-forget: delete orphaned Stripe customer from the abandoned checkout
+        if (_staleCustomerId) {
+          (async () => {
+            try {
+              const { createStripeClient: _csClient } = await import("../services/stripe-factory.js");
+              await _csClient().customers.del(_staleCustomerId);
+              logger.info({ customerId: _staleCustomerId }, "[Auth/PreRegister] Stale Stripe customer deleted");
+            } catch (e) {
+              logger.warn({ customerId: _staleCustomerId, err: e }, "[Auth/PreRegister] Stale Stripe customer cleanup failed (non-fatal)");
+            }
+          })();
+        }
         logger.info({ email: normalizedEmail }, "[Auth/PreRegister] stale pending signup invalidated — user may retry");
       }
     } finally {
@@ -1090,7 +1114,10 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     await pgPool.query(
       `INSERT INTO users (email, first_name, last_name, auth_provider, email_verified, status)
        VALUES ($1, $2, $3, 'magic_link', FALSE, 'pending')
-       ON CONFLICT (email) DO NOTHING`,
+       ON CONFLICT (email) DO UPDATE
+         SET first_name = EXCLUDED.first_name,
+             last_name  = EXCLUDED.last_name
+         WHERE users.status = 'pending'`,
       [normalizedEmail, fn, ln]
     );
     logger.info({ email: normalizedEmail }, "[Auth/PreRegister] users row created (status=pending)");
