@@ -347,7 +347,8 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         // Create Stripe Customer with full contact info (never empty)
         const customerData: Stripe.CustomerCreateParams = {
           email: signupRow.email,
-          name:  `${signupRow.first_name} ${signupRow.last_name}`.trim(),
+          name:  `${signupRow.first_name} ${signupRow.last_name}`.trim() || signupRow.company_name,
+          ...(signupRow.company_name ? { description: signupRow.company_name } : {}),
           metadata: {
             flowpointOrgId:     signupRow.email,
             flowpointUserId:    signupRow.email,
@@ -684,6 +685,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           const _piCustomerData = {
             email:              _piEmail,
             name:               _piName,
+            ...(_piRow.company_name ? { description: _piRow.company_name } : {}),
             preferred_locales:  ["fr"] as string[],
             metadata: {
               orgId: _piEmail, org_id: _piEmail, flowpointOrgId: _piEmail,
@@ -709,10 +711,12 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
                 preRegCustomerId = _piRow.stripe_customer_id;
                 /* Patch missing fields on the existing customer */
                 const _piEcFull = _piEc as { name?: string | null; address?: unknown };
-                const _piNeedsUpdate = !_piEcFull.name || !_piEcFull.address;
+                const _piEcFull2 = _piEc as { name?: string | null; address?: unknown; description?: string | null };
+                const _piNeedsUpdate = !_piEcFull.name || !_piEcFull.address || (!_piEcFull2.description && !!_piRow.company_name);
                 if (_piNeedsUpdate) {
                   await stripe.customers.update(preRegCustomerId, {
                     ...(!_piEcFull.name ? { name: _piCustomerData.name } : {}),
+                    ...(!_piEcFull2.description && _piRow.company_name ? { description: _piRow.company_name } : {}),
                     preferred_locales: ["fr"],
                     ...(_piAddr?.line1 && !_piEcFull.address && _piCustomerData.address
                       ? { address: _piCustomerData.address as import("stripe").Stripe.AddressParam }
@@ -731,9 +735,10 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
               if ((_piFoundEc as { deleted?: boolean }).deleted) continue;
               preRegCustomerId = _piFoundEc.id;
               /* Patch missing fields */
-              const _piFoundFull = _piFoundEc as { name?: string | null; address?: unknown };
+              const _piFoundFull = _piFoundEc as { name?: string | null; address?: unknown; description?: string | null };
               await stripe.customers.update(preRegCustomerId, {
                 ...(!_piFoundFull.name ? { name: _piCustomerData.name } : {}),
+                ...(!_piFoundFull.description && _piRow.company_name ? { description: _piRow.company_name } : {}),
                 preferred_locales: ["fr"],
                 ...(_piAddr?.line1 && !_piFoundFull.address && _piCustomerData.address
                   ? { address: _piCustomerData.address as import("stripe").Stripe.AddressParam }
@@ -1288,6 +1293,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       const _fcPrt2 = preRegisterToken || intentMeta["pre_register_token"] || "";
       let _fcSignupName = "";
       let _fcSignupEmail = "";
+      let _fcSignupCompany = "";
       if (_fcPrt2) {
         const { pool: _fcEnrichPool } = await import("@workspace/db");
         const _fcEnrichC = await _fcEnrichPool.connect();
@@ -1299,22 +1305,24 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           );
           const _fcRow = _fcER.rows[0];
           if (_fcRow) {
-            _fcSignupName  = `${_fcRow.first_name ?? ""} ${_fcRow.last_name ?? ""}`.trim() || _fcRow.company_name || "";
-            _fcSignupEmail = _fcRow.email || "";
+            _fcSignupName    = `${_fcRow.first_name ?? ""} ${_fcRow.last_name ?? ""}`.trim() || _fcRow.company_name || "";
+            _fcSignupEmail   = _fcRow.email || "";
+            _fcSignupCompany = _fcRow.company_name || "";
           }
         } finally { _fcEnrichC.release(); }
       }
 
       /* 3. Merge: prefer signup for name/email, PM billing_details for address */
-      const _fcFinalName  = _fcSignupName  || _fcPmBd?.name  || "";
-      const _fcFinalEmail = _fcSignupEmail || _fcPmBd?.email || "";
-      const _fcHasPmAddr  = !!(_fcPmAddr?.line1 && _fcPmAddr?.country);
+      const _fcFinalName    = _fcSignupName    || _fcPmBd?.name  || "";
+      const _fcFinalEmail   = _fcSignupEmail   || _fcPmBd?.email || "";
+      const _fcHasPmAddr    = !!(_fcPmAddr?.line1 && _fcPmAddr?.country);
 
       const _fcUpdate: Parameters<typeof stripe.customers.update>[1] = {
         invoice_settings: { default_payment_method: paymentMethodId! },
         preferred_locales: ["fr"],
-        ...(_fcFinalName  ? { name:  _fcFinalName  } : {}),
-        ...(_fcFinalEmail ? { email: _fcFinalEmail } : {}),
+        ...(_fcFinalName    ? { name:        _fcFinalName    } : {}),
+        ...(_fcFinalEmail   ? { email:       _fcFinalEmail   } : {}),
+        ...(_fcSignupCompany ? { description: _fcSignupCompany } : {}),
         ...(_fcHasPmAddr  ? {
           address: {
             line1:       _fcPmAddr!.line1  ?? "",
