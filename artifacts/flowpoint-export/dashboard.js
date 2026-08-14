@@ -6657,9 +6657,16 @@ function renderMissions() {
       return true;
     })
     .sort((a, b) => {
-      if (STATE.missionSort === 'impact') return (impactRank[b.impact] || 0) - (impactRank[a.impact] || 0);
-      if (STATE.missionSort === 'priority') return ((b.priorityScore||0) - (a.priorityScore||0));
-      return new Date(a.dueDate||a.date||0) - new Date(b.dueDate||b.date||0);
+      try {
+        if (STATE.missionSort === 'impact') return (impactRank[b.impact] || 0) - (impactRank[a.impact] || 0);
+        if (STATE.missionSort === 'priority') return ((b.priorityScore||0) - (a.priorityScore||0));
+        const da = a.dueDate||a.due_date||a.date||null;
+        const db = b.dueDate||b.due_date||b.date||null;
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return new Date(da).getTime() - new Date(db).getTime();
+      } catch(_e) { return 0; }
     });
 
   const statusLabels = { todo:'À démarrer', inprogress:'En cours', done:'Complétées', in_progress:'En cours', completed:'Terminée', open:'À démarrer', blocked:'Bloqué' };
@@ -11119,7 +11126,7 @@ function renderSettings() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(m.name)}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(m.email)} · ${escHtml(m.last)}</div>
               </div>
-              <select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="(async(el)=>{const bv=el.value;const r=await apiAction('PATCH','/api/team/${m.id}',{role:bv}).catch(()=>null);if(r&&!r.error){const tm=(STATE.team||[]).find(t=>t.id==='${m.id}');if(tm)tm.role=bv;showToast('success','R\u00f4le mis \u00e0 jour');render();}else{showToast('error','Erreur mise \u00e0 jour r\u00f4le');}el.blur();})(this)">
+              <select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="(async(el)=>{const bv=el.value;const r=await apiAction('PATCH','/api/team/${m.id}',{role:bv}).catch(()=>null);if(r&&!r.error){const tm=(STATE.team||[]).find(t=>t.id==='${m.id}');if(tm)tm.role=bv;showToast('success','R\u00f4le mis \u00e0 jour');render();}else{showToast('error',(r&&r.error)||'Erreur mise \u00e0 jour r\u00f4le');}el.blur();})(this)">
                 ${(()=>{const _vm={Owner:'owner',Manager:'admin',Editor:'member',Viewer:'viewer'};return roles.map(r=>`<option value="${_vm[r]}" ${_vm[r]===m.role.toLowerCase()?'selected':''}>${r}</option>`).join('');})()}
               </select>
               ${m.role !== 'Owner' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="window.fpDarkConfirm('Retirer ce membre de l\\'équipe ?',async function(){const r=await apiAction('DELETE','/api/team/${m.id}').catch(()=>null);if(r&&!r.error){STATE.team=(STATE.team||[]).filter(t=>t.id!=='${m.id}');if(STATE.seatUsage&&STATE.seatUsage.used>0)STATE.seatUsage.used--;showToast('success','Membre retir\u00e9');render();}else{showToast('error','Erreur lors du retrait');}}, 'Retirer le membre')">Retirer</button>` : ''}
@@ -33499,6 +33506,19 @@ function renderLocalSEOMap() {
         <div id="fp-gmap" style="width:100%;height:520px"
           data-lat="${defLat}" data-lng="${defLng}" data-radius="3000" data-keyword="${escHtml(defKeyword)}"
           data-name="${escHtml(defName)}"></div>
+        <!-- Zoom + pan controls overlay (top-right, above attribution) -->
+        <div id="fp-gmap-nav" style="position:absolute;top:10px;right:10px;z-index:6;display:flex;flex-direction:column;align-items:center;gap:2px;background:rgba(10,14,27,0.88);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:5px;box-shadow:0 2px 8px rgba(0,0,0,0.4)">
+          <button title="Zoom +" onclick="(function(){var inst=window.FP_MAPS_API&&window.FP_MAPS_API._mapInstances&&window.FP_MAPS_API._mapInstances['fp-gmap'];if(inst&&inst.map)inst.map.setZoom(inst.map.getZoom()+1);})()" style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--fp-text,#e2e8f0);font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer">+</button>
+          <button title="Zoom −" onclick="(function(){var inst=window.FP_MAPS_API&&window.FP_MAPS_API._mapInstances&&window.FP_MAPS_API._mapInstances['fp-gmap'];if(inst&&inst.map)inst.map.setZoom(inst.map.getZoom()-1);})()" style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--fp-text,#e2e8f0);font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer">−</button>
+          <div style="width:20px;height:1px;background:rgba(255,255,255,0.1);margin:2px 0"></div>
+          <button title="Déplacer ↑" onclick="(function(){var inst=window.FP_MAPS_API&&window.FP_MAPS_API._mapInstances&&window.FP_MAPS_API._mapInstances['fp-gmap'];if(inst&&inst.map)inst.map.panBy(0,-90);})()" style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--fp-text,#e2e8f0);font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer">↑</button>
+          <div style="display:flex;gap:2px">
+            <button title="← Gauche" onclick="(function(){var inst=window.FP_MAPS_API&&window.FP_MAPS_API._mapInstances&&window.FP_MAPS_API._mapInstances['fp-gmap'];if(inst&&inst.map)inst.map.panBy(-90,0);})()" style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--fp-text,#e2e8f0);font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer">←</button>
+            <button title="Recentrer" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.recenter('fp-gmap')" style="width:28px;height:28px;border-radius:6px;background:rgba(37,99,235,0.25);border:1px solid rgba(37,99,235,0.4);color:#60a5fa;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:800">●</button>
+            <button title="→ Droite" onclick="(function(){var inst=window.FP_MAPS_API&&window.FP_MAPS_API._mapInstances&&window.FP_MAPS_API._mapInstances['fp-gmap'];if(inst&&inst.map)inst.map.panBy(90,0);})()" style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--fp-text,#e2e8f0);font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer">→</button>
+          </div>
+          <button title="Déplacer ↓" onclick="(function(){var inst=window.FP_MAPS_API&&window.FP_MAPS_API._mapInstances&&window.FP_MAPS_API._mapInstances['fp-gmap'];if(inst&&inst.map)inst.map.panBy(0,90);})()" style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--fp-text,#e2e8f0);font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer">↓</button>
+        </div>
       </div>
 
       <!-- SIDE PANEL -->
@@ -33773,6 +33793,19 @@ function renderCompetitorsMap() {
         <div id="fp-competitors-map" style="width:100%;height:540px"
           data-lat="${defLat}" data-lng="${defLng}" data-radius="5000" data-keyword="${escHtml(defKeyword)}"
           data-mode="competitors"></div>
+        <!-- Zoom + pan controls overlay -->
+        <div id="fp-comp-map-nav" style="position:absolute;top:10px;right:10px;z-index:6;display:flex;flex-direction:column;align-items:center;gap:2px;background:rgba(10,14,27,0.88);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:5px;box-shadow:0 2px 8px rgba(0,0,0,0.4)">
+          <button title="Zoom +" onclick="(function(){var inst=window.FP_MAPS_API&&window.FP_MAPS_API._mapInstances&&window.FP_MAPS_API._mapInstances['fp-competitors-map'];if(inst&&inst.map)inst.map.setZoom(inst.map.getZoom()+1);})()" style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--fp-text,#e2e8f0);font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer">+</button>
+          <button title="Zoom −" onclick="(function(){var inst=window.FP_MAPS_API&&window.FP_MAPS_API._mapInstances&&window.FP_MAPS_API._mapInstances['fp-competitors-map'];if(inst&&inst.map)inst.map.setZoom(inst.map.getZoom()-1);})()" style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--fp-text,#e2e8f0);font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer">−</button>
+          <div style="width:20px;height:1px;background:rgba(255,255,255,0.1);margin:2px 0"></div>
+          <button title="Déplacer ↑" onclick="(function(){var inst=window.FP_MAPS_API&&window.FP_MAPS_API._mapInstances&&window.FP_MAPS_API._mapInstances['fp-competitors-map'];if(inst&&inst.map)inst.map.panBy(0,-90);})()" style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--fp-text,#e2e8f0);font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer">↑</button>
+          <div style="display:flex;gap:2px">
+            <button title="← Gauche" onclick="(function(){var inst=window.FP_MAPS_API&&window.FP_MAPS_API._mapInstances&&window.FP_MAPS_API._mapInstances['fp-competitors-map'];if(inst&&inst.map)inst.map.panBy(-90,0);})()" style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--fp-text,#e2e8f0);font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer">←</button>
+            <button title="Recentrer" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.recenter('fp-competitors-map')" style="width:28px;height:28px;border-radius:6px;background:rgba(37,99,235,0.25);border:1px solid rgba(37,99,235,0.4);color:#60a5fa;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:800">●</button>
+            <button title="→ Droite" onclick="(function(){var inst=window.FP_MAPS_API&&window.FP_MAPS_API._mapInstances&&window.FP_MAPS_API._mapInstances['fp-competitors-map'];if(inst&&inst.map)inst.map.panBy(90,0);})()" style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--fp-text,#e2e8f0);font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer">→</button>
+          </div>
+          <button title="Déplacer ↓" onclick="(function(){var inst=window.FP_MAPS_API&&window.FP_MAPS_API._mapInstances&&window.FP_MAPS_API._mapInstances['fp-competitors-map'];if(inst&&inst.map)inst.map.panBy(0,90);})()" style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:var(--fp-text,#e2e8f0);font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer">↓</button>
+        </div>
 
         <!-- Legend overlay — elevated above Google attribution bar -->
         <div style="position:absolute;bottom:50px;left:12px;background:rgba(10,14,27,0.88);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;z-index:5">
@@ -43308,8 +43341,15 @@ function renderGA4Reports() {
         </div>
         ${st.loading ? '<span style="font-size:11px;color:var(--fp-text-faint)">Mise à jour…</span>' : ''}
       </div>
+      <style>
+        @media(max-width:640px){
+          .fp-reports-table th:nth-child(4),.fp-reports-table td:nth-child(4),
+          .fp-reports-table th:nth-child(5),.fp-reports-table td:nth-child(5){display:none}
+          .fp-reports-table td:first-child{max-width:120px}
+        }
+      </style>
       <div style="overflow-x:auto">
-        <table class="fp-data-table">
+        <table class="fp-data-table fp-reports-table">
           <thead><tr>
             <th>Nom du rapport</th>
             <th style="text-align:center">Type</th>

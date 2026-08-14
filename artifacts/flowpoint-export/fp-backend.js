@@ -1867,8 +1867,8 @@
         mapTypeControlOptions: mtc,
         streetViewControl: false,
         fullscreenControl: true,
-        zoomControl: false,
-        cameraControl: false, // newer Maps API: camera widget embeds its own zoom +/-
+        zoomControl: true,
+        cameraControl: false, // keep false: cameraControl in Maps ≥3.56 duplicates zoom buttons
         rotateControl: false,
         gestureHandling: 'cooperative',
       };
