@@ -311,6 +311,15 @@
 
     var preRegToken = '';
     try { preRegToken = sessionStorage.getItem('fp_pre_reg_token') || ''; } catch (e) {}
+    // Fallback: localStorage (written by signin.html with 2h TTL) survives tab closure
+    if (!preRegToken) {
+      try {
+        var _stored = JSON.parse(localStorage.getItem('fp_pre_reg_token') || 'null');
+        if (_stored && _stored.token && typeof _stored.exp === 'number' && _stored.exp > Date.now()) {
+          preRegToken = _stored.token;
+        }
+      } catch(e) {}
+    }
 
     /* La durée d'essai n'est PAS envoyée : le serveur seul en décide. */
     var resp = await fetch('/api/public/payment-intent', {

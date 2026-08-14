@@ -1482,6 +1482,68 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS consumed_at      TIMESTAMPTZ`);
     await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`);
 
+    // ── Deduplicate & purge before creating unique index ──────────────────────
+    // Step 1: Delete expired unconsumed rows. These have consumed_at IS NULL but
+    // expires_at < NOW(), so they can never be used — but they DO block the unique
+    // index below, causing legitimate retry attempts to fail.
+    await run(client, `
+      DELETE FROM pending_signups
+        WHERE consumed_at IS NULL AND expires_at < NOW()
+    `);
+    // Step 2: Remove older duplicate non-consumed rows, keeping the most recent
+    // one per email. Tie-breaker on token (lexicographic) handles rows with
+    // identical created_at, ensuring exactly one survivor per email regardless.
+    await run(client, `
+      DELETE FROM pending_signups ps
+        WHERE consumed_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM pending_signups ps2
+             WHERE lower(ps2.email) = lower(ps.email)
+               AND ps2.consumed_at IS NULL
+               AND (ps2.created_at > ps.created_at
+                    OR (ps2.created_at = ps.created_at AND ps2.token > ps.token))
+          )
+    `);
+    // Step 3: Create unique index (only one unconsumed row per email at a time).
+    // We intentionally bypass the run() helper here so that a failure is surfaced
+    // as an explicit error log rather than a silent warn — failing to create this
+    // index means the race-condition guard is not in effect.
+    try {
+      await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS pending_signups_email_active_uniq
+          ON pending_signups(lower(email))
+          WHERE consumed_at IS NULL
+      `);
+      logger.info("[init] pending_signups unique email index OK");
+    } catch (idxErr) {
+      logger.error(
+        { err: (idxErr as Error).message },
+        "[init] FAILED to create pending_signups_email_active_uniq — " +
+        "race-condition guard NOT active; check for remaining duplicate rows"
+      );
+    }
+
+    // ── magic_link_tokens — single-use magic link storage ──────────────────────
+    // Referenced by auth.ts (storeMagicToken / atomicConsumeToken / peekToken).
+    // Must be created here (not only in migrations/*.sql which don't auto-run in prod).
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS magic_link_tokens (
+        token       TEXT         PRIMARY KEY,
+        email       TEXT         NOT NULL,
+        expires_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW() + INTERVAL '15 minutes',
+        used        BOOLEAN      NOT NULL DEFAULT FALSE,
+        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS magic_link_tokens_email_idx ON magic_link_tokens(email);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS magic_link_tokens_expires_idx ON magic_link_tokens(expires_at);`);
+    // Remove expired/used tokens to keep the table small
+    await run(client, `
+      DELETE FROM magic_link_tokens
+        WHERE expires_at < NOW() - INTERVAL '1 day'
+           OR used = true
+    `).catch(() => { /* non-fatal cleanup */ });
+
     // ── activity_logs — event feed for dashboard activity panel ────────────────
     await run(client, `
       CREATE TABLE IF NOT EXISTS activity_logs (

@@ -79,6 +79,15 @@
       var preRegisterToken = '';
       try { cart             = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
       try { preRegisterToken = sessionStorage.getItem('fp_pre_reg_token') || ''; }      catch(e) {}
+      // Fallback: localStorage (written by signin.html with 2h TTL) survives tab closure
+      if (!preRegisterToken) {
+        try {
+          var _storedReg = JSON.parse(localStorage.getItem('fp_pre_reg_token') || 'null');
+          if (_storedReg && _storedReg.token && typeof _storedReg.exp === 'number' && _storedReg.exp > Date.now()) {
+            preRegisterToken = _storedReg.token;
+          }
+        } catch(e) {}
+      }
       var plan   = (cart && cart.plan)   ? cart.plan   : '';
       var addons = (cart && cart.addons) ? cart.addons : {};
       var isNewSignup = !!preRegisterToken;
@@ -216,11 +225,10 @@
       })
       .then(function(r){ return r.json(); })
       .then(function(data) {
-        try { localStorage.removeItem('fp_cart'); } catch(e) {}
-
         /* ── AI credits purchase: webhook already credited the org — show confirmation ── */
         var ct = data.checkoutType || '';
         if (data.ok && (ct === 'ai_credits_only' || ct === 'ai_credits')) {
+          try { localStorage.removeItem('fp_cart'); } catch(e) {}
           showAiCreditsSuccess(data.credits || 0);
           return;
         }
@@ -228,6 +236,7 @@
         if (data.ok) {
           /* billing/verify confirmed the subscription — go to dashboard for existing users,
              success page for new signups that fell through here.                         */
+          try { localStorage.removeItem('fp_cart'); } catch(e) {}
           if (isAlreadyLoggedIn) {
             window.location.href = '/dashboard.html?plan_activated=1';
           } else {

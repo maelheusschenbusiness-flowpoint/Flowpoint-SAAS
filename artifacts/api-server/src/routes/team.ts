@@ -359,12 +359,27 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
 
     await client.query("COMMIT");
 
+    // Look up the user UUID that was upserted in the transaction above.
+    // Using the UUID (not the email string) in createSession correctly populates
+    // user_sessions.user_id_v2 and prevents any cross-user session confusion.
+    let userUuid: string | undefined;
+    try {
+      const _uuidRes = await client.query<{ id: string }>(
+        `SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+        [email]
+      );
+      userUuid = _uuidRes.rows[0]?.id;
+    } catch (_uuidErr) {
+      logger.warn({ _uuidErr }, "[team/accept] failed to look up user UUID (non-fatal, falling back to email)");
+    }
+
     // Create session for the newly accepted member
     const sessionToken = await createSession({
-      userId:    email,
+      userId:    userUuid ?? email,
       orgId:     inv.org_id,
       email,
       role:      inv.role,
+      userUuid,
       ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });

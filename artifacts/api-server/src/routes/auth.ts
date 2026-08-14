@@ -1009,7 +1009,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   try {
     const { loadOrgSettings: _dupCheck } = await import("../services/org-settings.js");
     const _dup = await _dupCheck(normalizedEmail).catch(() => undefined);
-    const _dupStatus = _dup?.subscriptionStatus ?? _dup?.subscription_status ?? "";
+    const _dupStatus = _dup?.subscriptionStatus ?? "";
     const _isActiveAccount = ["active", "trialing", "past_due"].includes(_dupStatus);
     if (_dup?.orgId && _isActiveAccount) {
       res.status(409).json({
@@ -1030,80 +1030,55 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     logger.warn({ err: _dupErr, email: normalizedEmail }, "[Auth/PreRegister] duplicate check failed (non-fatal)");
   }
 
-  // ── Guard: handle existing pending checkout ──────────────────────────────────
-  // Two distinct cases:
-  //   A) Account already created (org_settings exists) → redirect to login.
-  //   B) Pending signup exists but checkout was never completed (no org_settings)
-  //      → invalidate the stale token so the user can retry immediately.
-  //      This handles: browser closed mid-checkout, Stripe page didn't load, etc.
-  {
-    const _pendClient = await pool.connect();
-    try {
-      const _pend = await _pendClient.query(
-        `SELECT token, stripe_customer_id FROM pending_signups
-         WHERE email = $1 AND expires_at > NOW() AND consumed_at IS NULL
-         LIMIT 1`,
-        [normalizedEmail]
-      );
-      if (_pend.rows.length > 0) {
-        // Check if the account was actually activated (pending_billing = not yet activated)
-        const { loadOrgSettings: _orgCheck } = await import("../services/org-settings.js");
-        const _org = await _orgCheck(normalizedEmail).catch(() => undefined);
-        const _orgStatus = _org?.subscriptionStatus ?? _org?.subscription_status ?? "";
-        if (_org?.orgId && ["active", "trialing", "past_due"].includes(_orgStatus)) {
-          // Case A: real active account exists → login
-          res.status(409).json({
-            error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
-            redirectTo: "/login.html",
-          });
-          return;
-        }
-        // Case B: checkout was abandoned — invalidate stale token, allow retry
-        const _staleCustomerId = (_pend.rows[0] as { token: string; stripe_customer_id: string | null })?.stripe_customer_id ?? null;
-        await _pendClient.query(
-          `UPDATE pending_signups SET consumed_at = NOW()
-           WHERE email = $1 AND consumed_at IS NULL`,
-          [normalizedEmail]
-        );
-        // Clean up any stale org_settings rows left by old server versions
-        // (e.g. pending_billing shell created by older Render code). Non-fatal.
-        await _pendClient.query(
-          `DELETE FROM org_settings
-           WHERE lower(org_id::text) = lower($1)
-             AND (subscription_status IS NULL
-               OR subscription_status = ''
-               OR subscription_status = 'pending_billing'
-               OR subscription_status = 'none')`,
-          [normalizedEmail]
-        ).catch((e: unknown) => logger.warn({ e }, "[Auth/PreRegister] stale org_settings cleanup failed (non-fatal)"));
-        // Fire-and-forget: delete orphaned Stripe customer from the abandoned checkout
-        if (_staleCustomerId) {
-          (async () => {
-            try {
-              const { createStripeClient: _csClient } = await import("../services/stripe-factory.js");
-              await _csClient().customers.del(_staleCustomerId);
-              logger.info({ customerId: _staleCustomerId }, "[Auth/PreRegister] Stale Stripe customer deleted");
-            } catch (e) {
-              logger.warn({ customerId: _staleCustomerId, err: e }, "[Auth/PreRegister] Stale Stripe customer cleanup failed (non-fatal)");
-            }
-          })();
-        }
-        logger.info({ email: normalizedEmail }, "[Auth/PreRegister] stale pending signup invalidated — user may retry");
-      }
-    } finally {
-      _pendClient.release();
-    }
-  }
-
-  // Store in pending_signups (no account created yet)
+  // ── Atomic cleanup + insert in a single serialized transaction ───────────────
+  // DELETE all non-consumed rows for this email (including expired ones) then
+  // INSERT the new row.  Expired rows have consumed_at IS NULL but
+  // expires_at < NOW(); they are unusable yet block the unique index.  Removing
+  // them unconditionally avoids the window where the index prevents a legitimate
+  // retry while the cleanup cron hasn't fired yet.
+  //
+  // If a concurrent request races to INSERT at the same moment, PostgreSQL
+  // returns error code 23505 (unique_violation).  We catch it and return a
+  // controlled 409 so the frontend can prompt the user to wait a moment and retry
+  // rather than showing a generic 500.
   const preToken = generateToken();
   const client = await pool.connect();
   try {
+    await client.query("BEGIN");
+
+    // DELETE all non-consumed rows for this email (expired or abandoned checkouts).
+    // RETURNING lets us collect Stripe customer IDs for async cleanup.
+    const _cleaned = await client.query<{ stripe_customer_id: string | null }>(
+      `DELETE FROM pending_signups
+       WHERE lower(email) = lower($1) AND consumed_at IS NULL
+       RETURNING stripe_customer_id`,
+      [normalizedEmail]
+    );
+    const _staleCustomerIds = (_cleaned.rows as { stripe_customer_id: string | null }[])
+      .map(r => r.stripe_customer_id)
+      .filter((id): id is string => Boolean(id));
+
+    if (_staleCustomerIds.length > 0 || _cleaned.rowCount) {
+      logger.info(
+        { email: normalizedEmail, deletedRows: _cleaned.rowCount },
+        "[Auth/PreRegister] stale pending signups deleted — user retrying or first signup after expired attempt"
+      );
+      // Non-fatal: remove any stale org_settings shell (pending_billing) left by old Render code.
+      await client.query(
+        `DELETE FROM org_settings
+         WHERE lower(org_id::text) = lower($1)
+           AND (subscription_status IS NULL
+             OR subscription_status = ''
+             OR subscription_status = 'pending_billing'
+             OR subscription_status = 'none')`,
+        [normalizedEmail]
+      ).catch((e: unknown) => logger.warn({ e }, "[Auth/PreRegister] stale org_settings cleanup failed (non-fatal)"));
+    }
+
     await client.query(
       `INSERT INTO pending_signups
          (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, created_at, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW() + INTERVAL '2 hours')
-       ON CONFLICT (token) DO NOTHING`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW() + INTERVAL '2 hours')`,
       [
         preToken, normalizedEmail, fn, ln, company,
         countryVal, addressVal, cityVal, postalVal,
@@ -1111,6 +1086,39 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
         String(vat   || "").trim() || null,
       ]
     );
+
+    await client.query("COMMIT");
+
+    // Fire-and-forget: delete any orphaned Stripe customers from abandoned checkouts.
+    if (_staleCustomerIds.length > 0) {
+      (async () => {
+        try {
+          const { createStripeClient: _csClient, getStripeKey: _getKey } = await import("../services/stripe-factory.js");
+          const _stripe = await _csClient(_getKey());
+          for (const cid of _staleCustomerIds) {
+            await _stripe.customers.del(cid).catch((e: unknown) =>
+              logger.warn({ customerId: cid, err: e }, "[Auth/PreRegister] Stale Stripe customer cleanup failed (non-fatal)")
+            );
+          }
+        } catch (e) {
+          logger.warn({ err: e }, "[Auth/PreRegister] Stale Stripe customers batch cleanup failed (non-fatal)");
+        }
+      })();
+    }
+  } catch (_insertErr) {
+    await client.query("ROLLBACK").catch(() => {});
+    // 23505 = unique_violation: two concurrent requests for the same email
+    // managed to both DELETE 0 existing rows and both attempt INSERT simultaneously.
+    // Safe to ask the user to wait a moment — no data loss, just a retry signal.
+    if ((_insertErr as { code?: string }).code === "23505") {
+      logger.warn({ email: normalizedEmail }, "[Auth/PreRegister] concurrent signup race (23505) — user asked to retry");
+      res.status(409).json({
+        error: "Une inscription est déjà en cours pour cet email. Patientez quelques secondes puis réessayez.",
+        code: "CONCURRENT_SIGNUP",
+      });
+      return;
+    }
+    throw _insertErr;
   } finally {
     client.release();
   }

@@ -301,7 +301,8 @@
         setLoading(false);
         if (r.ok) {
           form.style.display = 'none';
-          showSuccess('\u2709\uFE0F Lien envoy\u00E9 \u00E0 <strong>' + email + '</strong>.<br>V\u00E9rifiez votre bo\u00EEte mail (et les spams).');
+          var _safeEmail = email.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+          showSuccess('\u2709\uFE0F Lien envoy\u00E9 \u00E0 <strong>' + _safeEmail + '</strong>.<br>V\u00E9rifiez votre bo\u00EEte mail (et les spams).');
         } else if (r.status === 503) {
           showError('Service e-mail indisponible. Connectez-vous avec Google.');
         } else {

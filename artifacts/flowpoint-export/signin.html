@@ -409,6 +409,9 @@
     // Save plan + preRegisterToken then go to checkout
     try { localStorage.setItem('fp_cart', JSON.stringify({ plan: plan, addons: {}, _v: 1, _updatedAt: Date.now() })); } catch(e) {}
     try { sessionStorage.setItem('fp_pre_reg_token', _preRegisterToken); } catch(e) {}
+    // Also persist to localStorage with a 2-hour TTL so the token survives
+    // tab closure or sessionStorage loss between signin → pricing → checkout-payment.
+    try { localStorage.setItem('fp_pre_reg_token', JSON.stringify({ token: _preRegisterToken, exp: Date.now() + 7200000 })); } catch(e) {}
     window.location.href = '/checkout.html?plan=' + encodeURIComponent(plan);
   }
 
