@@ -154,3 +154,4 @@
 - [Audit retry force parameter](audit-retry-force.md) — POST /api/audits must include `force:true` on retry to bypass 409 DUPLICATE_AUDIT same-day guard
 - [Hard refresh session recovery](hard-refresh-session-recovery.md) — session-restore must fall back to cookie when Bearer is stale; both _sessionReady and dashboard init must always call session-restore (never skip when token exists)
 - [AI Engine Robustness](ai-engine-robustness.md) — PSI await pattern, timeouts (round/tool/loop), cancellation Sets, mutex via res.on('finish'), Stop button wiring
+- [Registration retry robustness](registration-retry-robustness.md) — pre-register must never leave ghost rows; guard only blocks active/trialing/past_due; non-active org_settings deleted immediately
