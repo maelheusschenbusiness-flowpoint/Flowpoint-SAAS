@@ -1442,6 +1442,9 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     // before the account, token and delivery have all completed successfully.
     const _fcActToken = preRegisterToken || intentMeta["pre_register_token"] || "";
     if (_fcActToken) {
+      // Track whether the activation DB transaction actually committed.
+      // Only after this flag is set can we safely return success when email delivery fails.
+      let _fcActivationCommitted = false;
       try {
           const { pool: _fcActPool } = await import("@workspace/db");
           const { randomBytes: _fcRb } = await import("crypto");
@@ -1507,6 +1510,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
               [_fcActToken]
             );
             await _fcActTxC.query("COMMIT");
+            _fcActivationCommitted = true; // flag: account is live in DB from this point on
             logger.info({ orgId: _fcAOrgId, userId: _fcUserId }, "[PublicBilling] finalize: new user/org activated");
           } catch (_fcActErr) {
             await _fcActTxC.query("ROLLBACK").catch(() => {});
@@ -1552,11 +1556,13 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             logger.info({ email: _fcAEmail }, "[PublicBilling] finalize: activation magic link sent");
       } catch (_fcActTopErr) {
         logger.error({ _fcActTopErr }, "[PublicBilling] finalize: pre-reg activation/link delivery failed");
-        // If the account-creation transaction succeeded but only the email step threw,
-        // we still consider the signup successful and redirect to login.
-        const isEmailOnlyFailure = (_fcActTopErr instanceof Error) &&
-          (_fcActTopErr.message.includes("email") || _fcActTopErr.message.includes("mail") || _fcActTopErr.message.includes("deliver"));
-        if (isEmailOnlyFailure) {
+        // Return success ONLY if the DB transaction definitely committed (_fcActivationCommitted=true).
+        // Using an explicit flag (not message-text heuristics) avoids false-success when a DB error
+        // containing "email", "mail", or "deliver" in the column/constraint name causes the
+        // activation transaction to fail and rollback without creating the user/org.
+        if (_fcActivationCommitted) {
+          // Account IS live in DB — only the email delivery step failed.
+          // User can log in manually once the magic link is retried.
           res.json({
             success: true,
             subscriptionId: planSubscription.id ?? undefined,
@@ -1565,9 +1571,10 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             emailFailed: true,
           });
         } else {
+          // Activation transaction did not commit — account was NOT created.
           res.status(502).json({
-            error: "Votre paiement est confirmé, mais le lien de connexion n'a pas pu être envoyé. Connectez-vous directement sur la page de connexion.",
-            code: "activation_email_failed",
+            error: "Votre paiement est confirmé, mais l'activation du compte a échoué. Contactez le support.",
+            code: "activation_failed",
           });
         }
         return;

@@ -48,6 +48,7 @@ export default defineConfig({
       "src/routes/chat-notifications.test.ts",
       "src/routes/addon-only-checkout.test.ts",
       "src/routes/billing-period-end.test.ts",
+      "src/routes/team-invite-accept.test.ts",
       "src/tests/cross_tenant_rbac_sso.test.ts",
       // Phase 7 — analyze_url SSRF IPv6 + IPv4 classification
       "src/services/url-fetcher-ipv6.test.ts",

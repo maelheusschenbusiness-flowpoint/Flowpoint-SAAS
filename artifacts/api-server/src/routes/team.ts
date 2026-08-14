@@ -276,34 +276,51 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
       [email]
     );
 
-    // Create active team member
-    const memberId  = randomUUID();
+    // Create or update active team member
+    // (no unique constraint on org_id+email → use check-then-insert to avoid duplicates)
     const nowIso    = now.toISOString();
     const joinedDay = now.toISOString().slice(0, 10);
-    await client.query(
-      `INSERT INTO team_members
-         (id, org_id, email, name, role, joined, status, user_id,
-          invited_by_user_id, joined_at, accepted_at, invitation_token_hash,
-          invited_at, email_status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'active', $3,
-               $7, $8, $9, '',
-               $10, 'sent', $11, $12)
-       ON CONFLICT DO NOTHING`,
-      [
-        memberId,          // $1
-        inv.org_id,        // $2
-        email,             // $3  (also used as user_id via $3 literal)
-        email.split("@")[0] ?? "", // $4 name
-        inv.role,          // $5
-        joinedDay,         // $6  joined (text date)
-        inv.invited_by_user_id ?? null, // $7
-        nowIso,            // $8  joined_at (timestamptz)
-        nowIso,            // $9  accepted_at (timestamptz)
-        nowIso,            // $10 invited_at (timestamptz)
-        nowIso,            // $11 created_at (timestamptz)
-        nowIso,            // $12 updated_at (timestamptz)
-      ]
+    let memberId: string;
+    const existingMemberRes = await client.query<{ id: string }>(
+      `SELECT id FROM team_members WHERE org_id = $1 AND lower(email) = lower($2) LIMIT 1`,
+      [inv.org_id, email]
     );
+    if (existingMemberRes.rows.length > 0) {
+      // Update existing row to active (covers re-invites and previous partial failures)
+      memberId = existingMemberRes.rows[0]!.id;
+      await client.query(
+        `UPDATE team_members
+         SET status = 'active', role = $1, joined_at = $2, accepted_at = $3, updated_at = $4
+         WHERE id = $5`,
+        [inv.role, nowIso, nowIso, nowIso, memberId]
+      );
+    } else {
+      // Fresh insert — no prior member row exists for this email+org
+      memberId = randomUUID();
+      await client.query(
+        `INSERT INTO team_members
+           (id, org_id, email, name, role, joined, status, user_id,
+            invited_by_user_id, joined_at, accepted_at, invitation_token_hash,
+            invited_at, email_status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'active', $3,
+                 $7, $8, $9, '',
+                 $10, 'sent', $11, $12)`,
+        [
+          memberId,                    // $1
+          inv.org_id,                  // $2
+          email,                       // $3  (also used as user_id)
+          email.split("@")[0] ?? "",   // $4  name
+          inv.role,                    // $5
+          joinedDay,                   // $6  joined (text date)
+          inv.invited_by_user_id ?? null, // $7
+          nowIso,                      // $8  joined_at
+          nowIso,                      // $9  accepted_at
+          nowIso,                      // $10 invited_at
+          nowIso,                      // $11 created_at
+          nowIso,                      // $12 updated_at
+        ]
+      );
+    }
 
     // ── Set RLS context so organization_members FORCE ROW LEVEL SECURITY policies pass ──
     // The policy checks: organization_id = current_setting('app.current_org_id', true).
@@ -313,13 +330,30 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
     await client.query(`SELECT set_config('app.current_org_id', $1, true)`, [inv.org_id]);
 
     // ── Dual-write to organization_members (inside transaction, users row now guaranteed) ──
+    // Use NOT EXISTS guard instead of ON CONFLICT (col, col) to avoid 42P10 when the
+    // organization_members_unique constraint does not yet exist on the production DB
+    // (table created before the constraint was added to the init script).
     await client.query(
       `INSERT INTO organization_members
              (id, organization_id, user_id, role, status, joined_at, created_at, updated_at)
-       SELECT gen_random_uuid(), $1, u.id, $2, 'active', NOW(), NOW(), NOW()
-       FROM users u WHERE lower(u.email) = lower($3)
-       ON CONFLICT (organization_id, user_id)
-         DO UPDATE SET role = EXCLUDED.role, status = 'active', updated_at = NOW()`,
+       SELECT gen_random_uuid(), $1::text, u.id, $2, 'active', NOW(), NOW(), NOW()
+       FROM users u
+       WHERE lower(u.email) = lower($3)
+         AND NOT EXISTS (
+           SELECT 1 FROM organization_members om2
+           WHERE om2.organization_id = $1::text AND om2.user_id = u.id
+         )`,
+      [inv.org_id, inv.role, email]
+    );
+    // If a row already existed (re-accept or previous partial failure), promote it to active.
+    await client.query(
+      `UPDATE organization_members om
+       SET role = $2, status = 'active', updated_at = NOW()
+       FROM users u
+       WHERE lower(u.email) = lower($3)
+         AND om.organization_id = $1::text
+         AND om.user_id = u.id
+         AND om.status != 'active'`,
       [inv.org_id, inv.role, email]
     );
 

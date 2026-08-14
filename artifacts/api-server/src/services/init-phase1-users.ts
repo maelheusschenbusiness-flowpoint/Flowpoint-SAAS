@@ -89,6 +89,11 @@ export async function initPhase1Users(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS org_members_user_idx   ON organization_members(user_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS org_members_role_idx   ON organization_members(role);`);
     await run(client, `CREATE INDEX IF NOT EXISTS org_members_status_idx ON organization_members(status);`);
+    // Self-heal: ensure the unique constraint exists even if the table was created before
+    // the CONSTRAINT clause was added to the CREATE TABLE statement above.
+    // CREATE UNIQUE INDEX IF NOT EXISTS is idempotent and skips creation if the index
+    // (or an equivalent unique constraint) already exists.
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS organization_members_unique_idx ON organization_members(organization_id, user_id);`);
 
     // ── 2a. RLS for organization_members ─────────────────────────────────────
     // Uses organization_id (not org_id) as the tenant key.
