@@ -42,3 +42,80 @@ id = "dddUdpwuEqXxZndz7g6Lx"
 uri = "file://billing-files.zip"
 type = "unspecified"
 title = "FlowPoint billing files — 12 fichiers ZIP (624 KB)"
+
+[[outputs]]
+id = "OYQNUIJ3Wxr7amhuN-k8T"
+uri = "file://flowpoint-source.tar.gz"
+type = "unspecified"
+title = "FlowPoint — code complet"
+description = "Archive téléchargeable de 11 Mo contenant le code source, backend, frontend, tests, scripts, documentation, configurations et tâches du projet. SHA-256 : bcf15fea28f19d3a850638c8f4dc6c7cde6e2899eb36faae93940d96ce9d48bc"
+
+[[outputs]]
+id = "-YoKIHB6IVFvTVppGbkhO"
+uri = "file://flowpoint-project-part-00"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 01/10"
+description = "Partie 1 sur 10 de l’archive complète incluant les assets. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+
+[[outputs]]
+id = "j7XnfFAQCzAUfHjq73K3x"
+uri = "file://flowpoint-project-part-01"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 02/10"
+description = "Partie 2 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+
+[[outputs]]
+id = "MhbHg9_q8LmPHqz3tHUZK"
+uri = "file://flowpoint-project-part-02"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 03/10"
+description = "Partie 3 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+
+[[outputs]]
+id = "wDt_da3zm_CEhBSHZtT8y"
+uri = "file://flowpoint-project-part-03"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 04/10"
+description = "Partie 4 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+
+[[outputs]]
+id = "NykarPdu4RrzXBZMF2s9P"
+uri = "file://flowpoint-project-part-04"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 05/10"
+description = "Partie 5 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+
+[[outputs]]
+id = "zwldJnxMHnSiEUnd08iLb"
+uri = "file://flowpoint-project-part-05"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 06/10"
+description = "Partie 6 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+
+[[outputs]]
+id = "8BXLmQsJ6GHDAEfcJoHSk"
+uri = "file://flowpoint-project-part-06"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 07/10"
+description = "Partie 7 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+
+[[outputs]]
+id = "TsaM9Q9bDzsFZZh2Qc5G8"
+uri = "file://flowpoint-project-part-07"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 08/10"
+description = "Partie 8 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+
+[[outputs]]
+id = "zCT2LPXQk5BwUCo2JLVLt"
+uri = "file://flowpoint-project-part-08"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 09/10"
+description = "Partie 9 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+
+[[outputs]]
+id = "25dZPzZCw-EYlgn9N_tVT"
+uri = "file://flowpoint-project-part-09"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 10/10"
+description = "Partie 10 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
