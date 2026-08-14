@@ -127,9 +127,11 @@ async function main() {
     // whether to use SET ROLE or GUC-only mode.
     logger.info("[startup] Schema already migrated — skipping full init (Pre-Deploy completed)");
     await runCriticalStartupStep("app_user role probe", probeAppUserRole);
-    // Always run phase1-users on fast-path: adds first_name/last_name/status columns
-    // when the users table predates this schema version (idempotent: ADD COLUMN IF NOT EXISTS).
-    await runCriticalStartupStep("phase1-users", initPhase1Users);
+    // Always run phase1-users on fast-path: adds first_name/last_name/status columns.
+    // NEVER fatal — a warning is enough; the inline self-heal in finalize-checkout is the real gate.
+    try { await initPhase1Users(); } catch (_p1Err) {
+      logger.warn({ err: _p1Err }, "[startup] phase1-users on fast-path failed (non-fatal)");
+    }
     // Always add new billing columns even on fast-path (idempotent: IF NOT EXISTS)
     await runCriticalStartupStep("billing-trial-columns", async () => {
       const client = await pool.connect();
