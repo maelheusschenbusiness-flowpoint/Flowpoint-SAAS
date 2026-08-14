@@ -98,6 +98,17 @@
           try { sessionStorage.removeItem('fp_pre_reg_token'); } catch(e) {}
           document.getElementById('fp-spinner').style.display = 'none';
 
+          /* Email delivery failed but account was created — offer manual login */
+          if (res.data.emailFailed) {
+            document.getElementById('fp-check').style.display = '';
+            document.getElementById('fp-title').textContent = 'Compte activé !';
+            document.getElementById('fp-sub').innerHTML =
+              'Votre paiement est confirmé et votre compte a été créé.<br><br>' +
+              "L'email de connexion n'a pas pu être envoyé — connectez-vous directement&nbsp;:" +
+              '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>';
+            return;
+          }
+
           if (res.data.awaitingWebhook) {
             /* checkout_session path (reactivation) — subscription created by Stripe,
                webhook will activate it. Show a brief waiting state then go to dashboard. */
@@ -150,9 +161,21 @@
             '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>';
         } else {
           document.getElementById('fp-spinner').style.display = 'none';
-          document.getElementById('fp-title').textContent = 'Erreur de finalisation';
-          document.getElementById('fp-sub').textContent = res.data.error || 'Une erreur est survenue lors de la création de votre abonnement.';
-          document.getElementById('fp-sub').innerHTML += '<br><br><a href="/checkout-payment.html" class="fp-btn">Réessayer</a>';
+          /* activation_email_failed = account was created but email bounced.
+             Do NOT send back to checkout — the account & payment are both confirmed. */
+          var errCode = res.data.code || '';
+          if (errCode === 'activation_email_failed') {
+            document.getElementById('fp-check').style.display = '';
+            document.getElementById('fp-title').textContent = 'Compte activé !';
+            document.getElementById('fp-sub').innerHTML =
+              'Votre paiement est confirmé et votre compte a été créé.<br><br>' +
+              "L'email de connexion n'a pas pu être envoyé — connectez-vous directement&nbsp;:" +
+              '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>';
+          } else {
+            document.getElementById('fp-title').textContent = 'Erreur de finalisation';
+            document.getElementById('fp-sub').textContent = res.data.error || 'Une erreur est survenue lors de la création de votre abonnement.';
+            document.getElementById('fp-sub').innerHTML += '<br><br><a href="/pricing.html" class="fp-btn">Réessayer</a>';
+          }
         }
       })
       .catch(function() {

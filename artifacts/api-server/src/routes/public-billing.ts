@@ -1537,15 +1537,39 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
               isTrial:      grantTrial,
           });
           if (!_fcMailResult?.ok) {
-            throw new Error(`Activation email was not delivered: ${_fcMailResult?.error ?? "unknown error"}`);
+            // Email failed to deliver but the account IS already created (tx committed).
+            // Do NOT return an error — the user just needs to log in manually.
+            logger.warn({ email: _fcAEmail, mailErr: _fcMailResult?.error }, "[PublicBilling] finalize: activation email failed (account already created — user must log in manually)");
+            res.json({
+              success: true,
+              subscriptionId: planSubscription.id,
+              addonSubscriptionId,
+              activationEmailSent: false,
+              emailFailed: true,
+            });
+            return;
           }
             logger.info({ email: _fcAEmail }, "[PublicBilling] finalize: activation magic link sent");
       } catch (_fcActTopErr) {
         logger.error({ _fcActTopErr }, "[PublicBilling] finalize: pre-reg activation/link delivery failed");
-        res.status(502).json({
-          error: "Votre paiement est confirmé, mais le lien de connexion n'a pas pu être envoyé. Réessayez dans quelques instants ou contactez le support.",
-          code: "activation_email_failed",
-        });
+        // If the account-creation transaction succeeded but only the email step threw,
+        // we still consider the signup successful and redirect to login.
+        const isEmailOnlyFailure = (_fcActTopErr instanceof Error) &&
+          (_fcActTopErr.message.includes("email") || _fcActTopErr.message.includes("mail") || _fcActTopErr.message.includes("deliver"));
+        if (isEmailOnlyFailure) {
+          res.json({
+            success: true,
+            subscriptionId: planSubscription.id ?? undefined,
+            addonSubscriptionId,
+            activationEmailSent: false,
+            emailFailed: true,
+          });
+        } else {
+          res.status(502).json({
+            error: "Votre paiement est confirmé, mais le lien de connexion n'a pas pu être envoyé. Connectez-vous directement sur la page de connexion.",
+            code: "activation_email_failed",
+          });
+        }
         return;
       }
     }
