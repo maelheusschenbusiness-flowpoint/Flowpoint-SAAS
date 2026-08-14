@@ -59,6 +59,8 @@ export async function initPhase1Users(): Promise<void> {
     // added in later iterations of the schema definition (e.g. status, email_verified)
     // never appear in older production tables.  Without this block:
     //   CREATE INDEX ON users(status) → ERROR: column "status" does not exist → DDL warning.
+    await run(client, `ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name     TEXT;`);
+    await run(client, `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name      TEXT;`);
     await run(client, `ALTER TABLE users ADD COLUMN IF NOT EXISTS status         TEXT    NOT NULL DEFAULT 'pending';`);
     await run(client, `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;`);
     await run(client, `ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider  TEXT    NOT NULL DEFAULT 'magic_link';`);
