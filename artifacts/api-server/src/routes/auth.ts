@@ -1003,10 +1003,15 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   }
 
   // ── Guard: reject if account already exists in org_settings (legacy) ──────
+  // Only block on accounts that have actually been activated (subscription_status
+  // is 'active', 'trialing', or 'past_due'). A row with 'pending_billing' or no
+  // status is a stale pre-registration shell — it must not block a fresh attempt.
   try {
     const { loadOrgSettings: _dupCheck } = await import("../services/org-settings.js");
     const _dup = await _dupCheck(normalizedEmail).catch(() => undefined);
-    if (_dup?.orgId) {
+    const _dupStatus = _dup?.subscriptionStatus ?? _dup?.subscription_status ?? "";
+    const _isActiveAccount = ["active", "trialing", "past_due"].includes(_dupStatus);
+    if (_dup?.orgId && _isActiveAccount) {
       res.status(409).json({
         error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter sur /login.html.",
         redirectTo: "/login.html",
@@ -1033,11 +1038,12 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
         [normalizedEmail]
       );
       if (_pend.rows.length > 0) {
-        // Check if the account was actually created
+        // Check if the account was actually activated (pending_billing = not yet activated)
         const { loadOrgSettings: _orgCheck } = await import("../services/org-settings.js");
         const _org = await _orgCheck(normalizedEmail).catch(() => undefined);
-        if (_org?.orgId) {
-          // Case A: real account exists → login
+        const _orgStatus = _org?.subscriptionStatus ?? _org?.subscription_status ?? "";
+        if (_org?.orgId && ["active", "trialing", "past_due"].includes(_orgStatus)) {
+          // Case A: real active account exists → login
           res.status(409).json({
             error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
             redirectTo: "/login.html",
