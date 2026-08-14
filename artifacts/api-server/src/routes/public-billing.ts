@@ -1480,6 +1480,11 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           const _fcActTxC = await _fcActPool.connect();
           try {
             await _fcActTxC.query("BEGIN");
+            // Self-heal: ensure columns exist regardless of which init path ran on this server.
+            await _fcActTxC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT`).catch(() => {});
+            await _fcActTxC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name  TEXT`).catch(() => {});
+            await _fcActTxC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'`).catch(() => {});
+            await _fcActTxC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE`).catch(() => {});
             const _fcUsr = await _fcActTxC.query<{ id: string }>(
               `INSERT INTO users (email, first_name, last_name, auth_provider, email_verified, status)
                VALUES ($1,$2,$3,'magic_link',TRUE,'active')
