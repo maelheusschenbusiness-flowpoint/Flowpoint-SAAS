@@ -2365,13 +2365,17 @@ window._fpSlaViewPage = function() {
 // ── Quick mission creator — used by inline buttons throughout the dashboard ──
 window._fpMQ = async function(title, category, priority, navAfter) {
   if (!title) return;
+  // Anti-double-fire guard: ignore if called twice within 600ms (button double-click / event bubbling)
+  var _now = Date.now();
+  if (window._fpMQLastCall && _now - window._fpMQLastCall < 600) return;
+  window._fpMQLastCall = _now;
   if (!STATE.missions) STATE.missions = [];
   const dup = STATE.missions.find(function(m) {
     return m.title.toLowerCase().trim() === title.toLowerCase().trim() && m.status !== 'done';
   });
   if (dup) {
-    showToast('warning', 'Mission déjà existante — ouverture…');
-    setTimeout(function() { navigate('missions'); }, 400);
+    // Silently open the existing mission without an annoying warning toast
+    setTimeout(function() { navigate('missions'); }, 300);
     return;
   }
   const ms = {
@@ -8066,7 +8070,7 @@ function renderReports() {
                 ? `<div style="display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;border-radius:5px;background:${f.val};flex-shrink:0"></div><span style="font-size:12px;font-weight:600;color:var(--fp-text-soft)">${f.val}</span></div>`
                 : `<div style="font-size:12px;color:var(--fp-text-soft);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(f.val)}</div>`
               }
-              ${!f.locked ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%;margin-top:8px" onclick="navigate('settings')">Modifier</button>` : ''}
+              ${!f.locked ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%;margin-top:8px" onclick="navigate('settings');setTimeout(function(){navigateSub('workspace');},60)">Modifier</button>` : ''}
             </div>
           `).join('')}
         </div>
@@ -11196,11 +11200,14 @@ function renderSettings() {
           var rawDate = l.date || l.timestamp || null;
           var locale = getLocale();
           var dateStr = isCur ? 'Maintenant' : (rawDate ? new Date(rawDate).toLocaleString(locale,{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—');
-          return { device: l.device||l.userAgent||'Appareil inconnu', location: 'Localisation inconnue', ip: l.ip||'***.***.***.***', date: dateStr, current: isCur };
+          var rawUa = l.device||l.userAgent||'';
+          var parsedDev = (function(ua){if(!ua)return 'Appareil inconnu';var u=ua.toLowerCase();if(/iphone/.test(u))return '📱 iPhone';if(/ipad/.test(u))return '📱 iPad';if(/android/.test(u))return '📱 Android';if(/macintosh|mac os/.test(u))return '💻 Mac';if(/windows/.test(u))return '💻 Windows';if(/linux/.test(u))return '🖥 Linux';if(/chrome/.test(u))return '🖥 Chrome';if(/safari/.test(u))return '🖥 Safari';return '🖥 Appareil inconnu';})(rawUa);
+          return { device: parsedDev, location: 'Localisation inconnue', ip: l.ip||'***.***.***.***', date: dateStr, current: isCur };
         })
       : [];
+    const _parseDeviceUA = function(ua){if(!ua)return 'Appareil inconnu';var u=ua.toLowerCase();if(/iphone/.test(u))return '📱 iPhone';if(/ipad/.test(u))return '📱 iPad';if(/android/.test(u))return '📱 Android';if(/macintosh|mac os/.test(u))return '💻 Mac';if(/windows/.test(u))return '💻 Windows';if(/linux/.test(u))return '🖥 Linux';if(/chrome/.test(u))return '🖥 Chrome';if(/safari/.test(u))return '🖥 Safari';return '🖥 Appareil inconnu';};
     const loginHistory = _lhList
-      ? _lhList.map(l => ({ event: l.event||l.type||'Connexion', device: l.device||l.userAgent||'Appareil inconnu', ip: l.ip||'***.***.***.***', date: (l.date||l.timestamp) ? new Date(l.date||l.timestamp).toLocaleString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—', success: l.success !== false, current: !!(l.isCurrent||l.current) }))
+      ? _lhList.map(l => ({ event: l.event||l.type||'Connexion', device: _parseDeviceUA(l.device||l.userAgent||''), ip: l.ip||'***.***.***.***', date: (l.date||l.timestamp) ? new Date(l.date||l.timestamp).toLocaleString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—', success: l.success !== false, current: !!(l.isCurrent||l.current) }))
       : (PREVIEW_MODE ? [
           {event:'Connexion réussie',  device:'MacBook Pro · Chrome', ip:'82.65.xxx.xxx', date:'09/05 · 09h14', success:true  },
           {event:'Connexion réussie',  device:'iPhone 15 · Safari',   ip:'92.140.xxx.xxx',date:'08/05 · 18h42', success:true  },
@@ -26097,10 +26104,8 @@ function renderGrowthCommandCenter() {
   const _gcRecs = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.recommendations;
   const wins = (_gcRecs && _gcRecs.length) ? _gcRecs.slice(0, 4).map(function(r, i) {
     const diff = r.priority === 'high' ? 1 : r.priority === 'medium' ? 2 : 3;
-    // Revenus estimés uniquement quand GA4 est connecté — jamais de montant inventé sinon
-    const _roiLbl = _ga4Connected()
-      ? '+' + Math.round((r.estimatedUplift || 0.08) * 1200) + '€/mois'
-      : '';
+    // N'afficher que des impacts trafic réels — jamais de montants €/mois inventés
+    const _roiLbl = r.estimated_traffic_impact ? '+' + r.estimated_traffic_impact + ' visites/mois' : '';
     return { title: r.title, impact: '+' + Math.round((r.estimatedUplift || 0.08) * 100) + '%', roi: _roiLbl, time: diff === 1 ? '15 min' : diff === 2 ? '45 min' : '2h', diff: diff, pct: [0,30,60,0][i] || 0 };
   }) : (function() {
     const _aw = [];
@@ -26115,7 +26120,7 @@ function renderGrowthCommandCenter() {
     if (_low.length > 0) {
       var _s = _low[0].url||''; var _u = _s.replace(/^https?:\/\//,'').split('/')[0] || 'site';
       var _pts = Math.round((70-Math.min(70,_low[0].score||50))*0.5);
-      _aw.push({title:'Améliorer le score SEO de '+_u, impact:'+'+_pts+' pts', roi:_ga4Connected() ? '+'+(_pts*15)+'€/mois' : '+'+_pts+' pts de score', time:'45 min', diff:2, pct:0});
+      _aw.push({title:'Améliorer le score SEO de '+_u, impact:'+'+_pts+' pts', roi:'+'+_pts+' pts de score', time:'45 min', diff:2, pct:0});
     }
     if (_slow.length > 0) {
       var _s2 = _slow[0].url||''; var _u2 = _s2.replace(/^https?:\/\//,'').split('/')[0] || 'site';
@@ -33071,15 +33076,8 @@ function renderLocalSEOGBP() {
             <span style="font-size:11px;color:var(--fp-text-muted)">Suggestions IA disponibles en plan Ultra</span>
           </div>
         </div>`}
-        <!-- DRAFT POST COMPOSER — always visible, all plans -->
-        <div style="margin-bottom:14px">
-          <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft);margin-bottom:8px">✏️ Rédiger un post</div>
-          <textarea id="gbp-post-draft" placeholder="Rédigez votre post GBP ici…" style="width:100%;min-height:80px;padding:10px;border-radius:8px;border:1px solid var(--fp-border);background:var(--fp-bg-inset);color:var(--fp-text);font-size:12px;resize:vertical;font-family:inherit;box-sizing:border-box"></textarea>
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <button class="fp-btn fp-btn-primary fp-btn-sm" id="gbp-post-save" onclick="(function(){var ta=document.getElementById('gbp-post-draft');var text=ta?ta.value.trim():'';if(!text){showToast('error','Rédigez votre post avant de sauvegarder');return;}apiAction('POST','/api/gbp-posts',{content:text,status:'draft'}).then(r=>{if(r&&r.id){showToast('info','Post sauvegardé — connectez GBP pour le publier sur Google');ta.value='';}else showToast('error','Erreur de sauvegarde');}).catch(()=>showToast('error','Erreur de sauvegarde'));})()">Enregistrer le brouillon</button>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(){var ta=document.getElementById('gbp-post-draft');if(ta)ta.value='';})()">Effacer</button>
-          </div>
-        </div>
+        <!-- DRAFT POST COMPOSER — Ultra only -->
+        ${(function(){var _plLc=(STATE.me&&STATE.me.plan||'').toLowerCase();var _gbpUltra=_plLc==='ultra'||_plLc==='agency';if(_gbpUltra){return '<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:600;color:var(--fp-text-soft);margin-bottom:8px">✏️ Rédiger un post</div><textarea id="gbp-post-draft" placeholder="Rédigez votre post GBP ici…" style="width:100%;min-height:80px;padding:10px;border-radius:8px;border:1px solid var(--fp-border);background:var(--fp-bg-inset);color:var(--fp-text);font-size:12px;resize:vertical;font-family:inherit;box-sizing:border-box"></textarea><div style="display:flex;gap:8px;margin-top:8px"><button class="fp-btn fp-btn-primary fp-btn-sm" id="gbp-post-save" onclick="(function(){var ta=document.getElementById(\'gbp-post-draft\');var text=ta?ta.value.trim():\'\';if(!text){showToast(\'error\',\'Rédigez votre post avant de sauvegarder\');return;}apiAction(\'POST\',\'/api/gbp-posts\',{content:text,status:\'draft\'}).then(r=>{if(r&&r.id){showToast(\'info\',\'Post sauvegardé — connectez GBP pour le publier sur Google\');ta.value=\'\';}else showToast(\'error\',\'Erreur de sauvegarde\');}).catch(()=>showToast(\'error\',\'Erreur de sauvegarde\'));})()">Enregistrer le brouillon</button><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(){var ta=document.getElementById(\'gbp-post-draft\');if(ta)ta.value=\'\';})()">Effacer</button></div></div>';}else{return '<div style="margin-bottom:14px;padding:12px 14px;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.18);border-radius:10px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">✏️</span><div style="flex:1"><div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Rédiger un post GBP</div><div style="font-size:11px;color:var(--fp-text-muted)">Fonctionnalité Ultra — publiez des posts directement sur Google depuis FlowPoint.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta(\'ultra\')">💎 Passer Ultra</button></div>';}})()}
         <!-- Q&A MONITORING -->
         <div class="fp-card-title" style="font-size:12px;margin-bottom:10px">❓ Questions & réponses (Q&A)</div>
         <div style="display:flex;flex-direction:column;gap:6px">
@@ -33776,8 +33774,8 @@ function renderCompetitorsMap() {
           data-lat="${defLat}" data-lng="${defLng}" data-radius="5000" data-keyword="${escHtml(defKeyword)}"
           data-mode="competitors"></div>
 
-        <!-- Legend overlay -->
-        <div style="position:absolute;bottom:12px;left:12px;background:rgba(10,14,27,0.88);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;z-index:5">
+        <!-- Legend overlay — elevated above Google attribution bar -->
+        <div style="position:absolute;bottom:50px;left:12px;background:rgba(10,14,27,0.88);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;z-index:5">
           <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);margin-bottom:6px">LÉGENDE</div>
           ${[
             {c:'#ef4444',l:'Critique — score > 75'},
@@ -35463,7 +35461,7 @@ function renderGA4Conversion() {
 
   const days    = cvS.days || 30;
   const data    = cvS.data || {};
-  const connected = data.connected;
+  const connected = data.connected || _ga4Connected();
   const discovering = data.discovering === true;
 
   const periodSel = `
@@ -37682,7 +37680,7 @@ function renderCWVCards(cwv) {
     { key:'tbt',  label:'TBT',   value: cwv.tbt,        unit:'ms',  desc:'Total Blocking Time',        good:200,  poor:600  },
     { key:'si',   label:'SI',    value: cwv.speedIndex, unit:'ms',  desc:'Speed Index',                good:3400, poor:5800 },
   ];
-  return `<div class="fp-grid" style="grid-template-columns:repeat(4,1fr);gap:12px">
+  return `<div class="fp-grid" style="grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:12px">
     ${metrics.map(m => {
       // BUG-W1-004/005: null protection — show "Donnée indisponible" if metric is absent
       if (m.value === null || m.value === undefined || !Number.isFinite(m.value)) {
@@ -38097,7 +38095,7 @@ function renderCoreWebVitals() {
       <h3 class="fp-card-title">Métriques Mobile</h3>
       <span class="fp-badge fp-badge--ghost">Cliquez sur une métrique pour les détails</span>
     </div>
-    ${cwv ? `<div class="fp-grid" style="grid-template-columns:repeat(4,1fr);gap:12px">
+    ${cwv ? `<div class="fp-grid" style="grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:12px">
       ${['lcp','cls','inp','ttfb'].map(key=>{
         const metricNames={lcp:'LCP',cls:'CLS',inp:'INP',ttfb:'TTFB'};
         const units={lcp:'ms',cls:'',inp:'ms',ttfb:'ms'};
@@ -38564,7 +38562,9 @@ async function fpAnalyzePSI() {
     showToast && showToast('error', 'Erreur réseau lors de l\'analyse PageSpeed');
   } finally {
     window._fpPsiAnalyzing = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Analyser'; }
+    // Re-query the button since render() may have replaced the DOM node
+    const _btnRestored = document.getElementById('fp-psi-analyze-btn');
+    if (_btnRestored) { _btnRestored.disabled = false; _btnRestored.textContent = 'Analyser'; }
     render();
   }
 }
@@ -42329,7 +42329,7 @@ function renderLocalCompetitorMap() {
     <!-- INTERACTIVE COMPETITORS GOOGLE MAP (FP_MAPS_API auto-init via MutationObserver) -->
     <div class="fp-card fp-mb-16" style="padding:0;overflow:hidden;position:relative;min-height:540px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:12px 16px;border-bottom:1px solid var(--fp-border)">
-        <div class="fp-card-title" style="margin-bottom:0">🏴 Carte des concurrents — menace & positions</div>
+        <div class="fp-card-title" style="margin-bottom:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">🏴 Carte des concurrents</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <input id="fp-comp-keyword" type="text" placeholder="Secteur d'activité" value="${escHtml(_cKeyword)}"
             style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text);font-size:12px;padding:6px 10px;width:150px"
@@ -42353,8 +42353,8 @@ function renderLocalCompetitorMap() {
         <div id="fp-competitors-map" style="width:100%;height:540px"
           data-lat="${_cLat}" data-lng="${_cLng}" data-radius="5000" data-keyword="${escHtml(_cKeyword)}"
           data-mode="competitors"></div>
-        <!-- Legend overlay -->
-        <div style="position:absolute;bottom:12px;left:12px;background:rgba(10,14,27,0.88);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;z-index:5">
+        <!-- Legend overlay — elevated above Google attribution bar -->
+        <div style="position:absolute;bottom:50px;left:12px;background:rgba(10,14,27,0.88);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;z-index:5">
           <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);margin-bottom:6px">LÉGENDE</div>
           ${[
             {c:'#ef4444',l:'Critique — score > 75'},
@@ -42560,9 +42560,9 @@ function renderSettingsSSO() {
   const audits = ssoData.login_audits || ssoData.recentLogins || [];
   // API returns providers_catalog as array of strings OR objects — normalize to objects
   const CATALOG_META = {
-    google_workspace: {name:'Google Workspace', protocol:'OAuth 2.0', plan:'Pro',  icon:'🔑', roadmap:false},
-    github:           {name:'GitHub',            protocol:'OAuth 2.0', plan:'Pro',  icon:'🐙', roadmap:false},
-    auth0:            {name:'Auth0',             protocol:'OAuth 2.0', plan:'Ultra',icon:'🔐', roadmap:false},
+    google_workspace: {name:'Google Workspace', protocol:'OAuth 2.0', plan:'Pro',  icon:'🔑', roadmap:true},
+    github:           {name:'GitHub',            protocol:'OAuth 2.0', plan:'Pro',  icon:'🐙', roadmap:true},
+    auth0:            {name:'Auth0',             protocol:'OAuth 2.0', plan:'Ultra',icon:'🔐', roadmap:true},
     microsoft_azure:  {name:'Microsoft Azure AD',protocol:'SAML 2.0', plan:'Ultra',icon:'🏢', roadmap:true},
     azure_ad:         {name:'Microsoft Azure AD',protocol:'SAML 2.0', plan:'Ultra',icon:'🏢', roadmap:true},
     okta:             {name:'Okta',              protocol:'SAML 2.0', plan:'Ultra',icon:'🔵', roadmap:true},
@@ -42659,7 +42659,7 @@ function renderSettingsSSO() {
             `;
           }).join('') : `
             ${[
-              {name:'Google Workspace',protocol:'OAuth 2.0',plan:'Pro',id:'google_workspace',roadmap:false},
+              {name:'Google Workspace',protocol:'OAuth 2.0',plan:'Pro',id:'google_workspace',roadmap:true},
               {name:'Microsoft Azure AD',protocol:'SAML 2.0',plan:'Ultra',id:'microsoft_azure',roadmap:true},
               {name:'Okta',protocol:'SAML 2.0',plan:'Ultra',id:'okta',roadmap:true},
               {name:'Auth0',protocol:'OAuth 2.0',plan:'Ultra',id:'auth0',roadmap:false},
@@ -43356,7 +43356,7 @@ function renderGA4Reports() {
           { label: 'Rapport Executive', icon: '📈', color: '#8b5cf6' },
           { label: 'Export données complet', icon: '📦', color: '#f59e0b' },
         ].map(t => `
-          <div style="padding:14px;border-radius:10px;border:1px solid ${t.color}25;background:${t.color}07;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="window._fpReportsAPI.create({name:'${escHtml(t.label)} — '+new Date().toLocaleDateString(getLocale()),format:'PDF'})">
+          <div style="padding:14px;border-radius:10px;border:1px solid ${t.color}25;background:${t.color}07;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="(function(){if(window._fpReportsAPI&&typeof window._fpReportsAPI.create==='function'){window._fpReportsAPI.create({name:'${escHtml(t.label)} — '+new Date().toLocaleDateString(getLocale()),format:'PDF'}).then(function(r){if(r&&r.id){showToast('success','Rapport généré !');render();}else showToast('error','Erreur de génération');}).catch(function(){showToast('error','Erreur de génération');});}else{openQuickReport();}})()">
             <span style="font-size:22px;flex-shrink:0">${t.icon}</span>
             <div>
               <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(t.label)}</div>
