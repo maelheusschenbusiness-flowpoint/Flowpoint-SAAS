@@ -382,22 +382,41 @@ type DbFn = (sql: string, vals?: unknown[]) => Promise<{ rows: Record<string, un
 /**
  * Record one row per org per day in user_activity_days (cheap upsert, idempotent).
  * Timezone: from user_prefs.settings.timezone, fallback Europe/Brussels.
+ * Falls back to a direct pool.query (superuser — bypasses RLS) when the
+ * RLS-scoped orgDb insert is blocked or fails, so streaks are never silently lost.
  */
 async function recordActivityDay(db: DbFn, orgId: string): Promise<void> {
+  let tz = "Europe/Brussels";
   try {
-    let tz = "Europe/Brussels";
-    try {
-      const tzRow = await db(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
-      const s = tzRow.rows[0]?.["settings"] as Record<string, unknown> | null;
-      if (s && typeof s["timezone"] === "string" && s["timezone"]) tz = s["timezone"];
-    } catch { /* non-fatal */ }
+    const tzRow = await db(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    const s = tzRow.rows[0]?.["settings"] as Record<string, unknown> | null;
+    if (s && typeof s["timezone"] === "string" && s["timezone"]) tz = s["timezone"];
+  } catch { /* non-fatal — fall through with default tz */ }
+
+  // Primary path: RLS-scoped insert
+  let inserted = false;
+  try {
     await db(
       `INSERT INTO user_activity_days (org_id, user_id, day)
        VALUES ($1, $1, (NOW() AT TIME ZONE $2)::date)
        ON CONFLICT (org_id, user_id, day) DO NOTHING`,
       [orgId, tz]
     );
-  } catch { /* non-fatal — table may not exist yet on first boot */ }
+    inserted = true;
+  } catch { /* fall through to pool fallback */ }
+
+  // Fallback: direct pool.query bypasses RLS (superuser connection).
+  // Ensures the row lands even when SET LOCAL ROLE / GUC is silently rejected.
+  if (!inserted) {
+    try {
+      await pool.query(
+        `INSERT INTO user_activity_days (org_id, user_id, day)
+         VALUES ($1, $1, (NOW() AT TIME ZONE $2)::date)
+         ON CONFLICT (org_id, user_id, day) DO NOTHING`,
+        [orgId, tz]
+      );
+    } catch { /* non-fatal — table may not exist yet on first boot */ }
+  }
 }
 
 /**
@@ -405,14 +424,16 @@ async function recordActivityDay(db: DbFn, orgId: string): Promise<void> {
  * Today counts if present; if today absent, start from yesterday
  * so the streak never decreases during the same calendar day.
  */
-async function computeStreakFromTable(db: DbFn, orgId: string, tz: string): Promise<{ current: number; best: number }> {
+async function computeStreakFromTable(db: DbFn, orgId: string, tz: string): Promise<{ current: number; best: number; rowCount: number }> {
   const actRes = await db(
     `SELECT day::text AS d FROM user_activity_days
      WHERE org_id=$1 AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
      ORDER BY d DESC`,
     [orgId, tz]
   );
-  if (actRes.rows.length === 0) return { current: 0, best: 0 };
+  // rowCount=0 means the table is accessible but empty for this org —
+  // callers must NOT overwrite a previously-stored positive streak with 0 in this case.
+  if (actRes.rows.length === 0) return { current: 0, best: 0, rowCount: 0 };
 
   const activeDays = new Set(actRes.rows.map((row: Record<string, unknown>) => String(row["d"]).slice(0, 10)));
   // today in the org's timezone
@@ -440,7 +461,7 @@ async function computeStreakFromTable(db: DbFn, orgId: string, tz: string): Prom
     if (run > best) best = run;
   }
   if (current > best) best = current;
-  return { current, best };
+  return { current, best, rowCount: actRes.rows.length };
 }
 
 // ── GET /api/me/streak ─────────────────────────────────────────────────────────
@@ -451,13 +472,18 @@ router.get("/me/streak", async (req: Request, res: Response): Promise<void> => {
   try {
     await recordActivityDay(orgDb(req), orgId);
     let tz = "Europe/Brussels";
+    let storedStreak = 0;
     try {
-      const tzRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+      const tzRow = await orgDb(req)(`SELECT settings, streak FROM user_prefs WHERE org_id=$1`, [orgId]);
       const s = tzRow.rows[0]?.["settings"] as Record<string, unknown> | null;
       if (s && typeof s["timezone"] === "string" && s["timezone"]) tz = s["timezone"];
+      storedStreak = typeof tzRow.rows[0]?.["streak"] === "number" ? (tzRow.rows[0]["streak"] as number) : 0;
     } catch { /* non-fatal */ }
     const streak = await computeStreakFromTable(orgDb(req), orgId, tz);
-    res.json(streak);
+    // Never return 0 if the activity table is empty for this org —
+    // that means the row insertion hasn't happened yet (RLS race), not a genuine gap.
+    const safeStreak = (streak.rowCount === 0 && storedStreak > 0) ? storedStreak : streak.current;
+    res.json({ current: safeStreak, best: Math.max(streak.best, safeStreak) });
   } catch {
     res.json({ current: 0, best: 0 });
   }
@@ -522,7 +548,13 @@ router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
     }
 
     const storedStreak = typeof row["streak"] === "number" ? (row["streak"] as number) : 0;
-    if (querySucceeded && computedStreak !== storedStreak) {
+    // Never write 0 to user_prefs when the activity table returned no rows for this org —
+    // that means the INSERT hasn't landed yet (RLS race / first boot), not a genuine gap.
+    const tableWasEmpty = querySucceeded && computedStreak === 0 && storedStreak > 0;
+    if (tableWasEmpty) {
+      // Keep stored streak; also upsert it to refresh updated_at so it stays authoritative.
+      finalStreak = storedStreak;
+    } else if (querySucceeded && computedStreak !== storedStreak) {
       orgDb(req)(
         `INSERT INTO user_prefs (org_id, streak, updated_at)
          VALUES ($1, $2, now())

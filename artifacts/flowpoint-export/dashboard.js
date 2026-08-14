@@ -13266,12 +13266,13 @@ function renderAI() {
       </div>
       <div class="fp-section-actions">
         <div style="display:flex;align-items:center;gap:6px">
-          <select id="fp-ai-provider-select" class="fp-select" style="font-size:11px;font-weight:600;opacity:0.8;cursor:not-allowed" title="Changement de fournisseur bientôt disponible" disabled>
-            <option value="openai" selected>GPT-5 — OpenAI</option>
-            <option value="anthropic" disabled>Claude — Bientôt</option>
-            <option value="gemini" disabled>Gemini — Bientôt</option>
+          <select id="fp-ai-provider-select" class="fp-select" style="font-size:11px;font-weight:600"
+            title="Choisir le fournisseur IA"
+            onchange="(function(v){STATE.aiProvider=v;try{localStorage.setItem('fp:ai-provider',v);}catch(_e){}if(typeof window.fpSyncAiBadge==='function')window.fpSyncAiBadge();showToast('info','Fournisseur IA : '+(v==='openai'?'GPT-5 — OpenAI':v==='anthropic'?'Claude 3.5 — Anthropic':'Gemini 2.0 — Google'));}).call(this,this.value)">
+            <option value="openai" ${(STATE.aiProvider||'openai')==='openai'?'selected':''}>GPT-5 — OpenAI</option>
+            <option value="anthropic" ${STATE.aiProvider==='anthropic'?'selected':''}>Claude 3.5 — Anthropic</option>
+            <option value="gemini" ${STATE.aiProvider==='gemini'?'selected':''}>Gemini 2.0 — Google</option>
           </select>
-          <span style="font-size:9px;font-weight:700;padding:2px 7px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.3);border-radius:20px;color:#8b5cf6;white-space:nowrap">Bientôt</span>
         </div>
         ${btn(fpT('Nouvelle conv.'),'fp-btn fp-btn-ghost fp-btn-sm','','onclick="window.fpClearAiChat()"')}
       </div>

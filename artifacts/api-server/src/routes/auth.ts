@@ -1329,30 +1329,60 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
 
       // ── S6: Check 5 — org membership ─────────────────────────────────
       if (memberRow.rows.length === 0) {
-        // S6-fallback: user exists but no org_members row — try org_settings
-        let orgFallback: Awaited<ReturnType<typeof loadOrgSettings>> | null;
+        // S6-pending: check if this user has a pending (not-yet-accepted) invitation
+        // before falling through to org_settings — invited members arrive here when
+        // they click the magic-link before accepting their invite.
+        let pendingInvite: { rows: Array<{ org_id: string; role: string }> } | null = null;
         try {
-          orgFallback = await loadOrgSettings(email).catch(() => null);
-        } catch (osErr) {
-          logger.error({ err: osErr instanceof Error ? osErr.message : String(osErr) }, "login-verify: S6-fallback loadOrgSettings error");
-          throw osErr;
-        }
+          pendingInvite = await pool.query<{ org_id: string; role: string }>(
+            `SELECT org_id, role FROM org_members
+             WHERE email = $1 AND status = 'pending'
+               AND (expires_at IS NULL OR expires_at > NOW())
+             LIMIT 1`,
+            [email]
+          ) as { rows: Array<{ org_id: string; role: string }> };
+        } catch { /* non-fatal — table may use different schema */ }
 
-        if (!orgFallback) {
-          res.status(403).json({ error: "Votre compte n'est associé à aucune organisation active." });
-          return;
+        if (pendingInvite && pendingInvite.rows.length > 0) {
+          // Promote invite to active so the member can log in immediately
+          const inv = pendingInvite.rows[0]!;
+          try {
+            await pool.query(
+              `UPDATE org_members SET status='active', joined_at=NOW(), accepted_at=NOW()
+               WHERE email=$1 AND org_id=$2 AND status='pending'`,
+              [email, inv.org_id]
+            );
+          } catch { /* non-fatal — fall through to log them in anyway */ }
+          sessionOrgId    = inv.org_id;
+          sessionRole     = inv.role || "member";
+          sessionUserUuid = user.id;
+
+        } else {
+          // S6-fallback: user exists but no org_members row — try org_settings
+          let orgFallback: Awaited<ReturnType<typeof loadOrgSettings>> | null;
+          try {
+            orgFallback = await loadOrgSettings(email).catch(() => null);
+          } catch (osErr) {
+            logger.error({ err: osErr instanceof Error ? osErr.message : String(osErr) }, "login-verify: S6-fallback loadOrgSettings error");
+            throw osErr;
+          }
+
+          if (!orgFallback) {
+            res.status(403).json({ error: "Votre compte n'est associé à aucune organisation active." });
+            return;
+          }
+          if (orgFallback.subscriptionStatus === "pending_billing") {
+            res.status(402).json({ error: "Votre compte n'est pas encore activé. Veuillez compléter votre inscription.", redirectTo: "/signin.html" });
+            return;
+          }
+          // Resolve or create a UUID org — never store email as orgId.
+          const s6Result = await resolveOrCreateLegacyOrg({
+            email, userUuid: user.id, orgSettings: orgFallback,
+          });
+          sessionOrgId    = s6Result.orgId;
+          sessionRole     = "owner";
+          sessionUserUuid = s6Result.userUuid;
         }
-        if (orgFallback.subscriptionStatus === "pending_billing") {
-          res.status(402).json({ error: "Votre compte n'est pas encore activé. Veuillez compléter votre inscription.", redirectTo: "/signin.html" });
-          return;
-        }
-        // Resolve or create a UUID org — never store email as orgId.
-        const s6Result = await resolveOrCreateLegacyOrg({
-          email, userUuid: user.id, orgSettings: orgFallback,
-        });
-        sessionOrgId    = s6Result.orgId;
-        sessionRole     = "owner";
-        sessionUserUuid = s6Result.userUuid;
 
       } else {
         const member = memberRow.rows[0]!;
