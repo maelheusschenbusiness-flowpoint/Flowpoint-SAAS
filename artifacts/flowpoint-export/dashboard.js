@@ -482,7 +482,7 @@ function _confirmSessionExpired() {
         });
         try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
         try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-        window.location.href = '/login.html';
+        window.location.replace('/login.html');
       } else {
         console.warn('[FP-AUTH]', ts, 'Confirmation /api/me →', r.status, '— session still valid, ignoring background 401.');
         _401BackgroundCount = 0;
@@ -572,7 +572,7 @@ async function apiFetch(path, opts = {}) {
       // affects THIS tab; sibling tabs each have their own sessionStorage context.
       try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
       try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-      window.location.href = '/login.html';
+      window.location.replace('/login.html');
       return null;
     }
     // Any successful foreground response resets the background 401 counter.
@@ -5259,7 +5259,7 @@ function renderOverview() {
     const _auditUrl = (STATE.audits[0] && STATE.audits[0].url) ? STATE.audits[0].url : null;
     const _critIssues = STATE.overview?.criticalIssues || 0;
     const _gscConnected = (STATE.connectors || []).some(c => (c.key === 'gsc' || c.id === 'gsc') && (c.connected || c.status === 'active'));
-    const _ga4Connected = (STATE.connectors || []).some(c => (c.key === 'ga4' || c.id === 'ga4') && (c.connected || c.status === 'active'));
+    const _ga4Connected = window.fpIsConnected ? window.fpIsConnected('ga4') : !!(STATE.ga4Status?.connected || (STATE.connectors || []).some(c => (c.key === 'ga4' || c.id === 'ga4') && (c.connected || c.status === 'active')));
     const _hasMonitorsDown = (STATE.monitors || []).some(m => m.status === 'down');
     const _hasGbp = !!(STATE.gbp && STATE.gbp.connected);
     const _hasKeywords = (STATE.keywords || []).length > 0;
@@ -8269,16 +8269,31 @@ function renderReports() {
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('ai')">IA Lab →</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
-          ${allReports.slice(0,5).map(r => `
+          ${allReports.length === 0 ? `
+            <div style="padding:20px 0;text-align:center">
+              <div style="font-size:28px;margin-bottom:8px">📄</div>
+              <div style="font-size:13px;font-weight:600;color:var(--fp-text-soft);margin-bottom:4px">Aucun rapport généré</div>
+              <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">Créez votre premier rapport pour partager vos résultats SEO avec vos clients.</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center">
+                <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setTimeout(()=>setupNewReportPanel(),50)">📄 Rapport SEO</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setTimeout(()=>setupNewReportPanel(),50)">📊 Rapport Exécutif</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setTimeout(()=>setupNewReportPanel(),50)">⚡ Monitoring SLA</button>
+              </div>
+            </div>
+          ` : allReports.slice(0,5).map(r => `
             <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
               <div style="width:32px;height:32px;border-radius:7px;background:${r.color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
                 <span style="font-size:9px;font-weight:800;color:${r.color}">${r.type}</span>
               </div>
               <div style="flex:1;min-width:0">
                 <div style="font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.name)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${typeof r.pages === 'number' ? (r.pages > 1 ? r.pages + ' pages' : r.pages + ' page') + ' · ' : ''}${escHtml(r.date)} · ${escHtml(r.size)}${r.shared ? ' · <span style="color:#22c55e">Partage</span>' : ''}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">${typeof r.pages === 'number' ? (r.pages > 1 ? r.pages + ' pages' : r.pages + ' page') + ' · ' : ''}${escHtml(r.date)} · ${escHtml(r.size)}${r.shared ? ' · <span style="color:#22c55e">✓ Partagé</span>' : ''}</div>
               </div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="downloadReportPdf(this.dataset.rid,this.dataset.rname,this)">↓</button>
+              <div style="display:flex;gap:3px;flex-shrink:0">
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="Télécharger PDF" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="downloadReportPdf(this.dataset.rid,this.dataset.rname,this)">↓ PDF</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="Partager" data-rid="${escHtml(r.id)}" onclick="(async function(b){var rid=b.dataset.rid;if(!rid)return;try{var res=await apiAction('POST','/api/reports/'+rid+'/share',{auditIds:[]});if(res&&res.token){var u=window.location.origin+'/r/'+res.token;navigator.clipboard&&navigator.clipboard.writeText(u).catch(function(){});showToast('success','Lien copié !');}else showToast('info','Lien généré');}catch(e){showToast('error',fpT('Erreur partage'));}})(this)">🔗</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger,#ef4444)" title="Supprimer" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="(async function(b){var rid=b.dataset.rid,rn=b.dataset.rname;if(!rid||!confirm('Supprimer «'+rn+'» ?'))return;try{await apiAction('DELETE','/api/reports/'+rid);STATE.reports=(STATE.reports||[]).filter(function(x){return x.id!==rid;});if(STATE.route==='reports')render();showToast('success','Rapport supprimé');}catch(e){showToast('error',fpT('Erreur suppression'));}})(this)">✕</button>
+              </div>
             </div>
           `).join('')}
         </div>
@@ -17372,7 +17387,7 @@ function bindGlobalEvents() {
     try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
     showToast('info', fpT('Déconnexion…'));
     try { await window.apiFetch('/api/auth/logout', { method: 'POST' }); } catch(_) {}
-    setTimeout(() => { window.location.href = '/login.html'; }, 1200);
+    setTimeout(() => { window.location.replace('/login.html'); }, 1200);
   });
 
   // Messages button
@@ -45205,7 +45220,7 @@ async function init() {
       .forEach(function(k) { localStorage.removeItem(k); });
     sessionStorage.clear(); // also clears fp_session_token + fp_tab_uid
     showToast('success', fpT('Toutes les sessions fermées'));
-    setTimeout(function() { window.location.href = '/login.html'; }, 1200);
+    setTimeout(function() { window.location.replace('/login.html'); }, 1200);
   };
 
   // ── fpSavePref: named handler for settings pill/preset buttons ──

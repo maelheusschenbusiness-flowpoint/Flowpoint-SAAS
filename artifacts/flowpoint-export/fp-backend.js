@@ -99,7 +99,7 @@
           console.warn('[FP-BACKEND-AUTH]', ts, 'Confirmation /api/me → 401. Session expired. Redirecting.');
           _fp401BackgroundCount = 0;
           _clearAuth();
-          window.location.href = '/login.html';
+          window.location.replace('/login.html');
         } else {
           console.warn('[FP-BACKEND-AUTH]', ts, 'Confirmation /api/me →', r.status, '— session still valid, ignoring background 401.');
           _fp401BackgroundCount = 0;
@@ -173,7 +173,7 @@
           _fp401BackgroundCount = 0;
           if (_fp401ConfirmTimer) { clearTimeout(_fp401ConfirmTimer); _fp401ConfirmTimer = null; }
           _clearAuth();
-          window.location.href = '/login.html';
+          window.location.replace('/login.html');
           return null;
         }
         if (!(opts && opts.backgroundPoll)) { _fp401BackgroundCount = 0; }
@@ -2464,7 +2464,7 @@
           }),
         });
 
-        if (resp.status === 401) { _clearAuth(); window.location.href = '/login.html'; return; }
+        if (resp.status === 401) { _clearAuth(); window.location.replace('/login.html'); return; }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
         var contentType = resp.headers.get('content-type') || '';
@@ -2904,6 +2904,10 @@
         try { document.dispatchEvent(new CustomEvent('fp:team:message', { detail: data })); } catch(_) {}
       }
       // ── Alert events — re-fetch and refresh sidebar badge in real time ──────────────
+      // ── Billing plan update (Stripe webhook → store.broadcastPlanUpdate → SSE → UI)
+      if (data.type === 'billing:plan_updated') {
+        try { document.dispatchEvent(new CustomEvent('fp:billing:updated', { detail: data })); } catch(_) {}
+      }
       if (data.type === 'alert:update' || data.type === 'alert:new') {
         if (window.STATE && typeof window.apiFetch === 'function') {
           window.apiFetch('/api/alert-events').then(function(events) {
