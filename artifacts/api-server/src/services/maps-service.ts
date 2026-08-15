@@ -87,28 +87,38 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
  * dropped instead of producing NaN markers.
  */
 /**
- * Multi-point grid search: covers up to 100 km by placing 5 search circles
- * (center + N/E/S/W at 60 km) each with a 50 km radius — overlapping so no
- * gap exists at the edges of adjacent circles. Results are deduplicated by
- * placeId and filtered to the requested effective radius from the origin.
+ * Full-disk competitor search covering up to 100 km using a 7-point hexagonal
+ * grid (centre + 6 surrounding points at ring_radius = R × √3/2).
+ *
+ * Proof of complete coverage
+ * ──────────────────────────
+ * For a disk of radius R covered by circles of radius r = 50 km, the ring
+ * radius is chosen such that the worst-case point (on the R perimeter, 30°
+ * from the nearest ring point) is exactly r from that ring point:
+ *   ring = R × √3/2  →  d² = ring² + R² − 2·ring·R·cos30° = R²·(3/4 + 1 − 3/2) = 0 ≠ r²
+ * Wait — actual derivation: ring = R × √3/2, cos30° = √3/2:
+ *   d² = (R√3/2)² + R² − 2·(R√3/2)·R·(√3/2)
+ *      = 3R²/4 + R² − 3R²/2 = 4R²/4 − 6R²/4 + 3R²/4 = R²/4  →  d = R/2 = 50 km when R=100 km ✓
+ * The 6-fold symmetry (60° steps) means every point inside the disk is within
+ * 50 km of at least one of the 7 centres — no gaps anywhere, including diagonals.
  */
 export async function analyzeCompetitors(lat: number, lng: number, keyword: string, radius = 5000): Promise<unknown[]> {
   const SEARCH_RADIUS = 50000; // Google Places API hard limit per request
-  const EFF_RADIUS = Math.min(100000, radius); // honour user's up-to-100 km request
+  const EFF_RADIUS = Math.min(100000, radius);
 
-  // Build search centres.  Beyond 50 km we add 4 cardinal satellites at 60 km
-  // so their 50 km reach covers the 50–100 km belt around the origin.
-  const STEP_M = 60000;
-  const latStep = STEP_M / 111_000;
-  const lngStep = STEP_M / (111_000 * Math.max(0.3, Math.cos(lat * Math.PI / 180)));
+  // ring_radius = EFF_RADIUS × √3/2 guarantees every point in the disk
+  // is within SEARCH_RADIUS of at least one of the 7 hexagonal centres.
+  const cosLat = Math.max(0.3, Math.cos(lat * Math.PI / 180));
+  const RING_M  = EFF_RADIUS * Math.sqrt(3) / 2; // e.g. 86.6 km for R = 100 km
   const centres: Array<{ lat: number; lng: number }> = [{ lat, lng }];
   if (EFF_RADIUS > 50000) {
-    centres.push(
-      { lat: lat + latStep, lng },          // North
-      { lat: lat - latStep, lng },          // South
-      { lat, lng: lng + lngStep },          // East
-      { lat, lng: lng - lngStep },          // West
-    );
+    for (let i = 0; i < 6; i++) {
+      const ang = (i * Math.PI) / 3; // 0°, 60°, 120°, 180°, 240°, 300°
+      centres.push({
+        lat: lat + (RING_M / 111_000) * Math.sin(ang),
+        lng: lng + (RING_M / (111_000 * cosLat)) * Math.cos(ang),
+      });
+    }
   }
 
   const seen = new Map<string, Record<string, unknown>>();

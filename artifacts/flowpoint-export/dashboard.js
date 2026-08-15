@@ -26341,8 +26341,11 @@ function renderGrowthCommandCenter() {
     {label:'Contenu',user:_myContenu, comp:_c1Contenu},
   ];
 
-  // Quick Win pct = real progress from missions or manual "Accompli" state.
-  // New accounts have no missions and empty checklistExtra → always 0.
+  // Quick Win pct = only truly measurable values: 0 or 100.
+  // – 100 if manually marked "Accompli" (server-persisted in checklistExtra)
+  // – 100 if a linked mission with a matching title is in status 'done'
+  // – 0  in all other cases (in_progress is NOT measured progress)
+  // No fabricated partial percentages.
   var _qwPct = function(title) {
     if (!title) return 0;
     if (STATE.checklistExtra && STATE.checklistExtra[title]) return 100;
@@ -26351,7 +26354,7 @@ function renderGrowthCommandCenter() {
       return m.title && m.title.toLowerCase().slice(0, 30) === _norm;
     });
     if (!_m) return 0;
-    return _m.status === 'done' ? 100 : _m.status === 'in_progress' ? 50 : 20;
+    return _m.status === 'done' ? 100 : 0;
   };
   const _gcRecs = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.recommendations;
   const wins = (_gcRecs && _gcRecs.length) ? _gcRecs.slice(0, 4).map(function(r, i) {
@@ -38908,7 +38911,7 @@ async function fpGetPSIAIReco() {
 
     if (resp.ok) {
       const _result = await resp.json();
-      const _reco = (_result && (_result.message || _result.response || _result.text || _result.content)) || '';
+      const _reco = (_result && (_result.reply || _result.message || _result.response || _result.text || _result.content)) || '';
       if (_reco) {
         if (window.FP_DATA && window.FP_DATA.pagespeed) {
           window.FP_DATA.pagespeed.aiRecommendations = _reco;
