@@ -563,7 +563,34 @@ async function apiFetch(path, opts = {}) {
         }
         return null;
       }
-      // Foreground 401 — session is definitively invalid; clear and redirect.
+      // Foreground 401 — before redirecting, attempt ONE silent session recovery
+      // via the HttpOnly fp_token cookie.  On hard-refresh or Back-navigation the
+      // per-tab sessionStorage Bearer can become stale while the cookie is still
+      // valid (e.g. server restart flushed in-memory sessions, cookie recreated by
+      // another tab's login).  Recovering silently here prevents a false logout.
+      if (!opts._retryAfter401) {
+        try {
+          const _rec = await fetch('/api/auth/session-restore', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          if (_rec.ok) {
+            const _rd = await _rec.json().catch(() => null);
+            if (_rd?.token) {
+              try { sessionStorage.setItem('fp_session_token', _rd.token); } catch(_) {}
+              // Clear caches so the retry picks up the new token.
+              _apiFetchCache.delete(path);
+              _apiFetchInFlight.delete(path);
+              console.warn('[FP-AUTH]', _ts, 'Foreground 401 on', path, '— cookie recovery succeeded, retrying with refreshed token.');
+              return apiFetch(path, { ...opts, _retryAfter401: true });
+            }
+          }
+        } catch (_recErr) {
+          console.warn('[FP-AUTH]', _ts, 'Cookie recovery attempt failed:', _recErr?.message);
+        }
+      }
+      // Recovery failed or already attempted — session is definitively invalid.
       console.warn('[FP-AUTH]', _ts, 'Foreground 401 on', path, '— clearing session and redirecting.');
       _401BackgroundCount = 0;
       if (_401ConfirmTimer) { clearTimeout(_401ConfirmTimer); _401ConfirmTimer = null; }

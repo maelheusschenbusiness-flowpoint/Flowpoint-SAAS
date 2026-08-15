@@ -242,7 +242,12 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
       return;
     }
 
-    const subscriptionData: Record<string, unknown> = {};
+    // Always embed plan in subscription metadata so parsePlanFromSubscription
+    // can identify the plan from customer.subscription.created/updated webhooks
+    // without relying on price-ID mapping (which may not cover all test-mode IDs).
+    const subscriptionData: Record<string, unknown> = {
+      metadata: { plan: plan.toLowerCase(), orgId },
+    };
     if (quote.trialEligible) {
       subscriptionData["trial_period_days"] = quote.trialDays;
       logger.info({ plan, orgId, trialDays: quote.trialDays }, "[Billing] Granting trial — confirmed first-time subscriber");
