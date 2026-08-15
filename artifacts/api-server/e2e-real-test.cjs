@@ -187,7 +187,7 @@ async function main() {
       record('/api/me baseline', 'PASS', `plan=${me1.json.plan} status=${me1.json.subscriptionStatus}`);
 
       // Downgrade to Standard in DB to simulate pre-upgrade state
-      const fakeCustomer = `cus_e2e_${RUN}`;
+      const fakeCustomer = `cus_e2e_${RUN}`; const customerId = fakeCustomer;
       await pool.query(
         `UPDATE organizations SET plan='standard', subscription_status='active', stripe_customer_id=$1 WHERE id=$2`,
         [fakeCustomer, orgId]
@@ -244,6 +244,39 @@ async function main() {
             `plan=${me3.json?.plan} subscriptionStatus=${me3.json?.subscriptionStatus} (expect Pro/pro + active)`);
         } else {
           record('Webhook rejected', 'FAIL', `HTTP ${whRes.status} — ${JSON.stringify(whRes.json).slice(0,120)}`);
+        }
+      }
+      // ── Downgrade: simulate subscription.deleted webhook ────────────────────
+      if (webhookSecret) {
+        try {
+          const cancelPayload = JSON.stringify({
+            type: 'customer.subscription.deleted',
+            data: { object: {
+              id: 'sub_e2e_cancel_' + RUN,
+              customer: fakeCustomer,
+              status: 'canceled',
+              plan: { id: 'price_standard', nickname: 'Standard' },
+              items: { data: [{ price: { id: 'price_standard', lookup_key: 'fp_standard_monthly', recurring: { interval: 'month' } }, quantity: 1 }] }
+            }},
+          });
+          const { header: cancelHdr, body: cancelBody } = stripeSign(cancelPayload, webhookSecret);
+          const cancelRes = await httpReq(`${BASE}/api/billing/webhook`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'stripe-signature': cancelHdr },
+            body: cancelBody,
+          });
+          record('Downgrade webhook accepted', (cancelRes.status === 200 || cancelRes.status === 204) ? 'PASS' : 'FAIL',
+            `HTTP ${cancelRes.status} — subscription.deleted`);
+          if (cancelRes.status === 200 || cancelRes.status === 204) {
+            await new Promise(r => setTimeout(r, 900));
+            const dbDown = await pool.query(`SELECT plan, subscription_status FROM organizations WHERE id=$1`, [orgId]);
+            const downPlan = (dbDown.rows[0]?.plan || '').toLowerCase();
+            const downStatus = (dbDown.rows[0]?.subscription_status || '').toLowerCase();
+            record('DB downgraded after cancel', (downPlan === 'standard' || downPlan === 'free' || downStatus === 'canceled') ? 'PASS' : 'FAIL',
+              `plan=${downPlan} status=${downStatus} (expect standard/free or canceled)`);
+          }
+        } catch(eDown) {
+          record('Downgrade webhook', 'FAIL', eDown.message);
         }
       }
     }

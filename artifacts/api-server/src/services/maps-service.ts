@@ -1,11 +1,16 @@
+/** Server-side Maps API key — prefers FLOWPOINT_MAP_BACKEND (Places-enabled), falls back to GOOGLE_MAPS_API_KEY */
+function getMapsApiKey(): string {
+  return process.env["FLOWPOINT_MAP_BACKEND"] ?? process.env["GOOGLE_MAPS_API_KEY"] ?? "";
+}
+
 export function isMapsConfigured(): boolean {
-  return !!process.env["GOOGLE_MAPS_API_KEY"];
+  return !!getMapsApiKey();
 }
 
 export async function geocodeAddress(address: string): Promise<{
   lat: number; lng: number; formattedAddress: string; placeId: string;
 } | null> {
-  const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
+  const apiKey = getMapsApiKey();
   if (!apiKey) throw new Error("Google Maps API key not configured");
 
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
@@ -23,7 +28,7 @@ export async function geocodeAddress(address: string): Promise<{
 }
 
 export async function getNearbyPlaces(lat: number, lng: number, type: string, radius = 5000, keyword = ""): Promise<unknown[]> {
-  const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
+  const apiKey = getMapsApiKey();
   if (!apiKey) throw new Error("Google Maps API key not configured");
   const kw = keyword.trim() ? `&keyword=${encodeURIComponent(keyword.trim())}` : "";
   const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}${kw}&key=${apiKey}`;
@@ -33,7 +38,7 @@ export async function getNearbyPlaces(lat: number, lng: number, type: string, ra
 }
 
 export async function getDistanceMatrix(origins: string[], destinations: string[]): Promise<unknown> {
-  const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
+  const apiKey = getMapsApiKey();
   if (!apiKey) throw new Error("Google Maps API key not configured");
   const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origins.join("|")}&destinations=${destinations.join("|")}&key=${apiKey}`;
   const res = await fetch(url);
@@ -170,7 +175,7 @@ export async function analyzeCompetitors(lat: number, lng: number, keyword: stri
  * address, phone, website, opening status and a proxied photo URL.
  */
 export async function getPlaceDetails(placeId: string): Promise<Record<string, unknown> | null> {
-  const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
+  const apiKey = getMapsApiKey();
   if (!apiKey) throw new Error("Google Maps API key not configured");
   const fields = [
     "place_id", "name", "rating", "user_ratings_total", "formatted_address",
@@ -200,7 +205,7 @@ export async function getPlaceDetails(placeId: string): Promise<Record<string, u
 
 /** Streams a Google Places photo (keeps the API key server-side). */
 export async function fetchPlacePhoto(photoRef: string, maxWidth = 400): Promise<{ contentType: string; body: Buffer } | null> {
-  const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
+  const apiKey = getMapsApiKey();
   if (!apiKey) throw new Error("Google Maps API key not configured");
   const url = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${encodeURIComponent(photoRef)}&key=${apiKey}`;
   const res = await fetch(url, { redirect: "follow" });
