@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
 import { requireOrgId } from "../lib/require-org-id.js";
 
-import { PLAN_LIMITS } from "../lib/plans.js";
+import { PLAN_LIMITS, PLAN_INCLUDED_ADDONS, QTY_ADDON_GRANTS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
 import { loadOrgData }                         from "../services/org-data.js";
 import { normalizeSubscriptionStatus } from "../lib/subscription-state.js";
@@ -55,7 +55,8 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
       // Billing fields: prefer organizations (billingData) → org_settings fallback (dbData)
       const rawPlan             = billingData?.plan ?? dbData?.plan ?? "standard";
       const plan                = rawPlan.toLowerCase();
-      const limits              = PLAN_LIMITS[plan] ?? PLAN_LIMITS["standard"];
+      // Mutable copy — org_addons qty grants are applied below after _addonsRows is read
+      const limits: Record<string, number> = { ...(PLAN_LIMITS[plan] ?? PLAN_LIMITS["standard"]) };
       const rawSubStatus        = billingData?.subscriptionStatus ?? dbData?.subscriptionStatus ?? null;
       const rawStripeSubId      = billingData?.stripeSubscriptionId ?? dbData?.stripeSubscriptionId ?? null;
       const rawStripeCustomerId = billingData?.stripeCustomerId     ?? dbData?.stripeCustomerId     ?? null;
@@ -85,12 +86,27 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
 
       // Read addons from org_addons table (single source of truth — Correction 8)
       const _addonsRows = await orgDb(req)(
-        `SELECT addon_key, active FROM org_addons WHERE org_id=$1`,
+        `SELECT addon_key, active, quantity FROM org_addons WHERE org_id=$1`,
         [orgId]
       ).catch(() => ({ rows: [] as Array<Record<string, unknown>> }));
       const _mergedAddons: Record<string, boolean | number> = {};
       for (const row of _addonsRows.rows) {
-        _mergedAddons[String(row["addon_key"])] = Boolean(row["active"]);
+        const key = String(row["addon_key"]);
+        if (!row["active"]) continue;
+        // Qty addons (extraSeats, monitorsPack10, etc.) → store pack count as number
+        const qtyGrant = QTY_ADDON_GRANTS[key as keyof typeof QTY_ADDON_GRANTS];
+        if (qtyGrant) {
+          const packs = Number(row["quantity"] ?? 1);
+          _mergedAddons[key] = packs;
+          // Expand the mutable limits object with this pack's grant
+          limits[qtyGrant.resource] = (limits[qtyGrant.resource] ?? 0) + packs * qtyGrant.perPack;
+        } else {
+          _mergedAddons[key] = true;
+        }
+      }
+      // Merge plan-included addons (whiteLabel for Standard, etc.) — PLAN_INCLUDED_ADDONS is the source of truth
+      for (const addonKey of PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()) {
+        if (!_mergedAddons[addonKey]) _mergedAddons[addonKey] = true;
       }
       // Merge org_settings.addons as legacy supplemental (org_addons takes precedence)
       const legacyAddons = dbData?.addons ?? billingData?.addons;

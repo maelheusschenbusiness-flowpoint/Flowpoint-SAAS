@@ -73,22 +73,30 @@ function buildInviteUrl(rawToken: string, email: string): string {
 /** Resolve plan seat limit — reads from organizations (Jalon 1 source of truth).
  *  Falls back to org_settings.plan when the webhook has not yet updated organizations.plan,
  *  taking whichever source gives the higher teamMembers limit (avoids blocking invites after upgrade).
+ *  Also adds extraSeats pack expansion (QTY_ADDON_GRANTS.extraSeats.perPack = 5 per pack).
  */
 async function getOrgSeatLimit(orgId: string): Promise<{ limit: number; plan: string }> {
   try {
-    const r = await pool.query<{ plan: string; legacy_plan: string }>(
+    const r = await pool.query<{ plan: string; legacy_plan: string; extra_seat_packs: number }>(
       `SELECT
          COALESCE(NULLIF(o.plan,''), 'standard')              AS plan,
-         COALESCE(NULLIF(os.plan,''), '')                     AS legacy_plan
+         COALESCE(NULLIF(os.plan,''), '')                     AS legacy_plan,
+         COALESCE((
+           SELECT SUM(quantity)::int
+           FROM org_addons
+           WHERE org_id = $1::uuid AND addon_key = 'extraSeats' AND active = true
+         ), 0) AS extra_seat_packs
        FROM organizations o
        LEFT JOIN org_settings os ON os.org_id = o.id::text
        WHERE o.id::text = $1 LIMIT 1`,
       [orgId]
     );
-    const plan1  = (r.rows[0]?.plan        ?? "standard").toLowerCase();
-    const plan2  = (r.rows[0]?.legacy_plan ?? "").toLowerCase();
-    const limit1 = PLAN_LIMITS[plan1]?.teamMembers ?? 1;
-    const limit2 = PLAN_LIMITS[plan2]?.teamMembers ?? 0;
+    const plan1      = (r.rows[0]?.plan        ?? "standard").toLowerCase();
+    const plan2      = (r.rows[0]?.legacy_plan ?? "").toLowerCase();
+    // extraSeats: 5 seats per pack — matches QTY_ADDON_GRANTS.extraSeats.perPack
+    const extraSeats = Number(r.rows[0]?.extra_seat_packs ?? 0) * 5;
+    const limit1 = (PLAN_LIMITS[plan1]?.teamMembers ?? 1) + extraSeats;
+    const limit2 = (PLAN_LIMITS[plan2]?.teamMembers ?? 0) + extraSeats;
     // Prefer whichever plan grants more seats — guards against webhook lag after upgrade.
     if (limit2 > limit1) return { limit: limit2, plan: plan2 };
     return { limit: limit1, plan: plan1 };
