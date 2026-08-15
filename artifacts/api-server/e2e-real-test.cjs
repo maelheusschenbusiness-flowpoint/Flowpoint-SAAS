@@ -284,11 +284,55 @@ async function main() {
     record('Upgrade chain', 'FAIL', e.message);
   }
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // TEST 4 — Quick Wins checklist: GET pct=0 → PUT done → GET pct=100
+  // ════════════════════════════════════════════════════════════════════════════
+  console.log('\n── Test 4: Quick Wins checklist API ──');
+  try {
+    const QW_TITLE = 'Fiche Google Business Profile complète';
+
+    // Step 1: GET checklist → initial extra should be null or not contain our title
+    const cl1 = await httpReq(`${BASE}/api/overview/checklist`, { headers: auth });
+    if (cl1.status !== 200) {
+      record('QW GET checklist initial', 'FAIL', `HTTP ${cl1.status}`);
+    } else {
+      const initialExtra = cl1.json?.extra || {};
+      const initialPct = initialExtra[QW_TITLE] ? 100 : 0;
+      record('QW initial pct=0', initialPct === 0 ? 'PASS' : 'FAIL',
+        `extra[title]=${initialExtra[QW_TITLE]} → pct=${initialPct} (expect 0)`);
+
+      // Step 2: PUT checklist — mark item as done via extra map
+      const putRes = await httpReq(`${BASE}/api/overview/checklist`, {
+        method: 'PUT', headers: auth,
+        body: JSON.stringify({ extra: { [QW_TITLE]: true } }),
+      });
+      if (putRes.status !== 200) {
+        record('QW PUT mark done', 'FAIL', `HTTP ${putRes.status} — ${JSON.stringify(putRes.json).slice(0,80)}`);
+      } else {
+        record('QW PUT mark done', 'PASS', `HTTP ${putRes.status}`);
+
+        // Step 3: GET checklist again → extra[title] must be true → pct=100
+        const cl2 = await httpReq(`${BASE}/api/overview/checklist`, { headers: auth });
+        if (cl2.status !== 200) {
+          record('QW GET after PUT', 'FAIL', `HTTP ${cl2.status}`);
+        } else {
+          const afterExtra = cl2.json?.extra || {};
+          const afterPct = afterExtra[QW_TITLE] ? 100 : 0;
+          record('QW pct=100 after mark done', afterPct === 100 ? 'PASS' : 'FAIL',
+            `extra[title]=${afterExtra[QW_TITLE]} → pct=${afterPct} (expect 100)`);
+        }
+      }
+    }
+  } catch (e) {
+    record('QW checklist', 'FAIL', e.message);
+  }
+
   // ── Cleanup ─────────────────────────────────────────────────────────────────
   try {
     await pool.query(`DELETE FROM user_sessions WHERE org_id=$1`, [orgId]);
     await pool.query(`DELETE FROM team_files WHERE org_id=$1::text`, [orgId]);
     await pool.query(`DELETE FROM ai_monthly_usage WHERE org_id=$1::text`, [orgId]);
+    await pool.query(`DELETE FROM org_checklist WHERE org_id=$1::text`, [orgId]);
     await pool.query(`DELETE FROM organizations WHERE id=$1`, [orgId]);
   } catch { /* best-effort */ }
   await pool.end();
