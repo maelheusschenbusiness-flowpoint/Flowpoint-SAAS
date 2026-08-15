@@ -20606,6 +20606,38 @@ function bindGlobalEvents() {
       'Resolu':'Risolto','Visibilit\u00e9':'Visibilità','Comp\u00e9tition':'Concorrenza','Tendance':'Tendenza',
       'Plan CRO mobile':'Piano CRO mobile','Corriger le formulaire':'Correggi il modulo',
       'Rapport conversion':'Report di conversione','Prochain envoi auto :':'Prossimo invio automatico:',
+      // ── Navigation & Actions ──
+      'Nouvel audit':'Nuovo audit','Nouveau monitor':'Nuovo monitor','Nouvelle mission':'Nuova attività',
+      'Créer un audit':'Crea audit','Lancer un audit':'Avvia audit','Générer un rapport':'Genera report','Générer':'Genera',
+      'Créer une mission':'Crea attività','Inviter':'Invita','Déconnecter':'Disconnetti','Connecter':'Connetti',
+      'Retour':'Indietro','Suivant':'Avanti','Précédent':'Precedente','Confirmer':'Conferma',
+      'Voir les détails':'Visualizza dettagli','Voir plus':'Vedi di più','Voir moins':'Vedi meno','Tout sélectionner':'Seleziona tutto',
+      'Aucun résultat':'Nessun risultato','Réessayer':'Riprova','Copié !':'Copiato!',
+      'Tout voir':'Vedi tutto','Pas de données':'Nessun dato','Recommandations':'Raccomandazioni',
+      // ── Dashboard Overview ──
+      'Score SEO moyen':'Punteggio SEO medio','Score SEO':'Punteggio SEO',
+      'Monitors actifs':'Monitor attivi','Missions actives':'Attività attive','Missions complétées':'Attività completate',
+      'Aucun audit':'Nessun audit','Aucun monitor':'Nessun monitor','Aucun rapport':'Nessun report',
+      'Aucune mission':'Nessuna attività','Aucun mot-clé':'Nessuna parola chiave',
+      'Bon':'Buono','Attention':'Attenzione','Faible':'Debole','Excellent':'Eccellente','Critique':'Critico',
+      'Créer un audit':'Crea audit','Lancer un audit':'Avvia audit',
+      'Générer un rapport':'Genera report','Générer':'Genera',
+      'Créer une mission':'Crea attività',
+      // ── Billing ──
+      'Gérer mon abonnement':'Gestisci abbonamento','Plans & Abonnements':'Piani e abbonamenti',
+      'Coût mensuel':'Costo mensile','Sans engagement':'Senza vincoli','Add-ons actifs':'Add-on attivi',
+      'Total':'Totale','Moyenne':'Media',
+      // ── Settings ──
+      'Prénom':'Nome','Nom de famille':'Cognome','Nom de l\'organisation':'Nome organizzazione',
+      'Apparence & Personnalisation':'Aspetto e personalizzazione',
+      // ── Toasts & UI ──
+      'Action effectuée.':'Azione eseguita.','Action annulée.':'Azione annullata.',
+      'Chargement…':'Caricamento…','Actions Rapides':'Azioni rapide',
+      'Score global':'Punteggio globale','Santé Workspace':'Salute Workspace',
+      'Mode Client':'Modalità cliente','Activité':'Attività','Tableau de bord':'Dashboard',
+      'Impressions':'Impressioni','Clics':'Clic','Sessions':'Sessioni','Conversions':'Conversioni',
+      'Centre d\'alertes':'Centro allerte',"Centre d'alertes":'Centro allerte',
+      'Workspace Intelligence IA \u2014 Pro requis':'Workspace KI-Intelligenz \u2014 Pro richiesto',
     },
     pt: {'Vue d\'ensemble':'Visão geral','Audits SEO':'Auditorias SEO','Mots-clés':'Palavras-chave','Concurrents':'Concorrentes','Rapports':'Relatórios','Missions':'Tarefas','Assistant IA':'Assistente de IA','Calendrier':'Calendário','Équipe':'Equipa','Paramètres':'Definições','Facturation':'Faturação','Sécurité':'Segurança','Intégrations':'Integrações','Notifications':'Notificações','Alertes':'Alertas','Croissance':'Crescimento','Trafic':'Tráfego','Rechercher':'Pesquisar','Rechercher…':'Pesquisar…','Ajouter':'Adicionar','Annuler':'Cancelar','Enregistrer':'Guardar','Sauvegarder':'Guardar','Supprimer':'Eliminar','Modifier':'Editar','Fermer':'Fechar','Voir tout':'Ver tudo','Exporter':'Exportar','Actualiser':'Atualizar','Chargement…':'A carregar…','Aucune donnée':'Sem dados','Changer de plan':'Alterar plano','Plan actuel':'Plano atual','Choisir':'Escolher','Langue':'Idioma','Thème':'Tema','Sombre':'Escuro','Clair':'Claro','En cours':'Em curso','Terminé':'Concluído','À faire':'Por fazer','Priorité':'Prioridade','Statut':'Estado','Actif':'Ativo','Inactif':'Inativo','Envoyer':'Enviar','Nouvelle conv.':'Nova conversa','Complétées':'Concluídas',
       // ── CRO sub-page ──
@@ -20684,6 +20716,34 @@ function bindGlobalEvents() {
       'Resolu':'Resolvido','Visibilit\u00e9':'Visibilidade','Comp\u00e9tition':'Concorrência','Tendance':'Tendência',
       'Plan CRO mobile':'Plano CRO móvel','Corriger le formulaire':'Corrigir formulário',
       'Rapport conversion':'Relatório de conversão','Prochain envoi auto :':'Próximo envio automático:',
+      // ── Navigation & Actions ──
+      'Nouvel audit':'Nova auditoria','Nouveau monitor':'Novo monitor','Nouvelle mission':'Nova tarefa',
+      'Créer un audit':'Criar auditoria','Lancer un audit':'Iniciar auditoria','Générer un rapport':'Gerar relatório','Générer':'Gerar',
+      'Créer une mission':'Criar tarefa','Inviter':'Convidar','Déconnecter':'Desligar','Connecter':'Ligar',
+      'Retour':'Voltar','Suivant':'Seguinte','Précédent':'Anterior','Confirmer':'Confirmar',
+      'Voir les détails':'Ver detalhes','Voir plus':'Ver mais','Voir moins':'Ver menos',
+      'Aucun résultat':'Nenhum resultado','Réessayer':'Tentar novamente','Copié !':'Copiado!',
+      'Tout voir':'Ver tudo','Pas de données':'Sem dados','Recommandations':'Recomendações',
+      // ── Dashboard Overview ──
+      'Score SEO moyen':'Pontuação SEO média','Score SEO':'Pontuação SEO',
+      'Monitors actifs':'Monitores ativos','Missions actives':'Tarefas ativas','Missions complétées':'Tarefas concluídas',
+      'Aucun audit':'Nenhuma auditoria','Aucun monitor':'Nenhum monitor','Aucun rapport':'Nenhum relatório',
+      'Aucune mission':'Nenhuma tarefa','Aucun mot-clé':'Nenhuma palavra-chave',
+      'Bon':'Bom','Attention':'Atenção','Faible':'Fraco','Excellent':'Excelente','Critique':'Crítico',
+      // ── Billing ──
+      'Gérer mon abonnement':'Gerir subscrição','Plans & Abonnements':'Planos e subscrições',
+      'Coût mensuel':'Custo mensal','Sans engagement':'Sem compromisso','Add-ons actifs':'Add-ons ativos',
+      'Total':'Total','Moyenne':'Média',
+      // ── Settings ──
+      'Prénom':'Primeiro nome','Nom de famille':'Apelido','Nom de l\'organisation':'Nome da organização',
+      'Apparence & Personnalisation':'Aspeto e personalização',
+      // ── Toasts & UI ──
+      'Action effectuée.':'Ação executada.','Action annulée.':'Ação cancelada.',
+      'Actions Rapides':'Ações rápidas','Score global':'Pontuação global','Santé Workspace':'Saúde Workspace',
+      'Mode Client':'Modo cliente','Activité':'Atividade','Tableau de bord':'Painel de controlo',
+      'Impressions':'Impressões','Clics':'Cliques','Sessions':'Sessões','Conversions':'Conversões',
+      'Centre d\'alertes':'Centro de alertas',"Centre d'alertes":'Centro de alertas',
+      'Workspace Intelligence IA \u2014 Pro requis':'Workspace IA Intelligence \u2014 Pro necessário',
     },
     nl: {'Vue d\'ensemble':'Overzicht','Audits SEO':'SEO-audits','Mots-clés':'Zoekwoorden','Concurrents':'Concurrenten','Rapports':'Rapporten','Missions':'Taken','Assistant IA':'AI-assistent','Calendrier':'Agenda','Équipe':'Team','Paramètres':'Instellingen','Facturation':'Facturering','Sécurité':'Beveiliging','Intégrations':'Integraties','Notifications':'Meldingen','Alertes':'Waarschuwingen','Croissance':'Groei','Trafic':'Verkeer','Rechercher':'Zoeken','Rechercher…':'Zoeken…','Ajouter':'Toevoegen','Annuler':'Annuleren','Enregistrer':'Opslaan','Sauvegarder':'Opslaan','Supprimer':'Verwijderen','Modifier':'Bewerken','Fermer':'Sluiten','Voir tout':'Alles bekijken','Exporter':'Exporteren','Actualiser':'Vernieuwen','Chargement…':'Laden…','Aucune donnée':'Geen gegevens','Changer de plan':'Abonnement wijzigen','Plan actuel':'Huidig abonnement','Choisir':'Kiezen','Langue':'Taal','Thème':'Thema','Sombre':'Donker','Clair':'Licht','En cours':'Bezig','Terminé':'Voltooid','À faire':'Te doen','Priorité':'Prioriteit','Statut':'Status','Actif':'Actief','Inactif':'Inactief','Envoyer':'Versturen','Nouvelle conv.':'Nieuw gesprek','Complétées':'Voltooid',
       // ── CRO sub-page ──
@@ -20762,8 +20822,50 @@ function bindGlobalEvents() {
       'Resolu':'Opgelost','Visibilit\u00e9':'Zichtbaarheid','Comp\u00e9tition':'Concurrentie','Tendance':'Trend',
       'Plan CRO mobile':'Mobiel CRO-plan','Corriger le formulaire':'Formulier corrigeren',
       'Rapport conversion':'Conversierapport','Prochain envoi auto :':'Volgende automatische verzending:',
+      // ── Navigation & Actions ──
+      'Nouvel audit':'Nieuwe audit','Nouveau monitor':'Nieuwe monitor','Nouvelle mission':'Nieuwe taak',
+      'Créer un audit':'Audit aanmaken','Lancer un audit':'Audit starten','Générer un rapport':'Rapport genereren','Générer':'Genereren',
+      'Créer une mission':'Taak aanmaken','Inviter':'Uitnodigen','Déconnecter':'Verbreken','Connecter':'Verbinden',
+      'Retour':'Terug','Suivant':'Volgende','Précédent':'Vorige','Confirmer':'Bevestigen',
+      'Voir les détails':'Details bekijken','Voir plus':'Meer zien','Voir moins':'Minder zien',
+      'Aucun résultat':'Geen resultaat','Réessayer':'Opnieuw proberen','Copié !':'Gekopieerd!',
+      'Tout voir':'Alles bekijken','Pas de données':'Geen gegevens','Recommandations':'Aanbevelingen',
+      // ── Dashboard Overview ──
+      'Score SEO moyen':'Gemiddelde SEO-score','Score SEO':'SEO-score',
+      'Monitors actifs':'Actieve monitoren','Missions actives':'Actieve taken','Missions complétées':'Voltooide taken',
+      'Aucun audit':'Geen audit','Aucun monitor':'Geen monitor','Aucun rapport':'Geen rapport',
+      'Aucune mission':'Geen taak','Aucun mot-clé':'Geen zoekwoord',
+      'Bon':'Goed','Attention':'Let op','Faible':'Zwak','Excellent':'Uitstekend','Critique':'Kritiek',
+      // ── Billing ──
+      'Gérer mon abonnement':'Abonnement beheren','Plans & Abonnements':'Plannen en abonnementen',
+      'Coût mensuel':'Maandelijkse kosten','Sans engagement':'Zonder verplichtingen','Add-ons actifs':'Actieve add-ons',
+      'Total':'Totaal','Moyenne':'Gemiddelde',
+      // ── Settings ──
+      'Prénom':'Voornaam','Nom de famille':'Achternaam','Nom de l\'organisation':'Organisatienaam',
+      'Apparence & Personnalisation':'Uiterlijk en aanpassing',
+      // ── Toasts & UI ──
+      'Action effectuée.':'Actie uitgevoerd.','Action annulée.':'Actie geannuleerd.',
+      'Actions Rapides':'Snelle acties','Score global':'Globale score','Santé Workspace':'Workspace gezondheid',
+      'Mode Client':'Clientmodus','Activité':'Activiteit','Tableau de bord':'Dashboard',
+      'Impressions':'Impressies','Clics':'Klikken','Sessions':'Sessies','Conversions':'Conversies',
+      'Centre d\'alertes':'Waarschuwingscentrum',"Centre d'alertes":'Waarschuwingscentrum',
+      'Workspace Intelligence IA \u2014 Pro requis':'Workspace AI-intelligentie \u2014 Pro vereist',
     },
-    pl: {'Vue d\'ensemble':'Przegląd','Audits SEO':'Audyty SEO','Mots-clés':'Słowa kluczowe','Concurrents':'Konkurenci','Rapports':'Raporty','Missions':'Zadania','Assistant IA':'Asystent AI','Calendrier':'Kalendarz','Équipe':'Zespół','Paramètres':'Ustawienia','Facturation':'Rozliczenia','Sécurité':'Bezpieczeństwo','Intégrations':'Integracje','Notifications':'Powiadomienia','Alertes':'Alerty','Croissance':'Rozwój','Trafic':'Ruch','Rechercher':'Szukaj','Rechercher…':'Szukaj…','Ajouter':'Dodaj','Annuler':'Anuluj','Enregistrer':'Zapisz','Sauvegarder':'Zapisz','Supprimer':'Usuń','Modifier':'Edytuj','Fermer':'Zamknij','Voir tout':'Zobacz wszystko','Exporter':'Eksportuj','Actualiser':'Odśwież','Chargement…':'Ładowanie…','Aucune donnée':'Brak danych','Changer de plan':'Zmień plan','Plan actuel':'Obecny plan','Choisir':'Wybierz','Langue':'Język','Thème':'Motyw','Sombre':'Ciemny','Clair':'Jasny','En cours':'W toku','Terminé':'Ukończone','À faire':'Do zrobienia','Priorité':'Priorytet','Statut':'Status','Actif':'Aktywny','Inactif':'Nieaktywny','Envoyer':'Wyślij','Nouvelle conv.':'Nowa rozmowa','Complétées':'Ukończone'},
+    pl: {'Vue d\'ensemble':'Przegląd','Audits SEO':'Audyty SEO','Mots-clés':'Słowa kluczowe','Concurrents':'Konkurenci','Rapports':'Raporty','Missions':'Zadania','Assistant IA':'Asystent AI','Calendrier':'Kalendarz','Équipe':'Zespół','Paramètres':'Ustawienia','Facturation':'Rozliczenia','Sécurité':'Bezpieczeństwo','Intégrations':'Integracje','Notifications':'Powiadomienia','Alertes':'Alerty','Croissance':'Wzrost','Trafic':'Ruch','Rechercher':'Szukaj','Rechercher…':'Szukaj…','Ajouter':'Dodaj','Annuler':'Anuluj','Enregistrer':'Zapisz','Sauvegarder':'Zapisz','Supprimer':'Usuń','Modifier':'Edytuj','Fermer':'Zamknij','Voir tout':'Zobacz wszystko','Tout voir':'Zobacz wszystko','Exporter':'Eksportuj','Actualiser':'Odśwież','Chargement…':'Ładowanie…','Aucune donnée':'Brak danych','Pas de données':'Brak danych','Changer de plan':'Zmień plan','Plan actuel':'Obecny plan','Choisir':'Wybierz','Langue':'Język','Thème':'Motyw','Sombre':'Ciemny','Clair':'Jasny','En cours':'W toku','Terminé':'Ukończone','À faire':'Do zrobienia','Priorité':'Priorytet','Statut':'Status','Actif':'Aktywny','Inactif':'Nieaktywny','Envoyer':'Wyślij','Nouvelle conv.':'Nowa rozmowa','Complétées':'Ukończone',
+      'Nouvel audit':'Nowy audyt','Nouveau monitor':'Nowy monitor','Nouvelle mission':'Nowe zadanie',
+      'Créer un audit':'Utwórz audyt','Lancer un audit':'Uruchom audyt','Générer un rapport':'Generuj raport','Générer':'Generuj',
+      'Créer une mission':'Utwórz zadanie','Inviter':'Zaproś','Déconnecter':'Rozłącz','Connecter':'Połącz',
+      'Retour':'Wstecz','Suivant':'Dalej','Précédent':'Poprzedni','Confirmer':'Potwierdź',
+      'Voir les détails':'Zobacz szczegóły','Réessayer':'Spróbuj ponownie','Copié !':'Skopiowano!',
+      'Recommandations':'Rekomendacje','Score SEO moyen':'Średni wynik SEO','Score SEO':'Wynik SEO',
+      'Monitors actifs':'Aktywne monitory','Missions actives':'Aktywne zadania','Missions complétées':'Ukończone zadania',
+      'Aucun audit':'Brak audytów','Aucun monitor':'Brak monitorów','Aucun rapport':'Brak raportów',
+      'Aucune mission':'Brak zadań','Bon':'Dobry','Attention':'Uwaga','Faible':'Słaby','Excellent':'Doskonały','Critique':'Krytyczny',
+      'Actions Rapides':'Szybkie działania','Score global':'Wynik globalny','Santé Workspace':'Zdrowie Workspace',
+      'Mode Client':'Tryb klienta','Activité':'Aktywność','Tableau de bord':'Panel sterowania',
+      'Centre d\'alertes':'Centrum alertów',"Centre d'alertes":'Centrum alertów',
+      'Gérer mon abonnement':'Zarządzaj subskrypcją','Total':'Łącznie','Moyenne':'Średnia',
+    },
     sv: {'Vue d\'ensemble':'Översikt','Audits SEO':'SEO-granskningar','Mots-clés':'Nyckelord','Concurrents':'Konkurrenter','Rapports':'Rapporter','Missions':'Uppgifter','Assistant IA':'AI-assistent','Calendrier':'Kalender','Équipe':'Team','Paramètres':'Inställningar','Facturation':'Fakturering','Sécurité':'Säkerhet','Intégrations':'Integrationer','Notifications':'Notiser','Alertes':'Varningar','Croissance':'Tillväxt','Trafic':'Trafik','Rechercher':'Sök','Rechercher…':'Sök…','Ajouter':'Lägg till','Annuler':'Avbryt','Enregistrer':'Spara','Sauvegarder':'Spara','Supprimer':'Ta bort','Modifier':'Redigera','Fermer':'Stäng','Voir tout':'Visa alla','Exporter':'Exportera','Actualiser':'Uppdatera','Chargement…':'Laddar…','Aucune donnée':'Inga data','Changer de plan':'Byt plan','Plan actuel':'Nuvarande plan','Choisir':'Välj','Langue':'Språk','Thème':'Tema','Sombre':'Mörk','Clair':'Ljus','En cours':'Pågår','Terminé':'Klar','À faire':'Att göra','Priorité':'Prioritet','Statut':'Status','Actif':'Aktiv','Inactif':'Inaktiv','Envoyer':'Skicka','Nouvelle conv.':'Ny chatt','Complétées':'Slutförda',
       // ── CRO sub-page ──
       'Semaine 1':'Vecka 1','Semaine 2':'Vecka 2','Semaine 3':'Vecka 3','Semaine 4':'Vecka 4',
@@ -23113,8 +23215,8 @@ function renderOverviewQuickWins() {
           <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
             ${!q.done
               ? `<button class="fp-btn fp-btn-ghost fp-btn-sm qw-mission-btn" data-qw-title="${escHtml(q.title||'Mission Quick Win')}" data-qw-cat="Optimisation" data-qw-priority="medium" style="flex:1">+ Mission</button>
-                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex:1;color:#22c55e;border-color:rgba(34,197,94,0.3)" onclick="(function(){if(!STATE.checklistExtra)STATE.checklistExtra={};STATE.checklistExtra[${JSON.stringify(q.id||q.title||'')}]=true;try{localStorage.setItem('fp:cl-extra',JSON.stringify(STATE.checklistExtra));}catch(_){}render();})()">✓ Accompli</button>`
-              : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;color:#22c55e;border-color:rgba(34,197,94,0.3);cursor:default" onclick="(function(){if(!STATE.checklistExtra)STATE.checklistExtra={};STATE.checklistExtra[${JSON.stringify(q.id||q.title||'')}]=false;try{localStorage.setItem('fp:cl-extra',JSON.stringify(STATE.checklistExtra));}catch(_){}render();})()">✓ Accompli — Défaire</button>`}
+                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex:1;color:#22c55e;border-color:rgba(34,197,94,0.3)" onclick="(function(){if(!STATE.checklistExtra)STATE.checklistExtra={};STATE.checklistExtra[${JSON.stringify(q.id||q.title||'')}]=true;try{localStorage.setItem('fp:cl-extra',JSON.stringify(STATE.checklistExtra));}catch(_){}apiAction('PUT','/api/overview/checklist',{items:STATE.checklist||[],extra:STATE.checklistExtra}).catch(function(){});render();})()">✓ Accompli</button>`
+              : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;color:#22c55e;border-color:rgba(34,197,94,0.3);cursor:default" onclick="(function(){if(!STATE.checklistExtra)STATE.checklistExtra={};STATE.checklistExtra[${JSON.stringify(q.id||q.title||'')}]=false;try{localStorage.setItem('fp:cl-extra',JSON.stringify(STATE.checklistExtra));}catch(_){}apiAction('PUT','/api/overview/checklist',{items:STATE.checklist||[],extra:STATE.checklistExtra}).catch(function(){});render();})()">✓ Accompli — Défaire</button>`}
           </div>
         </div>
       `).join('')}
@@ -26239,12 +26341,24 @@ function renderGrowthCommandCenter() {
     {label:'Contenu',user:_myContenu, comp:_c1Contenu},
   ];
 
+  // Quick Win pct = real progress from missions or manual "Accompli" state.
+  // New accounts have no missions and empty checklistExtra → always 0.
+  var _qwPct = function(title) {
+    if (!title) return 0;
+    if (STATE.checklistExtra && STATE.checklistExtra[title]) return 100;
+    var _norm = (title||'').toLowerCase().slice(0, 30);
+    var _m = (STATE.missions||[]).find(function(m) {
+      return m.title && m.title.toLowerCase().slice(0, 30) === _norm;
+    });
+    if (!_m) return 0;
+    return _m.status === 'done' ? 100 : _m.status === 'in_progress' ? 50 : 20;
+  };
   const _gcRecs = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.recommendations;
   const wins = (_gcRecs && _gcRecs.length) ? _gcRecs.slice(0, 4).map(function(r, i) {
     const diff = r.priority === 'high' ? 1 : r.priority === 'medium' ? 2 : 3;
     // N'afficher que des impacts trafic réels — jamais de montants €/mois inventés
     const _roiLbl = r.estimated_traffic_impact ? '+' + r.estimated_traffic_impact + ' visites/mois' : '';
-    return { title: r.title, impact: '+' + Math.round((r.estimatedUplift || 0.08) * 100) + '%', roi: _roiLbl, time: diff === 1 ? '15 min' : diff === 2 ? '45 min' : '2h', diff: diff, pct: 0 };
+    return { title: r.title, impact: '+' + Math.round((r.estimatedUplift || 0.08) * 100) + '%', roi: _roiLbl, time: diff === 1 ? '15 min' : diff === 2 ? '45 min' : '2h', diff: diff, pct: _qwPct(r.title) };
   }) : (function() {
     const _aw = [];
     const _aud = STATE.audits || [];
@@ -26253,25 +26367,29 @@ function renderGrowthCommandCenter() {
     const _low  = _aud.filter(function(a){ return (a.score||100) < 70; });
     const _down = _mon.filter(function(m){ return m.status === 'down'; });
     if (_down.length > 0) {
-      _aw.push({title:'Résoudre le monitor DOWN : '+(_down[0].url||_down[0].name||'site').replace(/^https?:\/\//,'').split('/')[0], impact:'Uptime ↑', roi:'Trafic récupéré', time:'15 min', diff:1, pct:0});
+      var _dt = 'Résoudre le monitor DOWN : '+(_down[0].url||_down[0].name||'site').replace(/^https?:\/\//,'').split('/')[0];
+      _aw.push({title:_dt, impact:'Uptime ↑', roi:'Trafic récupéré', time:'15 min', diff:1, pct:_qwPct(_dt)});
     }
     if (_low.length > 0) {
       var _s = _low[0].url||''; var _u = _s.replace(/^https?:\/\//,'').split('/')[0] || 'site';
       var _pts = Math.round((70-Math.min(70,_low[0].score||50))*0.5);
-      _aw.push({title:'Améliorer le score SEO de '+_u, impact:'+'+_pts+' pts', roi:'+'+_pts+' pts de score', time:'45 min', diff:2, pct:0});
+      var _lt = 'Améliorer le score SEO de '+_u;
+      _aw.push({title:_lt, impact:'+'+_pts+' pts', roi:'+'+_pts+' pts de score', time:'45 min', diff:2, pct:_qwPct(_lt)});
     }
     if (_slow.length > 0) {
       var _s2 = _slow[0].url||''; var _u2 = _s2.replace(/^https?:\/\//,'').split('/')[0] || 'site';
-      _aw.push({title:'Optimiser la performance mobile de '+_u2, impact:'+perf. mobile', roi:'+15% conv.', time:'2h', diff:3, pct:0});
+      var _pt = 'Optimiser la performance mobile de '+_u2;
+      _aw.push({title:_pt, impact:'+perf. mobile', roi:'+15% conv.', time:'2h', diff:3, pct:_qwPct(_pt)});
     }
     if (!_lseo.gbpConnected && !_lseo.domScore) {
-      _aw.push({title:'Connecter Google Business Profile', impact:'+visibilité locale', roi:'+clients locaux', time:'15 min', diff:1, pct:0});
+      var _gt = 'Connecter Google Business Profile';
+      _aw.push({title:_gt, impact:'+visibilité locale', roi:'+clients locaux', time:'15 min', diff:1, pct:_qwPct(_gt)});
     }
     var _genWins = [
-      {title:'Optimiser les balises meta description', impact:'+8% CTR',  roi: PREVIEW_MODE ? '+90€/mois'  : 'ROI estimé', time:'30 min', diff:1, pct:0},
-      {title:'Ajouter le balisage Schema.org', impact:'+12% CTR', roi: PREVIEW_MODE ? '+110€/mois' : 'ROI estimé', time:'45 min', diff:2, pct:0},
-      {title:'Améliorer la vitesse de chargement mobile', impact:'+perf.', roi: PREVIEW_MODE ? '+150€/mois' : 'ROI estimé', time:'2h', diff:3, pct:0},
-      {title:'Créer des pages de service géolocalisées', impact:'+trafic local', roi:'+clients', time:'3h', diff:3, pct:0},
+      {title:'Optimiser les balises meta description', impact:'+8% CTR',  roi: PREVIEW_MODE ? '+90€/mois'  : 'ROI estimé', time:'30 min', diff:1, pct:_qwPct('Optimiser les balises meta description')},
+      {title:'Ajouter le balisage Schema.org', impact:'+12% CTR', roi: PREVIEW_MODE ? '+110€/mois' : 'ROI estimé', time:'45 min', diff:2, pct:_qwPct('Ajouter le balisage Schema.org')},
+      {title:'Améliorer la vitesse de chargement mobile', impact:'+perf.', roi: PREVIEW_MODE ? '+150€/mois' : 'ROI estimé', time:'2h', diff:3, pct:_qwPct('Améliorer la vitesse de chargement mobile')},
+      {title:'Créer des pages de service géolocalisées', impact:'+trafic local', roi:'+clients', time:'3h', diff:3, pct:_qwPct('Créer des pages de service géolocalisées')},
     ];
     var _gi = 0;
     while (_aw.length < 4 && _gi < _genWins.length) { _aw.push(_genWins[_gi++]); }
@@ -43772,7 +43890,7 @@ function renderGA4ClientMode() {
           ${statCard('Position moy.', gsc.avgPosition != null ? gsc.avgPosition.toFixed(1) : '—', 'Rank Google', gsc.avgPosition < 10 ? 'up' : 'neutral')}
         </div>
       </div>` : _emptyState('🔍', 'Google Search Console non connectée', 'Connectez Google Search Console pour voir les impressions, clics et positions organiques.');
-    return header + permsBanner + ga4Block + gscBlock;
+    return header + permsBanner + '<div style="display:flex;flex-direction:column;gap:16px">' + ga4Block + gscBlock + '</div>';
   }
 
   if (sub === 'agency') {

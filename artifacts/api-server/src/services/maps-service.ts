@@ -86,35 +86,72 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
  * review count (log scale) up to 40 pts. Places without coordinates are
  * dropped instead of producing NaN markers.
  */
+/**
+ * Multi-point grid search: covers up to 100 km by placing 5 search circles
+ * (center + N/E/S/W at 60 km) each with a 50 km radius — overlapping so no
+ * gap exists at the edges of adjacent circles. Results are deduplicated by
+ * placeId and filtered to the requested effective radius from the origin.
+ */
 export async function analyzeCompetitors(lat: number, lng: number, keyword: string, radius = 5000): Promise<unknown[]> {
-  // The keyword filters Nearby Search so "restaurant" returns actual
-  // restaurants (real potential competitors), not every establishment.
-  const raw = await getNearbyPlaces(lat, lng, "establishment", radius, keyword) as Array<Record<string, unknown>>;
-  const out: Array<Record<string, unknown>> = [];
-  for (const p of raw) {
-    const loc = ((p["geometry"] as Record<string, unknown>)?.["location"] ?? {}) as Record<string, unknown>;
-    const plat = Number(loc["lat"]);
-    const plng = Number(loc["lng"]);
-    if (!Number.isFinite(plat) || !Number.isFinite(plng)) continue; // never emit NaN markers
-    const rating = typeof p["rating"] === "number" ? p["rating"] : null;
-    const reviewCount = typeof p["user_ratings_total"] === "number" ? p["user_ratings_total"] : 0;
-    const seoScore = Math.min(100, Math.round(((rating ?? 0) / 5) * 60 + Math.min(40, Math.log10(reviewCount + 1) * 13)));
-    const threatLevel = seoScore >= 80 ? "critical" : seoScore >= 60 ? "high" : seoScore >= 40 ? "medium" : "low";
-    out.push({
-      placeId: String(p["place_id"] ?? ""),
-      name: String(p["name"] ?? ""),
-      vicinity: String(p["vicinity"] ?? ""),
-      lat: plat,
-      lng: plng,
-      rating,
-      reviewCount,
-      distanceM: haversineM(lat, lng, plat, plng),
-      seoScore,
-      threatLevel,
-      types: (p["types"] as string[]) ?? [],
-    });
+  const SEARCH_RADIUS = 50000; // Google Places API hard limit per request
+  const EFF_RADIUS = Math.min(100000, radius); // honour user's up-to-100 km request
+
+  // Build search centres.  Beyond 50 km we add 4 cardinal satellites at 60 km
+  // so their 50 km reach covers the 50–100 km belt around the origin.
+  const STEP_M = 60000;
+  const latStep = STEP_M / 111_000;
+  const lngStep = STEP_M / (111_000 * Math.max(0.3, Math.cos(lat * Math.PI / 180)));
+  const centres: Array<{ lat: number; lng: number }> = [{ lat, lng }];
+  if (EFF_RADIUS > 50000) {
+    centres.push(
+      { lat: lat + latStep, lng },          // North
+      { lat: lat - latStep, lng },          // South
+      { lat, lng: lng + lngStep },          // East
+      { lat, lng: lng - lngStep },          // West
+    );
   }
-  return out;
+
+  const seen = new Map<string, Record<string, unknown>>();
+  await Promise.all(centres.map(async (c) => {
+    let raw: Array<Record<string, unknown>>;
+    try {
+      raw = await getNearbyPlaces(c.lat, c.lng, "establishment", SEARCH_RADIUS, keyword) as Array<Record<string, unknown>>;
+    } catch {
+      raw = [];
+    }
+    for (const p of raw) {
+      const pid = String(p["place_id"] ?? "");
+      if (!pid || seen.has(pid)) continue;
+      const loc = ((p["geometry"] as Record<string, unknown>)?.["location"] ?? {}) as Record<string, unknown>;
+      const plat = Number(loc["lat"]);
+      const plng = Number(loc["lng"]);
+      if (!Number.isFinite(plat) || !Number.isFinite(plng)) continue;
+      const dist = haversineM(lat, lng, plat, plng);
+      if (dist > EFF_RADIUS) continue; // only include places inside requested radius
+      const rating = typeof p["rating"] === "number" ? p["rating"] : null;
+      const reviewCount = typeof p["user_ratings_total"] === "number" ? p["user_ratings_total"] : 0;
+      const seoScore = Math.min(100, Math.round(((rating ?? 0) / 5) * 60 + Math.min(40, Math.log10(reviewCount + 1) * 13)));
+      const threatLevel = seoScore >= 80 ? "critical" : seoScore >= 60 ? "high" : seoScore >= 40 ? "medium" : "low";
+      seen.set(pid, {
+        placeId: pid,
+        name: String(p["name"] ?? ""),
+        vicinity: String(p["vicinity"] ?? ""),
+        lat: plat,
+        lng: plng,
+        rating,
+        reviewCount,
+        distanceM: dist,
+        seoScore,
+        threatLevel,
+        types: (p["types"] as string[]) ?? [],
+      });
+    }
+  }));
+
+  // Return sorted by distance so nearest competitors appear first on the map
+  return Array.from(seen.values()).sort(
+    (a, b) => (a["distanceM"] as number) - (b["distanceM"] as number),
+  );
 }
 
 /**

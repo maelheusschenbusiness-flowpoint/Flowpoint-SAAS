@@ -102,7 +102,7 @@ router.get("/maps/competitors", async (req: Request, res: Response) => {
   const lat = parseFloat(req.query["lat"] as string);
   const lng = parseFloat(req.query["lng"] as string);
   const keyword = (req.query["keyword"] as string) || "";
-  const radius = Math.min(50000, parseInt(req.query["radius"] as string) || 5000);
+  const radius = Math.min(100000, parseInt(req.query["radius"] as string) || 5000);
   if (isNaN(lat) || isNaN(lng)) {
     res.status(400).json({ error: "lat and lng required" }); return;
   }
