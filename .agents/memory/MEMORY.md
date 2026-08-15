@@ -1,6 +1,8 @@
+- [AI chat reply field](ai-chat-reply-field.md) — /api/ai/chat stream:false returns `reply` not message/response/text/content; GET /api/team/files returns raw array not {files:[]}
+- [E2E test DB schema](e2e-test-db-schema.md) — organizations.id=UUID, user_sessions has email+role inline, org_members table does NOT exist; me.ts normalizes plan to Title Case
+- [Maps hexagonal coverage formula](maps-hexagonal-coverage.md) — ring_radius=R×√3/2 proves complete disk coverage; 7 centres, 60° apart, 50km search each
 - [Invite accept RLS pattern](invite-accept-rls-pattern.md) — SET LOCAL "app.current_org_id" + try/catch SET ROLE needed before any org_members DML in raw pool.connect() tx
 - [Accept-invitation session & role bugs](accept-invitation-session-bugs.md) — token key mismatch + missing cookie in accept flow; me.ts fallback was "owner" not "member"
-- [Skeleton shimmer animation pattern](skeleton-shimmer-animation.md) — shimmer needs fpSlide (background-position) not fpSkeleton (opacity); 2.2s ease-in-out for coherent rhythm
 - [Pricing plan auth guard](pricing-plan-auth-guard.md) — anti-flash localStorage read must check _hasActiveSession before marking current plan
 - [Stripe webhook secret key name](stripe-webhook-secret-key.md) — must read STRIPE_WEBHOOK_SECRET || STRIPE_WEBHOOK_SECRET_RENDER; only the _RENDER name is set in prod secrets
 - [github_connections real schema](github-service-schema.md) — github_user_id NOT NULL, connected_at not installed_at; exchangeCodeForToken returns string not object; getGitHubUser returns avatarUrl camelCase
