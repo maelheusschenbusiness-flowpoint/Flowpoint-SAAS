@@ -262,7 +262,12 @@ async function persistAddonsFromSubscription(
         return;
       }
 
-      const stripeKey = getStripeKey();
+      // Use the same mode (live vs test) as the incoming subscription to avoid
+      // cross-mode customer-not-found errors when the environment runs test webhooks.
+      const subLivemode = Boolean((subscription as Record<string, unknown>)?.livemode ?? true);
+      const stripeKey = subLivemode
+        ? getStripeKey()
+        : (process.env["STRIPE_TEST_KEY"] ?? getStripeKey());
       if (!stripeKey) {
         logger.warn({ orgId }, "[Webhook] reconcile: no Stripe API key — skipping deactivation (fail-open)");
         return;
@@ -286,9 +291,20 @@ async function persistAddonsFromSubscription(
       for (const sub of liveSubs) {
         for (const item of sub.items.data) {
           const priceId = item.price?.id;
-          if (!priceId) continue;
-          const { getAddonForPriceId } = await import("../lib/plans.js");
-          const addonKey = getAddonForPriceId(priceId);
+          // Primary: match by price ID in ADDON_PRICE_IDS
+          let addonKey: string | null = null;
+          if (priceId) {
+            const { getAddonForPriceId: _gafp } = await import("../lib/plans.js");
+            addonKey = _gafp(priceId);
+          }
+          // Fallback: item-level metadata.addonKey (set by addon-stripe-sync.ts and
+          // E2E/test subscriptions). Same validation as parseAddonsFromSubscription.
+          if (!addonKey) {
+            const metaKey = (item as { metadata?: Record<string, string> }).metadata?.["addonKey"];
+            if (metaKey && (FLAG_ADDONS.has(metaKey) || QTY_ADDONS.has(metaKey))) {
+              addonKey = metaKey;
+            }
+          }
           if (addonKey) aggregateAddonKeys.add(addonKey);
         }
       }

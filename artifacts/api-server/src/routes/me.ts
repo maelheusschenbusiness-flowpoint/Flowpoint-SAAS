@@ -130,8 +130,8 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         trialEndsAt:         rawTrialEndsAt,
         stripeCustomerId:    rawStripeCustomerId,
         canStartTrial:       _canStartTrial,
-        hasPremiumAccess:    normStatus === "active" || normStatus === "trialing",
-        mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing",
+        hasPremiumAccess:    normStatus === "active" || normStatus === "trialing" || normStatus === "past_due",
+        mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing" && normStatus !== "past_due",
         usage:              await (async () => {
           try {
             const [auditR, monR, repR, expR] = await Promise.all([
