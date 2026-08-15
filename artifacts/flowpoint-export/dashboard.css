@@ -2150,7 +2150,7 @@ div[style*="overflow-x: auto"] {
 /* ── STAT ROW ── */
 .fp-stat-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 14px;
   margin-bottom: 24px;
 }
@@ -6047,10 +6047,10 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
    OVERVIEW PAGE — Layout & Alignment Fixes v4
    ═══════════════════════════════════════════════════════════════ */
 
-/* Health gauge 8-card grid (inline style override via class) */
+/* Health gauge 8-card grid — auto-fill so cards never overflow or leave gaps */
 .fp-health-gauge-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 }
 
 /* Forecast 4-card grid */

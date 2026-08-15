@@ -1325,7 +1325,11 @@ function openFileImport() {
   inp.type = 'file';
   inp.accept = '.csv,.pdf,.docx,.xlsx,.json,.txt,.zip';
   inp.multiple = true;
+  // Append to body so browsers allow the click() from an onclick handler
+  inp.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none';
+  document.body.appendChild(inp);
   inp.addEventListener('change', async () => {
+    document.body.contains(inp) && document.body.removeChild(inp);
     const files = [...inp.files];
     if (!files.length) return;
     const from = STATE?.me?.firstName || STATE?.me?.name?.split(' ')[0] || 'Vous';
@@ -1459,7 +1463,8 @@ async function loadData() {
   // ── Phase 1: Critical identity — /api/me is mandatory; everything else is resilient ──
   let me = null, overview = null, audits = null, monitors = null, reports = null, team = null;
   try {
-    me = await apiFetch('/api/me');
+    // force:true ensures we always get the latest plan/subscription status from the server
+    me = await apiFetch('/api/me', { force: true });
     // /api/me succeeded — clear the stale-cache flag and reset background 401 counter.
     STATE._cacheRestored = false;
     _401BackgroundCount = 0;
@@ -13269,9 +13274,9 @@ function renderAI() {
           <select id="fp-ai-provider-select" class="fp-select" style="font-size:11px;font-weight:600"
             title="Choisir le fournisseur IA"
             onchange="(function(v){STATE.aiProvider=v;try{localStorage.setItem('fp:ai-provider',v);}catch(_e){}if(typeof window.fpSyncAiBadge==='function')window.fpSyncAiBadge();showToast('info','Fournisseur IA : '+(v==='openai'?'GPT-5 — OpenAI':v==='anthropic'?'Claude 3.5 — Anthropic':'Gemini 2.0 — Google'));}).call(this,this.value)">
-            <option value="openai" ${(STATE.aiProvider||'openai')==='openai'?'selected':''}>GPT-5 — OpenAI</option>
-            <option value="anthropic" ${STATE.aiProvider==='anthropic'?'selected':''}>Claude 3.5 — Anthropic</option>
-            <option value="gemini" ${STATE.aiProvider==='gemini'?'selected':''}>Gemini 2.0 — Google</option>
+            <option value="openai" ${(STATE.aiProvider||'openai')==='openai'?'selected':''}>GPT-5 — OpenAI (Bientôt disponible)</option>
+            <option value="anthropic" ${STATE.aiProvider==='anthropic'?'selected':''}>Claude 3.5 — Anthropic (Bientôt disponible)</option>
+            <option value="gemini" ${STATE.aiProvider==='gemini'?'selected':''}>Gemini 2.0 — Google (Bientôt disponible)</option>
           </select>
         </div>
         ${btn(fpT('Nouvelle conv.'),'fp-btn fp-btn-ghost fp-btn-sm','','onclick="window.fpClearAiChat()"')}
@@ -16590,7 +16595,7 @@ function bindSectionEvents() {
     }));
     $('#billing-change-plan')?.addEventListener('click', () => {
       const plans = [
-        {name:'Standard', price:'29€', features:['30 audits/mois','10 monitors','1 utilisateur']},
+        {name:'Standard', price:'29€', features:['30 audits/mois','10 monitors','1 utilisateur','White Label']},
         {name:'Pro',      price:'79€', features:['300 audits/mois','50 monitors','5 utilisateurs','White Label']},
         {name:'Ultra',    price:'149€',features:['1000 audits/mois','300 monitors','10 utilisateurs','API accès','SLA 99.9%']},
       ];
@@ -20352,7 +20357,101 @@ function bindGlobalEvents() {
     'clics': 'clics',
     'impressions': 'impresiones',
     },
-    de: {'Vue d\'ensemble':'Übersicht','Audits SEO':'SEO-Audits','Mots-clés':'Schlüsselwörter','Concurrents':'Wettbewerber','Rapports':'Berichte','Missions':'Aufgaben','Assistant IA':'KI-Assistent','Calendrier':'Kalender','Équipe':'Team','Paramètres':'Einstellungen','Facturation':'Abrechnung','Sécurité':'Sicherheit','Intégrations':'Integrationen','Notifications':'Benachrichtigungen','Alertes':'Warnungen','Croissance':'Wachstum','Trafic':'Traffic','Rechercher':'Suchen','Rechercher…':'Suchen…','Ajouter':'Hinzufügen','Annuler':'Abbrechen','Enregistrer':'Speichern','Sauvegarder':'Speichern','Supprimer':'Löschen','Modifier':'Bearbeiten','Fermer':'Schließen','Voir tout':'Alle anzeigen','Exporter':'Exportieren','Actualiser':'Aktualisieren','Chargement…':'Lädt…','Aucune donnée':'Keine Daten','Changer de plan':'Plan ändern','Plan actuel':'Aktueller Plan','Choisir':'Auswählen','Langue':'Sprache','Thème':'Design','Sombre':'Dunkel','Clair':'Hell','En cours':'In Bearbeitung','Terminé':'Erledigt','À faire':'Zu erledigen','Priorité':'Priorität','Statut':'Status','Actif':'Aktiv','Inactif':'Inaktiv','Envoyer':'Senden','Nouvelle conv.':'Neuer Chat','Complétées':'Abgeschlossen',
+    de: {'Vue d\'ensemble':'Übersicht','Audits SEO':'SEO-Audits','Mots-clés':'Schlüsselwörter','Concurrents':'Wettbewerber','Rapports':'Berichte','Missions':'Aufgaben','Assistant IA':'KI-Assistent','Calendrier':'Kalender','Équipe':'Team','Paramètres':'Einstellungen','Facturation':'Abrechnung','Sécurité':'Sicherheit','Intégrations':'Integrationen','Notifications':'Benachrichtigungen','Alertes':'Warnungen','Recommandations':'Empfehlungen','Croissance':'Wachstum','Trafic':'Traffic','Rechercher':'Suchen','Rechercher…':'Suchen…','Ajouter':'Hinzufügen','Annuler':'Abbrechen','Enregistrer':'Speichern','Sauvegarder':'Speichern','Supprimer':'Löschen','Modifier':'Bearbeiten','Fermer':'Schließen','Voir tout':'Alle anzeigen','Tout voir':'Alle anzeigen','Exporter':'Exportieren','Actualiser':'Aktualisieren','Chargement…':'Lädt…','Aucune donnée':'Keine Daten','Pas de données':'Keine Daten','Changer de plan':'Plan ändern','Plan actuel':'Aktueller Plan','Choisir':'Auswählen','Langue':'Sprache','Thème':'Design','Sombre':'Dunkel','Clair':'Hell','En cours':'In Bearbeitung','Terminé':'Erledigt','À faire':'Zu erledigen','Priorité':'Priorität','Statut':'Status','Actif':'Aktiv','Inactif':'Inaktiv','Envoyer':'Senden','Nouvelle conv.':'Neuer Chat','Complétées':'Abgeschlossen',
+      // ── Navigation & Actions ──
+      'Nouvel audit':'Neues Audit','Nouveau monitor':'Neuer Monitor','Nouvelle mission':'Neue Aufgabe',
+      'Créer un audit':'Audit erstellen','Lancer un audit':'Audit starten','Générer un rapport':'Bericht generieren','Générer':'Generieren',
+      'Créer une mission':'Aufgabe erstellen','Inviter':'Einladen','Déconnecter':'Trennen','Connecter':'Verbinden',
+      'Retour':'Zurück','Suivant':'Weiter','Précédent':'Vorherige','Confirmer':'Bestätigen',
+      'Supprimer le compte':'Konto löschen','Se déconnecter':'Abmelden','Déconnexion':'Abmelden',
+      'Voir les détails':'Details anzeigen','Voir plus':'Mehr anzeigen','Voir moins':'Weniger anzeigen','Tout sélectionner':'Alles auswählen',
+      'Aucun résultat':'Kein Ergebnis','Réessayer':'Erneut versuchen','Réessayer plus tard':'Später erneut versuchen',
+      'Copié !':'Kopiert!','Langue sauvegardée':'Sprache gespeichert','Enregistrement…':'Speichern…','Envoi…':'Senden…','Suppression…':'Löschen…',
+      // ── Dashboard Overview ──
+      'Score SEO moyen':'Durchschnittlicher SEO-Score','Score SEO':'SEO-Score',
+      'Monitors actifs':'Aktive Monitore','Missions actives':'Aktive Aufgaben','missions actives':'aktive Aufgaben',
+      'Missions complétées':'Abgeschlossene Aufgaben','missions':'Aufgaben',
+      'Aucun audit':'Kein Audit','Aucun monitor':'Kein Monitor','Aucun rapport':'Kein Bericht',
+      'Aucune mission':'Keine Aufgabe','Aucun mot-clé':'Kein Schlüsselwort',
+      'Bon':'Gut','Attention':'Achtung','Faible':'Schwach','Excellent':'Ausgezeichnet','Critique':'Kritisch',
+      'Pas de données':'Keine Daten','Aucune donnée':'Keine Daten',
+      'Tous les systèmes OK':'Alle Systeme OK','Erreur de rendu':'Rendering-Fehler',
+      'Retour accueil':'Startseite','Erreur réseau':'Netzwerkfehler',
+      // ── Audits ──
+      'Analyse':'Analyse','Opportunités':'Chancen','Comparaison':'Vergleich',
+      'Vitesse':'Geschwindigkeit','Problèmes':'Probleme','Accessibilité':'Barrierefreiheit',
+      'Qualité':'Qualität','Score Santé':'Gesundheitsscore','Checklist':'Checkliste',
+      'Insights IA':'KI-Einblicke','Nouvel audit':'Neues Audit',
+      // ── Monitors ──
+      'Incidents':'Vorfälle','Uptime':'Uptime','Latence':'Latenz','Actif':'Aktiv',
+      // ── Calendar ──
+      'Aujourd\u2019hui':'Heute',"Aujourd'hui":'Heute','Cette semaine':'Diese Woche',
+      'Ce mois':'Diesen Monat','derniers jours':'letzte Tage','Mois':'Monat','Semaine':'Woche','Jour':'Tag','Année':'Jahr',
+      // ── Billing ──
+      'Gérer mon abonnement':'Abonnement verwalten','Plans & Abonnements':'Pläne & Abonnements',
+      'Factures & Paiements':'Rechnungen & Zahlungen','Coût mensuel':'Monatliche Kosten',
+      'Sans engagement':'Ohne Vertragsbindung','Add-ons actifs':'Aktive Add-ons',
+      'Voir tous les usages':'Alle Nutzungen anzeigen','Sièges':'Plätze',
+      'Total':'Gesamt','Moyenne':'Durchschnitt','Devise':'Währung',
+      // ── Team ──
+      'Membres de l\'équipe':'Teammitglieder','Membres':'Mitglieder','Rôles':'Rollen',
+      'En attente':'Ausstehend','Activer':'Aktivieren','Désactiver':'Deaktivieren',
+      'Activé':'Aktiviert','Désactivé':'Deaktiviert','Oui':'Ja','Non':'Nein','ou':'oder','et':'und',
+      // ── Settings ──
+      'Prénom':'Vorname','Nom de famille':'Nachname','Nom de l\'organisation':'Organisationsname',
+      'Adresse':'Adresse','Ville':'Stadt','Code postal':'Postleitzahl','Pays':'Land','Téléphone':'Telefon',
+      'Apparence & Personnalisation':'Erscheinungsbild & Anpassung','Automatique':'Automatisch',
+      'Format de date':'Datumsformat',"Format d'heure":'Zeitformat','Fuseau horaire':'Zeitzone',
+      // ── Local SEO ──
+      'Local SEO':'Local SEO','Performance Web':'Web-Performance','Audit Technique':'Technisches Audit',
+      'Carte':'Karte','Zones':'Bereiche','Avis IA':'KI-Bewertungen','Tendances':'Trends',
+      'Projections':'Prognosen','Objectifs':'Ziele','Contenu':'Inhalt',
+      // ── AI ──
+      'Actions Rapides':'Schnellaktionen','Fichiers':'Dateien','Chat':'Chat',
+      'Workspace':'Arbeitsbereich','API & Dev':'API & Entwicklung','IA Config':'KI-Konfig',
+      'Posez votre question\u2026 (moniteurs, SEO, conversions, rapports\u2026)':'Stellen Sie Ihre Frage\u2026 (Monitore, SEO, Conversions, Berichte\u2026)',
+      // ── Notifications ──
+      'Aucune activité':'Keine Aktivität','Aucune activité récente':'Keine aktuelle Aktivität',
+      'Tout marquer lu':'Alle als gelesen markieren','Aucune notification':'Keine Benachrichtigungen',
+      // ── Security ──
+      'Sécurité du compte':'Kontosicherheit','Mot de passe':'Passwort','Sessions actives':'Aktive Sitzungen',
+      'Dernière connexion':'Letzte Anmeldung','Authentification à deux facteurs (2FA)':'Zwei-Faktor-Authentifizierung (2FA)',
+      // ── Data labels ──
+      'Impressions':'Impressionen','Clics':'Klicks','Sessions':'Sitzungen',
+      'Conversions':'Conversions','Pages':'Seiten','Sources':'Quellen','Organique':'Organisch',
+      'Payant':'Bezahlt','Temps réel':'Echtzeit','Prévisions':'Prognosen',
+      'Exports':'Exporte','Synchronisation':'Synchronisierung','Connexions':'Verbindungen',
+      'Score global':'Gesamtbewertung','Santé Workspace':'Workspace-Gesundheit',
+      // ── Toasts & Error states ──
+      'Action effectuée.':'Aktion ausgeführt.','Action annulée.':'Aktion abgebrochen.','Action ignorée.':'Aktion ignoriert.',
+      'Échec de l\'exécution.':'Ausführung fehlgeschlagen.','Session perdue':'Sitzung verloren',
+      'En cours\u2026':'In Bearbeitung\u2026','Délai expiré':'Zeit abgelaufen',
+      'Non annulable':'Nicht rückgängig machbar','Déjà annulé':'Bereits abgebrochen',
+      'Modifié \u2014 annulation impossible':'Geändert \u2014 Abbrechen nicht möglich',
+      'Annuler l\'action':'Aktion abbrechen','Annulation\u2026':'Abbrechen\u2026','Annulé':'Abgebrochen',
+      // ── Misc UI ──
+      'Aperçu':'Übersicht','Toutes':'Alle','Terminées':'Abgeschlossene','Liste':'Liste',
+      'Mode Client':'Kundenmodus','Activité':'Aktivität','Monitors':'Monitore',
+      'Campagnes':'Kampagnen','Funnels':'Trichter','Audience':'Zielgruppe',
+      'Analytics':'Analyse','Live':'Live','Incidents':'Vorfälle','Parcours':'Reise',
+      'Appareils':'Geräte','Géographie':'Geografie','Événements':'Ereignisse',
+      'Pages actives':'Aktive Seiten','Anomalies':'Anomalien','Comportement':'Verhalten',
+      'Rapports IA':'KI-Berichte','IA Recommandations':'KI-Empfehlungen',
+      'Démographique':'Demografisch','Déploiements':'Bereitstellungen','Dépôts':'Repositories',
+      'Environnements':'Umgebungen','Tableau de bord':'Dashboard',
+      'Centre d\'alertes':'Alarmzentrale',"Centre d'alertes":'Alarmzentrale',
+      'Règles d\'alerte':'Alarmregeln','Créer une alerte':'Alarm erstellen',
+      'Intégrations actives':'Aktive Integrationen','Workflows actifs':'Aktive Workflows',
+      'Templates prédéfinis':'Vordefinierte Vorlagen','Créer un rapport':'Bericht erstellen',
+      'Nouveau workflow':'Neuer Workflow','Workflows configurés':'Konfigurierte Workflows',
+      'Clé publique (lecture seule)':'Öffentlicher Schlüssel (Nur-Lesen)',
+      'Clé secrète (accès complet)':'Geheimer Schlüssel (Vollzugriff)',
+      'Ajouter un webhook':'Webhook hinzufügen','Historique des livraisons':'Lieferungsverlauf',
+      'Journal des événements':'Ereignisprotokoll',
+      'Aucune livraison encore. Testez un webhook pour commencer.':'Noch keine Lieferungen. Testen Sie einen Webhook, um zu beginnen.',
+      'Aucun événement enregistré.':'Keine Ereignisse aufgezeichnet.',
+      '📍 Localisation':'📍 Standort','🔐 SSO SAML':'🔐 SSO SAML','Localisation':'Standort',
+      'Workspace Intelligence IA \u2014 Pro requis':'Workspace KI-Intelligenz \u2014 Pro erforderlich',
       // ── CRO sub-page ──
       'Semaine 1':'Woche 1','Semaine 2':'Woche 2','Semaine 3':'Woche 3','Semaine 4':'Woche 4',
       'D\u00e9bloqu\u00e9':'Entsperrt','Verrouill\u00e9':'Gesperrt',
@@ -21127,9 +21226,11 @@ async function init() {
     _s.id = 'fp-global-anims';
     _s.textContent = [
       '@keyframes spin { to { transform: rotate(360deg); } }',
+      '@keyframes fpSpin { to { transform: rotate(360deg); } }',
       '@keyframes fp-fade-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }',
       '@keyframes fp-skel { 0%,100%{opacity:.48} 50%{opacity:.62} }',
       '.fp-skel-shimmer { background:rgba(255,255,255,0.04); animation:fp-skel 3s ease-in-out infinite; }',
+      '.fp-psi-spinner { width:48px;height:48px;border-radius:50%;border:3px solid rgba(37,99,235,0.2);border-top-color:#2563EB;animation:fpSpin 0.9s linear infinite; }',
     ].join('\n');
     document.head.appendChild(_s);
   }());
@@ -21156,6 +21257,25 @@ async function init() {
       applyTheme();
       render();
     }
+  });
+
+  // Plan-upgrade auto-refresh: when the user returns to this tab after completing
+  // Stripe checkout in another tab/window, immediately re-check their plan.
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden || PREVIEW_MODE || !STATE.me) return;
+    apiFetch('/api/me', { force: true }).then(function(freshMe) {
+      if (!freshMe || !freshMe.plan) return;
+      var newPlan = freshMe.plan.charAt(0).toUpperCase() + freshMe.plan.slice(1).toLowerCase();
+      var oldPlan = (STATE.me && STATE.me.plan) || '';
+      if (newPlan.toLowerCase() !== oldPlan.toLowerCase()) {
+        STATE.me.plan = newPlan;
+        if (STATE.billing) STATE.billing.plan = newPlan.toLowerCase();
+        showToast('success', 'Plan mis à jour : ' + newPlan + ' ✓');
+        try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+        _apiFetchCache && _apiFetchCache.clear();
+        loadData().catch(function() {});
+      }
+    }).catch(function() {});
   });
 
   // Subscribe to Stripe billing SSE for real-time plan updates + activity events
@@ -22936,6 +23056,13 @@ function renderOverviewQuickWins() {
   const qw = _liveMissionsQW && _liveMissionsQW.length > 0
     ? _liveMissionsQW
     : (PREVIEW_MODE ? _previewQW : []);
+  // Restore done states from localStorage/checklistExtra so "Accompli" persists across renders
+  qw.forEach(function(q) {
+    var _key = q.id || q.title || '';
+    if (_key && STATE.checklistExtra && STATE.checklistExtra[_key] !== undefined) {
+      q.done = !!STATE.checklistExtra[_key];
+    }
+  });
   const totalGain = qw.filter(q=>!q.done).reduce((s,q)=>s+(parseInt(q.gain)||0),0);
   const totalTime = qw.filter(q=>!q.done).length;
   // Durée totale estimée : somme réelle des fourchettes d'effort des actions
@@ -22983,9 +23110,12 @@ function renderOverviewQuickWins() {
             <div style="font-size:13px;font-weight:700;color:var(--fp-success)">${q.gain}</div>
             <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(q.effort)}</div>
           </div>
-          ${!q.done
-            ? `<button class="fp-btn fp-btn-ghost fp-btn-sm qw-mission-btn" data-qw-title="${escHtml(q.title||'Mission Quick Win')}" data-qw-cat="Optimisation" data-qw-priority="medium">+ Mission</button>`
-            : `<span style="font-size:10px;font-weight:700;color:#22c55e">✓ Fait</span>`}
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            ${!q.done
+              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm qw-mission-btn" data-qw-title="${escHtml(q.title||'Mission Quick Win')}" data-qw-cat="Optimisation" data-qw-priority="medium" style="flex:1">+ Mission</button>
+                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex:1;color:#22c55e;border-color:rgba(34,197,94,0.3)" onclick="(function(){if(!STATE.checklistExtra)STATE.checklistExtra={};STATE.checklistExtra[${JSON.stringify(q.id||q.title||'')}]=true;try{localStorage.setItem('fp:cl-extra',JSON.stringify(STATE.checklistExtra));}catch(_){}render();})()">✓ Accompli</button>`
+              : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;color:#22c55e;border-color:rgba(34,197,94,0.3);cursor:default" onclick="(function(){if(!STATE.checklistExtra)STATE.checklistExtra={};STATE.checklistExtra[${JSON.stringify(q.id||q.title||'')}]=false;try{localStorage.setItem('fp:cl-extra',JSON.stringify(STATE.checklistExtra));}catch(_){}render();})()">✓ Accompli — Défaire</button>`}
+          </div>
         </div>
       `).join('')}
     </div>
@@ -26114,7 +26244,7 @@ function renderGrowthCommandCenter() {
     const diff = r.priority === 'high' ? 1 : r.priority === 'medium' ? 2 : 3;
     // N'afficher que des impacts trafic réels — jamais de montants €/mois inventés
     const _roiLbl = r.estimated_traffic_impact ? '+' + r.estimated_traffic_impact + ' visites/mois' : '';
-    return { title: r.title, impact: '+' + Math.round((r.estimatedUplift || 0.08) * 100) + '%', roi: _roiLbl, time: diff === 1 ? '15 min' : diff === 2 ? '45 min' : '2h', diff: diff, pct: [0,30,60,0][i] || 0 };
+    return { title: r.title, impact: '+' + Math.round((r.estimatedUplift || 0.08) * 100) + '%', roi: _roiLbl, time: diff === 1 ? '15 min' : diff === 2 ? '45 min' : '2h', diff: diff, pct: 0 };
   }) : (function() {
     const _aw = [];
     const _aud = STATE.audits || [];
@@ -37694,7 +37824,7 @@ function renderPSIScoreCards(data, label) {
     { key: 'seo',           label: 'SEO',           score: s.seo          || 0 },
     { key: 'bestPractices', label: 'Bonnes pratiques', score: s.bestPractices || 0 },
   ];
-  return `<div class="fp-grid" style="grid-template-columns:repeat(4,1fr);gap:12px">
+  return `<div class="fp-grid" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px">
     ${cats.map(c => `<div class="fp-psi-score-card">
       ${renderPSIRing(c.score)}
       <div class="fp-psi-score-label">${escHtml(c.label)}</div>
@@ -38655,7 +38785,7 @@ async function fpGetPSIAIReco() {
     const resp = await fetch(_base + '/api/ai/chat', _fpSessionFetchOptions({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: _prompt, mode: 'performant' }),
+      body: JSON.stringify({ message: _prompt, stream: false }),
     }));
 
     if (resp.ok) {
