@@ -145,3 +145,4 @@
 - [Registration retry robustness](registration-retry-robustness.md) — pre-register must never leave ghost rows; guard only blocks active/trialing/past_due; non-active org_settings deleted immediately
 - [me.ts addons & limits fix](me-ts-addons-limits-fix.md) — org_addons.org_id=uuid (cast $1::uuid); PLAN_INCLUDED_ADDONS must be merged in me.ts; QTY_ADDON_GRANTS expansion on mutable limits copy
 - [Stripe billing cert fixes](billing-stripe-cert-fixes.md) — reconcile must use subscription.livemode to pick test vs live key; AI credits PI needs type="ai_credits"; past_due needs hasPremiumAccess=true
+- [ALTER TABLE inside PgBouncer transaction](alterable-inside-pgbouncer-tx.md) — DDL inside BEGIN poisons Supabase pooled-connection transactions; run self-heals in a separate auto-commit connection before BEGIN
