@@ -152,3 +152,4 @@
 - [checkout-complete direct magic link path](checkout-complete-magic-link.md) — sends ML directly if user exists but no token; 402 when user not yet created (webhook retry); never trusts emailSent:true blindly
 - [createSession throw-on-failure](createsession-throw-on-failure.md) — createSession now throws on persistent DB failure; login-verify catches → 503; never sets orphaned cookie for non-existent session row
 - [P0 backstop plan-tier decision](p0-backstop-plan-tier.md) — backstop préfère le plan de niveau supérieur (standard<pro<ultra) pour décider quelle sub annuler; trial status non fiable (dépend de l'ordre de finalisation)
+- [Activation email FC-1-skip + webhook INSERT bugs](activation-email-fc1-skip-bug.md) — webhook INSERT users sans id→ROLLBACK silencieux; FC-1-skip doit re-envoyer l'email avant de retourner succès
