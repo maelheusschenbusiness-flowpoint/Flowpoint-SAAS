@@ -1571,6 +1571,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           logger.info({ step: "FC-1", token: _fcActToken.slice(0, 8) }, "[FC] step-1: querying pending_signups");
           const _fcActC0 = await _fcActPool.connect();
           let _fcSignup: Record<string, string | null> | null = null;
+          // _fcPendingRow is saved outside the try so FC-1-skip can read the email
+          let _fcPendingRow: Record<string, string | null> | null = null;
           try {
             const _fcActR0 = await _fcActC0.query(
               `SELECT email, first_name, last_name, company_name, consumed_at, expires_at
@@ -1578,28 +1580,86 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
               [_fcActToken]
             );
-            const _fcRow = _fcActR0.rows[0] ?? null;
+            _fcPendingRow = _fcActR0.rows[0] ?? null;
             logger.info({
               step: "FC-1-result",
-              found:    !!_fcRow,
-              consumed: _fcRow ? !!_fcRow["consumed_at"] : null,
-              email:    _fcRow?.["email"],
-              expires:  _fcRow?.["expires_at"],
+              found:    !!_fcPendingRow,
+              consumed: _fcPendingRow ? !!_fcPendingRow["consumed_at"] : null,
+              email:    _fcPendingRow?.["email"],
+              expires:  _fcPendingRow?.["expires_at"],
             }, "[FC] step-1: pending_signup lookup result");
-            _fcSignup = (_fcRow && !_fcRow["consumed_at"]) ? _fcRow : null;
+            _fcSignup = (_fcPendingRow && !_fcPendingRow["consumed_at"]) ? _fcPendingRow : null;
           } finally { _fcActC0.release(); }
 
           if (!_fcSignup) {
-            // Token already consumed (webhook or previous finalize call) or not found.
-            // Account already created — return success so checkout-return shows the
-            // correct UI instead of hanging with no HTTP response.
-            logger.info({ step: "FC-1-skip", token: _fcActToken.slice(0, 8) }, "[FC] step-1: token consumed/missing — activation already complete, returning success");
+            // Token already consumed (webhook already activated the account) or not found.
+            // The webhook should have sent the magic link email, but if it failed we must
+            // re-send now so the user isn't left with a blank inbox after seeing "check your email".
+            logger.info({ step: "FC-1-skip", token: _fcActToken.slice(0, 8) }, "[FC] step-1: token consumed/missing — attempting email re-send");
+            const _skipEmail = _fcPendingRow?.["email"] ?? null;
+            if (_skipEmail) {
+              // ── FC-1-skip resend: find existing valid token or mint a fresh one ──
+              const _reSendC = await _fcActPool.connect();
+              let _reSendOk = false;
+              let _reSendEmailId: string | undefined;
+              try {
+                const _existTok = await _reSendC.query<{ token: string }>(
+                  `SELECT token FROM magic_link_tokens
+                   WHERE email = $1 AND used = FALSE AND expires_at > NOW()
+                   ORDER BY expires_at DESC LIMIT 1`,
+                  [_skipEmail]
+                );
+                let _reToken = _existTok.rows[0]?.token ?? null;
+                if (!_reToken) {
+                  // No valid token left — mint a fresh one
+                  _reToken = _fcRb(32).toString("hex");
+                  await _reSendC.query(
+                    `INSERT INTO magic_link_tokens (token, email, expires_at, used)
+                     VALUES ($1, $2, NOW() + INTERVAL '24 hours', FALSE)
+                     ON CONFLICT (token) DO NOTHING`,
+                    [_reToken, _skipEmail]
+                  );
+                  logger.info({ step: "FC-1-skip-new-token", tokenPrefix: _reToken.slice(0, 8) }, "[FC] FC-1-skip: created fresh magic link token");
+                } else {
+                  logger.info({ step: "FC-1-skip-reuse-token", tokenPrefix: _reToken.slice(0, 8) }, "[FC] FC-1-skip: reusing existing valid token");
+                }
+                const _rePubUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+                const _reMagicUrl = `${_rePubUrl}/login-verify.html?token=${_reToken}`;
+                const { mailer: _reMailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
+                if (_reMailer) {
+                  const _reResult = await _reMailer.sendActivationMagicLink({
+                    to:           _skipEmail,
+                    name:         _fcPendingRow?.["first_name"] || _skipEmail.split("@")[0],
+                    plan:         planKey,
+                    magicLinkUrl: _reMagicUrl,
+                    isTrial:      grantTrial,
+                  }).catch((e: unknown) => ({ ok: false as const, error: String(e) }));
+                  _reSendOk      = !!_reResult?.ok;
+                  _reSendEmailId = (_reResult as { id?: string })?.id;
+                  logger.info({ step: "FC-1-skip-mail", ok: _reSendOk, emailId: _reSendEmailId, error: (_reResult as { error?: string })?.error }, "[FC] FC-1-skip: re-send result");
+                } else {
+                  logger.warn({ step: "FC-1-skip-no-mailer" }, "[FC] FC-1-skip: mailer unavailable");
+                }
+              } catch (_reSendErr) {
+                logger.error({ step: "FC-1-skip-resend-err", err: (_reSendErr as Error).message }, "[FC] FC-1-skip: re-send threw");
+              } finally { _reSendC.release(); }
+
+              res.json({
+                success: true,
+                subscriptionId: planSubscription?.id,
+                addonSubscriptionId,
+                activationEmailSent: _reSendOk,
+                ...(_reSendOk ? {} : { emailFailed: true }),
+              });
+              return;
+            }
+            // No email found in pending_signup row — token was never in DB (invalid)
             res.json({
               success: true,
               subscriptionId: planSubscription?.id,
               addonSubscriptionId,
               activationEmailSent: false,
-              activationSkipped: true,
+              emailFailed: true,
             });
             return;
           }

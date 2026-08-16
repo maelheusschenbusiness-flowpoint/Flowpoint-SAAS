@@ -459,9 +459,11 @@ export async function activateNewSignup(opts: {
   try {
     await activateClient.query("BEGIN");
 
+    // Supply an explicit UUID so activation never fails when users.id has no DEFAULT.
+    const _wbNewUserId = _wbRandUUID();
     const upsertUser = await activateClient.query<{ id: string }>(
-      `INSERT INTO users (email, first_name, last_name, auth_provider, email_verified, status)
-       VALUES ($1, $2, $3, 'magic_link', TRUE, 'active')
+      `INSERT INTO users (id, email, first_name, last_name, auth_provider, email_verified, status)
+       VALUES ($4, $1, $2, $3, 'magic_link', TRUE, 'active')
        ON CONFLICT (email) DO UPDATE
          SET status         = 'active',
              email_verified = TRUE,
@@ -469,7 +471,7 @@ export async function activateNewSignup(opts: {
              last_name      = COALESCE(EXCLUDED.last_name, users.last_name),
              updated_at     = NOW()
        RETURNING id`,
-      [email, firstName, signupRow["last_name"] ?? ""]
+      [email, firstName, signupRow["last_name"] ?? "", _wbNewUserId]
     );
     const userId = upsertUser.rows[0]?.id;
     if (!userId) throw new Error(`Failed to upsert user for email=${email}`);
