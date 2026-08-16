@@ -6,6 +6,7 @@ import { createRateLimit } from "../middlewares/rateLimiter.js";
 import type Stripe from "stripe";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
+import { store } from "../services/store.js";
 
 const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
 
@@ -1073,8 +1074,9 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
 
       /* AI credit packs — same idempotency key as the webhook path (acp_pi_<id>)
          so a webhook replay or a finalize retry can never double-credit. */
+      const _aoCreditsMap: Record<string, number> = { aiCreditsPack50k: 50000, aiCreditsPack200k: 200000, aiCreditsPack500k: 500000 };
+      let _aoTotalCredits = 0;
       if (_aoCreditPacks.length > 0) {
-        const _aoCreditsMap: Record<string, number> = { aiCreditsPack50k: 50000, aiCreditsPack200k: 200000, aiCreditsPack500k: 500000 };
         try {
           const { pool: _aoPool } = await import("@workspace/db");
           const _aoC = await _aoPool.connect();
@@ -1082,6 +1084,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             for (const pack of _aoCreditPacks) {
               const credits = _aoCreditsMap[pack] ?? 0;
               if (!credits) continue;
+              _aoTotalCredits += credits;
               const def = ADDON_DEFINITIONS[pack];
               await _aoC.query(
                 `INSERT INTO ai_credit_purchases
@@ -1094,6 +1097,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             }
           } finally { _aoC.release(); }
           logger.info({ orgId: _authenticatedOrgId, packs: _aoCreditPacks }, "[PublicBilling] finalize: AI credits credited (addon-only cart)");
+          // Broadcast so any open dashboard tab refreshes the credits counter immediately.
+          try { store.broadcast({ type: "ai:credits_added", pack: _aoCreditPacks[0] ?? "", credits: _aoTotalCredits }, _authenticatedOrgId); } catch (_) { /* non-blocking */ }
         } catch (aoCreditErr) {
           logger.error({ aoCreditErr, orgId: _authenticatedOrgId }, "[PublicBilling] finalize: AI credit insert failed");
           res.status(500).json({ error: "Paiement reçu mais crédits non appliqués. Contactez le support." });
@@ -1101,7 +1106,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         }
       }
 
-      /* Recurring add-ons — subscription from month 2 + immediate entitlement */
+      /* Recurring add-ons — add to existing plan subscription, or create new as fallback.
+         Month 1 was already charged via the PaymentIntent. */
       if (_aoRecurring.length > 0) {
         try {
           /* Resolve the subscriber's Stripe customer (recovers deleted customers). */
@@ -1117,20 +1123,50 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             price: ADDON_PRICE_IDS[k]!,
             quantity: typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1,
           }));
-          /* Idempotency: reuse a live add-on subscription already carrying the
-             exact same price set (page refresh / double-click on return page). */
+
+          /* List all subscriptions for the customer once — used for both idempotency check
+             and finding the existing plan subscription. */
           const _aoExisting = await stripe.subscriptions.list({ customer: _aoCustomerId, status: "all", limit: 20 });
           const _aoWanted = new Set(_aoItems.map(i => i.price));
+
+          /* Idempotency: reuse a live add-on sub that matches this exact intent + price set. */
           const _aoReusable = _aoExisting.data.find((s: Stripe.Subscription) =>
             (s.status === "active" || s.status === "trialing") &&
             s.metadata?.["source"] === "checkout_payment_addons" &&
             s.metadata?.["origin_intent"] === intentId &&
-            s.items.data.every(i => _aoWanted.has(i.price.id)));
+            s.items.data.every((i: { price: { id: string } }) => _aoWanted.has(i.price.id)));
+
+          /* Existing plan subscription: any active/trialing sub that is NOT an add-on-only sub
+             created by a previous finalize-checkout. Adding items here avoids a second subscription. */
+          const _aoPlanSub = !_aoReusable
+            ? _aoExisting.data.find((s: Stripe.Subscription) =>
+                (s.status === "active" || s.status === "trialing") &&
+                !s.metadata?.["source"]?.toString().startsWith("checkout_payment_addons"))
+            : null;
+
           let _aoSubId: string;
           if (_aoReusable) {
             _aoSubId = _aoReusable.id;
             logger.info({ subscriptionId: _aoSubId }, "[PublicBilling] finalize: reusing addon subscription (idempotent)");
+          } else if (_aoPlanSub) {
+            /* Add add-on items to the subscriber's existing plan subscription so no second
+               subscription is created. proration_behavior:"none" because month 1 was already
+               collected via the PaymentIntent — Stripe will bill the add-on at next renewal. */
+            for (const item of _aoItems) {
+              await (stripe as unknown as { subscriptionItems: { create: (p: Record<string, unknown>) => Promise<unknown> } })
+                .subscriptionItems.create({
+                  subscription:       _aoPlanSub.id,
+                  price:              item.price,
+                  quantity:           item.quantity,
+                  proration_behavior: "none",
+                });
+            }
+            _aoSubId = _aoPlanSub.id;
+            logger.info({ subscriptionId: _aoSubId, addons: _aoRecurring },
+              "[PublicBilling] finalize: addon items added to existing plan subscription (no second sub created)");
           } else {
+            /* No existing plan subscription found — create a new add-on subscription as fallback.
+               This covers non-plan subscribers or edge cases where no active sub was found. */
             const _aoSub = await stripe.subscriptions.create({
               customer:               _aoCustomerId,
               items:                  _aoItems,
@@ -1155,6 +1191,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           for (const k of _aoRecurring) {
             const qty = typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1;
             await _aoActivate(k, _authenticatedOrgId, qty);
+            // Broadcast so any open dashboard tab reflects the new entitlement immediately.
+            try { store.broadcast({ type: "fp:addon:activated", addonKey: k }, _authenticatedOrgId); } catch (_) { /* non-blocking */ }
           }
           logger.info({ orgId: _authenticatedOrgId, addons: _aoRecurring, subscriptionId: _aoSubId },
             "[PublicBilling] finalize: addon-only purchase provisioned");
@@ -1169,7 +1207,10 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       res.json({
         success: true,
         checkoutType: _aoRecurring.length > 0 ? "addon_only" : "ai_credits_only",
-        message: _aoRecurring.length > 0 ? "Add-on activé." : "Crédits activés.",
+        message:      _aoRecurring.length > 0 ? "Add-on activé." : "Crédits activés.",
+        // Include purchased amounts for the confirmation UI in checkout-return.html
+        ..._aoTotalCredits > 0 ? { credits: _aoTotalCredits } : {},
+        ..._aoRecurring.length > 0 ? { addons: _aoRecurring } : {},
       });
       return;
     }

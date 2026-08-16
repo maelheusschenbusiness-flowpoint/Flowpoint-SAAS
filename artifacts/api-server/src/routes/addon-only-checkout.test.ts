@@ -95,12 +95,23 @@ function makeApp(orgId?: string, cookieToken?: string) {
 }
 
 /** Recording fake Stripe client — no network. */
-function makeFakeStripe() {
+function makeFakeStripe(opts?: { existingPlanSubId?: string }) {
   const created: any[] = [];
   const subsCreated: any[] = [];
+  const subsItemsCreated: any[] = [];
+  const existingSubData = opts?.existingPlanSubId
+    ? [{
+        id: opts.existingPlanSubId,
+        status: "active",
+        // No "source" key → not an add-on-only sub, qualifies as plan sub.
+        metadata: { plan: "pro" },
+        items: { data: [{ price: { id: "price_plan_pro_monthly" } }] },
+      }]
+    : [];
   return {
     created,
     subsCreated,
+    subsItemsCreated,
     paymentIntents: {
       create: vi.fn(async (params: any) => {
         created.push(params);
@@ -118,10 +129,16 @@ function makeFakeStripe() {
       create: vi.fn(async (params: any) => ({ id: "seti_fake_1", client_secret: "seti_fake_1_secret", ...params })),
     },
     subscriptions: {
-      list: vi.fn(async () => ({ data: [] })),
+      list: vi.fn(async () => ({ data: existingSubData })),
       create: vi.fn(async (params: any) => {
         subsCreated.push(params);
         return { id: "sub_fake_addon_1", ...params };
+      }),
+    },
+    subscriptionItems: {
+      create: vi.fn(async (params: any) => {
+        subsItemsCreated.push(params);
+        return { id: "si_fake_1", ...params };
       }),
     },
     paymentMethods: {
@@ -243,7 +260,8 @@ describe("active subscriber — payment initiation (checkout.html path)", () => 
 describe("active subscriber — finalize-checkout provisions the add-on (no plan)", () => {
   beforeEach(() => { activatedAddons.length = 0; dbQueries.length = 0; });
 
-  it("creates the month-2 add-on subscription and grants entitlement after payment", async () => {
+  it("creates the month-2 add-on subscription when no existing plan sub is found (fallback)", async () => {
+    // No existing plan sub (list returns []) → falls back to creating a new subscription.
     const fake = makeFakeStripe();
     setStripeForTesting(fake);
     const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
@@ -252,13 +270,37 @@ describe("active subscriber — finalize-checkout provisions the add-on (no plan
     expect(r.status).toBe(200);
     expect(r.body.success).toBe(true);
     expect(r.body.checkoutType).toBe("addon_only");
+    expect(r.body.addons).toContain(PAID_ADDON);
     // Recurring subscription starts at month 2 (trial_end set) — month 1 was the PI.
     expect(fake.subsCreated).toHaveLength(1);
     expect(fake.subsCreated[0].items).toEqual([{ price: expect.stringMatching(/^price_/), quantity: 1 }]);
     expect(fake.subsCreated[0].trial_end).toBeGreaterThan(Math.floor(Date.now() / 1000));
     expect(fake.subsCreated[0].metadata.org_id).toBe("org-uuid-1");
+    // No subscriptionItems.create called (no existing sub to add to).
+    expect(fake.subsItemsCreated).toHaveLength(0);
     // Entitlement granted immediately, not left to webhook latency.
     expect(activatedAddons).toEqual([{ key: PAID_ADDON, orgId: "org-uuid-1", qty: 1 }]);
+  });
+
+  it("adds add-on items to existing plan subscription instead of creating a second sub", async () => {
+    // Has existing plan sub → must add items to it, NOT create a second subscription.
+    const fake = makeFakeStripe({ existingPlanSubId: "sub_existing_plan" });
+    setStripeForTesting(fake);
+    const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
+      .post("/api/public/finalize-checkout")
+      .send({ intentId: "pi_fake_5", intentType: "payment", plan: "", addons: { [PAID_ADDON]: true } });
+    expect(r.status).toBe(200);
+    expect(r.body.success).toBe(true);
+    expect(r.body.checkoutType).toBe("addon_only");
+    // No second subscription must be created.
+    expect(fake.subsCreated).toHaveLength(0);
+    // Item was added to the existing plan subscription.
+    expect(fake.subsItemsCreated).toHaveLength(1);
+    expect(fake.subsItemsCreated[0].subscription).toBe("sub_existing_plan");
+    expect(fake.subsItemsCreated[0].proration_behavior).toBe("none");
+    expect(fake.subsItemsCreated[0].price).toMatch(/^price_/);
+    // Entitlement granted immediately regardless of which Stripe path was taken.
+    expect(activatedAddons.some(a => a.key === PAID_ADDON && a.orgId === "org-uuid-1")).toBe(true);
   });
 
   it("credits AI packs idempotently for a credits-only cart", async () => {

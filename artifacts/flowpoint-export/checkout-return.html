@@ -118,6 +118,22 @@
             return;
           }
 
+          /* ── AI credits or add-on purchase confirmation (PaymentElement path) ── */
+          var _ct = (res.data.checkoutType || '').toString();
+          if (_ct === 'ai_credits_only') {
+            showAiCreditsSuccess(res.data.credits || 0);
+            return;
+          }
+          if (_ct === 'addon_only') {
+            document.getElementById('fp-check').style.display = '';
+            document.getElementById('fp-title').textContent = 'Add-on activé !';
+            document.getElementById('fp-sub').innerHTML =
+              'Votre add-on est <strong>immédiatement disponible</strong>.<br>' +
+              'Vous allez être redirigé vers le tableau de bord…';
+            setTimeout(function(){ window.location.href = '/dashboard.html#billing'; }, 2200);
+            return;
+          }
+
           if (res.data.awaitingWebhook) {
             /* checkout_session path (reactivation) — subscription created by Stripe,
                webhook will activate it. Show a brief waiting state then go to dashboard. */

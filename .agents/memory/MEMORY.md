@@ -1,3 +1,4 @@
+- [Add-on and AI credits purchase chain](addon-purchase-chain.md) — fpBuyAICredits/fpActivateAddon full chain; finalize-checkout adds items to existing sub (not new sub); SSE broadcasts; checkout-return Case A checkoutType handling
 - [PLAN_PRICE_IDS live-mode only](plan-price-ids-live-only.md) — PLAN_PRICE_IDS in plans.ts holds live Stripe prices; cert subs have test prices; billing/upgrade fails resource_missing in test mode — not a prod bug
 - [AI chat reply field](ai-chat-reply-field.md) — /api/ai/chat stream:false returns `reply` not message/response/text/content; GET /api/team/files returns raw array not {files:[]}
 - [E2E test DB schema](e2e-test-db-schema.md) — organizations.id=UUID, user_sessions has email+role inline, org_members table does NOT exist; me.ts normalizes plan to Title Case
