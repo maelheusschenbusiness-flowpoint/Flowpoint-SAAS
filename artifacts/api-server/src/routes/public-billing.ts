@@ -6,6 +6,7 @@ import { createRateLimit } from "../middlewares/rateLimiter.js";
 import type Stripe from "stripe";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
+import { store } from "../services/store.js";
 
 const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
 
@@ -640,6 +641,23 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     ...(trialDaysRemaining ? { trial_days_remaining:  String(trialDaysRemaining)  } : {}),
   };
 
+  // ── Closed-tab recovery: tag AI-credits-only PaymentIntents ───────────────
+  // If the user closes the browser before checkout-return.html calls
+  // /api/public/finalize-checkout, the payment_intent.succeeded webhook is the
+  // only remaining actor. Tagging the PI with type=ai_credits + pack + credits
+  // lets the webhook credit the org exactly once even without a browser callback.
+  const _piAddonKeys = Object.keys(addons as Record<string, unknown>);
+  const _piAIKeys = _piAddonKeys.filter(k => AI_CREDIT_PACKS.has(k));
+  if (_piAIKeys.length > 0 && _piAIKeys.length === _piAddonKeys.length && !preRegisterToken) {
+    const _CREDITS_PER_PACK: Record<string, number> = { aiCreditsPack50k: 50000, aiCreditsPack200k: 200000, aiCreditsPack500k: 500000 };
+    const _totalPICredits = _piAIKeys.reduce((s, k) => s + (_CREDITS_PER_PACK[k] ?? 0), 0);
+    metadata["type"]           = "ai_credits";
+    metadata["pack"]           = _piAIKeys.join(",");
+    metadata["credits"]        = String(_totalPICredits);
+    metadata["amountEurCents"] = String(immediateAmountCents);
+    // orgId added after customer resolution below — fall-through intentional
+  }
+
   try {
     const stripe = await createStripeClient(stripeKey);
 
@@ -793,6 +811,16 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
         } catch (_authCtxErr) {
           logger.warn({ _authCtxErr }, "[PublicBilling] payment-intent: billing-context/ensureStripeCustomer failed for authenticated org (non-fatal)");
         }
+      }
+    }
+
+    // For the closed-tab webhook path: inject the authenticated orgId into PI metadata
+    // so the webhook can attribute credits without a Stripe customer→org lookup.
+    if (metadata["type"] === "ai_credits" && !metadata["orgId"]) {
+      const _piMetaOrgId = (req as Request & { orgId?: string }).orgId;
+      if (_piMetaOrgId && _piMetaOrgId !== "default") {
+        metadata["orgId"]   = _piMetaOrgId;
+        metadata["org_id"]  = _piMetaOrgId;
       }
     }
 
@@ -1073,27 +1101,33 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
 
       /* AI credit packs — same idempotency key as the webhook path (acp_pi_<id>)
          so a webhook replay or a finalize retry can never double-credit. */
+      const _aoCreditsMap: Record<string, number> = { aiCreditsPack50k: 50000, aiCreditsPack200k: 200000, aiCreditsPack500k: 500000 };
+      let _aoTotalCredits = 0;
       if (_aoCreditPacks.length > 0) {
-        const _aoCreditsMap: Record<string, number> = { aiCreditsPack50k: 50000, aiCreditsPack200k: 200000, aiCreditsPack500k: 500000 };
         try {
+          // Compute totals before the DB call so we can use the idempotency key.
+          _aoTotalCredits = _aoCreditPacks.reduce((s, k) => s + (_aoCreditsMap[k] ?? 0), 0);
+          const _primaryPack      = _aoCreditPacks[0] ?? "";
+          const _amountEurCents   = _aoCreditPacks.reduce((s, k) => s + Math.round((ADDON_DEFINITIONS[k]?.priceEur ?? 0) * 100), 0);
           const { pool: _aoPool } = await import("@workspace/db");
           const _aoC = await _aoPool.connect();
           try {
-            for (const pack of _aoCreditPacks) {
-              const credits = _aoCreditsMap[pack] ?? 0;
-              if (!credits) continue;
-              const def = ADDON_DEFINITIONS[pack];
-              await _aoC.query(
-                `INSERT INTO ai_credit_purchases
-                   (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-                 ON CONFLICT (id) DO NOTHING`,
-                [`acp_pi_${intentId}_${pack}`, _authenticatedOrgId, pack, credits,
-                 Math.round((def?.priceEur ?? 0) * 100), "", intentId]
-              );
-            }
+            // Key matches payment_intent.succeeded webhook: acp_pi_<intentId>
+            // ON CONFLICT DO NOTHING ensures credits are granted exactly once
+            // regardless of whether the webhook or finalize-checkout arrives first,
+            // and even if finalize-checkout is called twice (browser reload, double-submit).
+            await _aoC.query(
+              `INSERT INTO ai_credit_purchases
+                 (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
+               ON CONFLICT (id) DO NOTHING`,
+              [`acp_pi_${intentId}`, _authenticatedOrgId, _primaryPack, _aoTotalCredits,
+               _amountEurCents, "", intentId]
+            );
           } finally { _aoC.release(); }
           logger.info({ orgId: _authenticatedOrgId, packs: _aoCreditPacks }, "[PublicBilling] finalize: AI credits credited (addon-only cart)");
+          // Broadcast so any open dashboard tab refreshes the credits counter immediately.
+          try { store.broadcast({ type: "ai:credits_added", pack: _aoCreditPacks[0] ?? "", credits: _aoTotalCredits }, _authenticatedOrgId); } catch (_) { /* non-blocking */ }
         } catch (aoCreditErr) {
           logger.error({ aoCreditErr, orgId: _authenticatedOrgId }, "[PublicBilling] finalize: AI credit insert failed");
           res.status(500).json({ error: "Paiement reçu mais crédits non appliqués. Contactez le support." });
@@ -1101,7 +1135,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         }
       }
 
-      /* Recurring add-ons — subscription from month 2 + immediate entitlement */
+      /* Recurring add-ons — add to existing plan subscription, or create new as fallback.
+         Month 1 was already charged via the PaymentIntent. */
       if (_aoRecurring.length > 0) {
         try {
           /* Resolve the subscriber's Stripe customer (recovers deleted customers). */
@@ -1117,20 +1152,50 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             price: ADDON_PRICE_IDS[k]!,
             quantity: typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1,
           }));
-          /* Idempotency: reuse a live add-on subscription already carrying the
-             exact same price set (page refresh / double-click on return page). */
+
+          /* List all subscriptions for the customer once — used for both idempotency check
+             and finding the existing plan subscription. */
           const _aoExisting = await stripe.subscriptions.list({ customer: _aoCustomerId, status: "all", limit: 20 });
           const _aoWanted = new Set(_aoItems.map(i => i.price));
+
+          /* Idempotency: reuse a live add-on sub that matches this exact intent + price set. */
           const _aoReusable = _aoExisting.data.find((s: Stripe.Subscription) =>
             (s.status === "active" || s.status === "trialing") &&
             s.metadata?.["source"] === "checkout_payment_addons" &&
             s.metadata?.["origin_intent"] === intentId &&
-            s.items.data.every(i => _aoWanted.has(i.price.id)));
+            s.items.data.every((i: { price: { id: string } }) => _aoWanted.has(i.price.id)));
+
+          /* Existing plan subscription: any active/trialing sub that is NOT an add-on-only sub
+             created by a previous finalize-checkout. Adding items here avoids a second subscription. */
+          const _aoPlanSub = !_aoReusable
+            ? _aoExisting.data.find((s: Stripe.Subscription) =>
+                (s.status === "active" || s.status === "trialing") &&
+                !s.metadata?.["source"]?.toString().startsWith("checkout_payment_addons"))
+            : null;
+
           let _aoSubId: string;
           if (_aoReusable) {
             _aoSubId = _aoReusable.id;
             logger.info({ subscriptionId: _aoSubId }, "[PublicBilling] finalize: reusing addon subscription (idempotent)");
+          } else if (_aoPlanSub) {
+            /* Add add-on items to the subscriber's existing plan subscription so no second
+               subscription is created. proration_behavior:"none" because month 1 was already
+               collected via the PaymentIntent — Stripe will bill the add-on at next renewal. */
+            for (const item of _aoItems) {
+              await (stripe as unknown as { subscriptionItems: { create: (p: Record<string, unknown>) => Promise<unknown> } })
+                .subscriptionItems.create({
+                  subscription:       _aoPlanSub.id,
+                  price:              item.price,
+                  quantity:           item.quantity,
+                  proration_behavior: "none",
+                });
+            }
+            _aoSubId = _aoPlanSub.id;
+            logger.info({ subscriptionId: _aoSubId, addons: _aoRecurring },
+              "[PublicBilling] finalize: addon items added to existing plan subscription (no second sub created)");
           } else {
+            /* No existing plan subscription found — create a new add-on subscription as fallback.
+               This covers non-plan subscribers or edge cases where no active sub was found. */
             const _aoSub = await stripe.subscriptions.create({
               customer:               _aoCustomerId,
               items:                  _aoItems,
@@ -1155,6 +1220,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           for (const k of _aoRecurring) {
             const qty = typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1;
             await _aoActivate(k, _authenticatedOrgId, qty);
+            // Broadcast so any open dashboard tab reflects the new entitlement immediately.
+            try { store.broadcast({ type: "fp:addon:activated", addonKey: k }, _authenticatedOrgId); } catch (_) { /* non-blocking */ }
           }
           logger.info({ orgId: _authenticatedOrgId, addons: _aoRecurring, subscriptionId: _aoSubId },
             "[PublicBilling] finalize: addon-only purchase provisioned");
@@ -1169,7 +1236,10 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       res.json({
         success: true,
         checkoutType: _aoRecurring.length > 0 ? "addon_only" : "ai_credits_only",
-        message: _aoRecurring.length > 0 ? "Add-on activé." : "Crédits activés.",
+        message:      _aoRecurring.length > 0 ? "Add-on activé." : "Crédits activés.",
+        // Include purchased amounts for the confirmation UI in checkout-return.html
+        ..._aoTotalCredits > 0 ? { credits: _aoTotalCredits } : {},
+        ..._aoRecurring.length > 0 ? { addons: _aoRecurring } : {},
       });
       return;
     }
@@ -1477,14 +1547,26 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           const { randomUUID: _fcRandUUID } = await import("crypto");
           const _fcAOrgId = _fcRandUUID();
 
+          // Self-heal: run DDL OUTSIDE any transaction (auto-commit).
+          // ALTER TABLE inside a BEGIN block poisons the transaction on PgBouncer
+          // (transaction pooling mode) if the DDL is rejected, causing every subsequent
+          // statement to fail with "current transaction is aborted". Run them here, before
+          // the transaction opens, on a dedicated connection so failures are isolated.
+          {
+            const _fcSelfHealC = await _fcActPool.connect();
+            try {
+              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name    TEXT`).catch(() => {});
+              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name     TEXT`).catch(() => {});
+              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status        TEXT NOT NULL DEFAULT 'pending'`).catch(() => {});
+              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE`).catch(() => {});
+              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at    TIMESTAMPTZ DEFAULT NOW()`).catch(() => {});
+              await _fcSelfHealC.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`).catch(() => {});
+            } finally { _fcSelfHealC.release(); }
+          }
+
           const _fcActTxC = await _fcActPool.connect();
           try {
             await _fcActTxC.query("BEGIN");
-            // Self-heal: ensure columns exist regardless of which init path ran on this server.
-            await _fcActTxC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT`).catch(() => {});
-            await _fcActTxC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name  TEXT`).catch(() => {});
-            await _fcActTxC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'`).catch(() => {});
-            await _fcActTxC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE`).catch(() => {});
             const _fcUsr = await _fcActTxC.query<{ id: string }>(
               `INSERT INTO users (email, first_name, last_name, auth_provider, email_verified, status)
                VALUES ($1,$2,$3,'magic_link',TRUE,'active')
