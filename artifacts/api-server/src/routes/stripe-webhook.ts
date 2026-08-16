@@ -843,52 +843,80 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // ── P0 backstop: detect and auto-cancel duplicate subscriptions ──────────
       // Fires when finalize-checkout's guard missed a race (e.g., two checkout
       // sessions created before either subscription existed, both completing later).
-      // If this customer already has another non-canceled active/trialing subscription,
-      // cancel the newly created one and refund its charge so the user is not double-billed.
+      //
+      // PLAN-TIER DECISION (fixes scenario L — reversed event order):
+      //   • If the new sub is a HIGHER plan than all conflicts → the new checkout is
+      //     the intentional one (user moved to a better plan); cancel the lower-plan
+      //     conflicts and let activation run for the new sub.
+      //   • Otherwise → cancel the new sub (conservative: first-to-activate wins).
+      //
+      // Upgrade/downgrade path (billing/upgrade) uses stripe.subscriptions.update()
+      // and never triggers checkout.session.completed, so this backstop cannot
+      // interfere with dashboard plan changes.
       const _newSubId = obj["subscription"] ? String(obj["subscription"]) : undefined;
       let _isDuplicateSub = false;
       if (_newSubId && customerId && stripeKey) {
         try {
           const _bsStripe  = await createStripeClient(stripeKey);
           const _bsAllSubs = await _bsStripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
-          const _bsConflicts = (_bsAllSubs.data as Array<{ id: string; status: string; cancel_at_period_end: boolean }>).filter(
+          type _BsSub = { id: string; status: string; cancel_at_period_end: boolean; metadata?: Record<string, string> };
+          const _bsConflicts = (_bsAllSubs.data as _BsSub[]).filter(
             (s) => s.id !== _newSubId && (s.status === "active" || s.status === "trialing") && !s.cancel_at_period_end
           );
           if (_bsConflicts.length > 0) {
-            _isDuplicateSub = true;
+            // Plan-tier map: higher number = higher plan
+            const _BS_TIER: Record<string, number> = { standard: 1, pro: 2, ultra: 3 };
+            const _bsNewTier       = _BS_TIER[planNorm] ?? 0;
+            const _bsMaxConflTier  = Math.max(..._bsConflicts.map(s => _BS_TIER[(s.metadata?.["plan"] ?? "").toLowerCase()] ?? 0), 0);
+            // If new sub is strictly higher plan → it is the legitimate one, cancel conflicts
+            // Otherwise → new sub is duplicate, cancel it
+            const _bsCancelNew    = _bsNewTier <= _bsMaxConflTier;
+            const _bsSubsToCancel = _bsCancelNew ? [_newSubId] : _bsConflicts.map(s => s.id);
             logger.error(
               {
                 newSubId:        _newSubId,
-                conflictSubIds:  _bsConflicts.map((s) => s.id),
+                newPlan:         planNorm,
+                newTier:         _bsNewTier,
+                conflictSubIds:  _bsConflicts.map(s => s.id),
+                maxConflTier:    _bsMaxConflTier,
+                decision:        _bsCancelNew ? "cancel_new_sub" : "cancel_conflicts",
                 customerId,
                 orgId,
-                preRegToken,
               },
-              "[Webhook][P0] DUPLICATE SUBSCRIPTION DETECTED — canceling new sub and issuing refund"
+              "[Webhook][P0] DUPLICATE SUBSCRIPTION DETECTED"
             );
-            // Cancel the duplicate subscription immediately (no proration)
-            await _bsStripe.subscriptions.cancel(_newSubId, { prorate: false });
-            // Refund the paid invoice(s) on the canceled subscription
-            const _bsInvoices = await _bsStripe.invoices.list({ subscription: _newSubId, limit: 3 });
-            for (const _bsInv of _bsInvoices.data) {
-              if (_bsInv.amount_paid <= 0) continue;
-              // Try payment_intent first, then charge
-              const _bsPiId = _bsInv.payment_intent && typeof _bsInv.payment_intent === "string" ? _bsInv.payment_intent : null;
-              const _bsChId = !_bsPiId && _bsInv.charge && typeof _bsInv.charge === "string" ? _bsInv.charge : null;
-              if (_bsPiId) {
-                await _bsStripe.refunds.create({ payment_intent: _bsPiId });
-                logger.info({ invoiceId: _bsInv.id, piId: _bsPiId, amount: _bsInv.amount_paid },
-                  "[Webhook][P0] Refund issued for duplicate subscription (via payment_intent)");
-              } else if (_bsChId) {
-                await _bsStripe.refunds.create({ charge: _bsChId });
-                logger.info({ invoiceId: _bsInv.id, chargeId: _bsChId, amount: _bsInv.amount_paid },
-                  "[Webhook][P0] Refund issued for duplicate subscription (via charge)");
-              } else {
-                logger.error({ invoiceId: _bsInv.id, amount: _bsInv.amount_paid },
-                  "[Webhook][P0] Could not auto-refund duplicate sub invoice — no payment_intent or charge");
+            // Helper: cancel a subscription and refund its first paid invoice
+            const _bsCancelAndRefund = async (subId: string): Promise<void> => {
+              await _bsStripe.subscriptions.cancel(subId, { prorate: false });
+              type _BsInv = { id: string; amount_paid: number; payment_intent?: unknown; charge?: unknown };
+              const _bsInvs = await _bsStripe.invoices.list({ subscription: subId, limit: 3 });
+              for (const _bsInv of (_bsInvs.data as _BsInv[])) {
+                if (_bsInv.amount_paid <= 0) continue;
+                const _bsPiId = typeof _bsInv.payment_intent === "string" ? _bsInv.payment_intent : null;
+                const _bsChId = !_bsPiId && typeof _bsInv.charge === "string" ? _bsInv.charge : null;
+                if (_bsPiId) {
+                  await _bsStripe.refunds.create({ payment_intent: _bsPiId });
+                  logger.info({ subId, invoiceId: _bsInv.id, piId: _bsPiId, amount: _bsInv.amount_paid },
+                    "[Webhook][P0] Refund issued (via payment_intent)");
+                } else if (_bsChId) {
+                  await _bsStripe.refunds.create({ charge: _bsChId });
+                  logger.info({ subId, invoiceId: _bsInv.id, chargeId: _bsChId, amount: _bsInv.amount_paid },
+                    "[Webhook][P0] Refund issued (via charge)");
+                } else {
+                  logger.error({ subId, invoiceId: _bsInv.id, amount: _bsInv.amount_paid },
+                    "[Webhook][P0] Could not auto-refund — no payment_intent or charge on invoice");
+                }
+                break;
               }
-              break; // Only refund the first paid invoice
+            };
+            for (const _subToCancel of _bsSubsToCancel) {
+              await _bsCancelAndRefund(_subToCancel).catch(err =>
+                logger.error({ err, _subToCancel }, "[Webhook][P0] cancel+refund threw")
+              );
             }
+            // If we canceled the new sub → it's a duplicate, skip activation.
+            // If we canceled the conflicts → new sub is legitimate, let activation run.
+            _isDuplicateSub = _bsCancelNew;
           }
         } catch (_bsErr) {
           logger.error({ _bsErr, customerId, _newSubId },
