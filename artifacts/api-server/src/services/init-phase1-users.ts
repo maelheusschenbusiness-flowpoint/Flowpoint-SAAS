@@ -67,6 +67,11 @@ export async function initPhase1Users(): Promise<void> {
     await run(client, `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at  TIMESTAMPTZ;`);
     await run(client, `CREATE INDEX IF NOT EXISTS users_email_idx  ON users(email);`);
     await run(client, `CREATE INDEX IF NOT EXISTS users_status_idx ON users(status);`);
+    // CRITICAL: ON CONFLICT (email) requires a UNIQUE index, not just a plain index.
+    // CREATE TABLE IF NOT EXISTS is a no-op when the table predates this constraint, so
+    // the UNIQUE constraint defined in the CREATE TABLE above is never added to existing tables.
+    // This line self-heals that gap idempotently on every server boot.
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email);`);
 
     // ── 2. organization_members — the authoritative role/membership record ────
     // Replaces the role field spread across team_members + user_sessions.
