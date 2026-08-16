@@ -1612,14 +1612,15 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
 
             // 4a — upsert user
             logger.info({ step: "FC-4a", email: _fcAEmail }, "[FC] step-4a: INSERT INTO users");
+            const _fcNewUserId = _fcRandUUID();
             const _fcUsr = await _fcActTxC.query<{ id: string }>(
-              `INSERT INTO users (email, first_name, last_name, auth_provider, email_verified, status)
-               VALUES ($1,$2,$3,'magic_link',TRUE,'active')
+              `INSERT INTO users (id, email, first_name, last_name, auth_provider, email_verified, status)
+               VALUES ($4,$1,$2,$3,'magic_link',TRUE,'active')
                ON CONFLICT (email) DO UPDATE
                  SET status='active', email_verified=TRUE,
                      first_name=COALESCE(EXCLUDED.first_name,users.first_name), updated_at=NOW()
                RETURNING id`,
-              [_fcAEmail, _fcSignup["first_name"] ?? "", _fcSignup["last_name"] ?? ""]
+              [_fcAEmail, _fcSignup["first_name"] ?? "", _fcSignup["last_name"] ?? "", _fcNewUserId]
             );
             const _fcUserId = _fcUsr.rows[0]?.id;
             logger.info({ step: "FC-4a-ok", userId: _fcUserId }, "[FC] step-4a: user upserted");
