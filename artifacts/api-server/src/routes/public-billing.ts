@@ -641,6 +641,23 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     ...(trialDaysRemaining ? { trial_days_remaining:  String(trialDaysRemaining)  } : {}),
   };
 
+  // ── Closed-tab recovery: tag AI-credits-only PaymentIntents ───────────────
+  // If the user closes the browser before checkout-return.html calls
+  // /api/public/finalize-checkout, the payment_intent.succeeded webhook is the
+  // only remaining actor. Tagging the PI with type=ai_credits + pack + credits
+  // lets the webhook credit the org exactly once even without a browser callback.
+  const _piAddonKeys = Object.keys(addons as Record<string, unknown>);
+  const _piAIKeys = _piAddonKeys.filter(k => AI_CREDIT_PACKS.has(k));
+  if (_piAIKeys.length > 0 && _piAIKeys.length === _piAddonKeys.length && !preRegisterToken) {
+    const _CREDITS_PER_PACK: Record<string, number> = { aiCreditsPack50k: 50000, aiCreditsPack200k: 200000, aiCreditsPack500k: 500000 };
+    const _totalPICredits = _piAIKeys.reduce((s, k) => s + (_CREDITS_PER_PACK[k] ?? 0), 0);
+    metadata["type"]           = "ai_credits";
+    metadata["pack"]           = _piAIKeys.join(",");
+    metadata["credits"]        = String(_totalPICredits);
+    metadata["amountEurCents"] = String(immediateAmountCents);
+    // orgId added after customer resolution below — fall-through intentional
+  }
+
   try {
     const stripe = await createStripeClient(stripeKey);
 
@@ -794,6 +811,16 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
         } catch (_authCtxErr) {
           logger.warn({ _authCtxErr }, "[PublicBilling] payment-intent: billing-context/ensureStripeCustomer failed for authenticated org (non-fatal)");
         }
+      }
+    }
+
+    // For the closed-tab webhook path: inject the authenticated orgId into PI metadata
+    // so the webhook can attribute credits without a Stripe customer→org lookup.
+    if (metadata["type"] === "ai_credits" && !metadata["orgId"]) {
+      const _piMetaOrgId = (req as Request & { orgId?: string }).orgId;
+      if (_piMetaOrgId && _piMetaOrgId !== "default") {
+        metadata["orgId"]   = _piMetaOrgId;
+        metadata["org_id"]  = _piMetaOrgId;
       }
     }
 
@@ -1078,23 +1105,25 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       let _aoTotalCredits = 0;
       if (_aoCreditPacks.length > 0) {
         try {
+          // Compute totals before the DB call so we can use the idempotency key.
+          _aoTotalCredits = _aoCreditPacks.reduce((s, k) => s + (_aoCreditsMap[k] ?? 0), 0);
+          const _primaryPack      = _aoCreditPacks[0] ?? "";
+          const _amountEurCents   = _aoCreditPacks.reduce((s, k) => s + Math.round((ADDON_DEFINITIONS[k]?.priceEur ?? 0) * 100), 0);
           const { pool: _aoPool } = await import("@workspace/db");
           const _aoC = await _aoPool.connect();
           try {
-            for (const pack of _aoCreditPacks) {
-              const credits = _aoCreditsMap[pack] ?? 0;
-              if (!credits) continue;
-              _aoTotalCredits += credits;
-              const def = ADDON_DEFINITIONS[pack];
-              await _aoC.query(
-                `INSERT INTO ai_credit_purchases
-                   (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-                 ON CONFLICT (id) DO NOTHING`,
-                [`acp_pi_${intentId}_${pack}`, _authenticatedOrgId, pack, credits,
-                 Math.round((def?.priceEur ?? 0) * 100), "", intentId]
-              );
-            }
+            // Key matches payment_intent.succeeded webhook: acp_pi_<intentId>
+            // ON CONFLICT DO NOTHING ensures credits are granted exactly once
+            // regardless of whether the webhook or finalize-checkout arrives first,
+            // and even if finalize-checkout is called twice (browser reload, double-submit).
+            await _aoC.query(
+              `INSERT INTO ai_credit_purchases
+                 (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
+               ON CONFLICT (id) DO NOTHING`,
+              [`acp_pi_${intentId}`, _authenticatedOrgId, _primaryPack, _aoTotalCredits,
+               _amountEurCents, "", intentId]
+            );
           } finally { _aoC.release(); }
           logger.info({ orgId: _authenticatedOrgId, packs: _aoCreditPacks }, "[PublicBilling] finalize: AI credits credited (addon-only cart)");
           // Broadcast so any open dashboard tab refreshes the credits counter immediately.

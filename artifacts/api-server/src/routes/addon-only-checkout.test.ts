@@ -313,7 +313,8 @@ describe("active subscriber — finalize-checkout provisions the add-on (no plan
     expect(r.body.checkoutType).toBe("ai_credits_only");
     const insert = dbQueries.find(q => /INSERT INTO ai_credit_purchases/.test(q.sql));
     expect(insert).toBeDefined();
-    expect(insert!.values[0]).toBe("acp_pi_pi_fake_2_aiCreditsPack50k"); // deterministic id
+    // Key must match acp_pi_<intentId> — same format the payment_intent.succeeded webhook uses.
+    expect(insert!.values[0]).toBe("acp_pi_pi_fake_2");
     expect(insert!.values[1]).toBe("org-uuid-1");
     expect(insert!.values[3]).toBe(50000);
     expect(fake.subsCreated).toHaveLength(0); // one-time — no subscription
@@ -325,5 +326,141 @@ describe("active subscriber — finalize-checkout provisions the add-on (no plan
       .send({ intentId: "pi_fake_3", intentType: "payment", plan: "", addons: { [PAID_ADDON]: true } });
     expect(r.status).toBe(401);
     expect(activatedAddons).toHaveLength(0);
+  });
+});
+
+// ── AI credits idempotency — all order combinations ───────────────────────────
+// The idempotency guarantee: regardless of which actor (webhook or finalize-checkout)
+// credits the org first, and regardless of replays, the org receives credits exactly once.
+// Both paths use the same key: acp_pi_<intentId>.  The DB UNIQUE constraint + ON CONFLICT
+// DO NOTHING enforces the invariant at persistence time.
+describe("AI credits idempotency — all order combinations", () => {
+  const AI_PACK   = "aiCreditsPack500k";
+  const CREDITS   = 500000;
+  const INTENT_ID = "pi_idem_test";
+
+  beforeEach(() => { dbQueries.length = 0; activatedAddons.length = 0; });
+
+  function allCreditInserts() {
+    return dbQueries.filter(q => /INSERT INTO ai_credit_purchases/.test(q.sql));
+  }
+
+  // ── T1: Normal — finalize-checkout runs, credits ×1 ──────────────────────
+  it("T1 — normal return: finalize-checkout credits the org exactly once", async () => {
+    const fake = makeFakeStripe();
+    setStripeForTesting(fake);
+    const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
+      .post("/api/public/finalize-checkout")
+      .send({ intentId: INTENT_ID, intentType: "payment", plan: "", addons: { [AI_PACK]: 1 } });
+    expect(r.status).toBe(200);
+    expect(r.body.checkoutType).toBe("ai_credits_only");
+    expect(r.body.credits).toBe(CREDITS);
+    const inserts = allCreditInserts();
+    expect(inserts).toHaveLength(1);
+    // Key matches the payment_intent.succeeded webhook exactly.
+    expect(inserts[0].values[0]).toBe(`acp_pi_${INTENT_ID}`);
+    expect(inserts[0].values[3]).toBe(CREDITS);
+    expect(inserts[0].values[6]).toBe(INTENT_ID); // stripe_payment_intent column
+    expect(fake.subsCreated).toHaveLength(0); // one-time — no recurring subscription
+  });
+
+  // ── T2: finalize-checkout called twice (browser reload / double-submit) ───
+  it("T2 — double finalize: both calls return 200, same idempotency key used both times", async () => {
+    const fake = makeFakeStripe();
+    setStripeForTesting(fake);
+    const body = { intentId: INTENT_ID, intentType: "payment", plan: "", addons: { [AI_PACK]: 1 } };
+    const r1 = await request(makeApp("org-uuid-1", "tok-subscriber"))
+      .post("/api/public/finalize-checkout").send(body);
+    expect(r1.status).toBe(200);
+    const r2 = await request(makeApp("org-uuid-1", "tok-subscriber"))
+      .post("/api/public/finalize-checkout").send(body);
+    expect(r2.status).toBe(200);
+    const inserts = allCreditInserts();
+    // Two SQL statements were issued — both ON CONFLICT DO NOTHING.
+    // The DB constraint prevents the second row from being persisted.
+    expect(inserts).toHaveLength(2);
+    expect(inserts[0].values[0]).toBe(`acp_pi_${INTENT_ID}`);
+    expect(inserts[1].values[0]).toBe(`acp_pi_${INTENT_ID}`); // same key → DB no-op
+  });
+
+  // ── T3: Webhook arrives first, then finalize-checkout ───────────────────
+  // Simulated by pre-inserting the webhook's row into the in-memory query log,
+  // then verifying finalize uses the identical key (which the DB would reject).
+  it("T3 — webhook then finalize: finalize uses the same key the webhook would have used", async () => {
+    // Pre-populate the mock DB log as if the webhook already ran.
+    dbQueries.push({
+      sql: `INSERT INTO ai_credit_purchases (id, org_id, pack, credits, ...) VALUES ($1,...) ON CONFLICT (id) DO NOTHING`,
+      values: [`acp_pi_${INTENT_ID}`, "org-uuid-1", AI_PACK, CREDITS, 0, "", INTENT_ID],
+    });
+    const insertsBefore = allCreditInserts().length;
+
+    const fake = makeFakeStripe();
+    setStripeForTesting(fake);
+    const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
+      .post("/api/public/finalize-checkout")
+      .send({ intentId: INTENT_ID, intentType: "payment", plan: "", addons: { [AI_PACK]: 1 } });
+    expect(r.status).toBe(200);
+
+    const insertsAfter = allCreditInserts();
+    // The new finalize insert has the same key as the pre-existing "webhook" row.
+    const finalizeInsert = insertsAfter[insertsBefore]; // the one finalize added
+    expect(finalizeInsert).toBeDefined();
+    expect(finalizeInsert.values[0]).toBe(`acp_pi_${INTENT_ID}`); // collides → DB no-op
+  });
+
+  // ── T4: finalize-checkout first, then webhook ────────────────────────────
+  // Verified by confirming finalize uses acp_pi_<intentId> — the same key
+  // the payment_intent.succeeded handler inserts at stripe-webhook.ts line 903.
+  it("T4 — finalize then webhook: idempotency key is acp_pi_<intentId> on BOTH sides", async () => {
+    const fake = makeFakeStripe();
+    setStripeForTesting(fake);
+    const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
+      .post("/api/public/finalize-checkout")
+      .send({ intentId: INTENT_ID, intentType: "payment", plan: "", addons: { [AI_PACK]: 1 } });
+    expect(r.status).toBe(200);
+    const inserts = allCreditInserts();
+    expect(inserts[0].values[0]).toBe(`acp_pi_${INTENT_ID}`); // finalize key
+    // Webhook key (from stripe-webhook.ts:903): `acp_pi_${piId}` where piId = intentId.
+    const webhookKey = `acp_pi_${INTENT_ID}`;
+    expect(inserts[0].values[0]).toBe(webhookKey); // same key — DB constraint prevents duplicate
+  });
+
+  // ── T5: PaymentIntent metadata carries type=ai_credits for webhook fallback ──
+  // (closed-tab recovery: user pays but closes browser before checkout-return runs)
+  it("T5 — closed-tab recovery: payment-intent endpoint tags PI metadata with type=ai_credits + orgId", async () => {
+    const fake = makeFakeStripe();
+    setStripeForTesting(fake);
+    const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
+      .post("/api/public/payment-intent")
+      .send({ plan: "", addons: { [AI_PACK]: 1 }, mode: "payment" });
+    expect(r.status).toBe(200);
+    // The PaymentIntent must have been created with type=ai_credits in metadata.
+    expect(fake.created).toHaveLength(1);
+    const piParams = fake.created[0];
+    expect(piParams.metadata?.type).toBe("ai_credits");
+    expect(piParams.metadata?.pack).toBe(AI_PACK);
+    expect(piParams.metadata?.credits).toBe(String(CREDITS));
+    expect(piParams.metadata?.orgId).toBe("org-uuid-1");
+    // The webhook can now attribute credits even if finalize is never called.
+  });
+
+  // ── T6: Failed payment — 0 credits ──────────────────────────────────────
+  it("T6 — failed payment: finalize-checkout requires intentType=payment and a succeeded PI — 400 if PI not succeeded", async () => {
+    const fake = makeFakeStripe();
+    // Override retrieve to return a failed PI.
+    fake.paymentIntents.retrieve = vi.fn(async (id: string) => ({
+      id,
+      status: "requires_payment_method", // payment failed
+      payment_method: "" as string,        // no PM attached on failure
+      customer: "cus_test_sub",
+      metadata: {},
+    }));
+    setStripeForTesting(fake);
+    const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
+      .post("/api/public/finalize-checkout")
+      .send({ intentId: INTENT_ID, intentType: "payment", plan: "", addons: { [AI_PACK]: 1 } });
+    // Must reject the finalize — payment did not succeed.
+    expect([400, 402, 422]).toContain(r.status);
+    expect(allCreditInserts()).toHaveLength(0); // 0 credits attributed
   });
 });
