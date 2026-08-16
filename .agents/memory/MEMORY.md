@@ -1,4 +1,5 @@
 - [users_email_unique missing constraint](users-email-unique-constraint.md) — ON CONFLICT (email) always fails 42P10 if table predates CONSTRAINT; self-heal CREATE UNIQUE INDEX IF NOT EXISTS in both init-phase1-users.ts and finalize-checkout self-heal block
+- [finalize-checkout users.id null](finalize-checkout-userid-null.md) — users.id has no DEFAULT; INSERT must supply id=randomUUID() explicitly as $4; ON CONFLICT DO UPDATE must NOT include id in SET clause (idempotency preserved)
 - [Add-on and AI credits purchase chain](addon-purchase-chain.md) — fpBuyAICredits/fpActivateAddon full chain; finalize-checkout adds items to existing sub (not new sub); SSE broadcasts; checkout-return Case A checkoutType handling
 - [PLAN_PRICE_IDS live-mode only](plan-price-ids-live-only.md) — PLAN_PRICE_IDS in plans.ts holds live Stripe prices; cert subs have test prices; billing/upgrade fails resource_missing in test mode — not a prod bug
 - [AI chat reply field](ai-chat-reply-field.md) — /api/ai/chat stream:false returns `reply` not message/response/text/content; GET /api/team/files returns raw array not {files:[]}
