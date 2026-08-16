@@ -1851,6 +1851,14 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             }
           }
 
+          // ── ML-3 / ML-4 ──────────────────────────────────────────────────
+          // Trial signups: skip the activation email — sendTrialStartedOnce
+          // (customer.subscription.created webhook) reuses the magic token from
+          // ML-2 and embeds it in "Ton essai FlowPoint est lancé".
+          // That single email is the first-login path; no duplicate is sent here.
+          if (grantTrial) {
+            logger.info({ step: "ML-3-TRIAL-SKIP", email: _fcAEmail }, "[ML] step-3: grantTrial=true — activation email delegated to trial-started webhook");
+          } else {
           // ── ML-3: Call mailer — log transport type before the call ────────
           const _mlTransport = process.env["RESEND_API_KEY"]
             ? "resend-sdk"
@@ -1890,6 +1898,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             return;
           }
           logger.info({ step: "ML-4-OK", emailId: _fcMailResult?.id, to: _fcAEmail }, "[ML] step-4: OK — activation email accepted by transport");
+          } // end !grantTrial
 
       } catch (_fcActTopErr) {
         logger.error({ step: "FC-TOP-FAIL", err: (_fcActTopErr as Error)?.message }, "[FC] top-level activation catch");

@@ -318,6 +318,9 @@ async function sendTrialStarted(opts: {
   name: string;
   plan: string;
   trialEndsAt: string;
+  /** Magic-link URL to embed in the CTA button. When provided this email becomes
+   *  the sole first-login path for trial signups — no separate activation email. */
+  magicLinkUrl?: string;
 }): Promise<MailResult> {
   const planLabel = { standard: "Standard", pro: "Pro", ultra: "Ultra" }[opts.plan.toLowerCase()] ?? opts.plan;
   const endDate = new Date(opts.trialEndsAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
@@ -338,7 +341,7 @@ async function sendTrialStarted(opts: {
                <li style="margin-bottom:6px;">Rapports white-label</li>
              </ul>
              <p style="margin:0;">Tu seras notifié 3 jours avant la fin de l'essai.</p>`,
-       cta: { label: "Explorer FlowPoint →", url: APP_LINKS.dashboard },
+       cta: { label: opts.magicLinkUrl ? "Accéder à FlowPoint →" : "Explorer FlowPoint →", url: opts.magicLinkUrl ?? APP_LINKS.dashboard },
       note: "Aucune carte bancaire requise pendant l'essai. Tu peux upgrader à tout moment.",
     }),
   });

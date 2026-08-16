@@ -118,8 +118,36 @@ async function sendTrialStartedOnce(opts: {
       [opts.orgId],
     );
     if (!claim.rowCount) return;
+
+    // Reuse existing valid magic token (created by finalize-checkout or activateNewSignup),
+    // or mint a new one. This makes the trial-started email the sole first-login path.
+    const { pool: _tsPgPool } = await import("@workspace/db");
+    const _tsTokenRow = await _tsPgPool.query<{ token: string }>(
+      `SELECT token FROM magic_link_tokens
+       WHERE email = $1 AND used = FALSE AND expires_at > NOW()
+       ORDER BY expires_at DESC LIMIT 1`,
+      [opts.email],
+    );
+    let _tsMagicToken = _tsTokenRow.rows[0]?.token;
+    if (!_tsMagicToken) {
+      const { randomBytes: _tsRb } = await import("node:crypto");
+      _tsMagicToken = _tsRb(32).toString("hex");
+      await _tsPgPool.query(
+        `INSERT INTO magic_link_tokens (token, email, expires_at, used)
+         VALUES ($1, $2, NOW() + INTERVAL '24 hours', FALSE)
+         ON CONFLICT (token) DO NOTHING`,
+        [_tsMagicToken, opts.email],
+      );
+      logger.info({ orgId: opts.orgId, email: opts.email }, "[Webhook] Trial-started: minted new magic token");
+    } else {
+      logger.info({ orgId: opts.orgId, email: opts.email }, "[Webhook] Trial-started: reusing existing magic token");
+    }
+    const _tsPublicUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+    const _tsMagicLinkUrl = `${_tsPublicUrl}/login-verify.html?token=${_tsMagicToken}`;
+
     const result = await mailer.sendTrialStarted({
       to: opts.email, name: opts.name, plan: opts.plan, trialEndsAt: opts.trialEndsAt,
+      magicLinkUrl: _tsMagicLinkUrl,
     });
     if (result.ok) {
       await client.query(
@@ -551,40 +579,45 @@ export async function activateNewSignup(opts: {
     logger.error({ impErr }, "[Webhook/activate] mailer import failed — magic link NOT sent");
     return { mailer: null };
   });
-  if (_mailer) {
-    const mailResult = await _mailer.sendActivationMagicLink({
-      to:          email,
-      name:        firstName || email.split("@")[0],
-      plan:        selectedPlan,
-      magicLinkUrl,
-      isTrial,
-    }).catch((mailErr: unknown) => {
-      logger.error({ mailErr, email }, "[Webhook/activate] Failed to send activation magic link email");
-      return { ok: false as const, error: String(mailErr) };
-    });
-    if (mailResult && mailResult.ok) {
-      logger.info({ email, orgId, id: (mailResult as { id?: string }).id }, "[Webhook/activate] Activation magic link email sent");
-    } else {
-      logger.error({ email, orgId, error: (mailResult as { error?: string })?.error ?? "unknown" }, "[Webhook/activate] Activation magic link email NOT delivered");
-    }
+  // Trial signups: skip the activation email and welcome email.
+  // sendTrialStartedOnce (triggered by customer.subscription.created) reuses
+  // the magic token created above and embeds it directly in
+  // "Ton essai FlowPoint est lancé" — the single first-login email.
+  if (isTrial) {
+    logger.info({ email, orgId }, "[Webhook/activate] Trial signup — activation email skipped; trial-started email carries the magic link");
   } else {
-    logger.warn({ email }, "[Webhook/activate] Mailer not available — magic link NOT sent");
-  }
+    if (_mailer) {
+      const mailResult = await _mailer.sendActivationMagicLink({
+        to:          email,
+        name:        firstName || email.split("@")[0],
+        plan:        selectedPlan,
+        magicLinkUrl,
+        isTrial,
+      }).catch((mailErr: unknown) => {
+        logger.error({ mailErr, email }, "[Webhook/activate] Failed to send activation magic link email");
+        return { ok: false as const, error: String(mailErr) };
+      });
+      if (mailResult && mailResult.ok) {
+        logger.info({ email, orgId, id: (mailResult as { id?: string }).id }, "[Webhook/activate] Activation magic link email sent");
+      } else {
+        logger.error({ email, orgId, error: (mailResult as { error?: string })?.error ?? "unknown" }, "[Webhook/activate] Activation magic link email NOT delivered");
+      }
+    } else {
+      logger.warn({ email }, "[Webhook/activate] Mailer not available — magic link NOT sent");
+    }
 
-  // Welcome is emitted only after the transaction above committed and the
-  // account is active. This is deliberately awaited/logged rather than
-  // fire-and-forget: failed activation onboarding must be observable, and a
-  // plain pre-registration must never receive it.
-  if (_mailer && newOrgId) {
-    const { pool: pgPool } = await import("@workspace/db");
-    await pgPool.query(
-      `UPDATE organizations
-       SET welcome_email_eligible_at = COALESCE(welcome_email_eligible_at, NOW())
-       WHERE id = $1`,
-      [newOrgId],
-    );
-    const recipientName = firstName || email.split("@")[0] || "Utilisateur";
-    await sendWelcomeOnce(newOrgId, email, recipientName);
+    // Welcome email (non-trial only — trial email replaces the welcome for trial signups)
+    if (_mailer && newOrgId) {
+      const { pool: pgPool } = await import("@workspace/db");
+      await pgPool.query(
+        `UPDATE organizations
+         SET welcome_email_eligible_at = COALESCE(welcome_email_eligible_at, NOW())
+         WHERE id = $1`,
+        [newOrgId],
+      );
+      const recipientName = firstName || email.split("@")[0] || "Utilisateur";
+      await sendWelcomeOnce(newOrgId, email, recipientName);
+    }
   }
 }
 
