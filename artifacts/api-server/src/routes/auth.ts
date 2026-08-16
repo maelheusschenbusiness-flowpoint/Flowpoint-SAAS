@@ -1256,6 +1256,8 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
 
 /** Shared handler — called by both GET and POST /auth/login-verify */
 async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res: Response): Promise<void> {
+  // ── ML-6: Token consumption entry ────────────────────────────────────────
+  logger.info({ step: "ML-6", tokenPrefix: typeof tokenRaw === "string" ? tokenRaw.trim().slice(0, 8) : "(none)" }, "[ML] step-6: login-verify called — token consumption attempt");
   // ── S0: Token guard ───────────────────────────────────────────────────────
   if (!tokenRaw || typeof tokenRaw !== "string" || !tokenRaw.trim()) {
     res.status(400).json({ error: "Token manquant" });
@@ -1461,6 +1463,9 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     logger.warn({ err: err instanceof Error ? err.message : String(err) }, "login-verify: invalidateAllSessions failed (non-fatal)");
   });
 
+  // ── ML-6-ok: Token consumed ──────────────────────────────────────────────
+  logger.info({ step: "ML-6-ok", email, orgIdPrefix: sessionOrgId?.slice(0, 8) }, "[ML] step-6-ok: token consumed — proceeding to session creation");
+
   // ── S10: Create session ───────────────────────────────────────────────────
   let sessionToken: string;
   try {
@@ -1483,6 +1488,9 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
   pool.query(`UPDATE users SET last_login_at = NOW() WHERE email = $1`, [email])
     .catch((err) => logger.warn({ err: err instanceof Error ? err.message : String(err) }, "login-verify: last_login_at update failed"));
 
+  // ── ML-7: Session created ────────────────────────────────────────────────
+  logger.info({ step: "ML-7", email, orgIdPrefix: sessionOrgId?.slice(0, 8), tokenPrefix: sessionToken.slice(0, 8) }, "[ML] step-7: session created successfully");
+
   // ── S11: Set cookie ───────────────────────────────────────────────────────
   const isProd = isDeployedProd();
   res.cookie("fp_token", sessionToken, {
@@ -1493,6 +1501,8 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     path: "/",
   });
 
+  // ── ML-8: Success response ───────────────────────────────────────────────
+  logger.info({ step: "ML-8", email, cookieSet: true }, "[ML] step-8: cookie set + JSON response — login complete, dashboard redirect expected");
   // ── S12: Send success response ────────────────────────────────────────────
   // Return the session token in the body so the frontend can store it
   // in sessionStorage (per-tab isolation) — prevents cross-user contamination
