@@ -1604,9 +1604,13 @@ async function dispatchTool(
       }
     })();
 
-    // Await PSI with 58 s timeout (SSE keepalive every 5 s keeps connection alive)
+    // Await PSI with 58 s timeout.
+    // Use real `data:` SSE frames (not comments) so proxies that only flush on
+    // real data (Render, Nginx with proxy_buffering off) keep the connection open.
     const _keepalive = ctx.sseWrite
-      ? setInterval(() => { try { ctx.sseWrite!(": keepalive\n\n"); } catch(_) {} }, 5_000)
+      ? setInterval(() => { try { ctx.sseWrite!(
+          `data: ${JSON.stringify({ type: "keepalive", tool: "run_audit" })}\n\n`
+        ); } catch(_) {} }, 5_000)
       : null;
     let _timedOut = false;
     try {
@@ -1641,7 +1645,9 @@ async function dispatchTool(
     logId: string, toolName: string, ctx: ExecuteContext
   ): Promise<ToolExecutionResult> {
     const _kp = ctx.sseWrite
-      ? setInterval(() => { try { ctx.sseWrite!(": keepalive\n\n"); } catch(_) {} }, 5_000)
+      ? setInterval(() => { try { ctx.sseWrite!(
+          `data: ${JSON.stringify({ type: "keepalive", tool: "_awaitAuditCompletion" })}\n\n`
+        ); } catch(_) {} }, 5_000)
       : null;
     const deadline = Date.now() + 58_000;
     let row: Record<string, unknown> | undefined;
@@ -1717,7 +1723,9 @@ async function dispatchTool(
     })();
 
     const _rerunKp = ctx.sseWrite
-      ? setInterval(() => { try { ctx.sseWrite!(": keepalive\n\n"); } catch(_) {} }, 5_000)
+      ? setInterval(() => { try { ctx.sseWrite!(
+          `data: ${JSON.stringify({ type: "keepalive", tool: "rerun_audit" })}\n\n`
+        ); } catch(_) {} }, 5_000)
       : null;
     let _rerunTimedOut = false;
     try {

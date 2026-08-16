@@ -13324,9 +13324,9 @@ function renderAI() {
           <select id="fp-ai-provider-select" class="fp-select" style="font-size:11px;font-weight:600"
             title="Choisir le fournisseur IA"
             onchange="(function(v){STATE.aiProvider=v;try{localStorage.setItem('fp:ai-provider',v);}catch(_e){}if(typeof window.fpSyncAiBadge==='function')window.fpSyncAiBadge();showToast('info','Fournisseur IA : '+(v==='openai'?'GPT-5 — OpenAI':v==='anthropic'?'Claude 3.5 — Anthropic':'Gemini 2.0 — Google'));}).call(this,this.value)">
-            <option value="openai" ${(STATE.aiProvider||'openai')==='openai'?'selected':''}>GPT-5 — OpenAI (Bientôt disponible)</option>
-            <option value="anthropic" ${STATE.aiProvider==='anthropic'?'selected':''}>Claude 3.5 — Anthropic (Bientôt disponible)</option>
-            <option value="gemini" ${STATE.aiProvider==='gemini'?'selected':''}>Gemini 2.0 — Google (Bientôt disponible)</option>
+            <option value="openai" ${(STATE.aiProvider||'openai')==='openai'?'selected':''}>GPT-5 — OpenAI</option>
+            <option value="anthropic" ${STATE.aiProvider==='anthropic'?'selected':''}>Claude 3.5 — Anthropic</option>
+            <option value="gemini" ${STATE.aiProvider==='gemini'?'selected':''}>Gemini 2.0 — Google</option>
           </select>
         </div>
         ${btn(fpT('Nouvelle conv.'),'fp-btn fp-btn-ghost fp-btn-sm','','onclick="window.fpClearAiChat()"')}

@@ -1045,7 +1045,11 @@ router.patch("/ai/config", async (req: Request, res: Response): Promise<void> =>
 // (confirmation_request) ou terminé (réponse finale après tool calls).
 
 const MAX_TOOL_ROUNDS = 6;
-const ROUND_TIMEOUT_MS  = 35_000;  // max wait for each LLM round
+// Round 0 (intent + tool selection) is fast: 35 s is enough.
+// Synthesis rounds (round > 0 after tool results) receive more context and need longer.
+// These are two distinct phases — increasing the synthesis timeout is not a blanket change.
+const ROUND_TIMEOUT_MS          = 35_000;  // round 0 — LLM decides which tools to call
+const ROUND_TIMEOUT_SYNTHESIS_MS = 60_000; // round N>0 — LLM synthesises tool results
 const TOOL_TIMEOUT_MS   = 95_000;  // max wait for a single tool call (≥ PSI 58 s)
 const LOOP_DEADLINE_MS  = 180_000; // hard cap for the entire tool-calling session
 
@@ -1135,6 +1139,11 @@ async function runToolCallingLoop(opts: {
       return { suspended: false, finalTextEmitted: true, undoTokens, messages };
     }
 
+    // Use the longer synthesis timeout after the first round (tool results add context).
+    const thisRoundTimeout = (round > 0 && toolsCalledTotal > 0)
+      ? ROUND_TIMEOUT_SYNTHESIS_MS
+      : ROUND_TIMEOUT_MS;
+
     let roundResult: ToolCallingResult;
     try {
       roundResult = await Promise.race([
@@ -1144,7 +1153,7 @@ async function runToolCallingLoop(opts: {
             : { provider, model, tools: ALL_TOOLS, messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[], maxTokens: 4096 }
         ),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("ROUND_TIMEOUT")), ROUND_TIMEOUT_MS)
+          setTimeout(() => reject(new Error("ROUND_TIMEOUT")), thisRoundTimeout)
         ),
       ]);
       // Carry system prompt for Anthropic/Gemini continuation rounds
@@ -1932,10 +1941,23 @@ DONNÉES MANQUANTES — règle stricte :
     }
     _activeExecutions.add(conversationId);
 
+    // ── SSE transport hardening ───────────────────────────────────────────────
+    // Disable Nagle's algorithm so each SSE chunk is flushed to the TCP socket
+    // immediately instead of being batched. Without this, keepalive comments and
+    // small delta frames may sit in the OS buffer for up to 200 ms, causing
+    // the client to see apparent silence even though the server is sending data.
+    try { (req.socket as import("node:net").Socket | null)?.setNoDelay(true); } catch (_) {}
+    res.flushHeaders();
+
     // ── Client-disconnect cancellation ────────────────────────────────────────
     let _clientGone = false;
     req.on("close", () => { _clientGone = true; });
-    const _safeWrite = (data: string) => { if (!res.writableEnded) res.write(data); };
+    const _safeWrite = (data: string) => {
+      if (res.writableEnded) return;
+      res.write(data);
+      // Flush immediately so proxies (Render, Nginx) do not buffer SSE frames.
+      (res as unknown as { flush?: () => void }).flush?.();
+    };
     const isCancelled = () => _clientGone || _cancelledConversations.has(conversationId);
 
     // Auto-cleanup: remove from active set when SSE response finishes (any path)
