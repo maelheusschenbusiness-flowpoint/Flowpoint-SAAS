@@ -1667,8 +1667,12 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           });
         } else {
           // Activation transaction did not commit — account was NOT created.
+          const _actErrMsg = _fcActTopErr instanceof Error
+            ? `${_fcActTopErr.message} | ${(_fcActTopErr as NodeJS.ErrnoException).code ?? ""} | ${((_fcActTopErr as Record<string,unknown>)["detail"] as string) ?? ""}`
+            : String(_fcActTopErr);
+          logger.error({ _actErrMsg }, "[PublicBilling] finalize: activation_failed detail");
           res.status(502).json({
-            error: "Votre paiement est confirmé, mais l'activation du compte a échoué. Contactez le support.",
+            error: `Votre paiement est confirmé, mais l'activation du compte a échoué. Contactez le support. [Debug: ${_actErrMsg.slice(0, 200)}]`,
             code: "activation_failed",
           });
         }
