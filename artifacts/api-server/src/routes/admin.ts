@@ -696,7 +696,9 @@ router.delete("/admin/purge-account", async (req: Request, res: Response): Promi
     for (const orgId of orgIds) {
       for (const table of orgTables) {
         if (!existingSet.has(table)) continue;
-        const r = await client.query(`DELETE FROM ${table} WHERE org_id = $1`, [orgId]);
+        // org_id::text handles both TEXT and UUID columns — avoids "invalid input syntax for uuid"
+        // when a legacy email-shaped orgId is compared against a UUID-typed org_id column.
+        const r = await client.query(`DELETE FROM ${table} WHERE org_id::text = $1`, [orgId]);
         if ((r.rowCount ?? 0) > 0) deleted[table] = (deleted[table] ?? 0) + (r.rowCount ?? 0);
       }
       // Cast UUID orgId for organizations table
