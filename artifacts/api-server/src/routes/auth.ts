@@ -1217,24 +1217,128 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
     }
 
     const meta = (session.metadata as Record<string, string>) ?? {};
-    const orgId = meta["orgId"] ?? "";
-    const email = orgId || (session.customer_details?.email ?? "");
+    const metaOrgId = meta["orgId"] ?? "";
+    // customer_details.email is the most reliable source — it's what the customer
+    // typed during checkout.  meta.orgId may be a UUID (post-migration orgs) or an
+    // email (legacy orgs); use it only as a last resort.
+    const email = session.customer_details?.email
+      || meta["email"]
+      || (metaOrgId.includes("@") ? metaOrgId : "");
 
-    logger.info({ sessionId, orgId, email }, "[Auth/CheckoutComplete] Stripe session confirmed — awaiting webhook");
+    logger.info({ sessionId, metaOrgId, email }, "[Auth/CheckoutComplete] Stripe session confirmed — checking activation status");
+
+    if (!email) {
+      logger.error({ sessionId, meta }, "[Auth/CheckoutComplete] No email found in session — cannot send magic link");
+      res.status(400).json({ error: "Email introuvable dans la session de paiement." });
+      return;
+    }
+
+    // ── Check if the webhook already activated the account ──────────────────────
+    // The checkout.session.completed webhook creates the user, org, and magic link.
+    // If it has already run, a valid magic_link_token will exist for this email.
+    // If it hasn't run yet, return 202 so the frontend retries after a short delay.
+    const { pool: _ccPool } = await import("@workspace/db");
+
+    // Check for existing unused token (webhook already fired)
+    const _tokenCheck = await _ccPool.query<{ token: string }>(
+      `SELECT token FROM magic_link_tokens
+       WHERE email = $1 AND used = FALSE AND expires_at > NOW()
+       ORDER BY expires_at DESC LIMIT 1`,
+      [email]
+    );
+
+    // Also check if the user was created (webhook committed the user/org)
+    const _userCheck = await _ccPool.query<{ id: string }>(
+      `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+      [email]
+    );
+
+    const userCreated = (_userCheck.rowCount ?? 0) > 0;
+    const hasToken    = (_tokenCheck.rowCount ?? 0) > 0;
+
+    if (!userCreated) {
+      // Webhook not yet processed — tell the frontend to retry.
+      // 402 matches the retry guard in checkout-return.html's runCheckoutComplete().
+      logger.info({ sessionId, email }, "[Auth/CheckoutComplete] User not yet created — webhook pending, returning 402");
+      res.status(402).json({
+        pending: true,
+        message: "Activation en cours. Veuillez patienter quelques secondes.",
+      });
+      return;
+    }
+
+    let emailSent = false;
+    let emailId: string | undefined;
+
+    if (hasToken) {
+      // Webhook already sent (or will send) the magic link — nothing to do
+      emailSent = true;
+      logger.info({ sessionId, email }, "[Auth/CheckoutComplete] Magic link token already exists (webhook handled it)");
+    } else {
+      // User exists but no token — webhook ran but email failed, or token was consumed.
+      // Generate and send a fresh magic link directly.
+      const magicToken = generateToken();
+      try {
+        await _ccPool.query(
+          `INSERT INTO magic_link_tokens (token, email, expires_at, used)
+           VALUES ($1, $2, NOW() + INTERVAL '24 hours', FALSE)
+           ON CONFLICT (token) DO NOTHING`,
+          [magicToken, email]
+        );
+      } catch (tokErr) {
+        logger.error({ err: tokErr, email }, "[Auth/CheckoutComplete] magic_link_tokens insert failed");
+      }
+      const publicUrl    = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+      const magicLinkUrl = `${publicUrl}/login-verify.html?token=${magicToken}`;
+
+      const transport = process.env["RESEND_API_KEY"]
+        ? "resend-sdk"
+        : (process.env["SMTP_HOST"] ? `smtp:${process.env["SMTP_HOST"]}` : "none");
+      logger.info({ email, transport, step: "CC-ML-send" }, "[Auth/CheckoutComplete] Sending magic link directly");
+
+      const { mailer: _ccMailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
+      if (_ccMailer) {
+        const mailResult = await _ccMailer.sendActivationMagicLink({
+          to:          email,
+          name:        email.split("@")[0],
+          plan:        meta["plan"] || "standard",
+          magicLinkUrl,
+          isTrial:     false,
+        }).catch((mailErr: unknown) => ({ ok: false as const, error: String(mailErr) }));
+
+        emailSent = !!mailResult?.ok;
+        emailId   = (mailResult as { id?: string })?.id;
+        logger.info({ email, emailSent, emailId, error: (mailResult as { error?: string })?.error, step: "CC-ML-result" },
+          "[Auth/CheckoutComplete] Magic link send result");
+      } else {
+        logger.error({ email }, "[Auth/CheckoutComplete] Mailer unavailable");
+      }
+    }
 
     store.logActivity({
       type: "account",
-      label: `Paiement confirmé — activation en cours : ${email || orgId}`,
-      targetId: orgId || email,
+      label: `Paiement confirmé — ${emailSent ? "magic link envoyé" : "email échoué"} : ${email}`,
+      targetId: metaOrgId || email,
       targetType: "user",
-      orgId: orgId || undefined,
+      orgId: metaOrgId || undefined,
     }).catch(() => {});
 
-    // Return immediately — the webhook will send the magic link email.
-    // No session is created here.
+    if (!emailSent) {
+      // Account was activated but email couldn't be sent — surface the error clearly.
+      res.status(200).json({
+        ok: true,
+        emailSent: false,
+        emailFailed: true,
+        isNewSignup: true,
+        message: "Compte activé mais l'envoi de l'email a échoué. Connectez-vous depuis la page de connexion.",
+      });
+      return;
+    }
+
     res.json({
       ok: true,
       emailSent: true,
+      isNewSignup: true,
       message: "Votre paiement est confirmé. Un lien de connexion vous a été envoyé par email. Vérifiez votre boîte de réception (et vos spams).",
     });
   } catch (err) {
@@ -1880,18 +1984,41 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
   let session = null;
   let provided: string | undefined;
 
+  const restoreLogBase = {
+    hasCookie: !!cookieToken,
+    hasBearer: !!bearerToken,
+    cookiePrefix: cookieToken ? cookieToken.slice(0, 8) : null,
+    bearerPrefix: bearerToken ? bearerToken.slice(0, 8) : null,
+  };
+  logger.debug(restoreLogBase, "[Auth/session-restore] Attempting session lookup");
+
   if (bearerToken) {
     session = await getSession(bearerToken);
     if (session) {
       provided = bearerToken;
+      logger.debug({ ...restoreLogBase, via: "bearer", orgId: session.orgId?.slice(0, 8) }, "[Auth/session-restore] Resolved via Bearer");
     } else if (cookieToken && cookieToken !== bearerToken) {
       // Bearer stale — try cookie as fallback
       session = await getSession(cookieToken);
-      if (session) provided = cookieToken;
+      if (session) {
+        provided = cookieToken;
+        logger.info({ ...restoreLogBase, via: "cookie-fallback", orgId: session.orgId?.slice(0, 8) }, "[Auth/session-restore] Bearer stale — recovered via cookie");
+      } else {
+        logger.warn({ ...restoreLogBase, via: "none" }, "[Auth/session-restore] Both Bearer and cookie invalid — getSession returned null for both");
+      }
+    } else {
+      logger.warn({ ...restoreLogBase, via: "bearer-only", sameToken: cookieToken === bearerToken }, "[Auth/session-restore] Bearer invalid and no separate cookie to try");
     }
   } else if (cookieToken) {
     session = await getSession(cookieToken);
-    if (session) provided = cookieToken;
+    if (session) {
+      provided = cookieToken;
+      logger.debug({ ...restoreLogBase, via: "cookie-only", orgId: session.orgId?.slice(0, 8) }, "[Auth/session-restore] Resolved via cookie (hard refresh path)");
+    } else {
+      logger.warn({ ...restoreLogBase, via: "cookie-only-failed" }, "[Auth/session-restore] Cookie present but getSession returned null — DB row missing or expired");
+    }
+  } else {
+    logger.warn({ ...restoreLogBase }, "[Auth/session-restore] No Bearer and no cookie — anonymous request");
   }
 
   if (!session || !provided) {

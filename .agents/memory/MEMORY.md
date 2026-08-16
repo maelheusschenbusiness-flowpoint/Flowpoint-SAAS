@@ -148,3 +148,5 @@
 - [me.ts addons & limits fix](me-ts-addons-limits-fix.md) — org_addons.org_id=uuid (cast $1::uuid); PLAN_INCLUDED_ADDONS must be merged in me.ts; QTY_ADDON_GRANTS expansion on mutable limits copy
 - [Stripe billing cert fixes](billing-stripe-cert-fixes.md) — reconcile must use subscription.livemode to pick test vs live key; AI credits PI needs type="ai_credits"; past_due needs hasPremiumAccess=true
 - [ALTER TABLE inside PgBouncer transaction](alterable-inside-pgbouncer-tx.md) — DDL inside BEGIN poisons Supabase pooled-connection transactions; run self-heals in a separate auto-commit connection before BEGIN
+- [checkout-complete direct magic link path](checkout-complete-magic-link.md) — sends ML directly if user exists but no token; 402 when user not yet created (webhook retry); never trusts emailSent:true blindly
+- [createSession throw-on-failure](createsession-throw-on-failure.md) — createSession now throws on persistent DB failure; login-verify catches → 503; never sets orphaned cookie for non-existent session row

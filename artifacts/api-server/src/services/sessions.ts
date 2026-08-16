@@ -45,24 +45,44 @@ export async function createSession(opts: {
   const token = makeToken(opts.userId, opts.orgId);
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
 
-  try {
-    const client = await pool.connect();
+  // Retry once on transient DB errors.  A session token written to a cookie
+  // but not present in user_sessions creates an orphaned cookie: every hard
+  // refresh calls session-restore, getSession returns null, and the user is
+  // immediately logged out.  Throwing on persistent failure lets login-verify
+  // return 503 (retryable) instead of setting a useless cookie.
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      await client.query(
-        `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2, ip_address, user_agent)
-         VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7,$8,$9)
-         ON CONFLICT DO NOTHING`,
-        [token, opts.userId, opts.orgId, opts.email, opts.role ?? "member", expiresAt,
-         opts.userUuid ?? null, opts.ipAddress ?? null, opts.userAgent ?? null]
-      );
-    } finally {
-      client.release();
+      const client = await pool.connect();
+      try {
+        const result = await client.query(
+          `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2, ip_address, user_agent)
+           VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7,$8,$9)
+           ON CONFLICT DO NOTHING
+           RETURNING token`,
+          [token, opts.userId, opts.orgId, opts.email, opts.role ?? "member", expiresAt,
+           opts.userUuid ?? null, opts.ipAddress ?? null, opts.userAgent ?? null]
+        );
+        if ((result.rowCount ?? 0) === 0) {
+          // ON CONFLICT DO NOTHING fired — token already exists; idempotent, still valid
+          logger.warn({ tokenPrefix: token.slice(0, 8) }, "[sessions] INSERT conflict on token — session already exists (idempotent)");
+        } else {
+          logger.info({ tokenPrefix: token.slice(0, 8), orgId: opts.orgId }, "[sessions] Session row inserted successfully");
+        }
+        return token;
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      lastErr = err;
+      logger.warn({ err, attempt }, "[sessions] DB insert attempt failed — retrying");
+      if (attempt === 0) await new Promise(r => setTimeout(r, 200));
     }
-  } catch (err) {
-    logger.warn({ err }, "[sessions] DB insert failed — session may not persist across restarts");
   }
-
-  return token;
+  // Both attempts failed — propagate so the caller can return a retryable 503
+  // instead of silently setting a cookie for a non-existent session.
+  logger.error({ err: lastErr, orgId: opts.orgId }, "[sessions] createSession: persistent DB failure — throwing");
+  throw lastErr;
 }
 
 export async function getSession(token: string): Promise<SessionData | null> {

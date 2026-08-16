@@ -9115,8 +9115,10 @@ function renderBilling() {
   // ── Stripe-sync on every billing page render ───────────────────────────────
   // Fires a background call to reconcile DB ↔ Stripe so management buttons
   // reflect real subscription state (e.g. stale 'active' → 'canceled').
+  // force:true bypasses the 30-second apiFetch cache so a freshly-completed
+  // plan upgrade is never overwritten by a stale cached response.
   setTimeout(function() {
-    apiFetch('/api/billing/subscription').then(function(r) {
+    apiFetch('/api/billing/subscription', { force: true }).then(function(r) {
       if (!r || typeof r !== 'object') return;
       var hadStatus = (STATE.billing || {}).subscriptionStatus;
       var _rawDate = r.nextBillingDate || r.currentPeriodEnd || r.trialEndsAt || null;
@@ -9674,11 +9676,13 @@ function renderBilling() {
           // one produced the "Pro on one page, Ultra on another" drift.
           if (STATE.me)      STATE.me.plan      = _planLabel;
           if (STATE.billing) STATE.billing.plan = plan.toLowerCase();
-          render();
-          // ── Purge ALL caches so loadData fetches fresh server data only ──
+          // ── Purge ALL caches BEFORE render() so the background /api/billing/subscription
+          // call queued by renderBilling()'s setTimeout(0) is not served from the
+          // 30-second apiFetch cache and does not overwrite the optimistic plan.
           try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
           _apiFetchCache.clear();
           _apiFetchInFlight.clear();
+          render();
           // Reload from the server (authoritative), then navigate to plans sub-page.
           // The server response is the single source of truth — the optimistic
           // values above are overwritten by whatever loadData() fetches.

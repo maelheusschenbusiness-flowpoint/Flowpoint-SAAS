@@ -9,7 +9,7 @@ import { logger } from "../lib/logger.js";
 import { getPlanForPriceId, getAddonForPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
 import { mailer } from "../services/mailer.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
-import { getStripeKey } from "../services/stripe-factory.js";
+import { getStripeKey, createStripeClient } from "../services/stripe-factory.js";
 import { loadOrgSettings } from "../services/org-settings.js";
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
@@ -840,7 +840,63 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       const selectedPlan = meta["selected_plan"] ?? planNorm ?? "standard";
       const isTrial      = meta["trial_plan"] === "true";
 
-      if (preRegToken && orgId) {
+      // ── P0 backstop: detect and auto-cancel duplicate subscriptions ──────────
+      // Fires when finalize-checkout's guard missed a race (e.g., two checkout
+      // sessions created before either subscription existed, both completing later).
+      // If this customer already has another non-canceled active/trialing subscription,
+      // cancel the newly created one and refund its charge so the user is not double-billed.
+      const _newSubId = obj["subscription"] ? String(obj["subscription"]) : undefined;
+      let _isDuplicateSub = false;
+      if (_newSubId && customerId && stripeKey) {
+        try {
+          const _bsStripe  = await createStripeClient(stripeKey);
+          const _bsAllSubs = await _bsStripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
+          const _bsConflicts = (_bsAllSubs.data as Array<{ id: string; status: string; cancel_at_period_end: boolean }>).filter(
+            (s) => s.id !== _newSubId && (s.status === "active" || s.status === "trialing") && !s.cancel_at_period_end
+          );
+          if (_bsConflicts.length > 0) {
+            _isDuplicateSub = true;
+            logger.error(
+              {
+                newSubId:        _newSubId,
+                conflictSubIds:  _bsConflicts.map((s) => s.id),
+                customerId,
+                orgId,
+                preRegToken,
+              },
+              "[Webhook][P0] DUPLICATE SUBSCRIPTION DETECTED — canceling new sub and issuing refund"
+            );
+            // Cancel the duplicate subscription immediately (no proration)
+            await _bsStripe.subscriptions.cancel(_newSubId, { prorate: false });
+            // Refund the paid invoice(s) on the canceled subscription
+            const _bsInvoices = await _bsStripe.invoices.list({ subscription: _newSubId, limit: 3 });
+            for (const _bsInv of _bsInvoices.data) {
+              if (_bsInv.amount_paid <= 0) continue;
+              // Try payment_intent first, then charge
+              const _bsPiId = _bsInv.payment_intent && typeof _bsInv.payment_intent === "string" ? _bsInv.payment_intent : null;
+              const _bsChId = !_bsPiId && _bsInv.charge && typeof _bsInv.charge === "string" ? _bsInv.charge : null;
+              if (_bsPiId) {
+                await _bsStripe.refunds.create({ payment_intent: _bsPiId });
+                logger.info({ invoiceId: _bsInv.id, piId: _bsPiId, amount: _bsInv.amount_paid },
+                  "[Webhook][P0] Refund issued for duplicate subscription (via payment_intent)");
+              } else if (_bsChId) {
+                await _bsStripe.refunds.create({ charge: _bsChId });
+                logger.info({ invoiceId: _bsInv.id, chargeId: _bsChId, amount: _bsInv.amount_paid },
+                  "[Webhook][P0] Refund issued for duplicate subscription (via charge)");
+              } else {
+                logger.error({ invoiceId: _bsInv.id, amount: _bsInv.amount_paid },
+                  "[Webhook][P0] Could not auto-refund duplicate sub invoice — no payment_intent or charge");
+              }
+              break; // Only refund the first paid invoice
+            }
+          }
+        } catch (_bsErr) {
+          logger.error({ _bsErr, customerId, _newSubId },
+            "[Webhook][P0] Duplicate sub backstop guard threw — proceeding with activation anyway");
+        }
+      }
+
+      if (!_isDuplicateSub && preRegToken && orgId) {
         activateNewSignup({ preRegToken, orgId, customerId, selectedPlan, isTrial })
           .catch(e => logger.error({ e, orgId }, "[Webhook] checkout.session.completed new-signup activation failed"));
       }
@@ -975,6 +1031,28 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         break;
       }
 
+      // ── Plan-sync diagnostic logging ──────────────────────────────────────
+      const _eventId_ps = (event as unknown as { id?: string }).id ?? "unknown";
+      const _subId_ps   = obj["id"]       ? String(obj["id"])       : "unknown";
+      const _custId_ps  = obj["customer"] ? String(obj["customer"]) : "unknown";
+      let _dbPlanBefore: string | null = null;
+      try {
+        const { pool: _pgPool_ps } = await import("@workspace/db");
+        const _psc = await _pgPool_ps.connect();
+        const _UUID_RE_PS = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        try {
+          if (_UUID_RE_PS.test(orgId)) {
+            const _pr = await _psc.query<{ plan: string }>(`SELECT plan FROM organizations WHERE id = $1`, [orgId]);
+            _dbPlanBefore = _pr.rows[0]?.plan ?? null;
+          } else {
+            const _pr = await _psc.query<{ plan: string }>(`SELECT plan FROM org_settings WHERE org_id = $1`, [orgId]);
+            _dbPlanBefore = _pr.rows[0]?.plan ?? null;
+          }
+        } finally { _psc.release(); }
+      } catch { /* non-fatal */ }
+      logger.info({ eventId: _eventId_ps, subscriptionId: _subId_ps, customerId: _custId_ps, oldPlan: _dbPlanBefore, newPlan, stripeStatus: status, orgId },
+        "[Webhook][plan-sync] customer.subscription event received");
+
       // P0-1: explicit orgId
       // P0-3: no store.me mutation
       const subscriptionId = obj["id"] ? String(obj["id"]) : undefined;
@@ -1007,6 +1085,27 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       }
 
       await persistSubscriptionMeta(updatePayload);
+
+      // ── Verify DB plan after persist ─────────────────────────────────────
+      if (newPlan) {
+        let _dbPlanAfter: string | null = null;
+        try {
+          const { pool: _pgPool_pa } = await import("@workspace/db");
+          const _pac = await _pgPool_pa.connect();
+          const _UUID_RE_PA = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          try {
+            if (_UUID_RE_PA.test(orgId)) {
+              const _ar = await _pac.query<{ plan: string }>(`SELECT plan FROM organizations WHERE id = $1`, [orgId]);
+              _dbPlanAfter = _ar.rows[0]?.plan ?? null;
+            } else {
+              const _ar = await _pac.query<{ plan: string }>(`SELECT plan FROM org_settings WHERE org_id = $1`, [orgId]);
+              _dbPlanAfter = _ar.rows[0]?.plan ?? null;
+            }
+          } finally { _pac.release(); }
+        } catch { /* non-fatal */ }
+        logger.info({ eventId: _eventId_ps, subscriptionId: _subId_ps, customerId: _custId_ps, oldPlan: _dbPlanBefore, newPlan, stripeStatus: status, orgId, dbPlanAfter: _dbPlanAfter, synced: _dbPlanAfter === newPlan },
+          "[Webhook][plan-sync] customer.subscription.updated DB state after persist");
+      }
 
       // The Stripe subscription event is the single authoritative point for
       // the trial-start notice. The webhook event guard above makes this

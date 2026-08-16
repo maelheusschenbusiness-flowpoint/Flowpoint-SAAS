@@ -317,6 +317,17 @@
           /* Session already used (idempotent: account exists, just redirect) */
           try { localStorage.removeItem('fp_cart'); } catch(e) {}
           window.location.href = '/dashboard.html';
+        } else if (res.status === 200 && res.data.emailFailed) {
+          /* Account activated but email delivery failed — offer direct login */
+          document.getElementById('fp-spinner').style.display = 'none';
+          document.getElementById('fp-check').style.display = '';
+          document.getElementById('fp-title').textContent = 'Compte activé !';
+          document.getElementById('fp-sub').innerHTML =
+            'Votre paiement est confirmé et votre compte a été créé.<br><br>' +
+            "L'email de connexion n'a pas pu être envoyé.<br>" +
+            'Connectez-vous directement depuis la page de connexion&nbsp;:' +
+            '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>' +
+            '<br><br><small style="opacity:.65">Vous pourrez demander un nouveau lien depuis cette page.</small>';
         } else {
           document.getElementById('fp-spinner').style.display = 'none';
           document.getElementById('fp-title').textContent = 'Erreur de finalisation';

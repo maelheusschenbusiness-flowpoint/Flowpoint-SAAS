@@ -1429,24 +1429,55 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     const trialEndUnix = grantTrial ? Math.floor(Date.now() / 1000) + intentTrialDays * 86400 : undefined;
     logger.info({ planKey, grantTrial, intentTrialDays, hasSubscriptionHistory, customerId }, "[PublicBilling] finalize: trial decision");
 
-    // ── P1-5: Idempotence guard — prevent duplicate subscriptions on retry/refresh ──
-    // Check whether this customer already has an active or trialing subscription for
-    // the same plan price ID before creating a new one.
+    // ── P1-5 + P0: Idempotence guard — prevent duplicate subscriptions on retry/refresh ──
+    // P0 fix (2026-08-16): the previous guard filtered by `price: planPriceId` only,
+    // which allowed a SECOND subscription to be created when the customer already had
+    // an active/trialing subscription for a DIFFERENT plan (e.g., a Pro trialing sub
+    // created 43 min earlier via another checkout session with the same pre_register_token).
+    // Now we check ALL active/trialing subscriptions for the customer and block with 409
+    // when a different-plan subscription exists, preventing a double billing scenario.
     let planSubscription: Awaited<ReturnType<typeof stripe.subscriptions.create>>;
     {
-      const existingSubs = await stripe.subscriptions.list({
+      const _allSubs = await stripe.subscriptions.list({
         customer: customerId!,
-        price:    planPriceId,
-        limit:    5,
+        status:   "all",
+        limit:    10,
       });
-      const reusable = existingSubs.data.find(
-        (s: Stripe.Subscription) => s.status === "active" || s.status === "trialing" || s.status === "past_due"
+      const _activeOrTrialing = _allSubs.data.filter(
+        (s: Stripe.Subscription) =>
+          (s.status === "active" || s.status === "trialing" || s.status === "past_due") &&
+          !s.cancel_at_period_end
       );
-      if (reusable) {
+      const _samePlanReusable = _activeOrTrialing.find(
+        (s: Stripe.Subscription) => s.items.data.some((item: Stripe.SubscriptionItem) => item.price.id === planPriceId)
+      );
+
+      if (_samePlanReusable) {
         // Reuse — avoid duplicate subscription on page refresh / double-click
-        logger.info({ subscriptionId: reusable.id, planKey, customerId },
+        logger.info({ subscriptionId: _samePlanReusable.id, planKey, customerId },
           "[PublicBilling] finalize: reusing existing plan subscription (idempotent)");
-        planSubscription = reusable as typeof planSubscription;
+        planSubscription = _samePlanReusable as typeof planSubscription;
+      } else if (_activeOrTrialing.length > 0) {
+        // P0: customer already has an active/trialing subscription for a DIFFERENT plan.
+        // Creating a second subscription would charge the customer twice. Block immediately.
+        const _conflict = _activeOrTrialing[0]!;
+        logger.error(
+          {
+            conflictSubId:     _conflict.id,
+            conflictStatus:    _conflict.status,
+            conflictPriceId:   _conflict.items.data[0]?.price.id,
+            newPlan:           planKey,
+            customerId,
+            orgId:             _authenticatedOrgId,
+            preRegisterToken,
+          },
+          "[PublicBilling][P0] DUPLICATE SUBSCRIPTION BLOCKED — customer already has active/trialing subscription for a different plan"
+        );
+        res.status(409).json({
+          error:   "account_already_subscribed",
+          message: "Ce compte possède déjà un abonnement actif. Connectez-vous pour gérer votre plan.",
+        });
+        return;
       } else {
         planSubscription = await stripe.subscriptions.create({
           customer:               customerId,

@@ -1187,6 +1187,64 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           // the webhook will reconcile. Log and continue.
           logger.error({ persistErr, orgId, plan }, "[Billing] persistOrgData failed after Stripe sub update (non-fatal)");
         }
+
+        // ── Plan write verification + repair ─────────────────────────────────
+        // persistOrgData errors are caught non-fatally above, leaving the DB
+        // stale.  Verify the plan landed and force a direct UPDATE if it didn't.
+        // This is the authoritative write for in-session plan changes — the
+        // webhook reconciles asynchronously but the user sees the result NOW.
+        const _UUID_RE_BILLING = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        try {
+          const { pool: _pgPool } = await import("@workspace/db");
+          const _vc = await _pgPool.connect();
+          try {
+            if (_UUID_RE_BILLING.test(orgId)) {
+              // UUID org: verify organizations.plan
+              const _vr = await _vc.query<{ plan: string }>(
+                `SELECT plan FROM organizations WHERE id = $1`, [orgId]
+              );
+              const _stored = (_vr.rows[0]?.plan || "").toLowerCase();
+              if (_stored !== plan) {
+                logger.error({ stored: _stored, expected: plan, orgId },
+                  "[Billing][plan-sync] organizations.plan mismatch — forcing UPDATE");
+                const _ur = await _vc.query(
+                  `UPDATE organizations SET plan = $1, updated_at = NOW() WHERE id = $2`,
+                  [plan, orgId]
+                );
+                logger.info({ rowCount: _ur.rowCount, plan, orgId },
+                  "[Billing][plan-sync] organizations.plan force-updated");
+              } else {
+                logger.info({ plan: _stored, orgId }, "[Billing][plan-sync] organizations.plan verified ✓");
+              }
+            } else {
+              // Email/legacy org: verify org_settings.plan
+              const _vr2 = await _vc.query<{ plan: string }>(
+                `SELECT plan FROM org_settings WHERE org_id = $1`, [orgId]
+              );
+              const _stored2 = (_vr2.rows[0]?.plan || "").toLowerCase();
+              if (_stored2 !== plan) {
+                logger.error({ stored: _stored2, expected: plan, orgId },
+                  "[Billing][plan-sync] org_settings.plan mismatch — forcing UPSERT");
+                await _vc.query(
+                  `INSERT INTO org_settings (org_id, plan, updated_at)
+                   VALUES ($1, $2, NOW())
+                   ON CONFLICT (org_id) DO UPDATE SET plan = EXCLUDED.plan, updated_at = NOW()`,
+                  [orgId, plan]
+                );
+                logger.info({ plan, orgId }, "[Billing][plan-sync] org_settings.plan force-upserted");
+              } else {
+                logger.info({ plan: _stored2, orgId }, "[Billing][plan-sync] org_settings.plan verified ✓");
+              }
+            }
+          } finally { _vc.release(); }
+        } catch (_verifyErr) {
+          logger.error({ err: _verifyErr, orgId, plan }, "[Billing][plan-sync] Verification query failed (non-fatal)");
+        }
+
+        // Broadcast SSE so any open dashboard tab can react immediately.
+        // Fire-and-forget — never block the HTTP response on this.
+        try { store.broadcastPlanUpdate(plan, orgId); } catch (_bcastErr) { /* non-fatal */ }
+
         logger.info(
           { plan, subId: sub.id, subStatus: sub.status, isTrialing, isUpgrade, isDowngrade, prorationBehavior, removedAddonKeys, orgId },
           "[Billing] plan change applied immediately",
