@@ -1691,21 +1691,34 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             throw _fcActErr;
           } finally { _fcActTxC.release(); }
 
-          // ── Step 5: Insert magic link token ─────────────────────────────
-          logger.info({ step: "FC-5", email: _fcAEmail }, "[FC] step-5: inserting magic_link_token");
+          // ── ML-1: Generate magic link token ─────────────────────────────
+          logger.info({ step: "ML-1", email: _fcAEmail }, "[ML] step-1: generating magic link token (randomBytes 32)");
           const _fcMagicToken = _fcRb(32).toString("hex");
+
+          // ── ML-2: Insert token into DB ────────────────────────────────────
+          logger.info({ step: "ML-2", tokenPrefix: _fcMagicToken.slice(0, 8), email: _fcAEmail }, "[ML] step-2: inserting magic_link_token into DB");
           const _fcTokC = await _fcActPool.connect();
+          let _mlTokInserted = false;
           try {
-            await _fcTokC.query(
+            const _mlTokR = await _fcTokC.query<{ token: string }>(
               `INSERT INTO magic_link_tokens(token,email,expires_at,used)
-               VALUES($1,$2,NOW()+INTERVAL '24 hours',FALSE) ON CONFLICT(token) DO NOTHING`,
+               VALUES($1,$2,NOW()+INTERVAL '24 hours',FALSE) ON CONFLICT(token) DO NOTHING RETURNING token`,
               [_fcMagicToken, _fcAEmail]
             );
+            _mlTokInserted = (_mlTokR.rowCount ?? 0) > 0;
+            logger.info({ step: "ML-2-ok", tokenPrefix: _fcMagicToken.slice(0, 8), inserted: _mlTokInserted }, "[ML] step-2: magic_link_token DB result");
           } finally { _fcTokC.release(); }
 
-          // ── Step 6: Send activation email ───────────────────────────────
-          logger.info({ step: "FC-6", email: _fcAEmail, isTrial: grantTrial }, "[FC] step-6: sending activation email");
+          // ── ML-5: Compose magic link URL (logged before ML-3 for clarity) ─
           const _fcPubUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+          const _fcMagicLinkUrl = `${_fcPubUrl}/login-verify.html?token=${_fcMagicToken}`;
+          logger.info({ step: "ML-5", urlDomain: _fcPubUrl, tokenPrefix: _fcMagicToken.slice(0, 8), path: "/login-verify.html" }, "[ML] step-5: magic link URL composed");
+
+          // ── ML-3: Call mailer — log transport type before the call ────────
+          const _mlTransport = process.env["RESEND_API_KEY"]
+            ? "resend-sdk"
+            : (process.env["SMTP_HOST"] ? `smtp:${process.env["SMTP_HOST"]}` : "none");
+          logger.info({ step: "ML-3", email: _fcAEmail, transport: _mlTransport, isTrial: grantTrial }, "[ML] step-3: calling sendActivationMagicLink");
           const { mailer: _fcMailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
           if (!_fcMailer) {
             throw new Error("Activation email service unavailable");
@@ -1714,11 +1727,22 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
               to:           _fcAEmail,
               name:         _fcSignup["first_name"] || _fcAEmail.split("@")[0],
               plan:         planKey,
-              magicLinkUrl: `${_fcPubUrl}/login-verify.html?token=${_fcMagicToken}`,
+              magicLinkUrl: _fcMagicLinkUrl,
               isTrial:      grantTrial,
           });
+
+          // ── ML-4: Mailer response — log everything ────────────────────────
+          logger.info({
+            step:      "ML-4",
+            ok:        _fcMailResult?.ok,
+            emailId:   _fcMailResult?.id,
+            error:     _fcMailResult?.error,
+            transport: _mlTransport,
+            to:        _fcAEmail,
+          }, "[ML] step-4: sendActivationMagicLink response");
+
           if (!_fcMailResult?.ok) {
-            logger.warn({ step: "FC-6-warn", email: _fcAEmail, mailErr: _fcMailResult?.error }, "[FC] step-6: activation email failed — account already created, user must log in manually");
+            logger.warn({ step: "ML-4-FAIL", email: _fcAEmail, error: _fcMailResult?.error, transport: _mlTransport }, "[ML] step-4: FAIL — activation email not delivered");
             res.json({
               success: true,
               subscriptionId: planSubscription.id,
@@ -1728,7 +1752,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             });
             return;
           }
-          logger.info({ step: "FC-6-ok", email: _fcAEmail }, "[FC] step-6: activation magic link sent");
+          logger.info({ step: "ML-4-OK", emailId: _fcMailResult?.id, to: _fcAEmail }, "[ML] step-4: OK — activation email accepted by transport");
 
       } catch (_fcActTopErr) {
         logger.error({ step: "FC-TOP-FAIL", err: (_fcActTopErr as Error)?.message }, "[FC] top-level activation catch");
