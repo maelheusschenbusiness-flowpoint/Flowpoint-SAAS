@@ -1561,6 +1561,10 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
               await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE`).catch(() => {});
               await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at    TIMESTAMPTZ DEFAULT NOW()`).catch(() => {});
               await _fcSelfHealC.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`).catch(() => {});
+              // ON CONFLICT (email) requires a UNIQUE index — CREATE TABLE IF NOT EXISTS is a no-op
+              // on existing tables so the inline CONSTRAINT is never retroactively added.
+              // This self-heal ensures the unique index exists before every activation attempt.
+              await _fcSelfHealC.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email)`).catch(() => {});
             } finally { _fcSelfHealC.release(); }
           }
 
