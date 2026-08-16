@@ -1547,14 +1547,26 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           const { randomUUID: _fcRandUUID } = await import("crypto");
           const _fcAOrgId = _fcRandUUID();
 
+          // Self-heal: run DDL OUTSIDE any transaction (auto-commit).
+          // ALTER TABLE inside a BEGIN block poisons the transaction on PgBouncer
+          // (transaction pooling mode) if the DDL is rejected, causing every subsequent
+          // statement to fail with "current transaction is aborted". Run them here, before
+          // the transaction opens, on a dedicated connection so failures are isolated.
+          {
+            const _fcSelfHealC = await _fcActPool.connect();
+            try {
+              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name    TEXT`).catch(() => {});
+              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name     TEXT`).catch(() => {});
+              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status        TEXT NOT NULL DEFAULT 'pending'`).catch(() => {});
+              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE`).catch(() => {});
+              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at    TIMESTAMPTZ DEFAULT NOW()`).catch(() => {});
+              await _fcSelfHealC.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`).catch(() => {});
+            } finally { _fcSelfHealC.release(); }
+          }
+
           const _fcActTxC = await _fcActPool.connect();
           try {
             await _fcActTxC.query("BEGIN");
-            // Self-heal: ensure columns exist regardless of which init path ran on this server.
-            await _fcActTxC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT`).catch(() => {});
-            await _fcActTxC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name  TEXT`).catch(() => {});
-            await _fcActTxC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'`).catch(() => {});
-            await _fcActTxC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE`).catch(() => {});
             const _fcUsr = await _fcActTxC.query<{ id: string }>(
               `INSERT INTO users (email, first_name, last_name, auth_provider, email_verified, status)
                VALUES ($1,$2,$3,'magic_link',TRUE,'active')
