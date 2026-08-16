@@ -348,8 +348,11 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         // Create Stripe Customer with full contact info (never empty)
         const customerData: Stripe.CustomerCreateParams = {
           email: signupRow.email,
-          name:  `${signupRow.first_name} ${signupRow.last_name}`.trim() || signupRow.company_name,
-          ...(signupRow.company_name ? { description: signupRow.company_name } : {}),
+          // Real name from registration; fall back to local part of email (never use company_name as name)
+          name:  `${signupRow.first_name} ${signupRow.last_name}`.trim() || signupRow.email.split("@")[0],
+          // Only set description when company_name is a real company, not an email address
+          // (Google OAuth signup stores "" or the user's email as company_name placeholder)
+          ...(signupRow.company_name && !signupRow.company_name.includes("@") ? { description: signupRow.company_name } : {}),
           metadata: {
             flowpointOrgId:     signupRow.email,
             flowpointUserId:    signupRow.email,
@@ -465,7 +468,12 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
     const successUrl = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl  = `${publicUrl}/cancel.html`;
 
-    const customerParam = stripeCustomerId ? { customer: stripeCustomerId } : {};
+    const customerParam = stripeCustomerId ? {
+      customer: stripeCustomerId,
+      // Automatically save any billing address / name the user provides during checkout
+      // back to the Stripe Customer object (only active when a customer is pre-attached)
+      customer_update: { address: "auto" as const, name: "auto" as const },
+    } : {};
 
     function urlOrEmbedded(params: Record<string, unknown>) {
       if (embedded) {

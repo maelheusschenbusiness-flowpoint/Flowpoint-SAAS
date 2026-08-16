@@ -1753,7 +1753,18 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { "Authorization": `Bearer ${tokens.access_token}` },
     });
-    const user = await userRes.json() as { sub?: string; email?: string; name?: string; picture?: string };
+    // Google userinfo v3 fields available with scopes: openid email profile
+    // Docs: https://developers.google.com/identity/openid-connect/openid-connect#obtaininguserprofileinformation
+    const user = await userRes.json() as {
+      sub?:           string;   // Google user ID (unique, stable)
+      email?:         string;   // email address
+      email_verified?: boolean; // whether Google has verified the email
+      name?:          string;   // full display name (e.g. "Jean Dupont")
+      given_name?:    string;   // first name (preferred — reliable for all locales)
+      family_name?:   string;   // last name
+      picture?:       string;   // avatar URL (profile photo)
+      locale?:        string;   // user locale (e.g. "fr", "en")
+    };
 
     const resolvedEmail = user.email ?? user.sub ?? "";
     if (!isEmailAllowed(resolvedEmail)) {
@@ -1793,7 +1804,8 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
         // Existing account — update non-billing fields only (NEVER overwrite plan/trial/billing)
         await upsertOrgSettings(resolvedEmail, {
           email: resolvedEmail,
-          firstName: _existingGoogleOrg.firstName || (user.name ? user.name.split(" ")[0] : undefined),
+          // Prefer given_name (Google-provided, locale-aware); fall back to splitting name
+          firstName: _existingGoogleOrg.firstName || user.given_name || (user.name ? user.name.split(" ")[0] : undefined),
           plan: planFromState ? planFromState : (_existingGoogleOrg.plan ?? "standard"),
         });
         logger.info({ email: resolvedEmail }, "[Auth] Google login — existing org, billing data preserved");
@@ -1801,10 +1813,12 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
         // New account — pending billing until Checkout activates it.
         await upsertOrgSettings(resolvedEmail, {
           email: resolvedEmail,
-          firstName: user.name ? user.name.split(" ")[0] : undefined,
+          // Prefer Google's dedicated given_name/family_name fields (locale-aware and reliable)
+          firstName: user.given_name ?? (user.name ? user.name.split(" ")[0] : undefined),
+          lastName:  user.family_name ?? (user.name && user.name.includes(" ") ? user.name.split(" ").slice(1).join(" ") : undefined),
+          // orgName intentionally omitted — Google profile (openid email profile) does not expose company name
           plan: planFromState ?? "standard",
           subscriptionStatus: "pending_billing",
-          orgName: user.email ?? undefined,
         });
         logger.info({ email: resolvedEmail, plan: planFromState }, "[Auth] Google login — new org created with pending_billing");
       }
@@ -1816,10 +1830,9 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
         // Create a pending_signups record so checkout.html / checkout-payment.html
         // can complete the Stripe flow identically to the email signup path.
         // First, invalidate any stale pending token for this email.
-        const googleFirstName = user.name ? user.name.split(" ")[0] : "Google";
-        const googleLastName  = user.name && user.name.split(" ").length > 1
-          ? user.name.split(" ").slice(1).join(" ")
-          : "User";
+        // Use Google's dedicated fields (locale-aware); fall back to splitting the full name
+        const googleFirstName = user.given_name ?? (user.name ? user.name.split(" ")[0] : "");
+        const googleLastName  = user.family_name ?? (user.name && user.name.includes(" ") ? user.name.split(" ").slice(1).join(" ") : "");
         let googlePreRegToken = "";
         try {
           const _gpClient = await pool.connect();
@@ -1837,7 +1850,8 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
                  (token, email, first_name, last_name, company_name, country, address, city, postal_code, created_at, expires_at)
                VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',NOW(),NOW() + INTERVAL '2 hours')
                ON CONFLICT (token) DO NOTHING`,
-              [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, resolvedEmail],
+              // company_name left blank — Google signup carries no company information
+              [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, ""],
             );
             logger.info({ email: resolvedEmail }, "[Auth] Google signup — pending_signups record created for checkout");
           } finally {

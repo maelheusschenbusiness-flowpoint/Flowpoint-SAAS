@@ -181,12 +181,16 @@ async function _runWithLock(
           // name was known (signup happens before org settings are complete).
           const _existing = customer as { name?: string | null; description?: string | null; metadata?: Record<string, string> };
           const _company = settings?.orgName ?? hint?.orgName ?? null;
-          if (_company && (!_existing.description || _existing.metadata?.["company"] !== _company)) {
-            const _fullName = [settings?.firstName ?? hint?.firstName, _company].filter(Boolean).join(" ").trim();
+          // Only backfill with a real company name — never with an email address (Google signup placeholder)
+          const _realCompany = _company && !_company.includes("@") ? _company : null;
+          if (_realCompany && (!_existing.description || _existing.metadata?.["company"] !== _realCompany)) {
+            const _bfFirstName = settings?.firstName ?? hint?.firstName;
+            const _bfLastName  = (settings as Record<string, unknown> | null)?.["lastName"] as string | null ?? null;
+            const _fullName = [_bfFirstName, _bfLastName].filter(Boolean).join(" ").trim() || null;
             stripe.customers.update(candidateId, {
               ...(_fullName ? { name: _fullName } : {}),
-              description: _company,
-              metadata: { ..._existing.metadata, company: _company },
+              description: _realCompany,
+              metadata: { ..._existing.metadata, company: _realCompany },
             }).then(() => {
               logger.info({ orgId, customerId: candidateId, company: _company }, "[ESC] backfilled company on existing Stripe customer");
             }).catch((updErr: unknown) => {
@@ -262,11 +266,13 @@ async function _runWithLock(
 
     const email: string | null = settings?.email ?? hint?.email ?? null;
     const isValidEmail = email != null && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+    // Build display name from real name fields — never from orgName (which may be an email placeholder)
+    const _escFirstName = settings?.firstName ?? hint?.firstName;
+    const _escLastName  = (settings as Record<string, unknown> | null)?.["lastName"] as string | null ?? null;
     const displayName =
-      [settings?.firstName ?? hint?.firstName, settings?.orgName ?? hint?.orgName]
-        .filter(Boolean)
-        .join(" ")
-        .trim() || "FlowPoint User";
+      [_escFirstName, _escLastName].filter(Boolean).join(" ").trim()
+      || (isValidEmail && email ? email.split("@")[0] : null)
+      || "FlowPoint User";
 
     logger.debug(
       { orgId, idempotencyKey, email: isValidEmail ? email : "(invalid)", displayName },
@@ -278,6 +284,9 @@ async function _runWithLock(
     const orgCity     = settings?.city     ?? null;
     const orgAddress  = settings?.address  ?? null;
     const orgCompany  = settings?.orgName  ?? hint?.orgName ?? null;
+    // Only use orgCompany as description when it is a real company name, not an email address
+    // (Google OAuth signup temporarily stores the user's email in orgName; don't leak it as description)
+    const orgCompanyDisplay = orgCompany && !orgCompany.includes("@") ? orgCompany : null;
     const orgWebsite  = (settings as unknown as { primarySite?: string } | null)?.primarySite ?? null;
 
     const t4 = Date.now();
@@ -285,7 +294,7 @@ async function _runWithLock(
       {
         ...(isValidEmail ? { email } : {}),
         name: displayName,
-        ...(orgCompany ? { description: orgCompany } : {}),
+        ...(orgCompanyDisplay ? { description: orgCompanyDisplay } : {}),
         ...(orgCountry || orgCity || orgAddress ? {
           address: {
             ...(orgCountry ? { country: orgCountry } : {}),
@@ -297,7 +306,7 @@ async function _runWithLock(
           orgId,
           flowpointUserId: orgId,
           flowpoint_org_id: orgId,
-          company:         orgCompany  ?? "",
+          company:         orgCompanyDisplay ?? "",
           website:         orgWebsite  ?? "",
           environment:     process.env["NODE_ENV"] ?? "development",
           signup_source:   "flowpoint_web",
