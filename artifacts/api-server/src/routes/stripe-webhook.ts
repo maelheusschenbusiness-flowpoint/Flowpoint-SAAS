@@ -119,48 +119,19 @@ async function sendTrialStartedOnce(opts: {
     );
     if (!claim.rowCount) return;
 
-    // Reuse existing valid magic token (created by finalize-checkout or activateNewSignup),
-    // or mint a new one. This makes the trial-started email the sole first-login path.
-    const { pool: _tsPgPool } = await import("@workspace/db");
-    const _tsTokenRow = await _tsPgPool.query<{ token: string }>(
-      `SELECT token FROM magic_link_tokens
-       WHERE email = $1 AND used = FALSE AND expires_at > NOW()
-       ORDER BY expires_at DESC LIMIT 1`,
-      [opts.email],
+    // The activation magic-link email is now sent immediately by finalize-checkout
+    // (ML-3/ML-4) for both trial and non-trial signups.  sendTrialStartedOnce no
+    // longer needs to embed a magic link — it just marks the DB row so we don't
+    // fire a duplicate.  Skipping the email send here keeps the 1-email-per-signup
+    // promise and removes the webhook-timing dependency.
+    await client.query(
+      `UPDATE organizations
+       SET trial_started_email_sent_at = NOW(), trial_started_email_claimed_at = NULL
+       WHERE id = $1`,
+      [opts.orgId],
     );
-    let _tsMagicToken = _tsTokenRow.rows[0]?.token;
-    if (!_tsMagicToken) {
-      const { randomBytes: _tsRb } = await import("node:crypto");
-      _tsMagicToken = _tsRb(32).toString("hex");
-      await _tsPgPool.query(
-        `INSERT INTO magic_link_tokens (token, email, expires_at, used)
-         VALUES ($1, $2, NOW() + INTERVAL '24 hours', FALSE)
-         ON CONFLICT (token) DO NOTHING`,
-        [_tsMagicToken, opts.email],
-      );
-      logger.info({ orgId: opts.orgId, email: opts.email }, "[Webhook] Trial-started: minted new magic token");
-    } else {
-      logger.info({ orgId: opts.orgId, email: opts.email }, "[Webhook] Trial-started: reusing existing magic token");
-    }
-    const _tsPublicUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
-    const _tsMagicLinkUrl = `${_tsPublicUrl}/login-verify.html?token=${_tsMagicToken}`;
-
-    const result = await mailer.sendTrialStarted({
-      to: opts.email, name: opts.name, plan: opts.plan, trialEndsAt: opts.trialEndsAt,
-      magicLinkUrl: _tsMagicLinkUrl,
-    });
-    if (result.ok) {
-      await client.query(
-        `UPDATE organizations
-         SET trial_started_email_sent_at = NOW(), trial_started_email_claimed_at = NULL
-         WHERE id = $1`,
-        [opts.orgId],
-      );
-      logger.info({ orgId: opts.orgId, email: opts.email, emailId: result.id }, "[Webhook] Trial-started email delivered");
-      return;
-    }
-    await client.query(`UPDATE organizations SET trial_started_email_claimed_at = NULL WHERE id = $1`, [opts.orgId]);
-    logger.error({ orgId: opts.orgId, email: opts.email, error: result.error }, "[Webhook] Trial-started email failed; claim released for retry");
+    logger.info({ orgId: opts.orgId, email: opts.email },
+      "[Webhook] Trial-started: activation email already sent by finalize-checkout — marking sent_at only");
   } catch (err) {
     await client.query(`UPDATE organizations SET trial_started_email_claimed_at = NULL WHERE id = $1`, [opts.orgId]).catch(() => {});
     logger.error({ err, orgId: opts.orgId, email: opts.email }, "[Webhook] Trial-started lifecycle delivery failed");

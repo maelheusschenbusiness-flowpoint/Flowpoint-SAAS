@@ -1197,6 +1197,12 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
     return;
   }
 
+  const _ccTransport = process.env["RESEND_API_KEY"]
+    ? "resend-sdk"
+    : (process.env["SMTP_HOST"] ? `smtp:${process.env["SMTP_HOST"]}` : "none");
+  logger.info({ sessionId, transport: _ccTransport, step: "CC-0-start" },
+    "[Auth/CheckoutComplete] ML-0: received checkout-complete request");
+
   try {
     const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
     if (!stripeKey) {
@@ -1300,13 +1306,16 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
           logger.info({ sessionId, email, emailSent, step: "CC-fwd-existing-token" },
             "[Auth/CheckoutComplete] Re-sent existing webhook token via checkout-complete");
         } else {
-          // Mailer unavailable — assume webhook delivered it
-          emailSent = true;
-          logger.warn({ sessionId, email }, "[Auth/CheckoutComplete] Mailer unavailable — cannot re-send existing token");
+          // Mailer unavailable — cannot deliver the token; flag as failed so the
+          // frontend shows the "Connectez-vous directement" fallback instead of
+          // the misleading "Vérifiez vos emails" message.
+          emailSent = false;
+          logger.error({ sessionId, email }, "[Auth/CheckoutComplete] ML-FAIL: mailer unavailable — cannot re-send existing token");
         }
       } else {
-        emailSent = true;
-        logger.warn({ sessionId, email }, "[Auth/CheckoutComplete] hasToken=true but no rows returned — skipping resend");
+        // hasToken=true but no valid token row — should not happen; treat as failed.
+        emailSent = false;
+        logger.error({ sessionId, email }, "[Auth/CheckoutComplete] ML-FAIL: hasToken=true but no valid token row found — cannot send");
       }
     } else {
       // User exists but no token — webhook ran but email failed, or token was consumed.

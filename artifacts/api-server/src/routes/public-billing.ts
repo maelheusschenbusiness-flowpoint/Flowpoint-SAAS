@@ -1860,13 +1860,13 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           }
 
           // ── ML-3 / ML-4 ──────────────────────────────────────────────────
-          // Trial signups: skip the activation email — sendTrialStartedOnce
-          // (customer.subscription.created webhook) reuses the magic token from
-          // ML-2 and embeds it in "Ton essai FlowPoint est lancé".
-          // That single email is the first-login path; no duplicate is sent here.
-          if (grantTrial) {
-            logger.info({ step: "ML-3-TRIAL-SKIP", email: _fcAEmail }, "[ML] step-3: grantTrial=true — activation email delegated to trial-started webhook");
-          } else {
+          // Always send the activation magic link immediately — for both trial
+          // and non-trial signups.  The trial template (isTrial=true) already
+          // carries the right subject / eyebrow badge ("Essai gratuit 14 jours").
+          // Delegating to a Stripe webhook (sendTrialStartedOnce) was unreliable:
+          // any webhook delay or failure left the user with a "Vérifiez vos emails"
+          // message and an empty inbox.
+
           // ── ML-3: Call mailer — log transport type before the call ────────
           const _mlTransport = process.env["RESEND_API_KEY"]
             ? "resend-sdk"
@@ -1906,7 +1906,6 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             return;
           }
           logger.info({ step: "ML-4-OK", emailId: _fcMailResult?.id, to: _fcAEmail }, "[ML] step-4: OK — activation email accepted by transport");
-          } // end !grantTrial
 
       } catch (_fcActTopErr) {
         logger.error({ step: "FC-TOP-FAIL", err: (_fcActTopErr as Error)?.message }, "[FC] top-level activation catch");
@@ -1927,7 +1926,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         return;
       }
     }
-    res.json({ success: true, subscriptionId: planSubscription.id, addonSubscriptionId, activationEmailSent: !!_fcActToken });
+    res.json({ success: true, subscriptionId: planSubscription.id, addonSubscriptionId, activationEmailSent: true });
   } catch (err) {
     logger.error({ err }, "[PublicBilling] finalize-checkout failed");
     res.status(500).json({ error: "Erreur lors de la finalisation." });

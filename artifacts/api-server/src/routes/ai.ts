@@ -1055,8 +1055,25 @@ const LOOP_DEADLINE_MS  = 180_000; // hard cap for the entire tool-calling sessi
 
 /** Conversations currently being processed — blocks double submissions. */
 const _activeExecutions = new Set<string>();
+/** Start timestamps for active executions — used for stale-lock detection. */
+const _executionStartTimes = new Map<string, number>();
 /** Conversations explicitly cancelled by the client. */
 const _cancelledConversations = new Set<string>();
+
+// ── Stale-lock sweep ──────────────────────────────────────────────────────────
+// Any execution that has been running for > 5 minutes is considered stale
+// (crashed, OOM-killed, network timeout, etc.) and its lock is released so the
+// user can continue without a process restart.
+setInterval(() => {
+  const cutoff = Date.now() - 5 * 60_000;
+  for (const [id, ts] of _executionStartTimes) {
+    if (ts < cutoff) {
+      _activeExecutions.delete(id);
+      _executionStartTimes.delete(id);
+      logger.warn({ conversationId: id }, "[AI] stale lock swept (> 5 min)");
+    }
+  }
+}, 60_000).unref();
 
 /**
  * Builds a provider-native "user" message that instructs the LLM to synthesise
@@ -1940,6 +1957,7 @@ DONNÉES MANQUANTES — règle stricte :
       return;
     }
     _activeExecutions.add(conversationId);
+    _executionStartTimes.set(conversationId, Date.now());
 
     // ── SSE transport hardening ───────────────────────────────────────────────
     // Disable Nagle's algorithm so each SSE chunk is flushed to the TCP socket
@@ -1960,8 +1978,17 @@ DONNÉES MANQUANTES — règle stricte :
     };
     const isCancelled = () => _clientGone || _cancelledConversations.has(conversationId);
 
-    // Auto-cleanup: remove from active set when SSE response finishes (any path)
-    res.on("finish", () => _activeExecutions.delete(conversationId));
+    // Auto-cleanup: remove from active set when SSE response ends.
+    // We listen to BOTH "finish" (normal path: res.end() called) and "close"
+    // (client-disconnect path: AbortController.abort() closes the TCP socket
+    // before res.end() is ever reached). Without "close", aborting from the
+    // browser leaves the lock permanently set until the process restarts.
+    const _cleanupExecution = () => {
+      _activeExecutions.delete(conversationId);
+      _executionStartTimes.delete(conversationId);
+    };
+    res.on("finish", _cleanupExecution);
+    res.on("close",  _cleanupExecution);
 
     if (enableTools && hasAnyToolPermission) {
       const toolCtx: ExecuteContext = {
@@ -2192,10 +2219,17 @@ router.post("/ai/chat", aiRateLimit, chatHandler);
 router.post("/ai/conversations/:id/cancel", async (req: Request, res: Response): Promise<void> => {
   const conversationId = String(req.params["id"] ?? "");
   if (!conversationId) { res.status(400).json({ ok: false, error: "conversationId required" }); return; }
+  // Mark as cancelled so any in-flight tool loop exits at the next isCancelled() check
   _cancelledConversations.add(conversationId);
-  // Auto-clear after 60 s to avoid unbounded growth
+  // Immediately release the execution lock so the NEXT request is not blocked.
+  // Without this, the client had to wait for the SSE response to fully close
+  // (res.finish) before the lock was released — causing "réponse déjà en cours"
+  // on every immediate retry after Stop.
+  _activeExecutions.delete(conversationId);
+  _executionStartTimes.delete(conversationId);
+  // Auto-clear the cancelled marker after 60 s
   setTimeout(() => _cancelledConversations.delete(conversationId), 60_000);
-  logger.info({ conversationId }, "[AI] conversation cancelled by client");
+  logger.info({ conversationId }, "[AI] conversation cancelled by client — lock released immediately");
   res.json({ ok: true, cancelled: true });
 });
 
