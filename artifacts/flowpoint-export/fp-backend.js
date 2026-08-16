@@ -651,15 +651,30 @@
     });
 
     // ── Mise à jour billing ──
-    document.addEventListener('fp:billing:updated', function (e) {
+    document.addEventListener('fp:billing:updated', async function (e) {
       var data = e.detail;
       if (!data || !window.STATE || !window.STATE.me) return;
+      // Optimistic update so the UI responds instantly
       if (data.plan) window.STATE.me.plan = data.plan;
       if (data.subscriptionStatus) window.STATE.me.subscriptionStatus = data.subscriptionStatus;
-      if (typeof window.showToast === 'function') {
-        window.showToast('success', 'Plan mis à jour : ' + (data.plan || ''));
-      }
       if (typeof window.render === 'function') window.render();
+      // Re-fetch /api/me to sync ALL limits, addons, and AI credits — not just
+      // plan/subscriptionStatus.  The optimistic patch above only updates two fields;
+      // limits.teamMembers, limits.exports, limits.monitors, addons, AI credits, etc.
+      // all stay stale until a full /api/me refresh arrives.
+      try {
+        // Bust the cache so apiFetch doesn't return the old response
+        if (typeof _fpCache !== 'undefined') delete _fpCache['/api/me'];
+        if (typeof _apiFetchCache !== 'undefined') _apiFetchCache.delete('/api/me');
+        var freshMe = await apiFetch('/api/me');
+        if (freshMe && window.STATE) {
+          window.STATE.me = freshMe;
+          if (typeof window.render === 'function') window.render();
+        }
+      } catch (_) { /* non-fatal — optimistic update already applied */ }
+      if (typeof window.showToast === 'function') {
+        window.showToast('success', 'Plan mis à jour : ' + (data.plan || data.subscriptionStatus || ''));
+      }
     });
 
     // ── Message équipe ──

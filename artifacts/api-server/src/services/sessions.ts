@@ -2,7 +2,11 @@ import { randomBytes, createHmac, timingSafeEqual } from "crypto";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
-export const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+// 7 days — long enough that Safari's tab-freeze / overnight laptop closure
+// (both clear sessionStorage) can recover via the HttpOnly cookie without
+// forcing a re-login.  24 h was too short: users whose tabs were idle
+// overnight would be redirected to sign-in on the next morning reload.
+export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export interface SessionData {
   token: string;

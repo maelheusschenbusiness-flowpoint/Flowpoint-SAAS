@@ -32,7 +32,11 @@ function generateToken(): string {
 // ── PostgreSQL-backed magic link tokens ───────────────────────────────────────
 
 async function storeMagicToken(token: string, email: string): Promise<void> {
-  const expiresAt = new Date(Date.now() + 15 * 60_000);
+  // 1 h is the TTL for manually-requested magic links (login-request).
+  // Webhook-generated tokens (new signup) use 24 h via inline SQL in stripe-webhook.ts.
+  // Previously 15 min — too short; users checking email on mobile after a meeting
+  // would arrive to find the link already expired.
+  const expiresAt = new Date(Date.now() + 60 * 60_000); // 1 hour
   const client = await pool.connect();
   try {
     await client.query(
@@ -1271,9 +1275,37 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
     let emailId: string | undefined;
 
     if (hasToken) {
-      // Webhook already sent (or will send) the magic link — nothing to do
-      emailSent = true;
-      logger.info({ sessionId, email }, "[Auth/CheckoutComplete] Magic link token already exists (webhook handled it)");
+      // Webhook token exists — re-send the email using THAT token so the user
+      // always receives a working link even when the webhook's own email send
+      // failed silently (Resend transient error, DNS hiccup, etc.).
+      // Reusing the existing token avoids generating a second valid link:
+      // the user receives exactly one email and one working URL.
+      const existingToken = _tokenCheck.rows[0]?.token;
+      if (existingToken) {
+        const publicUrl    = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+        const magicLinkUrl = `${publicUrl}/login-verify.html?token=${existingToken}`;
+        const { mailer: _ccMailerFwd } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
+        if (_ccMailerFwd) {
+          const fwdResult = await _ccMailerFwd.sendActivationMagicLink({
+            to:         email,
+            name:       email.split("@")[0],
+            plan:       meta["plan"] || "standard",
+            magicLinkUrl,
+            isTrial:    false,
+          }).catch((e: unknown) => ({ ok: false as const, error: String(e) }));
+          emailSent = !!fwdResult?.ok;
+          emailId   = (fwdResult as { id?: string })?.id;
+          logger.info({ sessionId, email, emailSent, step: "CC-fwd-existing-token" },
+            "[Auth/CheckoutComplete] Re-sent existing webhook token via checkout-complete");
+        } else {
+          // Mailer unavailable — assume webhook delivered it
+          emailSent = true;
+          logger.warn({ sessionId, email }, "[Auth/CheckoutComplete] Mailer unavailable — cannot re-send existing token");
+        }
+      } else {
+        emailSent = true;
+        logger.warn({ sessionId, email }, "[Auth/CheckoutComplete] hasToken=true but no rows returned — skipping resend");
+      }
     } else {
       // User exists but no token — webhook ran but email failed, or token was consumed.
       // Generate and send a fresh magic link directly.
@@ -1380,15 +1412,34 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
   }
 
   if (!peeked.ok) {
+    // Diagnostic: log every failure with token prefix so we can match it
+    // against the email send logs in BetterStack to understand why the token
+    // can't be found (e.g. race condition, cleanup job, RLS, duplicate send).
+    logger.warn(
+      { reason: peeked.reason, tokenPrefix: token.slice(0, 8), step: "S1-fail" },
+      "[ML] peekToken failed — token not usable"
+    );
     switch (peeked.reason) {
       case "already_used":
-        res.status(410).json({ error: "Ce lien a déjà été utilisé. Demandez un nouveau lien si nécessaire." });
+        res.status(410).json({
+          error: "Ce lien a déjà été utilisé.",
+          hint:  "Demandez un nouveau lien depuis la page de connexion.",
+          canRetry: true,
+        });
         return;
       case "expired":
-        res.status(401).json({ error: "Ce lien a expiré. Demandez un nouveau lien de connexion." });
+        res.status(401).json({
+          error:    "Ce lien a expiré.",
+          hint:     "Les liens de connexion expirent après 1 heure. Demandez un nouveau lien.",
+          canRetry: true,
+        });
         return;
       default:
-        res.status(401).json({ error: "Lien invalide ou expiré." });
+        res.status(401).json({
+          error:    "Lien invalide ou introuvable.",
+          hint:     "Le lien n'existe pas en base de données. Demandez un nouveau lien depuis la page de connexion.",
+          canRetry: true,
+        });
         return;
     }
   }

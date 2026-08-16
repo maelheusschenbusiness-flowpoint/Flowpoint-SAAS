@@ -88,8 +88,24 @@
         window.location.replace(next + sep + '_cb=' + Date.now());
       }, 1200);
     } else {
-      var msg = (r.data && r.data.error) ? r.data.error : 'Lien invalide ou expiré.';
-      document.getElementById('fp-error-msg').textContent = msg;
+      // Show the server's error message (French prose).
+      // Fall back to a generic message only when the server returned no body.
+      var serverMsg = (r.data && r.data.error) ? r.data.error : 'Lien invalide ou expiré.';
+      var canRetry  = !!(r.data && r.data.canRetry);
+      document.getElementById('fp-error-msg').textContent = serverMsg;
+
+      // Show the "Request new link" button for retryable errors (expired / already_used / not_found).
+      // This lets the user self-serve without contacting support.
+      if (canRetry) {
+        var retryBtn = document.getElementById('fp-retry-btn');
+        if (retryBtn) {
+          retryBtn.style.display = 'inline-block';
+          retryBtn.addEventListener('click', function () {
+            window.location.href = '/login.html';
+          });
+        }
+      }
+
       show('fp-error');
     }
   })
