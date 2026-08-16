@@ -1745,6 +1745,52 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           const _fcMagicLinkUrl = `${_fcPubUrl}/login-verify.html?token=${_fcMagicToken}`;
           logger.info({ step: "ML-5", urlDomain: _fcPubUrl, tokenPrefix: _fcMagicToken.slice(0, 8), path: "/login-verify.html" }, "[ML] step-5: magic link URL composed");
 
+          // ── ML-2.5: Resend suppression-list pre-check ─────────────────────
+          // A hard bounce auto-adds the address to Resend's suppression list.
+          // Any subsequent send attempt is silently dropped by Resend — the SDK
+          // returns ok:true with an emailId but the email is never delivered.
+          // Check BEFORE calling the mailer so we can return emailFailed:true
+          // immediately (and show the "connect directly" UI) instead of falsely
+          // claiming the link was sent.
+          const _resendKeyChk = process.env["RESEND_API_KEY"];
+          if (_resendKeyChk) {
+            try {
+              const _supResp = await fetch(
+                `https://api.resend.com/suppressions/${encodeURIComponent(_fcAEmail)}`,
+                { headers: { Authorization: `Bearer ${_resendKeyChk}` } }
+              );
+              if (_supResp.ok) {
+                const _supData = await _supResp.json() as { email?: string; origin?: string };
+                if (_supData?.email) {
+                  // Address is suppressed — sending would be silently ignored
+                  logger.warn({
+                    step: "ML-2.5-SUPPRESSED",
+                    email: _fcAEmail,
+                    origin: _supData.origin,
+                    tokenPrefix: _fcMagicToken.slice(0, 8),
+                  }, "[ML] step-2.5: email suppressed — delivery impossible, returning emailFailed");
+                  res.json({
+                    success: true,
+                    subscriptionId: planSubscription?.id,
+                    addonSubscriptionId,
+                    activationEmailSent: false,
+                    emailFailed: true,
+                    emailFailReason: "suppressed",
+                  });
+                  return;
+                }
+                // 200 with email field present → suppressed; 404 → not suppressed (good)
+                logger.info({ step: "ML-2.5-OK", email: _fcAEmail }, "[ML] step-2.5: address not suppressed");
+              }
+              // Non-200 response or network error → proceed anyway (suppress check is best-effort)
+            } catch (_supErr) {
+              logger.warn({
+                step: "ML-2.5-ERR",
+                err: (_supErr as Error).message,
+              }, "[ML] step-2.5: suppression check failed (non-fatal, proceeding with send)");
+            }
+          }
+
           // ── ML-3: Call mailer — log transport type before the call ────────
           const _mlTransport = process.env["RESEND_API_KEY"]
             ? "resend-sdk"

@@ -353,11 +353,13 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
     throw new Error("EMAIL_TRANSPORT_MISSING");
   }
 
-  // Centralized transactional sender — override via RESEND_FROM or SMTP_FROM env var
+  // Centralized transactional sender — override via RESEND_FROM or SMTP_FROM env var.
+  // Do NOT fall back to ALERT_EMAIL_FROM: that variable may hold a domain that is
+  // not verified in Resend, causing a synchronous "Invalid from field" error.
   const fromEmail =
     process.env["RESEND_FROM"] ||
     process.env["SMTP_FROM"] ||
-    `FlowPoint <${process.env["ALERT_EMAIL_FROM"] || "noreply@flowpoint.pro"}>`;
+    "FlowPoint <noreply@flowpoint.pro>";
 
   logger.info({
     email,
