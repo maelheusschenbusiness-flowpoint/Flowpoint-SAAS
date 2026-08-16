@@ -1519,58 +1519,99 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     // A successful finalization must never claim that a login email was sent
     // before the account, token and delivery have all completed successfully.
     const _fcActToken = preRegisterToken || intentMeta["pre_register_token"] || "";
+    logger.info({
+      step: "FC-0",
+      intentId: (intentId as string)?.slice(0, 20),
+      intentType,
+      planKey,
+      hasPreRegToken: !!_fcActToken,
+      tokenPrefix:    _fcActToken?.slice(0, 8) || "(none)",
+      hasSessionCookie: !!_fckToken,
+      authenticatedOrgId: _authenticatedOrgId?.slice(0, 30),
+    }, "[FC] finalize-checkout reached activation gate");
+
     if (_fcActToken) {
-      // Track whether the activation DB transaction actually committed.
-      // Only after this flag is set can we safely return success when email delivery fails.
       let _fcActivationCommitted = false;
       try {
           const { pool: _fcActPool } = await import("@workspace/db");
           const { randomBytes: _fcRb } = await import("crypto");
+
+          // ── Step 1: Look up pending_signup ──────────────────────────────
+          logger.info({ step: "FC-1", token: _fcActToken.slice(0, 8) }, "[FC] step-1: querying pending_signups");
           const _fcActC0 = await _fcActPool.connect();
           let _fcSignup: Record<string, string | null> | null = null;
           try {
             const _fcActR0 = await _fcActC0.query(
-              `SELECT email, first_name, last_name, company_name FROM pending_signups
-               WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
+              `SELECT email, first_name, last_name, company_name, consumed_at, expires_at
+               FROM pending_signups
+               WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
               [_fcActToken]
             );
-            _fcSignup = _fcActR0.rows[0] ?? null;
+            const _fcRow = _fcActR0.rows[0] ?? null;
+            logger.info({
+              step: "FC-1-result",
+              found:    !!_fcRow,
+              consumed: _fcRow ? !!_fcRow["consumed_at"] : null,
+              email:    _fcRow?.["email"],
+              expires:  _fcRow?.["expires_at"],
+            }, "[FC] step-1: pending_signup lookup result");
+            _fcSignup = (_fcRow && !_fcRow["consumed_at"]) ? _fcRow : null;
           } finally { _fcActC0.release(); }
 
           if (!_fcSignup) {
-            logger.info({ token: _fcActToken }, "[PublicBilling] finalize: activation skipped — token already consumed");
+            // Token already consumed (webhook or previous finalize call) or not found.
+            // Account already created — return success so checkout-return shows the
+            // correct UI instead of hanging with no HTTP response.
+            logger.info({ step: "FC-1-skip", token: _fcActToken.slice(0, 8) }, "[FC] step-1: token consumed/missing — activation already complete, returning success");
+            res.json({
+              success: true,
+              subscriptionId: planSubscription?.id,
+              addonSubscriptionId,
+              activationEmailSent: false,
+              activationSkipped: true,
+            });
             return;
           }
+
           const _fcAEmail = _fcSignup["email"] ?? _authenticatedOrgId;
-          // Use a proper UUID for organizations.id — email as PK caused SQLSTATE 42804
-          // when organizations.id is UUID-typed. Slug and owner_email remain email-based.
           const { randomUUID: _fcRandUUID } = await import("crypto");
           const _fcAOrgId = _fcRandUUID();
+          logger.info({ step: "FC-2", email: _fcAEmail, newOrgId: _fcAOrgId, planKey, grantTrial, customerId }, "[FC] step-2: identifiers resolved");
 
-          // Self-heal: run DDL OUTSIDE any transaction (auto-commit).
-          // ALTER TABLE inside a BEGIN block poisons the transaction on PgBouncer
-          // (transaction pooling mode) if the DDL is rejected, causing every subsequent
-          // statement to fail with "current transaction is aborted". Run them here, before
-          // the transaction opens, on a dedicated connection so failures are isolated.
+          // ── Step 3: Self-heal DDL (auto-commit, outside transaction) ────
+          logger.info({ step: "FC-3" }, "[FC] step-3: running DDL self-heals on isolated connection");
           {
             const _fcSelfHealC = await _fcActPool.connect();
             try {
-              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name    TEXT`).catch(() => {});
-              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name     TEXT`).catch(() => {});
-              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status        TEXT NOT NULL DEFAULT 'pending'`).catch(() => {});
-              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE`).catch(() => {});
-              await _fcSelfHealC.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at    TIMESTAMPTZ DEFAULT NOW()`).catch(() => {});
-              await _fcSelfHealC.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`).catch(() => {});
-              // ON CONFLICT (email) requires a UNIQUE index — CREATE TABLE IF NOT EXISTS is a no-op
-              // on existing tables so the inline CONSTRAINT is never retroactively added.
-              // This self-heal ensures the unique index exists before every activation attempt.
-              await _fcSelfHealC.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email)`).catch(() => {});
+              const _shRun = async (sql: string, label: string) => {
+                try {
+                  await _fcSelfHealC.query(sql);
+                  logger.info({ step: "FC-3", label, ok: true }, "[FC] self-heal ok");
+                } catch (e) {
+                  logger.warn({ step: "FC-3", label, err: (e as Error).message, code: (e as Record<string,unknown>)["code"] }, "[FC] self-heal warn (non-fatal)");
+                }
+              };
+              await _shRun(`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name     TEXT`, "users.first_name");
+              await _shRun(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name      TEXT`, "users.last_name");
+              await _shRun(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status         TEXT NOT NULL DEFAULT 'pending'`, "users.status");
+              await _shRun(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE`, "users.email_verified");
+              await _shRun(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at     TIMESTAMPTZ DEFAULT NOW()`, "users.updated_at");
+              await _shRun(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`, "orgs.updated_at");
+              // CRITICAL: ON CONFLICT (email) requires a UNIQUE index.
+              // CREATE TABLE IF NOT EXISTS is a no-op on existing tables, so the inline
+              // CONSTRAINT is never retroactively applied to pre-existing tables.
+              await _shRun(`CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email)`, "users_email_unique");
             } finally { _fcSelfHealC.release(); }
           }
 
+          // ── Step 4: Activation transaction ──────────────────────────────
+          logger.info({ step: "FC-4", email: _fcAEmail, orgId: _fcAOrgId, planKey, customerId }, "[FC] step-4: BEGIN activation transaction");
           const _fcActTxC = await _fcActPool.connect();
           try {
             await _fcActTxC.query("BEGIN");
+
+            // 4a — upsert user
+            logger.info({ step: "FC-4a", email: _fcAEmail }, "[FC] step-4a: INSERT INTO users");
             const _fcUsr = await _fcActTxC.query<{ id: string }>(
               `INSERT INTO users (email, first_name, last_name, auth_provider, email_verified, status)
                VALUES ($1,$2,$3,'magic_link',TRUE,'active')
@@ -1581,7 +1622,11 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
               [_fcAEmail, _fcSignup["first_name"] ?? "", _fcSignup["last_name"] ?? ""]
             );
             const _fcUserId = _fcUsr.rows[0]?.id;
-            if (!_fcUserId) throw new Error("upsert user failed for " + _fcAEmail);
+            logger.info({ step: "FC-4a-ok", userId: _fcUserId }, "[FC] step-4a: user upserted");
+            if (!_fcUserId) throw new Error("upsert user returned no id for " + _fcAEmail);
+
+            // 4b — upsert organization
+            logger.info({ step: "FC-4b", orgId: _fcAOrgId }, "[FC] step-4b: INSERT INTO organizations");
             await _fcActTxC.query(
               `INSERT INTO organizations
                  (id,name,slug,owner_user_id,status,plan,subscription_status,owner_email,stripe_customer_id,trial_ends_at)
@@ -1598,26 +1643,55 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                 trialEndUnix !== undefined ? new Date(trialEndUnix * 1000).toISOString() : null,
               ]
             );
+            logger.info({ step: "FC-4b-ok" }, "[FC] step-4b: organization upserted");
+
+            // 4c — upsert membership
+            logger.info({ step: "FC-4c" }, "[FC] step-4c: INSERT INTO organization_members");
             await _fcActTxC.query(
               `INSERT INTO organization_members (organization_id,user_id,role,status)
                VALUES($1,$2,'owner','active')
                ON CONFLICT(organization_id,user_id) DO UPDATE SET status='active',role='owner',updated_at=NOW()`,
               [_fcAOrgId, _fcUserId]
             );
+            logger.info({ step: "FC-4c-ok" }, "[FC] step-4c: organization_members upserted");
+
+            // 4d — consume pending_signup token
+            logger.info({ step: "FC-4d" }, "[FC] step-4d: UPDATE pending_signups SET consumed_at");
             await _fcActTxC.query(
               `UPDATE pending_signups SET consumed_at=NOW() WHERE token=$1 AND consumed_at IS NULL`,
               [_fcActToken]
             );
+            logger.info({ step: "FC-4d-ok" }, "[FC] step-4d: pending_signup consumed");
+
+            // 4e — commit
+            logger.info({ step: "FC-4e" }, "[FC] step-4e: COMMIT");
             await _fcActTxC.query("COMMIT");
-            _fcActivationCommitted = true; // flag: account is live in DB from this point on
-            logger.info({ orgId: _fcAOrgId, userId: _fcUserId }, "[PublicBilling] finalize: new user/org activated");
+            _fcActivationCommitted = true;
+            logger.info({ step: "FC-4-COMMITTED", orgId: _fcAOrgId, userId: _fcUserId, plan: planKey }, "[FC] TRANSACTION COMMITTED — user + org activated");
+
           } catch (_fcActErr) {
             await _fcActTxC.query("ROLLBACK").catch(() => {});
-            logger.error({ _fcActErr }, "[PublicBilling] finalize: activation transaction failed");
+            // Log the full PostgreSQL error so we can identify the exact failing statement
+            const _pge = _fcActErr as Record<string, unknown>;
+            logger.error({
+              step:       "FC-4-FAIL",
+              message:    _pge?.["message"],
+              code:       _pge?.["code"],
+              detail:     _pge?.["detail"],
+              hint:       _pge?.["hint"],
+              constraint: _pge?.["constraint"],
+              table:      _pge?.["table"],
+              column:     _pge?.["column"],
+              schema:     _pge?.["schema"],
+              where:      _pge?.["where"],
+              routine:    _pge?.["routine"],
+              position:   _pge?.["position"],
+            }, "[FC] TRANSACTION ROLLED BACK — full PG error above");
             throw _fcActErr;
           } finally { _fcActTxC.release(); }
 
-          // Send activation magic link (24h TTL)
+          // ── Step 5: Insert magic link token ─────────────────────────────
+          logger.info({ step: "FC-5", email: _fcAEmail }, "[FC] step-5: inserting magic_link_token");
           const _fcMagicToken = _fcRb(32).toString("hex");
           const _fcTokC = await _fcActPool.connect();
           try {
@@ -1627,6 +1701,9 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
               [_fcMagicToken, _fcAEmail]
             );
           } finally { _fcTokC.release(); }
+
+          // ── Step 6: Send activation email ───────────────────────────────
+          logger.info({ step: "FC-6", email: _fcAEmail, isTrial: grantTrial }, "[FC] step-6: sending activation email");
           const _fcPubUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
           const { mailer: _fcMailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
           if (!_fcMailer) {
@@ -1640,9 +1717,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
               isTrial:      grantTrial,
           });
           if (!_fcMailResult?.ok) {
-            // Email failed to deliver but the account IS already created (tx committed).
-            // Do NOT return an error — the user just needs to log in manually.
-            logger.warn({ email: _fcAEmail, mailErr: _fcMailResult?.error }, "[PublicBilling] finalize: activation email failed (account already created — user must log in manually)");
+            logger.warn({ step: "FC-6-warn", email: _fcAEmail, mailErr: _fcMailResult?.error }, "[FC] step-6: activation email failed — account already created, user must log in manually");
             res.json({
               success: true,
               subscriptionId: planSubscription.id,
@@ -1652,16 +1727,11 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             });
             return;
           }
-            logger.info({ email: _fcAEmail }, "[PublicBilling] finalize: activation magic link sent");
+          logger.info({ step: "FC-6-ok", email: _fcAEmail }, "[FC] step-6: activation magic link sent");
+
       } catch (_fcActTopErr) {
-        logger.error({ _fcActTopErr }, "[PublicBilling] finalize: pre-reg activation/link delivery failed");
-        // Return success ONLY if the DB transaction definitely committed (_fcActivationCommitted=true).
-        // Using an explicit flag (not message-text heuristics) avoids false-success when a DB error
-        // containing "email", "mail", or "deliver" in the column/constraint name causes the
-        // activation transaction to fail and rollback without creating the user/org.
+        logger.error({ step: "FC-TOP-FAIL", err: (_fcActTopErr as Error)?.message }, "[FC] top-level activation catch");
         if (_fcActivationCommitted) {
-          // Account IS live in DB — only the email delivery step failed.
-          // User can log in manually once the magic link is retried.
           res.json({
             success: true,
             subscriptionId: planSubscription.id ?? undefined,
@@ -1670,7 +1740,6 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             emailFailed: true,
           });
         } else {
-          // Activation transaction did not commit — account was NOT created.
           res.status(502).json({
             error: "Votre paiement est confirmé, mais l'activation du compte a échoué. Contactez le support.",
             code: "activation_failed",
@@ -1679,7 +1748,6 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         return;
       }
     }
-
     res.json({ success: true, subscriptionId: planSubscription.id, addonSubscriptionId, activationEmailSent: !!_fcActToken });
   } catch (err) {
     logger.error({ err }, "[PublicBilling] finalize-checkout failed");
