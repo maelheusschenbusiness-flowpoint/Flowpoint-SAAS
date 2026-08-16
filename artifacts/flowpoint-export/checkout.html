@@ -551,8 +551,13 @@
       var keys       = Object.keys(cart.addons);
       var allOneTime = keys.every(function (k) { return addonMap[k] && addonMap[k].oneTime; });
 
-      /* Crédits IA seuls, ou abonné existant ajoutant des add-ons → pas de plan requis */
-      if (allOneTime || cart.fromDashboard) {
+      /* Crédits IA seuls, ou abonné existant ajoutant des add-ons → pas de plan requis.
+         isSubscribedFromCache: vérifie l'état local pour les abonnés actifs arrivant via
+         n'importe quel chemin (pas seulement fromDashboard). */
+      var _dsCache = null;
+      try { _dsCache = JSON.parse(localStorage.getItem('fp_dashboard_state') || 'null'); } catch(e) {}
+      var isSubscribedFromCache = _dsCache && (_dsCache.status === 'active' || _dsCache.status === 'trialing' || _dsCache.status === 'past_due');
+      if (allOneTime || cart.fromDashboard || isSubscribedFromCache) {
         await refreshQuote();
         return;
       }

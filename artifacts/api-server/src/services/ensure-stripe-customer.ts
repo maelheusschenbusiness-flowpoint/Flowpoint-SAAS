@@ -162,7 +162,36 @@ async function _runWithLock(
 
     // CRITICAL: normalise empty-string → null.
     // Some rows have stripe_customer_id='' (not NULL); `??` does NOT treat '' as nullish.
-    const rawId = settings?.stripeCustomerId ?? hint?.stripeCustomerId ?? null;
+    let rawId = settings?.stripeCustomerId ?? hint?.stripeCustomerId ?? null;
+
+    // ── UUID orgId fallback (auth-migration v2) ───────────────────────────
+    // After migration, orgId is a UUID but org_settings PK is still the owner
+    // email. If the candidate is still null here, try fetching the legacy
+    // org_settings row keyed by owner_email — prevents creating a duplicate
+    // Stripe customer when the original was stored under the email key.
+    if (!rawId?.trim()) {
+      try {
+        const orgEmailRow = await client.query(
+          `SELECT owner_email FROM organizations WHERE id::text = $1 LIMIT 1`,
+          [orgId],
+        );
+        const ownerEmail = (orgEmailRow.rows[0] as { owner_email?: string } | undefined)?.owner_email;
+        if (ownerEmail && ownerEmail !== orgId) {
+          const emailSettings = await loadOrgSettings(ownerEmail, client).catch(() => null);
+          const legacyId = emailSettings?.stripeCustomerId;
+          if (legacyId && legacyId.trim()) {
+            rawId = legacyId.trim();
+            logger.info(
+              { orgId, ownerEmail, legacyId },
+              "[ESC] UUID→email fallback: found customer in legacy org_settings — reusing to avoid duplicate",
+            );
+          }
+        }
+      } catch (fallbackErr) {
+        logger.warn({ fallbackErr, orgId }, "[ESC] UUID→email fallback lookup failed (non-fatal)");
+      }
+    }
+
     const candidateId: string | null = rawId && rawId.trim() ? rawId.trim() : null;
 
     // ── Step 2: Validate existing customer ────────────────────────────────

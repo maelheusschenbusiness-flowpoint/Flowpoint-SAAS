@@ -7158,29 +7158,19 @@ body.fp-ai-open::after {
 }
 
 /* ── 10. Skeleton loader ─────────────────────────────────────────────── */
-/* Slide keyframe used for ALL skeleton/shimmer blocks (defined here once) */
+/* Subtle pulse keyframe — no horizontal wave, just a slow opacity breath */
 @keyframes fpSkeleton {
-  0%   { background-position: 200% center; }
-  100% { background-position: -200% center; }
+  0%, 100% { opacity: 0.45; }
+  50%       { opacity: 0.65; }
 }
 .fp-skeleton {
-  background: linear-gradient(90deg,
-    rgba(255,255,255,0.04) 25%,
-    rgba(255,255,255,0.09) 50%,
-    rgba(255,255,255,0.04) 75%
-  );
-  background-size: 200% 100%;
-  animation: fpSkeleton 2.2s ease-in-out infinite;
+  background: rgba(255,255,255,0.06);
+  animation: fpSkeleton 2.8s ease-in-out infinite;
   border-radius: 6px;
 }
 [data-theme="light"] .fp-skeleton {
-  background: linear-gradient(90deg,
-    rgba(0,0,0,0.04) 25%,
-    rgba(0,0,0,0.10) 50%,
-    rgba(0,0,0,0.04) 75%
-  );
-  background-size: 200% 100%;
-  animation: fpSkeleton 2.2s ease-in-out infinite;
+  background: rgba(0,0,0,0.07);
+  animation: fpSkeleton 2.8s ease-in-out infinite;
 }
 .fp-skeleton-text  { height: 12px; margin-bottom: 8px; }
 .fp-skeleton-title { height: 20px; width: 60%; margin-bottom: 12px; }

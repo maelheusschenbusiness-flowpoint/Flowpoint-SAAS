@@ -169,12 +169,42 @@
             }
             return null;
           }
-          console.warn('[FP-BACKEND-AUTH]', _ts, 'Foreground 401 on', path, '— clearing session and redirecting.');
+          console.warn('[FP-BACKEND-AUTH]', _ts, 'Foreground 401 on', path, '— attempting session-restore before redirect.');
           _fp401BackgroundCount = 0;
           if (_fp401ConfirmTimer) { clearTimeout(_fp401ConfirmTimer); _fp401ConfirmTimer = null; }
-          _clearAuth();
-          window.location.replace('/login.html');
-          return null;
+          // Attempt session-restore (cookie → new Bearer) before giving up.
+          // This mirrors the dashboard.js retry logic and prevents refresh/Back → login.
+          var _existingTok = _sessionToken();
+          var _srHeaders = { 'Content-Type': 'application/json' };
+          if (_existingTok) _srHeaders['Authorization'] = 'Bearer ' + _existingTok;
+          return fetch('/api/auth/session-restore', {
+            method: 'POST', credentials: 'include',
+            headers: _srHeaders, body: '{}',
+          }).then(function(sr) {
+            if (sr.ok) {
+              return sr.json().then(function(srData) {
+                if (srData && srData.token) {
+                  try { sessionStorage.setItem('fp_session_token', srData.token); } catch(_) {}
+                }
+                // Retry original request once with fresh token
+                var _rHdrs = Object.assign({'Content-Type':'application/json'}, _authHeaders(), (opts && opts.headers) || {});
+                return fetch(_path, Object.assign({}, opts || {}, { credentials: 'include', headers: _rHdrs }))
+                  .then(function(rr) {
+                    if (rr.status === 401) { _clearAuth(); window.location.replace('/login.html'); return null; }
+                    if (!rr.ok) throw new Error('HTTP ' + rr.status + ' ' + path);
+                    return rr.json();
+                  });
+              });
+            }
+            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed — redirecting to login.');
+            _clearAuth();
+            window.location.replace('/login.html');
+            return null;
+          }).catch(function() {
+            _clearAuth();
+            window.location.replace('/login.html');
+            return null;
+          });
         }
         if (!(opts && opts.backgroundPoll)) { _fp401BackgroundCount = 0; }
         if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
