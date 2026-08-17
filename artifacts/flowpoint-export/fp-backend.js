@@ -702,10 +702,42 @@
           if (typeof window.render === 'function') window.render();
         }
       } catch (_) { /* non-fatal — optimistic update already applied */ }
+      // Also reload payment methods — the Stripe webhook fires after plan changes,
+      // which can also attach/update the payment method on the subscription.
+      try {
+        var pmRefresh = await apiFetch('/api/billing/payment-methods', { force: true });
+        if (pmRefresh && Array.isArray(pmRefresh.paymentMethods) && window.STATE) {
+          window.STATE.billing = Object.assign({}, window.STATE.billing || {}, { paymentMethods: pmRefresh.paymentMethods });
+          if (typeof window.render === 'function') window.render();
+        }
+      } catch (_) { /* non-fatal */ }
       if (typeof window.showToast === 'function') {
         window.showToast('success', 'Plan mis à jour : ' + (data.plan || data.subscriptionStatus || ''));
       }
     });
+
+    // ── Stripe Portal return — reload payment methods when tab regains focus ──
+    // The Stripe Customer Portal opens in a new tab; when the user closes it and
+    // returns to the dashboard, we must re-fetch payment methods so the UI is fresh.
+    (function () {
+      var _pmLastReload = 0;
+      function _reloadPaymentMethods() {
+        var now = Date.now();
+        if (now - _pmLastReload < 10000) return; // debounce 10s
+        _pmLastReload = now;
+        if (!window.STATE || !window.apiFetch) return;
+        apiFetch('/api/billing/payment-methods', { force: true }).then(function(r) {
+          if (r && Array.isArray(r.paymentMethods) && window.STATE) {
+            window.STATE.billing = Object.assign({}, window.STATE.billing || {}, { paymentMethods: r.paymentMethods });
+            if (typeof window.render === 'function') window.render();
+          }
+        }).catch(function() {});
+      }
+      document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) _reloadPaymentMethods();
+      });
+      window.addEventListener('focus', _reloadPaymentMethods);
+    })();
 
     // ── Message équipe ──
     document.addEventListener('fp:team:message', function (e) {
