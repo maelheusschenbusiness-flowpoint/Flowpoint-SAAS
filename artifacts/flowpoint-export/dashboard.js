@@ -54089,9 +54089,9 @@ function renderAlertsCenter() {
         ['Plan récupération rankings', 'Analyser les concurrents', 'Rapport SEO PDF'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Alertes SEO actives', displayStat(null, '4'), PREVIEW_MODE ? 'dont 2 critiques' : 'Données de classement indisponibles', 'neutral')}
-        ${statCard('Mots-clés en baisse', displayStat(null, '3'), PREVIEW_MODE ? 'cette semaine' : 'Données de classement indisponibles', 'neutral')}
-        ${statCard('Mots-clés en hausse', displayStat(null, '1'), PREVIEW_MODE ? 'optimisation réussie' : 'Données de classement indisponibles', 'neutral')}
+        ${statCard('Alertes SEO actives', PREVIEW_MODE ? '4' : (_kwRD.length > 0 ? String(_kwRD.filter(k=>(k.position_change||0)!==0).length) : '—'), PREVIEW_MODE ? 'dont 2 critiques' : (_kwRD.length > 0 ? 'positions modifiées' : 'Données de classement indisponibles'), 'neutral')}
+        ${statCard('Mots-clés en baisse', PREVIEW_MODE ? '3' : (_kwRD.length > 0 ? String(_kwRD.filter(k=>(k.position_change||0)<0).length) : '—'), PREVIEW_MODE ? 'cette semaine' : (_kwRD.length > 0 ? 'cette période' : 'Données de classement indisponibles'), 'neutral')}
+        ${statCard('Mots-clés en hausse', PREVIEW_MODE ? '1' : (_kwRD.length > 0 ? String(_kwRD.filter(k=>(k.position_change||0)>0).length) : '—'), PREVIEW_MODE ? 'optimisation réussie' : (_kwRD.length > 0 ? 'cette période' : 'Données de classement indisponibles'), 'neutral')}
         ${statCard('Trafic organique', displayStat(STATE.overview?.sessions ? '—' : null, '-23% lundi'), PREVIEW_MODE ? 'récupéré mardi' : 'Connectez analytics', 'neutral')}
       </div>
 
@@ -54771,18 +54771,25 @@ function renderAlertsCenter() {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">🧭 Centres d\'alerte spécialisés</div>
         <div style="display:flex;flex-direction:column;gap:7px">
-          ${[
-            { label:'Incidents actifs',     sub:'incidents',  icon:'🚨', count:2,  sev:'critical', desc:'2 incidents en cours' },
-            { label:'Alertes SEO',          sub:'seo',        icon:'🔍', count:4,  sev:'warning',  desc:'3 positions perdues' },
-            { label:'Performance & Uptime', sub:'performance',icon:'⚡', count:3,  sev:'critical', desc:'1 site DOWN · 2 lents' },
-            { label:'Conversion & UX',      sub:'conversion', icon:'🎯', count:5,  sev:'critical', desc:PREVIEW_MODE?'Perte -3640€ ce mois':'Alertes conversion actives' },
-            { label:'Local SEO & GBP',      sub:'local',      icon:'📍', count:4,  sev:'warning',  desc:(STATE.gbp?.unansweredReviews != null ? STATE.gbp.unansweredReviews+' avis sans réponse' : PREVIEW_MODE ? '14 avis sans réponse' : 'Avis GBP en attente') },
-            { label:'Concurrents',          sub:'competitor', icon:'🏴', count:4,  sev:'warning',  desc:(STATE.competitors&&STATE.competitors.length>0?escHtml(STATE.competitors[0].name||'Concurrent #1'):'Concurrent') + ' en progression' },
-            { label:'IA Threat Lab',        sub:'ai',         icon:'🔮', count:5,  sev:'critical', desc:'5 risques prédits' },
-            { label:'Quotas & Limites',       sub:'quotas',     icon:'📊', count:1,  sev:'warning',  desc:'2 sites proches du seuil' },
-            { label:'Sécurité & SSL',         sub:'security',   icon:'🔒', count:2,  sev:'warning',  desc:'1 certificat expire dans 14j' },
-            { label:'Rapport d’alertes',      sub:'report',     icon:'📋', count:0,  sev:'info',     desc:'Synthèse hebdomadaire disponible' },
-          ].map(n => {
+          ${(()=>{
+            const _navInc  = (STATE.alertEvents||[]).filter(ev=>!ev.resolvedAt&&ev.status!=='resolved'&&(ev.type==='monitor_down'||ev.type==='latency'||ev.type==='uptime')).length;
+            const _navSeoD = (STATE.keywords||STATE.keywordData?.keywords||[]).filter(k=>(k.position_change||0)<0).length;
+            const _navPerf = (STATE.monitors||[]).filter(m=>m.status!=='up').length;
+            const _navGbp  = STATE.gbp?.unansweredReviews ?? 0;
+            const _navCmp  = (STATE.competitors||[]).length;
+            return [
+              { label:'Incidents actifs',     sub:'incidents',  icon:'🚨', count:PREVIEW_MODE?2:_navInc,  sev:(!PREVIEW_MODE&&_navInc===0)?'info':'critical',  desc:PREVIEW_MODE?'2 incidents en cours':(_navInc>0?_navInc+' incident'+(_navInc>1?'s':'')+' actif'+(_navInc>1?'s':''):'Aucun incident actif') },
+              { label:'Alertes SEO',          sub:'seo',        icon:'🔍', count:PREVIEW_MODE?4:_navSeoD, sev:(!PREVIEW_MODE&&_navSeoD===0)?'info':'warning',   desc:PREVIEW_MODE?'3 positions perdues':(_navSeoD>0?_navSeoD+' position'+(_navSeoD>1?'s perdues':' perdue'):'Données indisponibles') },
+              { label:'Performance & Uptime', sub:'performance',icon:'⚡', count:PREVIEW_MODE?3:_navPerf, sev:(!PREVIEW_MODE&&_navPerf===0)?'info':'critical',  desc:PREVIEW_MODE?'1 site DOWN · 2 lents':(_navPerf>0?_navPerf+' monitor'+(_navPerf>1?'s':'')+' hors ligne':'Tous les monitors sont UP') },
+              { label:'Conversion & UX',      sub:'conversion', icon:'🎯', count:PREVIEW_MODE?5:0,        sev:PREVIEW_MODE?'critical':'info',                   desc:PREVIEW_MODE?'Perte -3640€ ce mois':'Alertes conversion actives' },
+              { label:'Local SEO & GBP',      sub:'local',      icon:'📍', count:PREVIEW_MODE?4:_navGbp,  sev:(!PREVIEW_MODE&&_navGbp===0)?'info':'warning',   desc:(STATE.gbp?.unansweredReviews != null ? STATE.gbp.unansweredReviews+' avis sans réponse' : PREVIEW_MODE ? '14 avis sans réponse' : 'Avis GBP en attente') },
+              { label:'Concurrents',          sub:'competitor', icon:'🏴', count:PREVIEW_MODE?4:_navCmp,  sev:'warning',                                        desc:(STATE.competitors&&STATE.competitors.length>0?escHtml(STATE.competitors[0].name||'Concurrent #1'):'Concurrent') + ' en progression' },
+              { label:'IA Threat Lab',        sub:'ai',         icon:'🔮', count:PREVIEW_MODE?5:0,        sev:PREVIEW_MODE?'critical':'info',                   desc:PREVIEW_MODE?'5 risques prédits':'Analyse IA indisponible' },
+              { label:'Quotas & Limites',     sub:'quotas',     icon:'📊', count:PREVIEW_MODE?1:0,        sev:PREVIEW_MODE?'warning':'info',                    desc:PREVIEW_MODE?'2 sites proches du seuil':'Usage dans les limites' },
+              { label:'Sécurité & SSL',       sub:'security',   icon:'🔒', count:PREVIEW_MODE?2:0,        sev:PREVIEW_MODE?'warning':'info',                    desc:PREVIEW_MODE?'1 certificat expire dans 14j':'Aucune alerte SSL' },
+              { label:'Rapport d’alertes',sub:'report',    icon:'📋', count:0,                        sev:'info',                                           desc:'Synthèse hebdomadaire disponible' },
+            ];
+          })().map(n => {
             const nc = n.sev === 'critical' ? '#ef4444' : '#f59e0b';
             return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
               <span style="font-size:16px">${n.icon}</span>

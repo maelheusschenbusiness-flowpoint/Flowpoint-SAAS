@@ -862,18 +862,69 @@ router.post("/admin/purge-ghost-accounts", async (req: Request, res: Response): 
 });
 
 // ── POST /api/admin/purge-all-clients ────────────────────────────────────────
+// ⚠️  TEMPORARY ROUTE — delete this entire endpoint once the initial purge
+//     has been verified in production. Do not leave it deployed permanently.
+//
 // Permanently deletes ALL client accounts except the listed exempt emails.
 // MUST be called with dry_run:true first to preview what will be deleted.
-// Auth: x-admin-key header required.
+// Auth: x-admin-key header required (server returns 503 if ADMIN_KEY missing).
+//
+// Rate limits: 1 dry-run call per minute · 1 real purge per 4 hours.
+// All calls (including dry-runs) are logged to stdout with caller IP.
+
+const _purgeRateBucket = new Map<string, { count: number; firstAt: number }>();
+
+function checkPurgeRate(isDryRun: boolean): { allowed: boolean; retryAfterSec: number } {
+  const windowMs = isDryRun ? 60_000 : 4 * 3_600_000; // 1 min / 4 h
+  const key      = isDryRun ? "purge:dry" : "purge:real";
+  const now      = Date.now();
+  const existing = _purgeRateBucket.get(key);
+  if (!existing || now - existing.firstAt >= windowMs) {
+    _purgeRateBucket.set(key, { count: 1, firstAt: now });
+    return { allowed: true, retryAfterSec: 0 };
+  }
+  existing.count++;
+  return {
+    allowed: existing.count <= 1,
+    retryAfterSec: Math.ceil((windowMs - (now - existing.firstAt)) / 1000),
+  };
+}
+
+// System emails that are ALWAYS exempt — the caller cannot remove them.
+const PURGE_SYSTEM_EMAILS = ["support@flowpoint.pro"];
+
 router.post("/admin/purge-all-clients", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
 
-  const {
-    dry_run = true,
-    exempt_emails = ["support@flowpoint.pro"],
-  } = req.body as { dry_run?: boolean; exempt_emails?: string[] };
+  const { dry_run, exempt_emails = [] } = req.body as { dry_run?: unknown; exempt_emails?: string[] };
 
-  const normalizedExempt = exempt_emails.map((e: string) => e.trim().toLowerCase());
+  // Explicit boolean `false` is the ONLY value that triggers a real purge.
+  // Strings like "false", null, undefined, missing field → treated as dry_run.
+  const isDryRun = dry_run !== false;
+
+  // Per-bucket rate limit (separate for dry vs real).
+  const rateCheck = checkPurgeRate(isDryRun);
+  if (!rateCheck.allowed) {
+    res.status(429).json({ ok: false, error: `Rate limited — retry after ${rateCheck.retryAfterSec}s` });
+    return;
+  }
+
+  // Mandatory audit log — every call, even dry-runs.
+  const callerIp =
+    (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim() ||
+    req.socket.remoteAddress ||
+    "unknown";
+  console.warn(
+    `[ADMIN-PURGE] dry_run=${isDryRun} ip=${callerIp} at=${new Date().toISOString()}` +
+    ` caller_exempt_count=${Array.isArray(exempt_emails) ? exempt_emails.length : 0}`
+  );
+
+  // System emails are always added to the exempt list regardless of what the
+  // caller sends. Prevents accidental deletion of FlowPoint's own accounts.
+  const userExempt = Array.isArray(exempt_emails)
+    ? exempt_emails.map((e: string) => e.trim().toLowerCase()).filter(Boolean)
+    : [];
+  const normalizedExempt = [...new Set([...PURGE_SYSTEM_EMAILS, ...userExempt])];
 
   const client = await pool.connect();
   try {
@@ -900,7 +951,7 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
     );
     const orgIdsToDelete = orgsToDelete.rows.map(r => r.id);
 
-    if (dry_run) {
+    if (isDryRun) {
       res.json({
         ok: true,
         dry_run: true,
@@ -911,7 +962,7 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
           org_count: orgIdsToDelete.length,
         },
         exempt: normalizedExempt,
-        message: "Dry-run — nothing deleted. POST with dry_run:false to execute.",
+        message: "Dry-run — nothing deleted. POST with dry_run:false (boolean) to execute.",
       });
       return;
     }
@@ -920,6 +971,12 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
       res.json({ ok: true, deleted: {}, message: "Nothing to delete — all accounts are exempt." });
       return;
     }
+
+    // Log exactly what is about to be irreversibly deleted.
+    console.warn(
+      `[ADMIN-PURGE] EXECUTING real purge — ${emailsToDelete.length} accounts, ` +
+      `${orgIdsToDelete.length} orgs. No Stripe objects will be modified.`
+    );
 
     // ── Delete all data in FK-safe order ──────────────────────────────────────
     await client.query("BEGIN");
@@ -937,10 +994,10 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
     };
 
     // Sessions & tokens (by email)
-    await safeDelete("user_sessions",         "lower(email)", emailsToDelete);
-    await safeDelete("magic_link_tokens",     "lower(email)", emailsToDelete);
-    await safeDelete("pending_signups",       "lower(email)", emailsToDelete);
-    await safeDelete("invitations",           "lower(email)", emailsToDelete);
+    await safeDelete("user_sessions",     "lower(email)", emailsToDelete);
+    await safeDelete("magic_link_tokens", "lower(email)", emailsToDelete);
+    await safeDelete("pending_signups",   "lower(email)", emailsToDelete);
+    await safeDelete("invitations",       "lower(email)", emailsToDelete);
 
     // Org-scoped business data (by org UUID)
     for (const tbl of [
@@ -963,16 +1020,19 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
 
     await client.query("COMMIT");
 
+    console.warn(`[ADMIN-PURGE] COMPLETE — ${emailsToDelete.length} accounts permanently deleted.`);
+
     res.json({
       ok: true,
       dry_run: false,
       deleted,
       emails_purged: emailsToDelete,
       org_ids_purged: orgIdsToDelete,
-      message: "All client accounts permanently deleted.",
+      message: "All client accounts permanently deleted. No Stripe objects were modified.",
     });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
+    console.error("[ADMIN-PURGE] ERROR — transaction rolled back:", err);
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   } finally {
     client.release();
