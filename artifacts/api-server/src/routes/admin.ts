@@ -861,6 +861,124 @@ router.post("/admin/purge-ghost-accounts", async (req: Request, res: Response): 
   }
 });
 
+// ── POST /api/admin/purge-all-clients ────────────────────────────────────────
+// Permanently deletes ALL client accounts except the listed exempt emails.
+// MUST be called with dry_run:true first to preview what will be deleted.
+// Auth: x-admin-key header required.
+router.post("/admin/purge-all-clients", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const {
+    dry_run = true,
+    exempt_emails = ["support@flowpoint.pro"],
+  } = req.body as { dry_run?: boolean; exempt_emails?: string[] };
+
+  const normalizedExempt = exempt_emails.map((e: string) => e.trim().toLowerCase());
+
+  const client = await pool.connect();
+  try {
+    // ── Find all emails NOT in the exempt list ────────────────────────────────
+    const usersToDelete = await client.query<{ email: string }>(
+      `SELECT DISTINCT email FROM users
+       WHERE email IS NOT NULL
+         AND lower(email) <> ALL($1::text[])
+       UNION
+       SELECT DISTINCT lower(o.owner_email) AS email
+       FROM organizations o
+       WHERE o.owner_email IS NOT NULL
+         AND lower(o.owner_email) <> ALL($1::text[])
+       ORDER BY email`,
+      [normalizedExempt]
+    );
+
+    const emailsToDelete = usersToDelete.rows.map(r => r.email);
+    const orgsToDelete = await client.query<{ id: string }>(
+      `SELECT DISTINCT o.id FROM organizations o
+       WHERE lower(o.owner_email) <> ALL($1::text[])
+          OR o.owner_email IS NULL`,
+      [normalizedExempt]
+    );
+    const orgIdsToDelete = orgsToDelete.rows.map(r => r.id);
+
+    if (dry_run) {
+      res.json({
+        ok: true,
+        dry_run: true,
+        would_delete: {
+          emails: emailsToDelete,
+          org_ids: orgIdsToDelete,
+          email_count: emailsToDelete.length,
+          org_count: orgIdsToDelete.length,
+        },
+        exempt: normalizedExempt,
+        message: "Dry-run — nothing deleted. POST with dry_run:false to execute.",
+      });
+      return;
+    }
+
+    if (emailsToDelete.length === 0 && orgIdsToDelete.length === 0) {
+      res.json({ ok: true, deleted: {}, message: "Nothing to delete — all accounts are exempt." });
+      return;
+    }
+
+    // ── Delete all data in FK-safe order ──────────────────────────────────────
+    await client.query("BEGIN");
+
+    const deleted: Record<string, number> = {};
+    const safeDelete = async (table: string, col: string, vals: string[]) => {
+      if (!vals.length) { deleted[table] = 0; return; }
+      const r = await client.query(`DELETE FROM ${table} WHERE ${col} = ANY($1)`, [vals]);
+      deleted[table] = (r.rowCount ?? 0);
+    };
+    const safeDeleteUUID = async (table: string, col: string, vals: string[]) => {
+      if (!vals.length) { deleted[table + "_uuid"] = 0; return; }
+      const r = await client.query(`DELETE FROM ${table} WHERE ${col}::text = ANY($1)`, [vals]);
+      deleted[table + "_uuid"] = (r.rowCount ?? 0);
+    };
+
+    // Sessions & tokens (by email)
+    await safeDelete("user_sessions",         "lower(email)", emailsToDelete);
+    await safeDelete("magic_link_tokens",     "lower(email)", emailsToDelete);
+    await safeDelete("pending_signups",       "lower(email)", emailsToDelete);
+    await safeDelete("invitations",           "lower(email)", emailsToDelete);
+
+    // Org-scoped business data (by org UUID)
+    for (const tbl of [
+      "audits","monitors","tracked_keywords","audit_schedules",
+      "alert_rules","alert_events","missions","mission_steps",
+      "reports","report_schedules","ai_usage_logs","ai_monthly_usage",
+      "org_addons","activity_events","user_notifications",
+      "team_members","team_channels","team_messages",
+      "workflow_runs","automation_workflows",
+      "tracked_keywords_history","psi_cache","google_tokens",
+      "google_oauth_states","org_settings",
+    ]) {
+      await safeDeleteUUID(tbl, "org_id", orgIdsToDelete).catch(() => {});
+    }
+
+    // Core identity tables
+    await safeDeleteUUID("org_members",   "org_id", orgIdsToDelete);
+    await safeDeleteUUID("organizations", "id",     orgIdsToDelete);
+    await safeDelete("users",             "lower(email)", emailsToDelete);
+
+    await client.query("COMMIT");
+
+    res.json({
+      ok: true,
+      dry_run: false,
+      deleted,
+      emails_purged: emailsToDelete,
+      org_ids_purged: orgIdsToDelete,
+      message: "All client accounts permanently deleted.",
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
 // ── POST /api/admin/run-trial-cron — trigger trial-ending check immediately ──
 router.post("/admin/run-trial-cron", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
