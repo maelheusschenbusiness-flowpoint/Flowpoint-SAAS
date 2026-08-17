@@ -1731,13 +1731,43 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
   const _SIMPLE_RE = /^(bonjour|bonsoir|salut|hello|hi|merci|ça va|ok|oui|non|d'accord|pas de problème|super|parfait|génial|cool|thanks|thank you|👍|🙏|😊)\s*[!?.]?$/i;
   const isSimpleGreeting = typeof message === "string" && _SIMPLE_RE.test(message.trim());
 
+  // ── CR-11: SIMPLE_KNOWLEDGE — general web/SEO concept questions, no org data needed ──
+  // Pattern: starts with a knowledge-seeking phrase AND has no personal-context reference
+  // ("mon site", "notre", "mes", etc.). Capped at 20 words to exclude multi-part questions.
+  // These bypass context build AND the tool loop — same as simple greetings.
+  const _KNOWLEDGE_START_RE = /^(qu[''']est[- ]ce\s+(que\s+|qu[''']|c[''']est\s+)?|c[''']est\s+quoi\s+|que\s+signifie[nt]?\s+|comment\s+fonctionne[nt]?\s+|pourquoi\s+\w|explique[zmr]?-?moi?\s+|définition\s+(de\s+)?|comment\s+(se\s+)?calcule[nt]?\s+|qu[''']appelle-?t-?on\s+|how\s+does\s+|what\s+is\s+|what[''']s\s+|why\s+is\s+|explain\s+|define\s+|what\s+does\s+)/i;
+  const _PERSONAL_CTX_RE   = /\b(mon\s+site|notre\s+site|mes\s+|notre\s+|ma\s+|nôtre|nos\s+|chez\s+nous|pour\s+nous|mon\s+seo|notre\s+seo|mon\s+audit|mon\s+domaine|notre\s+domaine|mon\s+url|notre\s+url|ici\b|ce\s+site|cette\s+page|cette\s+url|show\s+me|give\s+me|my\s+site|my\s+|our\s+|we\s+have|i\s+have|j[''']ai\b|on\s+a\b|analyse\s+le|analyse\s+notre|analyse\s+mon)\b/i;
+  const _msgWordCount = typeof message === "string" ? message.trim().split(/\s+/).length : 0;
+  const isSimpleKnowledge = typeof message === "string"
+    && _msgWordCount >= 2
+    && _msgWordCount <= 20
+    && _KNOWLEDGE_START_RE.test(message.trim())
+    && !_PERSONAL_CTX_RE.test(message);
+
+  // CR-11: Light request = greeting OR pure knowledge concept question
+  const isLightRequest = isSimpleGreeting || isSimpleKnowledge;
+
+  // CR-11: For light requests, use the fastest model within the provider.
+  // This is a latency optimization — NOT economy-driven — so provider never changes.
+  // Economy policy already picked effectiveModel; we override downward for trivial requests only.
+  const _LIGHT_MODELS: Partial<Record<typeof selectedProvider, string>> = {
+    openai:    "gpt-5-mini",
+    anthropic: "claude-haiku-4-5",
+    gemini:    "gemini-3-flash-preview",
+  };
+  const finalModel     = isLightRequest ? (_LIGHT_MODELS[selectedProvider] ?? effectiveModel) : effectiveModel;
+  const finalMaxTokens = isLightRequest ? Math.min(effectiveMaxTokens, 600) : effectiveMaxTokens;
+  // CR-11: Update aiMeta so the client sees the actual model used (lighter for light requests)
+  aiMeta.model = finalModel;
+
   // ── CR-6: Timing instrumentation ─────────────────────────────────────────
   const _t_context_start = Date.now();
 
   // ── AI Agents Phase 1 : permissions effectives + plan → destinations navigables ──
   // Résolu par requête (jamais mis en cache global — leçon store.me).
   // CR-5: Skip heavy DB context for simple greetings; CR-4: skip for hypothetical queries.
-  const skipHeavyContext = isSimpleGreeting || isHypothetical;
+  // CR-11: Also skip for SIMPLE_KNOWLEDGE (pure concept questions need no org data).
+  const skipHeavyContext = isSimpleGreeting || isHypothetical || isSimpleKnowledge;
   const [fpContext, effectivePerms, orgPlanRaw] = await Promise.all([
     skipHeavyContext
       ? Promise.resolve(`Platform: Flowpoint SaaS SEO Dashboard. Plan: ${store.me.plan ?? "standard"}.`)
@@ -1747,7 +1777,7 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
   ]);
 
   const _t_context_ms = Date.now() - _t_context_start;
-  logger.info({ orgId, _t_context_ms, isSimpleGreeting, isHypothetical, contextFactor }, "[AI] context built");
+  logger.info({ orgId, _t_context_ms, isSimpleGreeting, isSimpleKnowledge, isHypothetical, isLightRequest, finalModel, contextFactor }, "[AI] context built");
   const orgPlan = (orgPlanRaw ?? "standard").toLowerCase();
   const allowedDestinations = filterDestinations(effectivePerms, orgPlan);
   const navPromptSection = buildNavPromptSection(allowedDestinations);
@@ -2045,14 +2075,16 @@ DONNÉES MANQUANTES — règle stricte :
     res.on("finish", _cleanupExecution);
     res.on("close",  _cleanupExecution);
 
-    // CR-10 TTFT: Simple greetings bypass the tool loop entirely.
+    // CR-10/CR-11 TTFT: Simple greetings and knowledge questions bypass the tool loop.
     // runToolCallingLoop uses aiChatWithTools (non-streaming internally) so its TTFT
-    // equals a full LLM round (~9-15 s). Simple greetings never need tools — route
-    // them to the real aiStream path below for token-by-token streaming (TTFT 1-3 s).
-    if (enableTools && hasAnyToolPermission && !isSimpleGreeting) {
+    // equals a full LLM round (~9-15 s). Light requests never need tools — route
+    // them to the real aiStream path below for token-by-token streaming.
+    const _t_preProvider = Date.now();
+    if (enableTools && hasAnyToolPermission && !isSimpleGreeting && !isSimpleKnowledge) {
+      logger.info({ orgId, model: finalModel, isLightRequest, t_context_ms: _t_context_ms, t_preToolLoop_ms: _t_preProvider - _t_context_start }, "[AI] entering tool loop");
       const toolCtx: ExecuteContext = {
         orgId, userId, conversationId,
-        provider: selectedProvider, model: effectiveModel,
+        provider: selectedProvider, model: finalModel,
         language: _langCode,
         effectivePerms, orgPlan,
         sseWrite: _safeWrite,
@@ -2060,7 +2092,7 @@ DONNÉES MANQUANTES — règle stricte :
       };
       const loopResult = await runToolCallingLoop({
         provider: selectedProvider,
-        model:    effectiveModel,
+        model:    finalModel,
         messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[],
         ctx:      toolCtx,
         sseWrite: _safeWrite,
@@ -2077,7 +2109,7 @@ DONNÉES MANQUANTES — règle stricte :
         res.write(`data: ${JSON.stringify({ _ai: aiMeta })}\n\n`);
         res.write(`data: [DONE]\n\n`);
         res.end();
-        recordCompletedUsageDeferred({ feature: "chat", orgId, userId, model: effectiveModel as AIModel,
+        recordCompletedUsageDeferred({ feature: "chat", orgId, userId, model: finalModel as AIModel,
           provider: selectedProvider, tokensIn: 0, tokensOut: 0,
           latencyMs: Date.now() - t0, success: true, requestId,
           metadata: { ...usageMetadata, toolCalling: true } });
@@ -2133,25 +2165,32 @@ DONNÉES MANQUANTES — règle stricte :
     }
 
     try {
+      logger.info({ orgId, model: finalModel, isLightRequest, t_context_ms: _t_context_ms, t_preProvider_ms: _t_preProvider - _t_context_start }, "[AI] pre-provider stream");
       const stream = aiStream({
         provider:      selectedProvider,
-        model:         effectiveModel,
+        model:         finalModel,
         strictProvider: true,
         systemPrompt:  finalSystemPrompt,
         messages,
-        maxTokens:     effectiveMaxTokens,
+        maxTokens:     finalMaxTokens,
       });
 
       // AI Agents Phase 1 : le marqueur de navigation est retenu hors du flux —
       // l'utilisateur ne voit jamais <<<FP_NAV>>>, il reçoit un événement structuré.
       const navFilter = new NavMarkerFilter();
 
+      // CR-11: Track provider TTFT (first token from model)
+      let _t_firstToken: number | null = null;
       for await (const chunk of stream) {
         if (chunk && typeof chunk === "object" && "_aiMeta" in chunk) {
           continue; // We use our own enriched aiMeta — ignore internal routing metadata
         }
         if (chunk && typeof chunk === "object" && "content" in chunk) {
           const text = (chunk as { content: string }).content;
+          if (!_t_firstToken && text) {
+            _t_firstToken = Date.now();
+            logger.info({ orgId, model: finalModel, isLightRequest, t_providerTTFT_ms: _t_firstToken - _t_preProvider }, "[AI] first token");
+          }
           fullReply += text;
           const safe = navFilter.push(text);
           if (safe) res.write(`data: ${JSON.stringify({ delta: safe })}\n\n`);
@@ -2164,7 +2203,7 @@ DONNÉES MANQUANTES — règle stricte :
       // Never close a stream with zero text: emit an explicit fallback so the
       // UI never shows an empty bubble (covers empty provider streams).
       if (!fullReply.trim()) {
-        logger.warn({ provider: selectedProvider, model: effectiveModel }, "[AI] empty streamed reply — fallback emitted");
+        logger.warn({ provider: selectedProvider, model: finalModel }, "[AI] empty streamed reply — fallback emitted");
         const fb = "Je n'ai pas pu générer de réponse cette fois-ci. Reformulez votre question ou réessayez dans un instant.";
         fullReply = fb;
         res.write(`data: ${JSON.stringify({ delta: fb })}\n\n`);
@@ -2177,7 +2216,7 @@ DONNÉES MANQUANTES — règle stricte :
         if (nav) {
           const proposal = await createNavigationProposal({
             orgId, userId, conversationId,
-            provider: selectedProvider, model: effectiveModel,
+            provider: selectedProvider, model: finalModel,
             navActions: [nav],
           });
           if (proposal) res.write(`data: ${JSON.stringify({ action_proposal: proposal })}\n\n`);
@@ -2197,11 +2236,13 @@ DONNÉES MANQUANTES — règle stricte :
       }, 0) / 4);
       const estTokensOut = Math.ceil(fullReply.length / 4);
 
-      persistChatMessage({ orgId, userId, role: "assistant", content: extractNavMarker(fullReply).cleanText, feature: "chat", model: effectiveModel, tokensUsed: estTokensOut, conversationId })
+      const t_total_ms = Date.now() - t0;
+      logger.info({ orgId, model: finalModel, isLightRequest, t_context_ms: _t_context_ms, t_preProvider_ms: _t_preProvider - _t_context_start, t_providerTTFT_ms: _t_firstToken ? _t_firstToken - _t_preProvider : null, t_total_ms }, "[AI] stream done");
+      persistChatMessage({ orgId, userId, role: "assistant", content: extractNavMarker(fullReply).cleanText, feature: "chat", model: finalModel, tokensUsed: estTokensOut, conversationId })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant) failed"));
-      recordCompletedUsageDeferred({ feature: "chat", orgId, userId, model: effectiveModel as AIModel, provider: selectedProvider, tokensIn: estTokensIn, tokensOut: estTokensOut, latencyMs, success: true, requestId, metadata: usageMetadata });
+      recordCompletedUsageDeferred({ feature: "chat", orgId, userId, model: finalModel as AIModel, provider: selectedProvider, tokensIn: estTokensIn, tokensOut: estTokensOut, latencyMs, success: true, requestId, metadata: usageMetadata });
     } catch (err) {
-      logger.error({ err, provider: selectedProvider, model: effectiveModel }, "[AI] Streaming chat failed");
+      logger.error({ err, provider: selectedProvider, model: finalModel }, "[AI] Streaming chat failed");
       const errCode    = (err as Record<string, unknown>)?.code as string | undefined;
       const errProvider = (err as Record<string, unknown>)?.provider as string | undefined;
       if (errCode === "PROVIDER_UNAVAILABLE") {
@@ -2222,11 +2263,11 @@ DONNÉES MANQUANTES — règle stricte :
       const t0 = Date.now();
       const result = await aiChat({
         provider:      selectedProvider,
-        model:         effectiveModel,
+        model:         finalModel,
         strictProvider: true,
         systemPrompt:  finalSystemPrompt,
         messages,
-        maxTokens:     effectiveMaxTokens,
+        maxTokens:     finalMaxTokens,
       });
       const rawReply = result.text || "Je ne peux pas repondre pour le moment.";
       const latencyMs = Date.now() - t0;
@@ -2240,16 +2281,16 @@ DONNÉES MANQUANTES — règle stricte :
         if (nav) {
           actionProposal = await createNavigationProposal({
             orgId, userId, conversationId,
-            provider: selectedProvider, model: effectiveModel,
+            provider: selectedProvider, model: finalModel,
             navActions: [nav],
           });
         }
       }
 
-      persistChatMessage({ orgId, userId, role: "assistant", content: reply, feature: "chat", model: effectiveModel, tokensUsed: result.usage.completionTokens, conversationId })
+      persistChatMessage({ orgId, userId, role: "assistant", content: reply, feature: "chat", model: finalModel, tokensUsed: result.usage.completionTokens, conversationId })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant non-stream) failed"));
       const usage = await recordCompletedUsage({
-        feature: "chat", orgId, userId, model: effectiveModel as AIModel,
+        feature: "chat", orgId, userId, model: finalModel as AIModel,
         provider: selectedProvider, tokensIn: result.usage.promptTokens,
         tokensOut: result.usage.completionTokens, latencyMs, success: true,
         requestId, metadata: usageMetadata,
