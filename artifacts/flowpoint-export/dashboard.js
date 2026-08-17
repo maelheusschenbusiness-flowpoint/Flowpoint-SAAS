@@ -736,7 +736,7 @@ async function downloadReportPdf(reportId, name, triggerEl) {
     // The backend records this successful PDF export; refresh the live quota display.
     setTimeout(refreshMeUsage, 150);
   } catch(e) {
-    showToast('error', 'Erreur lors du téléchargement : ' + (e?.message || ''));
+    showToast('error', fpT('Erreur lors du téléchargement :') + ' ' + (e?.message || ''));
   } finally {
     if (triggerEl) { triggerEl.disabled = false; triggerEl.textContent = triggerEl.dataset._origText || triggerEl.textContent; }
   }
@@ -1163,11 +1163,11 @@ function openPasswordChangePanel() {
       const btn = document.getElementById('sec-send');
       const emailVal = document.getElementById('sec-email')?.value.trim();
       if (!emailVal || !emailVal.includes('@')) { showToast('warning', fpT('Email invalide')); return; }
-      if (btn) { btn.disabled = true; btn.textContent = 'Envoi\u2026'; }
+      if (btn) { btn.disabled = true; btn.textContent = fpT('Envoi…'); }
       const r = await apiAction('POST', '/api/auth/login-request', { email: emailVal }).catch(() => null);
-      if (btn) { btn.disabled = false; btn.textContent = 'Envoyer un nouveau lien de connexion'; }
-      if (r && !r.error) { showToast('success', 'Lien de connexion envoy\u00e9 \u00e0 ' + emailVal + ' !'); closeFloatPanel(); }
-      else { showToast('error', r?.error || 'Erreur lors de l\'envoi'); }
+      if (btn) { btn.disabled = false; btn.textContent = fpT('Envoyer un nouveau lien de connexion'); }
+      if (r && !r.error) { showToast('success', fpT('Lien de connexion envoyé à') + ' ' + emailVal + ' !'); closeFloatPanel(); }
+      else { showToast('error', r?.error || fpT("Erreur lors de l'envoi")); }
     });
   }, 60);
 }
@@ -1327,7 +1327,7 @@ function resolveIncident(incId) {
         } else {
           // Revert optimistic update on failure
           delete STATE.resolvedIncidents[incId];
-          showToast('error', r?.error || 'Impossible de résoudre l\'incident');
+          showToast('error', r?.error || fpT("Impossible de résoudre l'incident"));
           render();
         }
       })
@@ -1381,8 +1381,8 @@ function openFileImport() {
         if (r && r.ok) {
           STATE.teamFiles = STATE.teamFiles || [];
           STATE.teamFiles.unshift(r.file || { id: r.file?.id, name: file.name, type: file.type, size: file.size, sharedBy: from, createdAt: new Date().toISOString() });
-        } else { showToast('error', `Erreur import ${file.name}`); }
-      } catch(e) { showToast('error', `Erreur import ${file.name}`); }
+        } else { showToast('error', fpT('Erreur import') + ' ' + file.name); }
+      } catch(e) { showToast('error', fpT('Erreur import') + ' ' + file.name); }
     }
     showToast('success', `${files.length} fichier${files.length > 1 ? 's' : ''} importé${files.length > 1 ? 's' : ''}`);
     if (STATE.subRoute === 'files') render();
@@ -11039,14 +11039,14 @@ function renderSettings() {
       ${aiBlock(
         (function() {
           const _tm = STATE.team || [];
-          if (_tm.length === 0) return "Aucun membre dans l'équipe. Invitez des collaborateurs pour partager l'accès au tableau de bord et gérer les permissions.";
+          if (_tm.length === 0) return fpT("Aucun membre dans l'équipe. Invitez des collaborateurs pour partager l'accès au tableau de bord et gérer les permissions.");
           const _mgrs = _tm.filter(function(m) { return m.role === 'manager'; });
           const _billingWarn = _mgrs.length > 0
             ? ' <strong>' + escHtml(_mgrs[0].name || _mgrs[0].email || 'Un manager') + ' (Manager) a accès à la facturation</strong> — vérifiez si ce niveau de permission est souhaité.'
             : ' Recommandation : créer un rôle personnalisé «Rapporteur» pour les utilisateurs qui génèrent uniquement des rapports.';
           return _tm.length + ' membre' + (_tm.length > 1 ? 's' : '') + ' actif' + (_tm.length > 1 ? 's' : '') + '.' + _billingWarn;
         })(),
-        ['Créer un rôle custom', 'Auditer les permissions', 'IA : Inviter un membre']
+        [fpT('Créer un rôle custom'), fpT('Auditer les permissions'), fpT('IA : Inviter un membre')]
       )}
 
       ${(()=>{
@@ -16554,7 +16554,7 @@ function bindSectionEvents() {
       localStorage.setItem('fp:free-modules', JSON.stringify(STATE.freeModules));
       applyFreeModules();
       navigate(STATE.route);
-      showToast('success', STATE.freeModules[key] ? 'Module activé !' : 'Module désactivé');
+      showToast('success', STATE.freeModules[key] ? fpT('Module activé !') : fpT('Module désactivé'));
     }));
     $$('.fp-addon-btn').forEach(btn => btn.addEventListener('click', () => {
       showToast('info', fpT('Redirection vers la gestion des modules…'));
@@ -16643,10 +16643,10 @@ function bindSectionEvents() {
       if (!member || member.role === 'owner') return;
       row.addEventListener('contextmenu', e => {
         showCtxMenu(e, [
-          { key:'role',  icon:'filter', label:'Changer le rôle', action:()=>changeTeamMemberRole(member.id, member.role) },
-          { key:'msg',   icon:'send',   label:'Envoyer message', action:()=>showToast('success',`Message envoyé à ${escHtml(member.name)} !`) },
+          { key:'role',  icon:'filter', label:fpT('Changer le rôle'), action:()=>changeTeamMemberRole(member.id, member.role) },
+          { key:'msg',   icon:'send',   label:fpT('Envoyer message'), action:()=>showToast('success', fpT('Message envoyé à') + ' ' + escHtml(member.name) + ' !') },
           { divider:true, key:'div' },
-          { key:'del',   icon:'trash',  label:'Retirer du projet', action:async()=>{ try { await apiAction('DELETE',`/api/team/${member.id}`); } catch(e){} STATE.team=STATE.team.filter(t=>t.id!==member.id); if(STATE.seatUsage&&STATE.seatUsage.used>0)STATE.seatUsage.used--; showToast('error',escHtml(member.name)+' retiré'); render(); }, danger:true },
+          { key:'del',   icon:'trash',  label:fpT('Retirer du projet'), action:async()=>{ try { await apiAction('DELETE',`/api/team/${member.id}`); } catch(e){} STATE.team=STATE.team.filter(t=>t.id!==member.id); if(STATE.seatUsage&&STATE.seatUsage.used>0)STATE.seatUsage.used--; showToast('error', escHtml(member.name) + ' ' + fpT('retiré')); render(); }, danger:true },
         ]);
       });
     });
@@ -16704,11 +16704,11 @@ function bindSectionEvents() {
       const email = STATE.me?.email;
       if (!email) { showToast('warning', fpT('Email introuvable — reconnectez-vous')); return; }
       const btn = document.getElementById('renew-access');
-      if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; }
+      if (btn) { btn.disabled = true; btn.textContent = fpT('Envoi…'); }
       const r = await apiAction('POST', '/api/auth/login-request', { email }).catch(() => null);
-      if (btn) { btn.disabled = false; btn.textContent = 'Renvoyer le lien'; }
-      if (r && !r.error) showToast('success', 'Lien de connexion envoyé à ' + email);
-      else showToast('error', r?.error || 'Erreur lors de l\'envoi');
+      if (btn) { btn.disabled = false; btn.textContent = fpT('Renvoyer le lien'); }
+      if (r && !r.error) showToast('success', fpT('Lien de connexion envoyé à') + ' ' + email);
+      else showToast('error', r?.error || fpT("Erreur lors de l'envoi"));
     });
 
     if (STATE.subRoute === 'alerts') {
@@ -45620,12 +45620,15 @@ async function init() {
   // Onboarding
   showOnboarding();
 
-  // iOS Safari back-forward cache (bfcache): when user navigates back,
-  // Safari restores an old snapshot. Re-apply theme + re-render to fix stale UI.
+  // iOS Safari / Firefox back-forward cache (bfcache): when user navigates back,
+  // the browser restores a frozen snapshot. We must re-validate the session
+  // before rendering, because the auth token may have expired while the user
+  // was on another page. Calling render() directly risks an immediate 401 → Sign In
+  // redirect. loadData() re-runs session-restore first, making it safe.
   window.addEventListener('pageshow', function(evt) {
     if (evt.persisted) {
       applyTheme();
-      render();
+      loadData().catch(function() {});
     }
   });
 

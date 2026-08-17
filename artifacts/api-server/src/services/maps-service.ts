@@ -27,14 +27,41 @@ export async function geocodeAddress(address: string): Promise<{
   };
 }
 
+/**
+ * Fetches nearby places from Google Places Nearby Search, automatically
+ * paginating through up to 3 pages (≤60 results) using next_page_token.
+ * Google requires a ~2 s delay before requesting each subsequent page.
+ */
 export async function getNearbyPlaces(lat: number, lng: number, type: string, radius = 5000, keyword = ""): Promise<unknown[]> {
   const apiKey = getMapsApiKey();
   if (!apiKey) throw new Error("Google Maps API key not configured");
   const kw = keyword.trim() ? `&keyword=${encodeURIComponent(keyword.trim())}` : "";
-  const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}${kw}&key=${apiKey}`;
-  const res = await fetch(url);
-  const data = await res.json() as Record<string, unknown>;
-  return (data["results"] as unknown[]) ?? [];
+
+  const allResults: unknown[] = [];
+  let pageToken: string | null = null;
+
+  for (let page = 0; page < 3; page++) {
+    let url: string;
+    if (pageToken) {
+      // Pages 2 and 3: only pagetoken + key are sent (other params are encoded in the token)
+      url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?pagetoken=${encodeURIComponent(pageToken)}&key=${apiKey}`;
+    } else {
+      url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}${kw}&key=${apiKey}`;
+    }
+
+    const res = await fetch(url);
+    const data = await res.json() as Record<string, unknown>;
+    const pageResults = (data["results"] as unknown[]) ?? [];
+    allResults.push(...pageResults);
+
+    pageToken = (data["next_page_token"] as string | undefined) ?? null;
+    if (!pageToken) break;
+
+    // Google mandates a short delay before the next_page_token becomes valid
+    await new Promise<void>((r) => setTimeout(r, 2000));
+  }
+
+  return allResults;
 }
 
 export async function getDistanceMatrix(origins: string[], destinations: string[]): Promise<unknown> {
@@ -114,9 +141,11 @@ export async function analyzeCompetitors(lat: number, lng: number, keyword: stri
   // ring_radius = EFF_RADIUS × √3/2 guarantees every point in the disk
   // is within SEARCH_RADIUS of at least one of the 7 hexagonal centres.
   const cosLat = Math.max(0.3, Math.cos(lat * Math.PI / 180));
-  const RING_M  = EFF_RADIUS * Math.sqrt(3) / 2; // e.g. 86.6 km for R = 100 km
   const centres: Array<{ lat: number; lng: number }> = [{ lat, lng }];
+
   if (EFF_RADIUS > 50000) {
+    // >50 km  — 7-point hexagonal grid (centre + 6 ring points at √3/2·R)
+    const RING_M = EFF_RADIUS * Math.sqrt(3) / 2;
     for (let i = 0; i < 6; i++) {
       const ang = (i * Math.PI) / 3; // 0°, 60°, 120°, 180°, 240°, 300°
       centres.push({
@@ -124,13 +153,31 @@ export async function analyzeCompetitors(lat: number, lng: number, keyword: stri
         lng: lng + (RING_M / (111_000 * cosLat)) * Math.cos(ang),
       });
     }
+  } else if (EFF_RADIUS > 15000) {
+    // 15–50 km — 4-point grid (centre + 3 surrounding at 120° for triangular coverage)
+    // Ring at 60% of EFF_RADIUS gives comfortable overlap between search circles.
+    const RING_M = EFF_RADIUS * 0.6;
+    for (let i = 0; i < 3; i++) {
+      const ang = (i * 2 * Math.PI) / 3; // 0°, 120°, 240°
+      centres.push({
+        lat: lat + (RING_M / 111_000) * Math.sin(ang),
+        lng: lng + (RING_M / (111_000 * cosLat)) * Math.cos(ang),
+      });
+    }
   }
+  // ≤15 km — single centre; pagination inside getNearbyPlaces gives ≤60 results
+
+  // Each centre uses the actual requested radius (capped to 50 km per Google limit)
+  const SEARCH_RADIUS_PER_CENTRE = Math.min(50000, EFF_RADIUS);
 
   const seen = new Map<string, Record<string, unknown>>();
+  // Centres run in parallel; pagination inside getNearbyPlaces is sequential per centre
+  // (with the mandatory 2 s inter-page delay). This keeps total latency bounded by
+  // the slowest centre (~4 s for 3 pages) rather than multiplying across all centres.
   await Promise.all(centres.map(async (c) => {
     let raw: Array<Record<string, unknown>>;
     try {
-      raw = await getNearbyPlaces(c.lat, c.lng, "establishment", SEARCH_RADIUS, keyword) as Array<Record<string, unknown>>;
+      raw = await getNearbyPlaces(c.lat, c.lng, "establishment", SEARCH_RADIUS_PER_CENTRE, keyword) as Array<Record<string, unknown>>;
     } catch {
       raw = [];
     }

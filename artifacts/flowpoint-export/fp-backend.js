@@ -3228,7 +3228,13 @@
       var page = document.getElementById('fp-page');
       if (!page) return;
       var hasSkeleton = !!page.querySelector('#fp-loading-skeleton');
-      var hasRealContent = !!page.querySelector('.fp-hero-cmd, .fp-stat-card, .fp-card, .fp-gauge-card, .fp-stat-row, .fp-page-section, .fp-overview-grid');
+      // hasRealContent: detect any known content class OR substantial non-skeleton innerHTML.
+      // This prevents false-positive re-renders on pages that don't use .fp-stat-card
+      // (e.g. Settings uses .fp-form-group, Local SEO uses .fp-map-wrap, etc.)
+      var hasRealContent = !hasSkeleton && (
+        !!page.querySelector('.fp-hero-cmd, .fp-stat-card, .fp-card, .fp-gauge-card, .fp-stat-row, .fp-page-section, .fp-overview-grid, .fp-form-group, .fp-kpi-row, .fp-chart-card, .fp-map-wrap, .fp-settings-card') ||
+        page.innerHTML.length > 2000
+      );
       var stateReady = window.STATE && window.STATE.me && !window.STATE.loading;
       if ((hasSkeleton || !hasRealContent) && stateReady && window.render) {
         console.debug('[FP] ' + label + ': skeleton/blank detected — forcing re-render');
@@ -3375,13 +3381,20 @@
         if (!page) return;
 
         var hasSkeleton  = !!page.querySelector('#fp-loading-skeleton');
-        var hasContent   = !!(
-          page.querySelector('.fp-hero-cmd')      ||
-          page.querySelector('.fp-stat-card')     ||
-          page.querySelector('.fp-card')          ||
-          page.querySelector('.fp-page-section')  ||
-          page.querySelector('.fp-kpi-row')       ||
-          page.querySelector('.fp-gauge-card')
+        // hasContent: any known content class OR substantial non-skeleton HTML.
+        // Including Settings (.fp-form-group), Local SEO (.fp-map-wrap), etc.
+        // so those pages aren't wrongly detected as "empty" and re-rendered.
+        var hasContent = !hasSkeleton && (
+          !!(page.querySelector('.fp-hero-cmd')       ||
+             page.querySelector('.fp-stat-card')      ||
+             page.querySelector('.fp-card')           ||
+             page.querySelector('.fp-page-section')   ||
+             page.querySelector('.fp-kpi-row')        ||
+             page.querySelector('.fp-gauge-card')     ||
+             page.querySelector('.fp-form-group')     ||
+             page.querySelector('.fp-map-wrap')       ||
+             page.querySelector('.fp-settings-card')) ||
+          page.innerHTML.length > 2000
         );
 
         // Vrai contenu présent → OK
