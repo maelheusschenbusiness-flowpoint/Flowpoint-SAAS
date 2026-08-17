@@ -14,10 +14,22 @@ import { pool, withOrgDb } from "@workspace/db";
 
 const router = Router();
 
+// Minimum key length: a short key (e.g. a dev placeholder like "secret" or "admin")
+// is rejected to prevent accidental use of development keys in production.
+const ADMIN_KEY_MIN_LEN = 32;
+
 function requireAdminKey(req: Request, res: Response): boolean {
   const key = process.env["ADMIN_KEY"];
   if (!key) {
     res.status(503).json({ ok: false, error: "ADMIN_KEY is not configured on this server" });
+    return false;
+  }
+  if (key.length < ADMIN_KEY_MIN_LEN) {
+    res.status(503).json({
+      ok: false,
+      error: `ADMIN_KEY is too short (${key.length} chars) — minimum ${ADMIN_KEY_MIN_LEN} required. ` +
+             `A short key is rejected to prevent accidental use of development keys in production.`,
+    });
     return false;
   }
   const provided = req.headers["x-admin-key"];
@@ -866,12 +878,15 @@ router.post("/admin/purge-ghost-accounts", async (req: Request, res: Response): 
 //     has been verified in production. Do not leave it deployed permanently.
 //
 // Permanently deletes ALL client accounts except the listed exempt emails.
-// MUST be called with dry_run:true first to preview what will be deleted.
-// Auth: x-admin-key header required (server returns 503 if ADMIN_KEY missing).
+// MUST be called with dry_run:true (or omitted) first to preview impact.
+// Auth: x-admin-key header required; ADMIN_KEY must be ≥ 32 chars.
 //
-// Rate limits: 1 dry-run call per minute · 1 real purge per 4 hours.
-// All calls (including dry-runs) are logged to stdout with caller IP.
+// Rate limits: 1 dry-run/min · 1 real purge/4h.
+// ⚠️  Rate limiter is IN-PROCESS ONLY — not effective across multiple instances.
+//     Treat as a last-resort filet de sécurité, not a distributed guard.
+// All calls (including dry-runs) are logged to stdout as structured JSON.
 
+// In-process rate limiter (per-bucket, separate for dry vs real).
 const _purgeRateBucket = new Map<string, { count: number; firstAt: number }>();
 
 function checkPurgeRate(isDryRun: boolean): { allowed: boolean; retryAfterSec: number } {
@@ -890,8 +905,13 @@ function checkPurgeRate(isDryRun: boolean): { allowed: boolean; retryAfterSec: n
   };
 }
 
-// System emails that are ALWAYS exempt — the caller cannot remove them.
+// System emails ALWAYS exempt — caller cannot override this list.
 const PURGE_SYSTEM_EMAILS = ["support@flowpoint.pro"];
+
+// In-process concurrent purge guard.
+// ⚠️  IN-PROCESS ONLY — in a multi-instance deployment a second pod can still
+//    start a concurrent purge. Use a DB advisory lock for stronger isolation.
+let _purgeInFlight = false;
 
 router.post("/admin/purge-all-clients", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
@@ -899,28 +919,42 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
   const { dry_run, exempt_emails = [] } = req.body as { dry_run?: unknown; exempt_emails?: string[] };
 
   // Explicit boolean `false` is the ONLY value that triggers a real purge.
-  // Strings like "false", null, undefined, missing field → treated as dry_run.
+  // Strings like "false", null, undefined, omitted field → treated as dry_run:true.
   const isDryRun = dry_run !== false;
 
-  // Per-bucket rate limit (separate for dry vs real).
+  // Concurrent-execution guard (real purge only).
+  if (!isDryRun && _purgeInFlight) {
+    res.status(409).json({
+      ok: false,
+      error: "A real purge is already in progress on this instance — retry after it completes.",
+    });
+    return;
+  }
+
+  // Per-bucket rate limit.
   const rateCheck = checkPurgeRate(isDryRun);
   if (!rateCheck.allowed) {
     res.status(429).json({ ok: false, error: `Rate limited — retry after ${rateCheck.retryAfterSec}s` });
     return;
   }
 
-  // Mandatory audit log — every call, even dry-runs.
+  // Mandatory structured audit log — every call, including dry-runs.
   const callerIp =
     (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim() ||
     req.socket.remoteAddress ||
     "unknown";
-  console.warn(
-    `[ADMIN-PURGE] dry_run=${isDryRun} ip=${callerIp} at=${new Date().toISOString()}` +
-    ` caller_exempt_count=${Array.isArray(exempt_emails) ? exempt_emails.length : 0}`
-  );
+  const callId = `purge_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  console.warn(JSON.stringify({
+    event: "ADMIN_PURGE_CALLED",
+    callId,
+    dry_run: isDryRun,
+    ip: callerIp,
+    ts: new Date().toISOString(),
+    pid: process.pid,
+    caller_exempt_count: Array.isArray(exempt_emails) ? exempt_emails.length : 0,
+  }));
 
-  // System emails are always added to the exempt list regardless of what the
-  // caller sends. Prevents accidental deletion of FlowPoint's own accounts.
+  // System emails merged unconditionally — caller cannot remove them.
   const userExempt = Array.isArray(exempt_emails)
     ? exempt_emails.map((e: string) => e.trim().toLowerCase()).filter(Boolean)
     : [];
@@ -928,7 +962,7 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
 
   const client = await pool.connect();
   try {
-    // ── Find all emails NOT in the exempt list ────────────────────────────────
+    // ── Discover accounts to delete ───────────────────────────────────────────
     const usersToDelete = await client.query<{ email: string }>(
       `SELECT DISTINCT email FROM users
        WHERE email IS NOT NULL
@@ -941,8 +975,8 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
        ORDER BY email`,
       [normalizedExempt]
     );
-
     const emailsToDelete = usersToDelete.rows.map(r => r.email);
+
     const orgsToDelete = await client.query<{ id: string }>(
       `SELECT DISTINCT o.id FROM organizations o
        WHERE lower(o.owner_email) <> ALL($1::text[])
@@ -951,15 +985,101 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
     );
     const orgIdsToDelete = orgsToDelete.rows.map(r => r.id);
 
+    // ── DRY-RUN: full impact report, zero deletions ───────────────────────────
     if (isDryRun) {
+      const safeCount = async (sql: string, params: unknown[]): Promise<number> => {
+        try {
+          const r = await client.query<{ n: string }>(sql, params);
+          return parseInt(r.rows[0]?.n ?? "0", 10);
+        } catch { return -1; /* table may not exist */ }
+      };
+
+      // Auth-level rows (keyed by email)
+      const [sessCount, tokenCount, pendingCount, inviteCount, legacyOsCount] =
+        await Promise.all([
+          emailsToDelete.length > 0
+            ? safeCount(`SELECT COUNT(*)::text AS n FROM user_sessions      WHERE lower(email) = ANY($1)`, [emailsToDelete])
+            : 0,
+          emailsToDelete.length > 0
+            ? safeCount(`SELECT COUNT(*)::text AS n FROM magic_link_tokens  WHERE lower(email) = ANY($1)`, [emailsToDelete])
+            : 0,
+          emailsToDelete.length > 0
+            ? safeCount(`SELECT COUNT(*)::text AS n FROM pending_signups    WHERE lower(email) = ANY($1)`, [emailsToDelete])
+            : 0,
+          emailsToDelete.length > 0
+            ? safeCount(`SELECT COUNT(*)::text AS n FROM invitations        WHERE lower(email) = ANY($1)`, [emailsToDelete])
+            : 0,
+          safeCount(
+            `SELECT COUNT(*)::text AS n FROM org_settings
+             WHERE org_id::text = ANY($1)`,
+            [[...emailsToDelete, ...orgIdsToDelete]]
+          ),
+        ]);
+
+      // Business data counts per org-scoped table (parallel)
+      const BUSINESS_TABLES = [
+        "audits","audit_schedules","reports","report_exports",
+        "monitors","monitor_checks","monitor_incidents",
+        "alert_rules","alert_events","tracked_keywords","tracked_keywords_history",
+        "calendar_events","missions","mission_history","mission_ai_logs",
+        "ai_generated_missions","ai_setup_logs","ai_recommendations",
+        "team_members","team_invitations","team_messages","team_files","team_channels",
+        "automation_integrations","automation_workflows","automation_runs",
+        "automation_logs","workflow_runs","incoming_webhooks",
+        "psi_cache","seo_forecasts","funnels","funnel_steps",
+        "ga4_accounts","gsc_keyword_data","gsc_page_data","gsc_sync_logs",
+        "google_tokens","google_oauth_states","github_connections",
+        "behavior_events","behavior_sessions",
+        "traffic_sources","traffic_losses","cro_scores","cro_experiments","revenue_leaks",
+        "local_pack_history","org_addons","org_checklist","org_monitor_quota","org_secrets",
+        "org_quota_usage","checkout_post_tokens","overview_insights_cache","overview_insights_rl",
+        "activity_log","share_tokens","growth_objectives",
+        "ai_usage_logs","ai_monthly_usage","ai_credit_purchases",
+        "onboarding_sessions","ai_workspace_profiles",
+      ] as const;
+
+      const businessCounts: Record<string, number> = {};
+      if (orgIdsToDelete.length > 0) {
+        await Promise.all(
+          BUSINESS_TABLES.map(async (tbl) => {
+            businessCounts[tbl] = await safeCount(
+              `SELECT COUNT(*)::text AS n FROM ${tbl} WHERE org_id::text = ANY($1)`,
+              [orgIdsToDelete]
+            );
+          })
+        );
+      }
+
+      // What will survive after the purge
+      const survivingUsers = await client.query<{ email: string }>(
+        `SELECT email FROM users WHERE lower(email) = ANY($1) ORDER BY email`,
+        [normalizedExempt]
+      );
+
       res.json({
         ok: true,
         dry_run: true,
+        callId,
         would_delete: {
-          emails: emailsToDelete,
-          org_ids: orgIdsToDelete,
-          email_count: emailsToDelete.length,
-          org_count: orgIdsToDelete.length,
+          users:         { count: emailsToDelete.length, emails: emailsToDelete },
+          organizations: { count: orgIdsToDelete.length, ids: orgIdsToDelete },
+          auth: {
+            user_sessions:     sessCount,
+            magic_link_tokens: tokenCount,
+            pending_signups:   pendingCount,
+            invitations:       inviteCount,
+          },
+          org_settings_legacy: legacyOsCount,
+          // business_data shows only non-zero tables for readability
+          business_data: Object.fromEntries(
+            Object.entries(businessCounts).filter(([, v]) => v > 0)
+          ),
+          // full table list including zeros (for verification)
+          business_data_full: businessCounts,
+        },
+        would_survive: {
+          user_count: survivingUsers.rowCount ?? 0,
+          emails: survivingUsers.rows.map(r => r.email),
         },
         exempt: normalizedExempt,
         message: "Dry-run — nothing deleted. POST with dry_run:false (boolean) to execute.",
@@ -967,72 +1087,91 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
       return;
     }
 
-    if (emailsToDelete.length === 0 && orgIdsToDelete.length === 0) {
-      res.json({ ok: true, deleted: {}, message: "Nothing to delete — all accounts are exempt." });
-      return;
+    // ── REAL PURGE ────────────────────────────────────────────────────────────
+    _purgeInFlight = true;
+    try {
+      if (emailsToDelete.length === 0 && orgIdsToDelete.length === 0) {
+        res.json({ ok: true, deleted: {}, callId, message: "Nothing to delete — all accounts are exempt." });
+        return;
+      }
+
+      console.warn(JSON.stringify({
+        event: "ADMIN_PURGE_EXECUTING",
+        callId,
+        email_count: emailsToDelete.length,
+        org_count:   orgIdsToDelete.length,
+        no_stripe_modifications: true,
+        ts: new Date().toISOString(),
+      }));
+
+      await client.query("BEGIN");
+
+      const deleted: Record<string, number> = {};
+      const safeDelete = async (table: string, col: string, vals: string[]) => {
+        if (!vals.length) { deleted[table] = 0; return; }
+        const r = await client.query(`DELETE FROM ${table} WHERE ${col} = ANY($1)`, [vals]);
+        deleted[table] = r.rowCount ?? 0;
+      };
+      const safeDeleteUUID = async (table: string, col: string, vals: string[]) => {
+        if (!vals.length) { deleted[table] = 0; return; }
+        const r = await client.query(`DELETE FROM ${table} WHERE ${col}::text = ANY($1)`, [vals]);
+        deleted[table] = r.rowCount ?? 0;
+      };
+
+      // Sessions & tokens (by email)
+      await safeDelete("user_sessions",     "lower(email)", emailsToDelete);
+      await safeDelete("magic_link_tokens", "lower(email)", emailsToDelete);
+      await safeDelete("pending_signups",   "lower(email)", emailsToDelete);
+      await safeDelete("invitations",       "lower(email)", emailsToDelete);
+
+      // Org-scoped business data (by UUID)
+      for (const tbl of [
+        "audits","monitors","tracked_keywords","audit_schedules",
+        "alert_rules","alert_events","missions","mission_steps",
+        "reports","report_schedules","ai_usage_logs","ai_monthly_usage",
+        "org_addons","activity_events","user_notifications",
+        "team_members","team_channels","team_messages",
+        "workflow_runs","automation_workflows",
+        "tracked_keywords_history","psi_cache","google_tokens",
+        "google_oauth_states","org_settings",
+      ] as const) {
+        await safeDeleteUUID(tbl, "org_id", orgIdsToDelete).catch(() => {});
+      }
+
+      // Core identity tables
+      await safeDeleteUUID("org_members",   "org_id", orgIdsToDelete);
+      await safeDeleteUUID("organizations", "id",     orgIdsToDelete);
+      await safeDelete    ("users",         "lower(email)", emailsToDelete);
+
+      await client.query("COMMIT");
+
+      console.warn(JSON.stringify({
+        event: "ADMIN_PURGE_COMPLETE",
+        callId,
+        email_count: emailsToDelete.length,
+        ts: new Date().toISOString(),
+      }));
+
+      res.json({
+        ok: true,
+        dry_run: false,
+        callId,
+        deleted,
+        emails_purged: emailsToDelete,
+        org_ids_purged: orgIdsToDelete,
+        message: "All client accounts permanently deleted. No Stripe objects were modified.",
+      });
+    } finally {
+      _purgeInFlight = false;
     }
-
-    // Log exactly what is about to be irreversibly deleted.
-    console.warn(
-      `[ADMIN-PURGE] EXECUTING real purge — ${emailsToDelete.length} accounts, ` +
-      `${orgIdsToDelete.length} orgs. No Stripe objects will be modified.`
-    );
-
-    // ── Delete all data in FK-safe order ──────────────────────────────────────
-    await client.query("BEGIN");
-
-    const deleted: Record<string, number> = {};
-    const safeDelete = async (table: string, col: string, vals: string[]) => {
-      if (!vals.length) { deleted[table] = 0; return; }
-      const r = await client.query(`DELETE FROM ${table} WHERE ${col} = ANY($1)`, [vals]);
-      deleted[table] = (r.rowCount ?? 0);
-    };
-    const safeDeleteUUID = async (table: string, col: string, vals: string[]) => {
-      if (!vals.length) { deleted[table + "_uuid"] = 0; return; }
-      const r = await client.query(`DELETE FROM ${table} WHERE ${col}::text = ANY($1)`, [vals]);
-      deleted[table + "_uuid"] = (r.rowCount ?? 0);
-    };
-
-    // Sessions & tokens (by email)
-    await safeDelete("user_sessions",     "lower(email)", emailsToDelete);
-    await safeDelete("magic_link_tokens", "lower(email)", emailsToDelete);
-    await safeDelete("pending_signups",   "lower(email)", emailsToDelete);
-    await safeDelete("invitations",       "lower(email)", emailsToDelete);
-
-    // Org-scoped business data (by org UUID)
-    for (const tbl of [
-      "audits","monitors","tracked_keywords","audit_schedules",
-      "alert_rules","alert_events","missions","mission_steps",
-      "reports","report_schedules","ai_usage_logs","ai_monthly_usage",
-      "org_addons","activity_events","user_notifications",
-      "team_members","team_channels","team_messages",
-      "workflow_runs","automation_workflows",
-      "tracked_keywords_history","psi_cache","google_tokens",
-      "google_oauth_states","org_settings",
-    ]) {
-      await safeDeleteUUID(tbl, "org_id", orgIdsToDelete).catch(() => {});
-    }
-
-    // Core identity tables
-    await safeDeleteUUID("org_members",   "org_id", orgIdsToDelete);
-    await safeDeleteUUID("organizations", "id",     orgIdsToDelete);
-    await safeDelete("users",             "lower(email)", emailsToDelete);
-
-    await client.query("COMMIT");
-
-    console.warn(`[ADMIN-PURGE] COMPLETE — ${emailsToDelete.length} accounts permanently deleted.`);
-
-    res.json({
-      ok: true,
-      dry_run: false,
-      deleted,
-      emails_purged: emailsToDelete,
-      org_ids_purged: orgIdsToDelete,
-      message: "All client accounts permanently deleted. No Stripe objects were modified.",
-    });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
-    console.error("[ADMIN-PURGE] ERROR — transaction rolled back:", err);
+    console.error(JSON.stringify({
+      event: "ADMIN_PURGE_ERROR",
+      callId,
+      error: safeErrMsg(err),
+      ts: new Date().toISOString(),
+    }));
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   } finally {
     client.release();
