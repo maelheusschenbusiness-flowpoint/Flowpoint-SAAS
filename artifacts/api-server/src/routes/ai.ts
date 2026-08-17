@@ -811,8 +811,9 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
   }
 }
 
-// Strict instruction inserted into every system prompt to prevent hallucinated generic advice
-const STRICT_AI_RULE = `
+// Strict instruction inserted into every system prompt to prevent hallucinated generic advice.
+// Exported so unit tests can assert on the rule text without running the full HTTP handler.
+export const STRICT_AI_RULE = `
 RÈGLES DU CONSULTANT (non négociables) :
 
 OUVERTURE DES RÉPONSES — règle absolue, appliquée à chaque message
@@ -831,7 +832,7 @@ OUVERTURE DES RÉPONSES — règle absolue, appliquée à chaque message
 TON & LONGUEUR
 - Tu parles comme un consultant humain qui a étudié le dossier avant la réunion, pas comme un outil qui exporte des JSON.
 - Phrase d'ouverture humaine SANS salutation : "J'ai analysé votre site. Voici ce que je retiens." ou "Bonne nouvelle — les données sont là, voici l'essentiel."
-- Première réponse à une question générale : 250–350 mots maximum. Offre ensuite "Voulez-vous que je détaille ?" — ne développe pas sans invitation.
+- Première réponse à une question générale : 250–350 mots maximum. Si l'utilisateur veut plus, il le demandera — ne développe pas sans invitation et ne demande pas la permission de développer.
 - Ne répète jamais le même chiffre deux fois dans la même réponse.
 - Montre toujours un point positif avant les problèmes. L'utilisateur doit quitter la conversation motivé, pas découragé.
 - Évite les mots : "critique", "mauvais", "erreur", "échec". Utilise : "à améliorer", "frein principal", "axe prioritaire".
@@ -919,7 +920,11 @@ EXPLOITER FLOWPOINT NATURELLEMENT
 - Mauvais : "Connectez Google Search Console."
 - Bon : "Je vois que Google Search Console n'est pas encore liée à votre compte. Sans ça, je ne peux pas voir combien de fois votre site apparaît dans Google ni sur quels mots — c'est dommage car c'est là que se trouvent les meilleures opportunités."
 
-HIÉRARCHIE VISUELLE (toute réponse avec recommandations)
+HIÉRARCHIE VISUELLE (CONDITIONNELLE — uniquement pour les analyses complexes)
+Utilise cette structure UNIQUEMENT lorsque tu livres une ANALYSE MULTI-FACTEURS (audit SEO complet, bilan de compte, comparaison de concurrents, rapport détaillé).
+Pour les réponses simples, les confirmations d'actions, les réponses à question directe ou les messages courts → réponds directement SANS cette structure.
+
+Quand utilisée (analyse complexe) :
 📊 Résumé
 [1–2 phrases, positif d'abord]
 
@@ -935,18 +940,11 @@ HIÉRARCHIE VISUELLE (toute réponse avec recommandations)
 🟠 À faire cette semaine — [titre]
 🟢 À améliorer ensuite — [titre]
 
-👉 Prochaine étape
-[invitation concrète : "Si vous le souhaitez, je détaille comment traiter cette première priorité."]
-
 DONNÉES
 - Cite les chiffres exacts du contexte une seule fois, à l'endroit le plus utile.
 - N'invente aucune donnée absente du contexte.
 - Si GSC/GA4/GBP ne sont pas connectés, le dire en UNE phrase naturelle, après les recommandations.
 - Si une donnée manque, signale-le en une ligne et continue.
-
-CLÔTURE
-- Termine par une invitation concrète : "Si vous le souhaitez, je peux détailler comment résoudre cette première priorité étape par étape." ou "Quelle priorité voulez-vous approfondir ?"
-- Ne termine jamais par une liste exhaustive de tout ce qui va mal.
 `;
 
 // ── Persist chat history ──────────────────────────────────────────────────────
@@ -1517,7 +1515,13 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
     attachmentRefs = refResult;
   }
 
-  const orgId     = req.orgId  ?? "default";
+  // CR-8: org_id must be a real canonical UUID — "default" is a cross-tenant sentinel that must never
+  // reach buildFlowpointContext or any DB query. If requireAuth didn't set req.orgId, reject early.
+  const orgId = req.orgId;
+  if (!orgId || orgId === "default") {
+    res.status(400).json({ ok: false, code: "ORG_ID_REQUIRED", error: "Organisation non identifiée — veuillez vous reconnecter." });
+    return;
+  }
   const userId    = req.userId ?? "anonymous";
   const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -1698,13 +1702,34 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
     ...getImageUsageMetadata(parsedImageAttachments),
   };
 
+  // ── CR-4: Hypothetical / scenario mode detection ─────────────────────────
+  // Messages like "imagine que tu as 1000 mots-clés" or "suppose qu'on était sur Pro"
+  // reference fictional data. Skip heavy DB context and inject a guard instruction.
+  const _HYPOTHETICAL_RE = /\b(imagine[z]?|supposons|suppose[z]?|si on avait|si j'avais|what if|au cas où|en supposant|fictif|par hypothèse|hypothétiquement|pour l'exercice|par exemple si|mettons que|faisons comme si|scénario fictif)\b/i;
+  const isHypothetical = typeof message === "string" && _HYPOTHETICAL_RE.test(message);
+
+  // ── CR-5: Query complexity classifier ────────────────────────────────────
+  // SIMPLE greetings and one-word acks don't need 15+ DB queries.
+  const _SIMPLE_RE = /^(bonjour|bonsoir|salut|hello|hi|merci|ça va|ok|oui|non|d'accord|pas de problème|super|parfait|génial|cool|thanks|thank you|👍|🙏|😊)\s*[!?.]?$/i;
+  const isSimpleGreeting = typeof message === "string" && _SIMPLE_RE.test(message.trim());
+
+  // ── CR-6: Timing instrumentation ─────────────────────────────────────────
+  const _t_context_start = Date.now();
+
   // ── AI Agents Phase 1 : permissions effectives + plan → destinations navigables ──
   // Résolu par requête (jamais mis en cache global — leçon store.me).
+  // CR-5: Skip heavy DB context for simple greetings; CR-4: skip for hypothetical queries.
+  const skipHeavyContext = isSimpleGreeting || isHypothetical;
   const [fpContext, effectivePerms, orgPlanRaw] = await Promise.all([
-    buildFlowpointContext(context, orgId, contextFactor),
+    skipHeavyContext
+      ? Promise.resolve(`Platform: Flowpoint SaaS SEO Dashboard. Plan: ${store.me.plan ?? "standard"}.`)
+      : buildFlowpointContext(context, orgId, contextFactor),
     resolveEffectivePermissions(userId, orgId, req.orgContext?.role),
     resolvePlanFromDB(req),
   ]);
+
+  const _t_context_ms = Date.now() - _t_context_start;
+  logger.info({ orgId, _t_context_ms, isSimpleGreeting, isHypothetical, contextFactor }, "[AI] context built");
   const orgPlan = (orgPlanRaw ?? "standard").toLowerCase();
   const allowedDestinations = filterDestinations(effectivePerms, orgPlan);
   const navPromptSection = buildNavPromptSection(allowedDestinations);
@@ -1849,10 +1874,15 @@ Ta réponse doit porter sur CE SITE.
 - Pour une question générale → réponds directement sans outil.\n`
     : "";
 
+  // CR-4: Hypothetical mode guard block — injected before STRICT_AI_RULE when detected.
+  const _hypotheticalBlock = isHypothetical
+    ? `\n⚠ MODE HYPOTHÉTIQUE DÉTECTÉ : L'utilisateur explore un scénario fictif ou une hypothèse. RÈGLE ABSOLUE : ne traite PAS les données du contexte comme si elles correspondaient à ce scénario imaginaire. Réponds à la question hypothétique directement, sans appeler d'outils lourds ni inventer des métriques réelles. Indique clairement que ta réponse porte sur un cas fictif.\n`
+    : "";
+
   // Base consultant instructions. fpContext is appended separately below so the
   // attachment block can be added in one explicit place visible to both paths.
   const systemPromptBase = `Tu es le consultant SEO senior et copilote opérationnel de FlowPoint. ${_langInstruction}, en consultant humain — jamais en assistant générique. Ton interlocuteur peut être un artisan, un dentiste, un restaurateur : adapte le vocabulaire à quelqu'un qui ne connaît pas le SEO.
-${_targetOverrideBlock}
+${_targetOverrideBlock}${_hypotheticalBlock}
 ${STRICT_AI_RULE}
 
 INTENTION + CIBLE (identifie-les avant de répondre) :
@@ -1866,6 +1896,7 @@ INTENTION + CIBLE (identifie-les avant de répondre) :
   · "Pourquoi mon score baisse ?" → intent=analyse, cible=données du compte → utilise le contexte
 
 RÈGLES D'ACTION (obligatoires, par priorité) :
+0. RÈGLE PRIORITAIRE — ACTION IMMÉDIATE : Si l'utilisateur formule une demande d'action explicite (crée, liste, affiche, montre, cherche, trouve, supprime, modifie, ajoute, lance, planifie, configure, assigne, marque...) → appelle l'outil correspondant IMMÉDIATEMENT, sans demander « Souhaitez-vous que je... ? » ni « Voulez-vous que je... ? ». L'utilisateur a DÉJÀ exprimé son souhait par ses mots. Demander confirmation de ce qui vient d'être demandé est interdit.
 1. Si l'utilisateur fournit une URL/domaine externe :
    - Demande d'AUDIT SEO complet (score, PageSpeed, crawl, "audit de ce site", "score SEO de") → appelle run_audit("URL") IMMÉDIATEMENT.
    - Demande de LECTURE/RÉSUMÉ DE CONTENU ("lis cette page", "que dit ce site", "analyse le contenu de", "concurrent", "résume") → appelle analyze_url("URL") IMMÉDIATEMENT.
