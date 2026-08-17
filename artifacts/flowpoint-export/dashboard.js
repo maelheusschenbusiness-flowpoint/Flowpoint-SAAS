@@ -2200,9 +2200,9 @@ window._applyMonitorPreset = function(btn) {
     '<input class="fp-input" id="preset-url-input" placeholder="https://monsite.fr" value="' + escHtml(defaultUrl) + '"/></div>' +
     '<div class="fp-form-group"><label class="fp-form-label">Fr\u00e9quence de v\u00e9rification</label>' +
     '<select class="fp-select" id="preset-freq-select" style="width:100%">' +
-    '<option value="Toutes les 5 min" selected>Toutes les 5 min</option>' +
-    '<option value="Toutes les 15 min">Toutes les 15 min</option>' +
-    '<option value="Toutes les heures">Toutes les heures</option>' +
+    '<option value="Toutes les 5 min" selected>' + fpT('Toutes les 5 min') + '</option>' +
+    '<option value="Toutes les 15 min">' + fpT('Toutes les 15 min') + '</option>' +
+    '<option value="Toutes les heures">' + fpT('Toutes les heures') + '</option>' +
     '</select></div>' +
     '<button class="fp-btn fp-btn-primary" id="preset-apply-btn" style="width:100%">Cr\u00e9er les monitors</button>' +
     '</div>'
@@ -2269,7 +2269,7 @@ window._editMaintWindow = function(btn) {
     '<div class="fp-form-group"><label class="fp-form-label">Planification (ex\u00a0: Dimanche 02:00\u201304:00)</label>' +
     '<input class="fp-input" id="mw-edit-sched" value="' + escHtml(ws) + '"/></div>' +
     '<div class="fp-form-group"><label class="fp-form-label">Sites concern\u00e9s</label>' +
-    '<select class="fp-select" id="mw-edit-sites" style="width:100%"><option value="all" selected>Tous les sites</option>' +
+    '<select class="fp-select" id="mw-edit-sites" style="width:100%"><option value="all" selected>' + fpT('Tous les sites') + '</option>' +
     (STATE.monitors || []).map(function(m){ return '<option value="' + escHtml(m.id) + '">' + escHtml(m.name || m.url || 'Monitor') + '</option>'; }).join('') +
     '</select></div>' +
     '<button class="fp-btn fp-btn-primary" id="mw-edit-save" style="width:100%">Sauvegarder</button>' +
@@ -2330,18 +2330,18 @@ window._fpSlaViewPage = function() {
   }).join('');
   openFloatPanel(panelTitle,
     '<div style="padding:4px">' +
-    '<div class="fp-form-group"><label class="fp-form-label">Titre de la page statut</label>' +
-    '<input class="fp-input" id="sp-title-input" placeholder="Statut de nos services" value="' + escHtml(spTitle) + '"/></div>' +
+    '<div class="fp-form-group"><label class="fp-form-label">' + fpT('Titre de la page statut') + '</label>' +
+    '<input class="fp-input" id="sp-title-input" placeholder="' + fpT('Statut de nos services') + '" value="' + escHtml(spTitle) + '"/></div>' +
     '<div class="fp-form-group"><label class="fp-form-label">Description</label>' +
     '<input class="fp-input" id="sp-desc-input" placeholder="Disponibilit\u00e9 en temps r\u00e9el" value="' + escHtml(spDesc) + '"/></div>' +
-    '<div class="fp-form-group"><label class="fp-form-label">URL publique de la page statut</label>' +
+    '<div class="fp-form-group"><label class="fp-form-label">' + fpT('URL publique de la page statut') + '</label>' +
     '<input class="fp-input" id="status-page-url-input" placeholder="https://status.monsite.fr" value="' + escHtml(u || '') + '"/></div>' +
     (monOptions ? '<div class="fp-form-group"><label class="fp-form-label">Monitors affich\u00e9s</label>' +
     '<div style="max-height:140px;overflow-y:auto;padding:4px;background:var(--fp-inner-card);border-radius:8px;border:1px solid var(--fp-border)">' + monOptions + '</div></div>' : '') +
     '<button class="fp-btn fp-btn-primary" id="status-page-save-btn" style="width:100%;margin-top:10px">' + btnLabel + '</button>' +
     (u ? '<div style="display:flex;gap:8px;margin-top:8px">' +
       '<button class="fp-btn fp-btn-ghost fp-btn-sm" id="status-page-open-btn" style="flex:1">Ouvrir \u2197</button>' +
-      '<button class="fp-btn fp-btn-ghost fp-btn-sm" id="status-page-clear-btn" style="flex:1;color:#ef4444">Supprimer</button>' +
+      '<button class="fp-btn fp-btn-ghost fp-btn-sm" id="status-page-clear-btn" style="flex:1;color:#ef4444">' + fpT('Supprimer') + '</button>' +
     '</div>' : '') +
     '</div>'
   );
@@ -3492,16 +3492,16 @@ function closeFloatPanel() { $('#fp-float-panel').setAttribute('hidden', ''); }
 function openNewThreadPanel() {
   const html = '<div class="fp-form-group"><label class="fp-form-label">Client</label><input class="fp-input" id="thread-client" placeholder="Nom du client"/></div>'
     + '<div class="fp-form-group"><label class="fp-form-label">Sujet</label><input class="fp-input" id="thread-subject" placeholder="Rapport, Questions\u2026"/></div>'
-    + '<div class="fp-form-group"><label class="fp-form-label">Type de canal</label><select class="fp-input" id="thread-type"><option value="public">Public</option><option value="private">Privé</option></select></div>'
-    + '<button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" onclick="const c=document.getElementById(\'thread-client\')?.value?.trim(),s=document.getElementById(\'thread-subject\')?.value?.trim();if(!c||!s){showToast(\'warning\',\'Remplissez tous les champs\');return;}showToast(\'success\',\'Fil créé avec \'+c+\' !\');closeFloatPanel();">Créer le fil</button>';
+    + '<div class="fp-form-group"><label class="fp-form-label">' + fpT('Type de canal') + '</label><select class="fp-input" id="thread-type"><option value="public">Public</option><option value="private">' + fpT('Privé') + '</option></select></div>'
+    + '<button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" onclick="const c=document.getElementById(\'thread-client\')?.value?.trim(),s=document.getElementById(\'thread-subject\')?.value?.trim();if(!c||!s){showToast(\'warning\',\'Remplissez tous les champs\');return;}showToast(\'success\',\'Fil créé avec \'+c+\' !\');closeFloatPanel();">' + fpT('Créer le fil') + '</button>';
   openFloatPanel('Nouveau fil de discussion', html);
 }
 
 function openNewChannelPanel() {
-  const html = '<div class="fp-form-group"><label class="fp-form-label">Nom du canal</label><input class="fp-input" id="channel-name" placeholder="ex: stratégie, client-martin"/></div>'
-    + '<div class="fp-form-group"><label class="fp-form-label">Visibilité</label><select class="fp-input" id="channel-type"><option value="public">Public — toute l\'équipe</option><option value="private">Privé — sur invitation</option></select></div>'
+  const html = '<div class="fp-form-group"><label class="fp-form-label">' + fpT('Nom du canal') + '</label><input class="fp-input" id="channel-name" placeholder="' + fpT('ex: stratégie, client-martin') + '"/></div>'
+    + '<div class="fp-form-group"><label class="fp-form-label">' + fpT('Visibilité') + '</label><select class="fp-input" id="channel-type"><option value="public">' + fpT("Public — toute l'équipe") + '</option><option value="private">' + fpT("Privé — sur invitation") + '</option></select></div>'
     + '<div class="fp-form-group"><label class="fp-form-label">Membres (optionnel)</label><input class="fp-input" id="channel-members" placeholder="sophie@agence.fr, mael@agence.fr"/></div>'
-    + '<button class="fp-btn fp-btn-primary" id="create-channel-btn" style="width:100%;margin-top:8px">Créer le canal</button>';
+    + '<button class="fp-btn fp-btn-primary" id="create-channel-btn" style="width:100%;margin-top:8px">' + fpT('Créer le canal') + '</button>';
   openFloatPanel('Nouveau canal', html);
   // bind after DOM insertion
   setTimeout(() => {
@@ -3563,7 +3563,7 @@ function openAssignTaskModal() {
     <div style="display:flex;flex-direction:column;gap:12px">
       <div>
         <label style="font-size:11px;color:var(--fp-text-muted);margin-bottom:4px;display:block">${fpT('Membre')}</label>
-        <select class="fp-select" id="assign-member" style="width:100%">${members || '<option disabled>Aucun membre</option>'}</select>
+        <select class="fp-select" id="assign-member" style="width:100%">${members || ('<option disabled>' + fpT('Aucun membre') + '</option>')}</select>
       </div>
       <div>
         <label style="font-size:11px;color:var(--fp-text-muted);margin-bottom:4px;display:block">Titre</label>
@@ -4185,11 +4185,11 @@ function toggleLayoutEditMode() {
       const tb = document.createElement('div');
       tb.className = 'fp-card-edit-toolbar';
       tb.innerHTML =
-        '<button class="fp-cedit-btn" onclick="fpCardMove(this,\'left\')" title="Déplacer à gauche">&#8592;</button>' +
-        '<button class="fp-cedit-btn" onclick="fpCardMove(this,\'right\')" title="Déplacer à droite">&#8594;</button>' +
-        '<button class="fp-cedit-btn" onclick="fpCardMove(this,\'up\')" title="Déplacer en haut">&#8593;</button>' +
-        '<button class="fp-cedit-btn" onclick="fpCardMove(this,\'down\')" title="Déplacer en bas">&#8595;</button>' +
-        '<button class="fp-cedit-btn fp-cedit-wide" onclick="fpCardToggleWide(this)" title="Agrandir / réduire">&#8596;</button>';
+        `<button class="fp-cedit-btn" onclick="fpCardMove(this,'left')" title="${fpT('Déplacer à gauche')}">&#8592;</button>` +
+        `<button class="fp-cedit-btn" onclick="fpCardMove(this,'right')" title="${fpT('Déplacer à droite')}">&#8594;</button>` +
+        `<button class="fp-cedit-btn" onclick="fpCardMove(this,'up')" title="${fpT('Déplacer en haut')}">&#8593;</button>` +
+        `<button class="fp-cedit-btn" onclick="fpCardMove(this,'down')" title="${fpT('Déplacer en bas')}">&#8595;</button>` +
+        `<button class="fp-cedit-btn fp-cedit-wide" onclick="fpCardToggleWide(this)" title="${fpT('Agrandir / réduire')}">&#8596;</button>`;
       card.style.position = 'relative';
       card.appendChild(tb);
     });
@@ -4340,7 +4340,7 @@ function _showMapsBlockedFallback() {
   el.style.gap = '10px';
   el.style.background = 'var(--fp-map-placeholder-bg, rgba(10,14,27,0.95))';
   el.innerHTML = '<div style="font-size:28px">🗺️</div>' +
-    '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">Carte Google Maps bloquée</div>' +
+    '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">' + fpT('Carte Google Maps bloquée') + '</div>' +
     '<div style="font-size:12px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:280px;line-height:1.5">' +
       'Votre bloqueur de publicités (Brave Shield, uBlock…) bloque <code>maps.googleapis.com</code>.<br>' +
       'Désactivez-le sur cette page pour afficher la carte interactive.' +
@@ -4354,7 +4354,7 @@ window.gm_authFailure = function() {
   if (!el) return;
   el.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100%;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95))">' +
     '<div style="font-size:28px">🗺️</div>' +
-    '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">Carte indisponible sur ce domaine</div>' +
+    '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">' + fpT('Carte indisponible sur ce domaine') + '</div>' +
     '<div style="font-size:12px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:300px;line-height:1.5">La clé Google Maps n\'autorise pas ce domaine. Ajoutez-le dans les restrictions de la clé (Google Cloud Console).</div>' +
     '</div>';
 };
@@ -4384,7 +4384,7 @@ function _showMapsRetryFallback(reason) {
   el.innerHTML = '<div style="font-size:28px">🗺️</div>' +
     '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">' + (reason || 'Carte Google Maps indisponible') + '</div>' +
     '<div style="font-size:11.5px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:300px;line-height:1.5" id="fp-gmap-retry-sub"></div>' +
-    '<button onclick="window._fpRetryGMaps && window._fpRetryGMaps()" style="padding:7px 18px;background:#2563EB;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">Réessayer</button>';
+    '<button onclick="window._fpRetryGMaps && window._fpRetryGMaps()" style="padding:7px 18px;background:#2563EB;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">' + fpT('Réessayer') + '</button>';
   // Sub-message set separately to avoid escaping complexity
   const sub = document.getElementById('fp-gmap-retry-sub');
   if (sub) sub.textContent = 'Si un bloqueur de publicités est actif, désactivez-le sur cette page. Sinon, cliquez Réessayer.';
@@ -4442,7 +4442,7 @@ function loadGoogleMaps(cb) {
         el._mapBlocked = true;
         el.style.cssText = 'display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95))';
         el.innerHTML = '<div style="font-size:28px">🗺️</div>' +
-          '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">Carte non configurée</div>' +
+          '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">' + fpT('Carte non configurée') + '</div>' +
           '<div style="font-size:12px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:300px;line-height:1.5">Clé publique Google Maps manquante. Configurez <code>GOOGLE_MAPS_PUBLIC_KEY</code> ou <code>GOOGLE_MAPS_BROWSER_KEY</code> (clé restreinte par référent, distincte de la clé serveur). Contactez votre administrateur.</div>';
       }
       return;
@@ -6944,7 +6944,7 @@ function renderMissions_Library() {
       </div>
     </div>
 
-    ${aiBlock('Ces templates sont <strong>personnalisés pour votre profil</strong> SEO local. Chaque mission inclut des étapes détaillées et actionnables directement dans le dashboard.',
+    ${aiBlock('Ces templates sont <strong>' + fpT('personnalisés pour votre profil') + '</strong> SEO local. Chaque mission inclut des étapes détaillées et actionnables directement dans le dashboard.',
       ['Tout ajouter (recommandés)'])}
 
     <div class="fp-lib-section-header">
@@ -8071,7 +8071,7 @@ function renderReports() {
       <div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">👥 Gestion des clients</div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openFloatPanel('Ajouter un client','<div style=\'padding:16px\'><input id=\'fp-new-client-name\' type=\'text\' placeholder=\'Nom / domaine\' style=\'width:100%;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:8px 10px;box-sizing:border-box;margin-bottom:8px\'><button class=\'fp-btn fp-btn-primary fp-btn-sm\' style=\'width:100%\' onclick=\'(function(){var n=document.getElementById(\'fp-new-client-name\').value.trim();if(!n){showToast(\'error\',\'Entrez un nom\');return;}apiAction(\'POST\',\'/api/reports/clients\',{name:n}).then(r=>{if(r&&r.id)showToast(\'success\',\'Client \'+n+\' ajouté !\');else showToast(\'info\',\'Client enregistré localement\');closeFloatPanel&&closeFloatPanel();}).catch(()=>{showToast(\'info\',n+\' enregistré\');closeFloatPanel&&closeFloatPanel();})})()\'>Ajouter</button></div>')" >+ Ajouter</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openFloatPanel('Ajouter un client','<div style=\'padding:16px\'><input id=\'fp-new-client-name\' type=\'text\' placeholder=\'Nom / domaine\' style=\'width:100%;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:8px 10px;box-sizing:border-box;margin-bottom:8px\'><button class=\'fp-btn fp-btn-primary fp-btn-sm\' style=\'width:100%\' onclick=\'(function(){var n=document.getElementById(\'fp-new-client-name\').value.trim();if(!n){showToast(\'error\',\'Entrez un nom\');return;}apiAction(\'POST\',\'/api/reports/clients\',{name:n}).then(r=>{if(r&&r.id)showToast(\'success\',\'Client \'+n+\' ajouté !\');else showToast(\'info\',\'Client enregistré localement\');closeFloatPanel&&closeFloatPanel();}).catch(()=>{showToast(\'info\',n+\' enregistré\');closeFloatPanel&&closeFloatPanel();})})()\'>${fpT('Ajouter')}</button></div>')" >+ Ajouter</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${clients.map(c => {
@@ -8387,7 +8387,7 @@ function renderLocalSEO() {
 
     <!-- AI STRATEGIST -->
     ${isUltra
-      ? aiBlock('<strong>Score de domination : '+(domScore!=null?domScore+'/100':'?/100')+'</strong> · '+(domScore!=null?'Vous dominez les recherches locales dans votre zone cible. Opportunités majeures détectées — Créer des pages locales peut augmenter votre visibilité.':'Connectez Google Business Profile pour calculer votre score de domination locale.'), ['Voir les opportunités', 'Générer pages locales', 'Rapport stratégique'])
+      ? aiBlock('<strong>' + fpT('Score de domination :') + ' '+(domScore!=null?domScore+'/100':'?/100')+'</strong> · '+(domScore!=null?'Vous dominez les recherches locales dans votre zone cible. Opportunités majeures détectées — Créer des pages locales peut augmenter votre visibilité.':'Connectez Google Business Profile pour calculer votre score de domination locale.'), ['Voir les opportunités', 'Générer pages locales', 'Rapport stratégique'])
       : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
           <div style="font-size:24px;flex-shrink:0">🤖</div>
           <div style="flex:1">
@@ -8600,7 +8600,7 @@ function renderLocalSEO() {
                 msg: escHtml(city.name || city) + ' — Données locales disponibles',
                 t: (i * 2 + 2) + 'h',
               })));
-              if (!_liveSignals.length) return '<div style="font-size:11px;color:var(--fp-text-faint);text-align:center;padding:8px 0">Configurez vos zones locales pour voir les signaux en temps réel.</div>';
+              if (!_liveSignals.length) return '<div style="font-size:11px;color:var(--fp-text-faint);text-align:center;padding:8px 0">' + fpT('Configurez vos zones locales pour voir les signaux en temps réel.') + '</div>';
               return _liveSignals.map(s => '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:7px;border-left:2px solid ' + s.c + ';background:' + s.c + '06">'
                 + '<div style="width:5px;height:5px;border-radius:50%;background:' + s.c + ';flex-shrink:0;margin-top:4px"></div>'
                 + '<div style="flex:1;font-size:10px;color:var(--fp-text-muted);line-height:1.4">' + (s.msg) + '</div>'
@@ -8870,7 +8870,7 @@ function renderTeam() {
               const _stColors = { done:'#22c55e', inprogress:'#f59e0b', todo:'#94a3b8', blocked:'#ef4444', open:'#6366f1', in_progress:'#f59e0b' };
               const _stLabels = { done:'Terminé', inprogress:'En cours', todo:'À faire', blocked:'Bloqué', open:'À faire', in_progress:'En cours', completed:'Terminé' };
               const _missions = (STATE.missions||[]).filter(m=>m.status!=='dismissed'&&m.status!=='stale').slice(0,4);
-              if (_missions.length === 0) return '<div style="text-align:center;padding:16px 0;color:var(--fp-text-faint);font-size:12px">Aucune tâche assignée</div>';
+              if (_missions.length === 0) return '<div style="text-align:center;padding:16px 0;color:var(--fp-text-faint);font-size:12px">' + fpT('Aucune tâche assignée') + '</div>';
               return _missions.map(m => {
                 const _col = _stColors[m.status] || '#94a3b8';
                 const _lbl = _stLabels[m.status] || 'À faire';
@@ -10798,7 +10798,7 @@ function renderSettings() {
   if (sub === 'workspace') {
     return `
       ${aiBlock(
-        "Workspace configuré et en bonne santé. <strong>Branding white-label actif</strong> — logo et couleurs personnalisés détectés. Recommandation : activer le domaine personnalisé pour une expérience client premium.",
+        "Workspace configuré et en bonne santé. <strong>" + fpT("Branding white-label actif") + "</strong> — logo et couleurs personnalisés détectés. Recommandation : activer le domaine personnalisé pour une expérience client premium.",
         ['Configurer le domaine', 'Optimiser le branding', 'IA : Sauvegarder']
       )}
 
@@ -10840,10 +10840,10 @@ function renderSettings() {
             {l:"Webhook d'alerte (endpoint)",   k:'webhookUrl',    t:'url', ph:'https://hooks.slack.com/services/...', ultra:false},
             {l:'Téléphone SMS urgence',         k:'smsPhone',      t:'tel', ph:'+33 6 00 00 00 00', ultra:true, soon:true},
           ].map(f => `<div class="fp-form-group" style="opacity:${f.soon || (f.ultra && !isUltra) ? '0.55' : '1'}">
-            <label class="fp-form-label">${escHtml(f.l)}${f.soon ? ' <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 6px;border-radius:6px">Bientôt disponible</span>' + (f.ultra ? ' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 6px;border-radius:6px">Ultra</span>' : '') : (f.ultra && !isUltra ? ' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 6px;border-radius:6px">Ultra requis</span>' : '')}</label>
+            <label class="fp-form-label">${escHtml(f.l)}${f.soon ? ' <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 6px;border-radius:6px">' + fpT('Bientôt disponible') + '</span>' + (f.ultra ? ' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 6px;border-radius:6px">Ultra</span>' : '') : (f.ultra && !isUltra ? ' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 6px;border-radius:6px">Ultra requis</span>' : '')}</label>
             <input class="fp-input" type="${f.t}" value="${escHtml(s[f.k]||'')}" placeholder="${f.ph}"
               ${f.soon || (f.ultra && !isUltra) ? `disabled title="${f.soon ? 'Fonctionnalité bientôt disponible — réservée au plan Ultra' : 'Disponible avec le plan Ultra'}"` : `oninput="STATE.settings['${f.k}']=this.value;saveSettings()"`}/>
-            ${f.soon ? '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">Les alertes SMS par numéro de téléphone seront disponibles prochainement pour les plans Ultra.</div>' : ''}
+            ${f.soon ? '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">' + fpT('Les alertes SMS par numéro de téléphone seront disponibles prochainement pour les plans Ultra.') + '</div>' : ''}
           </div>`).join('')}
           <div style="display:flex;gap:8px;margin-top:4px">
             <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde\u2026';const profilePayload={firstName:(document.getElementById('prof-fname')?.value||'').trim(),lastName:(document.getElementById('prof-lname')?.value||'').trim(),orgName:(document.getElementById('prof-org')?.value||'').trim(),website:(document.getElementById('prof-website')?.value||'').trim()};const tzVal=(document.getElementById('prof-tz')?.value||'').trim();const locationPayload={address:(document.getElementById('prof-addr')?.value||'').trim(),city:(document.getElementById('prof-city')?.value||'').trim(),postalCode:(document.getElementById('prof-postal')?.value||'').trim(),country:(document.getElementById('prof-country')?.value||'').trim()};const hasLoc=locationPayload.address||locationPayload.city||locationPayload.postalCode||locationPayload.country;const [rMe,rTz,rLoc]=await Promise.all([apiAction('PATCH','/api/me',profilePayload).catch(e=>({_err:true,error:(e&&e.error)||'Erreur profil'})),tzVal?apiAction('PATCH','/api/me/settings',{timezone:tzVal}).catch(e=>({_err:true,error:(e&&e.error)||'Erreur fuseau'})):Promise.resolve({ok:true}),hasLoc?apiAction('PATCH','/api/location',locationPayload).catch(e=>({_err:true,error:(e&&e.error)||'Erreur localisation'})):Promise.resolve({ok:true})]);btn.disabled=false;btn.textContent='Sauvegarder';if(rMe&&rMe._err){showToast('error',rMe.error||'Erreur profil');return;}if(rTz&&rTz._err){showToast('error',rTz.error||'Erreur fuseau horaire');return;}if(hasLoc&&rLoc&&rLoc._err){showToast('error',rLoc.error||'Erreur localisation');return;}const [freshMe,freshSettings,freshLoc]=await Promise.all([fetch('/api/me',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null),fetch('/api/me/settings',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null),hasLoc?fetch('/api/location',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null):Promise.resolve(null)]);if(freshMe&&!freshMe.error){STATE.me=freshMe;}if(freshSettings&&typeof freshSettings==='object'&&!freshSettings.error){STATE.settings=Object.assign(STATE.settings||{},freshSettings);}if(freshLoc&&!freshLoc.error){if(!STATE.me)STATE.me={};STATE.me.location=freshLoc;}showToast('success', fpT('Profil sauvegard\u00e9 !'));render();})()">Sauvegarder</button>
@@ -11180,7 +11180,7 @@ function renderSettings() {
     const circ34 = 2 * Math.PI * 34;
     return `
       ${aiBlock(
-        (()=>{const _vul=secItems.filter(i=>!i.done);return '<strong>Score de sécurité : '+secScore+'/100</strong>. '+(_vul.length>0?'<strong>'+_vul.length+' vulnérabilité'+(_vul.length>1?'s':'')+' détectée'+(_vul.length>1?'s':'')+' : '+_vul.map(v=>escHtml(v.label)).join(', ')+'</strong>.':' Aucune vulnérabilité critique détectée ✅.')+' Action prioritaire : activer le 2FA et déclarer la Content-Security-Policy.';})(),
+        (()=>{const _vul=secItems.filter(i=>!i.done);return '<strong>' + fpT('Score de sécurité :') + ' '+secScore+'/100</strong>. '+(_vul.length>0?'<strong>'+_vul.length+' vulnérabilité'+(_vul.length>1?'s':'')+' détectée'+(_vul.length>1?'s':'')+' : '+_vul.map(v=>escHtml(v.label)).join(', ')+'</strong>.':' Aucune vulnérabilité critique détectée ✅.')+' Action prioritaire : activer le 2FA et déclarer la Content-Security-Policy.';})(),
         ['Activer le 2FA', 'Configurer les alertes', 'Auditer les sessions']
       )}
 
@@ -11865,7 +11865,7 @@ function renderSettings() {
                   </div>
                   <div style="display:flex;align-items:center;gap:8px">
                     <span style="font-size:11px;color:${n.connected?'var(--fp-success)':'var(--fp-text-faint)'};${n.connected?'':'opacity:0.5'}">${n.connected?'● Connecté':'○ Non connecté'}</span>
-                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px"${n.comingSoon ? ' disabled title="Bientôt disponible"' : ''} onclick="${n.comingSoon ? '' : n.btn}">
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px"${n.comingSoon ? ` disabled title="${fpT('Bientôt disponible')}"` : ''} onclick="${n.comingSoon ? '' : n.btn}">
                       ${n.connected?'Gérer':n.comingSoon?'Bientôt':'Connecter'}
                     </button>
                     ${n.connected && n.disconnectEndpoint ? `<button class="fp-btn fp-btn-ghost fp-btn-sm fp-native-disconnect-btn" data-svc="${n.svc}" data-endpoint="${n.disconnectEndpoint}" data-name="${n.name}" style="font-size:10px;color:var(--fp-danger);border-color:rgba(239,68,68,0.3)">${fpT('Déconnecter')}</button>` : ''}
@@ -12670,7 +12670,7 @@ function renderAI() {
       <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:12px">🔗 Corrélations inter-systèmes</div>
       ${correlations.length > 0
         ? correlations.map(c => insightCard(c.icon, c.title, c.body, c.chips, c.color)).join('')
-        : '<div style="color:var(--fp-text-faint);font-size:12px;padding:20px;text-align:center;border:1px dashed var(--fp-border);border-radius:12px">Pas encore assez de données pour détecter des corrélations inter-modules.</div>'
+        : '<div style="color:var(--fp-text-faint);font-size:12px;padding:20px;text-align:center;border:1px dashed var(--fp-border);border-radius:12px">' + fpT('Pas encore assez de données pour détecter des corrélations inter-modules.') + '</div>'
       }
     `;
   }
@@ -13810,7 +13810,7 @@ window.fpAiStop = function fpAiStop() {
 async function fetchAuditAIInsights(auditRef) {
   const audit = STATE.audits.find(a => a.id === auditRef.id) || auditRef;
   const targetEl = document.getElementById(`fp-audit-ai-result-${auditRef.id}`);
-  if (targetEl) { targetEl.innerHTML = '<div style="font-size:12px;color:var(--fp-text-faint);padding:12px 0">Analyse en cours…</div>'; }
+  if (targetEl) { targetEl.innerHTML = '<div style="font-size:12px;color:var(--fp-text-faint);padding:12px 0">' + fpT('Analyse en cours…') + '</div>'; }
   const context = {
     auditDetails: STATE.audits.slice(0, 8).map(a => ({ url: a.url, score: a.score, speed: a.speed, issues: a.issues })),
     auditIssues: (() => {
@@ -13853,7 +13853,7 @@ async function fetchAuditAIInsights(auditRef) {
 }
 
 function renderAuditDetailPanel(audit) {
-  if (!audit) return '<div class="fp-empty">Audit introuvable</div>';
+  if (!audit) return '<div class="fp-empty">' + fpT('Audit introuvable') + '</div>';
   const plan = STATE.me?.plan || 'Pro';
   const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const clamp = v => Math.min(100, Math.max(12, Math.round(v)));
@@ -15092,7 +15092,7 @@ function _doRender() {
   } catch(_renderErr) {
     // BUG-002 fix: renderer threw — expose exact error and show fallback instead of leaving old DOM
     console.error('[FP] _doRender crash route=' + STATE.route, _renderErr);
-    html = '<div style="padding:40px 32px;text-align:center;color:var(--fp-text-muted,#94a3b8)"><div style="font-size:32px;margin-bottom:12px">\u26A0\uFE0F</div><div style="font-weight:600;margin-bottom:8px;color:var(--fp-text,#e2e8f0)">Erreur de rendu</div><div style="font-size:13px;margin-bottom:16px">Rechargez la page ou revenez \u00E0 l\'accueil.</div><button onclick="navigate(\'overview\')" style="padding:8px 20px;border-radius:8px;background:var(--fp-accent,#2563eb);color:#fff;border:none;cursor:pointer;font-size:13px">Retour accueil</button></div>';
+    html = '<div style="padding:40px 32px;text-align:center;color:var(--fp-text-muted,#94a3b8)"><div style="font-size:32px;margin-bottom:12px">\u26A0\uFE0F</div><div style="font-weight:600;margin-bottom:8px;color:var(--fp-text,#e2e8f0)">' + fpT('Erreur de rendu') + '</div><div style="font-size:13px;margin-bottom:16px">Rechargez la page ou revenez \u00E0 l\'accueil.</div><button onclick="navigate(\'overview\')" style="padding:8px 20px;border-radius:8px;background:var(--fp-accent,#2563eb);color:#fff;border:none;cursor:pointer;font-size:13px">Retour accueil</button></div>';
   }
 
   window.__fpAnimationsInitialized = false;
@@ -18260,6 +18260,10 @@ function bindGlobalEvents() {
     'Visibilité': 'Visibility',
     'Voir': 'View',
     'Votre position locale': 'Your local position',
+    'Audit introuvable': 'Audit not found',
+    'Branding white-label actif': 'White-label branding active',
+    'Score de domination :': 'Domination score:',
+    'Score de sécurité :': 'Security score:',
     'ex. Score critique restaurant': 'e.g. Critical restaurant score',
   };
   // ── FP_I18N_EN_EXTRA — auto-generated sweep of previously untranslated FR strings (task: 100% dashboard translation) ──
@@ -22282,6 +22286,10 @@ function bindGlobalEvents() {
     "pour voir vos positions locales Google en direct": "para ver tus posiciones locales de Google en vivo",
     "priorité absolue": "prioridad absoluta",
     "probabilité": "probabilidad",
+    "Audit introuvable": "Auditoría no encontrada",
+    "Branding white-label actif": "Branding white-label activo",
+    "Score de domination :": "Puntuación de dominación:",
+    "Score de sécurité :": "Puntuación de seguridad:",
     "rapport SEO Executive de mai": "Informe SEO Ejecutivo de mayo",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s ahorrables",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sesiones analizadas",
@@ -25088,6 +25096,10 @@ function bindGlobalEvents() {
     "pour voir vos positions locales Google en direct": "um Ihre lokalen Google-Positionen live zu sehen",
     "priorité absolue": "absolute Priorität",
     "probabilité": "Wahrscheinlichkeit",
+    "Audit introuvable": "Audit nicht gefunden",
+    "Branding white-label actif": "White-Label-Branding aktiv",
+    "Score de domination :": "Dominanzpunktzahl:",
+    "Score de sécurité :": "Sicherheitspunktzahl:",
     "rapport SEO Executive de mai": "Mai Executive SEO-Bericht",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s einsparbar",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} analysierte Sitzungen",
@@ -27900,6 +27912,10 @@ function bindGlobalEvents() {
     "pour voir vos positions locales Google en direct": "per vedere le tue posizioni locali di Google in tempo reale",
     "priorité absolue": "priorità assoluta",
     "probabilité": "probabilità",
+    "Audit introuvable": "Audit non trovato",
+    "Branding white-label actif": "Branding white-label attivo",
+    "Score de domination :": "Punteggio di dominanza:",
+    "Score de sécurité :": "Punteggio di sicurezza:",
     "rapport SEO Executive de mai": "Rapporto SEO Executive di maggio",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s risparmiabili",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sessioni analizzate",
@@ -30712,6 +30728,10 @@ function bindGlobalEvents() {
     "pour voir vos positions locales Google en direct": "para ver suas posições locais do Google ao vivo",
     "priorité absolue": "prioridade absoluta",
     "probabilité": "probabilidade",
+    "Audit introuvable": "Auditoria não encontrada",
+    "Branding white-label actif": "Branding white-label ativo",
+    "Score de domination :": "Pontuação de dominação:",
+    "Score de sécurité :": "Pontuação de segurança:",
     "rapport SEO Executive de mai": "Relatório SEO Executivo de maio",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s economizáveis",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sessões analisadas",
@@ -33524,6 +33544,10 @@ function bindGlobalEvents() {
     "pour voir vos positions locales Google en direct": "om uw lokale Google-posities live te zien",
     "priorité absolue": "absolute prioriteit",
     "probabilité": "waarschijnlijkheid",
+    "Audit introuvable": "Audit niet gevonden",
+    "Branding white-label actif": "White-label branding actief",
+    "Score de domination :": "Dominantiescore:",
+    "Score de sécurité :": "Veiligheidsscore:",
     "rapport SEO Executive de mai": "Mei Executive SEO-rapport",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s besparingen",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} geanalyseerde sessies",
@@ -36336,6 +36360,10 @@ function bindGlobalEvents() {
     "pour voir vos positions locales Google en direct": "aby zobaczyć swoje lokalne pozycje Google na żywo",
     "priorité absolue": "absolutny priorytet",
     "probabilité": "prawdopodobieństwo",
+    "Audit introuvable": "Audyt nie znaleziony",
+    "Branding white-label actif": "Branding white-label aktywny",
+    "Score de domination :": "Wynik dominacji:",
+    "Score de sécurité :": "Wynik bezpieczeństwa:",
     "rapport SEO Executive de mai": "Majowy raport SEO Executive",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s oszczędności",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} analizowane sesje",
@@ -39148,6 +39176,10 @@ function bindGlobalEvents() {
     "pour voir vos positions locales Google en direct": "för att se dina lokala Google-positioner live",
     "priorité absolue": "absolut prioritet",
     "probabilité": "sannolikhet",
+    "Audit introuvable": "Revision ej hittad",
+    "Branding white-label actif": "White-label varumärkning aktiv",
+    "Score de domination :": "Domineringspoäng:",
+    "Score de sécurité :": "Säkerhetspoäng:",
     "rapport SEO Executive de mai": "Maj Executive SEO-rapport",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s sparade",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} analyserade sessioner",
@@ -41960,6 +41992,10 @@ function bindGlobalEvents() {
     "pour voir vos positions locales Google en direct": "pentru a vedea pozițiile tale locale Google în direct",
     "priorité absolue": "prioritate absolută",
     "probabilité": "probabilitate",
+    "Audit introuvable": "Audit negăsit",
+    "Branding white-label actif": "Branding white-label activ",
+    "Score de domination :": "Scor de dominare:",
+    "Score de sécurité :": "Scor de securitate:",
     "rapport SEO Executive de mai": "Raport SEO Executive din mai",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s economisibili",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sesiuni analizate",
@@ -44772,6 +44808,10 @@ function bindGlobalEvents() {
     "pour voir vos positions locales Google en direct": "pro zobrazení vašich místních pozic Google naživo",
     "priorité absolue": "absolutní priorita",
     "probabilité": "pravděpodobnost",
+    "Audit introuvable": "Audit nenalezen",
+    "Branding white-label actif": "White-label branding aktivní",
+    "Score de domination :": "Skóre dominance:",
+    "Score de sécurité :": "Bezpečnostní skóre:",
     "rapport SEO Executive de mai": "Květnová zpráva SEO Executive",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s úspory",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} analyzované relace",
