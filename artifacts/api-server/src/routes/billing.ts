@@ -554,8 +554,37 @@ router.get("/billing/payment-methods", async (req: Request, res: Response) => {
     }));
 
     res.json({ paymentMethods });
-  } catch (err) {
-    logger.error({ err }, "[Billing] Failed to get payment methods");
+  } catch (err: unknown) {
+    // ── resource_missing : customer deleted or never existed in Stripe ────────
+    // Treat this as a desynchronised billing state, not a server failure.
+    // Clear the stale ID from DB and return an empty list — do NOT create a new
+    // customer here (that belongs to the billing checkout workflow only).
+    const stripeCode = (err as { code?: string })?.code;
+    if (stripeCode === "resource_missing") {
+      logger.warn(
+        { orgId, stripeCustomerId },
+        "[Billing] payment-methods: Stripe customer not found (deleted or wrong env) — clearing stale ID from DB",
+      );
+      try {
+        const { pool: cleanPool } = await import("@workspace/db");
+        await Promise.all([
+          cleanPool.query(
+            `UPDATE organizations SET stripe_customer_id = NULL WHERE id = $1 AND stripe_customer_id = $2`,
+            [orgId, stripeCustomerId],
+          ),
+          cleanPool.query(
+            `UPDATE org_settings SET stripe_customer_id = '' WHERE org_id = $1 AND stripe_customer_id = $2`,
+            [orgId, stripeCustomerId],
+          ).catch(() => {}), // org_settings may not have this row — non-fatal
+        ]);
+      } catch (cleanErr: unknown) {
+        logger.warn({ cleanErr, orgId }, "[Billing] payment-methods: failed to clear stale stripeCustomerId (non-fatal)");
+      }
+      res.json({ paymentMethods: [] });
+      return;
+    }
+    // ── All other errors are genuine server failures ───────────────────────────
+    logger.error({ err, orgId }, "[Billing] Failed to get payment methods");
     res.status(500).json({ error: "Failed to retrieve payment methods" });
   }
 });
