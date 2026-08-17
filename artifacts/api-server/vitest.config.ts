@@ -56,6 +56,8 @@ export default defineConfig({
       "src/services/url-fetcher-ipv4.test.ts",
       // Task #592 — AI engine CR fixes regression suite
       "src/tests/ai-engine.test.ts",
+      // Task #592 item #11 — multi-tenant mission isolation
+      "src/tests/ai-multitenant.test.ts",
     ],
     environment: "node",
     globals:     false,
