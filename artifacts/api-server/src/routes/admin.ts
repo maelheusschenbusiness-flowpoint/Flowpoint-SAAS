@@ -735,6 +735,132 @@ router.delete("/admin/purge-account", async (req: Request, res: Response): Promi
   }
 });
 
+// ── POST /api/admin/purge-ghost-accounts ─────────────────────────────────────
+// Finds and permanently removes every "ghost" account that survived a failed
+// deletion (the bug: email=null caused org_settings + magic_link_tokens cleanup
+// to be skipped, leaving rows that allow re-login via the S3-legacy path).
+//
+// Categories purged:
+//   1. Email-keyed org_settings (org_id looks like an email) with no matching
+//      active user or organization.
+//   2. magic_link_tokens for emails with no matching users row.
+//   3. pending_signups for emails with no matching users row.
+//
+// Usage (dry-run — default, safe to call any time):
+//   POST /api/admin/purge-ghost-accounts
+//   x-admin-key: <ADMIN_KEY>
+//   Content-Type: application/json
+//   {}
+//
+// Usage (execute — actually deletes):
+//   POST /api/admin/purge-ghost-accounts
+//   { "dry_run": false }
+//
+// Returns a full report of what was (or would be) deleted.
+router.post("/admin/purge-ghost-accounts", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const dry_run = (req.body as { dry_run?: boolean })?.dry_run !== false; // default true
+  const client = await pool.connect();
+
+  try {
+    // ── 1. Discover ghost email-keyed org_settings ───────────────────────────
+    // These are rows where org_id contains '@' (legacy email key) but no
+    // matching users.email or organizations.owner_email exists.
+    const ghostOrgSettings = await client.query<{ ghost_email: string; os_created: string }>(`
+      SELECT os.org_id::text AS ghost_email, os.created_at::date::text AS os_created
+      FROM org_settings os
+      WHERE os.org_id::text LIKE '%@%'
+        AND NOT EXISTS (
+          SELECT 1 FROM users u WHERE lower(u.email) = lower(os.org_id::text)
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM organizations o WHERE lower(o.owner_email) = lower(os.org_id::text)
+        )
+      ORDER BY os.created_at
+    `);
+
+    // ── 2. Orphaned magic_link_tokens ────────────────────────────────────────
+    const ghostTokens = await client.query<{ email: string; expires_at: string; used: boolean }>(`
+      SELECT mlt.email, mlt.expires_at::text, mlt.used
+      FROM magic_link_tokens mlt
+      WHERE mlt.email IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM users u WHERE lower(u.email) = lower(mlt.email))
+      ORDER BY mlt.expires_at DESC
+    `);
+
+    // ── 3. Orphaned pending_signups ──────────────────────────────────────────
+    const ghostPending = await client.query<{ email: string; created_at: string }>(`
+      SELECT ps.email, ps.created_at::date::text
+      FROM pending_signups ps
+      WHERE NOT EXISTS (SELECT 1 FROM users u WHERE lower(u.email) = lower(ps.email))
+      ORDER BY ps.created_at
+    `);
+
+    const report = {
+      dry_run,
+      ghost_org_settings:  ghostOrgSettings.rows,
+      ghost_tokens:        ghostTokens.rows,
+      ghost_pending_signups: ghostPending.rows,
+      summary: {
+        org_settings_to_delete:    ghostOrgSettings.rowCount ?? 0,
+        magic_link_tokens_to_delete: ghostTokens.rowCount ?? 0,
+        pending_signups_to_delete: ghostPending.rowCount ?? 0,
+      },
+    };
+
+    if (dry_run) {
+      res.json({ ok: true, ...report, message: "Dry-run — nothing deleted. Pass dry_run:false to execute." });
+      return;
+    }
+
+    // ── Execute deletions ────────────────────────────────────────────────────
+    await client.query("BEGIN");
+
+    // 1. Ghost org_settings (email-keyed)
+    const delOrgSettings = await client.query(`
+      DELETE FROM org_settings
+      WHERE org_id::text LIKE '%@%'
+        AND NOT EXISTS (SELECT 1 FROM users u WHERE lower(u.email) = lower(org_settings.org_id::text))
+        AND NOT EXISTS (SELECT 1 FROM organizations o WHERE lower(o.owner_email) = lower(org_settings.org_id::text))
+    `) as unknown as { rowCount: number };
+
+    // 2. Orphaned magic_link_tokens
+    const delTokens = await client.query(`
+      DELETE FROM magic_link_tokens
+      WHERE email IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM users u WHERE lower(u.email) = lower(magic_link_tokens.email))
+    `) as unknown as { rowCount: number };
+
+    // 3. Orphaned pending_signups
+    const delPending = await client.query(`
+      DELETE FROM pending_signups
+      WHERE NOT EXISTS (SELECT 1 FROM users u WHERE lower(u.email) = lower(pending_signups.email))
+    `) as unknown as { rowCount: number };
+
+    await client.query("COMMIT");
+
+    res.json({
+      ok: true,
+      dry_run: false,
+      deleted: {
+        org_settings:    delOrgSettings.rowCount ?? 0,
+        magic_link_tokens: delTokens.rowCount ?? 0,
+        pending_signups: delPending.rowCount ?? 0,
+      },
+      ghost_org_settings:    report.ghost_org_settings,
+      ghost_tokens:          report.ghost_tokens,
+      ghost_pending_signups: report.ghost_pending_signups,
+      message: "Ghost accounts permanently deleted.",
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
 // ── POST /api/admin/run-trial-cron — trigger trial-ending check immediately ──
 router.post("/admin/run-trial-cron", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
