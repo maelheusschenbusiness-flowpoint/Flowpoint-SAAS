@@ -54,6 +54,8 @@ export default defineConfig({
       // Phase 7 — analyze_url SSRF IPv6 + IPv4 classification
       "src/services/url-fetcher-ipv6.test.ts",
       "src/services/url-fetcher-ipv4.test.ts",
+      // Task #592 — AI engine CR fixes regression suite
+      "src/tests/ai-engine.test.ts",
     ],
     environment: "node",
     globals:     false,
