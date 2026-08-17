@@ -416,7 +416,8 @@ async function cleanupStorage(orgId: string, userIds: string[]): Promise<Deletio
 export async function deleteAccount(target: DeletionTarget): Promise<DeletionReport> {
   const startedAt = new Date();
   const { orgId } = target;
-  const email = target.email ?? null;
+  // `let` — may be self-healed from the DB when the caller did not supply it.
+  let email = target.email ?? null;
 
   logger.info({ orgId, email }, "[AccountDeletion] Starting");
 
@@ -440,6 +441,35 @@ export async function deleteAccount(target: DeletionTarget): Promise<DeletionRep
 
     // Lock the organization row so two concurrent deletions cannot interleave.
     await client.query(`SELECT id FROM organizations WHERE id = $1 FOR UPDATE`, [orgId]);
+
+    // ── Email self-heal ───────────────────────────────────────────────────
+    // If the caller did not supply an email (e.g. billingCtx returned null),
+    // resolve it from the DB so that email-keyed tables (magic_link_tokens,
+    // pending_signups, legacy org_settings, user_sessions) are always cleaned.
+    // Without this, a deleted account can still request a new magic link and
+    // log back in via the S3-legacy path in login-verify.
+    if (!email) {
+      try {
+        const [fromUsers, fromOrgs] = await Promise.all([
+          client.query<{ email: string }>(
+            `SELECT email FROM users WHERE id::text = $1 LIMIT 1`,
+            [String(target.userId ?? "")],
+          ),
+          client.query<{ owner_email: string }>(
+            `SELECT owner_email FROM organizations WHERE id::text = $1 LIMIT 1`,
+            [orgId],
+          ),
+        ]);
+        email = fromUsers.rows[0]?.email ?? fromOrgs.rows[0]?.owner_email ?? null;
+        if (email) {
+          logger.info({ orgId, email }, "[AccountDeletion] Email self-healed from DB");
+        } else {
+          logger.warn({ orgId }, "[AccountDeletion] Could not resolve email from DB — email-keyed cleanup will be skipped");
+        }
+      } catch (resolveErr) {
+        logger.warn({ resolveErr, orgId }, "[AccountDeletion] Email self-heal query failed (non-fatal) — email-keyed cleanup will be skipped");
+      }
+    }
 
     // ── 2a. Resolve which users are being erased ──────────────────────────
     const memberRes = await client.query(
