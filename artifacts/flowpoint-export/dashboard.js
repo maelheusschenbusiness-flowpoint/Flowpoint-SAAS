@@ -1702,7 +1702,8 @@ async function loadData() {
   // ── Phase 3 (background): section data — never blocks interactivity ───────
   // audits/monitors/reports/team load in parallel after the UI is already shown.
   // Keys already promoted to Phase 2 (critical route) are resolved immediately.
-  Promise.allSettled([
+  // Store Phase 3 promise so Phase 4 can await it before the single final render.
+  const _phase3Promise = Promise.allSettled([
     'audits'   in _preloaded ? Promise.resolve(_preloaded.audits)   : apiFetch('/api/audits'),
     'monitors' in _preloaded ? Promise.resolve(_preloaded.monitors) : apiFetch('/api/monitors'),
     'reports'  in _preloaded ? Promise.resolve(_preloaded.reports)  : apiFetch('/api/reports'),
@@ -1719,7 +1720,9 @@ async function loadData() {
     STATE.pendingInvitations = (team && Array.isArray(team.pendingInvitations)) ? team.pendingInvitations : [];
     STATE.seatUsage          = (team && team.seatUsage) ? team.seatUsage : null;
     if (!STATE.historySiteUrl && STATE.audits.length > 0) STATE.historySiteUrl = STATE.audits[0].url;
-    render();
+    // render() intentionally removed: Phase 3 updates STATE only.
+    // The single final render() below (after Phase 4 + await _phase3Promise) will
+    // incorporate this data, eliminating the intermediate DOM replacement that caused flicker.
   }).catch(function(err) { console.warn('[FP] Phase 3 background fetch error:', err); });
 
   // ── Phase 4: All secondary fetches in one parallel batch ─────────────────────
@@ -1982,6 +1985,9 @@ async function loadData() {
     }));
   } catch(_) { /* sessionStorage full or unavailable */ }
 
+  // Await Phase 3 (audits/monitors/team/reports) before the single final render.
+  // Phase 3 and Phase 4 ran concurrently; this ensures both datasets are in STATE.
+  await _phase3Promise;
   console.debug('[FP] loadData complete — audits:', STATE.audits.length,
     'monitors:', STATE.monitors.length, 'missions:', (STATE.missions||[]).length,
     'keywords:', (STATE.keywords||[]).length, 'competitors:', (STATE.competitors||[]).length,
@@ -2068,8 +2074,10 @@ async function loadData() {
     }));
   } catch(_) {}
 
-  // AI credits — best-effort, non-blocking (re-renders when resolved)
-  loadAICredits().then(() => render()).catch(() => {});
+  // AI credits — best-effort, non-blocking. No re-render after this:
+  // the final render() above already includes cached credit data.
+  // A separate render here would cause an unnecessary extra DOM replacement.
+  loadAICredits().catch(() => {});
 
   // Fetch 30-day checks summary for each monitor (best-effort, non-blocking)
   // Re-renders the monitors view when each summary resolves so sparklines appear immediately
@@ -18797,6 +18805,16 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Removal error",
     "Erreur lors du scan IA": "AI scan error",
     "Erreur lors du téléchargement :": "Download error:",
+    "Créer un rôle custom": "Create custom role",
+    "Auditer les permissions": "Audit permissions",
+    "IA : Inviter un membre": "AI : Invite a member",
+    "Module activé !": "Module enabled!",
+    "Module désactivé": "Module disabled",
+    "Message envoyé à": "Message sent to",
+    "Retirer du projet": "Remove from project",
+    "retiré": "removed",
+    "Renvoyer le lien": "Resend link",
+    "Erreur import": "Import error",
     "Erreur mise à jour rôle": "Role update error",
     "Erreur réponse :": "Response error:",
     "Erreur réseau lors de l'analyse PageSpeed": "Network error during PageSpeed analysis",
@@ -21522,6 +21540,16 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Error al retirar",
     "Erreur lors du scan IA": "Error en el escaneo de IA",
     "Erreur lors du téléchargement :": "Error al descargar:",
+    "Créer un rôle custom": "Crear rol personalizado",
+    "Auditer les permissions": "Auditar permisos",
+    "IA : Inviter un membre": "IA : Invitar miembro",
+    "Module activé !": "¡Módulo activado!",
+    "Module désactivé": "Módulo desactivado",
+    "Message envoyé à": "Mensaje enviado a",
+    "Retirer du projet": "Eliminar del proyecto",
+    "retiré": "eliminado",
+    "Renvoyer le lien": "Reenviar enlace",
+    "Erreur import": "Error de importación",
     "Erreur mise à jour rôle": "Error al actualizar el rol",
     "Le changement de plan a échoué. Réessayez.": "El cambio de plan falló. Inténtalo de nuevo.",
     "Erreur réponse :": "Error de respuesta:",
@@ -24332,6 +24360,16 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Fehler beim Entfernen",
     "Erreur lors du scan IA": "Fehler beim KI-Scan",
     "Erreur lors du téléchargement :": "Fehler beim Herunterladen:",
+    "Créer un rôle custom": "Benutzerdefinierte Rolle erstellen",
+    "Auditer les permissions": "Berechtigungen prüfen",
+    "IA : Inviter un membre": "KI : Mitglied einladen",
+    "Module activé !": "Modul aktiviert!",
+    "Module désactivé": "Modul deaktiviert",
+    "Message envoyé à": "Nachricht gesendet an",
+    "Retirer du projet": "Aus dem Projekt entfernen",
+    "retiré": "entfernt",
+    "Renvoyer le lien": "Link erneut senden",
+    "Erreur import": "Importfehler",
     "Erreur mise à jour rôle": "Fehler bei der Rollenaktualisierung",
     "Le changement de plan a échoué. Réessayez.": "Der Planwechsel ist fehlgeschlagen. Bitte versuchen Sie es erneut.",
     "Erreur réponse :": "Antwortfehler:",
@@ -27148,6 +27186,16 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Errore durante la rimozione",
     "Erreur lors du scan IA": "Errore durante la scansione IA",
     "Erreur lors du téléchargement :": "Errore durante il download:",
+    "Créer un rôle custom": "Crea ruolo personalizzato",
+    "Auditer les permissions": "Controlla permessi",
+    "IA : Inviter un membre": "IA : Invita membro",
+    "Module activé !": "Modulo attivato!",
+    "Module désactivé": "Modulo disattivato",
+    "Message envoyé à": "Messaggio inviato a",
+    "Retirer du projet": "Rimuovi dal progetto",
+    "retiré": "rimosso",
+    "Renvoyer le lien": "Reinvia il link",
+    "Erreur import": "Errore di importazione",
     "Erreur mise à jour rôle": "Errore durante l'aggiornamento del ruolo",
     "Le changement de plan a échoué. Réessayez.": "Il cambio di piano è fallito. Riprova.",
     "Erreur réponse :": "Errore di risposta:",
@@ -29964,6 +30012,16 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Erro ao remover",
     "Erreur lors du scan IA": "Erro na varredura de IA",
     "Erreur lors du téléchargement :": "Erro ao baixar:",
+    "Créer un rôle custom": "Criar função personalizada",
+    "Auditer les permissions": "Auditar permissões",
+    "IA : Inviter un membre": "IA : Convidar membro",
+    "Module activé !": "Módulo ativado!",
+    "Module désactivé": "Módulo desativado",
+    "Message envoyé à": "Mensagem enviada para",
+    "Retirer du projet": "Remover do projeto",
+    "retiré": "removido",
+    "Renvoyer le lien": "Reenviar link",
+    "Erreur import": "Erro de importação",
     "Erreur mise à jour rôle": "Erro na atualização do papel",
     "Le changement de plan a échoué. Réessayez.": "A mudança de plano falhou. Tente novamente.",
     "Erreur réponse :": "Erro de resposta:",
@@ -32780,6 +32838,16 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Fout bij het verwijderen",
     "Erreur lors du scan IA": "Fout bij AI-scan",
     "Erreur lors du téléchargement :": "Fout bij het downloaden:",
+    "Créer un rôle custom": "Aangepaste rol aanmaken",
+    "Auditer les permissions": "Machtigingen controleren",
+    "IA : Inviter un membre": "AI : Lid uitnodigen",
+    "Module activé !": "Module geactiveerd!",
+    "Module désactivé": "Module gedeactiveerd",
+    "Message envoyé à": "Bericht verzonden naar",
+    "Retirer du projet": "Verwijderen uit project",
+    "retiré": "verwijderd",
+    "Renvoyer le lien": "Link opnieuw verzenden",
+    "Erreur import": "Importfout",
     "Erreur mise à jour rôle": "Fout bij het bijwerken van de rol",
     "Le changement de plan a échoué. Réessayez.": "De wijziging van het plan is mislukt. Probeer het opnieuw.",
     "Erreur réponse :": "Antwoordfout:",
@@ -35596,6 +35664,16 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Błąd podczas usuwania",
     "Erreur lors du scan IA": "Błąd podczas skanowania AI",
     "Erreur lors du téléchargement :": "Błąd podczas pobierania:",
+    "Créer un rôle custom": "Utwórz rolę niestandardową",
+    "Auditer les permissions": "Audytuj uprawnienia",
+    "IA : Inviter un membre": "AI : Zaproś członka",
+    "Module activé !": "Moduł aktywowany!",
+    "Module désactivé": "Moduł dezaktywowany",
+    "Message envoyé à": "Wiadomość wysłana do",
+    "Retirer du projet": "Usuń z projektu",
+    "retiré": "usunięto",
+    "Renvoyer le lien": "Wyślij link ponownie",
+    "Erreur import": "Błąd importu",
     "Erreur mise à jour rôle": "Błąd podczas aktualizacji roli",
     "Le changement de plan a échoué. Réessayez.": "Zmiana planu nie powiodła się. Spróbuj ponownie.",
     "Erreur réponse :": "Błąd odpowiedzi:",
@@ -38412,6 +38490,16 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Fel vid borttagning",
     "Erreur lors du scan IA": "Fel vid AI-skanning",
     "Erreur lors du téléchargement :": "Fel vid nedladdning:",
+    "Créer un rôle custom": "Skapa anpassad roll",
+    "Auditer les permissions": "Granska behörigheter",
+    "IA : Inviter un membre": "AI : Bjud in en medlem",
+    "Module activé !": "Modul aktiverad!",
+    "Module désactivé": "Modul inaktiverad",
+    "Message envoyé à": "Meddelande skickat till",
+    "Retirer du projet": "Ta bort från projektet",
+    "retiré": "borttagen",
+    "Renvoyer le lien": "Skicka om länken",
+    "Erreur import": "Importfel",
     "Erreur mise à jour rôle": "Fel vid uppdatering av roll",
     "Le changement de plan a échoué. Réessayez.": "Ändringen av planen misslyckades. Försök igen.",
     "Erreur réponse :": "Svarsfel:",
@@ -41228,6 +41316,16 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Eroare la eliminare",
     "Erreur lors du scan IA": "Eroare la scanarea IA",
     "Erreur lors du téléchargement :": "Eroare la descărcare:",
+    "Créer un rôle custom": "Creați un rol personalizat",
+    "Auditer les permissions": "Auditați permisiunile",
+    "IA : Inviter un membre": "IA : Invitați un membru",
+    "Module activé !": "Modul activat!",
+    "Module désactivé": "Modul dezactivat",
+    "Message envoyé à": "Mesaj trimis la",
+    "Retirer du projet": "Eliminați din proiect",
+    "retiré": "eliminat",
+    "Renvoyer le lien": "Retrimiteți link-ul",
+    "Erreur import": "Eroare la import",
     "Erreur mise à jour rôle": "Eroare la actualizarea rolului",
     "Le changement de plan a échoué. Réessayez.": "Schimbarea planului a eșuat. Te rog, încearcă din nou.",
     "Erreur réponse :": "Eroare de răspuns:",
@@ -44044,6 +44142,16 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Chyba při odstranění",
     "Erreur lors du scan IA": "Chyba při skenování AI",
     "Erreur lors du téléchargement :": "Chyba při stahování:",
+    "Créer un rôle custom": "Vytvořit vlastní roli",
+    "Auditer les permissions": "Auditovat oprávnění",
+    "IA : Inviter un membre": "AI : Pozvat člena",
+    "Module activé !": "Modul aktivován!",
+    "Module désactivé": "Modul deaktivován",
+    "Message envoyé à": "Zpráva odeslána na",
+    "Retirer du projet": "Odebrat z projektu",
+    "retiré": "odebráno",
+    "Renvoyer le lien": "Znovu odeslat odkaz",
+    "Erreur import": "Chyba importu",
     "Erreur mise à jour rôle": "Chyba při aktualizaci role",
     "Le changement de plan a échoué. Réessayez.": "Změna plánu se nezdařila. Zkuste to prosím znovu.",
     "Erreur réponse :": "Chyba odpovědi:",

@@ -3251,8 +3251,9 @@
         }
       }
     }
-    setTimeout(function() { check('3s check'); }, 3000);
-    setTimeout(function() { check('8s check'); }, 8000);
+    // One safety check at 5s — Phase 3+4 now resolve together before the final
+    // render(), so 5s is enough margin. The duplicate 8s check is removed.
+    setTimeout(function() { check('5s check'); }, 5000);
   })();
 
   console.log('[FP] Error catcher v8b actif');
