@@ -46412,7 +46412,7 @@ async function init() {
         const a = r.analysis || {};
         const sentColor = a.sentiment === 'positif' ? '#22c55e' : a.sentiment === 'négatif' ? '#ef4444' : '#f59e0b';
         const renderList = (items) => (items||[]).map(it=>`<li style="font-size:12px;color:var(--fp-text-muted);margin-bottom:2px">${escHtml(it)}</li>`).join('');
-        openFloatPanel('📊 Analyse IA — résultat',
+        openFloatPanel(fpT('📊 Analyse IA — résultat'),
           `<div style="display:flex;flex-direction:column;gap:14px;padding:4px 0">
             <div style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;background:${sentColor}12;border:1px solid ${sentColor}30">
               <div style="font-size:24px">${a.sentiment === 'positif' ? '😊' : a.sentiment === 'négatif' ? '😟' : '😐'}</div>
@@ -55451,7 +55451,7 @@ function renderActivityFeed() {
       </div>
       <div class="fp-section-actions">
         ${btn('Exporter', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', "onclick=\"exportActivityCsv()\"")}
-        ${btn('Filtrer',  'fp-btn fp-btn-ghost fp-btn-sm', 'filter',   "onclick=\"openFloatPanel('Filtrer l\\'activité','<div style=\\'padding:16px\\'><div style=\\'font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:10px\\'>Filtrer par type</div><div style=\\'display:flex;flex-direction:column;gap:6px\\'>' + ['Tous','Audits','Monitors','Alertes','Rapports','Équipe'].map(t=>'<label style=\\'display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fp-text-soft);cursor:pointer\\'><input type=\\'checkbox\\' checked/> '+t+'</label>').join('') + '</div></div>')\"")}
+        ${btn('Filtrer',  'fp-btn fp-btn-ghost fp-btn-sm', 'filter',   "onclick=\"openFloatPanel(fpT('Filtrer l\\'activité'),'<div style=\\'padding:16px\\'><div style=\\'font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:10px\\'>Filtrer par type</div><div style=\\'display:flex;flex-direction:column;gap:6px\\'>' + ['Tous','Audits','Monitors','Alertes','Rapports','Équipe'].map(t=>'<label style=\\'display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fp-text-soft);cursor:pointer\\'><input type=\\'checkbox\\' checked/> '+t+'</label>').join('') + '</div></div>')\"")}
       </div>
     </div>
 
