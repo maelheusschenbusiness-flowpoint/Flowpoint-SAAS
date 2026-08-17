@@ -675,19 +675,24 @@ User saisit adresse (Enter)
 ```
 Request reçue → auth (requireAuth)
   ↓
+[CR-8] Guard orgId : !orgId || orgId==="default" → 400 ORG_ID_REQUIRED
+  ↓
 Résolution provider/model/economy/quota (ai.ts:1520-1705)
   ↓
-buildFlowpointContext(orgId, contextFactor) (ai.ts:243-812)
+[CR-5] isSimpleGreeting ? skip buildFlowpointContext (salutation/ack pures)
+  ↓
+buildFlowpointContext(orgId, contextFactor) (ai.ts:243-812)    ← t_context_start
   ├── Promise.allSettled: keywords, competitors, google_tokens, seo_domain_metrics
   ├── GSC/GA4 presence checks
   ├── Audits + monitors (Drizzle parallel)
   ├── PSI cache
   ├── Calendar + missions + alerts + credits
   └── Monitor health + recommendations
-  ↓
+  ↓ [CR-6] log _t_context_ms
 resolveEffectivePermissions() → permissions utilisateur
   ↓
-System prompt = systemPromptBase + STRICT_AI_RULE + fpContext + navPrompt + attachments
+System prompt = systemPromptBase + [CR-1] RÈGLE 0 + STRICT_AI_RULE + fpContext
+             + [CR-4] _hypotheticalBlock (si question hypothétique) + navPrompt + attachments
   ↓
 [SSE path] Tool loop (si hasAnyToolPermission)
   → runToolCallingLoop() (ai.ts:1042)
@@ -699,14 +704,27 @@ System prompt = systemPromptBase + STRICT_AI_RULE + fpContext + navPrompt + atta
 Persist assistant message + deferred usage accounting
 ```
 
+### Correctifs moteur IA — Task #592 (9 root-cause fixes)
+
+| CR | Description | Fichier |
+|---|---|---|
+| CR-1 | RÈGLE 0 : appel immédiat d'outil sans demander la permission | `ai.ts` system prompt |
+| CR-3 | STRICT_AI_RULE conditionnel : template visuel uniquement pour analyses complexes | `ai.ts` |
+| CR-4 | Détection hypothétique (regex si/would/imagine…) → `_hypotheticalBlock` injecté | `ai.ts` |
+| CR-5 | Salutation pure → skip `buildFlowpointContext` (aucune requête DB) | `ai.ts` |
+| CR-6 | Instrumentation `_t_context_ms` loggé à chaque requête | `ai.ts` |
+| CR-7 | Strict path : 1 retry + 1 s backoff même provider avant PROVIDER_UNAVAILABLE | `ai-provider.ts` |
+| CR-8 | Guard orgId : `undefined` ou `"default"` → 400 fail-closed | `ai.ts` |
+| CR-9 | `list_missions` ajouté (aucun paramètre requis) ; `query` optionnel dans `search_mission` | `mission-tools.ts` |
+
 ### STRICT_AI_RULE (`ai.ts:814-950`)
 
-Forçages globaux sur CHAQUE réponse :
-- Pas de salutations sauf 1er message
+Appliqué de manière **conditionnelle** — uniquement pour les analyses complexes (audits, stratégie, comparaisons). Pour les salutations simples, questions rapides et réponses directes, le template `👉 / CLÔTURE` n'est pas imposé.
+
+Forçages toujours actifs :
+- Pas de salutations répétées
 - Max 3 priorités : 🔴 / 🟠 / 🟢
-- Hiérarchie visuelle : `📊 Résumé / ✅ Ce qui fonctionne / ⚠️ Ce qui mérite / 🎯 Les 3 priorités / 👉 Prochaine étape`
-- Clôture systématique : "Si vous le souhaitez..."
-- Pas de chiffres précis d'impact
+- Pas de chiffres précis d'impact sans données vérifiées
 
 ### Agents disponibles
 
@@ -725,22 +743,31 @@ Il n'existe **pas de classes agent distinctes**. Le chat est un unique consultan
 | `POST /api/ai/generate` | Marketing content | `ai.ts:3255` |
 | `POST /api/ai/pagespeed-insights` | PSI | `ai.ts:3139` |
 
-### ALL_TOOLS (`ai.ts:56-71`)
+### ALL_TOOLS (`ai.ts:56-71`) — 48 outils au total
 
-| Tool | confirmationLevel | Permission |
-|---|---|---|
-| `search_mission` | none | missions.read |
-| `create_mission` | **preview** | missions.write |
-| `update_mission` | preview | missions.write |
-| `complete_mission` | preview | missions.write |
-| `assign_mission` | none | missions.write |
-| `delete_mission` | **full** | missions.delete |
-| `navigate_to` | none | overview.read |
-| Outils calendar (5) | none/preview | calendar.read/write |
-| Outils audits (9) | none/preview/full | audits.read/write/delete |
-| Outils recommendations (10) | none/preview | recommendations.read/write |
-| Outils monitors (12) | none/preview/full | monitors.read/write/delete |
-| Outils URL (analyze_url, run_audit) | none | overview.read |
+| Tool | confirmationLevel | Permission | Notes |
+|---|---|---|---|
+| `list_missions` | none | missions.read | **CR-9** — aucun paramètre requis, filtres optionnels (status/category/priority/limit) |
+| `search_mission` | none | missions.read | **CR-9** — `query` optionnel ; sans query = liste complète |
+| `create_mission` | **preview** | missions.write | |
+| `update_mission` | preview | missions.write | |
+| `complete_mission` | preview | missions.write | |
+| `assign_mission` | none | missions.write | |
+| `delete_mission` | **full** | missions.delete | |
+| `navigate_to` | none | overview.read | |
+| Outils calendar (11) | none/preview/full | calendar.read/write | Phases 3.1 + 3.2 |
+| Outils audits (9) | none/preview/full | audits.read/write/delete | Phase 4 |
+| Outils recommendations (10) | none/preview | recommendations.read/write | Phase 5 |
+| Outils monitors (12) | none/preview/full | monitors.read/write/delete | Phase 6 |
+| `analyze_url` | none | overview.read | |
+
+### Instrumentation (`ai.ts`)
+
+Chaque requête `/api/ai/chat` émet deux entrées de log structuré :
+- `[AI] context built` — `orgId`, `_t_context_ms`, `isSimpleGreeting`, `isHypothetical`, `contextFactor`
+- `[AI] Chat complete` — `provider`, `model`, `tokens`, `latency`
+
+`_t_context_ms` mesure le temps entre le déclenchement de `buildFlowpointContext` et la fin du `Promise.allSettled`. Pour les salutations simples (`isSimpleGreeting: true`), ce délai est ≈50 ms (quota DB uniquement, aucun enrichissement). Pour une requête complexe, 200–400 ms (GSC + GA4 + audits + missions en parallèle).
 
 ### Providers / Sélection (`services/ai-provider.ts`)
 
