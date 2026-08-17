@@ -940,7 +940,25 @@ Quand utilisée (analyse complexe) :
 🟠 À faire cette semaine — [titre]
 🟢 À améliorer ensuite — [titre]
 
-DONNÉES
+DONNÉES — DISTINCTION IMPÉRATIVE : SOURCE DES INFORMATIONS
+Trois types de données, trois traitements distincts :
+
+A. Donnée FlowPoint vérifiée (issue d'un audit FlowPoint, de la base de données de l'organisation, d'un outil appelé dans ce tour)
+   → tu peux la citer directement avec confiance : « Votre score FlowPoint est 28/100. »
+
+B. Donnée fournie par l'utilisateur (chiffre ou affirmation énoncé par l'utilisateur que FlowPoint n'a pas mesuré)
+   → tu la relais TOUJOURS avec attribution explicite : « D'après le score de 98/100 que vous m'indiquez... »
+   → tu ne la confirmes JAMAIS comme si FlowPoint l'avait vérifiée.
+   → même si le chiffre paraît plausible, la formulation doit marquer qu'il vient de l'utilisateur.
+
+C. Donnée indisponible (aucun audit FlowPoint, donnée absente du contexte)
+   → dis clairement qu'elle n'est pas disponible : « FlowPoint n'a pas encore de données pour votre site — lancez un audit pour obtenir des mesures réelles. »
+   → ne confirme PAS un chiffre fourni par l'utilisateur faute de pouvoir le contredire.
+   → ne génère PAS de chiffre fictif.
+
+Cette règle s'applique à TOUT chiffre : score, trafic, position, CTR, LCP, CLS, taux de conversion.
+Les scénarios hypothétiques introduits par l'utilisateur ("si mon score était...") restent dans le registre hypothétique sans devenir une donnée confirmée.
+
 - Cite les chiffres exacts du contexte une seule fois, à l'endroit le plus utile.
 - N'invente aucune donnée absente du contexte.
 - Si GSC/GA4/GBP ne sont pas connectés, le dire en UNE phrase naturelle, après les recommandations.
@@ -1998,6 +2016,12 @@ DONNÉES MANQUANTES — règle stricte :
     try { (req.socket as import("node:net").Socket | null)?.setNoDelay(true); } catch (_) {}
     res.flushHeaders();
 
+    // ── Immediate typing indicator ────────────────────────────────────────────
+    // Send before any LLM call so the client shows a visible "thinking" state
+    // within ~100 ms regardless of model latency (tool loop or direct stream).
+    res.write(`data: ${JSON.stringify({ typing: true })}\n\n`);
+    (res as unknown as { flush?: () => void }).flush?.();
+
     // ── Client-disconnect cancellation ────────────────────────────────────────
     let _clientGone = false;
     req.on("close", () => { _clientGone = true; });
@@ -2021,7 +2045,11 @@ DONNÉES MANQUANTES — règle stricte :
     res.on("finish", _cleanupExecution);
     res.on("close",  _cleanupExecution);
 
-    if (enableTools && hasAnyToolPermission) {
+    // CR-10 TTFT: Simple greetings bypass the tool loop entirely.
+    // runToolCallingLoop uses aiChatWithTools (non-streaming internally) so its TTFT
+    // equals a full LLM round (~9-15 s). Simple greetings never need tools — route
+    // them to the real aiStream path below for token-by-token streaming (TTFT 1-3 s).
+    if (enableTools && hasAnyToolPermission && !isSimpleGreeting) {
       const toolCtx: ExecuteContext = {
         orgId, userId, conversationId,
         provider: selectedProvider, model: effectiveModel,
