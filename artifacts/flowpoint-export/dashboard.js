@@ -13291,7 +13291,7 @@ function renderAI() {
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
           <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
-          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:auto;line-height:1.5;height:38px;max-height:38px"></textarea>
+          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:hidden;line-height:1.5;height:38px;max-height:120px"></textarea>
           <button class="fp-ai-send" id="ai-send">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
           <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
@@ -16931,8 +16931,11 @@ function bindSectionEvents() {
     $$('.fp-ai-quick').forEach(btn => btn.addEventListener('click', () => sendAIMessage(btn.dataset.aiPrompt)));
     const aiInput = $('#ai-input');
     const aiSend = $('#ai-send');
-    aiSend?.addEventListener('click', () => { sendAIMessage(aiInput?.value||''); if(aiInput) aiInput.value=''; });
-    aiInput?.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage(aiInput.value); aiInput.value=''; if(aiInput.style) aiInput.style.height=''; } });
+    function _resetAiInput() { if(!aiInput) return; aiInput.value=''; aiInput.style.height='38px'; aiInput.style.overflowY='hidden'; }
+    function _resizeAiInput() { if(!aiInput) return; aiInput.style.height='38px'; var sh=aiInput.scrollHeight; aiInput.style.height=Math.min(sh,120)+'px'; aiInput.style.overflowY=sh>120?'auto':'hidden'; }
+    aiInput?.addEventListener('input', _resizeAiInput);
+    aiSend?.addEventListener('click', () => { sendAIMessage(aiInput?.value||''); _resetAiInput(); });
+    aiInput?.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage(aiInput.value); _resetAiInput(); } });
   }
 
   initChartTooltips();
