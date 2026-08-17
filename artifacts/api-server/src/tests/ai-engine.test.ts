@@ -178,3 +178,74 @@ describe("CR-5 simple greeting classifier", () => {
     });
   });
 });
+
+// ── CR-10 TTFT: simple greetings bypass tool loop ─────────────────────────────
+// Structural: verify STRICT_AI_RULE + source text contain the bypass condition.
+describe("CR-10 TTFT — simple greeting bypasses tool loop", () => {
+  it("ai.ts source has isSimpleGreeting guard on tool loop condition", async () => {
+    // The fix adds `&& !isSimpleGreeting` to the `if (enableTools && hasAnyToolPermission)` check.
+    // We verify the source text includes this guard so regression is caught at test time.
+    const fs = await import("fs");
+    const path = await import("path");
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), "src/routes/ai.ts"),
+      "utf-8"
+    );
+    expect(src).toContain("!isSimpleGreeting");
+    expect(src).toMatch(/enableTools && hasAnyToolPermission && !isSimpleGreeting/);
+  });
+
+  it("SIMPLE_RE does not match action requests that need tools", () => {
+    const SIMPLE_RE = /^(bonjour|bonsoir|salut|hello|hi|merci|ça va|ok|oui|non|d'accord|pas de problème|super|parfait|génial|cool|thanks|thank you|👍|🙏|😊)\s*[!?.]?$/i;
+    const actionRequests = [
+      "Bonjour, crée une mission",
+      "Ok, montre mes missions",
+      "Super, maintenant analyse mon SEO",
+      "Crée une mission urgente",
+      "Liste mes missions",
+    ];
+    for (const req of actionRequests) {
+      expect(SIMPLE_RE.test(req.trim())).toBe(false);
+    }
+  });
+});
+
+// ── Anti-hallucination: 3-tier data distinction ───────────────────────────────
+describe("Anti-hallucination — 3-tier data source distinction", () => {
+  it("STRICT_AI_RULE contains user-provided data attribution rule", () => {
+    expect(STRICT_AI_RULE).toContain("Donnée fournie par l'utilisateur");
+    expect(STRICT_AI_RULE).toMatch(/D'après.*que vous m'indiquez/);
+  });
+
+  it("STRICT_AI_RULE contains FlowPoint-verified data rule", () => {
+    expect(STRICT_AI_RULE).toContain("Donnée FlowPoint vérifiée");
+    expect(STRICT_AI_RULE).toContain("citer directement");
+  });
+
+  it("STRICT_AI_RULE contains unavailable data rule", () => {
+    expect(STRICT_AI_RULE).toContain("Donnée indisponible");
+    expect(STRICT_AI_RULE).toContain("pas disponible");
+  });
+
+  it("STRICT_AI_RULE distinguishes all 3 tiers with explicit formulations", () => {
+    // Each tier must have a concrete instruction, not just a label
+    expect(STRICT_AI_RULE).toContain("DISTINCTION IMPÉRATIVE");
+    // Tier A: cite directly
+    expect(STRICT_AI_RULE).toContain("directement");
+    // Tier B: attribution required
+    expect(STRICT_AI_RULE).toContain("attribution explicite");
+    // Tier C: say not available
+    expect(STRICT_AI_RULE).toContain("ne génère PAS de chiffre fictif");
+  });
+
+  it("STRICT_AI_RULE covers all key metric types", () => {
+    expect(STRICT_AI_RULE).toContain("score");
+    expect(STRICT_AI_RULE).toContain("LCP");
+    expect(STRICT_AI_RULE).toContain("CTR");
+  });
+
+  it("existing no-invented-data rule preserved (backward compat)", () => {
+    // The original "N'invente aucune donnée absente du contexte" must still be present
+    expect(STRICT_AI_RULE).toContain("N'invente aucune donnée absente du contexte");
+  });
+});
