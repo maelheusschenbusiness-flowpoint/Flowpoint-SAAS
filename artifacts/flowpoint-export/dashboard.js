@@ -3837,7 +3837,7 @@ function renderActivityList() {
     if (STATE.activityFilterLoading) {
       list.innerHTML = `<div class="fp-activity-empty" style="opacity:.6">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="animation:spin 1.2s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
-        <div>Chargement…</div>
+        <div>${fpT('Chargement…')}</div>
       </div>`;
       return;
     }
@@ -3851,7 +3851,7 @@ function renderActivityList() {
   if (events.length === 0) {
     list.innerHTML = `<div class="fp-activity-empty">
       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      <div>Aucune activité pour ce filtre</div>
+      <div>${fpT('Aucune activité pour ce filtre')}</div>
     </div>`;
     return;
   }
@@ -6162,7 +6162,7 @@ function renderAudits() {
             const urlAudits = {};
             STATE.audits.forEach(x => { if (!urlAudits[x.url]) urlAudits[x.url] = []; urlAudits[x.url].push(x); });
             Object.values(urlAudits).forEach(arr => arr.sort((a, b) => new Date(a.date) - new Date(b.date)));
-            if (sorted.length === 0) return `<tr><td colspan="9" style="text-align:center;padding:32px 16px;color:var(--fp-text-faint)"><div style="font-size:22px;margin-bottom:8px">🔍</div><div style="font-size:13px;font-weight:600;color:var(--fp-text-muted);margin-bottom:4px">Aucun audit trouvé</div><div style="font-size:11px">Lancez votre premier audit ci-dessus ou modifiez les filtres.</div></td></tr>`;
+            if (sorted.length === 0) return `<tr><td colspan="9" style="text-align:center;padding:32px 16px;color:var(--fp-text-faint)"><div style="font-size:22px;margin-bottom:8px">🔍</div><div style="font-size:13px;font-weight:600;color:var(--fp-text-muted);margin-bottom:4px">${fpT('Aucun audit trouvé')}</div><div style="font-size:11px">Lancez votre premier audit ci-dessus ou modifiez les filtres.</div></td></tr>`;
             return sorted.map(a => {
             const urlHistory = urlAudits[a.url] || [a];
             const aIdx = urlHistory.findIndex(x => x.id === a.id);
@@ -10524,12 +10524,12 @@ function renderAlertRules() {
           <span data-ar-badge style="font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600;${r.enabled ? 'background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.3)' : 'background:var(--fp-track);color:var(--fp-text-faint);border:1px solid var(--fp-border)'}">
             ${r.enabled ? 'Active' : 'Inactive'}
           </span>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" data-edit-rule="${escHtml(r.id)}" style="padding:4px 10px">Modifier</button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" data-delete-rule="${escHtml(r.id)}" style="color:var(--fp-danger);border-color:rgba(239,68,68,0.2);padding:4px 10px">Supprimer</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" data-edit-rule="${escHtml(r.id)}" style="padding:4px 10px">${fpT('Modifier')}</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" data-delete-rule="${escHtml(r.id)}" style="color:var(--fp-danger);border-color:rgba(239,68,68,0.2);padding:4px 10px">${fpT('Supprimer')}</button>
         </div>
       </div>
       <div id="edit-rule-form-${escHtml(r.id)}" style="display:none;margin:4px 0 8px 0;padding:14px 16px;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:10px">
-        <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:12px">Modifier la règle</div>
+        <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:12px">${fpT('Modifier la règle')}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
           <div class="fp-form-group" style="grid-column:1/-1">
             <label class="fp-form-label">Nom</label>
@@ -10582,7 +10582,7 @@ function renderAlertRules() {
         </div>
         <div style="display:flex;gap:8px">
           <button class="fp-btn fp-btn-primary fp-btn-sm save-edit-rule" data-rule="${escHtml(r.id)}">Sauvegarder</button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm cancel-edit-rule" data-rule="${escHtml(r.id)}">Annuler</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm cancel-edit-rule" data-rule="${escHtml(r.id)}">${fpT('Annuler')}</button>
         </div>
       </div>
     `;
@@ -10676,7 +10676,7 @@ function renderAlertRules() {
         </div>
         <div style="display:flex;gap:8px">
           <button class="fp-btn fp-btn-primary fp-btn-sm" id="save-alert-rule">Créer la règle</button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" id="cancel-rule-form">Annuler</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" id="cancel-rule-form">${fpT('Annuler')}</button>
         </div>
       </div>
     </div>
@@ -18059,6 +18059,12 @@ function bindGlobalEvents() {
     '30 jours consécutifs': '30 days in a row',
     'Connectez vos premiers sites pour voir les insights IA ici.': 'Connect your first sites to see AI insights here.',
     'Rapport Exécutif': 'Executive Report',
+    'Retirer': 'Remove',
+    'Voir tous': 'View all',
+    'Indisponible': 'Unavailable',
+    'Partager': 'Share',
+    'Nouveau fil': 'New thread',
+    'Aucun fichier partagé': 'No shared files',
     'Rapports récents': 'Recent reports',
     'Rapport SEO': 'SEO Report',
     'Rapport Conversion': 'Conversion Report',
@@ -19728,6 +19734,12 @@ function bindGlobalEvents() {
     "🔄 Charger les propriétés": "🔄 Load properties",
     "🔄 Nouveaux vs Récurrents": "🔄 New vs Returning",
     "🔄 Réessayer": "🔄 Retry",
+    "Retirer": "Quitar",
+    "Voir tous": "Ver todos",
+    "Indisponible": "No disponible",
+    "Partager": "Compartir",
+    "Nouveau fil": "Nuevo hilo",
+    "Aucun fichier partagé": "No hay archivos compartidos",
     "🔌 Connectez GA4 pour afficher votre entonnoir en temps réel.": "🔌 Connect GA4 to view your real-time funnel.",
     "🔌 Connectez GA4 pour des insights basés sur vos vraies données.": "🔌 Connect GA4 for insights based on your real data.",
     "🔌 Connectez GA4 pour des insights sur votre audience.": "🔌 Connect GA4 for audience insights.",
@@ -20092,6 +20104,12 @@ function bindGlobalEvents() {
     "Analyser avec IA": "Analizar con IA",
     "Analyser les concurrents": "Analizar competidores",
     "Analyser sentiment": "Analizar sentimiento",
+    "Retirer": "Verwijderen",
+    "Voir tous": "Alles bekijken",
+    "Indisponible": "Niet beschikbaar",
+    "Partager": "Delen",
+    "Nouveau fil": "Nieuwe thread",
+    "Aucun fichier partagé": "Geen gedeelde bestanden",
     "Analysez votre premier site et obtenez un score instantané": "Analiza tu primer sitio y obtén una puntuación instantánea",
     "Analytics": "Analítica",
     "Analytics GA4": "Analytics GA4",
@@ -25492,7 +25510,13 @@ function bindGlobalEvents() {
     "🔄 Calculer depuis l'API": "🔄 Aus der API berechnen",
     "🔄 Charger les propriétés": "🔄 Eigenschaften laden",
     "🔄 Nouveaux vs Récurrents": "🔄 Neue vs Wiederkehrende",
-    "🔄 Réessayer": "🔄 Erneut versuchen"
+    "🔄 Réessayer": "🔄 Erneut versuchen",
+    "Retirer": "Entfernen",
+    "Voir tous": "Alle anzeigen",
+    "Indisponible": "Nicht verfügbar",
+    "Partager": "Teilen",
+    "Nouveau fil": "Neuer Thread",
+    "Aucun fichier partagé": "Keine geteilten Dateien",
     },
     it: {
     "+ Analyser un avis": "+ Analizza una recensione",
@@ -28238,7 +28262,13 @@ function bindGlobalEvents() {
     "🔄 Calculer depuis l'API": "🔄 Calcola dall'API",
     "🔄 Charger les propriétés": "🔄 Carica le proprietà",
     "🔄 Nouveaux vs Récurrents": "🔄 Nuovi vs Ricorrenti",
-    "🔄 Réessayer": "🔄 Riprova"
+    "🔄 Réessayer": "🔄 Riprova",
+    "Retirer": "Rimuovere",
+    "Voir tous": "Vedi tutti",
+    "Indisponible": "Non disponibile",
+    "Partager": "Condividi",
+    "Nouveau fil": "Nuovo thread",
+    "Aucun fichier partagé": "Nessun file condiviso",
     },
     pt: {
     "+ Analyser un avis": "+ Analisar uma avaliação",
@@ -30984,7 +31014,13 @@ function bindGlobalEvents() {
     "🔄 Calculer depuis l'API": "🔄 Calcular a partir da API",
     "🔄 Charger les propriétés": "🔄 Carregar propriedades",
     "🔄 Nouveaux vs Récurrents": "🔄 Novos vs Recorrentes",
-    "🔄 Réessayer": "🔄 Tentar novamente"
+    "🔄 Réessayer": "🔄 Tentar novamente",
+    "Retirer": "Remover",
+    "Voir tous": "Ver todos",
+    "Indisponible": "Indisponível",
+    "Partager": "Compartilhar",
+    "Nouveau fil": "Novo tópico",
+    "Aucun fichier partagé": "Nenhum ficheiro partilhado",
     },
     nl: {
     "+ Analyser un avis": "+ Een beoordeling analyseren",
@@ -33730,7 +33766,13 @@ function bindGlobalEvents() {
     "🔄 Calculer depuis l'API": "🔄 Bereken vanuit de API",
     "🔄 Charger les propriétés": "🔄 Laad eigenschappen",
     "🔄 Nouveaux vs Récurrents": "🔄 Nieuwe vs Terugkerende",
-    "🔄 Réessayer": "🔄 Opnieuw proberen"
+    "🔄 Réessayer": "🔄 Opnieuw proberen",
+    "Retirer": "Verwijderen",
+    "Voir tous": "Alles bekijken",
+    "Indisponible": "Niet beschikbaar",
+    "Partager": "Delen",
+    "Nouveau fil": "Nieuwe thread",
+    "Aucun fichier partagé": "Geen gedeelde bestanden",
     },
     pl: {
     "+ Analyser un avis": "+ Analizować recenzję",
@@ -36476,7 +36518,13 @@ function bindGlobalEvents() {
     "🔄 Calculer depuis l'API": "🔄 Oblicz z API",
     "🔄 Charger les propriétés": "🔄 Załaduj właściwości",
     "🔄 Nouveaux vs Récurrents": "🔄 Nowi vs Powracający",
-    "🔄 Réessayer": "🔄 Spróbuj ponownie"
+    "🔄 Réessayer": "🔄 Spróbuj ponownie",
+    "Retirer": "Usuń",
+    "Voir tous": "Zobacz wszystkie",
+    "Indisponible": "Niedostępne",
+    "Partager": "Udostępnij",
+    "Nouveau fil": "Nowy wątek",
+    "Aucun fichier partagé": "Brak udostępnionych plików",
     },
     sv: {
     "+ Analyser un avis": "+ Analysera en recension",
@@ -39222,7 +39270,13 @@ function bindGlobalEvents() {
     "🔄 Calculer depuis l'API": "🔄 Beräkna från API",
     "🔄 Charger les propriétés": "🔄 Ladda egenskaper",
     "🔄 Nouveaux vs Récurrents": "🔄 Nya vs Återkommande",
-    "🔄 Réessayer": "🔄 Försök igen"
+    "🔄 Réessayer": "🔄 Försök igen",
+    "Retirer": "Ta bort",
+    "Voir tous": "Visa alla",
+    "Indisponible": "Ej tillgänglig",
+    "Partager": "Dela",
+    "Nouveau fil": "Ny tråd",
+    "Aucun fichier partagé": "Inga delade filer",
     },
     ro: {
     "+ Analyser un avis": "+ Analizează o recenzie",
@@ -41968,7 +42022,13 @@ function bindGlobalEvents() {
     "🔄 Calculer depuis l'API": "🔄 Calculați din API",
     "🔄 Charger les propriétés": "🔄 Încărcați proprietățile",
     "🔄 Nouveaux vs Récurrents": "🔄 Noi vs Recurente",
-    "🔄 Réessayer": "🔄 Încearcă din nou"
+    "🔄 Réessayer": "🔄 Încearcă din nou",
+    "Retirer": "Elimina",
+    "Voir tous": "Vezi toate",
+    "Indisponible": "Indisponibil",
+    "Partager": "Partajează",
+    "Nouveau fil": "Fir nou",
+    "Aucun fichier partagé": "Niciun fișier partajat",
     },
     cs: {
     "+ Analyser un avis": "+ Analyzovat recenzi",
@@ -44714,7 +44774,13 @@ function bindGlobalEvents() {
     "🔄 Calculer depuis l'API": "🔄 Vypočítat z API",
     "🔄 Charger les propriétés": "🔄 Načíst vlastnosti",
     "🔄 Nouveaux vs Récurrents": "🔄 Noví vs Vracející se",
-    "🔄 Réessayer": "🔄 Zkusit znovu"
+    "🔄 Réessayer": "🔄 Zkusit znovu",
+    "Retirer": "Odebrat",
+    "Voir tous": "Zobrazit vše",
+    "Indisponible": "Nedostupné",
+    "Partager": "Sdílet",
+    "Nouveau fil": "Nové vlákno",
+    "Aucun fichier partagé": "Žádné sdílené soubory",
     }
   };
   // Brazilian Portuguese follows the Portuguese catalog with its own locale
@@ -47374,7 +47440,7 @@ function renderAuditsAnalysis() {
               </div>`;
             }).join('')}
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px;width:100%" onclick="navigate('audits')">Voir tous les audits</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px;width:100%" onclick="navigate('audits')">${fpT('Voir tous les audits')}</button>
         </div>
       </div>
       <div class="fp-card fp-mb-16">
@@ -50922,7 +50988,7 @@ function renderCompetitor() {
         : `<div style="background:linear-gradient(135deg,rgba(6,182,212,0.08),rgba(37,99,235,0.06));border:1px solid rgba(6,182,212,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">📝</div>
             <div><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Intelligence contenu</div><div style="font-size:12px;color:var(--fp-text-muted)">Ajoutez des concurrents pour comparer vos stratégies de contenu et identifier les gaps thématiques.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="window.FP_showAddCompetitor()">Ajouter un concurrent</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
           </div>`
       }
 
@@ -50943,7 +51009,7 @@ function renderCompetitor() {
           ? `<div style="padding:24px 16px;text-align:center;color:var(--fp-text-faint);font-size:12px">
               <div style="font-size:24px;margin-bottom:8px">📅</div>
               <div style="font-weight:600;margin-bottom:4px">Ajoutez un concurrent pour comparer les fréquences de publication</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="window.FP_showAddCompetitor()">Ajouter un concurrent</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
             </div>`
           : `<div style="display:flex;flex-direction:column;gap:10px">
               ${freq.map(f => {
@@ -50972,7 +51038,7 @@ function renderCompetitor() {
               <div style="font-size:24px;margin-bottom:8px">📊</div>
               <div style="font-weight:600;margin-bottom:4px">Ajoutez un concurrent pour voir l'analyse des gaps thématiques</div>
               <div style="font-size:11px;margin-bottom:12px">Les sujets couverts par vos concurrents et non par vous apparaîtront ici.</div>
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_showAddCompetitor()">Ajouter un concurrent</button>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
             </div>`
           : `<div style="overflow-x:auto">
               <table class="fp-data-table">
@@ -51472,7 +51538,7 @@ function renderCompetitor() {
                 <div style="font-size:24px;margin-bottom:8px">🏆</div>
                 <div style="font-weight:600;margin-bottom:4px">Ajoutez un concurrent pour voir les scores de domination</div>
                 <div style="font-size:11px">Les scores SEO, visibilité locale et autorité apparaîtront ici une fois vos concurrents configurés.</div>
-                <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="window.FP_showAddCompetitor()">Ajouter un concurrent</button>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
               </div>`
             : domScores.map(d => {
               const _hasVal = d.val != null && Number.isFinite(d.val);
@@ -57887,7 +57953,7 @@ function renderTeamPerformance() {
     ${metrics.length === 0 ? `
       <div class="fp-card" style="text-align:center;padding:32px 20px">
         <div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:12px">Aucun membre dans l'équipe pour le moment</div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('team');setTimeout(function(){window.fpOpenInvite&&window.fpOpenInvite()},120)">Inviter des membres</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('team');setTimeout(function(){window.fpOpenInvite&&window.fpOpenInvite()},120)">${fpT('Inviter des membres')}</button>
       </div>
     ` : `
     <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px">
@@ -66668,7 +66734,7 @@ function renderSettingsSSO() {
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
           <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-sso-modal').style.display='none'">Annuler</button>
-          <button class="fp-btn fp-btn-primary" onclick="window._submitSSOProvider()">Configurer</button>
+          <button class="fp-btn fp-btn-primary" onclick="window._submitSSOProvider()">${fpT('Configurer')}</button>
         </div>
       </div>
     </div>

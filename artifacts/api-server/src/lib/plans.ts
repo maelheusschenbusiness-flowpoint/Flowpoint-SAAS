@@ -133,6 +133,18 @@ export const PLAN_PRICE_IDS: Record<string, string> = {
   ultra:    process.env["STRIPE_PRICE_ID_ULTRA"]    ?? "price_1StW109eqtbj6iPBgiD1uRtP",
 };
 
+// ── Test-mode plan price IDs (Stripe CLI / test dashboard) ───────────────────
+// Set these env vars when running webhook tests in Stripe test mode so that
+// getPlanForPriceId() can resolve the plan even when metadata.plan is absent.
+// In production all FlowPoint checkouts set metadata.plan so this is a safety net only.
+export const PLAN_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
+  Object.entries({
+    standard: process.env["STRIPE_TEST_PRICE_ID_STANDARD"] ?? "",
+    pro:      process.env["STRIPE_TEST_PRICE_ID_PRO"]      ?? "",
+    ultra:    process.env["STRIPE_TEST_PRICE_ID_ULTRA"]    ?? "",
+  }).filter(([, v]) => v !== "")
+);
+
 // ── Add-on price IDs (live Stripe — confirmed 23/06/2026) ────────────────────
 export const ADDON_PRICE_IDS: Record<string, string> = {
   // ── Monitoring ──────────────────────────────────────────────────────────────
@@ -355,7 +367,12 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
 };
 
 export function getPlanForPriceId(priceId: string): string | null {
+  // Check live-mode price IDs first
   for (const [plan, id] of Object.entries(PLAN_PRICE_IDS)) {
+    if (id && id === priceId) return plan;
+  }
+  // Fallback: check test-mode price IDs (populated via STRIPE_TEST_PRICE_ID_* env vars)
+  for (const [plan, id] of Object.entries(PLAN_PRICE_IDS_TEST)) {
     if (id && id === priceId) return plan;
   }
   return null;
