@@ -206,22 +206,20 @@ async function dispatchTool(
   const { orgId, userId, conversationId, provider, model } = ctx;
   const toolDef = TOOL_BY_NAME.get(name)!;
 
-  // ── search_mission ────────────────────────────────────────────────────────
-  if (name === "search_mission") {
-    const q = args["query"] as string;
-    const status = args["status"] as string | undefined;
+  // ── list_missions ─────────────────────────────────────────────────────────
+  if (name === "list_missions") {
+    const status   = args["status"]   as string | undefined;
     const category = args["category"] as string | undefined;
     const priority = args["priority"] as string | undefined;
-    const limit = (args["limit"] as number) ?? 5;
+    const limit    = (args["limit"] as number) ?? 10;
 
     let sql = `SELECT id, title, description, status, priority, category, due_date, assigned_to, updated_at
-               FROM missions
-               WHERE org_id = $1 AND (title ILIKE $2 OR description ILIKE $2)`;
-    const params: unknown[] = [orgId, `%${q}%`];
-    let p = 3;
-    if (status) { sql += ` AND status = $${p++}`; params.push(status); }
-    if (category) { sql += ` AND category ILIKE $${p++}`; params.push(`%${category}%`); }
-    if (priority) { sql += ` AND priority = $${p++}`; params.push(priority); }
+               FROM missions WHERE org_id = $1`;
+    const params: unknown[] = [orgId];
+    let p = 2;
+    if (status)   { sql += ` AND status = $${p++}`;           params.push(status); }
+    if (category) { sql += ` AND category ILIKE $${p++}`;     params.push(`%${category}%`); }
+    if (priority) { sql += ` AND priority = $${p++}`;         params.push(priority); }
     sql += ` ORDER BY priority_score DESC, updated_at DESC LIMIT $${p}`;
     params.push(limit);
 
@@ -233,8 +231,63 @@ async function dispatchTool(
       result: "ok", durationMs: Date.now() - t0 });
 
     if (missions.length === 0) {
+      const filterDesc = [status && `statut=${status}`, category && `catégorie=${category}`, priority && `priorité=${priority}`]
+        .filter(Boolean).join(", ");
       return { toolCallId: logId, toolName: name, ok: true,
-        content: `Aucune mission trouvée pour la recherche "${q}"${status ? ` (statut: ${status})` : ""}. Demande à l'utilisateur de préciser.`,
+        content: `Aucune mission trouvée${filterDesc ? ` pour les filtres (${filterDesc})` : ""}.`,
+        actionLogId: logId };
+    }
+
+    const list = missions.map(m =>
+      `- ID: ${m.id} | Titre: ${m.title} | Statut: ${m.status} | Priorité: ${m.priority} | Catégorie: ${m.category}`
+    ).join("\n");
+    const filterDesc = [status && `statut=${status}`, category && `catégorie=${category}`, priority && `priorité=${priority}`]
+      .filter(Boolean).join(", ");
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `${missions.length} mission(s)${filterDesc ? ` (filtres: ${filterDesc})` : ""} :\n${list}`,
+      data: { missions }, actionLogId: logId };
+  }
+
+  // ── search_mission ────────────────────────────────────────────────────────
+  if (name === "search_mission") {
+    const q        = args["query"]    as string | undefined;
+    const status   = args["status"]   as string | undefined;
+    const category = args["category"] as string | undefined;
+    const priority = args["priority"] as string | undefined;
+    const limit    = (args["limit"] as number) ?? 5;
+
+    // When no query is provided, list all missions matching the filters (list_missions behaviour).
+    let sql: string;
+    const params: unknown[] = [orgId];
+    let p = 2;
+
+    if (q) {
+      sql = `SELECT id, title, description, status, priority, category, due_date, assigned_to, updated_at
+             FROM missions WHERE org_id = $1 AND (title ILIKE $${p} OR description ILIKE $${p})`;
+      params.push(`%${q}%`);
+      p++;
+    } else {
+      sql = `SELECT id, title, description, status, priority, category, due_date, assigned_to, updated_at
+             FROM missions WHERE org_id = $1`;
+    }
+
+    if (status)   { sql += ` AND status = $${p++}`;       params.push(status); }
+    if (category) { sql += ` AND category ILIKE $${p++}`; params.push(`%${category}%`); }
+    if (priority) { sql += ` AND priority = $${p++}`;     params.push(priority); }
+    sql += ` ORDER BY priority_score DESC, updated_at DESC LIMIT $${p}`;
+    params.push(limit);
+
+    const r = await pool.query(sql, params);
+    const missions = r.rows;
+
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+      result: "ok", durationMs: Date.now() - t0 });
+
+    if (missions.length === 0) {
+      const desc = q ? `la recherche "${q}"` : "les filtres appliqués";
+      return { toolCallId: logId, toolName: name, ok: true,
+        content: `Aucune mission trouvée pour ${desc}${status ? ` (statut: ${status})` : ""}. Demande à l'utilisateur de préciser.`,
         actionLogId: logId };
     }
 
@@ -242,8 +295,9 @@ async function dispatchTool(
       `- ID: ${m.id} | Titre: ${m.title} | Statut: ${m.status} | Priorité: ${m.priority} | Catégorie: ${m.category}`
     ).join("\n");
 
+    const label = q ? `"${q}"` : `tous les filtres`;
     return { toolCallId: logId, toolName: name, ok: true,
-      content: `${missions.length} mission(s) trouvée(s) pour "${q}" :\n${list}`,
+      content: `${missions.length} mission(s) trouvée(s) pour ${label} :\n${list}`,
       data: { missions }, actionLogId: logId };
   }
 
