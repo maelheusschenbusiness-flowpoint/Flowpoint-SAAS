@@ -1006,8 +1006,9 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
           emailsToDelete.length > 0
             ? safeCount(`SELECT COUNT(*)::text AS n FROM pending_signups    WHERE lower(email) = ANY($1)`, [emailsToDelete])
             : 0,
+          // team_invitations is the correct table name (invitations does not exist)
           emailsToDelete.length > 0
-            ? safeCount(`SELECT COUNT(*)::text AS n FROM invitations        WHERE lower(email) = ANY($1)`, [emailsToDelete])
+            ? safeCount(`SELECT COUNT(*)::text AS n FROM team_invitations   WHERE lower(email) = ANY($1)`, [emailsToDelete])
             : 0,
           safeCount(
             `SELECT COUNT(*)::text AS n FROM org_settings
@@ -1016,26 +1017,62 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
           ),
         ]);
 
-      // Business data counts per org-scoped table (parallel)
+      // Business data counts per org-scoped table (parallel).
+      // List is verified against information_schema + Supabase REST API.
+      // Tables confirmed absent from production are excluded (no 404 noise).
       const BUSINESS_TABLES = [
-        "audits","audit_schedules","reports","report_exports",
-        "monitors","monitor_checks","monitor_incidents",
-        "alert_rules","alert_events","tracked_keywords","tracked_keywords_history",
-        "calendar_events","missions","mission_history","mission_ai_logs",
+        // Core audits / performance
+        "audits","audit_schedules","audit_trail",
+        "pagespeed_history","pagespeed_results",
+        // Monitors / uptime
+        "monitors","monitor_checks","monitor_incidents","monitor_logs",
+        // Alerts
+        "alert_rules","alert_events","ranking_alerts",
+        // Keywords / SEO
+        "tracked_keywords","keyword_clusters","keyword_history","keyword_opportunities",
+        "seo_forecasts","gsc_sites","ga4_properties",
+        // Missions
+        "missions","mission_history","mission_ai_logs",
         "ai_generated_missions","ai_setup_logs","ai_recommendations",
+        "mission_impact_scores","mission_priorities","mission_templates",
+        // Reports
+        "reports","report_exports","report_templates",
+        // Calendar
+        "calendar_events",
+        // Team
         "team_members","team_invitations","team_messages","team_files","team_channels",
+        // Automation
         "automation_integrations","automation_workflows","automation_runs",
-        "automation_logs","workflow_runs","incoming_webhooks",
-        "psi_cache","seo_forecasts","funnels","funnel_steps",
-        "ga4_accounts","gsc_keyword_data","gsc_page_data","gsc_sync_logs",
-        "google_tokens","google_oauth_states","github_connections",
-        "behavior_events","behavior_sessions",
-        "traffic_sources","traffic_losses","cro_scores","cro_experiments","revenue_leaks",
-        "local_pack_history","org_addons","org_checklist","org_monitor_quota","org_secrets",
-        "org_quota_usage","checkout_post_tokens","overview_insights_cache","overview_insights_rl",
-        "activity_log","share_tokens","growth_objectives",
+        "automation_logs","automation_templates","workflow_runs","incoming_webhooks",
+        // Google / OAuth
+        "google_tokens","google_oauth_states","google_accounts",
+        "google_locations","google_reviews","google_product_connections",
+        // GitHub
+        "github_connections",
+        // Competitors
+        "competitors","competitor_map_results","competitor_movements","competitor_rankings",
+        // Funnels / growth
+        "funnels","funnel_steps","growth_objectives","seo_forecasts","share_tokens",
+        // Org config & billing
+        "org_addons","org_checklist","org_secrets","org_auth_config","subscriptions",
+        "org_member_permissions","sso_providers",
+        // Checkout & tokens
+        "checkout_post_tokens","overview_insights_cache","overview_insights_rl",
+        // AI
         "ai_usage_logs","ai_monthly_usage","ai_credit_purchases",
-        "onboarding_sessions","ai_workspace_profiles",
+        "ai_chat_history","ai_action_logs","ai_action_proposals",
+        "ai_autopilot_grants","ai_usage_pending_writes","ai_workspace_profiles",
+        "ai_market_reports","ai_review_replies",
+        // User activity & notifications
+        "activity_logs","notifications","user_prefs","user_activity_days",
+        "login_audits","permission_logs","access_audits",
+        // Onboarding
+        "onboarding_sessions",
+        // Other business data
+        "local_pack_history","local_heatmaps","industry_signals",
+        "connectors","dataforseo_quota","reviews","roles",
+        "market_opportunities","market_trends","usage_events",
+        "gbp_locations","gbp_posts",
       ] as const;
 
       const businessCounts: Record<string, number> = {};
@@ -1119,29 +1156,85 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
       };
 
       // Sessions & tokens (by email)
+      // Sessions & tokens (by email)
       await safeDelete("user_sessions",     "lower(email)", emailsToDelete);
       await safeDelete("magic_link_tokens", "lower(email)", emailsToDelete);
       await safeDelete("pending_signups",   "lower(email)", emailsToDelete);
-      await safeDelete("invitations",       "lower(email)", emailsToDelete);
+      // team_invitations is the correct table name — `invitations` does not exist
+      await safeDelete("team_invitations",  "lower(email)", emailsToDelete);
 
-      // Org-scoped business data (by UUID)
+      // Org-scoped business data (by org_id UUID).
+      // Verified against information_schema + Supabase REST API.
+      // Absent tables (psi_cache, tracked_keywords_history, etc.) are excluded;
+      // .catch() swallows errors for any that were provisioned after this list was built.
       for (const tbl of [
-        "audits","monitors","tracked_keywords","audit_schedules",
-        "alert_rules","alert_events","missions","mission_steps",
-        "reports","report_schedules","ai_usage_logs","ai_monthly_usage",
-        "org_addons","activity_events","user_notifications",
-        "team_members","team_channels","team_messages",
-        "workflow_runs","automation_workflows",
-        "tracked_keywords_history","psi_cache","google_tokens",
-        "google_oauth_states","org_settings",
+        // Core audits / performance
+        "audits","audit_schedules","audit_trail","pagespeed_history","pagespeed_results",
+        // Monitors
+        "monitors","monitor_checks","monitor_incidents","monitor_logs",
+        // Alerts & keywords
+        "alert_rules","alert_events","ranking_alerts",
+        "tracked_keywords","keyword_clusters","keyword_history","keyword_opportunities",
+        // Missions
+        "missions","mission_history","mission_ai_logs",
+        "ai_generated_missions","ai_setup_logs","ai_recommendations",
+        "mission_impact_scores","mission_priorities","mission_templates",
+        // Reports
+        "reports","report_exports","report_templates",
+        // Calendar
+        "calendar_events",
+        // Team
+        "team_members","team_messages","team_files","team_channels",
+        // Automation
+        "automation_integrations","automation_workflows","automation_runs",
+        "automation_logs","automation_templates","workflow_runs","incoming_webhooks",
+        // Google / OAuth
+        "google_tokens","google_oauth_states","google_accounts",
+        "google_locations","google_reviews","google_product_connections",
+        // GitHub
+        "github_connections",
+        // Competitors
+        "competitors","competitor_map_results","competitor_movements","competitor_rankings",
+        // Funnels / growth
+        "funnels","funnel_steps","growth_objectives","seo_forecasts","share_tokens",
+        // Org config & billing
+        "org_addons","org_checklist","org_secrets","org_auth_config",
+        "subscriptions","org_member_permissions","sso_providers",
+        // Checkout & overview cache
+        "checkout_post_tokens","overview_insights_cache","overview_insights_rl",
+        // AI
+        "ai_usage_logs","ai_monthly_usage","ai_credit_purchases",
+        "ai_chat_history","ai_action_logs","ai_action_proposals",
+        "ai_autopilot_grants","ai_usage_pending_writes","ai_workspace_profiles",
+        "ai_market_reports","ai_review_replies",
+        // Activity / notifications
+        "activity_logs","notifications","user_prefs","user_activity_days",
+        "login_audits","permission_logs","access_audits",
+        // Onboarding
+        "onboarding_sessions",
+        // Other business data
+        "local_pack_history","local_heatmaps","industry_signals",
+        "connectors","dataforseo_quota","reviews","roles",
+        "market_opportunities","market_trends","usage_events",
+        "gbp_locations","gbp_posts",
+        // Legacy org settings
+        "org_settings",
       ] as const) {
         await safeDeleteUUID(tbl, "org_id", orgIdsToDelete).catch(() => {});
       }
 
+      // organization_members uses `organization_id` (not `org_id`) — handle separately
+      if (orgIdsToDelete.length > 0) {
+        const omR = await client.query(
+          `DELETE FROM organization_members WHERE organization_id::text = ANY($1)`,
+          [orgIdsToDelete]
+        ).catch(() => ({ rowCount: 0 }));
+        deleted["organization_members"] = omR.rowCount ?? 0;
+      }
+
       // Core identity tables
-      await safeDeleteUUID("org_members",   "org_id", orgIdsToDelete);
-      await safeDeleteUUID("organizations", "id",     orgIdsToDelete);
-      await safeDelete    ("users",         "lower(email)", emailsToDelete);
+      await safeDeleteUUID("organizations", "id", orgIdsToDelete);
+      await safeDelete    ("users", "lower(email)", emailsToDelete);
 
       await client.query("COMMIT");
 
