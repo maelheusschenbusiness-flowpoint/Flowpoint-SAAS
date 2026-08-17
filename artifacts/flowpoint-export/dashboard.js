@@ -5521,7 +5521,7 @@ function renderOverview() {
       </div>
 
       <!-- 8 Health Gauge Grid -->
-      <div class="fp-health-gauge-grid" style="gap:12px;position:relative">
+      <div class="fp-health-gauge-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;position:relative">
         ${healthMetrics.map(h => {
           const _hv = h.val != null && Number.isFinite(h.val);
           const col = _hv ? (h.val >= 70 ? '#22c55e' : h.val >= 50 ? '#f59e0b' : '#ef4444') : 'var(--fp-text-faint)';
@@ -5898,7 +5898,7 @@ function renderOverview() {
           ${[
             { label:'Audits actifs',    val: String(STATE.audits.length),   color:'#2563EB' },
             { label:'Missions actives', val: String(missionsActive),        color:'#8b5cf6' },
-            { label:'Alertes actives',  val: String(STATE.alertEvents.filter(e => !e.resolvedAt).length || STATE.alertRules.filter(r => r.enabled).length || 0), color:'#f59e0b' },
+            { label:'Alertes actives',  val: String(STATE.alertEvents.filter(e => !e.resolvedAt).length || 0), color:'#f59e0b' },
           ].map(s => `<div style="text-align:center">
             <div style="font-size:20px;font-weight:800;color:${s.color};font-family:var(--fp-font-head)">${s.val}</div>
             <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(s.label)}</div>
@@ -8434,9 +8434,20 @@ function renderLocalSEO() {
         <div style="padding:16px 18px;border-right:1px solid var(--fp-border)">
           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Local Pack Rankings</div>
           <div id="dfs-local-rank-widget">
+            ${(STATE.localSeo?.rankings && STATE.localSeo.rankings.length > 0) ? `
+              ${STATE.localSeo.rankings.map((r, i) => `
+                <div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;${i > 0 ? 'border-top:1px solid var(--fp-border)' : ''}">
+                  <div style="font-size:15px;font-weight:800;color:${i===0?'#22c55e':i===1?'#2563EB':'#f59e0b'};min-width:22px;text-align:center">#${r.rank}</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:12px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.title)}</div>
+                    ${r.rating > 0 ? `<div style="font-size:10px;color:#f59e0b">★ ${r.rating} (${r.reviews} avis)</div>` : ''}
+                    ${r.address ? `<div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.address)}</div>` : ''}
+                  </div>
+                </div>`).join('')}
+              <div style="margin-top:8px;font-size:10px;color:#64748b;font-style:italic">${fpT('Classement pour')} « ${escHtml(STATE.localSeo.rankingKeyword||'')} » — ${escHtml(STATE.localSeo.rankingCity||'')}</div>` : `
             <div style="text-align:center;padding:16px;color:#64748b;font-size:12px">
               Cliquez <strong>${fpT('Charger rankings')}</strong> pour voir vos positions locales Google en direct
-            </div>
+            </div>`}
           </div>
         </div>
         <div style="padding:16px 18px">
@@ -9690,7 +9701,7 @@ function renderBilling() {
         const cart = { plan: null, addons: {}, fromDashboard: true };
         cart.addons[key] = _qty;
         localStorage.setItem('fp_cart', JSON.stringify(cart));
-        window.location.href = '/checkout.html?from=dashboard&addon=' + encodeURIComponent(key);
+        window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(key);
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'activation impossible')); }
     };
     // Désactivation in-dashboard : retire l'item Stripe puis met à jour la carte.
@@ -11155,10 +11166,10 @@ function renderSettings() {
       {label:'CSP absente',                  done:false, weight:15, desc:'Content-Security-Policy non déclarée — XSS possible', vuln:true},
       {label:'CORS wildcard potentiel',      done:false, weight:10, desc:'Origines non restreintes — risque d\'accès cross-origin', vuln:true},
     ] : [
-      {label:'Mot de passe fort',         done:true,     weight:20, desc:'Complexité vérifiée'},
-      {label:'Double facteur (2FA)',       done:_twoFaOn, weight:25, desc:_twoFaOn ? '2FA activé — accès protégé' : '2FA non configuré — activez-le dans Paramètres', vuln:!_twoFaOn},
-      {label:'Session sécurisée (HTTPS)', done:true,     weight:15, desc:'Connexion chiffrée'},
-      {label:'API keys sécurisées',        done:true,     weight:15, desc:'Clé publique en lecture seule'},
+      {label:fpT('Mot de passe fort'),         done:true,     weight:20, desc:fpT('Complexité vérifiée')},
+      {label:fpT('Double facteur (2FA)'),       done:_twoFaOn, weight:25, desc:_twoFaOn ? fpT('2FA activé — accès protégé') : fpT('2FA non configuré — activez-le dans Paramètres'), vuln:!_twoFaOn},
+      {label:fpT('Session sécurisée (HTTPS)'), done:true,     weight:15, desc:fpT('Connexion chiffrée')},
+      {label:fpT('API keys sécurisées'),        done:true,     weight:15, desc:fpT('Clé publique en lecture seule')},
     ]);
     const secScore = _secRaw?.score != null ? _secRaw.score : Math.round(secItems.reduce((s,i) => i.done ? s + i.weight : s, 0));
     // Build sessions panel solely from the server-side session history. Never
@@ -13946,7 +13957,7 @@ function renderAuditDetailPanel(audit) {
           const rid = `${escHtml(audit.id)}_i${i}`;
           const resolved = !!(STATE.resolvedIssues && STATE.resolvedIssues[rid]);
           return `
-          <div class="fp-audit-issue-card" data-issue-rid="${rid}" style="border:1px solid ${issue.color}25;background:var(--fp-inner-card);${resolved?'opacity:0.5':''}">
+          <div class="fp-audit-issue-card" data-issue-rid="${rid}" style="border:1px solid ${issue.color}40;background:var(--fp-inner-card);border-radius:8px;overflow:hidden;${resolved?'opacity:0.5':''}">
             <div style="padding:9px 10px 8px;display:flex;gap:8px;align-items:flex-start">
               <input type="checkbox" ${resolved?'checked':''} onchange="fpToggleIssue('${rid}',this)" style="margin-top:2px;accent-color:${issue.color};flex-shrink:0;cursor:pointer;width:13px;height:13px"/>
               <div style="flex:1;min-width:0">
@@ -15056,7 +15067,7 @@ function _doRender() {
     case 'missions':       html = renderMissions(); break;
     case 'audits':         html = renderAudits(); break;
     case 'monitors':       html = renderMonitors(); break;
-    case 'reports':        html = renderGA4Reports(); break;
+    case 'reports':        html = renderReports(); break;
     case 'local-seo':      html = renderLocalSEO(); break;
     case 'team':           html = renderTeam(); break;
     case 'billing':        html = renderBilling(); break;
@@ -17616,6 +17627,22 @@ function bindGlobalEvents() {
     'Dashboard en arrière-plan': 'Background dashboard',
     'Activités récentes': 'Recent activities',
     'Confirmer les actions': 'Confirm actions',
+    'Afficher les messages et alertes au passage de la souris': 'Show messages and alerts on hover',
+    'Activer ou désactiver les streaks d\'activité': 'Enable or disable activity streaks',
+    'Afficher les recommandations IA automatiques dans vos missions': 'Show automatic AI tips in your missions',
+    'Ouvrir les pages liées dans un nouvel onglet': 'Open linked pages in a new tab',
+    'Garder le dashboard ouvert en arrière-plan': 'Keep the dashboard open in the background',
+    'Voir les dernières actions et événements': 'View the latest actions and events',
+    'Demander validation avant suppression ou modification': 'Ask for confirmation before deletion or modification',
+    'Mot de passe fort': 'Strong password',
+    'Double facteur (2FA)': 'Two-factor authentication (2FA)',
+    'Session sécurisée (HTTPS)': 'Secure session (HTTPS)',
+    'API keys sécurisées': 'Secure API keys',
+    'Complexité vérifiée': 'Complexity verified',
+    '2FA activé — accès protégé': '2FA enabled — access protected',
+    '2FA non configuré — activez-le dans Paramètres': '2FA not configured — enable it in Settings',
+    'Connexion chiffrée': 'Encrypted connection',
+    'Clé publique en lecture seule': 'Read-only public key',
     'La préférence est sauvegardée et appliquée à l\'interface.': 'The preference is saved and applied to the interface.',
     'Streaks': 'Streaks',
     // Team page stat card labels
@@ -20476,6 +20503,22 @@ function bindGlobalEvents() {
     "Confirmer": "Confirmar",
     "Confirmer cette action ?": "¿Confirmar esta acción?",
     "Confirmer les actions": "Confirmar acciones",
+    "Afficher les messages et alertes au passage de la souris": "Mostrar mensajes y alertas al pasar el mouse",
+    "Activer ou désactiver les streaks d'activité": "Activar o desactivar las rachas de actividad",
+    "Afficher les recommandations IA automatiques dans vos missions": "Mostrar recomendaciones de IA automáticas en tus misiones",
+    "Ouvrir les pages liées dans un nouvel onglet": "Abrir páginas vinculadas en una nueva pestaña",
+    "Garder le dashboard ouvert en arrière-plan": "Mantener el panel abierto en segundo plano",
+    "Voir les dernières actions et événements": "Ver las últimas acciones y eventos",
+    "Demander validation avant suppression ou modification": "Pedir confirmación antes de eliminar o modificar",
+    "Mot de passe fort": "Contraseña fuerte",
+    "Double facteur (2FA)": "Autenticación de dos factores (2FA)",
+    "Session sécurisée (HTTPS)": "Sesión segura (HTTPS)",
+    "API keys sécurisées": "Claves API seguras",
+    "Complexité vérifiée": "Complejidad verificada",
+    "2FA activé — accès protégé": "2FA activado — acceso protegido",
+    "2FA non configuré — activez-le dans Paramètres": "2FA no configurado — actívalo en Configuración",
+    "Connexion chiffrée": "Conexión cifrada",
+    "Clé publique en lecture seule": "Clave pública de solo lectura",
     "Connecter": "Conectar",
     "Connecter GA4": "Conectar GA4",
     "Connecter Google Analytics 4 pour suivre vos conversions": "Conecta Google Analytics 4 para rastrear tus conversiones",
@@ -23343,6 +23386,22 @@ function bindGlobalEvents() {
     "Confirmer": "Bestätigen",
     "Confirmer cette action ?": "Diese Aktion bestätigen?",
     "Confirmer les actions": "Aktionen bestätigen",
+    "Afficher les messages et alertes au passage de la souris": "Nachrichten und Warnungen beim Hover anzeigen",
+    "Activer ou désactiver les streaks d'activité": "Aktivitäts-Streaks aktivieren oder deaktivieren",
+    "Afficher les recommandations IA automatiques dans vos missions": "Automatische KI-Empfehlungen in Ihren Missionen anzeigen",
+    "Ouvrir les pages liées dans un nouvel onglet": "Verlinkte Seiten in einem neuen Tab öffnen",
+    "Garder le dashboard ouvert en arrière-plan": "Dashboard im Hintergrund geöffnet halten",
+    "Voir les dernières actions et événements": "Neueste Aktionen und Ereignisse anzeigen",
+    "Demander validation avant suppression ou modification": "Bestätigung vor dem Löschen oder Ändern anfordern",
+    "Mot de passe fort": "Sicheres Passwort",
+    "Double facteur (2FA)": "Zwei-Faktor-Authentifizierung (2FA)",
+    "Session sécurisée (HTTPS)": "Sichere Sitzung (HTTPS)",
+    "API keys sécurisées": "Sichere API-Schlüssel",
+    "Complexité vérifiée": "Komplexität überprüft",
+    "2FA activé — accès protégé": "2FA aktiviert — Zugang geschützt",
+    "2FA non configuré — activez-le dans Paramètres": "2FA nicht konfiguriert — In den Einstellungen aktivieren",
+    "Connexion chiffrée": "Verschlüsselte Verbindung",
+    "Clé publique en lecture seule": "Öffentlicher Schlüssel (nur lesend)",
     "Connecter": "Verbinden",
     "Connecter GA4": "GA4 verbinden",
     "Connecter Google Analytics 4 pour suivre vos conversions": "Google Analytics 4 verbinden, um Ihre Conversions zu verfolgen",
@@ -26189,6 +26248,22 @@ function bindGlobalEvents() {
     "Confirmer": "Conferma",
     "Confirmer cette action ?": "Confermare questa azione?",
     "Confirmer les actions": "Conferma azioni",
+    "Afficher les messages et alertes au passage de la souris": "Mostra messaggi e avvisi al passaggio del mouse",
+    "Activer ou désactiver les streaks d'activité": "Attiva o disattiva le serie di attività",
+    "Afficher les recommandations IA automatiques dans vos missions": "Mostra raccomandazioni IA automatiche nelle tue missioni",
+    "Ouvrir les pages liées dans un nouvel onglet": "Apri pagine collegate in una nuova scheda",
+    "Garder le dashboard ouvert en arrière-plan": "Mantieni il dashboard aperto in background",
+    "Voir les dernières actions et événements": "Visualizza le ultime azioni ed eventi",
+    "Demander validation avant suppression ou modification": "Richiedi conferma prima dell'eliminazione o modifica",
+    "Mot de passe fort": "Password sicura",
+    "Double facteur (2FA)": "Autenticazione a due fattori (2FA)",
+    "Session sécurisée (HTTPS)": "Sessione sicura (HTTPS)",
+    "API keys sécurisées": "Chiavi API sicure",
+    "Complexité vérifiée": "Complessità verificata",
+    "2FA activé — accès protégé": "2FA attivato — accesso protetto",
+    "2FA non configuré — activez-le dans Paramètres": "2FA non configurato — attivalo nelle Impostazioni",
+    "Connexion chiffrée": "Connessione cifrata",
+    "Clé publique en lecture seule": "Chiave pubblica in sola lettura",
     "Connecter": "Collega",
     "Connecter GA4": "Collegare GA4",
     "Connecter Google Analytics 4 pour suivre vos conversions": "Collega Google Analytics 4 per monitorare le tue conversioni",
@@ -29035,6 +29110,22 @@ function bindGlobalEvents() {
     "Confirmer": "Confirmar",
     "Confirmer cette action ?": "Confirmar esta ação?",
     "Confirmer les actions": "Confirmar ações",
+    "Afficher les messages et alertes au passage de la souris": "Mostrar mensagens e alertas ao passar o mouse",
+    "Activer ou désactiver les streaks d'activité": "Ativar ou desativar sequências de atividade",
+    "Afficher les recommandations IA automatiques dans vos missions": "Mostrar recomendações de IA automáticas nas suas missões",
+    "Ouvrir les pages liées dans un nouvel onglet": "Abrir páginas vinculadas em uma nova guia",
+    "Garder le dashboard ouvert en arrière-plan": "Manter o painel aberto em segundo plano",
+    "Voir les dernières actions et événements": "Ver as últimas ações e eventos",
+    "Demander validation avant suppression ou modification": "Pedir confirmação antes de excluir ou modificar",
+    "Mot de passe fort": "Senha forte",
+    "Double facteur (2FA)": "Autenticação de dois fatores (2FA)",
+    "Session sécurisée (HTTPS)": "Sessão segura (HTTPS)",
+    "API keys sécurisées": "Chaves API seguras",
+    "Complexité vérifiée": "Complexidade verificada",
+    "2FA activé — accès protégé": "2FA ativado — acesso protegido",
+    "2FA non configuré — activez-le dans Paramètres": "2FA não configurado — ative-o em Configurações",
+    "Connexion chiffrée": "Conexão criptografada",
+    "Clé publique en lecture seule": "Chave pública somente leitura",
     "Connecter": "Conectar",
     "Connecter GA4": "Conectar GA4",
     "Connecter Google Analytics 4 pour suivre vos conversions": "Conecte o Google Analytics 4 para acompanhar suas conversões",
@@ -31881,6 +31972,22 @@ function bindGlobalEvents() {
     "Confirmer": "Bevestigen",
     "Confirmer cette action ?": "Deze actie bevestigen?",
     "Confirmer les actions": "Acties bevestigen",
+    "Afficher les messages et alertes au passage de la souris": "Berichten en meldingen weergeven bij hover",
+    "Activer ou désactiver les streaks d'activité": "Activiteitsreeksen in- of uitschakelen",
+    "Afficher les recommandations IA automatiques dans vos missions": "Automatische AI-aanbevelingen weergeven in uw missies",
+    "Ouvrir les pages liées dans un nouvel onglet": "Gelinkte pagina's openen in een nieuw tabblad",
+    "Garder le dashboard ouvert en arrière-plan": "Dashboard open houden op de achtergrond",
+    "Voir les dernières actions et événements": "De laatste acties en gebeurtenissen bekijken",
+    "Demander validation avant suppression ou modification": "Bevestiging vragen vóór verwijdering of wijziging",
+    "Mot de passe fort": "Sterk wachtwoord",
+    "Double facteur (2FA)": "Tweefactorauthenticatie (2FA)",
+    "Session sécurisée (HTTPS)": "Beveiligde sessie (HTTPS)",
+    "API keys sécurisées": "Beveiligde API-sleutels",
+    "Complexité vérifiée": "Complexiteit geverifieerd",
+    "2FA activé — accès protégé": "2FA ingeschakeld — toegang beschermd",
+    "2FA non configuré — activez-le dans Paramètres": "2FA niet geconfigureerd — schakel in via Instellingen",
+    "Connexion chiffrée": "Versleutelde verbinding",
+    "Clé publique en lecture seule": "Openbare sleutel (alleen-lezen)",
     "Connecter": "Verbinden",
     "Connecter GA4": "Verbind GA4",
     "Connecter Google Analytics 4 pour suivre vos conversions": "Verbind Google Analytics 4 om uw conversies te volgen",
@@ -34727,6 +34834,22 @@ function bindGlobalEvents() {
     "Confirmer": "Potwierdź",
     "Confirmer cette action ?": "Potwierdzić tę akcję?",
     "Confirmer les actions": "Potwierdź działania",
+    "Afficher les messages et alertes au passage de la souris": "Pokaż wiadomości i alerty po najechaniu myszą",
+    "Activer ou désactiver les streaks d'activité": "Włącz lub wyłącz serie aktywności",
+    "Afficher les recommandations IA automatiques dans vos missions": "Pokaż automatyczne rekomendacje AI w misjach",
+    "Ouvrir les pages liées dans un nouvel onglet": "Otwórz powiązane strony w nowej karcie",
+    "Garder le dashboard ouvert en arrière-plan": "Utrzymuj panel otwarty w tle",
+    "Voir les dernières actions et événements": "Wyświetl ostatnie działania i zdarzenia",
+    "Demander validation avant suppression ou modification": "Proś o potwierdzenie przed usunięciem lub modyfikacją",
+    "Mot de passe fort": "Silne hasło",
+    "Double facteur (2FA)": "Uwierzytelnianie dwuskładnikowe (2FA)",
+    "Session sécurisée (HTTPS)": "Bezpieczna sesja (HTTPS)",
+    "API keys sécurisées": "Bezpieczne klucze API",
+    "Complexité vérifiée": "Złożoność zweryfikowana",
+    "2FA activé — accès protégé": "2FA włączone — dostęp chroniony",
+    "2FA non configuré — activez-le dans Paramètres": "2FA nie skonfigurowane — włącz w Ustawieniach",
+    "Connexion chiffrée": "Zaszyfrowane połączenie",
+    "Clé publique en lecture seule": "Klucz publiczny tylko do odczytu",
     "Connecter": "Połącz",
     "Connecter GA4": "Połącz GA4",
     "Connecter Google Analytics 4 pour suivre vos conversions": "Połącz Google Analytics 4, aby śledzić swoje konwersje",
@@ -37573,6 +37696,22 @@ function bindGlobalEvents() {
     "Confirmer": "Bekräfta",
     "Confirmer cette action ?": "Bekräfta denna åtgärd?",
     "Confirmer les actions": "Bekräfta åtgärder",
+    "Afficher les messages et alertes au passage de la souris": "Visa meddelanden och aviseringar vid hover",
+    "Activer ou désactiver les streaks d'activité": "Aktivera eller inaktivera aktivitetsserier",
+    "Afficher les recommandations IA automatiques dans vos missions": "Visa automatiska AI-rekommendationer i dina uppdrag",
+    "Ouvrir les pages liées dans un nouvel onglet": "Öppna länkade sidor i en ny flik",
+    "Garder le dashboard ouvert en arrière-plan": "Håll instrumentpanelen öppen i bakgrunden",
+    "Voir les dernières actions et événements": "Visa de senaste åtgärderna och händelserna",
+    "Demander validation avant suppression ou modification": "Begär bekräftelse före radering eller ändring",
+    "Mot de passe fort": "Starkt lösenord",
+    "Double facteur (2FA)": "Tvåfaktorsautentisering (2FA)",
+    "Session sécurisée (HTTPS)": "Säker session (HTTPS)",
+    "API keys sécurisées": "Säkra API-nycklar",
+    "Complexité vérifiée": "Komplexitet verifierad",
+    "2FA activé — accès protégé": "2FA aktiverat — åtkomst skyddad",
+    "2FA non configuré — activez-le dans Paramètres": "2FA inte konfigurerat — aktivera det i Inställningar",
+    "Connexion chiffrée": "Krypterad anslutning",
+    "Clé publique en lecture seule": "Offentlig nyckel (skrivskyddad)",
     "Connecter": "Anslut",
     "Connecter GA4": "Anslut GA4",
     "Connecter Google Analytics 4 pour suivre vos conversions": "Anslut Google Analytics 4 för att spåra dina konverteringar",
@@ -40419,6 +40558,22 @@ function bindGlobalEvents() {
     "Confirmer": "Confirmă",
     "Confirmer cette action ?": "Confirmați această acțiune?",
     "Confirmer les actions": "Confirmă acțiunile",
+    "Afficher les messages et alertes au passage de la souris": "Afișează mesaje și alerte la hover",
+    "Activer ou désactiver les streaks d'activité": "Activați sau dezactivați seriile de activitate",
+    "Afficher les recommandations IA automatiques dans vos missions": "Afișați recomandările automate IA în misiunile dvs.",
+    "Ouvrir les pages liées dans un nouvel onglet": "Deschideți paginile legate într-o filă nouă",
+    "Garder le dashboard ouvert en arrière-plan": "Păstrați tabloul de bord deschis în fundal",
+    "Voir les dernières actions et événements": "Vizualizați ultimele acțiuni și evenimente",
+    "Demander validation avant suppression ou modification": "Solicitați confirmare înainte de ștergere sau modificare",
+    "Mot de passe fort": "Parolă puternică",
+    "Double facteur (2FA)": "Autentificare cu doi factori (2FA)",
+    "Session sécurisée (HTTPS)": "Sesiune securizată (HTTPS)",
+    "API keys sécurisées": "Chei API securizate",
+    "Complexité vérifiée": "Complexitate verificată",
+    "2FA activé — accès protégé": "2FA activat — acces protejat",
+    "2FA non configuré — activez-le dans Paramètres": "2FA neconfigutat — activați-l în Setări",
+    "Connexion chiffrée": "Conexiune criptată",
+    "Clé publique en lecture seule": "Cheie publică numai pentru citire",
     "Connecter": "Conectează",
     "Connecter GA4": "Conectează GA4",
     "Connecter Google Analytics 4 pour suivre vos conversions": "Conectează Google Analytics 4 pentru a-ți urm��ri conversiile",
@@ -43265,6 +43420,22 @@ function bindGlobalEvents() {
     "Confirmer": "Potvrdit",
     "Confirmer cette action ?": "Potvrdit tuto akci?",
     "Confirmer les actions": "Potvrdit akce",
+    "Afficher les messages et alertes au passage de la souris": "Zobrazit zprávy a upozornění při najetí myší",
+    "Activer ou désactiver les streaks d'activité": "Povolit nebo zakázat série aktivit",
+    "Afficher les recommandations IA automatiques dans vos missions": "Zobrazit automatická doporučení AI ve vašich misích",
+    "Ouvrir les pages liées dans un nouvel onglet": "Otevřít propojené stránky na nové kartě",
+    "Garder le dashboard ouvert en arrière-plan": "Ponechat panel otevřený na pozadí",
+    "Voir les dernières actions et événements": "Zobrazit nejnovější akce a události",
+    "Demander validation avant suppression ou modification": "Požádat o potvrzení před smazáním nebo úpravou",
+    "Mot de passe fort": "Silné heslo",
+    "Double facteur (2FA)": "Dvoufaktorové ověřování (2FA)",
+    "Session sécurisée (HTTPS)": "Zabezpečená relace (HTTPS)",
+    "API keys sécurisées": "Zabezpečené klíče API",
+    "Complexité vérifiée": "Složitost ověřena",
+    "2FA activé — accès protégé": "2FA aktivováno — přístup chráněn",
+    "2FA non configuré — activez-le dans Paramètres": "2FA není nakonfigurováno — povolte ho v Nastavení",
+    "Connexion chiffrée": "Šifrované připojení",
+    "Clé publique en lecture seule": "Veřejný klíč pouze pro čtení",
     "Connecter": "Připojit",
     "Connecter GA4": "Připojit GA4",
     "Connecter Google Analytics 4 pour suivre vos conversions": "Připojte Google Analytics 4 pro sledování vašich konverzí",
@@ -45906,9 +46077,9 @@ async function init() {
       '@keyframes spin { to { transform: rotate(360deg); } }',
       '@keyframes fpSpin { to { transform: rotate(360deg); } }',
       '@keyframes fp-fade-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }',
-      '@keyframes fp-skel { 0%,100%{opacity:.48} 50%{opacity:.62} }',
-      '.fp-skel-shimmer { background:rgba(255,255,255,0.04); animation:fp-skel 3s ease-in-out infinite; }',
-      '.fp-psi-spinner { width:48px;height:48px;border-radius:50%;border:3px solid rgba(37,99,235,0.2);border-top-color:#2563EB;animation:fpSpin 0.9s linear infinite; }',
+      '@keyframes fp-skel { from{background-position:-400px 0} to{background-position:calc(400px + 100%) 0} }',
+      '.fp-skel-shimmer { background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.07) 50%,transparent 100%);background-size:400px 100%;background-repeat:no-repeat;animation:fp-skel 1.5s linear infinite;will-change:background-position; }',
+      '.fp-psi-spinner { width:48px;height:48px;border-radius:50%;border:3px solid rgba(37,99,235,0.2);border-top-color:#2563EB;animation:fpSpin 0.9s linear infinite;animation-play-state:running!important;will-change:transform; }',
     ].join('\n');
     document.head.appendChild(_s);
   }());
