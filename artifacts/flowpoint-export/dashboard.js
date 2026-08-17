@@ -1282,8 +1282,11 @@ function fpOpenInvite() {
   const me = STATE.me || {};
   // seatUsage.used already includes pending invitations (counted server-side).
   // Only fall back to a manual count when seatUsage is not yet loaded.
+  // _SEATCAP: authoritative plan→seats map used as a floor in case DB plan lags behind Stripe plan.
+  const _SEATCAP_1 = {standard:1,pro:5,ultra:10,agency:10};
+  const _activePlan1 = ((STATE.billing?.plan) || (STATE.me?.plan) || 'standard').toLowerCase();
   const used  = STATE.seatUsage?.used ?? (((STATE.team || []).length || 1) + (STATE.pendingInvitations || []).length);
-  const limit = STATE.seatUsage?.limit ?? (me?.limits?.teamMembers ?? (1 + (me?.addons?.extraSeats || 0)));
+  const limit = Math.max(STATE.seatUsage?.limit ?? 0, me?.limits?.teamMembers ?? 0, _SEATCAP_1[_activePlan1] || 1, 1 + (me?.addons?.extraSeats || 0)) || 1;
   if (limit && used >= limit) {
     openFloatPanel('Sièges épuisés', `
       <div style="text-align:center;padding:8px 4px">
@@ -4522,7 +4525,7 @@ function initLocalSEOMap() {
       zoomControl:true,
       cameraControl:true,
       rotateControl:false,
-      gestureHandling:'cooperative',
+      gestureHandling:'greedy',
     });
     STATE._gmap = map;
     STATE._gmapDark = darkStyles;
@@ -5069,8 +5072,10 @@ function renderSidebarStatus() {
     const _pdfU   = _pick(_ud.pdfExportsUsed != null ? _ud.pdfExportsUsed : _ud.reportsUsed, _ud.reportsLimit, _usg.pdf, _lims.reports || 10);
     const _expU   = _pick(_ud.exportsUsed, _ud.exportsLimit, _usg.exports, _lims.exports  || 30);
     const _seatsUsed  = STATE.seatUsage?.used  ?? ((STATE.team||[]).length || 1);
-    // Take max of seatUsage (API) and plan limits — prevents stale error-fallback (limit:1) from underreporting
-    const _seatsLimit = Math.max(STATE.seatUsage?.limit ?? 0, _lims.teamMembers ?? 0, 1 + (me.addons?.extraSeats || 0)) || 1;
+    // Take max of seatUsage (API), plan limits, and local plan cap — floor against Stripe plan when DB plan lags
+    const _SEATCAP_5 = {standard:1,pro:5,ultra:10,agency:10};
+    const _activePlan5 = ((STATE.billing?.plan) || (me?.plan) || 'standard').toLowerCase();
+    const _seatsLimit = Math.max(STATE.seatUsage?.limit ?? 0, _lims.teamMembers ?? 0, _SEATCAP_5[_activePlan5] || 1, 1 + (me.addons?.extraSeats || 0)) || 1;
     const _seatsU = { used: _seatsUsed, limit: _seatsLimit };
     const _rapU   = { used: _ud.reportsUsed ?? me.usage?.reports?.used ?? 0, limit: _ud.reportsLimit ?? _lims.reports ?? 30 };
     const bars = [
@@ -8211,16 +8216,16 @@ function renderReports() {
   }
 
   // ══════════════════════════════════════════════════════════
-  // DEFAULT (null) — Report Command Center
+  // DEFAULT (null) — Report Command Center (simple template view)
   // ══════════════════════════════════════════════════════════
   return `
     ${_repErrBanner}
     <div class="fp-section-header">
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
-          Executive Reporting Hub
+          ${fpT('Rapports')}
         </h1>
-        <div class="fp-section-sub">Plateforme de reporting business · ${allReports.length} rapports disponibles${scheduled.filter(s=>s.active).length > 0 ? ' · Prochain envoi auto : ' + (scheduled.find(s=>s.active)?.next || '—') : ''}</div>
+        <div class="fp-section-sub">${allReports.length > 0 ? allReports.length + ' ' + fpT('rapport(s) généré(s)') + (scheduled.filter(s=>s.active).length > 0 ? ' · ' + fpT('Prochain envoi auto') + ' : ' + (scheduled.find(s=>s.active)?.next || '—') : '') : fpT('Créez et partagez vos rapports PDF en un clic')}</div>
       </div>
       <div class="fp-section-actions">
         ${btn('Generer rapport', 'fp-btn fp-btn-primary fp-btn-sm', 'file', "onclick=\"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()\"" )}
@@ -8228,189 +8233,85 @@ function renderReports() {
       </div>
     </div>
 
-    <!-- AI EXECUTIVE SUMMARY -->
-    ${isUltra
-      ? aiBlock((()=>{
-          const rTotal = allReports.length;
-          const rShared = allReports.filter(r => r.shared).length;
-          const critCount = aiInsights.filter(i => i.pri === 'critical').length;
-          const avgScore = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
-          if (PREVIEW_MODE) return "Bilan executif mai 2026 : score business <strong>72/100 (+4 pts)</strong>. 6 rapports generes dont 3 partages clients. <strong>2 alertes critiques</strong> : conversion mobile 0.12% et weekend a 0%. Revenue non capture estime : <strong>-3 800€/mois</strong>. Tendance globale : positive.";
-          return "Bilan executif <strong>" + CUR_MONTH + "</strong>" + (avgScore !== null ? " : score business <strong>" + avgScore + "/100</strong>" : "") + ". " + rTotal + " rapport" + (rTotal!==1?"s":"") + " genere" + (rTotal!==1?"s":"") + (rShared > 0 ? " dont " + rShared + " partage" + (rShared!==1?"s":"") + " clients" : "") + ". " + (critCount > 0 ? "<strong>" + critCount + " alerte" + (critCount>1?"s":"") + " critique" + (critCount>1?"s":"") + "</strong> a traiter." : "Aucune alerte critique.") + " Connectez vos sources pour activer les prévisions de revenus.";
-        })(),
-          ['Rapport executif PDF', 'Briefing client', 'Plan actions'])
-      : `<div style="padding:14px 16px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
-          <div style="font-size:22px">📋</div>
-          <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Synthèses IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports narratifs automatiques, analyse business et recommandations stratégiques générées par IA.</div></div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
-        </div>`
-    }
-
-    <!-- KPI STAT ROW -->
-    <div class="fp-stat-row fp-mb-20">
-      ${statCard('Rapports generes', String(allReports.length), 'ce mois', 'up')}
-      ${statCard('Partages clients', String(allReports.filter(r => r.shared).length), 'liens actifs', 'up')}
-      ${statCard('Envois auto actifs', String(scheduled.filter(s => s.active).length), 'planifies ce mois', 'neutral')}
-      ${statCard('Score BI global', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,'74/100'); })(), PREVIEW_MODE ? '+6 pts vs M-1' : 'score moyen portfolio', 'neutral')}
+    <!-- TEMPLATES DE RAPPORT -->
+    <div class="fp-card fp-mb-20">
+      <div class="fp-card-title" style="margin-bottom:14px">📄 ${fpT('Créer un rapport')}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
+        ${[
+          {icon:'📊',label:'Rapport SEO',       desc:'Score, positions, recommandations', type:'seo',        locked:false},
+          {icon:'📋',label:'Rapport Exécutif',  desc:'Vue globale business et KPIs',      type:'executive',  locked:false},
+          {icon:'⚡',label:'Monitoring SLA',    desc:'Disponibilité et temps de réponse', type:'monitoring', locked:false},
+          {icon:'🎯',label:'Rapport Conversion',desc:'Funnel et taux de conversion',      type:'conversion', locked:!isPro},
+          {icon:'📍',label:'Local SEO',          desc:'GBP, avis et présence locale',     type:'local',      locked:false},
+          {icon:'🤖',label:'Rapport IA Lab',    desc:'Analyse IA et recommandations',    type:'ai',         locked:!isUltra},
+        ].map(t => `
+          <button style="padding:14px;border-radius:10px;border:1px solid ${t.locked?'var(--fp-border)':'rgba(37,99,235,0.2)'};background:${t.locked?'var(--fp-inner-card)':'rgba(37,99,235,0.04)'};cursor:pointer;text-align:left;opacity:${t.locked?'0.55':'1'};width:100%;transition:border-color 0.15s,background 0.15s"
+            data-locked="${t.locked}"
+            onclick="(function(b){if(b.dataset.locked==='true'){fpUpgradeCta('ultra');}else{openFloatPanel(fpT('Nouveau rapport'),renderNewReportPanel());setTimeout(function(){setupNewReportPanel();},50);}})(this)"
+            onmouseover="this.style.borderColor='#2563EB'" onmouseout="this.style.borderColor='${t.locked?'var(--fp-border)':'rgba(37,99,235,0.2)'}'" >
+            <div style="font-size:22px;margin-bottom:8px">${t.icon}</div>
+            <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${fpT(t.label)}${t.locked?'<span style="font-size:9px;margin-left:6px;background:rgba(139,92,246,0.12);color:#8b5cf6;padding:1px 5px;border-radius:5px">Ultra</span>':''}</div>
+            <div style="font-size:10px;color:var(--fp-text-faint)">${fpT(t.desc)}</div>
+          </button>
+        `).join('')}
+      </div>
     </div>
 
-    ${_rpAiBlock}
-
-    <!-- 6 SCORE GAUGES -->
+    <!-- LISTE DES RAPPORTS -->
     <div class="fp-card fp-mb-20">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div class="fp-card-title" style="margin-bottom:0">
-          ${svgIcon('activity').replace('stroke="currentColor"','stroke="#22c55e"')}
-          Scores de reporting — 8 indicateurs cles
+          ${svgIcon('file-text').replace('stroke="currentColor"','stroke="#2563EB"')}
+          ${fpT('Rapports récents')}
         </div>
-        <span style="font-size:11px;color:var(--fp-text-faint)">${reportScores.length > 0 ? 'Moyenne : <strong style="color:#22c55e">' + Math.round(reportScores.reduce((s,k)=>s+k.val,0)/reportScores.length) + '/100</strong>' : 'Connectez vos outils de reporting'}</span>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
-        ${reportScores.map(k => {
-          const filled = k.val / 100 * circ52;
-          const dash   = circ52 - filled;
-          return `<div style="padding:14px;border-radius:12px;border:1px solid ${k.color}28;background:${k.color}07;text-align:center">
-            <svg width="72" height="72" viewBox="0 0 120 120" style="margin:0 auto 6px">
-              <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
-              <circle cx="60" cy="60" r="46" fill="none" stroke="${k.color}" stroke-width="8"
-                stroke-dasharray="${filled.toFixed(1)} ${dash.toFixed(1)}"
-                stroke-dashoffset="${(circ52*0.25).toFixed(1)}"
-                stroke-linecap="round" transform="rotate(-90 60 60)"/>
-              <text x="60" y="65" text-anchor="middle" font-size="22" font-weight="800" fill="${k.color}" font-family="Outfit,sans-serif">${k.val}</text>
-            </svg>
-            <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft)">${k.icon} ${escHtml(k.label)}</div>
-            <div style="margin-top:6px">${badge(k.val>=75?'Bon':k.val>=55?'Moyen':'Critique', k.color)}</div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>
-
-    <!-- RECENT REPORTS + SCHEDULED -->
-    <div class="fp-grid-2 fp-mb-20">
-      <div class="fp-card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">
-            ${svgIcon('file-text').replace('stroke="currentColor"','stroke="#2563EB"')}
-            Rapports recents
-          </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('ai')">IA Lab →</button>
+        <div style="display:flex;gap:6px">
+          ${allReports.length > 0 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="exportReportsCsv()" title="Exporter CSV">${svgIcon('download')}</button>` : ''}
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openFloatPanel(fpT('Nouveau rapport'),renderNewReportPanel());setTimeout(()=>setupNewReportPanel(),50)">+ ${fpT('Nouveau')}</button>
         </div>
+      </div>
+      ${allReports.length === 0 ? `
+        <div style="padding:32px 0;text-align:center">
+          <div style="font-size:40px;margin-bottom:12px">📄</div>
+          <div style="font-size:14px;font-weight:600;color:var(--fp-text-soft);margin-bottom:5px">${fpT('Aucun rapport généré')}</div>
+          <div style="font-size:12px;color:var(--fp-text-faint)">${fpT('Choisissez un template ci-dessus pour créer votre premier rapport.')}</div>
+        </div>
+      ` : `
         <div style="display:flex;flex-direction:column;gap:6px">
-          ${allReports.length === 0 ? `
-            <div style="padding:20px 0;text-align:center">
-              <div style="font-size:28px;margin-bottom:8px">📄</div>
-              <div style="font-size:13px;font-weight:600;color:var(--fp-text-soft);margin-bottom:4px">Aucun rapport généré</div>
-              <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">Créez votre premier rapport pour partager vos résultats SEO avec vos clients.</div>
-              <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center">
-                <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setTimeout(()=>setupNewReportPanel(),50)">📄 Rapport SEO</button>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setTimeout(()=>setupNewReportPanel(),50)">📊 Rapport Exécutif</button>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setTimeout(()=>setupNewReportPanel(),50)">⚡ Monitoring SLA</button>
-              </div>
-            </div>
-          ` : allReports.slice(0,5).map(r => `
-            <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
-              <div style="width:32px;height:32px;border-radius:7px;background:${r.color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                <span style="font-size:9px;font-weight:800;color:${r.color}">${r.type}</span>
-              </div>
+          ${allReports.map(r => `
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
+              <div style="width:36px;height:36px;border-radius:8px;background:${r.color||'#2563EB'}18;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:800;color:${r.color||'#2563EB'}">${escHtml(r.type||'PDF')}</div>
               <div style="flex:1;min-width:0">
-                <div style="font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.name)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${typeof r.pages === 'number' ? (r.pages > 1 ? r.pages + ' pages' : r.pages + ' page') + ' · ' : ''}${escHtml(r.date)} · ${escHtml(r.size)}${r.shared ? ' · <span style="color:#22c55e">✓ Partagé</span>' : ''}</div>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.name)}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(r.date)}${r.size?' · '+escHtml(r.size):''}${r.shared?' · <span style="color:#22c55e">✓ '+fpT('Partagé')+'</span>':''}</div>
               </div>
-              <div style="display:flex;gap:3px;flex-shrink:0">
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="Télécharger PDF" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="downloadReportPdf(this.dataset.rid,this.dataset.rname,this)">↓ PDF</button>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="Partager" data-rid="${escHtml(r.id)}" onclick="(async function(b){var rid=b.dataset.rid;if(!rid)return;try{var res=await apiAction('POST','/api/reports/'+rid+'/share',{auditIds:[]});if(res&&res.token){var u=window.location.origin+'/r/'+res.token;navigator.clipboard&&navigator.clipboard.writeText(u).catch(function(){});showToast('success','Lien copié !');}else showToast('info','Lien généré');}catch(e){showToast('error',fpT('Erreur partage'));}})(this)">🔗</button>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger,#ef4444)" title="Supprimer" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="(async function(b){var rid=b.dataset.rid,rn=b.dataset.rname;if(!rid||!confirm('Supprimer «'+rn+'» ?'))return;try{await apiAction('DELETE','/api/reports/'+rid);STATE.reports=(STATE.reports||[]).filter(function(x){return x.id!==rid;});if(STATE.route==='reports')render();showToast('success','Rapport supprimé');}catch(e){showToast('error',fpT('Erreur suppression'));}})(this)">✕</button>
+              <div style="display:flex;gap:4px;flex-shrink:0">
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="PDF" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="downloadReportPdf(this.dataset.rid,this.dataset.rname,this)">↓ PDF</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="Partager" data-rid="${escHtml(r.id)}" onclick="(async function(b){try{var res=await apiAction('POST','/api/reports/'+b.dataset.rid+'/share',{});if(res&&res.token){var u=window.location.origin+'/r/'+res.token;try{await navigator.clipboard.writeText(u);}catch(_){}showToast('success',fpT('Lien copié !'));}else showToast('info',fpT('Lien généré'));}catch(e){showToast('error',fpT('Erreur partage'));}})(this)">🔗</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger,#ef4444)" title="Supprimer" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="(async function(b){if(!confirm(fpT('Supprimer ce rapport ?')))return;try{await apiAction('DELETE','/api/reports/'+b.dataset.rid);STATE.reports=(STATE.reports||[]).filter(x=>x.id!==b.dataset.rid);render();showToast('success',fpT('Rapport supprimé'));}catch(e){showToast('error',fpT('Erreur'));}})(this)">✕</button>
               </div>
             </div>
           `).join('')}
         </div>
-      </div>
-
-      <div class="fp-card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">⏰ Rapports planifiés</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('reports');setTimeout(()=>navigateSub('scheduled'),50)" >+ Planifier</button>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-          ${scheduled.length === 0 ? `
-            <div style="padding:20px 0;text-align:center">
-              <div style="font-size:13px;font-weight:600;color:var(--fp-text-soft);margin-bottom:4px">Aucun rapport planifié</div>
-              <div style="font-size:11px;color:var(--fp-text-faint)">Créez une planification pour automatiser l'envoi de vos rapports.</div>
-            </div>` : scheduled.map(s => `
-            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid ${s.active ? 'rgba(34,197,94,0.2)' : 'var(--fp-border)'}">
-              <div style="flex:1">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(s.name)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(s.freq)} · ${escHtml(s.dest)} · Prochain : ${escHtml(s.next)}</div>
-              </div>
-              ${badge(s.active ? 'Actif' : 'En pause', s.active ? '#22c55e' : '#64748b')}
-            </div>
-          `).join('')}
-        </div>
-
-        <!-- QUICK NAV -->
-        <div class="fp-card-title" style="margin-bottom:10px">🧩 Navigation rapide</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-          ${[
-            {label:'Executive',  sub:'exec',      icon:'📊'},
-            {label:'SEO',        sub:'seo',        icon:'🔍'},
-            {label:'Monitoring', sub:'monitoring', icon:'⚡'},
-            {label:'Local SEO',  sub:'local',      icon:'📍'},
-            {label:'Conversion', sub:'conversion', icon:'🎯'},
-            {label:'IA Lab',     sub:'ai',         icon:'🤖'},
-          ].map(n => `
-            <div style="display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:7px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
-              <span style="font-size:13px">${n.icon}</span>
-              <span style="font-size:11px;font-weight:600;color:var(--fp-text-soft)">${n.label}</span>
-            </div>
-          `).join('')}
-        </div>
-      </div>
+      `}
     </div>
 
-    <!-- QUICK REPORT BUILDER -->
+    <!-- ENVOIS AUTOMATIQUES -->
+    ${scheduled.filter(s=>s.active).length > 0 ? `
     <div class="fp-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <div class="fp-card-title" style="margin-bottom:0">
-          ${svgIcon('zap').replace('stroke="currentColor"','stroke="#f59e0b"')}
-          Generateur de rapport rapide
-        </div>
-        ${isPro ? badge('Pro actif', '#2563EB') : badge('Standard', '#64748b')}
+      <div class="fp-card-title" style="margin-bottom:14px">📅 ${fpT('Envois automatiques')}</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${scheduled.map(s => `
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
+            <div style="flex:1">
+              <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(s.name)}</div>
+              <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(s.freq)} · ${escHtml(s.dest)} · ${fpT('Prochain')} : ${escHtml(s.next||'—')}</div>
+            </div>
+            ${badge(s.active ? fpT('Actif') : fpT('En pause'), s.active ? '#22c55e' : '#64748b')}
+          </div>
+        `).join('')}
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:14px">
-        <div class="fp-form-group" style="margin:0">
-          <label class="fp-form-label">Sites inclus</label>
-          <select class="fp-select" style="width:100%"><option>Tous les sites (6)</option>${STATE.audits.map(a=>`<option>${escHtml(a.url)}</option>`).join('')}</select>
-        </div>
-        <div class="fp-form-group" style="margin:0">
-          <label class="fp-form-label">Periode</label>
-          <select class="fp-select" style="width:100%"><option>${CUR_MONTH}</option><option>${PREV_MONTH}</option><option>T2 2026</option><option>12 mois</option></select>
-        </div>
-        <div class="fp-form-group" style="margin:0">
-          <label class="fp-form-label">Format</label>
-          <select class="fp-select" style="width:100%"><option>PDF executif</option><option>PDF client</option>${isUltra?'<option>PDF White-Label</option>':''}<option>CSV donnees</option></select>
-        </div>
-        <div class="fp-form-group" style="margin:0">
-          <label class="fp-form-label">Envoyer a</label>
-          <select class="fp-select" style="width:100%">
-            <option>client@exemple.fr</option>
-            <option>equipe@agence.fr</option>
-            <option>direction@client.fr</option>
-            <option>Personnalisé…</option>
-          </select>
-        </div>
-      </div>
-      <div style="margin-bottom:12px">
-        <div class="fp-form-label" style="margin-bottom:8px">Sections</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          ${['Score SEO', 'Monitors SLA', 'Local SEO', 'Conversion', 'Concurrents', 'Recommandations IA', 'Previsions'].map(s=>`
-            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:var(--fp-text-soft)">
-              <input type="checkbox" checked style="accent-color:#2563EB"/> ${s}
-            </label>
-          `).join('')}
-        </div>
-      </div>
-      ${btn('Generer le rapport IA', 'fp-btn fp-btn-primary fp-btn-sm', 'file', "onclick=\"typeof window.setupNewReportPanel==='function'?window.setupNewReportPanel():navigate('reports')\"" )}
     </div>
+    ` : ''}
   `;
 }
 
@@ -8923,7 +8824,7 @@ function renderTeam() {
 
     <!-- TEAM STATS -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Membres actifs', (STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : (STATE.team||[]).length + '/' + (me?.limits?.teamMembers ?? (1+(me?.addons?.extraSeats||0)))), 'seats utilisés', 'neutral')}
+      ${statCard('Membres actifs', (function(){var _sc={standard:1,pro:5,ultra:10,agency:10};var _ap=((STATE.billing&&STATE.billing.plan)||(me&&me.plan)||'standard').toLowerCase();var _lm=Math.max((STATE.seatUsage&&STATE.seatUsage.limit)||0,(me&&me.limits&&me.limits.teamMembers)||0,_sc[_ap]||1,1+((me&&me.addons&&me.addons.extraSeats)||0))||1;var _us=(STATE.seatUsage&&STATE.seatUsage.used)||((STATE.team||[]).length||1);return _us+'/'+_lm;})(), 'seats utilisés', 'neutral')}
       ${statCard('Messages aujourd\'hui', (STATE.channelMessages && typeof STATE.channelMessages === 'object') ? String(Object.values(STATE.channelMessages).reduce((n,arr)=>n+(Array.isArray(arr)?arr.length:0),0)) : '—', 'messages dans les canaux', 'neutral')}
       ${statCard('Fichiers partagés', STATE.teamFiles && STATE.teamFiles.length > 0 ? String(STATE.teamFiles.length) : '—', STATE.teamFiles && STATE.teamFiles.length > 0 ? 'fichiers partagés' : 'Aucun fichier partagé', 'neutral')}
       ${statCard('Tâches assignées', STATE.missions && STATE.missions.length > 0 ? String(STATE.missions.length) : '—', STATE.missions && STATE.missions.length > 0 ? 'missions actives' : 'Aucune mission', 'neutral')}
@@ -8934,8 +8835,8 @@ function renderTeam() {
       <div style="display:flex;flex-direction:column">
         <div class="fp-table-wrap fp-mb-16">
           <div style="padding:14px 20px;border-bottom:1px solid var(--fp-border);display:flex;align-items:center;justify-content:space-between">
-            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Membres (${STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : (STATE.team||[]).length + '/' + (me?.limits?.teamMembers ?? (1+(me?.addons?.extraSeats||0)))} seats)</div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${(STATE.pendingInvitations||[]).length > 0 ? (STATE.pendingInvitations||[]).length + ' invitation(s) en attente · ' : ''}${STATE.seatUsage ? STATE.seatUsage.limit - STATE.seatUsage.used : (me?.limits?.teamMembers ?? (1+(me?.addons?.extraSeats||0)))-(STATE.team||[]).length} siège(s) libre(s)</div>
+            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Membres (${(function(){var _sc={standard:1,pro:5,ultra:10,agency:10};var _ap=((STATE.billing&&STATE.billing.plan)||(me&&me.plan)||'standard').toLowerCase();var _lm=Math.max((STATE.seatUsage&&STATE.seatUsage.limit)||0,(me&&me.limits&&me.limits.teamMembers)||0,_sc[_ap]||1,1+((me&&me.addons&&me.addons.extraSeats)||0))||1;var _us=(STATE.seatUsage&&STATE.seatUsage.used)||((STATE.team||[]).length||1);return _us+'/'+_lm;})()} seats)</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${(STATE.pendingInvitations||[]).length > 0 ? (STATE.pendingInvitations||[]).length + ' invitation(s) en attente · ' : ''}${(function(){var _sc={standard:1,pro:5,ultra:10,agency:10};var _ap=((STATE.billing&&STATE.billing.plan)||(me&&me.plan)||'standard').toLowerCase();var _lm=Math.max((STATE.seatUsage&&STATE.seatUsage.limit)||0,(me&&me.limits&&me.limits.teamMembers)||0,_sc[_ap]||1,1+((me&&me.addons&&me.addons.extraSeats)||0))||1;var _us=(STATE.seatUsage&&STATE.seatUsage.used)||((STATE.team||[]).length||1);return _lm-_us;})()} siège(s) libre(s)</div>
           </div>
           ${(STATE.team||[]).map((t,i)=>`
             <div class="fp-team-member-row" data-member-id="${t.id}" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:${i<STATE.team.length-1?'1px solid rgba(255,255,255,0.04)':'none'}">
@@ -8952,8 +8853,8 @@ function renderTeam() {
             </div>
           `).join('')}
           <div style="padding:10px 20px;border-top:1px solid var(--fp-border)">
-            <div class="fp-progress-track" style="height:5px;margin-bottom:5px"><div class="fp-progress-fill" style="width:${STATE.seatUsage ? Math.min(100, STATE.seatUsage.used/STATE.seatUsage.limit*100) : Math.min(100,(STATE.team||[]).length/(1+(me?.addons?.extraSeats||0))*100)}%;background:#2563EB"></div></div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : (STATE.team||[]).length + '/' + (me?.limits?.teamMembers ?? (1+(me?.addons?.extraSeats||0)))} seats · ${btn('Ajouter des sièges','fp-btn fp-btn-ghost fp-btn-sm','','style="display:inline;padding:2px 8px;font-size:10px" onclick="navigate(\'billing\')"')}</div>
+            <div class="fp-progress-track" style="height:5px;margin-bottom:5px"><div class="fp-progress-fill" style="width:${(function(){var _sc={standard:1,pro:5,ultra:10,agency:10};var _ap=((STATE.billing&&STATE.billing.plan)||(me&&me.plan)||'standard').toLowerCase();var _lm=Math.max((STATE.seatUsage&&STATE.seatUsage.limit)||0,(me&&me.limits&&me.limits.teamMembers)||0,_sc[_ap]||1,1+((me&&me.addons&&me.addons.extraSeats)||0))||1;var _us=(STATE.seatUsage&&STATE.seatUsage.used)||((STATE.team||[]).length||1);return Math.min(100,_us/_lm*100);})()} %;background:#2563EB"></div></div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${(function(){var _sc={standard:1,pro:5,ultra:10,agency:10};var _ap=((STATE.billing&&STATE.billing.plan)||(me&&me.plan)||'standard').toLowerCase();var _lm=Math.max((STATE.seatUsage&&STATE.seatUsage.limit)||0,(me&&me.limits&&me.limits.teamMembers)||0,_sc[_ap]||1,1+((me&&me.addons&&me.addons.extraSeats)||0))||1;var _us=(STATE.seatUsage&&STATE.seatUsage.used)||((STATE.team||[]).length||1);return _us+'/'+_lm;})()} seats · ${btn('Ajouter des sièges','fp-btn fp-btn-ghost fp-btn-sm','','style="display:inline;padding:2px 8px;font-size:10px" onclick="navigate(\'billing\')"')}</div>
           </div>
         </div>
 
@@ -9781,7 +9682,7 @@ function renderBilling() {
         const cart = { plan: null, addons: {}, fromDashboard: true };
         cart.addons[key] = _qty;
         localStorage.setItem('fp_cart', JSON.stringify(cart));
-        window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(key);
+        window.location.href = '/checkout.html?from=dashboard&addon=' + encodeURIComponent(key);
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'activation impossible')); }
     };
     // Désactivation in-dashboard : retire l'item Stripe puis met à jour la carte.
@@ -10976,13 +10877,13 @@ function renderSettings() {
           </div>
           <div style="margin-top:8px;display:flex;flex-direction:column;gap:0">
             ${[
-              { key:'hoverNotifs',    label:'Notifications en survol',       desc:'Afficher les messages et alertes au passage de la souris',         icon:'message-circle' },
-              { key:'streaks',        label:'Streaks',                        desc:'Activer ou désactiver les streaks d\'activité',                    icon:'trending-up' },
-              { key:'aiTips',         label:'Conseils IA',                    desc:'Afficher les recommandations IA automatiques dans vos missions',  icon:'sparkles' },
-              { key:'newTab',         label:'Liens dans un nouvel onglet',   desc:'Ouvrir les pages liées dans un nouvel onglet',                      icon:'arrow-up-right' },
-              { key:'bgDashboard',    label:'Dashboard en arrière-plan',     desc:'Garder le dashboard ouvert en arrière-plan',                        icon:'monitor' },
-              { key:'recentActivity', label:'Activités récentes',            desc:'Voir les dernières actions et événements',                           icon:'clock' },
-              { key:'confirmActions', label:'Confirmer les actions',         desc:'Demander validation avant suppression ou modification',              icon:'check-square' },
+              { key:'hoverNotifs',    label:fpT('Notifications en survol'),       desc:fpT('Afficher les messages et alertes au passage de la souris'),         icon:'message-circle' },
+              { key:'streaks',        label:fpT('Streaks'),                        desc:fpT('Activer ou désactiver les streaks d\'activité'),                    icon:'trending-up' },
+              { key:'aiTips',         label:fpT('Conseils IA'),                    desc:fpT('Afficher les recommandations IA automatiques dans vos missions'),  icon:'sparkles' },
+              { key:'newTab',         label:fpT('Liens dans un nouvel onglet'),   desc:fpT('Ouvrir les pages liées dans un nouvel onglet'),                      icon:'arrow-up-right' },
+              { key:'bgDashboard',    label:fpT('Dashboard en arrière-plan'),     desc:fpT('Garder le dashboard ouvert en arrière-plan'),                        icon:'monitor' },
+              { key:'recentActivity', label:fpT('Activités récentes'),            desc:fpT('Voir les dernières actions et événements'),                           icon:'clock' },
+              { key:'confirmActions', label:fpT('Confirmer les actions'),         desc:fpT('Demander validation avant suppression ou modification'),              icon:'check-square' },
             ].map(item => {
               const on = s[item.key];
               return `<div class="fp-setting-check-row" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--fp-border)">
@@ -11064,25 +10965,25 @@ function renderSettings() {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:16px">
           ${svgIcon('sliders').replace('stroke="currentColor"','stroke="#f59e0b"')}
-          Préréglages workspace
+          ${fpT('Préréglages workspace')}
         </div>
         <div style="display:flex;flex-direction:column;gap:16px">
           ${[
             {
-              key:'secLevel', label:'Niveau sécurité', icon:'shield',
-              options:[ {val:'standard', label:'Standard'}, {val:'enterprise', label:'Avancé'} ]
+              key:'secLevel', label:fpT('Niveau sécurité'), icon:'shield',
+              options:[ {val:'standard', label:fpT('Standard')}, {val:'enterprise', label:fpT('Avancé')} ]
             },
             {
-              key:'iaSuggestions', label:'Suggestions IA', icon:'sparkles',
-              options:[ {val:'low', label:'Faible'}, {val:'normal', label:'Normale'}, {val:'proactive', label:'Proactive'} ]
+              key:'iaSuggestions', label:fpT('Suggestions IA'), icon:'sparkles',
+              options:[ {val:'low', label:fpT('Faible')}, {val:'normal', label:fpT('Normale')}, {val:'proactive', label:fpT('Proactive')} ]
             },
             {
-              key:'reportType', label:'Type de rapport', icon:'file-text',
-              options:[ {val:'simple', label:'Simple'}, {val:'client', label:'Client'}, {val:'enterprise', label:'Avancé'} ]
+              key:'reportType', label:fpT('Type de rapport'), icon:'file-text',
+              options:[ {val:'simple', label:fpT('Simple')}, {val:'client', label:fpT('Client')}, {val:'enterprise', label:fpT('Avancé')} ]
             },
             {
-              key:'localPriority', label:'Priorité locale', icon:'globe',
-              options:[ {val:'off', label:'Désactivée'}, {val:'standard', label:'Standard'}, {val:'aggressive', label:'Agressive'} ]
+              key:'localPriority', label:fpT('Priorité locale'), icon:'globe',
+              options:[ {val:'off', label:fpT('Désactivée')}, {val:'standard', label:fpT('Standard')}, {val:'aggressive', label:fpT('Agressive')} ]
             },
           ].map(g => {
             const currentVal = (s && s[g.key]) || g.options[0].val;
@@ -11092,7 +10993,7 @@ function renderSettings() {
                 <div style="width:26px;height:26px;border-radius:7px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);display:flex;align-items:center;justify-content:center">
                   ${svgIcon(g.icon).replace('stroke="currentColor"','stroke="#f59e0b"').replace('width="14"','width="13"').replace('height="14"','height="13"')}
                 </div>
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(g.label)}</div>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${g.label}</div>
               </div>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
                 ${g.options.map(o => {
@@ -13371,7 +13272,7 @@ function renderAI() {
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
           <label for="ai-file-input" title="Joindre un fichier" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
-          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:hidden;line-height:1.5;max-height:120px" oninput="(function(t){t.style.height='auto';var h=Math.min(t.scrollHeight,120);t.style.height=h+'px';t.style.overflowY=t.scrollHeight>120?'auto':'hidden';})(this)"></textarea>
+          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:auto;line-height:1.5;height:38px;max-height:38px"></textarea>
           <button class="fp-ai-send" id="ai-send">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
           <button id="ai-stop" title="Arrêter la génération" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
@@ -66609,53 +66510,26 @@ function renderSettingsSSO() {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">🔑 Providers disponibles</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">
-          ${catalog.length > 0 ? catalog.map(p => {
-            const locked = (p.plan === 'Ultra' && !isUltra) || (p.plan === 'Pro' && isStd);
-            return `
-              <div style="padding:14px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card);opacity:${locked ? '0.6' : '1'}">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                  <span style="width:26px;height:26px;display:flex;align-items:center;flex-shrink:0">${SSO_LOGOS[p.id] || '<span style="font-size:22px">'+p.icon+'</span>'}</span>
+          ${[
+              {name:'Google Workspace', protocol:'OAuth 2.0', plan:'Pro',   id:'google_workspace', icon:'🏢'},
+              {name:'Microsoft Azure AD',protocol:'SAML 2.0',plan:'Ultra', id:'microsoft_azure',  icon:'🔷'},
+              {name:'Okta',             protocol:'SAML 2.0', plan:'Ultra', id:'okta',             icon:'🔵'},
+              {name:'Auth0',            protocol:'OAuth 2.0',plan:'Ultra', id:'auth0',            icon:'⚡'},
+              {name:'OneLogin',         protocol:'SAML 2.0', plan:'Ultra', id:'onelogin',         icon:'🔐'},
+              {name:'GitHub OAuth',     protocol:'OAuth 2.0',plan:'Pro',   id:'github',           icon:'🐙'},
+              {name:'SAML générique',   protocol:'SAML 2.0', plan:'Ultra', id:'saml_generic',     icon:'🔑'},
+            ].concat(catalog||[]).filter((p,i,a)=>a.findIndex(x=>x.id===p.id)===i).map(p => `
+              <div style="padding:14px;border-radius:10px;border:1px solid rgba(99,102,241,0.2);background:var(--fp-inner-card)">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                  <span style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">${SSO_LOGOS[p.id] || '<span>'+p.icon+'</span>'}</span>
                   <div style="flex:1">
-                    <div style="font-size:13px;font-weight:700">${p.name}</div>
-                    <div style="font-size:10px;color:var(--fp-text-faint)">${p.protocol||'SSO'} ${planIcon(p.plan||'')} ${p.plan||''}</div>
+                    <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px">${escHtml(p.name)}<span style="font-size:9px;font-weight:700;padding:1px 6px;background:rgba(99,102,241,0.12);color:#6366f1;border-radius:8px;border:1px solid rgba(99,102,241,0.3)">Bientôt disponible</span></div>
+                    <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(p.protocol||'SSO')} · ${escHtml(p.plan||'')}</div>
                   </div>
                 </div>
-                ${locked
-                  ? `<div style="font-size:10px;color:var(--fp-text-faint);text-align:center">${p.plan||'Plan'} requis</div>`
-                  : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:10px" onclick="window._showSSOProviderModal('${p.id}','${p.name}')">Configurer</button>`
-                }
+                <div style="font-size:10px;color:var(--fp-text-faint);text-align:center;padding:3px 0">🔜 ${fpT('Bientôt disponible')}</div>
               </div>
-            `;
-          }).join('') : `
-            ${[
-              {name:'Google Workspace',protocol:'OAuth 2.0',plan:'Pro',id:'google_workspace',roadmap:true},
-              {name:'Microsoft Azure AD',protocol:'SAML 2.0',plan:'Ultra',id:'microsoft_azure',roadmap:true},
-              {name:'Okta',protocol:'SAML 2.0',plan:'Ultra',id:'okta',roadmap:true},
-              {name:'Auth0',protocol:'OAuth 2.0',plan:'Ultra',id:'auth0',roadmap:false},
-              {name:'OneLogin',protocol:'SAML 2.0',plan:'Ultra',id:'onelogin',roadmap:true},
-              {name:'SAML générique',protocol:'SAML 2.0',plan:'Ultra',id:'saml_generic',roadmap:true},
-            ].map(p => {
-              const locked = (p.plan === 'Ultra' && !isUltra) || (p.plan === 'Pro' && isStd);
-              const isRoadmap = p.roadmap === true;
-              return `
-                <div style="padding:14px;border-radius:10px;border:1px solid ${isRoadmap ? 'rgba(99,102,241,0.25)' : 'var(--fp-border)'};background:var(--fp-inner-card);opacity:${locked ? '0.6' : '1'}">
-                  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                    <span style="width:26px;height:26px;display:flex;align-items:center;flex-shrink:0">${SSO_LOGOS[p.id] || '<span style="font-size:20px">🔑</span>'}</span>
-                    <div style="flex:1">
-                      <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px">${p.name}${isRoadmap ? '<span style="font-size:9px;font-weight:700;padding:1px 6px;background:rgba(99,102,241,0.12);color:#6366f1;border-radius:8px;border:1px solid rgba(99,102,241,0.3)">Roadmap</span>' : ''}</div>
-                      <div style="font-size:10px;color:var(--fp-text-faint)">${p.protocol||'SSO'} · ${p.plan||''}</div>
-                    </div>
-                  </div>
-                  ${isRoadmap
-                    ? '<div style="font-size:10px;color:var(--fp-text-faint);text-align:center;padding:4px 0">SAML 2.0 — Q3 2026</div>'
-                    : locked
-                      ? '<div style="font-size:10px;color:var(--fp-text-faint);text-align:center">'+p.plan+' requis</div>'
-                      : '<button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:10px" onclick="window._showSSOProviderModal(\''+p.id+'\',\''+p.name+'\')">Configurer</button>'
-                  }
-                </div>
-              `;
-            }).join('')}
-          `}
+            `).join('')}
         </div>
       </div>
     ` : activeTab === 'policy' ? `

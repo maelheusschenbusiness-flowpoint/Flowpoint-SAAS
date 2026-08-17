@@ -512,9 +512,10 @@ router.get("/billing/payment-methods", async (req: Request, res: Response) => {
 
   try {
     const stripe = await createStripeClient(stripeKey);
-    const [pmList, customer] = await Promise.all([
+    const [pmList, customer, subList] = await Promise.all([
       stripe.paymentMethods.list({ customer: stripeCustomerId, type: "card" }),
       stripe.customers.retrieve(stripeCustomerId),
+      stripe.subscriptions.list({ customer: stripeCustomerId, limit: 1, status: "active" }),
     ]);
 
     const defaultPmId =
@@ -524,13 +525,32 @@ router.get("/billing/payment-methods", async (req: Request, res: Response) => {
             : (customer.invoice_settings.default_payment_method as { id: string }).id)
         : null;
 
-    const paymentMethods = (pmList.data as Array<{ id: string; card?: { brand?: string; last4?: string; exp_month?: number; exp_year?: number } }>).map((pm) => ({
+    // Also capture the subscription's default_payment_method (set by Checkout sessions)
+    const subDefaultPmId = subList.data[0]?.default_payment_method
+      ? (typeof subList.data[0].default_payment_method === "string"
+          ? subList.data[0].default_payment_method
+          : (subList.data[0].default_payment_method as { id: string }).id)
+      : null;
+
+    type StripePmCard = { id: string; card?: { brand?: string; last4?: string; exp_month?: number; exp_year?: number } };
+    const pmMap = new Map<string, StripePmCard>((pmList.data as StripePmCard[]).map((pm) => [pm.id, pm]));
+
+    // If the subscription's PM is not in the customer's card list, fetch it explicitly
+    if (subDefaultPmId && !pmMap.has(subDefaultPmId)) {
+      try {
+        const subPm = await stripe.paymentMethods.retrieve(subDefaultPmId) as StripePmCard;
+        if (subPm?.card) pmMap.set(subPm.id, subPm);
+      } catch { /* non-fatal */ }
+    }
+
+    const effectiveDefaultId = defaultPmId ?? subDefaultPmId;
+    const paymentMethods = Array.from(pmMap.values()).map((pm) => ({
       id:       pm.id,
       brand:    pm.card?.brand ?? "card",
       last4:    pm.card?.last4 ?? "????",
       expMonth: pm.card?.exp_month ?? 0,
       expYear:  pm.card?.exp_year  ?? 0,
-      isDefault: pm.id === defaultPmId,
+      isDefault: pm.id === effectiveDefaultId,
     }));
 
     res.json({ paymentMethods });
