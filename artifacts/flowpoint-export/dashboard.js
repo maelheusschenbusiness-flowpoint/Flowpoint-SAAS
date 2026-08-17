@@ -904,8 +904,8 @@ async function loadAuditHistory(audit) {
   if (history.length < 2) {
     content.innerHTML = `<div style="text-align:center;color:var(--fp-text-faint);font-size:12px;padding:12px 0">
       <div style="font-size:20px;margin-bottom:4px">📊</div>
-      <div>Données insuffisantes — au moins 2 audits requis</div>
-      <div style="font-size:11px;margin-top:2px;color:var(--fp-text-faint)">Relancez un audit pour commencer à construire l'historique.</div>
+      <div>${fpT('Données insuffisantes — au moins 2 audits requis')}</div>
+      <div style="font-size:11px;margin-top:2px;color:var(--fp-text-faint)">${fpT("Relancez un audit pour commencer à construire l'historique.")}</div>
     </div>`;
     return;
   }
@@ -963,8 +963,8 @@ async function loadAuditHistory(audit) {
   content.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:8px">
       <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <span style="font-size:11px;color:var(--fp-text-muted)">Premier audit : <b style="color:var(--fp-text)">${first}/100</b></span>
-        <span style="font-size:11px;color:var(--fp-text-muted)">Dernier : <b style="color:${last>=70?'#22c55e':last>=45?'#f59e0b':'#ef4444'}">${last}/100</b></span>
+        <span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Premier audit :')}<b style="color:var(--fp-text)">${first}/100</b></span>
+        <span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Dernier :')}<b style="color:${last>=70?'#22c55e':last>=45?'#f59e0b':'#ef4444'}">${last}/100</b></span>
         <span style="font-size:11px;color:${trendColor};font-weight:700">${trendDir} ${totalDelta >= 0 ? '+' : ''}${totalDelta} pts sur 90j</span>
       </div>
       <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible">
@@ -978,7 +978,7 @@ async function loadAuditHistory(audit) {
       <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:2px">
         <thead><tr>
           <th style="text-align:left;color:var(--fp-text-muted);font-weight:600;padding:3px 0;border-bottom:1px solid var(--fp-border)">Date</th>
-          <th style="text-align:center;color:var(--fp-text-muted);font-weight:600;padding:3px 0;border-bottom:1px solid var(--fp-border)">Score</th>
+          <th style="text-align:center;color:var(--fp-text-muted);font-weight:600;padding:3px 0;border-bottom:1px solid var(--fp-border)">${fpT('Score')}</th>
           <th style="text-align:center;color:var(--fp-text-muted);font-weight:600;padding:3px 0;border-bottom:1px solid var(--fp-border)">Δ</th>
           <th style="text-align:center;color:var(--fp-text-muted);font-weight:600;padding:3px 0;border-bottom:1px solid var(--fp-border)">Origine</th>
         </tr></thead>
@@ -1102,12 +1102,12 @@ async function changeTeamMemberRole(memberId, currentRole) {
   const roles = ['viewer', 'editor', 'admin'];
   openFloatPanel('Changer le rôle', `
     <div class="fp-form-group">
-      <label class="fp-form-label">Nouveau rôle pour ce membre</label>
+      <label class="fp-form-label">${fpT('Nouveau rôle pour ce membre')}</label>
       <select class="fp-select" id="role-picker" style="width:100%">
         ${roles.map(r => `<option value="${r}"${r === currentRole ? ' selected' : ''}>${r.charAt(0).toUpperCase() + r.slice(1)}</option>`).join('')}
       </select>
     </div>
-    <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" id="role-confirm">Confirmer le rôle</button>
+    <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" id="role-confirm">${fpT('Confirmer le rôle')}</button>
   `);
   await new Promise(r => setTimeout(r, 60));
   document.getElementById('role-confirm')?.addEventListener('click', async () => {
@@ -1154,8 +1154,8 @@ function openPasswordChangePanel() {
       <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">\uD83D\uDD11 Authentification sans mot de passe</div>
       <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6">FlowPoint utilise des <strong>liens magiques s\u00e9curis\u00e9s</strong> — aucun mot de passe \u00e0 m\u00e9moriser. Pour acc\u00e9der \u00e0 votre compte depuis un nouvel appareil, cliquez sur le bouton ci-dessous pour recevoir un lien de connexion par email.</div>
     </div>
-    <div class="fp-form-group"><label class="fp-form-label">Email de connexion</label><input class="fp-input" type="email" id="sec-email" value="${escHtml(email)}" placeholder="votre@email.com"/></div>
-    <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" id="sec-send">Envoyer un nouveau lien de connexion</button>
+    <div class="fp-form-group"><label class="fp-form-label">${fpT('Email de connexion')}</label><input class="fp-input" type="email" id="sec-email" value="${escHtml(email)}" placeholder="votre@email.com"/></div>
+    <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" id="sec-send">${fpT('Envoyer un nouveau lien de connexion')}</button>
     <div style="font-size:10px;color:var(--fp-text-faint);text-align:center;margin-top:10px">\u23F1\uFE0F Le lien expire dans 30 minutes</div>
   `);
   setTimeout(() => {
@@ -1187,27 +1187,27 @@ function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
   const prefillName = tplName || '';
   const prefillDesc = tplDesc || '';
   openFloatPanel((tplName ? tplIcon + ' Template : ' + tplName : 'Nouveau workflow'), `
-    <div class="fp-form-group"><label class="fp-form-label">Nom du workflow</label><input class="fp-input" id="wf-name" placeholder="Mon workflow automatisé" value="${escHtml(prefillName)}"/></div>
+    <div class="fp-form-group"><label class="fp-form-label">Nom du workflow</label><input class="fp-input" id="wf-name" placeholder="${fpT('Mon workflow automatisé')}" value="${escHtml(prefillName)}"/></div>
     ${prefillDesc ? `<div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px;padding:8px 10px;background:var(--fp-inner-card);border-radius:8px">${escHtml(prefillDesc)}</div>` : ''}
-    <div class="fp-form-group"><label class="fp-form-label">Déclencheur</label>
+    <div class="fp-form-group"><label class="fp-form-label">${fpT('Déclencheur')}</label>
       <select class="fp-select" id="wf-trigger" style="width:100%">
-        <option value="audit_done">Audit terminé</option>
-        <option value="alert">Alerte déclenchée</option>
+        <option value="audit_done">${fpT('Audit terminé')}</option>
+        <option value="alert">${fpT('Alerte déclenchée')}</option>
         <option value="weekly">Planning hebdomadaire</option>
-        <option value="monitor_down">Monitor en erreur</option>
-        <option value="report_ready">Rapport prêt</option>
+        <option value="monitor_down">${fpT('Monitor en erreur')}</option>
+        <option value="report_ready">${fpT('Rapport prêt')}</option>
       </select>
     </div>
     <div class="fp-form-group"><label class="fp-form-label">Action automatique</label>
       <select class="fp-select" id="wf-action" style="width:100%">
-        <option value="send_email">Envoyer email</option>
-        <option value="gen_report">Générer rapport PDF</option>
-        <option value="slack_notif">Notification Slack</option>
-        <option value="webhook">Déclencher webhook</option>
-        <option value="create_mission">Créer mission</option>
+        <option value="send_email">${fpT('Envoyer email')}</option>
+        <option value="gen_report">${fpT('Générer rapport PDF')}</option>
+        <option value="slack_notif">${fpT('Notification Slack')}</option>
+        <option value="webhook">${fpT('Déclencher webhook')}</option>
+        <option value="create_mission">${fpT('Créer mission')}</option>
       </select>
     </div>
-    <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" id="wf-save">Créer le workflow</button>
+    <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" id="wf-save">${fpT('Créer le workflow')}</button>
   `);
   setTimeout(() => {
     document.getElementById('wf-save')?.addEventListener('click', () => {
@@ -1292,10 +1292,10 @@ function fpOpenInvite() {
       <div style="text-align:center;padding:8px 4px">
         <div style="font-size:34px;margin-bottom:10px">👥</div>
         <div style="font-size:14px;font-weight:700;margin-bottom:6px">Tous vos sièges sont utilisés (${used}/${limit})</div>
-        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">Pour inviter un nouveau membre, passez à un plan supérieur ou ajoutez des sièges supplémentaires via un add-on.</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">${fpT('Pour inviter un nouveau membre, passez à un plan supérieur ou ajoutez des sièges supplémentaires via un add-on.')}</div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          <button class="fp-btn fp-btn-primary" style="width:100%" onclick="closeFloatPanel();navigate('billing');setTimeout(function(){navigateSub('plans')},80)">Voir les plans</button>
-          <button class="fp-btn fp-btn-ghost" style="width:100%" onclick="closeFloatPanel();navigate('billing');setTimeout(function(){navigateSub('addons')},80)">Ajouter des sièges (add-on)</button>
+          <button class="fp-btn fp-btn-primary" style="width:100%" onclick="closeFloatPanel();navigate('billing');setTimeout(function(){navigateSub('plans')},80)">${fpT('Voir les plans')}</button>
+          <button class="fp-btn fp-btn-ghost" style="width:100%" onclick="closeFloatPanel();navigate('billing');setTimeout(function(){navigateSub('addons')},80)">${fpT('Ajouter des sièges (add-on)')}</button>
         </div>
       </div>
     `);
@@ -1408,7 +1408,7 @@ function openQuickReport(auditId) {
 }
 
 function showFatalError(msg) {
-  document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#050810;color:#ef4444;font-family:Inter,sans-serif;text-align:center;padding:32px"><div><div style="font-size:48px;margin-bottom:16px">⚠</div><div style="font-size:18px;font-weight:700;margin-bottom:8px">Connexion au serveur impossible</div><div style="color:#94a3b8;font-size:14px">${escHtml(msg)}</div></div></div>`;
+  document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#050810;color:#ef4444;font-family:Inter,sans-serif;text-align:center;padding:32px"><div><div style="font-size:48px;margin-bottom:16px">⚠</div><div style="font-size:18px;font-weight:700;margin-bottom:8px">${fpT('Connexion au serveur impossible')}</div><div style="color:#94a3b8;font-size:14px">${escHtml(msg)}</div></div></div>`;
 }
 
 async function loadData() {
@@ -2855,10 +2855,10 @@ function monitorLatencyChartSVG(monitor) {
     // No real data yet — show an honest no-data state with current snapshot
     const cur = monitor.latency;
     return `<div style="margin-top:16px">
-      <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Historique de disponibilité</div>
+      <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">${fpT('Historique de disponibilité')}</div>
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:90px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px dashed var(--fp-border)">
         <span style="font-size:22px">📡</span>
-        <span style="font-size:11px;color:var(--fp-text-muted)">Données en cours de collecte…</span>
+        <span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Données en cours de collecte…')}</span>
         <span style="font-size:10px;color:var(--fp-text-faint)">L\'historique sera disponible après les premiers checks automatiques.</span>
       </div>
       ${cur != null ? `<div style="display:flex;gap:14px;margin-top:6px"><span style="font-size:11px;color:var(--fp-text-muted)">Latence actuelle&nbsp;<b style="color:#f1f5ff">${cur}ms</b></span></div>` : ''}
@@ -2926,7 +2926,7 @@ function monitorLatencyChartSVG(monitor) {
     </svg>
     <div style="display:flex;gap:14px;margin-top:6px">
       <span style="font-size:11px;color:var(--fp-text-muted)">Moy&nbsp;<b style="color:#f1f5ff">${avgV}%</b></span>
-      ${downDays ? `<span style="font-size:11px;color:#ef4444">${downDays} jour${downDays>1?'s':''} hors-ligne</span>` : '<span style="font-size:11px;color:#22c55e">Aucun incident</span>'}
+      ${downDays ? `<span style="font-size:11px;color:#ef4444">${downDays} jour${downDays>1?'s':''} hors-ligne</span>` : `<span style="font-size:11px;color:#22c55e">${fpT('Aucun incident')}</span>`}
       ${monitor.latency != null ? `<span style="font-size:11px;color:var(--fp-text-muted)">Latence actuelle&nbsp;<b style="color:#f1f5ff">${monitor.latency}ms</b></span>` : ''}
     </div>
   </div>`;
@@ -3280,7 +3280,7 @@ function _cmdRenderResults() {
   } else if (allItems.length === 0) {
     // Show history hints when empty query
     html = STATE.searchHistory.length
-      ? `<div class="fp-cmd-category">Récents</div>` + STATE.searchHistory.map((h,i) => `<div class="fp-cmd-item" data-idx="${i}"><div class="fp-cmd-item-icon">${svgIcon('search')}</div><span class="fp-cmd-item-label">${escHtml(h)}</span></div>`).join('') +
+      ? `<div class="fp-cmd-category">${fpT('Récents')}</div>` + STATE.searchHistory.map((h,i) => `<div class="fp-cmd-item" data-idx="${i}"><div class="fp-cmd-item-icon">${svgIcon('search')}</div><span class="fp-cmd-item-label">${escHtml(h)}</span></div>`).join('') +
         `<div class="fp-cmd-category">Suggestions</div>` +
         ['Améliorer mon score SEO moyen','Que faire en priorité ?','Analyser les monitors DOWN','Créer un rapport mensuel','Opportunités Local SEO','Plan d\'action 30 jours']
           .map((s,i) => `<div class="fp-cmd-item" data-idx="${STATE.searchHistory.length+i}"><div class="fp-cmd-item-icon">${svgIcon('zap')}</div><span class="fp-cmd-item-label">${escHtml(s)}</span><span style="font-size:10px;color:var(--fp-text-faint);flex-shrink:0">IA</span></div>`).join('')
@@ -3327,7 +3327,7 @@ function renderCmdPalette() {
   el.innerHTML = `<div class="fp-cmd-box">
     <div class="fp-cmd-input-wrap">
       ${svgIcon('search')}
-      <input class="fp-cmd-input" type="text" placeholder="Rechercher une section, page, audit…" autocomplete="off" spellcheck="false"/>
+      <input class="fp-cmd-input" type="text" placeholder="${fpT('Rechercher une section, page, audit…')}" autocomplete="off" spellcheck="false"/>
       <kbd class="fp-cmd-esc">Esc</kbd>
     </div>
     <div class="fp-cmd-results"></div>
@@ -3562,15 +3562,15 @@ function openAssignTaskModal() {
   const html = `
     <div style="display:flex;flex-direction:column;gap:12px">
       <div>
-        <label style="font-size:11px;color:var(--fp-text-muted);margin-bottom:4px;display:block">Membre</label>
+        <label style="font-size:11px;color:var(--fp-text-muted);margin-bottom:4px;display:block">${fpT('Membre')}</label>
         <select class="fp-select" id="assign-member" style="width:100%">${members || '<option disabled>Aucun membre</option>'}</select>
       </div>
       <div>
         <label style="font-size:11px;color:var(--fp-text-muted);margin-bottom:4px;display:block">Titre</label>
-        <input class="fp-input" id="assign-title" placeholder="Titre de la tâche…" style="width:100%"/>
+        <input class="fp-input" id="assign-title" placeholder="${fpT('Titre de la tâche…')}" style="width:100%"/>
       </div>
       <div>
-        <label style="font-size:11px;color:var(--fp-text-muted);margin-bottom:4px;display:block">Priorité</label>
+        <label style="font-size:11px;color:var(--fp-text-muted);margin-bottom:4px;display:block">${fpT('Priorité')}</label>
         <select class="fp-select" id="assign-priority" style="width:100%"><option value="low">Faible</option><option value="medium" selected>Moyenne</option><option value="high">Haute</option><option value="critical">Critique</option></select>
       </div>
       <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:4px" onclick="(async()=>{const mid=document.getElementById('assign-member')?.value;const ti=document.getElementById('assign-title')?.value?.trim();const pr=document.getElementById('assign-priority')?.value;if(!mid||!ti){showToast('warning', fpT('Remplissez tous les champs'));return;}const r=await apiAction('POST','/api/missions',{title:ti,source:'team',status:'todo',priority:pr,assignedTo:mid}).catch(()=>null);if(r&&r.id){showToast('success', fpT('Tâche assignée !'));closeFloatPanel();navigate('missions');}else showToast('error', fpT('Erreur'));})()">Assigner</button>
@@ -3593,7 +3593,7 @@ function _renderTeamChatPendingChips() {
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${escHtml(f.name)}">${escHtml(f.name)}</span>
         <span style="color:#64748b;flex-shrink:0">${sz}</span>
-        <button data-chip-idx="${i}" style="background:none;border:none;cursor:pointer;color:#64748b;padding:0 2px;display:flex;align-items:center;flex-shrink:0" title="Retirer" aria-label="Retirer la pièce jointe">
+        <button data-chip-idx="${i}" style="background:none;border:none;cursor:pointer;color:#64748b;padding:0 2px;display:flex;align-items:center;flex-shrink:0" title="${fpT('Retirer')}" aria-label="Retirer la pièce jointe">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>`;
@@ -3797,7 +3797,7 @@ function formatActivityDetails(metadata) {
     const display = Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value) : String(value);
     return `<div><strong>${escHtml(key.replace(/([A-Z])/g, ' $1'))}</strong> : ${escHtml(display)}</div>`;
   }).join('');
-  return `<div class="fp-activity-details" hidden>${rows}</div><button type="button" class="fp-activity-expand" aria-expanded="false">Voir plus</button>`;
+  return `<div class="fp-activity-details" hidden>${rows}</div><button type="button" class="fp-activity-expand" aria-expanded="false">${fpT('Voir plus')}</button>`;
 }
 
 function relTimeActivity(dateStr) {
@@ -3837,7 +3837,7 @@ function renderActivityList() {
     if (STATE.activityFilterLoading) {
       list.innerHTML = `<div class="fp-activity-empty" style="opacity:.6">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="animation:spin 1.2s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
-        <div>${fpT('Chargement…')}</div>
+        <div>Chargement…</div>
       </div>`;
       return;
     }
@@ -3888,7 +3888,7 @@ function renderActivityList() {
   // ACT-002: "Voir plus" button for 'all' filter (server-side pagination)
   if (filter === 'all') {
     if (STATE.activityHasMore) {
-      html += `<button id="fp-act-load-more" style="width:100%;padding:8px;margin-top:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text-soft);font-size:12px;cursor:pointer">Voir plus</button>`;
+      html += `<button id="fp-act-load-more" style="width:100%;padding:8px;margin-top:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text-soft);font-size:12px;cursor:pointer">${fpT('Voir plus')}</button>`;
     } else {
       html += `<div style="text-align:center;padding:8px;font-size:11px;color:var(--fp-text-faint)">— Fin de l'historique —</div>`;
     }
@@ -4564,7 +4564,7 @@ function initLocalSEOMap() {
         icon:{ path:google.maps.SymbolPath.CIRCLE, scale:13, fillColor:'#2563EB', fillOpacity:1, strokeColor:'#fff', strokeWeight:3 }
       });
       const _bizAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
-      const bIW = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:160px"><strong>📍 Votre établissement</strong>${_bizAvg != null ? `<div style="margin-top:6px;font-size:12px;color:#475569">Score SEO&nbsp;<strong style="color:#2563EB">${_bizAvg}/100</strong></div>` : ''}</div>` });
+      const bIW = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:160px"><strong>📍 Votre établissement</strong>${_bizAvg != null ? `<div style="margin-top:6px;font-size:12px;color:#475569">${fpT('Score SEO&nbsp;')}<strong style="color:#2563EB">${_bizAvg}/100</strong></div>` : ''}</div>` });
       bm.addListener('click', () => bIW.open(map, bm));
     }
     const _bCircle = center ? new google.maps.Circle({ map, center, radius:1200, fillColor:'#2563EB', fillOpacity:0.06, strokeColor:'#2563EB', strokeOpacity:0.3, strokeWeight:2 }) : null;
@@ -4604,7 +4604,7 @@ function initLocalSEOMap() {
         position:{lat:Number(c.lat),lng:Number(c.lng)}, map, title:c.name,
         icon:{ path:google.maps.SymbolPath.CIRCLE, scale:9, fillColor:c.color, fillOpacity:0.9, strokeColor:'#fff', strokeWeight:2 }
       });
-      const iw = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:190px"><strong style="font-size:13px">${c.name}</strong><div style="display:flex;gap:16px;margin-top:8px"><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.score}</div><div style="font-size:10px;color:#94a3b8">Score SEO</div></div><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.reviews}</div><div style="font-size:10px;color:#94a3b8">Avis Google</div></div></div><div style="margin-top:8px;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block;background:${c.color}22;color:${c.color}">Menace: ${c.threat}</div></div>` });
+      const iw = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:190px"><strong style="font-size:13px">${c.name}</strong><div style="display:flex;gap:16px;margin-top:8px"><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.score}</div><div style="font-size:10px;color:#94a3b8">${fpT('Score SEO')}</div></div><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.reviews}</div><div style="font-size:10px;color:#94a3b8">Avis Google</div></div></div><div style="margin-top:8px;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block;background:${c.color}22;color:${c.color}">Menace: ${c.threat}</div></div>` });
       mk.addListener('click', () => iw.open(map, mk));
     });
 
@@ -4627,12 +4627,12 @@ function initLocalSEOMap() {
       if (!ev || !ev.placeId) return;
       ev.stop(); // suppress Google's native white InfoWindow
       const pid = ev.placeId;
-      _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:${_mutC};font-size:12px">Chargement des détails…</div>`);
+      _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:${_mutC};font-size:12px">${fpT('Chargement des détails…')}</div>`);
       _poiIW.setPosition(ev.latLng);
       _poiIW.open(map);
       apiFetch(`/api/maps/place-details?placeId=${encodeURIComponent(pid)}`).then(d => {
         if (!d || d.error || !d.name) {
-          _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:${_mutC};font-size:12px">Détails indisponibles pour ce lieu.</div>`);
+          _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:${_mutC};font-size:12px">${fpT('Détails indisponibles pour ce lieu.')}</div>`);
           return;
         }
         const stars = d.rating != null ? '★'.repeat(Math.round(d.rating)) + '☆'.repeat(5 - Math.round(d.rating)) : '';
@@ -4640,7 +4640,7 @@ function initLocalSEOMap() {
           `<div style="font-family:Inter,sans-serif;padding:10px;min-width:220px;max-width:280px;color:${_txtC}">`
           + (d.photoUrl ? `<img src="${d.photoUrl}" alt="" style="width:100%;height:110px;object-fit:cover;border-radius:8px;margin-bottom:8px" onerror="this.remove()"/>` : '')
           + `<strong style="font-size:13px">${escHtml(d.name)}</strong>`
-          + (d.rating != null ? `<div style="margin-top:4px;font-size:12px"><span style="color:#f59e0b">${stars}</span> <strong>${d.rating}</strong>${d.reviewCount != null ? ` <span style="color:${_mutC}">(${d.reviewCount} avis)</span>` : ''}</div>` : `<div style="margin-top:4px;font-size:11px;color:${_mutC}">Aucun avis Google</div>`)
+          + (d.rating != null ? `<div style="margin-top:4px;font-size:12px"><span style="color:#f59e0b">${stars}</span> <strong>${d.rating}</strong>${d.reviewCount != null ? ` <span style="color:${_mutC}">(${d.reviewCount} avis)</span>` : ''}</div>` : `<div style="margin-top:4px;font-size:11px;color:${_mutC}">${fpT('Aucun avis Google')}</div>`)
           + (d.address ? `<div style="margin-top:6px;font-size:11px;color:${_mutC};line-height:1.4">📍 ${escHtml(String(d.address))}</div>` : '')
           + (d.phone ? `<div style="margin-top:4px;font-size:11px;color:${_mutC}">📞 ${escHtml(String(d.phone))}</div>` : '')
           + (d.openNow != null ? `<div style="margin-top:4px;font-size:11px;font-weight:600;color:${d.openNow ? '#22c55e' : '#ef4444'}">${d.openNow ? '● Ouvert actuellement' : '● Fermé actuellement'}</div>` : '')
@@ -4650,7 +4650,7 @@ function initLocalSEOMap() {
           + `</div></div>`
         );
       }).catch(() => {
-        _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:${_mutC};font-size:12px">Détails indisponibles pour ce lieu.</div>`);
+        _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:${_mutC};font-size:12px">${fpT('Détails indisponibles pour ce lieu.')}</div>`);
       });
     });
   });
@@ -4753,7 +4753,7 @@ function renderMsgDropdown() {
     }).join('')}
   </div>
   <div class="fp-msg-list" id="fp-msg-list">
-    ${msgs.length===0 ? `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint);font-size:12px">Aucun message dans ce canal</div>` :
+    ${msgs.length===0 ? `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint);font-size:12px">${fpT('Aucun message dans ce canal')}</div>` :
       msgs.map(m => {
         const bg = m.self ? 'rgba(37,99,235,0.25)' : 'rgba(139,92,246,0.25)';
         const col = m.self ? '#2563EB' : '#8b5cf6';
@@ -4779,7 +4779,7 @@ function renderMsgDropdown() {
   </div>` : ''}
   <div class="fp-msg-compose">
     <input type="file" id="fp-msg-file" style="display:none" accept="*/*"/>
-    <button class="fp-msg-upload-btn" id="fp-msg-upload" title="Joindre un fichier">
+    <button class="fp-msg-upload-btn" id="fp-msg-upload" title="${fpT('Joindre un fichier')}">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
     </button>
     <input id="fp-msg-input" class="fp-input" placeholder="Message #${escHtml(ch)}…" style="flex:1;font-size:12px;height:30px;padding:5px 10px"/>
@@ -4953,7 +4953,7 @@ function renderNotifications() {
   dropdown.innerHTML = `
     <div class="fp-notif-header">
       <span class="fp-notif-title">Notifications</span>
-      <button class="fp-notif-mark-all" id="fp-notif-mark-all">${fpT('Tout marquer lu')}</button>
+      <button class="fp-notif-mark-all" id="fp-notif-mark-all">Tout marquer lu</button>
     </div>
     ${visible.length === 0 ? `<div style="padding:24px;text-align:center;color:var(--fp-text-faint);font-size:12px">${fpT(showHidden ? 'Aucune notification masquée' : 'Aucune notification')}</div>` : ''}
     ${visible.map(n => {
@@ -5495,7 +5495,7 @@ function renderOverview() {
         <div>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
             <div style="width:10px;height:10px;border-radius:50%;background:#22c55e;box-shadow:0 0 10px rgba(34,197,94,0.6);animation:fp-pulse-dot 2s ease-in-out infinite"></div>
-            <span style="font-size:11px;font-weight:700;color:#22c55e;letter-spacing:0.1em;text-transform:uppercase">LIVE · Vue d'ensemble</span>
+            <span style="font-size:11px;font-weight:700;color:#22c55e;letter-spacing:0.1em;text-transform:uppercase">${fpT("LIVE · Vue d'ensemble")}</span>
           </div>
           <h1 style="font-size:26px;font-weight:900;color:var(--fp-text);margin:0 0 4px;font-family:var(--fp-font-head);line-height:1.1">Bonjour, ${escHtml(me.firstName)} 👋</h1>
           <div style="font-size:13px;color:var(--fp-text-muted)">Plateforme IA · Plan <strong style="color:#2563EB">${escHtml(me.plan)}</strong> · Score global <strong style="color:${globalScore != null ? scoreColor(globalScore) : 'var(--fp-text-muted)'}">${globalScore != null ? globalScore + '/100' : '—'}</strong></div>
@@ -5531,7 +5531,7 @@ function renderOverview() {
             <div style="margin-top:6px;text-align:center">
               ${_hv
                 ? `<div style="font-size:11px;font-weight:700;color:${col};display:inline-block;padding:2px 8px;border-radius:99px;background:${col}18">${h.val >= 70 ? 'Bon' : h.val >= 50 ? 'Attention' : 'Faible'}</div>`
-                : `<div style="font-size:11px;color:var(--fp-text-faint);font-style:italic">Pas de données</div>`}
+                : `<div style="font-size:11px;color:var(--fp-text-faint);font-style:italic">${fpT('Pas de données')}</div>`}
             </div>
             <div style="margin-top:4px">
               <div class="fp-progress-track" style="height:3px;border-radius:99px"><div class="fp-progress-fill" style="width:${_hv ? Math.round(h.val/h.max*100) : 0}%;background:${_hv ? h.color : 'transparent'};border-radius:99px"></div></div>
@@ -5571,25 +5571,25 @@ function renderOverview() {
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
         <div style="font-size:32px">🚀</div>
         <div>
-          <div style="font-size:15px;font-weight:800;color:var(--fp-text);margin-bottom:3px">Bienvenue sur FlowPoint</div>
-          <div style="font-size:12px;color:var(--fp-text-muted)">Démarrez en 3 étapes pour activer votre tableau de bord</div>
+          <div style="font-size:15px;font-weight:800;color:var(--fp-text);margin-bottom:3px">${fpT('Bienvenue sur FlowPoint')}</div>
+          <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Démarrez en 3 étapes pour activer votre tableau de bord')}</div>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
         <div onclick="navigate('audits');$('#audit-new-btn').click()" style="padding:14px;background:var(--fp-inner-card);border-radius:12px;cursor:pointer;border:1px solid var(--fp-border);transition:border 0.15s" onmouseover="this.style.borderColor='rgba(37,99,235,0.4)'" onmouseout="this.style.borderColor='var(--fp-border)'">
           <div style="font-size:20px;margin-bottom:8px">🔍</div>
           <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">1. Lancer un audit SEO</div>
-          <div style="font-size:11px;color:var(--fp-text-muted)">Analysez votre premier site et obtenez un score instantané</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Analysez votre premier site et obtenez un score instantané')}</div>
         </div>
         <div onclick="navigate('monitors');setTimeout(function(){var b=$('#monitor-new-btn');if(b)b.click();else{openFloatPanel('Nouveau monitor',renderNewMonitorPanel());setupNewMonitorPanel();}},350)" style="padding:14px;background:var(--fp-inner-card);border-radius:12px;cursor:pointer;border:1px solid var(--fp-border);transition:border 0.15s" onmouseover="this.style.borderColor='rgba(37,99,235,0.4)'" onmouseout="this.style.borderColor='var(--fp-border)'">
           <div style="font-size:20px;margin-bottom:8px">📡</div>
           <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">2. Ajouter un monitor</div>
-          <div style="font-size:11px;color:var(--fp-text-muted)">Surveillez la disponibilité de vos sites 24/7</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Surveillez la disponibilité de vos sites 24/7')}</div>
         </div>
         <div onclick="navigate('missions')" style="padding:14px;background:var(--fp-inner-card);border-radius:12px;cursor:pointer;border:1px solid var(--fp-border);transition:border 0.15s" onmouseover="this.style.borderColor='rgba(37,99,235,0.4)'" onmouseout="this.style.borderColor='var(--fp-border)'">
           <div style="font-size:20px;margin-bottom:8px">🎯</div>
           <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">3. Créer une mission</div>
-          <div style="font-size:11px;color:var(--fp-text-muted)">Planifiez vos actions SEO et suivez leur avancement</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Planifiez vos actions SEO et suivez leur avancement')}</div>
         </div>
       </div>
     </div>` : ''}
@@ -5632,8 +5632,8 @@ function renderOverview() {
       <div style="display:flex;align-items:center;gap:10px;min-width:0">
         <span style="font-size:16px">📊</span>
         <div>
-          <div style="font-size:12px;font-weight:700;color:#eab308">Analytics non connecté</div>
-          <div style="font-size:11px;color:var(--fp-text-muted)">Connectez Google Analytics 4 pour voir trafic, conversions et revenus réels</div>
+          <div style="font-size:12px;font-weight:700;color:#eab308">${fpT('Analytics non connecté')}</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Connectez Google Analytics 4 pour voir trafic, conversions et revenus réels')}</div>
         </div>
       </div>
       <button class="fp-btn fp-btn-sm" style="flex-shrink:0;background:rgba(234,179,8,0.12);color:#eab308;border:1px solid rgba(234,179,8,0.3)" onclick="navigate('analytics')">Connecter GA4 →</button>
@@ -5651,13 +5651,13 @@ function renderOverview() {
             <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;animation:fp-pulse-dot 2s infinite"></div>
             <span class="fp-card-title" style="margin-bottom:0">Flux en direct</span>
           </div>
-          <span style="font-size:10px;color:var(--fp-text-faint)">Mise à jour en temps réel</span>
+          <span style="font-size:10px;color:var(--fp-text-faint)">${fpT('Mise à jour en temps réel')}</span>
         </div>
         <div style="display:flex;flex-direction:column;gap:1px">
           ${liveEvents.length === 0 ? `<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">
             <div style="font-size:24px;margin-bottom:8px">📭</div>
-            <div>Aucun événement récent</div>
-            <div style="font-size:10px;margin-top:4px">Les audits, alertes et actions apparaîtront ici</div>
+            <div>${fpT('Aucun événement récent')}</div>
+            <div style="font-size:10px;margin-top:4px">${fpT('Les audits, alertes et actions apparaîtront ici')}</div>
           </div>` : ''}
           ${liveEvents.map(ev => {
             const c = typeColor[ev.type] || '#2563EB';
@@ -5725,15 +5725,15 @@ function renderOverview() {
           `).join('')
             : `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint)">
                 <div style="font-size:28px;margin-bottom:8px">💎</div>
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text-muted);margin-bottom:4px">Aucune opportunité détectée</div>
-                <div style="font-size:11px;margin-bottom:14px">Lancez un audit SEO ou créez des missions pour voir les opportunités de croissance identifiées par l'IA.</div>
-                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('missions')">Créer une mission IA →</button>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text-muted);margin-bottom:4px">${fpT('Aucune opportunité détectée')}</div>
+                <div style="font-size:11px;margin-bottom:14px">${fpT("Lancez un audit SEO ou créez des missions pour voir les opportunités de croissance identifiées par l'IA.")}</div>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('missions')">${fpT('Créer une mission IA →')}</button>
               </div>`
           }
         </div>
         ${opportunities.length > 0 ? `<div style="margin-top:12px;padding:10px 12px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);border-radius:9px;display:flex;align-items:center;justify-content:space-between">
           <span style="font-size:11px;color:var(--fp-text-muted)">${opportunities.length} opportunité${opportunities.length > 1 ? 's' : ''} identifiée${opportunities.length > 1 ? 's' : ''}</span>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('missions')" style="font-size:11px">Voir tout →</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('missions')" style="font-size:11px">${fpT('Voir tout →')}</button>
         </div>` : ''}
       </div>
 
@@ -5761,9 +5761,9 @@ function renderOverview() {
           `).join('')
             : `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint)">
                 <div style="font-size:28px;margin-bottom:8px">🧠</div>
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text-muted);margin-bottom:4px">Priorités IA non encore calculées</div>
-                <div style="font-size:11px;margin-bottom:14px">L'IA analyse vos audits, vos keywords et vos monitors pour générer un plan d'action personnalisé.</div>
-                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('missions')">Générer les priorités →</button>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text-muted);margin-bottom:4px">${fpT('Priorités IA non encore calculées')}</div>
+                <div style="font-size:11px;margin-bottom:14px">${fpT("L'IA analyse vos audits, vos keywords et vos monitors pour générer un plan d'action personnalisé.")}</div>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('missions')">${fpT('Générer les priorités →')}</button>
               </div>`
           }
         </div>
@@ -5787,13 +5787,13 @@ function renderOverview() {
           <div style="padding:14px;border-radius:12px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">
             <div style="font-size:11px;font-weight:600;color:var(--fp-text-muted);margin-bottom:8px">${f.label}</div>
             ${f.loading
-              ? `<div style="height:36px;display:flex;align-items:center;justify-content:center;gap:6px;opacity:0.45"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg><span style="font-size:10px;color:var(--fp-text-faint)">Chargement des prévisions…</span></div>`
+              ? `<div style="height:36px;display:flex;align-items:center;justify-content:center;gap:6px;opacity:0.45"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg><span style="font-size:10px;color:var(--fp-text-faint)">${fpT('Chargement des prévisions…')}</span></div>`
               : f.noData
-              ? `<div style="height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;opacity:0.65"><span style="font-size:11px;color:var(--fp-text-muted);font-weight:600">Pas encore assez de données pour générer une prévision.</span><span style="font-size:10px;color:var(--fp-text-faint)">Les prévisions apparaîtront après la collecte des premières données.</span></div>`
+              ? `<div style="height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;opacity:0.65"><span style="font-size:11px;color:var(--fp-text-muted);font-weight:600">${fpT('Pas encore assez de données pour générer une prévision.')}</span><span style="font-size:10px;color:var(--fp-text-faint)">${fpT('Les prévisions apparaîtront après la collecte des premières données.')}</span></div>`
               : sparklineSVG(f.data && f.data.length ? f.data : [0,0,0,0,0,0,0], f.color, 200, 36)}
             <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:8px;gap:4px">
               <div style="min-width:0;overflow:hidden">
-                <div style="font-size:10px;color:var(--fp-text-faint)">Actuel</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Actuel')}</div>
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.current}</div>
               </div>
               <div style="text-align:right;min-width:0;overflow:hidden">
@@ -5810,9 +5810,9 @@ function renderOverview() {
       <div style="font-size:26px">🔮</div>
       <div style="flex:1">
         <div style="font-size:13px;font-weight:700;margin-bottom:3px">Executive Forecasting — Pro requis</div>
-        <div style="font-size:12px;color:var(--fp-text-muted)">Prévisions IA trafic, conversion, Local SEO et revenus sur 30 jours.</div>
+        <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Prévisions IA trafic, conversion, Local SEO et revenus sur 30 jours.')}</div>
       </div>
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('billing')">Activer →</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('billing')">${fpT('Activer →')}</button>
     </div>
     `}
 
@@ -5840,7 +5840,7 @@ function renderOverview() {
         <!-- Score progression -->
         <div style="margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-            <span style="font-size:11px;color:var(--fp-text-muted)">Progression score SEO — Objectif 80/100</span>
+            <span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Progression score SEO — Objectif 80/100')}</span>
             <span style="font-size:11px;font-weight:700;color:#2563EB">${avg}/100</span>
           </div>
           <div class="fp-progress-track" style="height:6px;border-radius:99px">
@@ -5923,8 +5923,8 @@ function renderOverview() {
     <div class="fp-grid-2">
       <div class="fp-card">
         <div class="fp-flex-between" style="margin-bottom:12px">
-          <span class="fp-card-title" style="margin-bottom:0">Activité récente</span>
-          <button class="fp-link-btn" id="activity-see-all">Voir tout →</button>
+          <span class="fp-card-title" style="margin-bottom:0">${fpT('Activité récente')}</span>
+          <button class="fp-link-btn" id="activity-see-all">${fpT('Voir tout →')}</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${(STATE.activityEvents && STATE.activityEvents.length > 0
@@ -5949,14 +5949,14 @@ function renderOverview() {
               </div>
             </div>`;
           }).join('')}
-          ${(STATE.activityEvents && STATE.activityEvents.length === 0 && !PREVIEW_MODE) ? `<div style="text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">Aucune activité récente — les événements apparaissent ici en temps réel</div>` : ''}
+          ${(STATE.activityEvents && STATE.activityEvents.length === 0 && !PREVIEW_MODE) ? `<div style="text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">${fpT('Aucune activité récente — les événements apparaissent ici en temps réel')}</div>` : ''}
         </div>
       </div>
 
       <div class="fp-card">
         <div class="fp-flex-between" style="margin-bottom:12px">
-          <span class="fp-card-title" style="margin-bottom:0">Top sites — Performance</span>
-          <button class="fp-link-btn" onclick="navigate('audits')">Tous les audits →</button>
+          <span class="fp-card-title" style="margin-bottom:0">${fpT('Top sites — Performance')}</span>
+          <button class="fp-link-btn" onclick="navigate('audits')">${fpT('Tous les audits →')}</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${(STATE.audits && STATE.audits.length > 0
@@ -5985,7 +5985,7 @@ function renderOverview() {
           `).join('')}
         </div>
         <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--fp-border);display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:11px;color:var(--fp-text-faint)">Score moyen portefeuille</span>
+          <span style="font-size:11px;color:var(--fp-text-faint)">${fpT('Score moyen portefeuille')}</span>
           <span style="font-size:14px;font-weight:800;color:${scoreColor(avg)}">${avg}/100</span>
         </div>
       </div>
@@ -6051,7 +6051,7 @@ function renderAudits() {
     <div class="fp-section-header" data-fp-anchor="audits-list">
       <div>
         <h1>Audits SEO</h1>
-        <div class="fp-section-sub">Analysez et optimisez la visibilité de vos sites</div>
+        <div class="fp-section-sub">${fpT('Analysez et optimisez la visibilité de vos sites')}</div>
       </div>
       <div class="fp-section-actions">
         ${btn('CSV','fp-btn fp-btn-ghost fp-btn-sm','download','id="audit-export-csv"')}
@@ -6135,11 +6135,11 @@ function renderAudits() {
     <div class="fp-filter-bar">
       <div class="fp-search-input-wrap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input class="fp-search-input" id="audit-search" placeholder="Filtrer par URL…" value="${escHtml(q)}"/>
+        <input class="fp-search-input" id="audit-search" placeholder="${fpT('Filtrer par URL…')}" value="${escHtml(q)}"/>
       </div>
       <select class="fp-select" id="audit-sort">
-        <option value="date" ${STATE.auditSort==='date'?'selected':''}>Trier : Date</option>
-        <option value="score" ${STATE.auditSort==='score'?'selected':''}>Trier : Score</option>
+        <option value="date" ${STATE.auditSort==='date'?'selected':''}>${fpT('Trier : Date')}</option>
+        <option value="score" ${STATE.auditSort==='score'?'selected':''}>${fpT('Trier : Score')}</option>
       </select>
     </div>
     <div class="fp-filter-bar fp-mb-16">
@@ -6153,8 +6153,8 @@ function renderAudits() {
       <table class="fp-table">
         <thead>
           <tr>
-            <th class="fp-cb-col"><input type="checkbox" id="audit-select-all" style="width:15px;height:15px;accent-color:#2563EB;cursor:pointer" title="Tout sélectionner"/></th>
-            <th>URL</th><th>Score SEO</th><th style="text-align:center">Tendance 30j</th><th style="text-align:center">Statut</th><th style="text-align:center">Vitesse</th><th style="text-align:center">Date</th><th style="text-align:center">Planifié</th><th style="text-align:center">Actions</th>
+            <th class="fp-cb-col"><input type="checkbox" id="audit-select-all" style="width:15px;height:15px;accent-color:#2563EB;cursor:pointer" title="${fpT('Tout sélectionner')}"/></th>
+            <th>URL</th><th>${fpT('Score SEO')}</th><th style="text-align:center">${fpT('Tendance 30j')}</th><th style="text-align:center">${fpT('Statut')}</th><th style="text-align:center">${fpT('Vitesse')}</th><th style="text-align:center">Date</th><th style="text-align:center">${fpT('Planifié')}</th><th style="text-align:center">Actions</th>
           </tr>
         </thead>
         <tbody id="audits-tbody">
@@ -6162,7 +6162,7 @@ function renderAudits() {
             const urlAudits = {};
             STATE.audits.forEach(x => { if (!urlAudits[x.url]) urlAudits[x.url] = []; urlAudits[x.url].push(x); });
             Object.values(urlAudits).forEach(arr => arr.sort((a, b) => new Date(a.date) - new Date(b.date)));
-            if (sorted.length === 0) return `<tr><td colspan="9" style="text-align:center;padding:32px 16px;color:var(--fp-text-faint)"><div style="font-size:22px;margin-bottom:8px">🔍</div><div style="font-size:13px;font-weight:600;color:var(--fp-text-muted);margin-bottom:4px">${fpT('Aucun audit trouvé')}</div><div style="font-size:11px">Lancez votre premier audit ci-dessus ou modifiez les filtres.</div></td></tr>`;
+            if (sorted.length === 0) return `<tr><td colspan="9" style="text-align:center;padding:32px 16px;color:var(--fp-text-faint)"><div style="font-size:22px;margin-bottom:8px">🔍</div><div style="font-size:13px;font-weight:600;color:var(--fp-text-muted);margin-bottom:4px">${fpT('Aucun audit trouvé')}</div><div style="font-size:11px">${fpT('Lancez votre premier audit ci-dessus ou modifiez les filtres.')}</div></td></tr>`;
             return sorted.map(a => {
             const urlHistory = urlAudits[a.url] || [a];
             const aIdx = urlHistory.findIndex(x => x.id === a.id);
@@ -6216,12 +6216,12 @@ function renderAudits() {
               </td>
               <td class="fp-hover-toolbar-wrap">
                 <div class="fp-row-actions">
-                  <button class="fp-hover-toolbar-btn audit-view" data-id="${a.id}" title="Voir">${svgIcon('eye')}</button>
-                  <button class="fp-hover-toolbar-btn audit-export" data-id="${a.id}" title="Exporter">${svgIcon('download')}</button>
+                  <button class="fp-hover-toolbar-btn audit-view" data-id="${a.id}" title="${fpT('Voir')}">${svgIcon('eye')}</button>
+                  <button class="fp-hover-toolbar-btn audit-export" data-id="${a.id}" title="${fpT('Exporter')}">${svgIcon('download')}</button>
                   <button class="fp-hover-toolbar-btn audit-more" data-id="${a.id}" title="Plus">${svgIcon('more-h')}</button>
                 </div>
                 <div class="fp-hover-toolbar">
-                  <button class="fp-hover-toolbar-btn audit-view" data-id="${a.id}" title="Voir détails">${svgIcon('eye')}</button>
+                  <button class="fp-hover-toolbar-btn audit-view" data-id="${a.id}" title="${fpT('Voir détails')}">${svgIcon('eye')}</button>
                   <button class="fp-hover-toolbar-btn audit-export" data-id="${a.id}" title="PDF">${svgIcon('download')}</button>
                   <button class="fp-hover-toolbar-btn audit-more" data-id="${a.id}" title="Plus">${svgIcon('more-h')}</button>
                 </div>
@@ -6333,7 +6333,7 @@ function renderMonitors() {
     <div class="fp-grid-auto fp-mb-24">
       ${monitors.map(m => `
         <div class="fp-monitor-card fp-hover-toolbar-wrap${m.status === 'down' ? ' down' : ''}${STATE.selectedMonitors.has(m.id) ? ' fp-card-sel' : ''}" data-monitor-id="${m.id}">
-          <label class="fp-monitor-cb-wrap" title="Sélectionner">
+          <label class="fp-monitor-cb-wrap" title="${fpT('Sélectionner')}">
             <input type="checkbox" class="fp-monitor-cb" data-id="${m.id}"${STATE.selectedMonitors.has(m.id) ? ' checked' : ''}/>
           </label>
           <div class="fp-monitor-status-row">
@@ -6374,7 +6374,7 @@ function renderMonitors() {
                 const c = m.status === 'down' ? '#ef4444' : m.status === 'warn' ? '#f59e0b' : '#22c55e';
                 return monitorSparklineSVG(pts, c, 120, 22);
               }
-              return `<div style="width:120px;height:22px;display:flex;align-items:center;justify-content:center"><span style="font-size:9px;color:var(--fp-text-faint)">données en cours…</span></div>`;
+              return `<div style="width:120px;height:22px;display:flex;align-items:center;justify-content:center"><span style="font-size:9px;color:var(--fp-text-faint)">${fpT('données en cours…')}</span></div>`;
             })()}
             <span style="font-size:9px;color:var(--fp-text-faint)">${(() => {
               const sum = STATE.monitorsSummary[m.id];
@@ -6382,10 +6382,10 @@ function renderMonitors() {
             })()}</span>
           </div>
           <div class="fp-hover-toolbar">
-            <button class="fp-hover-toolbar-btn monitor-view"   data-id="${m.id}" title="Voir détails">${svgIcon('eye')}</button>
+            <button class="fp-hover-toolbar-btn monitor-view"   data-id="${m.id}" title="${fpT('Voir détails')}">${svgIcon('eye')}</button>
             <button class="fp-hover-toolbar-btn monitor-ping"   data-id="${m.id}" title="Tester">${svgIcon('refresh')}</button>
             <button class="fp-hover-toolbar-btn monitor-toggle" data-id="${m.id}" data-enabled="${m.enabled !== false}" title="${m.enabled !== false ? 'Mettre en pause' : 'Reprendre'}">${svgIcon(m.enabled !== false ? 'pause-circle' : 'play-circle')}</button>
-            <button class="fp-hover-toolbar-btn monitor-del"    data-id="${m.id}" title="Supprimer">${svgIcon('trash')}</button>
+            <button class="fp-hover-toolbar-btn monitor-del"    data-id="${m.id}" title="${fpT('Supprimer')}">${svgIcon('trash')}</button>
           </div>
         </div>
       `).join('')}
@@ -6407,13 +6407,13 @@ function renderMonitors() {
             </div>
           `).join('')}
         </div>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:10px" onclick="navigateSub('incidents')">Voir tous les incidents →</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:10px" onclick="navigateSub('incidents')">${fpT('Voir tous les incidents →')}</button>
       </div>
 
       <!-- Dependency Monitoring -->
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:4px">🔗 Dépendances externes</div>
-        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">Services tiers critiques surveillés en temps réel</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">${fpT('Services tiers critiques surveillés en temps réel')}</div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${deps.map(d => `
             <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--fp-inner-card);border:1px solid ${depColor(d.status)}20;border-radius:8px">
@@ -6521,7 +6521,7 @@ function renderMonitors() {
       </div>
       <div style="overflow-x:auto">
         <table class="fp-data-table">
-          <thead><tr><th>Endpoint</th><th style="text-align:center">Méthode</th><th style="text-align:center">Statut</th><th style="text-align:center">Latence</th><th style="text-align:center">Uptime</th><th style="text-align:center">Check</th><th style="text-align:center">Action</th></tr></thead>
+          <thead><tr><th>Endpoint</th><th style="text-align:center">${fpT('Méthode')}</th><th style="text-align:center">${fpT('Statut')}</th><th style="text-align:center">Latence</th><th style="text-align:center">Uptime</th><th style="text-align:center">Check</th><th style="text-align:center">Action</th></tr></thead>
           <tbody>
             ${(()=>{
               const _eps = PREVIEW_MODE ? [
@@ -6539,7 +6539,7 @@ function renderMonitors() {
                 rate: m.uptime != null ? m.uptime.toFixed(1) + '%' : '—',
                 last: fmtLastCheck(m.lastCheck) || '—',
               }));
-              if (_eps.length === 0) return `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--fp-text-faint);font-size:13px">Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.</td></tr>`;
+              if (_eps.length === 0) return `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--fp-text-faint);font-size:13px">${fpT("Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.")}</td></tr>`;
               return _eps.map(ep => {
                 const sc = ep.status === 'UP' ? '#22c55e' : ep.status === 'SLOW' ? '#f59e0b' : '#ef4444';
                 const mc = ep.method === 'GET' ? '#2563EB' : '#8b5cf6';
@@ -6595,21 +6595,21 @@ function renderMissionDetail(m) {
 
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
       <div style="flex:1;min-width:140px">
-        <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--fp-text-muted);display:block;margin-bottom:4px">Statut</label>
+        <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--fp-text-muted);display:block;margin-bottom:4px">${fpT('Statut')}</label>
         <select class="fp-input mission-status-select" data-id="${m.id}" style="font-size:12px;padding:5px 8px;height:auto">
-          <option value="todo"${effectiveStatus==='todo'?' selected':''}>À faire</option>
+          <option value="todo"${effectiveStatus==='todo'?' selected':''}>${fpT('À faire')}</option>
           <option value="inprogress"${effectiveStatus==='inprogress'?' selected':''}>En cours</option>
-          <option value="done"${effectiveStatus==='done'?' selected':''}>Terminé</option>
+          <option value="done"${effectiveStatus==='done'?' selected':''}>${fpT('Terminé')}</option>
         </select>
       </div>
       <div style="flex:1;min-width:140px">
-        <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--fp-text-muted);display:block;margin-bottom:4px">Assigné à</label>
+        <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--fp-text-muted);display:block;margin-bottom:4px">${fpT('Assigné à')}</label>
         ${teamMembers.length > 0
           ? `<select class="fp-input mission-assignee-select" data-id="${m.id}" style="font-size:12px;padding:5px 8px;height:auto">
                <option value="">— Non assigné —</option>
                ${assigneeOptions}
              </select>`
-          : `<div style="font-size:11px;color:var(--fp-text-faint);padding:6px 0">Aucun siège d'équipe — <a href="#" onclick="closeFloatPanel();navigate('billing');setTimeout(function(){navigateSub('plans')},80)" style="color:var(--fp-accent)">ajouter des membres</a></div>`
+          : `<div style="font-size:11px;color:var(--fp-text-faint);padding:6px 0">Aucun siège d'équipe — <a href="#" onclick="closeFloatPanel();navigate('billing');setTimeout(function(){navigateSub('plans')},80)" style="color:var(--fp-accent)">${fpT('ajouter des membres')}</a></div>`
         }
       </div>
     </div>
@@ -6631,7 +6631,7 @@ function renderMissionDetail(m) {
           </div>
         `).join('')}
       </div>
-    ` : `<div style="padding:12px 0;font-size:13px;color:var(--fp-text-faint)">Aucune étape définie pour cette mission.</div>`}
+    ` : `<div style="padding:12px 0;font-size:13px;color:var(--fp-text-faint)">${fpT('Aucune étape définie pour cette mission.')}</div>`}
 
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
       <button class="fp-btn fp-btn-ghost fp-btn-sm mission-delete-detail" data-id="${m.id}">
@@ -6799,9 +6799,9 @@ function renderMissions() {
 
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <div class="fp-view-toggle" id="mission-view-toggle">
-        <button class="fp-view-toggle-btn${STATE.missionView==='list'?' active':''}" data-view="list">Liste</button>
+        <button class="fp-view-toggle-btn${STATE.missionView==='list'?' active':''}" data-view="list">${fpT('Liste')}</button>
         <button class="fp-view-toggle-btn${STATE.missionView==='kanban'?' active':''}" data-view="kanban">Kanban</button>
-        <button class="fp-view-toggle-btn${STATE.missionView==='calendar'?' active':''}" data-view="calendar">Calendrier</button>
+        <button class="fp-view-toggle-btn${STATE.missionView==='calendar'?' active':''}" data-view="calendar">${fpT('Calendrier')}</button>
         <button class="fp-view-toggle-btn${STATE.missionView==='library'?' active':''}" data-view="library" style="display:flex;align-items:center;gap:5px">${svgIcon('zap')} Bibliothèque</button>
       </div>
       <span style="font-size:11px;color:var(--fp-text-faint);margin-left:4px">${filtered.length} missions</span>
@@ -6829,9 +6829,9 @@ function renderMissions() {
         <input class="fp-search-input" id="mission-search" placeholder="Rechercher…" value="${escHtml(STATE.missionSearch)}" autocomplete="off"/>
       </div>
       <select class="fp-select" id="mission-sort" style="min-width:140px">
-        <option value="date" ${STATE.missionSort==='date'?'selected':''}>Trier : Échéance</option>
-        <option value="impact" ${STATE.missionSort==='impact'?'selected':''}>Trier : Impact</option>
-        <option value="priority" ${STATE.missionSort==='priority'?'selected':''}>Trier : Priorité</option>
+        <option value="date" ${STATE.missionSort==='date'?'selected':''}>${fpT('Trier : Échéance')}</option>
+        <option value="impact" ${STATE.missionSort==='impact'?'selected':''}>${fpT('Trier : Impact')}</option>
+        <option value="priority" ${STATE.missionSort==='priority'?'selected':''}>${fpT('Trier : Priorité')}</option>
       </select>
     </div>
     <div class="fp-filter-bar fp-mb-12" style="gap:5px;flex-wrap:wrap">
@@ -6872,16 +6872,16 @@ function renderMissions() {
               <span style="font-size:10px;font-weight:600;padding:3px 8px;border-radius:5px;background:${statusColors[m.status]||'#94a3b8'}22;color:${statusColors[m.status]||'#94a3b8'}">${statusLabels[m.status]||'À faire'}</span>
             </div>
             <div class="fp-hover-toolbar" style="top:50%;transform:translateY(-50%)">
-              <button class="fp-hover-toolbar-btn mission-view" data-id="${m.id}" title="Détails & étapes">${svgIcon('eye')}</button>
-              <button class="fp-hover-toolbar-btn mission-delete" data-id="${m.id}" title="Supprimer">${svgIcon('trash')}</button>
+              <button class="fp-hover-toolbar-btn mission-view" data-id="${m.id}" title="${fpT('Détails & étapes')}">${svgIcon('eye')}</button>
+              <button class="fp-hover-toolbar-btn mission-delete" data-id="${m.id}" title="${fpT('Supprimer')}">${svgIcon('trash')}</button>
             </div>
           </div>`;
         }).join('')}
         ${filtered.length===0?`
           <div class="fp-empty-state" style="padding:48px 20px;text-align:center">
             <div style="font-size:40px;margin-bottom:12px;opacity:.5">🤖</div>
-            <h3 style="font-size:15px;font-weight:700;color:var(--fp-text);margin:0 0 6px">Aucune mission trouvée</h3>
-            <p style="font-size:12px;color:var(--fp-text-muted);margin:0 0 14px">Lancez le scanner IA pour générer des missions automatiquement depuis vos données SEO.</p>
+            <h3 style="font-size:15px;font-weight:700;color:var(--fp-text);margin:0 0 6px">${fpT('Aucune mission trouvée')}</h3>
+            <p style="font-size:12px;color:var(--fp-text-muted);margin:0 0 14px">${fpT('Lancez le scanner IA pour générer des missions automatiquement depuis vos données SEO.')}</p>
             <button class="fp-btn fp-btn-primary fp-btn-sm" id="mission-ai-scan-empty" style="gap:6px">${svgIcon('zap')} Scanner maintenant</button>
           </div>`:''}
       </div>
@@ -6917,7 +6917,7 @@ function renderMissions() {
               ${colMissions.length===0?`
                 <div class="fp-kanban-empty-state">
                   <div style="font-size:22px;margin-bottom:6px;opacity:.5">${col==='done'?'✅':col==='inprogress'?'⚡':'📋'}</div>
-                  <div style="font-size:11px;color:var(--fp-text-faint);line-height:1.4">Pas de missions<br>pour le moment</div>
+                  <div style="font-size:11px;color:var(--fp-text-faint);line-height:1.4">Pas de missions<br>${fpT('pour le moment')}</div>
                 </div>
               `:''}
             </div>
@@ -6933,13 +6933,13 @@ function renderMissions_Library() {
   return `
     <div class="fp-section-header">
       <div>
-        <h1>Bibliothèque de missions</h1>
+        <h1>${fpT('Bibliothèque de missions')}</h1>
         <div class="fp-section-sub">${Object.values(MISSION_LIBRARY).flat().length}+ templates • Cliquez pour ajouter à vos missions</div>
       </div>
       <div class="fp-section-actions">
         <div class="fp-view-toggle" id="mission-view-toggle">
           <button class="fp-view-toggle-btn" data-view="list">← Mes missions</button>
-          <button class="fp-view-toggle-btn active" data-view="library">Bibliothèque</button>
+          <button class="fp-view-toggle-btn active" data-view="library">${fpT('Bibliothèque')}</button>
         </div>
       </div>
     </div>
@@ -6948,7 +6948,7 @@ function renderMissions_Library() {
       ['Tout ajouter (recommandés)'])}
 
     <div class="fp-lib-section-header">
-      <span class="fp-lib-section-title">Recommandés pour vous</span>
+      <span class="fp-lib-section-title">${fpT('Recommandés pour vous')}</span>
       <span class="fp-lib-section-count">${suggested.length} missions</span>
     </div>
     <div class="fp-lib-grid">
@@ -6980,14 +6980,14 @@ function renderLibCard(t) {
         <button class="fp-lib-add-btn" disabled style="background:rgba(34,197,94,0.15);color:#22c55e;border-color:rgba(34,197,94,0.3);cursor:default">✓</button>
         <div class="fp-lib-card-title" style="text-decoration:line-through;opacity:0.7">${escHtml(t.title)}</div>
         <div class="fp-lib-card-meta">
-          <span style="font-size:11px;color:#22c55e;font-weight:600">Déjà ajoutée</span>
+          <span style="font-size:11px;color:#22c55e;font-weight:600">${fpT('Déjà ajoutée')}</span>
         </div>
       </div>
     `;
   }
   return `
     <div class="fp-lib-card lib-add-mission" data-lib-title="${escHtml(t.title)}" data-lib-cat="${escHtml(t.category)}" data-lib-impact="${escHtml(t.impact)}" data-lib-steps="${escHtml(JSON.stringify(t.steps||[]))}">
-      <button class="fp-lib-add-btn" title="Ajouter">
+      <button class="fp-lib-add-btn" title="${fpT('Ajouter')}">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </button>
       <div class="fp-lib-card-title">${escHtml(t.title)}</div>
@@ -7123,7 +7123,7 @@ function renderMissionCalendar(missions) {
       const pillLabel = safeRange ? `${safeRange} ${escHtml(ce.title)}` : escHtml(ce.title);
       const tipTitle = safeRange ? `${safeRange} — ${escHtml(ce.title)}` : escHtml(ce.title);
       const notesDot = ce.notes ? '<span class="fp-cal-rdv-notes-dot" title="Notes disponibles" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;opacity:0.6;margin-left:4px;vertical-align:middle;flex-shrink:0"></span>' : '';
-      return `<div class="fp-apple-cal-event fp-cal-rdv" data-cal-event-id="${ce.id}" draggable="true" title="${tipTitle}"><span class="fp-cal-rdv-title">${pillLabel}</span>${notesDot}<button class="fp-cal-event-del" data-cal-event-id="${ce.id}" title="Supprimer ce RDV">×</button></div>`;
+      return `<div class="fp-apple-cal-event fp-cal-rdv" data-cal-event-id="${ce.id}" draggable="true" title="${tipTitle}"><span class="fp-cal-rdv-title">${pillLabel}</span>${notesDot}<button class="fp-cal-event-del" data-cal-event-id="${ce.id}" title="${fpT('Supprimer ce RDV')}">×</button></div>`;
     }).join('');
     cells += `<div class="fp-apple-cal-cell${isToday?' today':''}${isWeekend?' weekend':''}${isSelected?' fp-cal-selected':''} fp-cal-droptarget" data-date="${dateStr}">
       <div class="fp-apple-cal-num">${d}</div>
@@ -7132,7 +7132,7 @@ function renderMissionCalendar(missions) {
         ${calEvEls}
         ${extra > 0 && !isFiltering ? `<div class="fp-apple-cal-event-more">+${extra} autres</div>` : ''}
       </div>
-      <button class="fp-cal-add-btn" data-date="${dateStr}" title="Ajouter un RDV">+</button>
+      <button class="fp-cal-add-btn" data-date="${dateStr}" title="${fpT('Ajouter un RDV')}">+</button>
     </div>`;
   }
   // Next month leading days
@@ -7155,18 +7155,18 @@ function renderMissionCalendar(missions) {
             <div style="font-size:11px;color:var(--fp-text-muted)">${monthMissions.length} mission${monthMissions.length!==1?'s':''} · ${monthCalEvents.length} RDV</div>
           </div>
           <div class="fp-apple-cal-nav">
-            <button class="fp-apple-cal-nav-btn" id="cal-prev" title="Mois précédent"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <button class="fp-apple-cal-nav-btn" id="cal-prev" title="${fpT('Mois précédent')}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
             <button class="fp-apple-cal-nav-btn" id="cal-today" title="Aujourd\'hui">Auj.</button>
-            <button class="fp-apple-cal-nav-btn" id="cal-next" title="Mois suivant"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
+            <button class="fp-apple-cal-nav-btn" id="cal-next" title="${fpT('Mois suivant')}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
           </div>
         </div>
         <div class="fp-cal-search-bar" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--fp-border);background:var(--fp-surface)">
           <div style="position:relative;flex:1">
             <svg style="position:absolute;left:8px;top:50%;transform:translateY(-50%);opacity:.45;pointer-events:none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input id="cal-search-input" class="fp-input" style="padding-left:28px;height:30px;font-size:12px" placeholder="Rechercher un RDV…" value="${escHtml(STATE.calendarSearch)}" autocomplete="off"/>
+            <input id="cal-search-input" class="fp-input" style="padding-left:28px;height:30px;font-size:12px" placeholder="${fpT('Rechercher un RDV…')}" value="${escHtml(STATE.calendarSearch)}" autocomplete="off"/>
           </div>
           <select id="cal-type-filter" class="fp-select" style="height:30px;font-size:12px;min-width:140px;padding:0 8px">
-            <option value="">Tous les types</option>
+            <option value="">${fpT('Tous les types')}</option>
             ${CAL_RDV_TYPES.map(t=>`<option value="${escHtml(t)}"${STATE.calendarTypeFilter===t?' selected':''}>${escHtml(t)}</option>`).join('')}
           </select>
           ${(STATE.calendarSearch || STATE.calendarTypeFilter) ? `<button id="cal-search-clear" class="fp-btn fp-btn-ghost fp-btn-sm" style="height:30px;font-size:12px;white-space:nowrap" title="Effacer le filtre">✕ Effacer</button>` : ''}
@@ -7176,9 +7176,9 @@ function renderMissionCalendar(missions) {
         </div>
         <div class="fp-apple-cal-grid">${cells}</div>
         <div class="fp-apple-cal-footer">
-          <div class="fp-apple-cal-legend"><div class="fp-apple-cal-dot" style="background:#2563EB"></div> À faire</div>
+          <div class="fp-apple-cal-legend"><div class="fp-apple-cal-dot" style="background:#2563EB"></div>${fpT('À faire')}</div>
           <div class="fp-apple-cal-legend"><div class="fp-apple-cal-dot" style="background:#f59e0b"></div> En cours</div>
-          <div class="fp-apple-cal-legend"><div class="fp-apple-cal-dot" style="background:#22c55e"></div> Terminé</div>
+          <div class="fp-apple-cal-legend"><div class="fp-apple-cal-dot" style="background:#22c55e"></div>${fpT('Terminé')}</div>
           <div class="fp-apple-cal-legend"><div class="fp-apple-cal-dot" style="background:#8b5cf6"></div> RDV</div>
           <div style="margin-left:auto">${missions.length} missions · ${(STATE.calendarEvents||[]).length} RDV</div>
         </div>
@@ -7220,7 +7220,7 @@ function renderDailyAgenda(dateStr, missions) {
         ${siteTag}
         ${notesBlock}
       </div>
-      <button class="fp-cal-event-del" data-cal-event-id="${ce.id}" title="Supprimer" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--fp-text-muted);opacity:0.5;font-size:15px;padding:0 2px;line-height:1;align-self:flex-start">×</button>
+      <button class="fp-cal-event-del" data-cal-event-id="${ce.id}" title="${fpT('Supprimer')}" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--fp-text-muted);opacity:0.5;font-size:15px;padding:0 2px;line-height:1;align-self:flex-start">×</button>
     </div>`;
   }).join('');
   const missionItems = dayMissions.map(m => {
@@ -7240,8 +7240,8 @@ function renderDailyAgenda(dateStr, missions) {
   const hasItems = dayCes.length > 0 || dayMissions.length > 0;
   const emptyState = !hasItems ? `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;color:var(--fp-text-muted);min-height:180px">
     <div style="font-size:32px;margin-bottom:10px;opacity:.4">📭</div>
-    <div style="font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:4px">Aucun événement</div>
-    <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:16px;line-height:1.5">Aucun RDV ni mission<br>planifiée pour cette journée.</div>
+    <div style="font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:4px">${fpT('Aucun événement')}</div>
+    <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:16px;line-height:1.5">Aucun RDV ni mission<br>${fpT('planifiée pour cette journée.')}</div>
     <button class="fp-cal-agenda-add-rdv fp-btn fp-btn-primary fp-btn-sm" data-date="${escHtml(dateStr)}" style="font-size:12px">+ Nouveau RDV</button>
   </div>` : '';
   const sectionRdv = dayCes.length > 0 ? `<div>
@@ -7259,7 +7259,7 @@ function renderDailyAgenda(dateStr, missions) {
         <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${dayCes.length} RDV · ${dayMissions.length} mission${dayMissions.length !== 1 ? 's' : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
-        <button class="fp-cal-agenda-add-rdv fp-btn fp-btn-primary fp-btn-sm" data-date="${escHtml(dateStr)}" style="font-size:11px;height:26px;padding:0 8px" title="Ajouter un RDV">+ RDV</button>
+        <button class="fp-cal-agenda-add-rdv fp-btn fp-btn-primary fp-btn-sm" data-date="${escHtml(dateStr)}" style="font-size:11px;height:26px;padding:0 8px" title="${fpT('Ajouter un RDV')}">+ RDV</button>
         <button id="cal-agenda-close" class="fp-apple-cal-nav-btn" title="Fermer l\'agenda" style="font-size:16px;line-height:1;padding:2px 6px">×</button>
       </div>
     </div>
@@ -7276,7 +7276,7 @@ function renderNewCalEventPanel(dateStr) {
   return `
     <div class="fp-form-group">
       <label class="fp-form-label">Titre du RDV</label>
-      <input class="fp-input" id="ce-title" placeholder="Réunion mensuelle client…" autofocus/>
+      <input class="fp-input" id="ce-title" placeholder="${fpT('Réunion mensuelle client…')}" autofocus/>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">Site / Client</label>
@@ -7296,12 +7296,12 @@ function renderNewCalEventPanel(dateStr) {
       <input class="fp-input" id="ce-date" type="date" value="${escHtml(dateStr)}"/>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Heure de début</label>
+      <label class="fp-form-label">${fpT('Heure de début')}</label>
       <input class="fp-input" id="ce-time" type="time" value="09:00"/>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label" style="display:flex;align-items:center;justify-content:space-between">
-        <span>Durée</span>
+        <span>${fpT('Durée')}</span>
         <span id="ce-end-time-display" style="font-weight:500;color:var(--fp-accent);font-size:11px">09:00 – 10:00</span>
       </label>
       <select class="fp-select" style="width:100%" id="ce-duration">
@@ -7314,7 +7314,7 @@ function renderNewCalEventPanel(dateStr) {
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">Notes</label>
-      <textarea class="fp-input" id="ce-notes" rows="3" placeholder="Ordre du jour, participants, points à aborder…" style="resize:vertical;min-height:72px;font-family:inherit"></textarea>
+      <textarea class="fp-input" id="ce-notes" rows="3" placeholder="${fpT('Ordre du jour, participants, points à aborder…')}" style="resize:vertical;min-height:72px;font-family:inherit"></textarea>
     </div>
     ${btn('Créer le RDV','fp-btn fp-btn-primary','plus','id="ce-create"')}
   `;
@@ -7385,12 +7385,12 @@ function renderEditCalEventPanel(ev) {
       <input class="fp-input" id="ce-date" type="date" value="${escHtml(ev.date||'')}"/>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Heure de début</label>
+      <label class="fp-form-label">${fpT('Heure de début')}</label>
       <input class="fp-input" id="ce-time" type="time" value="${escHtml(ev.startTime||'09:00')}"/>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label" style="display:flex;align-items:center;justify-content:space-between">
-        <span>Durée</span>
+        <span>${fpT('Durée')}</span>
         <span id="ce-end-time-display" style="font-weight:500;color:var(--fp-accent);font-size:11px">${formatTimeRange(ev.startTime||'09:00', ev.duration||60)}</span>
       </label>
       <select class="fp-select" style="width:100%" id="ce-duration">
@@ -7399,7 +7399,7 @@ function renderEditCalEventPanel(ev) {
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">Notes</label>
-      <textarea class="fp-input" id="ce-notes" rows="3" placeholder="Ordre du jour, participants, points à aborder…" style="resize:vertical;min-height:72px;font-family:inherit">${escHtml(ev.notes||'')}</textarea>
+      <textarea class="fp-input" id="ce-notes" rows="3" placeholder="${fpT('Ordre du jour, participants, points à aborder…')}" style="resize:vertical;min-height:72px;font-family:inherit">${escHtml(ev.notes||'')}</textarea>
     </div>
     <div style="display:flex;gap:8px;margin-top:4px">
       ${btn('Enregistrer','fp-btn fp-btn-primary fp-btn-sm','check','id="ce-save"')}
@@ -7542,7 +7542,7 @@ function renderReports() {
               ? "Votre business affiche une trajectoire positive sur 4 mois : score SEO +12 pts, santé business +14 pts. <strong>Point critique</strong> : la conversion reste votre maillon faible. Action recommandée : corriger le formulaire mobile en priorité."
               : "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.",
             ['Rapport complet PDF', 'Plan actions prioritaires', 'Partager au client'])
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📈</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Rapports Executive — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Synthèses business IA, recommandations stratégiques et analyse de performance executive.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📈</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Rapports Executive — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Synthèses business IA, recommandations stratégiques et analyse de performance executive.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -7681,7 +7681,7 @@ function renderReports() {
               <th style="text-align:center">Prev.</th>
               <th style="text-align:center">Volume</th>
               <th>Difficulte</th>
-              <th style="text-align:center">Tendance</th>
+              <th style="text-align:center">${fpT('Tendance')}</th>
               <th style="text-align:center">Opportunite</th>
             </tr></thead>
             <tbody>
@@ -7743,7 +7743,7 @@ function renderReports() {
         monSLA.length === 0
           ? "Aucun monitor configuré. Ajoutez vos sites dans la section Monitors pour suivre leur disponibilité et recevoir des alertes en temps réel."
           : _downMon.length === 0
-            ? `${fpT('Stabilité globale')} <strong>${fpT('excellente')}</strong> ${fpT('ce mois : uptime moyen')} <strong>${_avgUp}%</strong>${fpT('. Tous les sites respectent leur SLA. Latence moyenne :')} <strong>${_avgLat}ms</strong>.`
+            ? `${fpT('Stabilité globale')} <strong>excellente</strong> ${fpT('ce mois : uptime moyen')} <strong>${_avgUp}%</strong>${fpT('. Tous les sites respectent leur SLA. Latence moyenne :')} <strong>${_avgLat}ms</strong>.`
             : `<strong>${_downMon.length} ${fpT(_downMon.length > 1 ? 'monitors en alerte' : 'monitor en alerte')}</strong> ${fpT('· Uptime moyen')} <strong>${_avgUp}%</strong>. ${_critDown > 0 ? _critDown + ' ' + fpT('site(s) DOWN — action immédiate requise.') : fpT('Dégradation de performance détectée.')}`,
         [fpT('Rapport SLA complet'), fpT('Configurer alertes'), fpT('Generer rapport client')]
       )}
@@ -7765,11 +7765,11 @@ function renderReports() {
           <table class="fp-data-table">
             <thead><tr>
               <th>Site</th>
-              <th style="text-align:center">Uptime réel</th>
+              <th style="text-align:center">${fpT('Uptime réel')}</th>
               <th style="text-align:center">SLA cible</th>
               <th style="text-align:center">Latence moy.</th>
               <th style="text-align:center">Incidents</th>
-              <th style="text-align:center">Statut SLA</th>
+              <th style="text-align:center">${fpT('Statut SLA')}</th>
             </tr></thead>
             <tbody>
               ${monSLA.map(m => `<tr>
@@ -7832,7 +7832,7 @@ function renderReports() {
     ] : []);
     return `
       ${aiBlock(PREVIEW_MODE
-        ? "Visibilité locale en hausse sur 3 des 4 zones. Plusieurs zones progressent fortement. Alerte : une zone recule face à la concurrence renforcée. <strong>Avis sans réponse</strong> peuvent menacer votre note moyenne."
+        ? "Visibilité locale en hausse sur 3 des 4 zones. Plusieurs zones progressent fortement. Alerte : une zone recule face à la concurrence renforcée. <strong>${fpT('Avis sans réponse')}</strong> peuvent menacer votre note moyenne."
         : "Connectez Google Business Profile pour obtenir votre rapport de visibilité locale personnalisé.",
         ['Rapport local complet', 'Plan zones cibles', 'Répondre aux avis'])}
 
@@ -7853,12 +7853,12 @@ function renderReports() {
           <table class="fp-data-table">
             <thead><tr>
               <th>Zone</th>
-              <th style="text-align:center">Visibilité</th>
+              <th style="text-align:center">${fpT('Visibilité')}</th>
               <th style="text-align:center">Prev.</th>
-              <th style="text-align:center">Mots-clés</th>
+              <th style="text-align:center">${fpT('Mots-clés')}</th>
               <th style="text-align:center">Note GBP</th>
-              <th style="text-align:center">Compétition</th>
-              <th style="text-align:center">Tendance</th>
+              <th style="text-align:center">${fpT('Compétition')}</th>
+              <th style="text-align:center">${fpT('Tendance')}</th>
             </tr></thead>
             <tbody>
               ${zones.map(z => {
@@ -8055,7 +8055,7 @@ function renderReports() {
             ['Générer rapport groupe', 'Config white-label', 'Ajouter un client'])
         : `<div style="background:linear-gradient(135deg,rgba(34,197,94,0.06),rgba(37,99,235,0.04));border:1px solid rgba(34,197,94,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🎨</div>
-            <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Configuration White-Label — Inclus dans votre plan</div><div style="font-size:12px;color:var(--fp-text-muted)">Logo, couleurs, nom agence, domaine portail — tout est gratuit. L'export PDF co-marqué est disponible en supplément Ultra.</div></div>
+            <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${fpT('Configuration White-Label — Inclus dans votre plan')}</div><div style="font-size:12px;color:var(--fp-text-muted)">Logo, couleurs, nom agence, domaine portail — tout est gratuit. L'export PDF co-marqué est disponible en supplément Ultra.</div></div>
             ${badge('Inclus', '#22c55e')}
           </div>`
       }
@@ -8093,7 +8093,7 @@ function renderReports() {
                 <span style="font-size:11px;color:var(--fp-text-faint)">${c.reports} rapports</span>
                 <div style="display:flex;gap:6px;margin-left:auto">
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()">Generer</button>
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/reports/send-invoice',{invoiceId:this.closest('tr')?.[Symbol.iterator]?.[0]||''}).then(r=>showToast('success', fpT('Facture envoyée par email'))).catch(()=>showToast('info', fpT('Fonctionnalité disponible dans votre espace client')))">Envoyer</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/reports/send-invoice',{invoiceId:this.closest('tr')?.[Symbol.iterator]?.[0]||''}).then(r=>showToast('success', fpT('Facture envoyée par email'))).catch(()=>showToast('info', fpT('Fonctionnalité disponible dans votre espace client')))">${fpT('Envoyer')}</button>
                 </div>
               </div>
             </div>`;
@@ -8118,7 +8118,7 @@ function renderReports() {
                 ? `<div style="display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;border-radius:5px;background:${f.val};flex-shrink:0"></div><span style="font-size:12px;font-weight:600;color:var(--fp-text-soft)">${f.val}</span></div>`
                 : `<div style="font-size:12px;color:var(--fp-text-soft);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(f.val)}</div>`
               }
-              ${!f.locked ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%;margin-top:8px" onclick="navigate('settings');setTimeout(function(){navigateSub('workspace');},60)">Modifier</button>` : ''}
+              ${!f.locked ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%;margin-top:8px" onclick="navigate('settings');setTimeout(function(){navigateSub('workspace');},60)">${fpT('Modifier')}</button>` : ''}
             </div>
           `).join('')}
         </div>
@@ -8154,7 +8154,7 @@ function renderReports() {
         ? aiBlock((()=>{
             const critCount = aiInsights.filter(i => i.pri === 'critical').length;
             const avgScore = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
-            if (PREVIEW_MODE) return "Rapport IA genere automatiquement — <strong>" + CUR_MONTH + "</strong>. 2 alertes critiques actives. Potentiel de revenue non capture : <strong>-3 800€/mois</strong>. Score de sante business : 72/100 (+14 pts en 4 mois). Trajectoire : <strong>positive avec 2 risques a traiter en urgence</strong>.";
+            if (PREVIEW_MODE) return "Rapport IA genere automatiquement — <strong>" + CUR_MONTH + "</strong>. 2 alertes critiques actives. Potentiel de revenue non capture : <strong>-3 800€/mois</strong>. Score de sante business : 72/100 (+14 pts en 4 mois). Trajectoire : <strong>${fpT('positive avec 2 risques a traiter en urgence')}</strong>.";
             return "Rapport IA — <strong>" + CUR_MONTH + "</strong>. " + (critCount > 0 ? "<strong>" + critCount + " alerte" + (critCount>1?"s":"") + " critique" + (critCount>1?"s":"") + " active" + (critCount>1?"s":"") + "</strong>." : "Aucune alerte critique active.") + (avgScore !== null ? " Score de santé business : <strong>" + avgScore + "/100</strong>." : "") + " Connectez vos sources pour des prévisions de revenus personnalisées.";
           })(),
             ['Rapport narratif complet', 'Exporter en PDF', 'Programmer envoi auto'])
@@ -8265,7 +8265,7 @@ function renderReports() {
           ${fpT('Rapports récents')}
         </div>
         <div style="display:flex;gap:6px">
-          ${allReports.length > 0 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="exportReportsCsv()" title="Exporter CSV">${svgIcon('download')}</button>` : ''}
+          ${allReports.length > 0 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="exportReportsCsv()" title="${fpT('Exporter CSV')}">${svgIcon('download')}</button>` : ''}
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openFloatPanel(fpT('Nouveau rapport'),renderNewReportPanel());setTimeout(()=>setupNewReportPanel(),50)">+ ${fpT('Nouveau')}</button>
         </div>
       </div>
@@ -8286,8 +8286,8 @@ function renderReports() {
               </div>
               <div style="display:flex;gap:4px;flex-shrink:0">
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="PDF" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="downloadReportPdf(this.dataset.rid,this.dataset.rname,this)">↓ PDF</button>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="Partager" data-rid="${escHtml(r.id)}" onclick="(async function(b){try{var res=await apiAction('POST','/api/reports/'+b.dataset.rid+'/share',{});if(res&&res.token){var u=window.location.origin+'/r/'+res.token;try{await navigator.clipboard.writeText(u);}catch(_){}showToast('success',fpT('Lien copié !'));}else showToast('info',fpT('Lien généré'));}catch(e){showToast('error',fpT('Erreur partage'));}})(this)">🔗</button>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger,#ef4444)" title="Supprimer" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="(async function(b){if(!confirm(fpT('Supprimer ce rapport ?')))return;try{await apiAction('DELETE','/api/reports/'+b.dataset.rid);STATE.reports=(STATE.reports||[]).filter(x=>x.id!==b.dataset.rid);render();showToast('success',fpT('Rapport supprimé'));}catch(e){showToast('error',fpT('Erreur'));}})(this)">✕</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="${fpT('Partager')}" data-rid="${escHtml(r.id)}" onclick="(async function(b){try{var res=await apiAction('POST','/api/reports/'+b.dataset.rid+'/share',{});if(res&&res.token){var u=window.location.origin+'/r/'+res.token;try{await navigator.clipboard.writeText(u);}catch(_){}showToast('success',fpT('Lien copié !'));}else showToast('info',fpT('Lien généré'));}catch(e){showToast('error',fpT('Erreur partage'));}})(this)">🔗</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger,#ef4444)" title="${fpT('Supprimer')}" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="(async function(b){if(!confirm(fpT('Supprimer ce rapport ?')))return;try{await apiAction('DELETE','/api/reports/'+b.dataset.rid);STATE.reports=(STATE.reports||[]).filter(x=>x.id!==b.dataset.rid);render();showToast('success',fpT('Rapport supprimé'));}catch(e){showToast('error',fpT('Erreur'));}})(this)">✕</button>
               </div>
             </div>
           `).join('')}
@@ -8377,7 +8377,7 @@ function renderLocalSEO() {
         <h1 style="display:flex;align-items:center;gap:10px">
           Domination Locale
         </h1>
-        <div class="fp-section-sub">Plateforme de visibilité locale — Intelligence géographique en temps réel</div>
+        <div class="fp-section-sub">${fpT('Plateforme de visibilité locale — Intelligence géographique en temps réel')}</div>
       </div>
       <div class="fp-section-actions">
         ${btn('Rapport local', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', "onclick=\"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()\"" )}
@@ -8391,7 +8391,7 @@ function renderLocalSEO() {
       : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
           <div style="font-size:24px;flex-shrink:0">🤖</div>
           <div style="flex:1">
-            <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">Stratège IA Local — Plan Ultra requis</div>
+            <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${fpT('Stratège IA Local — Plan Ultra requis')}</div>
             <div style="font-size:12px;color:var(--fp-text-muted)">Accédez aux recommandations IA personnalisées, aux prévisions de croissance et à la détection automatique des opportunités locales non exploitées.</div>
           </div>
           <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
@@ -8411,7 +8411,7 @@ function renderLocalSEO() {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 18px;border-bottom:1px solid var(--fp-border);background:linear-gradient(90deg,rgba(37,99,235,0.06),transparent)">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:16px">🔍</span>
-          <span class="fp-card-title" style="margin-bottom:0">Intelligence de visibilité locale</span>
+          <span class="fp-card-title" style="margin-bottom:0">${fpT('Intelligence de visibilité locale')}</span>
           ${STATE.dfsStatus?.configured
             ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#22c55e">● API LIVE</span>`
             : `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b">● DONNÉES INDISPONIBLES</span>`}
@@ -8427,12 +8427,12 @@ function renderLocalSEO() {
           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Local Pack Rankings</div>
           <div id="dfs-local-rank-widget">
             <div style="text-align:center;padding:16px;color:#64748b;font-size:12px">
-              Cliquez <strong>Charger rankings</strong> pour voir vos positions locales Google en direct
+              Cliquez <strong>${fpT('Charger rankings')}</strong> pour voir vos positions locales Google en direct
             </div>
           </div>
         </div>
         <div style="padding:16px 18px">
-          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Quota & Fonctionnalités</div>
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">${fpT('Quota & Fonctionnalités')}</div>
           ${[
             {icon:'📈', label:'Keyword Strategist',  desc:'Suggestions + difficulty + intent'},
             {icon:'🥇', label:'SERP Intelligence',    desc:'Top 10 Google + AI Overviews'},
@@ -8447,7 +8447,7 @@ function renderLocalSEO() {
               <div style="font-size:10px;color:#64748b">${f.desc}</div>
             </div>
           </div>`).join('')}
-          ${!STATE.dfsStatus?.configured ? `<div style="margin-top:12px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-size:11px;color:#f59e0b">Les données de classement sont temporairement indisponibles.</div>` : ''}
+          ${!STATE.dfsStatus?.configured ? `<div style="margin-top:12px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-size:11px;color:#f59e0b">${fpT('Les données de classement sont temporairement indisponibles.')}</div>` : ''}
         </div>
       </div>
     </div>
@@ -8457,14 +8457,14 @@ function renderLocalSEO() {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 18px;border-bottom:1px solid var(--fp-border)">
         <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
           ${svgIcon('map').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="16"').replace('height="14"','height="16"')}
-          <span class="fp-card-title" style="margin-bottom:0">Carte de présence locale — Google Maps Live</span>
+          <span class="fp-card-title" style="margin-bottom:0">${fpT('Carte de présence locale — Google Maps Live')}</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0">
           <div style="display:flex;align-items:center;gap:5px">
             <div style="width:6px;height:6px;border-radius:50%;background:#22c55e;animation:fp-pulse-dot 2s infinite"></div>
             <span style="font-size:10px;color:#22c55e;font-weight:600">En direct</span>
           </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('zones')">Voir zones →</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('zones')">${fpT('Voir zones →')}</button>
         </div>
       </div>
       <div id="fp-gmap" style="width:100%;height:680px;background:linear-gradient(135deg,var(--fp-bg-page, #050810),var(--fp-bg-card, #0a1628));position:relative;overflow:hidden">
@@ -8507,17 +8507,17 @@ function renderLocalSEO() {
           <circle cx="140" cy="390" r="7" fill="#f59e0b" opacity="0.9"/>
           <circle cx="140" cy="390" r="7" fill="none" stroke="white" stroke-width="1.5"/>
           <rect x="55" y="368" width="140" height="18" rx="3" fill="rgba(245,158,11,0.85)"/>
-          <text x="125" y="381" text-anchor="middle" font-size="9" fill="white" font-family="Inter,sans-serif">Concurrent E · 65pts</text>
+          <text x="125" y="381" text-anchor="middle" font-size="9" fill="white" font-family="Inter,sans-serif">${fpT('Concurrent E · 65pts')}</text>
           <circle cx="620" cy="160" r="7" fill="#ef4444" opacity="0.85"/>
           <circle cx="620" cy="160" r="7" fill="none" stroke="white" stroke-width="1.5"/>
           <rect x="534" y="138" width="152" height="18" rx="3" fill="rgba(239,68,68,0.85)"/>
           <text x="610" y="151" text-anchor="middle" font-size="9" fill="white" font-family="Inter,sans-serif">Concurrent B · 82pts &#9650;</text>
           <circle cx="190" cy="140" r="6" fill="#22c55e" opacity="0.85"/>
           <rect x="108" y="118" width="124" height="18" rx="3" fill="rgba(34,197,94,0.8)"/>
-          <text x="170" y="131" text-anchor="middle" font-size="9" fill="white" font-family="Inter,sans-serif">Concurrent C · 71pts</text>
+          <text x="170" y="131" text-anchor="middle" font-size="9" fill="white" font-family="Inter,sans-serif">${fpT('Concurrent C · 71pts')}</text>
           <circle cx="460" cy="440" r="6" fill="#f59e0b" opacity="0.8"/>
           <rect x="374" y="418" width="140" height="18" rx="3" fill="rgba(245,158,11,0.8)"/>
-          <text x="444" y="431" text-anchor="middle" font-size="9" fill="white" font-family="Inter,sans-serif">Concurrent D · 58pts</text>
+          <text x="444" y="431" text-anchor="middle" font-size="9" fill="white" font-family="Inter,sans-serif">${fpT('Concurrent D · 58pts')}</text>
           <rect x="0" y="0" width="800" height="30" fill="rgba(0,0,0,0.45)"/>
           <text x="14" y="20" font-size="10" fill="rgba(255,255,255,0.45)" font-family="Inter,sans-serif">&#128205; ${escHtml(STATE.me&&STATE.me.location&&STATE.me.location.city?STATE.me.location.city:'Votre ville')} · Carte de pr\u00e9sence locale · 5 concurrents · Rayon 2.5km</text>
           <circle cx="778" cy="15" r="5" fill="#22c55e" opacity="0.9"/>
@@ -8527,7 +8527,7 @@ function renderLocalSEO() {
         ${PREVIEW_MODE ? `
         <div style="position:absolute;bottom:14px;left:14px">
           <div style="background:${STATE.theme==='light'?'rgba(255,255,255,0.95)':'rgba(0,0,0,0.72)'};border:1px solid ${STATE.theme==='light'?'rgba(0,0,0,0.10)':'rgba(255,255,255,0.1)'};border-radius:10px;padding:10px 14px;backdrop-filter:blur(10px)">
-            <div style="font-size:10px;color:${STATE.theme==='light'?'#64748b':'rgba(255,255,255,0.4)'};margin-bottom:4px">Votre position locale</div>
+            <div style="font-size:10px;color:${STATE.theme==='light'?'#64748b':'rgba(255,255,255,0.4)'};margin-bottom:4px">${fpT('Votre position locale')}</div>
             <div style="font-size:18px;font-weight:800;color:#2563EB">#2 Paris Centre</div>
             <div style="font-size:11px;color:#22c55e">&#8593; +1 ce mois · Score 74/100</div>
           </div>
@@ -8543,9 +8543,9 @@ function renderLocalSEO() {
         </div>
       </div>
       <div style="padding:10px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;border-top:1px solid var(--fp-border)">
-        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#2563EB;border:2px solid white"></div>Votre établissement</div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#ef4444;border:2px solid white"></div>Concurrents — menace élevée</div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#f59e0b;border:2px solid white"></div>Concurrents — menace modérée</div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#2563EB;border:2px solid white"></div>${fpT('Votre établissement')}</div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#ef4444;border:2px solid white"></div>${fpT('Concurrents — menace élevée')}</div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#f59e0b;border:2px solid white"></div>${fpT('Concurrents — menace modérée')}</div>
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#22c55e;border:2px solid white"></div>Concurrents — faible</div>
         <div style="margin-left:auto;font-size:10px;color:var(--fp-text-faint)">${(STATE.competitors&&STATE.competitors.length>0?STATE.competitors.length:PREVIEW_MODE?5:0)} concurrents · Rayon 1,2km · ${STATE.me&&STATE.me.location&&STATE.me.location.city?escHtml(STATE.me.location.city):'Votre ville'}</div>
       </div>
@@ -8586,7 +8586,7 @@ function renderLocalSEO() {
 
         <!-- Live signals -->
         <div style="border-top:1px solid var(--fp-border);padding-top:12px">
-          <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Signaux récents</div>
+          <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">${fpT('Signaux récents')}</div>
           <div style="display:flex;flex-direction:column;gap:6px">
             ${(() => {
               const _orgCity = STATE.me&&STATE.me.location&&STATE.me.location.city ? STATE.me.location.city : null;
@@ -8610,12 +8610,12 @@ function renderLocalSEO() {
           </div>
         </div>
 
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:12px;font-size:11px" onclick="navigateSub('zones')">Explorer toutes les zones →</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:12px;font-size:11px" onclick="navigateSub('zones')">${fpT('Explorer toutes les zones →')}</button>
       </div>
 
       <!-- DOMINATION SCORE -->
       <div class="fp-card" style="text-align:center">
-        <div class="fp-card-title" style="justify-content:center;margin-bottom:16px">Score de domination territoriale</div>
+        <div class="fp-card-title" style="justify-content:center;margin-bottom:16px">${fpT('Score de domination territoriale')}</div>
         <div style="display:flex;justify-content:center;margin-bottom:16px">
           <svg width="140" height="140" viewBox="0 0 140 140">
             <circle cx="70" cy="70" r="52" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="12"/>
@@ -8628,7 +8628,7 @@ function renderLocalSEO() {
             <text x="70" y="80" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="var(--fp-text-muted)">${domScore!=null?'/100':'N/A'}</text>
           </svg>
         </div>
-        <div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:4px">Territoire maîtrisé</div>
+        <div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${fpT('Territoire maîtrisé')}</div>
         <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">${domScore != null ? `Vous dominez <strong style="color:var(--fp-accent)">${domScore}%</strong> des recherches locales cibles` : 'Connectez GBP pour mesurer votre domination locale'}</div>
         <div style="border-top:1px solid var(--fp-border);padding-top:14px;display:flex;flex-direction:column;gap:8px">
           ${(function(){
@@ -8644,7 +8644,7 @@ function renderLocalSEO() {
               { label: 'Note GBP',              val: _gbpRating, color: '#f59e0b' },
             ];
             const _anyVal = metrics.some(m => m.val != null);
-            if (!_anyVal && !isDemoMode()) return `<div style="padding:12px;text-align:center;color:var(--fp-text-faint);font-size:11px">Connectez GBP pour voir les métriques locales.</div>`;
+            if (!_anyVal && !isDemoMode()) return `<div style="padding:12px;text-align:center;color:var(--fp-text-faint);font-size:11px">${fpT('Connectez GBP pour voir les métriques locales.')}</div>`;
             return metrics.map(m => {
               const _hasV = m.val != null;
               return `<div style="display:flex;align-items:center;gap:8px">
@@ -8665,7 +8665,7 @@ function renderLocalSEO() {
           ${svgIcon('grid').replace('stroke="currentColor"','stroke="#8b5cf6"')}
           Grille de positionnement géographique
         </div>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('zones')">Voir toutes les zones →</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('zones')">${fpT('Voir toutes les zones →')}</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px">
         ${cities.map(c => {
@@ -8713,18 +8713,18 @@ function renderLocalSEO() {
           `).join('')}
         </div>
         <div style="display:flex;gap:12px;margin-top:10px;font-size:10px;color:var(--fp-text-faint)">
-          <span>▬ <span style="color:#22c55e">Prévu</span></span>
-          <span>▬ <span style="color:#2563EB">Actuel</span></span>
+          <span>▬ <span style="color:#22c55e">${fpT('Prévu')}</span></span>
+          <span>▬ <span style="color:#2563EB">${fpT('Actuel')}</span></span>
         </div>
         ${PREVIEW_MODE ? `<div style="margin-top:12px;padding:10px;background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.15);border-radius:8px;font-size:12px;color:#22c55e">
           📈 <strong>+62% de trafic local estimé</strong> en 4 mois si les 12 opportunités sont activées
         </div>` : ''}
         ` : isUltra ? `<div style="height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;opacity:0.5">
           <div style="font-size:28px">📈</div>
-          <div style="font-size:12px;color:var(--fp-text-muted)">Les prévisions s'afficheront quand suffisamment de données locales seront collectées</div>
+          <div style="font-size:12px;color:var(--fp-text-muted)">${fpT("Les prévisions s'afficheront quand suffisamment de données locales seront collectées")}</div>
         </div>` : `<div style="height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;opacity:0.5">
           <div style="font-size:28px">📈</div>
-          <div style="font-size:12px;color:var(--fp-text-muted)">Prévisions IA disponibles en Ultra</div>
+          <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Prévisions IA disponibles en Ultra')}</div>
         </div>`}
       </div>
 
@@ -8760,7 +8760,7 @@ function renderLocalSEO() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           Pages locales manquantes détectées
         </div>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('opportunities')">Voir toutes →</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('opportunities')">${fpT('Voir toutes →')}</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">
         ${missingPages.map(p => `
@@ -8768,7 +8768,7 @@ function renderLocalSEO() {
             <div style="width:8px;height:8px;border-radius:50%;background:#f59e0b;flex-shrink:0"></div>
             <div style="flex:1;font-size:12px;color:var(--fp-text-soft)"><strong>${p.city}</strong> — "${p.kw}"</div>
             <div style="font-size:11px;font-weight:700;color:#22c55e">+${p.vol} rech./mois</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" data-kw="${escHtml(p.kw||p.city||'Local')}" onclick="window._fpMQ('Créer page locale : '+this.dataset.kw,'Local SEO','high')">Créer</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" data-kw="${escHtml(p.kw||p.city||'Local')}" onclick="window._fpMQ('Créer page locale : '+this.dataset.kw,'Local SEO','high')">${fpT('Créer')}</button>
           </div>
         `).join('')}
       </div>
@@ -8805,7 +8805,7 @@ function renderTeam() {
   return `
     ${_teamErrBanner}
     <div class="fp-section-header">
-      <div><h1>Équipe & Collaboration</h1><div class="fp-section-sub">Gérez les membres, permissions, communication et tâches partagées</div></div>
+      <div><h1>${fpT('Équipe & Collaboration')}</h1><div class="fp-section-sub">${fpT('Gérez les membres, permissions, communication et tâches partagées')}</div></div>
       <div class="fp-section-actions">
         ${btn('Inviter un membre','fp-btn fp-btn-primary fp-btn-sm','plus','id="team-invite-btn"')}
         ${btn('Exporter activité','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="exportActivityCsv()"')}
@@ -8849,7 +8849,7 @@ function renderTeam() {
                 ${badge(t.role, roleColors[t.role]||'#94a3b8')}
                 <div style="width:7px;height:7px;border-radius:50%;background:${t.status==='active'?'#22c55e':'#94a3b8'};flex-shrink:0" title="${t.status==='active'?'En ligne':'Hors ligne'}"></div>
               </div>
-              ${t.role!=='owner'?`<button class="fp-hover-toolbar-btn" title="Retirer" data-remove-member="${t.id}" style="flex-shrink:0">${svgIcon('x')}</button>`:''}
+              ${t.role!=='owner'?`<button class="fp-hover-toolbar-btn" title="${fpT('Retirer')}" data-remove-member="${t.id}" style="flex-shrink:0">${svgIcon('x')}</button>`:''}
             </div>
           `).join('')}
           <div style="padding:10px 20px;border-top:1px solid var(--fp-border)">
@@ -8861,7 +8861,7 @@ function renderTeam() {
         <!-- TACHES RAPIDES -->
         <div class="fp-card fp-card-sm" style="flex:1">
           <div class="fp-flex-between" style="margin-bottom:12px">
-            <div class="fp-card-title" style="margin-bottom:0">Tâches partagées</div>
+            <div class="fp-card-title" style="margin-bottom:0">${fpT('Tâches partagées')}</div>
             <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('missions')" >+ Ajouter</button>
           </div>
           <div style="display:flex;flex-direction:column;gap:8px">
@@ -8899,7 +8899,7 @@ function renderTeam() {
               <select id="team-chat-channel" onchange="STATE.msgChannel=this.value;showToast('info','Canal : '+this.options[this.selectedIndex].text);render()" style="font-size:11px;padding:3px 8px;border-radius:8px;border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.08);color:#2563EB;cursor:pointer;font-weight:600">
                 ${(STATE.channels && STATE.channels.length > 0 ? STATE.channels : ['general','seo','rapports']).map(c => `<option value="${escHtml(c)}" ${(STATE.msgChannel||'general')===c?'selected':''}>#${escHtml(c==='general'?'général':c)}</option>`).join('')}
               </select>
-              <button onclick="openNewChannelPanel()" title="Créer ou gérer les canaux" style="font-size:11px;padding:3px 8px;border-radius:8px;border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.08);color:#2563EB;cursor:pointer;font-weight:600">+ Canal</button>
+              <button onclick="openNewChannelPanel()" title="${fpT('Créer ou gérer les canaux')}" style="font-size:11px;padding:3px 8px;border-radius:8px;border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.08);color:#2563EB;cursor:pointer;font-weight:600">+ Canal</button>
             </div>
           </div>
           <div id="team-chat-msgs" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;max-height:360px;overflow-y:auto">
@@ -8923,7 +8923,7 @@ function renderTeam() {
           </div>
           <div style="display:flex;gap:6px;border-top:1px solid var(--fp-border);padding-top:10px">
             <input type="file" id="team-chat-attach" style="display:none" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip" onchange="handleChatAttach(this)"/>
-            <label for="team-chat-attach" title="Joindre un fichier" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;width:32px;height:32px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="13"').replace('height="14"','height="13"')}</label>
+            <label for="team-chat-attach" title="${fpT('Joindre un fichier')}" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;width:32px;height:32px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="13"').replace('height="14"','height="13"')}</label>
             <input id="team-chat-input" class="fp-input" placeholder="Écrire un message… (@mention)" style="flex:1"/>
             <button id="team-chat-send" class="fp-btn fp-btn-primary fp-btn-sm">${svgIcon('send').replace('width="14"','width="14"')}</button>
           </div>
@@ -8936,7 +8936,7 @@ function renderTeam() {
             <table style="min-width:480px;border-collapse:collapse;font-size:11px">
               <thead>
                 <tr>
-                  <th style="text-align:left;color:var(--fp-text-faint);font-weight:600;padding:0 8px 8px 0;white-space:nowrap">Rôle</th>
+                  <th style="text-align:left;color:var(--fp-text-faint);font-weight:600;padding:0 8px 8px 0;white-space:nowrap">${fpT('Rôle')}</th>
                   ${permLabels.map(l=>`<th style="text-align:center;color:var(--fp-text-faint);font-weight:600;padding:0 6px 8px;font-size:9px;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap">${l}</th>`).join('')}
                 </tr>
               </thead>
@@ -8962,7 +8962,7 @@ function renderTeam() {
     <div class="fp-card">
       <div class="fp-flex-between" style="margin-bottom:14px">
         <div class="fp-card-title" style="margin-bottom:0">Activité récente de l\'équipe</div>
-        <button class="fp-link-btn" onclick="navigateSub('activity')">Voir tout →</button>
+        <button class="fp-link-btn" onclick="navigateSub('activity')">${fpT('Voir tout →')}</button>
       </div>
       <div class="fp-team-activity-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
         ${(STATE.activityEvents && STATE.activityEvents.length > 0)
@@ -8983,7 +8983,7 @@ function renderTeam() {
                 </div>
               </div>`;
             }).join('')
-          : `<div style="grid-column:1/-1;text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">Aucune activité d'équipe récente.</div>`
+          : `<div style="grid-column:1/-1;text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">${fpT("Aucune activité d'équipe récente.")}</div>`
         }
       </div>
     </div>
@@ -8993,15 +8993,15 @@ function renderTeam() {
     return `
       ${_sectionErrorBanner('team')}
       <div class="fp-section-header">
-        <div><h1>Équipe & Collaboration</h1><div class="fp-section-sub">Gérez les membres, permissions, communication et tâches partagées</div></div>
+        <div><h1>${fpT('Équipe & Collaboration')}</h1><div class="fp-section-sub">${fpT('Gérez les membres, permissions, communication et tâches partagées')}</div></div>
         <div class="fp-section-actions">
           <button class="fp-btn fp-btn-primary fp-btn-sm" id="team-invite-btn">${svgIcon('plus')} Inviter un membre</button>
         </div>
       </div>
       <div style="padding:32px 20px;text-align:center;color:var(--fp-text-muted);background:var(--fp-bg-card);border-radius:12px;border:1px solid var(--fp-border)">
         <div style="font-size:28px;margin-bottom:12px">👥</div>
-        <div style="font-weight:600;margin-bottom:8px;color:var(--fp-text)">Données d'équipe en chargement</div>
-        <div style="font-size:13px;margin-bottom:16px">Les données se chargent. Réessayez dans un instant.</div>
+        <div style="font-weight:600;margin-bottom:8px;color:var(--fp-text)">${fpT("Données d'équipe en chargement")}</div>
+        <div style="font-size:13px;margin-bottom:16px">${fpT('Les données se chargent. Réessayez dans un instant.')}</div>
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="loadData().catch(()=>{})">↺ Recharger</button>
       </div>
     `;
@@ -9148,7 +9148,7 @@ function renderBilling() {
     const _modal = document.createElement('div');
     _modal.id = 'fp-cancel-sub-modal';
     _modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
-    _modal.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">⚠️</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">Annuler l'abonnement</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.<br><br><strong style="color:var(--fp-text)">Toutes les fonctionnalités payantes seront désactivées après cette date.</strong></div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-sub-modal').remove()">Garder mon abonnement</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelSubscription()">Confirmer l'annulation</button></div></div>`;
+    _modal.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">⚠️</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">${fpT("Annuler l'abonnement")}</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.<br><br><strong style="color:var(--fp-text)">${fpT('Toutes les fonctionnalités payantes seront désactivées après cette date.')}</strong></div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-sub-modal').remove()">${fpT('Garder mon abonnement')}</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelSubscription()">${fpT("Confirmer l'annulation")}</button></div></div>`;
     document.body.appendChild(_modal);
   };
   window.fpConfirmCancelSubscription = async function() {
@@ -9185,7 +9185,7 @@ function renderBilling() {
     const _modal = document.createElement('div');
     _modal.id = 'fp-cancel-trial-modal';
     _modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
-    _modal.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">🎯</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">Terminer l'essai gratuit</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.<br><br>Tu peux te réabonner à tout moment.</div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-trial-modal').remove()">Continuer l'essai</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelTrial()">Terminer l'essai</button></div></div>`;
+    _modal.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">🎯</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">${fpT("Terminer l'essai gratuit")}</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.<br><br>${fpT('Tu peux te réabonner à tout moment.')}</div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-trial-modal').remove()">${fpT("Continuer l'essai")}</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelTrial()">${fpT("Terminer l'essai")}</button></div></div>`;
     document.body.appendChild(_modal);
   };
   window.fpConfirmCancelTrial = async function() {
@@ -9299,7 +9299,7 @@ function renderBilling() {
           const _planDark = document.documentElement.getAttribute('data-theme') !== 'light';
           const _planBg = isCurrent ? p.color + '0d' : (_planDark ? 'rgba(8,14,30,0.92)' : '#eef2ff');
           return `<div style="border-radius:16px;border:2px solid ${isCurrent ? p.color : 'var(--fp-border)'};background:${_planBg};padding:22px;position:relative;overflow:hidden;transition:border-color 0.2s;display:flex;flex-direction:column">
-            ${isCurrent ? `<div style="position:absolute;top:14px;right:14px;font-size:10px;font-weight:700;background:${p.color};color:#fff;padding:3px 10px;border-radius:20px">Plan actuel</div>` : ''}
+            ${isCurrent ? `<div style="position:absolute;top:14px;right:14px;font-size:10px;font-weight:700;background:${p.color};color:#fff;padding:3px 10px;border-radius:20px">${fpT('Plan actuel')}</div>` : ''}
             <div style="margin-bottom:16px">
               <div style="font-size:11px;font-weight:600;color:${p.color};margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">${escHtml(p.badge)}</div>
               <div style="font-size:22px;font-weight:900;color:var(--fp-text);margin-bottom:2px;font-family:var(--fp-font-head)">${escHtml(p.name)}</div>
@@ -9338,7 +9338,7 @@ function renderBilling() {
           <table style="width:100%;border-collapse:collapse">
             <thead>
               <tr style="background:var(--fp-bg-inset)">
-                <th style="text-align:left;padding:10px 14px;font-size:11px;font-weight:700;color:var(--fp-text-muted);border-bottom:1px solid var(--fp-border);white-space:nowrap;min-width:130px">Fonctionnalité</th>
+                <th style="text-align:left;padding:10px 14px;font-size:11px;font-weight:700;color:var(--fp-text-muted);border-bottom:1px solid var(--fp-border);white-space:nowrap;min-width:130px">${fpT('Fonctionnalité')}</th>
                 ${PLANS.map(p => `<th style="text-align:center;padding:10px 14px;font-size:12px;font-weight:800;color:${p.id==='ultra'?'#2563EB':p.color};border-bottom:1px solid var(--fp-border);white-space:nowrap;min-width:90px">${p.name}</th>`).join('')}
               </tr>
             </thead>
@@ -9413,17 +9413,17 @@ function renderBilling() {
         const _te = _trialDate && !isNaN(_trialDate.getTime()) ? _trialDate.toLocaleDateString(getLocale()) : null;
 
         // ── Danger zone footer (always visible) ─────────────────────────────
-        const _dangerZone = `<div style="border-top:1px solid var(--fp-border);margin-top:14px;padding-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div style="font-size:11px;color:var(--fp-text-muted)">Zone danger — action irréversible</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.25);color:#ef4444;font-size:11px" onclick="fpDeleteAccountModal()">🗑️ Supprimer mon compte</button></div>`;
+        const _dangerZone = `<div style="border-top:1px solid var(--fp-border);margin-top:14px;padding-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Zone danger — action irréversible')}</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.25);color:#ef4444;font-size:11px" onclick="fpDeleteAccountModal()">🗑️ Supprimer mon compte</button></div>`;
 
         // ── Suspendu (past_due / unpaid) ─────────────────────────────────────
         if (_ss === 'past_due' || _ss === 'unpaid') {
-          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #ef4444"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">🔴 Suspendu · Paiement en échec</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="background:#ef4444;border-color:#ef4444;flex-shrink:0" onclick="fpOpenStripePortal ? fpOpenStripePortal() : navigateSub('plans')">Mettre à jour le paiement</button></div><div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444">Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.</div>${_dangerZone}</div>`;
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #ef4444"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">🔴 Suspendu · Paiement en échec</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="background:#ef4444;border-color:#ef4444;flex-shrink:0" onclick="fpOpenStripePortal ? fpOpenStripePortal() : navigateSub('plans')">${fpT('Mettre à jour le paiement')}</button></div><div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444">Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.</div>${_dangerZone}</div>`;
         }
 
         // ── Expiré (canceled / none — ancien abonné) ─────────────────────────
         if (_ss === 'canceled' || (_ss === 'none' && _bs.hadSubscription)) {
           const _resubPlan = (_bs.plan || (STATE.me && STATE.me.plan) || 'standard').toLowerCase();
-          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">⚫ Expiré · Fonctionnalités Premium désactivées</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpGoToPricing('${_resubPlan}')">Reprendre un abonnement</button></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.</div>${_dangerZone}</div>`;
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">⚫ Expiré · Fonctionnalités Premium désactivées</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpGoToPricing('${_resubPlan}')">${fpT('Reprendre un abonnement')}</button></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.</div>${_dangerZone}</div>`;
         }
 
         // ── États actifs ─────────────────────────────────────────────────────
@@ -9431,10 +9431,10 @@ function renderBilling() {
         const _bc  = _cap ? '#ef4444' : _ss === 'trialing' ? '#f59e0b' : '#22c55e';
         const _st  = _cap ? `⚠️ Annulation programmée · Accès jusqu'au ${_ca || '—'}` : _ss === 'trialing' ? (_te ? `🎯 Essai gratuit · Expire le ${_te}` : `🎯 Essai gratuit en cours · Date de fin en cours de synchronisation`) : `✅ Abonnement actif · Résiliation à tout moment`;
         const _btn = _cap
-          ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="background:#22c55e;border-color:#22c55e;flex-shrink:0" onclick="fpReactivateSubscription()">Réactiver l'abonnement</button>`
+          ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="background:#22c55e;border-color:#22c55e;flex-shrink:0" onclick="fpReactivateSubscription()">${fpT("Réactiver l'abonnement")}</button>`
           : _ss === 'trialing'
-            ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelTrialModal()">Terminer l'essai</button>`
-            : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelSubscriptionModal()">Annuler l'abonnement</button>`;
+            ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelTrialModal()">${fpT("Terminer l'essai")}</button>`
+            : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelSubscriptionModal()">${fpT("Annuler l'abonnement")}</button>`;
         const _warn = _cap ? `<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444;margin-top:10px">Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur "Réactiver" pour rétablir le renouvellement automatique.</div>` : '';
         return `<div class="fp-card" style="margin-top:16px;border-left:4px solid ${_bc}"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:${_warn ? '12px' : '0'}"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${_st}</div></div><div style="flex-shrink:0">${_btn}</div></div>${_warn}${_dangerZone}</div>`;
       })()}
@@ -9724,11 +9724,11 @@ function renderBilling() {
               <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${accentColor}18;color:${accentColor}">${escHtml(a.tag)}</span>
               ${inclBadge ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(34,197,94,0.12);color:#22c55e">✓ Inclus — ${inclBadge}</span>` : ''}
             </div>
-            <button onclick="closeFloatPanel&&closeFloatPanel()" style="width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--fp-text-muted);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0" title="Fermer">×</button>
+            <button onclick="closeFloatPanel&&closeFloatPanel()" style="width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--fp-text-muted);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0" title="${fpT('Fermer')}">×</button>
           </div>
           <p style="font-size:13px;color:var(--fp-text-soft);line-height:1.6;margin:0">${escHtml(a.desc)}</p>
           <div style="background:${accentColor}0d;border:1px solid ${accentColor}33;border-radius:10px;padding:12px 14px">
-            <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">ROI estimé</div>
+            <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">${fpT('ROI estimé')}</div>
             <div style="font-size:15px;font-weight:800;color:${accentColor}">✦ ${escHtml(a.roi)}</div>
           </div>
           <div>
@@ -9743,7 +9743,7 @@ function renderBilling() {
             ${isInc
               ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">✓ Déjà inclus</button>`
               : a.active
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">Désactiver</button>`
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`
                 : a.wizardFn
                   ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 Lancer →</button>`
                   : `${_FP_QTY_ADDON_KEYS[a.key] ? `
@@ -9791,7 +9791,7 @@ function renderBilling() {
       ${(()=>{
         const _af = STATE.addonsFilter || 'Tous';
         const _visibleAddons = _af === 'Tous' ? allAddons : allAddons.filter(a => a.cat === _af);
-        if (!_visibleAddons.length) return `<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">Aucun add-on dans cette catégorie.</div>`;
+        if (!_visibleAddons.length) return `<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">${fpT('Aucun add-on dans cette catégorie.')}</div>`;
         return `<div class="fp-addon-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
         ${_visibleAddons.map((a, _i) => {
           const _rc = ['#f59e0b','#2563EB','#22c55e','#ef4444'][Math.floor(_i / 4) % 4];
@@ -9821,10 +9821,10 @@ function renderBilling() {
               ${inc
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">✓ Inclus</button>`
                 : a.active
-                  ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">Désactiver</button>`
+                  ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`
                   : a.wizardFn
                     ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 Lancer →</button>`
-                    : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">Activer →</button>`
+                    : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">${fpT('Activer →')}</button>`
               }
             </div>
           </div>`;
@@ -9898,8 +9898,8 @@ function renderBilling() {
               </div>
               ${pm.default ? badge('Par défaut', '#22c55e') : ''}
               <div class="fp-payment-btns" style="display:flex;gap:6px;flex-shrink:0">
-                ${!pm.default ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info', fpT('Gérez vos cartes via le portail Stripe'))}).catch(()=>showToast('info', fpT('Portail Stripe')))">Définir par défaut</button>` : ''}
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info', fpT('Gérez vos cartes via le portail Stripe'))}).catch(()=>showToast('info', fpT('Portail Stripe')))">Supprimer</button>
+                ${!pm.default ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info', fpT('Gérez vos cartes via le portail Stripe'))}).catch(()=>showToast('info', fpT('Portail Stripe')))">${fpT('Définir par défaut')}</button>` : ''}
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info', fpT('Gérez vos cartes via le portail Stripe'))}).catch(()=>showToast('info', fpT('Portail Stripe')))">${fpT('Supprimer')}</button>
               </div>
             </div>
           `).join('')}
@@ -9910,17 +9910,17 @@ function renderBilling() {
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">🧾 Historique des factures</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="exportInvoicesCsv()">Exporter tout</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="exportInvoicesCsv()">${fpT('Exporter tout')}</button>
         </div>
         <div style="overflow-x:auto">
           <table class="fp-data-table">
             <thead><tr>
-              <th>Numéro</th>
+              <th>${fpT('Numéro')}</th>
               <th style="text-align:center">Date</th>
               <th style="text-align:center">Plan</th>
               <th style="text-align:center">Modules</th>
               <th style="text-align:center">Total HT</th>
-              <th style="text-align:center">Statut</th>
+              <th style="text-align:center">${fpT('Statut')}</th>
               <th style="text-align:center;vertical-align:middle">Actions</th>
             </tr></thead>
             <tbody>
@@ -9961,7 +9961,7 @@ function renderBilling() {
           })(),
           ['Ajouter des crédits', 'Voir prévisions 30j', 'Rapport usage complet']
           )
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Usage Analytics avancé — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions, alertes de seuil et analytics d\'utilisation détaillés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('Usage Analytics avancé — Pro requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions, alertes de seuil et analytics d\'utilisation détaillés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -9974,7 +9974,7 @@ function renderBilling() {
       <!-- USAGE GRID -->
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:20px">
         ${usages.map(u => {
-          if (u.na) return `<div class="fp-card" style="border-left:3px solid var(--fp-border);padding:12px 14px;opacity:0.65"><div style="display:flex;align-items:center;gap:7px;margin-bottom:8px"><div style="width:24px;height:24px;border-radius:7px;background:rgba(100,116,139,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgIcon(u.icon).replace('stroke="currentColor"','stroke="#64748b"').replace('width="14"','width="12"').replace('height="14"','height="12"')}</div><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(u.l)}</span></div><div style="font-size:11px;color:var(--fp-text-faint)">Non instrumenté</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">—</div></div>`;
+          if (u.na) return `<div class="fp-card" style="border-left:3px solid var(--fp-border);padding:12px 14px;opacity:0.65"><div style="display:flex;align-items:center;gap:7px;margin-bottom:8px"><div style="width:24px;height:24px;border-radius:7px;background:rgba(100,116,139,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgIcon(u.icon).replace('stroke="currentColor"','stroke="#64748b"').replace('width="14"','width="12"').replace('height="14"','height="12"')}</div><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(u.l)}</span></div><div style="font-size:11px;color:var(--fp-text-faint)">${fpT('Non instrumenté')}</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">—</div></div>`;
           if (!u.max || u.max <= 0) return `<div class="fp-card" style="border-left:3px solid var(--fp-border);padding:12px 14px;opacity:0.65"><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(u.l)}</span><div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">—</div></div>`;
           const pct  = Math.round(u.v / u.max * 100);
           const fc   = u.forecast;
@@ -9999,7 +9999,7 @@ function renderBilling() {
               <div class="fp-progress-fill" style="width:${pct}%;background:${pc};transition:width 0.6s ease"></div>
             </div>
             <div style="display:flex;align-items:center;justify-content:space-between">
-              <div style="font-size:9px;color:var(--fp-text-faint)">Prévision 30j :</div>
+              <div style="font-size:9px;color:var(--fp-text-faint)">${fpT('Prévision 30j :')}</div>
               <div style="font-size:10px;font-weight:700;color:${fc != null && Number.isFinite(fc) ? fcc : 'var(--fp-text-faint)'}">${fc != null && Number.isFinite(fc) ? fc + '%' : '—'}</div>
             </div>
             <div class="fp-progress-track" style="height:2px;margin-top:3px;background:var(--fp-track)">
@@ -10018,11 +10018,11 @@ function renderBilling() {
                 ${svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="13"').replace('height="14"','height="13"')}
               </div>
               <span style="font-size:14px;font-weight:800;color:var(--fp-text)">AI Credits</span>
-              <span style="font-size:10px;font-weight:700;padding:1px 8px;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:#2563EB">${fpT('IA Performante')}</span>
+              <span style="font-size:10px;font-weight:700;padding:1px 8px;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:#2563EB">IA Performante</span>
             </div>
             <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+' / '+fk(t)+' '+fpT('AI Credits consomm\u00e9s ce mois');})() : fpT('Chargement des cr\u00e9dits IA\u2026')} \u00b7 ${fpT('R\u00e9initialisation le')} ${(function(){var d=STATE.aiCredits?.resetDate?new Date(STATE.aiCredits.resetDate):null;if(!d||Number.isNaN(d.getTime()))d=new Date(new Date().getFullYear(),new Date().getMonth()+1,1);return d.toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'});}())}</div>
           </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('ai');setTimeout(()=>navigateSub('usage'),50)">${fpT('Voir d\u00e9tails complets \u2192')}</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('ai');setTimeout(()=>navigateSub('usage'),50)">Voir d\u00e9tails complets \u2192</button>
         </div>
         <div style="height:8px;border-radius:99px;background:var(--fp-track);overflow:hidden;margin-bottom:8px">
           <div style="height:100%;width:${STATE.aiCredits ? (function(){var u=STATE.aiCredits,p=u.used/Math.max((u.limit||0)+(u.extra||0),1)*100;return p>0?Math.min(Math.max(p,0.5),100):0;}()) : 0}%;background:linear-gradient(90deg,#2563EB,#3b82f6);border-radius:99px;transition:width 0.6s ease"></div>
@@ -10141,7 +10141,7 @@ function renderBilling() {
             ? "IA Stratégiste activé — analyse complète du compte. <strong>3 opportunités d\'optimisation détectées</strong>. Priorité : activer Review Intelligence (ROI < 1 semaine). Prévision : dépassement plan dans 8 jours. White-Label non configuré — setup en 10 minutes."
             : "IA Stratégiste activé. <strong>" + strategies.length + " opportunité" + (strategies.length > 1 ? "s" : "") + " d\'optimisation identifiée" + (strategies.length > 1 ? "s" : "") + "</strong> à partir de vos données réelles.",
             ['Appliquer toutes les recommandations', 'Rapport ROI complet', 'Prévision 6 mois'])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Stratégiste complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse ROI, prévision d\'upgrade, et optimisation des coûts SaaS automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('IA Stratégiste complet — Ultra requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse ROI, prévision d\'upgrade, et optimisation des coûts SaaS automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -10178,14 +10178,14 @@ function renderBilling() {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">🛡️ Prévention churn — Signaux faibles</div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${churnRisks.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Aucun signal de churn détecté</div>` : ''}${churnRisks.map(r => `
+          ${churnRisks.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">${fpT('Aucun signal de churn détecté')}</div>` : ''}${churnRisks.map(r => `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:${r.color}07;border:1px solid ${r.color}28">
               <div style="flex:1">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(r.risk)}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(r.desc)}</div>
               </div>
               <div style="font-size:11px;font-weight:700;color:${r.color};min-width:40px;text-align:center">Risque ${r.score}%</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('billing')">Analyser</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('billing')">${fpT('Analyser')}</button>
             </div>
           `).join('')}
         </div>
@@ -10225,7 +10225,7 @@ function renderBilling() {
               <div style="font-size:28px">🏢</div>
               <div>
                 <div style="font-size:14px;font-weight:800;margin-bottom:3px">Agency Lab — Ultra requis</div>
-                <div style="font-size:12px;color:var(--fp-text-muted)">Multi-workspace, SSO, white-label portail, facturation client et analytics agence avancés.</div>
+                <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Multi-workspace, SSO, white-label portail, facturation client et analytics agence avancés.')}</div>
               </div>
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:14px">
@@ -10247,7 +10247,7 @@ function renderBilling() {
       <div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">🏢 Gestion des workspaces</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.55;cursor:not-allowed" title="Gestion multi-workspace bientôt disponible">+ Workspace (bientôt)</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.55;cursor:not-allowed" title="${fpT('Gestion multi-workspace bientôt disponible')}">+ Workspace (bientôt)</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${workspaces.map(ws => `
@@ -10261,7 +10261,7 @@ function renderBilling() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${ws.mrr}</div>
                 ${badge(ws.status, ws.status === 'Actif' ? '#22c55e' : '#2563EB')}
               </div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings')">Gérer</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings')">${fpT('Gérer')}</button>
             </div>
           `).join('')}
         </div>
@@ -10388,9 +10388,9 @@ function renderBilling() {
             <text x="50" y="55" text-anchor="middle" font-size="22" font-weight="900" fill="${usageHealth > 70 ? '#22c55e' : '#f59e0b'}" font-family="Outfit,sans-serif">${healthScore!=null?usageHealth:'—'}</text>
           </svg>
           <div>
-            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Usage Health Score</div>
+            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${fpT('Usage Health Score')}</div>
             <div style="font-size:11px;color:${usageHealth > 70 ? '#22c55e' : '#f59e0b'};font-weight:600;margin-bottom:4px">${usageHealth > 70 ? '✓ Sain — toutes ressources sous contrôle' : '⚠ Quelques ressources à surveiller'}</div>
-            <div style="font-size:10px;color:var(--fp-text-faint)">Score composé · 9 ressources</div>
+            <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Score composé · 9 ressources')}</div>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:7px">
@@ -10413,7 +10413,7 @@ function renderBilling() {
               </div>`;
             }).join('');
           })()}
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:4px;font-size:11px" onclick="navigateSub('usage')">Voir tous les usages →</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:4px;font-size:11px" onclick="navigateSub('usage')">${fpT('Voir tous les usages →')}</button>
         </div>
       </div>
     </div>
@@ -10437,7 +10437,7 @@ function renderBilling() {
             { d:'01/03/2026', ev:'Passage Plan Pro — upgrade',              c:'#8b5cf6' },
             { d:'01/02/2026', ev:'Facture payée — 49€ (Standard)',          c:'#22c55e' },
           ] : []);
-          if (_tlEvents.length === 0) return `<div style="padding:14px;text-align:center;color:var(--fp-text-faint);font-size:11px">Aucune facture disponible — votre abonnement démarre ce mois-ci.</div>`;
+          if (_tlEvents.length === 0) return `<div style="padding:14px;text-align:center;color:var(--fp-text-faint);font-size:11px">${fpT('Aucune facture disponible — votre abonnement démarre ce mois-ci.')}</div>`;
           return _tlEvents.map(ev => `<div style="position:relative;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.04)">
             <div style="position:absolute;left:-17px;top:2px;width:8px;height:8px;border-radius:50%;background:${ev.c};box-shadow:0 0 6px ${ev.c}44"></div>
             <div style="font-size:9px;color:var(--fp-text-faint);margin-bottom:2px">${escHtml(ev.d)}</div>
@@ -10536,21 +10536,21 @@ function renderAlertRules() {
             <input class="fp-input edit-rule-name" data-rule="${escHtml(r.id)}" value="${escHtml(r.name)}" style="width:100%"/>
           </div>
           <div class="fp-form-group">
-            <label class="fp-form-label">Type de métrique</label>
+            <label class="fp-form-label">${fpT('Type de métrique')}</label>
             <select class="fp-select edit-rule-type" data-rule="${escHtml(r.id)}" style="width:100%">
-              <option value="seo_score" ${r.type==='seo_score'?'selected':''}>Score SEO</option>
+              <option value="seo_score" ${r.type==='seo_score'?'selected':''}>${fpT('Score SEO')}</option>
               <option value="latency" ${r.type==='latency'?'selected':''}>Latence</option>
               <option value="uptime" ${r.type==='uptime'?'selected':''}>Uptime</option>
               <option value="monitor_down" ${r.type==='monitor_down'?'selected':''}>Monitor DOWN</option>
-              <option value="keyword_ranking_drop" ${r.type==='keyword_ranking_drop'?'selected':''} disabled>Chute ranking mot-clé (bientôt disponible)</option>
+              <option value="keyword_ranking_drop" ${r.type==='keyword_ranking_drop'?'selected':''} disabled>${fpT('Chute ranking mot-clé (bientôt disponible)')}</option>
             </select>
           </div>
           <div class="fp-form-group">
             <label class="fp-form-label">Condition</label>
             <select class="fp-select edit-rule-operator" data-rule="${escHtml(r.id)}" style="width:100%">
-              <option value="lt" ${r.operator==='lt'?'selected':''}>Inférieur à (&lt;)</option>
-              <option value="gt" ${r.operator==='gt'?'selected':''}>Supérieur à (&gt;)</option>
-              <option value="eq" ${r.operator==='eq'?'selected':''}>Égal à (=)</option>
+              <option value="lt" ${r.operator==='lt'?'selected':''}>${fpT('Inférieur à (&lt;)')}</option>
+              <option value="gt" ${r.operator==='gt'?'selected':''}>${fpT('Supérieur à (&gt;)')}</option>
+              <option value="eq" ${r.operator==='eq'?'selected':''}>${fpT('Égal à (=)')}</option>
             </select>
           </div>
           <div class="fp-form-group">
@@ -10558,23 +10558,23 @@ function renderAlertRules() {
             <input class="fp-input edit-rule-threshold" type="number" data-rule="${escHtml(r.id)}" value="${r.threshold}" style="width:100%"/>
           </div>
           <div class="fp-form-group">
-            <label class="fp-form-label">Durée minimum (min)</label>
+            <label class="fp-form-label">${fpT('Durée minimum (min)')}</label>
             <input class="fp-input edit-rule-duration" type="number" data-rule="${escHtml(r.id)}" value="${r.durationMin || 0}" style="width:100%"/>
           </div>
           <div class="fp-form-group" style="grid-column:1/-1">
-            <label class="fp-form-label">Canaux de notification</label>
+            <label class="fp-form-label">${fpT('Canaux de notification')}</label>
             <div style="display:flex;gap:12px">
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
                 <input type="checkbox" class="edit-rule-ch-email" data-rule="${escHtml(r.id)}" ${channels.includes('email')?'checked':''} style="accent-color:#2563EB"/> Email
               </label>
-              <label style="display:flex;align-items:center;gap:6px;cursor:not-allowed;font-size:12px;opacity:0.5" title="Alertes SMS — bientôt disponible" onclick="event.preventDefault();showToast('info', fpT('Alertes SMS — bientôt disponible.'))">
-                <input type="checkbox" class="edit-rule-ch-sms" data-rule="${escHtml(r.id)}" disabled style="accent-color:#2563EB;pointer-events:none"/> SMS <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:5px;margin-left:3px">Bientôt</span>
+              <label style="display:flex;align-items:center;gap:6px;cursor:not-allowed;font-size:12px;opacity:0.5" title="${fpT('Alertes SMS — bientôt disponible')}" onclick="event.preventDefault();showToast('info', fpT('Alertes SMS — bientôt disponible.'))">
+                <input type="checkbox" class="edit-rule-ch-sms" data-rule="${escHtml(r.id)}" disabled style="accent-color:#2563EB;pointer-events:none"/> SMS <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:5px;margin-left:3px">${fpT('Bientôt')}</span>
               </label>
             </div>
           </div>
           ${availableSiteUrls.length > 0 ? `
           <div class="fp-form-group" style="grid-column:1/-1">
-            <label class="fp-form-label">Sites ciblés <span style="font-weight:400;color:var(--fp-text-faint)">(laisser vide = tous)</span></label>
+            <label class="fp-form-label">${fpT('Sites ciblés')}<span style="font-weight:400;color:var(--fp-text-faint)">(laisser vide = tous)</span></label>
             <div class="fp-sites-scroll" style="max-height:120px;overflow-y:auto;padding:6px 8px;background:var(--fp-bg-inset);border:1px solid var(--fp-border);border-radius:7px">
               ${siteCheckboxes}
             </div>
@@ -10608,7 +10608,7 @@ function renderAlertRules() {
         <div style="text-align:center;padding:24px;color:var(--fp-text-muted)">
           <div style="font-size:32px;margin-bottom:8px">🔔</div>
           <div style="font-size:13px;font-weight:600;margin-bottom:4px">Aucune règle d\'alerte</div>
-          <div style="font-size:11px">Utilisez les templates ci-dessous ou créez votre propre règle.</div>
+          <div style="font-size:11px">${fpT('Utilisez les templates ci-dessous ou créez votre propre règle.')}</div>
         </div>
       ` : `
         <div style="display:flex;flex-direction:column;gap:1px">
@@ -10620,27 +10620,27 @@ function renderAlertRules() {
         <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:12px">Nouvelle règle d\'alerte</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
           <div class="fp-form-group" style="grid-column:1/-1">
-            <label class="fp-form-label">Nom de la règle</label>
-            <input class="fp-input" id="rule-name" placeholder="ex. Score critique restaurant" style="width:100%"/>
+            <label class="fp-form-label">${fpT('Nom de la règle')}</label>
+            <input class="fp-input" id="rule-name" placeholder="${fpT('ex. Score critique restaurant')}" style="width:100%"/>
           </div>
           <div class="fp-form-group">
-            <label class="fp-form-label">Type de métrique</label>
+            <label class="fp-form-label">${fpT('Type de métrique')}</label>
             <select class="fp-select" id="rule-type" style="width:100%">
-              <option value="seo_score">Score SEO</option>
+              <option value="seo_score">${fpT('Score SEO')}</option>
               <option value="latency">Latence</option>
               <option value="uptime">Uptime</option>
               <option value="monitor_down">Monitor DOWN</option>
-              <option value="keyword_ranking_drop" disabled>Chute ranking mot-clé (bientôt disponible)</option>
+              <option value="keyword_ranking_drop" disabled>${fpT('Chute ranking mot-clé (bientôt disponible)')}</option>
             </select>
           </div>
           <div class="fp-form-group" id="rule-operator-group">
             <label class="fp-form-label">Condition</label>
             <select class="fp-select" id="rule-operator" style="width:100%">
-              <option value="lt">Inférieur à (&lt;)</option>
-              <option value="lte">Inférieur ou égal à (≤)</option>
-              <option value="gt">Supérieur à (&gt;)</option>
-              <option value="gte">Supérieur ou égal à (≥)</option>
-              <option value="eq">Égal à (=)</option>
+              <option value="lt">${fpT('Inférieur à (&lt;)')}</option>
+              <option value="lte">${fpT('Inférieur ou égal à (≤)')}</option>
+              <option value="gt">${fpT('Supérieur à (&gt;)')}</option>
+              <option value="gte">${fpT('Supérieur ou égal à (≥)')}</option>
+              <option value="eq">${fpT('Égal à (=)')}</option>
             </select>
           </div>
           <div class="fp-form-group" id="rule-threshold-group">
@@ -10648,23 +10648,23 @@ function renderAlertRules() {
             <input class="fp-input" id="rule-threshold" type="number" placeholder="ex. 50" style="width:100%"/>
           </div>
           <div class="fp-form-group">
-            <label class="fp-form-label">Durée minimum (min)</label>
+            <label class="fp-form-label">${fpT('Durée minimum (min)')}</label>
             <input class="fp-input" id="rule-duration" type="number" placeholder="0" value="0" style="width:100%"/>
           </div>
           <div class="fp-form-group" style="grid-column:1/-1">
-            <label class="fp-form-label">Canaux de notification</label>
+            <label class="fp-form-label">${fpT('Canaux de notification')}</label>
             <div style="display:flex;gap:12px">
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
                 <input type="checkbox" id="rule-ch-email" checked style="accent-color:#2563EB"/> Email
               </label>
-              <label style="display:flex;align-items:center;gap:6px;cursor:not-allowed;font-size:12px;opacity:0.5" title="Alertes SMS — bientôt disponible" onclick="event.preventDefault();showToast('info', fpT('Alertes SMS — bientôt disponible.'))">
-                <input type="checkbox" id="rule-ch-sms" disabled style="accent-color:#2563EB;pointer-events:none"/> SMS <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:5px;margin-left:3px">Bientôt</span>
+              <label style="display:flex;align-items:center;gap:6px;cursor:not-allowed;font-size:12px;opacity:0.5" title="${fpT('Alertes SMS — bientôt disponible')}" onclick="event.preventDefault();showToast('info', fpT('Alertes SMS — bientôt disponible.'))">
+                <input type="checkbox" id="rule-ch-sms" disabled style="accent-color:#2563EB;pointer-events:none"/> SMS <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:5px;margin-left:3px">${fpT('Bientôt')}</span>
               </label>
             </div>
           </div>
           ${availableSiteUrls.length > 0 ? `
           <div class="fp-form-group" style="grid-column:1/-1">
-            <label class="fp-form-label">Sites ciblés <span style="font-weight:400;color:var(--fp-text-faint)">(laisser vide = tous les sites)</span></label>
+            <label class="fp-form-label">${fpT('Sites ciblés')}<span style="font-weight:400;color:var(--fp-text-faint)">(laisser vide = tous les sites)</span></label>
             <div class="fp-sites-scroll" style="max-height:120px;overflow-y:auto;padding:6px 8px;background:var(--fp-bg-inset);border:1px solid var(--fp-border);border-radius:7px">
               ${availableSiteUrls.map(u => `
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;padding:3px 0">
@@ -10675,7 +10675,7 @@ function renderAlertRules() {
           </div>` : ''}
         </div>
         <div style="display:flex;gap:8px">
-          <button class="fp-btn fp-btn-primary fp-btn-sm" id="save-alert-rule">Créer la règle</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" id="save-alert-rule">${fpT('Créer la règle')}</button>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" id="cancel-rule-form">${fpT('Annuler')}</button>
         </div>
       </div>
@@ -10695,10 +10695,10 @@ function renderAlertRules() {
     <div class="fp-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div>
-          <div class="fp-card-title">Templates prédéfinis</div>
-          <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">Activez en un clic les règles les plus courantes pour démarrer rapidement.</div>
+          <div class="fp-card-title">${fpT('Templates prédéfinis')}</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${fpT('Activez en un clic les règles les plus courantes pour démarrer rapidement.')}</div>
         </div>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" id="dismiss-templates" style="font-size:11px;color:var(--fp-text-faint)">Masquer</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" id="dismiss-templates" style="font-size:11px;color:var(--fp-text-faint)">${fpT('Masquer')}</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${TEMPLATES.map((t, i) => {
@@ -10716,7 +10716,7 @@ function renderAlertRules() {
               </div>
               ${alreadyExists
                 ? `<span style="font-size:10px;color:var(--fp-success);font-weight:600">✓ Activée</span>`
-                : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="fpApplyAlertTemplate(${i},this)" style="font-size:11px">Activer</button>`
+                : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="fpApplyAlertTemplate(${i},this)" style="font-size:11px">${fpT('Activer')}</button>`
               }
             </div>
           `;
@@ -10815,7 +10815,7 @@ function renderSettings() {
               <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${escHtml(me.firstName)} ${escHtml(me.lastName||'')}</div>
               <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(me.email||'')} · Plan ${plan}</div>
             </div>
-            <span style="font-size:10px;color:var(--fp-text-faint);font-weight:600">Avatar — bientôt disponible</span>
+            <span style="font-size:10px;color:var(--fp-text-faint);font-weight:600">${fpT('Avatar — bientôt disponible')}</span>
           </div>
           ${[
             {l:'Prénom',       id:'prof-fname',   v:me.firstName,                                                                           t:'text'},
@@ -10834,7 +10834,7 @@ function renderSettings() {
             ${f.ro ? '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">Votre adresse email est gérée par votre méthode d\'authentification.</div>' : ''}
           </div>`).join('')}
           <hr style="border:none;border-top:1px solid var(--fp-border);margin:14px 0 10px"/>
-          <div style="font-size:11px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Canaux d'alerte</div>
+          <div style="font-size:11px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">${fpT("Canaux d'alerte")}</div>
           ${[
             {l:'Page de statut (URL publique)', k:'statusPageUrl', t:'url', ph:'https://status.votre-agence.fr', ultra:false},
             {l:"Webhook d'alerte (endpoint)",   k:'webhookUrl',    t:'url', ph:'https://hooks.slack.com/services/...', ultra:false},
@@ -10857,7 +10857,7 @@ function renderSettings() {
             Apparence & Personnalisation
           </div>
           <div class="fp-form-group">
-            <label class="fp-form-label">Thème</label>
+            <label class="fp-form-label">${fpT('Thème')}</label>
             <div style="display:flex;gap:6px">
               ${(()=>{ const _at = s.themeAuto ? 'auto' : (STATE.theme || 'dark'); return [['🌗 Automatique','auto'],['🌑 Sombre','dark'],['☀️ Clair','light']].map(([label,val]) => { const on = val === _at; return `<button class="fp-btn fp-btn-ghost fp-btn-sm${on?' active':''}" style="${on?'border-color:var(--fp-accent);color:var(--fp-accent);':''};flex:1;font-size:11px" onclick="applyThemeChoice('${val}')">${label}</button>`; }).join(''); })()}
             </div>
@@ -10867,7 +10867,7 @@ function renderSettings() {
             <select class="fp-select" style="width:100%" onchange="applyLanguagePref(this.value);saveSettings();showToast('success', fpT('Langue sauvegardée'))">
               ${[['fr','🇫🇷 Français'],['en','🇬🇧 English'],['es','🇪🇸 Español'],['de','🇩🇪 Deutsch'],['it','🇮🇹 Italiano'],['pt','🇵🇹 Português'],['nl','🇳🇱 Nederlands'],['pl','🇵🇱 Polski'],['sv','🇸🇪 Svenska'],['ro','🇷🇴 Română'],['cs','🇨🇿 Čeština']].map(([val,lbl]) => `<option value="${val}"${(s.language||'fr')===val?' selected':''}>${lbl}</option>`).join('')}
             </select>
-            <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">La préférence est sauvegardée et appliquée à l’interface.</div>
+            <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${fpT('La préférence est sauvegardée et appliquée à l’interface.')}</div>
           </div>
           <div class="fp-form-group">
             <label class="fp-form-label">Format de date</label>
@@ -10947,7 +10947,7 @@ function renderSettings() {
               </div>
             </div>
             <div style="padding:14px;border-radius:12px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.15);margin-bottom:14px">
-              <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">Aperçu branding client</div>
+              <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">${fpT('Aperçu branding client')}</div>
               <div style="display:flex;align-items:center;gap:10px">
                 <div style="width:32px;height:32px;border-radius:8px;background:${wlBranding.primaryColor || '#2563EB'};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff">${(wlBranding.agencyName || me?.org?.name || 'A').charAt(0).toUpperCase()}</div>
                 <div>
@@ -11085,7 +11085,7 @@ function renderSettings() {
               <select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="(async(el)=>{const bv=el.value;const r=await apiAction('PATCH','/api/team/${m.id}',{role:bv}).catch(()=>null);if(r&&!r.error){const tm=(STATE.team||[]).find(t=>t.id==='${m.id}');if(tm)tm.role=bv;showToast('success', fpT('R\u00f4le mis \u00e0 jour'));render();}else{showToast('error',(r&&r.error)||'Erreur mise \u00e0 jour r\u00f4le');}el.blur();})(this)">
                 ${(()=>{const _vm={Owner:'owner',Manager:'admin',Editor:'member',Viewer:'viewer'};return roles.map(r=>`<option value="${_vm[r]}" ${_vm[r]===m.role.toLowerCase()?'selected':''}>${r}</option>`).join('');})()}
               </select>
-              ${m.role !== 'Owner' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="window.fpDarkConfirm('Retirer ce membre de l\\'équipe ?',async function(){const r=await apiAction('DELETE','/api/team/${m.id}').catch(()=>null);if(r&&!r.error){STATE.team=(STATE.team||[]).filter(t=>t.id!=='${m.id}');if(STATE.seatUsage&&STATE.seatUsage.used>0)STATE.seatUsage.used--;showToast('success', fpT('Membre retir\u00e9'));render();}else{showToast('error', fpT('Erreur lors du retrait'));}}, 'Retirer le membre')">Retirer</button>` : ''}
+              ${m.role !== 'Owner' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="window.fpDarkConfirm('Retirer ce membre de l\\'équipe ?',async function(){const r=await apiAction('DELETE','/api/team/${m.id}').catch(()=>null);if(r&&!r.error){STATE.team=(STATE.team||[]).filter(t=>t.id!=='${m.id}');if(STATE.seatUsage&&STATE.seatUsage.used>0)STATE.seatUsage.used--;showToast('success', fpT('Membre retir\u00e9'));render();}else{showToast('error', fpT('Erreur lors du retrait'));}}, 'Retirer le membre')">${fpT('Retirer')}</button>` : ''}
             </div>
           `).join('')}
         </div>
@@ -11128,7 +11128,7 @@ function renderSettings() {
           <div class="fp-card-title" style="margin-bottom:0">🔐 Rôles personnalisés ${!isUltra ? '<span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:2px 7px;border-radius:8px;margin-left:6px">Ultra</span>' : ''}</div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${isUltra ? `navigate('permissions')` : `navigate('billing')`}">+ Créer un rôle</button>
         </div>
-        <div style="font-size:12px;color:var(--fp-text-muted)">Créez des rôles sur mesure avec des permissions granulaires par module, par client et par workspace.</div>
+        <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Créez des rôles sur mesure avec des permissions granulaires par module, par client et par workspace.')}</div>
       </div>
     `;
   }
@@ -11184,7 +11184,7 @@ function renderSettings() {
         ['Activer le 2FA', 'Configurer les alertes', 'Auditer les sessions']
       )}
 
-      ${(STATE.settings && STATE.settings.secLevel) === 'enterprise' ? `<div style="padding:10px 14px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:10px;margin-bottom:16px;display:flex;align-items:center;gap:10px"><span style="font-size:18px">🔐</span><div><div style="font-size:12px;font-weight:700;color:#22c55e">Sécurité avancée activée</div><div style="font-size:11px;color:var(--fp-text-muted)">Journalisation renforcée · Alertes sur tentatives échouées · Sessions à durée réduite</div></div></div>` : ''}
+      ${(STATE.settings && STATE.settings.secLevel) === 'enterprise' ? `<div style="padding:10px 14px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:10px;margin-bottom:16px;display:flex;align-items:center;gap:10px"><span style="font-size:18px">🔐</span><div><div style="font-size:12px;font-weight:700;color:#22c55e">${fpT('Sécurité avancée activée')}</div><div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Journalisation renforcée · Alertes sur tentatives échouées · Sessions à durée réduite')}</div></div></div>` : ''}
       <!-- SECURITY GAUGE -->
       <div class="fp-stat-row fp-mb-20">
         <div class="fp-card" style="display:flex;align-items:center;gap:16px;grid-column:span 1">
@@ -11196,7 +11196,7 @@ function renderSettings() {
             <text x="45" y="50" text-anchor="middle" font-size="18" font-weight="900" fill="${secScore > 85 ? '#22c55e' : secScore > 60 ? '#f59e0b' : '#ef4444'}" font-family="Outfit,sans-serif">${secScore}</text>
           </svg>
           <div>
-            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Score Sécurité</div>
+            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${fpT('Score Sécurité')}</div>
             <div style="font-size:11px;color:${secScore > 85 ? '#22c55e' : secScore > 60 ? '#f59e0b' : '#ef4444'};font-weight:600;margin-bottom:4px">${secScore > 85 ? '✓ Bon' : '⚠ ' + (secScore > 60 ? 'Moyen' : 'Critique')} — ${secItems.filter(i=>!i.done).length} action${secItems.filter(i=>!i.done).length !== 1 ? 's' : ''} requise${secItems.filter(i=>!i.done).length !== 1 ? 's' : ''}</div>
             <div style="font-size:10px;color:var(--fp-text-faint)">${secItems.length} critères évalués</div>
           </div>
@@ -11225,10 +11225,10 @@ function renderSettings() {
                 ? (item.label === '2FA non configuré'
                     ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="document.getElementById('fp-sec-2fa')?.scrollIntoView({behavior:'smooth'})">Configurer 2FA →</button>`
                     : item.label === 'CSP absente'
-                      ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="showToast('warning', fpT('Ajoutez Content-Security-Policy dans vos en-têtes HTTP. Exemple : default-src \'self\''))">Voir guide →</button>`
+                      ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="showToast('warning', fpT('Ajoutez Content-Security-Policy dans vos en-têtes HTTP. Exemple : default-src \'self\''))">${fpT('Voir guide →')}</button>`
                       : item.label === 'CORS wildcard potentiel'
                         ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings');setTimeout(()=>navigateSub('api'),50)">Restreindre →</button>`
-                        : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;opacity:0.6" onclick="showToast('info', fpT('Disponible prochainement'))">Bientôt →</button>`)
+                        : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;opacity:0.6" onclick="showToast('info', fpT('Disponible prochainement'))">${fpT('Bientôt →')}</button>`)
                 : `<span style="font-size:10px;color:#22c55e;font-weight:700;flex-shrink:0">✓ OK</span>`}
             </div>
           `).join('')}
@@ -11240,7 +11240,7 @@ function renderSettings() {
         <div class="fp-card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
             <div class="fp-card-title" style="margin-bottom:0">💻 Sessions actives</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="disconnectAllSessions()">Tout déconnecter</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="disconnectAllSessions()">${fpT('Tout déconnecter')}</button>
           </div>
           ${sessions.map(sess => `
             <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid ${sess.current ? 'rgba(37,99,235,0.25)' : 'var(--fp-border)'};margin-bottom:6px">
@@ -11250,7 +11250,7 @@ function renderSettings() {
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(sess.location)} · IP ${escHtml(sess.ip)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(sess.date)}</div>
               </div>
-              ${!sess.current ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="showToast('warning', fpT('Session fermée'))">Terminer</button>` : ''}
+              ${!sess.current ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="showToast('warning', fpT('Session fermée'))">${fpT('Terminer')}</button>` : ''}
             </div>
           `).join('')}
         </div>
@@ -11267,7 +11267,7 @@ function renderSettings() {
                 </div>
                 <div style="font-size:9px;color:var(--fp-text-faint);flex-shrink:0">${escHtml(log.date)}</div>
               </div>
-            `).join('') : `<div style="text-align:center;padding:20px;color:var(--fp-text-muted)"><div style="font-size:24px;margin-bottom:8px">📋</div><div style="font-size:12px;font-weight:600">Aucune connexion enregistrée</div><div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">L'historique apparaîtra après votre prochaine connexion.</div></div>`}
+            `).join('') : `<div style="text-align:center;padding:20px;color:var(--fp-text-muted)"><div style="font-size:24px;margin-bottom:8px">📋</div><div style="font-size:12px;font-weight:600">${fpT('Aucune connexion enregistrée')}</div><div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">${fpT("L'historique apparaîtra après votre prochaine connexion.")}</div></div>`}
           </div>
         </div>
       </div>
@@ -11277,10 +11277,10 @@ function renderSettings() {
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
           <div style="font-size:24px">🔐</div>
           <div>
-            <div style="font-size:13px;font-weight:700;color:#ef4444">Double authentification (2FA) — Non configurée</div>
-            <div style="font-size:11px;color:var(--fp-text-muted)">Sans 2FA, votre compte est vulnérable aux accès non autorisés.</div>
+            <div style="font-size:13px;font-weight:700;color:#ef4444">${fpT('Double authentification (2FA) — Non configurée')}</div>
+            <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Sans 2FA, votre compte est vulnérable aux accès non autorisés.')}</div>
           </div>
-          <span style="margin-left:auto;flex-shrink:0;font-size:11px;font-weight:600;padding:6px 12px;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#ef4444">Bientôt disponible</span>
+          <span style="margin-left:auto;flex-shrink:0;font-size:11px;font-weight:600;padding:6px 12px;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#ef4444">${fpT('Bientôt disponible')}</span>
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
           ${['📱 App Authenticator (TOTP)','📧 Email OTP','💬 SMS (Ultra)'].map(m => `<div style="font-size:11px;padding:8px 12px;background:var(--fp-inner-card);border-radius:8px;border:1px solid rgba(255,255,255,0.07);color:var(--fp-text-soft)">${m}</div>`).join('')}
@@ -11359,7 +11359,7 @@ function renderSettings() {
             (()=>{ const _act=workflows.filter(w=>w.active).length; return _act>0 ? `${_act} automation${_act>1?'s':''} active${_act>1?'s':''}. Consultez les statistiques d'exécution ci-dessous ou créez un nouveau workflow à partir d'un template.` : 'Aucune automation active pour le moment. Créez votre premier workflow à partir d\'un template pour automatiser rapports, alertes et audits.'; })(),
             ['Créer un workflow', 'Voir les templates']
           )
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Automatisations avancées — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Workflows multi-étapes, IA automation et triggers intelligents.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('Automatisations avancées — Pro requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Workflows multi-étapes, IA automation et triggers intelligents.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -11393,8 +11393,8 @@ function renderSettings() {
                 <div style="font-size:9px;color:var(--fp-text-faint);margin-top:2px">${wf.runs} exécutions · Dernier : ${escHtml(wf.lastRun)}</div>
               </div>
               <button class="fp-toggle${wf.active ? ' on' : ''}" onclick="${wf.id ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.toggle('${escHtml(wf.id)}',${!wf.active}):showToast('error', fpT('Module automations non chargé — rechargez la page'))` : `showToast('error', fpT('Workflow invalide : identifiant manquant'))`}"></button>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;${wf.active ? '' : 'opacity:.45;cursor:not-allowed'}" ${wf.active ? '' : 'disabled title="Activez le workflow avant de l’exécuter"'} onclick="${wf.id && wf.active ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.run('${escHtml(wf.id)}'):showToast('error', fpT('Module automations non chargé — rechargez la page'))` : ''}">▶ Run</button>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;color:var(--fp-danger)" onclick="${wf.id ? `window.FP_AUTOMATION_API&&window.FP_AUTOMATION_API.remove('${escHtml(wf.id)}')` : ''}" title="Supprimer ce workflow">🗑</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;${wf.active ? '' : 'opacity:.45;cursor:not-allowed'}" ${wf.active ? '' : `disabled title="${fpT("Activez le workflow avant de l'exécuter")}"`} onclick="${wf.id && wf.active ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.run('${escHtml(wf.id)}'):showToast('error', fpT('Module automations non chargé — rechargez la page'))` : ''}">▶ Run</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;color:var(--fp-danger)" onclick="${wf.id ? `window.FP_AUTOMATION_API&&window.FP_AUTOMATION_API.remove('${escHtml(wf.id)}')` : ''}" title="${fpT('Supprimer ce workflow')}">🗑</button>
             </div>
           `).join('')}
         </div>
@@ -11832,7 +11832,7 @@ function renderSettings() {
                         <span style="font-size:14px;font-weight:700;color:var(--fp-text)">${p.name}</span>
                         ${p.connected>0
                           ? `<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${platColor(p.id)}22;color:${platColor(p.id)};font-weight:700">${p.connected} actif${p.connected>1?'s':''}</span>`
-                          : `<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--fp-track);color:var(--fp-text-faint)">Non connecté</span>`
+                          : `<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--fp-track);color:var(--fp-text-faint)">${fpT('Non connecté')}</span>`
                         }
                       </div>
                     </div>
@@ -11868,7 +11868,7 @@ function renderSettings() {
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px"${n.comingSoon ? ' disabled title="Bientôt disponible"' : ''} onclick="${n.comingSoon ? '' : n.btn}">
                       ${n.connected?'Gérer':n.comingSoon?'Bientôt':'Connecter'}
                     </button>
-                    ${n.connected && n.disconnectEndpoint ? `<button class="fp-btn fp-btn-ghost fp-btn-sm fp-native-disconnect-btn" data-svc="${n.svc}" data-endpoint="${n.disconnectEndpoint}" data-name="${n.name}" style="font-size:10px;color:var(--fp-danger);border-color:rgba(239,68,68,0.3)">Déconnecter</button>` : ''}
+                    ${n.connected && n.disconnectEndpoint ? `<button class="fp-btn fp-btn-ghost fp-btn-sm fp-native-disconnect-btn" data-svc="${n.svc}" data-endpoint="${n.disconnectEndpoint}" data-name="${n.name}" style="font-size:10px;color:var(--fp-danger);border-color:rgba(239,68,68,0.3)">${fpT('Déconnecter')}</button>` : ''}
                   </div>
                 </div>
               `).join('')}
@@ -11888,8 +11888,8 @@ function renderSettings() {
             ${intgs.length === 0 ? `
               <div style="text-align:center;padding:32px;color:var(--fp-text-muted)">
                 <div style="font-size:32px;margin-bottom:8px">🔌</div>
-                <div style="font-size:14px;font-weight:600;margin-bottom:6px">Aucun webhook configuré</div>
-                <div style="font-size:12px">Créez votre premier webhook pour déclencher des automatisations externes.</div>
+                <div style="font-size:14px;font-weight:600;margin-bottom:6px">${fpT('Aucun webhook configuré')}</div>
+                <div style="font-size:12px">${fpT('Créez votre premier webhook pour déclencher des automatisations externes.')}</div>
                 <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:16px" onclick="window._showNewWebhookModal()">+ Créer un webhook</button>
               </div>
             ` : `
@@ -11897,11 +11897,11 @@ function renderSettings() {
                 <table class="fp-data-table">
                   <thead><tr>
                     <th></th><th>Nom</th><th>Plateforme</th><th style="text-align:center">Endpoint</th>
-                    <th style="text-align:center">Événements</th>
-                    <th style="text-align:center">Déclenchements</th>
-                    <th style="text-align:center">Taux succès</th>
-                    <th style="text-align:center">Dernier trigger</th>
-                    <th style="text-align:center">Statut</th>
+                    <th style="text-align:center">${fpT('Événements')}</th>
+                    <th style="text-align:center">${fpT('Déclenchements')}</th>
+                    <th style="text-align:center">${fpT('Taux succès')}</th>
+                    <th style="text-align:center">${fpT('Dernier trigger')}</th>
+                    <th style="text-align:center">${fpT('Statut')}</th>
                     <th style="text-align:center">Actions</th>
                   </tr></thead>
                   <tbody>
@@ -12039,14 +12039,14 @@ function renderSettings() {
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._intgRefresh(this)">⟳ Actualiser</button>
             </div>
             ${allRuns.length===0 ? `
-              <div style="text-align:center;padding:32px;color:var(--fp-text-muted);font-size:12px">Aucune livraison encore. Testez un webhook pour commencer.</div>
+              <div style="text-align:center;padding:32px;color:var(--fp-text-muted);font-size:12px">${fpT('Aucune livraison encore. Testez un webhook pour commencer.')}</div>
             ` : `
               <div style="overflow-x:auto">
                 <table class="fp-data-table">
                   <thead><tr>
-                    <th>Statut</th><th>Intégration</th><th>Événement</th>
+                    <th>${fpT('Statut')}</th><th>${fpT('Intégration')}</th><th>${fpT('Événement')}</th>
                     <th style="text-align:center">HTTP</th>
-                    <th style="text-align:center">Durée</th>
+                    <th style="text-align:center">${fpT('Durée')}</th>
                     <th style="text-align:center">Tentatives</th>
                     <th>Date</th>
                     <th style="text-align:center">Action</th>
@@ -12080,7 +12080,7 @@ function renderSettings() {
           <!-- EVENT LOGS -->
           <div class="fp-card">
             <div class="fp-card-title" style="margin-bottom:14px">📝 Journal des événements</div>
-            ${logs.length===0 ? `<div style="text-align:center;padding:20px;color:var(--fp-text-muted);font-size:12px">Aucun événement enregistré.</div>` : `
+            ${logs.length===0 ? `<div style="text-align:center;padding:20px;color:var(--fp-text-muted);font-size:12px">${fpT('Aucun événement enregistré.')}</div>` : `
               <div style="display:flex;flex-direction:column;gap:4px;max-height:400px;overflow-y:auto">
                 ${logs.map(l => {
                   const lc = l.level==='error'?'var(--fp-danger)':l.level==='warn'?'var(--fp-warning)':'var(--fp-text-faint)';
@@ -12113,7 +12113,7 @@ function renderSettings() {
             🔌 Integration Hub
             ${totalConnected>0 ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);border-radius:20px;color:var(--fp-success)">${totalConnected} actif${totalConnected>1?'s':''}</span>` : ''}
           </h1>
-          <div class="fp-section-sub">Zapier · Make · Slack · Notion · HubSpot · Webhooks temps réel</div>
+          <div class="fp-section-sub">${fpT('Zapier · Make · Slack · Notion · HubSpot · Webhooks temps réel')}</div>
         </div>
         <div class="fp-section-actions">
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._intgRefresh(this)">⟳ Actualiser</button>
@@ -12148,7 +12148,7 @@ function renderSettings() {
       <!-- CONNECT MODAL -->
       <div id="fp-intg-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center">
         <div class="fp-card" style="width:480px;max-width:92vw;padding:24px">
-          <div id="fp-intg-modal-title" style="font-size:16px;font-weight:700;margin-bottom:16px">Connecter une intégration</div>
+          <div id="fp-intg-modal-title" style="font-size:16px;font-weight:700;margin-bottom:16px">${fpT('Connecter une intégration')}</div>
           <div style="display:flex;flex-direction:column;gap:10px">
             <div>
               <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Nom</label>
@@ -12159,7 +12159,7 @@ function renderSettings() {
               <input id="intg-url" class="fp-input" placeholder="https://hooks.zapier.com/hooks/catch/..."/>
             </div>
             <div>
-              <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Événements déclencheurs (laisser vide = tous)</label>
+              <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">${fpT('Événements déclencheurs (laisser vide = tous)')}</label>
               <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto;padding:8px;border:1px solid var(--fp-border);border-radius:8px" id="intg-events-container">
                 ${['audit.completed','monitor.down','monitor.recovered','report.generated','mission.created','mission.completed','review.received','keyword.ranking_changed','backlink.detected','competitor.detected','ai.insight.generated','payment.failed'].map(ev => `
                   <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:var(--fp-text-muted);padding:3px 8px;border-radius:6px;border:1px solid var(--fp-border);background:var(--fp-inner-card)">
@@ -12171,7 +12171,7 @@ function renderSettings() {
             </div>
           </div>
           <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-            <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-intg-modal').style.display='none'">Annuler</button>
+            <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-intg-modal').style.display='none'">${fpT('Annuler')}</button>
             <button class="fp-btn fp-btn-primary" onclick="window._submitConnect()">Connecter & Tester</button>
           </div>
         </div>
@@ -12203,7 +12203,7 @@ function renderSettings() {
             (()=>{ const _avail=aiModules.filter(m=>!((m.plan==='Pro'&&isStd)||(m.plan==='Ultra'&&!isUltra))); const _on=_avail.filter(m=>m.active); const _off=_avail.filter(m=>!m.active); return `IA Config Lab actif. <strong>${_avail.length} modules IA disponibles</strong> — ${_on.length} actif${_on.length>1?'s':''}.${_off.length?` Recommandation : activer le module <strong>${escHtml(_off[0].label)}</strong>.`:''} Intensité IA actuelle : ${escHtml(_savedIntensity)}.`; })(),
             ['Activer tous les modules', 'Optimiser l\'intensité IA', 'Rapport IA Lab']
           )
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Config Lab complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">IA Stratégiste, churn prevention, market intelligence et automation agressive.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Config Lab complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('IA Stratégiste, churn prevention, market intelligence et automation agressive.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -12347,7 +12347,7 @@ function renderSettings() {
             </div>
             ${r.active ? badge('Actif', r.color) : ''}
           </div>`).join('')}
-          <div style="font-size:11px;color:var(--fp-text-muted);margin-top:8px">Les données antérieures à la limite de rétention sont archivées automatiquement.</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-top:8px">${fpT('Les données antérieures à la limite de rétention sont archivées automatiquement.')}</div>
         </div>
 
         <div class="fp-card">
@@ -12375,10 +12375,10 @@ function renderSettings() {
       <!-- DANGER ZONE -->
       <div class="fp-card" style="border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.04)">
         <div class="fp-card-title" style="color:#ef4444;margin-bottom:8px">⚠ Zone de danger</div>
-        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Ces actions sont irréversibles. Agissez avec précaution.</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">${fpT('Ces actions sont irréversibles. Agissez avec précaution.')}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="openDataDeletionPanel('data')">Supprimer toutes les données</button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="fpDeleteAccountModal()">Supprimer définitivement mon compte</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="openDataDeletionPanel('data')">${fpT('Supprimer toutes les données')}</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="fpDeleteAccountModal()">${fpT('Supprimer définitivement mon compte')}</button>
         </div>
       </div>
     `;
@@ -12435,7 +12435,7 @@ function renderSettings() {
           (()=>{ const _todo=[]; if(!_has2fa)_todo.push(fpT('activer le 2FA')); if(_intAct===0)_todo.push(fpT('connecter vos intégrations (GA4, GSC)')); return `Workspace health <strong>${workspaceHealth}/100</strong>. `+(_todo.length?`<strong>${_todo.length} ${fpT(_todo.length>1?'actions prioritaires':'action prioritaire')}</strong> : ${_todo.join(' ' + fpT('et') + ' ')}. `:'')+`${_wfAct} ${fpT(_wfAct===1?'workflow actif':'workflows actifs')}.`; })(),
           ['Activer le 2FA', 'Connecter GSC', 'Rapport workspace complet']
         )
-      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔧</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Workspace Intelligence IA — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse de santé workspace, recommandations de configuration et audit de sécurité IA.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
+      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔧</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Workspace Intelligence IA — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Analyse de santé workspace, recommandations de configuration et audit de sécurité IA.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
     }
 
     <!-- WORKSPACE HEALTH + STATUS CARDS -->
@@ -12632,7 +12632,7 @@ function renderAI() {
     return `
       <div class="fp-section-header">
         <div><h1 style="display:flex;align-items:center;gap:10px">Workspace Intelligence</h1>
-        <div class="fp-section-sub">État en temps réel de tous vos systèmes · Corrélations inter-modules détectées</div></div>
+        <div class="fp-section-sub">${fpT('État en temps réel de tous vos systèmes · Corrélations inter-modules détectées')}</div></div>
       </div>
 
       ${aiBlock(
@@ -12741,7 +12741,7 @@ function renderAI() {
       return `
         <div class="fp-section-header">
           <div><h1>Insights & Recommandations IA</h1>
-          <div class="fp-section-sub">Analyse proactive de votre workspace · Mis à jour en temps réel</div></div>
+          <div class="fp-section-sub">${fpT('Analyse proactive de votre workspace · Mis à jour en temps réel')}</div></div>
         </div>
         <div class="fp-stat-row fp-mb-20">
           ${statCard('Critiques', '0', 'aucune action immédiate', 'neutral')}
@@ -12751,15 +12751,15 @@ function renderAI() {
         </div>
         <div style="padding:40px 20px;text-align:center;color:var(--fp-text-faint)">
           <div style="font-size:32px;margin-bottom:12px">💡</div>
-          <div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">Aucun insight disponible pour le moment.</div>
-          <div style="font-size:12px;line-height:1.6">Connectez vos sources de données ou lancez un audit<br>pour générer des recommandations personnalisées.</div>
+          <div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">${fpT('Aucun insight disponible pour le moment.')}</div>
+          <div style="font-size:12px;line-height:1.6">Connectez vos sources de données ou lancez un audit<br>${fpT('pour générer des recommandations personnalisées.')}</div>
         </div>
       `;
     }
     return `
       <div class="fp-section-header">
         <div><h1>Insights & Recommandations IA</h1>
-        <div class="fp-section-sub">Analyse proactive de votre workspace · Mis à jour en temps réel</div></div>
+        <div class="fp-section-sub">${fpT('Analyse proactive de votre workspace · Mis à jour en temps réel')}</div></div>
         <div class="fp-section-actions">
           <span style="font-size:11px;color:var(--fp-text-faint)">${insights.length} insight${insights.length>1?'s':''} actif${insights.length>1?'s':''}</span>
         </div>
@@ -12941,7 +12941,7 @@ function renderAI() {
 
       ${!isUltra ? `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:20px;margin-bottom:20px;text-align:center">
         <div style="font-size:28px;margin-bottom:8px">🧠</div>
-        <div style="font-size:15px;font-weight:800;margin-bottom:6px">IA Stratégiste — Plan Ultra requis</div>
+        <div style="font-size:15px;font-weight:800;margin-bottom:6px">${fpT('IA Stratégiste — Plan Ultra requis')}</div>
         <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:14px">Analyse stratégique complète, plans d\'action ROI et intelligence prédictive.</div>
         <button class="fp-btn fp-btn-primary" onclick="fpUpgradeCta('ultra')">Passer Ultra — ${fpPlanPriceLabel('ultra')} →</button>
       </div>` : ''}
@@ -12955,9 +12955,9 @@ function renderAI() {
         </div>
         ${!PREVIEW_MODE && strategies.length === 0 ? `<div class="fp-card" style="text-align:center;padding:36px 20px">
           <div style="font-size:26px;margin-bottom:8px">🧠</div>
-          <div style="font-size:13px;font-weight:700;margin-bottom:6px">Pas encore assez de données pour générer des plans stratégiques</div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:6px">${fpT('Pas encore assez de données pour générer des plans stratégiques')}</div>
           <div style="font-size:11.5px;color:var(--fp-text-muted);max-width:440px;margin:0 auto 14px">Lancez des audits SEO et connectez vos intégrations (GA4, Google Business Profile) — l'IA Stratégiste construira des plans d'action à partir de vos données réelles.</div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('audits')">Lancer un audit →</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('audits')">${fpT('Lancer un audit →')}</button>
         </div>` : ''}
         ${strategies.map(s => `
           <div style="padding:18px 20px;border-radius:14px;background:${s.color}07;border:1px solid ${s.color}22;margin-bottom:12px">
@@ -13043,9 +13043,9 @@ function renderAI() {
     const alert90 = pct >= 90;
     const alert70 = pct >= 70 && pct < 90;
     const alertHtml = alert90
-      ? `<div style="padding:12px 16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:var(--fp-radius-md);margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:18px">🚨</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#ef4444">${fpT('90% de vos AI Credits utilis\u00e9s')}</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${fpT('Achetez un pack ou upgradez votre plan pour continuer \u00e0 utiliser l\u2019IA sans interruption.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpGoToBillingPlans()">${fpT('Upgrader \u2192')}</button></div>`
+      ? `<div style="padding:12px 16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:var(--fp-radius-md);margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:18px">🚨</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#ef4444">90% de vos AI Credits utilis\u00e9s</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">Achetez un pack ou upgradez votre plan pour continuer \u00e0 utiliser l\u2019IA sans interruption.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpGoToBillingPlans()">Upgrader \u2192</button></div>`
       : alert70
-      ? `<div style="padding:12px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--fp-radius-md);margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:18px">⚡</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#f59e0b">${fpT('70% de vos AI Credits consomm\u00e9s')}</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${fpT('Pensez \u00e0 recharger avant la fin du mois.')}</div></div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="fpGoToBillingPlans()" style="margin-left:auto">${fpT('Voir plans')}</button></div>`
+      ? `<div style="padding:12px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--fp-radius-md);margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:18px">⚡</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#f59e0b">70% de vos AI Credits consomm\u00e9s</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">Pensez \u00e0 recharger avant la fin du mois.</div></div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="fpGoToBillingPlans()" style="margin-left:auto">${fpT('Voir plans')}</button></div>`
       : '';
 
     return `
@@ -13056,7 +13056,7 @@ function renderAI() {
         </h1>
         <div class="fp-section-sub">Plan ${plan} · ${fpT('R\u00e9initialisation le')} ${resetDate} · ${isUnlimited ? fpT('Cr\u00e9dits illimit\u00e9s') + ' (prioritaire)' : fmtNum(remaining) + ' ' + fpT('AI Credits restants')}</div></div>
         ${!isUnlimited ? `<div class="fp-section-actions">
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing');setTimeout(function(){navigateSub('plans');},50)">${fpT('Upgrader le plan \u2192')}</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing');setTimeout(function(){navigateSub('plans');},50)">Upgrader le plan \u2192</button>
         </div>` : ''}
       </div>
 
@@ -13180,7 +13180,7 @@ function renderAI() {
               <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:6px">AI Credits/mois</div>
               ${p.features.map(f => `<div style="font-size:9px;color:${p.color};font-weight:600;margin-bottom:2px">${f}</div>`).join('')}
               <div style="font-size:11px;font-weight:700;color:${p.color};margin-top:6px">${p.price}/mois</div>
-              ${p.current ? `<div style="margin-top:6px;font-size:9px;font-weight:700;color:${p.color};background:${p.color}1a;padding:2px 8px;border-radius:10px">Plan actuel</div>` : ''}
+              ${p.current ? `<div style="margin-top:6px;font-size:9px;font-weight:700;color:${p.color};background:${p.color}1a;padding:2px 8px;border-radius:10px">${fpT('Plan actuel')}</div>` : ''}
             </div>
           `).join('')}
         </div>
@@ -13223,7 +13223,7 @@ function renderAI() {
       <div class="fp-section-actions">
         <div style="display:flex;align-items:center;gap:6px">
           <select id="fp-ai-provider-select" class="fp-select" style="font-size:11px;font-weight:600"
-            title="Choisir le fournisseur IA"
+            title="${fpT('Choisir le fournisseur IA')}"
             onchange="(function(v){STATE.aiProvider=v;try{localStorage.setItem('fp:ai-provider',v);}catch(_e){}if(typeof window.fpSyncAiBadge==='function')window.fpSyncAiBadge();showToast('info','Fournisseur IA : '+(v==='openai'?'GPT-5 — OpenAI':v==='anthropic'?'Claude 3.5 — Anthropic':'Gemini 2.0 — Google'));}).call(this,this.value)">
             <option value="openai" ${(STATE.aiProvider||'openai')==='openai'?'selected':''}>GPT-5 — OpenAI</option>
             <option value="anthropic" ${STATE.aiProvider==='anthropic'?'selected':''}>Claude 3.5 — Anthropic</option>
@@ -13271,16 +13271,16 @@ function renderAI() {
       <div style="border-top:1px solid rgba(255,255,255,0.06);padding:10px 12px">
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
-          <label for="ai-file-input" title="Joindre un fichier" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
+          <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
           <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:auto;line-height:1.5;height:38px;max-height:38px"></textarea>
           <button class="fp-ai-send" id="ai-send">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
-          <button id="ai-stop" title="Arrêter la génération" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
+          <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
       </div>
     </div>
 
     <!-- PROMPT TEMPLATES -->
-    <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:10px">Bibliothèque de prompts</div>
+    <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:10px">${fpT('Bibliothèque de prompts')}</div>
     <div id="fp-prompt-lib-body" class="fp-grid-2 fp-collapsible-m" style="gap:10px;margin-bottom:8px">
       ${promptCats.map(cat => `
         <div class="fp-card fp-card-sm">
@@ -13291,11 +13291,11 @@ function renderAI() {
         </div>
       `).join('')}
     </div>
-    <button class="fp-show-more-mobile" id="fp-prompt-lib-toggle" style="margin-bottom:16px" onclick="(function(){var b=document.getElementById('fp-prompt-lib-body'),t=document.getElementById('fp-prompt-lib-toggle');var exp=b.classList.toggle('fp-expanded-m');t.textContent=exp?'Voir moins ▲':'Voir plus ▾';})()">Voir plus ▾</button>
+    <button class="fp-show-more-mobile" id="fp-prompt-lib-toggle" style="margin-bottom:16px" onclick="(function(){var b=document.getElementById('fp-prompt-lib-body'),t=document.getElementById('fp-prompt-lib-toggle');var exp=b.classList.toggle('fp-expanded-m');t.textContent=exp?'Voir moins ▲':'Voir plus ▾';})()">${fpT('Voir plus ▾')}</button>
 
     <!-- WORKSPACE CONTEXT -->
     <div class="fp-card fp-card-sm">
-      <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">Contexte workspace actif</div>
+      <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">${fpT('Contexte workspace actif')}</div>
       <div id="fp-ctx-body" class="fp-collapsible-m" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px">
         ${[
           {l:'Plan',          v:plan,                                                                                       c:'#2563EB'},
@@ -13310,7 +13310,7 @@ function renderAI() {
           <div style="font-size:12px;font-weight:800;color:${k.c}">${escHtml(String(k.v))}</div>
         </div>`).join('')}
       </div>
-      <button class="fp-show-more-mobile" id="fp-ctx-toggle" style="margin-top:10px" onclick="(function(){var b=document.getElementById('fp-ctx-body'),t=document.getElementById('fp-ctx-toggle');var exp=b.classList.toggle('fp-expanded-m');t.textContent=exp?'Voir moins ▲':'Voir plus ▾';})()">Voir plus ▾</button>
+      <button class="fp-show-more-mobile" id="fp-ctx-toggle" style="margin-top:10px" onclick="(function(){var b=document.getElementById('fp-ctx-body'),t=document.getElementById('fp-ctx-toggle');var exp=b.classList.toggle('fp-expanded-m');t.textContent=exp?'Voir moins ▲':'Voir plus ▾';})()">${fpT('Voir plus ▾')}</button>
     </div>
   `;
 }
@@ -13515,12 +13515,12 @@ window.fpClearAiChat = function() {
       <div class="fp-ai-chat-welcome-icon">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 0 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1 0-2h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg>
       </div>
-      <p><strong>Bonjour !</strong> Je suis votre assistant SEO FlowPoint.<br>Posez-moi des questions sur vos sites, performances, opportunités ou demandez-moi de générer un rapport.</p>
+      <p><strong>Bonjour !</strong> Je suis votre assistant SEO FlowPoint.<br>${fpT('Posez-moi des questions sur vos sites, performances, opportunités ou demandez-moi de générer un rapport.')}</p>
       <div class="fp-ai-chat-chips" id="fp-ai-chat-chips">
-        <button class="fp-ai-quick-chip" data-msg="Quel est le score SEO moyen de mes sites ?">Score SEO moyen</button>
+        <button class="fp-ai-quick-chip" data-msg="Quel est le score SEO moyen de mes sites ?">${fpT('Score SEO moyen')}</button>
         <button class="fp-ai-quick-chip" data-msg="Quelles sont les 3 actions prioritaires à faire cette semaine ?">Actions prioritaires</button>
         <button class="fp-ai-quick-chip" data-msg="Analyse mes Core Web Vitals et donne-moi des recommandations.">Core Web Vitals</button>
-        <button class="fp-ai-quick-chip" data-msg="Génère un résumé exécutif de la situation SEO.">Résumé exécutif</button>
+        <button class="fp-ai-quick-chip" data-msg="Génère un résumé exécutif de la situation SEO.">${fpT('Résumé exécutif')}</button>
       </div>
     </div>`;
     // Re-bind quick chips
@@ -13890,7 +13890,7 @@ function renderAuditDetailPanel(audit) {
       <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px">
         <div style="font-size:48px;font-weight:800;color:${scoreColor(audit.score)};font-family:var(--fp-font-head);line-height:1">${audit.score}</div>
         <div>
-          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:5px">Score SEO global</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:5px">${fpT('Score SEO global')}</div>
           ${badge(scoreLabel(audit.score), scoreColor(audit.score))}
           <div style="font-size:10px;color:var(--fp-text-faint);margin-top:5px">Analysé ${relDate(audit.date)}</div>
         </div>
@@ -14016,12 +14016,12 @@ function openMonitorPanel(monitor) {
           <input class="fp-input" id="monitor-panel-email" placeholder="alerte@email.com" value="${escHtml(monitor.alertEmail || '')}" style="flex:1"/>
           ${btn('Sauver','fp-btn fp-btn-primary fp-btn-sm','','id="monitor-panel-save-email"')}
         </div>
-        <div style="font-size:11px;color:var(--fp-text-muted);margin-top:4px">Alertes DOWN/UP envoyées à cette adresse.</div>
+        <div style="font-size:11px;color:var(--fp-text-muted);margin-top:4px">${fpT('Alertes DOWN/UP envoyées à cette adresse.')}</div>
       </div>
       <div class="fp-form-group" style="margin-bottom:0">
         <label class="fp-form-label" style="display:flex;align-items:center;gap:6px">
           ${svgIcon('phone').replace('width="14" height="14"','width="12" height="12"')} SMS d\'alerte
-          <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;border-radius:4px;padding:1px 5px;font-weight:700">Bientôt disponible</span>
+          <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;border-radius:4px;padding:1px 5px;font-weight:700">${fpT('Bientôt disponible')}</span>
         </label>
         <div style="padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-size:11px;color:var(--fp-text-muted)">
           Les alertes SMS par numéro de téléphone seront disponibles prochainement. Utilisez les alertes email en attendant.
@@ -14099,7 +14099,7 @@ function openMonitorPanel(monitor) {
 function renderNewAuditPanel() {
   return `
     <div class="fp-form-group">
-      <label class="fp-form-label">URL à auditer</label>
+      <label class="fp-form-label">${fpT('URL à auditer')}</label>
       <input class="fp-input" id="na-url" placeholder="https://monsite.fr"/>
     </div>
     <div class="fp-form-group">
@@ -14145,10 +14145,10 @@ function renderNewMissionPanel() {
   return `
     <div class="fp-form-group">
       <label class="fp-form-label">Titre</label>
-      <input class="fp-input" id="nm2-title" placeholder="Optimiser les balises title…"/>
+      <input class="fp-input" id="nm2-title" placeholder="${fpT('Optimiser les balises title…')}"/>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Catégorie</label>
+      <label class="fp-form-label">${fpT('Catégorie')}</label>
       <select class="fp-select" style="width:100%" id="nm2-cat">
         ${cats.map(c=>`<option>${c}</option>`).join('')}
       </select>
@@ -14160,7 +14160,7 @@ function renderNewMissionPanel() {
       </select>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Échéance</label>
+      <label class="fp-form-label">${fpT('Échéance')}</label>
       <input class="fp-input" id="nm2-date" type="date" value="${new Date().toISOString().slice(0,10)}"/>
     </div>
     ${btn('Créer la mission','fp-btn fp-btn-primary','plus','id="nm2-create"')}
@@ -14297,8 +14297,8 @@ function setupExportPanel() {
 function renderNewObjectivePanel() {
   return `
     <div class="fp-form-group">
-      <label class="fp-form-label">Libellé de l'objectif</label>
-      <input class="fp-input" id="nobj-label" placeholder="Ex : Score moyen ≥ 85/100" required/>
+      <label class="fp-form-label">${fpT("Libellé de l'objectif")}</label>
+      <input class="fp-input" id="nobj-label" placeholder="${fpT('Ex : Score moyen ≥ 85/100')}" required/>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">Valeur cible</label>
@@ -14308,12 +14308,12 @@ function renderNewObjectivePanel() {
       </div>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Échéance</label>
+      <label class="fp-form-label">${fpT('Échéance')}</label>
       <input class="fp-input" id="nobj-deadline" placeholder="30 sept. 2026"/>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">Prochaine action</label>
-      <input class="fp-input" id="nobj-next" placeholder="Ex : Optimiser 3 pages à fort potentiel"/>
+      <input class="fp-input" id="nobj-next" placeholder="${fpT('Ex : Optimiser 3 pages à fort potentiel')}"/>
     </div>
     ${btn('Enregistrer l\'objectif','fp-btn fp-btn-primary','check','id="nobj-save"')}
   `;
@@ -14356,13 +14356,13 @@ function renderNewEndpointPanel() {
       <input class="fp-input" id="nep-url" placeholder="https://monsite.fr/api/contact"/>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Méthode</label>
+      <label class="fp-form-label">${fpT('Méthode')}</label>
       <select class="fp-select" style="width:100%" id="nep-method">
         ${['GET','POST','PUT','DELETE','HEAD'].map(m=>`<option>${m}</option>`).join('')}
       </select>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Email d'alerte</label>
+      <label class="fp-form-label">${fpT("Email d'alerte")}</label>
       <input class="fp-input" id="nep-email" placeholder="alerte@email.com" value="${STATE.me?.email||''}"/>
     </div>
     ${btn('Ajouter et surveiller','fp-btn fp-btn-primary','','id="nep-create"')}
@@ -14395,7 +14395,7 @@ function renderNewMonitorPanel() {
       </div>
     `).join('')}
     <div class="fp-form-group">
-      <label class="fp-form-label">Fréquence</label>
+      <label class="fp-form-label">${fpT('Fréquence')}</label>
       <select class="fp-select" style="width:100%" id="nm-freq">
         ${['Toutes les 5 min','Toutes les 15 min','Toutes les heures'].map(o=>`<option>${o}</option>`).join('')}
       </select>
@@ -14431,14 +14431,14 @@ function renderNewReportPanel() {
   return `
     <div style="padding:8px 12px;background:rgba(${_rtInfo.col},0.08);border:1px solid rgba(${_rtInfo.col},0.22);border-radius:8px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
       <span style="font-size:18px">${_rtInfo.icon}</span>
-      <div style="flex:1"><div style="font-size:11px;font-weight:700;color:rgba(${_rtInfo.col},1)">Préréglage : ${_rtInfo.lbl}</div><div style="font-size:10px;color:var(--fp-text-faint)">${_rtInfo.desc} · <span style="cursor:pointer;text-decoration:underline" onclick="navigate('settings');setTimeout(function(){navigateSub('workspace');},50);closeFloatPanel()">Modifier</span></div></div>
+      <div style="flex:1"><div style="font-size:11px;font-weight:700;color:rgba(${_rtInfo.col},1)">Préréglage : ${_rtInfo.lbl}</div><div style="font-size:10px;color:var(--fp-text-faint)">${_rtInfo.desc} · <span style="cursor:pointer;text-decoration:underline" onclick="navigate('settings');setTimeout(function(){navigateSub('workspace');},50);closeFloatPanel()">${fpT('Modifier')}</span></div></div>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Nom du rapport</label>
+      <label class="fp-form-label">${fpT('Nom du rapport')}</label>
       <input class="fp-input" id="nr-name" placeholder="Rapport Mai 2026 — Boulangerie Martin"/>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Site audité</label>
+      <label class="fp-form-label">${fpT('Site audité')}</label>
       <select class="fp-select" style="width:100%" id="nr-audit">
         <option value="">— Sélectionner un audit —</option>
         ${auditOptions}
@@ -14455,7 +14455,7 @@ function renderNewReportPanel() {
       </div>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Période couverte</label>
+      <label class="fp-form-label">${fpT('Période couverte')}</label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div>
           <label class="fp-form-label" style="font-size:10px;margin-bottom:3px">Du</label>
@@ -14471,14 +14471,14 @@ function renderNewReportPanel() {
       <label class="fp-form-label">Inclure White Label</label>
       <div style="display:flex;align-items:center;gap:8px">
         <button class="fp-toggle on" id="nr-wl" data-toggle="nr-wl" aria-pressed="true"></button>
-        <span style="font-size:12px;color:var(--fp-text-muted)">Logo et couleurs personnalisés</span>
+        <span style="font-size:12px;color:var(--fp-text-muted)">${fpT('Logo et couleurs personnalisés')}</span>
       </div>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Notes de réunion</label>
+      <label class="fp-form-label">${fpT('Notes de réunion')}</label>
       <div style="display:flex;align-items:center;gap:8px">
         <button class="fp-toggle" id="nr-notes" data-toggle="nr-notes" aria-pressed="false"></button>
-        <span style="font-size:12px;color:var(--fp-text-muted)">Inclure les RDV avec notes dans la période</span>
+        <span style="font-size:12px;color:var(--fp-text-muted)">${fpT('Inclure les RDV avec notes dans la période')}</span>
       </div>
     </div>
     <div id="nr-notes-preview" style="display:none;margin-bottom:12px;padding:12px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:8px">
@@ -14616,7 +14616,7 @@ function renderInvitePanel() {
       <input class="fp-input" id="invite-email" placeholder="email@exemple.com" type="email"/>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Rôle</label>
+      <label class="fp-form-label">${fpT('Rôle')}</label>
       <select class="fp-select" style="width:100%" id="invite-role">
         <option value="admin">Manager</option><option value="member">Editor</option><option value="viewer">Viewer</option>
       </select>
@@ -14649,9 +14649,9 @@ function renderAIPanelContent() {
       ${renderAIMessages()}
     </div>
     <div class="fp-ai-input-row">
-      <input class="fp-ai-input" id="ai-panel-input" placeholder="Posez votre question…" style="font-size:11px"/>
+      <input class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" style="font-size:11px"/>
       <button class="fp-ai-send" id="ai-panel-send">${svgIcon('send').replace('width="14"','width="13"').replace('height="14"','height="13"')}</button>
-      <button id="ai-panel-stop" title="Arrêter" style="display:none;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:13px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
+      <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:13px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
     </div>
   `;
 }
@@ -14942,7 +14942,7 @@ function togglePlanDropdown() {
   dd.id = 'fp-plan-switcher-dd';
   dd.className = 'fp-plan-dropdown';
   dd.innerHTML = `
-    <div style="padding:8px 14px 7px;font-size:10px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--fp-border)">Changer de plan (démo)</div>
+    <div style="padding:8px 14px 7px;font-size:10px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--fp-border)">${fpT('Changer de plan (démo)')}</div>
     ${plans.map(p=>`
       <div class="fp-plan-dropdown-item${p.n===cur?' active':''}" onclick="changePlan('${p.n}')">
         <div class="fp-plan-di-left">
@@ -14973,7 +14973,7 @@ function updatePlanSwitcher() {
   if (!el) return;
   const plan = STATE.me?.plan || 'Pro';
   const colors = { Standard:'#94a3b8', Pro:'#2563EB', Ultra:'#8b5cf6', Starter:'#94a3b8', Agency:'#8b5cf6' };
-  el.innerHTML = `<button class="fp-plan-pill" onclick="togglePlanDropdown()" title="Changer de plan (démo)">
+  el.innerHTML = `<button class="fp-plan-pill" onclick="togglePlanDropdown()" title="${fpT('Changer de plan (démo)')}">
     <div class="fp-ps-dot" style="background:${colors[plan]||'#2563EB'}"></div>
     <span>${plan}</span>
     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -15123,7 +15123,7 @@ function _doRender() {
           subContent = renderSubPageContent(STATE.route, STATE.subRoute);
         } catch (_subErr) {
           console.error('[FP] renderSubPageContent crash', STATE.route, STATE.subRoute, _subErr);
-          subContent = `<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">Contenu indisponible — <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="render()">Réessayer</button></div>`;
+          subContent = `<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">Contenu indisponible — <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="render()">${fpT('Réessayer')}</button></div>`;
         }
         if (subContent) {
           const subNav = animated?.querySelector('.fp-sub-nav');
@@ -15931,20 +15931,20 @@ function bindSectionEvents() {
         <div style="padding:4px">
           <div class="fp-form-group">
             <label class="fp-form-label">Nom</label>
-            <input class="fp-input" id="mw-name" placeholder="Déploiement hebdo"/>
+            <input class="fp-input" id="mw-name" placeholder="${fpT('Déploiement hebdo')}"/>
           </div>
           <div class="fp-form-group">
             <label class="fp-form-label">Planification (ex: Dimanche 02:00–04:00)</label>
             <input class="fp-input" id="mw-sched" placeholder="Dimanche 02:00–04:00"/>
           </div>
           <div class="fp-form-group">
-            <label class="fp-form-label">Sites concernés</label>
+            <label class="fp-form-label">${fpT('Sites concernés')}</label>
             <select class="fp-select" id="mw-sites" style="width:100%">
-              <option value="all">Tous les sites</option>
+              <option value="all">${fpT('Tous les sites')}</option>
               ${(STATE.monitors||[]).map(m=>`<option value="${escHtml(m.id)}">${escHtml(m.name||m.url||'Monitor')}</option>`).join('')}
             </select>
           </div>
-          <button class="fp-btn fp-btn-primary" id="mw-create-save" style="width:100%">Créer la fenêtre</button>
+          <button class="fp-btn fp-btn-primary" id="mw-create-save" style="width:100%">${fpT('Créer la fenêtre')}</button>
         </div>
       `);
       setTimeout(() => {
@@ -17088,7 +17088,7 @@ function initChartTooltips() {
         ${ev.site ? `<div style="font-size:10px;color:var(--fp-text-faint);margin-top:1px">${escHtml(ev.site.replace(/^https?:\/\//,''))}</div>` : ''}
         ${!timeRange && dur ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:3px">⏱ ${dur}</div>` : ''}
         ${ev.notes ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:4px;border-top:1px solid rgba(255,255,255,0.06);padding-top:4px;max-width:180px;white-space:pre-wrap;word-break:break-word">📝 ${escHtml(ev.notes.length>80?ev.notes.slice(0,80)+'…':ev.notes)}</div>` : ''}
-        <div style="font-size:9px;color:var(--fp-text-faint);margin-top:4px;border-top:1px solid rgba(255,255,255,0.06);padding-top:4px">Cliquer pour modifier</div>
+        <div style="font-size:9px;color:var(--fp-text-faint);margin-top:4px;border-top:1px solid rgba(255,255,255,0.06);padding-top:4px">${fpT('Cliquer pour modifier')}</div>
       `, e);
     });
     rdv.addEventListener('mousemove', moveTip);
@@ -18201,6 +18201,66 @@ function bindGlobalEvents() {
     'White-label rapports': 'White-label reports',
     'White-label portail': 'White-label portal',
     '✓ Complet': '✓ Full',
+    'Activer →': 'Enable →',
+    'Actuel': 'Current',
+    'Analyser': 'Analyze',
+    'Annuler l\'abonnement': 'Cancel subscription',
+    'Arrêter': 'Stop',
+    'Arrêter la génération': 'Stop generation',
+    'Aucun monitor configuré — ajoutez-en depuis l\'onglet Monitors.': 'No monitor configured — add one from the Monitors tab.',
+    'Aucune activité d\'équipe récente.': 'No recent team activity.',
+    'Canaux d\'alerte': 'Alert channels',
+    'Charger rankings': 'Load rankings',
+    'Choisir le fournisseur IA': 'Choose AI provider',
+    'Choisissez un template ci-dessus pour créer votre premier rapport.': 'Choose a template above to create your first report.',
+    'Compétition': 'Competition',
+    'Concurrent C · 71pts': 'Competitor C · 71pts',
+    'Concurrent D · 58pts': 'Competitor D · 58pts',
+    'Concurrent E · 65pts': 'Competitor E · 65pts',
+    'Confirmer l\'annulation': 'Confirm cancellation',
+    'Connexion au serveur impossible': 'Cannot connect to server',
+    'Contexte workspace actif': 'Active workspace context',
+    'Continuer l\'essai': 'Continue trial',
+    'Dernier :': 'Latest:',
+    'Dernier trigger': 'Last trigger',
+    'Données d\'équipe en chargement': 'Loading team data',
+    'Email d\'alerte': 'Alert email',
+    'Ex : Score moyen ≥ 85/100': 'Ex: Average score ≥ 85/100',
+    'Exporter CSV': 'Export CSV',
+    'Garder mon abonnement': 'Keep my subscription',
+    'Inférieur à (&lt;)': 'Less than (<)',
+    'L\'IA analyse vos audits, vos keywords et vos monitors pour générer un plan d\'action personnalisé.': 'AI analyzes your audits, keywords, and monitors to generate a personalized action plan.',
+    'L\'historique apparaîtra après votre prochaine connexion.': 'History will appear after your next login.',
+    'LIVE · Vue d\'ensemble': 'LIVE · Overview',
+    'Lancez un audit SEO ou créez des missions pour voir les opportunités de croissance identifiées par l\'IA.': 'Run an SEO audit or create missions to see growth opportunities identified by AI.',
+    'Les prévisions s\'afficheront quand suffisamment de données locales seront collectées': 'Forecasts will appear when enough local data has been collected',
+    'Libellé de l\'objectif': 'Goal label',
+    'Membre': 'Member',
+    'Mois suivant': 'Next month',
+    'Numéro': 'Number',
+    'Premier audit :': 'First audit:',
+    'Progression score SEO — Objectif 80/100': 'SEO score progression — Target 80/100',
+    'Relancez un audit pour commencer à construire l\'historique.': 'Run an audit to start building history.',
+    'Réactiver l\'abonnement': 'Reactivate subscription',
+    'Score SEO global': 'Global SEO score',
+    'Score SEO ': 'SEO score ',
+    'Score moyen portefeuille': 'Portfolio average score',
+    'Supprimer ce RDV': 'Delete this appointment',
+    'Supérieur à (&gt;)': 'Greater than (>)',
+    'Tendance 30j': '30d trend',
+    'Terminer': 'Finish',
+    'Terminer l\'essai': 'End trial',
+    'Terminer l\'essai gratuit': 'End free trial',
+    'Top sites — Performance': 'Top sites — Performance',
+    'Trier : Date': 'Sort: Date',
+    'Trier : Impact': 'Sort: Impact',
+    'Trier : Score': 'Sort: Score',
+    'Uptime réel': 'Real uptime',
+    'Usage Health Score': 'Usage Health Score',
+    'Visibilité': 'Visibility',
+    'Voir': 'View',
+    'Votre position locale': 'Your local position',
+    'ex. Score critique restaurant': 'e.g. Critical restaurant score',
   };
   // ── FP_I18N_EN_EXTRA — auto-generated sweep of previously untranslated FR strings (task: 100% dashboard translation) ──
   var FP_I18N_EN_EXTRA = {
@@ -22764,7 +22824,67 @@ function bindGlobalEvents() {
     "🔄 Calculer depuis l'API": "🔄 Calcular desde la API",
     "🔄 Charger les propriétés": "🔄 Cargar propiedades",
     "🔄 Nouveaux vs Récurrents": "🔄 Nuevos vs Recurrentes",
-    "🔄 Réessayer": "🔄 Reintentar"
+    "🔄 Réessayer": "🔄 Reintentar",
+    "Activer →": "Activar →",
+    "Actuel": "Actual",
+    "Analyser": "Analizar",
+    "Annuler l'abonnement": "Cancelar suscripción",
+    "Arrêter": "Detener",
+    "Arrêter la génération": "Detener generación",
+    "Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.": "Ningún monitor configurado — agrega uno desde la pestaña Monitors.",
+    "Aucune activité d'équipe récente.": "Sin actividad reciente del equipo.",
+    "Canaux d'alerte": "Canales de alerta",
+    "Charger rankings": "Cargar posiciones",
+    "Choisir le fournisseur IA": "Elegir proveedor IA",
+    "Choisissez un template ci-dessus pour créer votre premier rapport.": "Elige una plantilla de arriba para crear tu primer informe.",
+    "Compétition": "Competencia",
+    "Concurrent C · 71pts": "Competidor C · 71pts",
+    "Concurrent D · 58pts": "Competidor D · 58pts",
+    "Concurrent E · 65pts": "Competidor E · 65pts",
+    "Confirmer l'annulation": "Confirmar cancelación",
+    "Connexion au serveur impossible": "Imposible conectar al servidor",
+    "Contexte workspace actif": "Contexto de workspace activo",
+    "Continuer l'essai": "Continuar prueba",
+    "Dernier :": "Último:",
+    "Dernier trigger": "Último disparador",
+    "Données d'équipe en chargement": "Cargando datos del equipo",
+    "Email d'alerte": "Email de alerta",
+    "Ex : Score moyen ≥ 85/100": "Ej: Puntuación media ≥ 85/100",
+    "Exporter CSV": "Exportar CSV",
+    "Garder mon abonnement": "Mantener mi suscripción",
+    "Inférieur à (&lt;)": "Menor que (<)",
+    "L'IA analyse vos audits, vos keywords et vos monitors pour générer un plan d'action personnalisé.": "La IA analiza tus auditorías, keywords y monitores para generar un plan de acción personalizado.",
+    "L'historique apparaîtra après votre prochaine connexion.": "El historial aparecerá tras tu próximo inicio de sesión.",
+    "LIVE · Vue d'ensemble": "LIVE · Vista general",
+    "Lancez un audit SEO ou créez des missions pour voir les opportunités de croissance identifiées par l'IA.": "Lanza una auditoría SEO o crea misiones para ver las oportunidades de crecimiento identificadas por la IA.",
+    "Les prévisions s'afficheront quand suffisamment de données locales seront collectées": "Las previsiones se mostrarán cuando se hayan recopilado suficientes datos locales",
+    "Libellé de l'objectif": "Etiqueta del objetivo",
+    "Membre": "Miembro",
+    "Mois suivant": "Mes siguiente",
+    "Numéro": "Número",
+    "Premier audit :": "Primer audit:",
+    "Progression score SEO — Objectif 80/100": "Progresión de puntuación SEO — Objetivo 80/100",
+    "Relancez un audit pour commencer à construire l'historique.": "Lanza un audit para empezar a construir el historial.",
+    "Réactiver l'abonnement": "Reactivar suscripción",
+    "Score SEO global": "Puntuación SEO global",
+    "Score SEO ": "Puntuación SEO ",
+    "Score moyen portefeuille": "Puntuación media del portafolio",
+    "Supprimer ce RDV": "Eliminar esta cita",
+    "Supérieur à (&gt;)": "Mayor que (>)",
+    "Tendance 30j": "Tendencia 30d",
+    "Terminer": "Terminar",
+    "Terminer l'essai": "Finalizar prueba",
+    "Terminer l'essai gratuit": "Finalizar prueba gratuita",
+    "Top sites — Performance": "Mejores sitios — Rendimiento",
+    "Trier : Date": "Ordenar: Fecha",
+    "Trier : Impact": "Ordenar: Impacto",
+    "Trier : Score": "Ordenar: Puntuación",
+    "Uptime réel": "Uptime real",
+    "Usage Health Score": "Usage Health Score",
+    "Visibilité": "Visibilidad",
+    "Voir": "Ver",
+    "Votre position locale": "Tu posición local",
+    "ex. Score critique restaurant": "ej. Puntuación crítica restaurante",
     },
     de: {
     "+ Analyser un avis": "+ Eine Bewertung analysieren",
@@ -25517,6 +25637,66 @@ function bindGlobalEvents() {
     "Partager": "Teilen",
     "Nouveau fil": "Neuer Thread",
     "Aucun fichier partagé": "Keine geteilten Dateien",
+    "Activer →": "Aktivieren →",
+    "Actuel": "Aktuell",
+    "Analyser": "Analysieren",
+    "Annuler l'abonnement": "Abonnement kündigen",
+    "Arrêter": "Stopp",
+    "Arrêter la génération": "Generierung stoppen",
+    "Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.": "Kein Monitor konfiguriert — füge einen über den Tab Monitors hinzu.",
+    "Aucune activité d'équipe récente.": "Keine kürzliche Teamaktivität.",
+    "Canaux d'alerte": "Benachrichtigungskanäle",
+    "Charger rankings": "Rankings laden",
+    "Choisir le fournisseur IA": "KI-Anbieter wählen",
+    "Choisissez un template ci-dessus pour créer votre premier rapport.": "Wähle oben eine Vorlage, um deinen ersten Bericht zu erstellen.",
+    "Compétition": "Wettbewerb",
+    "Concurrent C · 71pts": "Wettbewerber C · 71pts",
+    "Concurrent D · 58pts": "Wettbewerber D · 58pts",
+    "Concurrent E · 65pts": "Wettbewerber E · 65pts",
+    "Confirmer l'annulation": "Kündigung bestätigen",
+    "Connexion au serveur impossible": "Serververbindung nicht möglich",
+    "Contexte workspace actif": "Aktiver Workspace-Kontext",
+    "Continuer l'essai": "Test fortsetzen",
+    "Dernier :": "Letzter:",
+    "Dernier trigger": "Letzter Auslöser",
+    "Données d'équipe en chargement": "Teamdaten werden geladen",
+    "Email d'alerte": "Benachrichtigungs-E-Mail",
+    "Ex : Score moyen ≥ 85/100": "Bsp.: Durchschnittswertung ≥ 85/100",
+    "Exporter CSV": "CSV exportieren",
+    "Garder mon abonnement": "Mein Abonnement behalten",
+    "Inférieur à (&lt;)": "Kleiner als (<)",
+    "L'IA analyse vos audits, vos keywords et vos monitors pour générer un plan d'action personnalisé.": "Die KI analysiert deine Audits, Keywords und Monitore, um einen personalisierten Aktionsplan zu erstellen.",
+    "L'historique apparaîtra après votre prochaine connexion.": "Der Verlauf erscheint nach deiner nächsten Anmeldung.",
+    "LIVE · Vue d'ensemble": "LIVE · Übersicht",
+    "Lancez un audit SEO ou créez des missions pour voir les opportunités de croissance identifiées par l'IA.": "Führe ein SEO-Audit durch oder erstelle Missionen, um von der KI identifizierte Wachstumschancen zu sehen.",
+    "Les prévisions s'afficheront quand suffisamment de données locales seront collectées": "Prognosen erscheinen, wenn genügend lokale Daten gesammelt wurden",
+    "Libellé de l'objectif": "Zielbezeichnung",
+    "Membre": "Mitglied",
+    "Mois suivant": "Nächsten Monat",
+    "Numéro": "Nummer",
+    "Premier audit :": "Erstes Audit:",
+    "Progression score SEO — Objectif 80/100": "SEO-Score-Entwicklung — Ziel 80/100",
+    "Relancez un audit pour commencer à construire l'historique.": "Führe ein Audit durch, um den Verlauf aufzubauen.",
+    "Réactiver l'abonnement": "Abonnement reaktivieren",
+    "Score SEO global": "Globaler SEO-Score",
+    "Score SEO ": "SEO-Score ",
+    "Score moyen portefeuille": "Durchschnittlicher Portfolio-Score",
+    "Supprimer ce RDV": "Diesen Termin löschen",
+    "Supérieur à (&gt;)": "Größer als (>)",
+    "Tendance 30j": "30-Tage-Trend",
+    "Terminer": "Beenden",
+    "Terminer l'essai": "Test beenden",
+    "Terminer l'essai gratuit": "Kostenlose Testphase beenden",
+    "Top sites — Performance": "Top-Seiten — Performance",
+    "Trier : Date": "Sortieren: Datum",
+    "Trier : Impact": "Sortieren: Auswirkung",
+    "Trier : Score": "Sortieren: Score",
+    "Uptime réel": "Echter Uptime",
+    "Usage Health Score": "Usage Health Score",
+    "Visibilité": "Sichtbarkeit",
+    "Voir": "Anzeigen",
+    "Votre position locale": "Ihre lokale Position",
+    "ex. Score critique restaurant": "z.B. Kritischer Restaurant-Score",
     },
     it: {
     "+ Analyser un avis": "+ Analizza una recensione",
@@ -28269,6 +28449,66 @@ function bindGlobalEvents() {
     "Partager": "Condividi",
     "Nouveau fil": "Nuovo thread",
     "Aucun fichier partagé": "Nessun file condiviso",
+    "Activer →": "Attivare →",
+    "Actuel": "Attuale",
+    "Analyser": "Analizzare",
+    "Annuler l'abonnement": "Annulla abbonamento",
+    "Arrêter": "Ferma",
+    "Arrêter la génération": "Interrompi generazione",
+    "Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.": "Nessun monitor configurato — aggiungine uno dalla scheda Monitor.",
+    "Aucune activité d'équipe récente.": "Nessuna attività recente del team.",
+    "Canaux d'alerte": "Canali di avviso",
+    "Charger rankings": "Carica classifiche",
+    "Choisir le fournisseur IA": "Scegli fornitore IA",
+    "Choisissez un template ci-dessus pour créer votre premier rapport.": "Scegli un template qui sopra per creare il tuo primo rapporto.",
+    "Compétition": "Concorrenza",
+    "Concurrent C · 71pts": "Concorrente C · 71pts",
+    "Concurrent D · 58pts": "Concorrente D · 58pts",
+    "Concurrent E · 65pts": "Concorrente E · 65pts",
+    "Confirmer l'annulation": "Conferma annullamento",
+    "Connexion au serveur impossible": "Impossibile connettersi al server",
+    "Contexte workspace actif": "Contesto workspace attivo",
+    "Continuer l'essai": "Continua prova",
+    "Dernier :": "Ultimo:",
+    "Dernier trigger": "Ultimo trigger",
+    "Données d'équipe en chargement": "Caricamento dati team",
+    "Email d'alerte": "Email di avviso",
+    "Ex : Score moyen ≥ 85/100": "Es: Punteggio medio ≥ 85/100",
+    "Exporter CSV": "Esporta CSV",
+    "Garder mon abonnement": "Mantieni il mio abbonamento",
+    "Inférieur à (&lt;)": "Inferiore a (<)",
+    "L'IA analyse vos audits, vos keywords et vos monitors pour générer un plan d'action personnalisé.": "L'IA analizza i tuoi audit, keyword e monitor per generare un piano d'azione personalizzato.",
+    "L'historique apparaîtra après votre prochaine connexion.": "La cronologia apparirà dopo il tuo prossimo accesso.",
+    "LIVE · Vue d'ensemble": "LIVE · Panoramica",
+    "Lancez un audit SEO ou créez des missions pour voir les opportunités de croissance identifiées par l'IA.": "Avvia un audit SEO o crea missioni per vedere le opportunità di crescita identificate dall'IA.",
+    "Les prévisions s'afficheront quand suffisamment de données locales seront collectées": "Le previsioni appariranno quando saranno stati raccolti dati locali sufficienti",
+    "Libellé de l'objectif": "Etichetta obiettivo",
+    "Membre": "Membro",
+    "Mois suivant": "Mese successivo",
+    "Numéro": "Numero",
+    "Premier audit :": "Primo audit:",
+    "Progression score SEO — Objectif 80/100": "Progressione punteggio SEO — Obiettivo 80/100",
+    "Relancez un audit pour commencer à construire l'historique.": "Avvia un audit per iniziare a costruire la cronologia.",
+    "Réactiver l'abonnement": "Riattiva abbonamento",
+    "Score SEO global": "Punteggio SEO globale",
+    "Score SEO ": "Punteggio SEO ",
+    "Score moyen portefeuille": "Punteggio medio portafoglio",
+    "Supprimer ce RDV": "Elimina questo appuntamento",
+    "Supérieur à (&gt;)": "Superiore a (>)",
+    "Tendance 30j": "Tendenza 30g",
+    "Terminer": "Termina",
+    "Terminer l'essai": "Termina prova",
+    "Terminer l'essai gratuit": "Termina prova gratuita",
+    "Top sites — Performance": "Siti principali — Performance",
+    "Trier : Date": "Ordina: Data",
+    "Trier : Impact": "Ordina: Impatto",
+    "Trier : Score": "Ordina: Punteggio",
+    "Uptime réel": "Uptime reale",
+    "Usage Health Score": "Usage Health Score",
+    "Visibilité": "Visibilità",
+    "Voir": "Visualizza",
+    "Votre position locale": "La tua posizione locale",
+    "ex. Score critique restaurant": "es. Punteggio critico ristorante",
     },
     pt: {
     "+ Analyser un avis": "+ Analisar uma avaliação",
@@ -31021,6 +31261,66 @@ function bindGlobalEvents() {
     "Partager": "Compartilhar",
     "Nouveau fil": "Novo tópico",
     "Aucun fichier partagé": "Nenhum ficheiro partilhado",
+    "Activer →": "Ativar →",
+    "Actuel": "Atual",
+    "Analyser": "Analisar",
+    "Annuler l'abonnement": "Cancelar assinatura",
+    "Arrêter": "Parar",
+    "Arrêter la génération": "Parar geração",
+    "Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.": "Nenhum monitor configurado — adicione um na aba Monitors.",
+    "Aucune activité d'équipe récente.": "Nenhuma atividade recente da equipe.",
+    "Canaux d'alerte": "Canais de alerta",
+    "Charger rankings": "Carregar rankings",
+    "Choisir le fournisseur IA": "Escolher fornecedor IA",
+    "Choisissez un template ci-dessus pour créer votre premier rapport.": "Escolha um modelo acima para criar seu primeiro relatório.",
+    "Compétition": "Concorrência",
+    "Concurrent C · 71pts": "Concorrente C · 71pts",
+    "Concurrent D · 58pts": "Concorrente D · 58pts",
+    "Concurrent E · 65pts": "Concorrente E · 65pts",
+    "Confirmer l'annulation": "Confirmar cancelamento",
+    "Connexion au serveur impossible": "Impossível conectar ao servidor",
+    "Contexte workspace actif": "Contexto de workspace ativo",
+    "Continuer l'essai": "Continuar avaliação",
+    "Dernier :": "Último:",
+    "Dernier trigger": "Último gatilho",
+    "Données d'équipe en chargement": "Carregando dados da equipe",
+    "Email d'alerte": "Email de alerta",
+    "Ex : Score moyen ≥ 85/100": "Ex: Pontuação média ≥ 85/100",
+    "Exporter CSV": "Exportar CSV",
+    "Garder mon abonnement": "Manter minha assinatura",
+    "Inférieur à (&lt;)": "Menor que (<)",
+    "L'IA analyse vos audits, vos keywords et vos monitors pour générer un plan d'action personnalisé.": "A IA analisa seus auditorias, keywords e monitores para gerar um plano de ação personalizado.",
+    "L'historique apparaîtra après votre prochaine connexion.": "O histórico aparecerá após seu próximo login.",
+    "LIVE · Vue d'ensemble": "LIVE · Visão geral",
+    "Lancez un audit SEO ou créez des missions pour voir les opportunités de croissance identifiées par l'IA.": "Execute uma auditoria SEO ou crie missões para ver as oportunidades de crescimento identificadas pela IA.",
+    "Les prévisions s'afficheront quand suffisamment de données locales seront collectées": "As previsões aparecerão quando dados locais suficientes forem coletados",
+    "Libellé de l'objectif": "Rótulo do objetivo",
+    "Membre": "Membro",
+    "Mois suivant": "Próximo mês",
+    "Numéro": "Número",
+    "Premier audit :": "Primeira auditoria:",
+    "Progression score SEO — Objectif 80/100": "Progressão de pontuação SEO — Meta 80/100",
+    "Relancez un audit pour commencer à construire l'historique.": "Execute uma auditoria para começar a construir o histórico.",
+    "Réactiver l'abonnement": "Reativar assinatura",
+    "Score SEO global": "Pontuação SEO global",
+    "Score SEO ": "Pontuação SEO ",
+    "Score moyen portefeuille": "Pontuação média do portfólio",
+    "Supprimer ce RDV": "Excluir este agendamento",
+    "Supérieur à (&gt;)": "Maior que (>)",
+    "Tendance 30j": "Tendência 30d",
+    "Terminer": "Concluir",
+    "Terminer l'essai": "Encerrar avaliação",
+    "Terminer l'essai gratuit": "Encerrar avaliação gratuita",
+    "Top sites — Performance": "Principais sites — Desempenho",
+    "Trier : Date": "Ordenar: Data",
+    "Trier : Impact": "Ordenar: Impacto",
+    "Trier : Score": "Ordenar: Pontuação",
+    "Uptime réel": "Uptime real",
+    "Usage Health Score": "Usage Health Score",
+    "Visibilité": "Visibilidade",
+    "Voir": "Ver",
+    "Votre position locale": "Sua posição local",
+    "ex. Score critique restaurant": "ex. Pontuação crítica restaurante",
     },
     nl: {
     "+ Analyser un avis": "+ Een beoordeling analyseren",
@@ -33773,6 +34073,66 @@ function bindGlobalEvents() {
     "Partager": "Delen",
     "Nouveau fil": "Nieuwe thread",
     "Aucun fichier partagé": "Geen gedeelde bestanden",
+    "Activer →": "Activeren →",
+    "Actuel": "Huidig",
+    "Analyser": "Analyseren",
+    "Annuler l'abonnement": "Abonnement opzeggen",
+    "Arrêter": "Stoppen",
+    "Arrêter la génération": "Generatie stoppen",
+    "Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.": "Geen monitor geconfigureerd — voeg er een toe via het tabblad Monitors.",
+    "Aucune activité d'équipe récente.": "Geen recente teamactiviteit.",
+    "Canaux d'alerte": "Waarschuwingskanalen",
+    "Charger rankings": "Rankings laden",
+    "Choisir le fournisseur IA": "AI-aanbieder kiezen",
+    "Choisissez un template ci-dessus pour créer votre premier rapport.": "Kies een sjabloon hierboven om je eerste rapport te maken.",
+    "Compétition": "Concurrentie",
+    "Concurrent C · 71pts": "Concurrent C · 71pts",
+    "Concurrent D · 58pts": "Concurrent D · 58pts",
+    "Concurrent E · 65pts": "Concurrent E · 65pts",
+    "Confirmer l'annulation": "Annulering bevestigen",
+    "Connexion au serveur impossible": "Kan geen verbinding maken met server",
+    "Contexte workspace actif": "Actieve werkruimtecontext",
+    "Continuer l'essai": "Proefperiode doorgaan",
+    "Dernier :": "Laatste:",
+    "Dernier trigger": "Laatste trigger",
+    "Données d'équipe en chargement": "Teamgegevens laden",
+    "Email d'alerte": "Waarschuwings-e-mail",
+    "Ex : Score moyen ≥ 85/100": "Bijv.: Gemiddelde score ≥ 85/100",
+    "Exporter CSV": "CSV exporteren",
+    "Garder mon abonnement": "Mijn abonnement behouden",
+    "Inférieur à (&lt;)": "Kleiner dan (<)",
+    "L'IA analyse vos audits, vos keywords et vos monitors pour générer un plan d'action personnalisé.": "AI analyseert je audits, keywords en monitors om een gepersonaliseerd actieplan te genereren.",
+    "L'historique apparaîtra après votre prochaine connexion.": "Geschiedenis verschijnt na je volgende aanmelding.",
+    "LIVE · Vue d'ensemble": "LIVE · Overzicht",
+    "Lancez un audit SEO ou créez des missions pour voir les opportunités de croissance identifiées par l'IA.": "Voer een SEO-audit uit of maak missies aan om groeikansen te zien die door AI zijn geïdentificeerd.",
+    "Les prévisions s'afficheront quand suffisamment de données locales seront collectées": "Prognoses worden weergegeven wanneer er voldoende lokale gegevens zijn verzameld",
+    "Libellé de l'objectif": "Doellabel",
+    "Membre": "Lid",
+    "Mois suivant": "Volgende maand",
+    "Numéro": "Nummer",
+    "Premier audit :": "Eerste audit:",
+    "Progression score SEO — Objectif 80/100": "SEO-score voortgang — Doel 80/100",
+    "Relancez un audit pour commencer à construire l'historique.": "Voer een audit uit om de geschiedenis op te bouwen.",
+    "Réactiver l'abonnement": "Abonnement reactiveren",
+    "Score SEO global": "Globale SEO-score",
+    "Score SEO ": "SEO-score ",
+    "Score moyen portefeuille": "Gemiddelde portfolioscore",
+    "Supprimer ce RDV": "Afspraak verwijderen",
+    "Supérieur à (&gt;)": "Groter dan (>)",
+    "Tendance 30j": "30d trend",
+    "Terminer": "Voltooien",
+    "Terminer l'essai": "Proefperiode beëindigen",
+    "Terminer l'essai gratuit": "Gratis proefperiode beëindigen",
+    "Top sites — Performance": "Topsites — Prestaties",
+    "Trier : Date": "Sorteren: Datum",
+    "Trier : Impact": "Sorteren: Impact",
+    "Trier : Score": "Sorteren: Score",
+    "Uptime réel": "Werkelijke uptime",
+    "Usage Health Score": "Usage Health Score",
+    "Visibilité": "Zichtbaarheid",
+    "Voir": "Bekijken",
+    "Votre position locale": "Uw lokale positie",
+    "ex. Score critique restaurant": "bijv. Kritieke restaurantscore",
     },
     pl: {
     "+ Analyser un avis": "+ Analizować recenzję",
@@ -36525,6 +36885,66 @@ function bindGlobalEvents() {
     "Partager": "Udostępnij",
     "Nouveau fil": "Nowy wątek",
     "Aucun fichier partagé": "Brak udostępnionych plików",
+    "Activer →": "Aktywuj →",
+    "Actuel": "Aktualny",
+    "Analyser": "Analizuj",
+    "Annuler l'abonnement": "Anuluj subskrypcję",
+    "Arrêter": "Zatrzymaj",
+    "Arrêter la génération": "Zatrzymaj generowanie",
+    "Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.": "Brak skonfigurowanego monitora — dodaj go w zakładce Monitors.",
+    "Aucune activité d'équipe récente.": "Brak ostatniej aktywności zespołu.",
+    "Canaux d'alerte": "Kanały alertów",
+    "Charger rankings": "Załaduj rankingi",
+    "Choisir le fournisseur IA": "Wybierz dostawcę AI",
+    "Choisissez un template ci-dessus pour créer votre premier rapport.": "Wybierz szablon powyżej, aby utworzyć swój pierwszy raport.",
+    "Compétition": "Konkurencja",
+    "Concurrent C · 71pts": "Konkurent C · 71pts",
+    "Concurrent D · 58pts": "Konkurent D · 58pts",
+    "Concurrent E · 65pts": "Konkurent E · 65pts",
+    "Confirmer l'annulation": "Potwierdź anulowanie",
+    "Connexion au serveur impossible": "Nie można połączyć się z serwerem",
+    "Contexte workspace actif": "Aktywny kontekst workspace",
+    "Continuer l'essai": "Kontynuuj okres próbny",
+    "Dernier :": "Ostatni:",
+    "Dernier trigger": "Ostatni wyzwalacz",
+    "Données d'équipe en chargement": "Ładowanie danych zespołu",
+    "Email d'alerte": "Email alertu",
+    "Ex : Score moyen ≥ 85/100": "Np.: Średni wynik ≥ 85/100",
+    "Exporter CSV": "Eksportuj CSV",
+    "Garder mon abonnement": "Zachowaj subskrypcję",
+    "Inférieur à (&lt;)": "Mniejszy niż (<)",
+    "L'IA analyse vos audits, vos keywords et vos monitors pour générer un plan d'action personnalisé.": "AI analizuje Twoje audyty, słowa kluczowe i monitory, aby wygenerować spersonalizowany plan działania.",
+    "L'historique apparaîtra après votre prochaine connexion.": "Historia pojawi się po następnym logowaniu.",
+    "LIVE · Vue d'ensemble": "LIVE · Przegląd",
+    "Lancez un audit SEO ou créez des missions pour voir les opportunités de croissance identifiées par l'IA.": "Uruchom audyt SEO lub utwórz misje, aby zobaczyć możliwości wzrostu zidentyfikowane przez AI.",
+    "Les prévisions s'afficheront quand suffisamment de données locales seront collectées": "Prognozy pojawią się po zebraniu wystarczającej ilości danych lokalnych",
+    "Libellé de l'objectif": "Etykieta celu",
+    "Membre": "Członek",
+    "Mois suivant": "Następny miesiąc",
+    "Numéro": "Numer",
+    "Premier audit :": "Pierwszy audyt:",
+    "Progression score SEO — Objectif 80/100": "Postęp wyniku SEO — Cel 80/100",
+    "Relancez un audit pour commencer à construire l'historique.": "Uruchom audyt, aby zacząć budować historię.",
+    "Réactiver l'abonnement": "Reaktywuj subskrypcję",
+    "Score SEO global": "Globalny wynik SEO",
+    "Score SEO ": "Wynik SEO ",
+    "Score moyen portefeuille": "Średni wynik portfela",
+    "Supprimer ce RDV": "Usuń tę wizytę",
+    "Supérieur à (&gt;)": "Większy niż (>)",
+    "Tendance 30j": "Trend 30d",
+    "Terminer": "Zakończ",
+    "Terminer l'essai": "Zakończ okres próbny",
+    "Terminer l'essai gratuit": "Zakończ bezpłatny okres próbny",
+    "Top sites — Performance": "Najlepsze strony — Wydajność",
+    "Trier : Date": "Sortuj: Data",
+    "Trier : Impact": "Sortuj: Wpływ",
+    "Trier : Score": "Sortuj: Wynik",
+    "Uptime réel": "Rzeczywisty uptime",
+    "Usage Health Score": "Usage Health Score",
+    "Visibilité": "Widoczność",
+    "Voir": "Zobacz",
+    "Votre position locale": "Twoja pozycja lokalna",
+    "ex. Score critique restaurant": "np. Krytyczny wynik restauracji",
     },
     sv: {
     "+ Analyser un avis": "+ Analysera en recension",
@@ -39277,6 +39697,66 @@ function bindGlobalEvents() {
     "Partager": "Dela",
     "Nouveau fil": "Ny tråd",
     "Aucun fichier partagé": "Inga delade filer",
+    "Activer →": "Aktivera →",
+    "Actuel": "Aktuell",
+    "Analyser": "Analysera",
+    "Annuler l'abonnement": "Avsluta prenumeration",
+    "Arrêter": "Stoppa",
+    "Arrêter la génération": "Stoppa generering",
+    "Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.": "Ingen monitor konfigurerad — lägg till en via fliken Monitors.",
+    "Aucune activité d'équipe récente.": "Ingen ny teamaktivitet.",
+    "Canaux d'alerte": "Aviseringskanaler",
+    "Charger rankings": "Ladda rankningar",
+    "Choisir le fournisseur IA": "Välj AI-leverantör",
+    "Choisissez un template ci-dessus pour créer votre premier rapport.": "Välj en mall ovan för att skapa din första rapport.",
+    "Compétition": "Konkurrens",
+    "Concurrent C · 71pts": "Konkurrent C · 71pts",
+    "Concurrent D · 58pts": "Konkurrent D · 58pts",
+    "Concurrent E · 65pts": "Konkurrent E · 65pts",
+    "Confirmer l'annulation": "Bekräfta uppsägning",
+    "Connexion au serveur impossible": "Kan inte ansluta till servern",
+    "Contexte workspace actif": "Aktivt arbetsytesammanhang",
+    "Continuer l'essai": "Fortsätt provperiod",
+    "Dernier :": "Senaste:",
+    "Dernier trigger": "Senaste utlösare",
+    "Données d'équipe en chargement": "Laddar teamdata",
+    "Email d'alerte": "Aviseringse-post",
+    "Ex : Score moyen ≥ 85/100": "T.ex.: Medelpoäng ≥ 85/100",
+    "Exporter CSV": "Exportera CSV",
+    "Garder mon abonnement": "Behåll min prenumeration",
+    "Inférieur à (&lt;)": "Mindre än (<)",
+    "L'IA analyse vos audits, vos keywords et vos monitors pour générer un plan d'action personnalisé.": "AI analyserar dina revisioner, nyckelord och monitorer för att skapa en personlig handlingsplan.",
+    "L'historique apparaîtra après votre prochaine connexion.": "Historiken visas efter nästa inloggning.",
+    "LIVE · Vue d'ensemble": "LIVE · Översikt",
+    "Lancez un audit SEO ou créez des missions pour voir les opportunités de croissance identifiées par l'IA.": "Kör en SEO-revision eller skapa uppdrag för att se tillväxtmöjligheter identifierade av AI.",
+    "Les prévisions s'afficheront quand suffisamment de données locales seront collectées": "Prognoser visas när tillräckligt med lokala data har samlats in",
+    "Libellé de l'objectif": "Målbeteckning",
+    "Membre": "Medlem",
+    "Mois suivant": "Nästa månad",
+    "Numéro": "Nummer",
+    "Premier audit :": "Första revision:",
+    "Progression score SEO — Objectif 80/100": "SEO-poängutveckling — Mål 80/100",
+    "Relancez un audit pour commencer à construire l'historique.": "Kör en revision för att börja bygga historik.",
+    "Réactiver l'abonnement": "Återaktivera prenumeration",
+    "Score SEO global": "Globalt SEO-poäng",
+    "Score SEO ": "SEO-poäng ",
+    "Score moyen portefeuille": "Genomsnittlig portföljpoäng",
+    "Supprimer ce RDV": "Ta bort detta möte",
+    "Supérieur à (&gt;)": "Större än (>)",
+    "Tendance 30j": "30d trend",
+    "Terminer": "Avsluta",
+    "Terminer l'essai": "Avsluta provperiod",
+    "Terminer l'essai gratuit": "Avsluta gratis provperiod",
+    "Top sites — Performance": "Toppwebbplatser — Prestanda",
+    "Trier : Date": "Sortera: Datum",
+    "Trier : Impact": "Sortera: Påverkan",
+    "Trier : Score": "Sortera: Poäng",
+    "Uptime réel": "Verklig drifttid",
+    "Usage Health Score": "Usage Health Score",
+    "Visibilité": "Synlighet",
+    "Voir": "Visa",
+    "Votre position locale": "Din lokala position",
+    "ex. Score critique restaurant": "t.ex. Kritisk restaurangpoäng",
     },
     ro: {
     "+ Analyser un avis": "+ Analizează o recenzie",
@@ -42029,6 +42509,66 @@ function bindGlobalEvents() {
     "Partager": "Partajează",
     "Nouveau fil": "Fir nou",
     "Aucun fichier partagé": "Niciun fișier partajat",
+    "Activer →": "Activează →",
+    "Actuel": "Actual",
+    "Analyser": "Analizează",
+    "Annuler l'abonnement": "Anulează abonamentul",
+    "Arrêter": "Oprire",
+    "Arrêter la génération": "Oprire generare",
+    "Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.": "Niciun monitor configurat — adăugați unul din fila Monitors.",
+    "Aucune activité d'équipe récente.": "Nicio activitate recentă a echipei.",
+    "Canaux d'alerte": "Canale de alertă",
+    "Charger rankings": "Încarcă clasamente",
+    "Choisir le fournisseur IA": "Alegeți furnizorul AI",
+    "Choisissez un template ci-dessus pour créer votre premier rapport.": "Alegeți un șablon de mai sus pentru a crea primul raport.",
+    "Compétition": "Concurență",
+    "Concurrent C · 71pts": "Concurent C · 71pts",
+    "Concurrent D · 58pts": "Concurent D · 58pts",
+    "Concurrent E · 65pts": "Concurent E · 65pts",
+    "Confirmer l'annulation": "Confirmați anularea",
+    "Connexion au serveur impossible": "Imposibil de conectat la server",
+    "Contexte workspace actif": "Context workspace activ",
+    "Continuer l'essai": "Continuați perioada de probă",
+    "Dernier :": "Ultimul:",
+    "Dernier trigger": "Ultima declanșare",
+    "Données d'équipe en chargement": "Se încarcă datele echipei",
+    "Email d'alerte": "Email de alertă",
+    "Ex : Score moyen ≥ 85/100": "Ex: Scor mediu ≥ 85/100",
+    "Exporter CSV": "Exportați CSV",
+    "Garder mon abonnement": "Păstrați abonamentul meu",
+    "Inférieur à (&lt;)": "Mai mic decât (<)",
+    "L'IA analyse vos audits, vos keywords et vos monitors pour générer un plan d'action personnalisé.": "IA analizează auditurile, cuvintele cheie și monitoarele pentru a genera un plan de acțiune personalizat.",
+    "L'historique apparaîtra après votre prochaine connexion.": "Istoricul va apărea după următoarea conectare.",
+    "LIVE · Vue d'ensemble": "LIVE · Prezentare generală",
+    "Lancez un audit SEO ou créez des missions pour voir les opportunités de croissance identifiées par l'IA.": "Lansați un audit SEO sau creați misiuni pentru a vedea oportunitățile de creștere identificate de IA.",
+    "Les prévisions s'afficheront quand suffisamment de données locales seront collectées": "Prognozele vor apărea când vor fi colectate suficiente date locale",
+    "Libellé de l'objectif": "Etichetă obiectiv",
+    "Membre": "Membru",
+    "Mois suivant": "Luna viitoare",
+    "Numéro": "Număr",
+    "Premier audit :": "Primul audit:",
+    "Progression score SEO — Objectif 80/100": "Progresul scorului SEO — Obiectiv 80/100",
+    "Relancez un audit pour commencer à construire l'historique.": "Lansați un audit pentru a începe să construiți istoricul.",
+    "Réactiver l'abonnement": "Reactivați abonamentul",
+    "Score SEO global": "Scor SEO global",
+    "Score SEO ": "Scor SEO ",
+    "Score moyen portefeuille": "Scor mediu portofoliu",
+    "Supprimer ce RDV": "Ștergeți această programare",
+    "Supérieur à (&gt;)": "Mai mare decât (>)",
+    "Tendance 30j": "Tendință 30z",
+    "Terminer": "Terminare",
+    "Terminer l'essai": "Terminați perioada de probă",
+    "Terminer l'essai gratuit": "Terminați perioada de probă gratuită",
+    "Top sites — Performance": "Site-uri de top — Performanță",
+    "Trier : Date": "Sortare: Dată",
+    "Trier : Impact": "Sortare: Impact",
+    "Trier : Score": "Sortare: Scor",
+    "Uptime réel": "Uptime real",
+    "Usage Health Score": "Usage Health Score",
+    "Visibilité": "Vizibilitate",
+    "Voir": "Vizualizare",
+    "Votre position locale": "Poziția dvs. locală",
+    "ex. Score critique restaurant": "ex. Scor critic restaurant",
     },
     cs: {
     "+ Analyser un avis": "+ Analyzovat recenzi",
@@ -45354,7 +45894,7 @@ async function init() {
     const _m = document.createElement('div');
     _m.id = 'fp-delete-account-modal';
     _m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
-    _m.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:32px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);border:1px solid var(--fp-border)"><div style="font-size:36px;margin-bottom:12px;text-align:center">🗑️</div><div style="font-size:18px;font-weight:800;color:#ef4444;margin-bottom:8px;text-align:center">Supprimer définitivement mon compte</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:16px;text-align:center;line-height:1.6">Cette action est <strong style="color:#ef4444">irréversible</strong>. Les éléments suivants seront supprimés :</div><ul style="font-size:12px;color:var(--fp-text-muted);margin:0 0 16px 0;padding-left:20px;line-height:2"><li>Tous vos projets, audits et rapports</li><li>Tous vos monitors, alertes et concurrents</li><li>Toutes vos données SEO et analytics</li><li>Tous les membres de l'équipe</li><li>Toutes les clés API et intégrations</li><li>Votre abonnement Stripe (résilié immédiatement)</li></ul><div style="font-size:12px;color:var(--fp-text);margin-bottom:8px;font-weight:600">Tapez <code style="background:rgba(239,68,68,0.1);padding:2px 6px;border-radius:4px;color:#ef4444">SUPPRIMER</code> pour confirmer :</div><input id="fp-delete-confirm-input" type="text" placeholder="SUPPRIMER" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid rgba(239,68,68,0.4);border-radius:8px;background:var(--fp-bg,#0a1020);color:var(--fp-text);font-size:13px;margin-bottom:16px;outline:none"><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-delete-account-modal').remove()">Annuler</button><button class="fp-btn fp-btn-primary" id="fp-delete-confirm-btn" style="flex:1;background:#ef4444;border-color:#ef4444;opacity:0.4;cursor:not-allowed" disabled onclick="fpConfirmDeleteAccount()">Supprimer définitivement</button></div></div>`;
+    _m.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:32px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);border:1px solid var(--fp-border)"><div style="font-size:36px;margin-bottom:12px;text-align:center">🗑️</div><div style="font-size:18px;font-weight:800;color:#ef4444;margin-bottom:8px;text-align:center">Supprimer définitivement mon compte</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:16px;text-align:center;line-height:1.6">Cette action est<strong style="color:#ef4444">irréversible</strong>. Les éléments suivants seront supprimés :</div><ul style="font-size:12px;color:var(--fp-text-muted);margin:0 0 16px 0;padding-left:20px;line-height:2"><li>Tous vos projets, audits et rapports</li><li>Tous vos monitors, alertes et concurrents</li><li>Toutes vos données SEO et analytics</li><li>Tous les membres de l'équipe</li><li>Toutes les clés API et intégrations</li><li>Votre abonnement Stripe (résilié immédiatement)</li></ul><div style="font-size:12px;color:var(--fp-text);margin-bottom:8px;font-weight:600">Tapez <code style="background:rgba(239,68,68,0.1);padding:2px 6px;border-radius:4px;color:#ef4444">SUPPRIMER</code>pour confirmer :</div><input id="fp-delete-confirm-input" type="text" placeholder="SUPPRIMER" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid rgba(239,68,68,0.4);border-radius:8px;background:var(--fp-bg,#0a1020);color:var(--fp-text);font-size:13px;margin-bottom:16px;outline:none"><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-delete-account-modal').remove()">Annuler</button><button class="fp-btn fp-btn-primary" id="fp-delete-confirm-btn" style="flex:1;background:#ef4444;border-color:#ef4444;opacity:0.4;cursor:not-allowed" disabled onclick="fpConfirmDeleteAccount()">Supprimer définitivement</button></div></div>`;
     document.body.appendChild(_m);
     const _inp = document.getElementById('fp-delete-confirm-input');
     const _btn = document.getElementById('fp-delete-confirm-btn');
@@ -45394,7 +45934,7 @@ async function init() {
           Cette action est <strong style="color:#ef4444">irréversible</strong>.<br>
           Tous vos audits, monitors, rapports, missions, analytics, concurrents et données SEO seront supprimés définitivement. Votre compte reste actif.
         </p>
-        <div style="font-size:12px;color:var(--fp-text);font-weight:600;margin-bottom:6px">Tapez <code style="background:rgba(239,68,68,0.1);padding:2px 6px;border-radius:4px;color:#ef4444">SUPPRIMER</code> pour confirmer :</div>
+        <div style="font-size:12px;color:var(--fp-text);font-weight:600;margin-bottom:6px">Tapez <code style="background:rgba(239,68,68,0.1);padding:2px 6px;border-radius:4px;color:#ef4444">SUPPRIMER</code>pour confirmer :</div>
         <input id="fp-del-data-inp" type="text" placeholder="SUPPRIMER" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid rgba(239,68,68,0.4);border-radius:8px;background:var(--fp-bg,#0a1020);color:var(--fp-text);font-size:13px;margin-bottom:12px;outline:none"/>
         <button id="fp-del-data-btn" class="fp-btn fp-btn-primary" style="width:100%;background:#ef4444;border-color:#ef4444;opacity:0.4;cursor:not-allowed" disabled onclick="(async()=>{const btn=document.getElementById('fp-del-data-btn');btn.disabled=true;btn.textContent='Suppression…';try{const r=await apiAction('DELETE','/api/settings/data');if(r&&r.ok){closeFloatPanel();showToast('success','Données supprimées ('+r.deleted+' éléments)');render(STATE.currentSection);}else{showToast('error',r?.error||'Erreur suppression');btn.disabled=false;btn.textContent='Supprimer définitivement';}}catch(e){showToast('error', fpT('Erreur réseau'));btn.disabled=false;btn.textContent='Supprimer définitivement';}})()">Supprimer définitivement</button>
         <button class="fp-btn fp-btn-ghost" style="width:100%;margin-top:8px" onclick="closeFloatPanel()">Annuler</button>
@@ -47440,7 +47980,7 @@ function renderAuditsAnalysis() {
               </div>`;
             }).join('')}
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px;width:100%" onclick="navigate('audits')">${fpT('Voir tous les audits')}</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px;width:100%" onclick="navigate('audits')">Voir tous les audits</button>
         </div>
       </div>
       <div class="fp-card fp-mb-16">
@@ -48186,7 +48726,7 @@ function renderMonitorsPerformance() {
       </div>
       <div style="display:flex;gap:16px;margin-top:10px;font-size:10.5px;color:var(--fp-text-faint)">
         <span><span style="color:#22c55e">●</span> Bon</span>
-        <span><span style="color:#f59e0b">●</span> À améliorer</span>
+        <span><span style="color:#f59e0b">●</span>À améliorer</span>
         <span><span style="color:#ef4444">●</span> Mauvais</span>
       </div>
     </div>
@@ -48512,7 +49052,7 @@ function renderMonitorsConfig() {
   ];
 
   return `
-    ${aiBlock('Configuration optimale détectée. Recommandation : activer <strong>Slack alerts</strong> pour notifications équipe instantanées, et créer une <strong>fenêtre de maintenance</strong> pour les déploiements du dimanche.', [])}
+    ${aiBlock('Configuration optimale détectée. Recommandation : activer <strong>Slack alerts</strong>pour notifications équipe instantanées, et créer une<strong>fenêtre de maintenance</strong> pour les déploiements du dimanche.', [])}
 
     <!-- Presets -->
     <div class="fp-card fp-mb-16">
@@ -48554,7 +49094,7 @@ function renderMonitorsConfig() {
               <div style="width:8px;height:8px;border-radius:50%;background:${ch.active ? ch.color : '#64748b'};${ch.active ? 'box-shadow:0 0 6px ' + ch.color + '60' : ''}"></div>
             </div>
             <div style="font-size:10.5px;color:var(--fp-text-muted);margin-bottom:10px">${ch.detail}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px"${ch.active && ch.name !== 'Email' ? ' disabled title="Configuration en libre-service bientôt disponible — les alertes sont envoyées par email en attendant"' : ''} onclick="${!ch.active ? "navigate('billing')" : ch.name === 'Email' ? "openFloatPanel('Configurer les alertes Email',`<div style='padding:4px'><div class='fp-form-group'><label class='fp-form-label'>Email de réception des alertes</label><input class='fp-input' id='ch-email-input' placeholder='alerte@email.com' value='${escHtml(STATE.me?.email||'')}'/></div><div class='fp-form-group'><label class='fp-form-label'>Alertes à recevoir</label><div style='display:flex;flex-direction:column;gap:6px'><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Site DOWN</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Latence élevée</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox'/> Reprise (site UP)</label></div></div><button class='fp-btn fp-btn-primary' style='width:100%' id='ch-email-save'>Sauvegarder</button></div>`);setTimeout(()=>{document.getElementById('ch-email-save')?.addEventListener('click',async()=>{const v=document.getElementById('ch-email-input')?.value?.trim();if(!v||!/^[^@]+@[^@]+\.[^@]+$/.test(v)){showToast('warning', fpT('Email invalide'));return;}try{await apiAction('PATCH','/api/me/prefs',{settings:{alertEmail:v}});showToast('success','Email d\\'alerte sauvegardé');closeFloatPanel();}catch(e){showToast('error', fpT('Erreur lors de la sauvegarde'));}});},50)" : ''}">
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px"${ch.active && ch.name !== 'Email' ? ' disabled title="Configuration en libre-service bientôt disponible — les alertes sont envoyées par email en attendant"' : ''} onclick="${!ch.active ? "navigate('billing')" : ch.name === 'Email' ? "openFloatPanel('Configurer les alertes Email',`<div style='padding:4px'><div class='fp-form-group'><label class='fp-form-label'>Email de réception des alertes</label><input class='fp-input' id='ch-email-input' placeholder='alerte@email.com' value='${escHtml(STATE.me?.email||'')}'/></div><div class='fp-form-group'><label class='fp-form-label'>Alertes à recevoir</label><div style='display:flex;flex-direction:column;gap:6px'><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Site DOWN</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/>Latence élevée</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox'/> Reprise (site UP)</label></div></div><button class='fp-btn fp-btn-primary' style='width:100%' id='ch-email-save'>Sauvegarder</button></div>`);setTimeout(()=>{document.getElementById('ch-email-save')?.addEventListener('click',async()=>{const v=document.getElementById('ch-email-input')?.value?.trim();if(!v||!/^[^@]+@[^@]+\.[^@]+$/.test(v)){showToast('warning', fpT('Email invalide'));return;}try{await apiAction('PATCH','/api/me/prefs',{settings:{alertEmail:v}});showToast('success','Email d\\'alerte sauvegardé');closeFloatPanel();}catch(e){showToast('error', fpT('Erreur lors de la sauvegarde'));}});},50)" : ''}">
               ${!ch.active ? `🔒 ${ch.gate} requis` : ch.name === 'Email' ? 'Configurer' : 'Bientôt disponible'}
             </button>
           </div>
@@ -49808,7 +50348,7 @@ function renderGrowthProjections() {
             '<div style="font-size:11px;color:var(--fp-text-faint)">Cumul : <strong style="color:'+_col+'">'+_cum+'/100</strong></div>'+
           '</div>';
         }).join('');
-        var _summary = '<div style="padding:11px 14px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);border-radius:9px;font-size:12px;color:var(--fp-text-muted);line-height:1.6;margin-bottom:14px">En exécutant les <strong>'+_qwList.length+' Quick Wins actives</strong>, votre projection à 30 jours passe de <strong>'+_base30+'/100</strong> à <strong>'+Math.min(99,_base30+_totGain)+'/100</strong> (+'+_totGain+' pts, calcul déterministe basé sur les gains de points des missions).</div>';
+        var _summary = '<div style="padding:11px 14px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);border-radius:9px;font-size:12px;color:var(--fp-text-muted);line-height:1.6;margin-bottom:14px">En exécutant les<strong>'+_qwList.length+' Quick Wins actives</strong>, votre projection à 30 jours passe de <strong>'+_base30+'/100</strong> à <strong>'+Math.min(99,_base30+_totGain)+'/100</strong> (+'+_totGain+' pts, calcul déterministe basé sur les gains de points des missions).</div>';
         return _summary + '<div style="display:flex;flex-direction:column;gap:8px">' + _rows + '</div>';
       })()}
     </div>
@@ -50663,7 +51203,7 @@ function renderGrowthCommandCenter() {
               _msgs.push('<strong>'+_ck+' mot(s)-clé(s)</strong> en positions 4–10 — très proches du top 3. Un contenu ciblé peut faire passer ces mots-clés en première page et doubler leur trafic.');
             }
             // Message 4 : projection
-            _msgs.push('En exécutant les <strong>'+wins.length+' Quick Win(s)</strong> identifiés, votre projection passe à <strong>'+(Math.round(_projStep*6)>=0?'+':'')+Math.round(_projStep*6)+' pts</strong> estimés sur les 30 prochains jours.');
+            _msgs.push('En exécutant les <strong>'+wins.length+' Quick Win(s)</strong>identifiés, votre projection passe à<strong>'+(Math.round(_projStep*6)>=0?'+':'')+Math.round(_projStep*6)+' pts</strong> estimés sur les 30 prochains jours.');
             return _msgs.slice(0,4).map(function(msg,i){ return '<div class="fp-growth-strategy-msg" style="animation-delay:'+(i*0.12)+'s"><div style="font-size:12.5px;color:var(--fp-text-soft);line-height:1.6">'+msg+'</div></div>'; }).join('');
           })()}
         </div>
@@ -50988,7 +51528,7 @@ function renderCompetitor() {
         : `<div style="background:linear-gradient(135deg,rgba(6,182,212,0.08),rgba(37,99,235,0.06));border:1px solid rgba(6,182,212,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">📝</div>
             <div><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Intelligence contenu</div><div style="font-size:12px;color:var(--fp-text-muted)">Ajoutez des concurrents pour comparer vos stratégies de contenu et identifier les gaps thématiques.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="window.FP_showAddCompetitor()">Ajouter un concurrent</button>
           </div>`
       }
 
@@ -51009,7 +51549,7 @@ function renderCompetitor() {
           ? `<div style="padding:24px 16px;text-align:center;color:var(--fp-text-faint);font-size:12px">
               <div style="font-size:24px;margin-bottom:8px">📅</div>
               <div style="font-weight:600;margin-bottom:4px">Ajoutez un concurrent pour comparer les fréquences de publication</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="window.FP_showAddCompetitor()">Ajouter un concurrent</button>
             </div>`
           : `<div style="display:flex;flex-direction:column;gap:10px">
               ${freq.map(f => {
@@ -51022,7 +51562,7 @@ function renderCompetitor() {
                   <span style="font-size:13px;font-weight:800;color:${_hasP ? f.color : 'var(--fp-text-faint)'};min-width:24px;text-align:right">${_hasP ? f.posts : '—'}</span>
                 </div>`;
               }).join('')}
-              <div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">Objectif recommandé : <strong style="color:#22c55e">8+ contenus/mois</strong></div>
+              <div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">Objectif recommandé :<strong style="color:#22c55e">8+ contenus/mois</strong></div>
             </div>`
         }
       </div>
@@ -51038,7 +51578,7 @@ function renderCompetitor() {
               <div style="font-size:24px;margin-bottom:8px">📊</div>
               <div style="font-weight:600;margin-bottom:4px">Ajoutez un concurrent pour voir l'analyse des gaps thématiques</div>
               <div style="font-size:11px;margin-bottom:12px">Les sujets couverts par vos concurrents et non par vous apparaîtront ici.</div>
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_showAddCompetitor()">Ajouter un concurrent</button>
             </div>`
           : `<div style="overflow-x:auto">
               <table class="fp-data-table">
@@ -51090,7 +51630,7 @@ function renderCompetitor() {
           </div>
         </div>`}
       </div>
-      ` : `<div class="fp-upsell-banner fp-upsell-banner--blue"><div class="fp-upsell-text"><strong>Analyse qualité contenu</strong> disponible en Pro</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`}
+      ` : `<div class="fp-upsell-banner fp-upsell-banner--blue"><div class="fp-upsell-text"><strong>Analyse qualité contenu</strong>disponible en Pro</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`}
     `;
   }
 
@@ -51538,7 +52078,7 @@ function renderCompetitor() {
                 <div style="font-size:24px;margin-bottom:8px">🏆</div>
                 <div style="font-weight:600;margin-bottom:4px">Ajoutez un concurrent pour voir les scores de domination</div>
                 <div style="font-size:11px">Les scores SEO, visibilité locale et autorité apparaîtront ici une fois vos concurrents configurés.</div>
-                <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="window.FP_showAddCompetitor()">Ajouter un concurrent</button>
               </div>`
             : domScores.map(d => {
               const _hasVal = d.val != null && Number.isFinite(d.val);
@@ -51990,7 +52530,7 @@ function renderConversion() {
                   ${badge(f.impact, f.impact === "Critique" ? "#ef4444" : f.impact === "Élevé" ? "#f59e0b" : "#64748b")}
                 </div>
                 <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(f.issue)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">Score friction : <strong style="color:${f.score < 50 ? "#ef4444" : "#f59e0b"}">${f.score}/100</strong></div>
+                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">Score friction :<strong style="color:${f.score < 50 ? "#ef4444" : "#f59e0b"}">${f.score}/100</strong></div>
               </div>
             `).join("")}
           </div>
@@ -52642,7 +53182,7 @@ function renderConversion() {
           ${svgIcon("activity").replace('stroke="currentColor"', 'stroke="#2563EB"')}
           Système de santé conversion — 7 indicateurs
         </div>
-        <span style="font-size:11px;color:var(--fp-text-faint)">Score moyen : <strong style="color:#f59e0b">57/100</strong></span>
+        <span style="font-size:11px;color:var(--fp-text-faint)">Score moyen :<strong style="color:#f59e0b">57/100</strong></span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
         ${healthScores.map(h => {
@@ -53112,7 +53652,7 @@ function renderAlertsCenter() {
             monPerf.length === 0
               ? 'Aucun monitor configuré. Ajoutez vos sites pour surveiller les performances en temps réel.'
               : _pWorst
-                ? `Latence maximale : <strong>${_pWorst.lat}ms</strong> sur <strong>${escHtml((_pWorst.url||_pWorst.name||'').replace(/^https?:\/\//,''))}</strong>. ${_pCrit > 0 ? `<strong>${_pCrit} site${_pCrit > 1 ? 's' : ''} à risque</strong> — latence > 500ms ou DOWN. Action requise.` : 'Tous les sites sont dans les normes.'} Uptime moyen : <strong>${_pAvgUp}%</strong>.`
+                ? `Latence maximale : <strong>${_pWorst.lat}ms</strong>sur<strong>${escHtml((_pWorst.url||_pWorst.name||'').replace(/^https?:\/\//,''))}</strong>. ${_pCrit > 0 ? `<strong>${_pCrit} site${_pCrit > 1 ? 's' : ''} à risque</strong> — latence > 500ms ou DOWN. Action requise.` : 'Tous les sites sont dans les normes.'} Uptime moyen : <strong>${_pAvgUp}%</strong>.`
                 : `Performance surveillée sur ${monPerf.length} site${monPerf.length > 1 ? 's' : ''}.`,
             ['Diagnostiquer les performances', 'Optimiser Core Web Vitals', 'Rapport SLA']
           )
@@ -53655,7 +54195,7 @@ function renderAlertsCenter() {
           ${svgIcon('shield').replace('stroke="currentColor"','stroke="#ef4444"')}
           Tableau de bord threat intelligence — 8 scores clés
         </div>
-        <span style="font-size:11px;color:var(--fp-text-faint)">Score global : <strong style="color:${_tiGlobal != null ? (_tiGlobal >= 75 ? '#22c55e' : _tiGlobal >= 50 ? '#f59e0b' : '#ef4444') : '#64748b'}">${_tiGlobal != null ? _tiGlobal + '/100' : '—'}</strong></span>
+        <span style="font-size:11px;color:var(--fp-text-faint)">Score global :<strong style="color:${_tiGlobal != null ? (_tiGlobal >= 75 ? '#22c55e' : _tiGlobal >= 50 ? '#f59e0b' : '#ef4444') : '#64748b'}">${_tiGlobal != null ? _tiGlobal + '/100' : '—'}</strong></span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
         ${alertScores.map(k => {
@@ -56223,7 +56763,7 @@ function renderClientMode() {
           ${svgIcon('users').replace('stroke="currentColor"','stroke="#2563EB"')}
           Intelligence client — Scores clés
         </div>
-        ${PREVIEW_MODE ? `<span style="font-size:11px;color:var(--fp-text-faint)">Score global : <strong style="color:#22c55e">78/100</strong></span>` : ''}
+        ${PREVIEW_MODE ? `<span style="font-size:11px;color:var(--fp-text-faint)">Score global :<strong style="color:#22c55e">78/100</strong></span>` : ''}
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:8px">
         ${cmdScores.length === 0 ? `<div style="grid-column:1/-1;padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Les scores clients seront calculés à partir de votre activité réelle</div>` : ''}${cmdScores.map(k => {
@@ -57300,7 +57840,7 @@ function renderGrowthKeywords() {
 
     ${aiBlock(
       stats.top3 !== undefined
-        ? `<strong>${stats.top3}</strong> mots-clés en Top 3, <strong>${stats.top10}</strong> en Top 10. ${stats.gainingPositions>0?`<strong>${stats.gainingPositions}</strong> en hausse ce cycle.`:''} ${stats.losingPositions>0?`⚠️ <strong>${stats.losingPositions}</strong> en baisse — vérifiez le contenu concerné.`:''}`
+        ? `<strong>${stats.top3}</strong>mots-clés en Top 3,<strong>${stats.top10}</strong> en Top 10. ${stats.gainingPositions>0?`<strong>${stats.gainingPositions}</strong> en hausse ce cycle.`:''} ${stats.losingPositions>0?`⚠️ <strong>${stats.losingPositions}</strong> en baisse — vérifiez le contenu concerné.`:''}`
         : 'Suivez vos positions Google et détectez les opportunités de croissance avec l\'IA.',
       ['Analyser les baisses', 'Générer des opportunités']
     )}
@@ -57953,7 +58493,7 @@ function renderTeamPerformance() {
     ${metrics.length === 0 ? `
       <div class="fp-card" style="text-align:center;padding:32px 20px">
         <div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:12px">Aucun membre dans l'équipe pour le moment</div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('team');setTimeout(function(){window.fpOpenInvite&&window.fpOpenInvite()},120)">${fpT('Inviter des membres')}</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('team');setTimeout(function(){window.fpOpenInvite&&window.fpOpenInvite()},120)">Inviter des membres</button>
       </div>
     ` : `
     <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px">
@@ -58605,7 +59145,7 @@ function _awlResults(name, niche, loc, url) {
 
   const stratEl = document.getElementById('awl-strat');
   if (stratEl) stratEl.innerHTML = `<strong style="color:#a78bfa">🤖 Stratégie IA personnalisée pour ${name}</strong><br><br>
-    Sur la base de votre niche <strong>${niche}</strong> et de votre localisation <strong>${loc}</strong>, l\'IA a identifié
+    Sur la base de votre niche <strong>${niche}</strong>et de votre localisation<strong>${loc}</strong>, l\'IA a identifié
     <strong>7 opportunités de croissance immédiates</strong>. Priorité absolue : le SEO local et l\'optimisation des Core Web Vitals
     représentent ensemble <strong>+340€/mois de revenus additionnels estimés</strong>.
     Vos 12 missions ont été priorisées automatiquement selon votre secteur et vos objectifs.`;
@@ -58732,6 +59272,66 @@ const GA4_CHANNEL_COLORS = {
   'Organic Social': '#f59e0b', 'Referral': '#06b6d4', 'Email': '#ec4899',
   'Display': '#f97316', 'Video': '#6366f1', 'Affiliate': '#14b8a6', 'Cross-network': '#a855f7', '(Other)': '#475569',
   'Unassigned': '#64748b',
+    "Activer →": "Aktivovat →",
+    "Actuel": "Aktuální",
+    "Analyser": "Analyzovat",
+    "Annuler l'abonnement": "Zrušit předplatné",
+    "Arrêter": "Zastavit",
+    "Arrêter la génération": "Zastavit generování",
+    "Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.": "Žádný monitor není nakonfigurován — přidejte jeden z karty Monitors.",
+    "Aucune activité d'équipe récente.": "Žádná nedávná aktivita týmu.",
+    "Canaux d'alerte": "Kanály upozornění",
+    "Charger rankings": "Načíst žebříčky",
+    "Choisir le fournisseur IA": "Zvolte poskytovatele AI",
+    "Choisissez un template ci-dessus pour créer votre premier rapport.": "Zvolte šablonu výše a vytvořte svůj první přehled.",
+    "Compétition": "Konkurence",
+    "Concurrent C · 71pts": "Konkurent C · 71pts",
+    "Concurrent D · 58pts": "Konkurent D · 58pts",
+    "Concurrent E · 65pts": "Konkurent E · 65pts",
+    "Confirmer l'annulation": "Potvrdit zrušení",
+    "Connexion au serveur impossible": "Nelze se připojit k serveru",
+    "Contexte workspace actif": "Aktivní kontext pracovního prostoru",
+    "Continuer l'essai": "Pokračovat ve zkušební době",
+    "Dernier :": "Poslední:",
+    "Dernier trigger": "Poslední spuštění",
+    "Données d'équipe en chargement": "Načítání dat týmu",
+    "Email d'alerte": "Email upozornění",
+    "Ex : Score moyen ≥ 85/100": "Příklad: Průměrné skóre ≥ 85/100",
+    "Exporter CSV": "Exportovat CSV",
+    "Garder mon abonnement": "Zachovat předplatné",
+    "Inférieur à (&lt;)": "Menší než (<)",
+    "L'IA analyse vos audits, vos keywords et vos monitors pour générer un plan d'action personnalisé.": "AI analyzuje vaše audity, klíčová slova a monitory, aby vygenerovala personalizovaný akční plán.",
+    "L'historique apparaîtra après votre prochaine connexion.": "Historie se zobrazí po příštím přihlášení.",
+    "LIVE · Vue d'ensemble": "LIVE · Přehled",
+    "Lancez un audit SEO ou créez des missions pour voir les opportunités de croissance identifiées par l'IA.": "Spusťte SEO audit nebo vytvořte mise, abyste viděli příležitosti k růstu identifikované AI.",
+    "Les prévisions s'afficheront quand suffisamment de données locales seront collectées": "Prognózy se zobrazí, jakmile budou shromážděna dostatečná místní data",
+    "Libellé de l'objectif": "Popis cíle",
+    "Membre": "Člen",
+    "Mois suivant": "Příští měsíc",
+    "Numéro": "Číslo",
+    "Premier audit :": "První audit:",
+    "Progression score SEO — Objectif 80/100": "Vývoj SEO skóre — Cíl 80/100",
+    "Relancez un audit pour commencer à construire l'historique.": "Spusťte audit a začněte budovat historii.",
+    "Réactiver l'abonnement": "Znovu aktivovat předplatné",
+    "Score SEO global": "Globální SEO skóre",
+    "Score SEO ": "SEO skóre ",
+    "Score moyen portefeuille": "Průměrné skóre portfolia",
+    "Supprimer ce RDV": "Smazat tuto schůzku",
+    "Supérieur à (&gt;)": "Větší než (>)",
+    "Tendance 30j": "Trend 30d",
+    "Terminer": "Dokončit",
+    "Terminer l'essai": "Ukončit zkušební dobu",
+    "Terminer l'essai gratuit": "Ukončit bezplatnou zkušební dobu",
+    "Top sites — Performance": "Nejlepší weby — Výkon",
+    "Trier : Date": "Řadit: Datum",
+    "Trier : Impact": "Řadit: Dopad",
+    "Trier : Score": "Řadit: Skóre",
+    "Uptime réel": "Skutečná dostupnost",
+    "Usage Health Score": "Usage Health Score",
+    "Visibilité": "Viditelnost",
+    "Voir": "Zobrazit",
+    "Votre position locale": "Vaše místní pozice",
+    "ex. Score critique restaurant": "např. Kritické skóre restaurace",
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -59073,7 +59673,7 @@ function renderGA4Analytics() {
           const _sess=sessions?fmtNum(sessions)+' sessions':null;
           const _conv=conversions?fmtNum(conversions)+' conversion(s)':null;
           const _delta=prevSess>0?Math.round((sessions-prevSess)/prevSess*100):null;
-          return 'GA4 connecté — '+(_sess||'données en cours de chargement')+(conversions?' · <strong>'+_conv+'</strong>':'')+((_delta!=null)?(_delta>=0?' · <strong style="color:#22c55e">+'+_delta+'%</strong> sessions vs période précédente':' · <strong style="color:#ef4444">'+_delta+'%</strong> sessions vs période précédente'):'')+'.'
+          return 'GA4 connecté — '+(_sess||'données en cours de chargement')+(conversions?' · <strong>'+_conv+'</strong>':'')+((_delta!=null)?(_delta>=0?' · <strong style="color:#22c55e">+'+_delta+'%</strong>sessions vs période précédente':' ·<strong style="color:#ef4444">'+_delta+'%</strong> sessions vs période précédente'):'')+'.'
         })()
       : 'Google Analytics 4 n\'est pas encore connecté. Connectez votre propriété GA4 pour accéder aux données de trafic, sessions et conversions en temps réel.',
       _ga4Connected()
@@ -59459,7 +60059,7 @@ function renderGA4Conversion() {
     return header + `
       <div style="text-align:center;padding:56px 24px;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
         <div style="font-size:40px;margin-bottom:14px">⏳</div>
-        <div style="font-size:16px;font-weight:700;color:var(--fp-text);margin-bottom:8px">${fpT('Connexion GA4 en cours de configuration')}</div>
+        <div style="font-size:16px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Connexion GA4 en cours de configuration</div>
         <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 20px">
           ${fpT('Votre compte Google est connecté. La découverte de votre propriété GA4 est en cours — cela prend généralement moins d\u2019une minute.')}
         </div>
@@ -59560,7 +60160,7 @@ function renderGA4Conversion() {
       </div>
     </div>` : `
     <div class="fp-card fp-mb-20" style="text-align:center;padding:28px">
-      <div style="font-size:13px;color:var(--fp-text-muted)">Aucun événement de conversion trouvé.<br>Configurez des <strong>Key Events</strong> dans votre propriété GA4.</div>
+      <div style="font-size:13px;color:var(--fp-text-muted)">Aucun événement de conversion trouvé.<br>Configurez des <strong>Key Events</strong>dans votre propriété GA4.</div>
     </div>`;
 
   // ── LANDING PAGES ─────────────────────────────────────────────────
@@ -60442,7 +61042,7 @@ function renderGA4Campaigns() {
               const _totConv = rows.reduce((s,r)=>s+parseFloat(r.metricValues?.[2]?.value||0),0);
               const _cr      = _totSess > 0 ? (_totConv/_totSess*100).toFixed(2) : 0;
               const _topCamp = rows[0]?.dimensionValues?.[0]?.value || '—';
-              return `<strong>${rows.length} campagne${rows.length>1?'s':''}</strong> analysées. Taux de conversion moyen : <strong>${_cr}%</strong>. Campagne principale : <strong>${_topCamp}</strong>. Optimisez les campagnes à faible taux de conversion.`;
+              return `<strong>${rows.length} campagne${rows.length>1?'s':''}</strong>analysées. Taux de conversion moyen :<strong>${_cr}%</strong>. Campagne principale : <strong>${_topCamp}</strong>. Optimisez les campagnes à faible taux de conversion.`;
             })()
           : "Actualisez vos données GA4 pour voir la performance de vos campagnes."
         : "Connectez GA4 pour analyser vos campagnes marketing et leur attribution.",
@@ -63309,7 +63909,7 @@ function renderGitHubIntegration() {
   return `
     <div class="fp-section-header">
       <div class="fp-section-title">GitHub — Tableau de bord</div>
-      <div class="fp-section-desc">Connecté en tant que <strong>@${escHtml(login)}</strong> · Analyse de code, déploiements et santé des dépôts.</div>
+      <div class="fp-section-desc">Connecté en tant que<strong>@${escHtml(login)}</strong> · Analyse de code, déploiements et santé des dépôts.</div>
     </div>
 
     <div class="fp-stat-row fp-mb-20">
@@ -63773,8 +64373,8 @@ function renderSearchConsole() {
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_GSC_API&&window.FP_GSC_API.sync().then(()=>showToast('success',fpT('Sync GSC lanc\u00e9e')))">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> ${fpT('Synchroniser')}
         </button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('connect')">${fpT('Sites \u25be')}</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-btn-danger" onclick="window.fpDarkConfirm(fpT('D\u00e9connecter GSC ?'),function(){window.FP_GSC_API&&window.FP_GSC_API.disconnect().then(()=>render());},fpT('D\u00e9connecter GSC'))">${fpT('D\u00e9connecter')}</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('connect')">Sites \u25be</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-btn-danger" onclick="window.fpDarkConfirm(fpT('D\u00e9connecter GSC ?'),function(){window.FP_GSC_API&&window.FP_GSC_API.disconnect().then(()=>render());},fpT('D\u00e9connecter GSC'))">D\u00e9connecter</button>
       </div>
     </div>`;
 
@@ -63815,8 +64415,8 @@ function renderGSCOverview(keywords, pages, timeSeries, gsc) {
     <div class="fp-card fp-mb-20">
       <div class="fp-card-title">📈 ${fpT('\u00c9volution clics & impressions (30 derniers jours)')}</div>
       <div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:3px;background:#2563EB;border-radius:2px"></div><span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Clics')}</span></div>
-        <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:3px;background:#f59e0b;border-radius:2px"></div><span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Impressions')}</span></div>
+        <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:3px;background:#2563EB;border-radius:2px"></div><span style="font-size:11px;color:var(--fp-text-muted)">Clics</span></div>
+        <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:3px;background:#f59e0b;border-radius:2px"></div><span style="font-size:11px;color:var(--fp-text-muted)">Impressions</span></div>
       </div>
       <div class="fp-gsc-chart" id="gsc-overview-chart">
         ${(() => {
@@ -63839,11 +64439,11 @@ function renderGSCOverview(keywords, pages, timeSeries, gsc) {
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">🔑 ${fpT('Top Mots-cl\u00e9s')}</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('keywords')">${fpT('Voir tout \u2192')}</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('keywords')">Voir tout \u2192</button>
         </div>
         ${topKw.length ? `
         <div class="fp-gsc-kw-table">
-          <div class="fp-gsc-table-header"><span>${fpT('Requ\u00eate')}</span><span>${fpT('Clics')}</span><span>${fpT('Impr.')}</span><span>CTR</span><span>${fpT('Pos.')}</span></div>
+          <div class="fp-gsc-table-header"><span>Requ\u00eate</span><span>Clics</span><span>Impr.</span><span>CTR</span><span>Pos.</span></div>
           ${topKw.map(kw => `
             <div class="fp-gsc-table-row">
               <span style="font-size:11px;color:var(--fp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(String(kw.keyword||''))}">${escHtml(String(kw.keyword||''))}</span>
@@ -63859,11 +64459,11 @@ function renderGSCOverview(keywords, pages, timeSeries, gsc) {
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">📄 ${fpT('Top Pages')}</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('pages')">${fpT('Voir tout \u2192')}</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('pages')">Voir tout \u2192</button>
         </div>
         ${topPg.length ? `
         <div class="fp-gsc-kw-table">
-          <div class="fp-gsc-table-header"><span>${fpT('Page')}</span><span>${fpT('Clics')}</span><span>${fpT('Impr.')}</span><span>CTR</span><span>${fpT('Pos.')}</span></div>
+          <div class="fp-gsc-table-header"><span>Page</span><span>Clics</span><span>Impr.</span><span>CTR</span><span>Pos.</span></div>
           ${topPg.map(pg => {
             const url = String(pg.page||'');
             const path = url.replace(/^https?:\/\/[^/]+/, '') || url;
@@ -64045,8 +64645,8 @@ function renderGSCIndexing(gsc) {
               '<div style=\\'padding:18px;background:var(--fp-inner-card);border-radius:12px;border:1px solid ' + (isPass ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.3)') + '\\'>'
               + '<div style=\\'font-size:14px;font-weight:800;color:' + (isPass ? '#22c55e' : '#f59e0b') + ';margin-bottom:10px\\'>' + (isPass ? '✓ Indexée par Google' : '⚠ ' + escHtml(ir.coverageState || ir.verdict)) + '</div>'
               + '<div style=\\'display:grid;gap:6px;font-size:12px;color:var(--fp-text-muted)\\'>'
-              + '<div>État de couverture : <strong style=\\'color:var(--fp-text)\\'>' + escHtml(ir.coverageState || '—') + '</strong></div>'
-              + '<div>Dernier crawl : <strong style=\\'color:var(--fp-text)\\'>' + (ir.lastCrawlTime ? new Date(ir.lastCrawlTime).toLocaleString(getLocale()) : '—') + '</strong></div>'
+              + '<div>État de couverture :<strong style=\\'color:var(--fp-text)\\'>' + escHtml(ir.coverageState || '—') + '</strong></div>'
+              + '<div>Dernier crawl :<strong style=\\'color:var(--fp-text)\\'>' + (ir.lastCrawlTime ? new Date(ir.lastCrawlTime).toLocaleString(getLocale()) : '—') + '</strong></div>'
               + '<div>Robots.txt : <strong style=\\'color:var(--fp-text)\\'>' + escHtml(ir.robotsTxtState || '—') + '</strong></div>'
               + '<div>Canonique Google : <strong style=\\'color:var(--fp-text)\\'>' + escHtml(ir.googleCanonical || '—') + '</strong></div>'
               + '</div></div>';
@@ -66734,7 +67334,7 @@ function renderSettingsSSO() {
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
           <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-sso-modal').style.display='none'">Annuler</button>
-          <button class="fp-btn fp-btn-primary" onclick="window._submitSSOProvider()">${fpT('Configurer')}</button>
+          <button class="fp-btn fp-btn-primary" onclick="window._submitSSOProvider()">Configurer</button>
         </div>
       </div>
     </div>
