@@ -1100,7 +1100,7 @@ function markAllAlertsRead() {
 
 async function changeTeamMemberRole(memberId, currentRole) {
   const roles = ['viewer', 'editor', 'admin'];
-  openFloatPanel('Changer le rôle', `
+  openFloatPanel(fpT('Changer le rôle'), `
     <div class="fp-form-group">
       <label class="fp-form-label">${fpT('Nouveau rôle pour ce membre')}</label>
       <select class="fp-select" id="role-picker" style="width:100%">
@@ -1288,7 +1288,7 @@ function fpOpenInvite() {
   const used  = STATE.seatUsage?.used ?? (((STATE.team || []).length || 1) + (STATE.pendingInvitations || []).length);
   const limit = Math.max(STATE.seatUsage?.limit ?? 0, me?.limits?.teamMembers ?? 0, _SEATCAP_1[_activePlan1] || 1, 1 + (me?.addons?.extraSeats || 0)) || 1;
   if (limit && used >= limit) {
-    openFloatPanel('Sièges épuisés', `
+    openFloatPanel(fpT('Sièges épuisés'), `
       <div style="text-align:center;padding:8px 4px">
         <div style="font-size:34px;margin-bottom:10px">👥</div>
         <div style="font-size:14px;font-weight:700;margin-bottom:6px">Tous vos sièges sont utilisés (${used}/${limit})</div>
@@ -3103,7 +3103,7 @@ const CMD_ITEMS = [
   { cat:'Actions', label:'Nouveau monitor',                    icon:'activity',     route:'monitors',           shortcut:'' },
   { cat:'Actions', label:'Nouvelle mission',                   icon:'rocket',       route:'missions',           shortcut:'' },
   { cat:'Actions', label:'Exporter CSV',                       icon:'download',     route:null,                 shortcut:'E',
-    fn: () => { openFloatPanel('Exporter les données', renderExportPanel()); setupExportPanel(); } },
+    fn: () => { openFloatPanel(fpT('Exporter les données'), renderExportPanel()); setupExportPanel(); } },
   { cat:'Actions', label:'Voir les alertes actives',           icon:'alert',        route:'alerts-center',      shortcut:'' },
   { cat:'Actions', label:'Rapport exécutif du mois',           icon:'file',         route:'reports',            shortcut:'' },
   { cat:'Actions', label:'Analyser balises title manquantes',  icon:'search',       route:'audits',             shortcut:'' },
@@ -3216,7 +3216,7 @@ function _cmdComputeItems() {
     (a.url||'').toLowerCase().includes(q) || (a.label||'').toLowerCase().includes(q)
   ).slice(0, 4).map(a => ({
     cat: 'Audits', label: a.url || a.label, icon: 'search', shortcut: '',
-    fn: () => { navigate('audits'); setTimeout(() => { const audit = STATE.audits.find(x=>x.id===a.id); if(audit) openFloatPanel('Détail de l\'audit', renderAuditDetailPanel(audit)); },300); }
+    fn: () => { navigate('audits'); setTimeout(() => { const audit = STATE.audits.find(x=>x.id===a.id); if(audit) openFloatPanel(fpT("Détail de l'audit"), renderAuditDetailPanel(audit)); },300); }
   }));
 
   const monitorMatches = (STATE.monitors || []).filter(m =>
@@ -3584,7 +3584,7 @@ function openAssignTaskModal() {
       <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:4px" onclick="(async()=>{const mid=document.getElementById('assign-member')?.value;const ti=document.getElementById('assign-title')?.value?.trim();const pr=document.getElementById('assign-priority')?.value;if(!mid||!ti){showToast('warning', fpT('Remplissez tous les champs'));return;}const r=await apiAction('POST','/api/missions',{title:ti,source:'team',status:'todo',priority:pr,assignedTo:mid}).catch(()=>null);if(r&&r.id){showToast('success', fpT('Tâche assignée !'));closeFloatPanel();navigate('missions');}else showToast('error', fpT('Erreur'));})()">Assigner</button>
     </div>
   `;
-  openFloatPanel('Assigner une tâche', html);
+  openFloatPanel(fpT('Assigner une tâche'), html);
 }
 
 // _renderTeamChatPendingChips: inject pending-file chips above/inside the composer inputs
@@ -4172,9 +4172,9 @@ function closeFAB() {
 function handleFABAction(action) {
   if (action === 'new-audit')   { openFloatPanel('Nouvel audit', renderNewAuditPanel()); setupNewAuditPanel(); }
   if (action === 'new-monitor') { openFloatPanel('Nouveau monitor', renderNewMonitorPanel()); setupNewMonitorPanel(); }
-  if (action === 'new-mission') { openFloatPanel('Nouvelle mission', renderNewMissionPanel()); setupNewMissionPanel(); }
-  if (action === 'new-report')  { openFloatPanel('Générer un rapport PDF', renderNewReportPanel()); setupNewReportPanel(); }
-  if (action === 'export-data') { openFloatPanel('Exporter les données', renderExportPanel()); setupExportPanel(); }
+  if (action === 'new-mission') { openFloatPanel(fpT('Nouvelle mission'), renderNewMissionPanel()); setupNewMissionPanel(); }
+  if (action === 'new-report')  { openFloatPanel(fpT('Générer un rapport PDF'), renderNewReportPanel()); setupNewReportPanel(); }
+  if (action === 'export-data') { openFloatPanel(fpT('Exporter les données'), renderExportPanel()); setupExportPanel(); }
   if (action === 'new-geo')     { navigate('local-seo'); setTimeout(()=>{ window._mapsTab='grid'; render(STATE.currentSection); window._showCreateHeatmapModal?.(); }, 300); }
   if (action === 'open-chat') { navigate('ai'); }
   if (action === 'layout-edit') { toggleLayoutEditMode(); }
@@ -5567,7 +5567,7 @@ function renderOverview() {
             <div style="font-size:13px;font-weight:700;margin-bottom:3px">IA Executive Summary — Pro requis</div>
             <div style="font-size:12px;color:var(--fp-text-muted)">Obtenez des analyses stratégiques IA, des prévisions d\'usage et des recommandations personnalisées.</div>
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">" + fpT("Passer Pro") + "</button>
         </div>`
     }
 
@@ -9437,13 +9437,13 @@ function renderBilling() {
         // ── États actifs ─────────────────────────────────────────────────────
         if (!(_ss === 'active' || _ss === 'trialing' || _cap)) return '';
         const _bc  = _cap ? '#ef4444' : _ss === 'trialing' ? '#f59e0b' : '#22c55e';
-        const _st  = _cap ? `⚠️ Annulation programmée · Accès jusqu'au ${_ca || '—'}` : _ss === 'trialing' ? (_te ? `🎯 Essai gratuit · Expire le ${_te}` : `🎯 Essai gratuit en cours · Date de fin en cours de synchronisation`) : `✅ Abonnement actif · Résiliation à tout moment`;
+        const _st  = _cap ? `⚠️ ${fpT("Annulation programmée · Accès jusqu'au")} ${_ca || '—'}` : _ss === 'trialing' ? (_te ? `🎯 ${fpT('Essai gratuit · Expire le')} ${_te}` : `🎯 ${fpT('Essai gratuit en cours · Date de fin en cours de synchronisation')}`) : `✅ ${fpT('Abonnement actif · Résiliation à tout moment')}`;
         const _btn = _cap
           ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="background:#22c55e;border-color:#22c55e;flex-shrink:0" onclick="fpReactivateSubscription()">${fpT("Réactiver l'abonnement")}</button>`
           : _ss === 'trialing'
             ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelTrialModal()">${fpT("Terminer l'essai")}</button>`
             : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelSubscriptionModal()">${fpT("Annuler l'abonnement")}</button>`;
-        const _warn = _cap ? `<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444;margin-top:10px">Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur "Réactiver" pour rétablir le renouvellement automatique.</div>` : '';
+        const _warn = _cap ? `<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444;margin-top:10px">${fpT("Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur \"Réactiver\" pour rétablir le renouvellement automatique.")}</div>` : '';
         return `<div class="fp-card" style="margin-top:16px;border-left:4px solid ${_bc}"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:${_warn ? '12px' : '0'}"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${_st}</div></div><div style="flex-shrink:0">${_btn}</div></div>${_warn}${_dangerZone}</div>`;
       })()}
     `;
@@ -11134,7 +11134,7 @@ function renderSettings() {
       <div class="fp-card" style="${isUltra ? '' : 'opacity:0.65'}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div class="fp-card-title" style="margin-bottom:0">🔐 Rôles personnalisés ${!isUltra ? '<span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:2px 7px;border-radius:8px;margin-left:6px">Ultra</span>' : ''}</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${isUltra ? `navigate('permissions')` : `navigate('billing')`}">+ Créer un rôle</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${isUltra ? `navigate('permissions')` : `navigate('billing')`}">+ " + fpT('Créer un rôle') + "</button>
         </div>
         <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Créez des rôles sur mesure avec des permissions granulaires par module, par client et par workspace.')}</div>
       </div>
@@ -15415,7 +15415,7 @@ function bindSectionEvents() {
   if (route === 'overview') {
     $$('[data-audit-pinned]').forEach(btn => btn.addEventListener('click', () => {
       const audit = STATE.audits.find(a => a.id === btn.dataset.auditPinned);
-      if (audit) { navigate('audits'); setTimeout(() => { openFloatPanel('Détail de l\'audit', renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); },300); }
+      if (audit) { navigate('audits'); setTimeout(() => { openFloatPanel(fpT("Détail de l'audit"), renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); },300); }
     }));
     $$('[data-monitor-pinned]').forEach(btn => btn.addEventListener('click', () => {
       const monitor = STATE.monitors.find(m => m.id === btn.dataset.monitorPinned);
@@ -15467,7 +15467,7 @@ function bindSectionEvents() {
           _refreshBtn.textContent = 'Actualiser';
         });
     };
-    $('#export-btn')?.addEventListener('click', () => { openFloatPanel('Exporter les données', renderExportPanel()); setupExportPanel(); });
+    $('#export-btn')?.addEventListener('click', () => { openFloatPanel(fpT('Exporter les données'), renderExportPanel()); setupExportPanel(); });
     $('#mission-tomorrow')?.addEventListener('click', () => {
       const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
       const urgent = STATE.missions.find(m => m.status === 'todo' && m.impact === 'Élevé');
@@ -15657,7 +15657,7 @@ function bindSectionEvents() {
       e.stopPropagation();
       const audit = STATE.audits.find(a => a.id === btn.dataset.id);
       if (!audit) return;
-      openFloatPanel('Détail de l\'audit', renderAuditDetailPanel(audit));
+      openFloatPanel(fpT("Détail de l'audit"), renderAuditDetailPanel(audit));
       setTimeout(() => {
         bindAuditPanelBtns(audit);
         // Panel schedule toggle
@@ -15674,7 +15674,7 @@ function bindSectionEvents() {
               STATE.auditSchedules.push({ id:'sched_'+Date.now(), url, frequency: freq, nextRun: Date.now()+7*86400000, createdAt: Date.now() });
               showToast('success', fpT('Audit planifié activé — hebdomadaire'));
             }
-            openFloatPanel('Détail de l\'audit', renderAuditDetailPanel(audit));
+            openFloatPanel(fpT("Détail de l'audit"), renderAuditDetailPanel(audit));
           } else {
             const existing = STATE.auditSchedules.find(s => s.url === url);
             if (existing) {
@@ -15682,7 +15682,7 @@ function bindSectionEvents() {
               STATE.auditSchedules = STATE.auditSchedules.filter(s => s.url !== url);
             }
             showToast('info', fpT('Audit planifié désactivé'));
-            openFloatPanel('Détail de l\'audit', renderAuditDetailPanel(audit));
+            openFloatPanel(fpT("Détail de l'audit"), renderAuditDetailPanel(audit));
           }
         });
         // Panel schedule frequency selector
@@ -15715,9 +15715,9 @@ function bindSectionEvents() {
       const audit = STATE.audits.find(a => a.id === btn.dataset.id);
       if (!audit) return;
       showCtxMenu(e, [
-        { key:'view', icon:'eye',      label:'Voir les détails', action:()=>openFloatPanel('Détail de l\'audit',renderAuditDetailPanel(audit)) },
+        { key:'view', icon:'eye',      label:'Voir les détails', action:()=>openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)) },
         { key:'copy', icon:'copy',     label:'Copier l\'URL',    action:()=>{ navigator.clipboard?.writeText(audit.url); showToast('success', fpT('URL copiée')); } },
-        { key:'pdf',  icon:'download', label:'Exporter PDF',     action:()=>{ openFloatPanel('Détail de l\'audit',renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
+        { key:'pdf',  icon:'download', label:'Exporter PDF',     action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
         { key:'pin',  icon:'pin',      label: audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>{}); showToast('success',audit.pinned?'Épinglé !':'Épingle retiré'); render(); } },
         { divider:true, key:'div' },
         { key:'del',  icon:'trash',    label:'Supprimer',         action:async()=>{ try { await apiAction('DELETE',`/api/audits/${audit.id}`); } catch(e){} STATE.audits=STATE.audits.filter(a=>a.id!==audit.id); showToast('error', fpT('Audit supprimé')); render(); }, danger:true },
@@ -15728,7 +15728,7 @@ function bindSectionEvents() {
     $$('#audits-tbody tr').forEach(row => row.addEventListener('click', e => {
       if (e.target.classList.contains('fp-audit-row-cb')) return;
       const audit = STATE.audits.find(a => a.id === row.dataset.auditId);
-      if (audit) { openFloatPanel('Détail de l\'audit', renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); }
+      if (audit) { openFloatPanel(fpT("Détail de l'audit"), renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); }
     }));
 
     // Audit row context menu
@@ -15736,9 +15736,9 @@ function bindSectionEvents() {
       const audit = STATE.audits.find(a => a.id === row.dataset.auditId);
       if (!audit) return;
       showCtxMenu(e, [
-        { key:'view', icon:'eye',      label:'Voir les détails', action:()=>{ openFloatPanel('Détail de l\'audit',renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
+        { key:'view', icon:'eye',      label:'Voir les détails', action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
         { key:'copy', icon:'copy',     label:'Copier l\'URL',    action:()=>{ navigator.clipboard?.writeText(audit.url); showToast('success', fpT('URL copiée')); } },
-        { key:'pdf',  icon:'download', label:'Exporter PDF',     action:()=>{ openFloatPanel('Détail de l\'audit',renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
+        { key:'pdf',  icon:'download', label:'Exporter PDF',     action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
         { key:'pin',  icon:'pin',      label:audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>{}); render(); } },
         { divider:true, key:'div' },
         { key:'del',  icon:'trash',    label:'Supprimer',        action:async()=>{ try { await apiAction('DELETE',`/api/audits/${audit.id}`); } catch(e){} STATE.audits=STATE.audits.filter(a=>a.id!==audit.id); showToast('error', fpT('Audit supprimé')); render(); }, danger:true },
@@ -15796,7 +15796,7 @@ function bindSectionEvents() {
         const audit = STATE.audits.find(a => a.id === circle.dataset.auditId)
           || (STATE.auditHistory[STATE.historySiteUrl||''] || []).find(a => a.id === circle.dataset.auditId);
         if (audit) {
-          openFloatPanel('Détail de l\'audit', renderAuditDetailPanel(audit));
+          openFloatPanel(fpT("Détail de l'audit"), renderAuditDetailPanel(audit));
           bindAuditPanelBtns(audit);
         }
       });
@@ -15809,7 +15809,7 @@ function bindSectionEvents() {
         const audit = STATE.audits.find(a => a.id === id)
           || (STATE.auditHistory[STATE.historySiteUrl||''] || []).find(a => a.id === id);
         if (audit) {
-          openFloatPanel('Détail de l\'audit', renderAuditDetailPanel(audit));
+          openFloatPanel(fpT("Détail de l'audit"), renderAuditDetailPanel(audit));
           bindAuditPanelBtns(audit);
         }
       });
@@ -15935,7 +15935,7 @@ function bindSectionEvents() {
       });
     });
     $('#maint-new-btn')?.addEventListener('click', () => {
-      openFloatPanel('Nouvelle fenêtre de maintenance', `
+      openFloatPanel(fpT('Nouvelle fenêtre de maintenance'), `
         <div style="padding:4px">
           <div class="fp-form-group">
             <label class="fp-form-label">Nom</label>
@@ -16046,7 +16046,7 @@ function bindSectionEvents() {
       });
     }
     $('#mission-sort')?.addEventListener('change', e => { STATE.missionSort = e.target.value; render(); });
-    $('#mission-quick-add-btn')?.addEventListener('click', () => { openFloatPanel('Nouvelle mission', renderNewMissionPanel()); setupNewMissionPanel(); });
+    $('#mission-quick-add-btn')?.addEventListener('click', () => { openFloatPanel(fpT('Nouvelle mission'), renderNewMissionPanel()); setupNewMissionPanel(); });
 
     // AI Scan handler
     window._doAiScan = async () => {
@@ -16518,7 +16518,7 @@ function bindSectionEvents() {
       navigator.clipboard?.writeText(shareUrl).catch(() => {});
       showToast('success', fpT('Lien copié ! Valable 30 jours.'));
     }));
-    $('#report-new-btn')?.addEventListener('click', () => { openFloatPanel('Générer un rapport PDF', renderNewReportPanel()); setupNewReportPanel(); });
+    $('#report-new-btn')?.addEventListener('click', () => { openFloatPanel(fpT('Générer un rapport PDF'), renderNewReportPanel()); setupNewReportPanel(); });
     $$('.fp-report-card, .fp-report-row').forEach(card => {
       const report = STATE.reports.find(r => r.id === card.dataset.reportId);
       if (!report) return;
@@ -16574,7 +16574,7 @@ function bindSectionEvents() {
         {name:'Pro',      price:'79€', features:['300 audits/mois','50 monitors','5 utilisateurs','White Label']},
         {name:'Ultra',    price:'149€',features:['1000 audits/mois','300 monitors','10 utilisateurs','API accès','SLA 99.9%']},
       ];
-      openFloatPanel('Changer de plan', `
+      openFloatPanel(fpT('Changer de plan'), `
         <div style="display:flex;flex-direction:column;gap:12px">
           ${plans.map(p=>`
             <div class="fp-card fp-card-sm" style="${p.name==='Pro'?'border-color:#2563EB':''}">
@@ -17421,7 +17421,7 @@ function bindGlobalEvents() {
     }
 
     // E → export
-    if (e.key.toLowerCase()==='e') { openFloatPanel('Exporter les données', renderExportPanel()); setupExportPanel(); return; }
+    if (e.key.toLowerCase()==='e') { openFloatPanel(fpT('Exporter les données'), renderExportPanel()); setupExportPanel(); return; }
   });
 
   // Hash routing — normalise aliases and sub-routes from URL
@@ -18805,6 +18805,26 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Removal error",
     "Erreur lors du scan IA": "AI scan error",
     "Erreur lors du téléchargement :": "Download error:",
+    "Sièges épuisés": "Seats full",
+    "Exporter les données": "Export data",
+    "Détail de l'audit": "Audit detail",
+    "Détail audit": "Audit detail",
+    "Assigner une tâche": "Assign a task",
+    "Nouvelle mission": "New mission",
+    "Générer un rapport PDF": "Generate PDF report",
+    "Supprimer toutes les données": "Delete all data",
+    "Plan de réponse IA": "AI response plan",
+    "Nouvelle fenêtre de maintenance": "New maintenance window",
+    "Filtrer l'activité": "Filter activity",
+    "Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur \"Réactiver\" pour rétablir le renouvellement automatique.": "Your subscription is scheduled for cancellation. You keep access until the end of the current period. Click \"Reactivate\" to restore automatic renewal.",
+    "Changer le rôle": "Change role",
+    "Créer un rôle": "Create role",
+    "Permissions avancées — Pro requis": "Advanced permissions — Pro required",
+    "Rôles personnalisés, matrice de permissions et audit de sécurité.": "Custom roles, permissions matrix and security audit.",
+    "Annulation programmée · Accès jusqu'au": "Scheduled cancellation · Access until",
+    "Essai gratuit · Expire le": "Free trial · Expires on",
+    "Essai gratuit en cours · Date de fin en cours de synchronisation": "Free trial in progress · End date syncing",
+    "Abonnement actif · Résiliation à tout moment": "Active subscription · Cancel anytime",
     "Créer un rôle custom": "Create custom role",
     "Auditer les permissions": "Audit permissions",
     "IA : Inviter un membre": "AI : Invite a member",
@@ -21540,6 +21560,26 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Error al retirar",
     "Erreur lors du scan IA": "Error en el escaneo de IA",
     "Erreur lors du téléchargement :": "Error al descargar:",
+    "Sièges épuisés": "Asientos agotados",
+    "Exporter les données": "Exportar datos",
+    "Détail de l'audit": "Detalle de auditoría",
+    "Détail audit": "Detalle de auditoría",
+    "Assigner une tâche": "Asignar una tarea",
+    "Nouvelle mission": "Nueva misión",
+    "Générer un rapport PDF": "Generar informe PDF",
+    "Supprimer toutes les données": "Eliminar todos los datos",
+    "Plan de réponse IA": "Plan de respuesta de IA",
+    "Nouvelle fenêtre de maintenance": "Nueva ventana de mantenimiento",
+    "Filtrer l'activité": "Filtrar actividad",
+    "Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur \"Réactiver\" pour rétablir le renouvellement automatique.": "Tu suscripción está programada para cancelarse. Conservas el acceso hasta el final del período actual. Haz clic en \"Reactivar\" para restaurar la renovación automática.",
+    "Changer le rôle": "Cambiar rol",
+    "Créer un rôle": "Crear rol",
+    "Permissions avancées — Pro requis": "Permisos avanzados — Pro requerido",
+    "Rôles personnalisés, matrice de permissions et audit de sécurité.": "Roles personalizados, matriz de permisos y auditoría de seguridad.",
+    "Annulation programmée · Accès jusqu'au": "Cancelación programada · Acceso hasta",
+    "Essai gratuit · Expire le": "Prueba gratuita · Expira el",
+    "Essai gratuit en cours · Date de fin en cours de synchronisation": "Prueba gratuita en curso · Fecha de fin sincronizándose",
+    "Abonnement actif · Résiliation à tout moment": "Suscripción activa · Cancelar en cualquier momento",
     "Créer un rôle custom": "Crear rol personalizado",
     "Auditer les permissions": "Auditar permisos",
     "IA : Inviter un membre": "IA : Invitar miembro",
@@ -24360,6 +24400,26 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Fehler beim Entfernen",
     "Erreur lors du scan IA": "Fehler beim KI-Scan",
     "Erreur lors du téléchargement :": "Fehler beim Herunterladen:",
+    "Sièges épuisés": "Plätze belegt",
+    "Exporter les données": "Daten exportieren",
+    "Détail de l'audit": "Audit-Details",
+    "Détail audit": "Audit-Details",
+    "Assigner une tâche": "Aufgabe zuweisen",
+    "Nouvelle mission": "Neue Mission",
+    "Générer un rapport PDF": "PDF-Bericht erstellen",
+    "Supprimer toutes les données": "Alle Daten löschen",
+    "Plan de réponse IA": "KI-Reaktionsplan",
+    "Nouvelle fenêtre de maintenance": "Neues Wartungsfenster",
+    "Filtrer l'activité": "Aktivität filtern",
+    "Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur \"Réactiver\" pour rétablir le renouvellement automatique.": "Dein Abonnement ist zur Kündigung vorgemerkt. Du behältst den Zugriff bis zum Ende des aktuellen Zeitraums. Klicke auf \"Reaktivieren\" für die automatische Verlängerung.",
+    "Changer le rôle": "Rolle ändern",
+    "Créer un rôle": "Rolle erstellen",
+    "Permissions avancées — Pro requis": "Erweiterte Berechtigungen — Pro erforderlich",
+    "Rôles personnalisés, matrice de permissions et audit de sécurité.": "Benutzerdefinierte Rollen, Berechtigungsmatrix und Sicherheitsaudit.",
+    "Annulation programmée · Accès jusqu'au": "Geplante Kündigung · Zugriff bis",
+    "Essai gratuit · Expire le": "Kostenlose Testphase · Läuft ab am",
+    "Essai gratuit en cours · Date de fin en cours de synchronisation": "Kostenlose Testphase läuft · Enddatum wird synchronisiert",
+    "Abonnement actif · Résiliation à tout moment": "Aktives Abonnement · Jederzeit kündbar",
     "Créer un rôle custom": "Benutzerdefinierte Rolle erstellen",
     "Auditer les permissions": "Berechtigungen prüfen",
     "IA : Inviter un membre": "KI : Mitglied einladen",
@@ -27186,6 +27246,26 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Errore durante la rimozione",
     "Erreur lors du scan IA": "Errore durante la scansione IA",
     "Erreur lors du téléchargement :": "Errore durante il download:",
+    "Sièges épuisés": "Posti esauriti",
+    "Exporter les données": "Esporta dati",
+    "Détail de l'audit": "Dettaglio audit",
+    "Détail audit": "Dettaglio audit",
+    "Assigner une tâche": "Assegna un'attività",
+    "Nouvelle mission": "Nuova missione",
+    "Générer un rapport PDF": "Genera report PDF",
+    "Supprimer toutes les données": "Elimina tutti i dati",
+    "Plan de réponse IA": "Piano di risposta IA",
+    "Nouvelle fenêtre de maintenance": "Nuova finestra di manutenzione",
+    "Filtrer l'activité": "Filtra attività",
+    "Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur \"Réactiver\" pour rétablir le renouvellement automatique.": "Il tuo abbonamento è programmato per la cancellazione. Mantieni l'accesso fino alla fine del periodo corrente. Clicca su \"Riattiva\" per ripristinare il rinnovo automatico.",
+    "Changer le rôle": "Cambia ruolo",
+    "Créer un rôle": "Crea ruolo",
+    "Permissions avancées — Pro requis": "Permessi avanzati — Pro richiesto",
+    "Rôles personnalisés, matrice de permissions et audit de sécurité.": "Ruoli personalizzati, matrice dei permessi e audit di sicurezza.",
+    "Annulation programmée · Accès jusqu'au": "Cancellazione programmata · Accesso fino al",
+    "Essai gratuit · Expire le": "Prova gratuita · Scade il",
+    "Essai gratuit en cours · Date de fin en cours de synchronisation": "Prova gratuita in corso · Data di fine in sincronizzazione",
+    "Abonnement actif · Résiliation à tout moment": "Abbonamento attivo · Annulla in qualsiasi momento",
     "Créer un rôle custom": "Crea ruolo personalizzato",
     "Auditer les permissions": "Controlla permessi",
     "IA : Inviter un membre": "IA : Invita membro",
@@ -30012,6 +30092,26 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Erro ao remover",
     "Erreur lors du scan IA": "Erro na varredura de IA",
     "Erreur lors du téléchargement :": "Erro ao baixar:",
+    "Sièges épuisés": "Vagas esgotadas",
+    "Exporter les données": "Exportar dados",
+    "Détail de l'audit": "Detalhe da auditoria",
+    "Détail audit": "Detalhe da auditoria",
+    "Assigner une tâche": "Atribuir uma tarefa",
+    "Nouvelle mission": "Nova missão",
+    "Générer un rapport PDF": "Gerar relatório PDF",
+    "Supprimer toutes les données": "Excluir todos os dados",
+    "Plan de réponse IA": "Plano de resposta de IA",
+    "Nouvelle fenêtre de maintenance": "Nova janela de manutenção",
+    "Filtrer l'activité": "Filtrar atividade",
+    "Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur \"Réactiver\" pour rétablir le renouvellement automatique.": "Sua assinatura está agendada para cancelamento. Você mantém o acesso até o final do período atual. Clique em \"Reativar\" para restaurar a renovação automática.",
+    "Changer le rôle": "Alterar função",
+    "Créer un rôle": "Criar função",
+    "Permissions avancées — Pro requis": "Permissões avançadas — Pro necessário",
+    "Rôles personnalisés, matrice de permissions et audit de sécurité.": "Funções personalizadas, matriz de permissões e auditoria de segurança.",
+    "Annulation programmée · Accès jusqu'au": "Cancelamento agendado · Acesso até",
+    "Essai gratuit · Expire le": "Avaliação gratuita · Expira em",
+    "Essai gratuit en cours · Date de fin en cours de synchronisation": "Avaliação gratuita em andamento · Data de término sincronizando",
+    "Abonnement actif · Résiliation à tout moment": "Assinatura ativa · Cancele a qualquer momento",
     "Créer un rôle custom": "Criar função personalizada",
     "Auditer les permissions": "Auditar permissões",
     "IA : Inviter un membre": "IA : Convidar membro",
@@ -32838,6 +32938,26 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Fout bij het verwijderen",
     "Erreur lors du scan IA": "Fout bij AI-scan",
     "Erreur lors du téléchargement :": "Fout bij het downloaden:",
+    "Sièges épuisés": "Plaatsen vol",
+    "Exporter les données": "Gegevens exporteren",
+    "Détail de l'audit": "Auditdetails",
+    "Détail audit": "Auditdetails",
+    "Assigner une tâche": "Taak toewijzen",
+    "Nouvelle mission": "Nieuwe missie",
+    "Générer un rapport PDF": "PDF-rapport genereren",
+    "Supprimer toutes les données": "Alle gegevens verwijderen",
+    "Plan de réponse IA": "AI-reactieplan",
+    "Nouvelle fenêtre de maintenance": "Nieuw onderhoudsvenster",
+    "Filtrer l'activité": "Activiteit filteren",
+    "Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur \"Réactiver\" pour rétablir le renouvellement automatique.": "Uw abonnement is gepland voor annulering. U behoudt toegang tot het einde van de huidige periode. Klik op \"Reactiveren\" om automatische verlenging te herstellen.",
+    "Changer le rôle": "Rol wijzigen",
+    "Créer un rôle": "Rol aanmaken",
+    "Permissions avancées — Pro requis": "Geavanceerde machtigingen — Pro vereist",
+    "Rôles personnalisés, matrice de permissions et audit de sécurité.": "Aangepaste rollen, machtigingsmatrix en beveiligingsaudit.",
+    "Annulation programmée · Accès jusqu'au": "Geplande annulering · Toegang tot",
+    "Essai gratuit · Expire le": "Gratis proefperiode · Verloopt op",
+    "Essai gratuit en cours · Date de fin en cours de synchronisation": "Gratis proefperiode loopt · Einddatum wordt gesynchroniseerd",
+    "Abonnement actif · Résiliation à tout moment": "Actief abonnement · Op elk moment annuleerbaar",
     "Créer un rôle custom": "Aangepaste rol aanmaken",
     "Auditer les permissions": "Machtigingen controleren",
     "IA : Inviter un membre": "AI : Lid uitnodigen",
@@ -35664,6 +35784,26 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Błąd podczas usuwania",
     "Erreur lors du scan IA": "Błąd podczas skanowania AI",
     "Erreur lors du téléchargement :": "Błąd podczas pobierania:",
+    "Sièges épuisés": "Brak miejsc",
+    "Exporter les données": "Eksportuj dane",
+    "Détail de l'audit": "Szczegóły audytu",
+    "Détail audit": "Szczegóły audytu",
+    "Assigner une tâche": "Przypisz zadanie",
+    "Nouvelle mission": "Nowa misja",
+    "Générer un rapport PDF": "Wygeneruj raport PDF",
+    "Supprimer toutes les données": "Usuń wszystkie dane",
+    "Plan de réponse IA": "Plan reakcji AI",
+    "Nouvelle fenêtre de maintenance": "Nowe okno serwisowe",
+    "Filtrer l'activité": "Filtruj aktywność",
+    "Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur \"Réactiver\" pour rétablir le renouvellement automatique.": "Twoja subskrypcja jest zaplanowana do anulowania. Zachowujesz dostep do konca biezacego okresu. Kliknij \"Reaktywuj\", aby przywrocic automatyczne odnawianie.",
+    "Changer le rôle": "Zmień rolę",
+    "Créer un rôle": "Utwórz rolę",
+    "Permissions avancées — Pro requis": "Zaawansowane uprawnienia — wymagany Pro",
+    "Rôles personnalisés, matrice de permissions et audit de sécurité.": "Niestandardowe role, macierz uprawnień i audyt bezpieczeństwa.",
+    "Annulation programmée · Accès jusqu'au": "Zaplanowane anulowanie · Dostęp do",
+    "Essai gratuit · Expire le": "Bezpłatny okres próbny · Wygasa",
+    "Essai gratuit en cours · Date de fin en cours de synchronisation": "Trwa bezpłatny okres próbny · Synchronizacja daty końcowej",
+    "Abonnement actif · Résiliation à tout moment": "Aktywna subskrypcja · Anuluj w dowolnym momencie",
     "Créer un rôle custom": "Utwórz rolę niestandardową",
     "Auditer les permissions": "Audytuj uprawnienia",
     "IA : Inviter un membre": "AI : Zaproś członka",
@@ -38490,6 +38630,26 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Fel vid borttagning",
     "Erreur lors du scan IA": "Fel vid AI-skanning",
     "Erreur lors du téléchargement :": "Fel vid nedladdning:",
+    "Sièges épuisés": "Platser slut",
+    "Exporter les données": "Exportera data",
+    "Détail de l'audit": "Auditdetalj",
+    "Détail audit": "Auditdetalj",
+    "Assigner une tâche": "Tilldela uppgift",
+    "Nouvelle mission": "Nytt uppdrag",
+    "Générer un rapport PDF": "Generera PDF-rapport",
+    "Supprimer toutes les données": "Radera alla data",
+    "Plan de réponse IA": "AI-svarsplan",
+    "Nouvelle fenêtre de maintenance": "Nytt underhållsfönster",
+    "Filtrer l'activité": "Filtrera aktivitet",
+    "Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur \"Réactiver\" pour rétablir le renouvellement automatique.": "Din prenumeration är schemalagd för avbokning. Du behåller åtkomst till slutet av den aktuella perioden. Klicka på \"Återaktivera\" för att återställa automatisk förnyelse.",
+    "Changer le rôle": "Ändra roll",
+    "Créer un rôle": "Skapa roll",
+    "Permissions avancées — Pro requis": "Avancerade behörigheter — Pro krävs",
+    "Rôles personnalisés, matrice de permissions et audit de sécurité.": "Anpassade roller, behörighetsmatris och säkerhetsrevision.",
+    "Annulation programmée · Accès jusqu'au": "Schemalagd avbokning · Åtkomst till",
+    "Essai gratuit · Expire le": "Gratis provperiod · Går ut den",
+    "Essai gratuit en cours · Date de fin en cours de synchronisation": "Gratis provperiod pågår · Slutdatum synkroniseras",
+    "Abonnement actif · Résiliation à tout moment": "Aktivt abonnemang · Avbryt när som helst",
     "Créer un rôle custom": "Skapa anpassad roll",
     "Auditer les permissions": "Granska behörigheter",
     "IA : Inviter un membre": "AI : Bjud in en medlem",
@@ -41316,6 +41476,26 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Eroare la eliminare",
     "Erreur lors du scan IA": "Eroare la scanarea IA",
     "Erreur lors du téléchargement :": "Eroare la descărcare:",
+    "Sièges épuisés": "Locuri epuizate",
+    "Exporter les données": "Exportati datele",
+    "Détail de l'audit": "Detaliu audit",
+    "Détail audit": "Detaliu audit",
+    "Assigner une tâche": "Atribuiti o sarcina",
+    "Nouvelle mission": "Misiune nouă",
+    "Générer un rapport PDF": "Generati raport PDF",
+    "Supprimer toutes les données": "Stergeti toate datele",
+    "Plan de réponse IA": "Plan de raspuns AI",
+    "Nouvelle fenêtre de maintenance": "Fereastra de intretinere noua",
+    "Filtrer l'activité": "Filtrati activitatea",
+    "Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur \"Réactiver\" pour rétablir le renouvellement automatique.": "Abonamentul dvs. este programat pentru anulare. Pastrati accesul pana la sfarsitul perioadei curente. Faceti clic pe \"Reactivati\" pentru a restabili reinnoirea automática.",
+    "Changer le rôle": "Schimbați rolul",
+    "Créer un rôle": "Creați un rol",
+    "Permissions avancées — Pro requis": "Permisiuni avansate — Pro necesar",
+    "Rôles personnalisés, matrice de permissions et audit de sécurité.": "Roluri personalizate, matrice de permisiuni și audit de securitate.",
+    "Annulation programmée · Accès jusqu'au": "Anulare programată · Acces până la",
+    "Essai gratuit · Expire le": "Perioadă de încercare gratuită · Expiră pe",
+    "Essai gratuit en cours · Date de fin en cours de synchronisation": "Perioadă de încercare în desfășurare · Dată de sfârșit în sincronizare",
+    "Abonnement actif · Résiliation à tout moment": "Abonament activ · Anulați oricând",
     "Créer un rôle custom": "Creați un rol personalizat",
     "Auditer les permissions": "Auditați permisiunile",
     "IA : Inviter un membre": "IA : Invitați un membru",
@@ -44142,6 +44322,26 @@ function bindGlobalEvents() {
     "Erreur lors du retrait": "Chyba při odstranění",
     "Erreur lors du scan IA": "Chyba při skenování AI",
     "Erreur lors du téléchargement :": "Chyba při stahování:",
+    "Sièges épuisés": "Místa obsazena",
+    "Exporter les données": "Exportovat data",
+    "Détail de l'audit": "Detail auditu",
+    "Détail audit": "Detail auditu",
+    "Assigner une tâche": "Priřadit úkol",
+    "Nouvelle mission": "Nová mise",
+    "Générer un rapport PDF": "Generovat PDF zprávu",
+    "Supprimer toutes les données": "Smazat všechna data",
+    "Plan de réponse IA": "Plán odezvy AI",
+    "Nouvelle fenêtre de maintenance": "Nové okno údržby",
+    "Filtrer l'activité": "Filtrovat aktivitu",
+    "Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur \"Réactiver\" pour rétablir le renouvellement automatique.": "Vaše předplatné je naplánováno ke zrušení. Přístup si zachováte do konce aktuálního období. Klikněte na \"Reaktivovat\" pro obnovení automatického obnovení.",
+    "Changer le rôle": "Změnit roli",
+    "Créer un rôle": "Vytvořit roli",
+    "Permissions avancées — Pro requis": "Pokročilá oprávnění — nutný Pro",
+    "Rôles personnalisés, matrice de permissions et audit de sécurité.": "Vlastní role, matice oprávnění a bezpečnostní audit.",
+    "Annulation programmée · Accès jusqu'au": "Plánované zrušení · Přístup do",
+    "Essai gratuit · Expire le": "Bezplatná zkušební verze · Vyprší",
+    "Essai gratuit en cours · Date de fin en cours de synchronisation": "Bezplatná zkušební verze probíhá · Synchronizace data ukončení",
+    "Abonnement actif · Résiliation à tout moment": "Aktivní předplatné · Zrušte kdykoli",
     "Créer un rôle custom": "Vytvořit vlastní roli",
     "Auditer les permissions": "Auditovat oprávnění",
     "IA : Inviter un membre": "AI : Pozvat člena",
@@ -46079,7 +46279,7 @@ async function init() {
     const isAccount = kind === 'account';
     if (isAccount) { window.fpDeleteAccountModal && window.fpDeleteAccountModal(); return; }
     // Data-only deletion — calls real API endpoint
-    openFloatPanel('Supprimer toutes les données', `
+    openFloatPanel(fpT('Supprimer toutes les données'), `
       <div style="padding:4px">
         <p style="font-size:12px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:12px">
           Cette action est <strong style="color:#ef4444">irréversible</strong>.<br>
@@ -48105,7 +48305,7 @@ function renderAuditsAnalysis() {
         <div class="fp-bar-chart" style="height:80px;align-items:flex-end">
           ${STATE.audits.map(a => `
             <div class="fp-bar-chart-col" title="${escHtml(a.url)}: ${a.score}/100">
-              <div class="fp-bar-chart-bar" style="height:${Math.max(8, a.score)}px;background:${scoreColor(a.score)};cursor:pointer" onclick="event.stopPropagation();navigate('audits');setTimeout(()=>openFloatPanel('Détail audit',renderAuditDetailPanel(STATE.audits.find(x=>x.id==='${a.id}'))),200)"></div>
+              <div class="fp-bar-chart-bar" style="height:${Math.max(8, a.score)}px;background:${scoreColor(a.score)};cursor:pointer" onclick="event.stopPropagation();navigate('audits');setTimeout(()=>openFloatPanel(fpT('Détail audit'),renderAuditDetailPanel(STATE.audits.find(x=>x.id==='${a.id}'))),200)"></div>
               <div class="fp-bar-chart-label" style="font-size:9px;white-space:nowrap;overflow:hidden;width:42px;text-overflow:ellipsis;color:${scoreColor(a.score)};font-weight:700" title="${escHtml(a.url)}">${a.score}</div>
             </div>
           `).join('')}
@@ -52109,7 +52309,7 @@ function renderCompetitor() {
               </div>
               <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
                 <span style="font-size:10px;color:var(--fp-text-faint)">${fmtDate(a.date)}</span>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:2px 6px" onclick="(async()=>{const r=await apiAction('POST','/api/ai/chat',{message:'Génère un plan de réponse concurrentielle court et actionnable en 3 points.'}).catch(()=>null);openFloatPanel('Plan de réponse IA',\`<div style='font-size:13px;line-height:1.7;color:var(--fp-text)'>\${r?.reply||'1. Auditer la page concurrente ciblée.\\n2. Créer du contenu différenciant sur vos points forts.\\n3. Surveiller les backlinks et renforcer votre maillage interne.'}</div>\`);})()">Répondre</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:2px 6px" onclick="(async()=>{const r=await apiAction('POST','/api/ai/chat',{message:'Génère un plan de réponse concurrentielle court et actionnable en 3 points.'}).catch(()=>null);openFloatPanel(fpT('Plan de réponse IA'),\`<div style='font-size:13px;line-height:1.7;color:var(--fp-text)'>\${r?.reply||'1. Auditer la page concurrente ciblée.\\n2. Créer du contenu différenciant sur vos points forts.\\n3. Surveiller les backlinks et renforcer votre maillage interne.'}</div>\`);})()">Répondre</button>
               </div>
             </div>
           `).join('') || `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint);font-size:12px">
@@ -66419,7 +66619,7 @@ function renderPermissions() {
       ${isUltra ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showCreateRoleModal()">+ Créer un rôle</button>` : ''}
     </div>
 
-    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Permissions avancées — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rôles personnalisés, matrice de permissions et audit de sécurité.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>` : ''}
+    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">" + fpT("Permissions avancées — Pro requis") + "</div><div style="font-size:12px;color:var(--fp-text-muted)">" + fpT("Rôles personnalisés, matrice de permissions et audit de sécurité.") + "</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>` : ''}
 
     ${aiBlock(
       `${stats.totalRoles||0} ${fpT('rôles configurés dont')} ${stats.customRoles||0} ${fpT('personnalisés.')} ${stats.securityAlerts>0?`<strong>${stats.securityAlerts} ${fpT(stats.securityAlerts>1?'alertes sécurité':'alerte sécurité')}</strong> ${fpT('dans les 24h.')}`:' '+fpT('Aucune alerte sécurité. Accès nominal.')}`,

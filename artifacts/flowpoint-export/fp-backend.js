@@ -3251,9 +3251,9 @@
         }
       }
     }
-    // One safety check at 5s — Phase 3+4 now resolve together before the final
-    // render(), so 5s is enough margin. The duplicate 8s check is removed.
-    setTimeout(function() { check('5s check'); }, 5000);
+    // Safety check removed: Phase 3+4 now await each other before a single final
+    // render(), and the loadData() safety timeout handles crash recovery.
+    // Any forced render at 5s would cause a spurious DOM replacement on normal pages.
   })();
 
   console.log('[FP] Error catcher v8b actif');
