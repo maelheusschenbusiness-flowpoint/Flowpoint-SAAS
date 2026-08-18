@@ -1807,92 +1807,124 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     // orgContext correctly rejects legacy email-as-orgId sessions.
     let googleIdentity: { orgId: string; userUuid: string };
     try {
-      const { upsertOrgSettings, loadOrgSettings: _loadGoogleOrg } = await import("../services/org-settings.js");
-      const _existingGoogleOrg = await _loadGoogleOrg(resolvedEmail).catch(() => null);
-      if (_existingGoogleOrg) {
-        // Existing account — update non-billing fields only (NEVER overwrite plan/trial/billing)
-        await upsertOrgSettings(resolvedEmail, {
-          email: resolvedEmail,
-          // Prefer given_name (Google-provided, locale-aware); fall back to splitting name
-          firstName: _existingGoogleOrg.firstName || user.given_name || (user.name ? user.name.split(" ")[0] : undefined),
-          plan: planFromState ? planFromState : (_existingGoogleOrg.plan ?? "standard"),
-        });
-        logger.info({ email: resolvedEmail }, "[Auth] Google login — existing org, billing data preserved");
-      } else {
-        // New account — pending billing until Checkout activates it.
-        await upsertOrgSettings(resolvedEmail, {
-          email: resolvedEmail,
-          // Prefer Google's dedicated given_name/family_name fields (locale-aware and reliable)
-          firstName: user.given_name ?? (user.name ? user.name.split(" ")[0] : undefined),
-          lastName:  user.family_name ?? (user.name && user.name.includes(" ") ? user.name.split(" ").slice(1).join(" ") : undefined),
-          // orgName intentionally omitted — Google profile (openid email profile) does not expose company name
-          plan: planFromState ?? "standard",
-          subscriptionStatus: "pending_billing",
-        });
-        logger.info({ email: resolvedEmail, plan: planFromState }, "[Auth] Google login — new org created with pending_billing");
-      }
+      // ── Fast-path: check organizations table first (new auth system post-migration) ──
+      // Users who signed up via magic link only exist in `organizations`/`users`, not in
+      // `org_settings`. Without this check, they are treated as new signups: a fresh
+      // pending_billing entry is written to org_settings and they are routed to the plan
+      // selection screen — creating a duplicate Stripe customer.
+      const _googleOrgQuery = await pool.query<{ id: string; subscription_status: string | null }>(
+        `SELECT id, subscription_status FROM organizations
+          WHERE owner_email = $1 AND status != 'deleted'
+          LIMIT 1`,
+        [resolvedEmail],
+      );
+      const _googleOrgRow = _googleOrgQuery.rows[0] ?? null;
+      const _googleIsActivated = _googleOrgRow !== null &&
+        _googleOrgRow.subscription_status !== null &&
+        _googleOrgRow.subscription_status !== "" &&
+        _googleOrgRow.subscription_status !== "pending_billing";
 
-      // Preserve the billing gate: an OAuth signup may create its identity, but
-      // it must complete Checkout before a valid dashboard session is issued.
-      const googleOrgSettings = await _loadGoogleOrg(resolvedEmail);
-      if (googleOrgSettings?.subscriptionStatus === "pending_billing") {
-        // Create a pending_signups record so checkout.html / checkout-payment.html
-        // can complete the Stripe flow identically to the email signup path.
-        // First, invalidate any stale pending token for this email.
-        // Use Google's dedicated fields (locale-aware); fall back to splitting the full name
-        const googleFirstName = user.given_name ?? (user.name ? user.name.split(" ")[0] : "");
-        const googleLastName  = user.family_name ?? (user.name && user.name.includes(" ") ? user.name.split(" ").slice(1).join(" ") : "");
-        let googlePreRegToken = "";
-        try {
-          const _gpClient = await pool.connect();
-          try {
-            // Invalidate any existing non-consumed pending signup for this email
-            await _gpClient.query(
-              `UPDATE pending_signups SET consumed_at = NOW()
-               WHERE email = $1 AND consumed_at IS NULL`,
-              [resolvedEmail],
-            );
-            // Insert a fresh pending_signups row
-            googlePreRegToken = generateToken();
-            await _gpClient.query(
-              `INSERT INTO pending_signups
-                 (token, email, first_name, last_name, company_name, country, address, city, postal_code, created_at, expires_at)
-               VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',NOW(),NOW() + INTERVAL '2 hours')
-               ON CONFLICT (token) DO NOTHING`,
-              // company_name left blank — Google signup carries no company information
-              [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, ""],
-            );
-            logger.info({ email: resolvedEmail }, "[Auth] Google signup — pending_signups record created for checkout");
-          } finally {
-            _gpClient.release();
-          }
-        } catch (preRegErr) {
-          logger.error({ err: preRegErr, email: resolvedEmail }, "[Auth] Google signup — pending_signups creation failed (fatal)");
-          res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
-          return;
-        }
-        if (!googlePreRegToken) {
-          logger.error({ email: resolvedEmail }, "[Auth] Google signup — pre_reg_token is empty after insert, aborting");
-          res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
-          return;
-        }
-        const planParam = encodeURIComponent(planFromState ?? googleOrgSettings.plan ?? "standard");
-        const emailParam = encodeURIComponent(resolvedEmail);
-        const firstParam = encodeURIComponent(googleFirstName);
-        const lastParam  = encodeURIComponent(googleLastName);
-        const tokenParam = encodeURIComponent(googlePreRegToken);
-        res.redirect(
-          `${publicUrl}/signin.html?google_signup=1&plan=${planParam}&email=${emailParam}&first_name=${firstParam}&last_name=${lastParam}&pre_reg_token=${tokenParam}`,
+      if (_googleIsActivated) {
+        // Existing activated org — resolve identity directly, no pending_billing redirect.
+        logger.info(
+          { email: resolvedEmail, status: _googleOrgRow!.subscription_status },
+          "[Auth] Google login — existing activated org found, bypassing signup flow",
         );
-        return;
-      }
+        googleIdentity = await resolveOrCreateLegacyOrg({
+          email: resolvedEmail,
+          userUuid: undefined,
+          orgSettings: null,
+          authProvider: "google",
+        });
+      } else {
+        // ── Legacy / new-signup path: check org_settings, then apply pending_billing gate ──
+        const { upsertOrgSettings, loadOrgSettings: _loadGoogleOrg } = await import("../services/org-settings.js");
+        const _existingGoogleOrg = await _loadGoogleOrg(resolvedEmail).catch(() => null);
+        if (_existingGoogleOrg) {
+          // Existing account — update non-billing fields only (NEVER overwrite plan/trial/billing)
+          await upsertOrgSettings(resolvedEmail, {
+            email: resolvedEmail,
+            // Prefer given_name (Google-provided, locale-aware); fall back to splitting name
+            firstName: _existingGoogleOrg.firstName || user.given_name || (user.name ? user.name.split(" ")[0] : undefined),
+            plan: planFromState ? planFromState : (_existingGoogleOrg.plan ?? "standard"),
+          });
+          logger.info({ email: resolvedEmail }, "[Auth] Google login — existing org, billing data preserved");
+        } else {
+          // New account — pending billing until Checkout activates it.
+          await upsertOrgSettings(resolvedEmail, {
+            email: resolvedEmail,
+            // Prefer Google's dedicated given_name/family_name fields (locale-aware and reliable)
+            firstName: user.given_name ?? (user.name ? user.name.split(" ")[0] : undefined),
+            lastName:  user.family_name ?? (user.name && user.name.includes(" ") ? user.name.split(" ").slice(1).join(" ") : undefined),
+            // orgName intentionally omitted — Google profile (openid email profile) does not expose company name
+            plan: planFromState ?? "standard",
+            subscriptionStatus: "pending_billing",
+          });
+          logger.info({ email: resolvedEmail, plan: planFromState }, "[Auth] Google login — new org created with pending_billing");
+        }
 
-      googleIdentity = await resolveOrCreateLegacyOrg({
-        email: resolvedEmail,
-        userUuid: undefined,
-        orgSettings: googleOrgSettings,
-        authProvider: "google",
-      });
+        // Preserve the billing gate: an OAuth signup may create its identity, but
+        // it must complete Checkout before a valid dashboard session is issued.
+        const googleOrgSettings = await _loadGoogleOrg(resolvedEmail);
+        if (googleOrgSettings?.subscriptionStatus === "pending_billing") {
+          // Create a pending_signups record so checkout.html / checkout-payment.html
+          // can complete the Stripe flow identically to the email signup path.
+          // First, invalidate any stale pending token for this email.
+          // Use Google's dedicated fields (locale-aware); fall back to splitting the full name
+          const googleFirstName = user.given_name ?? (user.name ? user.name.split(" ")[0] : "");
+          const googleLastName  = user.family_name ?? (user.name && user.name.includes(" ") ? user.name.split(" ").slice(1).join(" ") : "");
+          let googlePreRegToken = "";
+          try {
+            const _gpClient = await pool.connect();
+            try {
+              // Invalidate any existing non-consumed pending signup for this email
+              await _gpClient.query(
+                `UPDATE pending_signups SET consumed_at = NOW()
+                 WHERE email = $1 AND consumed_at IS NULL`,
+                [resolvedEmail],
+              );
+              // Insert a fresh pending_signups row
+              googlePreRegToken = generateToken();
+              await _gpClient.query(
+                `INSERT INTO pending_signups
+                   (token, email, first_name, last_name, company_name, country, address, city, postal_code, created_at, expires_at)
+                 VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',NOW(),NOW() + INTERVAL '2 hours')
+                 ON CONFLICT (token) DO NOTHING`,
+                // company_name left blank — Google signup carries no company information
+                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, ""],
+              );
+              logger.info({ email: resolvedEmail }, "[Auth] Google signup — pending_signups record created for checkout");
+            } finally {
+              _gpClient.release();
+            }
+          } catch (preRegErr) {
+            logger.error({ err: preRegErr, email: resolvedEmail }, "[Auth] Google signup — pending_signups creation failed (fatal)");
+            res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
+            return;
+          }
+          if (!googlePreRegToken) {
+            logger.error({ email: resolvedEmail }, "[Auth] Google signup — pre_reg_token is empty after insert, aborting");
+            res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
+            return;
+          }
+          const planParam = encodeURIComponent(planFromState ?? googleOrgSettings.plan ?? "standard");
+          const emailParam = encodeURIComponent(resolvedEmail);
+          const firstParam = encodeURIComponent(googleFirstName);
+          const lastParam  = encodeURIComponent(googleLastName);
+          const tokenParam = encodeURIComponent(googlePreRegToken);
+          res.redirect(
+            `${publicUrl}/signin.html?google_signup=1&plan=${planParam}&email=${emailParam}&first_name=${firstParam}&last_name=${lastParam}&pre_reg_token=${tokenParam}`,
+          );
+          return;
+        }
+
+        googleIdentity = await resolveOrCreateLegacyOrg({
+          email: resolvedEmail,
+          userUuid: undefined,
+          orgSettings: googleOrgSettings,
+          authProvider: "google",
+        });
+      }
     } catch (err) {
       logger.error({ err }, "[Auth] Google login — identity provisioning failed");
       res.redirect(`${publicUrl}/login.html?error=google_auth_failed`);

@@ -570,10 +570,16 @@ async function apiFetch(path, opts = {}) {
       // another tab's login).  Recovering silently here prevents a false logout.
       if (!opts._retryAfter401) {
         try {
+          // Send the existing sessionStorage Bearer so server can try it first and
+          // fall back to the HttpOnly cookie only when they differ.  Mirrors the
+          // Phase 0.5 session-restore call in loadData() — same strategy here.
+          const _recToken = _fpCurrentSessionToken();
+          const _recHeaders = { 'Content-Type': 'application/json' };
+          if (_recToken) _recHeaders['Authorization'] = 'Bearer ' + _recToken;
           const _rec = await fetch('/api/auth/session-restore', {
             method: 'POST',
             credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
+            headers: _recHeaders,
           });
           if (_rec.ok) {
             const _rd = await _rec.json().catch(() => null);
@@ -590,8 +596,27 @@ async function apiFetch(path, opts = {}) {
           console.warn('[FP-AUTH]', _ts, 'Cookie recovery attempt failed:', _recErr?.message);
         }
       }
-      // Recovery failed or already attempted — session is definitively invalid.
-      console.warn('[FP-AUTH]', _ts, 'Foreground 401 on', path, '— clearing session and redirecting.');
+      // Recovery failed or already attempted.
+      //
+      // STRUCTURAL RULE: global logout is only triggered when the session-critical
+      // /api/me endpoint itself fails.  Secondary endpoints (billing, monitors,
+      // notifications, AI, etc.) may return 401 for endpoint-specific reasons
+      // (e.g. plan gate, org isolation) while the session remains perfectly valid.
+      // Redirecting to login on their failure is a false logout — it destroys a
+      // valid session because an unrelated API had an access restriction.
+      //
+      // For secondary endpoints: throw an error so the individual caller can show
+      // a local error without affecting the rest of the dashboard.
+      const _isSessionCritical = path === '/api/me' || path.startsWith('/api/auth/');
+      if (!_isSessionCritical) {
+        console.warn('[FP-AUTH]', _ts, 'Foreground 401 on secondary endpoint', path,
+          '— throwing (no global logout; session may still be valid).');
+        const _err401 = new Error('Unauthorized');
+        _err401.status = 401;
+        if (isGet) _apiFetchInFlight.delete(path);
+        throw _err401;
+      }
+      console.warn('[FP-AUTH]', _ts, 'Foreground 401 on session-critical', path, '— clearing session and redirecting.');
       _401BackgroundCount = 0;
       if (_401ConfirmTimer) { clearTimeout(_401ConfirmTimer); _401ConfirmTimer = null; }
       ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
@@ -5567,7 +5592,7 @@ function renderOverview() {
             <div style="font-size:13px;font-weight:700;margin-bottom:3px">IA Executive Summary — Pro requis</div>
             <div style="font-size:12px;color:var(--fp-text-muted)">Obtenez des analyses stratégiques IA, des prévisions d\'usage et des recommandations personnalisées.</div>
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">" + fpT("Passer Pro") + "</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">${fpT("Passer Pro")}</button>
         </div>`
     }
 
