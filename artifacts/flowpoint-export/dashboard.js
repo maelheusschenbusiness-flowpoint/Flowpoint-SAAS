@@ -9726,9 +9726,9 @@ function renderBilling() {
         const cart = { plan: null, addons: {}, fromDashboard: true };
         cart.addons[key] = _qty;
         localStorage.setItem('fp_cart', JSON.stringify(cart));
-        // Redirect directly to checkout so the fromDashboard flag is preserved
-        // (pricing.html would rebuild the cart without it, triggering "plan requis").
-        window.location.href = '/checkout.html?from=dashboard';
+        // Go via Pricing so the user sees the price before checkout.
+        // Pricing.html is fixed to preserve fromDashboard through _cart internals.
+        window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(key);
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'activation impossible')); }
     };
     // Désactivation in-dashboard : retire l'item Stripe puis met à jour la carte.
@@ -13037,9 +13037,8 @@ function renderAI() {
       return _fallbackCredits[id] || 100000;
     };
     const maxCredits   = _getCredits(plan.toLowerCase());
-    // 10 000 000 (Ultra) is a real cap, NOT unlimited — show the number, not ∞.
-    // Only truly unlimited quotas (> 50M) would show ∞, which no current plan uses.
-    const isUnlimited  = maxCredits > 50_000_000;
+    // Ultra cap is 10M internally but displayed as ∞ / Illimité to the user.
+    const isUnlimited  = maxCredits >= 10_000_000;
     const fmtNum = n => n >= 1_000_000
       ? (Number.isInteger(n / 1_000_000) ? (n / 1_000_000) + 'M' : (n / 1_000_000).toFixed(1) + 'M')
       : n >= 1_000 ? Math.round(n / 1_000) + 'k' : String(n);
@@ -13190,7 +13189,7 @@ function renderAI() {
           ${!isUltra ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);text-align:center">
             <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">Passer au plan supérieur pour plus d\'AI Credits inclus</div>
             <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%" onclick="navigate('billing');setTimeout(function(){navigateSub('plans');},50)">
-              ${plan === 'Pro' ? 'Passer Ultra — 10M AI Credits/mois →' : 'Passer Pro — 500k AI Credits/mois →'}
+              ${plan === 'Pro' ? 'Passer Ultra — Crédits illimités →' : 'Passer Pro — 500k AI Credits/mois →'}
             </button>
           </div>` : ''}
         </div>
@@ -13222,7 +13221,7 @@ function renderAI() {
           ${[
             { name:'Standard', credits:'100k',    price:'29€',  color:'#22c55e', current: plan === 'Standard', features:['IA Performante'] },
             { name:'Pro',      credits:'500k',    price:'79€',  color:'#2563EB', current: plan === 'Pro',      features:['IA Performante'] },
-            { name:'Ultra',    credits:'10M',     price:'149€', color:'#8b5cf6', current: isUltra,             features:['IA Prioritaire'] },
+            { name:'Ultra',    credits:'∞',       price:'149€', color:'#8b5cf6', current: isUltra,             features:['IA Prioritaire'] },
           ].map(p => `
             <div style="padding:14px;border-radius:12px;border:2px solid ${p.current?p.color+'66':'var(--fp-border)'};background:${p.current?p.color+'0d':'var(--fp-inner-card)'};text-align:center">
               <div style="font-size:12px;font-weight:800;color:${p.color};margin-bottom:4px">${p.name}</div>
@@ -46197,7 +46196,7 @@ async function init() {
               // sidebar quota bars reflect the new plan without waiting for loadData().
               try {
                 const _ssePlanKey = newPlan.toLowerCase();
-                const _sseDef = STATE.planDefs?.[_ssePlanKey];
+                const _sseDef = Array.isArray(STATE.planDefs) ? STATE.planDefs.find(p => p.id === _ssePlanKey) : STATE.planDefs?.[_ssePlanKey];
                 if (_sseDef?.limits && STATE.me) {
                   STATE.me.limits = { ...(STATE.me.limits || {}), ..._sseDef.limits };
                 }

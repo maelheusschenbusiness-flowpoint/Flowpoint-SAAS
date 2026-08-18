@@ -1288,6 +1288,9 @@
     /* Populate internal cart so badge and checkout work */
     if (_saved && _saved.plan) _cart.plan = _saved.plan;
     if (_saved.addons) Object.keys(_saved.addons).forEach(function(k) { _cart.addons[k] = _saved.addons[k]; });
+    // Critical: carry fromDashboard into the internal _cart so addToCart() writes it back
+    // to localStorage — without this, the flag is lost on any add-on toggle.
+    if (_saved && _saved.fromDashboard) _cart.fromDashboard = true;
     updateCartBadge();
     /* After DOM is ready: visually mark add-on buttons and active plan.
        Script is at end of <body> so DOMContentLoaded may already have fired —
@@ -1813,6 +1816,13 @@
 
     var currentCart;
     try { currentCart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+    /* Defense-in-depth: re-stamp fromDashboard even if addToCart() stripped it.
+       _cart.fromDashboard is now set at load time, but this guard covers edge cases
+       (page refresh, billing-state refresh resetting _cart, etc.). */
+    if (fromDashboard) {
+      if (!currentCart) currentCart = { plan: null, addons: {} };
+      currentCart.fromDashboard = true;
+    }
     var targetPlan = currentCart && currentCart.plan;
 
     /* ── Already-subscribed, add-on-only cart (no plan change) ─────────────
