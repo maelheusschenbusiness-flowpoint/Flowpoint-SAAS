@@ -59,6 +59,10 @@ export default defineConfig({
       "src/tests/ai-engine.test.ts",
       // Task #592 item #11 — multi-tenant mission isolation
       "src/tests/ai-multitenant.test.ts",
+      // Task #608 — AI engine maturity: FP_NAV leak, scope discipline, HYBRID tools, analyze_site
+      "src/agent/nav-sanitize.test.ts",
+      "src/routes/ai-intent-tools.test.ts",
+      "src/services/site-crawler.test.ts",
     ],
     environment: "node",
     globals:     false,

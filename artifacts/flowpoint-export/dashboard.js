@@ -63963,6 +63963,22 @@ function renderTechnicalAIAudit() {
 
 function fpMarkdown(text) {
   if (!text) return '';
+  // Défense en profondeur FP_NAV : le protocole de navigation <<<FP_NAV>>>{json}<<<END_NAV>>>
+  // est normalement intercepté côté serveur (NavMarkerFilter / sanitizeNavText) et converti
+  // en action_proposal. Si un fragment atteint quand même le rendu (bug serveur, message
+  // persisté avant le fix), on le supprime ici — il ne doit JAMAIS être visible.
+  text = String(text)
+    .replace(/<<<FP_NAV>>>[\s\S]*?<<<END_NAV>>>/g, '')
+    .replace(/<<<FP_NAV>>>[\s\S]*$/g, '')
+    .replace(/<<<END_NAV>>>/g, '');
+  // Préfixe PARTIEL de marqueur en fin de texte (réponse tronquée en plein
+  // délimiteur : "<<<FP_NAV>>", "<<<FP_", "<<" …) — ≥2 caractères pour ne pas
+  // mutiler un "<" légitime.
+  for (const _m of ['<<<FP_NAV>>>', '<<<END_NAV>>>']) {
+    for (let _len = _m.length - 1; _len >= 2; _len--) {
+      if (text.endsWith(_m.slice(0, _len))) { text = text.slice(0, text.length - _len); break; }
+    }
+  }
   return text
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')

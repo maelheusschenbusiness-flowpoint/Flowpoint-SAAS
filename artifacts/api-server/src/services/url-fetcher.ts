@@ -217,6 +217,8 @@ export interface FetchUrlResult {
   wordCount?: number;
   loadTimeMs?: number;
   error?: string;
+  /** Liens internes (même domaine) découverts sur la page — pour le crawl multi-pages. */
+  links?: string[];
 }
 
 const USER_AGENT =
@@ -425,7 +427,10 @@ async function readBodyBounded(
  *
  * Ne lève jamais d'exception — retourne { ok: false, error } en cas d'échec.
  */
-export async function fetchUrlContent(rawUrl: string): Promise<FetchUrlResult> {
+export async function fetchUrlContent(
+  rawUrl: string,
+  opts?: { timeoutMs?: number },
+): Promise<FetchUrlResult> {
   // Pre-validate URL format and protocol (fast path before DNS)
   let parsed: URL;
   try { parsed = new URL(rawUrl); } catch {
@@ -449,8 +454,9 @@ export async function fetchUrlContent(rawUrl: string): Promise<FetchUrlResult> {
   // DNS names fall through to pinnedRequest() which resolves + re-validates each IP
 
   // Single AbortController covers the entire request lifecycle (DNS + connection + headers + body)
+  const effectiveTimeoutMs = Math.min(opts?.timeoutMs ?? TOTAL_TIMEOUT_MS, TOTAL_TIMEOUT_MS);
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TOTAL_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), effectiveTimeoutMs);
 
   const t0 = Date.now();
   let currentUrl = rawUrl;
@@ -563,7 +569,8 @@ export async function fetchUrlContent(rawUrl: string): Promise<FetchUrlResult> {
       // Timer cleared only AFTER full body read is complete
       clearTimeout(timer);
       const extracted = extractContent(rawHtml);
-      return { ok: true, url: currentUrl, statusCode, loadTimeMs, ...extracted };
+      const links = extractInternalLinks(rawHtml, currentUrl);
+      return { ok: true, url: currentUrl, statusCode, loadTimeMs, ...extracted, links };
     }
 
     clearTimeout(timer);
@@ -631,6 +638,42 @@ function extractContent(html: string): {
   const wordCount = rawText.split(/\s+/).filter(Boolean).length;
 
   return { title, metaDescription, headings, bodyText, wordCount };
+}
+
+/**
+ * Extrait les liens internes (même hostname) d'une page HTML.
+ * - Résout les liens relatifs contre baseUrl
+ * - Ignore fragments, mailto:, tel:, javascript:, fichiers non-HTML évidents
+ * - Normalise (retire fragment, garde query) et déduplique
+ * - Plafonné à 40 liens pour borner mémoire/CPU
+ * Exporté pour tests unitaires.
+ */
+export function extractInternalLinks(html: string, baseUrl: string): string[] {
+  let base: URL;
+  try { base = new URL(baseUrl); } catch { return []; }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const NON_HTML_EXT = /\.(?:pdf|jpe?g|png|gif|webp|svg|ico|css|js|mjs|json|xml|zip|gz|rar|mp[34]|webm|avi|mov|woff2?|ttf|eot|docx?|xlsx?|pptx?|csv)(?:[?#]|$)/i;
+  const hrefRe = /<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+  let m: RegExpExecArray | null;
+  while ((m = hrefRe.exec(html)) !== null && out.length < 40) {
+    const raw = (m[1] ?? m[2] ?? "").trim();
+    if (!raw || raw.startsWith("#")) continue;
+    if (/^(?:mailto:|tel:|javascript:|data:|ftp:)/i.test(raw)) continue;
+    let resolved: URL;
+    try { resolved = new URL(raw, base); } catch { continue; }
+    if (resolved.protocol !== "http:" && resolved.protocol !== "https:") continue;
+    if (resolved.hostname.toLowerCase() !== base.hostname.toLowerCase()) continue;
+    if (NON_HTML_EXT.test(resolved.pathname)) continue;
+    resolved.hash = "";
+    // Normalisation : retirer le slash final (sauf racine) pour dédupliquer /a/ et /a
+    let norm = resolved.toString();
+    if (norm.endsWith("/") && resolved.pathname !== "/") norm = norm.slice(0, -1);
+    if (seen.has(norm)) continue;
+    seen.add(norm);
+    out.push(norm);
+  }
+  return out;
 }
 
 function stripTags(html: string): string {

@@ -192,7 +192,8 @@ describe("CR-10 TTFT — simple greeting bypasses tool loop", () => {
       "utf-8"
     );
     expect(src).toContain("!isSimpleGreeting");
-    expect(src).toMatch(/enableTools && hasAnyToolPermission && !isSimpleGreeting/);
+    // Whitespace-tolerant: the condition is formatted across multiple lines.
+    expect(src).toMatch(/enableTools\s*&&\s*hasAnyToolPermission\s*&&\s*!isSimpleGreeting/);
   });
 
   it("SIMPLE_RE does not match action requests that need tools", () => {

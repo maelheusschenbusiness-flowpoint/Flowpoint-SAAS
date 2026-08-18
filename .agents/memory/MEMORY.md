@@ -35,7 +35,7 @@
 - [Rate limit 429 structural fix](rate-limit-GET-exemption.md) — authenticated GET requests must bypass globalRateLimit; only writes + anonymous are counted; dashboard loads ~60 GETs per session
 - [init-data-tables.ts self-healing schema](init-data-tables-self-healing.md) — only init-*.ts files auto-run in prod; raw migrations/*.sql never do; fix prod schema drift there, not in migration files
 - [GitHub push via REST API](github-push-rest.md) — git push/add/commit blocked by sandbox; use ReplitConnectors proxy + Contents API (≤1MB) or Git Data API (blob+tree+commit+ref) for large files
-- [GitHub push mechanism limits](github-push-mechanism.md) — sandbox blocks git add/commit (exit 254); connector proxy fails "No connection found" in code_execution; listConnections('github') returns 0 in sandbox; tell user to push manually
+- [GitHub push mechanism limits](github-push-mechanism.md) — git add/commit work from ShellExec; git push fails (no auth); proxyFetch+getClient undefined in current runtime even inside "use impure"; tell user to push manually
 - [gpt-5 family API param compatibility](gpt5-migration-params.md) — gpt-5+ needs max_completion_tokens (not max_tokens) and no custom temperature; model-string swaps alone break silently at runtime
 - [FlowPoint post-verification checkout redirect](flowpoint-checkout-redirect.md) — use sessionStorage `fp_next` + localStorage `fp_cart` to route a new signup into checkout.html instead of the dashboard after magic-link verify
 - [Postgres silent rollback on abort](postgres-silent-rollback-abort.md) — a failing statement mid-transaction poisons it; COMMIT then silently becomes ROLLBACK with no error; guard secondary logic with SAVEPOINT
