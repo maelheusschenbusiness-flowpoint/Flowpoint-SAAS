@@ -47,10 +47,10 @@ export const PLAN_DEFINITIONS: Record<string, PlanDefinition> = {
     features: [
       "30 audits/mois", "10 monitors", "30 rapports PDF/mois",
       "30 exports/mois", "1 membre d'équipe", "100 000 crédits IA/mois",
-      "Local SEO basique", "Export CSV", "Support email 48h",
+      "Local SEO basique", "Export CSV", "Support email 48h", "White-label",
     ],
     locked: [
-      "IA Insights", "White-label", "API Access",
+      "IA Insights", "API Access",
       "Analytics concurrents", "Multi-workspace",
       "SSO SAML", "Onboarding dédié", "Facturation client",
     ],
