@@ -4517,10 +4517,6 @@ function initLocalSEOMap() {
     if (!mapEl || mapEl._mapInited || mapEl._fpMapInitialized) return;
     mapEl._mapInited = true;
     mapEl._fpMapInitialized = true; // prevent FP_MAPS_API double-init
-    // Hide skeleton overlay immediately when dashboard.js initializes the map
-    const _gmapSkel = document.getElementById('fp-gmap-skeleton');
-    if (_gmapSkel) _gmapSkel.style.display = 'none';
-    const isLight = document.documentElement.dataset.theme === 'light';
     const darkStyles = [
       { elementType:'geometry', stylers:[{color:'#0d1525'}] },
       { elementType:'labels.text.stroke', stylers:[{color:'#0a0f1e'}] },
@@ -4539,153 +4535,175 @@ function initLocalSEOMap() {
     const _locLat = _num(_wLoc?.latitude), _locLng = _num(_wLoc?.longitude);
     const _hasCoords = _locLat != null && _locLng != null;
     const _fallbackCity = (_wLoc?.city || _wLoc?.address || '');
-    const center = _hasCoords
-      ? { lat: _locLat, lng: _locLng }
-      : _fallbackCity
-        ? null
-        : { lat:48.8566, lng:2.3522 };
-    // ControlPosition/MapTypeControlStyle can be undefined with async Maps
-    // bootstrap — omit position/style then (defaults are top-left horizontal bar).
-    const _mtcOpts = { mapTypeIds: ['roadmap','satellite','terrain'] };
-    if (google.maps.ControlPosition) _mtcOpts.position = google.maps.ControlPosition.TOP_LEFT;
-    if (google.maps.MapTypeControlStyle) _mtcOpts.style = google.maps.MapTypeControlStyle.HORIZONTAL_BAR;
-    const map = new google.maps.Map(mapEl, {
-      zoom:14, center,
-      styles: isLight ? [] : darkStyles,
-      mapTypeControl:true,
-      mapTypeControlOptions:_mtcOpts,
-      streetViewControl:false, fullscreenControl:true,
-      zoomControl:true,
-      cameraControl:true,
-      rotateControl:false,
-      gestureHandling:'greedy',
-    });
-    STATE._gmap = map;
-    STATE._gmapDark = darkStyles;
-    // Dark mode: style Google Maps native map-type controls (Plan / Satellite / Relief)
-    // Injected immediately (not on tilesloaded) so controls never flash light.
-    if (!isLight) {
-      (() => {
-        if (document.getElementById('fp-gmap-dark-ctrl')) return;
-        const s = document.createElement('style');
-        s.id = 'fp-gmap-dark-ctrl';
-        s.textContent = [
-          '#fp-gmap .gm-style-mtc button{background:#1e293b!important;color:#e2e8f0!important;border-color:#334155!important;box-shadow:none!important}',
-          '#fp-gmap .gm-style-mtc button:hover{background:#334155!important}',
-          '#fp-gmap .gm-style-mtc>div{background:#1e293b!important;border-color:#334155!important}',
-          '#fp-gmap .gm-style-mtc li,#fp-gmap .gm-style-mtc label{background:#1e293b!important;color:#e2e8f0!important}',
-          '#fp-gmap .gm-bundled-control button,#fp-gmap .gm-fullscreen-control{background:#1e293b!important;color:#e2e8f0!important}',
-          '#fp-gmap .gm-svpc,#fp-gmap .gm-fullscreen-control img{filter:invert(1) brightness(0.8)}',
-          // Keyboard-shortcuts / attribution bar — dark, not white
-          '#fp-gmap .gm-style-cc>div{background:rgba(13,17,23,0.72)!important}',
-          '#fp-gmap .gm-style-cc a,#fp-gmap .gm-style-cc span,#fp-gmap .gm-style-cc button{color:#94a3b8!important}',
-          // Dark InfoWindows — Google renders them white by default
-          '#fp-gmap .gm-style-iw,#fp-gmap .gm-style-iw-c{background:#0f172a!important;color:#e2e8f0!important;box-shadow:0 8px 24px rgba(0,0,0,0.6)!important;border:1px solid #1e3a5f!important;border-radius:12px!important}',
-          '#fp-gmap .gm-style-iw-d{background:#0f172a!important;color:#e2e8f0!important;overflow:auto!important}',
-          '#fp-gmap .gm-style-iw-tc::after{background:#0f172a!important}',
-          '#fp-gmap .gm-style-iw button.gm-ui-hover-effect>span{background-color:#e2e8f0!important}',
-          '#fp-gmap .gm-style-iw a{color:#60a5fa!important}',
-        ].join('');
-        document.head.appendChild(s);
-      })();
-    }
-    // Business marker (only if we have a center)
-    let bm = null;
-    if (center) {
-      bm = new google.maps.Marker({
+
+    // ── Dark mode CSS — injected unconditionally; selectors use data-theme ────
+    // OLD approach: if(!isLight){inject()} meant the <style> was missing when the
+    // user started in light mode, so switching to dark later had no effect.
+    // NEW approach: always inject the <style>, but every rule is prefixed with
+    // html:not([data-theme="light"]) so it activates/deactivates automatically
+    // whenever applyTheme() sets document.documentElement.dataset.theme.
+    // applyTheme() already updates the tile styles via STATE._gmap.setOptions();
+    // this block covers native controls (map-type bar, fullscreen) and InfoWindows.
+    (() => {
+      if (document.getElementById('fp-gmap-dark-ctrl')) return;
+      const s = document.createElement('style');
+      s.id = 'fp-gmap-dark-ctrl';
+      s.textContent = [
+        'html:not([data-theme="light"]) #fp-gmap .gm-style-mtc button{background:#1e293b!important;color:#e2e8f0!important;border-color:#334155!important;box-shadow:none!important}',
+        'html:not([data-theme="light"]) #fp-gmap .gm-style-mtc button:hover{background:#334155!important}',
+        'html:not([data-theme="light"]) #fp-gmap .gm-style-mtc>div{background:#1e293b!important;border-color:#334155!important}',
+        'html:not([data-theme="light"]) #fp-gmap .gm-style-mtc li,html:not([data-theme="light"]) #fp-gmap .gm-style-mtc label{background:#1e293b!important;color:#e2e8f0!important}',
+        'html:not([data-theme="light"]) #fp-gmap .gm-bundled-control button,html:not([data-theme="light"]) #fp-gmap .gm-fullscreen-control{background:#1e293b!important;color:#e2e8f0!important}',
+        'html:not([data-theme="light"]) #fp-gmap .gm-svpc,html:not([data-theme="light"]) #fp-gmap .gm-fullscreen-control img{filter:invert(1) brightness(0.8)}',
+        // Keyboard-shortcuts / attribution bar — dark, not white
+        'html:not([data-theme="light"]) #fp-gmap .gm-style-cc>div{background:rgba(13,17,23,0.72)!important}',
+        'html:not([data-theme="light"]) #fp-gmap .gm-style-cc a,html:not([data-theme="light"]) #fp-gmap .gm-style-cc span,html:not([data-theme="light"]) #fp-gmap .gm-style-cc button{color:#94a3b8!important}',
+        // Dark InfoWindows — Google renders them white by default
+        'html:not([data-theme="light"]) #fp-gmap .gm-style-iw,html:not([data-theme="light"]) #fp-gmap .gm-style-iw-c{background:#0f172a!important;color:#e2e8f0!important;box-shadow:0 8px 24px rgba(0,0,0,0.6)!important;border:1px solid #1e3a5f!important;border-radius:12px!important}',
+        'html:not([data-theme="light"]) #fp-gmap .gm-style-iw-d{background:#0f172a!important;color:#e2e8f0!important;overflow:auto!important}',
+        'html:not([data-theme="light"]) #fp-gmap .gm-style-iw-tc::after{background:#0f172a!important}',
+        'html:not([data-theme="light"]) #fp-gmap .gm-style-iw button.gm-ui-hover-effect>span{background-color:#e2e8f0!important}',
+        'html:not([data-theme="light"]) #fp-gmap .gm-style-iw a{color:#60a5fa!important}',
+      ].join('');
+      document.head.appendChild(s);
+    })();
+
+    // ── _doInitMap — deferred map creation once center is resolved ────────────
+    // Splits map init from center resolution so we never create the map with a
+    // Paris-fallback center only to move it 500ms later (the visible flash).
+    // The skeleton stays visible until this function is called with real coords.
+    function _doInitMap(center) {
+      const _gmapSkel = document.getElementById('fp-gmap-skeleton');
+      if (_gmapSkel) _gmapSkel.style.display = 'none';
+      // ControlPosition/MapTypeControlStyle can be undefined with async Maps
+      // bootstrap — omit position/style then (defaults are top-left horizontal bar).
+      const _mtcOpts = { mapTypeIds: ['roadmap','satellite','terrain'] };
+      if (google.maps.ControlPosition) _mtcOpts.position = google.maps.ControlPosition.TOP_LEFT;
+      if (google.maps.MapTypeControlStyle) _mtcOpts.style = google.maps.MapTypeControlStyle.HORIZONTAL_BAR;
+      const isLight = document.documentElement.dataset.theme === 'light';
+      const map = new google.maps.Map(mapEl, {
+        zoom:14, center,
+        styles: isLight ? [] : darkStyles,
+        mapTypeControl:true,
+        mapTypeControlOptions:_mtcOpts,
+        streetViewControl:false, fullscreenControl:true,
+        zoomControl:true,
+        cameraControl:true,
+        rotateControl:false,
+        gestureHandling:'greedy',
+      });
+      STATE._gmap = map;
+      STATE._gmapDark = darkStyles;
+      // Business marker — center is always a valid {lat,lng} here
+      const _bizAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
+      const bm = new google.maps.Marker({
         position:center, map, zIndex:10, title:'Votre établissement',
         icon:{ path:google.maps.SymbolPath.CIRCLE, scale:13, fillColor:'#2563EB', fillOpacity:1, strokeColor:'#fff', strokeWeight:3 }
       });
-      const _bizAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
-      const bIW = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:160px"><strong>📍 Votre établissement</strong>${_bizAvg != null ? `<div style="margin-top:6px;font-size:12px;color:#475569">${fpT('Score SEO&nbsp;')}<strong style="color:#2563EB">${_bizAvg}/100</strong></div>` : ''}</div>` });
+      // InfoWindow colors use CSS variables so they follow theme switches live.
+      // Hardcoded hex values (#475569, #94a3b8, #0f172a, #e2e8f0) were frozen at
+      // init time and never updated when the user toggled the theme.
+      const bIW = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:160px"><strong>📍 Votre établissement</strong>${_bizAvg != null ? `<div style="margin-top:6px;font-size:12px;color:var(--fp-text-muted,#475569)">${fpT('Score SEO&nbsp;')}<strong style="color:#2563EB">${_bizAvg}/100</strong></div>` : ''}</div>` });
       bm.addListener('click', () => bIW.open(map, bm));
+      new google.maps.Circle({ map, center, radius:1200, fillColor:'#2563EB', fillOpacity:0.06, strokeColor:'#2563EB', strokeOpacity:0.3, strokeWeight:2 });
+      // Competitors
+      (STATE.competitors && STATE.competitors.length > 0
+        ? STATE.competitors.slice(0,5).map((c,i) => ({
+            name: c.name || `Concurrent ${String.fromCharCode(65+i)}`,
+            lat: center.lat + (i%2===0?1:-1)*0.005*(Math.floor(i/2)+1),
+            lng: center.lng + (i%2===0?-1:1)*0.007*(Math.floor(i/2)+1),
+            score: Math.min(100,Math.round((c.domainRating||0)*1.5)),
+            reviews: c.reviews||0,
+            threat: (c.domainRating||0)>50?'Élevée':(c.domainRating||0)>30?'Modérée':'Faible',
+            color: (c.domainRating||0)>50?'#ef4444':(c.domainRating||0)>30?'#f59e0b':'#22c55e',
+          }))
+        : PREVIEW_MODE ? [
+            { name:'Concurrent A', lat:48.863, lng:2.365, score:78, reviews:127, threat:'Élevée',  color:'#ef4444' },
+            { name:'Concurrent B', lat:48.849, lng:2.338, score:65, reviews:89,  threat:'Modérée', color:'#f59e0b' },
+            { name:'Concurrent C', lat:48.870, lng:2.341, score:82, reviews:203, threat:'Élevée',  color:'#ef4444' },
+            { name:'Concurrent D', lat:48.843, lng:2.359, score:58, reviews:45,  threat:'Faible',  color:'#22c55e' },
+            { name:'Concurrent E', lat:48.855, lng:2.372, score:71, reviews:112, threat:'Modérée', color:'#f59e0b' },
+          ] : []
+      ).filter(c => Number.isFinite(Number(c.lat)) && Number.isFinite(Number(c.lng))).forEach(c => {
+        const mk = new google.maps.Marker({
+          position:{lat:Number(c.lat),lng:Number(c.lng)}, map, title:c.name,
+          icon:{ path:google.maps.SymbolPath.CIRCLE, scale:9, fillColor:c.color, fillOpacity:0.9, strokeColor:'#fff', strokeWeight:2 }
+        });
+        const iw = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:190px"><strong style="font-size:13px">${c.name}</strong><div style="display:flex;gap:16px;margin-top:8px"><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.score}</div><div style="font-size:10px;color:var(--fp-text-muted,#94a3b8)">${fpT('Score SEO')}</div></div><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.reviews}</div><div style="font-size:10px;color:var(--fp-text-muted,#94a3b8)">Avis Google</div></div></div><div style="margin-top:8px;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block;background:${c.color}22;color:${c.color}">Menace: ${c.threat}</div></div>` });
+        mk.addListener('click', () => iw.open(map, mk));
+      });
+      // Geolocation marker — only from stored coordinates (no browser permission prompt).
+      // Users set their location via Settings > Localisation or the Workspace address fields.
+      if (STATE._geoMarker) { try { STATE._geoMarker.setMap(null); } catch(_){} STATE._geoMarker = null; }
+      if (_num(STATE._lastUserLat) != null && _num(STATE._lastUserLng) != null) {
+        const userPos = { lat: _num(STATE._lastUserLat), lng: _num(STATE._lastUserLng) };
+        STATE._geoMarker = new google.maps.Marker({
+          position: userPos, map, zIndex: 20, title: 'Vous \u00eates ici',
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 11, fillColor: '#22c55e', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 }
+        });
+      }
+      // ── POI click → rich FlowPoint place card (replaces Google's white popup) ──
+      // Colors use CSS vars (var(--fp-text), var(--fp-text-muted)) instead of the
+      // old _txtC/_mutC JS vars that were frozen at init time and never updated
+      // when the user switched theme. CSS vars resolve at render time automatically.
+      const _poiIW = new google.maps.InfoWindow();
+      map.addListener('click', (ev) => {
+        if (!ev || !ev.placeId) return;
+        ev.stop(); // suppress Google's native white InfoWindow
+        const pid = ev.placeId;
+        _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:var(--fp-text-muted,#94a3b8);font-size:12px">${fpT('Chargement des détails…')}</div>`);
+        _poiIW.setPosition(ev.latLng);
+        _poiIW.open(map);
+        apiFetch(`/api/maps/place-details?placeId=${encodeURIComponent(pid)}`).then(d => {
+          if (!d || d.error || !d.name) {
+            _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:var(--fp-text-muted,#94a3b8);font-size:12px">${fpT('Détails indisponibles pour ce lieu.')}</div>`);
+            return;
+          }
+          const stars = d.rating != null ? '★'.repeat(Math.round(d.rating)) + '☆'.repeat(5 - Math.round(d.rating)) : '';
+          _poiIW.setContent(
+            `<div style="font-family:Inter,sans-serif;padding:10px;min-width:220px;max-width:280px;color:var(--fp-text,#0f172a)">`
+            + (d.photoUrl ? `<img src="${d.photoUrl}" alt="" style="width:100%;height:110px;object-fit:cover;border-radius:8px;margin-bottom:8px" onerror="this.remove()"/>` : '')
+            + `<strong style="font-size:13px">${escHtml(d.name)}</strong>`
+            + (d.rating != null ? `<div style="margin-top:4px;font-size:12px"><span style="color:#f59e0b">${stars}</span> <strong>${d.rating}</strong>${d.reviewCount != null ? ` <span style="color:var(--fp-text-muted,#94a3b8)">(${d.reviewCount} avis)</span>` : ''}</div>` : `<div style="margin-top:4px;font-size:11px;color:var(--fp-text-muted,#94a3b8)">${fpT('Aucun avis Google')}</div>`)
+            + (d.address ? `<div style="margin-top:6px;font-size:11px;color:var(--fp-text-muted,#94a3b8);line-height:1.4">📍 ${escHtml(String(d.address))}</div>` : '')
+            + (d.phone ? `<div style="margin-top:4px;font-size:11px;color:var(--fp-text-muted,#94a3b8)">📞 ${escHtml(String(d.phone))}</div>` : '')
+            + (d.openNow != null ? `<div style="margin-top:4px;font-size:11px;font-weight:600;color:${d.openNow ? '#22c55e' : '#ef4444'}">${d.openNow ? '● Ouvert actuellement' : '● Fermé actuellement'}</div>` : '')
+            + `<div style="margin-top:8px;display:flex;gap:10px;font-size:11px">`
+            + (d.website ? `<a href="${escHtml(String(d.website))}" target="_blank" rel="noopener" style="text-decoration:none;font-weight:600">Site web ↗</a>` : '')
+            + (d.googleUrl ? `<a href="${escHtml(String(d.googleUrl))}" target="_blank" rel="noopener" style="text-decoration:none;font-weight:600">Google Maps ↗</a>` : '')
+            + `</div></div>`
+          );
+        }).catch(() => {
+          _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:var(--fp-text-muted,#94a3b8);font-size:12px">${fpT('Détails indisponibles pour ce lieu.')}</div>`);
+        });
+      });
     }
-    const _bCircle = center ? new google.maps.Circle({ map, center, radius:1200, fillColor:'#2563EB', fillOpacity:0.06, strokeColor:'#2563EB', strokeOpacity:0.3, strokeWeight:2 }) : null;
-    // Geocode workspace address if no stored coordinates
-    if (!_hasCoords && _wLoc && (_wLoc.city || _wLoc.address)) {
+
+    // ── Center resolution — three cases ──────────────────────────────────────
+    // A: Real coordinates stored → _doInitMap immediately, zero flash.
+    // B: City/address but no coords → geocode first; skeleton stays visible until
+    //    geocoder returns; _doInitMap called with the resolved position.
+    //    Previously the map was created with Paris then recentered → visible flash.
+    // C: No location configured at all → neutral Europe center (48.5, 10) instead
+    //    of Paris so the fallback does not reveal an arbitrary hardcoded city.
+    if (_hasCoords) {
+      _doInitMap({ lat: _locLat, lng: _locLng });
+    } else if (_fallbackCity) {
       const _geoQuery = [_wLoc.address, _wLoc.city, _wLoc.postalCode, _wLoc.country].filter(Boolean).join(', ');
       const geocoder = new google.maps.Geocoder();
       geocoder.geocode({ address: _geoQuery }, (results, status) => {
         if (status === 'OK' && results[0]) {
           const pos = results[0].geometry.location;
-          map.setCenter(pos);
-          if (bm) bm.setPosition(pos);
-          if (_bCircle) _bCircle.setCenter(pos);
+          _doInitMap({ lat: pos.lat(), lng: pos.lng() });
+        } else {
+          // Geocoder failed — neutral Europe center rather than Paris
+          _doInitMap({ lat: 48.5, lng: 10 });
         }
       });
+    } else {
+      // No location configured — neutral Europe center
+      _doInitMap({ lat: 48.5, lng: 10 });
     }
-    // Competitors
-    (STATE.competitors && STATE.competitors.length > 0
-      ? STATE.competitors.slice(0,5).map((c,i) => ({
-          name: c.name || `Concurrent ${String.fromCharCode(65+i)}`,
-          lat: (center?.lat ?? 48.8566) + (i%2===0?1:-1)*0.005*(Math.floor(i/2)+1),
-          lng: (center?.lng ?? 2.3522) + (i%2===0?-1:1)*0.007*(Math.floor(i/2)+1),
-          score: Math.min(100,Math.round((c.domainRating||0)*1.5)),
-          reviews: c.reviews||0,
-          threat: (c.domainRating||0)>50?'Élevée':(c.domainRating||0)>30?'Modérée':'Faible',
-          color: (c.domainRating||0)>50?'#ef4444':(c.domainRating||0)>30?'#f59e0b':'#22c55e',
-        }))
-      : PREVIEW_MODE ? [
-          { name:'Concurrent A', lat:48.863, lng:2.365, score:78, reviews:127, threat:'Élevée',  color:'#ef4444' },
-          { name:'Concurrent B', lat:48.849, lng:2.338, score:65, reviews:89,  threat:'Modérée', color:'#f59e0b' },
-          { name:'Concurrent C', lat:48.870, lng:2.341, score:82, reviews:203, threat:'Élevée',  color:'#ef4444' },
-          { name:'Concurrent D', lat:48.843, lng:2.359, score:58, reviews:45,  threat:'Faible',  color:'#22c55e' },
-          { name:'Concurrent E', lat:48.855, lng:2.372, score:71, reviews:112, threat:'Modérée', color:'#f59e0b' },
-        ] : []
-    ).filter(c => Number.isFinite(Number(c.lat)) && Number.isFinite(Number(c.lng))).forEach(c => {
-      const mk = new google.maps.Marker({
-        position:{lat:Number(c.lat),lng:Number(c.lng)}, map, title:c.name,
-        icon:{ path:google.maps.SymbolPath.CIRCLE, scale:9, fillColor:c.color, fillOpacity:0.9, strokeColor:'#fff', strokeWeight:2 }
-      });
-      const iw = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:190px"><strong style="font-size:13px">${c.name}</strong><div style="display:flex;gap:16px;margin-top:8px"><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.score}</div><div style="font-size:10px;color:#94a3b8">${fpT('Score SEO')}</div></div><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.reviews}</div><div style="font-size:10px;color:#94a3b8">Avis Google</div></div></div><div style="margin-top:8px;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block;background:${c.color}22;color:${c.color}">Menace: ${c.threat}</div></div>` });
-      mk.addListener('click', () => iw.open(map, mk));
-    });
-
-    // Geolocation marker — only from stored coordinates (no browser permission prompt).
-    // Users set their location via Settings > Localisation or the Workspace address fields.
-    if (STATE._geoMarker) { try { STATE._geoMarker.setMap(null); } catch(_){} STATE._geoMarker = null; }
-    if (_num(STATE._lastUserLat) != null && _num(STATE._lastUserLng) != null) {
-      const userPos = { lat: _num(STATE._lastUserLat), lng: _num(STATE._lastUserLng) };
-      STATE._geoMarker = new google.maps.Marker({
-        position: userPos, map, zIndex: 20, title: 'Vous \u00eates ici',
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 11, fillColor: '#22c55e', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 }
-      });
-    }
-
-    // ── POI click → rich FlowPoint place card (replaces Google's white popup) ──
-    const _poiIW = new google.maps.InfoWindow();
-    const _txtC = isLight ? '#0f172a' : '#e2e8f0';
-    const _mutC = isLight ? '#64748b' : '#94a3b8';
-    map.addListener('click', (ev) => {
-      if (!ev || !ev.placeId) return;
-      ev.stop(); // suppress Google's native white InfoWindow
-      const pid = ev.placeId;
-      _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:${_mutC};font-size:12px">${fpT('Chargement des détails…')}</div>`);
-      _poiIW.setPosition(ev.latLng);
-      _poiIW.open(map);
-      apiFetch(`/api/maps/place-details?placeId=${encodeURIComponent(pid)}`).then(d => {
-        if (!d || d.error || !d.name) {
-          _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:${_mutC};font-size:12px">${fpT('Détails indisponibles pour ce lieu.')}</div>`);
-          return;
-        }
-        const stars = d.rating != null ? '★'.repeat(Math.round(d.rating)) + '☆'.repeat(5 - Math.round(d.rating)) : '';
-        _poiIW.setContent(
-          `<div style="font-family:Inter,sans-serif;padding:10px;min-width:220px;max-width:280px;color:${_txtC}">`
-          + (d.photoUrl ? `<img src="${d.photoUrl}" alt="" style="width:100%;height:110px;object-fit:cover;border-radius:8px;margin-bottom:8px" onerror="this.remove()"/>` : '')
-          + `<strong style="font-size:13px">${escHtml(d.name)}</strong>`
-          + (d.rating != null ? `<div style="margin-top:4px;font-size:12px"><span style="color:#f59e0b">${stars}</span> <strong>${d.rating}</strong>${d.reviewCount != null ? ` <span style="color:${_mutC}">(${d.reviewCount} avis)</span>` : ''}</div>` : `<div style="margin-top:4px;font-size:11px;color:${_mutC}">${fpT('Aucun avis Google')}</div>`)
-          + (d.address ? `<div style="margin-top:6px;font-size:11px;color:${_mutC};line-height:1.4">📍 ${escHtml(String(d.address))}</div>` : '')
-          + (d.phone ? `<div style="margin-top:4px;font-size:11px;color:${_mutC}">📞 ${escHtml(String(d.phone))}</div>` : '')
-          + (d.openNow != null ? `<div style="margin-top:4px;font-size:11px;font-weight:600;color:${d.openNow ? '#22c55e' : '#ef4444'}">${d.openNow ? '● Ouvert actuellement' : '● Fermé actuellement'}</div>` : '')
-          + `<div style="margin-top:8px;display:flex;gap:10px;font-size:11px">`
-          + (d.website ? `<a href="${escHtml(String(d.website))}" target="_blank" rel="noopener" style="text-decoration:none;font-weight:600">Site web ↗</a>` : '')
-          + (d.googleUrl ? `<a href="${escHtml(String(d.googleUrl))}" target="_blank" rel="noopener" style="text-decoration:none;font-weight:600">Google Maps ↗</a>` : '')
-          + `</div></div>`
-        );
-      }).catch(() => {
-        _poiIW.setContent(`<div style="font-family:Inter,sans-serif;padding:10px;min-width:200px;color:${_mutC};font-size:12px">${fpT('Détails indisponibles pour ce lieu.')}</div>`);
-      });
-    });
   });
 }
 
