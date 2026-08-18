@@ -13354,7 +13354,7 @@ function renderAI() {
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
           <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
-          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:auto;line-height:1.5;height:38px;max-height:120px;padding-right:18px"></textarea>
+          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:hidden;line-height:1.5;height:38px;max-height:120px;padding-right:18px"></textarea>
           <button class="fp-ai-send" id="ai-send">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
           <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
@@ -13591,6 +13591,8 @@ window.fpClearAiChat = function() {
   STATE.aiMessages = [];
   STATE.aiLoading = false;
   try { sessionStorage.removeItem(AI_SESSION_KEY); } catch(_) {}
+  try { sessionStorage.removeItem('fp:ai-draft'); } catch(_) {}
+  window._fpAiDomCache = null; // new conversation — never reattach the old chat DOM
   updateAIUI();
 
   // New path (DOM-based appendMessage)
@@ -13840,15 +13842,54 @@ async function sendAIMessage(text) {
   }).catch(function(){});
 }
 
+// Discreet "new messages" pill shown when a stream keeps growing below the
+// fold while the user is reading history (smart auto-scroll companion).
+function _fpAiNewMsgPill(el, show) {
+  let pill = document.getElementById('fp-ai-newmsg');
+  if (!show) { if (pill) pill.style.display = 'none'; return; }
+  const wrap = el.parentElement;
+  if (!wrap) return;
+  if (!pill || !wrap.contains(pill)) {
+    if (pill) pill.remove();
+    pill = document.createElement('button');
+    pill.id = 'fp-ai-newmsg';
+    pill.textContent = '↓ ' + fpT('Nouveaux messages');
+    pill.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);z-index:5;padding:4px 12px;border-radius:20px;border:1px solid var(--fp-border);background:var(--fp-bg-card,#0f172a);color:var(--fp-text);font-size:11px;font-weight:600;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,0.3)';
+    pill.onclick = function() {
+      const m = document.getElementById('ai-messages');
+      if (m) m.scrollTop = m.scrollHeight;
+      pill.style.display = 'none';
+    };
+    try { if (getComputedStyle(wrap).position === 'static') wrap.style.position = 'relative'; } catch(_) {}
+    wrap.appendChild(pill);
+  }
+  pill.style.top = Math.max(0, el.offsetTop + el.offsetHeight - 40) + 'px';
+  pill.style.display = 'block';
+}
+
 function updateAIUI() {
   const rendered = renderAIMessages();
+  const _msgCount = (STATE.aiMessages || []).length;
   // M12-fix: #ai-panel-messages only exists when the floating panel is open;
   // guard prevents no-op querySelectorAll errors when panel is not mounted.
   ['#ai-messages', '#ai-panel-messages'].forEach(sel => {
     const el = $(sel);
     if (!el) return;
+    // Smart auto-scroll: a NEW message (user send / reply start) always
+    // scrolls to bottom; streaming deltas only force-scroll when the reader
+    // is already near the bottom — never yank them out of the history.
+    const _isNewMsg = el._fpAiMsgCount !== _msgCount;
+    const _nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 80;
+    const _prevScroll = el.scrollTop;
+    el._fpAiMsgCount = _msgCount;
     el.innerHTML = rendered;
-    el.scrollTop = el.scrollHeight;
+    if (_isNewMsg || _nearBottom) {
+      el.scrollTop = el.scrollHeight;
+      if (sel === '#ai-messages') _fpAiNewMsgPill(el, false);
+    } else {
+      el.scrollTop = _prevScroll; // innerHTML replace can reset scroll — restore
+      if (sel === '#ai-messages' && STATE.aiLoading) _fpAiNewMsgPill(el, true);
+    }
   });
   const sendBtn = $('#ai-send') || $('#ai-panel-send');
   if (sendBtn) sendBtn.disabled = STATE.aiLoading;
@@ -15105,9 +15146,14 @@ function _doRender() {
   // dark overlay there causes a grey flash/"vibration" after initial load.
   const _renderKey = STATE.route + '||' + (STATE.subRoute || '');
   const _isNavigation = _renderKey !== _fpLastRenderedKey;
+  const _prevRenderKey = _fpLastRenderedKey;
   _fpLastRenderedKey = _renderKey;
   // Preserve scroll position on same-route re-renders (data refresh)
   const _prevScrollTop = _isNavigation ? 0 : page.scrollTop;
+  // Same-route AI chat re-render (background data refresh): also preserve the
+  // chat message scroll position across the innerHTML remount.
+  const _prevAiMsgEl = (!_isNavigation && _renderKey === 'ai||') ? page.querySelector('#ai-messages') : null;
+  const _prevAiMsgScroll = _prevAiMsgEl ? _prevAiMsgEl.scrollTop : null;
 
   if (_isNavigation) {
     // Show circular spinner during navigation, hide after render
@@ -15132,6 +15178,57 @@ function _doRender() {
   // Update topbar breadcrumb
   const pageNameEl = $('#fp-topbar-page-name');
   if (pageNameEl) pageNameEl.textContent = PAGE_NAMES[STATE.route] || 'Dashboard';
+
+  // ── AI chat DOM cache — no remount when navigating back to the chat ──
+  // Leaving the AI chat page (sub-route null): detach and keep the live DOM
+  // subtree. A rebuild via renderAI() replays every message, destroys the
+  // reading scroll position and drops the in-flight UI state.
+  const _fpAiLang = String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase();
+  try {
+    if (_prevRenderKey === 'ai||' && _renderKey !== 'ai||') {
+      const _leaving = page.querySelector('.fp-page-animated');
+      const _lvMsgs = _leaving ? _leaving.querySelector('#ai-messages') : null;
+      window._fpAiDomCache = (_leaving && _lvMsgs) ? {
+        node: _leaving,
+        lang: _fpAiLang,
+        who: (STATE.me && STATE.me.email) || '', // tenant scope — never reattach across identities
+        msgScroll: _lvMsgs.scrollTop,
+        pageScroll: page.scrollTop,
+        msgCount: (STATE.aiMessages || []).length,
+      } : null;
+    }
+  } catch(_) { window._fpAiDomCache = null; }
+
+  // Returning to the AI chat page with a warm cache → reattach the previous
+  // DOM node as-is (listeners intact, no rebind, no remount).
+  if (_renderKey === 'ai||' && window._fpAiDomCache && window._fpAiDomCache.node
+      && window._fpAiDomCache.lang === _fpAiLang && !STATE.loading && STATE.me
+      && window._fpAiDomCache.who === ((STATE.me && STATE.me.email) || '')) {
+    const _aiC = window._fpAiDomCache;
+    window._fpAiDomCache = null; // consumed — re-captured on next leave
+    page.innerHTML = '';
+    page.appendChild(_aiC.node);
+    // Sync messages + send/stop buttons with current STATE (a stream may have
+    // progressed or finished while the node was detached).
+    try { updateAIUI(); } catch(_) {}
+    const _aiM = page.querySelector('#ai-messages');
+    if (_aiM && !STATE.aiLoading && (STATE.aiMessages || []).length === _aiC.msgCount) {
+      _aiM.scrollTop = _aiC.msgScroll; // nothing new — restore reading position
+    }
+    requestAnimationFrame(() => {
+      _fpApplyLayout();
+      try { page.scrollTop = _aiC.pageScroll; } catch(_) {}
+    });
+    // Global chrome sync normally done at the end of _doRender — still required
+    // on the reattach path (e.g. hide the bulk bar left over from Audits).
+    syncBulkBar();
+    closeFAB();
+    closeCtxMenu();
+    updatePlanSwitcher();
+    if (window.fpSyncAiBadge) window.fpSyncAiBadge();
+    window.fpHideNavSpinner();
+    return;
+  }
 
   let html = '';
   // BUG-002 fix: wrap renderer in try/catch — if any renderXxx() throws,
@@ -15251,6 +15348,13 @@ function _doRender() {
   // Restore scroll position on same-route re-renders (prevents jump/vibration)
   if (!_isNavigation && _prevScrollTop > 0) {
     try { page.scrollTop = _prevScrollTop; } catch(_) {}
+  }
+  // Restore AI chat message scroll after a same-route background re-render
+  if (_prevAiMsgScroll != null) {
+    try {
+      const _m2 = page.querySelector('#ai-messages');
+      if (_m2) { _m2.scrollTop = _prevAiMsgScroll; _m2._fpAiMsgCount = (STATE.aiMessages || []).length; }
+    } catch(_) {}
   }
   // Hide global nav spinner now that render is complete
   window.fpHideNavSpinner();
@@ -17006,13 +17110,24 @@ function bindSectionEvents() {
     $$('.fp-ai-quick').forEach(btn => btn.addEventListener('click', () => sendAIMessage(btn.dataset.aiPrompt)));
     const aiInput = $('#ai-input');
     const aiSend = $('#ai-send');
-    function _resetAiInput() { if(!aiInput) return; aiInput.value=''; aiInput.style.height='38px'; aiInput.style.overflowY='auto'; const _ph=document.getElementById('fp-ai-progress-hint'); if(_ph) _ph.textContent=''; }
+    function _resetAiInput() { if(!aiInput) return; aiInput.value=''; aiInput.style.height='38px'; aiInput.style.overflowY='hidden'; try { sessionStorage.removeItem('fp:ai-draft'); } catch(_) {} const _ph=document.getElementById('fp-ai-progress-hint'); if(_ph) _ph.textContent=''; }
     function _resizeAiInput() { if(!aiInput) return; aiInput.style.height='38px'; var sh=aiInput.scrollHeight; aiInput.style.height=Math.min(sh,120)+'px'; aiInput.style.overflowY=sh>120?'auto':'hidden'; }
-    aiInput?.addEventListener('input', _resizeAiInput);
+    aiInput?.addEventListener('input', () => {
+      _resizeAiInput();
+      // Draft persistence: keep the unsent text across remounts (hard refresh,
+      // cache invalidation). Removed only when the message is actually sent.
+      try { if (aiInput.value) sessionStorage.setItem('fp:ai-draft', aiInput.value); else sessionStorage.removeItem('fp:ai-draft'); } catch(_) {}
+    });
     // Also resize on paste (content changes asynchronously — use setTimeout to let DOM update first)
     aiInput?.addEventListener('paste', () => setTimeout(_resizeAiInput, 0));
-    // Apply correct overflow-y immediately so initial state matches CSS
+    // Restore unsent draft after a remount, then apply correct overflow-y
+    try { const _draft = sessionStorage.getItem('fp:ai-draft'); if (_draft && aiInput && !aiInput.value) aiInput.value = _draft; } catch(_) {}
     _resizeAiInput();
+    // Hide the "new messages" pill as soon as the user scrolls back to bottom
+    const aiMsgsEl = $('#ai-messages');
+    aiMsgsEl?.addEventListener('scroll', () => {
+      if (aiMsgsEl.scrollHeight - aiMsgsEl.scrollTop - aiMsgsEl.clientHeight < 40) _fpAiNewMsgPill(aiMsgsEl, false);
+    });
     aiSend?.addEventListener('click', () => { sendAIMessage(aiInput?.value||''); _resetAiInput(); });
     aiInput?.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage(aiInput.value); _resetAiInput(); } });
   }
@@ -19693,6 +19808,7 @@ function bindGlobalEvents() {
     "pour voir vos positions locales Google en direct": "to see your live local Google positions",
     "priorité absolue": "absolute priority",
     "probabilité": "probability",
+    "Nouveaux messages": "New messages",
     "rapport SEO Executive de mai": "May Executive SEO report",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s savable",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sessions analyzed",
@@ -22505,6 +22621,7 @@ function bindGlobalEvents() {
     "Branding white-label actif": "Branding white-label activo",
     "Score de domination :": "Puntuación de dominación:",
     "Score de sécurité :": "Puntuación de seguridad:",
+    "Nouveaux messages": "Mensajes nuevos",
     "rapport SEO Executive de mai": "Informe SEO Ejecutivo de mayo",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s ahorrables",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sesiones analizadas",
@@ -25375,6 +25492,7 @@ function bindGlobalEvents() {
     "Branding white-label actif": "White-Label-Branding aktiv",
     "Score de domination :": "Dominanzpunktzahl:",
     "Score de sécurité :": "Sicherheitspunktzahl:",
+    "Nouveaux messages": "Neue Nachrichten",
     "rapport SEO Executive de mai": "Mai Executive SEO-Bericht",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s einsparbar",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} analysierte Sitzungen",
@@ -28251,6 +28369,7 @@ function bindGlobalEvents() {
     "Branding white-label actif": "Branding white-label attivo",
     "Score de domination :": "Punteggio di dominanza:",
     "Score de sécurité :": "Punteggio di sicurezza:",
+    "Nouveaux messages": "Nuovi messaggi",
     "rapport SEO Executive de mai": "Rapporto SEO Executive di maggio",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s risparmiabili",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sessioni analizzate",
@@ -31127,6 +31246,7 @@ function bindGlobalEvents() {
     "Branding white-label actif": "Branding white-label ativo",
     "Score de domination :": "Pontuação de dominação:",
     "Score de sécurité :": "Pontuação de segurança:",
+    "Nouveaux messages": "Novas mensagens",
     "rapport SEO Executive de mai": "Relatório SEO Executivo de maio",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s economizáveis",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sessões analisadas",
@@ -34003,6 +34123,7 @@ function bindGlobalEvents() {
     "Branding white-label actif": "White-label branding actief",
     "Score de domination :": "Dominantiescore:",
     "Score de sécurité :": "Veiligheidsscore:",
+    "Nouveaux messages": "Nieuwe berichten",
     "rapport SEO Executive de mai": "Mei Executive SEO-rapport",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s besparingen",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} geanalyseerde sessies",
@@ -36879,6 +37000,7 @@ function bindGlobalEvents() {
     "Branding white-label actif": "Branding white-label aktywny",
     "Score de domination :": "Wynik dominacji:",
     "Score de sécurité :": "Wynik bezpieczeństwa:",
+    "Nouveaux messages": "Nowe wiadomości",
     "rapport SEO Executive de mai": "Majowy raport SEO Executive",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s oszczędności",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} analizowane sesje",
@@ -39755,6 +39877,7 @@ function bindGlobalEvents() {
     "Branding white-label actif": "White-label varumärkning aktiv",
     "Score de domination :": "Domineringspoäng:",
     "Score de sécurité :": "Säkerhetspoäng:",
+    "Nouveaux messages": "Nya meddelanden",
     "rapport SEO Executive de mai": "Maj Executive SEO-rapport",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s sparade",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} analyserade sessioner",
@@ -42631,6 +42754,7 @@ function bindGlobalEvents() {
     "Branding white-label actif": "Branding white-label activ",
     "Score de domination :": "Scor de dominare:",
     "Score de sécurité :": "Scor de securitate:",
+    "Nouveaux messages": "Mesaje noi",
     "rapport SEO Executive de mai": "Raport SEO Executive din mai",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s economisibili",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sesiuni analizate",
@@ -45507,6 +45631,7 @@ function bindGlobalEvents() {
     "Branding white-label actif": "White-label branding aktivní",
     "Score de domination :": "Skóre dominance:",
     "Score de sécurité :": "Bezpečnostní skóre:",
+    "Nouveaux messages": "Nové zprávy",
     "rapport SEO Executive de mai": "Květnová zpráva SEO Executive",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s úspory",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} analyzované relace",
@@ -64270,10 +64395,13 @@ setTimeout(function() {
   function updateMessage(id, content, done) {
     const el = document.getElementById(id);
     if (!el) return;
+    const container = document.getElementById('fp-ai-chat-messages');
+    // Smart auto-scroll: only follow the stream when the reader is already
+    // near the bottom — never yank them out of the history mid-read.
+    const nearBottom = container ? (container.scrollHeight - container.scrollTop - container.clientHeight) < 80 : false;
     const bubble = el.querySelector('.fp-ai-msg-bubble');
     if (bubble) bubble.innerHTML = fpMarkdown(content);
-    const container = document.getElementById('fp-ai-chat-messages');
-    if (container) container.scrollTop = container.scrollHeight;
+    if (container && nearBottom) container.scrollTop = container.scrollHeight;
   }
 
   function setTyping(show) {
