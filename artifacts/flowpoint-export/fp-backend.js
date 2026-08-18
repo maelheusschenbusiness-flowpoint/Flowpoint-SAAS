@@ -1927,25 +1927,29 @@
 
     // Dark-mode CSS for Google's native controls (map-type buttons, fullscreen,
     // keyboard-shortcuts/attribution bar) and InfoWindows on both map containers.
+    // Injected unconditionally so the rules exist regardless of the theme at init
+    // time. Every rule is prefixed with html:not([data-theme="light"]) so it
+    // activates/deactivates automatically when applyTheme() changes dataset.theme —
+    // no map re-init required. Mirrors the same pattern used in initLocalSEOMap().
     _injectDarkCss: function () {
-      if (this._isLight()) return;
       if (document.getElementById('fp-maps-dark-ctrl')) return;
       var css = [];
       ['#fp-gmap', '#fp-competitors-map'].forEach(function (sel) {
+        var p = 'html:not([data-theme="light"]) ';
         css.push(
-          sel + ' .gm-style-mtc button{background:#1e293b!important;color:#e2e8f0!important;border-color:#334155!important;box-shadow:none!important}',
-          sel + ' .gm-style-mtc button:hover{background:#334155!important}',
-          sel + ' .gm-style-mtc>div{background:#1e293b!important;border-color:#334155!important}',
-          sel + ' .gm-style-mtc li,' + sel + ' .gm-style-mtc label{background:#1e293b!important;color:#e2e8f0!important}',
-          sel + ' .gm-bundled-control button,' + sel + ' .gm-fullscreen-control{background:#1e293b!important;color:#e2e8f0!important}',
-          sel + ' .gm-svpc,' + sel + ' .gm-fullscreen-control img{filter:invert(1) brightness(0.8)}',
-          sel + ' .gm-style-cc>div{background:rgba(13,17,23,0.72)!important}',
-          sel + ' .gm-style-cc a,' + sel + ' .gm-style-cc span,' + sel + ' .gm-style-cc button{color:#94a3b8!important}',
-          sel + ' .gm-style-iw,' + sel + ' .gm-style-iw-c{background:#0f172a!important;color:#e2e8f0!important;box-shadow:0 8px 24px rgba(0,0,0,0.6)!important;border:1px solid #1e3a5f!important;border-radius:12px!important}',
-          sel + ' .gm-style-iw-d{background:#0f172a!important;color:#e2e8f0!important;overflow:auto!important}',
-          sel + ' .gm-style-iw-tc::after{background:#0f172a!important}',
-          sel + ' .gm-style-iw button.gm-ui-hover-effect>span{background-color:#e2e8f0!important}',
-          sel + ' .gm-style-iw a{color:#60a5fa!important}'
+          p + sel + ' .gm-style-mtc button{background:#1e293b!important;color:#e2e8f0!important;border-color:#334155!important;box-shadow:none!important}',
+          p + sel + ' .gm-style-mtc button:hover{background:#334155!important}',
+          p + sel + ' .gm-style-mtc>div{background:#1e293b!important;border-color:#334155!important}',
+          p + sel + ' .gm-style-mtc li,' + p + sel + ' .gm-style-mtc label{background:#1e293b!important;color:#e2e8f0!important}',
+          p + sel + ' .gm-bundled-control button,' + p + sel + ' .gm-fullscreen-control{background:#1e293b!important;color:#e2e8f0!important}',
+          p + sel + ' .gm-svpc,' + p + sel + ' .gm-fullscreen-control img{filter:invert(1) brightness(0.8)}',
+          p + sel + ' .gm-style-cc>div{background:rgba(13,17,23,0.72)!important}',
+          p + sel + ' .gm-style-cc a,' + p + sel + ' .gm-style-cc span,' + p + sel + ' .gm-style-cc button{color:#94a3b8!important}',
+          p + sel + ' .gm-style-iw,' + p + sel + ' .gm-style-iw-c{background:#0f172a!important;color:#e2e8f0!important;box-shadow:0 8px 24px rgba(0,0,0,0.6)!important;border:1px solid #1e3a5f!important;border-radius:12px!important}',
+          p + sel + ' .gm-style-iw-d{background:#0f172a!important;color:#e2e8f0!important;overflow:auto!important}',
+          p + sel + ' .gm-style-iw-tc::after{background:#0f172a!important}',
+          p + sel + ' .gm-style-iw button.gm-ui-hover-effect>span{background-color:#e2e8f0!important}',
+          p + sel + ' .gm-style-iw a{color:#60a5fa!important}'
         );
       });
       var s = document.createElement('style');
@@ -1997,7 +2001,9 @@
       if (lat !== null && lng !== null && !(Math.abs(lat - 48.8566) < 1e-9 && Math.abs(lng - 2.3522) < 1e-9)) {
         return { lat: lat, lng: lng, source: 'dataset', needsGeocode: needsGeocode };
       }
-      return { lat: 48.8566, lng: 2.3522, source: 'fallback', needsGeocode: needsGeocode };
+      // Neutral Europe center instead of Paris so the fallback does not reveal
+      // an arbitrary hardcoded city when no address is configured.
+      return { lat: 48.5, lng: 10, source: 'fallback', needsGeocode: needsGeocode };
     },
 
     _savedAddressQuery: function () {
@@ -2055,10 +2061,12 @@
     // Details payload (photo, phone, open/closed, website); when null the card
     // renders from the Nearby Search fields already on `c`.
     _competitorCardHtml: function (c, color, d) {
+      // Colors use CSS variables so the card follows theme switches live.
+      // Old approach: txt/mut computed once at call time from _isLight() →
+      // frozen when the InfoWindow was first opened, wrong after theme toggle.
       var esc = this._esc;
-      var light = this._isLight();
-      var txt = light ? '#0f172a' : '#e2e8f0';
-      var mut = light ? '#64748b' : '#94a3b8';
+      var txt = 'var(--fp-text,#0f172a)';
+      var mut = 'var(--fp-text-muted,#94a3b8)';
       var rating = d && d.rating != null ? d.rating : c.rating;
       var reviews = d && d.reviewCount != null ? d.reviewCount : c.reviewCount;
       var address = (d && d.address) || c.vicinity || '';
@@ -2098,36 +2106,61 @@
     },
 
     _bizCardHtml: function (name) {
-      var light = this._isLight();
-      var txt = light ? '#0f172a' : '#e2e8f0';
-      var mut = light ? '#64748b' : '#94a3b8';
-      return '<div style="font-family:Inter,sans-serif;padding:6px 8px;min-width:150px;color:' + txt + '">'
+      return '<div style="font-family:Inter,sans-serif;padding:6px 8px;min-width:150px;color:var(--fp-text,#0f172a)">'
         + '<div style="font-weight:700;font-size:13px">📍 ' + this._esc(name) + '</div>'
-        + '<div style="font-size:10px;color:' + mut + ';margin-top:2px">Votre établissement</div>'
+        + '<div style="font-size:10px;color:var(--fp-text-muted,#94a3b8);margin-top:2px">Votre établissement</div>'
         + '</div>';
     },
 
+    // ── Flash-free map init helpers ─────────────────────────────────────────
+    // _tryInit() hides the skeleton immediately before calling _initMainMap /
+    // _initCompetitorsMap. When we need to geocode first (source==='fallback'
+    // AND an address is configured), we re-show the skeleton, run the geocode
+    // async, then call _doCreateMainMap / _doCreateCompetitorsMap with the
+    // resolved center — the map is never created at an arbitrary fallback city.
+    // For dataset coords that need refining (needsGeocode=true), the existing
+    // post-creation _geocodeSavedAddress path is kept (smaller, acceptable jump).
+
     _initMainMap: function (el) {
+      var self = this;
       var c = this._bizCenter(el);
-      var lat = c.lat, lng = c.lng;
       var radius = parseInt(el.dataset.radius || '3000');
       var keyword = el.dataset.keyword || '';
       var name = el.dataset.name || 'Mon établissement';
-
       this._injectDarkCss();
-      var map = new google.maps.Map(el, this._mapOptions({ lat: lat, lng: lng }, 14));
+      if (c.source === 'fallback' && this._savedAddressQuery()) {
+        // Keep skeleton visible during geocode — _tryInit hid it; re-show.
+        var sk = document.getElementById('fp-gmap-skeleton');
+        if (sk) sk.style.display = 'flex';
+        apiAction('POST', '/api/maps/geocode', { address: this._savedAddressQuery() }).then(function (geo) {
+          var center = (geo && isFinite(Number(geo.lat)) && isFinite(Number(geo.lng)))
+            ? { lat: Number(geo.lat), lng: Number(geo.lng) }
+            : { lat: 48.5, lng: 10 };
+          self._doCreateMainMap(el, center, radius, keyword, name, false);
+        }).catch(function () {
+          self._doCreateMainMap(el, { lat: 48.5, lng: 10 }, radius, keyword, name, false);
+        });
+      } else {
+        // Saved coords, dataset coords (or no address at all) — create map now.
+        var center = { lat: c.lat, lng: c.lng };
+        this._doCreateMainMap(el, center, radius, keyword, name, !!(c.needsGeocode && c.source !== 'fallback'));
+      }
+    },
 
+    _doCreateMainMap: function (el, center, radius, keyword, name, needsRecenter) {
+      var self = this;
+      var sk = document.getElementById('fp-gmap-skeleton');
+      if (sk) sk.style.display = 'none';
+      var map = new google.maps.Map(el, this._mapOptions(center, 14));
       var businessMarker = new google.maps.Marker({
-        position: { lat: lat, lng: lng },
+        position: center,
         map: map,
         title: name,
         icon: this._makeBusinessIcon(),
         zIndex: 1000,
       });
-
       var infoWindow = new google.maps.InfoWindow({ content: this._bizCardHtml(name) });
       businessMarker.addListener('click', function () { infoWindow.open(map, businessMarker); });
-
       var radiusCircle = new google.maps.Circle({
         strokeColor: '#2563EB',
         strokeOpacity: 0.5,
@@ -2135,37 +2168,52 @@
         fillColor: '#2563EB',
         fillOpacity: 0.05,
         map: map,
-        center: { lat: lat, lng: lng },
+        center: center,
         radius: radius,
       });
-
-      var inst = { map: map, markers: [], circle: radiusCircle, heatLayer: null, heatVisible: true, compVisible: true, radiusVisible: true, center: { lat: lat, lng: lng }, radius: radius, keyword: keyword, centerPending: false, _geoGen: 0 };
+      var inst = { map: map, markers: [], circle: radiusCircle, heatLayer: null, heatVisible: true, compVisible: true, radiusVisible: true, center: center, radius: radius, keyword: keyword, centerPending: false, _geoGen: 0 };
       this._mapInstances['fp-gmap'] = inst;
-
-      var self = this;
-      if (c.source === 'fallback' || c.needsGeocode) {
-        // Saved address must win: no layer loads at temporary coordinates.
-        // centerPending suppresses setRadius/reloadData loads until the
-        // geocode resolves; the callback then loads with CURRENT radius/keyword.
+      if (needsRecenter) {
+        // Dataset coords are approximate; geocode the saved address to refine.
+        // This is the minor-jump path, distinct from the no-coords-at-all path.
         inst.centerPending = true;
         self._geocodeSavedAddress('fp-gmap', businessMarker, radiusCircle);
       } else {
-        self._loadCompetitorMarkers('fp-gmap', lat, lng, radius, keyword);
-        self._loadHeatmapLayer('fp-gmap', lat, lng, radius, keyword);
+        self._loadCompetitorMarkers('fp-gmap', center.lat, center.lng, radius, keyword);
+        self._loadHeatmapLayer('fp-gmap', center.lat, center.lng, radius, keyword);
       }
     },
 
     _initCompetitorsMap: function (el) {
+      var self = this;
       var c = this._bizCenter(el);
-      var lat = c.lat, lng = c.lng;
       var radius = parseInt(el.dataset.radius || '5000');
       var keyword = el.dataset.keyword || '';
-
       this._injectDarkCss();
-      var map = new google.maps.Map(el, this._mapOptions({ lat: lat, lng: lng }, 13));
+      if (c.source === 'fallback' && this._savedAddressQuery()) {
+        // Keep skeleton visible during geocode — _tryInit hid it; re-show.
+        var sk = document.getElementById('fp-competitors-map-skeleton');
+        if (sk) sk.style.display = 'flex';
+        apiAction('POST', '/api/maps/geocode', { address: this._savedAddressQuery() }).then(function (geo) {
+          var center = (geo && isFinite(Number(geo.lat)) && isFinite(Number(geo.lng)))
+            ? { lat: Number(geo.lat), lng: Number(geo.lng) }
+            : { lat: 48.5, lng: 10 };
+          self._doCreateCompetitorsMap(el, center, radius, keyword, false);
+        }).catch(function () {
+          self._doCreateCompetitorsMap(el, { lat: 48.5, lng: 10 }, radius, keyword, false);
+        });
+      } else {
+        var center = { lat: c.lat, lng: c.lng };
+        this._doCreateCompetitorsMap(el, center, radius, keyword, !!(c.needsGeocode && c.source !== 'fallback'));
+      }
+    },
 
+    _doCreateCompetitorsMap: function (el, center, radius, keyword, needsRecenter) {
+      var sk = document.getElementById('fp-competitors-map-skeleton');
+      if (sk) sk.style.display = 'none';
+      var map = new google.maps.Map(el, this._mapOptions(center, 13));
       var bizMarker = new google.maps.Marker({
-        position: { lat: lat, lng: lng },
+        position: center,
         map: map,
         icon: this._makeBusinessIcon(),
         zIndex: 1000,
@@ -2173,7 +2221,6 @@
       });
       var bizIW = new google.maps.InfoWindow({ content: this._bizCardHtml('Mon établissement') });
       bizMarker.addListener('click', function () { bizIW.open(map, bizMarker); });
-
       var bizCircle = new google.maps.Circle({
         strokeColor: '#8b5cf6',
         strokeOpacity: 0.4,
@@ -2181,18 +2228,16 @@
         fillColor: '#8b5cf6',
         fillOpacity: 0.04,
         map: map,
-        center: { lat: lat, lng: lng },
+        center: center,
         radius: radius,
       });
-
-      var inst = { map: map, markers: [], circle: bizCircle, radiusVisible: true, center: { lat: lat, lng: lng }, radius: radius, keyword: keyword, centerPending: false, _geoGen: 0 };
+      var inst = { map: map, markers: [], circle: bizCircle, radiusVisible: true, center: center, radius: radius, keyword: keyword, centerPending: false, _geoGen: 0 };
       this._mapInstances['fp-competitors-map'] = inst;
-
-      if (c.source === 'fallback' || c.needsGeocode) {
+      if (needsRecenter) {
         inst.centerPending = true;
         this._geocodeSavedAddress('fp-competitors-map', bizMarker, bizCircle);
       } else {
-        this._loadCompetitorMarkers('fp-competitors-map', lat, lng, radius, keyword);
+        this._loadCompetitorMarkers('fp-competitors-map', center.lat, center.lng, radius, keyword);
       }
     },
 
