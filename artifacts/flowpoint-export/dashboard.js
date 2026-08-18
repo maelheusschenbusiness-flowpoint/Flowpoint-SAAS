@@ -20197,6 +20197,20 @@ function bindGlobalEvents() {
     'Démasquer': 'Unhide',
     '↩ Voir': '↩ Show',
     '← Voir les actives': '← View active',
+    // Workspace presets section
+    'Préréglages workspace': 'Workspace presets',
+    'Niveau sécurité': 'Security level',
+    'Standard': 'Standard',
+    'Avancé': 'Advanced',
+    'Suggestions IA': 'AI suggestions',
+    'Normale': 'Normal',
+    'Proactive': 'Proactive',
+    'Type de rapport': 'Report type',
+    'Simple': 'Simple',
+    'Client': 'Client',
+    'Priorité locale': 'Local priority',
+    'Désactivée': 'Disabled',
+    'Agressive': 'Aggressive',
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
