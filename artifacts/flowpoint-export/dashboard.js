@@ -10084,7 +10084,7 @@ function renderBilling() {
               <span style="font-size:14px;font-weight:800;color:var(--fp-text)">AI Credits</span>
               <span style="font-size:10px;font-weight:700;padding:1px 8px;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:#2563EB">IA Performante</span>
             </div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+' / '+fk(t)+' '+fpT('AI Credits consomm\u00e9s ce mois');})() : fpT('Chargement des cr\u00e9dits IA\u2026')} \u00b7 ${fpT('R\u00e9initialisation le')} ${(function(){var d=STATE.aiCredits?.resetDate?new Date(STATE.aiCredits.resetDate):null;if(!d||Number.isNaN(d.getTime()))d=new Date(new Date().getFullYear(),new Date().getMonth()+1,1);return d.toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'});}())}</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),iu=t>=10000000,fk=n=>n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?Math.round(n/1000)+'k':String(n);return iu?'\u221e '+fpT('AI Credits consomm\u00e9s ce mois'):fk(u.used)+' / '+fk(t)+' '+fpT('AI Credits consomm\u00e9s ce mois');})() : fpT('Chargement des cr\u00e9dits IA\u2026')} \u00b7 ${fpT('R\u00e9initialisation le')} ${(function(){var d=STATE.aiCredits?.resetDate?new Date(STATE.aiCredits.resetDate):null;if(!d||Number.isNaN(d.getTime()))d=new Date(new Date().getFullYear(),new Date().getMonth()+1,1);return d.toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'});}())}</div>
           </div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('ai');setTimeout(()=>navigateSub('usage'),50)">Voir d\u00e9tails complets \u2192</button>
         </div>
@@ -10093,7 +10093,7 @@ function renderBilling() {
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <span style="font-size:10px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,p=u.used/Math.max((u.limit||0)+(u.extra||0),1)*100;return (p>0&&p<1?Math.max(p,0.1).toFixed(1):Math.round(p))+'% '+fpT('utilis\u00e9');}()) : '\u2026% '+fpT('utilis\u00e9')}</span>
-          <span style="font-size:10px;font-weight:700;color:#2563EB">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(Math.max(0,t-u.used))+' '+fpT('AI Credits restants');}()) : '\u2026'}</span>
+          <span style="font-size:10px;font-weight:700;color:#2563EB">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),iu=t>=10000000,fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return (iu?'\u221e':fk(Math.max(0,t-u.used)))+' '+fpT('AI Credits restants');}()) : '\u2026'}</span>
         </div>
         <div>
           <span style="font-size:11px;color:var(--fp-text-muted);font-weight:600;display:block;margin-bottom:8px">${fpT('Acheter des AI Credits')} :</span>
@@ -11124,7 +11124,7 @@ function renderSettings() {
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Membres actifs', String(members.length), _sUsed + '/' + _sLim + ' inclus', 'up')}
         ${statCard('Rôles définis', String(roles.length), '4 rôles système', 'up')}
-        ${statCard('Sièges disponibles', String(_sAvail), 'inclus dans votre plan', _sAvail > 0 ? 'up' : 'neutral')}`;
+        ${statCard(fpT('Sièges disponibles'), String(_sAvail), fpT('inclus dans votre plan'), _sAvail > 0 ? 'up' : 'neutral')}`;
       })()}
         ${statCard('Dernière activité', displayStat(STATE.team && STATE.team.length > 0 ? 'Récemment' : null, 'Il y a 2h'), STATE.team && STATE.team.length > 0 ? STATE.team[0].name || 'Membre actif' : PREVIEW_MODE ? 'Sophie Martin' : 'Aucun membre', STATE.team && STATE.team.length > 0 ? 'up' : 'neutral')}
       </div>
@@ -12515,7 +12515,7 @@ function renderSettings() {
           </svg>
           <div>
             <div style="font-size:16px;font-weight:800;color:var(--fp-text)">Workspace Health</div>
-            <div style="font-size:11px;color:${workspaceHealth>80?'#22c55e':'#f59e0b'};font-weight:600">${workspaceHealth>80?'✓ Bon état général':'⚠ Optimisations possibles'}</div>
+            <div style="font-size:11px;color:${workspaceHealth>80?'#22c55e':'#f59e0b'};font-weight:600">${workspaceHealth>80?'✓ '+fpT('Bon état général'):'⚠ '+fpT('Optimisations possibles')}</div>
             <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${(()=>{const _miss=[_wfAct>0,_intAct>0,_monOkS,_billOkS,_hasAudits,_has2fa,_hasReports].filter(x=>!x).length;return _miss>0?_miss+' action'+(_miss>1?'s':'')+' requise'+(_miss>1?'s':'')+' pour atteindre 100':'Toutes les optimisations sont actives';})()}</div>
           </div>
         </div>
@@ -13354,7 +13354,7 @@ function renderAI() {
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
           <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
-          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:auto;line-height:1.5;height:38px;max-height:120px;padding-right:10px"></textarea>
+          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:auto;line-height:1.5;height:38px;max-height:120px;padding-right:18px"></textarea>
           <button class="fp-ai-send" id="ai-send">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
           <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
@@ -18672,6 +18672,7 @@ function bindGlobalEvents() {
     "Centre de commandement IA · Intelligence concurrentielle en temps réel": "AI Command Center · Real-time competitive intelligence",
     "Ces actions sont irréversibles. Agissez avec précaution.": "These actions are irreversible. Proceed with caution.",
     "Cet add-on est déjà inclus dans votre plan.": "This add-on is already included in your plan.",
+    "inclus dans votre plan": "included in your plan",
     "Cette action a déjà été traitée.": "This action has already been processed.",
     "Cette action est": "This action is",
     "Cette proposition a expiré — renvoyez votre demande.": "This proposal has expired — resend your request.",
@@ -20535,6 +20536,7 @@ function bindGlobalEvents() {
     "Centre de contrôle": "Centro de control",
     "Ces actions sont irréversibles. Agissez avec précaution.": "Estas acciones son irreversibles. Proceda con precaución.",
     "Cet add-on est déjà inclus dans votre plan.": "Este complemento ya está incluido en tu plan.",
+    "inclus dans votre plan": "incluido en tu plan",
     "Cette action a déjà été traitée.": "Esta acción ya ha sido procesada.",
     "Cette action est": "Esta acción es",
     "Cette proposition a expiré — renvoyez votre demande.": "Esta propuesta ha expirado — reenvía tu solicitud.",
@@ -23431,6 +23433,7 @@ function bindGlobalEvents() {
     "Centre de contrôle": "Kontrollzentrum",
     "Ces actions sont irréversibles. Agissez avec précaution.": "Diese Aktionen sind irreversibel. Handeln Sie mit Vorsicht.",
     "Cet add-on est déjà inclus dans votre plan.": "Dieses Add-on ist bereits in Ihrem Plan enthalten.",
+    "inclus dans votre plan": "in deinem Plan enthalten",
     "Cette action a déjà été traitée.": "Diese Aktion wurde bereits bearbeitet.",
     "Cette action est": "Diese Aktion ist",
     "Cette proposition a expiré — renvoyez votre demande.": "Dieses Angebot ist abgelaufen — senden Sie Ihre Anfrage erneut.",
@@ -26306,6 +26309,7 @@ function bindGlobalEvents() {
     "Centre de contrôle": "Centro di controllo",
     "Ces actions sont irréversibles. Agissez avec précaution.": "Queste azioni sono irreversibili. Procedi con cautela.",
     "Cet add-on est déjà inclus dans votre plan.": "Questo componente aggiuntivo è già incluso nel tuo piano.",
+    "inclus dans votre plan": "incluso nel tuo piano",
     "Cette action a déjà été traitée.": "Questa azione è già stata elaborata.",
     "Cette action est": "Questa azione è",
     "Cette proposition a expiré — renvoyez votre demande.": "Questa proposta è scaduta — reinvia la tua richiesta.",
@@ -29181,6 +29185,7 @@ function bindGlobalEvents() {
     "Centre de contrôle": "Centro de controle",
     "Ces actions sont irréversibles. Agissez avec précaution.": "Essas ações são irreversíveis. Prossiga com cautela.",
     "Cet add-on est déjà inclus dans votre plan.": "Este complemento já está incluído no seu plano.",
+    "inclus dans votre plan": "incluído no seu plano",
     "Cette action a déjà été traitée.": "Esta ação já foi processada.",
     "Cette action est": "Esta ação é",
     "Cette proposition a expiré — renvoyez votre demande.": "Esta proposta expirou — reenvie seu pedido.",
@@ -32056,6 +32061,7 @@ function bindGlobalEvents() {
     "Centre de contrôle": "Controlecentrum",
     "Ces actions sont irréversibles. Agissez avec précaution.": "Deze acties zijn onomkeerbaar. Handel voorzichtig.",
     "Cet add-on est déjà inclus dans votre plan.": "Deze add-on is al inbegrepen in uw plan.",
+    "inclus dans votre plan": "inbegrepen in uw plan",
     "Cette action a déjà été traitée.": "Deze actie is al verwerkt.",
     "Cette action est": "Deze actie is",
     "Cette proposition a expiré — renvoyez votre demande.": "Dit voorstel is verlopen — stuur uw aanvraag opnieuw.",
@@ -34931,6 +34937,7 @@ function bindGlobalEvents() {
     "Centre de contrôle": "Centrum sterowania",
     "Ces actions sont irréversibles. Agissez avec précaution.": "Te działania są nieodwracalne. Działaj ostrożnie.",
     "Cet add-on est déjà inclus dans votre plan.": "Ten dodatek jest już zawarty w Twoim planie.",
+    "inclus dans votre plan": "zawarte w twoim planie",
     "Cette action a déjà été traitée.": "Ta akcja została już przetworzona.",
     "Cette action est": "Ta akcja jest",
     "Cette proposition a expiré — renvoyez votre demande.": "Ta propozycja wygasła — wyślij ponownie swoje zapytanie.",
@@ -37806,6 +37813,7 @@ function bindGlobalEvents() {
     "Centre de contrôle": "Kontrollcenter",
     "Ces actions sont irréversibles. Agissez avec précaution.": "Dessa åtgärder är oåterkalleliga. Vidta åtgärder med försiktighet.",
     "Cet add-on est déjà inclus dans votre plan.": "Detta tillägg ingår redan i din plan.",
+    "inclus dans votre plan": "ingår i din plan",
     "Cette action a déjà été traitée.": "Denna åtgärd har redan behandlats.",
     "Cette action est": "Denna åtgärd är",
     "Cette proposition a expiré — renvoyez votre demande.": "Detta förslag har gått ut — skicka din begäran igen.",
@@ -40681,6 +40689,7 @@ function bindGlobalEvents() {
     "Centre de contrôle": "Centru de control",
     "Ces actions sont irréversibles. Agissez avec précaution.": "Aceste acțiuni sunt ireversibile. Acționați cu precauție.",
     "Cet add-on est déjà inclus dans votre plan.": "Acest add-on este deja inclus în planul tău.",
+    "inclus dans votre plan": "inclus în planul tău",
     "Cette action a déjà été traitée.": "Această acțiune a fost deja procesată.",
     "Cette action est": "Această acțiune este",
     "Cette proposition a expiré — renvoyez votre demande.": "Această propunere a expirat — trimiteți din nou cererea dvs.",
@@ -43556,6 +43565,7 @@ function bindGlobalEvents() {
     "Centre de contrôle": "Ovládací centrum",
     "Ces actions sont irréversibles. Agissez avec précaution.": "Tyto akce jsou nevratné. Postupujte opatrně.",
     "Cet add-on est déjà inclus dans votre plan.": "Tento doplněk je již zahrnut ve vašem plánu.",
+    "inclus dans votre plan": "zahrnuto ve vašem plánu",
     "Cette action a déjà été traitée.": "Tato akce byla již zpracována.",
     "Cette action est": "Tato akce je",
     "Cette proposition a expiré — renvoyez votre demande.": "Tento návrh vypršel — znovu odešlete svou žádost.",

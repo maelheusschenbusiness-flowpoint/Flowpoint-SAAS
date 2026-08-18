@@ -98,8 +98,23 @@ async function getOrgSeatLimit(orgId: string): Promise<{ limit: number; plan: st
     const limit1 = (PLAN_LIMITS[plan1]?.teamMembers ?? 1) + extraSeats;
     const limit2 = (PLAN_LIMITS[plan2]?.teamMembers ?? 0) + extraSeats;
     // Prefer whichever plan grants more seats — guards against webhook lag after upgrade.
-    if (limit2 > limit1) return { limit: limit2, plan: plan2 };
-    return { limit: limit1, plan: plan1 };
+    let _resLimit = limit2 > limit1 ? limit2 : limit1;
+    const _resPlan  = limit2 > limit1 ? plan2  : plan1;
+    // Cross-check via loadOrgData when both DB sources show standard (stale / join-miss guard).
+    // This handles cases where organizations.plan is empty AND org_settings join misses
+    // because orgId formats differ (UUID vs email-shaped legacy keys).
+    if (_resLimit <= 1) {
+      try {
+        const { loadOrgData } = await import("../services/org-data.js");
+        const _od = await loadOrgData(orgId);
+        const _fbPlan  = (_od?.plan ?? "").toLowerCase();
+        const _fbLimit = (PLAN_LIMITS[_fbPlan]?.teamMembers ?? 1) + extraSeats;
+        if (_fbLimit > _resLimit) {
+          return { limit: _fbLimit, plan: _fbPlan };
+        }
+      } catch { /* non-fatal — keep _resLimit/plan */ }
+    }
+    return { limit: _resLimit, plan: _resPlan };
   } catch {
     return { limit: 1, plan: "standard" };
   }

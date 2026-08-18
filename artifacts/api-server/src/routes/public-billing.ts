@@ -1235,9 +1235,35 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             "[PublicBilling] finalize: addon-only purchase provisioned");
         } catch (aoErr) {
           logger.error({ aoErr, orgId: _authenticatedOrgId, addons: _aoRecurring },
-            "[PublicBilling] finalize: addon provisioning failed after successful charge");
-          res.status(500).json({ error: "Paiement reçu mais add-on non activé. Contactez le support.", addonProvisioningFailed: true });
-          return;
+            "[PublicBilling] finalize: Stripe addon sub step failed after payment — attempting local activation fallback");
+          // Payment was already received. Attempt direct DB entitlement so the user
+          // gets access immediately; the Stripe webhook will reconcile the subscription.
+          try {
+            const { activateAddon: _aoFallback } = await import("../services/addons-service.js");
+            const _aoFallbackResults = await Promise.all(_aoRecurring.map(async k => {
+              const qty = typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1;
+              const ok = await _aoFallback(k, _authenticatedOrgId!, qty).catch(() => false);
+              if (ok) {
+                try { store.broadcast({ type: "fp:addon:activated", addonKey: k }, _authenticatedOrgId!); } catch (_) { /* non-fatal */ }
+              }
+              return ok;
+            }));
+            if (_aoFallbackResults.every(Boolean)) {
+              logger.info({ orgId: _authenticatedOrgId, addons: _aoRecurring },
+                "[PublicBilling] finalize: local addon activation succeeded as fallback (webhook will reconcile Stripe)");
+              // Fall through to the res.json success below
+            } else {
+              logger.error({ orgId: _authenticatedOrgId, addons: _aoRecurring, results: _aoFallbackResults },
+                "[PublicBilling] finalize: local addon activation also failed");
+              res.status(500).json({ error: "Paiement reçu mais add-on non activé. Contactez le support.", addonProvisioningFailed: true });
+              return;
+            }
+          } catch (fallbackErr) {
+            logger.error({ fallbackErr, orgId: _authenticatedOrgId },
+              "[PublicBilling] finalize: fallback activation threw");
+            res.status(500).json({ error: "Paiement reçu mais add-on non activé. Contactez le support.", addonProvisioningFailed: true });
+            return;
+          }
         }
       }
 
