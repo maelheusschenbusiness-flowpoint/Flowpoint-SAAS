@@ -17236,6 +17236,12 @@ function applyTheme() {
   if (STATE._gmap && STATE._gmapDark) {
     STATE._gmap.setOptions({ styles: STATE.theme === 'light' ? [] : STATE._gmapDark });
   }
+  // Sync tile styles on FP_MAPS_API maps (Local SEO sub-page maps — fp-gmap, fp-competitors-map).
+  // Controls and InfoWindow chrome react automatically via html:not([data-theme="light"]) CSS;
+  // only the tile layer needs an explicit setOptions() call.
+  if (window.FP_MAPS_API && typeof window.FP_MAPS_API.syncTheme === 'function') {
+    window.FP_MAPS_API.syncTheme();
+  }
 }
 
 let _themeToggleTimer = null;

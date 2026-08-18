@@ -1925,6 +1925,20 @@
 
     _isLight: function () { return document.documentElement.dataset.theme === 'light'; },
 
+    // Called by applyTheme() in dashboard.js whenever the user switches theme.
+    // Iterates every initialized FP_MAPS_API map and updates its base tile
+    // styles — the same FP_MAPS_DARK_STYLE used at creation time. Controls and
+    // InfoWindow chrome are handled automatically by the html:not([data-theme="light"])
+    // CSS injected by _injectDarkCss(); this method only handles the tile layer.
+    syncTheme: function () {
+      var self = this;
+      var styles = self._isLight() ? [] : FP_MAPS_DARK_STYLE;
+      Object.keys(self._mapInstances).forEach(function (id) {
+        var inst = self._mapInstances[id];
+        if (inst && inst.map) inst.map.setOptions({ styles: styles });
+      });
+    },
+
     // Dark-mode CSS for Google's native controls (map-type buttons, fullscreen,
     // keyboard-shortcuts/attribution bar) and InfoWindows on both map containers.
     // Injected unconditionally so the rules exist regardless of the theme at init
