@@ -135,5 +135,5 @@
 - [P0 backstop plan-tier decision](p0-backstop-plan-tier.md) — backstop préfère le plan de niveau supérieur (standard<pro<ultra) pour décider quelle sub annuler; trial status non fiable (dépend de l'ordre de finalisation)
 - [Activation email FC-1-skip + webhook INSERT bugs](activation-email-fc1-skip-bug.md) — webhook INSERT users sans id→ROLLBACK silencieux; FC-1-skip doit re-envoyer l'email avant de retourner succès
 - [Dashboard UX batch 2 — sièges/SSO/add-on/maps/PM](dashboard-ux-fixes-batch2.md) — seat cap = max(3 sources); add-on→checkout.html; gestureHandling greedy; sub PM fallback
-
+- [fp-backend.js apiFetchNow session-critical rule](fp-backend-auth-structural-rule.md) — root cause F5→SignIn; 3 unconditional redirects in apiFetchNow had no session-critical guard; AI widget raw fetch also redirected on plan-gate 401
 - [Purge table schema gaps](purge-table-schema-gaps.md) — org_members/invitations/activity_log don't exist; correct names + 40 absent tables documented
