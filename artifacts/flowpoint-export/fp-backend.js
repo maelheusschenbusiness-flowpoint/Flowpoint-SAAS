@@ -190,17 +190,43 @@
                 var _rHdrs = Object.assign({'Content-Type':'application/json'}, _authHeaders(), (opts && opts.headers) || {});
                 return fetch(_path, Object.assign({}, opts || {}, { credentials: 'include', headers: _rHdrs }))
                   .then(function(rr) {
-                    if (rr.status === 401) { _clearAuth(); window.location.replace('/login.html'); return null; }
+                    if (rr.status === 401) {
+                      // ── STRUCTURAL RULE (mirrors dashboard.js apiFetch) ────────────────────
+                      // Global logout is only justified when /api/me itself confirms the session
+                      // is invalid. Secondary endpoints (/api/billing, /api/google, /api/ai, …)
+                      // can return 401 due to plan gates, feature flags, or connector state —
+                      // none of which means the session expired.
+                      // Redirecting to login on their failure destroys a perfectly valid session.
+                      var _isCrit = path === '/api/me' || path.startsWith('/api/auth/');
+                      if (!_isCrit) {
+                        console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Foreground 401 on secondary endpoint', path, '— throwing (no global logout; session intact).');
+                        var _err = new Error('Unauthorized'); _err.status = 401; throw _err;
+                      }
+                      _clearAuth(); window.location.replace('/login.html'); return null;
+                    }
                     if (!rr.ok) throw new Error('HTTP ' + rr.status + ' ' + path);
                     return rr.json();
                   });
               });
             }
-            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed — redirecting to login.');
+            // session-restore response was non-OK. Apply the same structural rule.
+            var _isCrit2 = path === '/api/me' || path.startsWith('/api/auth/');
+            if (!_isCrit2) {
+              console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed on secondary endpoint', path, '— throwing (no global logout).');
+              var _err2 = new Error('Unauthorized'); _err2.status = 401; throw _err2;
+            }
+            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed on session-critical endpoint — redirecting to login.');
             _clearAuth();
             window.location.replace('/login.html');
             return null;
-          }).catch(function() {
+          }).catch(function(e) {
+            // Network error during session-restore. Apply the same structural rule.
+            var _isCrit3 = path === '/api/me' || path.startsWith('/api/auth/');
+            if (!_isCrit3) {
+              console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on secondary endpoint', path, '— throwing (no global logout).');
+              var _err3 = new Error('Unauthorized'); _err3.status = 401; throw _err3;
+            }
+            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on session-critical endpoint — redirecting to login.');
             _clearAuth();
             window.location.replace('/login.html');
             return null;
@@ -2541,7 +2567,19 @@
           }),
         });
 
-        if (resp.status === 401) { _clearAuth(); window.location.replace('/login.html'); return; }
+        if (resp.status === 401) {
+          // 401 from /api/ai/chat may be quota exhaustion or plan gate — NOT necessarily session
+          // expiry. Redirect only after /api/me confirms the session is gone (same pattern
+          // as background-poll 401s handled by _confirmSessionExpiredBackend).
+          _fp401BackgroundCount++;
+          if (!_fp401ConfirmTimer) {
+            _fp401ConfirmTimer = setTimeout(function() {
+              _fp401ConfirmTimer = null;
+              _confirmSessionExpiredBackend();
+            }, 3000);
+          }
+          return;
+        }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
         var contentType = resp.headers.get('content-type') || '';
