@@ -54,7 +54,7 @@ import { buildNavPromptSection, NavMarkerFilter, extractNavMarker } from "../age
 import { createNavigationProposal, createPendingToolProposal } from "../agent/proposals.js";
 import { resolvePlanFromDB } from "../middlewares/planGate.js";
 // ── AI Agents Phase 2 — tool calling ──────────────────────────────────────────
-import { MISSION_TOOLS, type AIToolCall } from "../agent/mission-tools.js";
+import { MISSION_TOOLS, type AIToolCall, type ToolDef } from "../agent/mission-tools.js";
 // ── AI Agents Phase 3 — outils calendrier ─────────────────────────────────────
 import { CALENDAR_TOOLS } from "../agent/calendar-tools.js";
 // ── AI Agents Phase 4 — outils audits SEO ─────────────────────────────────────
@@ -1065,6 +1065,106 @@ const _CI_GREETING_RE = /^(bonjour|bonsoir|salut|hello|hi|merci|ça va|ok|oui|no
 const _CI_KNOWLEDGE_RE = /^(qu[''']est[- ]ce\s+(que\s+|qu[''']|c[''']est\s+)?|c[''']est\s+quoi\s+|que\s+signifie[nt]?\s+|comment\s+fonctionne[nt]?\s+|pourquoi\s+\w|explique[zmr]?-?moi?\s+|définition\s+(de\s+)?|comment\s+(se\s+)?calcule[nt]?\s+|qu[''']appelle-?t-?on\s+|how\s+does\s+|what\s+is\s+|what[''']s\s+|why\s+is\s+|explain\s+|define\s+|what\s+does\s+)/i;
 const _CI_PERSONAL_RE = /\b(mon\s+site|notre\s+site|mes\s+|notre\s+|ma\s+|nôtre|nos\s+|chez\s+nous|pour\s+nous|mon\s+seo|notre\s+seo|mon\s+audit|mon\s+domaine|notre\s+domaine|mon\s+url|notre\s+url|ici\b|ce\s+site|cette\s+page|cette\s+url|show\s+me|give\s+me|my\s+site|my\s+|our\s+|we\s+have|i\s+have|j[''']ai\b|on\s+a\b|analyse\s+le|analyse\s+notre|analyse\s+mon)\b/i;
 
+// ── Intent categories ─────────────────────────────────────────────────────────
+/** Six mutually-exclusive intent categories that drive context selection and tool routing. */
+export type AIIntentCategory =
+  | "GENERAL_KNOWLEDGE"   // Conceptual/definition question — no FlowPoint data needed
+  | "HYPOTHETICAL"        // Fictional scenario — no real data, no tool loop
+  | "FLOWPOINT_READ"      // Read account data: scores, missions, monitors…
+  | "FLOWPOINT_ACTION"    // Create / modify / delete within FlowPoint
+  | "EXTERNAL_RESEARCH"   // Analyse external URL or competitor domain
+  | "HYBRID";             // External URL + FlowPoint data + possible action
+
+/** Tool families corresponding to the src/agent tool modules. */
+export type AIToolFamily = "missions" | "calendar" | "audits" | "recommendations" | "monitors" | "url";
+
+// ── AI error codes for structured Render logs ─────────────────────────────────
+// Logged in every timeout/error path. Users see clean messages; logs show codes.
+export const AI_ERROR = {
+  CONTEXT_TIMEOUT:        "CONTEXT_TIMEOUT",        // buildFlowpointContext timed out
+  PROVIDER_TIMEOUT:       "PROVIDER_TIMEOUT",        // LLM synthesis round timed out
+  TOOL_SELECTION_TIMEOUT: "TOOL_SELECTION_TIMEOUT",  // Round 0 (intent/tool-selection) timed out
+  TOOL_EXECUTION_TIMEOUT: "TOOL_EXECUTION_TIMEOUT",  // Single tool execution timed out
+  GLOBAL_REQUEST_TIMEOUT: "GLOBAL_REQUEST_TIMEOUT",  // LOOP_DEADLINE_MS exceeded
+  PROVIDER_ERROR:         "PROVIDER_ERROR",          // LLM threw or returned error
+  TOOL_ERROR:             "TOOL_ERROR",              // Tool execution returned ok:false
+} as const;
+export type AIErrorCode = typeof AI_ERROR[keyof typeof AI_ERROR];
+
+// ── Tool-family keyword patterns ──────────────────────────────────────────────
+/** External URL/domain reference detection. */
+const _CI_EXT_URL_RE = /https?:\/\/[^\s'"<>]+|(?<!\w)(?:[a-z0-9-]{1,63}\.)+(?:com|fr|io|net|org|co|be|ch|de|es|it|uk|eu|app|dev|pro)\b(?!\.)/i;
+
+const _CI_FAMILY_RE: Record<AIToolFamily, RegExp> = {
+  missions:        /\b(mission[s]?|tâche[s]?|task[s]?|objectif[s]?|créer\s+(une?|des)\s+(mission|tâche)|plan\s+d'action)\b/i,
+  audits:          /\b(audit[s]?|score\s+seo|performance|vitesse|core\s+web|lcp|cls|tbt|pagespeed|analyse\s+(seo|technique)|problèmes?\s+(seo|technique)|indexation)\b/i,
+  monitors:        /\b(monitor[s]?|incident[s]?|downtime|uptime|down|alerte[s]?|disponibilité|surveillance|ping|status\s+du\s+site)\b/i,
+  recommendations: /\b(recommandation[s]?|suggestion[s]?|opportunité[s]?|conseil[s]?|amélioration[s]?|stratégie\s+seo)\b/i,
+  calendar:        /\b(calendrier|agenda|événement[s]?|rendez-vous|planning|réunion[s]?|rappel|schedule)\b/i,
+  url:             /\b(analyse[r]?\s+(ce\s+site|cette\s+url|cette\s+page|le\s+site|le\s+concurrent)|concurrent[s]?|domaine\s+concurrent)\b|https?:\/\//i,
+};
+
+function _detectToolFamilies(message: string): AIToolFamily[] {
+  return (Object.keys(_CI_FAMILY_RE) as AIToolFamily[]).filter(f => _CI_FAMILY_RE[f].test(message));
+}
+
+function _toolFamilyOf(toolName: string): AIToolFamily {
+  if (MISSION_TOOLS.some(t => t.name === toolName))         return "missions";
+  if (CALENDAR_TOOLS.some(t => t.name === toolName))        return "calendar";
+  if (AUDIT_TOOLS.some(t => t.name === toolName))           return "audits";
+  if (RECOMMENDATION_TOOLS.some(t => t.name === toolName))  return "recommendations";
+  if (MONITOR_TOOLS.some(t => t.name === toolName))         return "monitors";
+  return "url";
+}
+
+/**
+ * Selects the minimal set of tools relevant to the detected intent.
+ * Reduces round-0 tool-selection latency by narrowing LLM choice ambiguity.
+ * The FAIL-CLOSED permission check in tool-executor is still the authoritative gate.
+ */
+function selectToolsForIntent(intent: AIIntentCategory, message: string): ToolDef[] {
+  // GENERAL_KNOWLEDGE / HYPOTHETICAL: tool loop is never entered — return empty (caller guards)
+  if (intent === "GENERAL_KNOWLEDGE" || intent === "HYPOTHETICAL") return [];
+
+  const families = _detectToolFamilies(message);
+
+  if (intent === "EXTERNAL_RESEARCH") {
+    // URL analysis + read-only audit context; add missions if action is requested too
+    const base: ToolDef[] = [
+      ...URL_TOOLS,
+      ...AUDIT_TOOLS.filter(t => !t.isWrite),
+      ...RECOMMENDATION_TOOLS.filter(t => !t.isWrite),
+    ];
+    return families.includes("missions") ? [...base, ...MISSION_TOOLS] : base;
+  }
+
+  if (intent === "HYBRID") {
+    // External research + FlowPoint: broad but prioritise URL + detected families
+    const familyTools = families.length > 0
+      ? ALL_TOOLS.filter(t => families.includes(_toolFamilyOf(t.name)))
+      : ALL_TOOLS;
+    const merged = [...URL_TOOLS, ...familyTools.filter(t => !URL_TOOLS.includes(t))];
+    return merged.length > 0 ? merged : ALL_TOOLS;
+  }
+
+  if (intent === "FLOWPOINT_READ") {
+    // Only read-only tools. Narrow to relevant families if detected; else all reads.
+    const reads = ALL_TOOLS.filter(t => !t.isWrite);
+    if (families.length === 0) return reads;
+    const narrowed = reads.filter(t => families.includes(_toolFamilyOf(t.name)));
+    return narrowed.length > 0 ? narrowed : reads;
+  }
+
+  if (intent === "FLOWPOINT_ACTION") {
+    // Write tools (and read companions) from detected families.
+    if (families.length === 0) return ALL_TOOLS;
+    const familyTools = ALL_TOOLS.filter(t => families.includes(_toolFamilyOf(t.name)));
+    return familyTools.length > 0 ? familyTools : ALL_TOOLS;
+  }
+
+  return ALL_TOOLS;
+}
+
 /**
  * Classifies a message into routing intent flags.
  * Exported so unit tests can assert on classification without running the HTTP handler.
@@ -1080,6 +1180,8 @@ export function classifyIntent(message: string): {
   skipHeavyContext: boolean;
   /** True when tool/context pipeline is warranted, given available tools+permissions. */
   needsTools: boolean;
+  /** Six-category intent for context selection and tool family routing. */
+  intent: AIIntentCategory;
 } {
   const wordCount       = message.trim().split(/\s+/).length;
   const isHypothetical  = _CI_HYPO_RE.test(message);
@@ -1094,7 +1196,25 @@ export function classifyIntent(message: string): {
   // FlowPoint to DO something ("Imagine… crée une mission pour l'optimiser").
   const needsTools = !isSimpleGreeting && !isSimpleKnowledge
     && (!isHypothetical || isExplicitAction);
-  return { isHypothetical, isExplicitAction, isSimpleGreeting, isSimpleKnowledge, skipHeavyContext, needsTools };
+
+  // ── 6-category intent detection ────────────────────────────────────────────
+  let intent: AIIntentCategory;
+  if (isSimpleGreeting || isSimpleKnowledge) {
+    intent = "GENERAL_KNOWLEDGE";
+  } else if (isHypothetical && !isExplicitAction) {
+    intent = "HYPOTHETICAL";
+  } else {
+    const hasExtUrl = _CI_EXT_URL_RE.test(message);
+    if (hasExtUrl) {
+      intent = (isExplicitAction || _CI_FAMILY_RE.missions.test(message)) ? "HYBRID" : "EXTERNAL_RESEARCH";
+    } else if (isExplicitAction) {
+      intent = "FLOWPOINT_ACTION";
+    } else {
+      intent = "FLOWPOINT_READ";
+    }
+  }
+
+  return { isHypothetical, isExplicitAction, isSimpleGreeting, isSimpleKnowledge, skipHeavyContext, needsTools, intent };
 }
 
 // ── AI Agents Phase 2 : boucle tool-calling ───────────────────────────────────
@@ -1179,6 +1299,15 @@ async function runToolCallingLoop(opts: {
   sseClose: () => void;
   /** Returns true when the client disconnected or explicitly requested cancellation. */
   isCancelled?: () => boolean;
+  /**
+   * Pre-filtered tool set for this intent. Defaults to ALL_TOOLS.
+   * Narrowing from 44 → 4-8 tools reduces round-0 latency from ~25 s to ~5 s,
+   * preventing Render proxy idle-timeout (30 s after last SSE byte) from killing
+   * the connection before the first tool_call event.
+   */
+  tools?: ToolDef[];
+  /** Intent category for structured logging (AI_ERROR codes). */
+  intent?: AIIntentCategory;
 }): Promise<ToolLoopResult> {
   const { provider, model, ctx } = opts;
   const language = ctx.language ?? "fr";
@@ -1219,13 +1348,29 @@ async function runToolCallingLoop(opts: {
       ? ROUND_TIMEOUT_SYNTHESIS_MS
       : ROUND_TIMEOUT_MS;
 
+    // ── SSE progress heartbeat ─────────────────────────────────────────────────
+    // Emitted BEFORE each blocking LLM call to reset the Render proxy idle-timeout
+    // (30 s from last SSE byte). Without this, round 0 can silently exceed the limit,
+    // the proxy kills the TCP connection, and the client shows "délai d'attente".
+    const _progressMsg = round === 0
+      ? (language.startsWith("fr") ? "Identification des informations pertinentes…"
+         : language.startsWith("es") ? "Identificando información relevante…"
+         : "Identifying relevant information…")
+      : (language.startsWith("fr") ? "Synthèse des résultats…"
+         : language.startsWith("es") ? "Sintetizando resultados…"
+         : "Synthesizing results…");
+    opts.sseWrite(`data: ${JSON.stringify({ progress: _progressMsg })}\n\n`);
+
+    // Use pre-filtered tools if provided; fall back to full set only as last resort.
+    const _roundTools = opts.tools && opts.tools.length > 0 ? opts.tools : ALL_TOOLS;
+
     let roundResult: ToolCallingResult;
     try {
       roundResult = await Promise.race([
         aiChatWithTools(
           nativeMessages
-            ? { provider, model, tools: ALL_TOOLS, nativeMessages, systemPrompt: carriedSystemPrompt, maxTokens: 4096 }
-            : { provider, model, tools: ALL_TOOLS, messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[], maxTokens: 4096 }
+            ? { provider, model, tools: _roundTools, nativeMessages, systemPrompt: carriedSystemPrompt, maxTokens: 4096 }
+            : { provider, model, tools: _roundTools, messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[], maxTokens: 4096 }
         ),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("ROUND_TIMEOUT")), thisRoundTimeout)
@@ -1237,11 +1382,12 @@ async function runToolCallingLoop(opts: {
       }
     } catch (err) {
       if ((err as Error).message === "ROUND_TIMEOUT") {
-        logger.warn({ round, provider }, "[tool-loop] LLM round timed out");
+        const errCode = round === 0 ? AI_ERROR.TOOL_SELECTION_TIMEOUT : AI_ERROR.PROVIDER_TIMEOUT;
+        logger.warn({ round, provider, errCode, intent: opts.intent, toolCount: _roundTools.length }, "[tool-loop] LLM round timed out");
         opts.sseWrite(`data: ${JSON.stringify({ delta: "\n\n" + _timeoutMsg(language) })}\n\n`);
         return { suspended: false, finalTextEmitted: true, undoTokens, messages };
       }
-      logger.error({ err, round, provider }, "[tool-loop] aiChatWithTools failed");
+      logger.error({ err, round, provider, errCode: AI_ERROR.PROVIDER_ERROR }, "[tool-loop] aiChatWithTools failed");
       // Fail gracefully — let caller proceed with normal stream
       return { suspended: false, finalTextEmitted: false, undoTokens, messages };
     }
@@ -1350,7 +1496,7 @@ async function runToolCallingLoop(opts: {
           ),
         ]).catch((err: Error) => {
           const isTimeout = err.message === "TOOL_TIMEOUT";
-          logger.warn({ toolName: toolCall.name, isTimeout }, "[tool-loop] tool execution failed/timed out");
+          logger.warn({ toolName: toolCall.name, isTimeout, errCode: isTimeout ? AI_ERROR.TOOL_EXECUTION_TIMEOUT : AI_ERROR.TOOL_ERROR }, "[tool-loop] tool execution failed/timed out");
           return {
             toolCallId: toolCall.id, toolName: toolCall.name, ok: false,
             content: isTimeout
@@ -2097,6 +2243,16 @@ DONNÉES MANQUANTES — règle stricte :
     res.write(`data: ${JSON.stringify({ typing: true })}\n\n`);
     (res as unknown as { flush?: () => void }).flush?.();
 
+    // ── SSE keep-alive heartbeat ──────────────────────────────────────────────
+    // Render's reverse proxy kills SSE connections that are silent for > 30 s.
+    // The heartbeat emits an SSE comment (: keepalive) every 20 s to reset the
+    // idle timer. This is a belt-and-suspenders guard; the primary fix is intent-
+    // based tool filtering which cuts round-0 latency from ~25 s to ~5-8 s.
+    const _heartbeat = setInterval(() => {
+      if (!res.writableEnded) res.write(": keepalive\n\n");
+    }, 20_000);
+    const _stopHeartbeat = () => clearInterval(_heartbeat);
+
     // ── Client-disconnect cancellation ────────────────────────────────────────
     let _clientGone = false;
     req.on("close", () => { _clientGone = true; });
@@ -2117,8 +2273,8 @@ DONNÉES MANQUANTES — règle stricte :
       _activeExecutions.delete(conversationId);
       _executionStartTimes.delete(conversationId);
     };
-    res.on("finish", _cleanupExecution);
-    res.on("close",  _cleanupExecution);
+    res.on("finish", () => { _cleanupExecution(); _stopHeartbeat(); });
+    res.on("close",  () => { _cleanupExecution(); _stopHeartbeat(); });
 
     // CR-10/CR-11 TTFT: Simple greetings and knowledge questions bypass the tool loop.
     // runToolCallingLoop uses aiChatWithTools (non-streaming internally) so its TTFT
@@ -2134,9 +2290,30 @@ DONNÉES MANQUANTES — règle stricte :
       && !isSimpleGreeting
       && !isSimpleKnowledge
       && (!isHypothetical || isExplicitAction);
-    logger.info({ orgId, needsTools, isHypothetical, isExplicitAction, isSimpleGreeting, isSimpleKnowledge, enableTools }, "[AI] routing decision");
+
+    // ── 6-intent classification for tool-family routing ────────────────────────
+    // Inline mirrors classifyIntent() so we can call selectToolsForIntent() without
+    // a second pass; intent is also forwarded to runToolCallingLoop for logging.
+    const _intent: AIIntentCategory = (() => {
+      if (isSimpleGreeting || isSimpleKnowledge) return "GENERAL_KNOWLEDGE";
+      if (isHypothetical && !isExplicitAction)   return "HYPOTHETICAL";
+      const _hasUrl = message ? _CI_EXT_URL_RE.test(message) : false;
+      if (_hasUrl) return (isExplicitAction || _CI_FAMILY_RE.missions.test(message ?? "")) ? "HYBRID" : "EXTERNAL_RESEARCH";
+      if (isExplicitAction) return "FLOWPOINT_ACTION";
+      return "FLOWPOINT_READ";
+    })();
+
+    // ── Pre-filter tool set: intent-based selection ────────────────────────────
+    // Reduces round-0 tool count from 44 → 4-8 tools (e.g. "Quel est mon score SEO ?"
+    // selects only AUDIT read tools). This cuts round-0 LLM latency from ~25 s to
+    // ~5-8 s, preventing the Render proxy idle-timeout (30 s after typing:true).
+    const _selectedTools = needsTools && message
+      ? selectToolsForIntent(_intent, message)
+      : [];
+
+    logger.info({ orgId, needsTools, isHypothetical, isExplicitAction, isSimpleGreeting, isSimpleKnowledge, enableTools, intent: _intent, toolCount: _selectedTools.length }, "[AI] routing decision");
     if (needsTools) {
-      logger.info({ orgId, model: finalModel, isLightRequest, t_context_ms: _t_context_ms, t_preToolLoop_ms: _t_preProvider - _t_context_start }, "[AI] entering tool loop");
+      logger.info({ orgId, model: finalModel, isLightRequest, t_context_ms: _t_context_ms, t_preToolLoop_ms: _t_preProvider - _t_context_start, intent: _intent, toolCount: _selectedTools.length }, "[AI] entering tool loop");
       const toolCtx: ExecuteContext = {
         orgId, userId, conversationId,
         provider: selectedProvider, model: finalModel,
@@ -2153,6 +2330,8 @@ DONNÉES MANQUANTES — règle stricte :
         sseWrite: _safeWrite,
         sseClose: () => { if (!res.writableEnded) { res.write("data: [DONE]\n\n"); res.end(); } },
         isCancelled,
+        tools:  _selectedTools.length > 0 ? _selectedTools : undefined,
+        intent: _intent,
       });
       toolLoopUndoTokens = loopResult.undoTokens;
 

@@ -13317,14 +13317,32 @@ function renderAI() {
       <div class="fp-ai-wrap" id="ai-messages" style="padding:16px;min-height:200px;max-height:46vh;overflow-y:auto">
         ${renderAIMessages()}
       </div>
+      <style>
+        /* AI input textarea — scrollbar styling.
+           overflow-y:auto shows a scrollbar only when content exceeds max-height (120px).
+           ::-webkit-scrollbar forces a styled, always-visible track on WebKit browsers so
+           the scrollbar is not rendered as an invisible overlay on macOS.
+           padding-right:10px on the textarea keeps text from sliding under the scrollbar. */
+        #ai-input::-webkit-scrollbar { width:5px; }
+        #ai-input::-webkit-scrollbar-track { background:transparent; border-radius:4px; }
+        #ai-input::-webkit-scrollbar-thumb { background:rgba(148,163,184,0.45); border-radius:4px; min-height:28px; }
+        #ai-input::-webkit-scrollbar-thumb:hover { background:rgba(100,116,139,0.75); }
+        html[data-theme="dark"] #ai-input::-webkit-scrollbar-thumb { background:rgba(100,116,139,0.5); }
+        html[data-theme="dark"] #ai-input::-webkit-scrollbar-thumb:hover { background:rgba(148,163,184,0.65); }
+        /* Progress step text shown while waiting for first AI token */
+        .fp-ai-progress-hint { font-size:11px; color:var(--fp-text-faint); font-style:italic; padding:2px 0 0; display:block; min-height:14px; }
+      </style>
       <div style="border-top:1px solid rgba(255,255,255,0.06);padding:10px 12px">
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
           <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
-          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:hidden;line-height:1.5;height:38px;max-height:120px"></textarea>
+          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:auto;line-height:1.5;height:38px;max-height:120px;padding-right:10px"></textarea>
           <button class="fp-ai-send" id="ai-send">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
           <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
+        <!-- Progress hint: shows server-side step name (e.g. "Identification des informations…")
+             while waiting for the first AI token. Hidden when real text arrives. -->
+        <span id="fp-ai-progress-hint" class="fp-ai-progress-hint"></span>
       </div>
     </div>
 
@@ -13733,6 +13751,8 @@ async function sendAIMessage(text) {
         try {
           const parsed = JSON.parse(payload);
           if (parsed.delta) {
+            // Clear progress hint on first real content
+            if (!fullText) { const _ph = document.getElementById('fp-ai-progress-hint'); if (_ph) _ph.textContent = ''; }
             fullText += parsed.delta;
             STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: true, proposal: _proposal };
             updateAIUI();
@@ -13752,6 +13772,13 @@ async function sendAIMessage(text) {
             _undoToken = parsed.undo_available;
           } else if (parsed._ai) {
             if (parsed._ai.conversationId) STATE._aiConversationId = parsed._ai.conversationId;
+          } else if (parsed.progress) {
+            // Server-side step progress (e.g. "Identification des informations pertinentes…").
+            // Shown only while no delta has arrived yet to give feedback during long tool-loop rounds.
+            if (!fullText) {
+              const hint = document.getElementById('fp-ai-progress-hint');
+              if (hint) hint.textContent = parsed.progress;
+            }
           } else if (parsed.error) {
             fullText = '⚠ ' + parsed.error;
           }
@@ -16961,9 +16988,13 @@ function bindSectionEvents() {
     $$('.fp-ai-quick').forEach(btn => btn.addEventListener('click', () => sendAIMessage(btn.dataset.aiPrompt)));
     const aiInput = $('#ai-input');
     const aiSend = $('#ai-send');
-    function _resetAiInput() { if(!aiInput) return; aiInput.value=''; aiInput.style.height='38px'; aiInput.style.overflowY='hidden'; }
+    function _resetAiInput() { if(!aiInput) return; aiInput.value=''; aiInput.style.height='38px'; aiInput.style.overflowY='auto'; const _ph=document.getElementById('fp-ai-progress-hint'); if(_ph) _ph.textContent=''; }
     function _resizeAiInput() { if(!aiInput) return; aiInput.style.height='38px'; var sh=aiInput.scrollHeight; aiInput.style.height=Math.min(sh,120)+'px'; aiInput.style.overflowY=sh>120?'auto':'hidden'; }
     aiInput?.addEventListener('input', _resizeAiInput);
+    // Also resize on paste (content changes asynchronously — use setTimeout to let DOM update first)
+    aiInput?.addEventListener('paste', () => setTimeout(_resizeAiInput, 0));
+    // Apply correct overflow-y immediately so initial state matches CSS
+    _resizeAiInput();
     aiSend?.addEventListener('click', () => { sendAIMessage(aiInput?.value||''); _resetAiInput(); });
     aiInput?.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage(aiInput.value); _resetAiInput(); } });
   }
