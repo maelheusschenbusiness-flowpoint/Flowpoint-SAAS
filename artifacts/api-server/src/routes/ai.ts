@@ -1055,6 +1055,48 @@ router.patch("/ai/config", async (req: Request, res: Response): Promise<void> =>
   }
 });
 
+// ── Intent classifier (exported for unit tests) ──────────────────────────────
+// Determines routing flags from the raw message string alone.
+// Classification priority: ACTION > HYPOTHETICAL > SIMPLE_KNOWLEDGE/GREETING > CONTEXTUAL
+// Rule: explicit user intent always overrides surface lexical signals ("mon site" etc.).
+const _CI_HYPO_RE = /\b(imagine[z]?|supposons|suppose[z]?|si on avait|si j'avais|what if|au cas où|en supposant|fictif|par hypothèse|hypothétiquement|pour l'exercice|par exemple si|mettons que|faisons comme si|scénario fictif)\b/i;
+const _CI_ACTION_RE = /\b(crée[rz]?|créer|ajoute[rz]?|ajouter|supprime[rz]?|supprimer|modifie[rz]?|modifier|planifie[rz]?|planifier|programme[rz]?|programmer|lance[rz]?|lancer|démarre[rz]?|démarrer|génère[rz]?|générer|schedule|create\s+a|add\s+a|delete\s+|remove\s+|update\s+)\b/i;
+const _CI_GREETING_RE = /^(bonjour|bonsoir|salut|hello|hi|merci|ça va|ok|oui|non|d'accord|pas de problème|super|parfait|génial|cool|thanks|thank you|👍|🙏|😊)\s*[!?.]?$/i;
+const _CI_KNOWLEDGE_RE = /^(qu[''']est[- ]ce\s+(que\s+|qu[''']|c[''']est\s+)?|c[''']est\s+quoi\s+|que\s+signifie[nt]?\s+|comment\s+fonctionne[nt]?\s+|pourquoi\s+\w|explique[zmr]?-?moi?\s+|définition\s+(de\s+)?|comment\s+(se\s+)?calcule[nt]?\s+|qu[''']appelle-?t-?on\s+|how\s+does\s+|what\s+is\s+|what[''']s\s+|why\s+is\s+|explain\s+|define\s+|what\s+does\s+)/i;
+const _CI_PERSONAL_RE = /\b(mon\s+site|notre\s+site|mes\s+|notre\s+|ma\s+|nôtre|nos\s+|chez\s+nous|pour\s+nous|mon\s+seo|notre\s+seo|mon\s+audit|mon\s+domaine|notre\s+domaine|mon\s+url|notre\s+url|ici\b|ce\s+site|cette\s+page|cette\s+url|show\s+me|give\s+me|my\s+site|my\s+|our\s+|we\s+have|i\s+have|j[''']ai\b|on\s+a\b|analyse\s+le|analyse\s+notre|analyse\s+mon)\b/i;
+
+/**
+ * Classifies a message into routing intent flags.
+ * Exported so unit tests can assert on classification without running the HTTP handler.
+ *
+ * `needsTools` assumes tools are enabled and permissions exist — the caller must still
+ * AND with `enableTools && hasAnyToolPermission` at runtime.
+ */
+export function classifyIntent(message: string): {
+  isHypothetical: boolean;
+  isExplicitAction: boolean;
+  isSimpleGreeting: boolean;
+  isSimpleKnowledge: boolean;
+  skipHeavyContext: boolean;
+  /** True when tool/context pipeline is warranted, given available tools+permissions. */
+  needsTools: boolean;
+} {
+  const wordCount       = message.trim().split(/\s+/).length;
+  const isHypothetical  = _CI_HYPO_RE.test(message);
+  const isExplicitAction = _CI_ACTION_RE.test(message);
+  const isSimpleGreeting = _CI_GREETING_RE.test(message.trim());
+  const isSimpleKnowledge = wordCount >= 2 && wordCount <= 20
+    && _CI_KNOWLEDGE_RE.test(message.trim())
+    && !_CI_PERSONAL_RE.test(message);
+  const skipHeavyContext = isSimpleGreeting || isHypothetical || isSimpleKnowledge;
+  // Hypothetical intent blocks the tool loop — user is asking a theoretical question.
+  // ACTION intent (explicit write verb) overrides HYPOTHETICAL when the user also asks
+  // FlowPoint to DO something ("Imagine… crée une mission pour l'optimiser").
+  const needsTools = !isSimpleGreeting && !isSimpleKnowledge
+    && (!isHypothetical || isExplicitAction);
+  return { isHypothetical, isExplicitAction, isSimpleGreeting, isSimpleKnowledge, skipHeavyContext, needsTools };
+}
+
 // ── AI Agents Phase 2 : boucle tool-calling ───────────────────────────────────
 // Appelée UNIQUEMENT depuis le chemin SSE de chatHandler quand enableTools=true.
 // Émet des événements SSE directement sur `res`, retourne si l'SSE est suspendu
@@ -1723,20 +1765,23 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
   // ── CR-4: Hypothetical / scenario mode detection ─────────────────────────
   // Messages like "imagine que tu as 1000 mots-clés" or "suppose qu'on était sur Pro"
   // reference fictional data. Skip heavy DB context and inject a guard instruction.
-  const _HYPOTHETICAL_RE = /\b(imagine[z]?|supposons|suppose[z]?|si on avait|si j'avais|what if|au cas où|en supposant|fictif|par hypothèse|hypothétiquement|pour l'exercice|par exemple si|mettons que|faisons comme si|scénario fictif)\b/i;
+  const _HYPOTHETICAL_RE = _CI_HYPO_RE;
   const isHypothetical = typeof message === "string" && _HYPOTHETICAL_RE.test(message);
+  // Explicit mutation intent overrides hypothetical framing for tool routing.
+  // "Imagine que mon site est lent et crée une mission" → isHypothetical AND isExplicitAction.
+  const isExplicitAction = typeof message === "string" && _CI_ACTION_RE.test(message);
 
   // ── CR-5: Query complexity classifier ────────────────────────────────────
   // SIMPLE greetings and one-word acks don't need 15+ DB queries.
-  const _SIMPLE_RE = /^(bonjour|bonsoir|salut|hello|hi|merci|ça va|ok|oui|non|d'accord|pas de problème|super|parfait|génial|cool|thanks|thank you|👍|🙏|😊)\s*[!?.]?$/i;
+  const _SIMPLE_RE = _CI_GREETING_RE;
   const isSimpleGreeting = typeof message === "string" && _SIMPLE_RE.test(message.trim());
 
   // ── CR-11: SIMPLE_KNOWLEDGE — general web/SEO concept questions, no org data needed ──
   // Pattern: starts with a knowledge-seeking phrase AND has no personal-context reference
   // ("mon site", "notre", "mes", etc.). Capped at 20 words to exclude multi-part questions.
   // These bypass context build AND the tool loop — same as simple greetings.
-  const _KNOWLEDGE_START_RE = /^(qu[''']est[- ]ce\s+(que\s+|qu[''']|c[''']est\s+)?|c[''']est\s+quoi\s+|que\s+signifie[nt]?\s+|comment\s+fonctionne[nt]?\s+|pourquoi\s+\w|explique[zmr]?-?moi?\s+|définition\s+(de\s+)?|comment\s+(se\s+)?calcule[nt]?\s+|qu[''']appelle-?t-?on\s+|how\s+does\s+|what\s+is\s+|what[''']s\s+|why\s+is\s+|explain\s+|define\s+|what\s+does\s+)/i;
-  const _PERSONAL_CTX_RE   = /\b(mon\s+site|notre\s+site|mes\s+|notre\s+|ma\s+|nôtre|nos\s+|chez\s+nous|pour\s+nous|mon\s+seo|notre\s+seo|mon\s+audit|mon\s+domaine|notre\s+domaine|mon\s+url|notre\s+url|ici\b|ce\s+site|cette\s+page|cette\s+url|show\s+me|give\s+me|my\s+site|my\s+|our\s+|we\s+have|i\s+have|j[''']ai\b|on\s+a\b|analyse\s+le|analyse\s+notre|analyse\s+mon)\b/i;
+  const _KNOWLEDGE_START_RE = _CI_KNOWLEDGE_RE;
+  const _PERSONAL_CTX_RE   = _CI_PERSONAL_RE;
   const _msgWordCount = typeof message === "string" ? message.trim().split(/\s+/).length : 0;
   const isSimpleKnowledge = typeof message === "string"
     && _msgWordCount >= 2
@@ -1777,7 +1822,7 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
   ]);
 
   const _t_context_ms = Date.now() - _t_context_start;
-  logger.info({ orgId, _t_context_ms, isSimpleGreeting, isSimpleKnowledge, isHypothetical, isLightRequest, finalModel, contextFactor }, "[AI] context built");
+  logger.info({ orgId, _t_context_ms, isSimpleGreeting, isSimpleKnowledge, isHypothetical, isExplicitAction, isLightRequest, finalModel, contextFactor }, "[AI] context built");
   const orgPlan = (orgPlanRaw ?? "standard").toLowerCase();
   const allowedDestinations = filterDestinations(effectivePerms, orgPlan);
   const navPromptSection = buildNavPromptSection(allowedDestinations);
@@ -2080,7 +2125,17 @@ DONNÉES MANQUANTES — règle stricte :
     // equals a full LLM round (~9-15 s). Light requests never need tools — route
     // them to the real aiStream path below for token-by-token streaming.
     const _t_preProvider = Date.now();
-    if (enableTools && hasAnyToolPermission && !isSimpleGreeting && !isSimpleKnowledge) {
+    // ── needsTools: tool availability ≠ tool necessity ───────────────────────
+    // Tool loop is entered ONLY when the query genuinely requires live FlowPoint data or action tools.
+    // Hypothetical prompts skip the tool loop even if "mon site" appears — explicit intent beats
+    // surface lexical signal. isExplicitAction overrides: "Imagine… crée une mission" still uses tools.
+    const needsTools = enableTools
+      && hasAnyToolPermission
+      && !isSimpleGreeting
+      && !isSimpleKnowledge
+      && (!isHypothetical || isExplicitAction);
+    logger.info({ orgId, needsTools, isHypothetical, isExplicitAction, isSimpleGreeting, isSimpleKnowledge, enableTools }, "[AI] routing decision");
+    if (needsTools) {
       logger.info({ orgId, model: finalModel, isLightRequest, t_context_ms: _t_context_ms, t_preToolLoop_ms: _t_preProvider - _t_context_start }, "[AI] entering tool loop");
       const toolCtx: ExecuteContext = {
         orgId, userId, conversationId,
