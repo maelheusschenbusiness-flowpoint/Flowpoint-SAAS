@@ -14,6 +14,7 @@ import {
   parseRobotsDisallows,
   isPathAllowedByRobots,
   pickCrawlTargets,
+  crawlSite,
   MAX_CRAWL_PAGES,
 } from "./site-crawler.js";
 
@@ -147,5 +148,29 @@ describe("pickCrawlTargets", () => {
     const many = Array.from({ length: 30 }, (_, i) => `https://exemple.com/p${i}`);
     const { targets } = pickCrawlTargets(many, "https://exemple.com/", [], MAX_CRAWL_PAGES - 1);
     expect(targets.length).toBe(7);
+  });
+});
+
+describe("crawlSite — robots.txt gate", () => {
+  it("charge robots.txt avant l'URL demandée et ne télécharge jamais une page de départ interdite", async () => {
+    const calls: string[] = [];
+    const fetcher = async (url: string) => {
+      calls.push(url);
+      if (url === "https://example.com/robots.txt") {
+        return { ok: true, url, bodyText: "User-agent: FlowpointBot\nDisallow: /" };
+      }
+      throw new Error(`Le crawler ne doit pas télécharger ${url}`);
+    };
+
+    const result = await crawlSite("https://example.com/private", MAX_CRAWL_PAGES, fetcher);
+
+    expect(result).toMatchObject({
+      ok: false,
+      pagesAttempted: 0,
+      pagesFetched: 0,
+      blockedByRobots: 1,
+      error: "La page demandée est exclue par robots.txt",
+    });
+    expect(calls).toEqual(["https://example.com/robots.txt"]);
   });
 });

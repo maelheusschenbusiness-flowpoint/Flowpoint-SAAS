@@ -150,6 +150,7 @@ function normalizeForDedup(url: string): string {
 export async function crawlSite(
   startUrl: string,
   maxPages: number = MAX_CRAWL_PAGES,
+  fetcher: typeof fetchUrlContent = fetchUrlContent,
 ): Promise<CrawlSiteResult> {
   const cappedMax = Math.max(1, Math.min(maxPages, MAX_CRAWL_PAGES));
 
@@ -170,7 +171,7 @@ export async function crawlSite(
   // blocks the start path before it can be downloaded.
   let disallows: string[] = [];
   try {
-    const robots = await fetchUrlContent(`${start.origin}/robots.txt`, { timeoutMs: ROBOTS_TIMEOUT_MS });
+    const robots = await fetcher(`${start.origin}/robots.txt`, { timeoutMs: ROBOTS_TIMEOUT_MS });
     if (robots.ok && robots.bodyText) {
       disallows = parseRobotsDisallows(robots.bodyText);
     }
@@ -187,7 +188,7 @@ export async function crawlSite(
   }
 
   // 2. Page d'accueil (timeout standard — c'est la page pivot)
-  const home = await fetchUrlContent(startUrl);
+  const home = await fetcher(startUrl);
   if (!home.ok) {
     return {
       ok: false, startUrl, pages: [], linksDiscovered: 0,
@@ -204,7 +205,7 @@ export async function crawlSite(
   // 4. Récupération parallèle, timeout 5 s par page — un échec de page n'annule pas le crawl
   const subResults = await Promise.all(
     targets.map((t) =>
-      fetchUrlContent(t, { timeoutMs: SUBPAGE_TIMEOUT_MS }).catch(
+      fetcher(t, { timeoutMs: SUBPAGE_TIMEOUT_MS }).catch(
         (err): FetchUrlResult => ({ ok: false, url: t, error: err instanceof Error ? err.message : String(err) }),
       ),
     ),
