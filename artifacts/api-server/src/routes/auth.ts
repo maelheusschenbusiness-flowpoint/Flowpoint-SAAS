@@ -1687,42 +1687,14 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     }
   })();
 
-  // Fire-and-forget: self-heal org_settings location from the signup record.
-  // Safety constraint: only run for LEGACY email-keyed orgs where sessionOrgId
-  // is the email itself. UUID-based orgs have no stable pending_signup link via
-  // email alone and must NOT use this path (cross-org PII risk).
-  (async () => {
-    try {
-      // Guard: only email-keyed legacy orgs can safely use email as signup key
-      if (!sessionOrgId || sessionOrgId.toLowerCase() !== email.toLowerCase()) return;
-      const { loadOrgSettings, upsertOrgSettings } = await import("../services/org-settings.js");
-      const existing = await loadOrgSettings(sessionOrgId);
-      if (existing?.address || existing?.city) return; // user already has location data
-      // Only trust the CONSUMED signup record for THIS exact email/orgId pair.
-      const psRes = await pool.query(
-        `SELECT country, address, city, postal_code, phone
-           FROM pending_signups
-          WHERE lower(email) = lower($1) AND consumed_at IS NOT NULL
-            AND (address IS NOT NULL OR city IS NOT NULL)
-          ORDER BY consumed_at DESC LIMIT 1`,
-        [email],
-      );
-      const ps = psRes.rows[0] as { country: string | null; address: string | null; city: string | null; postal_code: string | null; phone: string | null } | undefined;
-      if (!ps || (!ps.address && !ps.city)) return;
-      // Field-level merge: only fill fields the user has not already set.
-      await upsertOrgSettings(sessionOrgId, {
-        country:            existing?.country    || ps.country      || null,
-        city:               existing?.city       || ps.city         || null,
-        address:            existing?.address    || ps.address      || null,
-        postalCode:         existing?.postalCode || ps.postal_code  || null,
-        phone:              existing?.phone      || ps.phone        || null,
-        locationConfigured: true,
-      });
-      logger.info({ orgIdPrefix: sessionOrgId?.slice(0, 8) }, "login-verify: org_settings location self-healed from pending_signups (legacy org)");
-    } catch (locErr) {
-      logger.warn({ err: locErr instanceof Error ? locErr.message : String(locErr) }, "login-verify: location self-heal failed (non-fatal)");
-    }
-  })();
+  // NOTE: Address backfill from pending_signups was removed.
+  // A safe implementation requires a durable org_id column on the consumed
+  // pending_signups row so the query can be scoped to the correct organisation.
+  // Until that column is added and populated at activation, an email-only
+  // lookup risks writing one org's signup address into a different org's
+  // settings when multiple orgs share an email address.
+  // TODO: add pending_signups.org_id (FK organizations.id), populate it in
+  // stripe-webhook.ts at activation, then restore the self-heal keyed by org_id.
 }
 
 // GET — kept for backward compatibility (existing email links point to login-verify.html?token=...
