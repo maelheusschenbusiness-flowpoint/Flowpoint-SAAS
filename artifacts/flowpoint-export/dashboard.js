@@ -7536,31 +7536,47 @@ function renderReports() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'exec') {
     const _monthNames = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
-    const months4 = (() => { const n = new Date(); return [-3,-2,-1,0].map(d => { const dt = new Date(n.getFullYear(), n.getMonth()+d, 1); return _monthNames[dt.getMonth()]; }); })();
-    const _execCurAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
-    const seoScores  = PREVIEW_MODE ? [62, 66, 69, 74] : (_execCurAvg != null ? [Math.max(0,_execCurAvg-12),Math.max(0,_execCurAvg-8),Math.max(0,_execCurAvg-4),_execCurAvg] : []);
-    const _monUp  = STATE.monitors && STATE.monitors.length > 0 ? Math.round(STATE.monitors.filter(m=>m.status==='up').length/STATE.monitors.length*100) : null;
-    const convScores = _execCurAvg != null ? [Math.max(0,_execCurAvg-22),Math.max(0,_execCurAvg-16),Math.max(0,_execCurAvg-10),Math.max(0,_execCurAvg-5)] : [];
-    const perfScores = _monUp != null ? [Math.max(0,_monUp-8),Math.max(0,_monUp-5),Math.max(0,_monUp-2),_monUp] : (_execCurAvg != null ? [Math.max(0,_execCurAvg-8),Math.max(0,_execCurAvg-5),Math.max(0,_execCurAvg-2),_execCurAvg] : []);
-    const bizHealth  = PREVIEW_MODE ? [58, 64, 67, 72] : (_execCurAvg != null ? [Math.max(0,_execCurAvg-14),Math.max(0,_execCurAvg-9),Math.max(0,_execCurAvg-5),_execCurAvg] : []);
+    const monthSlots = (() => {
+      const now = new Date();
+      return [-3,-2,-1,0].map(offset => {
+        const date = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+        return { year: date.getFullYear(), month: date.getMonth(), label: _monthNames[date.getMonth()] };
+      });
+    })();
+    const numericAuditScores = (STATE.audits || []).map(a => {
+      const score = Number(a.score);
+      const rawDate = a.date || a.createdAt || a.created_at;
+      const date = rawDate ? new Date(rawDate) : null;
+      return Number.isFinite(score) && date && !Number.isNaN(date.getTime()) ? { score, date } : null;
+    }).filter(Boolean);
+    const _execCurAvg = numericAuditScores.length
+      ? Math.round(numericAuditScores.reduce((sum, entry) => sum + entry.score, 0) / numericAuditScores.length)
+      : null;
+    // A monthly value is drawn only when it comes from a dated audit in that month.
+    // We never derive prior months, conversion, performance, or business scores from
+    // one current value: that produced fictional series and "undefined" labels.
+    const seoScores = monthSlots.map(slot => {
+      const scores = numericAuditScores.filter(entry => entry.date.getFullYear() === slot.year && entry.date.getMonth() === slot.month).map(entry => entry.score);
+      return scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null;
+    });
+    const hasMeasuredSeoHistory = seoScores.some(score => Number.isFinite(score));
+    const _validUptime = (STATE.monitors || []).map(m => Number(m.uptime)).filter(Number.isFinite);
+    const _execUp = _validUptime.length
+      ? Math.round(_validUptime.reduce((sum, uptime) => sum + uptime, 0) / _validUptime.length)
+      : null;
     const _recs_live = (() => {
       const r = [];
-      if (STATE.audits && STATE.audits.some(a => (a.score||0) < 50)) r.push({ icon:'🎯', title:'Sites critiques à corriger', body:'Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.', gain:'Score +15 pts', color:'#ef4444' });
+      if (numericAuditScores.some(a => a.score < 50)) r.push({ icon:'🎯', title:'Sites critiques à corriger', body:'Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.', gain:'À prioriser', color:'#ef4444' });
       if (STATE.monitors && STATE.monitors.some(m => m.status === 'down')) r.push({ icon:'🚨', title:'Monitors DOWN', body:'Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.', gain:'SLA protégé', color:'#ef4444' });
-      if (STATE.gbp && (STATE.gbp.completionScore||0) < 90) r.push({ icon:'📍', title:'Optimiser Google Business Profile', body:'Votre fiche GBP n\'est pas complète à 100%. Complétez photos, horaires et description pour maximiser votre visibilité Maps.', gain:'+30% visibilité locale', color:'#22c55e' });
+      if (STATE.gbp && Number(STATE.gbp.completionScore) < 90) r.push({ icon:'📍', title:'Optimiser Google Business Profile', body:'Votre fiche GBP n\'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.', gain:'À mesurer', color:'#22c55e' });
       return r;
     })();
     const recs = _recs_live.length > 0 ? _recs_live : (PREVIEW_MODE ? [
       { icon: '🎯', title: 'Priorité absolue : conversion mobile',  body: 'Le taux de conversion mobile est 2.8x inférieur au desktop. Simplifier le formulaire de contact pourrait générer +12 clients/mois.',         gain: '+12 clients/mois', color: '#ef4444' },
-      { icon: '📍', title: 'Accélérer le Local SEO Maps',            body: 'Google Maps est votre source la plus qualitative (conv. 3.2%). Renforcer la fiche GBP et les avis peut accélérer le trafic local de +30%.',    gain: '+30% trafic local', color: '#22c55e' },
+      { icon: '📍', title: 'Accélérer le Local SEO Maps',            body: 'Renforcez la fiche GBP et les avis, puis comparez la visibilité locale mesurée avant et après optimisation.',    gain: 'À mesurer', color: '#22c55e' },
       { icon: '🔗', title: 'Reconquérir le trafic référent',         body: 'Les référents ont baissé de -4% avec un taux de rebond de 58%. Revoir les partenariats et créer du contenu co-marque ciblé.',                  gain: '+400 sessions/mois', color: '#f59e0b' },
     ] : []);
-    const _execAvg = STATE.audits && STATE.audits.length > 0
-      ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length)
-      : null;
-    const _execUp = STATE.monitors && STATE.monitors.length > 0
-      ? Math.round(STATE.monitors.reduce((s,m)=>s+(typeof m.uptime==='number'?m.uptime:100),0)/STATE.monitors.length)
-      : null;
+    const _execAvg = _execCurAvg;
     return `
       ${isPro
         ? aiBlock(_execAvg !== null
@@ -7579,32 +7595,40 @@ function renderReports() {
         ${statCard('Score performance', displayStat(_execUp !== null ? _execUp + '/100' : null, '88/100'), _execUp !== null ? (_execUp >= 99 ? 'Excellent — SLA tenu' : 'Surveillance active') : PREVIEW_MODE ? 'Excellent — SLA tenu' : 'Aucun monitor', _execUp !== null ? (_execUp >= 99 ? 'up' : 'neutral') : 'neutral')}
       </div>
 
-      <!-- 4-MONTH PERFORMANCE CHART -->
+      <!-- 4-MONTH PERFORMANCE CHART — measured audit history only -->
       <div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon('trending-up').replace('stroke="currentColor"','stroke="#2563EB"')}
             Evolution globale — 4 mois
           </div>
-          <div style="display:flex;gap:12px;font-size:10px;color:var(--fp-text-faint)">
-            ${[{l:'SEO',c:'#2563EB'},{l:'Conversion',c:'#ef4444'},{l:'Performance',c:'#22c55e'},{l:'Business',c:'#8b5cf6'}].map(x=>`<span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:3px;background:${x.c};border-radius:2px;display:inline-block"></span>${x.l}</span>`).join('')}
-          </div>
+          ${hasMeasuredSeoHistory ? '<span style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--fp-text-faint)"><span style="width:8px;height:3px;background:#2563EB;border-radius:2px;display:inline-block"></span>SEO mesuré</span>' : ''}
         </div>
-        <div style="display:flex;gap:10px;align-items:flex-end">
-          ${months4.map((m, i) => `
-            <div style="flex:1;display:flex;flex-direction:column;gap:6px">
-              ${[{v:seoScores[i],c:'#2563EB'},{v:convScores[i],c:'#ef4444'},{v:perfScores[i],c:'#22c55e'},{v:bizHealth[i],c:'#8b5cf6'}].map(s=>`
-                <div style="display:flex;align-items:center;gap:6px">
-                  <div style="flex:1;background:var(--fp-inner-card);border-radius:4px;height:8px;overflow:hidden">
-                    <div style="height:100%;width:${s.v}%;background:${s.c};border-radius:4px;transition:width 0.6s ease${i===3?';box-shadow:0 0 6px '+s.c+'66':''}"></div>
+        ${hasMeasuredSeoHistory ? `
+          <div style="display:flex;gap:10px;align-items:flex-end">
+            ${monthSlots.map((slot, i) => {
+              const score = seoScores[i];
+              const measured = Number.isFinite(score);
+              return `
+                <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <div style="flex:1;background:var(--fp-inner-card);border-radius:4px;height:8px;overflow:hidden">
+                      ${measured ? `<div style="height:100%;width:${score}%;background:#2563EB;border-radius:4px;transition:width 0.6s ease"></div>` : ''}
+                    </div>
+                    <span style="font-size:10px;color:${measured ? '#2563EB' : 'var(--fp-text-faint)'};width:24px">${measured ? score : '—'}</span>
                   </div>
-                  <span style="font-size:10px;font-weight:${i===3?700:400};color:${i===3?s.c:'var(--fp-text-faint)'};width:24px">${s.v}</span>
-                </div>
-              `).join('')}
-              <div style="font-size:10px;color:var(--fp-text-faint);text-align:center;margin-top:4px">${m}</div>
-            </div>
-          `).join('')}
-        </div>
+                  <div style="font-size:10px;color:var(--fp-text-faint);text-align:center;margin-top:4px">${slot.label}</div>
+                </div>`;
+            }).join('')}
+          </div>
+          ${numericAuditScores.length < 2 ? '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:12px">Historique insuffisant : seule la mesure disponible est affichée.</div>' : ''}
+        ` : `
+          <div style="text-align:center;padding:28px 16px;color:var(--fp-text-muted)">
+            <div style="font-size:22px;margin-bottom:8px">📈</div>
+            <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:4px">Aucun historique mesuré disponible</div>
+            <div style="font-size:11px">Lancez des audits à différentes dates pour afficher une évolution réelle.</div>
+          </div>
+        `}
       </div>
 
       <!-- STRATEGIC RECOMMENDATIONS -->
@@ -8268,13 +8292,14 @@ function renderReports() {
           {icon:'📊',label:'Rapport SEO',       desc:'Score, positions, recommandations', type:'seo',        locked:false},
           {icon:'📋',label:'Rapport Exécutif',  desc:'Vue globale business et KPIs',      type:'executive',  locked:false},
           {icon:'⚡',label:'Monitoring SLA',    desc:'Disponibilité et temps de réponse', type:'monitoring', locked:false},
-          {icon:'🎯',label:'Rapport Conversion',desc:'Funnel et taux de conversion',      type:'conversion', locked:!isPro},
-          {icon:'📍',label:'Local SEO',          desc:'GBP, avis et présence locale',     type:'local',      locked:false},
-          {icon:'🤖',label:'Rapport IA Lab',    desc:'Analyse IA et recommandations',    type:'ai',         locked:!isUltra},
+          {icon:'🎯',label:'Rapport Conversion',desc:'Funnel et taux de conversion',      type:'conversion', locked:false},
+          {icon:'📍',label:'Local SEO',         desc:'GBP, avis et présence locale',     type:'local',      locked:false},
+          {icon:'🤖',label:'Rapport IA Lab',    desc:'Analyse IA et recommandations',    type:'ai',         locked:false},
         ].map(t => `
           <button style="padding:14px;border-radius:10px;border:1px solid ${t.locked?'var(--fp-border)':'rgba(37,99,235,0.2)'};background:${t.locked?'var(--fp-inner-card)':'rgba(37,99,235,0.04)'};cursor:pointer;text-align:left;opacity:${t.locked?'0.55':'1'};width:100%;transition:border-color 0.15s,background 0.15s"
             data-locked="${t.locked}"
-            onclick="(function(b){if(b.dataset.locked==='true'){fpUpgradeCta('ultra');}else{openFloatPanel(fpT('Nouveau rapport'),renderNewReportPanel());setTimeout(function(){setupNewReportPanel();},50);}})(this)"
+            data-template-key="${t.type}"
+            onclick="(function(b){if(b.dataset.locked==='true'){fpUpgradeCta('ultra');}else if(window._fpReportsAPI){window._fpReportsAPI.createTemplate(b.dataset.templateKey);}})(this)"
             onmouseover="this.style.borderColor='#2563EB'" onmouseout="this.style.borderColor='${t.locked?'var(--fp-border)':'rgba(37,99,235,0.2)'}'" >
             <div style="font-size:22px;margin-bottom:8px">${t.icon}</div>
             <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${fpT(t.label)}${t.locked?'<span style="font-size:9px;margin-left:6px;background:rgba(139,92,246,0.12);color:#8b5cf6;padding:1px 5px;border-radius:5px">Ultra</span>':''}</div>
@@ -63192,8 +63217,15 @@ function renderPerformanceUrlBar(currentUrl) {
       <datalist id="fp-psi-url-list">${suggestions.map(u=>`<option value="${escHtml(u)}">`).join('')}</datalist>
       <button class="fp-btn fp-btn-primary" id="fp-psi-analyze-btn" style="white-space:nowrap;padding:8px 20px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        Analyser
+        <span class="fp-psi-analyze-label">Analyser</span>
       </button>
+    </div>
+    <div id="fp-psi-analysis-status" class="fp-psi-loading fp-psi-loading--inline" aria-live="polite" aria-busy="false">
+      <div class="fp-psi-spinner fp-psi-spinner--inline" aria-hidden="true"></div>
+      <div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px">Analyse PageSpeed en cours…</div>
+        <div style="font-size:11px;color:var(--fp-text-faint)">Récupération des données mobile et desktop depuis Google</div>
+      </div>
     </div>
     ${suggestions.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${suggestions.slice(0,4).map(u=>`<button class="fp-badge fp-badge--ghost" onclick="document.getElementById('fp-psi-url-input').value='${escHtml(u)}'" style="cursor:pointer;font-size:11px">${escHtml(u)}</button>`).join('')}</div>` : ''}
   </div>`;
@@ -63216,7 +63248,6 @@ function renderPerformance() {
   // Overview
   const mobile  = psi && psi.mobile;
   const desktop = psi && psi.desktop;
-  const isAnalyzing = window._fpPsiAnalyzing || false;
 
   return `
   <div class="fp-section-header">
@@ -63247,14 +63278,7 @@ function renderPerformance() {
     ['Analyser mes sites', 'Core Web Vitals', 'Audit technique']
   )}
 
-  ${isAnalyzing ? `
-  <div class="fp-psi-loading">
-    <div class="fp-psi-spinner"></div>
-    <div style="text-align:center">
-      <div style="font-size:15px;font-weight:600;margin-bottom:6px">Analyse PageSpeed en cours…</div>
-      <div style="font-size:13px;color:var(--fp-text-faint)">Récupération des données mobile et desktop depuis Google</div>
-    </div>
-  </div>` : !psi ? `
+  ${!psi ? `
   <div class="fp-card" style="text-align:center;padding:48px 32px">
     <div style="font-size:48px;margin-bottom:16px">⚡</div>
     <h3 style="margin-bottom:8px">Analysez votre première page</h3>
@@ -63984,10 +64008,25 @@ async function fpAnalyzePSI() {
   // P1.3: anti-double-click guard
   if (window._fpPsiAnalyzing) return;
 
+  function setLoading(isLoading) {
+    const status = document.getElementById('fp-psi-analysis-status');
+    const currentButton = document.getElementById('fp-psi-analyze-btn');
+    if (status) {
+      status.classList.toggle('is-active', isLoading);
+      status.setAttribute('aria-busy', String(isLoading));
+    }
+    if (currentButton) {
+      currentButton.disabled = isLoading;
+      const label = currentButton.querySelector('.fp-psi-analyze-label');
+      if (label) label.textContent = isLoading ? 'Analyse en cours…' : 'Analyser';
+    }
+  }
+
   const url = _parsedUrl.href;
-  if (btn) { btn.disabled = true; btn.textContent = 'Analyse en cours…'; }
   window._fpPsiAnalyzing = true;
-  render();
+  // Keep the shared spinner node alive while the request runs. A complete
+  // page render here recreates the spinner and resets its animation timeline.
+  setLoading(true);
 
   try {
     // BUG-W1-V32-001+002: Always use raw fetch — FP_PAGESPEED_API.analyze() stores
@@ -64024,9 +64063,9 @@ async function fpAnalyzePSI() {
     showToast && showToast('error', fpT('Erreur réseau lors de l\'analyse PageSpeed'));
   } finally {
     window._fpPsiAnalyzing = false;
-    // Re-query the button since render() may have replaced the DOM node
-    const _btnRestored = document.getElementById('fp-psi-analyze-btn');
-    if (_btnRestored) { _btnRestored.disabled = false; _btnRestored.textContent = 'Analyser'; }
+    setLoading(false);
+    // One render after completion is intentional: it replaces the result area
+    // only after the spinner has stopped and displays the newly stored data.
     render();
   }
 }
@@ -68444,6 +68483,15 @@ window._fpDataExplorerAPI = {
 // ══════════════════════════════════════════════════════════════════════
 window._fpReportsState = { loading: false, loaded: false, reports: null, error: null };
 
+const FP_REPORT_TEMPLATES = {
+  seo:        { label: 'Rapport SEO', icon: '📊', color: '#2563EB' },
+  executive:  { label: 'Rapport Exécutif', icon: '📋', color: '#8b5cf6' },
+  monitoring: { label: 'Monitoring SLA', icon: '⚡', color: '#22c55e' },
+  conversion: { label: 'Rapport Conversion', icon: '🎯', color: '#f59e0b' },
+  local:      { label: 'Local SEO', icon: '📍', color: '#0ea5e9' },
+  ai:         { label: 'Rapport IA Lab', icon: '🤖', color: '#ec4899' },
+};
+
 window._fpReportsAPI = {
   async load(opts) {
     window._fpReportsState = { ...window._fpReportsState, loading: true, error: null };
@@ -68464,26 +68512,54 @@ window._fpReportsAPI = {
   async create(payload) {
     try {
       const r = await apiFetch('/api/reports', { method: 'POST', body: JSON.stringify(payload || {}) });
-      showToast('success', fpT('Rapport créé !'));
+      if (!r || !r.id) throw new Error('Le serveur n’a pas renvoyé de rapport créé.');
       await this.load({ force: true }); // bypass cache — real GET after mutation
+      if (!(window._fpReportsState.reports || []).some(function(report) { return report.id === r.id; })) {
+        throw new Error('Le rapport créé est introuvable après actualisation.');
+      }
+      showToast('success', fpT('Rapport créé !'));
       return r;
     } catch(e) { showToast('error', fpT('Erreur création rapport')); return null; }
+  },
+  createTemplate(templateKey) {
+    const template = FP_REPORT_TEMPLATES[templateKey];
+    if (!template) {
+      showToast('error', fpT('Template de rapport indisponible'));
+      return Promise.resolve(null);
+    }
+    return this.create({
+      name: template.label + ' — ' + new Date().toLocaleDateString(getLocale()),
+      format: 'PDF',
+      templateKey: templateKey,
+    });
   },
   async delete(id, name) {
     window.fpDarkConfirm('Supprimer le rapport "' + (name || id) + '" ?', async () => {
       try {
         await apiFetch('/api/reports/' + id, { method: 'DELETE' });
-        showToast('success', fpT('Rapport supprimé'));
         await this.load({ force: true }); // bypass cache — real GET after mutation
+        if ((window._fpReportsState.reports || []).some(function(report) { return report.id === id; })) {
+          throw new Error('Le rapport supprimé est encore présent après actualisation.');
+        }
+        showToast('success', fpT('Rapport supprimé'));
       } catch(e) { showToast('error', fpT('Erreur suppression')); }
     }, 'Supprimer le rapport');
   },
   async share(id) {
     try {
       const r = await apiFetch('/api/reports/' + id + '/share', { method: 'POST', body: '{}' });
-      if (r && r.token) showToast('success', 'Rapport partagé — token : ' + r.token.slice(0, 8) + '…');
+      if (!r || !r.token || !r.path) throw new Error('Le serveur n’a pas renvoyé de lien de partage.');
+      const url = new URL(r.path, window.location.origin).toString();
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(url);
+        copied = true;
+      } catch (_) {
+        window.prompt(fpT('Copiez ce lien de partage'), url);
+      }
       await this.load({ force: true }); // bypass cache — KPI partagés mis à jour immédiatement
-      return r;
+      showToast(copied ? 'success' : 'info', copied ? fpT('Lien de partage copié') : fpT('Lien de partage généré'));
+      return { ...r, url: url };
     } catch(e) { showToast('error', fpT('Erreur partage')); return null; }
   },
   downloadPdf(id, name) {
@@ -68820,12 +68896,14 @@ function renderGA4Reports() {
       <div class="fp-card-title" style="margin-bottom:14px">⚡ Génération rapide</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
         ${[
-          { label: 'Rapport SEO mensuel', icon: '🔍', color: '#2563EB' },
-          { label: 'Rapport de monitoring', icon: '📊', color: '#22c55e' },
-          { label: 'Rapport Executive', icon: '📈', color: '#8b5cf6' },
-          { label: 'Export données complet', icon: '📦', color: '#f59e0b' },
+          FP_REPORT_TEMPLATES.seo,
+          FP_REPORT_TEMPLATES.executive,
+          FP_REPORT_TEMPLATES.monitoring,
+          FP_REPORT_TEMPLATES.conversion,
+          FP_REPORT_TEMPLATES.local,
+          FP_REPORT_TEMPLATES.ai,
         ].map(t => `
-          <div style="padding:14px;border-radius:10px;border:1px solid ${t.color}25;background:${t.color}07;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="(function(){if(window._fpReportsAPI&&typeof window._fpReportsAPI.create==='function'){window._fpReportsAPI.create({name:'${escHtml(t.label)} — '+new Date().toLocaleDateString(getLocale()),format:'PDF'}).then(function(r){if(r&&r.id){showToast('success', fpT('Rapport généré !'));render();}else showToast('error', fpT('Erreur de génération'));}).catch(function(){showToast('error', fpT('Erreur de génération'));});}else{openQuickReport();}})()">
+          <div style="padding:14px;border-radius:10px;border:1px solid ${t.color}25;background:${t.color}07;display:flex;align-items:center;gap:10px;cursor:pointer" data-template-key="${Object.keys(FP_REPORT_TEMPLATES).find(key => FP_REPORT_TEMPLATES[key] === t)}" onclick="window._fpReportsAPI.createTemplate(this.dataset.templateKey)">
             <span style="font-size:22px;flex-shrink:0">${t.icon}</span>
             <div>
               <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(t.label)}</div>

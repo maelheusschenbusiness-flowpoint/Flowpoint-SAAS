@@ -322,7 +322,7 @@ app.get(["/legal", "/legal.html", "/informations-legales"], (_req: Request, res:
   res.redirect(301, "https://flowpoint.pro/informations-legales");
 });
 // Report viewer (shared reports by token)
-app.get(["/report/:token", "/report-view.html"], servePage("report-view.html"));
+app.get(["/report/:token", "/r/:token", "/report-view.html"], servePage("report-view.html"));
 // Checkout pages
 app.get(["/checkout", "/checkout.html"], servePage("checkout.html"));
 app.get(["/checkout-payment", "/checkout-payment.html"], servePage("checkout-payment.html"));

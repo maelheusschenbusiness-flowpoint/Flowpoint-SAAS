@@ -1,7 +1,7 @@
 import type { Response } from "express";
 import PDFDocument from "pdfkit";
 
-interface ReportRow { id: string; name: string; type: string; date: string; auditId?: string | null; whiteLabel?: boolean | null; dateStart?: string | null; dateEnd?: string | null; }
+interface ReportRow { id: string; name: string; type: string; template_key?: string | null; date: string; auditId?: string | null; whiteLabel?: boolean | null; dateStart?: string | null; dateEnd?: string | null; }
 export interface WlBranding { agencyName?: string; primaryColor?: string; secondaryColor?: string; footerMsg?: string; logoUrl?: string; }
 interface AuditRow  { url: string; score: number; status: string; speed?: number | null; issues?: number | null; }
 interface MeetingNote { title: string; date: string; notes: string; site?: string; }
@@ -65,6 +65,17 @@ export async function streamReportPdf(
 ): Promise<void> {
   // Pre-fetch logo before streaming starts (avoids piping mid-stream issues)
   const logoBuffer = branding?.logoUrl ? await fetchLogoBuffer(branding.logoUrl) : null;
+  const reportTemplate = ({
+    seo:        { label: "Rapport SEO", intro: "Synthèse des mesures SEO, de disponibilité et des actions prioritaires." },
+    executive:  { label: "Rapport Exécutif", intro: "Synthèse de direction fondée uniquement sur les mesures actuellement disponibles." },
+    monitoring: { label: "Monitoring SLA", intro: "État de disponibilité et suivi des services monitorés." },
+    conversion: { label: "Rapport Conversion", intro: "Analyse de conversion : les métriques ne sont affichées que lorsqu'une source Analytics est connectée." },
+    local:      { label: "Local SEO", intro: "Synthèse de visibilité locale fondée sur les données connectées à ce workspace." },
+    ai:         { label: "Rapport IA Lab", intro: "Synthèse des analyses et recommandations disponibles dans ce workspace." },
+  } as const)[report.template_key ?? "seo"] ?? {
+    label: "Rapport SEO",
+    intro: "Synthèse des mesures actuellement disponibles.",
+  };
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 0, size: "A4", bufferPages: true });
@@ -116,7 +127,7 @@ export async function streamReportPdf(
       doc.fillColor(WHITE).fontSize(18).font("Helvetica-Bold")
         .text(brandName, textStartX, 18, { width: PAGE_W - textStartX - MARGIN, lineBreak: false });
       doc.fillColor(WHITE).fontSize(9).font("Helvetica")
-        .text("Rapport SEO & Performance", textStartX, 44, { width: PAGE_W - textStartX - MARGIN, lineBreak: false });
+        .text(reportTemplate.label, textStartX, 44, { width: PAGE_W - textStartX - MARGIN, lineBreak: false });
 
       // Report date (right-aligned in header)
       const dateStr = new Date(report.date).toLocaleDateString("fr-FR");
@@ -167,12 +178,16 @@ export async function streamReportPdf(
       .text(report.name, MARGIN, doc.y, { width: CONTENT_W });
     doc.moveDown(0.3);
     const subParts: string[] = [];
-    subParts.push(`Type : ${report.type}`);
+    subParts.push(`Template : ${reportTemplate.label}`);
+    subParts.push(`Format : ${report.type}`);
     if (report.dateStart && report.dateEnd) subParts.push(`Période : ${report.dateStart} — ${report.dateEnd}`);
     doc.fillColor(GRAY).fontSize(9).font("Helvetica").text(subParts.join("  •  "), MARGIN, doc.y, { width: CONTENT_W });
     doc.moveDown(0.6);
     doc.moveTo(MARGIN, doc.y).lineTo(PAGE_W - MARGIN, doc.y).strokeColor(BRAND).lineWidth(1).stroke();
     doc.moveDown(1.2);
+    doc.fillColor(GRAY).fontSize(9).font("Helvetica")
+      .text(reportTemplate.intro, MARGIN, doc.y, { width: CONTENT_W });
+    doc.moveDown(1.1);
 
     // ── KPI summary cards ─────────────────────────────────────────────────────
     if (audit) {
@@ -194,7 +209,7 @@ export async function streamReportPdf(
     }
 
     // ── Monitors section ──────────────────────────────────────────────────────
-    sectionHeading("Disponibilité des sites (Monitors)");
+    sectionHeading(reportTemplate.label === "Monitoring SLA" ? "Disponibilité et SLA (Monitors)" : "Disponibilité des sites (Monitors)");
 
     if (monitors.length > 0) {
       const COL_W = [165, 120, 70, 75];
@@ -236,7 +251,7 @@ export async function streamReportPdf(
     // ── Missions section ──────────────────────────────────────────────────────
     // Add new page if less than 100px left
     if (doc.y > PAGE_H - FOOTER_H - 100) { doc.addPage(); doc.y = HEADER_H + 20; }
-    sectionHeading("Missions SEO");
+    sectionHeading(reportTemplate.label === "Rapport Exécutif" ? "Actions et décisions" : "Missions SEO");
 
     if (missions.length > 0) {
       missions.slice(0, 15).forEach((m) => {

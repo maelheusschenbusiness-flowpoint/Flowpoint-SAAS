@@ -7,6 +7,15 @@ import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 
 const router = Router();
 
+const REPORT_TEMPLATES = {
+  seo:        { label: "Rapport SEO" },
+  executive:  { label: "Rapport Exécutif" },
+  monitoring: { label: "Monitoring SLA" },
+  conversion: { label: "Rapport Conversion" },
+  local:      { label: "Local SEO" },
+  ai:         { label: "Rapport IA Lab" },
+} as const;
+
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
   orgId?: string;
@@ -69,25 +78,32 @@ router.get("/reports/:id", async (req, res) => {
 
 // ── POST /reports ─────────────────────────────────────────────────────────────
 router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
-  const { name, auditId, format, whiteLabel, meetingNotes, dateStart, dateEnd } = req.body as {
+  const { name, auditId, format, templateKey, whiteLabel, meetingNotes, dateStart, dateEnd } = req.body as {
     name?: string; auditId?: string; format?: string; whiteLabel?: boolean;
+    templateKey?: string;
     meetingNotes?: Array<{ title: string; date: string; notes: string; site?: string }>;
     dateStart?: string; dateEnd?: string;
   };
-  if (!name) { res.status(400).json({ error: "name required" }); return; }
-  const id = `r${Date.now()}`;
+  const reportName = typeof name === "string" ? name.trim().slice(0, 240) : "";
+  if (!reportName) { res.status(400).json({ error: "name required" }); return; }
+  const resolvedTemplate = templateKey ?? "seo";
+  if (!(resolvedTemplate in REPORT_TEMPLATES)) {
+    res.status(400).json({ error: "Unknown report template" });
+    return;
+  }
+  const id = `r_${randomBytes(12).toString("hex")}`;
   try {
     await db(req)(
-      `INSERT INTO reports (id, org_id, name, type, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end)
-       VALUES ($1,$2,$3,$4,$5,0,false,$6,$7,true,$8,$9,$10)`,
-      [id, org(req), name, format ?? "PDF", new Date().toISOString(),
+      `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end)
+       VALUES ($1,$2,$3,$4,$5,$6,0,false,$7,$8,true,$9,$10,$11)`,
+      [id, org(req), reportName, format ?? "PDF", resolvedTemplate, new Date().toISOString(),
        auditId ?? "", !!whiteLabel,
        JSON.stringify(sanitizeMeetingNotes(meetingNotes)),
        dateStart ?? "", dateEnd ?? ""]
     );
-    const r = await db(req)(`SELECT * FROM reports WHERE id=$1`, [id]);
+    const r = await db(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [id, org(req)]);
     const report = r.rows[0] ?? { id, name };
-    store.logActivity({ type: "report", label: `Rapport généré : ${name}`, targetId: id, targetType: "report", metadata: { name, format }, orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
+    store.logActivity({ type: "report", label: `Rapport généré : ${reportName}`, targetId: id, targetType: "report", metadata: { name: reportName, format, templateKey: resolvedTemplate }, orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
     // Cumulative usage accounting — never decremented on deletion
     import("../services/usage-events.js").then(m => m.recordUsageEvent(org(req), "report_created")).catch(() => {});
     res.status(201).json(report);
@@ -101,7 +117,7 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
         mailer.sendReportGenerated({
           to: _orgData.email,
           name: _orgData.firstName || "Utilisateur",
-          reportName: name,
+          reportName,
           // Deep link to the report detail page so the button works without navigating
           // through the dashboard (which requires an authenticated session).
           // Falls back to the reports list on the dashboard as secondary URL.
@@ -196,9 +212,8 @@ router.post("/reports/:id/share", canWrite, async (req: Request, res: Response) 
     const report = rr.rows[0];
     if (!report) { res.status(404).json({ error: "Report not found" }); return; }
 
-    const { branding, auditIds } = req.body as {
+    const { branding } = req.body as {
       branding?: { agencyName?: string; logoUrl?: string; primaryColor?: string; secondaryColor?: string; footerMsg?: string; };
-      auditIds?: string[];
     };
     const token     = randomBytes(16).toString("hex");
     const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
@@ -221,16 +236,16 @@ router.post("/reports/:id/share", canWrite, async (req: Request, res: Response) 
     const { meeting_notes_json: _omit, ...publicReport } = report;
 
     await db(req)(
-      `INSERT INTO share_tokens (token, report_id, report_json, branding_json, audits_json, meeting_notes_json, views, created_at, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,0,$7,$8)`,
-      [token, report.id, JSON.stringify(publicReport), JSON.stringify(brandingObj),
+      `INSERT INTO share_tokens (token, report_id, org_id, report_json, branding_json, audits_json, meeting_notes_json, views, created_at, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9)`,
+      [token, report.id, orgId, JSON.stringify(publicReport), JSON.stringify(brandingObj),
        JSON.stringify(audits), JSON.stringify([]), createdAt, expiresAt]
     );
 
     await db(req)(`UPDATE reports SET shared=true WHERE id=$1 AND org_id=$2`, [report.id, orgId]);
 
     store.logActivity({ type: "report", label: `Rapport partagé : ${report.name}`, targetId: report.id as string, targetType: "report", metadata: { name: report.name }, orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
-    res.status(201).json({ token, expiresAt });
+    res.status(201).json({ token, expiresAt, path: `/report/${token}` });
   } catch {
     res.status(500).json({ ok: false, error: "Failed to share report" });
   }
@@ -267,7 +282,7 @@ router.delete("/reports/:id/shares/:token", canWrite, async (req: Request, res: 
       [req.params.token, req.params.id, org(req)]
     );
     if (!r.rows[0]) { res.status(404).json({ error: "Share token not found" }); return; }
-    await db(req)(`DELETE FROM share_tokens WHERE token=$1`, [req.params.token]);
+    await db(req)(`DELETE FROM share_tokens WHERE token=$1 AND org_id=$2`, [req.params.token, org(req)]);
     res.json({ ok: true });
   } catch {
     res.status(500).json({ ok: false, error: "Failed to delete share token" });
@@ -275,11 +290,11 @@ router.delete("/reports/:id/shares/:token", canWrite, async (req: Request, res: 
 });
 
 // ── DELETE /reports/:id ────────────────────────────────────────────────────────
-router.delete("/reports/:id", canAdmin, async (req: Request, res: Response) => {
+router.delete("/reports/:id", canWrite, async (req: Request, res: Response) => {
   try {
     const check = await db(req)(`SELECT id FROM reports WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
     if (!check.rows[0]) { res.status(404).json({ error: "Report not found" }); return; }
-    await db(req)(`DELETE FROM share_tokens WHERE report_id=$1`, [req.params.id]);
+    await db(req)(`DELETE FROM share_tokens WHERE report_id=$1 AND org_id=$2`, [req.params.id, org(req)]);
     await db(req)(`DELETE FROM reports WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
     res.json({ ok: true });
   } catch {

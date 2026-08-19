@@ -178,6 +178,7 @@ export async function initDataTables(): Promise<void> {
         org_id             TEXT NOT NULL DEFAULT 'default',
         name               TEXT NOT NULL,
         type               TEXT NOT NULL DEFAULT 'PDF',
+        template_key       TEXT NOT NULL DEFAULT 'seo',
         date               TEXT NOT NULL DEFAULT '',
         pages              INTEGER NOT NULL DEFAULT 0,
         shared             BOOLEAN NOT NULL DEFAULT false,
@@ -192,6 +193,7 @@ export async function initDataTables(): Promise<void> {
     `);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'PDF';`);
+    await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS template_key TEXT NOT NULL DEFAULT 'seo';`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS pages INTEGER NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS shared BOOLEAN NOT NULL DEFAULT false;`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS pdf_ready BOOLEAN NOT NULL DEFAULT false;`);

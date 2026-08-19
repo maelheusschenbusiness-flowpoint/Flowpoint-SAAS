@@ -6619,6 +6619,18 @@ html[data-theme="dark"] #fp-ai-chat-input::-webkit-scrollbar-thumb:hover { backg
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 16px; padding: 60px 20px;
 }
+.fp-psi-loading--inline {
+  display: none;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-top: 10px;
+  border: 1px solid var(--fp-border);
+  border-radius: 10px;
+  background: var(--fp-inner-card);
+}
+.fp-psi-loading--inline.is-active { display: flex; }
 .fp-psi-spinner {
   width: 48px; height: 48px; border-radius: 50%;
   border: 3px solid var(--fp-border); border-top-color: var(--fp-accent);
@@ -6629,6 +6641,7 @@ html[data-theme="dark"] #fp-ai-chat-input::-webkit-scrollbar-thumb:hover { backg
   -webkit-transform: translateZ(0);
   transition: none;
 }
+.fp-psi-spinner--inline { width: 20px; height: 20px; border-width: 2px; flex: 0 0 auto; }
 @-webkit-keyframes fpSpin { to { -webkit-transform: rotate(360deg); transform: rotate(360deg); } }
 @keyframes fpSpin { to { transform: rotate(360deg); } }
 /* Alias used by inline SVG spinners (animation:spin) — must live in CSS, not JS-injected */

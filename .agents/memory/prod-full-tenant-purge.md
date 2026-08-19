@@ -28,6 +28,10 @@ credential path only needs `org_settings` + `magic_link_tokens`, never `organiza
    do not assume the DB knew about every customer.
 
 ## Gotchas
+- The primary organization record is owner-keyed, not necessarily `org_id`-keyed.
+  Any dynamic DB purge that discovers only `org_id`/`user_id` columns can leave
+  an orphan organization behind; include owner identity fields and assert zero
+  organizations in the final survivor check.
 - **PostgREST refuses `DELETE` with no filter** (`21000: DELETE requires a WHERE clause`).
   Use an always-true predicate on a NOT NULL column, e.g. `?token=not.is.null`.
 - The pipeline can report `usersDeleted: 0` and still be correct — legacy orgs often have no
