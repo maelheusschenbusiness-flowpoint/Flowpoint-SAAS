@@ -1,10 +1,10 @@
 ---
 name: Team removal canonical identity
-description: Safe member removal across legacy email-shaped and current UUID-shaped team records.
+description: Preserve stable member identity while migrating legacy invitation records.
 ---
 
-Team membership removal must use the canonical `users.id` to delete organization membership and revoke sessions. Invitation records created before the identity correction can store the member email in the legacy team identity field, while canonical membership and `user_sessions.user_id_v2` use the UUID.
+Member removal must resolve a stable canonical identity rather than trusting a legacy display or contact identifier.
 
-**Why:** Treating the legacy field as a UUID fails closed under RLS, which protects access but prevents legitimate invited members from being removed.
+**Why:** Historical invitation records can represent the same person differently. Treating one representation as authoritative can fail closed under tenant protections, preventing legitimate removal.
 
-**How to apply:** New invitation acceptance writes the UUID to the legacy team record. During removal, resolve older email-shaped records through the service-level user lookup before opening the tenant-scoped atomic write transaction; then scope both membership deletion and session revocation to the target organization.
+**How to apply:** New identity writes use the canonical form. At trust boundaries, normalize older records first, verify that the identity did not change during the protected operation, and scope every access revocation to the targeted organization.
