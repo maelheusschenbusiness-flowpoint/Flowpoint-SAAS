@@ -9,9 +9,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { extractInternalLinks } from "./url-fetcher.js";
+import { extractInternalLinks, fetchUrlContent } from "./url-fetcher.js";
 import {
   parseRobotsDisallows,
+  parseRobotsRules,
   isPathAllowedByRobots,
   pickCrawlTargets,
   crawlSite,
@@ -98,6 +99,24 @@ Disallow:
     expect(isPathAllowedByRobots("/interdit/page", d)).toBe(false);
   });
 
+  it("privilégie le groupe FlowpointBot aux règles génériques et applique Allow", () => {
+    const rules = parseRobotsRules(`
+      User-agent: *
+      Disallow: /
+
+      User-agent: FlowpointBot
+      Allow: /
+    `);
+    expect(isPathAllowedByRobots("/autorise", rules)).toBe(true);
+    expect(parseRobotsDisallows(`
+      User-agent: *
+      Disallow: /
+
+      User-agent: FlowpointBot
+      Allow: /
+    `)).toEqual([]);
+  });
+
   it("ignore les règles avec wildcards (non supportées) sans bloquer le reste", () => {
     const d = parseRobotsDisallows("User-agent: *\nDisallow: /*.json$\nDisallow: /secret");
     expect(d).toEqual(["/secret"]);
@@ -172,5 +191,45 @@ describe("crawlSite — robots.txt gate", () => {
       error: "La page demandée est exclue par robots.txt",
     });
     expect(calls).toEqual(["https://example.com/robots.txt"]);
+  });
+
+  it.each([
+    ["même domaine", "https://example.com/blocked", "https://example.com/robots.txt"],
+    ["domaine final différent", "https://www.example.com/blocked", "https://www.example.com/robots.txt"],
+  ])("bloque une redirection vers un chemin interdit (%s)", async (_label, redirectedUrl, expectedRobotsUrl) => {
+    const requestedPages: string[] = [];
+    const robotsRequested: string[] = [];
+    const fetcher: typeof fetchUrlContent = async (url, opts) => {
+      if (url.endsWith("/robots.txt")) {
+        robotsRequested.push(url);
+        if (url === "https://example.com/robots.txt") {
+          return { ok: true, url, bodyText: "User-agent: FlowpointBot\nAllow: /start\nDisallow: /blocked" };
+        }
+        return { ok: true, url, bodyText: "User-agent: FlowpointBot\nDisallow: /blocked" };
+      }
+
+      const initialPermission = await opts?.beforeRequest?.(url);
+      if (initialPermission && !initialPermission.allowed) {
+        return { ok: false, url, error: initialPermission.error };
+      }
+      requestedPages.push(url);
+      if (url === "https://example.com/start") {
+        const redirectPermission = await opts?.beforeRequest?.(redirectedUrl);
+        if (redirectPermission && !redirectPermission.allowed) {
+          return { ok: false, url: redirectedUrl, error: redirectPermission.error };
+        }
+        throw new Error("La redirection interdite ne doit jamais être téléchargée");
+      }
+      throw new Error(`Requête de page inattendue : ${url}`);
+    };
+
+    const result = await crawlSite("https://example.com/start", MAX_CRAWL_PAGES, fetcher);
+
+    expect(result.ok).toBe(false);
+    expect(result.blockedByRobots).toBeGreaterThanOrEqual(1);
+    expect(result.error).toBe("La page demandée est exclue par robots.txt");
+    expect(requestedPages).toEqual(["https://example.com/start"]);
+    expect(requestedPages).not.toContain(redirectedUrl);
+    expect(robotsRequested).toContain(expectedRobotsUrl);
   });
 });

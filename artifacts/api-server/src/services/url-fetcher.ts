@@ -221,6 +221,17 @@ export interface FetchUrlResult {
   links?: string[];
 }
 
+/**
+ * Optional per-hop policy used by bounded crawlers. It runs immediately before
+ * every outbound request, including each redirect target, so callers can apply
+ * destination-specific rules such as robots.txt without weakening the pinned
+ * DNS/SSRF protections in this module.
+ */
+export interface FetchUrlOptions {
+  timeoutMs?: number;
+  beforeRequest?: (url: string) => Promise<{ allowed: boolean; error?: string }>;
+}
+
 const USER_AGENT =
   "Mozilla/5.0 (compatible; FlowpointBot/1.0; +https://flowpoint.pro/bot) " +
   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -429,7 +440,7 @@ async function readBodyBounded(
  */
 export async function fetchUrlContent(
   rawUrl: string,
-  opts?: { timeoutMs?: number },
+  opts?: FetchUrlOptions,
 ): Promise<FetchUrlResult> {
   // Pre-validate URL format and protocol (fast path before DNS)
   let parsed: URL;
@@ -463,6 +474,23 @@ export async function fetchUrlContent(
 
   try {
     for (let hop = 0; hop <= MAX_HOPS; hop++) {
+      if (opts?.beforeRequest) {
+        try {
+          const permission = await opts.beforeRequest(currentUrl);
+          if (!permission.allowed) {
+            clearTimeout(timer);
+            return {
+              ok: false,
+              url: currentUrl,
+              error: permission.error ?? "Requête bloquée par la politique du crawler",
+            };
+          }
+        } catch (policyErr) {
+          clearTimeout(timer);
+          const msg = policyErr instanceof Error ? policyErr.message : String(policyErr);
+          return { ok: false, url: currentUrl, error: `Contrôle avant requête impossible : ${msg.slice(0, 200)}` };
+        }
+      }
       let pinnedResp: PinnedResponse;
       try {
         pinnedResp = await pinnedRequest(currentUrl, ctrl.signal);

@@ -14,7 +14,7 @@
  *  - Toute la sécurité SSRF de fetchUrlContent s'applique à chaque page.
  */
 
-import { fetchUrlContent, type FetchUrlResult } from "./url-fetcher.js";
+import { fetchUrlContent, type FetchUrlResult, type FetchUrlOptions } from "./url-fetcher.js";
 import { logger } from "../lib/logger.js";
 
 /** Nombre maximum de pages récupérées par crawl (accueil incluse). */
@@ -47,25 +47,36 @@ export interface CrawlSiteResult {
  * sur la sophistication, fail-closed sur les préfixes simples).
  * Exporté pour tests unitaires.
  */
-export function parseRobotsDisallows(robotsTxt: string): string[] {
-  const disallows: string[] = [];
+export interface RobotsRule {
+  kind: "allow" | "disallow";
+  path: string;
+}
+
+/**
+ * Parses the effective robots group for FlowpointBot. Specific matching
+ * User-agent groups override the wildcard group; groups at the same specificity
+ * are combined, as required by robots group semantics.
+ */
+export function parseRobotsRules(robotsTxt: string): RobotsRule[] {
+  const groups: Array<{ agents: string[]; rules: RobotsRule[] }> = [];
   let userAgents: string[] = [];
   let groupHasDirectives = false;
+  let directives: Array<{ field: string; value: string }> = [];
 
   const flushGroup = () => {
-    const applies = userAgents.some((ua) => ua === "*" || ua.includes("flowpointbot"));
-    if (applies) {
-      for (const directive of directives) {
-        if (directive.field !== "disallow" || !directive.value) continue;
-        if (/[*$]/.test(directive.value)) continue; // wildcards non supportés
-        disallows.push(directive.value);
-      }
-    }
+    if (!userAgents.length) return;
+    const rules = directives
+      .filter((directive) =>
+        (directive.field === "allow" || directive.field === "disallow") &&
+        Boolean(directive.value) &&
+        !/[*$]/.test(directive.value),
+      )
+      .map((directive) => ({ kind: directive.field as RobotsRule["kind"], path: directive.value }));
+    groups.push({ agents: userAgents, rules });
     userAgents = [];
     directives = [];
     groupHasDirectives = false;
   };
-  let directives: Array<{ field: string; value: string }> = [];
 
   for (const rawLine of robotsTxt.split(/\r?\n/)) {
     const line = rawLine.replace(/#.*$/, "").trim();
@@ -88,12 +99,37 @@ export function parseRobotsDisallows(robotsTxt: string): string[] {
     }
   }
   if (userAgents.length > 0) flushGroup();
-  return disallows;
+
+  const matches = groups
+    .map((group) => ({
+      ...group,
+      specificity: Math.max(
+        ...group.agents.map((ua) => ua === "*" ? 0 : ua.includes("flowpointbot") ? ua.length : -1),
+      ),
+    }))
+    .filter((group) => group.specificity >= 0);
+  const bestSpecificity = Math.max(-1, ...matches.map((group) => group.specificity));
+  return matches
+    .filter((group) => group.specificity === bestSpecificity)
+    .flatMap((group) => group.rules);
+}
+
+/** Backward-compatible helper for callers that only need effective Disallow paths. */
+export function parseRobotsDisallows(robotsTxt: string): string[] {
+  return parseRobotsRules(robotsTxt)
+    .filter((rule) => rule.kind === "disallow")
+    .map((rule) => rule.path);
 }
 
 /** Vrai si le chemin est autorisé (aucun préfixe Disallow ne correspond). Exporté pour tests. */
-export function isPathAllowedByRobots(pathname: string, disallows: string[]): boolean {
-  return !disallows.some((d) => pathname.startsWith(d));
+export function isPathAllowedByRobots(pathname: string, rules: readonly RobotsRule[] | readonly string[]): boolean {
+  const normalizedRules: RobotsRule[] = rules.map((rule) =>
+    typeof rule === "string" ? { kind: "disallow" as const, path: rule } : rule,
+  );
+  const matches = normalizedRules.filter((rule) => pathname.startsWith(rule.path));
+  if (matches.length === 0) return true;
+  matches.sort((a, b) => b.path.length - a.path.length || (a.kind === "allow" ? -1 : 1));
+  return matches[0]!.kind === "allow";
 }
 
 /**
@@ -104,7 +140,7 @@ export function isPathAllowedByRobots(pathname: string, disallows: string[]): bo
 export function pickCrawlTargets(
   links: string[],
   startUrl: string,
-  disallows: string[],
+  rules: readonly RobotsRule[] | readonly string[],
   max: number,
 ): { targets: string[]; blockedByRobots: number } {
   let start: URL;
@@ -121,7 +157,7 @@ export function pickCrawlTargets(
     const norm = normalizeForDedup(link);
     if (seen.has(norm)) continue;
     seen.add(norm);
-    if (!isPathAllowedByRobots(u.pathname, disallows)) { blocked++; continue; }
+    if (!isPathAllowedByRobots(u.pathname, rules)) { blocked++; continue; }
     const depth = u.pathname.split("/").filter(Boolean).length;
     candidates.push({ url: link, depth, len: link.length });
   }
@@ -165,34 +201,59 @@ export async function crawlSite(
     };
   }
 
-  // 1. robots.txt MUST be checked before any user-supplied page is requested.
-  // Its own request passes through the same SSRF-protected fetcher. A missing or
-  // inaccessible robots.txt remains best-effort/allow, but an explicit rule
-  // blocks the start path before it can be downloaded.
-  let disallows: string[] = [];
-  try {
-    const robots = await fetcher(`${start.origin}/robots.txt`, { timeoutMs: ROBOTS_TIMEOUT_MS });
-    if (robots.ok && robots.bodyText) {
-      disallows = parseRobotsDisallows(robots.bodyText);
+  // robots.txt is cached per origin. The guard is passed into fetchUrlContent,
+  // which invokes it once per redirect hop before opening that hop's connection.
+  const robotsByOrigin = new Map<string, Promise<RobotsRule[]>>();
+  let blockedByRobots = 0;
+  const rulesForOrigin = (origin: string): Promise<RobotsRule[]> => {
+    const cached = robotsByOrigin.get(origin);
+    if (cached) return cached;
+    const load = (async () => {
+      try {
+        const robots = await fetcher(`${origin}/robots.txt`, { timeoutMs: ROBOTS_TIMEOUT_MS });
+        return robots.ok && robots.bodyText ? parseRobotsRules(robots.bodyText) : [];
+      } catch (err) {
+        logger.debug({ err, origin }, "[site-crawler] robots.txt fetch failed — proceeding without");
+        return [];
+      }
+    })();
+    robotsByOrigin.set(origin, load);
+    return load;
+  };
+  const beforeRequest: NonNullable<FetchUrlOptions["beforeRequest"]> = async (requestUrl) => {
+    let request: URL;
+    try {
+      request = new URL(requestUrl);
+    } catch {
+      return { allowed: false, error: "URL de redirection invalide" };
     }
-  } catch (err) {
-    logger.debug({ err, startUrl }, "[site-crawler] robots.txt fetch failed — proceeding without");
-  }
-  if (!isPathAllowedByRobots(start.pathname, disallows)) {
+    const rules = await rulesForOrigin(request.origin);
+    if (!isPathAllowedByRobots(request.pathname, rules)) {
+      blockedByRobots++;
+      return { allowed: false, error: "La page demandée est exclue par robots.txt" };
+    }
+    return { allowed: true };
+  };
+  const guardedFetch = (url: string, opts?: FetchUrlOptions) =>
+    fetcher(url, { ...opts, beforeRequest });
+
+  // 1. Preflight blocks the supplied start path without making its page request.
+  const startPermission = await beforeRequest(startUrl);
+  if (!startPermission.allowed) {
     logger.info({ startUrl, pathname: start.pathname }, "[site-crawler] start URL blocked by robots.txt");
     return {
       ok: false, startUrl, pages: [], linksDiscovered: 0,
-      pagesAttempted: 0, pagesFetched: 0, blockedByRobots: 1,
-      error: "La page demandée est exclue par robots.txt",
+      pagesAttempted: 0, pagesFetched: 0, blockedByRobots,
+      error: startPermission.error,
     };
   }
 
   // 2. Page d'accueil (timeout standard — c'est la page pivot)
-  const home = await fetcher(startUrl);
+  const home = await guardedFetch(startUrl);
   if (!home.ok) {
     return {
       ok: false, startUrl, pages: [], linksDiscovered: 0,
-      pagesAttempted: 1, pagesFetched: 0, blockedByRobots: 0,
+      pagesAttempted: 1, pagesFetched: 0, blockedByRobots,
       error: home.error ?? "Page d'accueil inaccessible",
     };
   }
@@ -200,12 +261,15 @@ export async function crawlSite(
   const links = home.links ?? [];
 
   // 3. Sélection des pages internes à récupérer
-  const { targets, blockedByRobots } = pickCrawlTargets(links, home.url, disallows, cappedMax - 1);
+  const finalOriginRules = await rulesForOrigin(new URL(home.url).origin);
+  const selection = pickCrawlTargets(links, home.url, finalOriginRules, cappedMax - 1);
+  blockedByRobots += selection.blockedByRobots;
+  const { targets } = selection;
 
   // 4. Récupération parallèle, timeout 5 s par page — un échec de page n'annule pas le crawl
   const subResults = await Promise.all(
     targets.map((t) =>
-      fetcher(t, { timeoutMs: SUBPAGE_TIMEOUT_MS }).catch(
+      guardedFetch(t, { timeoutMs: SUBPAGE_TIMEOUT_MS }).catch(
         (err): FetchUrlResult => ({ ok: false, url: t, error: err instanceof Error ? err.message : String(err) }),
       ),
     ),
