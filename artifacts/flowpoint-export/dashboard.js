@@ -20502,6 +20502,20 @@ function bindGlobalEvents() {
     'Ajoutez des concurrents pour accéder aux analyses par onglet.': 'Add competitors to access per-tab analysis.',
     'Détail des contributions par membre non disponible — activité agrégée au niveau de l\'organisation.': 'Per-member contribution details unavailable — activity is aggregated at org level.',
     'Analyse de l\'équipe indisponible — attribution par membre non disponible.': 'Team analysis unavailable — per-member attribution not available.',
+    // ── funnel / PageSpeed / Agency Lab labels ──
+    'Site non configuré dans FlowPoint': 'Site not configured in FlowPoint',
+    'Le site URL saisi n\'est pas encore enregistré. Ajoutez votre site dans': 'The URL entered is not yet registered. Add your site in',
+    'puis réessayez de créer ce funnel.': 'then try creating this funnel again.',
+    'Configurer le tracking →': 'Configure tracking →',
+    'Configurer portail client': 'Configure client portal',
+    'Générer rapport agence': 'Generate agency report',
+    'Chargement PageSpeed en cours…': 'Loading PageSpeed…',
+    'Chargement PSI en cours…': 'Loading PSI data…',
+    'Données PSI non disponibles': 'PSI data unavailable',
+    'Analyser avec l\'IA': 'Analyse with AI',
+    'Générer les recommandations': 'Generate recommendations',
+    'Lancer l\'audit IA': 'Launch AI audit',
+    'événement(s)': 'event(s)',
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
@@ -62427,7 +62441,7 @@ window._fpFunnelSave = async function() {
           <strong>Paramètres → Tracking</strong>
           ${fpT('puis réessayez de créer ce funnel.')}
         </div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('tracking'),60)">Configurer le tracking →</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('tracking'),60)">${fpT('Configurer le tracking →')}</button>
       </div>`;
     } else {
       showToast?.('error', _errMsg);
