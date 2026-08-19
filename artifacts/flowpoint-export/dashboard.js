@@ -50094,7 +50094,7 @@ function renderAuditsOpportunites() {
             </div>
           `).join('')}
         </div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%" onclick="navigate('local-seo')">Gérer le SEO local →</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%" onclick="navigate('local-seo')">${fpT('Gérer le SEO local →')}</button>
       </div>
     </div>
 
@@ -52695,7 +52695,7 @@ function renderGrowthCommandCenter() {
           var _sevCol = {high:'var(--fp-danger)',med:'var(--fp-warning)',ok:'#22c55e'};
           return _gi.map(function(g){ return '<div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--fp-text-muted);margin-bottom:5px"><span style="color:'+(_sevCol[g.s]||'var(--fp-warning)')+'">●</span>'+g.t+'</div>'; }).join('');
         })()}
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:12px" onclick="navigate('local-seo')">Gérer le SEO local →</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:12px" onclick="navigate('local-seo')">${fpT('Gérer le SEO local →')}</button>
       </div>
       <div class="fp-card" style="display:flex;flex-direction:column">
         <div class="fp-card-title">✍️ Opportunités de Contenu</div>
@@ -52710,7 +52710,7 @@ function renderGrowthCommandCenter() {
             '<div style="font-size:10.5px;color:var(--fp-text-muted);margin-top:2px">'+co.kw+'</div>'+
           '</div>'; }).join('') : '<div style="padding:24px 0;text-align:center"><div style="font-size:28px;margin-bottom:8px">🔑</div><div style="font-size:12px;font-weight:600;color:var(--fp-text-soft);margin-bottom:4px">Aucune opportunité disponible</div><div style="font-size:11px;color:var(--fp-text-faint)">Ajoutez des mots-clés suivis pour découvrir vos opportunités de contenu personnalisées.</div></div>'}
         </div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:auto" onclick="navigate('growth','keywords')">Gérer les mots-clés →</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:auto" onclick="navigate('growth','keywords')">${fpT('Gérer les mots-clés →')}</button>
       </div>
     </div>
 
@@ -52901,6 +52901,23 @@ function renderCompetitor() {
         </div>
         <button class="fp-btn fp-btn-primary" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
       </div>
+      <div class="fp-filter-tabs" style="margin-bottom:16px">
+        ${[
+          {id:'apercu', label:fpT('Aperçu')},
+          {id:'threats', label:fpT('Menaces')},
+          {id:'local', label:fpT('Local')},
+          {id:'content', label:fpT('Contenu')},
+          {id:'growth', label:fpT('Croissance')},
+        ].map(t=>`<button class="fp-filter-tab${(!sub&&t.id==='apercu')||sub===t.id?' active':''}" onclick="navigateSub('${t.id}')">${t.label}</button>`).join('')}
+      </div>
+      ${sub && sub !== 'apercu' ? `
+        <div class="fp-card" style="text-align:center;padding:40px 24px;margin-bottom:16px">
+          <div style="font-size:36px;margin-bottom:12px">📊</div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:6px">${fpT('Analyse avancée')}</div>
+          <div style="font-size:12px;color:var(--fp-text-muted);max-width:440px;margin:0 auto 16px">${fpT('L\'analyse détaillée par menaces, local, contenu et croissance nécessite que vos concurrents soient connectés et leurs données récupérées.')}</div>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
+        </div>
+      ` : ''}
       <div class="fp-card fp-mb-20" style="padding:14px 16px">
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
           <span class="fp-badge fp-badge--ghost">${escHtml(knownPlan.charAt(0).toUpperCase() + knownPlan.slice(1))}</span>
@@ -56047,22 +56064,45 @@ function renderActivityFeed() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'team') {
     const _mColors = ['#2563EB','#8b5cf6','#22c55e','#f59e0b','#06b6d4'];
+    // Pre-build per-member activity counts from STATE.activityEvents (filtered by userId/email)
+    const _evts = Array.isArray(STATE.activityEvents) ? STATE.activityEvents : [];
+    const _getMemberActs = (t) => {
+      const uid = t.id || t.userId || t.user_id;
+      const em  = (t.email || '').toLowerCase();
+      return _evts.filter(e => {
+        const eUid = e.userId || e.user_id || e.performedBy;
+        const eEm  = (e.email || e.performedByEmail || '').toLowerCase();
+        if (uid && eUid && String(eUid) === String(uid)) return true;
+        if (em  && eEm  && eEm === em) return true;
+        return false;
+      }).length;
+    };
+    const _orgAudits    = STATE.audits   ? STATE.audits.length   : 0;
+    const _orgMissions  = (STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length;
+    const _orgReports   = STATE.reports  ? STATE.reports.length  : 0;
+    const _orgScore     = STATE.userScore || (STATE.overview && (STATE.overview.seoScore||STATE.overview.avgScore)) || 0;
     const members = (STATE.team && STATE.team.length > 0 ? STATE.team : []).map((t, i) => {
-      const isFirst = i === 0;
       const nm = t.name || t.email || 'Membre';
-      const acts = isFirst ? (STATE.activityEvents ? STATE.activityEvents.length : 0) : 0;
+      // Per-member activity from events (best effort); fall back to org aggregate for first member
+      const perMemberActs = _getMemberActs(t);
+      const acts = perMemberActs > 0 ? perMemberActs : (i === 0 ? _evts.length : 0);
+      const score = i === 0 ? _orgScore : 0;
+      // Build contribution bullets: use org-level data for first member, per-member placeholder otherwise
+      const mAudits   = i === 0 ? _orgAudits   : (t.auditsCount   || 0);
+      const mMissions = i === 0 ? _orgMissions  : (t.missionsCount || 0);
+      const mReports  = i === 0 ? _orgReports   : (t.reportsCount  || 0);
       return {
         name: nm, role: t.role || 'member',
         avatar: nm.slice(0,2).toUpperCase(),
         color: _mColors[i % _mColors.length],
         actions: acts,
-        score: isFirst ? (STATE.userScore || (STATE.overview && (STATE.overview.seoScore||STATE.overview.avgScore)) || 0) : 0,
+        score,
         trend: '—',
-        contribs: isFirst ? [
-          (STATE.audits ? STATE.audits.length : 0) + ' audit(s) lancé(s)',
-          ((STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length) + ' mission(s) complétée(s)',
-          (STATE.reports ? STATE.reports.length : 0) + ' rapport(s) généré(s)',
-        ] : ['—'],
+        contribs: [
+          mAudits   + ' audit(s) lancé(s)',
+          mMissions + ' mission(s) complétée(s)',
+          mReports  + ' rapport(s) généré(s)',
+        ],
       };
     });
     const teamActs = liveFeed.filter(a => a.cat === 'team');
@@ -57265,7 +57305,7 @@ function renderDataExplorer() {
                 <span style="font-size:10px;color:${p.color};font-weight:600">${p.widgets} widgets</span>
                 <div style="display:flex;gap:6px">
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="${p.route||'navigate(\'overview\')'}">Ouvrir</button>
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success', fpT('Lien copié !'))).catch(()=>showToast('info',window.location.href))">Partager</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="${fpT('Copier l\'URL de ce tableau de bord')}" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success', fpT('URL copiée !'))).catch(()=>showToast('info',window.location.href))">${fpT('Copier URL')}</button>
                 </div>
               </div>
             </div>
@@ -57546,7 +57586,7 @@ function renderDataExplorer() {
               </div>
               <div style="display:flex;gap:6px;flex-shrink:0">
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigate('reports')">↓ Télécharger</button>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success', fpT('Lien copié !'))).catch(()=>showToast('info',window.location.href))">Partager</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="${fpT('Copier l\'URL de la page')}" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success', fpT('URL copiée !'))).catch(()=>showToast('info',window.location.href))">${fpT('Copier URL')}</button>
               </div>
             </div>`;
           }).join('')}
@@ -57981,7 +58021,7 @@ function renderClientMode() {
                 <td style="text-align:center">${badge(r.status, r.status === 'Partagé' ? '#22c55e' : r.status === 'Lu' ? '#2563EB' : r.status === 'Non lu' ? '#f59e0b' : '#475569')}</td>
                 <td style="text-align:center;vertical-align:middle">
                   <div style="display:inline-flex;gap:4px;justify-content:center">
-                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success', fpT('Lien copié !'))).catch(()=>showToast('info',window.location.href))">Partager</button>
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="${fpT('Copier l\'URL de la page')}" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success', fpT('URL copiée !'))).catch(()=>showToast('info',window.location.href))">${fpT('Copier URL')}</button>
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="if(r?.id){downloadReportPdf(r.id,r.name||'rapport');showToast('success', fpT('Téléchargement PDF…'));}else{showToast('info', fpT('PDF non disponible'))}">PDF</button>
                   </div>
                 </td>
@@ -60199,7 +60239,7 @@ function renderTeamPerformance() {
     ${metrics.length === 0 ? `
       <div class="fp-card" style="text-align:center;padding:32px 20px">
         <div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:12px">Aucun membre dans l'équipe pour le moment</div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('team');setTimeout(function(){window.fpOpenInvite&&window.fpOpenInvite()},120)">Inviter des membres</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('team');setTimeout(function(){window.fpOpenInvite&&window.fpOpenInvite()},120)">${fpT('Inviter des membres')}</button>
       </div>
     ` : `
     <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px">
@@ -68091,7 +68131,7 @@ function renderPermissions() {
         <h1>🔐 Permissions & Accès avancés</h1>
         <div class="fp-section-sub">RBAC · Rôles · Matrice de permissions · Audit de sécurité</div>
       </div>
-      ${isUltra ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showCreateRoleModal()">+ Créer un rôle</button>` : ''}
+      ${isUltra ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showCreateRoleModal()">${fpT('+ Créer un rôle')}</button>` : ''}
     </div>
 
     ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">" + fpT("Permissions avancées — Pro requis") + "</div><div style="font-size:12px;color:var(--fp-text-muted)">" + fpT("Rôles personnalisés, matrice de permissions et audit de sécurité.") + "</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>` : ''}
