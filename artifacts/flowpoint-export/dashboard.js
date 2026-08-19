@@ -1188,7 +1188,7 @@ function openPasswordChangePanel() {
       <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">\uD83D\uDD11 Authentification sans mot de passe</div>
       <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6">FlowPoint utilise des <strong>liens magiques s\u00e9curis\u00e9s</strong> — aucun mot de passe \u00e0 m\u00e9moriser. Pour acc\u00e9der \u00e0 votre compte depuis un nouvel appareil, cliquez sur le bouton ci-dessous pour recevoir un lien de connexion par email.</div>
     </div>
-    <div class="fp-form-group"><label class="fp-form-label">${fpT('Email de connexion')}</label><input class="fp-input" type="email" id="sec-email" value="${escHtml(email)}" placeholder="votre@email.com"/></div>
+    <div class="fp-form-group"><label class="fp-form-label">${fpT('Email de connexion')}</label><input class="fp-input" type="email" id="sec-email" value="${escHtml(email)}" placeholder="${fpT('votre@email.com')}"/></div>
     <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" id="sec-send">${fpT('Envoyer un nouveau lien de connexion')}</button>
     <div style="font-size:10px;color:var(--fp-text-faint);text-align:center;margin-top:10px">\u23F1\uFE0F Le lien expire dans 30 minutes</div>
   `);
@@ -6202,7 +6202,7 @@ function renderAudits() {
 
     <div class="fp-card fp-card-sm fp-mb-20">
       <div style="display:flex;gap:10px">
-        <input id="audit-url-input" class="fp-input" placeholder="https://monsite.fr — Lancer un audit rapide" style="flex:1"/>
+        <input id="audit-url-input" class="fp-input" placeholder="${fpT('https://monsite.fr — Lancer un audit rapide')}" style="flex:1"/>
         ${btn('Lancer','fp-btn fp-btn-primary','zap','id="audit-run-btn"')}
       </div>
     </div>
@@ -6312,12 +6312,12 @@ function renderAudits() {
                 <div class="fp-row-actions">
                   <button class="fp-hover-toolbar-btn audit-view" data-id="${a.id}" title="${fpT('Voir')}">${svgIcon('eye')}</button>
                   <button class="fp-hover-toolbar-btn audit-export" data-id="${a.id}" title="${fpT('Exporter')}">${svgIcon('download')}</button>
-                  <button class="fp-hover-toolbar-btn audit-more" data-id="${a.id}" title="Plus">${svgIcon('more-h')}</button>
+                  <button class="fp-hover-toolbar-btn audit-more" data-id="${a.id}" title="${fpT('Plus')}">${svgIcon('more-h')}</button>
                 </div>
                 <div class="fp-hover-toolbar">
                   <button class="fp-hover-toolbar-btn audit-view" data-id="${a.id}" title="${fpT('Voir détails')}">${svgIcon('eye')}</button>
                   <button class="fp-hover-toolbar-btn audit-export" data-id="${a.id}" title="PDF">${svgIcon('download')}</button>
-                  <button class="fp-hover-toolbar-btn audit-more" data-id="${a.id}" title="Plus">${svgIcon('more-h')}</button>
+                  <button class="fp-hover-toolbar-btn audit-more" data-id="${a.id}" title="${fpT('Plus')}">${svgIcon('more-h')}</button>
                 </div>
               </td>
             </tr>`;
@@ -10447,9 +10447,9 @@ function renderBilling() {
     ${isPro
       ? aiBlock(
           criticalUsages.length > 0
-            ? "⚠ <strong>" + criticalUsages.map(u => u.l).join(' et ') + " approchent de la limite du plan</strong>. Recommandation : ajouter un pack ou passer Ultra avant d\'atteindre le seuil. Sans engagement — résiliation possible à tout moment."
-            : "Usage sain — toutes les ressources sont sous contrôle. <strong>3 add-ons IA recommandés</strong> pour maximiser l\'efficacité de votre agence. Sans engagement, résiliable à tout moment.",
-          ['Optimiser mon plan', 'Voir les add-ons IA', 'Comparer les plans']
+            ? "⚠ <strong>" + criticalUsages.map(u => u.l).join(' ' + fpT('et') + ' ') + " " + fpT('approchent de la limite du plan') + "</strong>. " + fpT('Recommandation : ajouter un pack ou passer Ultra avant d\'atteindre le seuil. Sans engagement — résiliation possible à tout moment.')
+            : fpT('Usage sain — toutes les ressources sont sous contrôle.') + " <strong>" + fpT('3 add-ons IA recommandés') + "</strong> " + fpT('pour maximiser l\'efficacité de votre agence. Sans engagement, résiliable à tout moment.'),
+          [fpT('Optimiser mon plan'), fpT('Voir les add-ons IA'), fpT('Comparer les plans')]
         )
       : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">💡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Billing Insights — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Recommandations IA, prévisions d\'usage et optimisation de coûts automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
     }
@@ -11259,7 +11259,7 @@ function renderSettings() {
       <div class="fp-card" style="${isUltra ? '' : 'opacity:0.65'}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div class="fp-card-title" style="margin-bottom:0">🔐 Rôles personnalisés ${!isUltra ? '<span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:2px 7px;border-radius:8px;margin-left:6px">Ultra</span>' : ''}</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${isUltra ? `navigate('permissions')` : `navigate('billing')`}">+ " + fpT('Créer un rôle') + "</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${isUltra ? `navigate('permissions')` : `navigate('billing')`}">+ ${fpT('Créer un rôle')}</button>
         </div>
         <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Créez des rôles sur mesure avec des permissions granulaires par module, par client et par workspace.')}</div>
       </div>
@@ -12873,7 +12873,7 @@ function renderAI() {
     if (insights.length === 0) {
       return `
         <div class="fp-section-header">
-          <div><h1>Insights & Recommandations IA</h1>
+          <div><h1>${fpT('Insights & Recommandations IA')}</h1>
           <div class="fp-section-sub">${fpT('Analyse proactive de votre workspace · Mis à jour en temps réel')}</div></div>
         </div>
         <div class="fp-stat-row fp-mb-20">
@@ -12891,7 +12891,7 @@ function renderAI() {
     }
     return `
       <div class="fp-section-header">
-        <div><h1>Insights & Recommandations IA</h1>
+        <div><h1>${fpT('Insights & Recommandations IA')}</h1>
         <div class="fp-section-sub">${fpT('Analyse proactive de votre workspace · Mis à jour en temps réel')}</div></div>
         <div class="fp-section-actions">
           <span style="font-size:11px;color:var(--fp-text-faint)">${insights.length} insight${insights.length>1?'s':''} actif${insights.length>1?'s':''}</span>
@@ -19936,6 +19936,16 @@ function bindGlobalEvents() {
     "priorité absolue": "absolute priority",
     "probabilité": "probability",
     "Nouveaux messages": "New messages",
+    "Plus": "More",
+    "votre@email.com": "your@email.com",
+    "https://monsite.fr — Lancer un audit rapide": "https://mysite.com — Run a quick audit",
+    "Insights & Recommandations IA": "AI Insights & Recommendations",
+    "Optimiser mon plan": "Optimize my plan",
+    "et": "and",
+    "approchent de la limite du plan": "are approaching the plan limit",
+    "Recommandation : ajouter un pack ou passer Ultra avant d'atteindre le seuil. Sans engagement — résiliation possible à tout moment.": "Recommendation: add a pack or upgrade to Ultra before reaching the threshold. No commitment — cancel anytime.",
+    "Usage sain — toutes les ressources sont sous contrôle.": "Healthy usage — all resources are under control.",
+    "pour maximiser l'efficacité de votre agence. Sans engagement, résiliable à tout moment.": "to maximize your agency's efficiency. No commitment, cancel anytime.",
     "rapport SEO Executive de mai": "May Executive SEO report",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s savable",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sessions analyzed",
@@ -22792,6 +22802,16 @@ function bindGlobalEvents() {
     "Score de domination :": "Puntuación de dominación:",
     "Score de sécurité :": "Puntuación de seguridad:",
     "Nouveaux messages": "Mensajes nuevos",
+    "Plus": "Más",
+    "votre@email.com": "tu@email.com",
+    "https://monsite.fr — Lancer un audit rapide": "https://misitio.com — Realiza una auditoría rápida",
+    "Insights & Recommandations IA": "Perspectivas y Recomendaciones de IA",
+    "Optimiser mon plan": "Optimizar mi plan",
+    "et": "y",
+    "approchent de la limite du plan": "se están acercando al límite del plan",
+    "Recommandation : ajouter un pack ou passer Ultra avant d'atteindre le seuil. Sans engagement — résiliation possible à tout moment.": "Recomendación: añade un paquete o actualiza a Ultra antes de alcanzar el umbral. Sin compromiso: cancela en cualquier momento.",
+    "Usage sain — toutes les ressources sont sous contrôle.": "Uso saludable - todos los recursos están bajo control.",
+    "pour maximiser l'efficacité de votre agence. Sans engagement, résiliable à tout moment.": "para maximizar la eficiencia de tu agencia. Sin compromiso, cancelable en cualquier momento.",
     "rapport SEO Executive de mai": "Informe SEO Ejecutivo de mayo",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s ahorrables",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sesiones analizadas",
@@ -25700,6 +25720,16 @@ function bindGlobalEvents() {
     "Score de domination :": "Dominanzpunktzahl:",
     "Score de sécurité :": "Sicherheitspunktzahl:",
     "Nouveaux messages": "Neue Nachrichten",
+    "Plus": "Mehr",
+    "votre@email.com": "Ihre@email.com",
+    "https://monsite.fr — Lancer un audit rapide": "https://meineseite.de — Führen Sie ein schnelles Audit durch",
+    "Insights & Recommandations IA": "KI-Insights & Empfehlungen",
+    "Optimiser mon plan": "Meinen Plan optimieren",
+    "et": "und",
+    "approchent de la limite du plan": "nähern sich der Planobergrenze",
+    "Recommandation : ajouter un pack ou passer Ultra avant d'atteindre le seuil. Sans engagement — résiliation possible à tout moment.": "Empfehlung: Fügen Sie ein Paket hinzu oder wechseln Sie zu Ultra, bevor Sie die Schwelle erreichen. Keine Verpflichtung – jederzeit kündbar.",
+    "Usage sain — toutes les ressources sont sous contrôle.": "Gesunde Nutzung – alle Ressourcen sind unter Kontrolle.",
+    "pour maximiser l'efficacité de votre agence. Sans engagement, résiliable à tout moment.": "um die Effizienz Ihrer Agentur zu maximieren. Keine Verpflichtung, jederzeit kündbar.",
     "rapport SEO Executive de mai": "Mai Executive SEO-Bericht",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s einsparbar",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} analysierte Sitzungen",
@@ -28617,6 +28647,16 @@ function bindGlobalEvents() {
     "Score de domination :": "Punteggio di dominanza:",
     "Score de sécurité :": "Punteggio di sicurezza:",
     "Nouveaux messages": "Nuovi messaggi",
+    "Plus": "Di più",
+    "votre@email.com": "tuo@email.com",
+    "https://monsite.fr — Lancer un audit rapide": "https://ilmiosito.it — Esegui un audit rapido",
+    "Insights & Recommandations IA": "Insights & Raccomandazioni IA",
+    "Optimiser mon plan": "Ottimizza il mio piano",
+    "et": "e",
+    "approchent de la limite du plan": "si avvicinano al limite del piano",
+    "Recommandation : ajouter un pack ou passer Ultra avant d'atteindre le seuil. Sans engagement — résiliation possible à tout moment.": "Raccomandazione: aggiungi un pacchetto o passa a Ultra prima di raggiungere la soglia. Nessun impegno - cancellabile in qualsiasi momento.",
+    "Usage sain — toutes les ressources sont sous contrôle.": "Utilizzo sano - tutte le risorse sono sotto controllo.",
+    "pour maximiser l'efficacité de votre agence. Sans engagement, résiliable à tout moment.": "per massimizzare l'efficienza della tua agenzia. Nessun impegno, cancellabile in qualsiasi momento.",
     "rapport SEO Executive de mai": "Rapporto SEO Executive di maggio",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s risparmiabili",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sessioni analizzate",
@@ -31534,6 +31574,16 @@ function bindGlobalEvents() {
     "Score de domination :": "Pontuação de dominação:",
     "Score de sécurité :": "Pontuação de segurança:",
     "Nouveaux messages": "Novas mensagens",
+    "Plus": "Mais",
+    "votre@email.com": "seu@email.com",
+    "https://monsite.fr — Lancer un audit rapide": "https://meusite.pt — Realizar uma auditoria rápida",
+    "Insights & Recommandations IA": "Insights e Recomendações de IA",
+    "Optimiser mon plan": "Otimizar meu plano",
+    "et": "e",
+    "approchent de la limite du plan": "estão se aproximando do limite do plano",
+    "Recommandation : ajouter un pack ou passer Ultra avant d'atteindre le seuil. Sans engagement — résiliation possible à tout moment.": "Recomendação: adicione um pacote ou faça upgrade para Ultra antes de atingir o limite. Sem compromisso - cancele a qualquer momento.",
+    "Usage sain — toutes les ressources sont sous contrôle.": "Uso saudável - todos os recursos estão sob controle.",
+    "pour maximiser l'efficacité de votre agence. Sans engagement, résiliable à tout moment.": "para maximizar a eficiência da sua agência. Sem compromisso, cancelável a qualquer momento.",
     "rapport SEO Executive de mai": "Relatório SEO Executivo de maio",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s economizáveis",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sessões analisadas",
@@ -34451,6 +34501,16 @@ function bindGlobalEvents() {
     "Score de domination :": "Dominantiescore:",
     "Score de sécurité :": "Veiligheidsscore:",
     "Nouveaux messages": "Nieuwe berichten",
+    "Plus": "Meer",
+    "votre@email.com": "jouw@email.com",
+    "https://monsite.fr — Lancer un audit rapide": "https://mijnsite.nl — Voer een snelle audit uit",
+    "Insights & Recommandations IA": "Inzichten & AI-aanbevelingen",
+    "Optimiser mon plan": "Mijn plan optimaliseren",
+    "et": "en",
+    "approchent de la limite du plan": "naderen de limiet van het plan",
+    "Recommandation : ajouter un pack ou passer Ultra avant d'atteindre le seuil. Sans engagement — résiliation possible à tout moment.": "Aanbeveling: voeg een pakket toe of upgrade naar Ultra voordat je de drempel bereikt. Geen verplichtingen - op elk moment opzegbaar.",
+    "Usage sain — toutes les ressources sont sous contrôle.": "Gezond gebruik - alle middelen zijn onder controle.",
+    "pour maximiser l'efficacité de votre agence. Sans engagement, résiliable à tout moment.": "om de efficiëntie van uw bureau te maximaliseren. Geen verplichtingen, op elk moment opzegbaar.",
     "rapport SEO Executive de mai": "Mei Executive SEO-rapport",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s besparingen",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} geanalyseerde sessies",
@@ -37368,6 +37428,16 @@ function bindGlobalEvents() {
     "Score de domination :": "Wynik dominacji:",
     "Score de sécurité :": "Wynik bezpieczeństwa:",
     "Nouveaux messages": "Nowe wiadomości",
+    "Plus": "Więcej",
+    "votre@email.com": "twoj@email.com",
+    "https://monsite.fr — Lancer un audit rapide": "https://mojastrona.pl — Przeprowadź szybki audyt",
+    "Insights & Recommandations IA": "Wnioski i rekomendacje AI",
+    "Optimiser mon plan": "Optymalizuj mój plan",
+    "et": "i",
+    "approchent de la limite du plan": "zbliżają się do limitu planu",
+    "Recommandation : ajouter un pack ou passer Ultra avant d'atteindre le seuil. Sans engagement — résiliation possible à tout moment.": "Rekomendacja: dodaj pakiet lub przejdź na Ultra przed osiągnięciem progu. Bez zobowiązań - można wypowiedzieć w dowolnym momencie.",
+    "Usage sain — toutes les ressources sont sous contrôle.": "Zdrowe użytkowanie - wszystkie zasoby są pod kontrolą.",
+    "pour maximiser l'efficacité de votre agence. Sans engagement, résiliable à tout moment.": "aby zmaksymalizować efektywność Twojej agencji. Bez zobowiązań, można wypowiedzieć w dowolnym momencie.",
     "rapport SEO Executive de mai": "Majowy raport SEO Executive",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s oszczędności",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} analizowane sesje",
@@ -40285,6 +40355,16 @@ function bindGlobalEvents() {
     "Score de domination :": "Domineringspoäng:",
     "Score de sécurité :": "Säkerhetspoäng:",
     "Nouveaux messages": "Nya meddelanden",
+    "Plus": "Mer",
+    "votre@email.com": "din@email.com",
+    "https://monsite.fr — Lancer un audit rapide": "https://minasida.se — Genomför en snabb granskning",
+    "Insights & Recommandations IA": "Insikter & AI-rekommendationer",
+    "Optimiser mon plan": "Optimera min plan",
+    "et": "och",
+    "approchent de la limite du plan": "närmar sig planens gräns",
+    "Recommandation : ajouter un pack ou passer Ultra avant d'atteindre le seuil. Sans engagement — résiliation possible à tout moment.": "Rekommendation: lägg till ett paket eller uppgradera till Ultra innan du når gränsen. Ingen bindning - avbryt när som helst.",
+    "Usage sain — toutes les ressources sont sous contrôle.": "Sund användning - alla resurser är under kontroll.",
+    "pour maximiser l'efficacité de votre agence. Sans engagement, résiliable à tout moment.": "för att maximera din byrås effektivitet. Ingen bindning, avbryt när som helst.",
     "rapport SEO Executive de mai": "Maj Executive SEO-rapport",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s sparade",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} analyserade sessioner",
@@ -43202,6 +43282,16 @@ function bindGlobalEvents() {
     "Score de domination :": "Scor de dominare:",
     "Score de sécurité :": "Scor de securitate:",
     "Nouveaux messages": "Mesaje noi",
+    "Plus": "Mai mult",
+    "votre@email.com": "adresa_ta@email.com",
+    "https://monsite.fr — Lancer un audit rapide": "https://siteulmeu.ro — Efectuează un audit rapid",
+    "Insights & Recommandations IA": "Informații și Recomandări AI",
+    "Optimiser mon plan": "Optimizează-mi planul",
+    "et": "și",
+    "approchent de la limite du plan": "se apropie de limita planului",
+    "Recommandation : ajouter un pack ou passer Ultra avant d'atteindre le seuil. Sans engagement — résiliation possible à tout moment.": "Recomandare: adăugați un pachet sau treceți la Ultra înainte de a atinge pragul. Fără angajament - anulați în orice moment.",
+    "Usage sain — toutes les ressources sont sous contrôle.": "Utilizare sănătoasă - toate resursele sunt sub control.",
+    "pour maximiser l'efficacité de votre agence. Sans engagement, résiliable à tout moment.": "pentru a maximiza eficiența agenției tale. Fără angajament, anulați în orice moment.",
     "rapport SEO Executive de mai": "Raport SEO Executive din mai",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s economisibili",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} sesiuni analizate",
@@ -46119,6 +46209,16 @@ function bindGlobalEvents() {
     "Score de domination :": "Skóre dominance:",
     "Score de sécurité :": "Bezpečnostní skóre:",
     "Nouveaux messages": "Nové zprávy",
+    "Plus": "Více",
+    "votre@email.com": "tvůj@email.com",
+    "https://monsite.fr — Lancer un audit rapide": "https://mojestranka.cz — Proveďte rychlý audit",
+    "Insights & Recommandations IA": "Znalosti a doporučení AI",
+    "Optimiser mon plan": "Optimalizovat můj plán",
+    "et": "a",
+    "approchent de la limite du plan": "blíží se k limitě plánu",
+    "Recommandation : ajouter un pack ou passer Ultra avant d'atteindre le seuil. Sans engagement — résiliation possible à tout moment.": "Doporučení: přidejte balíček nebo přejděte na Ultra, než dosáhnete prahu. Bez závazku - zrušení kdykoli.",
+    "Usage sain — toutes les ressources sont sous contrôle.": "Zdravé používání - všechny zdroje jsou pod kontrolou.",
+    "pour maximiser l'efficacité de votre agence. Sans engagement, résiliable à tout moment.": "pro maximalizaci efektivity vaší agentury. Bez závazku, zrušení kdykoli.",
     "rapport SEO Executive de mai": "Květnová zpráva SEO Executive",
     "s+(o.savingsMs||0),0)/1000|0}s économisables": "s+(o.savingsMs||0),0)/1000|0}s úspory",
     "s+t.sessions,0).toLocaleString(getLocale())} sessions analysées": "s+t.sessions,0).toLocaleString(getLocale())} analyzované relace",
@@ -47008,7 +47108,13 @@ async function init() {
               // Bust caches and reload billing data in background
               try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
               _apiFetchCache && _apiFetchCache.clear();
-              loadData().catch(() => {});
+              // Full sync without F5: loadData() re-fetches /api/me (plan, limits,
+              // entitlements, addons) and ends with render(); then refresh the AI
+              // credits gauge (monthly allotment may change with the plan).
+              loadData()
+                .then(function() { return loadAICredits().catch(function(){}); })
+                .then(function() { try { render(); } catch(_) {} })
+                .catch(() => {});
             // ── Subscription status change ─────────────────────────────────────────
             } else if (msg.type === 'subscription_status') {
               if (STATE.me) STATE.me.subscriptionStatus = msg.status;
@@ -63839,10 +63945,10 @@ function renderPerformanceUrlBar(currentUrl) {
       </button>
     </div>
     <div id="fp-psi-analysis-status" class="fp-psi-loading fp-psi-loading--inline" aria-live="polite" aria-busy="false">
-      <div class="fp-psi-spinner fp-psi-spinner--inline" aria-hidden="true"></div>
-      <div>
-        <div style="font-size:13px;font-weight:600;margin-bottom:2px">Analyse PageSpeed en cours…</div>
-        <div style="font-size:11px;color:var(--fp-text-faint)">Récupération des données mobile et desktop depuis Google</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px">${fpT('Analyse PageSpeed en cours…')}</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:8px">${fpT('Récupération des données mobile et desktop depuis Google')}</div>
+        <div class="fp-psi-linear-track" aria-hidden="true"><div class="fp-psi-linear-bar"></div></div>
       </div>
     </div>
     ${suggestions.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${suggestions.slice(0,4).map(u=>`<button class="fp-badge fp-badge--ghost" onclick="document.getElementById('fp-psi-url-input').value='${escHtml(u)}'" style="cursor:pointer;font-size:11px">${escHtml(u)}</button>`).join('')}</div>` : ''}

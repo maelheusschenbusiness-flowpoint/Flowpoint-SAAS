@@ -1160,6 +1160,20 @@
 
   var _cart = { plan: null, addons: {} };
 
+  /* ── Shared Bearer helper: per-tab session token in addition to the cookie ──
+     A user arriving from the dashboard may authenticate via the sessionStorage
+     Bearer token while the cookie is stale (per-tab session model). Every auth
+     fetch on this page must send both.
+     SECURITY: sessionStorage ONLY — never localStorage. The server prioritizes
+     Bearer over the cookie, so a stale localStorage token from a previous user
+     would override the current user's cookie identity (cross-user leakage).   */
+  window._fpPricingAuthHeaders = function () {
+    try {
+      var t = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fp_session_token')) || '';
+      return t ? { 'Authorization': 'Bearer ' + t } : {};
+    } catch (e) { return {}; }
+  };
+
   /* ── Auto theme: follows OS preference ── */
   (function(){
     var mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -1762,8 +1776,12 @@
   } catch(e) {}
   if (cached) applyBillingState(cached);
 
-  /* ── Step 2: fetch from backend — backend always wins ── */
-  fetch('/api/billing/subscription', { credentials: 'include' })
+  /* ── Step 2: fetch from backend — backend always wins ──
+     Send the per-tab Bearer token in addition to the cookie: a user arriving
+     from the dashboard may hold a valid sessionStorage token while the cookie
+     is stale/absent (per-tab session model). Cookie-only would 401 and wrongly
+     render the anonymous UI to a logged-in subscriber.                       */
+  fetch('/api/billing/subscription', { credentials: 'include', headers: window._fpPricingAuthHeaders() })
     .then(function(res) {
       if (res.status === 401) {
         /* Not logged in — pricing page is public. Drop any stale billing
@@ -1973,7 +1991,7 @@
     fetch('/api/billing/upgrade', {
       method:      'POST',
       credentials: 'include',
-      headers:     { 'Content-Type': 'application/json' },
+      headers:     Object.assign({ 'Content-Type': 'application/json' }, window._fpPricingAuthHeaders()),
       body:        JSON.stringify({ plan: targetPlan }),
     })
     .then(function(r) {
@@ -2031,7 +2049,7 @@
 
       if (d.downgrade) { _finishUpgrade(true); return; }
       /* Confirm the new plan from the authoritative subscription endpoint */
-      fetch('/api/billing/subscription', { credentials: 'include' })
+      fetch('/api/billing/subscription', { credentials: 'include', headers: window._fpPricingAuthHeaders() })
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(sub) {
           var confirmed = !!(sub && sub.plan && String(sub.plan).toLowerCase() === targetPlan.toLowerCase());

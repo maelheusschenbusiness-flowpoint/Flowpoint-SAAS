@@ -1686,6 +1686,45 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
       logger.warn({ err: stripeErr instanceof Error ? stripeErr.message : String(stripeErr) }, "login-verify: ensureStripeCustomer failed (non-fatal)");
     }
   })();
+
+  // Fire-and-forget: self-heal org_settings location from the signup record.
+  // The Stripe webhook normally copies address/city/postal/country/phone from
+  // pending_signups into org_settings at activation, but if that copy was
+  // skipped (webhook race, legacy account, Google signup), backfill it here so
+  // Settings → Localisation shows the address entered at signup from the very
+  // first login. Never overwrites data the user already saved.
+  (async () => {
+    try {
+      const { loadOrgSettings, upsertOrgSettings } = await import("../services/org-settings.js");
+      const existing = await loadOrgSettings(sessionOrgId);
+      if (existing?.address || existing?.city) return; // user already has location data
+      // Only trust the CONSUMED signup record (the one the webhook activated) —
+      // an abandoned or newer un-consumed pre-registration for the same email
+      // must never overwrite a real account's profile.
+      const psRes = await pool.query(
+        `SELECT country, address, city, postal_code, phone
+           FROM pending_signups
+          WHERE email = $1 AND consumed_at IS NOT NULL
+            AND (address IS NOT NULL OR city IS NOT NULL)
+          ORDER BY consumed_at DESC LIMIT 1`,
+        [email],
+      );
+      const ps = psRes.rows[0] as { country: string | null; address: string | null; city: string | null; postal_code: string | null; phone: string | null } | undefined;
+      if (!ps || (!ps.address && !ps.city)) return;
+      // Field-level merge: only fill fields the user has not already set.
+      await upsertOrgSettings(sessionOrgId, {
+        country:            existing?.country    || ps.country      || null,
+        city:               existing?.city       || ps.city         || null,
+        address:            existing?.address    || ps.address      || null,
+        postalCode:         existing?.postalCode || ps.postal_code  || null,
+        phone:              existing?.phone      || ps.phone        || null,
+        locationConfigured: true,
+      });
+      logger.info({ orgIdPrefix: sessionOrgId?.slice(0, 8) }, "login-verify: org_settings location self-healed from pending_signups");
+    } catch (locErr) {
+      logger.warn({ err: locErr instanceof Error ? locErr.message : String(locErr) }, "login-verify: location self-heal failed (non-fatal)");
+    }
+  })();
 }
 
 // GET — kept for backward compatibility (existing email links point to login-verify.html?token=...
