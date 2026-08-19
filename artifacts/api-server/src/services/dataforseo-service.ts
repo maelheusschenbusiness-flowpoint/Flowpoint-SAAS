@@ -273,6 +273,62 @@ export async function getLocalPackRank(
   }
 }
 
+export type DomainMetricsFetchResult =
+  | {
+      ok: true;
+      provider: "DataForSEO";
+      providerModel: "dataforseo_labs/google/domain_metrics/live";
+      traffic: number;
+      keywords: number;
+      authority: number;
+    }
+  | {
+      ok: false;
+      provider: "DataForSEO";
+      reason: "not_configured" | "provider_error" | "no_metrics";
+    };
+
+/**
+ * Fetch persisted competitor metrics without converting an unavailable provider
+ * into a plausible-looking zero. Callers can therefore keep the competitor and
+ * render an explicit unavailable/retry state instead of fabricated metrics.
+ */
+export async function fetchCompetitorDomainMetrics(
+  domain: string,
+  orgId = "default",
+): Promise<DomainMetricsFetchResult> {
+  if (!await isDataForSEOConfigured(orgId)) {
+    return { ok: false, provider: "DataForSEO", reason: "not_configured" };
+  }
+
+  try {
+    type DFSResult = Array<{ result?: Array<Record<string, unknown>> }>;
+    const data = await dfsRequest<DFSResult>(
+      "/dataforseo_labs/google/domain_metrics/live",
+      [{ target: domain, location_name: "France" }],
+      orgId,
+    );
+    const result = data[0]?.result?.[0];
+    if (!result) return { ok: false, provider: "DataForSEO", reason: "no_metrics" };
+
+    const metric = (key: string): number => {
+      const value = Number(result[key]);
+      return Number.isFinite(value) && value >= 0 ? Math.round(value) : 0;
+    };
+    return {
+      ok: true,
+      provider: "DataForSEO",
+      providerModel: "dataforseo_labs/google/domain_metrics/live",
+      traffic: metric("organic_traffic"),
+      keywords: metric("organic_count"),
+      authority: metric("rank"),
+    };
+  } catch (err) {
+    logger.warn({ err, domain }, "[dfs] competitor domain metrics failed");
+    return { ok: false, provider: "DataForSEO", reason: "provider_error" };
+  }
+}
+
 export async function getGoogleMapsResults(
   keyword: string, location: string, orgId = "default"
 ): Promise<{ results: Array<{ name: string; rating: number; reviews: number; address: string; category: string; placeId: string; rank: number; photoUrl: string | null }>; error?: string }> {

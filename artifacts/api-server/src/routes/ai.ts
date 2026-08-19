@@ -1523,11 +1523,11 @@ async function runToolCallingLoop(opts: {
       return { suspended: false, finalTextEmitted: false, undoTokens, messages };
     }
 
-    // Emit any text from this round as delta events (FP_NAV-guarded — a round
-    // that announces des tool calls peut aussi contenir un marqueur de navigation)
-    if (roundResult.text) {
-      await emitTextWithNavGuard(roundResult.text);
-    }
+    // Never emit text from a round that also requested tools. A model may say
+    // “mission created” in that pre-tool text even when execution later fails
+    // or requires confirmation. Keep it in nativeMessages below so the next
+    // model turn has its context, but only emit a synthesis after tool_result
+    // is known (or the confirmation card for preview/full actions).
 
     const injections: import("../services/ai-tool-calling.js").ToolResultInjection[] = [];
 

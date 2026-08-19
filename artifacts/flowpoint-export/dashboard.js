@@ -47347,9 +47347,34 @@ async function init() {
     const t = document.getElementById('fp-comp-threat') ? document.getElementById('fp-comp-threat').value : 'medium';
     if (!n || !u) { showToast('error', fpT('Nom et URL requis')); return; }
     if (typeof window.FP_COMPETITORS_API === 'undefined') { showToast('error', fpT('API non disponible')); return; }
-    const r = await window.FP_COMPETITORS_API.create({ name: n, url: u, threatLevel: t, domainRating: 0, keywords: 0, traffic: 0 });
-    if (r && r.id) { showToast('success', 'Concurrent ' + n + ' ajout\u00E9 !'); if (typeof closeFloatPanel === 'function') closeFloatPanel(); }
+    const r = await window.FP_COMPETITORS_API.create({ name: n, url: u, threatLevel: t });
+    if (r && r.id) {
+      const refreshed = await window.FP_COMPETITORS_API.load();
+      if (Array.isArray(refreshed)) STATE.competitors = refreshed;
+      showToast('success', fpT('Concurrent ajouté. Les données sont en cours de récupération.'));
+      if (typeof closeFloatPanel === 'function') closeFloatPanel();
+      render();
+    }
     else showToast('error', fpT('Erreur lors de l\'ajout'));
+  };
+  window.fpRefreshCompetitor = async function(id) {
+    if (!id || !window.FP_COMPETITORS_API) return;
+    const refreshed = await window.FP_COMPETITORS_API.refresh(id);
+    if (!refreshed) {
+      showToast('error', fpT('Impossible de récupérer les données du concurrent. Réessayez plus tard.'));
+      return;
+    }
+    const list = await window.FP_COMPETITORS_API.load();
+    if (Array.isArray(list)) STATE.competitors = list;
+    showToast(
+      refreshed.dataStatus === 'available'
+        ? 'success'
+        : 'warning',
+      refreshed.dataStatus === 'available'
+        ? fpT('Données du concurrent actualisées.')
+        : fpT('Concurrent conservé, mais les données restent indisponibles.'),
+    );
+    render();
   };
 
   // ── Fix 2: AI Competitor Suggestions ────────────────────────────────────────
@@ -52114,6 +52139,71 @@ function renderGrowth() {
 function renderCompetitor() {
   if (STATE.loading) {
     return renderPageSkeleton({ stats: 0, rows: 4, rowH: 72, cards: 0 });
+  }
+  // Production shows only persisted, provider-backed competitor facts. The
+  // extensive visual intelligence dashboard below remains a preview-only demo
+  // until each metric has a real source; it must not turn missing data into
+  // fabricated market shares, scores, or “stable” movements.
+  if (!PREVIEW_MODE) {
+    const competitors = Array.isArray(STATE.competitors) ? STATE.competitors : [];
+    const knownPlan = ['standard', 'pro', 'ultra', 'agency'].includes(String(STATE.me?.plan || '').toLowerCase())
+      ? String(STATE.me.plan).toLowerCase()
+      : null;
+    const competitorLimit = Number.isFinite(Number(STATE.me?.limits?.competitors))
+      ? Number(STATE.me.limits.competitors)
+      : null;
+    const displayMetric = value => Number.isFinite(Number(value)) ? Number(value).toLocaleString(getLocale()) : '—';
+    const statusLabel = status => ({
+      pending: fpT('Récupération en cours'),
+      available: fpT('Données disponibles'),
+      unavailable: fpT('Données indisponibles'),
+    }[status] || fpT('Données indisponibles'));
+    return `
+      <div class="fp-section-header">
+        <div>
+          <h1 class="fp-section-title">${fpT('Concurrents')}</h1>
+          <p class="fp-section-sub">${fpT('Données de domaine vérifiées par fournisseur externe, jamais estimées par FlowPoint.')}</p>
+        </div>
+        <button class="fp-btn fp-btn-primary" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
+      </div>
+      <div class="fp-card fp-mb-20" style="padding:14px 16px">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <span class="fp-badge fp-badge--ghost">${knownPlan ? escHtml(knownPlan.charAt(0).toUpperCase() + knownPlan.slice(1)) : fpT('Plan non confirmé')}</span>
+          <span style="font-size:12px;color:var(--fp-text-muted)">${competitorLimit !== null ? `${competitors.length} / ${competitorLimit} ${fpT('concurrents utilisés')}` : fpT('La limite sera vérifiée lors de l’ajout.')}</span>
+          <span style="font-size:12px;color:var(--fp-text-faint)">${fpT('Fournisseur : DataForSEO Domain Metrics')}</span>
+        </div>
+      </div>
+      ${competitors.length === 0 ? `
+        <div class="fp-card" style="text-align:center;padding:48px 24px">
+          <div style="font-size:40px;margin-bottom:12px">🔎</div>
+          <div style="font-weight:700;margin-bottom:6px">${fpT('Aucun concurrent suivi')}</div>
+          <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Ajoutez un domaine public pour lancer une récupération réelle de ses métriques.')}</div>
+        </div>
+      ` : `
+        <div class="fp-card">
+          <div style="overflow-x:auto">
+            <table class="fp-table" style="width:100%">
+              <thead><tr>
+                <th>${fpT('Concurrent')}</th><th>${fpT('État')}</th><th>${fpT('Autorité')}</th>
+                <th>${fpT('Mots-clés')}</th><th>${fpT('Trafic organique')}</th><th>${fpT('Source')}</th><th></th>
+              </tr></thead>
+              <tbody>${competitors.map(c => {
+                const available = c.dataStatus === 'available';
+                return `<tr>
+                  <td><div style="font-weight:700">${escHtml(c.name || fpT('Concurrent sans nom'))}</div><div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(String(c.url || '—').replace(/^https?:\/\//, ''))}</div></td>
+                  <td><span class="fp-badge ${available ? 'fp-badge--success' : 'fp-badge--ghost'}">${statusLabel(c.dataStatus)}</span>${c.dataError ? `<div style="font-size:10px;color:var(--fp-text-faint);max-width:220px;margin-top:4px">${escHtml(c.dataError)}</div>` : ''}</td>
+                  <td>${available ? displayMetric(c.domainRating) : '—'}</td>
+                  <td>${available ? displayMetric(c.keywords) : '—'}</td>
+                  <td>${available ? displayMetric(c.traffic) : '—'}</td>
+                  <td style="font-size:11px;color:var(--fp-text-muted)">${available ? escHtml(c.dataProvider || 'DataForSEO') : '—'}</td>
+                  <td>${available ? '' : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRefreshCompetitor('${escHtml(c.id)}')">${fpT('Réessayer')}</button>`}</td>
+                </tr>`;
+              }).join('')}</tbody>
+            </table>
+          </div>
+        </div>
+      `}
+    `;
   }
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';

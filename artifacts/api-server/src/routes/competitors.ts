@@ -3,7 +3,9 @@ import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 import { logger } from "../lib/logger.js";
 import { canWrite } from "../middlewares/requireRole.js";
-import { withCache } from "../middlewares/cacheControl.js";
+import { requireQuota } from "../middlewares/planGate.js";
+import { fetchCompetitorDomainMetrics } from "../services/dataforseo-service.js";
+import { randomUUID } from "node:crypto";
 
 const router = Router();
 
@@ -12,7 +14,7 @@ const suggestionsCache = new Map<string, { ts: number; data: unknown[] }>();
 const SUGGESTIONS_TTL_MS = 6 * 60 * 60 * 1000;
 
 type OrgReq = Request & {
-  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number }>;
   orgId?: string;
 };
 
@@ -164,23 +166,75 @@ function toPublic(row: Record<string, unknown>) {
     threatLevel:  row["threat_level"],
     delta:        row["delta"],
     createdAt:    row["created_at"],
+    dataStatus:   row["data_status"] ?? "unavailable",
+    dataProvider: row["data_provider"] ?? null,
+    providerModel: row["provider_model"] ?? null,
+    dataFetchedAt: row["data_fetched_at"] ?? null,
+    dataError:    row["data_error"] ?? null,
   };
+}
+
+function normalizeCompetitorUrl(value: string): { url: string; domain: string } | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname.includes(".")) return null;
+    return { url: `https://${parsed.hostname.toLowerCase()}`, domain: parsed.hostname.toLowerCase() };
+  } catch {
+    return null;
+  }
+}
+
+async function enrichCompetitor(
+  req: OrgReq,
+  id: string,
+  domain: string,
+  orgId: string,
+): Promise<Record<string, unknown> | null> {
+  const metrics = await fetchCompetitorDomainMetrics(domain, orgId);
+  if (metrics.ok) {
+    const update = await req.orgDb(
+      `UPDATE competitors
+       SET domain_rating=$1, keywords=$2, traffic=$3, data_status='available',
+           data_provider=$4, provider_model=$5, data_fetched_at=NOW(), data_error=NULL
+       WHERE id=$6 AND org_id=$7
+       RETURNING *`,
+      [metrics.authority, metrics.keywords, metrics.traffic, metrics.provider, metrics.providerModel, id, orgId],
+    );
+    return update.rows[0] ?? null;
+  }
+
+  const message: Record<typeof metrics.reason, string> = {
+    not_configured: "DataForSEO n’est pas configuré pour cette organisation.",
+    no_metrics: "DataForSEO n’a renvoyé aucune métrique pour ce domaine.",
+    provider_error: "DataForSEO est temporairement indisponible. Réessayez plus tard.",
+  };
+  const update = await req.orgDb(
+    `UPDATE competitors
+     SET data_status='unavailable', data_provider=$1, provider_model=NULL,
+         data_fetched_at=NOW(), data_error=$2
+     WHERE id=$3 AND org_id=$4
+     RETURNING *`,
+    [metrics.provider, message[metrics.reason], id, orgId],
+  );
+  return update.rows[0] ?? null;
 }
 
 // ── GET /competitors ──────────────────────────────────────────────────────────
 // req.orgDb scopes via RLS → only this org's competitors are returned.
 
-router.get("/competitors", withCache(60), async (req, res) => {
+router.get("/competitors", async (req, res) => {
   try {
     const orgId = (req as import("express").Request & { orgId?: string }).orgId ?? req.orgContext?.orgId ?? "default";
     const result = await req.orgDb(
-      `SELECT * FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT 200`,
+      `SELECT * FROM competitors WHERE org_id=$1 ORDER BY data_status='available' DESC, domain_rating DESC LIMIT 200`,
       [orgId],
     );
     res.json(result.rows.map(toPublic));
   } catch (err) {
     logger.warn({ err }, "[competitors] GET failed");
-    res.json([]);
+    res.status(500).json({ error: "Failed to fetch competitors" });
   }
 });
 
@@ -188,7 +242,8 @@ router.get("/competitors", withCache(60), async (req, res) => {
 
 router.get("/competitors/:id", async (req, res) => {
   try {
-    const result = await req.orgDb(`SELECT * FROM competitors WHERE id = $1 LIMIT 1`, [req.params.id]);
+    const orgId = (req as OrgReq).orgId ?? req.orgContext?.orgId ?? "default";
+    const result = await req.orgDb(`SELECT * FROM competitors WHERE id = $1 AND org_id = $2 LIMIT 1`, [req.params.id, orgId]);
     if (!result.rows[0]) { res.status(404).json({ error: "Competitor not found" }); return; }
     res.json(toPublic(result.rows[0]));
   } catch (err) {
@@ -199,35 +254,77 @@ router.get("/competitors/:id", async (req, res) => {
 
 // ── POST /competitors ─────────────────────────────────────────────────────────
 
-router.post("/competitors", reportRateLimit, canWrite, async (req, res) => {
-  const {
-    name, url: rawUrl, domain: rawDomain,
-    domainRating = 0, keywords = 0, traffic = 0, threatLevel = "low",
-  } = req.body as {
-    name?: string; url?: string; domain?: string; domainRating?: number;
-    keywords?: number; traffic?: number; threatLevel?: string;
-  };
-  const url = rawUrl || rawDomain; // accept 'domain' as alias for 'url'
-  if (!name || !url) { res.status(400).json({ error: "name and url required" }); return; }
-
-  const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
-
-  try {
-    const id     = `comp${Date.now()}`;
-    const result = await req.orgDb(
-      `INSERT INTO competitors (id, name, url, domain_rating, keywords, traffic, threat_level, delta, org_id, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,NOW()) RETURNING *`,
-      [id, name, url, Number(domainRating), Number(keywords), Number(traffic), threatLevel || "low", orgId],
+router.post(
+  "/competitors",
+  reportRateLimit,
+  canWrite,
+  requireQuota("competitors", async (orgId, quotaReq) => {
+    const result = await (quotaReq as OrgReq).orgDb(
+      `SELECT COUNT(*)::int AS count FROM competitors WHERE org_id = $1`,
+      [orgId],
     );
-    store.logActivity({
-      type: "alert", label: `Concurrent ajouté : ${name}`,
-      targetId: id, targetType: "competitor",
-      orgId,
-    }).catch(() => {});
-    res.status(201).json(toPublic(result.rows[0]));
+    return Number(result.rows[0]?.["count"] ?? 0);
+  }),
+  async (req, res) => {
+    const { name: rawName, url: rawUrl, domain: rawDomain, threatLevel = "low" } = req.body as {
+      name?: string; url?: string; domain?: string; threatLevel?: string;
+    };
+    const name = rawName?.trim();
+    const target = normalizeCompetitorUrl(rawUrl || rawDomain || "");
+    if (!name || !target) {
+      res.status(400).json({ error: "A name and public http(s) domain are required" });
+      return;
+    }
+    const threat = ["critical", "high", "medium", "low"].includes(threatLevel) ? threatLevel : "low";
+    const orgId = (req as OrgReq).orgId ?? req.orgContext?.orgId ?? "default";
+
+    try {
+      const id = `comp_${randomUUID()}`;
+      const created = await (req as OrgReq).orgDb(
+        `INSERT INTO competitors (
+          id, name, url, domain_rating, keywords, traffic, threat_level, delta, org_id,
+          data_status, data_provider, created_at
+        ) VALUES ($1,$2,$3,0,0,0,$4,0,$5,'pending','DataForSEO',NOW())
+        RETURNING *`,
+        [id, name, target.url, threat, orgId],
+      );
+      const enriched = await enrichCompetitor(req as OrgReq, id, target.domain, orgId);
+      const competitor = enriched ?? created.rows[0];
+      store.logActivity({
+        type: "alert", label: `Concurrent ajouté : ${name}`,
+        targetId: id, targetType: "competitor",
+        orgId,
+      }).catch(() => {});
+      res.status(201).json(toPublic(competitor));
+    } catch (err) {
+      logger.error({ err }, "[competitors] POST failed");
+      res.status(500).json({ error: "Failed to create competitor" });
+    }
+  },
+);
+
+// ── POST /competitors/:id/refresh ────────────────────────────────────────────
+// The row remains visible if the provider cannot respond; only its persisted
+// data status changes so the UI can offer another retry without fake metrics.
+router.post("/competitors/:id/refresh", reportRateLimit, canWrite, async (req, res) => {
+  const orgId = (req as OrgReq).orgId ?? req.orgContext?.orgId ?? "default";
+  try {
+    const existing = await (req as OrgReq).orgDb(
+      `SELECT * FROM competitors WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      [req.params.id, orgId],
+    );
+    const row = existing.rows[0];
+    if (!row) { res.status(404).json({ error: "Competitor not found" }); return; }
+    const target = normalizeCompetitorUrl(String(row["url"] ?? ""));
+    if (!target) {
+      res.status(400).json({ error: "Saved competitor domain is invalid" });
+      return;
+    }
+    const refreshed = await enrichCompetitor(req as OrgReq, String(row["id"]), target.domain, orgId);
+    res.json(toPublic(refreshed ?? row));
   } catch (err) {
-    logger.error({ err }, "[competitors] POST failed");
-    res.status(500).json({ error: "Failed to create competitor" });
+    logger.error({ err }, "[competitors] refresh failed");
+    res.status(500).json({ error: "Failed to refresh competitor data" });
   }
 });
 
@@ -261,9 +358,10 @@ router.patch("/competitors/:id", canWrite, async (req, res) => {
   }
 
   try {
+    const orgId = (req as OrgReq).orgId ?? req.orgContext?.orgId ?? "default";
     const result = await req.orgDb(
-      `UPDATE competitors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
-      [id, ...values],
+      `UPDATE competitors SET ${setClauses.join(", ")} WHERE id = $1 AND org_id = $${values.length + 2} RETURNING *`,
+      [id, ...values, orgId],
     );
     if (!result.rowCount) { res.status(404).json({ error: "not found" }); return; }
     res.json(toPublic(result.rows[0]));
@@ -278,7 +376,8 @@ router.patch("/competitors/:id", canWrite, async (req, res) => {
 
 router.delete("/competitors/:id", canWrite, async (req, res) => {
   try {
-    const r = await req.orgDb(`DELETE FROM competitors WHERE id = $1 RETURNING id`, [req.params.id]);
+    const orgId = (req as OrgReq).orgId ?? req.orgContext?.orgId ?? "default";
+    const r = await req.orgDb(`DELETE FROM competitors WHERE id = $1 AND org_id = $2 RETURNING id`, [req.params.id, orgId]);
     if (!r.rows[0]) { res.status(404).json({ error: "Competitor not found" }); return; }
     res.json({ ok: true });
   } catch { res.status(500).json({ error: "Failed to delete competitor" }); }

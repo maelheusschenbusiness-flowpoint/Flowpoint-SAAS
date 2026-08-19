@@ -125,19 +125,27 @@ export function requireFeature(feature: keyof FeatureFlags, featureLabel?: strin
 }
 
 /** Check that current plan has remaining quota for a resource */
-export function requireQuota(resource: keyof CoreQuotas, getCurrentUsage: (orgId: string) => number | Promise<number>): (req: Request, res: Response, next: NextFunction) => void {
+export function requireQuota(
+  resource: keyof CoreQuotas,
+  getCurrentUsage: (orgId: string, req: Request) => number | Promise<number>,
+): (req: Request, res: Response, next: NextFunction) => void {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const orgId = (req as { orgId?: string }).orgId ?? "default";
-    const plan = await resolvePlanFromDB(req).catch(() => "standard");
-    const resolvedPlan = plan ?? "standard";
+    const resolvedPlan = await resolvePlanFromDB(req);
+    if (resolvedPlan === null) {
+      logger.error({ resource, orgId }, "[PlanGate] quota plan resolution failed — denying request");
+      res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+      return;
+    }
     const limit = getQuota(resolvedPlan, resource);
     if (limit >= 9999) { next(); return; }
     try {
-      const used = await getCurrentUsage(orgId);
+      const used = await getCurrentUsage(orgId, req);
       if (used < limit) { next(); return; }
       quotaExceeded(res, String(resource), limit, resolvedPlan);
-    } catch {
-      next(); // fail-open on quota check errors
+    } catch (err) {
+      logger.error({ err, resource, orgId }, "[PlanGate] quota usage resolution failed — denying request");
+      res.status(503).json({ error: "Usage status unavailable. Please try again." });
     }
   };
 }

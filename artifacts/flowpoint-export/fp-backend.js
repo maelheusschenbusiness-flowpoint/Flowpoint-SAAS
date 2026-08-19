@@ -533,15 +533,26 @@
         return normalizeDoc(await apiAction('POST', '/api/competitors', comp));
       } catch (e) {
         console.warn('[FP] competitor create error:', e.message);
-        return comp;
+        return null;
+      }
+    },
+
+    refresh: async function (id) {
+      try {
+        return normalizeDoc(await apiAction('POST', '/api/competitors/' + encodeURIComponent(id) + '/refresh'));
+      } catch (e) {
+        console.warn('[FP] competitor refresh error:', e.message);
+        return null;
       }
     },
 
     delete: async function (id) {
       try {
         await apiAction('DELETE', '/api/competitors/' + id);
+        return true;
       } catch (e) {
         console.warn('[FP] competitor delete error:', e.message);
+        return false;
       }
     },
   };

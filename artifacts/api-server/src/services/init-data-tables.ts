@@ -392,7 +392,14 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS domain_rating INTEGER NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS threat_level TEXT NOT NULL DEFAULT 'low';`);
     await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS delta INTEGER DEFAULT 0;`);
+    await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS data_status TEXT NOT NULL DEFAULT 'unavailable';`);
+    await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS data_provider TEXT;`);
+    await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS provider_model TEXT;`);
+    await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS data_fetched_at TIMESTAMP;`);
+    await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS data_error TEXT;`);
     await run(client, `CREATE INDEX IF NOT EXISTS competitors_domain_rating_idx ON competitors(domain_rating);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS competitors_org_id_idx ON competitors(org_id);`);
 
     // ── alert_events ──────────────────────────────────────────────────────────
     await run(client, `
