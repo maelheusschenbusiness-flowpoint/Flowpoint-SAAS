@@ -167,8 +167,6 @@ function toPublic(row: Record<string, unknown>) {
     delta:        row["delta"],
     createdAt:    row["created_at"],
     dataStatus:   row["data_status"] ?? "unavailable",
-    dataProvider: row["data_provider"] ?? null,
-    providerModel: row["provider_model"] ?? null,
     dataFetchedAt: row["data_fetched_at"] ?? null,
     dataError:    row["data_error"] ?? null,
   };
@@ -206,9 +204,11 @@ async function enrichCompetitor(
   }
 
   const message: Record<typeof metrics.reason, string> = {
-    not_configured: "DataForSEO n’est pas configuré pour cette organisation.",
-    no_metrics: "DataForSEO n’a renvoyé aucune métrique pour ce domaine.",
-    provider_error: "DataForSEO est temporairement indisponible. Réessayez plus tard.",
+    // This is customer-facing copy: a third-party data supplier is platform
+    // infrastructure, never something the customer needs to configure.
+    not_configured: "Les métriques de ce concurrent ne sont pas encore disponibles.",
+    no_metrics: "Aucune métrique n’est disponible pour ce domaine pour le moment.",
+    provider_error: "Les métriques sont temporairement indisponibles. Réessayez plus tard.",
   };
   const update = await req.orgDb(
     `UPDATE competitors

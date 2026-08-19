@@ -8,6 +8,11 @@ const MEMBER_ID = "member-a";
 const MEMBER_EMAIL = "member@example.test";
 const MEMBER_UUID = "11111111-1111-4111-8111-111111111111";
 const INVITATION_LEGACY_USER_ID = MEMBER_EMAIL;
+// The true org owner, present as a LEGACY team_members row with role 'admin'
+// (not 'owner') — ownership is defined by organizations.owner_email.
+const OWNER_EMAIL = "owner@example.test";
+const OWNER_UUID = "22222222-2222-4222-8222-222222222222";
+const OWNER_LEGACY_MEMBER_ID = "member-owner-legacy";
 
 type Session = { userId: string; orgId: string; email: string; role: string; userUuid?: string };
 const sessions = new Map<string, Session>();
@@ -43,6 +48,17 @@ vi.mock("@workspace/db", () => ({
         if (memberId === MEMBER_ID && scopedOrgId === ORG_A && teamMemberStatus.get(key(ORG_A, MEMBER_EMAIL)) === "active") {
           return { rows: [{ team_user_id: INVITATION_LEGACY_USER_ID, canonical_user_id: MEMBER_UUID }] };
         }
+        if (memberId === OWNER_LEGACY_MEMBER_ID && scopedOrgId === ORG_A) {
+          return { rows: [{ team_user_id: OWNER_EMAIL, canonical_user_id: OWNER_UUID }] };
+        }
+        return { rows: [] };
+      }
+      // organizations owner lookup — ownership authority for removal protection
+      if (/SELECT o\.owner_email, u\.id::text AS owner_user_id/.test(sql)) {
+        const [scopedOrgId] = values as [string];
+        if (scopedOrgId === ORG_A) {
+          return { rows: [{ owner_email: OWNER_EMAIL, owner_user_id: OWNER_UUID }] };
+        }
         return { rows: [] };
       }
       throw new Error(`Unexpected pool SQL in member-removal test: ${sql}`);
@@ -56,6 +72,10 @@ vi.mock("@workspace/db", () => ({
           const [memberId, scopedOrgId] = values as [string, string];
           if (scopedOrgId === ORG_A && memberId === MEMBER_ID && teamMemberStatus.get(key(ORG_A, MEMBER_EMAIL)) === "active") {
             return { rows: [{ id: MEMBER_ID, email: MEMBER_EMAIL, role: "member", user_id: INVITATION_LEGACY_USER_ID }] };
+          }
+          if (scopedOrgId === ORG_A && memberId === OWNER_LEGACY_MEMBER_ID) {
+            // The true owner's legacy row carries a NON-owner role on purpose.
+            return { rows: [{ id: OWNER_LEGACY_MEMBER_ID, email: OWNER_EMAIL, role: "admin", user_id: OWNER_UUID }] };
           }
           return { rows: [] };
         }
@@ -94,12 +114,12 @@ vi.mock("@workspace/db", () => ({
 import teamRouter from "./team.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
 
-function removalApp() {
+function removalApp(caller: { email: string; role: string } = { email: OWNER_EMAIL, role: "owner" }) {
   const app = express();
   app.use(express.json());
   app.use((req: Request, _res: Response, next: NextFunction) => {
     req.orgId = ORG_A;
-    req.orgContext = { orgId: ORG_A, email: "owner@example.test", role: "owner" };
+    req.orgContext = { orgId: ORG_A, email: caller.email, role: caller.role };
     next();
   });
   app.use("/api", teamRouter);
@@ -143,5 +163,18 @@ describe("DELETE /team/:id — member access revocation", () => {
     expect(result.status).toBe(404);
     expect(sessions.has("org-b-token")).toBe(true);
     expect(canonicalMemberships.has(key(ORG_B, MEMBER_EMAIL))).toBe(true);
+  });
+
+  it("an admin CANNOT remove the true org owner even when the owner's legacy row has role 'admin'", async () => {
+    sessions.set("owner-token", { userId: ORG_A, orgId: ORG_A, email: OWNER_EMAIL, role: "owner", userUuid: OWNER_UUID });
+    canonicalMemberships.set(key(ORG_A, OWNER_EMAIL), OWNER_UUID);
+
+    const result = await request(removalApp({ email: "another-admin@example.test", role: "admin" }))
+      .delete(`/api/team/${OWNER_LEGACY_MEMBER_ID}`);
+
+    expect(result.status).toBe(403);
+    expect(result.body.code).toBe("CANNOT_REMOVE_OWNER");
+    expect(sessions.has("owner-token")).toBe(true);
+    expect(canonicalMemberships.has(key(ORG_A, OWNER_EMAIL))).toBe(true);
   });
 });

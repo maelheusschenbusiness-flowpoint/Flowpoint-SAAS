@@ -30,6 +30,8 @@ type OrgDb = (sql: string, values?: unknown[]) => Promise<{ rows: Row[] }>;
 function makeSharedDb() {
   const notifications: Row[] = [];
   const teamMessages: Row[] = [];
+  const channels: Row[] = [];
+  const flags = { failChannelInsert: false };
   const teamMembers: Row[] = [
     { org_id: "orgA", user_id: "u-sender", email: "sender@x.co", status: "active" },
     { org_id: "orgA", user_id: "u-alice",  email: "alice@x.co",  status: "active" },
@@ -47,7 +49,34 @@ function makeSharedDb() {
           .map(m => ({ rid: (m.user_id as string) || (m.email as string), email: m.email, user_id: m.user_id })),
       };
     }
-    if (/INSERT INTO team_channels/.test(sql)) return { rows: [] };
+    if (/INSERT INTO team_channels/.test(sql)) {
+      if (flags.failChannelInsert) throw new Error("channel insert failed (test)");
+      // Deliberately deferred: the push only happens after a real async hop,
+      // so a fire-and-forget caller would resolve BEFORE the row exists.
+      await new Promise(r => setTimeout(r, 10));
+      const [org_id, name, created_by] = values as string[];
+      if (!channels.some(c => c.org_id === org_id && c.name === name)) {
+        channels.push({ org_id, name, created_by, created_at: new Date().toISOString() });
+      }
+      return { rows: [] };
+    }
+    if (/SELECT DISTINCT channel FROM team_messages/.test(sql)) {
+      const orgId = values[0] as string;
+      const names = [...new Set(teamMessages.filter(m => m.org_id === orgId).map(m => String(m.channel)))];
+      return { rows: names.map(channel => ({ channel })) };
+    }
+    if (/SELECT name FROM team_channels/.test(sql)) {
+      const orgId = values[0] as string;
+      return { rows: channels.filter(c => c.org_id === orgId).map(c => ({ name: c.name })) };
+    }
+    if (/FROM team_messages/.test(sql) && /org_id=\$1 AND channel=\$2/.test(sql)) {
+      const [orgId, channel] = values as string[];
+      return {
+        rows: teamMessages
+          .filter(m => m.org_id === orgId && m.channel === channel)
+          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))),
+      };
+    }
     if (/INSERT INTO team_messages/.test(sql)) {
       const [id, org_id, channel, sender_id, sender_name, content, attachment_url, attachment_name] = values as string[];
       const row: Row = { id, org_id, channel, sender_id, sender_name, content, type: "text", attachment_url, attachment_name, created_at: new Date().toISOString() };
@@ -98,15 +127,15 @@ function makeSharedDb() {
     return { rows: [] };
   };
 
-  return { db, notifications, teamMembers };
+  return { db, notifications, teamMembers, channels, flags };
 }
 
-function makeApp(db: OrgDb, user: { userId: string; email: string }) {
+function makeApp(db: OrgDb, user: { userId: string; email: string }, orgId = "orgA") {
   const app = express();
   app.use(express.json());
   app.use((req: any, _res, next) => {
-    req.orgId = "orgA";
-    req.orgContext = { orgId: "orgA", userId: user.userId, email: user.email, role: "owner" };
+    req.orgId = orgId;
+    req.orgContext = { orgId, userId: user.userId, email: user.email, role: "owner" };
     req.orgDb = db;
     next();
   });
@@ -184,5 +213,78 @@ describe("per-recipient chat notifications", () => {
     });
     await request(makeApp(shared.db, ALICE)).patch("/notifications/read-all");
     expect(shared.notifications.find(n => n.id === "notif-orgwide")?.read).toBe(true);
+  });
+});
+
+// ─── Chat message persistence, routing & isolation (task: fiabiliser équipe/chat) ──
+
+describe("chat message persistence & routing", () => {
+  let shared: ReturnType<typeof makeSharedDb>;
+  beforeEach(() => {
+    shared = makeSharedDb();
+    vi.clearAllMocks();
+  });
+
+  it("persists the channel row before POST resolves — recipient refresh right after sees the channel", async () => {
+    const r = await request(makeApp(shared.db, SENDER))
+      .post("/team/messages").send({ channel: "#Projet-X", text: "kickoff" });
+    expect(r.status).toBe(201);
+
+    // No flushAsync: the awaited insert must already be visible.
+    expect(shared.channels.map(c => c.name)).toContain("projet-x"); // normalized (no #, lowercase)
+
+    const all = await request(makeApp(shared.db, ALICE)).get("/team/messages/all");
+    expect(Object.keys(all.body)).toContain("projet-x");
+    expect((all.body["projet-x"] as Array<{ text: string }>).map(m => m.text)).toContain("kickoff");
+  });
+
+  it("survives a channel-insert failure: POST still succeeds and /all surfaces the channel from its messages", async () => {
+    shared.flags.failChannelInsert = true;
+    const r = await request(makeApp(shared.db, SENDER))
+      .post("/team/messages").send({ channel: "orphan-channel", text: "still visible" });
+    expect(r.status).toBe(201);
+    expect(shared.channels).toHaveLength(0); // channel row genuinely missing
+
+    const all = await request(makeApp(shared.db, ALICE)).get("/team/messages/all");
+    expect(Object.keys(all.body)).toContain("orphan-channel");
+    expect((all.body["orphan-channel"] as Array<{ text: string }>).map(m => m.text)).toContain("still visible");
+  });
+
+  it("delivers bidirectionally: sender sees self:true, recipient sees self:false with senderId", async () => {
+    await request(makeApp(shared.db, SENDER)).post("/team/messages").send({ channel: "general", text: "hello" });
+
+    const s = await request(makeApp(shared.db, SENDER)).get("/team/messages?channel=general");
+    const a = await request(makeApp(shared.db, ALICE)).get("/team/messages?channel=general");
+
+    expect(s.body).toHaveLength(1);
+    expect(s.body[0].self).toBe(true);
+    expect(a.body).toHaveLength(1);
+    expect(a.body[0].self).toBe(false);
+    expect(a.body[0].senderId).toBe("u-sender");
+    expect(a.body[0].text).toBe("hello");
+  });
+
+  it("isolates messages by organization — another org sees nothing", async () => {
+    await request(makeApp(shared.db, SENDER)).post("/team/messages").send({ channel: "general", text: "orgA secret" });
+
+    const EVE = { userId: "u-eve", email: "eve@other.co" };
+    const single = await request(makeApp(shared.db, EVE, "orgB")).get("/team/messages?channel=general");
+    expect(single.body).toEqual([]);
+
+    const all = await request(makeApp(shared.db, EVE, "orgB")).get("/team/messages/all");
+    for (const ch of Object.keys(all.body)) expect(all.body[ch]).toEqual([]);
+  });
+
+  it("SSE broadcast carries senderId and self:false, scoped to the sender's org", async () => {
+    const { store } = await import("../services/store.js");
+    await request(makeApp(shared.db, SENDER)).post("/team/messages").send({ channel: "general", text: "ping" });
+
+    const call = (store.broadcast as ReturnType<typeof vi.fn>).mock.calls
+      .find((c: unknown[]) => (c[0] as { type?: string })?.type === "chat:message");
+    expect(call).toBeTruthy();
+    const payload = call![0] as { message: { self: boolean; senderId: string } };
+    expect(payload.message.self).toBe(false);
+    expect(payload.message.senderId).toBe("u-sender");
+    expect(call![1]).toBe("orgA");
   });
 });

@@ -1472,6 +1472,11 @@ async function loadData(options = {}) {
         if (_cp.monitors)      STATE.monitors      = _cp.monitors;
         if (_cp.reports)       STATE.reports       = _cp.reports;
         if (_cp.team)          STATE.team          = _cp.team;
+        // Seat usage + pending invitations must travel with the cached team list:
+        // restoring one without the others makes every surface fall back to
+        // divergent local computations (team.length vs seatUsage.used).
+        if (_cp.seatUsage)          STATE.seatUsage          = _cp.seatUsage;
+        if (_cp.pendingInvitations) STATE.pendingInvitations = _cp.pendingInvitations;
         if (_cp.alertRules)      STATE.alertRules      = _cp.alertRules;
         if (_cp.notifications)   STATE.notifications   = _cp.notifications;
         if (_cp.ga4Status)     { STATE.ga4Status = _cp.ga4Status; if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.ga4 = _cp.ga4Status; }
@@ -1765,14 +1770,39 @@ async function loadData(options = {}) {
       from: m.from, text: m.text,
       time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}) : '',
       createdAt: m.createdAt || null,
+      senderId: m.senderId || null,
       read: true, self: !!m.self, attachmentUrl: m.attachmentUrl||null, attachmentName: m.attachmentName||null,
     });
     // Build channel map: include known channels + any extras from server response
     const _knownChs = ['general','seo','rapports','support'];
     const _serverChs = Object.keys(_allMsgs).filter(k => !_knownChs.includes(k));
+    // MERGE instead of reset: an SSE chat message can arrive while this fetch
+    // is in flight; wiping STATE.channelMessages here silently erased it (the
+    // recipient then only saw the chat *notification*, never the message).
+    const _prevChMsgs = (STATE.channelMessages && typeof STATE.channelMessages === 'object') ? STATE.channelMessages : {};
     STATE.channelMessages = {};
     [..._knownChs, ..._serverChs].forEach(ch => {
       STATE.channelMessages[ch] = (Array.isArray(_allMsgs[ch]) ? _allMsgs[ch] : []).map(_toChEntry);
+    });
+    Object.keys(_prevChMsgs).forEach(ch => {
+      const prev = Array.isArray(_prevChMsgs[ch]) ? _prevChMsgs[ch] : [];
+      if (!prev.length) return;
+      if (!STATE.channelMessages[ch]) STATE.channelMessages[ch] = [];
+      const cur = STATE.channelMessages[ch];
+      const curIds = new Set(cur.map(m => m.id).filter(Boolean));
+      prev.forEach(pm => {
+        if (!pm) return;
+        if (pm.id && curIds.has(pm.id)) {
+          // Server copy wins for content; keep the local read/self flags so an
+          // unread SSE message stays unread until the user actually opens it.
+          const idx = cur.findIndex(m => m.id === pm.id);
+          if (idx >= 0) { cur[idx].read = pm.read; cur[idx].self = pm.self; }
+          return;
+        }
+        // Local-only message (SSE-delivered, or optimistic not yet persisted in
+        // this response) — keep it rather than dropping it.
+        cur.push(pm);
+      });
     });
     // Populate STATE.channels from server data
     if (!STATE.channels) STATE.channels = [];
@@ -1981,6 +2011,7 @@ async function loadData(options = {}) {
       _ts: Date.now(), me: STATE.me, overview: STATE.overview,
       audits: STATE.audits.slice(0,50), monitors: STATE.monitors.slice(0,50),
       reports: STATE.reports.slice(0,20), team: STATE.team,
+      seatUsage: STATE.seatUsage || null, pendingInvitations: STATE.pendingInvitations || [],
       alertRules: STATE.alertRules, notifications: STATE.notifications.slice(0,20),
       ga4Status: STATE.ga4Status, gsc: STATE.gsc, googleConnected: STATE.googleConnected,
     }));
@@ -2069,6 +2100,7 @@ async function loadData(options = {}) {
       me: STATE.me, overview: STATE.overview,
       audits: STATE.audits, monitors: STATE.monitors,
       reports: STATE.reports, team: STATE.team,
+      seatUsage: STATE.seatUsage || null, pendingInvitations: STATE.pendingInvitations || [],
       alertRules: STATE.alertRules, notifications: STATE.notifications,
       ga4Status: STATE.ga4Status, gsc: STATE.gsc,
       googleConnected: STATE.googleConnected,
@@ -2181,7 +2213,9 @@ function _isOwnChatNotif(n) {
     return [me.userId, me.id, me.email].filter(Boolean).map(String).indexOf(String(meta.senderId)) >= 0;
   } catch(_) { return false; }
 }
-function unread() { return STATE.notifications.filter(n => !n.read && !_isOwnChatNotif(n)).length; }
+// Chat messages are NOT system notifications: they live in the Messages space
+// (badge + dropdown). The system feed stays reserved for operational alerts.
+function unread() { return STATE.notifications.filter(n => !n.read && n.type !== 'chat' && !_isOwnChatNotif(n)).length; }
 function addLocalNotification(type, title, body) {
   const n = { id: 'local_' + Date.now(), type, title, body, read: false, createdAt: new Date().toISOString() };
   if (!Array.isArray(STATE.notifications)) STATE.notifications = [];
@@ -3914,7 +3948,13 @@ function renderActivityList() {
       const newEvents = await apiFetch('/api/activity?page=' + nextPage + '&limit=50');
       if (Array.isArray(newEvents) && newEvents.length > 0) {
         const known = new Set(STATE.activityEvents.map(e => e.id || e.createdAt));
-        const fresh = newEvents.filter(e => !known.has(e.id || e.createdAt));
+        const knownReportTargets = new Set(STATE.activityEvents
+          .filter(e => e.type === 'report' && (e.targetId || e.target_id))
+          .map(e => 'report:' + (e.targetId || e.target_id)));
+        const fresh = newEvents.filter(e =>
+          !known.has(e.id || e.createdAt) &&
+          !(e.type === 'report' && knownReportTargets.has('report:' + (e.targetId || e.target_id)))
+        );
         STATE.activityEvents = [...STATE.activityEvents, ...fresh];
         STATE.activityPage = nextPage;
         if (newEvents.length < 50) STATE.activityHasMore = false;
@@ -4721,9 +4761,27 @@ function getChMsgs() {
   return STATE.channelMessages[STATE.msgChannel || 'general'] || [];
 }
 
+// Unread chat notification rows that are NOT already represented by an unread
+// channel message (SSE delivers the message itself to online clients; the
+// notification row is the offline fallback — never count the same message twice).
+function _fpUnreadChatNotifs() {
+  const notifs = Array.isArray(STATE.notifications) ? STATE.notifications : [];
+  const unreadMsgIds = new Set();
+  if (STATE.channelMessages && typeof STATE.channelMessages === 'object') {
+    Object.values(STATE.channelMessages).flat().forEach(m => { if (m && m.id && !m.read && !m.self) unreadMsgIds.add(String(m.id)); });
+  }
+  return notifs.filter(n => {
+    if (!n || n.type !== 'chat' || n.read || _isOwnChatNotif(n)) return false;
+    const m = /^ntf_chat_(.+)_\d+$/.exec(String(n.id || ''));
+    if (m && unreadMsgIds.has(m[1])) return false;
+    return true;
+  });
+}
+
 function getMsgUnreadTotal() {
   if (!STATE.channelMessages) STATE.channelMessages = PREVIEW_MODE ? JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT)) : {general:[],seo:[],rapports:[],support:[]};
-  return Object.values(STATE.channelMessages).flat().filter(m => !m.read && !m.self).length;
+  return Object.values(STATE.channelMessages).flat().filter(m => !m.read && !m.self).length
+       + _fpUnreadChatNotifs().length;
 }
 
 // ── Global chat notification helpers (called from fp-backend.js SSE handler) ──
@@ -4835,6 +4893,14 @@ function bindMsgPanel(dd) {
   dd.querySelector('#fp-msg-mark-all')?.addEventListener('click', e => {
     e.stopPropagation();
     Object.values(STATE.channelMessages).flat().forEach(m => m.read = true);
+    // Also clear the persisted chat notification rows (offline fallback), so
+    // the Messages badge stays consistent across reloads and devices.
+    (STATE.notifications || []).forEach(n => {
+      if (n && n.type === 'chat' && !n.read) {
+        n.read = true;
+        if (n.id) apiAction('PATCH', `/api/notifications/${encodeURIComponent(n.id)}/read`).catch(() => {});
+      }
+    });
     dd.innerHTML = renderMsgDropdown(); bindMsgPanel(dd); refreshBadge();
   });
 
@@ -4975,7 +5041,8 @@ function renderNotifications() {
   const showHidden = STATE._notifShowHidden || false;
 
   const typeColors = { error:'#ef4444', success:'#22c55e', warning:'#f59e0b', info:'#2563EB' };
-  const visible = STATE.notifications.filter(n => !_isOwnChatNotif(n)).filter(n => showHidden ? hiddenIds.includes(n.id||n.title) : !hiddenIds.includes(n.id||n.title));
+  // type==='chat' rows are routed to the Messages badge/dropdown, never here.
+  const visible = STATE.notifications.filter(n => n.type !== 'chat' && !_isOwnChatNotif(n)).filter(n => showHidden ? hiddenIds.includes(n.id||n.title) : !hiddenIds.includes(n.id||n.title));
 
   dropdown.innerHTML = `
     <div class="fp-notif-header">
@@ -7580,7 +7647,7 @@ function renderReports() {
     return `
       ${isPro
         ? aiBlock(_execAvg !== null
-            ? "Votre score SEO moyen est <strong>" + _execAvg + "/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation."
+            ? fpT("Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.", { score: _execAvg })
             : PREVIEW_MODE
               ? "Votre business affiche une trajectoire positive sur 4 mois : score SEO +12 pts, santé business +14 pts. <strong>Point critique</strong> : la conversion reste votre maillon faible. Action recommandée : corriger le formulaire mobile en priorité."
               : "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.",
@@ -7633,7 +7700,7 @@ function renderReports() {
 
       <!-- STRATEGIC RECOMMENDATIONS -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🎯 Recommandations strategiques IA</div>
+        <div class="fp-card-title" style="margin-bottom:14px">🎯 ${fpT('Recommandations stratégiques IA')}</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${recs.map(r => `
             <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-radius:10px;border-left:3px solid ${r.color};background:${r.color}07">
@@ -17672,6 +17739,43 @@ function bindGlobalEvents() {
   // keeps every supported language deterministic across rerenders; user content
   // is deliberately left untouched when it has no UI-key match.
   var FP_I18N_EN = {
+    "Sites critiques à corriger": "Critical sites to fix",
+    "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Some sites have an SEO score below 50/100. Fix missing tags and mobile speed first.",
+    "À prioriser": "To prioritize",
+    "Monitors DOWN": "Monitors DOWN",
+    "Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.": "Some monitors are currently offline. Every minute of downtime impacts your SEO and conversions.",
+    "SLA protégé": "SLA protected",
+    "Optimiser Google Business Profile": "Optimize Google Business Profile",
+    "Votre fiche GBP n'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.": "Your GBP listing is not 100% complete. Complete photos, hours and description, then measure the change in local visibility.",
+    "À mesurer": "To measure",
+    "Evolution globale — 4 mois": "Overall evolution — 4 months",
+    "SEO mesuré": "Measured SEO",
+    "Historique insuffisant : seule la mesure disponible est affichée.": "Insufficient history: only the available measurement is shown.",
+    "Aucun historique mesuré disponible": "No measured history available",
+    "Lancez des audits à différentes dates pour afficher une évolution réelle.": "Run audits on different dates to display a real evolution.",
+    "Recommandations stratégiques IA": "AI strategic recommendations",
+    "potentiel": "potential",
+    "Score business global": "Overall business score",
+    "Score conversion": "Conversion score",
+    "Score performance": "Performance score",
+    "score moyen portfolio": "portfolio average score",
+    "Connectez une source de données": "Connect a data source",
+    "Excellent — SLA tenu": "Excellent — SLA met",
+    "Rapports Executive — Pro requis": "Executive Reports — Pro required",
+    "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.": "Add your sites and connect your data sources to get your personalized executive report.",
+    "Rapport complet PDF": "Full PDF report",
+    "Plan actions prioritaires": "Priority action plan",
+    "Partager au client": "Share with client",
+    "Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.": "Your average SEO score is <strong>{score}/100</strong>. Check each site's reports for optimization priorities.",
+    "Couleur principale": "Primary color",
+    "Couleur secondaire": "Secondary color",
+    "✓ Inclus": "✓ Included",
+    "Fonctionnalité bientôt disponible — réservée au plan Ultra": "Feature coming soon — reserved for the Ultra plan",
+    "Disponible avec le plan Ultra": "Available with the Ultra plan",
+    "Page de statut (URL publique)": "Status page (public URL)",
+    "Webhook d'alerte (endpoint)": "Alert webhook (endpoint)",
+    "Téléphone SMS urgence": "Emergency SMS phone",
+    "Renseignez votre adresse pour activer la personnalisation locale complète": "Enter your address to enable full local personalization",
     "Vue d'ensemble": 'Overview', 'Audits SEO': 'SEO Audits', 'Mots-clés': 'Keywords',
     'Concurrents': 'Competitors', 'Rapports': 'Reports', 'Missions': 'Missions',
     'Assistant IA': 'AI Assistant', 'Calendrier': 'Calendar', 'Équipe': 'Team',
@@ -20338,6 +20442,43 @@ function bindGlobalEvents() {
   var FP_I18N = {
     en: FP_I18N_EN,
     es: {
+    "Sites critiques à corriger": "Sitios críticos a corregir",
+    "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Algunos sitios tienen una puntuación SEO inferior a 50/100. Corrige primero las etiquetas faltantes y la velocidad móvil.",
+    "À prioriser": "A priorizar",
+    "Monitors DOWN": "Monitores CAÍDOS",
+    "Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.": "Algunos monitores están actualmente fuera de línea. Cada minuto de inactividad afecta tu SEO y tus conversiones.",
+    "SLA protégé": "SLA protegido",
+    "Optimiser Google Business Profile": "Optimizar Google Business Profile",
+    "Votre fiche GBP n'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.": "Tu ficha de GBP no está completa al 100%. Completa fotos, horarios y descripción, luego mide la evolución de la visibilidad local.",
+    "À mesurer": "A medir",
+    "Evolution globale — 4 mois": "Evolución global — 4 meses",
+    "SEO mesuré": "SEO medido",
+    "Historique insuffisant : seule la mesure disponible est affichée.": "Historial insuficiente: solo se muestra la medición disponible.",
+    "Aucun historique mesuré disponible": "No hay historial medido disponible",
+    "Lancez des audits à différentes dates pour afficher une évolution réelle.": "Lanza auditorías en diferentes fechas para mostrar una evolución real.",
+    "Recommandations stratégiques IA": "Recomendaciones estratégicas IA",
+    "potentiel": "potencial",
+    "Score business global": "Puntuación global de negocio",
+    "Score conversion": "Puntuación de conversión",
+    "Score performance": "Puntuación de rendimiento",
+    "score moyen portfolio": "puntuación media del portafolio",
+    "Connectez une source de données": "Conecta una fuente de datos",
+    "Excellent — SLA tenu": "Excelente — SLA cumplido",
+    "Rapports Executive — Pro requis": "Informes Executive — Se requiere Pro",
+    "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.": "Añade tus sitios y conecta tus fuentes de datos para obtener tu informe executive personalizado.",
+    "Rapport complet PDF": "Informe PDF completo",
+    "Plan actions prioritaires": "Plan de acciones prioritarias",
+    "Partager au client": "Compartir con el cliente",
+    "Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.": "Tu puntuación SEO media es <strong>{score}/100</strong>. Consulta los informes de cada sitio para las prioridades de optimización.",
+    "Couleur principale": "Color principal",
+    "Couleur secondaire": "Color secundario",
+    "✓ Inclus": "✓ Incluido",
+    "Fonctionnalité bientôt disponible — réservée au plan Ultra": "Funcionalidad próximamente — reservada al plan Ultra",
+    "Disponible avec le plan Ultra": "Disponible con el plan Ultra",
+    "Page de statut (URL publique)": "Página de estado (URL pública)",
+    "Webhook d'alerte (endpoint)": "Webhook de alerta (endpoint)",
+    "Téléphone SMS urgence": "Teléfono SMS de emergencia",
+    "Renseignez votre adresse pour activer la personnalisation locale complète": "Introduce tu dirección para activar la personalización local completa",
     "+ Analyser un avis": "+ Analizar una reseña",
     "+ Créer": "+ Crear",
     "+ Créer une heatmap": "+ Crear heatmap",
@@ -23242,6 +23383,43 @@ function bindGlobalEvents() {
     "Agressive": "Agresiva",
     },
     de: {
+    "Sites critiques à corriger": "Kritische Websites zu beheben",
+    "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Einige Websites haben einen SEO-Score unter 50/100. Beheben Sie zuerst fehlende Tags und die mobile Geschwindigkeit.",
+    "À prioriser": "Zu priorisieren",
+    "Monitors DOWN": "Monitore DOWN",
+    "Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.": "Einige Monitore sind derzeit offline. Jede Minute Ausfallzeit beeinträchtigt Ihr SEO und Ihre Conversions.",
+    "SLA protégé": "SLA geschützt",
+    "Optimiser Google Business Profile": "Google Business Profile optimieren",
+    "Votre fiche GBP n'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.": "Ihr GBP-Profil ist nicht zu 100 % vollständig. Vervollständigen Sie Fotos, Öffnungszeiten und Beschreibung und messen Sie dann die Entwicklung der lokalen Sichtbarkeit.",
+    "À mesurer": "Zu messen",
+    "Evolution globale — 4 mois": "Gesamtentwicklung — 4 Monate",
+    "SEO mesuré": "Gemessenes SEO",
+    "Historique insuffisant : seule la mesure disponible est affichée.": "Unzureichender Verlauf: Nur die verfügbare Messung wird angezeigt.",
+    "Aucun historique mesuré disponible": "Kein gemessener Verlauf verfügbar",
+    "Lancez des audits à différentes dates pour afficher une évolution réelle.": "Führen Sie Audits an verschiedenen Daten durch, um eine echte Entwicklung anzuzeigen.",
+    "Recommandations stratégiques IA": "Strategische KI-Empfehlungen",
+    "potentiel": "Potenzial",
+    "Score business global": "Globaler Business-Score",
+    "Score conversion": "Conversion-Score",
+    "Score performance": "Performance-Score",
+    "score moyen portfolio": "durchschnittlicher Portfolio-Score",
+    "Connectez une source de données": "Verbinden Sie eine Datenquelle",
+    "Excellent — SLA tenu": "Exzellent — SLA eingehalten",
+    "Rapports Executive — Pro requis": "Executive-Berichte — Pro erforderlich",
+    "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.": "Fügen Sie Ihre Websites hinzu und verbinden Sie Ihre Datenquellen, um Ihren personalisierten Executive-Bericht zu erhalten.",
+    "Rapport complet PDF": "Vollständiger PDF-Bericht",
+    "Plan actions prioritaires": "Prioritärer Aktionsplan",
+    "Partager au client": "Mit dem Kunden teilen",
+    "Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.": "Ihr durchschnittlicher SEO-Score beträgt <strong>{score}/100</strong>. Prüfen Sie die Berichte jeder Website für die Optimierungsprioritäten.",
+    "Couleur principale": "Primärfarbe",
+    "Couleur secondaire": "Sekundärfarbe",
+    "✓ Inclus": "✓ Inklusive",
+    "Fonctionnalité bientôt disponible — réservée au plan Ultra": "Funktion bald verfügbar — dem Ultra-Plan vorbehalten",
+    "Disponible avec le plan Ultra": "Verfügbar mit dem Ultra-Plan",
+    "Page de statut (URL publique)": "Statusseite (öffentliche URL)",
+    "Webhook d'alerte (endpoint)": "Alarm-Webhook (Endpoint)",
+    "Téléphone SMS urgence": "Notfall-SMS-Telefon",
+    "Renseignez votre adresse pour activer la personnalisation locale complète": "Geben Sie Ihre Adresse ein, um die vollständige lokale Personalisierung zu aktivieren",
     "+ Analyser un avis": "+ Eine Bewertung analysieren",
     "+ Créer": "+ Erstellen",
     "+ Créer une heatmap": "+ Heatmap erstellen",
@@ -26119,6 +26297,43 @@ function bindGlobalEvents() {
     "Agressive": "Aggressiv",
     },
     it: {
+    "Sites critiques à corriger": "Siti critici da correggere",
+    "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Alcuni siti hanno un punteggio SEO inferiore a 50/100. Correggi prima i tag mancanti e la velocità mobile.",
+    "À prioriser": "Da prioritizzare",
+    "Monitors DOWN": "Monitor DOWN",
+    "Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.": "Alcuni monitor sono attualmente offline. Ogni minuto di inattività impatta il tuo SEO e le tue conversioni.",
+    "SLA protégé": "SLA protetto",
+    "Optimiser Google Business Profile": "Ottimizza Google Business Profile",
+    "Votre fiche GBP n'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.": "La tua scheda GBP non è completa al 100%. Completa foto, orari e descrizione, poi misura l'evoluzione della visibilità locale.",
+    "À mesurer": "Da misurare",
+    "Evolution globale — 4 mois": "Evoluzione globale — 4 mesi",
+    "SEO mesuré": "SEO misurato",
+    "Historique insuffisant : seule la mesure disponible est affichée.": "Storico insufficiente: viene mostrata solo la misurazione disponibile.",
+    "Aucun historique mesuré disponible": "Nessuno storico misurato disponibile",
+    "Lancez des audits à différentes dates pour afficher une évolution réelle.": "Esegui audit in date diverse per visualizzare un'evoluzione reale.",
+    "Recommandations stratégiques IA": "Raccomandazioni strategiche IA",
+    "potentiel": "potenziale",
+    "Score business global": "Punteggio business globale",
+    "Score conversion": "Punteggio di conversione",
+    "Score performance": "Punteggio di performance",
+    "score moyen portfolio": "punteggio medio del portfolio",
+    "Connectez une source de données": "Collega una fonte di dati",
+    "Excellent — SLA tenu": "Eccellente — SLA rispettato",
+    "Rapports Executive — Pro requis": "Report Executive — Pro richiesto",
+    "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.": "Aggiungi i tuoi siti e collega le tue fonti di dati per ottenere il tuo report executive personalizzato.",
+    "Rapport complet PDF": "Report PDF completo",
+    "Plan actions prioritaires": "Piano azioni prioritarie",
+    "Partager au client": "Condividi con il cliente",
+    "Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.": "Il tuo punteggio SEO medio è <strong>{score}/100</strong>. Consulta i report di ogni sito per le priorità di ottimizzazione.",
+    "Couleur principale": "Colore principale",
+    "Couleur secondaire": "Colore secondario",
+    "✓ Inclus": "✓ Incluso",
+    "Fonctionnalité bientôt disponible — réservée au plan Ultra": "Funzionalità in arrivo — riservata al piano Ultra",
+    "Disponible avec le plan Ultra": "Disponibile con il piano Ultra",
+    "Page de statut (URL publique)": "Pagina di stato (URL pubblico)",
+    "Webhook d'alerte (endpoint)": "Webhook di allerta (endpoint)",
+    "Téléphone SMS urgence": "Telefono SMS di emergenza",
+    "Renseignez votre adresse pour activer la personnalisation locale complète": "Inserisci il tuo indirizzo per attivare la personalizzazione locale completa",
     "+ Analyser un avis": "+ Analizza una recensione",
     "+ Créer": "+ Crea",
     "+ Créer une heatmap": "+ Crea heatmap",
@@ -28996,6 +29211,43 @@ function bindGlobalEvents() {
     "Agressive": "Aggressiva",
     },
     pt: {
+    "Sites critiques à corriger": "Sites críticos a corrigir",
+    "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Alguns sites têm uma pontuação SEO inferior a 50/100. Corrija primeiro as tags em falta e a velocidade móvel.",
+    "À prioriser": "A priorizar",
+    "Monitors DOWN": "Monitores DOWN",
+    "Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.": "Alguns monitores estão atualmente offline. Cada minuto de inatividade afeta o seu SEO e as suas conversões.",
+    "SLA protégé": "SLA protegido",
+    "Optimiser Google Business Profile": "Otimizar o Google Business Profile",
+    "Votre fiche GBP n'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.": "A sua ficha GBP não está 100% completa. Complete fotos, horários e descrição, depois meça a evolução da visibilidade local.",
+    "À mesurer": "A medir",
+    "Evolution globale — 4 mois": "Evolução global — 4 meses",
+    "SEO mesuré": "SEO medido",
+    "Historique insuffisant : seule la mesure disponible est affichée.": "Histórico insuficiente: apenas a medição disponível é apresentada.",
+    "Aucun historique mesuré disponible": "Nenhum histórico medido disponível",
+    "Lancez des audits à différentes dates pour afficher une évolution réelle.": "Execute auditorias em datas diferentes para apresentar uma evolução real.",
+    "Recommandations stratégiques IA": "Recomendações estratégicas IA",
+    "potentiel": "potencial",
+    "Score business global": "Pontuação global de negócio",
+    "Score conversion": "Pontuação de conversão",
+    "Score performance": "Pontuação de desempenho",
+    "score moyen portfolio": "pontuação média do portfólio",
+    "Connectez une source de données": "Ligue uma fonte de dados",
+    "Excellent — SLA tenu": "Excelente — SLA cumprido",
+    "Rapports Executive — Pro requis": "Relatórios Executive — Pro necessário",
+    "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.": "Adicione os seus sites e ligue as suas fontes de dados para obter o seu relatório executive personalizado.",
+    "Rapport complet PDF": "Relatório PDF completo",
+    "Plan actions prioritaires": "Plano de ações prioritárias",
+    "Partager au client": "Partilhar com o cliente",
+    "Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.": "A sua pontuação SEO média é <strong>{score}/100</strong>. Consulte os relatórios de cada site para as prioridades de otimização.",
+    "Couleur principale": "Cor principal",
+    "Couleur secondaire": "Cor secundária",
+    "✓ Inclus": "✓ Incluído",
+    "Fonctionnalité bientôt disponible — réservée au plan Ultra": "Funcionalidade em breve — reservada ao plano Ultra",
+    "Disponible avec le plan Ultra": "Disponível com o plano Ultra",
+    "Page de statut (URL publique)": "Página de estado (URL pública)",
+    "Webhook d'alerte (endpoint)": "Webhook de alerta (endpoint)",
+    "Téléphone SMS urgence": "Telefone SMS de emergência",
+    "Renseignez votre adresse pour activer la personnalisation locale complète": "Introduza o seu endereço para ativar a personalização local completa",
     "+ Analyser un avis": "+ Analisar uma avaliação",
     "+ Créer": "+ Criar",
     "+ Créer une heatmap": "+ Criar heatmap",
@@ -31873,6 +32125,43 @@ function bindGlobalEvents() {
     "Agressive": "Agressiva",
     },
     nl: {
+    "Sites critiques à corriger": "Kritieke sites om te herstellen",
+    "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Sommige sites hebben een SEO-score onder 50/100. Herstel eerst ontbrekende tags en mobiele snelheid.",
+    "À prioriser": "Te prioriteren",
+    "Monitors DOWN": "Monitors DOWN",
+    "Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.": "Sommige monitors zijn momenteel offline. Elke minuut downtime schaadt je SEO en conversies.",
+    "SLA protégé": "SLA beschermd",
+    "Optimiser Google Business Profile": "Google Business Profile optimaliseren",
+    "Votre fiche GBP n'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.": "Je GBP-vermelding is niet 100% compleet. Vul foto's, openingstijden en beschrijving aan en meet daarna de evolutie van de lokale zichtbaarheid.",
+    "À mesurer": "Te meten",
+    "Evolution globale — 4 mois": "Globale evolutie — 4 maanden",
+    "SEO mesuré": "Gemeten SEO",
+    "Historique insuffisant : seule la mesure disponible est affichée.": "Onvoldoende geschiedenis: alleen de beschikbare meting wordt getoond.",
+    "Aucun historique mesuré disponible": "Geen gemeten geschiedenis beschikbaar",
+    "Lancez des audits à différentes dates pour afficher une évolution réelle.": "Voer audits uit op verschillende data om een echte evolutie te tonen.",
+    "Recommandations stratégiques IA": "Strategische AI-aanbevelingen",
+    "potentiel": "potentieel",
+    "Score business global": "Globale bedrijfsscore",
+    "Score conversion": "Conversiescore",
+    "Score performance": "Prestatiescore",
+    "score moyen portfolio": "gemiddelde portfolioscore",
+    "Connectez une source de données": "Verbind een gegevensbron",
+    "Excellent — SLA tenu": "Uitstekend — SLA gehaald",
+    "Rapports Executive — Pro requis": "Executive-rapporten — Pro vereist",
+    "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.": "Voeg je sites toe en verbind je gegevensbronnen om je gepersonaliseerde executive-rapport te krijgen.",
+    "Rapport complet PDF": "Volledig PDF-rapport",
+    "Plan actions prioritaires": "Prioritair actieplan",
+    "Partager au client": "Delen met de klant",
+    "Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.": "Je gemiddelde SEO-score is <strong>{score}/100</strong>. Bekijk de rapporten van elke site voor de optimalisatieprioriteiten.",
+    "Couleur principale": "Primaire kleur",
+    "Couleur secondaire": "Secundaire kleur",
+    "✓ Inclus": "✓ Inbegrepen",
+    "Fonctionnalité bientôt disponible — réservée au plan Ultra": "Functie binnenkort beschikbaar — voorbehouden aan het Ultra-abonnement",
+    "Disponible avec le plan Ultra": "Beschikbaar met het Ultra-abonnement",
+    "Page de statut (URL publique)": "Statuspagina (openbare URL)",
+    "Webhook d'alerte (endpoint)": "Alarm-webhook (endpoint)",
+    "Téléphone SMS urgence": "SMS-noodtelefoon",
+    "Renseignez votre adresse pour activer la personnalisation locale complète": "Vul je adres in om volledige lokale personalisatie te activeren",
     "+ Analyser un avis": "+ Een beoordeling analyseren",
     "+ Créer": "+ Maken",
     "+ Créer une heatmap": "+ Heatmap maken",
@@ -34750,6 +35039,43 @@ function bindGlobalEvents() {
     "Agressive": "Agressief",
     },
     pl: {
+    "Sites critiques à corriger": "Krytyczne witryny do naprawy",
+    "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Niektóre witryny mają wynik SEO poniżej 50/100. Najpierw popraw brakujące tagi i szybkość mobilną.",
+    "À prioriser": "Do priorytetyzacji",
+    "Monitors DOWN": "Monitory DOWN",
+    "Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.": "Niektóre monitory są obecnie offline. Każda minuta przestoju wpływa na SEO i konwersje.",
+    "SLA protégé": "SLA chronione",
+    "Optimiser Google Business Profile": "Zoptymalizuj Google Business Profile",
+    "Votre fiche GBP n'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.": "Twoja wizytówka GBP nie jest w 100% kompletna. Uzupełnij zdjęcia, godziny i opis, a następnie zmierz zmianę lokalnej widoczności.",
+    "À mesurer": "Do zmierzenia",
+    "Evolution globale — 4 mois": "Ogólna ewolucja — 4 miesiące",
+    "SEO mesuré": "Zmierzone SEO",
+    "Historique insuffisant : seule la mesure disponible est affichée.": "Niewystarczająca historia: wyświetlany jest tylko dostępny pomiar.",
+    "Aucun historique mesuré disponible": "Brak zmierzonej historii",
+    "Lancez des audits à différentes dates pour afficher une évolution réelle.": "Uruchamiaj audyty w różnych terminach, aby wyświetlić rzeczywistą ewolucję.",
+    "Recommandations stratégiques IA": "Strategiczne rekomendacje AI",
+    "potentiel": "potencjał",
+    "Score business global": "Globalny wynik biznesowy",
+    "Score conversion": "Wynik konwersji",
+    "Score performance": "Wynik wydajności",
+    "score moyen portfolio": "średni wynik portfela",
+    "Connectez une source de données": "Podłącz źródło danych",
+    "Excellent — SLA tenu": "Doskonale — SLA dotrzymane",
+    "Rapports Executive — Pro requis": "Raporty Executive — wymagany Pro",
+    "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.": "Dodaj swoje witryny i podłącz źródła danych, aby otrzymać spersonalizowany raport executive.",
+    "Rapport complet PDF": "Pełny raport PDF",
+    "Plan actions prioritaires": "Plan działań priorytetowych",
+    "Partager au client": "Udostępnij klientowi",
+    "Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.": "Twój średni wynik SEO to <strong>{score}/100</strong>. Sprawdź raporty każdej witryny, aby poznać priorytety optymalizacji.",
+    "Couleur principale": "Kolor główny",
+    "Couleur secondaire": "Kolor dodatkowy",
+    "✓ Inclus": "✓ W zestawie",
+    "Fonctionnalité bientôt disponible — réservée au plan Ultra": "Funkcja wkrótce — zarezerwowana dla planu Ultra",
+    "Disponible avec le plan Ultra": "Dostępne w planie Ultra",
+    "Page de statut (URL publique)": "Strona statusu (publiczny URL)",
+    "Webhook d'alerte (endpoint)": "Webhook alertu (endpoint)",
+    "Téléphone SMS urgence": "Awaryjny telefon SMS",
+    "Renseignez votre adresse pour activer la personnalisation locale complète": "Podaj swój adres, aby włączyć pełną lokalną personalizację",
     "+ Analyser un avis": "+ Analizować recenzję",
     "+ Créer": "+ Utwórz",
     "+ Créer une heatmap": "+ Utwórz heatmapę",
@@ -37627,6 +37953,43 @@ function bindGlobalEvents() {
     "Agressive": "Agresywny",
     },
     sv: {
+    "Sites critiques à corriger": "Kritiska webbplatser att åtgärda",
+    "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Vissa webbplatser har ett SEO-betyg under 50/100. Åtgärda saknade taggar och mobil hastighet först.",
+    "À prioriser": "Att prioritera",
+    "Monitors DOWN": "Monitorer NERE",
+    "Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.": "Vissa monitorer är för närvarande offline. Varje minut av driftstopp påverkar din SEO och dina konverteringar.",
+    "SLA protégé": "SLA skyddat",
+    "Optimiser Google Business Profile": "Optimera Google Business Profile",
+    "Votre fiche GBP n'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.": "Din GBP-profil är inte 100 % komplett. Komplettera foton, öppettider och beskrivning och mät sedan utvecklingen av den lokala synligheten.",
+    "À mesurer": "Att mäta",
+    "Evolution globale — 4 mois": "Global utveckling — 4 månader",
+    "SEO mesuré": "Uppmätt SEO",
+    "Historique insuffisant : seule la mesure disponible est affichée.": "Otillräcklig historik: endast den tillgängliga mätningen visas.",
+    "Aucun historique mesuré disponible": "Ingen uppmätt historik tillgänglig",
+    "Lancez des audits à différentes dates pour afficher une évolution réelle.": "Kör granskningar vid olika datum för att visa en verklig utveckling.",
+    "Recommandations stratégiques IA": "Strategiska AI-rekommendationer",
+    "potentiel": "potential",
+    "Score business global": "Globalt affärsbetyg",
+    "Score conversion": "Konverteringspoäng",
+    "Score performance": "Prestandapoäng",
+    "score moyen portfolio": "portföljens medelpoäng",
+    "Connectez une source de données": "Anslut en datakälla",
+    "Excellent — SLA tenu": "Utmärkt — SLA uppfyllt",
+    "Rapports Executive — Pro requis": "Executive-rapporter — Pro krävs",
+    "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.": "Lägg till dina webbplatser och anslut dina datakällor för att få din personliga executive-rapport.",
+    "Rapport complet PDF": "Fullständig PDF-rapport",
+    "Plan actions prioritaires": "Prioriterad åtgärdsplan",
+    "Partager au client": "Dela med kunden",
+    "Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.": "Ditt genomsnittliga SEO-betyg är <strong>{score}/100</strong>. Se varje webbplats rapporter för optimeringsprioriteringar.",
+    "Couleur principale": "Primärfärg",
+    "Couleur secondaire": "Sekundärfärg",
+    "✓ Inclus": "✓ Ingår",
+    "Fonctionnalité bientôt disponible — réservée au plan Ultra": "Funktion kommer snart — reserverad för Ultra-planen",
+    "Disponible avec le plan Ultra": "Tillgänglig med Ultra-planen",
+    "Page de statut (URL publique)": "Statussida (offentlig URL)",
+    "Webhook d'alerte (endpoint)": "Larmwebhook (endpoint)",
+    "Téléphone SMS urgence": "SMS-nödtelefon",
+    "Renseignez votre adresse pour activer la personnalisation locale complète": "Ange din adress för att aktivera fullständig lokal anpassning",
     "+ Analyser un avis": "+ Analysera en recension",
     "+ Créer": "+ Skapa",
     "+ Créer une heatmap": "+ Skapa heatmap",
@@ -40504,6 +40867,43 @@ function bindGlobalEvents() {
     "Agressive": "Aggressiv",
     },
     ro: {
+    "Sites critiques à corriger": "Site-uri critice de corectat",
+    "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Unele site-uri au un scor SEO sub 50/100. Corectați mai întâi etichetele lipsă și viteza pe mobil.",
+    "À prioriser": "De prioritizat",
+    "Monitors DOWN": "Monitoare DOWN",
+    "Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.": "Unele monitoare sunt momentan offline. Fiecare minut de nefuncționare afectează SEO-ul și conversiile.",
+    "SLA protégé": "SLA protejat",
+    "Optimiser Google Business Profile": "Optimizați Google Business Profile",
+    "Votre fiche GBP n'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.": "Fișa dvs. GBP nu este completă 100%. Completați fotografiile, programul și descrierea, apoi măsurați evoluția vizibilității locale.",
+    "À mesurer": "De măsurat",
+    "Evolution globale — 4 mois": "Evoluție globală — 4 luni",
+    "SEO mesuré": "SEO măsurat",
+    "Historique insuffisant : seule la mesure disponible est affichée.": "Istoric insuficient: este afișată doar măsurătoarea disponibilă.",
+    "Aucun historique mesuré disponible": "Niciun istoric măsurat disponibil",
+    "Lancez des audits à différentes dates pour afficher une évolution réelle.": "Rulați audituri la date diferite pentru a afișa o evoluție reală.",
+    "Recommandations stratégiques IA": "Recomandări strategice IA",
+    "potentiel": "potențial",
+    "Score business global": "Scor global de business",
+    "Score conversion": "Scor de conversie",
+    "Score performance": "Scor de performanță",
+    "score moyen portfolio": "scor mediu portofoliu",
+    "Connectez une source de données": "Conectați o sursă de date",
+    "Excellent — SLA tenu": "Excelent — SLA respectat",
+    "Rapports Executive — Pro requis": "Rapoarte Executive — necesită Pro",
+    "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.": "Adăugați site-urile și conectați sursele de date pentru a obține raportul executive personalizat.",
+    "Rapport complet PDF": "Raport PDF complet",
+    "Plan actions prioritaires": "Plan de acțiuni prioritare",
+    "Partager au client": "Partajați cu clientul",
+    "Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.": "Scorul dvs. SEO mediu este <strong>{score}/100</strong>. Consultați rapoartele fiecărui site pentru prioritățile de optimizare.",
+    "Couleur principale": "Culoare principală",
+    "Couleur secondaire": "Culoare secundară",
+    "✓ Inclus": "✓ Inclus",
+    "Fonctionnalité bientôt disponible — réservée au plan Ultra": "Funcționalitate în curând — rezervată planului Ultra",
+    "Disponible avec le plan Ultra": "Disponibil cu planul Ultra",
+    "Page de statut (URL publique)": "Pagină de stare (URL public)",
+    "Webhook d'alerte (endpoint)": "Webhook de alertă (endpoint)",
+    "Téléphone SMS urgence": "Telefon SMS de urgență",
+    "Renseignez votre adresse pour activer la personnalisation locale complète": "Introduceți adresa pentru a activa personalizarea locală completă",
     "+ Analyser un avis": "+ Analizează o recenzie",
     "+ Créer": "+ Creează",
     "+ Créer une heatmap": "+ Creează heatmap",
@@ -43381,6 +43781,43 @@ function bindGlobalEvents() {
     "Agressive": "Agresiv",
     },
     cs: {
+    "Sites critiques à corriger": "Kritické weby k opravě",
+    "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Některé weby mají SEO skóre pod 50/100. Nejprve opravte chybějící tagy a mobilní rychlost.",
+    "À prioriser": "K prioritizaci",
+    "Monitors DOWN": "Monitory DOWN",
+    "Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.": "Některé monitory jsou momentálně offline. Každá minuta výpadku ovlivňuje vaše SEO a konverze.",
+    "SLA protégé": "SLA chráněno",
+    "Optimiser Google Business Profile": "Optimalizujte Google Business Profile",
+    "Votre fiche GBP n'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.": "Váš profil GBP není 100% kompletní. Doplňte fotky, otevírací dobu a popis a poté změřte vývoj lokální viditelnosti.",
+    "À mesurer": "K měření",
+    "Evolution globale — 4 mois": "Celkový vývoj — 4 měsíce",
+    "SEO mesuré": "Naměřené SEO",
+    "Historique insuffisant : seule la mesure disponible est affichée.": "Nedostatečná historie: zobrazuje se pouze dostupné měření.",
+    "Aucun historique mesuré disponible": "Není k dispozici žádná naměřená historie",
+    "Lancez des audits à différentes dates pour afficher une évolution réelle.": "Spouštějte audity v různých datech pro zobrazení skutečného vývoje.",
+    "Recommandations stratégiques IA": "Strategická doporučení AI",
+    "potentiel": "potenciál",
+    "Score business global": "Celkové obchodní skóre",
+    "Score conversion": "Skóre konverze",
+    "Score performance": "Skóre výkonu",
+    "score moyen portfolio": "průměrné skóre portfolia",
+    "Connectez une source de données": "Připojte zdroj dat",
+    "Excellent — SLA tenu": "Výborné — SLA dodrženo",
+    "Rapports Executive — Pro requis": "Executive reporty — vyžadován Pro",
+    "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.": "Přidejte své weby a připojte zdroje dat pro získání personalizovaného executive reportu.",
+    "Rapport complet PDF": "Kompletní PDF report",
+    "Plan actions prioritaires": "Plán prioritních akcí",
+    "Partager au client": "Sdílet s klientem",
+    "Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.": "Vaše průměrné SEO skóre je <strong>{score}/100</strong>. Podívejte se na reporty jednotlivých webů pro priority optimalizace.",
+    "Couleur principale": "Hlavní barva",
+    "Couleur secondaire": "Vedlejší barva",
+    "✓ Inclus": "✓ Zahrnuto",
+    "Fonctionnalité bientôt disponible — réservée au plan Ultra": "Funkce již brzy — vyhrazena plánu Ultra",
+    "Disponible avec le plan Ultra": "Dostupné s plánem Ultra",
+    "Page de statut (URL publique)": "Stavová stránka (veřejná URL)",
+    "Webhook d'alerte (endpoint)": "Webhook upozornění (endpoint)",
+    "Téléphone SMS urgence": "Nouzový SMS telefon",
+    "Renseignez votre adresse pour activer la personnalisation locale complète": "Zadejte svou adresu pro aktivaci plné lokální personalizace",
     "+ Analyser un avis": "+ Analyzovat recenzi",
     "+ Créer": "+ Vytvořit",
     "+ Créer une heatmap": "+ Vytvořit heatmap",
@@ -46606,9 +47043,17 @@ async function init() {
           apiFetch('/api/notifications', { backgroundPoll: true }),
         ]);
         if (actRes.status === 'fulfilled' && Array.isArray(actRes.value)) {
-          // Merge new events from server (prepend anything newer than latest known)
+          // Merge new events from server. A report created locally is visible
+          // immediately, then reconciled with its persisted server event by
+          // target id so the later act_* event cannot duplicate it.
           const known = new Set(STATE.activityEvents.map(e => e.id || e.createdAt));
-          const fresh = actRes.value.filter(e => !known.has(e.id || e.createdAt));
+          const knownReportTargets = new Set(STATE.activityEvents
+            .filter(e => e.type === 'report' && (e.targetId || e.target_id))
+            .map(e => 'report:' + (e.targetId || e.target_id)));
+          const fresh = actRes.value.filter(e =>
+            !known.has(e.id || e.createdAt) &&
+            !(e.type === 'report' && knownReportTargets.has('report:' + (e.targetId || e.target_id)))
+          );
           if (fresh.length > 0) {
             STATE.activityEvents = [...fresh, ...STATE.activityEvents].slice(0, 50);
             if (!STATE.activityPanelOpen) updateActivityBadge();
@@ -52150,10 +52595,11 @@ function renderCompetitor() {
     const competitors = Array.isArray(STATE.competitors) ? STATE.competitors : [];
     const knownPlan = ['standard', 'pro', 'ultra', 'agency'].includes(String(STATE.me?.plan || '').toLowerCase())
       ? String(STATE.me.plan).toLowerCase()
-      : null;
+      : 'standard';
+    const planCompetitorLimits = { standard: 10, pro: 30, ultra: 100, agency: 100 };
     const competitorLimit = Number.isFinite(Number(STATE.me?.limits?.competitors))
       ? Number(STATE.me.limits.competitors)
-      : null;
+      : planCompetitorLimits[knownPlan];
     const displayMetric = value => Number.isFinite(Number(value)) ? Number(value).toLocaleString(getLocale()) : '—';
     const statusLabel = status => ({
       pending: fpT('Récupération en cours'),
@@ -52170,9 +52616,8 @@ function renderCompetitor() {
       </div>
       <div class="fp-card fp-mb-20" style="padding:14px 16px">
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-          <span class="fp-badge fp-badge--ghost">${knownPlan ? escHtml(knownPlan.charAt(0).toUpperCase() + knownPlan.slice(1)) : fpT('Plan non confirmé')}</span>
-          <span style="font-size:12px;color:var(--fp-text-muted)">${competitorLimit !== null ? `${competitors.length} / ${competitorLimit} ${fpT('concurrents utilisés')}` : fpT('La limite sera vérifiée lors de l’ajout.')}</span>
-          <span style="font-size:12px;color:var(--fp-text-faint)">${fpT('Fournisseur : DataForSEO Domain Metrics')}</span>
+          <span class="fp-badge fp-badge--ghost">${escHtml(knownPlan.charAt(0).toUpperCase() + knownPlan.slice(1))}</span>
+          <span style="font-size:12px;color:var(--fp-text-muted)">${competitors.length} / ${competitorLimit} ${fpT('concurrents utilisés')}</span>
         </div>
       </div>
       ${competitors.length === 0 ? `
@@ -52187,7 +52632,7 @@ function renderCompetitor() {
             <table class="fp-table" style="width:100%">
               <thead><tr>
                 <th>${fpT('Concurrent')}</th><th>${fpT('État')}</th><th>${fpT('Autorité')}</th>
-                <th>${fpT('Mots-clés')}</th><th>${fpT('Trafic organique')}</th><th>${fpT('Source')}</th><th></th>
+                <th>${fpT('Mots-clés')}</th><th>${fpT('Trafic organique')}</th><th></th>
               </tr></thead>
               <tbody>${competitors.map(c => {
                 const available = c.dataStatus === 'available';
@@ -52197,7 +52642,6 @@ function renderCompetitor() {
                   <td>${available ? displayMetric(c.domainRating) : '—'}</td>
                   <td>${available ? displayMetric(c.keywords) : '—'}</td>
                   <td>${available ? displayMetric(c.traffic) : '—'}</td>
-                  <td style="font-size:11px;color:var(--fp-text-muted)">${available ? escHtml(c.dataProvider || 'DataForSEO') : '—'}</td>
                   <td>${available ? '' : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRefreshCompetitor('${escHtml(c.id)}')">${fpT('Réessayer')}</button>`}</td>
                 </tr>`;
               }).join('')}</tbody>
@@ -63429,7 +63873,7 @@ function renderPerformance() {
         <span class="fp-badge" style="background:rgba(239,68,68,0.12);color:#ef4444">${(mobile?.criticalIssues||[]).length} critiques</span>
       </div>
       ${(mobile?.criticalIssues||[]).length ? `
-      <div class="fp-flex-col" style="gap:8px">
+      <div style="display:flex;flex-direction:column;gap:10px">
         ${(mobile.criticalIssues).map(issue=>`
         <div style="display:flex;align-items:flex-start;gap:10px;padding:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" style="flex-shrink:0;margin-top:2px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -68593,6 +69037,13 @@ window._fpReportsAPI = {
       // guaranteeing a real network GET after any mutation (not stale cached data).
       const data = await apiFetch('/api/reports', { force: !!(opts && opts.force) });
       window._fpReportsState = { loading: false, loaded: true, reports: Array.isArray(data) ? data : [], error: null };
+      // renderReports(), the activity feed and Mode Client use the canonical
+      // dashboard state. Keep it in sync after every real list refresh so
+      // creating from a template is indistinguishable from "Nouveau".
+      STATE.reports = window._fpReportsState.reports;
+      if (window._fpCMState && window._fpCMState.loaded) {
+        window._fpCMState.reports = STATE.reports.filter(function(report) { return !!report.shared; });
+      }
     } catch(e) {
       window._fpReportsState = { ...window._fpReportsState, loading: false, loaded: true, error: e.message || String(e) };
     }
@@ -68609,6 +69060,19 @@ window._fpReportsAPI = {
       if (!(window._fpReportsState.reports || []).some(function(report) { return report.id === r.id; })) {
         throw new Error('Le rapport créé est introuvable après actualisation.');
       }
+      // The server records the persistent activity event asynchronously. Add
+      // the same event to the in-memory feed now so template creation updates
+      // Recent reports, Client Mode *and* Activity in one interaction rather
+      // than waiting for the next activity polling cycle.
+      pushActivityEvent({
+        id: 'local-report-' + r.id,
+        type: 'report',
+        label: 'Rapport généré : ' + String(r.name || payload?.name || 'Rapport'),
+        targetId: r.id,
+        targetType: 'report',
+        metadata: { name: r.name || payload?.name || 'Rapport', templateKey: payload?.templateKey || null },
+        createdAt: new Date().toISOString(),
+      });
       showToast('success', fpT('Rapport créé !'));
       return r;
     } catch(e) { showToast('error', fpT('Erreur création rapport')); return null; }
@@ -69154,7 +69618,52 @@ function renderGA4ClientMode() {
     return header + permsBanner + reportsHtml;
   }
   if (sub === 'dashboards') {
-    return header + permsBanner + kpisRow + auditsHtml;
+    // A client-facing dashboard is a *briefing*, not a duplicate of the
+    // Command Center. It answers what can be shared today and what needs an
+    // explanation, using only persisted audit/report data.
+    const latestAudit = audits[0] || null;
+    const latestReport = reports[0] || null;
+    const score = latestAudit && latestAudit.score != null ? Number(latestAudit.score) : null;
+    const scoreTone = score == null ? '#94a3b8' : score >= 70 ? '#22c55e' : score >= 50 ? '#f59e0b' : '#ef4444';
+    // /api/client-mode/reports is server-filtered to shared reports. Its
+    // compact client contract intentionally omits the redundant `shared`
+    // boolean, so the list length is the authoritative delivered count.
+    const shareReady = reports.length;
+    const clientBrief = `
+      <div class="fp-card fp-mb-20" style="border-color:rgba(37,99,235,.28);background:linear-gradient(135deg,rgba(37,99,235,.10),rgba(15,23,42,0))">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+          <div>
+            <div class="fp-card-title" style="margin-bottom:5px">📌 Synthèse client</div>
+            <div style="font-size:12px;color:var(--fp-text-muted)">Une vue prête à présenter, limitée aux résultats et livrables partagés.</div>
+          </div>
+          ${latestReport ? badge(shareReady ? 'Rapport partageable' : 'Rapport à partager', shareReady ? '#22c55e' : '#f59e0b') : badge('Aucun rapport', '#94a3b8')}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(160px,1fr));gap:12px;margin-top:16px">
+          <div style="padding:13px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
+            <div style="font-size:10px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.04em">Dernier score SEO</div>
+            <div style="font-size:24px;font-weight:800;color:${scoreTone};margin:5px 0">${score == null ? '—' : score + '/100'}</div>
+            <div style="font-size:11px;color:var(--fp-text-muted)">${latestAudit ? escHtml(String(latestAudit.url || latestAudit.name || 'Audit récent')) : 'Aucun audit disponible'}</div>
+          </div>
+          <div style="padding:13px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
+            <div style="font-size:10px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.04em">Rapports partagés</div>
+            <div style="font-size:24px;font-weight:800;color:var(--fp-text);margin:5px 0">${shareReady}</div>
+            <div style="font-size:11px;color:var(--fp-text-muted)">${latestReport ? escHtml(String(latestReport.name || 'Dernier rapport')) : 'Créez un rapport à partager'}</div>
+          </div>
+          <div style="padding:13px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
+            <div style="font-size:10px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.04em">Prochaine étape</div>
+            <div style="font-size:14px;font-weight:700;color:var(--fp-text);margin:7px 0">${latestReport ? (shareReady ? 'Présenter les résultats' : 'Partager le rapport') : 'Générer un rapport'}</div>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigateSub('${latestReport ? 'reporting' : 'reporting'}')">${latestReport ? 'Voir les livrables' : 'Ouvrir les rapports'} →</button>
+          </div>
+        </div>
+      </div>`;
+    const auditPreview = latestAudit
+      ? `<div class="fp-card"><div class="fp-card-title" style="margin-bottom:12px">🔎 Dernier audit à présenter</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div><div style="font-size:13px;font-weight:700;color:var(--fp-text)">${escHtml(String(latestAudit.url || latestAudit.name || 'Audit SEO'))}</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:3px">Résultat le plus récent disponible pour le client</div></div>
+            <div style="font-size:22px;font-weight:800;color:${scoreTone}">${score == null ? '—' : score + '/100'}</div>
+          </div></div>`
+      : _emptyState('🔎', 'Aucun audit à présenter', 'Lancez un audit SEO pour alimenter le dashboard client.');
+    return header + permsBanner + clientBrief + auditPreview;
   }
   if (sub === 'communication') {
     const _commHtml = `

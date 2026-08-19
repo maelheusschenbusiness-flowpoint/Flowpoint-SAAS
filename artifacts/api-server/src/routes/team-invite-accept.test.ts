@@ -89,6 +89,10 @@ vi.mock("@workspace/db", () => {
       if (/FROM team_members/.test(sql) && /lower\(email\)/.test(sql)) {
         return scenario.existingTeamMember ? { rows: [{ id: "tm-existing-id" }] } : { rows: [] };
       }
+      // canonical users lookup after the users upsert (accept flow)
+      if (/FROM users/.test(sql) && /lower\(email\)/.test(sql)) {
+        return { rows: [{ id: "user-uuid-accepted" }] };
+      }
       // org name lookup inside accept
       if (/FROM organizations/.test(sql)) return { rows: [{ org_name: "Test Org" }] };
 

@@ -125,16 +125,28 @@ router.get("/team/messages", async (req, res) => {
 // ── GET /team/messages/all  — fetch all persisted channels in one request ─────
 router.get("/team/messages/all", async (req, res) => {
   try {
-    // Fetch channel list dynamically from team_channels, fallback to defaults
+    // Fetch channel list dynamically from team_channels, fallback to defaults.
+    // Union with message-derived channels: the channel-row auto-persist in
+    // POST /team/messages is best-effort, so a message whose channel row was
+    // never written must still surface here instead of silently disappearing.
     let channels: string[] = ["general", "seo", "rapports", "support"];
     try {
       const chRes = await db(req)(
         `SELECT name FROM team_channels WHERE org_id=$1 ORDER BY created_at ASC`,
         [org(req)]
       );
-      if (chRes.rows.length > 0) {
-        channels = chRes.rows.map((r: Record<string, unknown>) => String(r["name"]));
-      }
+      const names = chRes.rows.map((r: Record<string, unknown>) => String(r["name"]));
+      try {
+        const msgRes = await db(req)(
+          `SELECT DISTINCT channel FROM team_messages WHERE org_id=$1`,
+          [org(req)]
+        );
+        for (const r of msgRes.rows) {
+          const c = String(r["channel"]);
+          if (c && !names.includes(c)) names.push(c);
+        }
+      } catch { /* channel rows only */ }
+      if (names.length > 0) channels = names;
     } catch { /* use defaults */ }
 
     const results: Record<string, unknown[]> = {};
@@ -171,8 +183,12 @@ router.post("/team/messages", canWrite, async (req, res) => {
   const senderId = requesterId(req);
   const id = "msg" + Date.now();
   try {
-    // Auto-persist the channel so it always appears in the channel list
-    db(req)(
+    // Auto-persist the channel so it always appears in the channel list.
+    // AWAITED (not fire-and-forget): /team/messages/all derives its channel
+    // list from team_channels, so a recipient refreshing right after this POST
+    // must already find the row — otherwise the message exists but its channel
+    // is missing from the response and the chat looks empty.
+    await db(req)(
       `INSERT INTO team_channels (org_id, name, created_by, created_at)
        VALUES ($1, $2, $3, NOW())
        ON CONFLICT (org_id, name) DO NOTHING`,

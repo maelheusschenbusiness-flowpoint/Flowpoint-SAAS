@@ -43,8 +43,8 @@ export interface CoreQuotas {
 
 // NOTE: audits/monitors/reports/exports/teamMembers must stay in sync with PLAN_DEFINITIONS.
 export const CORE_QUOTAS: Record<PlanTier, CoreQuotas> = {
-  standard: { audits:30,    monitors:10,  reports:30,   exports:30,   teamMembers:1,  keywords:50,   competitors:5,   heatmaps:2,   automations:3,  missions:20,  gbpPosts:10,  crmIntegrations:1 },
-  pro:      { audits:300,   monitors:50,  reports:300,  exports:300,  teamMembers:5,  keywords:500,  competitors:25,  heatmaps:10,  automations:20, missions:200, gbpPosts:100, crmIntegrations:3 },
+  standard: { audits:30,    monitors:10,  reports:30,   exports:30,   teamMembers:1,  keywords:50,   competitors:10,  heatmaps:2,   automations:3,  missions:20,  gbpPosts:10,  crmIntegrations:1 },
+  pro:      { audits:300,   monitors:50,  reports:300,  exports:300,  teamMembers:5,  keywords:500,  competitors:30,  heatmaps:10,  automations:20, missions:200, gbpPosts:100, crmIntegrations:3 },
   ultra:    { audits:1000,  monitors:300, reports:1000, exports:1000, teamMembers:10, keywords:5000, competitors:100, heatmaps:50,  automations:100,missions:999, gbpPosts:999, crmIntegrations:10 },
   agency:   { audits:1000,  monitors:300, reports:1000, exports:1000, teamMembers:10, keywords:5000, competitors:100, heatmaps:50,  automations:100,missions:999, gbpPosts:999, crmIntegrations:10 },
 };

@@ -78,17 +78,35 @@ function buildInviteUrl(rawToken: string, email: string): string {
  *  SeatEntitlementUnavailableError (retryable) — it NEVER silently degrades to
  *  Standard/1, which would wrongly refuse invites for paying Pro/Ultra orgs.
  */
+/**
+ * Active members that occupy a seat BEYOND the owner's own seat.
+ *
+ * The owner always occupies exactly 1 seat (added as the constant below), so
+ * any active team_members row that *represents the owner* (legacy data can
+ * store the owner as a plain 'admin'/'member' row) must be excluded here or
+ * the owner would be counted twice — and the visible member list (which
+ * de-duplicates the owner) would disagree with seatUsage.used.
+ */
+const ACTIVE_NON_OWNER_MEMBERS_COUNT_SQL = `
+  SELECT COUNT(*)::int AS n
+  FROM team_members tm
+  WHERE tm.org_id = $1 AND tm.status = 'active'
+    AND NOT EXISTS (
+      SELECT 1
+      FROM organizations o
+      LEFT JOIN users u ON LOWER(u.email) = LOWER(o.owner_email)
+      WHERE o.id::text = tm.org_id
+        AND (LOWER(tm.email) = LOWER(o.owner_email)
+             OR (u.id IS NOT NULL AND tm.user_id = u.id::text))
+    )`;
+
 async function getSeatUsage(
   db: OrgDbFn,
   orgId: string,
 ): Promise<{ used: number; limit: number; plan: string }> {
   const [{ limit, plan }, membersRes, invitesRes] = await Promise.all([
     resolveSeatEntitlement(orgId),
-    db(
-      `SELECT COUNT(*)::int AS n FROM team_members
-       WHERE org_id = $1 AND status = 'active'`,
-      [orgId]
-    ),
+    db(ACTIVE_NON_OWNER_MEMBERS_COUNT_SQL, [orgId]),
     db(
       `SELECT COUNT(*)::int AS n FROM team_invitations
        WHERE org_id = $1 AND status = 'pending' AND expires_at > NOW()`,
@@ -128,7 +146,7 @@ async function reserveSeatAndCreateInvitation(input: {
     const [entitlement, membersRes, invitesRes] = await Promise.all([
       resolveSeatEntitlement(input.orgId),
       client.query<{ n: number }>(
-        `SELECT COUNT(*)::int AS n FROM team_members WHERE org_id = $1 AND status = 'active'`,
+        ACTIVE_NON_OWNER_MEMBERS_COUNT_SQL,
         [input.orgId],
       ),
       client.query<{ n: number }>(
@@ -527,6 +545,50 @@ router.get("/team", async (req: Request, res: Response) => {
       createdAt: m.created_at,
     }));
 
+    // The owner occupies a seat (getSeatUsage counts "1 + active members") but
+    // usually has NO team_members row — without a synthetic entry, both owner
+    // and invited members see a list whose length never matches seatUsage.used,
+    // and the member never sees who owns the workspace. Prepend the owner from
+    // the organizations row unless an active member row already represents them.
+    try {
+      const ownerRes = await db(
+        `SELECT o.owner_email AS email, o.created_at AS org_created_at,
+                COALESCE(u.first_name, '') AS first_name,
+                COALESCE(u.last_name,  '') AS last_name,
+                u.id::text AS user_id
+           FROM organizations o
+           LEFT JOIN users u ON LOWER(u.email) = LOWER(o.owner_email)
+          WHERE o.id::text = $1`,
+        [org]
+      );
+      const o = ownerRes.rows[0];
+      const ownerEmail = String(o?.email ?? "").toLowerCase();
+      if (ownerEmail) {
+        const alreadyListed = members.some(m =>
+          String(m.email ?? "").toLowerCase() === ownerEmail ||
+          (o?.user_id && String(m.userId ?? "") === String(o.user_id)));
+        if (!alreadyListed) {
+          members.unshift({
+            id:        "owner",
+            email:     ownerEmail,
+            name:      (o?.first_name && o?.last_name)
+                         ? `${o.first_name} ${o.last_name}`.trim()
+                         : ((o?.first_name as string) || ownerEmail.split("@")[0] || ""),
+            firstName: o?.first_name ?? "",
+            lastName:  o?.last_name ?? "",
+            role:      "owner",
+            status:    "active",
+            userId:    o?.user_id ?? null,
+            joinedAt:  o?.org_created_at ?? null,
+            createdAt: o?.org_created_at ?? null,
+          });
+        }
+      }
+    } catch (ownerErr) {
+      // Non-fatal: the list simply omits the synthetic owner row.
+      logger.warn({ err: (ownerErr as Error).message }, "[team/get] owner row lookup failed");
+    }
+
     const pendingInvitations = invitationsRes.rows.map(i => ({
       id:              i.id,
       email:           i.email,
@@ -748,7 +810,7 @@ router.patch("/team/:id", canAdmin, async (req: Request, res: Response) => {
   let memberRes: { rows: Record<string, unknown>[] };
   try {
     memberRes = await db(
-      `SELECT id, email, role, status FROM team_members WHERE id = $1 AND org_id = $2 LIMIT 1`,
+      `SELECT id, email, role, status, user_id FROM team_members WHERE id = $1 AND org_id = $2 LIMIT 1`,
       [memberId, org]
     );
   } catch (err) {
@@ -760,7 +822,34 @@ router.patch("/team/:id", canAdmin, async (req: Request, res: Response) => {
   const member = memberRes.rows[0];
   if (!member) { res.status(404).json({ ok: false, error: "Member not found" }); return; }
 
-  if (member.role === "owner") {
+  // Ownership is defined by organizations.owner_email, NOT by the row's role:
+  // legacy/inconsistent data can leave the true owner as an 'admin'/'member'
+  // team_members row, and that row must be just as immutable. Fail CLOSED if
+  // the ownership lookup cannot be resolved.
+  let ownerEmail = "";
+  let ownerUserId: string | null = null;
+  try {
+    const ownerRes = await db(
+      `SELECT o.owner_email, u.id::text AS owner_user_id
+         FROM organizations o
+         LEFT JOIN users u ON LOWER(u.email) = LOWER(o.owner_email)
+        WHERE o.id::text = $1 LIMIT 1`,
+      [org]
+    );
+    ownerEmail  = String(ownerRes.rows[0]?.owner_email ?? "").toLowerCase();
+    ownerUserId = (ownerRes.rows[0]?.owner_user_id as string | null) ?? null;
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, "[team/patch] owner lookup failed — refusing role change");
+    res.status(503).json({ ok: false, code: "OWNER_LOOKUP_UNAVAILABLE", retryable: true, error: "Vérification du propriétaire impossible. Réessayez." });
+    return;
+  }
+
+  const memberIsOrgOwner =
+    member.role === "owner" ||
+    (ownerEmail  && String(member.email ?? "").toLowerCase() === ownerEmail) ||
+    (ownerUserId && String(member.user_id ?? "") === ownerUserId);
+
+  if (memberIsOrgOwner) {
     res.status(403).json({ ok: false, code: "CANNOT_MODIFY_OWNER", error: "Le rôle du propriétaire ne peut pas être modifié." });
     return;
   }
@@ -837,6 +926,20 @@ router.delete("/team/:id", canAdmin, async (req: Request, res: Response) => {
       [memberId, org],
     );
     const lookup = canonicalLookup.rows[0];
+
+    // Ownership is defined by organizations.owner_email, NOT by the row's
+    // role: legacy data can leave the true owner as a non-owner team_members
+    // row, and that row must be just as protected from removal. This query
+    // failing aborts the whole route (fail closed).
+    const orgOwnerRes = await pool.query<{ owner_email: string | null; owner_user_id: string | null }>(
+      `SELECT o.owner_email, u.id::text AS owner_user_id
+         FROM organizations o
+         LEFT JOIN users u ON lower(u.email) = lower(o.owner_email)
+        WHERE o.id::text = $1 LIMIT 1`,
+      [org],
+    );
+    const orgOwnerEmail  = String(orgOwnerRes.rows[0]?.owner_email ?? "").toLowerCase();
+    const orgOwnerUserId = orgOwnerRes.rows[0]?.owner_user_id ?? null;
     const removed = await withOrgDb(org, async (client) => {
       const memberRes = await client.query<{ id: string; email: string; role: string; user_id: string | null }>(
         `SELECT id, email, role, user_id
@@ -848,7 +951,12 @@ router.delete("/team/:id", canAdmin, async (req: Request, res: Response) => {
       const member = memberRes.rows[0];
       if (!member) return { kind: "not_found" as const };
 
-      if (member.role === "owner") return { kind: "owner" as const };
+      const memberIsOrgOwner =
+        member.role === "owner" ||
+        (orgOwnerEmail  && member.email.toLowerCase() === orgOwnerEmail) ||
+        (orgOwnerUserId && (String(member.user_id ?? "") === orgOwnerUserId ||
+                            lookup?.canonical_user_id === orgOwnerUserId));
+      if (memberIsOrgOwner) return { kind: "owner" as const };
       if (callerEmail && member.email.toLowerCase() === callerEmail.toLowerCase()) {
         return { kind: "self" as const };
       }
