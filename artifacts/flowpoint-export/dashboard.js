@@ -9477,7 +9477,7 @@ function renderBilling() {
                 const _pd = _planDefs;
                 const _fmtNum = n => n >= 1000000 ? (n/1000000).toFixed(0)+' M' : n >= 1000 ? Math.round(n/1000).toLocaleString(getLocale())+' k' : n.toLocaleString(getLocale());
                 const _val = (id, key, fallback) => _pd.find(p=>p.id===id)?.limits?.[key] ?? fallback;
-                const _ai = (id) => { const c=_pd.find(p=>p.id===id)?.aiCredits; return c>=10000000?'10 000 000':_fmtNum(c); };
+                const _ai = (id) => { const c=_pd.find(p=>p.id===id)?.aiCredits; return c>=10000000?'∞':_fmtNum(c); };
                 return [
                   { group:'Core', rows:[
                     ['Audits / mois',  _val('standard','audits',30),  _val('pro','audits',300),  _val('ultra','audits',1000)],
@@ -10350,8 +10350,20 @@ function renderBilling() {
     ];
     return `
       ${isUltra
-        ? aiBlock(`Agency Lab actif. <strong>${workspaces.length} workspace${workspaces.length!==1?'s':''} géré${workspaces.length!==1?'s':''}</strong> — ${workspaces.reduce((s,w)=>s+(w.clients||0),0)} client${workspaces.reduce((s,w)=>s+(w.clients||0),0)!==1?'s':''}. MRR agence : —. White-label et custom domain disponibles — activez le portail client personnalisé pour une expérience premium maximale.`,
-            ['Configurer portail client', 'Ajouter un workspace', 'Générer rapport agence'])
+        ? `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.12),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.3);border-radius:var(--fp-radius-lg);padding:20px 24px;margin-bottom:20px">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+              <div style="font-size:28px">🏢</div>
+              <div>
+                <div style="font-size:14px;font-weight:800;margin-bottom:3px">Agency Lab <span style="color:#8b5cf6">actif</span></div>
+                <div style="font-size:12px;color:var(--fp-text-muted)"><strong>${workspaces.length} workspace${workspaces.length!==1?'s':''}</strong> géré${workspaces.length!==1?'s':''} · ${workspaces.reduce((s,w)=>s+(w.clients||0),0)} client${workspaces.reduce((s,w)=>s+(w.clients||0),0)!==1?'s':''} · White-label &amp; custom domain disponibles</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),60)">${fpT('Configurer portail client')}</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),60)">${fpT('Ajouter un workspace')}</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('reports');setTimeout(()=>navigateSub('new'),60)">${fpT('Générer rapport agence')}</button>
+            </div>
+          </div>`
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:20px 24px;margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
               <div style="font-size:28px">🏢</div>
@@ -47143,7 +47155,7 @@ async function init() {
                 STATE.addons[addonKey] = true;
                 if (STATE.billing && STATE.billing.addons) STATE.billing.addons[addonKey] = true;
               }
-              showToast('success', `Add-on activé ✓`);
+              showToast('success', fpT('Add-on activé ✓'));
               try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
               _apiFetchCache && _apiFetchCache.clear();
               loadData().catch(() => {});
@@ -47174,6 +47186,42 @@ async function init() {
             // ── Activity feed push ─────────────────────────────────────────────────
             } else if (msg.type === 'activity:new' && msg.event) {
               pushActivityEvent(msg.event);
+            // ── Real-time team chat message ────────────────────────────────────────
+            } else if (msg.type === 'chat:message' && msg.channel && msg.message) {
+              const _cm = msg.message;
+              const _ch = String(msg.channel).toLowerCase().replace(/^#/, '');
+              if (!STATE.channelMessages) STATE.channelMessages = {};
+              if (!STATE.channelMessages[_ch]) STATE.channelMessages[_ch] = [];
+              // Avoid duplicate if we sent this message ourselves (check by senderId)
+              const _myId = STATE.me?.id || STATE.me?.userId;
+              const _alreadyMine = _myId && _cm.senderId && String(_cm.senderId) === String(_myId);
+              if (!_alreadyMine && !STATE.channelMessages[_ch].find(m => m.id && m.id === _cm.id)) {
+                STATE.channelMessages[_ch].push({
+                  id: _cm.id || String(Date.now()),
+                  from: _cm.senderName || _cm.from || fpT('Équipe'),
+                  text: _cm.content || _cm.text || '',
+                  msg: _cm.content || _cm.text || '',
+                  time: new Date().toLocaleTimeString(getLocale(), {hour:'2-digit',minute:'2-digit'}),
+                  read: false,
+                  self: false,
+                  attachmentUrl: _cm.attachmentUrl || null,
+                  attachmentName: _cm.attachmentName || null,
+                });
+                // Sync teamChatHistory for current channel
+                if ((_ch) === (STATE.msgChannel || 'general')) {
+                  STATE.teamChatHistory = (STATE.channelMessages[_ch] || []).map(m => ({...m}));
+                }
+                // Update badge and play sound
+                try { window._fpRefreshMsgBadge?.(); } catch(_) {}
+                try { window._fpPlayChatSound?.(); } catch(_) {}
+                // Re-render chat panel if open on current channel
+                if (STATE.msgPanelOpen && (_ch) === (STATE.msgChannel || 'general')) {
+                  try {
+                    const _dp = document.getElementById('fp-msg-dropdown');
+                    if (_dp) _dp.innerHTML = renderMsgDropdown();
+                  } catch(_) { render(); }
+                }
+              }
             }
           } catch(err) {}
         };
@@ -52828,7 +52876,8 @@ function renderCompetitor() {
   // Production shows only persisted, provider-backed competitor facts. The
   // extensive visual intelligence dashboard below remains a preview-only demo
   // until each metric has a real source; it must not turn missing data into
-  // fabricated market shares, scores, or “stable” movements.
+  // fabricated market shares, scores, or "stable" movements.
+  const sub = STATE.subRoute;
   if (!PREVIEW_MODE) {
     const competitors = Array.isArray(STATE.competitors) ? STATE.competitors : [];
     const knownPlan = ['standard', 'pro', 'ultra', 'agency'].includes(String(STATE.me?.plan || '').toLowerCase())
@@ -52889,7 +52938,6 @@ function renderCompetitor() {
       `}
     `;
   }
-  const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
   const isStd  = plan === 'Standard';
   const isPro  = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
@@ -57236,7 +57284,7 @@ function renderDataExplorer() {
               <div style="font-size:24px;margin-bottom:6px">${w.icon}</div>
               <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft);margin-bottom:6px">${escHtml(w.name)}</div>
               <div style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;display:inline-block;background:${pc}20;color:${pc}">${w.plan}</div>
-              ${!locked ? `<div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" data-wname="${escHtml(w.name)}" onclick="(function(b){var n=b.dataset.wname||'Widget';showToast('info',fpT('Configurez ce widget dans Paramètres → Workspace'));setTimeout(function(){navigate('settings');setTimeout(function(){navigateSub('workspace');},60);},600);})(this)">Ajouter</button></div>` : `<div style="margin-top:8px;font-size:10px;color:var(--fp-text-faint)">🔒 ${w.plan}</div>`}
+              ${!locked ? `<div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%;opacity:0.55;cursor:not-allowed" disabled title="${fpT('Bientôt disponible')}">Bientôt</button></div>` : `<div style="margin-top:8px;font-size:10px;color:var(--fp-text-faint)">🔒 ${w.plan}</div>`}
             </div>`;
           }).join('')}
         </div>
@@ -62323,7 +62371,23 @@ window._fpFunnelSave = async function() {
     window._fpFunnelCancel();
     window._fpFunnelLoad();
   } catch (e) {
-    showToast?.('error', String(e.message || e));
+    const _errMsg = String(e.message || e);
+    // Provide a guided error when the site URL is not yet registered in FlowPoint
+    if (_errMsg.toLowerCase().includes('site not found') || _errMsg.toLowerCase().includes('site introuvable') || _errMsg.includes('SITE_NOT_FOUND')) {
+      const _listSec = document.getElementById('fp-funnels-list-section');
+      if (_listSec) _listSec.innerHTML = `<div style="text-align:center;padding:40px;max-width:480px;margin:0 auto">
+        <div style="font-size:36px;margin-bottom:12px">⚙️</div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:8px">${fpT('Site non configuré dans FlowPoint')}</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:20px;line-height:1.6">
+          ${fpT('Le site URL saisi n\'est pas encore enregistré. Ajoutez votre site dans')}
+          <strong>Paramètres → Tracking</strong>
+          ${fpT('puis réessayez de créer ce funnel.')}
+        </div>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('tracking'),60)">Configurer le tracking →</button>
+      </div>`;
+    } else {
+      showToast?.('error', _errMsg);
+    }
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '✅ Créer'; }
   }
 };
