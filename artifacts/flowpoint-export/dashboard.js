@@ -52910,11 +52910,35 @@ function renderCompetitor() {
           {id:'growth', label:fpT('Croissance')},
         ].map(t=>`<button class="fp-filter-tab${(!sub&&t.id==='apercu')||sub===t.id?' active':''}" onclick="navigateSub('${t.id}')">${t.label}</button>`).join('')}
       </div>
-      ${sub && sub !== 'apercu' ? `
-        <div class="fp-card" style="text-align:center;padding:40px 24px;margin-bottom:16px">
-          <div style="font-size:36px;margin-bottom:12px">📊</div>
-          <div style="font-size:14px;font-weight:700;margin-bottom:6px">${fpT('Analyse avancée')}</div>
-          <div style="font-size:12px;color:var(--fp-text-muted);max-width:440px;margin:0 auto 16px">${fpT('L\'analyse détaillée par menaces, local, contenu et croissance nécessite que vos concurrents soient connectés et leurs données récupérées.')}</div>
+      ${(sub && sub !== 'apercu' && competitors.length > 0) ? (() => {
+        const avail = competitors.filter(c => c.dataStatus === 'available');
+        if (sub === 'threats') {
+          const threatened = avail.filter(c => ['critical','high','medium'].includes(c.threatLevel||''));
+          if (!threatened.length) return `<div class="fp-card" style="text-align:center;padding:36px 24px;margin-bottom:16px"><div style="font-size:32px;margin-bottom:8px">✅</div><div style="font-weight:600;margin-bottom:4px">${fpT('Aucune menace détectée')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Les données de menace seront disponibles une fois les métriques concurrents récupérées.')}</div></div>`;
+          const sevCol = {critical:'#dc2626',high:'#ef4444',medium:'#f59e0b'};
+          return `<div class="fp-card fp-mb-20"><div class="fp-card-title" style="margin-bottom:12px">⚠️ ${fpT('Menaces concurrentielles')}</div><div style="display:flex;flex-direction:column;gap:8px">${threatened.map(c=>`<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;background:${(sevCol[c.threatLevel||'medium']||'#f59e0b')}0d;border:1px solid ${(sevCol[c.threatLevel||'medium']||'#f59e0b')}30"><div style="flex:1"><div style="font-weight:700;font-size:12px">${escHtml(c.name)}</div><div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(String(c.url||'').replace(/^https?:\/\//,''))}</div></div><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;background:${(sevCol[c.threatLevel||'medium']||'#f59e0b')}20;color:${(sevCol[c.threatLevel||'medium']||'#f59e0b')}">${escHtml(c.threatLevel||'—')}</span><span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Autorité')} : ${displayMetric(c.domainRating)}</span></div>`).join('')}</div></div>`;
+        }
+        if (sub === 'local') {
+          const localComps = avail.filter(c => c.local);
+          if (!localComps.length) return `<div class="fp-card" style="text-align:center;padding:36px 24px;margin-bottom:16px"><div style="font-size:32px;margin-bottom:8px">📍</div><div style="font-weight:600;margin-bottom:4px">${fpT('Aucun concurrent local')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Marquez un concurrent comme local lors de son ajout pour voir l\'analyse comparative ici.')}</div></div>`;
+          return `<div class="fp-card fp-mb-20"><div class="fp-card-title" style="margin-bottom:12px">📍 ${fpT('Concurrents locaux')}</div><div style="display:flex;flex-direction:column;gap:8px">${localComps.map(c=>`<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border)"><div style="flex:1"><div style="font-weight:700;font-size:12px">${escHtml(c.name)}</div><div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(String(c.url||'').replace(/^https?:\/\//,''))}</div></div><span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Trafic')} : ${displayMetric(c.traffic)}</span></div>`).join('')}</div></div>`;
+        }
+        if (sub === 'content') {
+          const sorted = [...avail].sort((a,b) => (b.keywords||0) - (a.keywords||0));
+          if (!sorted.length) return `<div class="fp-card" style="text-align:center;padding:36px 24px;margin-bottom:16px"><div style="font-size:32px;margin-bottom:8px">✍️</div><div style="font-weight:600;margin-bottom:4px">${fpT('Données de contenu indisponibles')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Les métriques de mots-clés apparaîtront une fois les données récupérées.')}</div></div>`;
+          return `<div class="fp-card fp-mb-20"><div class="fp-card-title" style="margin-bottom:12px">✍️ ${fpT('Volume de mots-clés')}</div><div style="display:flex;flex-direction:column;gap:8px">${sorted.map(c=>`<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border)"><div style="flex:1"><div style="font-weight:700;font-size:12px">${escHtml(c.name)}</div><div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(String(c.url||'').replace(/^https?:\/\//,''))}</div></div><span style="font-size:11px;font-weight:700;color:var(--fp-accent)">${displayMetric(c.keywords)} ${fpT('mots-clés')}</span></div>`).join('')}</div></div>`;
+        }
+        if (sub === 'growth') {
+          const byTraffic = [...avail].sort((a,b) => (b.traffic||0) - (a.traffic||0));
+          if (!byTraffic.length) return `<div class="fp-card" style="text-align:center;padding:36px 24px;margin-bottom:16px"><div style="font-size:32px;margin-bottom:8px">📈</div><div style="font-weight:600;margin-bottom:4px">${fpT('Données de croissance indisponibles')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Les métriques de trafic organique apparaîtront une fois les données récupérées.')}</div></div>`;
+          return `<div class="fp-card fp-mb-20"><div class="fp-card-title" style="margin-bottom:12px">📈 ${fpT('Trafic organique')}</div><div style="display:flex;flex-direction:column;gap:8px">${byTraffic.map(c=>`<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border)"><div style="flex:1"><div style="font-weight:700;font-size:12px">${escHtml(c.name)}</div><div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(String(c.url||'').replace(/^https?:\/\//,''))}</div></div><span style="font-size:11px;font-weight:700;color:#22c55e">${displayMetric(c.traffic)} ${fpT('visites/mois')}</span></div>`).join('')}</div></div>`;
+        }
+        return '';
+      })() : (sub && sub !== 'apercu' && competitors.length === 0) ? `
+        <div class="fp-card" style="text-align:center;padding:36px 24px;margin-bottom:16px">
+          <div style="font-size:32px;margin-bottom:8px">🔎</div>
+          <div style="font-weight:600;margin-bottom:6px">${fpT('Aucun concurrent suivi')}</div>
+          <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">${fpT('Ajoutez des concurrents pour accéder aux analyses par onglet.')}</div>
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
         </div>
       ` : ''}
@@ -56064,45 +56088,19 @@ function renderActivityFeed() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'team') {
     const _mColors = ['#2563EB','#8b5cf6','#22c55e','#f59e0b','#06b6d4'];
-    // Pre-build per-member activity counts from STATE.activityEvents (filtered by userId/email)
-    const _evts = Array.isArray(STATE.activityEvents) ? STATE.activityEvents : [];
-    const _getMemberActs = (t) => {
-      const uid = t.id || t.userId || t.user_id;
-      const em  = (t.email || '').toLowerCase();
-      return _evts.filter(e => {
-        const eUid = e.userId || e.user_id || e.performedBy;
-        const eEm  = (e.email || e.performedByEmail || '').toLowerCase();
-        if (uid && eUid && String(eUid) === String(uid)) return true;
-        if (em  && eEm  && eEm === em) return true;
-        return false;
-      }).length;
-    };
-    const _orgAudits    = STATE.audits   ? STATE.audits.length   : 0;
-    const _orgMissions  = (STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length;
-    const _orgReports   = STATE.reports  ? STATE.reports.length  : 0;
-    const _orgScore     = STATE.userScore || (STATE.overview && (STATE.overview.seoScore||STATE.overview.avgScore)) || 0;
+    // Activity attribution requires server-side actor IDs which the current API
+    // does not expose per-member. Show identity/role from STATE.team but mark all
+    // quantitative contribution metrics as unavailable — never assign org totals
+    // to an arbitrary member.
     const members = (STATE.team && STATE.team.length > 0 ? STATE.team : []).map((t, i) => {
       const nm = t.name || t.email || 'Membre';
-      // Per-member activity from events (best effort); fall back to org aggregate for first member
-      const perMemberActs = _getMemberActs(t);
-      const acts = perMemberActs > 0 ? perMemberActs : (i === 0 ? _evts.length : 0);
-      const score = i === 0 ? _orgScore : 0;
-      // Build contribution bullets: use org-level data for first member, per-member placeholder otherwise
-      const mAudits   = i === 0 ? _orgAudits   : (t.auditsCount   || 0);
-      const mMissions = i === 0 ? _orgMissions  : (t.missionsCount || 0);
-      const mReports  = i === 0 ? _orgReports   : (t.reportsCount  || 0);
       return {
         name: nm, role: t.role || 'member',
         avatar: nm.slice(0,2).toUpperCase(),
         color: _mColors[i % _mColors.length],
-        actions: acts,
-        score,
-        trend: '—',
-        contribs: [
-          mAudits   + ' audit(s) lancé(s)',
-          mMissions + ' mission(s) complétée(s)',
-          mReports  + ' rapport(s) généré(s)',
-        ],
+        // null signals "data unavailable" — rendered as "—" in the UI
+        actions: null, score: null, trend: '—',
+        contribs: null,
       };
     });
     const teamActs = liveFeed.filter(a => a.cat === 'team');
@@ -56117,7 +56115,7 @@ function renderActivityFeed() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Membres actifs', String(members.length), 'cette semaine', 'up')}
-        ${statCard('Actions totales', String(members.reduce((s,m) => s + m.actions, 0)), 'toutes catégories', 'up')}
+        ${statCard('Actions totales', String(Array.isArray(STATE.activityEvents) ? STATE.activityEvents.length : '—'), 'cette organisation', 'up')}
         ${statCard('Score productivité', displayStat(null, '82/100'), PREVIEW_MODE ? '+8 pts vs S-1' : 'Analyse en cours', 'neutral')}
         ${statCard('Missions ouvertes', displayStat(STATE.missions && STATE.missions.length > 0 ? String(STATE.missions.length) : null, '4'), STATE.missions && STATE.missions.length > 0 ? 'missions actives' : PREVIEW_MODE ? 'dont 2 prioritaires' : 'Aucune mission', 'neutral')}
       </div>
@@ -56139,15 +56137,11 @@ function renderActivityFeed() {
                   <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(m.role)}</div>
                 </div>
                 <div style="text-align:right">
-                  <div style="font-size:18px;font-weight:800;color:${m.color}">${m.score ?? '—'}<span style="font-size:11px;color:var(--fp-text-faint)">/100</span></div>
-                  <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(m.trend)}</div>
+                  <div style="font-size:14px;font-weight:600;color:var(--fp-text-faint)">—</div>
+                  <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('N/D')}</div>
                 </div>
               </div>
-              <div class="fp-progress-track" style="height:5px;margin-bottom:10px"><div class="fp-progress-fill" style="width:${pct}%;background:${m.color}"></div></div>
-              <div style="display:flex;gap:6px;flex-wrap:wrap">
-                ${m.contribs.map(c => `<span style="font-size:10px;padding:2px 8px;border-radius:6px;background:${m.color}14;color:${m.color};font-weight:600">${escHtml(c)}</span>`).join('')}
-                <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:var(--fp-track);color:var(--fp-text-faint);">${m.actions} actions totales</span>
-              </div>
+              <div style="font-size:11px;color:var(--fp-text-faint);font-style:italic;padding:4px 0">${fpT('Détail des contributions par membre non disponible — activité agrégée au niveau de l\'organisation.')}</div>
             </div>`;
           }).join('')}
         </div>
