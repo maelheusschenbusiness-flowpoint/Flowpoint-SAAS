@@ -47250,12 +47250,19 @@ async function init() {
                 // Update badge and play sound
                 try { window._fpRefreshMsgBadge?.(); } catch(_) {}
                 try { window._fpPlayChatSound?.(); } catch(_) {}
-                // Re-render chat panel if open on current channel
-                if (STATE.msgPanelOpen && (_ch) === (STATE.msgChannel || 'general')) {
-                  try {
-                    const _dp = document.getElementById('fp-msg-dropdown');
-                    if (_dp) _dp.innerHTML = renderMsgDropdown();
-                  } catch(_) { render(); }
+                // Re-render msg dropdown if currently visible (DOM check, not STATE flag)
+                try {
+                  const _dp = document.getElementById('fp-msg-dropdown');
+                  if (_dp && _dp.offsetParent !== null) {
+                    _dp.innerHTML = renderMsgDropdown();
+                    if (typeof window.bindMsgPanel === 'function') window.bindMsgPanel(_dp);
+                    const _ml = _dp.querySelector('#fp-msg-list');
+                    if (_ml) _ml.scrollTop = _ml.scrollHeight;
+                  }
+                } catch(_) {}
+                // If the user is on the team/chat section, re-render it too
+                if (STATE.route === 'team' && STATE.subRoute === 'chat') {
+                  try { render(); setTimeout(() => { const c = document.getElementById('team-chat-msgs'); if (c) c.scrollTop = c.scrollHeight; }, 30); } catch(_) {}
                 }
               }
             }
