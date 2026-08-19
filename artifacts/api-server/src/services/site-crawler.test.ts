@@ -87,6 +87,16 @@ Disallow:
     expect(isPathAllowedByRobots("/google-only", d)).toBe(true);
   });
 
+  it("conserve une règle applicable lorsque le groupe comporte plusieurs User-agent", () => {
+    const d = parseRobotsDisallows(`
+      User-agent: *
+      User-agent: OtherBot
+      Disallow: /interdit
+    `);
+    expect(d).toEqual(["/interdit"]);
+    expect(isPathAllowedByRobots("/interdit/page", d)).toBe(false);
+  });
+
   it("ignore les règles avec wildcards (non supportées) sans bloquer le reste", () => {
     const d = parseRobotsDisallows("User-agent: *\nDisallow: /*.json$\nDisallow: /secret");
     expect(d).toEqual(["/secret"]);

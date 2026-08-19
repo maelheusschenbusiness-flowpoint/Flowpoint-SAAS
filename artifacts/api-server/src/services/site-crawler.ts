@@ -49,23 +49,45 @@ export interface CrawlSiteResult {
  */
 export function parseRobotsDisallows(robotsTxt: string): string[] {
   const disallows: string[] = [];
-  let applies = false;
+  let userAgents: string[] = [];
+  let groupHasDirectives = false;
+
+  const flushGroup = () => {
+    const applies = userAgents.some((ua) => ua === "*" || ua.includes("flowpointbot"));
+    if (applies) {
+      for (const directive of directives) {
+        if (directive.field !== "disallow" || !directive.value) continue;
+        if (/[*$]/.test(directive.value)) continue; // wildcards non supportés
+        disallows.push(directive.value);
+      }
+    }
+    userAgents = [];
+    directives = [];
+    groupHasDirectives = false;
+  };
+  let directives: Array<{ field: string; value: string }> = [];
+
   for (const rawLine of robotsTxt.split(/\r?\n/)) {
     const line = rawLine.replace(/#.*$/, "").trim();
-    if (!line) continue;
+    if (!line) {
+      if (userAgents.length > 0) flushGroup();
+      continue;
+    }
     const m = line.match(/^([A-Za-z-]+)\s*:\s*(.*)$/);
     if (!m) continue;
     const field = m[1]!.toLowerCase();
     const value = (m[2] ?? "").trim();
     if (field === "user-agent") {
-      const ua = value.toLowerCase();
-      applies = ua === "*" || ua.includes("flowpointbot");
-    } else if (field === "disallow" && applies) {
-      if (!value) continue;               // "Disallow:" vide = tout autorisé
-      if (/[*$]/.test(value)) continue;   // wildcards non supportés — ignorés
-      disallows.push(value);
+      // Several User-agent entries before directives form one group. Once a
+      // directive has started, a new agent starts the next group.
+      if (groupHasDirectives) flushGroup();
+      userAgents.push(value.toLowerCase());
+    } else if (userAgents.length > 0) {
+      groupHasDirectives = true;
+      directives.push({ field, value });
     }
   }
+  if (userAgents.length > 0) flushGroup();
   return disallows;
 }
 
@@ -131,7 +153,40 @@ export async function crawlSite(
 ): Promise<CrawlSiteResult> {
   const cappedMax = Math.max(1, Math.min(maxPages, MAX_CRAWL_PAGES));
 
-  // 1. Page d'accueil (timeout standard — c'est la page pivot)
+  let start: URL;
+  try {
+    start = new URL(startUrl);
+  } catch {
+    return {
+      ok: false, startUrl, pages: [], linksDiscovered: 0,
+      pagesAttempted: 0, pagesFetched: 0, blockedByRobots: 0,
+      error: "URL de départ invalide",
+    };
+  }
+
+  // 1. robots.txt MUST be checked before any user-supplied page is requested.
+  // Its own request passes through the same SSRF-protected fetcher. A missing or
+  // inaccessible robots.txt remains best-effort/allow, but an explicit rule
+  // blocks the start path before it can be downloaded.
+  let disallows: string[] = [];
+  try {
+    const robots = await fetchUrlContent(`${start.origin}/robots.txt`, { timeoutMs: ROBOTS_TIMEOUT_MS });
+    if (robots.ok && robots.bodyText) {
+      disallows = parseRobotsDisallows(robots.bodyText);
+    }
+  } catch (err) {
+    logger.debug({ err, startUrl }, "[site-crawler] robots.txt fetch failed — proceeding without");
+  }
+  if (!isPathAllowedByRobots(start.pathname, disallows)) {
+    logger.info({ startUrl, pathname: start.pathname }, "[site-crawler] start URL blocked by robots.txt");
+    return {
+      ok: false, startUrl, pages: [], linksDiscovered: 0,
+      pagesAttempted: 0, pagesFetched: 0, blockedByRobots: 1,
+      error: "La page demandée est exclue par robots.txt",
+    };
+  }
+
+  // 2. Page d'accueil (timeout standard — c'est la page pivot)
   const home = await fetchUrlContent(startUrl);
   if (!home.ok) {
     return {
@@ -142,18 +197,6 @@ export async function crawlSite(
   }
 
   const links = home.links ?? [];
-
-  // 2. robots.txt (best-effort : absent/inaccessible = tout autorisé)
-  let disallows: string[] = [];
-  try {
-    const origin = new URL(home.url).origin;
-    const robots = await fetchUrlContent(`${origin}/robots.txt`, { timeoutMs: ROBOTS_TIMEOUT_MS });
-    if (robots.ok && robots.bodyText) {
-      disallows = parseRobotsDisallows(robots.bodyText);
-    }
-  } catch (err) {
-    logger.debug({ err, startUrl }, "[site-crawler] robots.txt fetch failed — proceeding without");
-  }
 
   // 3. Sélection des pages internes à récupérer
   const { targets, blockedByRobots } = pickCrawlTargets(links, home.url, disallows, cappedMax - 1);
