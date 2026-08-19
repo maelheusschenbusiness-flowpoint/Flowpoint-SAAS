@@ -53,6 +53,7 @@ export default defineConfig({
       "src/routes/team-invite-accept.test.ts",
       "src/services/seat-entitlement.test.ts",
       "src/routes/team-seat-gate.test.ts",
+       "src/routes/team-member-removal-security.test.ts",
       "src/tests/cross_tenant_rbac_sso.test.ts",
       // Phase 7 — analyze_url SSRF IPv6 + IPv4 classification
       "src/services/url-fetcher-ipv6.test.ts",

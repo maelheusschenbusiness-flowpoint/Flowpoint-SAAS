@@ -20,6 +20,24 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 import type { Request, Response } from "express";
 import { EventEmitter } from "node:events";
 
+type RouterLayer = {
+  route?: {
+    path?: string;
+    stack?: Array<{ handle?: unknown }>;
+  };
+};
+
+function requireCancelHandler(router: { stack: RouterLayer[] }): (req: Request, res: Response) => Promise<void> {
+  const cancelRoute = router.stack.find(
+    (layer) => layer.route?.path === "/ai/conversations/:id/cancel",
+  );
+  const handler = cancelRoute?.route?.stack?.at(-1)?.handle;
+  if (typeof handler !== "function") {
+    throw new Error("POST /ai/conversations/:id/cancel handler is not registered");
+  }
+  return handler as (req: Request, res: Response) => Promise<void>;
+}
+
 // ── Minimal mock infrastructure ────────────────────────────────────────────────
 
 const spies = vi.hoisted(() => ({
@@ -216,11 +234,6 @@ describe("AI conversation lock lifecycle", () => {
     const router = mod.default;
 
     // Find cancel route handler
-    const cancelRoute = router.stack.find((l: { route?: { path: string; stack: Array<{ handle: unknown }> } }) =>
-      l.route?.path === "/ai/conversations/:id/cancel"
-    );
-    expect(cancelRoute).toBeDefined();
-
     // Build a fake request for the cancel endpoint
     const cancelReq = {
       params: { id: "conv-test-cancel-001" },
@@ -236,9 +249,7 @@ describe("AI conversation lock lifecycle", () => {
     } as unknown as Response;
 
     // Call the cancel handler
-    const cancelFn = cancelRoute.route.stack[cancelRoute.route.stack.length - 1].handle as (
-      req: Request, res: Response
-    ) => Promise<void>;
+    const cancelFn = requireCancelHandler(router);
     await cancelFn(cancelReq, cancelRes);
 
     // The cancel endpoint must return { ok: true, cancelled: true }
@@ -261,14 +272,7 @@ describe("AI conversation lock lifecycle", () => {
   it("T7: calling cancel twice on same conversationId is safe (no error, ok:true both times)", async () => {
     const mod = await import("./ai.js");
     const router = mod.default;
-    const cancelRoute = router.stack.find((l: { route?: { path: string; stack: Array<{ handle: unknown }> } }) =>
-      l.route?.path === "/ai/conversations/:id/cancel"
-    );
-    expect(cancelRoute).toBeDefined();
-
-    const cancelFn = cancelRoute.route.stack[cancelRoute.route.stack.length - 1].handle as (
-      req: Request, res: Response
-    ) => Promise<void>;
+    const cancelFn = requireCancelHandler(router);
 
     const results: unknown[] = [];
     for (let i = 0; i < 2; i++) {

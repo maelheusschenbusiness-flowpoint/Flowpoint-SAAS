@@ -137,3 +137,4 @@
 - [Dashboard UX batch 2 — sièges/SSO/add-on/maps/PM](dashboard-ux-fixes-batch2.md) — seat cap = max(3 sources); add-on→checkout.html; gestureHandling greedy; sub PM fallback
 - [fp-backend.js apiFetchNow session-critical rule](fp-backend-auth-structural-rule.md) — root cause F5→SignIn; 3 unconditional redirects in apiFetchNow had no session-critical guard; AI widget raw fetch also redirected on plan-gate 401
 - [Purge table schema gaps](purge-table-schema-gaps.md) — org_members/invitations/activity_log don't exist; correct names + 40 absent tables documented
+- [Compound mission + calendar confirmations](compound-mission-calendar-confirmations.md) — explicit paired writes keep separate proposals; a due-date companion never writes before its own confirmation

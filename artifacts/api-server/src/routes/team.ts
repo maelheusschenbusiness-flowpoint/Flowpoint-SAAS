@@ -19,9 +19,9 @@
 import { Router, type Request, type Response } from "express";
 import { logger }                               from "../lib/logger.js";
 import { randomBytes, createHash, randomUUID }  from "crypto";
-import { pool }                                from "@workspace/db";
+import { pool, withOrgDb }                     from "@workspace/db";
 import { canAdmin }                             from "../middlewares/requireRole.js";
-import { createSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
+import { createSession, SESSION_TTL_MS } from "../services/sessions.js";
 import { resolveSeatEntitlement, SeatEntitlementUnavailableError } from "../services/seat-entitlement.js";
 
 // ── Public router (registered before requireAuth in index.ts) ─────────────────
@@ -822,72 +822,92 @@ router.delete("/team/:id", canAdmin, async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
 
-  const db          = orgDb(req);
   const callerEmail = req.orgContext?.email ?? "";
   const memberId    = req.params.id;
 
-  // Load current member
-  let memberRes: { rows: Record<string, unknown>[] };
+  // Removal is security-sensitive: canonical membership removal and session
+  // revocation must succeed together. A failure rolls back all changes so we
+  // never show a member as removed while their token still grants access.
   try {
-    memberRes = await db(
-      `SELECT id, email, role, status FROM team_members WHERE id = $1 AND org_id = $2 AND status = 'active' LIMIT 1`,
-      [memberId, org]
-    );
-  } catch (err) {
-    logger.error({ err: (err as Error).message }, "[team/delete] SELECT failed");
-    res.status(500).json({ ok: false, error: "Failed to load member" });
-    return;
-  }
-
-  const member = memberRes.rows[0];
-  if (!member) { res.status(404).json({ ok: false, error: "Member not found" }); return; }
-
-  if (member.role === "owner") {
-    res.status(403).json({ ok: false, code: "CANNOT_REMOVE_OWNER", error: "Le propriétaire ne peut pas être retiré de l'équipe." });
-    return;
-  }
-
-  if (callerEmail && (member.email as string)?.toLowerCase() === callerEmail.toLowerCase()) {
-    res.status(403).json({ ok: false, code: "CANNOT_REMOVE_SELF", error: "Vous ne pouvez pas vous retirer vous-même." });
-    return;
-  }
-
-  try {
-    await db(
-      `UPDATE team_members SET status = 'removed', updated_at = NOW() WHERE id = $1 AND org_id = $2`,
-      [memberId, org]
-    );
-  } catch (err) {
-    logger.error({ orgId: org.slice(0, 20), memberId, err: (err as Error).message }, "[team/delete] UPDATE failed");
-    res.status(500).json({ ok: false, error: "Failed to remove member" });
-    return;
-  }
-
-  const memberEmail = member.email as string;
-
-  // Jalon 3 — dual-write removal to organization_members (fire-and-forget, migration utility)
-  pool.query(
-    `UPDATE organization_members om
-     SET status = 'removed', updated_at = NOW()
-     FROM users u
-     WHERE u.id = om.user_id AND lower(u.email) = lower($1) AND om.organization_id = $2`,
-    [memberEmail, org]
-  ).catch(err => logger.warn({ err: (err as Error).message }, "[team/delete] org_members dual-write failed (non-fatal)"));
-
-  // Session revocation is a security operation — must be awaited, never fire-and-forget
-  if (memberEmail) {
-    try {
-      await invalidateAllSessions(memberEmail);
-    } catch (err) {
-      logger.error(
-        { err: (err as Error).message, maskedEmail: maskEmail(memberEmail) },
-        "[team/delete] SECURITY: session revocation failed — member removed from DB but sessions may remain valid until expiry"
+    const removed = await withOrgDb(org, async (client) => {
+      const memberRes = await client.query<{ id: string; email: string; role: string; user_id: string | null }>(
+        `SELECT id, email, role, user_id
+         FROM team_members
+         WHERE id = $1 AND org_id = $2 AND status = 'active'
+         LIMIT 1`,
+        [memberId, org],
       );
-    }
-  }
+      const member = memberRes.rows[0];
+      if (!member) return { kind: "not_found" as const };
 
-  logger.info({ orgId: org.slice(0, 20), memberId, maskedEmail: maskEmail(memberEmail) }, "[team/delete] member soft-removed");
-  res.json({ ok: true });
+      if (member.role === "owner") return { kind: "owner" as const };
+      if (callerEmail && member.email.toLowerCase() === callerEmail.toLowerCase()) {
+        return { kind: "self" as const };
+      }
+
+      // organization_members is the authoritative membership table. Deleting
+      // this record (rather than updating it later in the background) closes
+      // the canonical access path in the same commit as legacy team cleanup.
+      if (!member.user_id) {
+        throw new Error("active team member has no canonical user id");
+      }
+      const canonicalRes = await client.query<{ user_id: string }>(
+        `DELETE FROM organization_members
+         WHERE organization_id::text = $1
+           AND user_id::text = $2
+         RETURNING user_id`,
+        [org, member.user_id],
+      );
+      const canonicalUserId = canonicalRes.rows[0]?.user_id;
+      if (!canonicalUserId) {
+        throw new Error("active team member has no canonical organization membership");
+      }
+
+      // Sessions are scoped by organization. Never revoke another valid org
+      // session merely because the user has the same email or UUID.
+      await client.query(
+        `DELETE FROM user_sessions
+         WHERE org_id = $1
+           AND (lower(email) = lower($2) OR user_id_v2::text = $3)`,
+        [org, member.email, canonicalUserId],
+      );
+
+      const teamRes = await client.query(
+        `UPDATE team_members
+         SET status = 'removed', updated_at = NOW()
+         WHERE id = $1 AND org_id = $2 AND status = 'active'
+         RETURNING id`,
+        [memberId, org],
+      );
+      if (!teamRes.rows[0]) {
+        throw new Error("member disappeared during removal");
+      }
+
+      return { kind: "removed" as const, email: member.email };
+    });
+
+    if (removed.kind === "not_found") {
+      res.status(404).json({ ok: false, error: "Member not found" });
+      return;
+    }
+    if (removed.kind === "owner") {
+      res.status(403).json({ ok: false, code: "CANNOT_REMOVE_OWNER", error: "Le propriétaire ne peut pas être retiré de l'équipe." });
+      return;
+    }
+    if (removed.kind === "self") {
+      res.status(403).json({ ok: false, code: "CANNOT_REMOVE_SELF", error: "Vous ne pouvez pas vous retirer vous-même." });
+      return;
+    }
+
+    logger.info({ orgId: org.slice(0, 20), memberId, maskedEmail: maskEmail(removed.email) }, "[team/delete] member access revoked");
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error(
+      { orgId: org.slice(0, 20), memberId, err: (err as Error).message },
+      "[team/delete] SECURITY: atomic membership/session revocation failed",
+    );
+    res.status(503).json({ ok: false, code: "MEMBER_REMOVAL_UNAVAILABLE", error: "Le retrait du membre n'a pas pu être sécurisé. Réessayez." });
+  }
 });
 
 // ── POST /team/invitations/:id/resend ─────────────────────────────────────────
