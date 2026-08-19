@@ -10361,7 +10361,7 @@ function renderBilling() {
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),60)">${fpT('Configurer portail client')}</button>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),60)">${fpT('Ajouter un workspace')}</button>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('reports');setTimeout(()=>navigateSub('new'),60)">${fpT('Générer rapport agence')}</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('reports');setTimeout(()=>{openFloatPanel(fpT('Nouveau rapport'),renderNewReportPanel());setupNewReportPanel();},120)">${fpT('Générer rapport agence')}</button>
             </div>
           </div>`
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:20px 24px;margin-bottom:20px">
