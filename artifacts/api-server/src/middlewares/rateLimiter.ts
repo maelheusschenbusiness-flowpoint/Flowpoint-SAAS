@@ -104,26 +104,50 @@ export function globalRateLimit(req: Request, res: Response, next: NextFunction)
   })();
 }
 
-/** AI endpoint rate limiter */
-export function aiRateLimit(req: Request, res: Response, next: NextFunction): void {
-  const orgId = getOrgId(req);
-  void (async () => {
-    try {
-      const plan = await getPlanForOrg(orgId);
-      const limit = getRateLimit(plan, 'aiPerMinute');
-      const { allowed, remaining, resetInMs } = checkRate(`ai:${orgId}`, limit);
+/**
+ * Shared implementation for the AI limiters.
+ *
+ * Two DISTINCT buckets share the same plan-aware `aiPerMinute` threshold:
+ *  - `ai:${orgId}`      — batch/background AI endpoints (summary, audit,
+ *                         pagespeed-insights, missions, generate, …)
+ *  - `ai:chat:${orgId}` — the interactive conversation endpoint /ai/chat
+ *
+ * WHY (Task #614 — premature 429): with a single shared bucket, background
+ * dashboard AI features silently drained the interactive chat budget, so a
+ * normal 15–20 message conversation could hit 429 even though the user never
+ * exceeded the chat limit itself. Splitting the buckets keeps every plan
+ * threshold identical (no limits were raised) while making each 429
+ * attributable to the surface that actually caused it.
+ */
+function aiLimitMiddleware(bucketPrefix: string, source: string) {
+  return function (req: Request, res: Response, next: NextFunction): void {
+    const orgId = getOrgId(req);
+    void (async () => {
+      try {
+        const plan = await getPlanForOrg(orgId);
+        const limit = getRateLimit(plan, 'aiPerMinute');
+        const { allowed, remaining, resetInMs } = checkRate(`${bucketPrefix}:${orgId}`, limit);
 
-      res.setHeader('X-AI-RateLimit-Remaining', String(remaining));
+        res.setHeader('X-AI-RateLimit-Remaining', String(remaining));
 
-      if (!allowed) {
-        logger.warn({ orgId, plan }, '[RateLimit] AI limit exceeded');
-        res.status(429).json({ ok: false, error: 'AI rate limit exceeded', code: 'AI_RATE_LIMIT', details: { retryAfterSeconds: Math.ceil(resetInMs / 1000), plan, limit } });
-        return;
-      }
-      next();
-    } catch { next(); }
-  })();
+        if (!allowed) {
+          // Structured attribution: every AI 429 must be traceable to its
+          // source bucket (interactive chat vs batch AI features).
+          logger.warn({ orgId, plan, limit, source, bucket: `${bucketPrefix}:${orgId}`, path: req.path }, '[RateLimit] AI limit exceeded');
+          res.status(429).json({ ok: false, error: 'AI rate limit exceeded', code: 'AI_RATE_LIMIT', details: { retryAfterSeconds: Math.ceil(resetInMs / 1000), plan, limit, source } });
+          return;
+        }
+        next();
+      } catch { next(); }
+    })();
+  };
 }
+
+/** AI endpoint rate limiter — batch/background AI feature endpoints */
+export const aiRateLimit = aiLimitMiddleware('ai', 'ai_batch');
+
+/** Interactive conversation limiter — POST /ai/chat only (own bucket) */
+export const aiChatRateLimit = aiLimitMiddleware('ai:chat', 'ai_chat');
 
 /** Factory: create a rate limiter for a specific endpoint type */
 export function createRateLimit(bucket: keyof RateLimits): (req: Request, res: Response, next: NextFunction) => void {

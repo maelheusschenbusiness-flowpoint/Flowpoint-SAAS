@@ -3,9 +3,10 @@ import { logger } from "../lib/logger.js";
 
 export interface PSIScores {
   performance: number;
-  seo: number;
-  accessibility: number;
-  bestPractices: number;
+  /** null = category not returned by Lighthouse (never fabricate a 0). */
+  seo: number | null;
+  accessibility: number | null;
+  bestPractices: number | null;
 }
 
 export interface PSIResult {
@@ -36,7 +37,11 @@ const PSI_ENDPOINT = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed
 
 export async function analyzePSI(url: string, strategy: "mobile" | "desktop", _orgId?: string, _force?: boolean): Promise<PSIResult> {
   const apiKey = process.env["PAGESPEED_API_KEY"] ?? process.env["GOOGLE_API_KEY"] ?? "";
-  const endpoint = `${PSI_ENDPOINT}?url=${encodeURIComponent(url)}&strategy=${strategy}${apiKey ? `&key=${apiKey}` : ""}`;
+  // Task #614: without explicit `category` params the PSI API only runs the
+  // performance category — seo/accessibility/best-practices came back absent
+  // and were displayed as fabricated 0/100 rings. Request all four.
+  const categories = "&category=performance&category=accessibility&category=best-practices&category=seo";
+  const endpoint = `${PSI_ENDPOINT}?url=${encodeURIComponent(url)}&strategy=${strategy}${categories}${apiKey ? `&key=${apiKey}` : ""}`;
 
   const res = await fetch(endpoint, { signal: AbortSignal.timeout(25_000) });
   if (!res.ok) throw new Error(`PSI API ${res.status}: ${await res.text()}`);
@@ -45,11 +50,16 @@ export async function analyzePSI(url: string, strategy: "mobile" | "desktop", _o
   const cats = (data["lighthouseResult"] as Record<string, unknown>)?.["categories"] as Record<string, { score: number }>;
   const audits = (data["lighthouseResult"] as Record<string, unknown>)?.["audits"] as Record<string, { score: number | null; title: string; description: string; displayValue?: string; numericValue?: number }>;
 
+  // Honest scores: a category Lighthouse did not return is null, never 0.
+  const catScore = (key: string): number | null => {
+    const s = cats?.[key]?.score;
+    return typeof s === "number" ? Math.round(s * 100) : null;
+  };
   const scores: PSIScores = {
-    performance:   Math.round((cats?.["performance"]?.score ?? 0) * 100),
-    seo:           Math.round((cats?.["seo"]?.score ?? 0) * 100),
-    accessibility: Math.round((cats?.["accessibility"]?.score ?? 0) * 100),
-    bestPractices: Math.round((cats?.["best-practices"]?.score ?? 0) * 100),
+    performance:   catScore("performance") ?? 0,
+    seo:           catScore("seo"),
+    accessibility: catScore("accessibility"),
+    bestPractices: catScore("best-practices"),
   };
 
   const criticalIssues = Object.entries(audits ?? {})

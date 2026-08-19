@@ -16,7 +16,7 @@
  *  T9: stale lock auto-sweep (> 5 min TTL)
  */
 
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import { vi, describe, it, expect, beforeEach, beforeAll } from "vitest";
 import type { Request, Response } from "express";
 import { EventEmitter } from "node:events";
 
@@ -62,6 +62,7 @@ vi.mock("../lib/logger.js", () => ({
 }));
 vi.mock("../middlewares/rateLimiter.js", () => ({
   aiRateLimit: (_req: unknown, _res: unknown, next: () => void) => next(),
+  aiChatRateLimit: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 // ── Stub all heavy AI engine imports ──────────────────────────────────────────
@@ -97,11 +98,16 @@ vi.mock("../services/ai-provider.js", () => ({
   aiStream: spies.aiStream,
   aiChat: vi.fn(),
 }));
-vi.mock("../services/ai-provider-matrix.js", () => ({
-  selectProviderAndModel: vi.fn().mockReturnValue({ provider: "openai", model: "gpt-4o-mini" }),
-  CANONICAL_MODEL_ALIASES: {},
-  resolveCanonicalModel: vi.fn((m: string) => m),
-}));
+vi.mock("../services/ai-provider-matrix.js", async (importOriginal) => {
+  // Partial mock: ai-provider-matrix is a pure config module (no I/O). Keep the
+  // real exports (isValidProvider, resolveIntensityConfig, …) and only pin the
+  // provider selection so tests are deterministic.
+  const actual = await importOriginal<typeof import("../services/ai-provider-matrix.js")>();
+  return {
+    ...actual,
+    selectProviderAndModel: vi.fn().mockReturnValue({ provider: "openai", model: "gpt-4o-mini" }),
+  };
+});
 vi.mock("./tool-executor.js", () => ({ runToolCallingLoop: vi.fn() }));
 vi.mock("../services/mailer.js", () => ({ mailer: null }));
 vi.mock("node:crypto", async () => {
@@ -192,12 +198,19 @@ describe("AI conversation lock lifecycle", () => {
   let chatHandler: (req: Request, res: Response) => Promise<void>;
   let cancelHandler: (req: Request, res: Response) => Promise<void>;
 
+  // Warm the (large) ai.js module graph once — the partial ai-provider-matrix
+  // mock (importOriginal) makes the first import slow enough to trip the 5 s
+  // per-test timeout when individual tests import it lazily.
+  beforeAll(async () => {
+    await import("./ai.js");
+  }, 30_000);
+
   beforeEach(async () => {
     vi.clearAllMocks();
-    // aiStream mock: simulate a fast response and call res.end()
-    spies.aiStream.mockImplementation(async (opts: { sseWrite: (s: string) => void; signal?: AbortSignal }) => {
-      opts.sseWrite(`data: ${JSON.stringify({ delta: "Bonjour !" })}\n\n`);
-      return { text: "Bonjour !", finishReason: "stop", usage: { inputTokens: 10, outputTokens: 5 } };
+    // aiStream mock: the real aiStream is an async generator yielding
+    // { content: string } chunks (see ai.ts `for await (const chunk of stream)`).
+    spies.aiStream.mockImplementation(async function* () {
+      yield { content: "Bonjour !" };
     });
   });
 
@@ -398,5 +411,53 @@ describe("AI conversation lock lifecycle", () => {
 
     expect(activeExecutions.has(CONV_ID)).toBe(false); // lock released
     expect(executionStartTimes.has(CONV_ID)).toBe(false);
+  });
+
+  // ── T10 (Task #614): stale cancel marker must not kill the NEXT generation ──
+  // The cancel endpoint adds conversationId to _cancelledConversations with a
+  // 60 s auto-clear. Before the fix, ANY new message sent in the same
+  // conversation within that minute was short-circuited to
+  // "⏹ Génération interrompue." — reproduced live during certification
+  // (interruption → filler messages → delete all returned the marker).
+  // The fix clears the marker when a new generation legitimately acquires the
+  // execution lock; the in-flight request stays covered by its _clientGone flag.
+  it("T10: a new chat request after cancel is NOT short-circuited to 'Génération interrompue'", async () => {
+    const mod = await import("./ai.js");
+    const router = mod.default as unknown as { stack: RouterLayer[] };
+    const CONV_ID = "conv-stale-cancel-614";
+
+    // 1. Cancel the conversation (marks it in _cancelledConversations)
+    const cancelFn = requireCancelHandler(router as { stack: RouterLayer[] });
+    const cancelReq = {
+      params: { id: CONV_ID },
+      orgId: "org-test-614",
+      orgContext: { email: "test@example.com" },
+      userId: "user-test-614",
+    } as unknown as Request;
+    let cancelBody: unknown = null;
+    const cancelRes = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn().mockImplementation((b: unknown) => { cancelBody = b; }),
+    } as unknown as Response;
+    await cancelFn(cancelReq, cancelRes);
+    expect(cancelBody).toMatchObject({ ok: true, cancelled: true });
+
+    // 2. Immediately send a NEW message in the same conversation
+    const chatRoute = router.stack.find((l) => l.route?.path === "/ai/chat");
+    const chatFn = chatRoute?.route?.stack?.at(-1)?.handle as
+      | ((req: Request, res: Response) => Promise<void>)
+      | undefined;
+    if (typeof chatFn !== "function") {
+      throw new Error("POST /ai/chat handler is not registered");
+    }
+    const { req, res, resEmitter } = makeReqRes({ conversationId: CONV_ID, orgId: "org-test-614" });
+    await chatFn(req, res);
+
+    const output = resEmitter.written.join("");
+    // The stale marker must NOT abort the new generation…
+    expect(output).not.toContain("Génération interrompue");
+    // …and the provider must actually have been called for it.
+    expect(spies.aiStream).toHaveBeenCalled();
+    expect(output).toContain("Bonjour !");
   });
 });

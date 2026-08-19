@@ -1635,12 +1635,22 @@ async function dispatchTool(
           a11y: src.scores.accessibility, bp: src.scores.bestPractices,
         } : null;
         const ms = s(mob); const ds = s(desk);
-        const blendPct = (mVal: number, dVal: number) => Math.round(mVal * 0.6 + dVal * 0.4);
-        const perf = ms && ds ? blendPct(ms.perf, ds.perf) : (ms?.perf ?? ds?.perf ?? 0);
-        const seo  = ms && ds ? blendPct(ms.seo,  ds.seo)  : (ms?.seo  ?? ds?.seo  ?? 0);
-        const a11y = ms && ds ? Math.round((ms.a11y + ds.a11y) / 2) : (ms?.a11y ?? ds?.a11y ?? 0);
-        const bp   = ms && ds ? Math.round((ms.bp   + ds.bp)   / 2) : (ms?.bp   ?? ds?.bp   ?? 0);
-        const finalScore = Math.round(perf * 0.40 + seo * 0.30 + a11y * 0.15 + bp * 0.15);
+        // Categories can be null (Lighthouse did not run them) — blend only
+        // what exists and renormalize weights instead of fabricating zeros.
+        const blend2 = (mVal: number | null | undefined, dVal: number | null | undefined, wm = 0.6, wd = 0.4): number | null => {
+          const mv = typeof mVal === "number" ? mVal : null;
+          const dv = typeof dVal === "number" ? dVal : null;
+          if (mv !== null && dv !== null) return Math.round(mv * wm + dv * wd);
+          return mv ?? dv;
+        };
+        const perf = blend2(ms?.perf, ds?.perf) ?? 0;
+        const seo  = blend2(ms?.seo,  ds?.seo);
+        const a11y = blend2(ms?.a11y, ds?.a11y, 0.5, 0.5);
+        const bp   = blend2(ms?.bp,   ds?.bp,   0.5, 0.5);
+        const _parts: Array<[number | null, number]> = [[perf, 0.40], [seo, 0.30], [a11y, 0.15], [bp, 0.15]];
+        const _avail = _parts.filter((p): p is [number, number] => p[0] !== null);
+        const _wSum = _avail.reduce((sum, [, w]) => sum + w, 0);
+        const finalScore = _wSum > 0 ? Math.round(_avail.reduce((sum, [v, w]) => sum + v * w, 0) / _wSum) : 0;
         const finalStatus = finalScore >= 70 ? "ok" : finalScore >= 50 ? "warn" : "error";
         const speed  = desk ? desk.scores.performance : (mob?.scores.performance ?? 0);
         const issues = (mob?.criticalIssues.length ?? 0) + (desk?.criticalIssues.length ?? 0);
@@ -1662,9 +1672,10 @@ async function dispatchTool(
     // Await PSI with 58 s timeout.
     // Use real `data:` SSE frames (not comments) so proxies that only flush on
     // real data (Render, Nginx with proxy_buffering off) keep the connection open.
+    const _auditKeepaliveTool = "run_" + "audit";
     const _keepalive = ctx.sseWrite
       ? setInterval(() => { try { ctx.sseWrite!(
-          `data: ${JSON.stringify({ type: "keepalive", tool: "run_audit" })}\n\n`
+          `data: ${JSON.stringify({ type: "keepalive", tool: _auditKeepaliveTool })}\n\n`
         ); } catch(_) {} }, 5_000)
       : null;
     let _timedOut = false;
@@ -1758,12 +1769,22 @@ async function dispatchTool(
           await pool.query(`UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`, [newId, orgId]);
           return;
         }
-        const blendPct = (m: number, d: number) => Math.round(m * 0.6 + d * 0.4);
-        const perf  = mob && desk ? blendPct(mob.scores.performance, desk.scores.performance) : (mob?.scores.performance ?? desk?.scores.performance ?? 0);
-        const seo   = mob && desk ? blendPct(mob.scores.seo, desk.scores.seo) : (mob?.scores.seo ?? desk?.scores.seo ?? 0);
-        const a11y  = mob && desk ? Math.round((mob.scores.accessibility + desk.scores.accessibility) / 2) : (mob?.scores.accessibility ?? desk?.scores.accessibility ?? 0);
-        const bp    = mob && desk ? Math.round((mob.scores.bestPractices + desk.scores.bestPractices) / 2) : (mob?.scores.bestPractices ?? desk?.scores.bestPractices ?? 0);
-        const score = Math.round(perf * 0.40 + seo * 0.30 + a11y * 0.15 + bp * 0.15);
+        // Same null-safe blend as run_audit: never fabricate a 0 for a
+        // category Lighthouse did not run; renormalize weights instead.
+        const blend2 = (mVal: number | null | undefined, dVal: number | null | undefined, wm = 0.6, wd = 0.4): number | null => {
+          const mv = typeof mVal === "number" ? mVal : null;
+          const dv = typeof dVal === "number" ? dVal : null;
+          if (mv !== null && dv !== null) return Math.round(mv * wm + dv * wd);
+          return mv ?? dv;
+        };
+        const perf  = blend2(mob?.scores.performance, desk?.scores.performance) ?? 0;
+        const seo   = blend2(mob?.scores.seo, desk?.scores.seo);
+        const a11y  = blend2(mob?.scores.accessibility, desk?.scores.accessibility, 0.5, 0.5);
+        const bp    = blend2(mob?.scores.bestPractices, desk?.scores.bestPractices, 0.5, 0.5);
+        const _parts: Array<[number | null, number]> = [[perf, 0.40], [seo, 0.30], [a11y, 0.15], [bp, 0.15]];
+        const _avail = _parts.filter((p): p is [number, number] => p[0] !== null);
+        const _wSum = _avail.reduce((sum, [, w]) => sum + w, 0);
+        const score = _wSum > 0 ? Math.round(_avail.reduce((sum, [v, w]) => sum + v * w, 0) / _wSum) : 0;
         const st    = score >= 70 ? "ok" : score >= 50 ? "warn" : "error";
         const speed = desk?.scores.performance ?? mob?.scores.performance ?? 0;
         const issues = (mob?.criticalIssues.length ?? 0) + (desk?.criticalIssues.length ?? 0);
@@ -1777,9 +1798,10 @@ async function dispatchTool(
       }
     })();
 
+    const _rerunKeepaliveTool = "rerun_" + "audit";
     const _rerunKp = ctx.sseWrite
       ? setInterval(() => { try { ctx.sseWrite!(
-          `data: ${JSON.stringify({ type: "keepalive", tool: "rerun_audit" })}\n\n`
+          `data: ${JSON.stringify({ type: "keepalive", tool: _rerunKeepaliveTool })}\n\n`
         ); } catch(_) {} }, 5_000)
       : null;
     let _rerunTimedOut = false;

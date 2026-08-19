@@ -3,7 +3,7 @@ import { pool, db, auditsTable, monitorsTable } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
-import { aiRateLimit } from "../middlewares/rateLimiter.js";
+import { aiRateLimit, aiChatRateLimit } from "../middlewares/rateLimiter.js";
 import { isAiMigrationComplete } from "../services/init-ai-migration.js";
 import {
   consumeAICredits,
@@ -91,15 +91,13 @@ router.use("/ai", (req: Request, res: Response, next: () => void): void => {
 });
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
-const AI_RATE_LIMIT = 30;
-const AI_RATE_WINDOW_MS = 60_000;
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function getClientIp(req: Request): string {
-  return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
-    ?? req.ip
-    ?? "unknown";
-}
+// Task #614: the former in-handler per-IP limiter (30 req/min per client IP)
+// was removed. It duplicated the plan-aware org limiter (aiChatRateLimit) with
+// the wrong key: /ai/chat runs post-auth, so abuse control belongs to the org
+// (plan-aware) — a shared office/NAT/proxy IP tripped 429 at 30/min even for
+// pro/ultra orgs whose own plan allowed more. Anti-abuse layers that remain:
+// aiChatRateLimit (per-org, plan-aware), the AI credit quota, and the per-
+// conversation execution lock.
 
 // gpt-5+ models don't support `max_tokens`/custom `temperature` — they require
 // `max_completion_tokens` and always run at temperature 1.
@@ -116,20 +114,6 @@ function completionParams(model: string, maxTokens: number, temperature?: number
     };
   }
   return { max_tokens: maxTokens, ...(temperature !== undefined ? { temperature } : {}) };
-}
-
-
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + AI_RATE_WINDOW_MS });
-    return true;
-  }
-  if (entry.count >= AI_RATE_LIMIT) return false;
-  entry.count++;
-  return true;
 }
 
 // ── OpenAI client factory (legacy, kept for non-migrated paths) ────────────
@@ -1273,8 +1257,22 @@ const LOOP_DEADLINE_MS  = 180_000; // hard cap for the entire tool-calling sessi
 const _activeExecutions = new Set<string>();
 /** Start timestamps for active executions — used for stale-lock detection. */
 const _executionStartTimes = new Map<string, number>();
-/** Conversations explicitly cancelled by the client. */
-const _cancelledConversations = new Set<string>();
+/**
+ * Execution-scoped cancellation (Task #614 review fix).
+ * A cancel must kill the generation(s) it targeted — and ONLY those. A single
+ * conversation-wide marker had two failure modes:
+ *  1. (stale marker) the NEXT message sent within the 60 s TTL was falsely
+ *     short-circuited to "⏹ Génération interrompue." ;
+ *  2. (clear-on-new-request race) clearing the marker when a new request starts
+ *     would un-cancel a still-in-flight generation whose `close` event has not
+ *     fired yet, letting its tool loop resume concurrently.
+ * Instead, each execution captures a monotonically increasing generation number
+ * per conversation; cancel marks "everything up to the CURRENT generation" as
+ * cancelled. Future generations (strictly greater) are never affected, and the
+ * in-flight one stays cancelled no matter when its close event arrives.
+ */
+const _executionGeneration = new Map<string, number>(); // convId → latest generation started
+const _cancelledUpTo       = new Map<string, number>(); // convId → all generations <= N are cancelled
 
 // ── Stale-lock sweep ──────────────────────────────────────────────────────────
 // Any execution that has been running for > 5 minutes is considered stale
@@ -1287,6 +1285,14 @@ setInterval(() => {
       _activeExecutions.delete(id);
       _executionStartTimes.delete(id);
       logger.warn({ conversationId: id }, "[AI] stale lock swept (> 5 min)");
+    }
+  }
+  // Generation-counter housekeeping: an idle conversation (no active execution,
+  // no live cancel marker) no longer needs its counter — a fresh start at 1 is
+  // safe because monotonicity only matters against live cancel markers.
+  for (const id of _executionGeneration.keys()) {
+    if (!_activeExecutions.has(id) && !_cancelledUpTo.has(id)) {
+      _executionGeneration.delete(id);
     }
   }
 }, 60_000).unref();
@@ -1816,13 +1822,9 @@ function sanitizeArgsForClient(args: Record<string, unknown>): Record<string, un
 }
 
 // ── POST /ai/chat — streaming conversational AI ───────────────────────────────
+// Rate limiting is handled by aiChatRateLimit (per-org, plan-aware, dedicated
+// `ai:chat:` bucket) mounted on the route — see middlewares/rateLimiter.ts.
 export async function chatHandler(req: Request, res: Response): Promise<void> {
-  const ip = getClientIp(req);
-  if (!checkRateLimit(ip)) {
-    res.status(429).json({ error: "Trop de requêtes — attendez avant d'envoyer un autre message" });
-    return;
-  }
-
   const { message, context, stream: wantStream = true, history = [], provider, model, enableTools, language } = req.body as {
     message?: string;
     context?: Record<string, unknown>;
@@ -2384,6 +2386,12 @@ DONNÉES MANQUANTES — règle stricte :
     }
     _activeExecutions.add(conversationId);
     _executionStartTimes.set(conversationId, Date.now());
+    // Execution-scoped cancellation: this generation is only cancelled by a
+    // cancel that arrives AT OR AFTER its start. Stale markers from a previous
+    // generation (60 s TTL) never apply to it, and cancelling it never clears
+    // anything a still-in-flight older generation depends on.
+    const _myGeneration = (_executionGeneration.get(conversationId) ?? 0) + 1;
+    _executionGeneration.set(conversationId, _myGeneration);
 
     // ── SSE transport hardening ───────────────────────────────────────────────
     // Disable Nagle's algorithm so each SSE chunk is flushed to the TCP socket
@@ -2418,7 +2426,8 @@ DONNÉES MANQUANTES — règle stricte :
       // Flush immediately so proxies (Render, Nginx) do not buffer SSE frames.
       (res as unknown as { flush?: () => void }).flush?.();
     };
-    const isCancelled = () => _clientGone || _cancelledConversations.has(conversationId);
+    const isCancelled = () =>
+      _clientGone || (_cancelledUpTo.get(conversationId) ?? 0) >= _myGeneration;
 
     // Auto-cleanup: remove from active set when SSE response ends.
     // We listen to BOTH "finish" (normal path: res.end() called) and "close"
@@ -2704,22 +2713,30 @@ DONNÉES MANQUANTES — règle stricte :
     }
   }
 }
-router.post("/ai/chat", aiRateLimit, chatHandler);
+router.post("/ai/chat", aiChatRateLimit, chatHandler);
 
 // ── POST /ai/conversations/:id/cancel — client-side stop button ──────────────
 router.post("/ai/conversations/:id/cancel", async (req: Request, res: Response): Promise<void> => {
   const conversationId = String(req.params["id"] ?? "");
   if (!conversationId) { res.status(400).json({ ok: false, error: "conversationId required" }); return; }
-  // Mark as cancelled so any in-flight tool loop exits at the next isCancelled() check
-  _cancelledConversations.add(conversationId);
+  // Execution-scoped cancel: mark every generation started so far as cancelled.
+  // Generations that start AFTER this call get a strictly greater number and
+  // are unaffected — a new message is never killed by a stale marker, while the
+  // in-flight generation stays cancelled even if its close event is late.
+  const _genAtCancel = _executionGeneration.get(conversationId) ?? 0;
+  if (_genAtCancel > 0) _cancelledUpTo.set(conversationId, _genAtCancel);
   // Immediately release the execution lock so the NEXT request is not blocked.
   // Without this, the client had to wait for the SSE response to fully close
   // (res.finish) before the lock was released — causing "réponse déjà en cours"
   // on every immediate retry after Stop.
   _activeExecutions.delete(conversationId);
   _executionStartTimes.delete(conversationId);
-  // Auto-clear the cancelled marker after 60 s
-  setTimeout(() => _cancelledConversations.delete(conversationId), 60_000);
+  // Auto-clear the cancelled marker after 60 s (only if no later cancel superseded it)
+  setTimeout(() => {
+    if ((_cancelledUpTo.get(conversationId) ?? -1) <= _genAtCancel) {
+      _cancelledUpTo.delete(conversationId);
+    }
+  }, 60_000);
   logger.info({ conversationId }, "[AI] conversation cancelled by client — lock released immediately");
   res.json({ ok: true, cancelled: true });
 });

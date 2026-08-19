@@ -14853,7 +14853,7 @@ function renderAIPanelContent() {
       ${renderAIMessages()}
     </div>
     <div class="fp-ai-input-row">
-      <input class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" style="font-size:11px"/>
+      <textarea class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" rows="1" style="font-size:11px;resize:none;min-height:34px;height:34px;max-height:120px;overflow-y:hidden;line-height:1.4"></textarea>
       <button class="fp-ai-send" id="ai-panel-send">${svgIcon('send').replace('width="14"','width="13"').replace('height="14"','height="13"')}</button>
       <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:13px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
     </div>
@@ -17603,15 +17603,33 @@ function bindGlobalEvents() {
       }));
       const panelSend = $('#ai-panel-send');
       const panelInput = $('#ai-panel-input');
+      // Task #614 — unified AI textarea behavior (same contract as #ai-input
+      // and #fp-ai-chat-input): grow to max 120px, scrollbar only when the
+      // content exceeds the max, reset to min height after send.
+      function _panelResize() {
+        if (!panelInput) return;
+        panelInput.style.height = '34px';
+        var sh = panelInput.scrollHeight;
+        panelInput.style.height = Math.min(sh, 120) + 'px';
+        panelInput.style.overflowY = sh > 120 ? 'auto' : 'hidden';
+      }
+      function _panelReset() {
+        if (!panelInput) return;
+        panelInput.value = '';
+        panelInput.style.height = '34px';
+        panelInput.style.overflowY = 'hidden';
+      }
+      panelInput?.addEventListener('input', _panelResize);
+      panelInput?.addEventListener('paste', () => setTimeout(_panelResize, 0));
       panelSend?.addEventListener('click', async () => {
         const msg = panelInput?.value;
-        if (!msg) return;
-        panelInput.value = '';
+        if (!msg || !msg.trim()) return;
+        _panelReset();
         await sendAIMessage(msg);
         const msgs = $('#ai-panel-messages');
         if (msgs) { msgs.innerHTML = renderAIMessages(); msgs.scrollTop = msgs.scrollHeight; }
       });
-      panelInput?.addEventListener('keydown', e => { if(e.key==='Enter') panelSend?.click(); });
+      panelInput?.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey) { e.preventDefault(); panelSend?.click(); } });
     }, 80);
   });
 
@@ -18406,6 +18424,9 @@ function bindGlobalEvents() {
     'Retirer': 'Remove',
     'Voir tous': 'View all',
     'Indisponible': 'Unavailable',
+    'Score indisponible': 'Score unavailable',
+    'Indisponible — relancez une analyse': 'Unavailable — run a new analysis',
+    'Points à vérifier': 'Points to check',
     'Partager': 'Share',
     'Nouveau fil': 'New thread',
     'Aucun fichier partagé': 'No shared files',
@@ -20177,6 +20198,9 @@ function bindGlobalEvents() {
     "Retirer": "Quitar",
     "Voir tous": "Ver todos",
     "Indisponible": "No disponible",
+    "Score indisponible": "Puntuación no disponible",
+    "Indisponible — relancez une analyse": "No disponible — vuelva a ejecutar un análisis",
+    "Points à vérifier": "Puntos a verificar",
     "Partager": "Compartir",
     "Nouveau fil": "Nuevo hilo",
     "Aucun fichier partagé": "No hay archivos compartidos",
@@ -20598,6 +20622,9 @@ function bindGlobalEvents() {
     "Retirer": "Verwijderen",
     "Voir tous": "Alles bekijken",
     "Indisponible": "Niet beschikbaar",
+    "Score indisponible": "Score niet beschikbaar",
+    "Indisponible — relancez une analyse": "Niet beschikbaar — voer een nieuwe analyse uit",
+    "Points à vérifier": "Te controleren punten",
     "Partager": "Delen",
     "Nouveau fil": "Nieuwe thread",
     "Aucun fichier partagé": "Geen gedeelde bestanden",
@@ -26219,6 +26246,9 @@ function bindGlobalEvents() {
     "Retirer": "Entfernen",
     "Voir tous": "Alle anzeigen",
     "Indisponible": "Nicht verfügbar",
+    "Score indisponible": "Score nicht verfügbar",
+    "Indisponible — relancez une analyse": "Nicht verfügbar — Analyse erneut starten",
+    "Points à vérifier": "Zu prüfende Punkte",
     "Partager": "Teilen",
     "Nouveau fil": "Neuer Thread",
     "Aucun fichier partagé": "Keine geteilten Dateien",
@@ -29133,6 +29163,9 @@ function bindGlobalEvents() {
     "Retirer": "Rimuovere",
     "Voir tous": "Vedi tutti",
     "Indisponible": "Non disponibile",
+    "Score indisponible": "Punteggio non disponibile",
+    "Indisponible — relancez une analyse": "Non disponibile — riavvia un'analisi",
+    "Points à vérifier": "Punti da verificare",
     "Partager": "Condividi",
     "Nouveau fil": "Nuovo thread",
     "Aucun fichier partagé": "Nessun file condiviso",
@@ -32047,6 +32080,9 @@ function bindGlobalEvents() {
     "Retirer": "Remover",
     "Voir tous": "Ver todos",
     "Indisponible": "Indisponível",
+    "Score indisponible": "Pontuação indisponível",
+    "Indisponible — relancez une analyse": "Indisponível — execute uma nova análise",
+    "Points à vérifier": "Pontos a verificar",
     "Partager": "Compartilhar",
     "Nouveau fil": "Novo tópico",
     "Aucun fichier partagé": "Nenhum ficheiro partilhado",
@@ -34961,6 +34997,9 @@ function bindGlobalEvents() {
     "Retirer": "Verwijderen",
     "Voir tous": "Alles bekijken",
     "Indisponible": "Niet beschikbaar",
+    "Score indisponible": "Score niet beschikbaar",
+    "Indisponible — relancez une analyse": "Niet beschikbaar — voer een nieuwe analyse uit",
+    "Points à vérifier": "Te controleren punten",
     "Partager": "Delen",
     "Nouveau fil": "Nieuwe thread",
     "Aucun fichier partagé": "Geen gedeelde bestanden",
@@ -37875,6 +37914,9 @@ function bindGlobalEvents() {
     "Retirer": "Usuń",
     "Voir tous": "Zobacz wszystkie",
     "Indisponible": "Niedostępne",
+    "Score indisponible": "Wynik niedostępny",
+    "Indisponible — relancez une analyse": "Niedostępne — uruchom analizę ponownie",
+    "Points à vérifier": "Punkty do sprawdzenia",
     "Partager": "Udostępnij",
     "Nouveau fil": "Nowy wątek",
     "Aucun fichier partagé": "Brak udostępnionych plików",
@@ -40789,6 +40831,9 @@ function bindGlobalEvents() {
     "Retirer": "Ta bort",
     "Voir tous": "Visa alla",
     "Indisponible": "Ej tillgänglig",
+    "Score indisponible": "Poäng ej tillgänglig",
+    "Indisponible — relancez une analyse": "Ej tillgänglig — kör en ny analys",
+    "Points à vérifier": "Punkter att kontrollera",
     "Partager": "Dela",
     "Nouveau fil": "Ny tråd",
     "Aucun fichier partagé": "Inga delade filer",
@@ -43703,6 +43748,9 @@ function bindGlobalEvents() {
     "Retirer": "Elimina",
     "Voir tous": "Vezi toate",
     "Indisponible": "Indisponibil",
+    "Score indisponible": "Scor indisponibil",
+    "Indisponible — relancez une analyse": "Indisponibil — rulați o nouă analiză",
+    "Points à vérifier": "Puncte de verificat",
     "Partager": "Partajează",
     "Nouveau fil": "Fir nou",
     "Aucun fichier partagé": "Niciun fișier partajat",
@@ -46617,6 +46665,9 @@ function bindGlobalEvents() {
     "Retirer": "Odebrat",
     "Voir tous": "Zobrazit vše",
     "Indisponible": "Nedostupné",
+    "Score indisponible": "Skóre nedostupné",
+    "Indisponible — relancez une analyse": "Nedostupné — spusťte novou analýzu",
+    "Points à vérifier": "Body ke kontrole",
     "Partager": "Sdílet",
     "Nouveau fil": "Nové vlákno",
     "Aucun fichier partagé": "Žádné sdílené soubory",
@@ -63615,6 +63666,24 @@ function psiScoreColor(score) {
   return '#ef4444';
 }
 
+// ── Task #614 — honest PSI scores ─────────────────────────────────────────────
+// Returns the real score for a category, or null when it is unavailable.
+// Legacy data produced by the category bug (PSI called without `category`
+// params) has seo/accessibility/bestPractices all at 0 while performance is
+// real — those zeros were fabricated and must render as "unavailable", never
+// as a 0/100 ring that looks like a stuck loading circle.
+function psiRealScore(scores, key) {
+  if (!scores) return null;
+  var v = scores[key];
+  if (!Number.isFinite(v)) return null;
+  if (key !== 'performance'
+      && scores.seo === 0 && scores.accessibility === 0 && scores.bestPractices === 0
+      && Number.isFinite(scores.performance) && scores.performance > 0) {
+    return null; // fabricated legacy zero
+  }
+  return v;
+}
+
 function psiScoreLabel(score) {
   if (score >= 90) return 'Bon';
   if (score >= 50) return 'À améliorer';
@@ -63643,6 +63712,13 @@ function cwvBadgeLabel(cls) {
 
 function renderPSIRing(score, size) {
   size = size || 88;
+  // Task #614 — never draw a score ring for an unavailable score: an empty
+  // gray circle reads as a stuck loader. Render an explicit "—" instead.
+  if (!Number.isFinite(score)) {
+    return `<div class="fp-psi-score-ring" style="width:${size}px;height:${size}px;display:inline-flex;align-items:center;justify-content:center">
+      <span style="font-size:${size>70?'24px':'18px'};font-weight:700;color:var(--fp-text-faint)" title="${escHtml(fpT('Score indisponible'))}">—</span>
+    </div>`;
+  }
   const r = (size / 2) - 8;
   const circ = 2 * Math.PI * r;
   const pct = Math.max(0, Math.min(100, score)) / 100;
@@ -63662,17 +63738,23 @@ function renderPSIScoreCards(data, label) {
   if (!data) return `<div class="fp-empty-state"><p>Aucune donnée ${label} — lancez une analyse.</p></div>`;
   const s = data.scores || {};
   const cats = [
-    { key: 'performance',   label: 'Performance',   score: s.performance  || 0 },
-    { key: 'accessibility', label: 'Accessibilité', score: s.accessibility || 0 },
-    { key: 'seo',           label: 'SEO',           score: s.seo          || 0 },
-    { key: 'bestPractices', label: 'Bonnes pratiques', score: s.bestPractices || 0 },
+    { key: 'performance',   label: 'Performance',      score: psiRealScore(s, 'performance') },
+    { key: 'accessibility', label: 'Accessibilité',    score: psiRealScore(s, 'accessibility') },
+    { key: 'seo',           label: 'SEO',              score: psiRealScore(s, 'seo') },
+    { key: 'bestPractices', label: 'Bonnes pratiques', score: psiRealScore(s, 'bestPractices') },
   ];
   return `<div class="fp-grid" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px">
-    ${cats.map(c => `<div class="fp-psi-score-card">
-      ${renderPSIRing(c.score)}
+    ${cats.map(c => {
+      const _has = Number.isFinite(c.score);
+      const _badge = _has
+        ? `<div class="fp-badge" style="background:${psiScoreColor(c.score)}22;color:${psiScoreColor(c.score)};font-size:10px">${psiScoreLabel(c.score)}</div>`
+        : `<div class="fp-badge" style="background:var(--fp-border);color:var(--fp-text-faint);font-size:10px">${escHtml(fpT('Indisponible'))}</div>`;
+      return `<div class="fp-psi-score-card">
+      ${renderPSIRing(_has ? c.score : null)}
       <div class="fp-psi-score-label">${escHtml(c.label)}</div>
-      <div class="fp-badge" style="background:${psiScoreColor(c.score)}22;color:${psiScoreColor(c.score)};font-size:10px">${psiScoreLabel(c.score)}</div>
-    </div>`).join('')}
+      ${_badge}
+    </div>`;
+    }).join('')}
   </div>`;
 }
 
@@ -64083,12 +64165,12 @@ function renderCoreWebVitals() {
       </div>
       <div style="display:flex;gap:20px;flex-wrap:wrap">
         ${[
-          {label:'Mobile',score:mobile?.scores?.performance||0},
-          {label:'Desktop',score:desktop?.scores?.performance||0},
-          {label:'Accessibilité',score:mobile?.scores?.accessibility||0},
-          {label:'SEO',score:mobile?.scores?.seo||0},
+          {label:'Mobile',score:psiRealScore(mobile?.scores,'performance')},
+          {label:'Desktop',score:psiRealScore(desktop?.scores,'performance')},
+          {label:'Accessibilité',score:psiRealScore(mobile?.scores,'accessibility')},
+          {label:'SEO',score:psiRealScore(mobile?.scores,'seo')},
         ].map(s=>`<div style="text-align:center">
-          <div style="font-size:22px;font-weight:800;color:${psiScoreColor(s.score)}">${s.score}</div>
+          <div style="font-size:22px;font-weight:800;color:${Number.isFinite(s.score)?psiScoreColor(s.score):'var(--fp-text-faint)'}" ${Number.isFinite(s.score)?'':`title="${escHtml(fpT('Score indisponible'))}"`}>${Number.isFinite(s.score)?s.score:'—'}</div>
           <div style="font-size:11px;color:var(--fp-text-faint)">${s.label}</div>
         </div>`).join('')}
       </div>
@@ -64403,8 +64485,8 @@ function renderTechSection(title, icon, items, desc) {
 }
 
 function renderTechnicalAccessibility(mobile) {
-  const score = mobile && mobile.scores && mobile.scores.accessibility || 0;
-  const cls = cwvBadgeClass('accessibility_hack', score < 90 ? 1000 : score < 70 ? 200 : 50);
+  const score = psiRealScore(mobile && mobile.scores, 'accessibility');
+  const _hasScore = Number.isFinite(score);
   const tips = [
     'Ajouter des attributs alt descriptifs sur toutes les images',
     'Utiliser des labels pour tous les éléments de formulaire',
@@ -64420,16 +64502,18 @@ function renderTechnicalAccessibility(mobile) {
   </div>
   <div class="fp-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px">
     <div class="fp-card" style="text-align:center">
-      ${renderPSIRing(score,100)}
+      ${renderPSIRing(_hasScore ? score : null,100)}
       <div style="margin-top:12px;font-size:14px;font-weight:600">Score Accessibilité</div>
-      <span class="fp-cwv-badge fp-cwv-badge--${score>=90?'good':score>=50?'needs-improvement':'poor'}" style="margin-top:8px">${psiScoreLabel(score)}</span>
+      ${_hasScore
+        ? `<span class="fp-cwv-badge fp-cwv-badge--${score>=90?'good':score>=50?'needs-improvement':'poor'}" style="margin-top:8px">${psiScoreLabel(score)}</span>`
+        : `<span class="fp-badge" style="margin-top:8px;background:var(--fp-border);color:var(--fp-text-faint)">${escHtml(fpT('Indisponible — relancez une analyse'))}</span>`}
     </div>
     <div class="fp-card">
       <div class="fp-card-header" style="margin-bottom:14px"><h3 class="fp-card-title">Checklist accessibilité</h3></div>
       <div class="fp-flex-col" style="gap:8px">
         ${tips.map(t=>`<div style="display:flex;align-items:center;gap:10px;padding:8px">
-          <div style="width:20px;height:20px;border-radius:6px;background:${score>=70?'rgba(16,185,129,0.15)':'rgba(245,158,11,0.15)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="${score>=70?'#10b981':'#f59e0b'}" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          <div style="width:20px;height:20px;border-radius:6px;background:rgba(37,99,235,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--fp-accent)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
           <span style="font-size:13px">${escHtml(t)}</span>
         </div>`).join('')}
@@ -64439,18 +64523,17 @@ function renderTechnicalAccessibility(mobile) {
 }
 
 function renderTechnicalSEO(mobile) {
-  const score = mobile && mobile.scores && mobile.scores.seo || 0;
+  const score = psiRealScore(mobile && mobile.scores, 'seo');
+  const _hasScore = Number.isFinite(score);
+  // Task #614 — the former ✓/✗ list fabricated per-item pass/fail claims
+  // ("Sitemap XML présent", …) from the single Lighthouse SEO score. Those
+  // claims were never actually checked — present them as a neutral checklist
+  // of points to verify instead of fake verification results.
   const checks = [
-    { label:'Balises title présentes', ok: score>70 },
-    { label:'Meta descriptions uniques', ok: score>75 },
-    { label:'Structure H1 correcte', ok: score>65 },
-    { label:'Liens internes valides', ok: score>80 },
-    { label:'Images avec alt text', ok: score>60 },
-    { label:'Sitemap XML présent', ok: score>85 },
-    { label:'Robots.txt configuré', ok: score>90 },
-    { label:'URLs canoniques définies', ok: score>70 },
-    { label:'Données structurées Schema.org', ok: score>80 },
-    { label:'Pas de contenu dupliqué', ok: score>75 },
+    'Balises title présentes', 'Meta descriptions uniques', 'Structure H1 correcte',
+    'Liens internes valides', 'Images avec alt text', 'Sitemap XML présent',
+    'Robots.txt configuré', 'URLs canoniques définies',
+    'Données structurées Schema.org', 'Pas de contenu dupliqué',
   ];
   return `
   <div class="fp-section-header">
@@ -64459,16 +64542,18 @@ function renderTechnicalSEO(mobile) {
   </div>
   <div class="fp-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px">
     <div class="fp-card" style="text-align:center">
-      ${renderPSIRing(score,100)}
+      ${renderPSIRing(_hasScore ? score : null,100)}
       <div style="margin-top:12px;font-size:14px;font-weight:600">Score SEO Technique</div>
-      <span class="fp-cwv-badge fp-cwv-badge--${score>=90?'good':score>=50?'needs-improvement':'poor'}" style="margin-top:8px">${psiScoreLabel(score)}</span>
+      ${_hasScore
+        ? `<span class="fp-cwv-badge fp-cwv-badge--${score>=90?'good':score>=50?'needs-improvement':'poor'}" style="margin-top:8px">${psiScoreLabel(score)}</span>`
+        : `<span class="fp-badge" style="margin-top:8px;background:var(--fp-border);color:var(--fp-text-faint)">${escHtml(fpT('Indisponible — relancez une analyse'))}</span>`}
     </div>
     <div class="fp-card">
-      <div class="fp-card-header" style="margin-bottom:14px"><h3 class="fp-card-title">Vérifications SEO</h3></div>
+      <div class="fp-card-header" style="margin-bottom:14px"><h3 class="fp-card-title">${escHtml(fpT('Points à vérifier'))}</h3></div>
       <div class="fp-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
-        ${checks.map(c=>`<div style="display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;background:${c.ok?'rgba(16,185,129,0.06)':'rgba(239,68,68,0.06)'}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${c.ok?'#10b981':'#ef4444'}" stroke-width="2.5">${c.ok?'<polyline points="20 6 9 17 4 12"/>':'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'}</svg>
-          <span style="font-size:12px">${escHtml(c.label)}</span>
+        ${checks.map(c=>`<div style="display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;background:rgba(37,99,235,0.06)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fp-accent)" stroke-width="2.5"><circle cx="12" cy="12" r="9"/></svg>
+          <span style="font-size:12px">${escHtml(c)}</span>
         </div>`).join('')}
       </div>
     </div>

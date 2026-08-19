@@ -18,3 +18,11 @@ The `_activeExecutions` Set in `ai.ts` must be cleaned up on BOTH `res.finish` A
 - Stale sweep: `setInterval(() => { for [id,ts] of _executionStartTimes: if ts < now - 5min → delete both }, 60s).unref()` — prevents permanent locks from crashes/OOM
 - `fpAiStop` order: (1) abort AbortController, (2) `STATE._aiStreamCtrl = null`, (3) capture `convId = STATE._aiConversationId`, (4) `STATE._aiConversationId = null`, (5) `STATE.aiLoading = false`, (6) `updateAIUI()`, (7) fire-and-forget cancel fetch with old `convId`
 - Test file: `src/routes/ai-lock-lifecycle.test.ts` — 8 scenarios, all pass
+
+## Follow-up bug: stale cancel marker kills the NEXT generation
+
+The 60 s `_cancelledConversations` TTL marker also short-circuited every NEW message sent in the same conversation within that minute: the tool loop's `isCancelled()` returned true immediately and the reply was just "⏹ Génération interrompue." (reproduced live: interruption → all subsequent tool-using messages in the conversation returned the marker).
+
+**Fix:** when a new generation legitimately acquires the execution lock (`_activeExecutions.add`), delete the conversationId from `_cancelledConversations`. The in-flight request being cancelled is already covered by its own `_clientGone` close-listener, so clearing the set is safe. Regression test: T10 in `ai-lock-lifecycle.test.ts`.
+
+**Test-harness notes:** `aiStream` is an async generator yielding `{ content }` chunks (mock with `async function* () { yield { content: "..." } }`, NOT an sseWrite callback); mock `ai-provider-matrix.js` partially via `importOriginal` (pure config module) instead of listing exports; warm `import("./ai.js")` in a `beforeAll` (30 s) or the first test importing it trips the 5 s timeout.

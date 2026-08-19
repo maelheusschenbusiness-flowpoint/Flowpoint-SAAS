@@ -65,6 +65,7 @@ vi.mock("../lib/logger.js", () => ({
 
 vi.mock("../middlewares/rateLimiter.js", () => ({
   aiRateLimit: (_req: unknown, _res: unknown, next: () => void) => next(),
+  aiChatRateLimit: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 vi.mock("../services/ai-engine.js", () => ({
