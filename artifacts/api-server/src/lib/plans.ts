@@ -102,7 +102,7 @@ export const PLAN_DEFINITIONS: Record<string, PlanDefinition> = {
     aiTokens: 750_000,
     features: [
       "1 000 audits/mois", "300 monitors", "1 000 rapports PDF/mois",
-      "1 000 exports/mois", "10 membres d'équipe", "10 000 000 crédits IA/mois",
+      "1 000 exports/mois", "10 membres d'équipe", "∞ crédits IA/mois",
       "Multi-workspace", "IA Stratégiste complet", "White-label portail",
       "SSO SAML", "API illimitée", "Custom domain",
       "SLA 99.9% garanti", "Support dédié < 1h", "Rétention 365 jours",
