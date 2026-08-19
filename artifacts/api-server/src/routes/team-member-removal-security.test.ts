@@ -7,6 +7,7 @@ const ORG_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const MEMBER_ID = "member-a";
 const MEMBER_EMAIL = "member@example.test";
 const MEMBER_UUID = "11111111-1111-4111-8111-111111111111";
+const INVITATION_LEGACY_USER_ID = MEMBER_EMAIL;
 
 type Session = { userId: string; orgId: string; email: string; role: string; userUuid?: string };
 const sessions = new Map<string, Session>();
@@ -35,14 +36,26 @@ vi.mock("../services/sessions.js", () => ({
 }));
 
 vi.mock("@workspace/db", () => ({
-  pool: { query: vi.fn(), connect: vi.fn() },
+  pool: {
+    query: vi.fn(async (sql: string, values: unknown[] = []) => {
+      if (/SELECT tm\.user_id AS team_user_id, u\.id AS canonical_user_id/.test(sql)) {
+        const [memberId, scopedOrgId] = values as [string, string];
+        if (memberId === MEMBER_ID && scopedOrgId === ORG_A && teamMemberStatus.get(key(ORG_A, MEMBER_EMAIL)) === "active") {
+          return { rows: [{ team_user_id: INVITATION_LEGACY_USER_ID, canonical_user_id: MEMBER_UUID }] };
+        }
+        return { rows: [] };
+      }
+      throw new Error(`Unexpected pool SQL in member-removal test: ${sql}`);
+    }),
+    connect: vi.fn(),
+  },
   withOrgDb: vi.fn(async (orgId: string, callback: (client: { query: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> }) => unknown) => {
     const client = {
       query: async (sql: string, values: unknown[] = []) => {
         if (/SELECT id, email, role, user_id\s+FROM team_members/.test(sql)) {
           const [memberId, scopedOrgId] = values as [string, string];
           if (scopedOrgId === ORG_A && memberId === MEMBER_ID && teamMemberStatus.get(key(ORG_A, MEMBER_EMAIL)) === "active") {
-            return { rows: [{ id: MEMBER_ID, email: MEMBER_EMAIL, role: "member", user_id: MEMBER_UUID }] };
+            return { rows: [{ id: MEMBER_ID, email: MEMBER_EMAIL, role: "member", user_id: INVITATION_LEGACY_USER_ID }] };
           }
           return { rows: [] };
         }

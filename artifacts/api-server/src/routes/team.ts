@@ -320,6 +320,14 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
              updated_at     = NOW()`,
       [email]
     );
+    const acceptedUserRes = await client.query<{ id: string }>(
+      `SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+      [email],
+    );
+    const acceptedUserUuid = acceptedUserRes.rows[0]?.id;
+    if (!acceptedUserUuid) {
+      throw new Error("accepted member has no canonical user id");
+    }
 
     // Create or update active team member
     // (no unique constraint on org_id+email → use check-then-insert to avoid duplicates)
@@ -335,9 +343,9 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
       memberId = existingMemberRes.rows[0]!.id;
       await client.query(
         `UPDATE team_members
-         SET status = 'active', role = $1, joined_at = $2, accepted_at = $3, updated_at = $4
-         WHERE id = $5`,
-        [inv.role, nowIso, nowIso, nowIso, memberId]
+         SET status = 'active', role = $1, user_id = $2, joined_at = $3, accepted_at = $4, updated_at = $5
+         WHERE id = $6`,
+        [inv.role, acceptedUserUuid, nowIso, nowIso, nowIso, memberId]
       );
     } else {
       // Fresh insert — no prior member row exists for this email+org
@@ -347,22 +355,23 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
            (id, org_id, email, name, role, joined, status, user_id,
             invited_by_user_id, joined_at, accepted_at, invitation_token_hash,
             invited_at, email_status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'active', $3,
-                 $7, $8, $9, '',
-                 $10, 'sent', $11, $12)`,
+          VALUES ($1, $2, $3, $4, $5, $6, 'active', $7,
+                  $8, $9, $10, '',
+                  $11, 'sent', $12, $13)`,
         [
           memberId,                    // $1
           inv.org_id,                  // $2
-          email,                       // $3  (also used as user_id)
+          email,                       // $3
           email.split("@")[0] ?? "",   // $4  name
           inv.role,                    // $5
           joinedDay,                   // $6  joined (text date)
-          inv.invited_by_user_id ?? null, // $7
-          nowIso,                      // $8  joined_at
-          nowIso,                      // $9  accepted_at
-          nowIso,                      // $10 invited_at
-          nowIso,                      // $11 created_at
-          nowIso,                      // $12 updated_at
+          acceptedUserUuid,            // $7  canonical users.id
+          inv.invited_by_user_id ?? null, // $8
+          nowIso,                      // $9  joined_at
+          nowIso,                      // $10 accepted_at
+          nowIso,                      // $11 invited_at
+          nowIso,                      // $12 created_at
+          nowIso,                      // $13 updated_at
         ]
       );
     }
@@ -404,27 +413,13 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
 
     await client.query("COMMIT");
 
-    // Look up the user UUID that was upserted in the transaction above.
-    // Using the UUID (not the email string) in createSession correctly populates
-    // user_sessions.user_id_v2 and prevents any cross-user session confusion.
-    let userUuid: string | undefined;
-    try {
-      const _uuidRes = await client.query<{ id: string }>(
-        `SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
-        [email]
-      );
-      userUuid = _uuidRes.rows[0]?.id;
-    } catch (_uuidErr) {
-      logger.warn({ _uuidErr }, "[team/accept] failed to look up user UUID (non-fatal, falling back to email)");
-    }
-
     // Create session for the newly accepted member
     const sessionToken = await createSession({
-      userId:    userUuid ?? email,
+      userId:    acceptedUserUuid,
       orgId:     inv.org_id,
       email,
       role:      inv.role,
-      userUuid,
+      userUuid:  acceptedUserUuid,
       ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
@@ -829,6 +824,19 @@ router.delete("/team/:id", canAdmin, async (req: Request, res: Response) => {
   // revocation must succeed together. A failure rolls back all changes so we
   // never show a member as removed while their token still grants access.
   try {
+    // Legacy invitation accepts stored the email in team_members.user_id.
+    // Resolve the immutable canonical UUID with the service pool before
+    // entering the RLS-scoped write transaction; querying users under the
+    // tenant role can be filtered even for a legitimate organization owner.
+    const canonicalLookup = await pool.query<{ team_user_id: string | null; canonical_user_id: string }>(
+      `SELECT tm.user_id AS team_user_id, u.id AS canonical_user_id
+       FROM team_members tm
+       JOIN users u ON lower(u.email) = lower(tm.email)
+       WHERE tm.id = $1 AND tm.org_id = $2 AND tm.status = 'active'
+       LIMIT 1`,
+      [memberId, org],
+    );
+    const lookup = canonicalLookup.rows[0];
     const removed = await withOrgDb(org, async (client) => {
       const memberRes = await client.query<{ id: string; email: string; role: string; user_id: string | null }>(
         `SELECT id, email, role, user_id
@@ -848,15 +856,15 @@ router.delete("/team/:id", canAdmin, async (req: Request, res: Response) => {
       // organization_members is the authoritative membership table. Deleting
       // this record (rather than updating it later in the background) closes
       // the canonical access path in the same commit as legacy team cleanup.
-      if (!member.user_id) {
-        throw new Error("active team member has no canonical user id");
+      if (!lookup || lookup.team_user_id !== member.user_id) {
+        throw new Error("active team member has no resolvable canonical user id");
       }
       const canonicalRes = await client.query<{ user_id: string }>(
         `DELETE FROM organization_members
          WHERE organization_id::text = $1
            AND user_id::text = $2
          RETURNING user_id`,
-        [org, member.user_id],
+        [org, lookup.canonical_user_id],
       );
       const canonicalUserId = canonicalRes.rows[0]?.user_id;
       if (!canonicalUserId) {
