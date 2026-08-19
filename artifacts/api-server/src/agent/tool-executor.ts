@@ -334,7 +334,19 @@ async function dispatchTool(
 
     const row = await pool.query(`SELECT * FROM missions WHERE id = $1`, [id]);
     const mission = row.rows[0];
-    const createVersionAfter = mission?.updated_at
+
+    // RÈGLE ABSOLUE : ne jamais confirmer un succès sans preuve DB positive.
+    // Si le SELECT ne retourne aucune ligne, la mission n'existe pas — on signale l'échec.
+    if (!mission) {
+      await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+        tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+        result: "error", snapshot: { id }, versionAfter: null, durationMs: Date.now() - t0 });
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `La mission n'a pas pu être créée — aucune ligne retrouvée en base après l'insertion. Réessayez ou créez-la manuellement depuis la page Missions.`,
+        actionLogId: logId };
+    }
+
+    const createVersionAfter = mission.updated_at
       ? new Date(mission.updated_at as string | Date).toISOString()
       : null;
 
@@ -347,10 +359,10 @@ async function dispatchTool(
     // Snapshot the created mission so undo (= delete) has the ID available
     await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
       tool: name, args, confirmationLevel: toolDef.confirmationLevel,
-      result: "ok", snapshot: mission ?? { id }, versionAfter: createVersionAfter, durationMs: Date.now() - t0 });
+      result: "ok", snapshot: mission, versionAfter: createVersionAfter, durationMs: Date.now() - t0 });
 
     return { toolCallId: logId, toolName: name, ok: true,
-      content: `Mission créée avec succès — ID: ${id} | Titre: "${title}" | Priorité: ${priority}`,
+      content: `Mission créée — ID: ${mission.id} | Titre: "${title}" | Priorité: ${priority}`,
       data: mission, actionLogId: logId,
       undoLabel: `Annuler la création de "${title}"` };
   }
@@ -647,7 +659,19 @@ async function dispatchTool(
 
     const row = await pool.query(`SELECT * FROM calendar_events WHERE id = $1`, [id]);
     const event = row.rows[0];
-    const createVersionAfter = event?.updated_at
+
+    // RÈGLE ABSOLUE : ne jamais confirmer un succès sans preuve DB positive.
+    // Si le SELECT ne retourne aucune ligne, l'événement n'a pas été créé.
+    if (!event) {
+      await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+        tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+        result: "error", snapshot: { id }, versionAfter: null, durationMs: Date.now() - t0 });
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `L'événement n'a pas pu être créé — aucune ligne retrouvée en base après l'insertion. Réessayez ou ajoutez-le manuellement depuis la page Calendrier.`,
+        actionLogId: logId };
+    }
+
+    const createVersionAfter = event.updated_at
       ? new Date(event.updated_at as string | Date).toISOString()
       : null;
 
@@ -659,7 +683,7 @@ async function dispatchTool(
 
     await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
       tool: name, args, confirmationLevel: toolDef.confirmationLevel,
-      result: "ok", snapshot: event ?? { id }, versionAfter: createVersionAfter,
+      result: "ok", snapshot: event, versionAfter: createVersionAfter,
       durationMs: Date.now() - t0 });
 
     const timeStr = startTime ? ` à ${startTime}` : "";

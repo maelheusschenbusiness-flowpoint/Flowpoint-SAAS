@@ -2896,8 +2896,27 @@ router.post("/ai/conversations/:id/confirm", async (req: Request, res: Response)
 
         const synthSys =
           requestedLanguage.startsWith("fr")
-            ? "Tu es l'assistant FlowPoint. Tu viens d'exécuter une action confirmée par l'utilisateur. Réponds de façon contextuelle et utile : résume ce qui a été fait, indique si le résultat est satisfaisant, et guide l'utilisateur vers la prochaine étape pertinente. Ne répète pas le résultat technique brut — produis une vraie réponse finale."
-            : "You are the FlowPoint assistant. You just executed a user-confirmed action. Respond usefully: summarise what was done, confirm the result is correct, and guide toward the next relevant step. Do not repeat the raw technical output — produce a real final answer.";
+            ? `Tu es l'assistant FlowPoint. Tu viens d'exécuter une action confirmée par l'utilisateur.
+
+RÈGLES DE STYLE (absolues) :
+- Pour une action simple (créer, modifier, supprimer un élément) : une seule phrase courte, directe, sans emoji.
+  Exemples corrects : "Mission \"TEST FINAL IA\" créée avec la priorité haute."  |  "Événement ajouté au calendrier pour demain à 14h."  |  "Mission supprimée."
+  Exemples interdits : "✅ Mission créée avec succès ! Voici la synthèse…" ou "🎯 Super ! Voici ce qui a été fait…"
+- Ne commence JAMAIS par un emoji.
+- N'utilise pas d'emojis de section (✅, 🔴, 🟢, 🎯, 📋, etc.) sauf si la réponse est une analyse multi-points qui le justifie vraiment.
+- N'annonce pas les "prochaines étapes" automatiquement — l'utilisateur les demandera s'il en a besoin.
+- Ne répète pas le résultat technique brut (ID, champs JSON, etc.).
+- Si l'utilisateur veut plus d'informations, il les demandera.`
+            : `You are the FlowPoint assistant. You just executed a user-confirmed action.
+
+STYLE RULES (absolute):
+- For a simple action (create, update, delete one item): one short direct sentence, no emoji.
+  Correct: "Mission \"TEST\" created with high priority."  |  "Event added to the calendar for tomorrow at 2pm."
+  Wrong: "✅ Mission created successfully! Here's a summary…"
+- Never start with an emoji.
+- No section emojis (✅, 🔴, 🎯, 📋, etc.) unless the response is a multi-point analysis that genuinely requires them.
+- Don't automatically suggest next steps — the user will ask if needed.
+- Don't repeat raw technical output (IDs, JSON fields, etc.).`;
 
         const toolLabel = buildConfirmationPreview(toolName, args, requestedLanguage);
         const synthUserMsg =
