@@ -1609,7 +1609,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           let _fcPendingRow: Record<string, string | null> | null = null;
           try {
             const _fcActR0 = await _fcActC0.query(
-              `SELECT email, first_name, last_name, company_name, consumed_at, expires_at
+              `SELECT email, first_name, last_name, company_name, country, address, city,
+                      postal_code, phone, vat, consumed_at, expires_at
                FROM pending_signups
                WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
               [_fcActToken]
@@ -1794,6 +1795,48 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             await _fcActTxC.query("COMMIT");
             _fcActivationCommitted = true;
             logger.info({ step: "FC-4-COMMITTED", orgId: _fcAOrgId, userId: _fcUserId, plan: planKey }, "[FC] TRANSACTION COMMITTED — user + org activated");
+
+            // ── Step 4f: Propagate signup contact/address into org_settings ──
+            // (non-fatal — profile data only, never billing data). Without this,
+            // accounts activated via finalize-checkout (webhook lost/slow) never
+            // see their signup address in Workspace/Settings/Localisation.
+            try {
+              const { upsertOrgSettings: _fcUpsertOs, loadOrgSettings: _fcLoadOs } = await import("../services/org-settings.js");
+              const _fcOsExisting = await _fcLoadOs(_fcAEmail).catch(() => null);
+              const _fcHasAddr = !!(_fcSignup["address"] || _fcSignup["city"] || _fcSignup["country"] || _fcSignup["phone"]);
+              if (!_fcOsExisting) {
+                await _fcUpsertOs(_fcAEmail, {
+                  email:              _fcAEmail,
+                  orgName:            _fcSignup["company_name"] ?? "",
+                  firstName:          _fcSignup["first_name"]   ?? "",
+                  lastName:           _fcSignup["last_name"]    ?? "",
+                  country:            _fcSignup["country"]      ?? null,
+                  city:               _fcSignup["city"]         ?? null,
+                  address:            _fcSignup["address"]      ?? null,
+                  postalCode:         _fcSignup["postal_code"]  ?? null,
+                  phone:              _fcSignup["phone"]        ?? null,
+                  vat:                _fcSignup["vat"]          ?? null,
+                  locationConfigured: !!(_fcSignup["city"] || _fcSignup["address"]),
+                  locationSource:     "manual",
+                });
+                logger.info({ step: "FC-4f", orgId: _fcAEmail }, "[FC] step-4f: org_settings profile row created from signup data");
+              } else if (_fcHasAddr && !_fcOsExisting.address && !_fcOsExisting.city) {
+                // Existing profile row without any address — fill the missing
+                // contact fields from the signup form (never overwrite values).
+                await _fcUpsertOs(_fcAEmail, {
+                  country:            _fcOsExisting.country    ?? _fcSignup["country"]     ?? null,
+                  city:               _fcSignup["city"]        ?? null,
+                  address:            _fcSignup["address"]     ?? null,
+                  postalCode:         _fcOsExisting.postalCode ?? _fcSignup["postal_code"] ?? null,
+                  phone:              _fcOsExisting.phone      ?? _fcSignup["phone"]       ?? null,
+                  locationConfigured: !!(_fcSignup["city"] || _fcSignup["address"]),
+                  locationSource:     "manual",
+                });
+                logger.info({ step: "FC-4f", orgId: _fcAEmail }, "[FC] step-4f: org_settings address self-healed from signup data");
+              }
+            } catch (_fcOsErr) {
+              logger.warn({ step: "FC-4f", err: (_fcOsErr as Error).message }, "[FC] step-4f: org_settings propagation failed (non-fatal)");
+            }
 
           } catch (_fcActErr) {
             await _fcActTxC.query("ROLLBACK").catch(() => {});

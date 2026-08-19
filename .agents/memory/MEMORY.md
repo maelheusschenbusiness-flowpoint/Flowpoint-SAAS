@@ -139,3 +139,4 @@
 - [Purge table schema gaps](purge-table-schema-gaps.md) — org_members/invitations/activity_log don't exist; correct names + 40 absent tables documented
 - [Compound mission + calendar confirmations](compound-mission-calendar-confirmations.md) — explicit paired writes keep separate proposals; a due-date companion never writes before its own confirmation
 - [Team removal canonical identity](team-removal-canonical-identity.md) — normalize legacy member identities before scoped access revocation
+- [Pricing anonymous state & visitor cart](pricing-anonymous-state.md) — cached billing render gated on token + reversed on 401 via resetBillingUIToAnonymous; visitor carts kept <1h without _orgId; checkout-return redirects must carry a cache-bust param

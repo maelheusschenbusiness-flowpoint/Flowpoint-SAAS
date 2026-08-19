@@ -1,50 +1,62 @@
 {
-  "certifiedAt": "2026-08-05T22:02:13.720Z",
-  "orgId": "9deb1f5e-7b04-495a-9de3-ac3c10dd7188",
+  "certifiedAt": "2026-08-19T14:17:56.197Z",
+  "orgId": "8d5a12d0-2e42-45fa-9e02-4a8214d12b1c",
   "users": {
-    "owner": "cert-owner-1785967332276@deletion-cert.local",
-    "ownerId": "8cd0d300-2440-4dfd-9785-0cf569d0707f",
-    "memberId": "83d65d3a-42e1-43c9-a2e3-7613c6dd776c"
+    "owner": "cert-owner-1787149073649@deletion-cert.local",
+    "ownerId": "dd0e044d-5c94-430f-9263-66833d1fe093",
+    "memberId": "941893d2-c37c-4656-a039-b815ffb2a858"
   },
   "endpoint": "DELETE /api/billing/account",
   "httpStatus": 200,
   "httpBody": {
     "ok": true,
     "deleted": {
-      "rows": 167,
-      "tablesWithData": 164,
+      "rows": 164,
+      "tablesWithData": 161,
       "tablesScanned": 171,
       "usersDeleted": 2,
       "stripeCustomer": false,
       "subscriptionsCanceled": 0
     }
   },
-  "durationMs": 327,
+  "durationMs": 334,
   "tablesWithOwnershipColumn": 165,
-  "tablesSeeded": 160,
+  "tablesSeeded": 157,
   "tablesNotSeedable": [
     {
-      "table": "team_invitations",
-      "reason": "duplicate key value violates unique constraint \"team_invitations_token_hash_unique_idx\""
+      "table": "workflow_runs",
+      "reason": "insert or update on table \"workflow_runs\" violates foreign key constraint \"workflow_runs_workflow_fkey\""
+    },
+    {
+      "table": "crm_field_mappings",
+      "reason": "insert or update on table \"crm_field_mappings\" violates foreign key constraint \"crm_field_mappings_integration"
     },
     {
       "table": "funnel_steps",
       "reason": "new row for relation \"funnel_steps\" violates check constraint \"funnel_steps_position_check\""
     },
     {
-      "table": "gbp_post_queue",
-      "reason": "insert or update on table \"gbp_post_queue\" violates foreign key constraint \"gbp_post_queue_post_id_fkey\""
-    },
-    {
-      "table": "org_member_permissions",
-      "reason": "new row for relation \"org_member_permissions\" violates check constraint \"org_member_permissions_mode_check\""
+      "table": "geo_tracking_snapshots",
+      "reason": "insert or update on table \"geo_tracking_snapshots\" violates foreign key constraint \"geo_tracking_snapshots_hea"
     },
     {
       "table": "keyword_rankings",
       "reason": "insert or update on table \"keyword_rankings\" violates foreign key constraint \"keyword_rankings_keyword_id_fkey"
+    },
+    {
+      "table": "mission_history",
+      "reason": "insert or update on table \"mission_history\" violates foreign key constraint \"mission_history_mission_fkey\""
+    },
+    {
+      "table": "monitor_checks",
+      "reason": "insert or update on table \"monitor_checks\" violates foreign key constraint \"fk_monitor_checks_monitor_id\""
+    },
+    {
+      "table": "org_member_permissions",
+      "reason": "new row for relation \"org_member_permissions\" violates check constraint \"org_member_permissions_mode_check\""
     }
   ],
-  "rowsBefore": 167,
+  "rowsBefore": 164,
   "rowsAfter": 0,
   "matrix": [
     {
@@ -63,6 +75,11 @@
       "rowsAfter": 0
     },
     {
+      "table": "traffic_losses",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
       "table": "ai_action_proposals",
       "rowsBefore": 1,
       "rowsAfter": 0
@@ -73,12 +90,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "traffic_losses",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "activity_events_archive",
+      "table": "worker_failures",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -88,7 +100,17 @@
       "rowsAfter": 0
     },
     {
+      "table": "activity_events_archive",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
       "table": "enterprise_sessions",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ga4_report_cache",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -103,27 +125,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "ga4_report_cache",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
       "table": "keyword_clusters",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "local_visibility_scores",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "org_secrets",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "organization_auth",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -133,72 +135,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "team_channels",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "sso_providers",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "user_activity_days",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "pagespeed_results",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "permission_logs",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
       "table": "ai_autopilot_grants",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "crm_sync_logs",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "crm_integrations",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "crm_webhooks",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "crm_tokens",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "dataforseo_quota",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "ga4_accounts",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "ga4_properties",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "ai_alerts",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -208,42 +145,12 @@
       "rowsAfter": 0
     },
     {
-      "table": "gbp_posts",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
       "table": "ai_chat_history",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "github_repos",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "github_connections",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "google_tokens",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "seo_serp_snapshots",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "growth_objectives",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "google_reviews",
+      "table": "ai_alerts",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -253,142 +160,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "gsc_keyword_data",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "gsc_sync_logs",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "gsc_page_data",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "gsc_search_analytics",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "gsc_sites",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "industry_signals",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
       "table": "alert_events",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "incoming_webhooks",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "identity_mappings",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "keyword_history",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "share_tokens",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "keyword_opportunities",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "keywords",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "local_heatmaps",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "local_opportunities",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "login_audits",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "local_pack_history",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "market_opportunities",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "market_insights",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "mission_impact_scores",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "mission_priorities",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "monitors",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "monitor_incidents",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "org_auth_config",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "ai_usage_pending_writes",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "org_checklist",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "overview_insights_rl",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "behavior_events",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -398,22 +170,17 @@
       "rowsAfter": 0
     },
     {
-      "table": "crm_field_mappings",
+      "table": "crm_integrations",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "ai_workspace_profiles",
+      "table": "ai_usage_pending_writes",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "cro_recommendations",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "cron_history",
+      "table": "behavior_events",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -423,52 +190,17 @@
       "rowsAfter": 0
     },
     {
-      "table": "custom_domains",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "cro_scores",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "cro_experiments",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
       "table": "activity_logs",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "ai_generated_missions",
+      "table": "ai_workspace_profiles",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "notifications",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "subscription_analytics",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "pagespeed_history",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "funnels",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "automation_workflows",
+      "table": "crm_sync_logs",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -478,22 +210,12 @@
       "rowsAfter": 0
     },
     {
-      "table": "roles",
+      "table": "ai_generated_missions",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "reviews",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "auth_providers",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "reports",
+      "table": "automation_workflows",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -503,12 +225,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "seo_backlinks",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "seo_keywords",
+      "table": "auth_providers",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -518,7 +235,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "report_exports",
+      "table": "audit_trail",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -528,17 +245,12 @@
       "rowsAfter": 0
     },
     {
-      "table": "google_sync_logs",
+      "table": "crm_tokens",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "audit_trail",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "workflow_runs",
+      "table": "crm_webhooks",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -548,7 +260,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "gbp_performance",
+      "table": "bs_heartbeats",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -573,27 +285,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "geo_rankings",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "bs_heartbeats",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "onboarding_sessions",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "calendar_events",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "missions",
+      "table": "cro_experiments",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -603,12 +295,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "user_prefs",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "team_members",
+      "table": "calendar_events",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -623,37 +310,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "revenue_leaks",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "competitors",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "competitor_rankings",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "market_trends",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "audit_schedules",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "mission_ai_logs",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "geo_tracking_snapshots",
+      "table": "cro_recommendations",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -663,22 +320,27 @@
       "rowsAfter": 0
     },
     {
-      "table": "google_locations",
+      "table": "audit_schedules",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "google_accounts",
+      "table": "competitor_rankings",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "review_analysis",
+      "table": "competitors",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "monitor_checks",
+      "table": "cro_scores",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "dataforseo_quota",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -688,7 +350,12 @@
       "rowsAfter": 0
     },
     {
-      "table": "google_oauth_states",
+      "table": "cron_history",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "custom_domains",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -698,17 +365,42 @@
       "rowsAfter": 0
     },
     {
-      "table": "mission_history",
+      "table": "ga4_accounts",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "seo_ai_mentions",
+      "table": "ga4_properties",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "sessions",
+      "table": "gbp_posts",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gbp_performance",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gbp_post_queue",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "geo_rankings",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "google_accounts",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "github_repos",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -718,7 +410,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "tracked_keywords",
+      "table": "github_connections",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -728,22 +420,27 @@
       "rowsAfter": 0
     },
     {
-      "table": "seo_forecasts",
+      "table": "competitor_map_results",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "team_files",
+      "table": "google_locations",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "ranking_alerts",
+      "table": "competitor_movements",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "worker_failures",
+      "table": "crm_sync_jobs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_market_reports",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -753,17 +450,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "reputation_scores",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
       "table": "automation_logs",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "billing_events",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -778,12 +465,142 @@
       "rowsAfter": 0
     },
     {
-      "table": "ai_market_reports",
+      "table": "billing_events",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "crm_sync_jobs",
+      "table": "google_oauth_states",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "google_reviews",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "google_sync_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "google_tokens",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "github_analyses",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "growth_objectives",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gsc_keyword_data",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gsc_page_data",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gsc_search_analytics",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gsc_sync_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "identity_mappings",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "incoming_webhooks",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "industry_signals",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "keyword_history",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "keyword_opportunities",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "keywords",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "local_heatmaps",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "local_opportunities",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "local_pack_history",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "local_visibility_scores",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "market_insights",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "login_audits",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "market_opportunities",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "market_trends",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "mission_ai_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "mission_impact_scores",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "mission_priorities",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -793,27 +610,37 @@
       "rowsAfter": 0
     },
     {
-      "table": "competitor_movements",
+      "table": "missions",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "review_alerts",
+      "table": "monitor_incidents",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "competitor_map_results",
+      "table": "monitors",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "report_templates",
+      "table": "notifications",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "github_analyses",
+      "table": "onboarding_sessions",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "org_checklist",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "org_auth_config",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -828,12 +655,157 @@
       "rowsAfter": 0
     },
     {
+      "table": "org_secrets",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "organization_auth",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
       "table": "overview_insights_cache",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
+      "table": "overview_insights_rl",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "pagespeed_history",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "pagespeed_results",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "permission_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ranking_alerts",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "report_exports",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "reports",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "reputation_scores",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "revenue_leaks",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "review_alerts",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "review_analysis",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "seo_ai_mentions",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "seo_backlinks",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "roles",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "reviews",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "seo_forecasts",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "seo_keywords",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
       "table": "seo_local_rankings",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "seo_serp_snapshots",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "sessions",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "share_tokens",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "sso_providers",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "subscription_analytics",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "team_files",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "team_members",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "team_messages",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "team_invitations",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "team_channels",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -848,12 +820,37 @@
       "rowsAfter": 0
     },
     {
-      "table": "team_messages",
+      "table": "team_member_roles",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "team_member_roles",
+      "table": "tracked_keywords",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "user_prefs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "report_templates",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "gsc_sites",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "user_activity_days",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "funnels",
       "rowsBefore": 1,
       "rowsAfter": 0
     },

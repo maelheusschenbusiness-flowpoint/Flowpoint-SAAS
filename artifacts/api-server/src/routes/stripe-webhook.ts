@@ -461,6 +461,20 @@ export async function activateNewSignup(opts: {
       locationSource:     "manual",
     });
     logger.info({ orgId }, "[Webhook/activate] org_settings profile row created");
+  } else if ((signupRow["address"] || signupRow["city"]) && !_existing.address && !_existing.city) {
+    // Existing profile row without any address (e.g. created by an earlier
+    // contact-only upsert) — fill the missing fields from the signup form so
+    // Workspace/Settings/Localisation show the address entered at signup.
+    await upsertOrgSettings(orgId, {
+      country:            _existing.country    ?? (signupRow["country"] as string | undefined)     ?? null,
+      city:               (signupRow["city"] as string | undefined)         ?? null,
+      address:            (signupRow["address"] as string | undefined)      ?? null,
+      postalCode:         _existing.postalCode ?? (signupRow["postal_code"] as string | undefined) ?? null,
+      phone:              _existing.phone      ?? (signupRow["phone"] as string | undefined)       ?? null,
+      locationConfigured: !!(signupRow["city"] || signupRow["address"]),
+      locationSource:     "manual",
+    }).catch((e) => logger.warn({ e, orgId }, "[Webhook/activate] org_settings address self-heal failed (non-fatal)"));
+    logger.info({ orgId }, "[Webhook/activate] org_settings address self-healed from signup data");
   }
 
   // ── 3. Activate user + org + membership (transaction) ───────────────────

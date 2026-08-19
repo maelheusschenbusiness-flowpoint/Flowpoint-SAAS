@@ -1287,7 +1287,7 @@
     if (!_saved && !_cart.plan) return;
     /* Populate internal cart so badge and checkout work */
     if (_saved && _saved.plan) _cart.plan = _saved.plan;
-    if (_saved.addons) Object.keys(_saved.addons).forEach(function(k) { _cart.addons[k] = _saved.addons[k]; });
+    if (_saved && _saved.addons) Object.keys(_saved.addons).forEach(function(k) { _cart.addons[k] = _saved.addons[k]; });
     // Critical: carry fromDashboard into the internal _cart so addToCart() writes it back
     // to localStorage — without this, the flag is lost on any add-on toggle.
     if (_saved && _saved.fromDashboard) _cart.fromDashboard = true;
@@ -1395,6 +1395,7 @@
 
     _cart.plan = plan;
     /* Persist plan immediately so checkout.html always has it */
+    _cart._v = 1; _cart._updatedAt = Date.now();
     try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch(e) {}
     var planLabels = {
       standard: 'Commencer Standard',
@@ -1447,6 +1448,7 @@
     /* Persist immediately so the cart survives refreshes AND so the periodic
        billing-state refresh (applyBillingState) can see cart membership and
        keep this button on "✓ Dans le panier" instead of resetting it. */
+    _cart._v = 1; _cart._updatedAt = Date.now();
     try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch(e) {}
     btn.textContent = '✓ Dans le panier';
     btn.style.background = 'rgba(16,185,129,0.15)';
@@ -1464,6 +1466,7 @@
       showToast('Sélectionnez d\'abord un plan, un add-on ou des crédits IA', true);
       return;
     }
+    _cart._v = 1; _cart._updatedAt = Date.now();
     try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch(e) {}
     window.location.href = '/checkout.html' + (_cart.plan ? '?plan=' + encodeURIComponent(_cart.plan) : '');
   };
@@ -1692,18 +1695,87 @@
     setIncludedAddonsFromServer(data.plan || '', data.addons || {});
   }
 
-  /* ── Step 1: instant render from localStorage (visual cache, anti-flash) ── */
+  /* Reverse applyBillingState's DOM mutations back to the anonymous baseline.
+     Needed when a STALE client-side token allowed the cached render (Step 1)
+     but the backend then answered 401: the visitor must not keep seeing the
+     previous account's active plan/add-on markers. Cart visuals are kept
+     (same precedence rule 2 as applyBillingState).                          */
+  function resetBillingUIToAnonymous() {
+    var banner = document.getElementById('fp-db-banner');
+    if (banner) banner.remove();
+    var planLabelsDefault = {
+      standard: 'Commencer Standard',
+      pro:      'D\u00e9marrer Pro \u2014 le meilleur choix',
+      ultra:    'D\u00e9marrer Ultra'
+    };
+    document.querySelectorAll('.fp-card-btn[data-plan]').forEach(function(btn) {
+      var btnPlan = btn.getAttribute('data-plan');
+      if (btn.textContent === '\u2713 Votre plan actuel') {
+        btn.textContent = planLabelsDefault[btnPlan] || 'Commencer';
+        var cardEl = btn.closest('.fp-card');
+        if (cardEl) { cardEl.style.borderColor = ''; cardEl.style.boxShadow = ''; }
+      }
+      btn.disabled = false;
+      btn.style.background = '';
+      btn.style.borderColor = '';
+      btn.style.color = '';
+      btn.style.cursor = '';
+      btn.style.opacity = '';
+    });
+    var cartAddons = {};
+    try {
+      var _fc = JSON.parse(localStorage.getItem('fp_cart') || 'null');
+      if (_fc && _fc.addons) cartAddons = _fc.addons;
+    } catch(e) {}
+    document.querySelectorAll('button[onclick*="addToCart"]').forEach(function(btn) {
+      var m = (btn.getAttribute('onclick') || '').match(/addToCart\s*\(\s*this\s*,\s*'([^']+)'/);
+      if (!m) return;
+      if (cartAddons[m[1]]) return; /* cart visual wins — user's own selection */
+      btn.disabled = false;
+      btn.style.background = '';
+      btn.style.borderColor = '';
+      btn.style.color = '';
+      btn.style.cursor = '';
+      if (btn.textContent === '\u2713 Actif' || btn.textContent === '\u2713 Dans le panier') {
+        btn.textContent = 'Activer \u2192';
+      }
+    });
+    /* Clear plan-inclusion badges rendered from the cached state */
+    updateIncludedAddons('');
+  }
+
+  /* ── Step 1: instant render from localStorage (visual cache, anti-flash) ──
+     Only when a session token exists: an anonymous visitor with stale
+     localStorage from a previous session must NEVER see plans/add-ons
+     rendered as active.                                                    */
+  var _bsHasSession = false;
+  try {
+    _bsHasSession = !!(
+      (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fp_session_token')) ||
+      (typeof localStorage   !== 'undefined' && localStorage.getItem('fp-session-token'))
+    );
+  } catch(e) {}
   var cached = null;
   try {
     var raw = JSON.parse(localStorage.getItem('fp_dashboard_state') || 'null');
-    if (raw && raw.fromDashboard) cached = normalise(raw);
+    if (_bsHasSession && raw && raw.fromDashboard) cached = normalise(raw);
   } catch(e) {}
   if (cached) applyBillingState(cached);
 
   /* ── Step 2: fetch from backend — backend always wins ── */
   fetch('/api/billing/subscription', { credentials: 'include' })
     .then(function(res) {
-      if (res.status === 401) return null; /* Not logged in — pricing page is public */
+      if (res.status === 401) {
+        /* Not logged in — pricing page is public. Drop any stale billing
+           cache so no surface (here or checkout.html) can treat this
+           visitor as subscribed, and clear the in-memory guard state. */
+        try { localStorage.removeItem('fp_dashboard_state'); } catch(e) {}
+        try { window._fpBillingState = null; } catch(e) {}
+        /* If a stale token let the cached state render (Step 1), undo it —
+           the visitor must see the anonymous baseline, not old markers.   */
+        if (cached) { try { resetBillingUIToAnonymous(); } catch(e) {} }
+        return null;
+      }
       if (!res.ok) return null;
       return res.json();
     })
@@ -1751,15 +1823,33 @@
   var fromDashboard = params.get('from') === 'dashboard';
   var addonParam    = params.get('addon') || '';  // add-on key passed by fpActivateAddon fallback
 
-  /* When NOT coming from the dashboard: clear any leftover cart so the page
-     renders in its default state (no pre-selections, no back button).        */
-  if (!fromDashboard) {
-    try { localStorage.removeItem('fp_cart'); } catch(e) {}
-    return;
-  }
-
   var cart = null;
   try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+
+  /* When NOT coming from the dashboard: keep a FRESH visitor cart so the
+     selection survives refreshes and navigation until checkout, but never
+     resurrect a dashboard flow (fromDashboard flag / _orgId) or a stale
+     cart (> 1h) from a previous visit.                                     */
+  if (!fromDashboard) {
+    var _keepVisitorCart = null;
+    if (cart && !cart.fromDashboard && !cart._orgId) {
+      var _vcAge = (typeof cart._updatedAt === 'number') ? (Date.now() - cart._updatedAt) : Infinity;
+      if (_vcAge >= 0 && _vcAge < 3600000) _keepVisitorCart = cart;
+    }
+    if (!_keepVisitorCart) {
+      try { localStorage.removeItem('fp_cart'); } catch(e) {}
+      return;
+    }
+    cart = _keepVisitorCart;
+    /* Restore visual selections only — no dashboard back button and no
+       goToCheckout override (visitors use the default checkout path).     */
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() { restoreCartSelections(); });
+    } else {
+      setTimeout(restoreCartSelections, 120);
+    }
+    return;
+  }
 
   /* ── Addon-only mode: from dashboard with a specific add-on key ────────────
      When the user is an active subscriber and fpActivateAddon fell back to
@@ -1955,18 +2045,10 @@
     });
   };
 
-  function applyCart() {
-    /* ── Back button in nav ── */
-    var navLinks = document.querySelector('.fp-nav-links');
-    if (navLinks && !document.getElementById('fp-back-btn')) {
-      var btn = document.createElement('a');
-      btn.id = 'fp-back-btn';
-      btn.href = '/dashboard.html';
-      btn.style.cssText = 'color:var(--blue,#2563eb);font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;margin-right:8px;';
-      btn.innerHTML = '\u2190 Tableau de bord';
-      navLinks.insertAdjacentElement('afterbegin', btn);
-    }
-
+  /* Re-click the plan/add-on buttons held in the cart so the internal _cart
+     and the visuals are rebuilt. Shared by the dashboard flow (applyCart)
+     and the anonymous visitor-cart restore above.                          */
+  function restoreCartSelections() {
     if (!cart) return;
 
     /* ── Pre-select plan ── */
@@ -1991,6 +2073,22 @@
         }
       }
     });
+  }
+
+  /* Dashboard flow: back button + selection restore */
+  function applyCart() {
+    /* ── Back button in nav ── */
+    var navLinks = document.querySelector('.fp-nav-links');
+    if (navLinks && !document.getElementById('fp-back-btn')) {
+      var btn = document.createElement('a');
+      btn.id = 'fp-back-btn';
+      btn.href = '/dashboard.html';
+      btn.style.cssText = 'color:var(--blue,#2563eb);font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;margin-right:8px;';
+      btn.innerHTML = '\u2190 Tableau de bord';
+      navLinks.insertAdjacentElement('afterbegin', btn);
+    }
+
+    restoreCartSelections();
   }
 
   if (document.readyState === 'loading') {

@@ -132,7 +132,7 @@
             document.getElementById('fp-sub').innerHTML =
               'Votre add-on est <strong>immédiatement disponible</strong>.<br>' +
               'Vous allez être redirigé vers le tableau de bord…';
-            setTimeout(function(){ window.location.href = '/dashboard.html#billing'; }, 2200);
+            setTimeout(function(){ window.location.href = '/dashboard.html?checkout=success#billing'; }, 2200);
             return;
           }
 
@@ -178,7 +178,7 @@
           } else {
             document.getElementById('fp-title').textContent = 'Votre commande est confirmée !';
             document.getElementById('fp-sub').innerHTML = 'Abonnement activé · 14 jours d\'essai en cours.<br>Vous allez être redirigé…';
-            setTimeout(function(){ window.location.href = '/dashboard.html'; }, 1800);
+            setTimeout(function(){ window.location.href = '/dashboard.html?checkout=success'; }, 1800);
           }
         } else if (res.status === 401) {
           document.getElementById('fp-spinner').style.display = 'none';
@@ -230,7 +230,7 @@
       document.getElementById('fp-sub').innerHTML =
         '<strong>' + (credits > 0 ? label : 'Vos') + ' crédits IA</strong> ont été ajoutés à votre compte.<br>' +
         'Vous allez être redirigé vers le tableau de bord…';
-      setTimeout(function(){ window.location.href = '/dashboard.html#billing'; }, 2200);
+      setTimeout(function(){ window.location.href = '/dashboard.html?checkout=success#billing'; }, 2200);
     }
 
     /* ── Existing user (reactivation / plan upgrade): verify via /api/billing/verify ──
