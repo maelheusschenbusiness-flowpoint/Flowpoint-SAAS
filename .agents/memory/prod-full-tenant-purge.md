@@ -24,8 +24,9 @@ credential path only needs `org_settings` + `magic_link_tokens`, never `organiza
    pipeline. Sessions, `magic_link_tokens`, `pending_signups`, and `google_tokens` for these
    accounts are keyed by the same email string.
 3. **Stripe** — customers can outlive both DB layers. Expect orphans whose metadata points
-   at an org id that no longer exists anywhere. Sweep `customers.list()` directly at the end;
-   do not assume the DB knew about every customer.
+   at an org id that no longer exists anywhere. First build a read-only `customers.list()`
+   plan, then sweep Stripe *before* the DB transaction; do not assume the DB knew about every
+   customer.
 
 ## Gotchas
 - The primary organization record is owner-keyed, not necessarily `org_id`-keyed.
@@ -38,6 +39,12 @@ credential path only needs `org_settings` + `magic_link_tokens`, never `organiza
   `users` row at all, which is exactly why the email layer survives.
 - `subscriptionsCanceled: 0` alongside `customerDeleted: true` is normal when the
   subscription was already cancelled; deleting the customer is what stops future billing.
+
+## How to apply
+- The global admin purge must surface Stripe counts in its mandatory dry-run, cancel each
+  non-cancelled subscription, and delete each non-exempt customer before deleting DB rows.
+- If Stripe is unavailable or one customer cannot be deleted, fail before the DB transaction;
+  a retry can safely repeat already-completed Stripe work.
 
 ## Verification (the part that actually proves it)
 Counting DB tables to zero is necessary but not sufficient — verify the *behaviour*:
