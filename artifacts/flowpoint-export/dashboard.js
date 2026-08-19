@@ -64366,6 +64366,28 @@ setTimeout(function() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function initAIChatPanel() {
+  // Autosize textarea to content between the min (42px) and max (120px) heights.
+  // Below max: no scrollbar (overflow-y hidden). At/above max: overflow-y auto so
+  // the discreet ~5px scrollbar (styled in dashboard.css) appears. Mirrors the
+  // full-page #ai-input behavior so both AI textareas share identical UX.
+  var _FP_CHAT_MIN_H = 42;
+  var _FP_CHAT_MAX_H = 120;
+  function _fpChatResize(el) {
+    if (!el) return;
+    el.style.height = _FP_CHAT_MIN_H + 'px';
+    var sh = el.scrollHeight;
+    el.style.height = Math.min(sh, _FP_CHAT_MAX_H) + 'px';
+    el.style.overflowY = sh > _FP_CHAT_MAX_H ? 'auto' : 'hidden';
+  }
+  // After send: clear content and return to min height with no scrollbar.
+  // Shared by both send paths (click + Enter) via sendMessage().
+  function _fpChatReset(el) {
+    if (!el) return;
+    el.value = '';
+    el.style.height = _FP_CHAT_MIN_H + 'px';
+    el.style.overflowY = 'hidden';
+  }
+
   function openPanel() {
     const panel = document.getElementById('fp-ai-chat-panel');
     const overlay = document.getElementById('fp-ai-chat-overlay');
@@ -64452,7 +64474,8 @@ setTimeout(function() {
   async function sendMessage(message) {
     if (!message || !message.trim()) return;
     const inp = document.getElementById('fp-ai-chat-input');
-    if (inp) { inp.value = ''; inp.style.height = 'auto'; }
+    // Reset to min height with no scrollbar — shared by click + Enter send paths.
+    _fpChatReset(inp);
     setSendEnabled(false);
 
     appendMessage('user', message, false);
@@ -64619,10 +64642,11 @@ setTimeout(function() {
 
     if (input) {
       input.addEventListener('input', () => {
-        input.style.height = 'auto';
-        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        _fpChatResize(input);
         if (sendBtn) sendBtn.disabled = !input.value.trim();
       });
+      // Resize on paste too (content lands asynchronously — let the DOM update first)
+      input.addEventListener('paste', () => setTimeout(() => _fpChatResize(input), 0));
       input.addEventListener('keydown', e => {
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();

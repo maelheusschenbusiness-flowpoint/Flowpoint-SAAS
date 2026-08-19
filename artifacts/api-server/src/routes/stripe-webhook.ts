@@ -49,6 +49,10 @@ async function persistSubscriptionMeta(opts: {
     logger.info({ orgId, subscriptionStatus, stripeSubscriptionId, plan }, "[Webhook] Subscription meta persisted to organizations");
   } catch (err) {
     logger.error({ err, orgId }, "[Webhook] Failed to persist subscription meta");
+    // A failed authoritative billing write must make this webhook retryable.
+    // The outer handler records `failed` and returns 500, rather than turning
+    // a paid entitlement into a silent false success.
+    throw err;
   }
 }
 
@@ -222,6 +226,9 @@ async function persistAddonsFromSubscription(
   orgId: string,
   stripeCustomerId: string | null,
   reconcileDeactivations: boolean,
+  /** When true (subscription.deleted) skip activation of the deleted sub's items —
+   *  only reconcile deactivations against the customer's remaining live subs. */
+  skipActivation = false,
 ): Promise<void> {
   if (!orgId || orgId === "default") return;
   const addons = parseAddonsFromSubscription(subscription);
@@ -237,12 +244,16 @@ async function persistAddonsFromSubscription(
     // ── 1. Activate addons present in this subscription's items ──────────────
     // Quantity add-ons persist their Stripe line-item quantity to org_addons.quantity
     // so entitlement surfaces expand per pack (e.g. 2× monitorsPack10 = +20 monitors).
-    for (const [key, val] of Object.entries(addons)) {
-      if (val === true || (typeof val === "number" && val > 0)) {
-        const qty = typeof val === "number" ? val : 1;
-        await activateAddon(key, orgId, qty).catch(err =>
-          logger.warn({ err, key, orgId }, "[Webhook] Failed to activate addon")
-        );
+    // Skipped on subscription.deleted: the deleted sub's items must not be re-activated.
+    if (!skipActivation) {
+      for (const [key, val] of Object.entries(addons)) {
+        if (val === true || (typeof val === "number" && val > 0)) {
+          const qty = typeof val === "number" ? val : 1;
+          const activated = await activateAddon(key, orgId, qty);
+          if (!activated) {
+            throw new Error(`Failed to activate add-on '${key}' for org '${orgId}'`);
+          }
+        }
       }
     }
 
@@ -744,35 +755,98 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
     logger.info({ orgId, resolvedVia, type: event.type }, "[Webhook] orgId resolved");
   }
 
-  // ── Idempotency guard — skip events already processed ────────────────────
+  // ── Idempotency guard — claim-then-finalize, retry-safe ──────────────────
+  // Root cause #3 fix: the previous implementation marked an event as processed
+  // (INSERT ON CONFLICT DO NOTHING) BEFORE running its entitlement mutations. If a
+  // mutation then failed, the row already existed and every Stripe retry was
+  // suppressed as a "duplicate", permanently losing the entitlement.
+  //
+  // New protocol:
+  //   1. Claim the event by upserting a row with metadata.status = "processing".
+  //      - Fresh event  → status becomes "processing", we proceed.
+  //      - Row exists & status = "processed" → a genuinely completed replay:
+  //        respond idempotently (no re-mutation), skip the switch.
+  //      - Row exists with failed/legacy state → re-claim and reprocess.
+  //      - Row exists with a fresh processing lease → do not double-mutate.
+  //   2. Run the handler. On success → mark status = "processed".
+  //      On throw → mark status = "failed" and return 500 so Stripe retries.
+  // Status is recorded WITHOUT any secrets (only status/type/timestamp).
   // Use resolved orgId when available; use '_system_' sentinel for unresolved events
   // (never 'default' — that would shadow real org data)
   const eventId = (event as unknown as { id?: string }).id;
+  const idempotencyOrgId = orgId ?? "_system_";
+  let idempotencyTracked = false;
+
+  const markEventStatus = async (status: "processed" | "failed"): Promise<void> => {
+    if (!eventId || !idempotencyTracked) return;
+    try {
+      const { pool: pgPool } = await import("@workspace/db");
+      const c = await pgPool.connect();
+      try {
+        await c.query(
+          `UPDATE billing_events
+           SET metadata = jsonb_set(
+             COALESCE(metadata, '{}'::jsonb),
+             '{status}', to_jsonb($2::text)
+           ) || jsonb_build_object('processedAt', to_jsonb(NOW()::text))
+           WHERE stripe_event_id = $1`,
+          [eventId, status]
+        );
+      } finally { c.release(); }
+    } catch (e) {
+      logger.warn({ e, eventId, status }, "[Webhook] Failed to record event status (non-fatal)");
+    }
+  };
+
   if (eventId) {
     try {
       const { pool: pgPool } = await import("@workspace/db");
       const idClient = await pgPool.connect();
       try {
-        const idempotencyOrgId = orgId ?? "_system_";
-        const { rowCount } = await idClient.query(
+        // Claim fresh events, failed attempts, and expired five-minute leases.
+        // A live processing lease is deliberately NOT claimed by another
+        // delivery: Stripe can send the same event concurrently.
+        const claim = await idClient.query<{ status: string | null }>(
           `INSERT INTO billing_events (org_id, type, stripe_event_id, amount, currency, metadata)
-           VALUES ($1, $2, $3, 0, 'eur', '{}')
-           ON CONFLICT (stripe_event_id) DO NOTHING`,
+           VALUES ($1, $2, $3, 0, 'eur',
+             jsonb_build_object('status','processing', 'processingStartedAt', NOW()::text))
+           ON CONFLICT (stripe_event_id) DO UPDATE
+             SET metadata = COALESCE(billing_events.metadata, '{}'::jsonb)
+               || jsonb_build_object('status','processing', 'processingStartedAt', NOW()::text)
+             WHERE COALESCE(billing_events.metadata->>'status', '') IN ('', 'failed')
+                OR (
+                  COALESCE(billing_events.metadata->>'status', '') = 'processing'
+                  AND CASE
+                    WHEN billing_events.metadata->>'processingStartedAt'
+                      ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'
+                    THEN (billing_events.metadata->>'processingStartedAt')::timestamptz
+                    ELSE 'epoch'::timestamptz
+                  END < NOW() - INTERVAL '5 minutes'
+                )
+           RETURNING metadata->>'status' AS status`,
           [idempotencyOrgId, event.type, eventId]
         );
-        if ((rowCount ?? 0) === 0) {
-          logger.info({ eventId, type: event.type }, "[Webhook] Duplicate event — already processed, skipping");
+        if (claim.rowCount === 0) {
+          // A completed event, or a concurrent delivery with a fresh lease.
+          // Either way, never run entitlement mutations twice.
+          logger.info({ eventId, type: event.type }, "[Webhook] Duplicate or concurrently-processing event — skipping");
           res.json({ received: true, duplicate: true });
           return;
         }
+        idempotencyTracked = true;
       } finally {
         idClient.release();
       }
     } catch (e) {
-      logger.warn({ e, eventId }, "[Webhook] Idempotency check failed — processing anyway");
+      // Without a durable claim, processing could race another webhook worker.
+      // Return a retryable error instead of applying a paid entitlement twice.
+      logger.error({ e, eventId }, "[Webhook] Idempotency claim failed — returning 500 for safe retry");
+      res.status(500).json({ received: false, error: "Webhook idempotency unavailable" });
+      return;
     }
   }
 
+  try {
   switch (event.type) {
 
     case "checkout.session.completed": {
@@ -831,7 +905,9 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       }
 
       // ── Subscription checkout ──────────────────────────────────────────────
-      const plan     = meta["plan"] ?? "";
+      // Hosted public Checkout writes `selected_plan`; `plan` is retained for
+      // legacy sessions. Honor the current key first.
+      const plan     = meta["selected_plan"] || meta["plan"] || "";
       const planNorm = plan.toLowerCase();
 
       if (!orgId) {
@@ -843,7 +919,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
       // ── New signup flow: activate account + send magic link after Stripe validates ──
       const preRegToken  = meta["pre_register_token"] ?? "";
-      const selectedPlan = meta["selected_plan"] ?? planNorm ?? "standard";
+      const selectedPlan = meta["selected_plan"] || planNorm || "standard";
       const isTrial      = meta["trial_plan"] === "true";
 
       // ── P0 backstop: detect and auto-cancel duplicate subscriptions ──────────
@@ -957,6 +1033,45 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
           logger.warn({ err, planNorm, orgId }, "[Webhook] provisionPlanAddons failed on checkout.session.completed")
         );
       }
+
+      // ── Root cause #2 fix: authoritative add-on activation on paid checkout ──
+      // public-billing records the recurring add-ons the customer selected and is
+      // billed for now in metadata.immediate_addons (comma-separated add-on keys;
+      // AI-credit packs and plan-bundled add-ons are intentionally excluded there).
+      // Previously these were only activated later by customer.subscription.created,
+      // so a missed/late subscription event left a paid add-on inactive. Activate
+      // them here — but only after Stripe confirms this is a *completed & paid*
+      // Checkout (status=complete AND payment_status in paid/no_payment_required)
+      // so we never grant entitlement for an unpaid session. Idempotent: activateAddon
+      // upserts, and the reconcile path never revokes what a live subscription still has.
+      {
+        const sessionStatus  = String(obj["status"] ?? "");
+        const paymentStatus  = String(obj["payment_status"] ?? "");
+        const paidOrTrial    = paymentStatus === "paid" || paymentStatus === "no_payment_required";
+        const completed      = sessionStatus === "" || sessionStatus === "complete"; // "" tolerates minimal test fixtures
+        const immediateAddonKeys = (meta["immediate_addons"] ?? "")
+          .split(",")
+          .map(k => k.trim())
+          .filter(Boolean)
+          // Only recurring flag/qty add-ons that carry a Stripe price ID.
+          .filter(k => (FLAG_ADDONS.has(k) || QTY_ADDONS.has(k)));
+
+        if (immediateAddonKeys.length > 0 && completed && paidOrTrial) {
+          const { activateAddon } = await import("../services/addons-service.js");
+          for (const key of immediateAddonKeys) {
+            const activated = await activateAddon(key, orgId);
+            if (!activated) {
+              throw new Error(`Failed to activate immediate add-on '${key}' for org '${orgId}'`);
+            }
+          }
+          logger.info({ orgId, immediateAddonKeys, paymentStatus, sessionStatus },
+            "[Webhook] Immediate recurring add-ons activated from completed paid checkout");
+        } else if (immediateAddonKeys.length > 0) {
+          logger.info({ orgId, immediateAddonKeys, paymentStatus, sessionStatus },
+            "[Webhook] Immediate add-ons NOT activated — checkout not completed/paid");
+        }
+      }
+
       logger.info({ plan: planNorm, orgId }, "[Webhook] Checkout session completed");
       break;
     }
@@ -1202,33 +1317,61 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
     }
 
     case "customer.subscription.deleted": {
-      logger.info({ orgId }, "[Webhook] Subscription deleted — downgrading to standard");
-
       if (!orgId) {
         logger.error("[Webhook] customer.subscription.deleted: orgId unresolved — plan NOT reset");
         break;
       }
 
-      // P0-4: persist plan='standard' and status='canceled' to org_settings
-      // P0-3: no store.me mutations
-      await persistSubscriptionMeta({ orgId, subscriptionStatus: "canceled", plan: "standard" });
+      // ── Root cause #4 fix: distinguish plan subscription from add-on-only sub ──
+      // A FlowPoint customer can hold multiple subscriptions: one carrying the base
+      // plan, plus separate add-on-only subscriptions. The previous handler blindly
+      // reset the plan to Standard and deactivated ALL add-ons on ANY deletion, so
+      // cancelling one add-on subscription wrongly downgraded the base plan and
+      // revoked every unrelated live add-on.
+      //
+      // The deleted subscription is a PLAN subscription only if one of its items
+      // resolves to a plan price ID. If it contains no plan item (add-on-only sub),
+      // we do NOT touch the base plan and we only reconcile add-ons against the
+      // customer's remaining live subscriptions (fail-open on Stripe errors).
+      const deletedIsPlanSub = parsePlanFromSubscription(obj) !== null;
+      const delCustomerId = obj["customer"] ? String(obj["customer"]) : null;
 
-      // Disable all add-ons in org_addons table
-      try {
-        const { pool: pgPool } = await import("@workspace/db");
-        const client = await pgPool.connect();
+      if (deletedIsPlanSub) {
+        logger.info({ orgId }, "[Webhook] Plan subscription deleted — downgrading to standard");
+
+        // P0-4: persist plan='standard' and status='canceled'
+        await persistSubscriptionMeta({ orgId, subscriptionStatus: "canceled", plan: "standard" });
+
+        // Disable all add-ons in org_addons table (base subscription is gone)
         try {
-          await client.query(`UPDATE org_addons SET active = false, updated_at = NOW() WHERE org_id = $1`, [orgId]);
-        } finally { client.release(); }
-      } catch (err) {
-        logger.warn({ err, orgId }, "[Webhook] Failed to deactivate addons after subscription deleted");
+          const { pool: pgPool } = await import("@workspace/db");
+          const client = await pgPool.connect();
+          try {
+            await client.query(`UPDATE org_addons SET active = false, updated_at = NOW() WHERE org_id = $1`, [orgId]);
+          } finally { client.release(); }
+        } catch (err) {
+          logger.warn({ err, orgId }, "[Webhook] Failed to deactivate addons after plan subscription deleted");
+        }
+
+        store.broadcastPlanUpdate("standard", orgId);
+        store.broadcast({ type: "subscription_status", status: "canceled" }, orgId);
+        logger.info({ orgId }, "[Webhook] Plan reset to standard, addons deactivated");
+      } else {
+        // Add-on-only subscription cancelled: preserve the base plan entitlement.
+        // Deactivate only the add-ons that are no longer present on ANY live
+        // subscription — persistAddonsFromSubscription(reconcileDeactivations=true)
+        // aggregates all remaining live subs and fails open if Stripe is unreachable.
+        logger.info({ orgId, subId: obj["id"] },
+          "[Webhook] Add-on-only subscription deleted — base plan preserved, reconciling add-ons only");
+        await persistAddonsFromSubscription(
+          obj,
+          orgId,
+          delCustomerId,
+          /* reconcileDeactivations */ true,
+          /* skipActivation */ true,
+        );
+        store.broadcast({ type: "subscription_status", status: "addon_canceled" }, orgId);
       }
-
-      // Broadcast so connected clients know
-      store.broadcastPlanUpdate("standard", orgId);
-      store.broadcast({ type: "subscription_status", status: "canceled" }, orgId);
-
-      logger.info({ orgId }, "[Webhook] Plan reset to standard, addons deactivated");
       break;
     }
 
@@ -1385,7 +1528,18 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
     default:
       logger.info({ type: event.type }, "[Webhook] Unhandled Stripe event type");
   }
+  } catch (handlerErr) {
+    // A mutation failed. Mark the event 'failed' so a Stripe retry can heal it
+    // (the claim guard above will re-process a non-'processed' event), and return
+    // 500 so Stripe schedules that retry. No secrets are logged.
+    logger.error({ handlerErr, eventId, type: event.type }, "[Webhook] Handler failed — returning 500 for Stripe retry");
+    await markEventStatus("failed");
+    res.status(500).json({ received: false, error: "Webhook processing failed" });
+    return;
+  }
 
+  // Handler completed successfully — record processed so future replays no-op.
+  await markEventStatus("processed");
   res.json({ received: true });
 }
 

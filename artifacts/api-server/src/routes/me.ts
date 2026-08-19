@@ -7,6 +7,11 @@ import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js"
 import { loadOrgData }                         from "../services/org-data.js";
 import { normalizeSubscriptionStatus } from "../lib/subscription-state.js";
 import { logger } from "../lib/logger.js";
+import {
+  loadMeEntitlement,
+  BillingDataUnavailableError,
+  BILLING_DATA_UNAVAILABLE_CODE,
+} from "./me-entitlement.js";
 
 const router = Router();
 
@@ -45,11 +50,22 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
   } catch { /* non-fatal */ }
 
   try {
-    // Jalon 4: parallel fetch — billing from organizations (source of truth) + profile from org_settings
-    const [billingData, dbData] = await Promise.all([
-      loadOrgData(orgId).catch(() => null),       // organizations first, org_settings fallback
-      loadOrgSettings(orgId).catch(() => null),   // profile fields: firstName, lastName, timezone, location…
-    ]);
+    // Jalon 4: parallel fetch — billing from organizations (source of truth) + profile from org_settings.
+    // FAIL-CLOSED: loadMeEntitlement distinguishes "row genuinely absent" (null) from
+    // "store threw" (BillingDataUnavailableError). A transient DB failure must NEVER be
+    // downgraded to a fabricated Standard/unknown entitlement — it becomes a retryable 503.
+    // org_addons is loaded fail-closed too, so quantity-addon limits are never undercounted.
+    const { billingData, dbData, addonRows: _entitlementAddonRows } = await loadMeEntitlement(orgId, {
+      loadOrgData,
+      loadOrgSettings,
+      loadAddons: async (id) => {
+        const r = await orgDb(req)(
+          `SELECT addon_key, active, quantity FROM org_addons WHERE org_id=$1`,
+          [id],
+        );
+        return r.rows;
+      },
+    });
 
     if (billingData ?? dbData) {
       // Billing fields: prefer organizations (billingData) → org_settings fallback (dbData)
@@ -84,11 +100,11 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         trialConsumedAt:      rawTrialConsumedAt,
       });
 
-      // Read addons from org_addons table (single source of truth — Correction 8)
-      const _addonsRows = await orgDb(req)(
-        `SELECT addon_key, active, quantity FROM org_addons WHERE org_id=$1`,
-        [orgId]
-      ).catch(() => ({ rows: [] as Array<Record<string, unknown>> }));
+      // Read addons from org_addons table (single source of truth — Correction 8).
+      // FAIL-CLOSED: these rows were loaded by loadMeEntitlement, which turns an
+      // org_addons load failure into a 503 rather than a suppressed empty array —
+      // otherwise quantity-addon limits below would be silently undercounted.
+      const _addonsRows = { rows: _entitlementAddonRows };
       const _mergedAddons: Record<string, boolean | number> = {};
       for (const row of _addonsRows.rows) {
         const key = String(row["addon_key"]);
@@ -176,40 +192,45 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
       });
       return;
     }
-  } catch {
-    // Non-fatal — fall through to safe defaults
+  } catch (err) {
+    // Authoritative billing/entitlement data could not be loaded (transient DB
+    // failure / outage). NEVER fabricate a Standard/unknown entitlement here —
+    // return an explicit, retryable, non-cacheable 503 so the client retries
+    // instead of treating the org as having no plan.
+    if (err instanceof BillingDataUnavailableError) {
+      logger.warn({ orgId }, "[me] GET /api/me — billing/entitlement data unavailable, returning 503");
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.setHeader("Retry-After", "5");
+      res.status(503).json({
+        error: "Billing and entitlement data is temporarily unavailable. Please retry.",
+        code:  BILLING_DATA_UNAVAILABLE_CODE,
+        retryable: true,
+      });
+      return;
+    }
+    // Unexpected non-billing error — also fail closed rather than fabricating a plan.
+    logger.error({ err, orgId }, "[me] GET /api/me — unexpected error, returning 503");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Retry-After", "5");
+    res.status(503).json({
+      error: "Unable to load account data. Please retry.",
+      code:  BILLING_DATA_UNAVAILABLE_CODE,
+      retryable: true,
+    });
+    return;
   }
 
-  // SECURITY: never fall back to store.me (global singleton — would leak other users' data).
-  // Return minimal safe defaults derived from the authenticated org context only.
-  const _safeEmail = req.orgContext?.email ?? "";
-  const _safeFirstName = _safeEmail.split("@")[0] || "User";
-  res.json({
-    firstName:           _safeFirstName,
-    lastName:            "",
-    email:               _safeEmail,
-    userId:              req.orgContext?.userId ?? null,
-    plan:                "Standard",
-    role:                req.orgContext?.role ?? "member",
-    org:                 { name: "", website: "" },
-    subscriptionStatus:  "unknown",
-    stripeSubscriptionId: null,
-    trialEndsAt:         null,
-    stripeCustomerId:    null,
-    usage:               {},
-    addons:              {},
-    limits:              PLAN_LIMITS["standard"],
-    publicApiKey:        null,
-    createdAt:           new Date().toISOString(),
-    timezone:            settingsTimezone ?? null,
-    language:            null,
-    currency:            null,
-    dateFormat:          null,
-    timeFormat:          null,
-    location: {
-      address: null, city: null, postalCode: null, country: null, region: null,
-      phone: null, latitude: null, longitude: null, serviceArea: [], locationConfigured: false, locationSource: null,
-    },
+  // Reached only when both authoritative sources resolved successfully but the org
+  // genuinely has no billing/settings row yet (brand-new account). This is a
+  // legitimate absence, NOT a failure — but we still must not fabricate a paid or
+  // fake entitlement. Treat it as retryable-unavailable so provisioning can catch up.
+  logger.warn({ orgId }, "[me] GET /api/me — no billing/entitlement row for org, returning 503");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Retry-After", "5");
+  res.status(503).json({
+    error: "Account entitlement is not available yet. Please retry.",
+    code:  BILLING_DATA_UNAVAILABLE_CODE,
+    retryable: true,
   });
 });
 

@@ -22,7 +22,7 @@ import { randomBytes, createHash, randomUUID }  from "crypto";
 import { pool }                                from "@workspace/db";
 import { canAdmin }                             from "../middlewares/requireRole.js";
 import { createSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
-import { PLAN_LIMITS }                          from "../lib/plans.js";
+import { resolveSeatEntitlement, SeatEntitlementUnavailableError } from "../services/seat-entitlement.js";
 
 // ── Public router (registered before requireAuth in index.ts) ─────────────────
 export const publicTeamRouter = Router();
@@ -70,63 +70,20 @@ function buildInviteUrl(rawToken: string, email: string): string {
   return `${base}/accept-invitation.html?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(email)}`;
 }
 
-/** Resolve plan seat limit — reads from organizations (Jalon 1 source of truth).
- *  Falls back to org_settings.plan when the webhook has not yet updated organizations.plan,
- *  taking whichever source gives the higher teamMembers limit (avoids blocking invites after upgrade).
- *  Also adds extraSeats pack expansion (QTY_ADDON_GRANTS.extraSeats.perPack = 5 per pack).
+/** Count used seats: 1 (owner) + active members + pending invitations.
+ *
+ *  Seat capacity comes from the ONE authoritative resolver
+ *  (resolveSeatEntitlement) so GET /team and POST /team/invite can never
+ *  disagree.  When capacity cannot be resolved it throws
+ *  SeatEntitlementUnavailableError (retryable) — it NEVER silently degrades to
+ *  Standard/1, which would wrongly refuse invites for paying Pro/Ultra orgs.
  */
-async function getOrgSeatLimit(orgId: string): Promise<{ limit: number; plan: string }> {
-  try {
-    const r = await pool.query<{ plan: string; legacy_plan: string; extra_seat_packs: number }>(
-      `SELECT
-         COALESCE(NULLIF(o.plan,''), 'standard')              AS plan,
-         COALESCE(NULLIF(os.plan,''), '')                     AS legacy_plan,
-         COALESCE((
-           SELECT SUM(quantity)::int
-           FROM org_addons
-           WHERE org_id = $1::uuid AND addon_key = 'extraSeats' AND active = true
-         ), 0) AS extra_seat_packs
-       FROM organizations o
-       LEFT JOIN org_settings os ON os.org_id = o.id::text
-       WHERE o.id::text = $1 LIMIT 1`,
-      [orgId]
-    );
-    const plan1      = (r.rows[0]?.plan        ?? "standard").toLowerCase();
-    const plan2      = (r.rows[0]?.legacy_plan ?? "").toLowerCase();
-    // extraSeats: 5 seats per pack — matches QTY_ADDON_GRANTS.extraSeats.perPack
-    const extraSeats = Number(r.rows[0]?.extra_seat_packs ?? 0) * 5;
-    const limit1 = (PLAN_LIMITS[plan1]?.teamMembers ?? 1) + extraSeats;
-    const limit2 = (PLAN_LIMITS[plan2]?.teamMembers ?? 0) + extraSeats;
-    // Prefer whichever plan grants more seats — guards against webhook lag after upgrade.
-    let _resLimit = limit2 > limit1 ? limit2 : limit1;
-    const _resPlan  = limit2 > limit1 ? plan2  : plan1;
-    // Cross-check via loadOrgData when both DB sources show standard (stale / join-miss guard).
-    // This handles cases where organizations.plan is empty AND org_settings join misses
-    // because orgId formats differ (UUID vs email-shaped legacy keys).
-    if (_resLimit <= 1) {
-      try {
-        const { loadOrgData } = await import("../services/org-data.js");
-        const _od = await loadOrgData(orgId);
-        const _fbPlan  = (_od?.plan ?? "").toLowerCase();
-        const _fbLimit = (PLAN_LIMITS[_fbPlan]?.teamMembers ?? 1) + extraSeats;
-        if (_fbLimit > _resLimit) {
-          return { limit: _fbLimit, plan: _fbPlan };
-        }
-      } catch { /* non-fatal — keep _resLimit/plan */ }
-    }
-    return { limit: _resLimit, plan: _resPlan };
-  } catch {
-    return { limit: 1, plan: "standard" };
-  }
-}
-
-/** Count used seats: 1 (owner) + active members + pending invitations. */
 async function getSeatUsage(
   db: OrgDbFn,
   orgId: string,
 ): Promise<{ used: number; limit: number; plan: string }> {
   const [{ limit, plan }, membersRes, invitesRes] = await Promise.all([
-    getOrgSeatLimit(orgId),
+    resolveSeatEntitlement(orgId),
     db(
       `SELECT COUNT(*)::int AS n FROM team_members
        WHERE org_id = $1 AND status = 'active'`,
@@ -142,6 +99,71 @@ async function getSeatUsage(
   const pendingInvites = (invitesRes.rows[0]?.n   as number) ?? 0;
   const used = 1 + activeMembers + pendingInvites; // 1 = owner always occupies 1 seat
   return { used, limit, plan };
+}
+
+/**
+ * Atomically reserve one seat and create the invitation.
+ *
+ * The public GET display can use a normal count, but the write path MUST lock
+ * per organization: otherwise two requests at 9/10 can both count 9 then both
+ * insert, resulting in 11/10 seats. `pg_advisory_xact_lock` is database-wide,
+ * so this holds across application instances as well as within one process.
+ */
+async function reserveSeatAndCreateInvitation(input: {
+  orgId: string;
+  invitationId: string;
+  email: string;
+  role: string;
+  tokenHash: string;
+  invitedBy: string | null;
+  expiresAt: string;
+}): Promise<{ reserved: true; seatUsage: { used: number; limit: number; plan: string } } | {
+  reserved: false; seatUsage: { used: number; limit: number; plan: string };
+}> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [input.orgId]);
+
+    const [entitlement, membersRes, invitesRes] = await Promise.all([
+      resolveSeatEntitlement(input.orgId),
+      client.query<{ n: number }>(
+        `SELECT COUNT(*)::int AS n FROM team_members WHERE org_id = $1 AND status = 'active'`,
+        [input.orgId],
+      ),
+      client.query<{ n: number }>(
+        `SELECT COUNT(*)::int AS n FROM team_invitations
+         WHERE org_id = $1 AND status = 'pending' AND expires_at > NOW()`,
+        [input.orgId],
+      ),
+    ]);
+    const seatUsage = {
+      used: 1 + Number(membersRes.rows[0]?.n ?? 0) + Number(invitesRes.rows[0]?.n ?? 0),
+      limit: entitlement.limit,
+      plan: entitlement.plan,
+    };
+    if (seatUsage.used >= seatUsage.limit) {
+      await client.query("ROLLBACK");
+      return { reserved: false, seatUsage };
+    }
+
+    await client.query(
+      `INSERT INTO team_invitations
+         (id, org_id, email, role, token_hash, status, invited_by_user_id, expires_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, NOW(), NOW())`,
+      [
+        input.invitationId, input.orgId, input.email, input.role,
+        input.tokenHash, input.invitedBy, input.expiresAt,
+      ],
+    );
+    await client.query("COMMIT");
+    return { reserved: true, seatUsage };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -524,10 +546,21 @@ router.get("/team", async (req: Request, res: Response) => {
 
     res.json({ members, pendingInvitations, seatUsage });
   } catch (err) {
+    // Seat capacity could not be authoritatively resolved — surface an explicit
+    // retryable error rather than degrading to Standard/1 (which would make the
+    // dashboard disagree with the invite gate for paying Pro/Ultra orgs).
+    if (err instanceof SeatEntitlementUnavailableError) {
+      logger.error({ orgId: org.slice(0, 20), err: err.message }, "[team/get] seat entitlement unavailable");
+      res.status(503).json({
+        ok:        false,
+        code:      "SEAT_ENTITLEMENT_UNAVAILABLE",
+        retryable: true,
+        error:     "Impossible de déterminer la capacité de sièges. Veuillez réessayer.",
+      });
+      return;
+    }
     logger.error({ orgId: org.slice(0, 20), err: (err as Error).message }, "[team/get] failed");
-    // Use real plan limit in error fallback — hardcoded limit:1 caused 1/1 seats bug for Pro/Ultra
-    const fallbackSeat = await getOrgSeatLimit(org).catch(() => ({ limit: 1, plan: "standard" }));
-    res.json({ members: [], pendingInvitations: [], seatUsage: { used: 1, limit: fallbackSeat.limit, plan: fallbackSeat.plan } });
+    res.status(500).json({ ok: false, code: "SERVER_ERROR", error: "Failed to load team" });
   }
 });
 
@@ -598,43 +631,51 @@ router.post("/team/invite", canAdmin, async (req: Request, res: Response) => {
     }
   } catch { /* non-fatal */ }
 
-  // Seat quota check
-  const seatUsage = await getSeatUsage(db, org);
-  if (seatUsage.used >= seatUsage.limit) {
-    res.status(402).json({
-      ok:         false,
-      code:       "SEAT_LIMIT_REACHED",
-      error:      `Limite de ${seatUsage.limit} siège${seatUsage.limit > 1 ? "s" : ""} atteinte pour le plan ${seatUsage.plan}.`,
-      seatUsage,
-    });
-    return;
-  }
-
-  // Generate token
+  // Generate the invitation credential before the atomic seat reservation.
   const rawToken  = randomBytes(32).toString("hex");
   const tHash     = hashToken(rawToken);
   const id        = randomUUID();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-  // Insert (UNIQUE index on (org_id, lower(email)) WHERE pending blocks duplicates)
+  // Atomically count and reserve a seat. A plain count followed by a separate
+  // INSERT allowed concurrent 9/10 requests to both create the tenth invite.
+  let seatUsage: { used: number; limit: number; plan: string };
   try {
-    await db(
-      `INSERT INTO team_invitations
-         (id, org_id, email, role, token_hash, status, invited_by_user_id, expires_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, NOW(), NOW())`,
-      [id, org, email, memberRole, tHash, callerEmail ?? null, expiresAt.toISOString()]
-    );
-  } catch (insertErr: unknown) {
-    const err = insertErr as Error & { code?: string };
-    if (err.code === "23505") {
-      res.status(409).json({
-        ok: false, code: "DUPLICATE_INVITATION",
-        error: "Une invitation est déjà en attente pour cette adresse.",
+    const reservation = await reserveSeatAndCreateInvitation({
+      orgId: org,
+      invitationId: id,
+      email,
+      role: memberRole,
+      tokenHash: tHash,
+      invitedBy: callerEmail,
+      expiresAt: expiresAt.toISOString(),
+    });
+    seatUsage = reservation.seatUsage;
+    if (!reservation.reserved) {
+      res.status(402).json({
+        ok:         false,
+        code:       "SEAT_LIMIT_REACHED",
+        error:      `Limite de ${seatUsage.limit} siège${seatUsage.limit > 1 ? "s" : ""} atteinte pour le plan ${seatUsage.plan}.`,
+        seatUsage,
       });
       return;
     }
-    logger.error({ orgId: org.slice(0, 20), maskedEmail: maskEmail(email), err: err.message }, "[team/invite] INSERT failed");
-    res.status(500).json({ ok: false, code: "DB_ERROR", error: "Failed to create invitation" });
+  } catch (err) {
+    // Entitlement unavailable → explicit retryable error, never a Standard/1
+    // refusal. A Standard/1 fallback here caused paying Ultra orgs to be
+    // rejected at 1/1 while the dashboard showed Ultra/10.
+    if (err instanceof SeatEntitlementUnavailableError) {
+      logger.error({ orgId: org.slice(0, 20), err: err.message }, "[team/invite] seat entitlement unavailable");
+      res.status(503).json({
+        ok:        false,
+        code:      "SEAT_ENTITLEMENT_UNAVAILABLE",
+        retryable: true,
+        error:     "Impossible de déterminer la capacité de sièges. Veuillez réessayer.",
+      });
+      return;
+    }
+    logger.error({ orgId: org.slice(0, 20), err: (err as Error).message }, "[team/invite] seat usage failed");
+    res.status(500).json({ ok: false, code: "SERVER_ERROR", error: "Failed to check seat quota" });
     return;
   }
 
