@@ -1315,8 +1315,7 @@
          Only run when the user has an active session; skip for unauthenticated
          visitors who happen to have stale localStorage from a previous session. */
       var _hasActiveSession = !!(
-        (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fp_session_token')) ||
-        (typeof localStorage   !== 'undefined' && localStorage.getItem('fp-session-token'))
+         typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fp_session_token')
       );
       try {
         var _ds = _hasActiveSession ? JSON.parse(localStorage.getItem('fp_dashboard_state') || 'null') : null;
@@ -1765,8 +1764,7 @@
   var _bsHasSession = false;
   try {
     _bsHasSession = !!(
-      (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fp_session_token')) ||
-      (typeof localStorage   !== 'undefined' && localStorage.getItem('fp-session-token'))
+       typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fp_session_token')
     );
   } catch(e) {}
   var cached = null;
