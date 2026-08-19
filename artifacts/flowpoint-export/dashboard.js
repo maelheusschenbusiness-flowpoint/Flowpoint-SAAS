@@ -20480,6 +20480,28 @@ function bindGlobalEvents() {
     'Priorité locale': 'Local priority',
     'Désactivée': 'Disabled',
     'Agressive': 'Aggressive',
+    // ── batch added for audit-lot fixes ──
+    'N/D': 'N/A',
+    'Détail des contributions par membre non disponible — activité agrégée au niveau de l\'organisation.': 'Per-member contribution details are unavailable — activity is aggregated at the organization level.',
+    'Copier l\'URL de ce tableau de bord': 'Copy dashboard URL',
+    'Copier l\'URL de la page': 'Copy page URL',
+    'URL copiée !': 'URL copied!',
+    'Copier URL': 'Copy URL',
+    'Inviter des membres': 'Invite members',
+    '+ Créer un rôle': '+ Create role',
+    'Gérer le SEO local →': 'Manage local SEO →',
+    'Gérer les mots-clés →': 'Manage keywords →',
+    'Données de mots-clés non encore récupérées': 'Keyword data not yet retrieved',
+    'Les métriques apparaîtront automatiquement une fois la récupération fournisseur terminée.': 'Metrics will appear automatically once the provider retrieval is complete.',
+    'Volume de mots-clés — source fournisseur externe': 'Keyword volume — external provider source',
+    'mots-clés': 'keywords',
+    'Données de trafic non encore récupérées': 'Traffic data not yet retrieved',
+    'Les métriques de trafic organique apparaîtront une fois la récupération fournisseur terminée.': 'Organic traffic metrics will appear once the provider retrieval is complete.',
+    'Trafic organique estimé — source fournisseur externe': 'Estimated organic traffic — external provider source',
+    'visites/mois': 'visits/month',
+    'Ajoutez des concurrents pour accéder aux analyses par onglet.': 'Add competitors to access per-tab analysis.',
+    'Détail des contributions par membre non disponible — activité agrégée au niveau de l\'organisation.': 'Per-member contribution details unavailable — activity is aggregated at org level.',
+    'Analyse de l\'équipe indisponible — attribution par membre non disponible.': 'Team analysis unavailable — per-member attribution not available.',
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
@@ -56092,11 +56114,11 @@ function renderActivityFeed() {
       };
     });
     const teamActs = liveFeed.filter(a => a.cat === 'team');
-    const _topMember = members.length > 0 ? escHtml(members[0].name) : 'votre équipe';
-    const _totalActs = members.reduce((s,m) => s + (typeof m.actions === 'number' ? m.actions : 0), 0);
+    const _orgActs = Array.isArray(STATE.activityEvents) ? STATE.activityEvents.length : 0;
+    const _orgScore = STATE.overview ? (STATE.overview.seoScore||STATE.overview.avgScore||0) : 0;
     return `
       ${isPro
-        ? aiBlock('Équipe active. <strong>' + _topMember + '</strong> · ' + _totalActs + ' événement(s) ce mois. Score SEO moyen : ' + (STATE.overview ? (STATE.overview.seoScore||STATE.overview.avgScore||0) : 0) + '/100.',
+        ? aiBlock(fpT('Analyse de l\'équipe indisponible — attribution par membre non disponible.') + ' ' + _orgActs + ' ' + fpT('événement(s)') + ' · Score SEO ' + _orgScore + '/100.',
             ['Rapport équipe complet', 'Assigner des missions', 'Planifier une réunion'])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">👥</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Analytics équipe — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Scores de productivité, contributions par membre et IA collaboration.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
