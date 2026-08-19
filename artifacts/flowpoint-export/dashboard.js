@@ -11205,7 +11205,7 @@ function renderSettings() {
             ${svgIcon('users').replace('stroke="currentColor"','stroke="#2563EB"')}
             Membres de l\'équipe
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenInvite()">+ Inviter</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenInvite()">+ ${fpT('Inviter')}</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${members.map(m => `
@@ -51206,20 +51206,101 @@ function renderLocalSEOOpportunities() {
           // Show only current month and future months, relative to today
           const _now = new Date();
           const _curM = _now.getMonth(); // 0=Jan
-          const _allEvents = [
-            { monthIdx: 0,  month: 'Janv.', event: 'Bonne Année / Soldes d\'hiver',   action: 'Offres locales + posts GBP',       gain: '+190 vis' },
-            { monthIdx: 1,  month: 'Févr.', event: 'Saint-Valentin',                  action: 'Promos cadeaux + posts GBP',        gain: '+120 vis' },
-            { monthIdx: 2,  month: 'Mars',  event: 'Printemps / Pâques',              action: 'Contenu saisonnier + photos GBP',   gain: '+140 vis' },
-            { monthIdx: 3,  month: 'Avr.',  event: 'Pâques / Printemps',              action: 'Posts GBP + page événement',        gain: '+130 vis' },
-            { monthIdx: 4,  month: 'Mai',   event: 'Fête du Travail / Pont de Mai',   action: 'Offres locales + visibilité',       gain: '+110 vis' },
-            { monthIdx: 5,  month: 'Juin',  event: 'Fête de la Musique',              action: 'Post GBP + page événement',         gain: '+200 vis' },
-            { monthIdx: 6,  month: 'Juil.', event: 'Soldes été',                      action: 'Promotions locales GBP',            gain: '+150 vis' },
-            { monthIdx: 7,  month: 'Août',  event: 'Vacances d\'été',                 action: 'Photos + horaires saisonniers',     gain: '+80 vis'  },
-            { monthIdx: 8,  month: 'Sept.', event: 'Rentrée scolaire',                action: 'Contenu local ciblé familles',      gain: '+300 vis' },
-            { monthIdx: 9,  month: 'Oct.',  event: 'Halloween / Automne',             action: 'Posts thématiques GBP',             gain: '+95 vis'  },
-            { monthIdx: 10, month: 'Nov.',  event: 'Black Friday / Toussaint',        action: 'Offres locales + citations',        gain: '+180 vis' },
-            { monthIdx: 11, month: 'Déc.',  event: 'Fêtes de Noël',                   action: 'Offres cadeaux + posts GBP',        gain: '+240 vis' },
-          ];
+          // Build sector-personalised events from user keywords and business category.
+          // Falls back to universal French seasonal calendar when no data is available.
+          var _kws = [];
+          try {
+            var _kwSrc = (window.FP_DATA && window.FP_DATA.keywords) || (STATE.keywords) || [];
+            if (Array.isArray(_kwSrc) && _kwSrc.length > 0) {
+              _kws = _kwSrc.slice(0, 5).map(function(k){ return String(k.keyword || k.term || k.query || k).toLowerCase(); });
+            }
+          } catch(_) {}
+          var _cat = ((STATE.me && (STATE.me.businessCategory || STATE.me.category || STATE.me.sector)) || '').toLowerCase();
+          // Detect sector hints from keywords or explicit category
+          var _isResto  = _kws.some(function(k){return /restau|bistro|brasserie|café|traiteur|pizza|sushi|burger/i.test(k);}) || /restau|food|traiteur/i.test(_cat);
+          var _isBeauty = _kws.some(function(k){return /coiffure|beauté|salon|spa|nail|esthétique|manucure/i.test(k);}) || /beaut|coiff|spa/i.test(_cat);
+          var _isFitness= _kws.some(function(k){return /sport|fitness|salle|muscu|yoga|pilates|coach/i.test(k);}) || /sport|fit/i.test(_cat);
+          var _isRetail = _kws.some(function(k){return /boutique|magasin|shop|mode|vêtement|chaussure|bijou/i.test(k);}) || /retail|mode|vêt/i.test(_cat);
+          var _isImmo   = _kws.some(function(k){return /immobilier|agence|appart|maison|locat|vente/i.test(k);}) || /immo|locat/i.test(_cat);
+          // Build a 12-month calendar tailored to the detected sector
+          var _allEvents;
+          if (_isResto) {
+            _allEvents = [
+              { monthIdx: 0,  month: 'Janv.', event: 'Menu Bonne Année',              action: 'Post GBP menu + offre du mois',     gain: '+160 vis' },
+              { monthIdx: 1,  month: 'Févr.', event: 'Saint-Valentin',                action: 'Menu duo + réservation en ligne',    gain: '+220 vis' },
+              { monthIdx: 2,  month: 'Mars',  event: 'Printemps — nouveaux plats',    action: 'Photos plats + posts GBP',           gain: '+130 vis' },
+              { monthIdx: 3,  month: 'Avr.',  event: 'Brunch de Pâques',              action: 'Post menu spécial + galerie photos', gain: '+150 vis' },
+              { monthIdx: 4,  month: 'Mai',   event: 'Fête des Mères / terrasse',     action: 'Promo famille + horaires terrasse',  gain: '+240 vis' },
+              { monthIdx: 5,  month: 'Juin',  event: 'Fête de la Musique',            action: 'Soirée live + posts GBP',            gain: '+190 vis' },
+              { monthIdx: 6,  month: 'Juil.', event: 'Terrasse estivale',             action: 'Photos terrasse + horaires été',     gain: '+170 vis' },
+              { monthIdx: 7,  month: 'Août',  event: 'Touristes / saison haute',      action: 'Photos ambiance + menu multilingue', gain: '+200 vis' },
+              { monthIdx: 8,  month: 'Sept.', event: 'Menu Rentrée',                  action: 'Nouveau menu + carte des vins',      gain: '+145 vis' },
+              { monthIdx: 9,  month: 'Oct.',  event: 'Soirée Halloween',              action: 'Événement thématique + post GBP',   gain: '+110 vis' },
+              { monthIdx: 10, month: 'Nov.',  event: 'Beaujolais Nouveau',            action: 'Post soirée dégustation',            gain: '+130 vis' },
+              { monthIdx: 11, month: 'Déc.',  event: 'Menus de Noël / réveillon',     action: 'Menu fêtes + réservations',          gain: '+320 vis' },
+            ];
+          } else if (_isBeauty) {
+            _allEvents = [
+              { monthIdx: 0,  month: 'Janv.', event: 'Offres Nouvelle Année',         action: 'Promo soins + posts GBP',           gain: '+110 vis' },
+              { monthIdx: 1,  month: 'Févr.', event: 'Saint-Valentin — soins duo',    action: 'Forfait duo + galerie avant/après',  gain: '+180 vis' },
+              { monthIdx: 2,  month: 'Mars',  event: 'Tendances printemps',           action: 'Photos nouvelles coupes + GBP',      gain: '+130 vis' },
+              { monthIdx: 3,  month: 'Avr.',  event: 'Couleurs de saison',            action: 'Posts tendances colorations',        gain: '+120 vis' },
+              { monthIdx: 4,  month: 'Mai',   event: 'Fête des Mères',               action: 'Bon cadeau + posts GBP offres',      gain: '+260 vis' },
+              { monthIdx: 5,  month: 'Juin',  event: 'Look été',                     action: 'Posts coiffures estivales',          gain: '+140 vis' },
+              { monthIdx: 6,  month: 'Juil.', event: 'Soldes été',                   action: 'Promo soins + galerie',              gain: '+155 vis' },
+              { monthIdx: 7,  month: 'Août',  event: 'Septembre arrive — réservez',  action: 'Posts rappel prise de RDV',          gain: '+90 vis'  },
+              { monthIdx: 8,  month: 'Sept.', event: 'Rentrée look neuf',             action: 'Posts tendances automne',            gain: '+230 vis' },
+              { monthIdx: 9,  month: 'Oct.',  event: 'Couleurs automne',              action: 'Posts colorations + avant/après',    gain: '+105 vis' },
+              { monthIdx: 10, month: 'Nov.',  event: 'Black Friday',                  action: 'Promos soins + bons cadeaux',        gain: '+195 vis' },
+              { monthIdx: 11, month: 'Déc.',  event: 'Fêtes / Noël',                  action: 'Bons cadeaux + posts fêtes',         gain: '+280 vis' },
+            ];
+          } else if (_isFitness) {
+            _allEvents = [
+              { monthIdx: 0,  month: 'Janv.', event: 'Bonnes résolutions',            action: 'Offre inscription + posts GBP',     gain: '+380 vis' },
+              { monthIdx: 1,  month: 'Févr.', event: 'Challenge couple',              action: 'Offre duo + posts GBP',             gain: '+140 vis' },
+              { monthIdx: 2,  month: 'Mars',  event: 'Opération Bikini',              action: 'Posts résultats + programme été',    gain: '+200 vis' },
+              { monthIdx: 3,  month: 'Avr.',  event: 'Défi printemps',               action: 'Challenge 30 jours + posts GBP',    gain: '+165 vis' },
+              { monthIdx: 4,  month: 'Mai',   event: 'Préparation été',              action: 'Posts coaching + photos salle',      gain: '+175 vis' },
+              { monthIdx: 5,  month: 'Juin',  event: 'Saison extérieure',            action: 'Posts sport outdoor + run',          gain: '+130 vis' },
+              { monthIdx: 6,  month: 'Juil.', event: 'Maintien vacances',            action: 'Posts conseils + horaires été',      gain: '+90 vis'  },
+              { monthIdx: 7,  month: 'Août',  event: 'Reprise imminente',            action: 'Posts rappel abonnements',           gain: '+110 vis' },
+              { monthIdx: 8,  month: 'Sept.', event: 'Rentrée sportive',              action: 'Offre rentrée + posts GBP',          gain: '+340 vis' },
+              { monthIdx: 9,  month: 'Oct.',  event: 'Autumn challenge',              action: 'Défi mensuel + posts résultats',     gain: '+120 vis' },
+              { monthIdx: 10, month: 'Nov.',  event: 'Black Friday',                  action: 'Promo abonnements + posts',          gain: '+200 vis' },
+              { monthIdx: 11, month: 'Déc.',  event: 'Fêtes — bilan 2024',           action: 'Posts bilan + offre janvier',        gain: '+155 vis' },
+            ];
+          } else if (_isImmo) {
+            _allEvents = [
+              { monthIdx: 0,  month: 'Janv.', event: 'Marché post-Noël',             action: 'Posts biens disponibles + GBP',     gain: '+130 vis' },
+              { monthIdx: 1,  month: 'Févr.', event: 'Pic de visites',               action: 'Nouvelles annonces + photos',        gain: '+150 vis' },
+              { monthIdx: 2,  month: 'Mars',  event: 'Saison printemps',             action: 'Photos extérieures + posts GBP',     gain: '+200 vis' },
+              { monthIdx: 3,  month: 'Avr.',  event: 'Haute saison acheteurs',       action: 'Stories biens + posts actualité',    gain: '+220 vis' },
+              { monthIdx: 4,  month: 'Mai',   event: 'Avant l\'été',                  action: 'Urgence ventes + posts',             gain: '+190 vis' },
+              { monthIdx: 5,  month: 'Juin',  event: 'Avant-vacances',               action: 'Posts dernières opportunités',       gain: '+160 vis' },
+              { monthIdx: 6,  month: 'Juil.', event: 'Estivants / résidences',       action: 'Posts résidences saisonnières',      gain: '+110 vis' },
+              { monthIdx: 7,  month: 'Août',  event: 'Préparation rentrée',          action: 'Posts biens familiaux',              gain: '+95 vis'  },
+              { monthIdx: 8,  month: 'Sept.', event: 'Rentrée marché immo',           action: 'Posts actualité + nouvelles annonces', gain: '+250 vis' },
+              { monthIdx: 9,  month: 'Oct.',  event: 'Automne actif',                action: 'Posts DPE + biens à vendre',         gain: '+140 vis' },
+              { monthIdx: 10, month: 'Nov.',  event: 'Avant bilan fiscal',            action: 'Posts investissement + défiscalisation', gain: '+170 vis' },
+              { monthIdx: 11, month: 'Déc.',  event: 'Projets 2025',                 action: 'Posts conseil achat + contact',      gain: '+120 vis' },
+            ];
+          } else {
+            // Universal default calendar
+            _allEvents = [
+              { monthIdx: 0,  month: 'Janv.', event: 'Bonne Année / Soldes d\'hiver',   action: 'Offres locales + posts GBP',       gain: '+190 vis' },
+              { monthIdx: 1,  month: 'Févr.', event: 'Saint-Valentin',                  action: 'Promos cadeaux + posts GBP',        gain: '+120 vis' },
+              { monthIdx: 2,  month: 'Mars',  event: 'Printemps / Pâques',              action: 'Contenu saisonnier + photos GBP',   gain: '+140 vis' },
+              { monthIdx: 3,  month: 'Avr.',  event: 'Pâques / Printemps',              action: 'Posts GBP + page événement',        gain: '+130 vis' },
+              { monthIdx: 4,  month: 'Mai',   event: 'Fête du Travail / Pont de Mai',   action: 'Offres locales + visibilité',       gain: '+110 vis' },
+              { monthIdx: 5,  month: 'Juin',  event: 'Fête de la Musique',              action: 'Post GBP + page événement',         gain: '+200 vis' },
+              { monthIdx: 6,  month: 'Juil.', event: 'Soldes été',                      action: 'Promotions locales GBP',            gain: '+150 vis' },
+              { monthIdx: 7,  month: 'Août',  event: 'Vacances d\'été',                 action: 'Photos + horaires saisonniers',     gain: '+80 vis'  },
+              { monthIdx: 8,  month: 'Sept.', event: 'Rentrée — votre secteur',         action: 'Contenu local adapté à vos KW',     gain: '+300 vis' },
+              { monthIdx: 9,  month: 'Oct.',  event: 'Halloween / Automne',             action: 'Posts thématiques GBP',             gain: '+95 vis'  },
+              { monthIdx: 10, month: 'Nov.',  event: 'Black Friday / Toussaint',        action: 'Offres locales + citations',        gain: '+180 vis' },
+              { monthIdx: 11, month: 'Déc.',  event: 'Fêtes de Noël',                   action: 'Offres cadeaux + posts GBP',        gain: '+240 vis' },
+            ];
+          }
           // Show current month + 4 next (wrap around year)
           var _shown = [];
           for (var _i = 0; _i < 5; _i++) {
@@ -57155,7 +57236,7 @@ function renderDataExplorer() {
               <div style="font-size:24px;margin-bottom:6px">${w.icon}</div>
               <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft);margin-bottom:6px">${escHtml(w.name)}</div>
               <div style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;display:inline-block;background:${pc}20;color:${pc}">${w.plan}</div>
-              ${!locked ? `<div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="showToast('success', fpT('Widget ajouté au dashboard !'))">Ajouter</button></div>` : `<div style="margin-top:8px;font-size:10px;color:var(--fp-text-faint)">🔒 ${w.plan}</div>`}
+              ${!locked ? `<div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" data-wname="${escHtml(w.name)}" onclick="(function(b){var n=b.dataset.wname||'Widget';showToast('info',fpT('Configurez ce widget dans Paramètres → Workspace'));setTimeout(function(){navigate('settings');setTimeout(function(){navigateSub('workspace');},60);},600);})(this)">Ajouter</button></div>` : `<div style="margin-top:8px;font-size:10px;color:var(--fp-text-faint)">🔒 ${w.plan}</div>`}
             </div>`;
           }).join('')}
         </div>
@@ -58829,8 +58910,7 @@ function renderLocalSEOGBP() {
                Connecter Google Business
              </button>`}
         ${STATE.gbp?.connected
-          ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.openPublishModal():showToast('info', fpT('...'))">📝 Publier un post</button>
-             <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="typeof window.FP_GBP_API!=='undefined'&&window.FP_GBP_API.disconnect()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);margin-left:4px">Déconnecter</button>`
+          ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="typeof window.FP_GBP_API!=='undefined'&&window.FP_GBP_API.disconnect()" style="color:#ef4444;border-color:rgba(239,68,68,0.3)">Déconnecter</button>`
           : ''}
       </div>
     </div>
@@ -68085,27 +68165,34 @@ function renderPermissions() {
         </div>
       </div>
     </div>
-    <script>
-    window._permTab = window._permTab || 'roles';
-    window._showCreateRoleModal = function() { document.getElementById('fp-role-modal').style.display='flex'; };
-    window._submitCreateRole = async function() {
-      const name = document.getElementById('role-name').value.trim();
-      const desc = document.getElementById('role-desc').value.trim();
-      const color = document.getElementById('role-color').value;
-      if (!name) { showToast('error', fpT('Nom requis')); return; }
-      try {
-        const r = await window.FP_PERMISSIONS_API.createRole({ name, description: desc, color });
-        if (r?.ok) {
-          document.getElementById('fp-role-modal').style.display='none';
-          showToast('success', fpT('Rôle créé !'));
-          await window.FP_PERMISSIONS_API.load();
-          render(STATE.currentSection);
-        } else showToast('error', r?.error || 'Erreur');
-      } catch(e) { showToast('error', String(e)); }
-    };
-    </script>
   `;
 }
+
+// ── Permissions modal functions — must live at IIFE global scope (script tags
+// inside innerHTML are inert and never execute).
+window._showCreateRoleModal = function() {
+  const el = document.getElementById('fp-role-modal');
+  if (el) el.style.display = 'flex';
+};
+window._submitCreateRole = async function() {
+  const nameEl  = document.getElementById('role-name');
+  const descEl  = document.getElementById('role-desc');
+  const colorEl = document.getElementById('role-color');
+  const name  = nameEl  ? nameEl.value.trim()  : '';
+  const desc  = descEl  ? descEl.value.trim()  : '';
+  const color = colorEl ? colorEl.value        : '#6b7280';
+  if (!name) { showToast('error', fpT('Nom requis')); return; }
+  try {
+    const r = await window.FP_PERMISSIONS_API.createRole({ name, description: desc, color });
+    if (r && r.ok) {
+      const el = document.getElementById('fp-role-modal');
+      if (el) el.style.display = 'none';
+      showToast('success', fpT('Rôle créé !'));
+      await window.FP_PERMISSIONS_API.load();
+      render(STATE.currentSection);
+    } else showToast('error', (r && r.error) || 'Erreur');
+  } catch(e) { showToast('error', String(e)); }
+};
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
