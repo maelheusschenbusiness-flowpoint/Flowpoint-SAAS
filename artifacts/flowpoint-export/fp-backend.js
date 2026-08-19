@@ -40,35 +40,45 @@
   // back to the HttpOnly cookie if the Bearer has expired.  The server returns
   // the canonical valid token, which we (re)store so subsequent apiFetch calls
   // use a fresh, verified token and never hit a foreground 401 on hard refresh.
-  var _sessionReady = (async function () {
-    var _existingToken = _sessionToken();
-    try {
-      var _headers = { 'Content-Type': 'application/json' };
-      if (_existingToken) _headers['Authorization'] = 'Bearer ' + _existingToken;
-      var response = await fetch('/api/auth/session-restore', {
-        method: 'POST',
-        credentials: 'include',
-        headers: _headers,
-      });
-      if (response.ok) {
-        var data = await response.json().catch(function () { return null; });
-        if (data && data.token) {
-          sessionStorage.setItem('fp_session_token', data.token);
-          if (!sessionStorage.getItem('fp_tab_uid')) {
-            sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
+  // One page-wide session coordinator. dashboard.js loads after this file and
+  // must join this exact promise instead of running a competing restore request.
+  // A forced restore is used only for BFCache/background revalidation.
+  function _restoreSession(options) {
+    var force = !!(options && options.force);
+    if (!force && window.__fpSessionReady) return window.__fpSessionReady;
+    var restore = (async function () {
+      var _existingToken = _sessionToken();
+      try {
+        var _headers = { 'Content-Type': 'application/json' };
+        if (_existingToken) _headers['Authorization'] = 'Bearer ' + _existingToken;
+        var response = await fetch('/api/auth/session-restore', {
+          method: 'POST',
+          credentials: 'include',
+          headers: _headers,
+        });
+        if (response.ok) {
+          var data = await response.json().catch(function () { return null; });
+          if (data && data.token) {
+            sessionStorage.setItem('fp_session_token', data.token);
+            if (!sessionStorage.getItem('fp_tab_uid')) {
+              sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
+            }
+            return true;
           }
-          return true;
         }
-      }
-      // 401 means neither Bearer nor cookie is valid — clear the stale token so
-      // dashboard.js gets a clean start and shows the login page cleanly.
-      if (response.status === 401 && _existingToken) {
-        try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
-        try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
-      }
-    } catch (_) { /* network error — dashboard.js will handle via /api/me 401 */ }
-    return false;
-  })();
+        // Only an explicit 401 proves the stored bearer and cookie are both gone.
+        if (response.status === 401 && _existingToken) {
+          try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
+          try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
+        }
+      } catch (_) { /* /api/me performs the final auth decision after a network failure */ }
+      return false;
+    })();
+    window.__fpSessionReady = restore;
+    return restore;
+  }
+  window.__fpRestoreSession = _restoreSession;
+  var _sessionReady = _restoreSession();
 
   function _authHeaders() {
     try {
@@ -89,9 +99,16 @@
   var _fp401ConfirmTimer    = null;
 
   function _confirmSessionExpiredBackend() {
-    fetch('/api/me', {
+    // Revalidate cookie/Bearer through the shared coordinator first. A
+    // background 401 must never redirect while auth is still unknown.
+    var restore = typeof window.__fpRestoreSession === 'function'
+      ? window.__fpRestoreSession({ force: true })
+      : (window.__fpSessionReady || Promise.resolve(false));
+    Promise.resolve(restore).then(function() {
+      return fetch('/api/me', {
       credentials: 'include',
       headers: _authHeaders(),
+      });
     })
       .then(function(r) {
         var ts = new Date().toISOString();
@@ -255,7 +272,7 @@
   // Every backend integration call waits for session bootstrap. This prevents
   // an early 401 from being mistaken for an expired session during page load.
   function apiFetch(path, opts) {
-    return _sessionReady.then(function () {
+    return (window.__fpSessionReady || _sessionReady).then(function () {
       return apiFetchNow(path, opts);
     });
   }

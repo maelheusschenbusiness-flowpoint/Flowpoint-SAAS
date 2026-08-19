@@ -22,11 +22,14 @@ Hard refresh → login redirect on every refresh.
 Try Bearer first. If Bearer is stale AND cookie is different, fall back to cookie.  
 Return `{ token: cookieToken }` — the client updates sessionStorage with the fresh token.
 
-**Client (fp-backend.js `_sessionReady` + dashboard.js init):**  
-Always call session-restore on every page load (including hard refresh).  
-Forward the existing sessionStorage token as Bearer so the server can validate it in one round-trip.  
-If the server returns a different (cookie-sourced) token, update sessionStorage silently.  
-If the server returns 401 (both invalid), clear sessionStorage — `/api/me` will redirect to login.
+**Client (page-wide session coordinator):**  
+One browser-wide restore owns `session-restore`; every protected request joins that
+promise before it evaluates a 401. The dashboard must not perform a second
+unconditional restore after joining the coordinator.  
+Forward the existing sessionStorage token as Bearer so the server can validate it
+in one round-trip. If the server returns a different (cookie-sourced) token,
+update sessionStorage silently. If the server returns 401 (both invalid), clear
+sessionStorage — `/api/me` will redirect to login.
 
 **Why:**  
 `sessionStorage` survives hard refresh but is per-tab. When a re-login from another tab invalidates the old session, the stale token stays in sessionStorage indefinitely. The only way to recover without requiring a new login is to fall back to the HttpOnly cookie on session-restore.
@@ -34,4 +37,6 @@ If the server returns 401 (both invalid), clear sessionStorage — `/api/me` wil
 **How to apply:**  
 - `session-restore` must ALWAYS attempt cookie fallback when Bearer fails.
 - Never skip session-restore in bootstrap code just because sessionStorage is non-empty.
-- Both fp-backend.js `_sessionReady` and dashboard.js init must send existing Bearer + `credentials: 'include'` to session-restore on every load.
+- Keep one shared restore promise per browser page; do not add a separate
+  dashboard bootstrap. Forced restores are reserved for BFCache and confirmed
+  background-401 revalidation.

@@ -467,8 +467,13 @@ var _401BackgroundCount = 0;
 var _401ConfirmTimer    = null;
 
 function _confirmSessionExpired() {
-  // Use plain fetch (not apiFetch) to avoid recursion through this handler.
-  fetch('/api/me', _fpSessionFetchOptions())
+  // Revalidate through the single shared restore coordinator before /api/me.
+  // A background poll must not turn a still-pending auth bootstrap into logout.
+  const restore = typeof window.__fpRestoreSession === 'function'
+    ? window.__fpRestoreSession({ force: true })
+    : (window.__fpSessionReady || Promise.resolve(false));
+  Promise.resolve(restore)
+    .then(function() { return fetch('/api/me', _fpSessionFetchOptions()); })
     .then(function(r) {
       var ts = new Date().toISOString();
       if (r.status === 401) {
@@ -505,6 +510,10 @@ async function apiFetch(path, opts = {}) {
     if (inflight) return inflight;
   }
   const _promise = (async () => {
+    // fp-backend.js owns one page-wide session restore. Await it before every
+    // protected request so AUTH_UNKNOWN/BILLING_UNKNOWN never reaches the 401
+    // redirect branch merely because another bootstrap is still in flight.
+    if (window.__fpSessionReady) await window.__fpSessionReady;
     // Auth architecture (three-tier):
     //   Tier 1 — HttpOnly cookie: PRIMARY. Sent automatically by the browser via
     //            credentials:'include'. No JS access needed. Covers all normal sessions.
@@ -1436,7 +1445,7 @@ function showFatalError(msg) {
   document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#050810;color:#ef4444;font-family:Inter,sans-serif;text-align:center;padding:32px"><div><div style="font-size:48px;margin-bottom:16px">⚠</div><div style="font-size:18px;font-weight:700;margin-bottom:8px">${fpT('Connexion au serveur impossible')}</div><div style="color:#94a3b8;font-size:14px">${escHtml(msg)}</div></div></div>`;
 }
 
-async function loadData() {
+async function loadData(options = {}) {
   // ── Loading state: show skeleton immediately before any API call ──
   STATE.loading = true;
   render();
@@ -1475,45 +1484,12 @@ async function loadData() {
       }
     }
   } catch(_) {}
-  // ── Phase 0.5: Session restore — per-tab token bootstrap ────────────────────
-  // Session bootstrap — runs on EVERY page load, including hard refreshes.
-  //
-  // Why always (not just when sessionStorage is empty):
-  //   The token already in sessionStorage may be stale — e.g. after re-login
-  //   from another tab which called invalidateAllSessions(), or after the 24h
-  //   TTL.  A stale Bearer makes /api/me return 401 → redirect to login on
-  //   every hard refresh.
-  //
-  //   By always calling session-restore and forwarding the existing Bearer, the
-  //   server validates it first (fast cache/DB hit).  If it is stale the server
-  //   falls back to the HttpOnly cookie and returns a fresh token which we store
-  //   in sessionStorage — recovering silently without a login redirect.
-  //   If both Bearer and cookie are gone, the server returns 401 and the
-  //   /api/me call below will handle the redirect to login as expected.
-  try {
-    const _existingToken = (() => { try { return sessionStorage.getItem('fp_session_token') || ''; } catch(_) { return ''; } })();
-    const _srHeaders = { 'Content-Type': 'application/json' };
-    if (_existingToken) _srHeaders['Authorization'] = `Bearer ${_existingToken}`;
-    const _sr = await fetch('/api/auth/session-restore', {
-      method: 'POST',
-      credentials: 'include',
-      headers: _srHeaders,
-    });
-    if (_sr.ok) {
-      const _srData = await _sr.json().catch(() => null);
-      if (_srData && _srData.token) {
-        sessionStorage.setItem('fp_session_token', _srData.token);
-        if (!sessionStorage.getItem('fp_tab_uid')) {
-          sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
-        }
-      }
-    } else if (_sr.status === 401 && _existingToken) {
-      // Neither Bearer nor cookie is valid — clear the stale token so apiFetch
-      // stops sending it; the /api/me 401 handler will redirect to login.
-      try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
-      try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
-    }
-  } catch(_srErr) { /* network error — /api/me 401 will handle redirect if needed */ }
+  // ── Phase 0.5: Shared per-tab session bootstrap ──────────────────────────────
+  // fp-backend.js is loaded before this file and owns the one browser-wide
+  // restore promise. Joining it avoids the former duplicate POST race.
+  if (typeof window.__fpRestoreSession === 'function') {
+    await window.__fpRestoreSession({ force: !!options.forceSessionRestore });
+  }
 
   // ── Phase 1: Critical identity — /api/me is mandatory; everything else is resilient ──
   let me = null, overview = null, audits = null, monitors = null, reports = null, team = null;
@@ -46466,7 +46442,7 @@ async function init() {
         showToast('success', 'Plan mis à jour : ' + newPlan + ' ✓');
         try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
         _apiFetchCache && _apiFetchCache.clear();
-        loadData().catch(function() {});
+        loadData({ forceSessionRestore: true }).catch(function() {});
       }
     }).catch(function() {});
   });
