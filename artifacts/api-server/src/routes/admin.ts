@@ -908,6 +908,124 @@ function checkPurgeRate(isDryRun: boolean): { allowed: boolean; retryAfterSec: n
 // System emails ALWAYS exempt — caller cannot override this list.
 const PURGE_SYSTEM_EMAILS = ["support@flowpoint.pro"];
 
+type StripeCustomerPurgePlan = {
+  configured: boolean;
+  customerIds: string[];
+  customersFound: number;
+  customersExempted: number;
+  liveSubscriptionsFound: number;
+  note?: string;
+};
+
+type StripeCustomerPurgeResult = StripeCustomerPurgePlan & {
+  subscriptionsCanceled: number;
+  customersDeleted: number;
+};
+
+function stripeErrorCode(err: unknown): string | undefined {
+  return (err as { code?: string })?.code ?? (err as { raw?: { code?: string } })?.raw?.code;
+}
+
+/**
+ * Stripe is an independent account layer: DB deletion alone never removes
+ * customers or future billing. This plan is intentionally read-only and is
+ * returned by the mandatory dry-run before a global purge can execute.
+ */
+export async function planStripeCustomerPurge(
+  exemptEmails: string[],
+  injectedStripe?: any,
+): Promise<StripeCustomerPurgePlan> {
+  const { getStripeKey, createStripeClient } = await import("../services/stripe-factory.js");
+  const key = getStripeKey();
+  if (!injectedStripe && !key) {
+    return {
+      configured: false, customerIds: [], customersFound: 0, customersExempted: 0,
+      liveSubscriptionsFound: 0, note: "Stripe is not configured in this environment.",
+    };
+  }
+  const stripe = injectedStripe ?? await createStripeClient(key);
+  const exempt = new Set(exemptEmails.map((email) => email.trim().toLowerCase()));
+  const customerIds: string[] = [];
+  let customersFound = 0;
+  let customersExempted = 0;
+  let cursor: string | undefined;
+
+  do {
+    const page = await stripe.customers.list({ limit: 100, ...(cursor ? { starting_after: cursor } : {}) });
+    for (const customer of page.data as Array<{ id: string; email?: string | null }>) {
+      customersFound++;
+      if (customer.email && exempt.has(customer.email.trim().toLowerCase())) {
+        customersExempted++;
+      } else {
+        customerIds.push(customer.id);
+      }
+    }
+    cursor = page.has_more ? page.data.at(-1)?.id : undefined;
+  } while (cursor);
+
+  let liveSubscriptionsFound = 0;
+  for (const customerId of customerIds) {
+    let subscriptionCursor: string | undefined;
+    do {
+      const page = await stripe.subscriptions.list({
+        customer: customerId, status: "all", limit: 100,
+        ...(subscriptionCursor ? { starting_after: subscriptionCursor } : {}),
+      });
+      liveSubscriptionsFound += page.data.filter((sub: { status: string }) => sub.status !== "canceled").length;
+      subscriptionCursor = page.has_more ? page.data.at(-1)?.id : undefined;
+    } while (subscriptionCursor);
+  }
+
+  return {
+    configured: true, customerIds, customersFound, customersExempted, liveSubscriptionsFound,
+  };
+}
+
+/**
+ * Runs before the database transaction. If any Stripe request other than an
+ * idempotent resource_missing error fails, the caller must not remove DB data.
+ */
+export async function executeStripeCustomerPurge(
+  plan: StripeCustomerPurgePlan,
+  injectedStripe?: any,
+): Promise<StripeCustomerPurgeResult> {
+  if (!plan.configured) {
+    throw new Error(plan.note ?? "Stripe is not configured.");
+  }
+  const { getStripeKey, createStripeClient } = await import("../services/stripe-factory.js");
+  const stripe = injectedStripe ?? await createStripeClient(getStripeKey());
+  let subscriptionsCanceled = 0;
+  let customersDeleted = 0;
+
+  for (const customerId of plan.customerIds) {
+    let cursor: string | undefined;
+    do {
+      const page = await stripe.subscriptions.list({
+        customer: customerId, status: "all", limit: 100,
+        ...(cursor ? { starting_after: cursor } : {}),
+      });
+      for (const subscription of page.data as Array<{ id: string; status: string }>) {
+        if (subscription.status !== "canceled") {
+          await stripe.subscriptions.cancel(subscription.id);
+          subscriptionsCanceled++;
+        }
+      }
+      cursor = page.has_more ? page.data.at(-1)?.id : undefined;
+    } while (cursor);
+
+    try {
+      await stripe.customers.del(customerId);
+      customersDeleted++;
+    } catch (err) {
+      if (stripeErrorCode(err) !== "resource_missing") throw err;
+      // Idempotent retry: an already-removed customer is clean.
+      customersDeleted++;
+    }
+  }
+
+  return { ...plan, subscriptionsCanceled, customersDeleted };
+}
+
 // In-process concurrent purge guard.
 // ⚠️  IN-PROCESS ONLY — in a multi-instance deployment a second pod can still
 //    start a concurrent purge. Use a DB advisory lock for stronger isolation.
@@ -984,6 +1102,7 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
       [normalizedExempt]
     );
     const orgIdsToDelete = orgsToDelete.rows.map(r => r.id);
+    const stripePlan = await planStripeCustomerPurge(normalizedExempt);
 
     // ── DRY-RUN: full impact report, zero deletions ───────────────────────────
     if (isDryRun) {
@@ -1107,6 +1226,13 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
             invitations:       inviteCount,
           },
           org_settings_legacy: legacyOsCount,
+          stripe: {
+            configured: stripePlan.configured,
+            customers: stripePlan.customerIds.length,
+            customers_exempted: stripePlan.customersExempted,
+            live_subscriptions: stripePlan.liveSubscriptionsFound,
+            note: stripePlan.note ?? null,
+          },
           // business_data shows only non-zero tables for readability
           business_data: Object.fromEntries(
             Object.entries(businessCounts).filter(([, v]) => v > 0)
@@ -1127,8 +1253,15 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
     // ── REAL PURGE ────────────────────────────────────────────────────────────
     _purgeInFlight = true;
     try {
-      if (emailsToDelete.length === 0 && orgIdsToDelete.length === 0) {
-        res.json({ ok: true, deleted: {}, callId, message: "Nothing to delete — all accounts are exempt." });
+      if (emailsToDelete.length === 0 && orgIdsToDelete.length === 0 && stripePlan.customerIds.length === 0) {
+        res.json({ ok: true, deleted: {}, callId, message: "Nothing to delete — all accounts and Stripe customers are exempt." });
+        return;
+      }
+      if (!stripePlan.configured) {
+        res.status(503).json({
+          ok: false,
+          error: "Stripe is not configured; refusing to purge database accounts while billing records may remain.",
+        });
         return;
       }
 
@@ -1137,9 +1270,15 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
         callId,
         email_count: emailsToDelete.length,
         org_count:   orgIdsToDelete.length,
-        no_stripe_modifications: true,
+        stripe_customers_to_delete: stripePlan.customerIds.length,
+        stripe_live_subscriptions_to_cancel: stripePlan.liveSubscriptionsFound,
         ts: new Date().toISOString(),
       }));
+
+      // Stripe is an independent system and must be cleaned before the DB
+      // transaction. A Stripe failure aborts here, leaving all FlowPoint rows
+      // intact and allowing an idempotent retry.
+      const stripeDeleted = await executeStripeCustomerPurge(stripePlan);
 
       await client.query("BEGIN");
 
@@ -1250,9 +1389,14 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
         dry_run: false,
         callId,
         deleted,
+        stripe: {
+          customers_deleted: stripeDeleted.customersDeleted,
+          subscriptions_canceled: stripeDeleted.subscriptionsCanceled,
+          customers_exempted: stripeDeleted.customersExempted,
+        },
         emails_purged: emailsToDelete,
         org_ids_purged: orgIdsToDelete,
-        message: "All client accounts permanently deleted. No Stripe objects were modified.",
+        message: "All non-exempt client accounts and their Stripe customers were permanently deleted. Historical Stripe invoices and payments are retained.",
       });
     } finally {
       _purgeInFlight = false;
