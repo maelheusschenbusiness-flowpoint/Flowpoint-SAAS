@@ -47250,6 +47250,7 @@ async function init() {
                 // Update badge and play sound
                 try { window._fpRefreshMsgBadge?.(); } catch(_) {}
                 try { window._fpPlayChatSound?.(); } catch(_) {}
+<<<<<<< HEAD
                 // Re-render msg dropdown if currently visible (DOM check, not STATE flag)
                 try {
                   const _dp = document.getElementById('fp-msg-dropdown');
@@ -47263,6 +47264,14 @@ async function init() {
                 // If the user is on the team/chat section, re-render it too
                 if (STATE.route === 'team' && STATE.subRoute === 'chat') {
                   try { render(); setTimeout(() => { const c = document.getElementById('team-chat-msgs'); if (c) c.scrollTop = c.scrollHeight; }, 30); } catch(_) {}
+=======
+                // Re-render chat panel if open on current channel
+                if (STATE.msgPanelOpen && (_ch) === (STATE.msgChannel || 'general')) {
+                  try {
+                    const _dp = document.getElementById('fp-msg-dropdown');
+                    if (_dp) _dp.innerHTML = renderMsgDropdown();
+                  } catch(_) { render(); }
+>>>>>>> 57465d6 (Update tool execution logic and dashboard integration components)
                 }
               }
             }
@@ -62448,7 +62457,11 @@ window._fpFunnelSave = async function() {
           <strong>Paramètres → Tracking</strong>
           ${fpT('puis réessayez de créer ce funnel.')}
         </div>
+<<<<<<< HEAD
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('tracking'),60)">${fpT('Configurer le tracking →')}</button>
+=======
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('tracking'),60)">Configurer le tracking →</button>
+>>>>>>> 57465d6 (Update tool execution logic and dashboard integration components)
       </div>`;
     } else {
       showToast?.('error', _errMsg);
