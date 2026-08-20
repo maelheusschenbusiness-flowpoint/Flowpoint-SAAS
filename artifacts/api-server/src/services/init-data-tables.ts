@@ -2754,6 +2754,27 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE POLICY "tc_update" ON "team_channels" FOR UPDATE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "tc_delete" ON "team_channels" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
 
+    // ── local_seo_ranking_history — persists each ranking search result ────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS local_seo_ranking_history (
+        id           TEXT        PRIMARY KEY,
+        org_id       TEXT        NOT NULL DEFAULT 'default',
+        keyword      TEXT        NOT NULL,
+        location     TEXT        NOT NULL,
+        results      JSONB       NOT NULL DEFAULT '[]',
+        searched_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS lsrh_org_idx ON local_seo_ranking_history(org_id, searched_at DESC)`);
+    await run(client, `ALTER TABLE local_seo_ranking_history ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE local_seo_ranking_history NO FORCE ROW LEVEL SECURITY`);
+    await run(client, `DROP POLICY IF EXISTS "lsrh_select" ON "local_seo_ranking_history"`);
+    await run(client, `DROP POLICY IF EXISTS "lsrh_insert" ON "local_seo_ranking_history"`);
+    await run(client, `DROP POLICY IF EXISTS "lsrh_delete" ON "local_seo_ranking_history"`);
+    await run(client, `CREATE POLICY "lsrh_select" ON "local_seo_ranking_history" FOR SELECT USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "lsrh_insert" ON "local_seo_ranking_history" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "lsrh_delete" ON "local_seo_ranking_history" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+
     logger.info("[init-data-tables] all tables, schema_migrations, missing-production-tables, P0-5 ALTERs, P1-2 type fixes done");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");

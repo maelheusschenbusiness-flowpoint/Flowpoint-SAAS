@@ -1734,6 +1734,19 @@ async function loadData(options = {}) {
     STATE.pendingInvitations = (team && Array.isArray(team.pendingInvitations)) ? team.pendingInvitations : [];
     STATE.seatUsage          = (team && team.seatUsage) ? team.seatUsage : null;
     if (!STATE.historySiteUrl && STATE.audits.length > 0) STATE.historySiteUrl = STATE.audits[0].url;
+    // Topbar monitor status: update immediately after monitors load so it never shows
+    // "Aucun monitor" when monitors actually exist (Phase 3 is non-blocking).
+    try {
+      const _topTxt = document.getElementById('topbar-status-text');
+      const _topDot = document.getElementById('topbar-status-dot');
+      const _topBar = document.getElementById('topbar-status');
+      if (_topTxt && STATE.monitors.length > 0) {
+        const _dn = STATE.monitors.filter(m => (m.status||'').toLowerCase() === 'down').length;
+        if (_topTxt) _topTxt.textContent = _dn > 0 ? `${_dn} DOWN` : 'Tous UP';
+        if (_topDot) _topDot.className = 'fp-status-dot' + (_dn > 0 ? ' down' : '');
+        if (_topBar) _topBar.className  = 'fp-topbar-status' + (_dn > 0 ? ' down' : '');
+      }
+    } catch(_) {}
     // render() intentionally removed: Phase 3 updates STATE only.
     // The single final render() below (after Phase 4 + await _phase3Promise) will
     // incorporate this data, eliminating the intermediate DOM replacement that caused flicker.
@@ -13445,9 +13458,9 @@ function renderAI() {
       <div style="border-top:1px solid rgba(255,255,255,0.06);padding:10px 12px">
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
-          <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
+          <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
           <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:hidden;line-height:1.5;height:38px;max-height:120px;padding-right:8px;flex:1 1 auto;min-width:0"></textarea>
-          <button class="fp-ai-send" id="ai-send" style="flex:0 0 auto;width:36px;height:36px;align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
+          <button class="fp-ai-send" id="ai-send" style="flex:0 0 auto;width:34px;height:34px;align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
           <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
         <!-- Progress hint: shows server-side step name (e.g. "Identification des informations…")
@@ -47730,29 +47743,37 @@ async function init() {
       const r = await window.FP_REVIEW_INTEL_API.analyzeReview({ authorName: author, rating, reviewText: text, language: lang });
       if (r?.ok) {
         const a = r.analysis || {};
-        // Persist analyzed review into local store so it shows immediately in "Avis analysés"
+        // Server has saved the review to DB. Reload from API so FP_DATA.reviewIntel.reviews
+        // is sourced from DB (not a local_* ephemeral entry that disappears on F5).
         try {
-          if (!window.FP_DATA) window.FP_DATA = {};
-          if (!window.FP_DATA.reviewIntel) window.FP_DATA.reviewIntel = { reviews: [], stats: {}, alerts: [] };
-          if (!Array.isArray(window.FP_DATA.reviewIntel.reviews)) window.FP_DATA.reviewIntel.reviews = [];
-          const _newRev = {
-            id: 'local_' + Date.now(),
-            author_name: author || 'Auteur inconnu', rating, review_text: text,
-            sentiment: a.sentiment || 'neutre', score: a.score || null,
-            ai_reply: a.suggestedReply || null, analyzed_at: new Date().toISOString(),
-          };
-          window.FP_DATA.reviewIntel.reviews.unshift(_newRev);
-          const _rvs = window.FP_DATA.reviewIntel.reviews;
-          const _st  = window.FP_DATA.reviewIntel.stats || {};
-          _st.totalReviews = _rvs.length;
-          _st.avgRating = Math.round((_rvs.reduce((s, rv) => s + (rv.rating || 0), 0) / _rvs.length) * 10) / 10;
-          _st.sentimentDist = {
-            positive: _rvs.filter(rv => /posit/i.test(rv.sentiment || '')).length,
-            negative: _rvs.filter(rv => /n[eé]gat/i.test(rv.sentiment || '')).length,
-            neutral:  _rvs.filter(rv => !/posit|n[eé]gat/i.test(rv.sentiment || '')).length,
-          };
-          _st.reputationScore = Math.min(100, Math.round((_st.avgRating / 5) * 70 + (_st.sentimentDist.positive / Math.max(1, _rvs.length)) * 30));
-          window.FP_DATA.reviewIntel.stats = _st;
+          const _freshData = await window.FP_REVIEW_INTEL_API.load().catch(() => null);
+          if (_freshData) {
+            window.FP_DATA = window.FP_DATA || {};
+            window.FP_DATA.reviewIntel = _freshData;
+          } else {
+            // Fallback: insert optimistically so UI updates immediately if API reload fails
+            if (!window.FP_DATA) window.FP_DATA = {};
+            if (!window.FP_DATA.reviewIntel) window.FP_DATA.reviewIntel = { reviews: [], stats: {}, alerts: [] };
+            if (!Array.isArray(window.FP_DATA.reviewIntel.reviews)) window.FP_DATA.reviewIntel.reviews = [];
+            const _newRev = {
+              id: r.reviewId || ('rev_' + Date.now()),
+              author_name: author || 'Auteur inconnu', rating, review_text: text,
+              sentiment: a.sentiment || 'neutre', score: a.score || null,
+              ai_reply: a.suggestedReply || null, created_at: new Date().toISOString(),
+            };
+            window.FP_DATA.reviewIntel.reviews.unshift(_newRev);
+            const _rvs = window.FP_DATA.reviewIntel.reviews;
+            const _st  = window.FP_DATA.reviewIntel.stats || {};
+            _st.totalReviews = _rvs.length;
+            _st.avgRating = Math.round((_rvs.reduce((s, rv) => s + (rv.rating || 0), 0) / _rvs.length) * 10) / 10;
+            _st.sentimentDist = {
+              positive: _rvs.filter(rv => /posit/i.test(rv.sentiment || '')).length,
+              negative: _rvs.filter(rv => /n[eé]gat/i.test(rv.sentiment || '')).length,
+              neutral:  _rvs.filter(rv => !/posit|n[eé]gat/i.test(rv.sentiment || '')).length,
+            };
+            _st.reputationScore = Math.min(100, Math.round((_st.avgRating / 5) * 70 + (_st.sentimentDist.positive / Math.max(1, _rvs.length)) * 30));
+            window.FP_DATA.reviewIntel.stats = _st;
+          }
         } catch(_e) { /* non-blocking */ }
         const sentColor = a.sentiment === 'positif' ? '#22c55e' : a.sentiment === 'négatif' ? '#ef4444' : '#f59e0b';
         const renderList = (items) => (items||[]).map(it=>`<li style="font-size:12px;color:var(--fp-text-muted);margin-bottom:2px">${escHtml(it)}</li>`).join('');
@@ -48081,6 +48102,14 @@ async function init() {
           STATE.dfsStatus.quota.used = (STATE.dfsStatus.quota.used || 0) + 1;
           STATE.localSeo.rankingKeyword = kw;
           STATE.localSeo.rankingCity = city;
+          // Reload real quota from server (server incremented the DB counter)
+          apiFetch('/api/seo/status').then(s => {
+            if (s && s.quota) { if (!STATE.dfsStatus) STATE.dfsStatus = {}; STATE.dfsStatus.quota = s.quota; }
+          }).catch(() => {});
+          // Load full ranking history from DB for the scrollable history section
+          apiFetch('/api/local-seo/rankings/history').then(h => {
+            if (h?.history) { if (!STATE.localSeo) STATE.localSeo = {}; STATE.localSeo.rankingHistory = h.history; }
+          }).catch(() => {});
         }
         showToast('success', fpT('Rankings chargés !'));
         render(STATE.currentSection);
@@ -51563,7 +51592,11 @@ function renderTeamChat() {
       <div id="team-chat-msgs" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:14px">
         ${msgs.map(m => {
           const _mFrom = m.from || '?';
-          const isMe = _mFrom === myName || _mFrom.split(' ')[0] === myName.split(' ')[0];
+          // Prefer explicit senderId comparison (server-computed) to avoid name collisions.
+          const _myId = STATE.me?.id || STATE.me?.userId || STATE.me?.email;
+          const isMe = m.self === true
+            || (_myId && m.senderId && String(m.senderId) === String(_myId))
+            || (!m.senderId && (_mFrom === myName || _mFrom.split(' ')[0] === myName.split(' ')[0]));
           const avatarBg = isMe ? 'rgba(37,99,235,0.25)' : 'rgba(139,92,246,0.2)';
           const avatarCol = isMe ? '#2563EB' : '#8b5cf6';
           return `
@@ -51588,9 +51621,9 @@ function renderTeamChat() {
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <input type="file" id="team-chat-attach-main" style="display:none" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip" onchange="handleChatAttach(this)"/>
-          <label for="team-chat-attach-main" title="Joindre un fichier" style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:8px;width:32px;height:32px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="14"').replace('height="14"','height="14"')}</label>
-          <input id="team-chat-input" class="fp-input" placeholder="Écrire un message… (@mention)" style="flex:1;height:32px;font-size:12px"/>
-          <button id="team-chat-send" class="fp-btn fp-btn-primary fp-btn-sm" style="height:32px;padding:0 14px;flex-shrink:0;display:flex;align-items:center;gap:5px">${svgIcon('send').replace('width="14"','width="12"').replace('height="14"','height="12"')} Envoyer</button>
+          <label for="team-chat-attach-main" title="Joindre un fichier" style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:8px;width:34px;height:34px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="14"').replace('height="14"','height="14"')}</label>
+          <input id="team-chat-input" class="fp-input" placeholder="Écrire un message… (@mention)" style="flex:1;height:34px;font-size:12px"/>
+          <button id="team-chat-send" class="fp-btn fp-btn-primary fp-btn-sm" style="height:34px;padding:0 14px;flex-shrink:0;display:flex;align-items:center;gap:5px">${svgIcon('send').replace('width="14"','width="12"').replace('height="14"','height="12"')} Envoyer</button>
         </div>
         <div id="fp-team-chat-attach-chips-main" style="display:${(STATE.teamChatPendingFiles&&STATE.teamChatPendingFiles.length>0)?'flex':'none'};flex-wrap:wrap;gap:5px;padding-top:6px">
         </div>
@@ -55345,10 +55378,21 @@ function renderAlertsCenter() {
       };
     });
 
-  // The alert center only renders persisted alert events. Deriving synthetic
-  // alerts from monitors/audits made the sidebar count and the alert list tell
-  // different stories, and preview fallbacks could show alerts that never existed.
-  const allAlerts = ruleAlerts;
+  // Cross-reference persisted alert events with live monitor STATE.
+  // If a monitor is actually DOWN but has no alertEvent, surface it as a critical alert
+  // so the alert center stays consistent with the topbar and monitor page.
+  const _downMonAlertIds = new Set(ruleAlerts.filter(a => a.icon === 'wifi-off').map(a => a._id));
+  const syntheticDownAlerts = (STATE.monitors || [])
+    .filter(m => (m.status || '').toLowerCase() === 'down')
+    .filter(m => !ruleAlerts.some(a => a.icon === 'wifi-off' && a.title.includes(m.url || m.name || m.id || '')))
+    .map(m => ({
+      id: 'syn_' + m.id, sev: 'critical', cat: 'Monitor', icon: 'wifi-off',
+      title: 'Monitor DOWN — ' + escHtml(m.name || m.url || m.id),
+      desc: 'Le site ne répond plus. Vérifiez la disponibilité et l\u2019infrastructure.',
+      time: m.lastCheckedAt ? new Date(m.lastCheckedAt).toLocaleTimeString(getLocale(), { hour:'2-digit', minute:'2-digit' }) : 'En cours',
+      color: '#ef4444', impact: 'Disponibilité critique', _id: 'syn_' + m.id, ruleSource: null,
+    }));
+  const allAlerts = [...syntheticDownAlerts, ...ruleAlerts];
   const criticals = allAlerts.filter(a => a.sev === 'critical');
   const warnings  = allAlerts.filter(a => a.sev === 'warning');
 
@@ -58007,14 +58051,14 @@ function renderClientMode() {
         name:c.name||c.companyName||'Client',
         avatar:(c.name||'C').slice(0,2).toUpperCase(),
         color:c.color||'#2563EB',
-        seoScore:c.seoScore||c.score||null,
-        uptime:c.uptime||null,
-        engagement:c.engagement||null,
-        satisfaction:c.satisfaction||null,
+        seoScore:typeof c.seoScore==='number'?c.seoScore:typeof c.score==='number'?c.score:null,
+        uptime:typeof c.uptime==='number'?c.uptime:null,
+        engagement:typeof c.engagement==='number'?c.engagement:null,
+        satisfaction:typeof c.satisfaction==='number'?c.satisfaction:null,
         lastActivity:c.lastActivity||c.lastSeen||'—',
-        health:c.health||(c.seoScore>=80?'excellent':c.seoScore>=65?'bon':c.seoScore>=50?'attention':'critique'),
-        trend:c.trend||null,
-        risk:c.risk||(c.seoScore>=70?'Faible':c.seoScore>=50?'Moyen':'Élevé'),
+        health:c.health||(typeof (c.seoScore||c.score)==='number'?(c.seoScore||c.score)>=80?'excellent':(c.seoScore||c.score)>=65?'bon':(c.seoScore||c.score)>=50?'attention':'critique':'bon'),
+        trend:c.trend||'—',
+        risk:c.risk||(typeof (c.seoScore||c.score)==='number'?(c.seoScore||c.score)>=70?'Faible':(c.seoScore||c.score)>=50?'Moyen':'Élevé':'—'),
         tags:c.tags||[]
       }))
     : _DEMO_CLIENTS;
@@ -62744,8 +62788,17 @@ function renderGA4Funnels() {
       ${_ga4NotConnectedBanner()}`;
   }
 
-  // Schedule data load after DOM injection
-  setTimeout(() => window._fpFunnelLoad?.(), 60);
+  // If a funnel form was in progress when the user navigated away, restore it after DOM injection.
+  const _funnelRestoreEditing = !!window._fpFunnelState?.editing;
+
+  setTimeout(() => {
+    if (_funnelRestoreEditing && window._fpFunnelState?.editing) {
+      // Show the saved form immediately without re-loading
+      window._fpFunnelShowForm(window._fpFunnelState.editing);
+    } else {
+      window._fpFunnelLoad?.();
+    }
+  }, 60);
 
   return `
     <div class="fp-section-header">
@@ -62760,7 +62813,7 @@ function renderGA4Funnels() {
       <div id="fp-funnels-list-section">
         <div style="text-align:center;padding:32px;color:var(--fp-text-muted);font-size:13px">⏳ Chargement…</div>
       </div>
-      <div id="fp-funnel-form-section" style="display:none"></div>
+      <div id="fp-funnel-form-section" style="${_funnelRestoreEditing ? '' : 'display:none'}"></div>
       <div id="fp-funnel-result-section" style="display:none"></div>
     </div>`;
 }
@@ -69518,6 +69571,14 @@ window.FP_COMPETITORS_API = {
       window.FP_DATA.competitors = normalized;
       return normalized;
     } catch(e) { console.warn('[FP_COMPETITORS_API] load error:', e); return null; }
+  },
+  async refresh(id) {
+    try {
+      // Calls the real server-side refresh endpoint that re-fetches DataForSEO data.
+      const r = await apiFetch('/api/competitors/' + id + '/refresh', { method: 'POST' }).catch(() => null);
+      if (!r) return null;
+      return { ...r, score: r.score ?? r.domainRating ?? 0, dataStatus: r.dataStatus || 'available' };
+    } catch(e) { console.warn('[FP_COMPETITORS_API] refresh error:', e); return null; }
   },
   async create(payload) {
     try {

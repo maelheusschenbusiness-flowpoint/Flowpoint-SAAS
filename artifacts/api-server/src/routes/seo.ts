@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { canWrite } from "../middlewares/requireRole.js";
+import { pool } from "@workspace/db";
 import {
   isDataForSEOConfigured,
   checkAndIncrementQuota,
@@ -282,13 +283,41 @@ router.post("/local-seo/rankings", canWrite, async (req, res) => {
       if (allowed) {
         const { getLocalPackRank } = await import("../services/dataforseo-service.js");
         const rankings = await getLocalPackRank(keyword, location, orgId);
+        // Persist this ranking search to DB so the history survives F5/reconnection.
+        const histId = `rh_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        pool.query(
+          `INSERT INTO local_seo_ranking_history (id, org_id, keyword, location, results, searched_at)
+           VALUES ($1,$2,$3,$4,$5,NOW())`,
+          [histId, orgId, keyword, location, JSON.stringify(rankings)]
+        ).catch(() => {}); // fire-and-forget; table may not exist on first boot
         res.json({ ok: true, keyword, location, rankings, configured: true });
         return;
       }
     }
-    res.json({ ok: false, rankings: [], configured: false, reason: "not_configured", message: "DataForSEO n’est pas configuré pour cette organisation." });
+    res.json({ ok: false, rankings: [], configured: false, reason: "not_configured",
+      message: "Le service de classement local n'est pas encore configuré pour votre organisation." });
   } catch (e) {
-    res.status(502).json({ ok: false, rankings: [], configured: true, reason: "provider_error", error: "DataForSEO ne répond pas pour le moment." });
+    res.status(502).json({ ok: false, rankings: [], configured: true, reason: "provider_error",
+      error: "Le service de classement local est temporairement indisponible. Réessayez dans quelques instants." });
+  }
+});
+
+// ── GET /local-seo/rankings/history ──────────────────────────────────────────
+// Returns persisted ranking searches for this org (newest first, limit 50).
+router.get("/local-seo/rankings/history", async (req, res) => {
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
+  try {
+    const r = await pool.query(
+      `SELECT id, keyword, location, results, searched_at
+       FROM local_seo_ranking_history
+       WHERE org_id=$1
+       ORDER BY searched_at DESC
+       LIMIT 50`,
+      [orgId]
+    );
+    res.json({ ok: true, history: r.rows });
+  } catch {
+    res.json({ ok: true, history: [] });
   }
 });
 

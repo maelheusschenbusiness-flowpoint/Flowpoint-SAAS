@@ -1,6 +1,7 @@
 import { Router, type Request } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { canWrite } from "../middlewares/requireRole.js";
+import { pool } from "@workspace/db";
 import {
   analyzeReview, generateReply, getReputationDashboard, syncReviewsFromGBP,
 } from "../services/review-intel-service.js";
@@ -47,12 +48,22 @@ router.post("/review-intelligence/analyze", canWrite, async (req, res) => {
     res.status(400).json({ error: "reviewText et rating requis" }); return;
   }
   try {
+    const reviewId = id || `rev_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const result = await analyzeReview(org(req), {
-      id: id || `rev_${Date.now()}`,
+      id: reviewId,
       author_name: authorName || "Anonyme",
       rating, review_text: reviewText, language, location_id: locationId,
     });
-    res.json({ ok: true, analysis: result });
+    // Persist the analyzed review to DB so it survives F5/reconnection.
+    // The `reviews` table already exists (used by syncReviewsFromGBP).
+    pool.query(
+      `INSERT INTO reviews (id, org_id, author, rating, text, sentiment, platform, replied, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'manual',false,NOW())
+       ON CONFLICT (id) DO UPDATE SET sentiment=$6, text=$5`,
+      [reviewId, org(req), authorName || "Anonyme", rating, reviewText,
+       result.sentiment || "neutre"]
+    ).catch(() => {}); // fire-and-forget; non-fatal if reviews table has schema drift
+    res.json({ ok: true, analysis: result, reviewId });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 

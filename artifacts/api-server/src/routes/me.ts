@@ -462,12 +462,26 @@ async function recordActivityDay(db: DbFn, orgId: string): Promise<void> {
  * so the streak never decreases during the same calendar day.
  */
 async function computeStreakFromTable(db: DbFn, orgId: string, tz: string): Promise<{ current: number; best: number; rowCount: number }> {
-  const actRes = await db(
+  // Primary path via orgDb; if it returns empty (RLS/withOrgDb poison on Supabase), fall back to pool.
+  let actRes = await db(
     `SELECT day::text AS d FROM user_activity_days
      WHERE org_id=$1 AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
      ORDER BY d DESC`,
     [orgId, tz]
-  );
+  ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+  if (actRes.rows.length === 0) {
+    // Pool.query bypasses RLS entirely — use it as fallback so Supabase pooled-connection
+    // SET LOCAL ROLE failures never silently return [] and reset the streak to 0.
+    try {
+      const poolRes = await pool.query(
+        `SELECT day::text AS d FROM user_activity_days
+         WHERE org_id=$1 AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
+         ORDER BY d DESC`,
+        [orgId, tz]
+      );
+      actRes = poolRes as { rows: Record<string, unknown>[] };
+    } catch { /* non-fatal — table may not exist yet */ }
+  }
   // rowCount=0 means the table is accessible but empty for this org —
   // callers must NOT overwrite a previously-stored positive streak with 0 in this case.
   if (actRes.rows.length === 0) return { current: 0, best: 0, rowCount: 0 };
