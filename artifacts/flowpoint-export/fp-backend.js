@@ -3110,6 +3110,30 @@
       if (data.type === 'billing:plan_updated') {
         try { document.dispatchEvent(new CustomEvent('fp:billing:updated', { detail: data })); } catch(_) {}
       }
+      // ── Add-on activation / deactivation — re-fetch /api/me so limits update ──
+      if (data.type === 'addon:activated') {
+        try { document.dispatchEvent(new CustomEvent('fp:addon:activated', { detail: data })); } catch(_) {}
+        // Full /api/me refresh to update limits (e.g. monitors +10 after monitorsPack10)
+        if (typeof _fpCache !== 'undefined') { try { delete _fpCache['/api/me']; } catch(_) {} }
+        if (typeof _apiFetchCache !== 'undefined') { try { _apiFetchCache.delete('/api/me'); } catch(_) {} }
+        apiFetch('/api/me').then(function(freshMe) {
+          if (freshMe && window.STATE) {
+            window.STATE.me = freshMe;
+            if (typeof window.render === 'function') window.render();
+          }
+        }).catch(function() {});
+      }
+      if (data.type === 'addon:deactivated') {
+        try { document.dispatchEvent(new CustomEvent('fp:addon:deactivated', { detail: data })); } catch(_) {}
+        if (typeof _fpCache !== 'undefined') { try { delete _fpCache['/api/me']; } catch(_) {} }
+        if (typeof _apiFetchCache !== 'undefined') { try { _apiFetchCache.delete('/api/me'); } catch(_) {} }
+        apiFetch('/api/me').then(function(freshMe) {
+          if (freshMe && window.STATE) {
+            window.STATE.me = freshMe;
+            if (typeof window.render === 'function') window.render();
+          }
+        }).catch(function() {});
+      }
       if (data.type === 'alert:update' || data.type === 'alert:new') {
         if (window.STATE && typeof window.apiFetch === 'function') {
           window.apiFetch('/api/alert-events').then(function(events) {

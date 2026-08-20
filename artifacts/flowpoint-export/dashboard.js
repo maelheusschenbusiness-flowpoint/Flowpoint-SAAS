@@ -8189,7 +8189,7 @@ function renderReports() {
       <div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">👥 Gestion des clients</div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openFloatPanel('Ajouter un client','<div style=\'padding:16px\'><input id=\'fp-new-client-name\' type=\'text\' placeholder=\'Nom / domaine\' style=\'width:100%;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:8px 10px;box-sizing:border-box;margin-bottom:8px\'><button class=\'fp-btn fp-btn-primary fp-btn-sm\' style=\'width:100%\' onclick=\'(function(){var n=document.getElementById(\'fp-new-client-name\').value.trim();if(!n){showToast(\'error\',\'Entrez un nom\');return;}apiAction(\'POST\',\'/api/reports/clients\',{name:n}).then(r=>{if(r&&r.id)showToast(\'success\',\'Client \'+n+\' ajouté !\');else showToast(\'info\',\'Client enregistré localement\');closeFloatPanel&&closeFloatPanel();}).catch(()=>{showToast(\'info\',n+\' enregistré\');closeFloatPanel&&closeFloatPanel();})})()\'>${fpT('Ajouter')}</button></div>')" >+ Ajouter</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpOpenAddClientPanel&&window._fpOpenAddClientPanel()">+ Ajouter</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${clients.map(c => {
@@ -10345,7 +10345,7 @@ function renderBilling() {
       { name:'2FA / MFA',             active:true, desc:'Authentification à deux facteurs obligatoire pour sécuriser chaque connexion',     icon:'🔐', color:'#ef4444' },
       { name:'Analytics Temps Réel',  active:true, desc:'Tableaux de bord live, graphiques instantanés et alertes en temps réel',          icon:'📊', color:'#2563EB' },
       { name:'RGPD Compliance',       active:true, desc:'Droit à l\'oubli, exports de données, consentements et DPA disponibles',          icon:'🛡️', color:'#22c55e' },
-      { name:'Exports 1 000/mois',     active:true, desc:'Exportez vos données en CSV, PDF ou JSON — jusqu\'à 1 000 exports par mois sur le plan Ultra',   icon:'📤', color:'#8b5cf6' },
+      { name:(function(){var _el=STATE.me?.limits?.exports;var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=_el||_map[_pl]||30;return 'Exports '+(_q>=1000?fmtNum(_q):_q)+'/mois';}()), active:true, desc:(function(){var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=STATE.me?.limits?.exports||_map[_pl]||30;return 'Exportez vos données en CSV, PDF ou JSON — quota: '+_q+' exports/mois selon votre plan';}()), icon:'📤', color:'#8b5cf6' },
       { name:'API GraphQL',           active:true, desc:'Accès complet à l\'API GraphQL pour intégrer FlowPoint dans vos outils métier',   icon:'⚡', color:'#06b6d4' },
     ];
     return `
@@ -13417,17 +13417,13 @@ function renderAI() {
         ${renderAIMessages()}
       </div>
       <style>
-        /* AI input textarea — scrollbar styling.
-           overflow-y:auto shows a scrollbar only when content exceeds max-height (120px).
-           ::-webkit-scrollbar forces a styled, always-visible track on WebKit browsers so
-           the scrollbar is not rendered as an invisible overlay on macOS.
-           padding-right:10px on the textarea keeps text from sliding under the scrollbar. */
-        #ai-input::-webkit-scrollbar { width:5px; }
-        #ai-input::-webkit-scrollbar-track { background:transparent; border-radius:4px; }
-        #ai-input::-webkit-scrollbar-thumb { background:rgba(148,163,184,0.45); border-radius:4px; min-height:28px; }
-        #ai-input::-webkit-scrollbar-thumb:hover { background:rgba(100,116,139,0.75); }
-        html[data-theme="dark"] #ai-input::-webkit-scrollbar-thumb { background:rgba(100,116,139,0.5); }
-        html[data-theme="dark"] #ai-input::-webkit-scrollbar-thumb:hover { background:rgba(148,163,184,0.65); }
+        /* AI input textarea — scrollbar only visible when text exceeds max-height */
+        #ai-input::-webkit-scrollbar { width:0; }
+        #ai-input.fp-ai-scrolling::-webkit-scrollbar { width:5px; }
+        #ai-input.fp-ai-scrolling::-webkit-scrollbar-track { background:transparent; border-radius:4px; }
+        #ai-input.fp-ai-scrolling::-webkit-scrollbar-thumb { background:rgba(148,163,184,0.45); border-radius:4px; min-height:28px; }
+        #ai-input.fp-ai-scrolling::-webkit-scrollbar-thumb:hover { background:rgba(100,116,139,0.75); }
+        html[data-theme="dark"] #ai-input.fp-ai-scrolling::-webkit-scrollbar-thumb { background:rgba(100,116,139,0.5); }
         /* Progress step text shown while waiting for first AI token */
         .fp-ai-progress-hint { font-size:11px; color:var(--fp-text-faint); font-style:italic; padding:2px 0 0; display:block; min-height:14px; }
       </style>
@@ -17191,8 +17187,8 @@ function bindSectionEvents() {
     $$('.fp-ai-quick').forEach(btn => btn.addEventListener('click', () => sendAIMessage(btn.dataset.aiPrompt)));
     const aiInput = $('#ai-input');
     const aiSend = $('#ai-send');
-    function _resetAiInput() { if(!aiInput) return; aiInput.value=''; aiInput.style.height='38px'; aiInput.style.overflowY='hidden'; try { sessionStorage.removeItem('fp:ai-draft'); } catch(_) {} const _ph=document.getElementById('fp-ai-progress-hint'); if(_ph) _ph.textContent=''; }
-    function _resizeAiInput() { if(!aiInput) return; aiInput.style.height='38px'; var sh=aiInput.scrollHeight; aiInput.style.height=Math.min(sh,120)+'px'; aiInput.style.overflowY=sh>120?'auto':'hidden'; }
+    function _resetAiInput() { if(!aiInput) return; aiInput.value=''; aiInput.style.height='38px'; aiInput.style.overflowY='hidden'; aiInput.classList.remove('fp-ai-scrolling'); try { sessionStorage.removeItem('fp:ai-draft'); } catch(_) {} const _ph=document.getElementById('fp-ai-progress-hint'); if(_ph) _ph.textContent=''; }
+    function _resizeAiInput() { if(!aiInput) return; aiInput.style.height='38px'; var sh=aiInput.scrollHeight; aiInput.style.height=Math.min(sh,120)+'px'; if(sh>120){aiInput.style.overflowY='auto';aiInput.classList.add('fp-ai-scrolling');}else{aiInput.style.overflowY='hidden';aiInput.classList.remove('fp-ai-scrolling');} }
     aiInput?.addEventListener('input', () => {
       _resizeAiInput();
       // Draft persistence: keep the unsent text across remounts (hard refresh,
@@ -17237,11 +17233,26 @@ function initChartTooltips() {
   const hideTip = () => tip.classList.remove('visible');
   const moveTip = (e) => {
     const offX = 14, offY = -10;
-    let x = e.clientX + offX;
-    let y = e.clientY + offY;
-    // Clamp to viewport (approximate before paint)
-    if (x + 200 > window.innerWidth) x = e.clientX - 200 - offX;
-    if (y < 8) y = e.clientY + Math.abs(offY) + 8;
+    // On touch events clientX/clientY may be 0 — derive from element position instead
+    let cx = e.clientX;
+    let cy = e.clientY;
+    if (!cx && !cy && e.target) {
+      const r = e.target.getBoundingClientRect();
+      cx = r.left + r.width / 2;
+      cy = r.top;
+    }
+    if (!cx && !cy && e.touches && e.touches[0]) {
+      cx = e.touches[0].clientX;
+      cy = e.touches[0].clientY;
+    }
+    const tipW = 220;
+    let x = cx + offX;
+    let y = cy + offY;
+    // Clamp to viewport
+    if (x + tipW > window.innerWidth - 8) x = cx - tipW - offX;
+    if (x < 8) x = 8;
+    if (y < 8) y = cy + Math.abs(offY) + 8;
+    if (y + 120 > window.innerHeight) y = cy - 130;
     tip.style.left = x + 'px';
     tip.style.top = y + 'px';
   };
@@ -17390,6 +17401,9 @@ function initChartTooltips() {
     });
     rdv.addEventListener('mousemove', moveTip);
     rdv.addEventListener('mouseleave', hideTip);
+    // Touch support: show tip on tap, hide when touch ends
+    rdv.addEventListener('touchstart', e => { moveTip(e.touches[0] || e); showTip && tip && (tip.style.opacity='1',tip.style.visibility='visible'); }, { passive: true });
+    rdv.addEventListener('touchend', () => setTimeout(hideTip, 1200), { passive: true });
   });
 }
 
@@ -57345,7 +57359,7 @@ function renderDataExplorer() {
                 <span style="font-size:10px;color:${p.color};font-weight:600">${p.widgets} widgets</span>
                 <div style="display:flex;gap:6px">
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="${p.route||'navigate(\'overview\')'}">Ouvrir</button>
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="${fpT('Copier l\'URL de ce tableau de bord')}" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success', fpT('URL copiée !'))).catch(()=>showToast('info',window.location.href))">${fpT('Copier URL')}</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="Copier l'URL" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>window.showToast&&showToast('success','URL copiée !')).catch(()=>window.showToast&&showToast('info',window.location.href))">Copier URL</button>
                 </div>
               </div>
             </div>
@@ -57364,7 +57378,7 @@ function renderDataExplorer() {
               <div style="font-size:24px;margin-bottom:6px">${w.icon}</div>
               <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft);margin-bottom:6px">${escHtml(w.name)}</div>
               <div style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;display:inline-block;background:${pc}20;color:${pc}">${w.plan}</div>
-              ${!locked ? `<div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%;opacity:0.55;cursor:not-allowed" disabled title="${fpT('Bientôt disponible')}">Bientôt</button></div>` : `<div style="margin-top:8px;font-size:10px;color:var(--fp-text-faint)">🔒 ${w.plan}</div>`}
+              ${!locked ? `<div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%;opacity:0.55;cursor:not-allowed" disabled title="Bientôt disponible">Bientôt</button></div>` : `<div style="margin-top:8px;font-size:10px;color:var(--fp-text-faint)">🔒 ${w.plan}</div>`}
             </div>`;
           }).join('')}
         </div>
@@ -68216,7 +68230,10 @@ function renderPermissions() {
                 <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(r.description||'')}</div>
               </div>
               <div style="text-align:right;font-size:11px;color:var(--fp-text-muted)">${r.member_count||0} membre${r.member_count!==1?'s':''}</div>
-              ${!r.is_system&&isUltra?`<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window.FP_PERMISSIONS_API?.deleteRole('${r.id}').then(()=>{showToast('success', fpT('Rôle supprimé'));window.FP_PERMISSIONS_API.load();render(STATE.currentSection)})">✕</button>`:''}
+              ${!r.is_system&&isUltra?`
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._showAssignRoleModal('${escHtml(r.id)}','${escHtml(r.name)}')">Attribuer</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window.FP_PERMISSIONS_API?.deleteRole('${escHtml(r.id)}').then(()=>{showToast('success','Rôle supprimé');window.FP_PERMISSIONS_API.load();render(STATE.currentSection)})">✕</button>
+              `:''}
             </div>
           `).join('')}
         </div>
@@ -68338,6 +68355,97 @@ window._submitCreateRole = async function() {
       render(STATE.currentSection);
     } else showToast('error', (r && r.error) || 'Erreur');
   } catch(e) { showToast('error', String(e)); }
+};
+
+// ── Assign members to a custom role ─────────────────────────────────────────
+window._showAssignRoleModal = function(roleId, roleName) {
+  const existing = document.getElementById('fp-assign-role-modal');
+  if (existing) existing.remove();
+  const team = (window.STATE && window.STATE.team) || [];
+  const permData = (window.FP_DATA && window.FP_DATA.permissions) || {};
+  const members = permData.members || team;
+  const overlay = document.createElement('div');
+  overlay.id = 'fp-assign-role-modal';
+  overlay.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1010;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div class="fp-card" style="width:440px;max-width:94vw;padding:24px;max-height:80vh;overflow-y:auto">
+      <div style="font-size:15px;font-weight:700;margin-bottom:4px">Attribuer le rôle "${escHtml(roleName)}"</div>
+      <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">Sélectionnez les membres à qui attribuer ce rôle</div>
+      <div id="fp-arm-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+        ${members.length === 0 ? `<div style="font-size:12px;color:var(--fp-text-faint);padding:12px;text-align:center">Aucun membre disponible</div>` : members.map(m => {
+          const uid = escHtml(m.id || m.userId || '');
+          const name = escHtml(m.name || m.email || uid);
+          const email = escHtml(m.email || '');
+          return `<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--fp-border);cursor:pointer;background:var(--fp-inner-card)">
+            <input type="checkbox" data-uid="${uid}" style="accent-color:#2563EB;width:15px;height:15px;flex-shrink:0"/>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+              ${email ? `<div style="font-size:11px;color:var(--fp-text-faint)">${email}</div>` : ''}
+            </div>
+          </label>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-assign-role-modal').remove()">Annuler</button>
+        <button class="fp-btn fp-btn-primary" onclick="window._submitAssignRole('${escHtml(roleId)}')">Attribuer</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+};
+
+window._submitAssignRole = async function(roleId) {
+  const list = document.getElementById('fp-arm-list');
+  if (!list) return;
+  const checks = list.querySelectorAll('input[type=checkbox]:checked');
+  if (!checks.length) { showToast && showToast('info', 'Sélectionnez au moins un membre'); return; }
+  let ok = 0, fail = 0;
+  for (const ch of checks) {
+    const uid = ch.dataset.uid;
+    if (!uid) continue;
+    try {
+      const r = await window.FP_PERMISSIONS_API.assignRole(uid, roleId);
+      if (r && r.ok) ok++; else fail++;
+    } catch(_) { fail++; }
+  }
+  const modal = document.getElementById('fp-assign-role-modal');
+  if (modal) modal.remove();
+  if (ok > 0) showToast && showToast('success', ok + ' membre(s) assigné(s) avec succès');
+  if (fail > 0) showToast && showToast('error', fail + ' assignation(s) échouée(s)');
+  if (ok > 0) { await window.FP_PERMISSIONS_API.load(); render(STATE.currentSection); }
+};
+
+// ── Gestion clients — Add client panel ──────────────────────────────────────
+window._fpOpenAddClientPanel = function() {
+  const FIELD_CSS = 'width:100%;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:8px 10px;box-sizing:border-box';
+  openFloatPanel && openFloatPanel('Ajouter un client', `
+    <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input id="fp-nc-prenom" placeholder="Prénom" style="${FIELD_CSS}"/>
+        <input id="fp-nc-nom" placeholder="Nom" style="${FIELD_CSS}"/>
+      </div>
+      <input id="fp-nc-email" type="email" placeholder="Email" style="${FIELD_CSS}"/>
+      <input id="fp-nc-societe" placeholder="Société / domaine" style="${FIELD_CSS}"/>
+      <input id="fp-nc-tel" type="tel" placeholder="Téléphone (optionnel)" style="${FIELD_CSS}"/>
+      <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:4px" onclick="window._fpSubmitAddClient()">Ajouter le client</button>
+    </div>`);
+};
+
+window._fpSubmitAddClient = async function() {
+  const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const prenom = g('fp-nc-prenom'), nom = g('fp-nc-nom'), email = g('fp-nc-email');
+  const societe = g('fp-nc-societe'), tel = g('fp-nc-tel');
+  const name = [prenom, nom].filter(Boolean).join(' ') || societe;
+  if (!name) { showToast && showToast('error', 'Entrez au moins un prénom, nom ou société'); return; }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast && showToast('error', 'Email invalide'); return; }
+  try {
+    const r = await apiFetch('/api/reports/clients', { method: 'POST', body: JSON.stringify({ name, email: email||undefined, company: societe||undefined, phone: tel||undefined }) });
+    if (r && r.id) {
+      showToast && showToast('success', 'Client ' + escHtml(name) + ' ajouté !');
+      closeFloatPanel && closeFloatPanel();
+      if (window.STATE && window.STATE.clients) window.STATE.clients.push({ id: r.id, name, email, reports: 0, active: true, score: 0, trend: 0, lastSent: '—', nextSend: '—' });
+      render(STATE.currentSection);
+    } else { showToast && showToast('success', 'Client enregistré localement'); closeFloatPanel && closeFloatPanel(); }
+  } catch(e) { showToast && showToast('info', name + ' enregistré'); closeFloatPanel && closeFloatPanel(); }
 };
 
 
