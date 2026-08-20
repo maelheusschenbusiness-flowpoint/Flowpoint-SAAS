@@ -99,6 +99,14 @@
   var _fp401ConfirmTimer    = null;
 
   function _confirmSessionExpiredBackend() {
+    // FIX P0 (Cause B — fp-backend): if the dashboard's STATE.me is already confirmed,
+    // the session is valid. A 401 from a secondary endpoint must NOT trigger a global
+    // logout while the user's identity is established.
+    if (window.STATE && window.STATE.me && window.STATE.me.orgId) {
+      console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Suppressed false-logout — window.STATE.me confirmed; background 401 on secondary endpoint ignored.');
+      _fp401BackgroundCount = 0;
+      return;
+    }
     // Revalidate cookie/Bearer through the shared coordinator first. A
     // background 401 must never redirect while auth is still unknown.
     var restore = typeof window.__fpRestoreSession === 'function'

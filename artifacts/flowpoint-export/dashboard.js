@@ -467,6 +467,14 @@ var _401BackgroundCount = 0;
 var _401ConfirmTimer    = null;
 
 function _confirmSessionExpired() {
+  // FIX P0 (Cause B): if STATE.me is already populated the session is confirmed valid.
+  // A 401 from a secondary endpoint (activity, billing, monitors) must NOT trigger
+  // a global logout when the user's identity is already established. Return early.
+  if (STATE.me && STATE.me.orgId) {
+    console.warn('[FP-AUTH]', new Date().toISOString(), 'Suppressed false-logout — STATE.me is confirmed; background 401 on secondary endpoint ignored.');
+    _401BackgroundCount = 0;
+    return;
+  }
   // Revalidate through the single shared restore coordinator before /api/me.
   // A background poll must not turn a still-pending auth bootstrap into logout.
   const restore = typeof window.__fpRestoreSession === 'function'
@@ -14995,9 +15003,24 @@ async function fpGoToPricing(targetPlan) {
 function navigate(route, subRoute) {
   const _n = normalizeRoute(route, subRoute || null);
   if (_n.route === STATE.route && subRoute == null && _n.subRoute == null && STATE.subRoute) _n.subRoute = STATE.subRoute;
+  const _prevRoute    = STATE.route;
+  const _prevSubRoute = STATE.subRoute;
   STATE.route    = _n.route;
   STATE.subRoute = _n.subRoute;
-  try { history.replaceState(null, '', '#' + STATE.route + (STATE.subRoute ? '/' + STATE.subRoute : '')); } catch(e) { /* sandboxed */ }
+  // FIX P0 (T7/T8/T9/T10): use pushState so every main-section navigation creates a
+  // browser history entry. replaceState discarded every sidebar click from history,
+  // making Back/Forward leave the dashboard entirely instead of moving between sections.
+  // Guard: replaceState only when the route did NOT actually change (e.g. clicking the
+  // already-active section) to avoid stacking duplicate history entries.
+  try {
+    const _newHash = '#' + STATE.route + (STATE.subRoute ? '/' + STATE.subRoute : '');
+    const _routeChanged = _n.route !== _prevRoute || _n.subRoute !== _prevSubRoute;
+    if (_routeChanged) {
+      history.pushState({ route: STATE.route, subRoute: STATE.subRoute }, '', _newHash);
+    } else {
+      history.replaceState({ route: STATE.route, subRoute: STATE.subRoute }, '', _newHash);
+    }
+  } catch(e) { /* sandboxed iframe */ }
   try { localStorage.setItem('fp:last-route', STATE.route); if (STATE.subRoute) localStorage.setItem('fp:last-sub', STATE.subRoute); else localStorage.removeItem('fp:last-sub'); } catch(e) {}
   document.querySelectorAll('.fp-chart-tooltip').forEach(t => t.remove());
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
@@ -17772,14 +17795,25 @@ function bindGlobalEvents() {
   // Back/Forward support — navigateSub uses pushState so browser history
   // triggers popstate (not hashchange). Read the hash from the new URL,
   // normalise it, and re-render only when the route actually changed.
-  window.addEventListener('popstate', () => {
+  window.addEventListener('popstate', (evt) => {
+    // FIX P0 (Cause D): restore route from the state object stored by navigate/navigateSub
+    // (pushState now passes { route, subRoute }). Fall back to hash parsing when state is
+    // absent (e.g. entries created before this fix, or external navigations).
     const hash = window.location.hash.slice(1);
     if (!hash) return;
-    const _n = normalizeRoute(hash, null);
+    const _n = normalizeRoute(
+      (evt.state && evt.state.route) ? evt.state.route : hash,
+      (evt.state && evt.state.subRoute !== undefined) ? evt.state.subRoute : null
+    );
     if (_n.route !== STATE.route || _n.subRoute !== STATE.subRoute) {
       STATE.route = _n.route;
       STATE.subRoute = _n.subRoute;
-      render();
+      // Guard: if STATE.me is null (loadData in progress from a BFCache pageshow),
+      // skip the explicit render — _doRender() will fire once loadData() completes
+      // with the updated STATE.route/subRoute already set above.
+      if (STATE.me) {
+        render();
+      }
     }
   });
 }
@@ -47111,6 +47145,11 @@ async function init() {
   // redirect. loadData() re-runs session-restore first, making it safe.
   window.addEventListener('pageshow', function(evt) {
     if (evt.persisted) {
+      // FIX P0 (Cause C — BFCache): Cancel any stale 401-confirmation timers that were
+      // pending before the page was frozen into BFCache. The frozen STATE snapshot is
+      // valid; re-evaluate auth freshness via loadData() instead of acting on stale counts.
+      if (_401ConfirmTimer) { clearTimeout(_401ConfirmTimer); _401ConfirmTimer = null; }
+      _401BackgroundCount = 0;
       applyTheme();
       loadData().catch(function() {});
     }
