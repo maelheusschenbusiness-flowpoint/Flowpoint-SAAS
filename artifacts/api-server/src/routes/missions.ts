@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { logger } from "../lib/logger.js";
+import { pool } from "@workspace/db";
 import { store } from "../services/store.js";
 import { runMissionEngine, getMissionsStats } from "../services/mission-engine.js";
 import { canWrite } from "../middlewares/requireRole.js";
@@ -74,9 +75,11 @@ async function logHistory(
 }
 
 // GET /missions
+// Uses pool.query (superuser) with explicit org_id filter — bypasses withOrgDb/RLS which
+// can silently return [] when SET LOCAL ROLE app_user fails on Supabase pooled connections.
+// Tenant isolation is enforced by the WHERE org_id = $1 clause, same pattern as list_missions AI tool.
 router.get("/missions", async (req: Request, res: Response) => {
   try {
-    const db = orgDb(req);
     const org = orgId(req);
     const { status, category, priority, quick_win, limit = "100", offset = "0" } = req.query as Record<string, string>;
 
@@ -92,7 +95,7 @@ router.get("/missions", async (req: Request, res: Response) => {
     query += ` ORDER BY priority_score DESC, created_at DESC LIMIT $${p++} OFFSET $${p++}`;
     params.push(parseInt(limit) || 100, parseInt(offset) || 0);
 
-    const result = await db(query, params);
+    const result = await pool.query(query, params);
     res.json(result.rows.map(rowToMission));
   } catch (err) {
     logger.error({ err }, "[Missions] GET /missions error");

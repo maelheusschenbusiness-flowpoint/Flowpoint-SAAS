@@ -13802,6 +13802,9 @@ async function sendAIMessage(text) {
   const _ctrl = new AbortController();
   STATE._aiStreamCtrl = _ctrl;
 
+  // Declared outside try so the catch can preserve partial content received before the error.
+  let fullText = '';
+
   try {
     const resp = await fetch('/api/ai/chat', _fpSessionFetchOptions({
       method: 'POST',
@@ -13845,7 +13848,7 @@ async function sendAIMessage(text) {
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    let fullText = '';
+    // fullText is declared ABOVE the try block so the catch can use it.
     let _proposal = null; // AI Agents Phase 1 : proposition de navigation validée serveur
     let _confirmReq = null; // AI Agents Phase 2 : confirmation_request en attente
     let _undoToken = null;  // AI Agents Phase 2 : token d'annulation disponible (undo_available)
@@ -13862,12 +13865,20 @@ async function sendAIMessage(text) {
         if (payload === '[DONE]') break;
         try {
           const parsed = JSON.parse(payload);
-          if (parsed.delta) {
+          if (parsed.missions_refresh) {
+            // Tool created/modified a mission — refresh dashboard missions list immediately.
+            if (typeof window.FP_MISSIONS_API !== 'undefined') {
+              window.FP_MISSIONS_API.load().then(function(m) {
+                if (Array.isArray(m)) { STATE.missions = m; if (STATE.route === 'missions') render(); }
+              }).catch(function(){});
+            }
+          } else if (parsed.delta) {
             // Clear progress hint on first real content
             if (!fullText) { const _ph = document.getElementById('fp-ai-progress-hint'); if (_ph) _ph.textContent = ''; }
             fullText += parsed.delta;
             STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: true, proposal: _proposal };
-            updateAIUI();
+            // Guard: updateAIUI() may access detached DOM when user navigated away — never let it kill the stream.
+            try { updateAIUI(); } catch(_) {}
           } else if (parsed.action_proposal) {
             _proposal = parsed.action_proposal;
           } else if (parsed.confirmation_request) {
@@ -13879,7 +13890,7 @@ async function sendAIMessage(text) {
             STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: false, proposal: _proposal, confirmRequest: _confirmReq };
             STATE.aiLoading = false;
             saveAIHistory();
-            updateAIUI();
+            try { updateAIUI(); } catch(_) {}
           } else if (parsed.undo_available) {
             _undoToken = parsed.undo_available;
           } else if (parsed._ai) {
@@ -13922,7 +13933,13 @@ async function sendAIMessage(text) {
       ? '⚠ Connexion impossible — vérifiez votre réseau et réessayez.'
       : '⚠ Le service IA est temporairement indisponible. Veuillez réessayer dans quelques instants.';
     STATE._aiStopRequested = false;
-    STATE.aiMessages[streamIdx] = { from:'ai', text: errMsg, streaming: false };
+    // If a partial response was received before the error (e.g. DOM detach during navigation
+    // caused updateAIUI() to throw mid-stream), preserve what arrived instead of replacing with the error.
+    if (fullText && fullText.length > 20) {
+      STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: false };
+    } else {
+      STATE.aiMessages[streamIdx] = { from:'ai', text: errMsg, streaming: false, retryable: true };
+    }
   }
 
   STATE.aiLoading = false;
@@ -67727,7 +67744,8 @@ window.fpTrackUsage = async function(kind) {
     // Missions — load from real backend
     if (typeof window.FP_MISSIONS_API !== 'undefined') {
       window.FP_MISSIONS_API.load().then(missions => {
-        if (missions && missions.length > 0) {
+        // Accept any array response (including empty) — withOrgDb returning [] used to block updates.
+        if (Array.isArray(missions)) {
           STATE.missions = missions;
           if (STATE.route === 'missions') render();
         }

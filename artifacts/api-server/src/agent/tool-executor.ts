@@ -368,6 +368,14 @@ async function dispatchTool(
       tool: name, args, confirmationLevel: toolDef.confirmationLevel,
       result: "ok", snapshot: mission, versionAfter: createVersionAfter, durationMs: Date.now() - t0 });
 
+    // Notify the dashboard to refresh its missions list immediately (avoids stale STATE.missions = []).
+    // The client's SSE stream for this conversation is still open — piggy-back on it.
+    if (ctx.sseWrite) {
+      try { ctx.sseWrite(JSON.stringify({ missions_refresh: true })); } catch (_) {}
+    }
+    // Also broadcast via the org SSE channel for clients not in the AI chat flow.
+    try { store.broadcast({ type: "missions:updated", missionId: id }, orgId); } catch (_) {}
+
     return { toolCallId: logId, toolName: name, ok: true,
       content: `Mission créée — ID: ${mission.id} | Titre: "${title}" | Priorité: ${priority}`,
       data: mission, actionLogId: logId,
