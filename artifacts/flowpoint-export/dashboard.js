@@ -10345,7 +10345,7 @@ function renderBilling() {
       { name:'2FA / MFA',             active:true, desc:'Authentification à deux facteurs obligatoire pour sécuriser chaque connexion',     icon:'🔐', color:'#ef4444' },
       { name:'Analytics Temps Réel',  active:true, desc:'Tableaux de bord live, graphiques instantanés et alertes en temps réel',          icon:'📊', color:'#2563EB' },
       { name:'RGPD Compliance',       active:true, desc:'Droit à l\'oubli, exports de données, consentements et DPA disponibles',          icon:'🛡️', color:'#22c55e' },
-      { name:'Exports Illimités',     active:true, desc:'Exportez vos données en CSV, PDF ou JSON sans limite de volume ni de fréquence',   icon:'📤', color:'#8b5cf6' },
+      { name:'Exports 1 000/mois',     active:true, desc:'Exportez vos données en CSV, PDF ou JSON — jusqu\'à 1 000 exports par mois sur le plan Ultra',   icon:'📤', color:'#8b5cf6' },
       { name:'API GraphQL',           active:true, desc:'Accès complet à l\'API GraphQL pour intégrer FlowPoint dans vos outils métier',   icon:'⚡', color:'#06b6d4' },
     ];
     return `
@@ -10506,7 +10506,7 @@ function renderBilling() {
                 // Included = active add-ons granted by the plan; paid = the rest.
                 const _incActive = _activeKeys.filter(k => _defs[k] && _defs[k].includedInPlan === true || (_defs[k] && Array.isArray(_defs[k].includedIn) && _defs[k].includedIn.includes(_planKey2))).length;
                 const _n = _activeKeys.length;
-                const _inc = _ud.includedAddonsCount ?? _incActive;
+                const _inc = _incActive;
                 return _n+' actif'+(_n!==1?'s':'')+' · '+_inc+' inclus (plan)';
               })() },
             { label:'Prochaine facture',  val: STATE.billing?.nextDate || '—' },
@@ -12354,7 +12354,7 @@ function renderSettings() {
       <div class="fp-stat-row fp-mb-20">
         ${(()=>{ const _unlocked=aiModules.filter(m=>!((m.plan==='Pro'&&isStd)||(m.plan==='Ultra'&&!isUltra))); const _on=_unlocked.filter(m=>m.active).length; return statCard('Modules IA actifs', _on + '/' + _unlocked.length, _unlocked.length<aiModules.length ? (aiModules.length-_unlocked.length)+' verrouillés (plan)' : 'modules configurés', _on>0?'up':'neutral'); })()}
         ${statCard('Intensité IA', _savedIntensity, 'recommandations mesurées', 'up')}
-        ${statCard('AI Credits', STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(t);}()) : '…/…', PREVIEW_MODE ? '41% utilisés ce mois' : (STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),p=u.used/Math.max(t,1)*100;return (p>0&&p<1?Math.max(p,0.1).toFixed(1):Math.round(p))+'% utilisés';}()) : 'Chargement…'), 'neutral')}
+        ${statCard('AI Credits', STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return t>=10000000?'∞':fk(u.used)+'/'+fk(t);}()) : '…/…', PREVIEW_MODE ? '41% utilisés ce mois' : (STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),p=u.used/Math.max(t,1)*100;return t>=10000000?'∞ AI Credits':(p>0&&p<1?Math.max(p,0.1).toFixed(1):Math.round(p))+'% utilisés';}()) : 'Chargement…'), 'neutral')}
         ${statCard('Précision IA', displayStat(null, PREVIEW_MODE ? '87%' : '—'), PREVIEW_MODE ? '87% recommandations pertinentes' : 'Analyse en cours', 'neutral')}
       </div>
 
@@ -13385,8 +13385,8 @@ function renderAI() {
     <!-- USAGE STRIP -->
     <div style="display:flex;align-items:center;gap:16px;padding:8px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.05);margin-bottom:16px;flex-wrap:wrap">
       ${[
-        {l:'Requêtes',      v:STATE.aiCredits?(function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(t);}()):(PREVIEW_MODE?'47/100':'—')},
-        {l:'AI Credits',    v:STATE.aiCredits?(function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(t);}()):(PREVIEW_MODE?'47k/100k':'—')},
+        {l:'Requêtes',      v:STATE.aiCredits?(function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return t>=10000000?'∞':fk(u.used)+'/'+fk(t);}()):(PREVIEW_MODE?'47/100':'—')},
+        {l:'AI Credits',    v:STATE.aiCredits?(function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return t>=10000000?'∞':fk(u.used)+'/'+fk(t);}()):(PREVIEW_MODE?'47k/100k':'—')},
         {l:'Temps moyen',   v:PREVIEW_MODE?'2.4s':'—'},
         {l:'Satisfaction',  v:PREVIEW_MODE?'94%':'—'},
       ].map(k => `<div style="display:flex;align-items:center;gap:6px"><span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(k.l)} :</span><span style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(k.v)}</span></div>`).join('<span style="color:rgba(255,255,255,0.1)">|</span>')}
@@ -64132,8 +64132,8 @@ function renderOpportunities(opps) {
       return `<div class="fp-psi-opportunity">
         <div class="fp-psi-opp-icon" style="background:var(--fp-bg-body)">${catIcons[o.category]||'🔧'}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:2px">${escHtml(o.title)}</div>
-          <div style="font-size:11px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(o.description||'')}</div>
+          <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:2px;word-break:break-word;overflow-wrap:anywhere">${escHtml(o.title)}</div>
+          <div style="font-size:11px;color:var(--fp-text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(o.description||'')}</div>
         </div>
         ${savings ? `<span class="fp-psi-savings">${savings}</span>` : ''}
       </div>`;
@@ -64256,8 +64256,8 @@ function renderPerformance() {
   </div>
 
   <!-- Opportunities -->
-  <div class="fp-grid" style="grid-template-columns:1fr 1fr;gap:16px">
-    <div class="fp-card">
+  <div class="fp-grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px">
+    <div class="fp-card" style="min-width:0;overflow:hidden">
       <div class="fp-card-header" style="margin-bottom:16px">
         <h3 class="fp-card-title">Opportunités d\'optimisation</h3>
         <span class="fp-badge fp-badge--accent">${(mobile?.opportunities||[]).length} items</span>
@@ -64756,7 +64756,7 @@ function renderTechnicalAudit() {
       {sub:'ai',icon:'🤖',label:'IA Audit Complet',count:null,color:'var(--fp-accent)',savings:0},
     ].map(c=>`<div class="fp-card" style="cursor:pointer;transition:border-color 0.15s" onclick="navigateSub('${c.sub}')" onmouseenter="this.style.borderColor='${c.color}'" onmouseleave="this.style.borderColor=''">
       <div style="font-size:28px;margin-bottom:8px">${c.icon}</div>
-      <div style="font-size:14px;font-weight:600;margin-bottom:4px">${c.label}</div>
+      <div style="font-size:11px;font-weight:600;margin-bottom:4px;word-break:break-word;line-height:1.3">${c.label}</div>
       <div style="font-size:12px;color:var(--fp-text-faint)">
         ${c.count!==null ? `<span style="color:${c.color};font-weight:700">${c.count}</span> problème${c.count>1?'s':''}` : 'Analyse complète →'}
         ${c.savings>0 ? ` · <span style="color:#10b981">${c.sub==='images'?Math.round(c.savings)+'KB':((c.savings/1000).toFixed(1))+'s'} économisables</span>` : ''}
@@ -65007,7 +65007,7 @@ async function fpAnalyzePSI() {
 }
 
 async function fpGetPSIAIReco() {
-  const btn = document.getElementById('fp-psi-ai-btn');
+  const btn = document.getElementById('fp-psi-ai-btn') || document.getElementById('fp-psi-ai-btn-full');
   if (btn) { btn.disabled = true; btn.textContent = 'Génération en cours…'; }
 
   const psi = window.FP_DATA && window.FP_DATA.pagespeed;
@@ -65095,6 +65095,8 @@ async function fpGetPSIAIReco() {
     if (btn) { btn.disabled = false; btn.textContent = 'Générer les recommandations'; }
   }
 }
+// Expose globally so onclick="fpGetPSIAIReco()" in innerHTML works
+window.fpGetPSIAIReco = fpGetPSIAIReco;
 
 // ── Quick Wins "+ Mission" buttons — stable document-level delegation ─────────
 // Registered at IIFE global scope so it works across all re-renders and
@@ -68174,20 +68176,12 @@ function renderPermissions() {
       ${statCard('Alertes sécurité', String(stats.securityAlerts||0), 'dans les 24h', stats.securityAlerts>0?'down':'up')}
     </div>
 
-    <!-- TABS -->
-    <div style="display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--fp-border)">
-      ${[['roles','🎭 Rôles'],['matrix','📊 Matrice accès'],['audit','🔍 Audit sécurité']].map(([id,label]) => `
-        <button onclick="window._permTab='${id}';render(STATE.currentSection)"
-          style="padding:10px 18px;border:none;border-bottom:2px solid ${activeTab===id?'var(--fp-accent)':'transparent'};background:none;color:${activeTab===id?'var(--fp-accent)':'var(--fp-text-muted)'};font-size:13px;font-weight:${activeTab===id?'700':'500'};cursor:pointer">
-          ${label}
-        </button>
-      `).join('')}
-    </div>
+    <!-- TABS — rendered by the global sub-nav (SUB_TABS config); do NOT duplicate here -->
 
     ${activeTab==='roles' ? `
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">🎭 Rôles de l\'organisation</div>
-        <div style="display:flex;flex-direction:column;gap:0">
+        <div style="display:flex;flex-direction:column;gap:4px">
           ${roles.map((r) => `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
               <div style="width:10px;height:10px;border-radius:50%;background:${roleColor(r)};flex-shrink:0"></div>
@@ -68206,7 +68200,7 @@ function renderPermissions() {
       </div>
 
       <!-- DEFAULT PERMISSIONS TABLE -->
-      <div class="fp-card fp-mt-16">
+      <div class="fp-card" style="margin-top:16px">
         <div class="fp-card-title" style="margin-bottom:14px">⚙️ Rôles par défaut FlowPoint</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">
           ${[

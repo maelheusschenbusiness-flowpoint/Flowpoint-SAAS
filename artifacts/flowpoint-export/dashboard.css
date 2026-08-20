@@ -9371,3 +9371,54 @@ html:not([data-theme="light"]) div[style*="background:#eef2ff"],
 html:not([data-theme="light"]) div[style*="background: #eef2ff"] {
   background: var(--fp-bg-inset) !important;
 }
+
+/* ══ MOBILE FIXES — passe finalisation ══════════════════════════════════════ */
+
+/* 1. CWV / PSI URL bar — flex-wrap on small screens */
+@media (max-width: 640px) {
+  .fp-psi-url-bar {
+    flex-wrap: wrap;
+  }
+  .fp-psi-url-input {
+    min-width: 0;
+    flex: 1 1 100%;
+    order: 1;
+  }
+  .fp-psi-url-bar > button {
+    flex: 1 1 100%;
+    order: 2;
+    justify-content: center;
+  }
+  .fp-psi-analyze-label { display: inline; }
+}
+
+/* 2. Filter tabs — gap between buttons */
+.fp-filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 3. PSI opportunity cards — prevent letter-by-letter on narrow grids */
+.fp-psi-opportunity {
+  min-width: 0;
+}
+.fp-psi-opportunity > div[style*="flex:1"] {
+  overflow: hidden;
+}
+
+/* 4. Audit category cards — font-size already fixed in JS; ensure word-break */
+@media (max-width: 480px) {
+  .fp-audit-cat-grid .fp-card {
+    word-break: break-word;
+  }
+}
+
+/* 5. Permissions table — guaranteed horizontal scroll on mobile */
+@media (max-width: 768px) {
+  .fp-data-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
