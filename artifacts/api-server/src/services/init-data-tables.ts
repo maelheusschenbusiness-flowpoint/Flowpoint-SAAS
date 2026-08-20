@@ -2775,6 +2775,37 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE POLICY "lsrh_insert" ON "local_seo_ranking_history" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "lsrh_delete" ON "local_seo_ranking_history" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
 
+    // ── custom_dashboards — user-created dashboards in Data Explorer ─────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS custom_dashboards (
+        id           TEXT        PRIMARY KEY,
+        org_id       TEXT        NOT NULL DEFAULT 'default',
+        name         TEXT        NOT NULL,
+        description  TEXT        NOT NULL DEFAULT '',
+        widgets      JSONB       NOT NULL DEFAULT '[]',
+        icon         TEXT        NOT NULL DEFAULT '📊',
+        color        TEXT        NOT NULL DEFAULT '#2563EB',
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `ALTER TABLE custom_dashboards ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''`);
+    await run(client, `ALTER TABLE custom_dashboards ADD COLUMN IF NOT EXISTS widgets JSONB NOT NULL DEFAULT '[]'`);
+    await run(client, `ALTER TABLE custom_dashboards ADD COLUMN IF NOT EXISTS icon TEXT NOT NULL DEFAULT '📊'`);
+    await run(client, `ALTER TABLE custom_dashboards ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '#2563EB'`);
+    await run(client, `ALTER TABLE custom_dashboards ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await run(client, `CREATE INDEX IF NOT EXISTS cd_org_idx ON custom_dashboards(org_id, created_at DESC)`);
+    await run(client, `ALTER TABLE custom_dashboards ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE custom_dashboards NO FORCE ROW LEVEL SECURITY`);
+    await run(client, `DROP POLICY IF EXISTS "cd_select" ON "custom_dashboards"`);
+    await run(client, `DROP POLICY IF EXISTS "cd_insert" ON "custom_dashboards"`);
+    await run(client, `DROP POLICY IF EXISTS "cd_update" ON "custom_dashboards"`);
+    await run(client, `DROP POLICY IF EXISTS "cd_delete" ON "custom_dashboards"`);
+    await run(client, `CREATE POLICY "cd_select" ON "custom_dashboards" FOR SELECT USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "cd_insert" ON "custom_dashboards" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "cd_update" ON "custom_dashboards" FOR UPDATE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "cd_delete" ON "custom_dashboards" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+
     logger.info("[init-data-tables] all tables, schema_migrations, missing-production-tables, P0-5 ALTERs, P1-2 type fixes done");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");

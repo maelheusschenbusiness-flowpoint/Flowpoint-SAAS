@@ -8239,7 +8239,7 @@ function renderReports() {
                 <span style="font-size:11px;color:var(--fp-text-faint)">${c.reports} rapports</span>
                 <div style="display:flex;gap:6px;margin-left:auto">
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()">Generer</button>
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/reports/send-invoice',{invoiceId:this.closest('tr')?.[Symbol.iterator]?.[0]||''}).then(r=>showToast('success', fpT('Facture envoyée par email'))).catch(()=>showToast('info', fpT('Fonctionnalité disponible dans votre espace client')))">${fpT('Envoyer')}</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" data-rclient="${escHtml(r.client)}" onclick="window._fpSendClientReport(this.dataset.rid, this.dataset.rname, this.dataset.rclient)">${fpT('Envoyer')}</button>
                 </div>
               </div>
             </div>`;
@@ -8588,6 +8588,58 @@ function renderLocalSEO() {
               Cliquez <strong>${fpT('Charger rankings')}</strong> pour voir vos positions locales Google en direct
             </div>`}
           </div>
+          ${(()=>{
+            // Load history from DB on first render of this section (non-blocking)
+            const _hist = STATE.localSeo?.rankingHistory;
+            if (!Array.isArray(_hist) && !STATE.localSeo?._historyLoading) {
+              if (!STATE.localSeo) STATE.localSeo = {};
+              STATE.localSeo._historyLoading = true;
+              apiFetch('/api/local-seo/rankings/history').then(h => {
+                if (!STATE.localSeo) STATE.localSeo = {};
+                STATE.localSeo.rankingHistory = Array.isArray(h?.history) ? h.history : [];
+                STATE.localSeo._historyLoading = false;
+                const widget = document.getElementById('dfs-rank-history');
+                if (widget) {
+                  const items = STATE.localSeo.rankingHistory;
+                  widget.innerHTML = items.length === 0
+                    ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique.</div>'
+                    : items.map(h2 => {
+                        const date = h2.searched_at ? new Date(h2.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+                        const topResult = Array.isArray(h2.results) && h2.results.length > 0 ? h2.results[0].title || '—' : '—';
+                        return '<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-top:1px solid var(--fp-border)">'
+                          + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px;text-align:right;padding-top:2px">'+escHtml(date)+'</div>'
+                          + '<div style="flex:1;min-width:0">'
+                          + '<div style="font-size:11px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
+                          + '<div style="font-size:10px;color:var(--fp-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🥇 '+escHtml(topResult)+'</div>'
+                          + '</div>'
+                          + '<span style="font-size:10px;color:#64748b;flex-shrink:0">'+((Array.isArray(h2.results)?h2.results.length:0))+' rés.</span>'
+                          + '</div>';
+                      }).join('');
+                }
+              }).catch(() => { if (STATE.localSeo) { STATE.localSeo._historyLoading = false; } });
+            }
+            const histItems = Array.isArray(_hist) ? _hist : [];
+            const histHtml = !Array.isArray(_hist)
+              ? '<div style="text-align:center;padding:10px;color:#64748b;font-size:11px">Chargement…</div>'
+              : histItems.length === 0
+                ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique — effectuez votre première recherche.</div>'
+                : histItems.map(h => {
+                    const date = h.searched_at ? new Date(h.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+                    const topResult = Array.isArray(h.results) && h.results.length > 0 ? h.results[0].title || '—' : '—';
+                    return '<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-top:1px solid var(--fp-border)">'
+                      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px;text-align:right;padding-top:2px">'+escHtml(date)+'</div>'
+                      + '<div style="flex:1;min-width:0">'
+                      + '<div style="font-size:11px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h.keyword)+' — '+escHtml(h.location)+'</div>'
+                      + '<div style="font-size:10px;color:var(--fp-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🥇 '+escHtml(topResult)+'</div>'
+                      + '</div>'
+                      + '<span style="font-size:10px;color:#64748b;flex-shrink:0">'+((Array.isArray(h.results)?h.results.length:0))+' rés.</span>'
+                      + '</div>';
+                  }).join('');
+            return `<div style="margin-top:12px;border-top:1px solid var(--fp-border);padding-top:10px">
+              <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Historique des recherches</div>
+              <div id="dfs-rank-history" style="max-height:200px;overflow-y:auto;overflow-x:hidden;padding-right:2px">${histHtml}</div>
+            </div>`;
+          })()}
         </div>
         <div style="padding:16px 18px">
           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">${fpT('Quota & Fonctionnalités')}</div>
@@ -48060,6 +48112,86 @@ async function init() {
   };
 
   // Load rankings modal — replaces native prompt()
+  // ── Custom dashboard CRUD (Data Explorer → Dashboards sub-route) ────────────
+  window._fpCreateDashboard = async function() {
+    const nameEl = document.getElementById('fp-dash-name');
+    const descEl = document.getElementById('fp-dash-desc');
+    const iconEl = document.getElementById('fp-dash-icon');
+    const colorEl = document.getElementById('fp-dash-color');
+    const errEl = document.getElementById('fp-dash-modal-err');
+    const submitBtn = document.getElementById('fp-dash-submit');
+    const name = (nameEl ? nameEl.value : '').trim();
+    if (!name) {
+      if (errEl) { errEl.textContent = 'Le nom du dashboard est obligatoire.'; errEl.style.display = 'block'; }
+      return;
+    }
+    if (errEl) errEl.style.display = 'none';
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Création…'; }
+    try {
+      const r = await apiAction('POST', '/api/data-explorer/dashboards', {
+        name,
+        description: descEl ? descEl.value.trim() : '',
+        icon: (iconEl ? iconEl.value : '') || '📊',
+        color: colorEl ? colorEl.value : '#2563EB',
+      });
+      if (!r || !r.ok || !r.dashboard) throw new Error('Réponse inattendue');
+      // Update STATE and close modal
+      if (!Array.isArray(STATE.customDashboards)) STATE.customDashboards = [];
+      STATE.customDashboards = [r.dashboard, ...STATE.customDashboards];
+      const modal = document.getElementById('fp-dash-modal');
+      if (modal) modal.style.display = 'none';
+      if (nameEl) nameEl.value = '';
+      if (descEl) descEl.value = '';
+      if (iconEl) iconEl.value = '📊';
+      render(STATE.currentSection);
+      showToast('success', 'Dashboard créé !');
+    } catch(e) {
+      if (errEl) { errEl.textContent = (e && e.message) ? e.message : 'Erreur lors de la création. Réessayez.'; errEl.style.display = 'block'; }
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Créer le dashboard'; }
+    }
+  };
+
+  window._fpDeleteDashboard = async function(id, name) {
+    if (!id) return;
+    if (!confirm('Supprimer le dashboard « ' + (name||id) + ' » ?')) return;
+    try {
+      await apiAction('DELETE', '/api/data-explorer/dashboards/' + encodeURIComponent(id), {});
+      STATE.customDashboards = (STATE.customDashboards||[]).filter(d => d.id !== id);
+      render(STATE.currentSection);
+      showToast('success', 'Dashboard supprimé.');
+    } catch(e) {
+      showToast('error', 'Impossible de supprimer ce dashboard.');
+    }
+  };
+
+  // ── Envoyer rapport client (client-mode → Reporting) ────────────────────────
+  window._fpSendClientReport = function(reportId, reportName, clientName) {
+    // Prompt for the recipient email then call the real API
+    const email = window.prompt('Adresse email du destinataire :', '');
+    if (!email || !email.includes('@')) {
+      if (email !== null) showToast('warning', 'Adresse email invalide.');
+      return;
+    }
+    // Disable all send buttons while the request is in flight
+    const allSendBtns = document.querySelectorAll('[onclick*="_fpSendClientReport"]');
+    allSendBtns.forEach(b => { b.disabled = true; });
+    apiAction('POST', '/api/client-mode/reports/' + encodeURIComponent(reportId || 'preview') + '/send', {
+      to: email.trim(),
+      clientName: clientName || undefined,
+    }).then(r => {
+      if (r && r.ok && r.sent) {
+        showToast('success', 'Rapport « ' + (reportName||'Rapport') + ' » envoyé à ' + email.trim() + ' !');
+      } else {
+        showToast('error', r && r.error ? r.error : 'Erreur lors de l\'envoi. Vérifiez la configuration email.');
+      }
+    }).catch(e => {
+      showToast('error', (e && e.message) ? e.message : 'Erreur lors de l\'envoi du rapport.');
+    }).finally(() => {
+      allSendBtns.forEach(b => { b.disabled = false; });
+    });
+  };
+
   window._showLoadRankingsModal = function() {
     const existing = document.getElementById('fp-rankings-modal');
     if (existing) { existing.style.display = 'flex'; return; }
@@ -57458,12 +57590,8 @@ function renderDataExplorer() {
   // SUB: CUSTOM DASHBOARDS
   // ══════════════════════════════════════════════════════════
   if (sub === 'dashboards') {
-    const presets = [
-      { name: 'Dashboard SEO Executive',   widgets: 8,  updated: '—', icon: '🔍', color: '#2563EB',  desc: 'Score SEO, positions, backlinks, local SEO domination',  route: "navigate('audits')" },
-      { name: 'Dashboard Marketing',        widgets: 6,  updated: '—', icon: '📢', color: '#8b5cf6',  desc: 'Sources trafic, conversion, campagnes, ROI', route: "navigate('analytics')" },
-      { name: 'Dashboard Performance',      widgets: 7,  updated: '—', icon: '⚡', color: '#22c55e',  desc: 'Uptime, vitesse, Core Web Vitals, SLA', route: "navigate('performance')" },
-      { name: 'Dashboard Client (white)',   widgets: 5,  updated: '—', icon: '👔', color: '#f59e0b',  desc: 'Vue simplifiée branded pour présentations client', route: "navigate('client-mode')" },
-    ];
+    // Load real dashboards from API (cached in STATE, refreshed on each render if stale)
+    const _realDash = STATE.customDashboards;
     const widgetTypes = [
       { name: 'Score SEO',         icon: '📊', plan: 'Standard' },
       { name: 'Funnel conversion',  icon: '🔄', plan: 'Pro'      },
@@ -57478,9 +57606,18 @@ function renderDataExplorer() {
       { name: 'Taux de conversion',  icon:'🎯', plan: 'Ultra'    },
       { name: 'Comparatif concurrent',icon:'⚔️',plan: 'Ultra'   },
     ];
+    // Fetch from API if not yet loaded or if returning to the page
+    if (!Array.isArray(_realDash)) {
+      apiFetch('/api/data-explorer/dashboards').then(r => {
+        STATE.customDashboards = Array.isArray(r?.dashboards) ? r.dashboards : [];
+        render(STATE.currentSection);
+      }).catch(() => { STATE.customDashboards = []; render(STATE.currentSection); });
+    }
+    const dashboards = Array.isArray(_realDash) ? _realDash : [];
+
     return `
       ${isPro
-        ? aiBlock("Votre dashboard SEO Executive est consulté 3× plus souvent que les autres. Suggestion IA : ajouter un widget <strong>Opportunités locales</strong> et <strong>Radar concurrents</strong> pour un executive briefing complet en un coup d\'oeil.",
+        ? aiBlock("Créez des dashboards personnalisés avec vos KPIs clés et partagez-les avec vos clients en un clic.",
             ['Créer un dashboard', 'Ajouter des widgets', 'Partager au client'])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">📊</div>
@@ -57490,39 +57627,83 @@ function renderDataExplorer() {
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Dashboards créés', String(presets.length), isPro ? '+ Nouveau' : 'Pro requis pour créer', 'neutral')}
+        ${statCard('Dashboards créés', !Array.isArray(_realDash) ? '…' : String(dashboards.length), isPro ? '+ Nouveau' : 'Pro requis pour créer', 'neutral')}
         ${statCard('Widgets disponibles', String(widgetTypes.length), '3 Ultra exclusifs', 'neutral')}
-        ${statCard('Partages actifs', displayStat(null, '2'), PREVIEW_MODE ? 'liens client actifs' : 'Aucun partage', 'neutral')}
-        ${statCard('Vues cette semaine', displayStat(null, '34'), PREVIEW_MODE ? '+12 vs semaine passée' : 'Aucune vue', 'neutral')}
+        ${statCard('Partages actifs', '0', 'aucun lien actif', 'neutral')}
+        ${statCard('Vues cette semaine', '—', 'aucune donnée', 'neutral')}
       </div>
 
-      <!-- PRESET DASHBOARDS -->
+      <!-- CREATE DASHBOARD MODAL (hidden by default) -->
+      <div id="fp-dash-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center">
+        <div style="background:var(--fp-bg-card);border:1px solid var(--fp-border);border-radius:16px;padding:24px 28px;width:min(94vw,440px);box-shadow:0 20px 60px rgba(0,0,0,0.6)">
+          <div style="font-size:16px;font-weight:800;color:var(--fp-text);margin-bottom:18px">📊 Nouveau dashboard</div>
+          <div style="margin-bottom:14px">
+            <label style="font-size:11px;font-weight:700;color:var(--fp-text-muted);display:block;margin-bottom:6px">Nom du dashboard *</label>
+            <input id="fp-dash-name" type="text" maxlength="120" placeholder="Ex. : Dashboard client — ACME" class="fp-input" style="width:100%;box-sizing:border-box" />
+          </div>
+          <div style="margin-bottom:14px">
+            <label style="font-size:11px;font-weight:700;color:var(--fp-text-muted);display:block;margin-bottom:6px">Description (optionnel)</label>
+            <input id="fp-dash-desc" type="text" maxlength="500" placeholder="Résumé du contenu ou du client cible" class="fp-input" style="width:100%;box-sizing:border-box" />
+          </div>
+          <div style="margin-bottom:18px;display:flex;gap:10px;align-items:center">
+            <div style="flex:1">
+              <label style="font-size:11px;font-weight:700;color:var(--fp-text-muted);display:block;margin-bottom:6px">Icône</label>
+              <input id="fp-dash-icon" type="text" maxlength="4" value="📊" class="fp-input" style="width:100%;box-sizing:border-box;font-size:18px;text-align:center" />
+            </div>
+            <div style="flex:2">
+              <label style="font-size:11px;font-weight:700;color:var(--fp-text-muted);display:block;margin-bottom:6px">Couleur</label>
+              <select id="fp-dash-color" class="fp-input" style="width:100%;box-sizing:border-box">
+                <option value="#2563EB">🔵 Bleu (défaut)</option>
+                <option value="#22c55e">🟢 Vert</option>
+                <option value="#8b5cf6">🟣 Violet</option>
+                <option value="#f59e0b">🟡 Ambre</option>
+                <option value="#ef4444">🔴 Rouge</option>
+                <option value="#06b6d4">🩵 Cyan</option>
+              </select>
+            </div>
+          </div>
+          <div id="fp-dash-modal-err" style="display:none;padding:8px 12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;font-size:11px;color:#ef4444;margin-bottom:12px"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="document.getElementById('fp-dash-modal').style.display='none'">Annuler</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" id="fp-dash-submit" onclick="window._fpCreateDashboard()">Créer le dashboard</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- CUSTOM DASHBOARDS LIST -->
       <div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">Dashboards sauvegardés</div>
-          ${isPro ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('analytics')" class="fp-btn fp-btn-primary fp-btn-sm">+ Créer</button>` : ''}
+          <div class="fp-card-title" style="margin-bottom:0">Mes dashboards</div>
+          ${isPro ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="document.getElementById('fp-dash-modal').style.display='flex';document.getElementById('fp-dash-name').focus()">+ Créer</button>` : ''}
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
-          ${presets.map(p => `
-            <div style="padding:16px;border-radius:12px;border:1px solid ${p.color}30;background:${p.color}08;position:relative">
-              <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
-                <div>
-                  <div style="font-size:20px;margin-bottom:4px">${typeof p.icon==='string'&&p.icon.startsWith('<')? p.icon : escHtml(p.icon)}</div>
-                  <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${escHtml(p.name)}</div>
-                </div>
-                <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(p.updated)}</span>
-              </div>
-              <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px">${escHtml(p.desc)}</div>
-              <div style="display:flex;align-items:center;justify-content:space-between">
-                <span style="font-size:10px;color:${p.color};font-weight:600">${p.widgets} widgets</span>
-                <div style="display:flex;gap:6px">
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="${p.route||'navigate(\'overview\')'}">Ouvrir</button>
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="Copier l'URL" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>window.showToast&&showToast('success','URL copiée !')).catch(()=>window.showToast&&showToast('info',window.location.href))">Copier URL</button>
-                </div>
-              </div>
-            </div>
-          `).join('')}
-        </div>
+        ${!Array.isArray(_realDash)
+          ? `<div style="text-align:center;padding:24px;color:var(--fp-text-faint);font-size:12px">Chargement…</div>`
+          : dashboards.length === 0
+            ? `<div style="text-align:center;padding:24px;color:var(--fp-text-faint);font-size:13px">
+                <div style="font-size:30px;margin-bottom:8px">📊</div>
+                <div style="font-weight:600;margin-bottom:4px">Aucun dashboard créé</div>
+                <div style="font-size:11px">Cliquez <strong>+ Créer</strong> pour configurer votre premier dashboard personnalisé.</div>
+               </div>`
+            : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+                ${dashboards.map(p => `
+                  <div style="padding:16px;border-radius:12px;border:1px solid ${escHtml(p.color||'#2563EB')}30;background:${escHtml(p.color||'#2563EB')}08;position:relative" data-did="${escHtml(p.id)}">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
+                      <div>
+                        <div style="font-size:20px;margin-bottom:4px">${escHtml(p.icon||'📊')}</div>
+                        <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${escHtml(p.name)}</div>
+                      </div>
+                      <span style="font-size:10px;color:var(--fp-text-faint)">${p.created_at ? new Date(p.created_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}) : '—'}</span>
+                    </div>
+                    ${p.description ? `<div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px">${escHtml(p.description)}</div>` : ''}
+                    <div style="display:flex;align-items:center;justify-content:space-between">
+                      <span style="font-size:10px;color:${escHtml(p.color||'#2563EB')};font-weight:600">${(p.widgets||[]).length} widget(s)</span>
+                      <div style="display:flex;gap:6px">
+                        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="Supprimer" data-did="${escHtml(p.id)}" onclick="window._fpDeleteDashboard(this.dataset.did,${escHtml(JSON.stringify(p.name))})">✕</button>
+                      </div>
+                    </div>
+                  </div>`).join('')}
+               </div>`
+        }
       </div>
 
       <!-- WIDGET GALLERY -->
