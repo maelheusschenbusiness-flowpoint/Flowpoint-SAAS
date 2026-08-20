@@ -14877,8 +14877,8 @@ function renderAIPanelContent() {
     </div>
     <div class="fp-ai-input-row">
       <textarea class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" rows="1" style="font-size:11px;resize:none;min-height:34px;height:34px;max-height:120px;overflow-y:hidden;line-height:1.4;flex:1 1 auto;min-width:0"></textarea>
-      <button class="fp-ai-send" id="ai-panel-send" style="flex:0 0 auto;width:30px;height:30px;align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="13"').replace('height="14"','height="13"')}</button>
-      <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:13px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
+      <button class="fp-ai-send" id="ai-panel-send" style="flex:0 0 auto;width:34px;height:34px;align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send')}</button>
+      <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
     </div>
   `;
 }
@@ -47654,6 +47654,16 @@ async function init() {
   // Calendar event panel — exposed so Playwright/external callers can open panel directly
   window.renderNewCalEventPanel = renderNewCalEventPanel;
   window.setupNewCalEventPanel = setupNewCalEventPanel;
+  // Audit detail panel — used by inline onclick attrs in Audit SEO list & Opportunités pages
+  window.renderAuditDetailPanel = renderAuditDetailPanel;
+  window.bindAuditPanelBtns    = bindAuditPanelBtns;
+  // Growth objectives panel — used by inline onclick attrs in Croissance/Objectifs page
+  window.renderNewObjectivePanel = renderNewObjectivePanel;
+  window.setupNewObjectivePanel  = setupNewObjectivePanel;
+  // Team files — used by inline onclick attrs generated in renderTeamFiles()
+  window.downloadFileAssetById = downloadFileAssetById;
+  window.deleteTeamFile        = deleteTeamFile;
+  window.renderTeamFilesSearch = renderTeamFilesSearch;
   // Local maps / heatmap modal — same reason
   window._showCreateHeatmapModal = function() {
     const m = document.getElementById('fp-heatmap-modal');
@@ -47703,6 +47713,30 @@ async function init() {
       const r = await window.FP_REVIEW_INTEL_API.analyzeReview({ authorName: author, rating, reviewText: text, language: lang });
       if (r?.ok) {
         const a = r.analysis || {};
+        // Persist analyzed review into local store so it shows immediately in "Avis analysés"
+        try {
+          if (!window.FP_DATA) window.FP_DATA = {};
+          if (!window.FP_DATA.reviewIntel) window.FP_DATA.reviewIntel = { reviews: [], stats: {}, alerts: [] };
+          if (!Array.isArray(window.FP_DATA.reviewIntel.reviews)) window.FP_DATA.reviewIntel.reviews = [];
+          const _newRev = {
+            id: 'local_' + Date.now(),
+            author_name: author || 'Auteur inconnu', rating, review_text: text,
+            sentiment: a.sentiment || 'neutre', score: a.score || null,
+            ai_reply: a.suggestedReply || null, analyzed_at: new Date().toISOString(),
+          };
+          window.FP_DATA.reviewIntel.reviews.unshift(_newRev);
+          const _rvs = window.FP_DATA.reviewIntel.reviews;
+          const _st  = window.FP_DATA.reviewIntel.stats || {};
+          _st.totalReviews = _rvs.length;
+          _st.avgRating = Math.round((_rvs.reduce((s, rv) => s + (rv.rating || 0), 0) / _rvs.length) * 10) / 10;
+          _st.sentimentDist = {
+            positive: _rvs.filter(rv => /posit/i.test(rv.sentiment || '')).length,
+            negative: _rvs.filter(rv => /n[eé]gat/i.test(rv.sentiment || '')).length,
+            neutral:  _rvs.filter(rv => !/posit|n[eé]gat/i.test(rv.sentiment || '')).length,
+          };
+          _st.reputationScore = Math.min(100, Math.round((_st.avgRating / 5) * 70 + (_st.sentimentDist.positive / Math.max(1, _rvs.length)) * 30));
+          window.FP_DATA.reviewIntel.stats = _st;
+        } catch(_e) { /* non-blocking */ }
         const sentColor = a.sentiment === 'positif' ? '#22c55e' : a.sentiment === 'négatif' ? '#ef4444' : '#f59e0b';
         const renderList = (items) => (items||[]).map(it=>`<li style="font-size:12px;color:var(--fp-text-muted);margin-bottom:2px">${escHtml(it)}</li>`).join('');
         openFloatPanel(fpT('📊 Analyse IA — résultat'),
@@ -48024,6 +48058,10 @@ async function init() {
         if (r.rankings) {
           if (!STATE.localSeo) STATE.localSeo = {};
           STATE.localSeo.rankings = r.rankings;
+          // Increment quota counter locally so the X/1000 display updates immediately
+          if (!STATE.dfsStatus) STATE.dfsStatus = {};
+          if (!STATE.dfsStatus.quota) STATE.dfsStatus.quota = { used: 0, limit: 1000 };
+          STATE.dfsStatus.quota.used = (STATE.dfsStatus.quota.used || 0) + 1;
           STATE.localSeo.rankingKeyword = kw;
           STATE.localSeo.rankingCity = city;
         }
@@ -51463,20 +51501,26 @@ function renderLocalSEOOpportunities() {
               { monthIdx: 11, month: 'Déc.',  event: 'Fêtes de Noël',                   action: 'Offres cadeaux + posts GBP',        gain: '+240 vis' },
             ];
           }
-          // Show current month + 4 next (wrap around year)
-          var _shown = [];
-          for (var _i = 0; _i < 5; _i++) {
-            _shown.push(_allEvents[(_curM + _i) % 12]);
-          }
-          return _shown;
+          // Only use real AI-generated opportunities; never show fabricated sector data
+          // Return an empty array — the display logic below handles the empty state
+          var _aiOpps = (window.FP_DATA && window.FP_DATA.seasonalOpportunities) || (STATE.localSeo && STATE.localSeo.seasonalOpportunities) || [];
+          if (!Array.isArray(_aiOpps) || _aiOpps.length === 0) return [];
+          return _aiOpps.slice(0, 5).map(function(opp) {
+            return { month: opp.month || '', event: opp.event || opp.title || '', action: opp.action || opp.desc || '', gain: opp.gain || '' };
+          });
         })().map(s => `
           <div style="padding:12px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.15);border-radius:10px">
             <div style="font-size:10px;font-weight:700;color:var(--fp-accent);text-transform:uppercase;margin-bottom:4px">${s.month}</div>
             <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${s.event}</div>
             <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:6px">${s.action}</div>
-            <div style="font-size:11px;font-weight:700;color:#22c55e">${s.gain}</div>
+            ${s.gain ? `<div style="font-size:11px;font-weight:700;color:#22c55e">${s.gain}</div>` : ''}
           </div>
-        `).join('')}
+        `).join('') || `
+          <div style="text-align:center;padding:24px 16px;grid-column:1/-1;color:var(--fp-text-faint)">
+            <div style="font-size:24px;margin-bottom:8px">📅</div>
+            <div style="font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:4px">Aucune opportunité saisonnière détectée</div>
+            <div style="font-size:11px;max-width:380px;margin:0 auto">Les opportunités personnalisées apparaîtront ici une fois que l\'IA aura analysé vos mots-clés et votre secteur. Lancez un audit ou connectez Google Business Profile pour démarrer.</div>
+          </div>`}
       </div>
     </div>
     ` : ''}
@@ -53017,15 +53061,18 @@ function renderCompetitor() {
       </div>
       <div class="fp-filter-tabs" style="margin-bottom:16px">
         ${[
-          {id:'apercu',  label:fpT('Aperçu')},
-          {id:'content', label:fpT('Mots-clés')},
-          {id:'growth',  label:fpT('Trafic')},
-        ].map(t=>`<button class="fp-filter-tab${(!sub&&t.id==='apercu')||sub===t.id?' active':''}" onclick="navigateSub('${t.id}')">${t.label}</button>`).join('')}
+          {id:'overview',  label:fpT('Aperçu')},
+          {id:'keywords',  label:fpT('Mots-clés')},
+          {id:'growth',    label:fpT('Trafic')},
+          {id:'backlinks', label:fpT('Backlinks')},
+          {id:'local',     label:fpT('Local')},
+          {id:'alerts',    label:fpT('Alertes')},
+        ].map(t=>`<button class="fp-filter-tab${sub===t.id?' active':''}" onclick="navigateSub('${t.id}')">${t.label}</button>`).join('')}
       </div>
-      ${(sub && sub !== 'apercu' && competitors.length > 0) ? (() => {
+      ${(sub && sub !== 'overview' && sub !== 'apercu' && competitors.length > 0) ? (() => {
         // Only tabs backed by fields the API actually returns: keywords and traffic
         const avail = competitors.filter(c => c.dataStatus === 'available');
-        if (sub === 'content') {
+        if (sub === 'keywords' || sub === 'content') {
           const sorted = [...avail].sort((a,b) => (b.keywords||0) - (a.keywords||0));
           if (!sorted.length) return `<div class="fp-card" style="text-align:center;padding:36px 24px;margin-bottom:16px"><div style="font-size:32px;margin-bottom:8px">✍️</div><div style="font-weight:600;margin-bottom:4px">${fpT('Données de mots-clés non encore récupérées')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Les métriques apparaîtront automatiquement une fois la récupération fournisseur terminée.')}</div></div>`;
           return `<div class="fp-card fp-mb-20"><div class="fp-card-title" style="margin-bottom:12px">✍️ ${fpT('Volume de mots-clés — source fournisseur externe')}</div><div style="display:flex;flex-direction:column;gap:8px">${sorted.map(c=>`<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border)"><div style="flex:1"><div style="font-weight:700;font-size:12px">${escHtml(c.name)}</div><div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(String(c.url||'').replace(/^https?:\/\//,''))}</div></div><span style="font-size:11px;font-weight:700;color:var(--fp-accent)">${displayMetric(c.keywords)} ${fpT('mots-clés')}</span><span style="font-size:10px;color:var(--fp-text-faint);margin-left:4px">DR ${displayMetric(c.domainRating)}</span></div>`).join('')}</div></div>`;
@@ -53035,8 +53082,16 @@ function renderCompetitor() {
           if (!byTraffic.length) return `<div class="fp-card" style="text-align:center;padding:36px 24px;margin-bottom:16px"><div style="font-size:32px;margin-bottom:8px">📈</div><div style="font-weight:600;margin-bottom:4px">${fpT('Données de trafic non encore récupérées')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Les métriques de trafic organique apparaîtront une fois la récupération fournisseur terminée.')}</div></div>`;
           return `<div class="fp-card fp-mb-20"><div class="fp-card-title" style="margin-bottom:12px">📈 ${fpT('Trafic organique estimé — source fournisseur externe')}</div><div style="display:flex;flex-direction:column;gap:8px">${byTraffic.map(c=>`<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border)"><div style="flex:1"><div style="font-weight:700;font-size:12px">${escHtml(c.name)}</div><div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(String(c.url||'').replace(/^https?:\/\//,''))}</div></div><span style="font-size:11px;font-weight:700;color:#22c55e">${displayMetric(c.traffic)} ${fpT('visites/mois')}</span></div>`).join('')}</div></div>`;
         }
-        return '';
-      })() : (sub && sub !== 'apercu' && competitors.length === 0) ? `
+        // Stub views for backlinks / local / alerts
+        const _stubIcon  = sub==='backlinks'?'🔗':sub==='local'?'📍':'🔔';
+        const _stubLabel = sub==='backlinks'?fpT('Backlinks'):sub==='local'?fpT('Présence locale'):fpT('Alertes concurrents');
+        const _stubDesc  = sub==='backlinks'
+          ? fpT('Les données de profil de liens entrants seront disponibles une fois la récupération fournisseur terminée pour vos concurrents.')
+          : sub==='local'
+          ? fpT('La comparaison de présence locale sera disponible après configuration de votre zone Local SEO.')
+          : fpT('Configurez des règles d\'alerte depuis Centre d\'alertes → Concurrents pour être notifié automatiquement des mouvements.');
+        return `<div class="fp-card fp-mb-20" style="text-align:center;padding:36px 24px"><div style="font-size:32px;margin-bottom:8px">${_stubIcon}</div><div style="font-weight:600;margin-bottom:8px">${_stubLabel}</div><div style="font-size:12px;color:var(--fp-text-muted);max-width:420px;margin:0 auto">${_stubDesc}</div></div>`;
+      })() : (sub && sub !== 'overview' && sub !== 'apercu' && competitors.length === 0) ? `
         <div class="fp-card" style="text-align:center;padding:36px 24px;margin-bottom:16px">
           <div style="font-size:32px;margin-bottom:8px">🔎</div>
           <div style="font-weight:600;margin-bottom:6px">${fpT('Aucun concurrent suivi')}</div>

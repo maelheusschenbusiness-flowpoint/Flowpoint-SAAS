@@ -62,12 +62,14 @@ router.post("/gbp-posts", async (req, res) => {
     ctaType?: string; ctaUrl?: string; mediaUrls?: string[]; scheduledAt?: string;
     seoKeywords?: string[]; eventTitle?: string; eventStart?: string; eventEnd?: string; offerCode?: string;
   };
-  if (!locationId || !content) { res.status(400).json({ error: "locationId et content requis" }); return; }
+  // locationId is optional for drafts — use 'default' as fallback so brouillon saves always work
+  const effectiveLocationId = locationId || 'default';
+  if (!content) { res.status(400).json({ error: "content requis" }); return; }
   try {
     type PostType = import("../services/gbp-posting-service.js").PostType;
     type CtaType  = import("../services/gbp-posting-service.js").CtaType;
     const post = await createPost(org(req), {
-      locationId, locationName, postType: postType as PostType, title, content,
+      locationId: effectiveLocationId, locationName, postType: postType as PostType, title, content,
       ctaType: ctaType as CtaType, ctaUrl, mediaUrls, scheduledAt,
       seoKeywords, eventTitle, eventStart, eventEnd, offerCode,
     });
