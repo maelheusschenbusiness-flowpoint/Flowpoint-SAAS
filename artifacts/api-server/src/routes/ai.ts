@@ -65,8 +65,9 @@ import { RECOMMENDATION_TOOLS } from "../agent/recommendation-tools.js";
 import { MONITOR_TOOLS } from "../agent/monitor-tools.js";
 // ── AI Agents Phase 7 — outil analyze_url ────────────────────────────────────
 import { URL_TOOLS } from "../agent/url-tools.js";
+import { WORKSPACE_TOOLS } from "../agent/workspace-tools.js";
 /** Registre unifié missions + calendrier + audits + recommandations + monitors + url passé au provider lors du tool calling. */
-const ALL_TOOLS = [...MISSION_TOOLS, ...CALENDAR_TOOLS, ...AUDIT_TOOLS, ...RECOMMENDATION_TOOLS, ...MONITOR_TOOLS, ...URL_TOOLS];
+const ALL_TOOLS = [...MISSION_TOOLS, ...CALENDAR_TOOLS, ...AUDIT_TOOLS, ...RECOMMENDATION_TOOLS, ...MONITOR_TOOLS, ...URL_TOOLS, ...WORKSPACE_TOOLS];
 /** Map de lookup unifié — phase 2 à 7. */
 const ALL_TOOLS_MAP = new Map(ALL_TOOLS.map((t) => [t.name, t]));
 import { aiChatWithTools, buildToolResultMessages, type ToolCallingResult } from "../services/ai-tool-calling.js";
@@ -374,6 +375,20 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
     const missComp     = (e["missionsCompleted"] as number) ?? 0;
     const activeAlerts = (e["activeAlertsCount"] as number) ?? 0;
     const aiCredits    = (e["aiCredits"] as number|null) ?? null;
+    // Real counts for workspace entities (so the AI doesn't answer "0" or "indisponible")
+    let nbReports = 0;
+    let nbKeywords = 0;
+    let nbCompetitors = 0;
+    try {
+      const [rptR, kwR, compR] = await Promise.all([
+        pool.query(`SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1`, [oid]).catch(() => ({ rows: [{ n: 0 }] })),
+        pool.query(`SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`, [oid]).catch(() => ({ rows: [{ n: 0 }] })),
+        pool.query(`SELECT COUNT(*)::int AS n FROM competitors WHERE org_id=$1`, [oid]).catch(() => ({ rows: [{ n: 0 }] })),
+      ]);
+      nbReports     = (rptR.rows[0]?.["n"]  as number) ?? 0;
+      nbKeywords    = (kwR.rows[0]?.["n"]   as number) ?? 0;
+      nbCompetitors = (compR.rows[0]?.["n"] as number) ?? 0;
+    } catch { /* non-blocking */ }
     // Frontend-provided detailed issue list for current audit (enriched by dashboard)
     const frontendIssues = (e["auditIssues"] as Array<{label:string;sev:string;roi:string}>) ?? [];
 
@@ -447,7 +462,7 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       `=== CONCURRENTS ===`,
       competitors.length > 0
         ? competitors.map(c => `${c.name}${c.domain ? ` (${c.domain})` : ""} DR=${c.rating ?? "?"}`).join(" | ")
-        : "Aucun concurrent enregistré",
+        : `Aucun concurrent enregistré (total en base : ${nbCompetitors})`,
       competitors.length > 0 && competitors[0]!.rating
         ? clientDomainAuthority !== null
           ? `Écart DR : votre domaine ${clientDomain ? `(${clientDomain})` : ""} DA=${clientDomainAuthority} vs concurrent "${competitors[0]!.name}" DR=${competitors[0]!.rating} — ${competitors[0]!.rating > clientDomainAuthority ? `retard de ${competitors[0]!.rating - clientDomainAuthority} pts DR` : `avance de ${clientDomainAuthority - competitors[0]!.rating} pts DR`}`
@@ -462,6 +477,7 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       `=== MISSIONS & ALERTES ===`,
       `Missions actives : ${missAct} | Missions complétées : ${missComp}`,
       `Alertes actives : ${activeAlerts}`,
+      `Mots-clés suivis : ${nbKeywords} | Concurrents : ${nbCompetitors} | Rapports générés : ${nbReports}`,
       topMissions.length > 0
         ? `Top missions prioritaires :\n${topMissions.map(m =>
             `  - [${m.id}] "${m.title}" | statut: ${m.status} | priorité: ${m.priority} | catégorie: ${m.category}${m.dueDate ? ` | échéance: ${m.dueDate}` : ""}`

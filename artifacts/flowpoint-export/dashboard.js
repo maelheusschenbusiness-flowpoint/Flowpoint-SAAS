@@ -13438,8 +13438,8 @@ function renderAI() {
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
           <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
-          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:hidden;line-height:1.5;height:38px;max-height:120px;padding-right:18px"></textarea>
-          <button class="fp-ai-send" id="ai-send">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
+          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:hidden;line-height:1.5;height:38px;max-height:120px;padding-right:8px;flex:1 1 auto;min-width:0"></textarea>
+          <button class="fp-ai-send" id="ai-send" style="flex:0 0 auto;width:36px;height:36px;align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
           <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
         <!-- Progress hint: shows server-side step name (e.g. "Identification des informations…")
@@ -14868,8 +14868,8 @@ function renderAIPanelContent() {
       ${renderAIMessages()}
     </div>
     <div class="fp-ai-input-row">
-      <textarea class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" rows="1" style="font-size:11px;resize:none;min-height:34px;height:34px;max-height:120px;overflow-y:hidden;line-height:1.4"></textarea>
-      <button class="fp-ai-send" id="ai-panel-send">${svgIcon('send').replace('width="14"','width="13"').replace('height="14"','height="13"')}</button>
+      <textarea class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" rows="1" style="font-size:11px;resize:none;min-height:34px;height:34px;max-height:120px;overflow-y:hidden;line-height:1.4;flex:1 1 auto;min-width:0"></textarea>
+      <button class="fp-ai-send" id="ai-panel-send" style="flex:0 0 auto;width:30px;height:30px;align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="13"').replace('height="14"','height="13"')}</button>
       <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:13px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
     </div>
   `;
@@ -17194,8 +17194,8 @@ function bindSectionEvents() {
     $$('.fp-ai-quick').forEach(btn => btn.addEventListener('click', () => sendAIMessage(btn.dataset.aiPrompt)));
     const aiInput = $('#ai-input');
     const aiSend = $('#ai-send');
-    function _resetAiInput() { if(!aiInput) return; aiInput.value=''; aiInput.style.height='38px'; aiInput.style.overflowY='hidden'; aiInput.classList.remove('fp-ai-scrolling'); try { sessionStorage.removeItem('fp:ai-draft'); } catch(_) {} const _ph=document.getElementById('fp-ai-progress-hint'); if(_ph) _ph.textContent=''; }
-    function _resizeAiInput() { if(!aiInput) return; aiInput.style.height='38px'; var sh=aiInput.scrollHeight; aiInput.style.height=Math.min(sh,120)+'px'; if(sh>120){aiInput.style.overflowY='auto';aiInput.classList.add('fp-ai-scrolling');}else{aiInput.style.overflowY='hidden';aiInput.classList.remove('fp-ai-scrolling');} }
+    function _resetAiInput() { if(!aiInput) return; aiInput.value=''; aiInput.style.height='38px'; aiInput.style.overflowY='hidden'; aiInput.style.removeProperty('overflow-y'); aiInput.style.setProperty('overflow-y','hidden','important'); aiInput.classList.remove('fp-ai-scrolling'); try { sessionStorage.removeItem('fp:ai-draft'); } catch(_) {} const _ph=document.getElementById('fp-ai-progress-hint'); if(_ph) _ph.textContent=''; }
+    function _resizeAiInput() { if(!aiInput) return; aiInput.style.overflowY='hidden'; aiInput.style.height='38px'; var sh=aiInput.scrollHeight; var newH=Math.min(sh,120); aiInput.style.height=newH+'px'; if(sh>120){ aiInput.style.removeProperty('overflow-y'); aiInput.style.overflowY='scroll'; aiInput.classList.add('fp-ai-scrolling'); } else { aiInput.style.overflowY='hidden'; aiInput.classList.remove('fp-ai-scrolling'); } }
     aiInput?.addEventListener('input', () => {
       _resizeAiInput();
       // Draft persistence: keep the unsent text across remounts (hard refresh,

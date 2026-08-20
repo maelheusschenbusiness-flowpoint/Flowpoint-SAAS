@@ -21,6 +21,7 @@ import { AUDIT_TOOL_BY_NAME, AUDIT_ARG_SCHEMAS, snapAudit, fmtAuditStatus } from
 import { RECOMMENDATION_TOOL_BY_NAME, RECOMMENDATION_ARG_SCHEMAS, snapRecommendation, fmtRecommPriority, computeRecommPriorityScore, type RecommendationInput } from "./recommendation-tools.js";
 import { MONITOR_TOOL_BY_NAME, MONITOR_ARG_SCHEMAS, snapMonitor, snapIncident, fmtMonitorStatus, fmtDurationS, fmtUptimePct } from "./monitor-tools.js";
 import { URL_TOOL_BY_NAME, URL_ARG_SCHEMAS } from "./url-tools.js";
+import { WORKSPACE_TOOL_BY_NAME, WORKSPACE_ARG_SCHEMAS } from "./workspace-tools.js";
 import { fetchUrlContent } from "../services/url-fetcher.js";
 import { crawlSite } from "../services/site-crawler.js";
 import { analyzePSI } from "../services/pagespeed-service.js";
@@ -31,7 +32,7 @@ import type { Permission } from "./permissions.js";
 // ── Phase 6 : registre unifié missions + calendrier + audits + recommandations + monitors ─
 const TOOL_BY_NAME: Map<string, import("./mission-tools.js").ToolDef> = new Map([
   ..._MISSION_TOOL_BY_NAME, ...CALENDAR_TOOL_BY_NAME, ...AUDIT_TOOL_BY_NAME, ...RECOMMENDATION_TOOL_BY_NAME,
-  ...MONITOR_TOOL_BY_NAME, ...URL_TOOL_BY_NAME,
+  ...MONITOR_TOOL_BY_NAME, ...URL_TOOL_BY_NAME, ...WORKSPACE_TOOL_BY_NAME,
 ]);
 type SafeParseSchema = { safeParse: (x: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: string[]; message: string }> } } };
 const TOOL_ARG_SCHEMAS: Record<string, SafeParseSchema> = {
@@ -41,6 +42,7 @@ const TOOL_ARG_SCHEMAS: Record<string, SafeParseSchema> = {
   ...(RECOMMENDATION_ARG_SCHEMAS as Record<string, SafeParseSchema>),
   ...(MONITOR_ARG_SCHEMAS        as Record<string, SafeParseSchema>),
   ...(URL_ARG_SCHEMAS            as Record<string, SafeParseSchema>),
+  ...(WORKSPACE_ARG_SCHEMAS      as Record<string, SafeParseSchema>),
 };
 
 // ── Snapshot helpers ─────────────────────────────────────────────────────────
@@ -332,7 +334,12 @@ async function dispatchTool(
         JSON.stringify(stepsArr), (args["dueDate"] as string) ?? null,
         (args["assignedTo"] as string) ?? null]);
 
-    const row = await pool.query(`SELECT * FROM missions WHERE id = $1`, [id]);
+    // Verify that the mission was actually inserted into THIS org — cross-org read would
+    // produce a false positive if the wrong orgId was used in the INSERT.
+    const row = await pool.query(
+      `SELECT * FROM missions WHERE id = $1 AND org_id = $2`,
+      [id, orgId]
+    );
     const mission = row.rows[0];
 
     // RÈGLE ABSOLUE : ne jamais confirmer un succès sans preuve DB positive.
@@ -3318,6 +3325,188 @@ async function dispatchTool(
       },
       actionLogId: logId,
     };
+  }
+
+  // ── list_competitors ─────────────────────────────────────────────────────
+  if (name === "list_competitors") {
+    const limit = Math.min((args["limit"] as number) ?? 10, 30);
+    const r = await pool.query(
+      `SELECT id, name, url, domain_rating, keywords, threat_level, created_at
+       FROM competitors WHERE org_id = $1 ORDER BY domain_rating DESC NULLS LAST LIMIT $2`,
+      [orgId, limit]
+    );
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel,
+      result: "ok", durationMs: Date.now() - t0 });
+    if (r.rows.length === 0) {
+      return { toolCallId: logId, toolName: name, ok: true,
+        content: `Aucun concurrent suivi. Ajoutez-en un avec add_competitor.`, actionLogId: logId };
+    }
+    const list = r.rows.map((c: Record<string, unknown>) =>
+      `- ID: ${c["id"]} | ${c["name"]} | ${c["url"]} | DR: ${c["domain_rating"] ?? "?"} | Menace: ${c["threat_level"] ?? "low"}`
+    ).join("\n");
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `${r.rows.length} concurrent(s) :\n${list}`, data: { competitors: r.rows }, actionLogId: logId };
+  }
+
+  // ── add_competitor ────────────────────────────────────────────────────────
+  if (name === "add_competitor") {
+    const rawName = (args["name"] as string).trim();
+    const rawUrl  = (args["url"]  as string).trim();
+    const threat  = (["low","medium","high","critical"].includes((args["threat_level"] as string) ?? "")) ? (args["threat_level"] as string) : "low";
+    // Normalize URL
+    const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+    const { randomUUID } = await import("node:crypto");
+    const id = `comp_${randomUUID()}`;
+    await pool.query(
+      `INSERT INTO competitors (id, name, url, domain_rating, keywords, traffic, threat_level, delta, org_id, data_status, data_provider, created_at)
+       VALUES ($1,$2,$3,0,0,0,$4,0,$5,'pending','AI',NOW())`,
+      [id, rawName, url, threat, orgId]
+    );
+    // Fail-closed verify
+    const verify = await pool.query(`SELECT id, name, url FROM competitors WHERE id = $1 AND org_id = $2`, [id, orgId]);
+    if (!verify.rows[0]) {
+      await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+        tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "error",
+        error: "Competitor not found after insert", durationMs: Date.now() - t0 });
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `Le concurrent "${rawName}" n'a pas pu être enregistré en base. Réessayez ou ajoutez-le manuellement.`,
+        actionLogId: logId };
+    }
+    store.logActivity({ type: "alert", label: `[IA] Concurrent ajouté : ${rawName}`, targetId: id, targetType: "competitor", orgId }).catch(() => {});
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "ok",
+      snapshot: verify.rows[0], durationMs: Date.now() - t0 });
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `Concurrent ajouté — ID: ${id} | Nom: "${rawName}" | URL: ${url} | Niveau de menace: ${threat}`,
+      data: verify.rows[0], actionLogId: logId };
+  }
+
+  // ── delete_competitor ─────────────────────────────────────────────────────
+  if (name === "delete_competitor") {
+    const compId = (args["id"] as string).trim();
+    const snap = await pool.query(`SELECT id, name FROM competitors WHERE id = $1 AND org_id = $2`, [compId, orgId]);
+    if (!snap.rows[0]) {
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `Concurrent ID "${compId}" introuvable dans votre organisation.`, actionLogId: logId };
+    }
+    const compName = String(snap.rows[0]["name"] ?? compId);
+    await pool.query(`DELETE FROM competitors WHERE id = $1 AND org_id = $2`, [compId, orgId]);
+    store.logActivity({ type: "alert", label: `[IA] Concurrent supprimé : ${compName}`, targetId: compId, targetType: "competitor", orgId }).catch(() => {});
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "ok",
+      snapshot: snap.rows[0], durationMs: Date.now() - t0 });
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `Concurrent "${compName}" supprimé définitivement.`, actionLogId: logId };
+  }
+
+  // ── list_keywords ─────────────────────────────────────────────────────────
+  if (name === "list_keywords") {
+    const limit = Math.min((args["limit"] as number) ?? 20, 50);
+    const minPos = args["min_position"] as number | undefined;
+    const maxPos = args["max_position"] as number | undefined;
+    let sql = `SELECT id, keyword, current_position, prev_position, position_change, search_volume, tag, active, updated_at
+               FROM tracked_keywords WHERE org_id = $1 AND active = true`;
+    const params: unknown[] = [orgId];
+    let p = 2;
+    if (minPos !== undefined) { sql += ` AND current_position >= $${p++}`; params.push(minPos); }
+    if (maxPos !== undefined) { sql += ` AND current_position <= $${p++}`; params.push(maxPos); }
+    sql += ` ORDER BY search_volume DESC NULLS LAST, current_position ASC NULLS LAST LIMIT $${p}`;
+    params.push(limit);
+    const r = await pool.query(sql, params);
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "ok", durationMs: Date.now() - t0 });
+    if (r.rows.length === 0) {
+      return { toolCallId: logId, toolName: name, ok: true,
+        content: `Aucun mot-clé suivi. Ajoutez-en un avec add_keyword.`, actionLogId: logId };
+    }
+    const list = r.rows.map((k: Record<string, unknown>) =>
+      `- ID: ${k["id"]} | "${k["keyword"]}" | Pos: ${k["current_position"] ?? "?"} | Volume: ${k["search_volume"] ?? "?"} | Δ: ${k["position_change"] != null ? (Number(k["position_change"]) > 0 ? "+" : "") + k["position_change"] : "?"}`
+    ).join("\n");
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `${r.rows.length} mot(s)-clé(s) suivi(s) :\n${list}`, data: { keywords: r.rows }, actionLogId: logId };
+  }
+
+  // ── add_keyword ───────────────────────────────────────────────────────────
+  if (name === "add_keyword") {
+    const keyword = (args["keyword"] as string).trim();
+    const tag   = (args["tag"] as string | undefined) ?? null;
+    const kwId  = "kw" + Date.now();
+    const r = await pool.query(
+      `INSERT INTO tracked_keywords
+         (id, org_id, keyword, current_position, prev_position, search_volume, difficulty,
+          tag, active, device, location, language, created_at, updated_at)
+       VALUES ($1,$2,$3,null,null,null,50,$4,true,'desktop','France','fr',NOW(),NOW())
+       ON CONFLICT (org_id, keyword, device, location) DO NOTHING
+       RETURNING id, keyword`,
+      [kwId, orgId, keyword, tag]
+    );
+    // Fail-closed: if ON CONFLICT DO NOTHING fired, find existing row
+    let createdId = r.rows[0]?.["id"];
+    if (!createdId) {
+      const existing = await pool.query(
+        `SELECT id, keyword FROM tracked_keywords WHERE org_id = $1 AND keyword = $2 AND device='desktop' AND location='France' AND active=true LIMIT 1`,
+        [orgId, keyword]
+      );
+      if (existing.rows[0]) {
+        await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+          tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "ok", durationMs: Date.now() - t0 });
+        return { toolCallId: logId, toolName: name, ok: true,
+          content: `Le mot-clé "${keyword}" est déjà suivi (ID: ${existing.rows[0]["id"]}).`, actionLogId: logId };
+      }
+      await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+        tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "error",
+        error: "Keyword insert failed silently", durationMs: Date.now() - t0 });
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `Le mot-clé "${keyword}" n'a pas pu être ajouté. Réessayez ou ajoutez-le manuellement depuis la page Mots-clés.`, actionLogId: logId };
+    }
+    store.logActivity({ type: "audit", label: `[IA] Keyword ajouté : ${keyword}`, targetId: String(createdId), targetType: "keyword", orgId }).catch(() => {});
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "ok", durationMs: Date.now() - t0 });
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `Mot-clé ajouté — ID: ${createdId} | "${keyword}"${tag ? ` (tag: ${tag})` : ""}. La position sera mise à jour lors de la prochaine synchronisation.`,
+      actionLogId: logId };
+  }
+
+  // ── remove_keyword ────────────────────────────────────────────────────────
+  if (name === "remove_keyword") {
+    const kwId      = (args["id"] as string).trim();
+    const kwLabel   = (args["keyword"] as string | undefined) ?? kwId;
+    const snapKw    = await pool.query(`SELECT id, keyword FROM tracked_keywords WHERE id = $1 AND org_id = $2 AND active=true`, [kwId, orgId]);
+    if (!snapKw.rows[0]) {
+      return { toolCallId: logId, toolName: name, ok: false,
+        content: `Mot-clé ID "${kwId}" introuvable ou déjà inactif.`, actionLogId: logId };
+    }
+    const kwName = String(snapKw.rows[0]["keyword"] ?? kwLabel);
+    await pool.query(`UPDATE tracked_keywords SET active=false, updated_at=NOW() WHERE id=$1 AND org_id=$2`, [kwId, orgId]);
+    store.logActivity({ type: "audit", label: `[IA] Keyword retiré : ${kwName}`, targetId: kwId, targetType: "keyword", orgId }).catch(() => {});
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "ok",
+      snapshot: snapKw.rows[0], durationMs: Date.now() - t0 });
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `Mot-clé "${kwName}" retiré du suivi.`, actionLogId: logId };
+  }
+
+  // ── list_reports ──────────────────────────────────────────────────────────
+  if (name === "list_reports") {
+    const limit = Math.min((args["limit"] as number) ?? 10, 30);
+    const r = await pool.query(
+      `SELECT id, name, type, date, pages, shared, created_at
+       FROM reports WHERE org_id = $1 ORDER BY created_at DESC LIMIT $2`,
+      [orgId, limit]
+    );
+    await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,
+      tool: name, args, confirmationLevel: toolDef.confirmationLevel, result: "ok", durationMs: Date.now() - t0 });
+    if (r.rows.length === 0) {
+      return { toolCallId: logId, toolName: name, ok: true,
+        content: `Aucun rapport généré. Créez votre premier rapport depuis la page Rapports.`, actionLogId: logId };
+    }
+    const list = r.rows.map((rep: Record<string, unknown>) => {
+      const dateStr = rep["created_at"] ? new Date(rep["created_at"] as string).toLocaleDateString("fr-FR") : "—";
+      return `- ID: ${rep["id"]} | ${rep["name"] ?? "Rapport"} | Type: ${rep["type"] ?? "PDF"} | Date: ${dateStr}${rep["shared"] ? " | ✓ Partagé" : ""}`;
+    }).join("\n");
+    return { toolCallId: logId, toolName: name, ok: true,
+      content: `${r.rows.length} rapport(s) :\n${list}`, data: { reports: r.rows }, actionLogId: logId };
   }
 
   // fallback — Phase 7 final
