@@ -4882,6 +4882,13 @@ function bindMsgPanel(dd) {
     const b = $('#fp-msg-badge');
     if (b) { u > 0 ? (b.removeAttribute('hidden'), b.textContent = u) : b.setAttribute('hidden',''); }
   };
+  // Mark all messages in the current channel as read when the panel opens
+  const curCh = STATE.msgChannel || 'general';
+  if (STATE.channelMessages && STATE.channelMessages[curCh]) {
+    STATE.channelMessages[curCh].forEach(m => { if (!m.self) m.read = true; });
+  }
+  // Also clear chat-type notification rows so badge stays at 0 after opening
+  (STATE.notifications || []).forEach(n => { if (n && n.type === 'chat' && !n.read) { n.read = true; } });
   refreshBadge();
   // Scroll message list to bottom whenever the panel is opened or re-rendered
   setTimeout(() => { const ml = dd.querySelector('#fp-msg-list'); if (ml) ml.scrollTop = ml.scrollHeight; }, 50);
@@ -11395,7 +11402,7 @@ function renderSettings() {
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(sess.location)} · IP ${escHtml(sess.ip)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(sess.date)}</div>
               </div>
-              ${!sess.current ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="showToast('warning', fpT('Session fermée'))">${fpT('Terminer')}</button>` : ''}
+              ${!sess.current && sess.id ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-sess-id="${escHtml(String(sess.id))}" onclick="(async(b)=>{b.disabled=true;b.textContent='…';try{await apiFetch('/api/auth/sessions/'+b.dataset.sessId+'/revoke',{method:'POST',body:JSON.stringify({})});showToast('success','Session révoquée');STATE.activeSessions=(STATE.activeSessions||[]).filter(s=>String(s.id)!==b.dataset.sessId);render(STATE.currentSection);}catch(e){showToast('error','Erreur : '+String(e.message||e));b.disabled=false;b.textContent='Terminer';}})(this)">${fpT('Terminer')}</button>` : ''}
             </div>
           `).join('')}
         </div>
@@ -46848,7 +46855,11 @@ function bindGlobalEvents() {
   // ── window.fpT: full implementation replacing the stub defined above ──
   // Used for programmatic (non-DOM) translation of dynamic strings (CSV
   // headers, toast messages with interpolation, computed labels, etc.).
-  window._fpTFn = function(str, vars) {
+  // ── window.fpT: alias so onclick="" attributes can call fpT() at click time ──
+  // fpT is defined inside the IIFE and not accessible from inline event handlers
+  // unless it is also assigned to window. This alias is set BEFORE any render
+  // so that every onclick attr that calls fpT('…') finds a working function.
+  window.fpT = window._fpTFn = function(str, vars) {
     try {
       var lang = String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase();
       var result = str;
@@ -63190,7 +63201,7 @@ window._syncKeywords = async function() {
   try {
     const r = await apiFetch('/api/keywords/sync', { method:'POST' });
     if (r && r.configured === false) {
-      showToast('warning', r.error || 'DataForSEO n\'est pas configuré — synchronisation impossible.');
+      showToast('warning', r.error || 'Synchronisation des positions indisponible — vérifiez votre configuration.');
     } else {
       showToast('success', (r?.synced ?? 0) + ' mot' + ((r?.synced ?? 0) > 1 ? 's' : '') + '-clé(s) synchronisé(s) en ' + Math.round((r?.durationMs || 0) / 1000) + 's');
       await window._reloadKeywords();
@@ -64793,10 +64804,10 @@ function renderTechnicalAudit() {
       <span class="fp-badge" style="background:rgba(239,68,68,0.12);color:#ef4444">${mobile.criticalIssues.length} critique${mobile.criticalIssues.length>1?'s':''}</span>
     </div>
     <div class="fp-flex-col" style="gap:8px">
-      ${mobile.criticalIssues.map(issue=>`<div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px">
+      ${mobile.criticalIssues.map(issue=>`<div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px;margin-bottom:0">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span style="font-size:13px">${escHtml(issue)}</span>
-      </div>`).join('')}
+        <span style="font-size:13px;line-height:1.5;color:var(--fp-text)">${escHtml(issue)}</span>
+      </div>`).join('<div style="height:8px"></div>')}
     </div>
   </div>` : ''}
   `}`;
@@ -68169,7 +68180,9 @@ function renderPermissions() {
   const roles = permData.roles || [];
   const stats = permData.stats || {};
   const resources = permData.resources || [];
-  const activeTab = window._permTab || 'roles';
+  // Permissions sub-tabs: navigateSub() sets STATE.subRoute — read that first,
+  // fall back to window._permTab for backward compat with any older callers.
+  const activeTab = STATE.subRoute || window._permTab || 'roles';
 
   const roleColor = (r) => r.color || '#6b7280';
 
