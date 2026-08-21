@@ -5,6 +5,7 @@ import { pool } from "@workspace/db";
 import {
   analyzeReview, generateReply, getReputationDashboard, syncReviewsFromGBP,
 } from "../services/review-intel-service.js";
+import { requireAddon } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -14,6 +15,9 @@ type OrgReq = Request & {
 };
 const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+
+// reviewIntelligence is a purchasable add-on (any plan). Gate all routes.
+router.use("/review-intelligence", requireAddon("reviewIntelligence", "Review Intelligence"));
 
 router.get("/review-intelligence", async (req, res) => {
   try {

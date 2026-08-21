@@ -4,8 +4,13 @@ import {
   CRM_PROVIDERS, getCrmStatus, connectCrm, disconnectCrm, syncCrm,
   getSyncLogs, getFieldMappings, upsertFieldMapping, getCrmLimit, type CrmProvider,
 } from "../services/crm-service.js";
+import { requireAddon } from "../middlewares/planGate.js";
 
 const router = Router();
+
+// /crm/providers is a discovery endpoint (no sensitive data) — ungated.
+// All write + status routes require the crmIntegration add-on.
+router.use("/crm/:action(status|connect|disconnect|sync|logs|fields|mappings)", requireAddon("crmIntegration", "CRM Integrations"));
 
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;

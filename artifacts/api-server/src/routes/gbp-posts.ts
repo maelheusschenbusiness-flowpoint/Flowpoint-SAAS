@@ -3,6 +3,7 @@ import { safeErrMsg } from "../lib/safe-error.js";
 import {
   createPost, generateAiPost, publishPost, getPostsDashboard, deletePost, getScheduledPosts,
 } from "../services/gbp-posting-service.js";
+import { requireAddon } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -77,7 +78,8 @@ router.post("/gbp-posts", async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
-router.post("/gbp-posts/ai-generate", async (req, res) => {
+// AI post generation requires the aiGbpPosting add-on
+router.post("/gbp-posts/ai-generate", requireAddon("aiGbpPosting", "AI GBP Posting"), async (req, res) => {
   const { locationId, locationName, postType, industry, keywords, tone, objective } = req.body as {
     locationId?: string; locationName?: string; postType?: string; industry?: string;
     keywords?: string[]; tone?: string; objective?: string;

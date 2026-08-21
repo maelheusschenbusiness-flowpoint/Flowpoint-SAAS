@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { getWorkflowsData, executeWorkflow } from "../services/automation-service.js";
 import { store } from "../services/store.js";
+import { requireAddon } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -10,6 +11,9 @@ type OrgReq = Request & {
 };
 const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+
+// aiWorkflows add-on gates all automation workflow routes
+router.use("/automation", requireAddon("aiWorkflows", "AI Automation Workflows"));
 
 router.get("/automation/workflows", async (req: Request, res: Response) => {
   try {

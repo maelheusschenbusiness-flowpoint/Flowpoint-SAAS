@@ -70,6 +70,8 @@ export default defineConfig({
       "src/services/site-crawler.test.ts",
       // P0 — GET /api/me entitlement fail-closed on unavailable billing data
       "src/routes/me-entitlement.test.ts",
+      // Add-on entitlement: plan inclusion + org_addons gate logic
+      "src/routes/addon-entitlement.test.ts",
     ],
     environment: "node",
     globals:     false,

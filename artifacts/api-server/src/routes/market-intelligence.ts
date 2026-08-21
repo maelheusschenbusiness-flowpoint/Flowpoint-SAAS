@@ -3,8 +3,13 @@ import { safeErrMsg } from "../lib/safe-error.js";
 import {
   getMarketDashboard, generateMarketReport, detectCompetitorMovements, seedMarketData,
 } from "../services/market-intel-service.js";
+import { requireAddon } from "../middlewares/planGate.js";
 
 const router = Router();
+
+// All market-intelligence endpoints require the marketIntelligence add-on
+// (purchasable by any plan) OR plan inclusion.
+router.use("/market-intelligence", requireAddon("marketIntelligence", "AI Market Intelligence"));
 
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;

@@ -13,6 +13,7 @@ import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { planAtLeast, getFeature, getQuota, normalizePlan, type PlanTier, type FeatureFlags, type CoreQuotas } from "../lib/config.js";
 import { planRequired, quotaExceeded } from "../lib/response.js";
+import { PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 
 const isProd = () => process.env["NODE_ENV"] === "production" && !process.env["REPLIT_DEV_DOMAIN"];
 
@@ -164,6 +165,75 @@ export function orgIsolation(req: Request, res: Response, next: NextFunction): v
     (req as { orgId?: string }).orgId = "default";
   }
   next();
+}
+
+/**
+ * requireAddon — checks that the org either:
+ *   a) has the addon active in org_addons (purchased), OR
+ *   b) has it bundled in their plan via PLAN_INCLUDED_ADDONS
+ *
+ * This is the CORRECT gate for add-on features. Using requireFeature() alone
+ * blocks Standard/Pro users who legitimately purchased an add-on that is only
+ * bundled at higher plan tiers.
+ *
+ * Usage: router.use("/behavioral", requireAddon("behavioralAI", "Behavioral AI"));
+ */
+export function requireAddon(
+  addonKey: string,
+  label?: string,
+): (req: Request, res: Response, next: NextFunction) => void {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const orgId = (req as { orgId?: string }).orgId;
+    if (!orgId || orgId === "default") {
+      // Dev mode without auth — fail-open
+      if (!isProd()) { next(); return; }
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    resolvePlanFromDB(req).then(async plan => {
+      if (plan === null) {
+        res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+        return;
+      }
+
+      // Check 1: bundled in plan
+      const planBundle = PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>();
+      if (planBundle.has(addonKey)) { next(); return; }
+
+      // Check 2: purchased in org_addons
+      try {
+        const client = await pool.connect();
+        try {
+          const r = await client.query<{ active: boolean }>(
+            `SELECT active FROM org_addons WHERE org_id = $1 AND addon_key = $2 LIMIT 1`,
+            [orgId, addonKey],
+          );
+          if (r.rows.length > 0 && r.rows[0].active) { next(); return; }
+        } finally {
+          client.release();
+        }
+      } catch (err) {
+        logger.error({ err, addonKey, orgId }, "[PlanGate] requireAddon DB query failed");
+        if (isProd()) {
+          res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+          return;
+        }
+        // Dev: fail-open
+        next();
+        return;
+      }
+
+      // Neither bundled nor purchased
+      logger.warn({ plan, addonKey, orgId }, "[PlanGate] Addon not active for org");
+      res.status(402).json({
+        error: `${label ?? addonKey} requires an active add-on subscription.`,
+        code: "ADDON_REQUIRED",
+        addonKey,
+        upgradeUrl: "/pricing.html",
+      });
+    }).catch(next);
+  };
 }
 
 // ── Pre-built plan gates for common features ──────────────────────────────────

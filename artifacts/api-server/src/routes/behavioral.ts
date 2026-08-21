@@ -6,7 +6,7 @@ import {
 } from "../services/behavioral-service.js";
 import { db, behaviorSiteTokensTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireFeature } from "../middlewares/planGate.js";
+import { requireAddon } from "../middlewares/planGate.js";
 import { behavioralRateLimit } from "../middlewares/rateLimiter.js";
 
 // ── publicBehavioralRouter — no auth required ─────────────────────────────────
@@ -374,7 +374,7 @@ router.get("/behavioral/status", async (req: Request, res: Response) => {
 
 // Gate scoped to /behavioral/* only — must NOT be a path-less catch-all or it intercepts
 // every unmatched route that reaches this router (26+ route files mounted after it in index.ts).
-router.use("/behavioral", requireFeature("behavioralAI", "Behavioral AI"));
+router.use("/behavioral", requireAddon("behavioralAI", "Behavioral AI"));
 
 router.get("/behavioral/insights", async (req: Request, res: Response) => {
   try {
