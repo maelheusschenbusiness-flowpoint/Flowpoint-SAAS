@@ -355,14 +355,14 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
     "whiteLabel",
     "customDomain",
     "advancedWebhooks",
-    "retention90d",
     "advancedSeoLab",
     "backlinkIntelligence",
     "prioritySupport",
     "retention365d",
     "keywordDomination",
     "behavioralAI",
-    // aiForecasting is a paid add-on (not included) — Ultra = 10 bundled add-ons
+    "aiForecasting",
+    "reviewIntelligence",
   ]),
 };
 
