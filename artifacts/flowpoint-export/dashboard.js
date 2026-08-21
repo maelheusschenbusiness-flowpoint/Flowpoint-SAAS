@@ -466,9 +466,31 @@ function _fpSessionFetchOptions(options = {}) {
 // redirect after a confirmation fetch to /api/me also returns 401.
 var _401BackgroundCount = 0;
 var _401ConfirmTimer    = null;
+// ── Auth-redirect mutex ────────────────────────────────────────────────────────
+// Prevents two concurrent confirmation checks from both calling location.replace.
+// Reset on pageshow so a BFCache-restored page can redirect if the session is truly gone.
+// ── loadData in-progress flag ──────────────────────────────────────────────────
+// While loadData() is running STATE.me may still be null even though the session
+// is valid (Phase 1 hasn't completed yet). Any 401 confirmation timer that fires
+// during this window must defer — not redirect — until loading is done.
+var _loadDataInProgress = false;
 
 function _confirmSessionExpired() {
-  // FIX P0 (Cause B): if STATE.me is already populated the session is confirmed valid.
+  // ── Guard 1: another redirect is already in flight — do nothing. ─────────────
+  if (window.__fpRedirecting) {
+    _401BackgroundCount = 0;
+    return;
+  }
+  // ── Guard 2: loadData() is still running — STATE.me may not be populated yet. ─
+  // A background 401 during initial load or BFCache restore must defer, not redirect.
+  if (_loadDataInProgress || window.__fpLoadDataInProgress) {
+    console.warn('[FP-AUTH]', new Date().toISOString(), 'loadData in progress — deferring session confirmation by 6s.');
+    if (!_401ConfirmTimer) {
+      _401ConfirmTimer = setTimeout(function() { _401ConfirmTimer = null; _confirmSessionExpired(); }, 6000);
+    }
+    return;
+  }
+  // ── Guard 3: if STATE.me is already populated the session is confirmed valid. ──
   // A 401 from a secondary endpoint (activity, billing, monitors) must NOT trigger
   // a global logout when the user's identity is already established. Return early.
   // NOTE: /api/me does NOT return a top-level orgId field — use .email as the
@@ -498,7 +520,10 @@ function _confirmSessionExpired() {
         });
         try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
         try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-        window.location.replace('/login.html');
+        if (!window.__fpRedirecting) {
+          window.__fpRedirecting = true;
+          window.location.replace('/login.html');
+        }
       } else {
         console.warn('[FP-AUTH]', ts, 'Confirmation /api/me →', r.status, '— session still valid, ignoring background 401.');
         _401BackgroundCount = 0;
@@ -658,12 +683,15 @@ async function apiFetch(path, opts = {}) {
       console.warn('[FP-AUTH]', _ts, 'Foreground 401 on session-critical', path, '— clearing session and redirecting.');
       _401BackgroundCount = 0;
       if (_401ConfirmTimer) { clearTimeout(_401ConfirmTimer); _401ConfirmTimer = null; }
-      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
-      // sessionStorage is tab-isolated — removing fp_session_token here only
-      // affects THIS tab; sibling tabs each have their own sessionStorage context.
-      try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
-      try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-      window.location.replace('/login.html');
+      if (!window.__fpRedirecting) {
+        window.__fpRedirecting = true;
+        ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
+        // sessionStorage is tab-isolated — removing fp_session_token here only
+        // affects THIS tab; sibling tabs each have their own sessionStorage context.
+        try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
+        try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+        window.location.replace('/login.html');
+      }
       return null;
     }
     // Any successful foreground response resets the background 401 counter.
@@ -1479,12 +1507,18 @@ async function loadData(options = {}) {
   // ── Loading state: show skeleton immediately before any API call ──
   STATE.loading = true;
   render();
+  // Signal that loadData is running. Confirmation timers must not redirect
+  // while this flag is true — STATE.me may not be populated yet.
+  _loadDataInProgress = true;
+  window.__fpLoadDataInProgress = true;
   // ── Safety timeout: if loadData hangs (e.g. TCP connection frozen after server restart),
   //    force STATE.loading = false after 12 s so the skeleton never stays permanently.
   const _loadSafetyTimer = setTimeout(() => {
     if (STATE.loading) {
       console.warn('[FP] loadData safety timeout — forcing render after 12s hang');
       STATE.loading = false;
+      _loadDataInProgress = false;
+      window.__fpLoadDataInProgress = false;
       // Bypass the 30ms debounce — show content immediately so skeleton never stays permanently
       if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
       _doRender();
@@ -1539,12 +1573,14 @@ async function loadData(options = {}) {
       console.warn('[FP] Preview mode: using mock /api/me', e);
     } else {
       clearTimeout(_loadSafetyTimer);
+      _loadDataInProgress = false;
+      window.__fpLoadDataInProgress = false;
       showFatalError('Impossible de joindre /api/me. Vérifiez que le backend est démarré.');
       return;
     }
   }
   STATE.me = me || (PREVIEW_MODE ? MOCK_ME : null);
-  if (!STATE.me) { clearTimeout(_loadSafetyTimer); showFatalError('/api/me n\'a pas répondu.'); return; }
+  if (!STATE.me) { clearTimeout(_loadSafetyTimer); _loadDataInProgress = false; window.__fpLoadDataInProgress = false; showFatalError('/api/me n\'a pas répondu.'); return; }
   if (STATE.me?.plan) STATE.me.plan = STATE.me.plan.charAt(0).toUpperCase() + STATE.me.plan.slice(1);
   // Seed STATE.dfsStatus from /api/me on every page load so X/N quota survives F5.
   // FP_DATAFORSEO_API.loadStatus() will overwrite this with a fresh value from /api/seo/status
@@ -2192,6 +2228,9 @@ async function loadData(options = {}) {
       )
     ).catch(() => {});
   }
+  // loadData completed normally — release the in-progress flag.
+  _loadDataInProgress = false;
+  window.__fpLoadDataInProgress = false;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -47300,6 +47339,11 @@ async function init() {
       // Cancel any stale 401-confirmation timers frozen into BFCache.
       if (_401ConfirmTimer) { clearTimeout(_401ConfirmTimer); _401ConfirmTimer = null; }
       _401BackgroundCount = 0;
+      // Reset redirect mutex — a BFCache-restored page must be able to redirect
+      // if the session is truly expired after revalidation.
+      window.__fpRedirecting = false;
+      _loadDataInProgress = false;
+      window.__fpLoadDataInProgress = false;
       // Also reset fp-backend.js counters (it has no pageshow handler of its own).
       if (typeof window.__fpResetAuth401 === 'function') window.__fpResetAuth401();
       applyTheme();

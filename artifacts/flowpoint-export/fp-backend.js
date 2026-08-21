@@ -43,9 +43,21 @@
   // One page-wide session coordinator. dashboard.js loads after this file and
   // must join this exact promise instead of running a competing restore request.
   // A forced restore is used only for BFCache/background revalidation.
+  // Dedup: if a forced restore is already in-flight, return that same promise.
+  // Multiple callers (loadData, _confirmSessionExpiredBackend, BFCache pageshow)
+  // can all call _restoreSession({ force: true }) simultaneously. Without dedup
+  // they launch competing POST /api/auth/session-restore requests whose results
+  // race each other (the last write to sessionStorage wins, which may be stale).
+  var _fpRestoreInFlight = null;
+
   function _restoreSession(options) {
     var force = !!(options && options.force);
     if (!force && window.__fpSessionReady) return window.__fpSessionReady;
+    // If a forced restore is already running, reuse it instead of launching another.
+    if (force && _fpRestoreInFlight) {
+      window.__fpSessionReady = _fpRestoreInFlight;
+      return _fpRestoreInFlight;
+    }
     var restore = (async function () {
       var _existingToken = _sessionToken();
       try {
@@ -74,6 +86,10 @@
       } catch (_) { /* /api/me performs the final auth decision after a network failure */ }
       return false;
     })();
+    // Clear dedup slot when this restore finishes (success or error).
+    restore.then(function() { if (_fpRestoreInFlight === restore) _fpRestoreInFlight = null; })
+           .catch(function() { if (_fpRestoreInFlight === restore) _fpRestoreInFlight = null; });
+    _fpRestoreInFlight = restore;
     window.__fpSessionReady = restore;
     return restore;
   }
@@ -106,6 +122,8 @@
   window.__fpResetAuth401 = function() {
     if (_fp401ConfirmTimer) { clearTimeout(_fp401ConfirmTimer); _fp401ConfirmTimer = null; }
     _fp401BackgroundCount = 0;
+    // Reset the redirect mutex so a future genuine logout can still redirect.
+    window.__fpRedirecting = false;
     // Force a fresh session-restore so subsequent apiFetch calls in fp-backend
     // get a verified token and never hit the redirect branch on BFCache restore.
     if (typeof window.__fpRestoreSession === 'function') {
@@ -120,6 +138,9 @@
     if (!evt.persisted) return;
     if (_fp401ConfirmTimer) { clearTimeout(_fp401ConfirmTimer); _fp401ConfirmTimer = null; }
     _fp401BackgroundCount = 0;
+    // Reset the redirect mutex — a BFCache-restored page must be able to redirect
+    // if the session is truly expired after revalidation.
+    window.__fpRedirecting = false;
     // Kick off a fresh session-restore so background timers that fire immediately
     // after BFCache restore pick up a verified token, not a stale sessionStorage one.
     if (typeof window.__fpRestoreSession === 'function') {
@@ -128,9 +149,23 @@
   });
 
   function _confirmSessionExpiredBackend() {
-    // FIX P0 (Cause B — fp-backend): if the dashboard's STATE.me is already confirmed,
-    // the session is valid. A 401 from a secondary endpoint must NOT trigger a global
-    // logout while the user's identity is established.
+    // ── Guard 1: another redirect is already in flight — do nothing. ─────────────
+    if (window.__fpRedirecting) {
+      _fp401BackgroundCount = 0;
+      return;
+    }
+    // ── Guard 2: loadData() is still running — STATE.me may not be set yet. ──────
+    // Defer the confirmation check until loading completes.
+    if (window.__fpLoadDataInProgress) {
+      console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'loadData in progress — deferring session confirmation by 6s.');
+      if (!_fp401ConfirmTimer) {
+        _fp401ConfirmTimer = setTimeout(function() { _fp401ConfirmTimer = null; _confirmSessionExpiredBackend(); }, 6000);
+      }
+      return;
+    }
+    // ── Guard 3: STATE.me already populated — session confirmed valid. ────────────
+    // A 401 from a secondary endpoint must NOT trigger a global logout while the
+    // user's identity is established.
     // NOTE: /api/me does NOT return a top-level orgId field — use .email as the
     // presence sentinel (always populated when STATE.me is fully loaded).
     if (window.STATE && window.STATE.me && window.STATE.me.email) {
@@ -154,8 +189,11 @@
         if (r.status === 401) {
           console.warn('[FP-BACKEND-AUTH]', ts, 'Confirmation /api/me → 401. Session expired. Redirecting.');
           _fp401BackgroundCount = 0;
-          _clearAuth();
-          window.location.replace('/login.html');
+          if (!window.__fpRedirecting) {
+            window.__fpRedirecting = true;
+            _clearAuth();
+            window.location.replace('/login.html');
+          }
         } else {
           console.warn('[FP-BACKEND-AUTH]', ts, 'Confirmation /api/me →', r.status, '— session still valid, ignoring background 401.');
           _fp401BackgroundCount = 0;
@@ -263,7 +301,8 @@
                         console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), '/api/me returned 401 but STATE.me is present — suppressed (BFCache/back-fwd false positive).');
                         var _err4 = new Error('Unauthorized'); _err4.status = 401; throw _err4;
                       }
-                      _clearAuth(); window.location.replace('/login.html'); return null;
+                      if (!window.__fpRedirecting) { window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html'); }
+                      return null;
                     }
                     if (!rr.ok) throw new Error('HTTP ' + rr.status + ' ' + path);
                     return rr.json();
@@ -277,8 +316,7 @@
               var _err2 = new Error('Unauthorized'); _err2.status = 401; throw _err2;
             }
             console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed on session-critical endpoint — redirecting to login.');
-            _clearAuth();
-            window.location.replace('/login.html');
+            if (!window.__fpRedirecting) { window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html'); }
             return null;
           }).catch(function(e) {
             // Network error during session-restore. Apply the same structural rule.
@@ -288,8 +326,7 @@
               var _err3 = new Error('Unauthorized'); _err3.status = 401; throw _err3;
             }
             console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on session-critical endpoint — redirecting to login.');
-            _clearAuth();
-            window.location.replace('/login.html');
+            if (!window.__fpRedirecting) { window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html'); }
             return null;
           });
         }
