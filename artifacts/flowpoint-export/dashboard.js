@@ -1525,6 +1525,12 @@ async function loadData(options = {}) {
   STATE.me = me || (PREVIEW_MODE ? MOCK_ME : null);
   if (!STATE.me) { clearTimeout(_loadSafetyTimer); showFatalError('/api/me n\'a pas répondu.'); return; }
   if (STATE.me?.plan) STATE.me.plan = STATE.me.plan.charAt(0).toUpperCase() + STATE.me.plan.slice(1);
+  // Seed STATE.dfsStatus from /api/me on every page load so X/N quota survives F5.
+  // FP_DATAFORSEO_API.loadStatus() will overwrite this with a fresh value from /api/seo/status
+  // a few milliseconds later, but this prevents the initial render showing 0/50.
+  if (STATE.me?.dfsQuota && !STATE.dfsStatus) {
+    STATE.dfsStatus = { configured: !!STATE.me.dfsQuota.configured, quota: { used: STATE.me.dfsQuota.used || 0, limit: STATE.me.dfsQuota.limit || 50, remaining: STATE.me.dfsQuota.remaining || 50 } };
+  }
 
   // ── Route-critical data map: endpoints that must be ready before the loader disappears ──
   // Routes not listed here are satisfied by Phase 2 (overview + me) alone.
@@ -5411,11 +5417,11 @@ function renderOverview() {
     : null;
 
   const _previewPriorities = [
-    { title:'Répondre aux avis Google en attente', impact:'Élevé', roi:'+12% visibilité locale', time:'30 min', urgency:'Urgent', color:'#ef4444', icon:'⭐', route:'local-seo' },
-    { title:'Corriger CLS mobile', impact:'Élevé', roi:'+8 pts Core Web Vitals', time:'2h', urgency:'Haute', color:'#f59e0b', icon:'📱', route:'audits' },
-    { title:'Créer des pages locales ciblées', impact:'Très élevé', roi:'+40% trafic local estimé', time:'3h', urgency:'Haute', color:'#2563EB', icon:'📍', route:'local-seo' },
-    { title:'Corriger balises meta manquantes', impact:'Moyen', roi:'+6 pts SEO moyen', time:'45 min', urgency:'Normale', color:'#8b5cf6', icon:'🏷️', route:'audits' },
-    { title:'Lancer un nouvel audit SEO', impact:'Élevé', roi:'Gain estimé ~15 pts', time:'5 min', urgency:'Urgente', color:'#ef4444', icon:'🔍', route:'audits' },
+    { title:fpT('Répondre aux avis Google en attente'), impact:fpT('Élevé'), roi:'+12% visibilité locale', time:'30 min', urgency:fpT('Urgent'), color:'#ef4444', icon:'⭐', route:'local-seo' },
+    { title:fpT('Corriger CLS mobile'), impact:fpT('Élevé'), roi:'+8 pts Core Web Vitals', time:'2h', urgency:fpT('Haute'), color:'#f59e0b', icon:'📱', route:'audits' },
+    { title:fpT('Créer des pages locales ciblées'), impact:fpT('Très élevé'), roi:'+40% trafic local estimé', time:'3h', urgency:fpT('Haute'), color:'#2563EB', icon:'📍', route:'local-seo' },
+    { title:fpT('Corriger balises meta manquantes'), impact:fpT('Moyen'), roi:'+6 pts SEO moyen', time:'45 min', urgency:fpT('Normale'), color:'#8b5cf6', icon:'🏷️', route:'audits' },
+    { title:fpT('Lancer un nouvel audit SEO'), impact:fpT('Élevé'), roi:'Gain estimé ~15 pts', time:'5 min', urgency:fpT('Urgente'), color:'#ef4444', icon:'🔍', route:'audits' },
   ];
   const priorities = _liveMissions
     ? _liveMissions
@@ -5445,28 +5451,28 @@ function renderOverview() {
     const _hasKeywords = (STATE.keywords || []).length > 0;
     if (_hasMonitorsDown) {
       const _downList = (STATE.monitors || []).filter(m => m.status === 'down');
-      recs.push({ title: `${_downList.length} monitor${_downList.length > 1 ? 's' : ''} en alerte — site${_downList.length > 1 ? 's' : ''} inaccessible${_downList.length > 1 ? 's' : ''}`, impact: 'Critique', roi: 'Indisponibilité détectée', time: '5 min', urgency: 'Urgent', color: '#ef4444', icon: '🚨', route: 'monitors' });
+      recs.push({ title: `${_downList.length} monitor${_downList.length > 1 ? 's' : ''} en alerte — site${_downList.length > 1 ? 's' : ''} inaccessible${_downList.length > 1 ? 's' : ''}`, impact: fpT('Critique'), roi: 'Indisponibilité détectée', time: '5 min', urgency: fpT('Urgent'), color: '#ef4444', icon: '🚨', route: 'monitors' });
     }
     if (avg > 0 && avg < 50) {
-      recs.push({ title: `Score SEO critique (${avg}/100) — corriger les erreurs prioritaires`, impact: 'Élevé', roi: `+${Math.round((70 - avg) * 0.4)} pts estimés`, time: '2h', urgency: 'Haute', color: '#f59e0b', icon: '🔍', route: 'audits' });
+      recs.push({ title: `Score SEO critique (${avg}/100) — corriger les erreurs prioritaires`, impact: fpT('Élevé'), roi: `+${Math.round((70 - avg) * 0.4)} pts estimés`, time: '2h', urgency: fpT('Haute'), color: '#f59e0b', icon: '🔍', route: 'audits' });
     } else if (avg >= 50 && avg < 70 && _critIssues > 0) {
-      recs.push({ title: `${_critIssues} erreur${_critIssues > 1 ? 's' : ''} critique${_critIssues > 1 ? 's' : ''} — amélioration rapide possible`, impact: 'Élevé', roi: `+${Math.round(_critIssues * 1.5)} pts SEO estimés`, time: '1h', urgency: 'Haute', color: '#f59e0b', icon: '⚠️', route: 'audits' });
+      recs.push({ title: `${_critIssues} erreur${_critIssues > 1 ? 's' : ''} critique${_critIssues > 1 ? 's' : ''} — amélioration rapide possible`, impact: fpT('Élevé'), roi: `+${Math.round(_critIssues * 1.5)} pts SEO estimés`, time: '1h', urgency: fpT('Haute'), color: '#f59e0b', icon: '⚠️', route: 'audits' });
     }
     if (!_gscConnected) {
-      recs.push({ title: 'Connecter Google Search Console pour débloquer vos données de trafic', impact: 'Élevé', roi: 'Données SEO réelles + keywords', time: '3 min', urgency: 'Haute', color: '#2563EB', icon: '🔗', route: 'settings' });
+      recs.push({ title: fpT('Connecter Google Search Console pour débloquer vos données de trafic'), impact: fpT('Élevé'), roi: 'Données SEO réelles + keywords', time: '3 min', urgency: fpT('Haute'), color: '#2563EB', icon: '🔗', route: 'settings' });
     }
     if (!_ga4Connected) {
-      recs.push({ title: 'Connecter Google Analytics 4 pour suivre vos conversions', impact: 'Moyen', roi: 'Entonnoir + taux de conv. réels', time: '3 min', urgency: 'Normale', color: '#2563EB', icon: '📊', route: 'settings' });
+      recs.push({ title: fpT('Connecter Google Analytics 4 pour suivre vos conversions'), impact: fpT('Moyen'), roi: 'Entonnoir + taux de conv. réels', time: '3 min', urgency: fpT('Normale'), color: '#2563EB', icon: '📊', route: 'settings' });
     }
     if (!_hasGbp && localScore > 0 && localScore < 60) {
-      recs.push({ title: 'Fiche Google Business Profile incomplète — optimiser pour le Local Pack', impact: 'Élevé', roi: '+trafic local estimé', time: '20 min', urgency: 'Haute', color: '#22c55e', icon: '📍', route: 'local-seo' });
+      recs.push({ title: fpT('Fiche Google Business Profile incomplète — optimiser pour le Local Pack'), impact: fpT('Élevé'), roi: '+trafic local estimé', time: '20 min', urgency: fpT('Haute'), color: '#22c55e', icon: '📍', route: 'local-seo' });
     }
     if (_hasKeywords) {
       const _lowKw = (STATE.keywords || []).filter(k => k.position > 10).length;
-      if (_lowKw > 0) recs.push({ title: `${_lowKw} mot${_lowKw > 1 ? 's' : ''}-clé${_lowKw > 1 ? 's' : ''} en page 2+ — potentiel de remontée`, impact: 'Moyen', roi: `+${Math.min(999, _lowKw * 12)} visites/mois estimées`, time: '1h', urgency: 'Normale', color: '#8b5cf6', icon: '🔑', route: 'audits' });
+      if (_lowKw > 0) recs.push({ title: `${_lowKw} mot${_lowKw > 1 ? 's' : ''}-clé${_lowKw > 1 ? 's' : ''} en page 2+ — potentiel de remontée`, impact: fpT('Moyen'), roi: `+${Math.min(999, _lowKw * 12)} visites/mois estimées`, time: '1h', urgency: fpT('Normale'), color: '#8b5cf6', icon: '🔑', route: 'audits' });
     }
     if (recs.length === 0 && _auditUrl) {
-      recs.push({ title: `Relancer un audit complet de ${_auditUrl}`, impact: 'Moyen', roi: 'Vérifier les évolutions récentes', time: '5 min', urgency: 'Normale', color: '#2563EB', icon: '🔍', route: 'audits' });
+      recs.push({ title: `Relancer un audit complet de ${_auditUrl}`, impact: fpT('Moyen'), roi: 'Vérifier les évolutions récentes', time: '5 min', urgency: fpT('Normale'), color: '#2563EB', icon: '🔍', route: 'audits' });
     }
     return recs.slice(0, 5);
   }
@@ -47405,7 +47411,12 @@ async function init() {
               if (!STATE.channelMessages[_ch]) STATE.channelMessages[_ch] = [];
               // Avoid duplicate if we sent this message ourselves (check by senderId)
               const _myId = STATE.me?.id || STATE.me?.userId;
-              const _alreadyMine = _myId && _cm.senderId && String(_cm.senderId) === String(_myId);
+              // Check senderId against all identity forms (UUID, email) to avoid duplicate on sender side
+              const _myEmail = STATE.me?.email;
+              const _alreadyMine = _cm.senderId && (
+                (_myId && String(_cm.senderId) === String(_myId)) ||
+                (_myEmail && String(_cm.senderId) === String(_myEmail))
+              );
               if (!_alreadyMine && !STATE.channelMessages[_ch].find(m => m.id && m.id === _cm.id)) {
                 STATE.channelMessages[_ch].push({
                   id: _cm.id || String(Date.now()),
@@ -70696,7 +70707,7 @@ function renderGA4ClientMode() {
   if (sub === 'agency') {
     // Agency Lab — audits table + shared reports + white-label status; no duplicated KPI/availability blocks
     const wlBranding = (STATE.settings && STATE.settings.wlBranding && typeof STATE.settings.wlBranding === 'object')
-      ? STATE.settings.wlBranding : (typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('fp:wl-branding') || '{}') : {});
+      ? STATE.settings.wlBranding : (typeof localStorage !== 'undefined' ? (function(){try{return JSON.parse(localStorage.getItem('fp:wl-branding')||'{}');}catch(_){return {};}})() : {});
     const wlEnabled = !!(wlBranding.logoUrl || wlBranding.agencyName || wlBranding.primaryColor);
     const wlBlock = `
       <div class="fp-card fp-mb-20" style="margin-top:20px">

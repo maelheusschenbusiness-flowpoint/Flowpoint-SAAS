@@ -150,25 +150,38 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing" && normStatus !== "past_due",
         usage:              await (async () => {
           try {
-            const [auditR, monR, repR, expR] = await Promise.all([
+            const [auditR, monR, repR, expR, kwR] = await Promise.all([
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM report_exports WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
+              // keyword tracking count — persists in DB, survives F5
+              orgDb(req)(`SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`, [orgId]).catch(() => ({rows:[]})),
             ]);
             const stored = (dbData?.usage ?? {}) as Record<string, unknown>;
             return {
               ...stored,
-              audit:   { used: (auditR.rows[0] as Record<string,number>|undefined)?.n ?? 0, limit: limits.audits },
-              monitor: { used: (monR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.monitors },
-              reports: { used: (repR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
-              exports: { used: (expR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.exports ?? limits.reports },
-              pdf:     { used: (expR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
+              audit:    { used: (auditR.rows[0] as Record<string,number>|undefined)?.n ?? 0, limit: limits.audits },
+              monitor:  { used: (monR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.monitors },
+              reports:  { used: (repR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
+              exports:  { used: (expR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.exports ?? limits.reports },
+              pdf:      { used: (expR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
+              keywords: { used: (kwR.rows[0]    as Record<string,number>|undefined)?.n ?? 0, limit: limits.keywords ?? 500 },
             };
           } catch { return dbData?.usage ?? {}; }
         })(),
         addons:             _mergedAddons,
         limits,
+        // dfsQuota: DataForSEO API quota for today — seeded here so the dashboard
+        // can show a correct X/N value immediately on F5, before /api/seo/status loads.
+        dfsQuota: await (async () => {
+          try {
+            const { isDataForSEOConfigured, getQuotaUsage } = await import("../services/dataforseo-service.js");
+            const configured = await isDataForSEOConfigured(orgId);
+            const { used, limit } = getQuotaUsage(orgId, rawPlan);
+            return { configured, used, limit, remaining: Math.max(0, limit - used) };
+          } catch { return null; }
+        })(),
         publicApiKey:       _publicApiKey,
         createdAt:          dbData?.createdAt ?? new Date().toISOString(),
         timezone:  settingsTimezone ?? dbData?.timezone  ?? null,

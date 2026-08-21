@@ -256,6 +256,11 @@
                         console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Foreground 401 on secondary endpoint', path, '— throwing (no global logout; session intact).');
                         var _err = new Error('Unauthorized'); _err.status = 401; throw _err;
                       }
+                      // Extra guard: if STATE.me is populated the session is valid — do not redirect.
+                      if (typeof window !== 'undefined' && window.STATE && window.STATE.me && window.STATE.me.email) {
+                        console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), '/api/me returned 401 but STATE.me is present — suppressed (BFCache/back-fwd false positive).');
+                        var _err4 = new Error('Unauthorized'); _err4.status = 401; throw _err4;
+                      }
                       _clearAuth(); window.location.replace('/login.html'); return null;
                     }
                     if (!rr.ok) throw new Error('HTTP ' + rr.status + ' ' + path);

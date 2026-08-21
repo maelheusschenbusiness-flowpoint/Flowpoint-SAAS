@@ -315,7 +315,15 @@ router.get("/local-seo/rankings/history", async (req, res) => {
        LIMIT 50`,
       [orgId]
     );
-    res.json({ ok: true, history: r.rows });
+    // results is stored as JSON string (text column) — parse it so the frontend
+    // receives an array and Array.isArray(h.results) works correctly.
+    const history = r.rows.map(row => ({
+      ...row,
+      results: typeof row.results === "string"
+        ? (() => { try { return JSON.parse(row.results); } catch { return []; } })()
+        : (Array.isArray(row.results) ? row.results : []),
+    }));
+    res.json({ ok: true, history });
   } catch {
     res.json({ ok: true, history: [] });
   }
