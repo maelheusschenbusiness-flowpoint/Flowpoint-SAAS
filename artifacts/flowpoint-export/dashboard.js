@@ -47250,16 +47250,25 @@ async function init() {
   // the browser restores a frozen snapshot. We must re-validate the session
   // before rendering, because the auth token may have expired while the user
   // was on another page. Calling render() directly risks an immediate 401 → Sign In
-  // redirect. loadData() re-runs session-restore first, making it safe.
+  // redirect. loadData({ forceSessionRestore: true }) forces a fresh session-restore
+  // so __fpSessionReady is a NEW in-flight promise — every apiFetch call in loadData
+  // will await it, guaranteeing a fresh token before /api/me is called.
+  //
+  // Without forceSessionRestore:true the old RESOLVED promise is reused,
+  // no HTTP session-restore runs, the stale sessionStorage Bearer goes straight
+  // to /api/me → 401 → redirect even though the HttpOnly cookie is still valid.
   window.addEventListener('pageshow', function(evt) {
     if (evt.persisted) {
-      // FIX P0 (Cause C — BFCache): Cancel any stale 401-confirmation timers that were
-      // pending before the page was frozen into BFCache. The frozen STATE snapshot is
-      // valid; re-evaluate auth freshness via loadData() instead of acting on stale counts.
+      // Cancel any stale 401-confirmation timers frozen into BFCache.
       if (_401ConfirmTimer) { clearTimeout(_401ConfirmTimer); _401ConfirmTimer = null; }
       _401BackgroundCount = 0;
+      // Also reset fp-backend.js counters (it has no pageshow handler of its own).
+      if (typeof window.__fpResetAuth401 === 'function') window.__fpResetAuth401();
       applyTheme();
-      loadData().catch(function() {});
+      // forceSessionRestore:true is MANDATORY here. Without it _restoreSession()
+      // short-circuits and returns the already-resolved old promise, meaning no
+      // HTTP session-restore call is made, and a stale Bearer goes to /api/me → 401.
+      loadData({ forceSessionRestore: true }).catch(function() {});
     }
   });
 

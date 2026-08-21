@@ -98,6 +98,35 @@
   var _fp401BackgroundCount = 0;
   var _fp401ConfirmTimer    = null;
 
+  // ── BFCache reset — called by dashboard.js pageshow handler ─────────────────
+  // fp-backend.js has its own 401 counters that are NOT reset by dashboard.js's
+  // pageshow handler. Expose a reset function so dashboard.js can clear both sets
+  // of counters in one pageshow event, preventing stale counts from triggering
+  // _confirmSessionExpiredBackend() on a perfectly valid restored session.
+  window.__fpResetAuth401 = function() {
+    if (_fp401ConfirmTimer) { clearTimeout(_fp401ConfirmTimer); _fp401ConfirmTimer = null; }
+    _fp401BackgroundCount = 0;
+    // Force a fresh session-restore so subsequent apiFetch calls in fp-backend
+    // get a verified token and never hit the redirect branch on BFCache restore.
+    if (typeof window.__fpRestoreSession === 'function') {
+      window.__fpRestoreSession({ force: true });
+    }
+  };
+
+  // ── Own pageshow handler — fp-backend.js ────────────────────────────────────
+  // dashboard.js's pageshow calls window.__fpResetAuth401() but that requires
+  // fp-backend.js to already be loaded. Add a direct handler here as a backstop.
+  window.addEventListener('pageshow', function(evt) {
+    if (!evt.persisted) return;
+    if (_fp401ConfirmTimer) { clearTimeout(_fp401ConfirmTimer); _fp401ConfirmTimer = null; }
+    _fp401BackgroundCount = 0;
+    // Kick off a fresh session-restore so background timers that fire immediately
+    // after BFCache restore pick up a verified token, not a stale sessionStorage one.
+    if (typeof window.__fpRestoreSession === 'function') {
+      window.__fpRestoreSession({ force: true });
+    }
+  });
+
   function _confirmSessionExpiredBackend() {
     // FIX P0 (Cause B — fp-backend): if the dashboard's STATE.me is already confirmed,
     // the session is valid. A 401 from a secondary endpoint must NOT trigger a global
