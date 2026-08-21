@@ -10,7 +10,13 @@ const router = Router();
 
 // /crm/providers is a discovery endpoint (no sensitive data) — ungated.
 // All write + status routes require the crmIntegration add-on.
-router.use("/crm/:action(status|connect|disconnect|sync|logs|fields|mappings)", requireAddon("crmIntegration", "CRM Integrations"));
+// Gate all /crm/* routes except /crm/providers (discovery, no sensitive data).
+// path-to-regexp v8 (Express 5) dropped inline regex patterns like :action(...),
+// so we gate the whole prefix and let the /providers endpoint be mounted before this.
+router.use("/crm", (req, res, next) => {
+  if (req.path === "/providers") { next(); return; }
+  requireAddon("crmIntegration", "CRM Integrations")(req, res, next);
+});
 
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
