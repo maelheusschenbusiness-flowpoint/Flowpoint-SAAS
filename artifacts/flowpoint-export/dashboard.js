@@ -3629,7 +3629,7 @@ function openNewChannelPanel() {
 window.openNewChannelPanel = openNewChannelPanel;
 
 function openAssignTaskModal() {
-  const members = (STATE.team || []).filter(t => t.id !== STATE.me?.id).map(t => `<option value="${escHtml(t.id)}">${escHtml(t.name || t.email || 'Membre')}</option>`).join('');
+  const members = (STATE.team || []).map(t => `<option value="${escHtml(t.id || t.userId || t.email || '')}">${escHtml(t.name || t.email || 'Membre')}</option>`).join('');
   const html = `
     <div style="display:flex;flex-direction:column;gap:12px">
       <div>
@@ -8631,14 +8631,11 @@ function renderLocalSEO() {
                     ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique.</div>'
                     : items.map(h2 => {
                         const date = h2.searched_at ? new Date(h2.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
-                        const topResult = Array.isArray(h2.results) && h2.results.length > 0 ? h2.results[0].title || '—' : '—';
-                        return '<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-top:1px solid var(--fp-border)">'
-                          + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px;text-align:right;padding-top:2px">'+escHtml(date)+'</div>'
-                          + '<div style="flex:1;min-width:0">'
-                          + '<div style="font-size:11px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
-                          + '<div style="font-size:10px;color:var(--fp-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🥇 '+escHtml(topResult)+'</div>'
-                          + '</div>'
-                          + '<span style="font-size:10px;color:#64748b;flex-shrink:0">'+((Array.isArray(h2.results)?h2.results.length:0))+' rés.</span>'
+                        const resultCount = Array.isArray(h2.results) ? h2.results.length : (h2.total_results || 0);
+                        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
+                          + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:38px">'+escHtml(date)+'</div>'
+                          + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
+                          + '<span style="font-size:10px;font-weight:700;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px">'+resultCount+' rés.</span>'
                           + '</div>';
                       }).join('');
                 }
@@ -8651,14 +8648,11 @@ function renderLocalSEO() {
                 ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique — effectuez votre première recherche.</div>'
                 : histItems.map(h => {
                     const date = h.searched_at ? new Date(h.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
-                    const topResult = Array.isArray(h.results) && h.results.length > 0 ? h.results[0].title || '—' : '—';
-                    return '<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-top:1px solid var(--fp-border)">'
-                      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px;text-align:right;padding-top:2px">'+escHtml(date)+'</div>'
-                      + '<div style="flex:1;min-width:0">'
-                      + '<div style="font-size:11px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h.keyword)+' — '+escHtml(h.location)+'</div>'
-                      + '<div style="font-size:10px;color:var(--fp-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🥇 '+escHtml(topResult)+'</div>'
-                      + '</div>'
-                      + '<span style="font-size:10px;color:#64748b;flex-shrink:0">'+((Array.isArray(h.results)?h.results.length:0))+' rés.</span>'
+                    const resultCount = Array.isArray(h.results) ? h.results.length : (h.total_results || 0);
+                    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
+                      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:38px">'+escHtml(date)+'</div>'
+                      + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h.keyword)+' — '+escHtml(h.location)+'</div>'
+                      + '<span style="font-size:10px;font-weight:700;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px">'+resultCount+' rés.</span>'
                       + '</div>';
                   }).join('');
             return `<div style="margin-top:12px;border-top:1px solid var(--fp-border);padding-top:10px">
@@ -56565,7 +56559,7 @@ function renderActivityFeed() {
                   <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('N/D')}</div>
                 </div>
               </div>
-              <div style="font-size:11px;color:var(--fp-text-faint);font-style:italic;padding:4px 0">${fpT('Détail des contributions par membre non disponible — activité agrégée au niveau de l\'organisation.')}</div>
+              ${(()=>{ const evts = Array.isArray(STATE.activityEvents) ? STATE.activityEvents.filter(e => e.userId === m.id || e.user_id === m.id || e.actorId === m.id) : []; const audits = (STATE.audits||[]).filter(a => a.createdBy === m.id || a.userId === m.id); const missions = (STATE.missions||[]).filter(x => x.assignedTo === m.id || x.createdBy === m.id); return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px"><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#2563EB">${evts.length || audits.length || '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Actions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#22c55e">${missions.length || '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Missions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#8b5cf6">${STATE.teamStreaks?.[m.id]?.current ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Streak 🔥</div></div></div>`; })()}
             </div>`;
           }).join('')}
         </div>
