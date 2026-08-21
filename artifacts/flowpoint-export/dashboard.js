@@ -154,6 +154,7 @@ const STATE = {
   msgAttachmentFile: null,
   teamChatPendingFiles: [], // pending attachment chips for team chat composer
   streak: parseInt(localStorage.getItem('fp:streak') || '0', 10),
+  teamStreaks: {}, // per-member streaks keyed by user UUID (loaded in Phase 3)
   userScore: null, // computed from real API data in loadData
   selectedRowIndex: -1,
   alertRules: [],
@@ -1722,11 +1723,17 @@ async function loadData(options = {}) {
     'monitors' in _preloaded ? Promise.resolve(_preloaded.monitors) : apiFetch('/api/monitors'),
     'reports'  in _preloaded ? Promise.resolve(_preloaded.reports)  : apiFetch('/api/reports'),
     'team'     in _preloaded ? Promise.resolve(_preloaded.team)     : apiFetch('/api/team'),
-  ]).then(function([_auRes, _moRes, _reRes, _teRes]) {
+    apiFetch('/api/team/streaks').catch(() => null),
+  ]).then(function([_auRes, _moRes, _reRes, _teRes, _streaksRes]) {
     if (_auRes.status === 'fulfilled') { audits   = _auRes.value; } else { STATE.sectionErrors.audits   = classifySectionError(_auRes.reason); console.warn('[FP] /api/audits failed:', _auRes.reason?.message || _auRes.reason); }
     if (_moRes.status === 'fulfilled') { monitors = _moRes.value; } else { STATE.sectionErrors.monitors = classifySectionError(_moRes.reason); console.warn('[FP] /api/monitors failed:', _moRes.reason?.message || _moRes.reason); }
     if (_reRes.status === 'fulfilled') { reports  = _reRes.value; } else { STATE.sectionErrors.reports  = classifySectionError(_reRes.reason); console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason); }
     if (_teRes.status === 'fulfilled') { team     = _teRes.value; } else { STATE.sectionErrors.team     = classifySectionError(_teRes.reason); console.warn('[FP] /api/teams failed:', _teRes.reason?.message || _teRes.reason); }
+    // Per-member streaks from member_activity_days table
+    if (_streaksRes && _streaksRes.status === 'fulfilled' && _streaksRes.value && Array.isArray(_streaksRes.value.streaks)) {
+      STATE.teamStreaks = {};
+      (_streaksRes.value.streaks).forEach(function(s) { if (s.userId) STATE.teamStreaks[s.userId] = s; });
+    }
     const _aud = normArr(audits,   'audits');   STATE.audits   = (_aud  && _aud.length  > 0) ? _aud  : (PREVIEW_MODE ? MOCK_AUDITS   : []);
     const _mon = normArr(monitors, 'monitors'); STATE.monitors = (_mon  && _mon.length  > 0) ? _mon  : (PREVIEW_MODE ? MOCK_MONITORS : []);
     const _rep = normArr(reports,  'reports');  STATE.reports  = (_rep  && _rep.length  > 0) ? _rep  : (PREVIEW_MODE ? MOCK_REPORTS  : []);
@@ -3830,16 +3837,35 @@ function openEmojiPicker(targetInputId, anchorEl) {
 // ACTIVITY FEED PANEL
 // ─────────────────────────────────────────────────────────────────
 const ACTIVITY_TYPE_CONFIG = {
-  audit:   { label:'Audit',   color:'#2563EB', bg:'rgba(37,99,235,0.12)' },
-  monitor: { label:'Monitor', color:'#22c55e', bg:'rgba(34,197,94,0.12)' },
-  report:  { label:'Rapport', color:'#f59e0b', bg:'rgba(245,158,11,0.12)' },
-  alert:   { label:'Alerte',  color:'#ef4444', bg:'rgba(239,68,68,0.12)' },
-  team:    { label:'Équipe',  color:'#8b5cf6', bg:'rgba(139,92,246,0.12)' },
-  settings:{ label:'Réglages',color:'#06b6d4', bg:'rgba(6,182,212,0.12)' },
-  mission: { label:'Mission', color:'#a855f7', bg:'rgba(168,85,247,0.12)' },
-  export:  { label:'Export',  color:'#f97316', bg:'rgba(249,115,22,0.12)' },
-  system:  { label:'Système', color:'#64748b', bg:'rgba(100,116,139,0.12)' },
+  audit:   { get label(){ return fpT('Audit');    }, color:'#2563EB', bg:'rgba(37,99,235,0.12)' },
+  monitor: { get label(){ return fpT('Monitor');  }, color:'#22c55e', bg:'rgba(34,197,94,0.12)' },
+  report:  { get label(){ return fpT('Rapport');  }, color:'#f59e0b', bg:'rgba(245,158,11,0.12)' },
+  alert:   { get label(){ return fpT('Alerte');   }, color:'#ef4444', bg:'rgba(239,68,68,0.12)' },
+  team:    { get label(){ return fpT('Équipe');   }, color:'#8b5cf6', bg:'rgba(139,92,246,0.12)' },
+  settings:{ get label(){ return fpT('Réglages'); }, color:'#06b6d4', bg:'rgba(6,182,212,0.12)' },
+  mission: { get label(){ return fpT('Mission');  }, color:'#a855f7', bg:'rgba(168,85,247,0.12)' },
+  export:  { get label(){ return fpT('Export');   }, color:'#f97316', bg:'rgba(249,115,22,0.12)' },
+  system:  { get label(){ return fpT('Système');  }, color:'#64748b', bg:'rgba(100,116,139,0.12)' },
 };
+// i18n keys for structured activity labels — action_key → fpT() mapping
+const ACTIVITY_I18N_KEYS = {
+  'activity.mission.created': (p) => fpT('Mission créée :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
+  'activity.mission.done':    (p) => fpT('Mission accomplie :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
+  'activity.mission.deleted': (p) => fpT('Mission supprimée :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
+  'activity.audit.started':   (p) => fpT('Audit lancé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
+  'activity.audit.done':      (p) => fpT('Audit terminé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
+  'activity.keyword.added':   (p) => fpT('Keyword ajouté :') + ' ' + (p&&p.keyword ? escHtml(String(p.keyword)) : ''),
+  'activity.keyword.removed': (p) => fpT('Keyword retiré :') + ' ' + (p&&p.keyword ? escHtml(String(p.keyword)) : ''),
+  'activity.monitor.created': (p) => fpT('Monitor créé :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
+  'activity.connector.connected':    (p) => fpT('Connecteur connecté :') + ' ' + (p&&p.provider ? escHtml(String(p.provider)) : ''),
+  'activity.connector.disconnected': (p) => fpT('Connecteur déconnecté :') + ' ' + (p&&p.provider ? escHtml(String(p.provider)) : ''),
+};
+function translateActivityLabel(e) {
+  if (e.actionKey && ACTIVITY_I18N_KEYS[e.actionKey]) {
+    try { return ACTIVITY_I18N_KEYS[e.actionKey](e.actionParams); } catch(_) {}
+  }
+  return escHtml(e.label || '');
+}
 const AVATAR_COLORS = ['#2563EB','#22c55e','#f59e0b','#8b5cf6','#ef4444','#06b6d4'];
 
 function getAvatarColor(name) {
@@ -3937,7 +3963,7 @@ function renderActivityList() {
           ${_avatarInner}
         </div>
         <div class="fp-activity-body">
-          <div class="fp-activity-panel-label">${escHtml(e.label)}</div>
+          <div class="fp-activity-panel-label">${translateActivityLabel(e)}</div>
           ${formatActivityDetails(e.metadata)}
           <div class="fp-activity-meta">
             <span class="fp-activity-user-name">${escHtml(e.userName || 'Équipe')}</span>
@@ -60620,6 +60646,9 @@ function renderTeamPerformance() {
   const teamData = STATE.team && STATE.team.length > 0 ? STATE.team : [];
   const metrics = teamData.map((t, i) => {
     const isOwner = t.role === 'owner' || (!teamData.some(m => m.role === 'owner') && (t.id === STATE.me?.id || t.email === STATE.me?.email));
+    const memberId = t.id || t.userId || '';
+    const memberStreak = STATE.teamStreaks && STATE.teamStreaks[memberId];
+    const streakVal = memberStreak ? memberStreak.current : (isOwner ? (STATE.streak || 0) : '—');
     return {
       name: t.name || t.email || 'Membre',
       role: t.role || 'member',
@@ -60628,7 +60657,7 @@ function renderTeamPerformance() {
       missions: isOwner ? ((STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length) : '—',
       reports: isOwner ? (STATE.reports ? STATE.reports.length : 0) : '—',
       score: isOwner ? (STATE.userScore || (STATE.overview && (STATE.overview.seoScore||STATE.overview.avgScore)) || 0) : '—',
-      streak: isOwner ? (STATE.streak || 0) : '—',
+      streak: streakVal,
     };
   });
   const totalAudits = STATE.audits ? STATE.audits.length : 0;

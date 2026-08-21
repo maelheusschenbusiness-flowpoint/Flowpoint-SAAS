@@ -1295,4 +1295,77 @@ router.post("/organizations/:id/switch", async (req: Request, res: Response) => 
   }
 });
 
+// ── GET /api/team/streaks — per-member streak from member_activity_days ──────
+router.get("/team/streaks", async (req: Request, res: Response) => {
+  const orgId = (req as OrgReq).orgId;
+  if (!orgId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const tz = await (async () => {
+      try {
+        const r = await pool.query(`SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`, [orgId]);
+        const s = r.rows[0]?.["settings"] as Record<string, unknown> | null;
+        return (s && typeof s["timezone"] === "string") ? s["timezone"] : "Europe/Brussels";
+      } catch { return "Europe/Brussels"; }
+    })();
+
+    // Get all active members with their user UUIDs
+    const memberRes = await pool.query<{ user_id: string; email: string; name: string; role: string }>(
+      `SELECT DISTINCT om.user_id::text AS user_id,
+              COALESCE(u.email,'') AS email,
+              COALESCE(u.first_name||' '||u.last_name, u.first_name, u.email, om.user_id::text) AS name,
+              om.role
+       FROM organization_members om
+       JOIN users u ON u.id = om.user_id
+       WHERE om.organization_id::text = $1 AND om.status = 'active'
+       LIMIT 50`,
+      [orgId]
+    );
+
+    const streaks: Array<{ userId: string; email: string; name: string; role: string; current: number; best: number }> = [];
+
+    for (const member of memberRes.rows) {
+      const uid = member.user_id;
+      try {
+        const actRes = await pool.query<{ d: string }>(
+          `SELECT day::text AS d FROM member_activity_days
+           WHERE org_id=$1 AND user_id=$2
+             AND day >= (NOW() AT TIME ZONE $3)::date - INTERVAL '365 days'
+           ORDER BY d DESC`,
+          [orgId, uid, tz]
+        );
+        if (actRes.rows.length === 0) {
+          streaks.push({ userId: uid, email: member.email, name: member.name.trim(), role: member.role, current: 0, best: 0 });
+          continue;
+        }
+        const activeDays = new Set(actRes.rows.map(r => String(r.d).slice(0, 10)));
+        const todayStr = new Date().toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
+        const startOffset = activeDays.has(todayStr) ? 0 : 1;
+        let current = 0;
+        for (let d = startOffset; d < 365; d++) {
+          const dt = new Date(Date.now() - d * 86_400_000);
+          const dayStr = dt.toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
+          if (activeDays.has(dayStr)) { current++; } else { break; }
+        }
+        const sorted = Array.from(activeDays).sort();
+        let best = 0, run = 0;
+        for (let i = 0; i < sorted.length; i++) {
+          if (i === 0) { run = 1; } else {
+            const diff = Math.round((new Date(sorted[i]!).getTime() - new Date(sorted[i-1]!).getTime()) / 86_400_000);
+            run = diff === 1 ? run + 1 : 1;
+          }
+          if (run > best) best = run;
+        }
+        streaks.push({ userId: uid, email: member.email, name: member.name.trim(), role: member.role, current, best: Math.max(best, current) });
+      } catch {
+        streaks.push({ userId: uid, email: member.email, name: member.name.trim(), role: member.role, current: 0, best: 0 });
+      }
+    }
+
+    res.json({ streaks });
+  } catch (err) {
+    logger.error({ err }, "[team/streaks] failed");
+    res.status(500).json({ error: "Failed to compute member streaks" });
+  }
+});
+
 export default router;

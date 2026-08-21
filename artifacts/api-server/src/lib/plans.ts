@@ -362,7 +362,7 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
     "retention365d",
     "keywordDomination",
     "behavioralAI",
-    "aiForecasting",
+    // aiForecasting is a paid add-on (not included) — Ultra = 10 bundled add-ons
   ]),
 };
 

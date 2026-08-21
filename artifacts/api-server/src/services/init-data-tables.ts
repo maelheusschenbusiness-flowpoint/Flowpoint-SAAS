@@ -1573,6 +1573,8 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS target_id   TEXT`);
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS target_type TEXT`);
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS metadata    JSONB NOT NULL DEFAULT '{}'`);
+    await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS action_key TEXT`);
+    await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS action_params JSONB`);
     // ── RLS on activity_logs — enable inline so it takes effect on first boot ──
     // init-rls-migration runs before this table is created on the slow path;
     // adding ENABLE here ensures the table has RLS immediately after creation.
@@ -2719,6 +2721,23 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE POLICY "uad_select" ON "user_activity_days" FOR SELECT USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "uad_insert" ON "user_activity_days" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "uad_delete" ON "user_activity_days" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+
+    // ── member_activity_days — per-member streak tracking (one row per user per day) ──
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS member_activity_days (
+        org_id  TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        day     DATE NOT NULL,
+        PRIMARY KEY (org_id, user_id, day)
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS member_activity_days_org_user_idx ON member_activity_days(org_id, user_id, day DESC)`);
+    await run(client, `ALTER TABLE member_activity_days ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE member_activity_days NO FORCE ROW LEVEL SECURITY`);
+    await run(client, `DROP POLICY IF EXISTS "mad_select" ON "member_activity_days"`);
+    await run(client, `DROP POLICY IF EXISTS "mad_insert" ON "member_activity_days"`);
+    await run(client, `CREATE POLICY "mad_select" ON "member_activity_days" FOR SELECT USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "mad_insert" ON "member_activity_days" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
 
     // ── team_channels — persisted channel registry for team chat ─────────────────
     // Channels survive even when they have zero messages.

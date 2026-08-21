@@ -14,6 +14,10 @@ export interface ActivityLog {
   targetId?: string;
   targetType?: string;
   metadata?: Record<string, unknown>;
+  /** i18n key for structured translation at render-time (e.g. "activity.mission.created") */
+  actionKey?: string;
+  /** i18n interpolation params, stored as JSONB alongside the action_key */
+  actionParams?: Record<string, unknown>;
   createdAt?: string;
 }
 
@@ -154,10 +158,12 @@ class Store {
 
          const r = await client.query(
           `SELECT id, type, label,
-                  target_id   AS "targetId",
-                  target_type AS "targetType",
+                  target_id    AS "targetId",
+                  target_type  AS "targetType",
                   metadata,
-                  created_at  AS "createdAt"
+                  action_key   AS "actionKey",
+                  action_params AS "actionParams",
+                  created_at   AS "createdAt"
            FROM activity_logs
            ${where}
               AND created_at >= COALESCE(
@@ -188,10 +194,10 @@ class Store {
       try {
         const id = `act_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         await client.query(
-          `INSERT INTO activity_logs (id, org_id, type, label, target_id, target_type, metadata, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+          `INSERT INTO activity_logs (id, org_id, type, label, target_id, target_type, metadata, action_key, action_params, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
            ON CONFLICT (id) DO NOTHING`,
-          [id, opts.orgId ?? "default", opts.type, opts.label, opts.targetId ?? null, opts.targetType ?? null, JSON.stringify(opts.metadata ?? {})]
+          [id, opts.orgId ?? "default", opts.type, opts.label, opts.targetId ?? null, opts.targetType ?? null, JSON.stringify(opts.metadata ?? {}), opts.actionKey ?? null, opts.actionParams ? JSON.stringify(opts.actionParams) : null]
         );
       } finally {
         client.release();

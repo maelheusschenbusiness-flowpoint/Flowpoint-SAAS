@@ -36,7 +36,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
 
   // Record today's activity for streak reliability — every dashboard load counts,
   // regardless of whether /api/me/streak or /api/me/prefs is reached later.
-  recordActivityDay(orgDb(req), orgId).catch(() => {});
+  recordActivityDay(orgDb(req), orgId, req.orgContext?.userId ?? undefined).catch(() => {});
 
   // Canonical timezone from user_prefs.settings (written by PATCH /api/me/settings).
   // Queried unconditionally so it appears even when org_settings row is missing.
@@ -422,7 +422,7 @@ type DbFn = (sql: string, vals?: unknown[]) => Promise<{ rows: Record<string, un
  * Falls back to a direct pool.query (superuser — bypasses RLS) when the
  * RLS-scoped orgDb insert is blocked or fails, so streaks are never silently lost.
  */
-async function recordActivityDay(db: DbFn, orgId: string): Promise<void> {
+async function recordActivityDay(db: DbFn, orgId: string, userId?: string): Promise<void> {
   let tz = "Europe/Brussels";
   try {
     const tzRow = await db(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
@@ -430,7 +430,7 @@ async function recordActivityDay(db: DbFn, orgId: string): Promise<void> {
     if (s && typeof s["timezone"] === "string" && s["timezone"]) tz = s["timezone"];
   } catch { /* non-fatal — fall through with default tz */ }
 
-  // Primary path: RLS-scoped insert
+  // Primary path: RLS-scoped insert (org-level streak)
   let inserted = false;
   try {
     await db(
@@ -442,8 +442,7 @@ async function recordActivityDay(db: DbFn, orgId: string): Promise<void> {
     inserted = true;
   } catch { /* fall through to pool fallback */ }
 
-  // Fallback: direct pool.query bypasses RLS (superuser connection).
-  // Ensures the row lands even when SET LOCAL ROLE / GUC is silently rejected.
+  // Fallback: direct pool.query bypasses RLS
   if (!inserted) {
     try {
       await pool.query(
@@ -452,7 +451,20 @@ async function recordActivityDay(db: DbFn, orgId: string): Promise<void> {
          ON CONFLICT (org_id, user_id, day) DO NOTHING`,
         [orgId, tz]
       );
-    } catch { /* non-fatal — table may not exist yet on first boot */ }
+    } catch { /* non-fatal */ }
+  }
+
+  // Per-member streak tracking — record with actual user UUID when available
+  const effectiveUserId = userId && !userId.startsWith("apikey:") ? userId : orgId;
+  if (effectiveUserId !== orgId) {
+    try {
+      await pool.query(
+        `INSERT INTO member_activity_days (org_id, user_id, day)
+         VALUES ($1, $2, (NOW() AT TIME ZONE $3)::date)
+         ON CONFLICT (org_id, user_id, day) DO NOTHING`,
+        [orgId, effectiveUserId, tz]
+      );
+    } catch { /* non-fatal — table created on first boot */ }
   }
 }
 
@@ -546,7 +558,7 @@ router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
   if (!orgId) return;
   try {
     // Record today's activity (cheap upsert, non-fatal)
-    recordActivityDay(orgDb(req), orgId).catch(() => {});
+    recordActivityDay(orgDb(req), orgId, req.orgContext?.userId ?? undefined).catch(() => {});
 
     const r = await orgDb(req)(`SELECT streak, pinned, checklist, settings FROM user_prefs WHERE org_id=$1`, [orgId]);
     const row = r.rows[0] ?? { streak: 0, pinned: {}, checklist: null, settings: null };

@@ -35,13 +35,15 @@ export interface PSIResult {
 
 const PSI_ENDPOINT = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
 
-export async function analyzePSI(url: string, strategy: "mobile" | "desktop", _orgId?: string, _force?: boolean): Promise<PSIResult> {
+export async function analyzePSI(url: string, strategy: "mobile" | "desktop", _orgId?: string, _force?: boolean, locale?: string): Promise<PSIResult> {
   const apiKey = process.env["PAGESPEED_API_KEY"] ?? process.env["GOOGLE_API_KEY"] ?? "";
   // Task #614: without explicit `category` params the PSI API only runs the
   // performance category — seo/accessibility/best-practices came back absent
   // and were displayed as fabricated 0/100 rings. Request all four.
   const categories = "&category=performance&category=accessibility&category=best-practices&category=seo";
-  const endpoint = `${PSI_ENDPOINT}?url=${encodeURIComponent(url)}&strategy=${strategy}${categories}${apiKey ? `&key=${apiKey}` : ""}`;
+  // Pass locale so PSI returns audit labels in the user's language (default: en)
+  const psiLocale = locale && locale.length >= 2 ? locale.slice(0, 5) : "en";
+  const endpoint = `${PSI_ENDPOINT}?url=${encodeURIComponent(url)}&strategy=${strategy}${categories}&locale=${encodeURIComponent(psiLocale)}${apiKey ? `&key=${apiKey}` : ""}`;
 
   const res = await fetch(endpoint, { signal: AbortSignal.timeout(25_000) });
   if (!res.ok) throw new Error(`PSI API ${res.status}: ${await res.text()}`);
