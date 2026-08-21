@@ -9,9 +9,10 @@
 
 import { logger } from "../lib/logger.js";
 import { randomUUID } from "node:crypto";
+import { aiChat } from "./ai-provider.js";
+import { checkAIQuota, recordCompletedUsageDeferred } from "./ai-engine.js";
 
 const FETCH_TIMEOUT_MS  = 15_000;
-const AI_TIMEOUT_MS     = 40_000;
 
 // ── Strict system prompt ──────────────────────────────────────────────────────
 const SYSTEM_PROMPT = `Tu es un analyste business expert en veille concurrentielle. Tu analyses le contenu public de sites web concurrents pour une plateforme SaaS.
@@ -139,34 +140,74 @@ async function scrapeCompetitor(baseUrl: string): Promise<{ pages: Array<{ url: 
   return { pages, anyOk: pages.length > 0 };
 }
 
-// ── AI call ───────────────────────────────────────────────────────────────────
+// ── AI call — canonical FlowPoint engine ─────────────────────────────────────
+// Uses aiChat (provider selection + fallback) + recordCompletedUsageDeferred
+// (quota debit + usage logs). Never calls OpenAI directly.
 
-async function callOpenAI(prompt: string): Promise<string | null> {
-  const key = process.env["OPENAI_API_KEY"];
-  if (!key) return null;
+async function callAI(
+  prompt: string,
+  orgId: string,
+  userId: string,
+): Promise<{ content: string | null; quotaAllowed: boolean }> {
+  // 1. Pre-check quota (read-only, non-blocking)
+  const quota = await checkAIQuota({ feature: "market_intel", orgId }).catch(() => null);
+  if (quota && !quota.allowed) {
+    logger.warn({ orgId }, "[competitor-analysis] AI quota exhausted — skipping AI analysis");
+    return { content: null, quotaAllowed: false };
+  }
+
+  const t0 = Date.now();
   try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model:           "gpt-4o-mini",
-        messages:        [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: prompt }],
-        max_tokens:      3000,
-        temperature:     0.1,
-        response_format: { type: "json_object" },
-      }),
-      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+    // 2. Call via canonical provider (openai → anthropic → gemini fallback for internal routes)
+    // json:true enables response_format:json_object on OpenAI; other providers use the system
+    // prompt constraint ("reply only with valid JSON"). Gemini does not support json_object
+    // response_format at all so the flag is ignored there — the SYSTEM_PROMPT is sufficient.
+    const result = await aiChat({
+      systemPrompt: SYSTEM_PROMPT,
+      userPrompt:   prompt,
+      task: "market_intel",
+      json: true,
     });
-    if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      logger.warn({ status: res.status, body: t.slice(0, 300) }, "[competitor-analysis] OpenAI error");
-      return null;
+
+    const latencyMs = Date.now() - t0;
+
+    // 3. Deferred usage accounting (non-blocking — never blocks the response)
+    recordCompletedUsageDeferred({
+      feature:   "market_intel",
+      orgId,
+      userId,
+      model:     result._ai.model as import("./ai-engine.js").AIModel,
+      provider:  result._ai.provider,
+      tokensIn:  result.usage.promptTokens    ?? 0,
+      tokensOut: result.usage.completionTokens ?? 0,
+      latencyMs,
+      success:   true,
+    });
+
+    // Strip markdown code-block wrappers that Anthropic may add
+    // (e.g. ```json\n{...}\n```) — OpenAI's json:true prevents this but
+    // Anthropic ignores the flag and may wrap the response.
+    let raw = result.text ?? null;
+    if (raw) {
+      const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (match) raw = match[1]!.trim();
     }
-    const d = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-    return d.choices?.[0]?.message?.content ?? null;
+    return { content: raw, quotaAllowed: true };
   } catch (err) {
-    logger.warn({ err }, "[competitor-analysis] OpenAI call failed");
-    return null;
+    const latencyMs = Date.now() - t0;
+    logger.warn({ err, orgId }, "[competitor-analysis] AI call failed");
+    recordCompletedUsageDeferred({
+      feature:   "market_intel",
+      orgId,
+      userId,
+      model:     "gpt-5-mini",
+      provider:  "openai",
+      tokensIn:  0,
+      tokensOut: 0,
+      latencyMs,
+      success:   false,
+    });
+    return { content: null, quotaAllowed: true };
   }
 }
 
@@ -259,6 +300,7 @@ export async function runFullCompetitorAnalysis(opts: {
   competitorName: string;
   competitorUrl:  string;
   orgId:          string;
+  userId?:        string;
   orgDb:          OrgDb;
   /** Org context for comparison — fetched from DB by caller */
   orgContext?: {
@@ -270,7 +312,7 @@ export async function runFullCompetitorAnalysis(opts: {
     orgFeatures?: string[];
   };
 }): Promise<{ ok: boolean; analysis?: FullCompetitorAnalysis; error?: string }> {
-  const { competitorId, competitorName, competitorUrl, orgId, orgDb, orgContext = {} } = opts;
+  const { competitorId, competitorName, competitorUrl, orgId, userId = "system", orgDb, orgContext = {} } = opts;
 
   try {
     // 1. Scrape competitor site
@@ -370,8 +412,11 @@ Règles critiques :
 - opportunities : max 5, actionnables, basées sur les vrais écarts détectés.
 - feature_matrix : liste les fonctionnalités clés détectées, avec "—" si non disponible côté utilisateur ou concurrent.`;
 
-    const rawJson = await callOpenAI(prompt);
+    const { content: rawJson, quotaAllowed } = await callAI(prompt, orgId, userId);
     const aiAvailable = rawJson !== null;
+    if (!quotaAllowed) {
+      logger.warn({ orgId, competitorId }, "[competitor-analysis] Crédits IA insuffisants — analyse sans IA");
+    }
 
     // Parse AI output — fallback to empty on parse error
     let aiData: Record<string, unknown> = {};

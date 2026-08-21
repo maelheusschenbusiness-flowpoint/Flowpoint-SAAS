@@ -459,7 +459,8 @@ router.post("/competitors/:id/analyze", reportRateLimit, canWrite, async (req, r
       competitorName: String(row["name"] ?? "Concurrent"),
       competitorUrl,
       orgId,
-      orgDb: (sql, vals) => req.orgDb(sql, vals),
+      userId:  req.userId ?? "system",
+      orgDb:   (sql, vals) => req.orgDb(sql, vals),
       orgContext,
     });
 
