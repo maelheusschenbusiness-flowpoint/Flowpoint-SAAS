@@ -1295,6 +1295,59 @@ router.post("/organizations/:id/switch", async (req: Request, res: Response) => 
   }
 });
 
+// ── GET /api/team/contributions — per-user action counts from real DB tables ─
+router.get("/team/contributions", async (req: Request, res: Response) => {
+  const orgId = (req as OrgReq).orgId ?? "default";
+  try {
+    // Each table may not yet exist — use allSettled so one missing table
+    // doesn't kill the whole response.
+    const [auditsRes, missionsRes, reportsRes] = await Promise.allSettled([
+      pool.query(
+        `SELECT COALESCE(created_by,'') AS uid, COUNT(*)::int AS cnt
+         FROM audits WHERE org_id=$1 GROUP BY created_by`,
+        [orgId]
+      ),
+      pool.query(
+        `SELECT COALESCE(created_by,'') AS uid, COUNT(*)::int AS cnt
+         FROM missions WHERE org_id=$1 AND (status='done' OR status='completed') GROUP BY created_by`,
+        [orgId]
+      ),
+      pool.query(
+        `SELECT COALESCE(created_by,'') AS uid, COUNT(*)::int AS cnt
+         FROM reports WHERE org_id=$1 GROUP BY created_by`,
+        [orgId]
+      ),
+    ]);
+
+    const byUser: Record<string, { audits: number; missions: number; reports: number }> = {};
+    const get = (id: string) => {
+      if (!byUser[id]) byUser[id] = { audits: 0, missions: 0, reports: 0 };
+      return byUser[id]!;
+    };
+
+    if (auditsRes.status === "fulfilled") {
+      auditsRes.value.rows.forEach((r: Record<string, unknown>) => {
+        if (r["uid"]) get(String(r["uid"])).audits = Number(r["cnt"]);
+      });
+    }
+    if (missionsRes.status === "fulfilled") {
+      missionsRes.value.rows.forEach((r: Record<string, unknown>) => {
+        if (r["uid"]) get(String(r["uid"])).missions = Number(r["cnt"]);
+      });
+    }
+    if (reportsRes.status === "fulfilled") {
+      reportsRes.value.rows.forEach((r: Record<string, unknown>) => {
+        if (r["uid"]) get(String(r["uid"])).reports = Number(r["cnt"]);
+      });
+    }
+
+    res.json({ ok: true, contributions: byUser });
+  } catch (err) {
+    logger.warn({ err }, "[team/contributions] failed");
+    res.json({ ok: true, contributions: {} });
+  }
+});
+
 // ── GET /api/team/streaks — per-member streak from member_activity_days ──────
 router.get("/team/streaks", async (req: Request, res: Response) => {
   const orgId = (req as OrgReq).orgId;

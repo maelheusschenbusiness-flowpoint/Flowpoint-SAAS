@@ -1751,7 +1751,8 @@ async function loadData(options = {}) {
     'reports'  in _preloaded ? Promise.resolve(_preloaded.reports)  : apiFetch('/api/reports'),
     'team'     in _preloaded ? Promise.resolve(_preloaded.team)     : apiFetch('/api/team'),
     apiFetch('/api/team/streaks').catch(() => null),
-  ]).then(function([_auRes, _moRes, _reRes, _teRes, _streaksRes]) {
+    apiFetch('/api/team/contributions').catch(() => null),
+  ]).then(function([_auRes, _moRes, _reRes, _teRes, _streaksRes, _contribRes]) {
     if (_auRes.status === 'fulfilled') { audits   = _auRes.value; } else { STATE.sectionErrors.audits   = classifySectionError(_auRes.reason); console.warn('[FP] /api/audits failed:', _auRes.reason?.message || _auRes.reason); }
     if (_moRes.status === 'fulfilled') { monitors = _moRes.value; } else { STATE.sectionErrors.monitors = classifySectionError(_moRes.reason); console.warn('[FP] /api/monitors failed:', _moRes.reason?.message || _moRes.reason); }
     if (_reRes.status === 'fulfilled') { reports  = _reRes.value; } else { STATE.sectionErrors.reports  = classifySectionError(_reRes.reason); console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason); }
@@ -1760,6 +1761,10 @@ async function loadData(options = {}) {
     if (_streaksRes && _streaksRes.status === 'fulfilled' && _streaksRes.value && Array.isArray(_streaksRes.value.streaks)) {
       STATE.teamStreaks = {};
       (_streaksRes.value.streaks).forEach(function(s) { if (s.userId) STATE.teamStreaks[s.userId] = s; });
+    }
+    // Per-user real contribution counts from DB (audits, missions, reports)
+    if (_contribRes && _contribRes.status === 'fulfilled' && _contribRes.value && _contribRes.value.contributions) {
+      STATE.teamContributions = _contribRes.value.contributions;
     }
     const _aud = normArr(audits,   'audits');   STATE.audits   = (_aud  && _aud.length  > 0) ? _aud  : (PREVIEW_MODE ? MOCK_AUDITS   : []);
     const _mon = normArr(monitors, 'monitors'); STATE.monitors = (_mon  && _mon.length  > 0) ? _mon  : (PREVIEW_MODE ? MOCK_MONITORS : []);
@@ -6637,7 +6642,7 @@ function renderMonitors() {
             { icon: '📧', name: 'Email',   detail: `${monitors.filter(m => m.alertEmail).length} monitors`, color: '#22c55e',  active: true },
             { icon: '💬', name: 'Slack',   detail: isPro ? '#flowpoint-alerts' : 'Pro requis →',              color: isPro ? '#22c55e' : '#64748b', active: isPro },
             { icon: '🎮', name: 'Discord', detail: isPro ? 'Webhook configuré' : 'Pro requis →',              color: isPro ? '#8b5cf6' : '#64748b', active: isPro },
-            { icon: '📱', name: 'SMS',     detail: 'Bientôt disponible (Ultra)', color: '#f59e0b', active: false },
+            { icon: '📱', name: 'SMS',     detail: 'Bientôt disponible (Ultra)', color: '#94a3b8', active: false, disabled: true },
           ].map(ch => `
             <div style="display:flex;align-items:center;gap:8px">
               <span style="font-size:16px">${ch.icon}</span>
@@ -47921,8 +47926,22 @@ async function init() {
         );
         await window.FP_REVIEW_INTEL_API.load();
         render(STATE.currentSection);
-      } else showToast('error', r?.error || 'Erreur d\'analyse');
-    } catch(e) { showToast('error', 'Erreur : ' + String(e)); }
+      } else {
+        const _rmsg = r?.error || r?.message || "Analyse indisponible";
+        if ((r?.status === 403) || (r?.code === 'ADDON_REQUIRED')) {
+          showToast('info', "Module Review Intelligence requis — activez-le depuis la page Facturation.");
+        } else {
+          showToast('error', _rmsg);
+        }
+      }
+    } catch(_re) {
+      const _remsg = String(_re);
+      if (_remsg.includes('403') || _remsg.includes('ADDON')) {
+        showToast('info', "Module Review Intelligence requis — activez-le depuis la page Facturation.");
+      } else {
+        showToast('error', "Erreur lors de l\'analyse : " + _remsg);
+      }
+    }
   };
   // ── Intégrations window functions (extracted from non-executing innerHTML script) ──
   window._intgTab = window._intgTab || 'hub';
@@ -58930,7 +58949,7 @@ function renderClientMode() {
           ${templates.map(t => `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
               <div style="width:36px;height:36px;border-radius:8px;background:rgba(37,99,235,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                ${svgIcon('file-text').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="14"')}
+                ${(typeof svgIcon==='function'?svgIcon('file-text'):'📄').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="14"')}
               </div>
               <div style="flex:1;min-width:0">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(t.name)}</div>
@@ -60702,13 +60721,15 @@ function renderTeamPerformance() {
     const memberId = t.id || t.userId || '';
     const memberStreak = STATE.teamStreaks && STATE.teamStreaks[memberId];
     const streakVal = memberStreak ? memberStreak.current : (isOwner ? (STATE.streak || 0) : '—');
+    const _uid = t.id || t.userId || t.email || '';
+    const _contrib = (STATE.teamContributions && _uid && STATE.teamContributions[_uid]) ? STATE.teamContributions[_uid] : null;
     return {
       name: t.name || t.email || 'Membre',
       role: t.role || 'member',
       roleColor: _roleColors[t.role] || '#64748b',
-      audits: isOwner ? (STATE.audits ? STATE.audits.length : 0) : '—',
-      missions: isOwner ? ((STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length) : '—',
-      reports: isOwner ? (STATE.reports ? STATE.reports.length : 0) : '—',
+      audits:   _contrib != null ? _contrib.audits   : (isOwner ? (STATE.audits ? STATE.audits.length : 0) : '—'),
+      missions: _contrib != null ? _contrib.missions : (isOwner ? ((STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length) : '—'),
+      reports:  _contrib != null ? _contrib.reports  : (isOwner ? (STATE.reports ? STATE.reports.length : 0) : '—'),
       score: isOwner ? (STATE.userScore || (STATE.overview && (STATE.overview.seoScore||STATE.overview.avgScore)) || 0) : '—',
       streak: streakVal,
     };
@@ -62765,11 +62786,12 @@ window._fpFunnelRemoveStep = function(btn) {
 // Build the create/edit form HTML
 function _fpFunnelBuildForm(funnel) {
   const isEdit = !!funnel;
-  const bd = funnel?.breakdown_dimension || '';
+  const _draft = (!isEdit && window._fpFunnelState && window._fpFunnelState.draft) ? window._fpFunnelState.draft : null;
+  const bd = funnel?.breakdown_dimension || _draft?.bd || '';
   const bdOpts = ['','deviceCategory','country','browser','operatingSystem','sessionDefaultChannelGrouping','sourceMedium','city','region'];
-  const lookback = funnel?.lookback_days || 30;
+  const lookback = funnel?.lookback_days || _draft?.lookback || 30;
   const lbOpts = [7,14,30,60,90,180];
-  const steps = (funnel?.steps || [{position:1,name:'',event_name:'',page_path_match_type:'EXACT',page_path_value:''},{position:2,name:'',event_name:'',page_path_match_type:'EXACT',page_path_value:''}]);
+  const steps = (funnel?.steps || _draft?.steps || [{position:1,name:'',event_name:'',page_path_match_type:'EXACT',page_path_value:''},{position:2,name:'',event_name:'',page_path_match_type:'EXACT',page_path_value:''}]);
   return `
     <div class="fp-card" style="padding:20px 22px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
@@ -62779,11 +62801,11 @@ function _fpFunnelBuildForm(funnel) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
         <div>
           <label style="font-size:11px;font-weight:600;color:var(--fp-text-muted);display:block;margin-bottom:5px">Nom *</label>
-          <input id="fp-f-name" class="fp-input" placeholder="Mon funnel de conversion" value="${_fpFunnelEsc(funnel?.name||'')}">
+          <input id="fp-f-name" class="fp-input" placeholder="Mon funnel de conversion" value="${_fpFunnelEsc(funnel?.name||_draft?.name||'')}">
         </div>
         <div>
           <label style="font-size:11px;font-weight:600;color:var(--fp-text-muted);display:block;margin-bottom:5px">Site URL *</label>
-          <input id="fp-f-siteurl" class="fp-input" placeholder="https://example.com" value="${_fpFunnelEsc(funnel?.site_url||window.STATE?.siteUrl||'')}">
+          <input id="fp-f-siteurl" class="fp-input" placeholder="https://example.com" value="${_fpFunnelEsc(funnel?.site_url||_draft?.siteUrl||window.STATE?.siteUrl||'')}">
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:18px">
@@ -62837,10 +62859,34 @@ window._fpFunnelShowForm = function(funnel) {
   if (resSec)  resSec.style.display  = 'none';
   formSec.style.display = 'block';
   formSec.innerHTML = _fpFunnelBuildForm(funnel);
+  // Auto-save draft on every input so state survives navigation
+  (function() {
+    var _dSave = function() {
+      if (!window._fpFunnelState) return;
+      window._fpFunnelState.draft = {
+        name:    (document.getElementById('fp-f-name')||{value:''}).value,
+        siteUrl: (document.getElementById('fp-f-siteurl')||{value:''}).value,
+        lookback: +((document.getElementById('fp-f-lookback')||{value:'30'}).value||30),
+        bd:      (document.getElementById('fp-f-breakdown')||{value:''}).value,
+        steps: Array.from(document.querySelectorAll('.fp-funnel-step-row')).map(function(row,i){
+          return { position:i+1,
+            name:                 (row.querySelector('.fp-step-name')||{value:''}).value,
+            event_name:           (row.querySelector('.fp-step-event')||{value:''}).value,
+            page_path_match_type: (row.querySelector('.fp-step-match')||{value:'EXACT'}).value,
+            page_path_value:      (row.querySelector('.fp-step-path')||{value:''}).value };
+        }),
+      };
+    };
+    if (formSec) {
+      formSec.addEventListener('input', _dSave, { passive: true });
+      formSec.addEventListener('change', _dSave, { passive: true });
+    }
+  })();
 };
 
 // Cancel form — go back to list
 window._fpFunnelCancel = function() {
+  if (window._fpFunnelState) window._fpFunnelState.draft = null;
   const listSec = document.getElementById('fp-funnels-list-section');
   const formSec = document.getElementById('fp-funnel-form-section');
   const resSec  = document.getElementById('fp-funnel-result-section');

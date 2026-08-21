@@ -362,7 +362,6 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
     "keywordDomination",
     "behavioralAI",
     "aiForecasting",
-    "reviewIntelligence",
   ]),
 };
 
