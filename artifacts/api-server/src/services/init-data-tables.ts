@@ -439,6 +439,22 @@ export async function initDataTables(): Promise<void> {
     `);
     await run(client, `CREATE INDEX IF NOT EXISTS competitor_analysis_org_idx ON competitor_analysis(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS competitor_analysis_comp_idx ON competitor_analysis(competitor_id);`);
+    // ── Security: RLS must be applied inline, right after table creation.
+    // runRlsMigrationIfNeeded() runs BEFORE initDataTables() in both the
+    // full-init and fast-path sequences, so any table created here would be
+    // left unprotected until the NEXT startup.  Applying it here closes the
+    // gap on first boot and on every subsequent boot (all ALTER/CREATE are
+    // idempotent — IF NOT EXISTS / DROP POLICY IF EXISTS guard repeats).
+    await run(client, `ALTER TABLE competitor_analysis ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE competitor_analysis FORCE ROW LEVEL SECURITY`);
+    await run(client, `DROP POLICY IF EXISTS "tenant_select" ON competitor_analysis`);
+    await run(client, `DROP POLICY IF EXISTS "tenant_insert" ON competitor_analysis`);
+    await run(client, `DROP POLICY IF EXISTS "tenant_update" ON competitor_analysis`);
+    await run(client, `DROP POLICY IF EXISTS "tenant_delete" ON competitor_analysis`);
+    await run(client, `CREATE POLICY "tenant_select" ON competitor_analysis FOR SELECT USING     (COALESCE(org_id::text,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_insert" ON competitor_analysis FOR INSERT WITH CHECK (COALESCE(org_id::text,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_update" ON competitor_analysis FOR UPDATE USING     (COALESCE(org_id::text,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_delete" ON competitor_analysis FOR DELETE USING     (COALESCE(org_id::text,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `ALTER TABLE competitor_analysis ADD COLUMN IF NOT EXISTS feature_matrix JSONB NOT NULL DEFAULT '[]';`);
     await run(client, `ALTER TABLE competitor_analysis ADD COLUMN IF NOT EXISTS you_better JSONB NOT NULL DEFAULT '[]';`);
     await run(client, `ALTER TABLE competitor_analysis ADD COLUMN IF NOT EXISTS they_better JSONB NOT NULL DEFAULT '[]';`);
