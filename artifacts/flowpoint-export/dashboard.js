@@ -5776,7 +5776,7 @@ function renderOverview() {
       </div>`;
     })()}
 
-    ${!_ga4Connected() ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 16px;background:rgba(234,179,8,0.07);border:1px solid rgba(234,179,8,0.2);border-radius:10px;margin-bottom:18px">
+    ${!_ga4Connected ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 16px;background:rgba(234,179,8,0.07);border:1px solid rgba(234,179,8,0.2);border-radius:10px;margin-bottom:18px">
       <div style="display:flex;align-items:center;gap:10px;min-width:0">
         <span style="font-size:16px">📊</span>
         <div>
@@ -9714,7 +9714,6 @@ function renderBilling() {
       // ── Team ──
       { key:'extraSeats', cat:'Équipe',     name:'+5 Sièges', icon:'👥', color:'#06b6d4', active:me.addons?.extraSeats > 0, tag:'Collaboration', roi:'5 utilisateurs suppl.', desc:'Ajoutez 5 membres d\'équipe avec rôles et permissions granulaires.', features:['5 sièges supplémentaires immédiats','Rôles Admin / Editor / Viewer','Invitations par email en 1 clic','Permissions granulaires par workspace','Historique d\'activité par membre'] },
       { key:'enterprisePermissions', cat:'Équipe',     name:'Permissions Avancées', icon:'🔐', color:'#06b6d4', active:false, tag:'Sécurité',        roi:'RBAC complet',    desc:'Contrôle d\'accès granulaire. Rôles custom, audit log, et permissions par workspace.', features:['Rôles personnalisés créés sur mesure','Audit log complet des actions','Permissions par section et par client','SSO compatible (Google Workspace)','Rapport accès mensuel pour conformité'] },
-      { key:'prioritySupport',      cat:'Équipe',     name:'Priority Support',       icon:'🎯', color:'#06b6d4', active:!!(me.addons?.prioritySupport), tag:'Pro inclus',      roi:'Réponse < 4h',    desc:'Support prioritaire avec temps de réponse garanti < 4h. Accès direct à l\'équipe technique FlowPoint.', features:['Réponse garantie < 4h (jours ouvrés)','Canal dédié Slack ou email prioritaire','Accès direct à l\'équipe technique','Onboarding personnalisé inclus','Revue mensuelle de compte'] },
       // ── Storage ──
       { key:'retention90d', cat:'Storage',    name:'Rétention 90 jours',  icon:'🗄️', color:'#ef4444', active:false, tag:'Pro inclus',      roi:'3 mois d\'historique',    desc:'Conservez 90 jours d\'historique pour tous vos audits, monitors, et rapports.', features:['90 jours d\'historique audits','Historique monitors et alertes','Export CSV de toutes les données','Comparaisons temporelles dans le dashboard','Aucune perte de données garantie'] },
       { key:'retention365d', cat:'Storage',    name:'Rétention 365 jours', icon:'🗄️', color:'#ef4444', active:false, tag:'Ultra inclus',    roi:'1 an d\'historique complet',    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
@@ -14645,7 +14644,7 @@ function renderNewObjectivePanel() {
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">${fpT('Échéance')}</label>
-      <input class="fp-input" id="nobj-deadline" placeholder="30 sept. 2026"/>
+      <input class="fp-input" id="nobj-deadline" type="date" style="color-scheme:dark"/>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">Prochaine action</label>
@@ -15022,7 +15021,7 @@ const SUB_NAVS = {
   'reports':    [{id:null,label:'Command Center'},{id:'exec',label:'Executive'},{id:'seo',label:'SEO'},{id:'monitoring',label:'Monitoring'},{id:'local',label:'Local SEO'},{id:'conversion',label:'Conversion'},{id:'client',label:'White-Label'},{id:'ai',label:'IA Lab'}],
   'team':       [{id:null,label:'Membres'},{id:'chat',label:'Chat'},{id:'activity',label:'Activité'},{id:'files',label:'Fichiers'},{id:'performance',label:'Performance'}],
   'growth':     [{id:null,label:'Tendances'},{id:'projections',label:'Projections'},{id:'objectives',label:'Objectifs'},{id:'keywords',label:'Mots-clés'}],
-  'competitor': [{id:null,label:'Command Center'},{id:'overview',label:'Aperçu'},{id:'keywords',label:'Mots-clés'},{id:'content',label:'Contenu'},{id:'backlinks',label:'Backlinks'},{id:'local',label:'Local'},{id:'alerts',label:'Alertes'}],
+  'competitor': [{id:null,label:'Command Center'}],
   'conversion': [{id:null,label:'Command Center'},{id:'funnel',label:'Funnel Analytics'},{id:'ux-lab',label:'UX & Friction'},{id:'cta',label:'CTA Intelligence'},{id:'revenue-leak',label:'Revenue Leak'},{id:'cro',label:'CRO IA'}],
   'alerts-center': [{id:null,label:'Command Center'},{id:'incidents',label:'Incidents'},{id:'seo',label:'SEO'},{id:'performance',label:'Performance'},{id:'conversion',label:'Conversion'},{id:'local',label:'Local SEO'},{id:'competitor',label:'Concurrents'},{id:'ai',label:'IA Threat Lab'}],
   'billing':       [{id:null,label:'Command Center'},{id:'plans',label:'Plans'},{id:'addons',label:'Add-ons'},{id:'usage',label:'Usage'},{id:'invoices',label:'Factures'},{id:'ai-strategist',label:'IA Stratégiste'},{id:'enterprise',label:'Agency Lab'}],
