@@ -64,7 +64,10 @@ router.get("/reports/clients", async (req: Request, res: Response) => {
       [org(req)]
     );
     res.json(r.rows);
-  } catch { res.json([]); }
+  } catch (err) {
+    console.error("[reports] GET /reports/clients failed", err);
+    res.status(500).json({ error: "Failed to fetch report clients" });
+  }
 });
 
 // ── GET /reports/:id ──────────────────────────────────────────────────────────

@@ -532,6 +532,57 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS report_exports_org_id_idx     ON report_exports(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS report_exports_created_at_idx ON report_exports(created_at);`);
 
+    // ── custom_domains ──────────────────────────────────────────────────────────
+    // White-label custom-domain feature (routes/white-label.ts). Previously this
+    // table was only referenced by the RLS migration list but had no CREATE TABLE,
+    // so every /white-label/domains* endpoint failed with 42P01 on a fresh DB.
+    // Columns match exactly what white-label.ts inserts/selects/updates.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS custom_domains (
+        id                 TEXT        PRIMARY KEY,
+        org_id             TEXT        NOT NULL DEFAULT 'default',
+        domain             TEXT        NOT NULL DEFAULT '',
+        status             TEXT        NOT NULL DEFAULT 'pending_dns',
+        ssl_active         BOOLEAN     NOT NULL DEFAULT false,
+        verification_token TEXT,
+        verified_at        TIMESTAMPTZ,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS org_id             TEXT        NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS domain             TEXT        NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS status             TEXT        NOT NULL DEFAULT 'pending_dns';`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS ssl_active         BOOLEAN     NOT NULL DEFAULT false;`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS verification_token TEXT;`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS verified_at        TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    await run(client, `CREATE INDEX IF NOT EXISTS custom_domains_org_id_idx ON custom_domains(org_id);`);
+
+    // ── report_templates (unconditional self-heal) ─────────────────────────────
+    // Also created inside the missing-production-tables-v3 migration block below,
+    // but that block is skipped once the migration flag is set. White-label GET
+    // /templates now self-heals via initDataTables on a 42P01, so the table must
+    // be (re)provisionable on every boot — not only on first init. Idempotent.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS report_templates (
+        id                       TEXT        PRIMARY KEY,
+        org_id                   TEXT        NOT NULL DEFAULT 'default',
+        name                     TEXT        NOT NULL DEFAULT '',
+        logo_url                 TEXT,
+        primary_color            TEXT,
+        secondary_color          TEXT,
+        font                     TEXT,
+        footer_text              TEXT,
+        header_text              TEXT,
+        hide_flowpoint_branding  BOOLEAN     NOT NULL DEFAULT false,
+        is_default               BOOLEAN     NOT NULL DEFAULT false,
+        created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS report_templates_org_idx ON report_templates(org_id);`);
+
     // ── team_messages ─────────────────────────────────────────────────────────
     await run(client, `
       CREATE TABLE IF NOT EXISTS team_messages (

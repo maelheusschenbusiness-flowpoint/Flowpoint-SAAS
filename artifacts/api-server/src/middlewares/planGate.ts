@@ -236,6 +236,49 @@ export function requireAddon(
   };
 }
 
+/**
+ * requireAddonOrFeature — grants access when EITHER:
+ *   a) the plan's canonical feature flag (FEATURE_FLAGS) is enabled, OR
+ *   b) requireAddon() would allow it (bundled in PLAN_INCLUDED_ADDONS
+ *      or purchased/active in org_addons).
+ *
+ * This is the correct gate for capabilities that are part of the canonical
+ * plan entitlement (config.ts FEATURE_FLAGS) but ALSO sold as a standalone
+ * add-on to lower tiers. Example: Review Intelligence (reviewIntelAI) is a
+ * bundled entitlement for Pro/Ultra, while Standard can purchase the
+ * reviewIntelligence add-on to unlock it. Gating purely on requireAddon()
+ * wrongly forces a paying Ultra org to buy the add-on separately.
+ *
+ * Org isolation is preserved: the add-on branch still scopes org_addons by
+ * orgId; the feature branch only reads the plan resolved for this org.
+ */
+export function requireAddonOrFeature(
+  addonKey: string,
+  feature: keyof FeatureFlags,
+  label?: string,
+): (req: Request, res: Response, next: NextFunction) => void {
+  const addonGate = requireAddon(addonKey, label);
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const orgId = (req as { orgId?: string }).orgId;
+    if (!orgId || orgId === "default") {
+      // Dev mode without auth — fall through to requireAddon (fail-open in dev).
+      addonGate(req, res, next);
+      return;
+    }
+
+    resolvePlanFromDB(req).then(plan => {
+      if (plan === null) {
+        res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+        return;
+      }
+      // Canonical plan entitlement — grant immediately.
+      if (getFeature(plan, feature)) { next(); return; }
+      // Otherwise defer to the add-on gate (bundled or purchased).
+      addonGate(req, res, next);
+    }).catch(next);
+  };
+}
+
 // ── Pre-built plan gates for common features ──────────────────────────────────
 export const requirePro      = requirePlan("pro");
 export const requireUltra    = requirePlan("ultra");

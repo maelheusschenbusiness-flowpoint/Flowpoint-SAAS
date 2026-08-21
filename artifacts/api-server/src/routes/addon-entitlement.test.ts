@@ -29,7 +29,7 @@ function makeRes() {
 // ── Unit tests for PLAN_INCLUDED_ADDONS correctness ───────────────────────────
 
 describe("PLAN_INCLUDED_ADDONS", () => {
-  it("ultra ⊇ pro ⊇ standard (cumulative sets)", () => {
+  it("plans are cumulative except Ultra upgrades retention90d to retention365d", () => {
     const standard = PLAN_INCLUDED_ADDONS["standard"] ?? new Set();
     const pro      = PLAN_INCLUDED_ADDONS["pro"] ?? new Set();
     const ultra    = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set();
@@ -40,8 +40,11 @@ describe("PLAN_INCLUDED_ADDONS", () => {
     }
     // everything in pro must be in ultra
     for (const key of pro) {
+      if (key === "retention90d") continue;
       expect(ultra.has(key)).toBe(true);
     }
+    expect(ultra.has("retention90d")).toBe(false);
+    expect(ultra.has("retention365d")).toBe(true);
   });
 
   it("Ultra has exactly 10 included add-ons", () => {

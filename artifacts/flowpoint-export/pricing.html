@@ -1384,9 +1384,24 @@
   }
   window.showToast = showToast;
 
-  /* ── Cart badge ── */
+  /* ── Cart badge ──
+     Represents the TOTAL pack quantity, not just the number of distinct
+     add-on keys: a cart holding "monitorsPack10 ×3" contributes 3, so the
+     badge matches what pricing/checkout/quote actually bill. Flag add-ons
+     (stored as `true`) and any positive numeric quantity each count once per
+     pack. The plan, when selected, adds 1. */
+  function cartQuantityTotal() {
+    var total = _cart.plan ? 1 : 0;
+    var addons = _cart.addons || {};
+    Object.keys(addons).forEach(function (k) {
+      var raw = addons[k];
+      var packs = raw === true ? 1 : Math.max(0, Math.floor(Number(raw) || 0));
+      total += packs;
+    });
+    return total;
+  }
   function updateCartBadge() {
-    var count = (_cart.plan ? 1 : 0) + Object.keys(_cart.addons).length;
+    var count = cartQuantityTotal();
     var badge = document.getElementById('fp-cart-badge');
     if (!badge) return;
     badge.textContent = count;
@@ -1430,17 +1445,40 @@
     showToast('Plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' sélectionné — cliquez sur Panier pour continuer');
   };
 
-  /* ── Quantity helpers ── */
+  /* ── Quantity helpers ──
+     Keeps the quantity input and the cart in lock-step. The cart is updated
+     even when the key is not yet present (its value was previously ignored
+     until "Activer" was clicked), so the input, cart, badge, quote request
+     and checkout all carry the SAME numeric quantity. When the add-on is
+     already in the cart the change is persisted immediately. */
   window.changeQty = function (addonId, delta) {
     var input = document.getElementById('qty-' + addonId);
     if (!input) return;
     var min = parseInt(input.min) || 1;
     var max = parseInt(input.max) || 99;
-    input.value = Math.min(max, Math.max(min, (parseInt(input.value) || 1) + delta));
-    if (_cart.addons[addonId] !== undefined) {
-      _cart.addons[addonId] = parseInt(input.value) || 1;
-      updateCartBadge();
+    var wasPresent = _cart.addons[addonId] !== undefined;
+    var next = Math.min(max, Math.max(min, (parseInt(input.value) || min) + delta));
+    input.value = next;
+    _cart.addons[addonId] = next;
+    _cart._v = 1; _cart._updatedAt = Date.now();
+    try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch (e) {}
+    /* Newly added via the stepper (no prior "Activer" click): reflect it on
+       the matching button so button/card state stays consistent with the
+       cart. Skip when the add-on is backend-active (button already locked). */
+    if (!wasPresent) {
+      var bs = window._fpBillingState;
+      var alreadyActive = bs && bs.addons && bs.addons[addonId];
+      if (!alreadyActive) {
+        var btn = document.querySelector('button.fp-addon-btn[onclick*="\'' + addonId + '\'"]');
+        if (btn && !btn.disabled) {
+          btn.textContent = '\u2713 Dans le panier';
+          btn.style.background = 'rgba(16,185,129,0.15)';
+          btn.style.borderColor = 'rgba(16,185,129,0.35)';
+          btn.style.color = '#34d399';
+        }
+      }
     }
+    updateCartBadge();
   };
 
   /* ── Add addon to cart ── */
@@ -2076,10 +2114,26 @@
       }
     }
 
-    /* ── Pre-select addons ── */
+    /* ── Pre-select addons ──
+       Restore the saved numeric quantity into every quantity input FIRST, so
+       when the "Activer" button is clicked addToCart() reads the restored
+       value (it reads the input, which otherwise defaults to 1). This keeps
+       pricing, cart, quote request and checkout on the SAME quantity after an
+       authenticated/dashboard return. For flag add-ons (no input) the click
+       simply re-adds the key. */
     var addons = cart.addons || {};
     Object.keys(addons).forEach(function(addonKey) {
-      /* Find button: onclick="addToCart(this,'addonKey'..." */
+      var raw = addons[addonKey];
+      var qty = raw === true ? 1 : Math.max(1, Math.floor(Number(raw) || 1));
+      var input = document.getElementById('qty-' + addonKey);
+      if (input) {
+        var min = parseInt(input.min) || 1;
+        var max = parseInt(input.max) || 99;
+        input.value = Math.min(max, Math.max(min, qty));
+      }
+      /* Find button: onclick="addToCart(this,'addonKey'..." — the click runs
+         addToCart(), which reads the input value we just restored and writes
+         the exact numeric quantity into the canonical cart (badge + storage). */
       var btns = document.querySelectorAll('button[onclick]');
       for (var i = 0; i < btns.length; i++) {
         var m = (btns[i].getAttribute('onclick') || '').match(/addToCart\s*\(\s*this\s*,\s*'([^']+)'/);

@@ -116,9 +116,9 @@ export interface FeatureFlags {
 
 export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
   standard: {
-    sso:false, saml:false, whiteLabel:false, customDomain:false,
+    sso:false, saml:false, whiteLabel:true, customDomain:false,
     localDominationMaps:true, geoGridSize9x9:false, competitorIntelAI:false,
-    marketIntelligence:false, reviewIntelAI:false, gbpPosting:true,
+    marketIntelligence:false, reviewIntelAI:false, gbpPosting:false,
     crmIntegration:false, rbacCustomRoles:false, advancedReports:false,
     pdfExport:true, apiAccess:false, webhooks:false, zapierIntegration:false,
     behavioralAI:false, forecastingAI:false, revenueLeakAI:false,
@@ -128,7 +128,7 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
     // whiteLabel + prioritySupport + webhooks bundled in Pro (see PLAN_INCLUDED_ADDONS in plans.ts)
     sso:true, saml:false, whiteLabel:true, customDomain:false,
     localDominationMaps:true, geoGridSize9x9:false, competitorIntelAI:true,
-    marketIntelligence:true, reviewIntelAI:true, gbpPosting:true,
+    marketIntelligence:true, reviewIntelAI:true, gbpPosting:false,
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,
     pdfExport:true, apiAccess:true, webhooks:true, zapierIntegration:false,
     behavioralAI:true, forecastingAI:true, revenueLeakAI:true,

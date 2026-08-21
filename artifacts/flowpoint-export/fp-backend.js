@@ -874,58 +874,31 @@
       window.addEventListener('focus', _reloadPaymentMethods);
     })();
 
-    // ── Message équipe ──
-    document.addEventListener('fp:team:message', function (e) {
-      var data = e.detail;
-      if (!data || !window.STATE) return;
-      var ch = data.channel || 'general';
-      if (!window.STATE.channelMessages) window.STATE.channelMessages = {};
-      if (!window.STATE.channelMessages[ch]) window.STATE.channelMessages[ch] = [];
-      var isSelf = data.from === (window.STATE.me && (window.STATE.me.firstName || window.STATE.me.name));
-      var legacyId = data.id;
-      var legacyExisting = window.STATE.channelMessages[ch].findIndex(function (m) {
-        return (legacyId && m.id === legacyId) ||
-          (!legacyId && m.id && String(m.id).indexOf('optimistic_') === 0 && m.text === (data.text || ''));
-      });
-      if (legacyExisting >= 0) {
-        window.STATE.channelMessages[ch][legacyExisting] = Object.assign({}, window.STATE.channelMessages[ch][legacyExisting], {
-          id: legacyId || window.STATE.channelMessages[ch][legacyExisting].id,
-          from: data.from || 'Équipe',
-          text: data.text || '',
-          createdAt: data.createdAt || null,
-          time: data.createdAt ? new Date(data.createdAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : 'À l\'instant',
-        });
-        if (typeof window.render === 'function') window.render();
-        setTimeout(function() { var c = document.getElementById('team-chat-msgs'); if (c) c.scrollTop = c.scrollHeight; }, 50);
-        return;
-      }
-      window.STATE.channelMessages[ch].unshift({
-        id: data.id,
-        from: data.from || 'Équipe',
-        text: data.text || '',
-        time: 'À l\'instant',
-        createdAt: data.createdAt || null,
-        read: isSelf,
-        self: isSelf,
-      });
-      if (typeof window._fpRefreshMsgBadge === 'function') { try { window._fpRefreshMsgBadge(); } catch(_) {} }
-      if (typeof window.render === 'function') window.render();
-      setTimeout(function() {
-        var c = document.getElementById('team-chat-msgs'); if (c) c.scrollTop = c.scrollHeight;
-        var dd = document.getElementById('fp-msg-dropdown');
-        if (dd && dd.offsetParent !== null && typeof window.renderMsgDropdown === 'function') {
-          dd.innerHTML = window.renderMsgDropdown();
-          if (typeof window.bindMsgPanel === 'function') window.bindMsgPanel(dd);
-          var ml = dd.querySelector('#fp-msg-list'); if (ml) ml.scrollTop = ml.scrollHeight;
-        }
-      }, 50);
+    // ── Canonical channel key ────────────────────────────────────────────────
+    // Must match the server-side normChannel() in team-messages.ts so SSE-inserted
+    // messages land in the SAME bucket as REST-hydrated ones (bare lowercase, no '#').
+    // "#General", "General", "general" all collapse to "general".
+    function _fpNormChannel(c) {
+      var s = (c == null ? 'general' : String(c)).trim().replace(/^#+/, '').toLowerCase();
+      return s || 'general';
+    }
+
+    // ── Message équipe (LEGACY — NEUTRALIZED) ─────────────────────────────────
+    // The backend now emits a single canonical event (type "chat:message" →
+    // fp:chat:message). This legacy handler wrote into the SAME channelMessages
+    // bucket with a divergent self-computation (name-based) and a divergent dedup
+    // key, which duplicated or misclassified messages that also arrived via the
+    // canonical path. It is intentionally left as a no-op so that any stray legacy
+    // "team:message"/"chat" event cannot corrupt the canonical store.
+    document.addEventListener('fp:team:message', function () {
+      /* neutralized: canonical delivery is handled by fp:chat:message */
     });
 
     // ── Chat SSE (nouveau format depuis /api/team/messages) ──
     document.addEventListener('fp:chat:message', function (e) {
       var data = e.detail;
       if (!data || !window.STATE) return;
-      var ch = (data.channel || data.message && data.message.channel) || 'general';
+      var ch = _fpNormChannel((data.channel || (data.message && data.message.channel)) || 'general');
       var msgData = data.message || data;
       if (!window.STATE.channelMessages) window.STATE.channelMessages = {};
       if (!window.STATE.channelMessages[ch]) window.STATE.channelMessages[ch] = [];
@@ -1308,9 +1281,21 @@
     loadTemplates: async function () {
       try {
         var data = await apiFetch('/api/white-label/templates');
-        if (data) { window.FP_DATA.whiteLabelTemplates = data.templates || []; }
+        if (data) {
+          window.FP_DATA.whiteLabelTemplates = data.templates || [];
+          if (window.STATE) {
+            window.STATE.whiteLabelTemplates = data.templates || [];
+            window.STATE.whiteLabelTemplatesError = null;
+          }
+          if (typeof window.render === 'function') window.render();
+        }
         return data;
-      } catch (e) { console.warn('[FP] white-label templates error:', e.message); return null; }
+      } catch (e) {
+        console.warn('[FP] white-label templates error:', e.message);
+        if (window.STATE) window.STATE.whiteLabelTemplatesError = e.message || String(e);
+        if (typeof window.render === 'function') window.render();
+        return null;
+      }
     },
     saveTemplate: async function (template) {
       try {

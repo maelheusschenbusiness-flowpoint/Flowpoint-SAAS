@@ -142,6 +142,7 @@ class Store {
     try {
       const client = await pool.connect();
       try {
+        await client.query("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
         const values: unknown[] = [limit, offset];
         const conditions: string[] = [];
 
@@ -180,6 +181,111 @@ class Store {
       }
     } catch {
       return [];
+    }
+  }
+
+  /**
+   * Fetch a page of activity events AND the real total count for the same
+   * filter, in a single DB round-trip transaction so page + total are
+   * consistent.
+   *
+   * Distinguishes a genuine empty result (`error: false`, `total: 0`) from a
+   * query/connection failure (`error: true`) — callers must NOT treat a query
+   * error as "zero activity", which would silently hide a tenant's real feed.
+   *
+   * Returns:
+   *  - `events`  : the page slice (length ≤ limit)
+   *  - `total`   : the true number of matching rows (NOT the page size)
+   *  - `hasMore` : whether more rows exist beyond this page
+   *  - `error`   : true when the underlying query failed
+   */
+  async getFilteredActivityPage(opts: {
+    limit: number;
+    offset: number;
+    type?: string;
+    orgId?: string;
+  }): Promise<{
+    events: ActivityLog[];
+    total: number;
+    hasMore: boolean;
+    limit: number;
+    offset: number;
+    error: boolean;
+  }> {
+    const { limit, offset, type, orgId } = opts;
+    try {
+      const client = await pool.connect();
+      try {
+        const values: unknown[] = [limit, offset];
+        const conditions: string[] = [];
+
+        // Always filter by org_id — tenants must only see their own events
+        const resolvedOrg = orgId && orgId !== "default" ? orgId : "default";
+        values.push(resolvedOrg);
+        conditions.push(`org_id = $${values.length}`);
+
+        if (type) {
+          values.push(type);
+          conditions.push(`type = $${values.length}`);
+        }
+        const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+        // Shared visibility floor: events only from after the org was created.
+        const floor = `AND created_at >= COALESCE(
+                (SELECT created_at FROM organizations WHERE id::text = $3),
+                '-infinity'::timestamptz
+              )`;
+
+        const pageRes = await client.query(
+          `SELECT id, type, label,
+                  target_id    AS "targetId",
+                  target_type  AS "targetType",
+                  metadata,
+                  action_key   AS "actionKey",
+                  action_params AS "actionParams",
+                  created_at   AS "createdAt"
+           FROM activity_logs
+           ${where}
+              ${floor}
+           ORDER BY created_at DESC, id DESC
+           LIMIT $1 OFFSET $2`,
+          values
+        );
+        const countRes = await client.query(
+          `WITH _params AS (
+             SELECT $1::int AS _limit, $2::int AS _offset
+           )
+           SELECT COUNT(*)::int AS total
+           FROM activity_logs
+           CROSS JOIN _params
+           ${where}
+              ${floor}`,
+          // Keep the same parameter positions as the page query; the CTE gives
+          // $1/$2 explicit types while optional filters continue at $3+.
+          values
+        );
+        await client.query("COMMIT");
+
+        const events = pageRes.rows as ActivityLog[];
+        const total = Number(countRes.rows[0]?.total ?? 0);
+        return {
+          events,
+          total,
+          hasMore: offset + events.length < total,
+          limit,
+          offset,
+          error: false,
+        };
+      } catch (err) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      logger.error({ err }, "[store] getFilteredActivityPage failed");
+      // Genuine query error — signal it explicitly rather than masquerading as
+      // an empty tenant feed.
+      return { events: [], total: 0, hasMore: false, limit, offset, error: true };
     }
   }
 

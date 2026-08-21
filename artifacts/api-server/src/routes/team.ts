@@ -1295,29 +1295,66 @@ router.post("/organizations/:id/switch", async (req: Request, res: Response) => 
   }
 });
 
-// ── GET /api/team/contributions — per-user action counts from real DB tables ─
+// ── GET /api/team/contributions — per-user action + mission counts from real DB ─
+//
+// Counts are keyed by the CANONICAL user_id (users.id) AND, as an alias, by the
+// member's canonical email — because `created_by` may historically store either
+// a user UUID or an email. Emitting both keys lets the frontend match a member
+// by whichever identity it holds without guessing.
+//
+// A genuine zero (table accessible, no rows for a member) is distinct from a
+// query error: if EVERY underlying count query fails we surface `ok:false`
+// with `error:"contributions_unavailable"` rather than a false-empty {} that
+// would wrongly show every member as having done nothing.
+//
+// Org isolation: every count query is filtered by org_id = $1.
 router.get("/team/contributions", async (req: Request, res: Response) => {
-  const orgId = (req as OrgReq).orgId ?? "default";
+  const orgId = (req as OrgReq).orgId;
+  if (!orgId || orgId === "default") {
+    res.status(401).json({ ok: false, error: "Authentication required" });
+    return;
+  }
   try {
+    // Resolve created_by → canonical identity. created_by may be a users.id
+    // (UUID) or an email; the LEFT JOINs normalise both to (user_id, email).
+    const canonicalCountSql = (table: string, extraWhere = "") => `
+      SELECT
+        COALESCE(u.id::text, NULLIF(t.created_by, '')) AS user_id,
+        LOWER(COALESCE(u.email, ''))                   AS email,
+        COUNT(*)::int                                  AS cnt
+      FROM ${table} t
+      LEFT JOIN users u
+        ON u.id::text = t.created_by
+        OR LOWER(u.email) = LOWER(t.created_by)
+      WHERE t.org_id = $1
+        AND COALESCE(NULLIF(t.created_by, ''), '') <> ''
+        ${extraWhere}
+      GROUP BY 1, 2`;
+
     // Each table may not yet exist — use allSettled so one missing table
     // doesn't kill the whole response.
     const [auditsRes, missionsRes, reportsRes] = await Promise.allSettled([
+      pool.query(canonicalCountSql("audits"), [orgId]),
       pool.query(
-        `SELECT COALESCE(created_by,'') AS uid, COUNT(*)::int AS cnt
-         FROM audits WHERE org_id=$1 GROUP BY created_by`,
+        canonicalCountSql("missions", "AND (t.status = 'done' OR t.status = 'completed')"),
         [orgId]
       ),
-      pool.query(
-        `SELECT COALESCE(created_by,'') AS uid, COUNT(*)::int AS cnt
-         FROM missions WHERE org_id=$1 AND (status='done' OR status='completed') GROUP BY created_by`,
-        [orgId]
-      ),
-      pool.query(
-        `SELECT COALESCE(created_by,'') AS uid, COUNT(*)::int AS cnt
-         FROM reports WHERE org_id=$1 GROUP BY created_by`,
-        [orgId]
-      ),
+      pool.query(canonicalCountSql("reports"), [orgId]),
     ]);
+
+    // If EVERY query rejected, this is a real backend failure, not "zero work".
+    const anyFulfilled =
+      auditsRes.status === "fulfilled" ||
+      missionsRes.status === "fulfilled" ||
+      reportsRes.status === "fulfilled";
+    if (!anyFulfilled) {
+      logger.error(
+        { orgId: orgId.slice(0, 20) },
+        "[team/contributions] all count queries failed"
+      );
+      res.status(503).json({ ok: false, error: "contributions_unavailable", retryable: true });
+      return;
+    }
 
     const byUser: Record<string, { audits: number; missions: number; reports: number }> = {};
     const get = (id: string) => {
@@ -1325,26 +1362,32 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
       return byUser[id]!;
     };
 
-    if (auditsRes.status === "fulfilled") {
-      auditsRes.value.rows.forEach((r: Record<string, unknown>) => {
-        if (r["uid"]) get(String(r["uid"])).audits = Number(r["cnt"]);
+    // Emit the count under both the canonical user_id and the email alias so a
+    // member is matchable by whichever identity the caller holds. Only distinct
+    // non-empty keys are written; adding to both is additive-safe because each
+    // key names the SAME member.
+    const applyCount = (
+      settled: PromiseSettledResult<{ rows: Record<string, unknown>[] }>,
+      field: "audits" | "missions" | "reports"
+    ) => {
+      if (settled.status !== "fulfilled") return;
+      settled.value.rows.forEach((r) => {
+        const cnt = Number(r["cnt"] ?? 0);
+        const uid = r["user_id"] ? String(r["user_id"]) : "";
+        const email = r["email"] ? String(r["email"]) : "";
+        if (uid) get(uid)[field] = cnt;
+        if (email && email !== uid) get(email)[field] = cnt;
       });
-    }
-    if (missionsRes.status === "fulfilled") {
-      missionsRes.value.rows.forEach((r: Record<string, unknown>) => {
-        if (r["uid"]) get(String(r["uid"])).missions = Number(r["cnt"]);
-      });
-    }
-    if (reportsRes.status === "fulfilled") {
-      reportsRes.value.rows.forEach((r: Record<string, unknown>) => {
-        if (r["uid"]) get(String(r["uid"])).reports = Number(r["cnt"]);
-      });
-    }
+    };
+
+    applyCount(auditsRes, "audits");
+    applyCount(missionsRes, "missions");
+    applyCount(reportsRes, "reports");
 
     res.json({ ok: true, contributions: byUser });
   } catch (err) {
-    logger.warn({ err }, "[team/contributions] failed");
-    res.json({ ok: true, contributions: {} });
+    logger.error({ err }, "[team/contributions] failed");
+    res.status(503).json({ ok: false, error: "contributions_unavailable", retryable: true });
   }
 });
 
@@ -1361,7 +1404,10 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
       } catch { return "Europe/Brussels"; }
     })();
 
-    // Get all active members with their user UUIDs
+    // Get ALL active members with their canonical user UUIDs.
+    // NO LIMIT — every active member's streak must be computed; capping at 50
+    // silently dropped members past the 50th from the leaderboard.
+    // Org isolation: filtered by om.organization_id = $1.
     const memberRes = await pool.query<{ user_id: string; email: string; name: string; role: string }>(
       `SELECT DISTINCT om.user_id::text AS user_id,
               COALESCE(u.email,'') AS email,
@@ -1369,15 +1415,20 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
               om.role
        FROM organization_members om
        JOIN users u ON u.id = om.user_id
-       WHERE om.organization_id::text = $1 AND om.status = 'active'
-       LIMIT 50`,
+       WHERE om.organization_id::text = $1 AND om.status = 'active'`,
       [orgId]
     );
 
-    const streaks: Array<{ userId: string; email: string; name: string; role: string; current: number; best: number }> = [];
+    const streaks: Array<{
+      userId: string; email: string; name: string; role: string;
+      current: number; best: number;
+      /** true when this member's streak could not be computed (query error). */
+      error?: boolean;
+    }> = [];
 
     for (const member of memberRes.rows) {
       const uid = member.user_id;
+      const base = { userId: uid, email: member.email, name: member.name.trim(), role: member.role };
       try {
         const actRes = await pool.query<{ d: string }>(
           `SELECT day::text AS d FROM member_activity_days
@@ -1387,7 +1438,8 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
           [orgId, uid, tz]
         );
         if (actRes.rows.length === 0) {
-          streaks.push({ userId: uid, email: member.email, name: member.name.trim(), role: member.role, current: 0, best: 0 });
+          // Genuine zero: table accessible, member simply has no active days.
+          streaks.push({ ...base, current: 0, best: 0 });
           continue;
         }
         const activeDays = new Set(actRes.rows.map(r => String(r.d).slice(0, 10)));
@@ -1408,9 +1460,13 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
           }
           if (run > best) best = run;
         }
-        streaks.push({ userId: uid, email: member.email, name: member.name.trim(), role: member.role, current, best: Math.max(best, current) });
-      } catch {
-        streaks.push({ userId: uid, email: member.email, name: member.name.trim(), role: member.role, current: 0, best: 0 });
+        streaks.push({ ...base, current, best: Math.max(best, current) });
+      } catch (memberErr) {
+        // Query error for THIS member — do NOT fabricate a genuine zero.
+        // Mark error:true so the caller can distinguish "no activity" from
+        // "could not read activity".
+        logger.warn({ err: memberErr, userId: uid.slice(0, 8) }, "[team/streaks] per-member streak query failed");
+        streaks.push({ ...base, current: 0, best: 0, error: true });
       }
     }
 

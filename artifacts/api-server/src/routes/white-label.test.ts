@@ -31,23 +31,41 @@ vi.mock("@workspace/db", () => ({
   orgAddonsTable: {},
 }));
 
+// init-data-tables is dynamically imported by the router's self-heal path.
+// Stub it so schema-missing tests don't touch a real DB.
+const mockInitDataTables = vi.fn(async () => {});
+vi.mock("../services/init-data-tables.js", () => ({
+  initDataTables: () => mockInitDataTables(),
+}));
+
 // ─── Build minimal Express app with orgId + orgDb stubs ──────────────────────
+// orgDbImpl lets a test control what the orgDb query does (rows / throw).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let orgDbImpl: (sql: string, vals?: unknown[]) => Promise<any> =
+  async (_sql: string, _vals?: unknown[]) => ({ rows: [] as unknown[] });
+
 async function buildApp() {
   const { default: whiteLabelRouter } = await import("./white-label.js");
   const app = express();
   app.use(express.json());
 
-  // Inject orgId + a minimal orgDb stub (returns empty rows)
+  // Inject orgId + orgDb (delegates to the test-controlled orgDbImpl)
   app.use((req, _res, next) => {
     (req as express.Request & { orgId: string; orgDb: unknown }).orgId = "test-org";
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (req as express.Request & { orgDb: any }).orgDb =
-      async (_sql: string, _vals?: unknown[]) => ({ rows: [] as unknown[] });
+      (sql: string, vals?: unknown[]) => orgDbImpl(sql, vals);
     next();
   });
 
   app.use(whiteLabelRouter);
   return app;
+}
+
+function pgErr(code: string): Error & { code: string } {
+  const e = new Error(`pg error ${code}`) as Error & { code: string };
+  e.code = code;
+  return e;
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -125,5 +143,61 @@ describe("POST /white-label/domains — entitlement gate", () => {
       .post("/white-label/domains")
       .send({ domain: "mysite.com" });
     expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /white-label/templates — reliability contract", () => {
+  let app: express.Express;
+
+  beforeEach(async () => {
+    // default: genuine empty org
+    orgDbImpl = async () => ({ rows: [] });
+    mockInitDataTables.mockClear();
+    app = await buildApp();
+  });
+
+  it("returns a stable {templates:[]} for a genuinely empty org", async () => {
+    const res = await request(app).get("/white-label/templates");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ templates: [] });
+    expect(mockInitDataTables).not.toHaveBeenCalled();
+  });
+
+  it("returns org-scoped persisted templates on success", async () => {
+    const rows = [{ id: "rt_1", org_id: "test-org", name: "Agency" }];
+    orgDbImpl = async () => ({ rows });
+    const res = await request(app).get("/white-label/templates");
+    expect(res.status).toBe(200);
+    expect(res.body.templates).toEqual(rows);
+  });
+
+  it("returns 500 (not {templates:[]}) on a real SQL failure so the client can retry", async () => {
+    orgDbImpl = async () => { throw pgErr("40001"); }; // serialization_failure
+    const res = await request(app).get("/white-label/templates");
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/failed to fetch templates/i);
+    expect(res.body).not.toHaveProperty("templates");
+    expect(mockInitDataTables).not.toHaveBeenCalled();
+  });
+
+  it("self-heals once and retries on missing table (42P01)", async () => {
+    let calls = 0;
+    orgDbImpl = async () => {
+      calls += 1;
+      if (calls === 1) throw pgErr("42P01");
+      return { rows: [{ id: "rt_healed" }] };
+    };
+    const res = await request(app).get("/white-label/templates");
+    expect(res.status).toBe(200);
+    expect(res.body.templates).toEqual([{ id: "rt_healed" }]);
+    expect(mockInitDataTables).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 500 if the query still fails after self-heal (never a silent [])", async () => {
+    orgDbImpl = async () => { throw pgErr("42P01"); };
+    const res = await request(app).get("/white-label/templates");
+    expect(res.status).toBe(500);
+    expect(res.body).not.toHaveProperty("templates");
+    expect(mockInitDataTables).toHaveBeenCalledTimes(1);
   });
 });

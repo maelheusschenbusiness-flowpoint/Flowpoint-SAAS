@@ -5,7 +5,7 @@
  *   1. Every key in any plan's included set must have a Stripe price ID.
  *   2. Every key in any plan's included set must be defined in ADDON_DEFINITIONS.
  *   3. One-time credit packs must never appear in any included set.
- *   4. Ultra's included set is a superset of Pro's (cumulative model).
+ *   4. Ultra carries Pro inclusions except retention90d, which is upgraded to retention365d.
  *   5. Pro's included set is a superset of Standard's.
  *   6. FEATURE_FLAGS must grant Pro/Ultra subscribers their bundled add-on features.
  *   7. Addon-to-feature-flag alignment for the whiteLabel→whiteLabel mapping.
@@ -52,14 +52,17 @@ describe("PLAN_INCLUDED_ADDONS integrity", () => {
     expect(found, `One-time packs must not be in PLAN_INCLUDED_ADDONS: ${found.join(", ")}`).toHaveLength(0);
   });
 
-  it("ultra's included set is a superset of pro's (cumulative model)", () => {
+  it("ultra carries Pro inclusions but upgrades retention90d to retention365d", () => {
     const ultraSet = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set<string>();
     const proSet   = PLAN_INCLUDED_ADDONS["pro"]   ?? new Set<string>();
     const missing: string[] = [];
     for (const key of proSet) {
+      if (key === "retention90d") continue;
       if (!ultraSet.has(key)) missing.push(key);
     }
     expect(missing, `Pro add-ons not present in Ultra: ${missing.join(", ")}`).toHaveLength(0);
+    expect(ultraSet.has("retention90d")).toBe(false);
+    expect(ultraSet.has("retention365d")).toBe(true);
   });
 
   it("pro's included set is a superset of standard's (cumulative model)", () => {
@@ -86,10 +89,10 @@ describe("FEATURE_FLAGS entitlement alignment with PLAN_INCLUDED_ADDONS", () => 
     expect(FEATURE_FLAGS["pro"].whiteLabel).toBe(true);
   });
 
-  // whiteLabel is NOT bundled in Standard → Standard feature flag must be false
-  it("FEATURE_FLAGS.standard.whiteLabel is false (whiteLabel not bundled in Standard)", () => {
-    expect(PLAN_INCLUDED_ADDONS["standard"]?.has("whiteLabel")).toBe(false);
-    expect(FEATURE_FLAGS["standard"].whiteLabel).toBe(false);
+  // whiteLabel is bundled in Standard → Standard feature flag must be true
+  it("FEATURE_FLAGS.standard.whiteLabel is true (whiteLabel bundled in Standard)", () => {
+    expect(PLAN_INCLUDED_ADDONS["standard"]?.has("whiteLabel")).toBe(true);
+    expect(FEATURE_FLAGS["standard"].whiteLabel).toBe(true);
   });
 
   // customDomain is bundled in Ultra only → Pro must be false, Ultra must be true

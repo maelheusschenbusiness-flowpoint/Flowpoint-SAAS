@@ -49,6 +49,7 @@ export default defineConfig({
       "src/services/gsc-sync-ownership.test.ts",
       "src/services/ga4-property-discovery.test.ts",
       "src/routes/chat-notifications.test.ts",
+      "src/routes/team-chat-reliability.test.ts",
       "src/routes/addon-only-checkout.test.ts",
       "src/routes/billing-period-end.test.ts",
       "src/routes/team-invite-accept.test.ts",
@@ -72,6 +73,16 @@ export default defineConfig({
       "src/routes/me-entitlement.test.ts",
       // Add-on entitlement: plan inclusion + org_addons gate logic
       "src/routes/addon-entitlement.test.ts",
+      // Task #628 — Activity real aggregates: pagination contract + per-member counts/streaks
+      "src/routes/activity-pagination.test.ts",
+      "src/routes/team-aggregates.test.ts",
+      // Task #628 — Local SEO: Review Intelligence canonical entitlement +
+      // ranking-history result counts / usage contract
+      "src/routes/local-seo-entitlement.test.ts",
+       "src/routes/local-seo-rankings-route.test.ts",
+      // Task #628 — Agency Lab / client-mode backend reliability: SQL/schema
+      // failures surface (no silent empty arrays), genuine empty states preserved.
+      "src/services/client-mode-service.test.ts",
     ],
     environment: "node",
     globals:     false,

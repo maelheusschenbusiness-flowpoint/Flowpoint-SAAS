@@ -3,7 +3,7 @@ import { safeErrMsg } from "../lib/safe-error.js";
 import {
   createPost, generateAiPost, publishPost, getPostsDashboard, deletePost, getScheduledPosts,
 } from "../services/gbp-posting-service.js";
-import { requireAddon } from "../middlewares/planGate.js";
+import { requireAddon, requireFeature } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -13,6 +13,10 @@ type OrgReq = Request & {
 };
 const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+
+// Draft/read/publish access follows the canonical gbpPosting feature flag.
+// AI suggestions remain independently gated by the aiGbpPosting add-on below.
+router.use("/gbp-posts", requireFeature("gbpPosting", "GBP Posting"));
 
 router.get("/gbp-posts", async (req, res) => {
   try {

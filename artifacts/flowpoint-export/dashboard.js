@@ -162,6 +162,7 @@ const STATE = {
   selectedAudits: new Set(),
   selectedMonitors: new Set(),
   activityEvents: [],
+  activityTotal: null,
   activityPage: 0,
   activityHasMore: true,
   activityFilteredEvents: null,
@@ -242,7 +243,7 @@ const MOCK_MISSIONS = [
       { id:'s1', text:'Accéder aux paramètres de chaque monitor', done:true, tag:'Config' },
       { id:'s2', text:'Configurer l\'email de notification pour les incidents DOWN', done:true, tag:'Config' },
       { id:'s3', text:'Tester les alertes avec un incident simulé', done:true, tag:'Test' },
-      { id:'s4', text:'Activer les alertes SMS pour les monitors critiques', done:true, tag:'Config' },
+      { id:'s4', text:'Alertes SMS — bientôt disponible', done:true, tag:'Config' },
     ]},
   { id:'ms4', title:'Préparer le rapport mensuel client', category:'Rapports', impact:'Moyen', status:'todo', date:'2026-05-08',
     steps:[
@@ -420,7 +421,7 @@ const KEYWORDS = PREVIEW_MODE ? [
 const AI_MOCK = {
   default: `Basé sur votre tableau de bord, voici mes recommandations :\n\n**1. Site prioritaire (score faible)** — Priorité haute. Corrigez les balises manquantes et améliorez la vitesse mobile.\n\n**2. Site critique (problèmes urgents)** — Des problèmes techniques détectés. Commencez par les balises title.\n\n**3. Monitors actifs** — Vérifiez le statut de vos monitors et résolvez les incidents ouverts.\n\nQuel point souhaitez-vous traiter en premier ?`,
   'Améliorer mon score SEO moyen': `Votre score moyen est **67/100**. Pour l\'améliorer rapidement :\n\n• **Balises title** manquantes sur 3 sites — impact immédiat\n• **Vitesse mobile** : optimisez les images (format WebP)\n• **Maillage interne** : 2-3 liens par page\n• **Schema markup** local : données structurées\n\nObjectif atteignable : **78-82/100** en 2 semaines.`,
-  'Analyser les monitors DOWN': `Un ou plusieurs monitors sont DOWN.\n\n**Diagnostic :**\n• Vérifiez la latence et le timeout de vos monitors\n• Uptime : consultez le rapport SLA pour l\'historique complet\n\n**Actions recommandées :**\n1. Contactez l\'hébergeur maintenant\n2. Configurez une page de maintenance\n3. Activez les alertes SMS (Priority Support)`,
+  'Analyser les monitors DOWN': `Un ou plusieurs monitors sont DOWN.\n\n**Diagnostic :**\n• Vérifiez la latence et le timeout de vos monitors\n• Uptime : consultez le rapport SLA pour l\'historique complet\n\n**Actions recommandées :**\n1. Contactez l\'hébergeur maintenant\n2. Configurez une page de maintenance\n3. Les alertes SMS seront bientôt disponibles`,
   'Que faire en priorité ?': `**Top 3 priorités aujourd\'hui :**\n\n🔴 **Urgent** — Site avec le score le plus faible : corrigez les problèmes critiques en premier.\n\n🟠 **Urgent** — Vérifiez vos monitors DOWN et ouvrez les incidents nécessaires.\n\n🟡 **Cette semaine** — Créez des pages locales pour vos sites à fort potentiel de leads.`,
   'Optimiser mon plan Pro': `Votre plan **Pro** vous offre :\n• 300 audits/mois (87 utilisés — 29%)\n• 50 monitors (18 actifs — 36%)\n• 300 PDF/mois\n\n**Vous pouvez encore :**\n• Lancer 213 audits supplémentaires\n• Ajouter 32 monitors gratuitement\n• Activer White Label pour vos rapports clients`,
 };
@@ -1625,7 +1626,7 @@ async function loadData(options = {}) {
     // Operational feeds
     'activity-feed':     ['activity'],
     'activity':          ['activity'],
-    'client-mode':       ['clientMode'],
+    'client-mode':       ['clientMode', 'whiteLabelTemplates'],
   };
   const _criticalKeys = new Set(_ROUTE_CRITICAL_KEYS[STATE.route] || []);
   // _preloaded: key → value (or absent when not in critical set). Prevents double-fetch.
@@ -1641,13 +1642,14 @@ async function loadData(options = {}) {
       case 'team':        return apiFetch('/api/team').catch(() => null);
       case 'alertRules':  return apiFetch('/api/alert-rules').catch(() => null);
       case 'alertEvents': return apiFetch('/api/alert-events').catch(() => null);
-      case 'activity':    return apiFetch('/api/activity').catch(() => null);
+      case 'activity':    return apiFetch('/api/activity?meta=1').catch(() => null);
       case 'clientMode':  return Promise.all([
-                            apiFetch('/api/client-mode/status').catch(() => null),
-                            apiFetch('/api/client-mode/kpis').catch(() => null),
-                            apiFetch('/api/client-mode/reports').catch(() => []),
-                            apiFetch('/api/client-mode/audits').catch(() => []),
+                            apiFetch('/api/client-mode/status'),
+                            apiFetch('/api/client-mode/kpis'),
+                            apiFetch('/api/client-mode/reports'),
+                            apiFetch('/api/client-mode/audits'),
                           ]);
+      case 'whiteLabelTemplates': return apiFetch('/api/white-label/templates');
       case 'missions':    return (window.FP_MISSIONS_API ? window.FP_MISSIONS_API.load() : Promise.resolve(null)).catch(() => null);
       case 'keywords':    return (window.FP_KEYWORDS_API ? window.FP_KEYWORDS_API.load() : Promise.resolve(null)).catch(() => null);
       case 'competitors': return (window.FP_COMPETITORS_API ? window.FP_COMPETITORS_API.load() : Promise.resolve(null)).catch(() => null);
@@ -1663,9 +1665,15 @@ async function loadData(options = {}) {
     ..._critFetchPromises,
   ]);
   // Map critical results back to their keys
+  const _criticalErrors = {};
   _critFetchKeys.forEach((key, i) => {
     const _r = _critResults[i];
-    _preloaded[key] = (_r && _r.status === 'fulfilled') ? _r.value : null;
+    if (_r && _r.status === 'fulfilled') {
+      _preloaded[key] = _r.value;
+    } else {
+      _preloaded[key] = null;
+      _criticalErrors[key] = _r ? _r.reason : new Error('critical fetch unavailable');
+    }
   });
   if (_ovRes.status === 'fulfilled') overview = _ovRes.value;
   if (_pdRes.status === 'fulfilled' && _pdRes.value && typeof _pdRes.value === 'object') {
@@ -1751,20 +1759,44 @@ async function loadData(options = {}) {
   }
   if ('alertRules'  in _preloaded) STATE.alertRules    = Array.isArray(_preloaded.alertRules)  ? _preloaded.alertRules  : [];
   if ('alertEvents' in _preloaded) STATE.alertEvents   = Array.isArray(_preloaded.alertEvents) ? _preloaded.alertEvents : [];
-  if ('activity'    in _preloaded) STATE.activityEvents = Array.isArray(_preloaded.activity)   ? _preloaded.activity    : [];
+  if ('activity' in _preloaded) {
+    const _pActivity = _preloaded.activity;
+    STATE.activityEvents = Array.isArray(_pActivity?.events)
+      ? _pActivity.events
+      : (Array.isArray(_pActivity) ? _pActivity : []);
+    STATE.activityTotal = Number.isFinite(Number(_pActivity?.total))
+      ? Number(_pActivity.total)
+      : STATE.activityEvents.length;
+    STATE.activityHasMore = typeof _pActivity?.hasMore === 'boolean'
+      ? _pActivity.hasMore
+      : STATE.activityEvents.length >= 50;
+  }
   if ('clientMode'  in _preloaded) {
     const [_cmStatus, _cmKpis, _cmReports, _cmAudits] = Array.isArray(_preloaded.clientMode) ? _preloaded.clientMode : [];
     // Hydrate the Client Mode API module state so renderGA4ClientMode() doesn't re-fetch
     if (window._fpCMState !== undefined) {
-      window._fpCMState = {
-        loading: false, loaded: true,
-        status:  _cmStatus  || null,
-        kpis:    _cmKpis    || null,
-        reports: Array.isArray(_cmReports) ? _cmReports : [],
-        audits:  Array.isArray(_cmAudits)  ? _cmAudits  : [],
-        error:   null,
-      };
+      const _cmCriticalError = _criticalErrors.clientMode;
+      window._fpCMState = _cmCriticalError
+        ? {
+            loading: false, loaded: true, status: null, kpis: null, reports: [], audits: [],
+            error: _cmCriticalError.message || String(_cmCriticalError),
+          }
+        : {
+            loading: false, loaded: true,
+            status:  _cmStatus  || null,
+            kpis:    _cmKpis    || null,
+            reports: Array.isArray(_cmReports) ? _cmReports : [],
+            audits:  Array.isArray(_cmAudits)  ? _cmAudits  : [],
+            error:   null,
+          };
     }
+  }
+  if ('whiteLabelTemplates' in _preloaded) {
+    const _wlTemplates = _preloaded.whiteLabelTemplates;
+    STATE.whiteLabelTemplates = Array.isArray(_wlTemplates?.templates) ? _wlTemplates.templates : [];
+    STATE.whiteLabelTemplatesError = _criticalErrors.whiteLabelTemplates
+      ? (_criticalErrors.whiteLabelTemplates.message || String(_criticalErrors.whiteLabelTemplates))
+      : null;
   }
   if ('missions'    in _preloaded) STATE.missions = _preloaded.missions ?? (PREVIEW_MODE ? MOCK_MISSIONS : []);
   if ('keywords'    in _preloaded && _preloaded.keywords)    STATE.keywords    = _preloaded.keywords;
@@ -1839,7 +1871,7 @@ async function loadData(options = {}) {
     apiFetch('/api/audits/upcoming'),
     'alertRules'  in _preloaded ? Promise.resolve(_preloaded.alertRules)  : apiFetch('/api/alert-rules'),
     'alertEvents' in _preloaded ? Promise.resolve(_preloaded.alertEvents) : apiFetch('/api/alert-events'),
-    'activity'    in _preloaded ? Promise.resolve(_preloaded.activity)    : apiFetch('/api/activity'),
+    'activity'    in _preloaded ? Promise.resolve(_preloaded.activity)    : apiFetch('/api/activity?meta=1'),
     apiFetch('/api/team/messages/all'),
     apiFetch('/api/me/prefs'),
     apiFetch('/api/me/storage').catch(() => null),
@@ -1856,7 +1888,16 @@ async function loadData(options = {}) {
   STATE.auditUpcoming   = (_upcomingRes.status    === 'fulfilled' && Array.isArray(_upcomingRes.value))                             ? _upcomingRes.value   : [];
   STATE.alertRules      = (_alertRulesRes.status  === 'fulfilled' && Array.isArray(_alertRulesRes.value))                           ? _alertRulesRes.value : [];
   STATE.alertEvents     = (_alertEventsRes.status === 'fulfilled' && Array.isArray(_alertEventsRes.value))                          ? _alertEventsRes.value: [];
-  STATE.activityEvents  = (_activityRes.status    === 'fulfilled' && Array.isArray(_activityRes.value))                             ? _activityRes.value   : [];
+  const _activityPage = _activityRes.status === 'fulfilled' ? _activityRes.value : null;
+  STATE.activityEvents = Array.isArray(_activityPage?.events)
+    ? _activityPage.events
+    : (Array.isArray(_activityPage) ? _activityPage : []);
+  STATE.activityTotal = Number.isFinite(Number(_activityPage?.total))
+    ? Number(_activityPage.total)
+    : STATE.activityEvents.length;
+  STATE.activityHasMore = typeof _activityPage?.hasMore === 'boolean'
+    ? _activityPage.hasMore
+    : STATE.activityEvents.length >= 50;
   // Populate channelMessages from all-channels response and keep teamChatHistory in sync
   const _allMsgs = (_teamMsgsRes.status === 'fulfilled' && _teamMsgsRes.value && typeof _teamMsgsRes.value === 'object' && !Array.isArray(_teamMsgsRes.value))
     ? _teamMsgsRes.value : null;
@@ -1920,6 +1961,13 @@ async function loadData(options = {}) {
     if (_llmData && typeof _llmData === 'object') STATE.llmVisibility = _llmData; else STATE.llmVisibility = null;
   }
 
+  // Per-endpoint error tracking: distinguish "no clients configured" (empty) from
+  // "/api/reports/clients failed" (error) so the Agency/White-Label view can render
+  // the right state instead of a misleading empty list.
+  if (_clientsRes.status === 'rejected') {
+    STATE.sectionErrors.clients = classifySectionError(_clientsRes.reason);
+    console.warn('[FP] /api/reports/clients failed:', _clientsRes.reason?.message || _clientsRes.reason);
+  }
   const _clientsRaw = (_clientsRes.status === 'fulfilled' && Array.isArray(_clientsRes.value)) ? _clientsRes.value : [];
   STATE.clients = _clientsRaw.filter(c => c.name);
   const _calRaw = (_calRes.status === 'fulfilled' && Array.isArray(_calRes.value)) ? _calRes.value : [];
@@ -4063,7 +4111,8 @@ function renderActivityList() {
     if (btn) btn.textContent = 'Chargement…';
     try {
       const nextPage = STATE.activityPage + 1;
-      const newEvents = await apiFetch('/api/activity?page=' + nextPage + '&limit=50');
+      const pageData = await apiFetch('/api/activity?meta=1&page=' + nextPage + '&limit=50');
+      const newEvents = Array.isArray(pageData?.events) ? pageData.events : [];
       if (Array.isArray(newEvents) && newEvents.length > 0) {
         const known = new Set(STATE.activityEvents.map(e => e.id || e.createdAt));
         const knownReportTargets = new Set(STATE.activityEvents
@@ -4075,7 +4124,10 @@ function renderActivityList() {
         );
         STATE.activityEvents = [...STATE.activityEvents, ...fresh];
         STATE.activityPage = nextPage;
-        if (newEvents.length < 50) STATE.activityHasMore = false;
+        STATE.activityTotal = Number.isFinite(Number(pageData.total))
+          ? Number(pageData.total)
+          : STATE.activityEvents.length;
+        STATE.activityHasMore = !!pageData.hasMore;
       } else {
         STATE.activityHasMore = false;
       }
@@ -4106,11 +4158,12 @@ function openActivityPanel() {
   // Renders immediately with cached data, then updates once the fetch resolves.
   if (STATE.activityFilter === 'all') {
     STATE.activityPage = 0;
-    apiFetch('/api/activity?limit=50')
+    apiFetch('/api/activity?meta=1&limit=50')
       .then(function(res) {
-        if (!Array.isArray(res)) return;
-        STATE.activityEvents = res;
-        STATE.activityHasMore = res.length >= 50;
+        if (!Array.isArray(res?.events)) return;
+        STATE.activityEvents = res.events;
+        STATE.activityTotal = Number.isFinite(Number(res.total)) ? Number(res.total) : res.events.length;
+        STATE.activityHasMore = !!res.hasMore;
         if (STATE.activityPanelOpen) renderActivityList();
       })
       .catch(function() { /* keep existing STATE.activityEvents on error */ });
@@ -8292,7 +8345,9 @@ function renderReports() {
       { label: 'Signature email',     type: 'text',   val: 'Envoyé par '+_orgName,                 locked: false },
       { label: 'Typographie',         type: 'text',   val: 'Inter (défaut)',                        locked: false },
     ]);
+    const _clientsErr = _sectionErrorBanner('clients');
     return `
+      ${_clientsErr}
       ${isUltra
         ? aiBlock((()=>{const _ac=clients.filter(c=>c.active);if(!_ac.length)return 'Aucun client configuré. Ajoutez vos premiers clients pour activer le reporting automatique.';const _top=_ac.sort((a,b)=>(b.reports||0)-(a.reports||0))[0];const _risk=_ac.find(c=>!c.active||c.score<50);return _ac.length+' client(s) configuré(s). <strong>'+_ac.filter(c=>c.active).length+' rapports actifs</strong> avec envoi automatique.'+(_top?' '+escHtml(_top.name)+' est le plus engagé ('+(_top.reports||0)+' rapport(s)).':'') +(_risk?' Attention : '+escHtml(_risk.name)+' — risque de désengagement.':'');})(),
             ['Générer rapport groupe', 'Config white-label', 'Ajouter un client'])
@@ -8317,6 +8372,11 @@ function renderReports() {
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpOpenAddClientPanel&&window._fpOpenAddClientPanel()">+ Ajouter</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
+          ${clients.length === 0
+            ? (STATE.sectionErrors && STATE.sectionErrors.clients
+                ? `<div style="text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">${fpT('Impossible de charger vos clients — réessayez.')}</div>`
+                : `<div style="text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">${fpT('Aucun client configuré. Ajoutez votre premier client pour activer le reporting.')}</div>`)
+            : ''}
           ${clients.map(c => {
             const sc = c.score >= 70 ? '#22c55e' : c.score >= 50 ? '#f59e0b' : '#ef4444';
             const tc = c.trend > 0 ? '#22c55e' : c.trend < 0 ? '#ef4444' : 'var(--fp-text-faint)';
@@ -8336,7 +8396,7 @@ function renderReports() {
                 <span style="font-size:11px;color:var(--fp-text-faint)">${c.reports} rapports</span>
                 <div style="display:flex;gap:6px;margin-left:auto">
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()">Generer</button>
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" data-rclient="${escHtml(r.client)}" onclick="window._fpSendClientReport(this.dataset.rid, this.dataset.rname, this.dataset.rclient)">${fpT('Envoyer')}</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" data-rclient="${escHtml(c.name)}" onclick="window._fpSendClientReport('', '', this.dataset.rclient)">${fpT('Envoyer')}</button>
                 </div>
               </div>
             </div>`;
@@ -8695,6 +8755,15 @@ function renderLocalSEO() {
                 if (!STATE.localSeo) STATE.localSeo = {};
                 STATE.localSeo.rankingHistory = Array.isArray(h?.history) ? h.history : [];
                 STATE.localSeo._historyLoading = false;
+                STATE.localSeo._historyError = null;
+                if (h?.usage) {
+                  if (!STATE.dfsStatus) STATE.dfsStatus = {};
+                  STATE.dfsStatus.quota = {
+                    used: Number(h.usage.used || 0),
+                    limit: Number(h.usage.limit || 0),
+                    remaining: Math.max(0, Number(h.usage.limit || 0) - Number(h.usage.used || 0)),
+                  };
+                }
                 const widget = document.getElementById('dfs-rank-history');
                 if (widget) {
                   const items = STATE.localSeo.rankingHistory;
@@ -8702,7 +8771,11 @@ function renderLocalSEO() {
                     ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique.</div>'
                     : items.map(h2 => {
                         const date = h2.searched_at ? new Date(h2.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
-                        const resultCount = Array.isArray(h2.results) ? h2.results.length : (h2.total_results || 0);
+                        // Use the real total when available; only show 0 when the source
+                        // genuinely returned no results (never a false 0 over real data).
+                        const resultCount = (h2.total_results != null && h2.total_results > 0)
+                          ? h2.total_results
+                          : (Array.isArray(h2.results) ? h2.results.length : (h2.total_results || 0));
                         return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
                           + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:38px">'+escHtml(date)+'</div>'
                           + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
@@ -8710,16 +8783,29 @@ function renderLocalSEO() {
                           + '</div>';
                       }).join('');
                 }
-              }).catch(() => { if (STATE.localSeo) { STATE.localSeo._historyLoading = false; } });
+              }).catch((err) => {
+                if (STATE.localSeo) {
+                  STATE.localSeo._historyLoading = false;
+                  STATE.localSeo._historyError = err?.message || 'Historique indisponible';
+                }
+                const widget = document.getElementById('dfs-rank-history');
+                if (widget) widget.innerHTML = '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">Impossible de charger l’historique. Réessayez.</div>';
+              });
             }
             const histItems = Array.isArray(_hist) ? _hist : [];
-            const histHtml = !Array.isArray(_hist)
+            const histHtml = STATE.localSeo?._historyError
+              ? '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">Impossible de charger l’historique. Réessayez.</div>'
+              : !Array.isArray(_hist)
               ? '<div style="text-align:center;padding:10px;color:#64748b;font-size:11px">Chargement…</div>'
               : histItems.length === 0
                 ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique — effectuez votre première recherche.</div>'
                 : histItems.map(h => {
                     const date = h.searched_at ? new Date(h.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
-                    const resultCount = Array.isArray(h.results) ? h.results.length : (h.total_results || 0);
+                    // Use the real total when available; only show 0 when the source
+                    // genuinely returned no results (never a false 0 over real data).
+                    const resultCount = (h.total_results != null && h.total_results > 0)
+                      ? h.total_results
+                      : (Array.isArray(h.results) ? h.results.length : (h.total_results || 0));
                     return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
                       + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:38px">'+escHtml(date)+'</div>'
                       + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h.keyword)+' — '+escHtml(h.location)+'</div>'
@@ -9750,7 +9836,7 @@ function renderBilling() {
     const allAddons = [
       // ── Monitoring ──
       { key:'monitorsPack10', cat:'Monitoring', name:'+10 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack10),  tag:'Starter',         roi:'10 sites couverts',    desc:'Étendez votre surveillance uptime avec 10 monitors supplémentaires. Cumulable sans limite.', features:['10 monitors simultanés','Vérification toutes les minutes','Alertes email instantanées','Historique uptime complet','Cumulable avec les autres packs'] },
-      { key:'monitorsPack50', cat:'Monitoring', name:'+50 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50),  tag:'Best value',      roi:'50 sites couverts',    desc:'Pack monitoring massif pour agences. Alertes avancées, SLA, et rapport disponibilité.', features:['50 monitors simultanés','Alertes SMS prioritaires < 30 sec','Tableau de bord SLA automatique','Rapport PDF disponibilité mensuel','Escalade automatique par équipe'] },
+      { key:'monitorsPack50', cat:'Monitoring', name:'+50 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50),  tag:'Best value',      roi:'50 sites couverts',    desc:'Pack monitoring massif pour agences. Alertes avancées, SLA, et rapport disponibilité.', features:['50 monitors simultanés','Alertes SMS — bientôt disponible','Tableau de bord SLA automatique','Rapport PDF disponibilité mensuel','Escalade automatique par équipe'] },
       { key:'globalMonitoring', cat:'Monitoring', name:'Global Monitoring', icon:'🌍', color:'#f59e0b', active:!!(me.addons?.globalMonitoring), tag:'Ultra',      roi:'Monitoring 15 régions',    desc:'Surveillez depuis 15 régions mondiales. Latence, CDN, et géo-disponibilité.', features:['15 régions de monitoring (EU, US, APAC…)','Latence par région en temps réel','Détection CDN et cache edge','Alertes géo-localisées','Rapport géo-disponibilité PDF'] },
       { key:'slaMonitoring', cat:'Monitoring', name:'SLA Monitoring Avancé', icon:'🛡️', color:'#f59e0b', active:!!(me.addons?.slaMonitoring), tag:'Pro',             roi:'SLA 99.9% garanti',    desc:'Rapports SLA automatiques, incidents, et analytics disponibilité avancés.', features:['SLA tracking automatique par client','Rapport incidents horodaté','Score disponibilité mensuel','Alertes seuils SLA personnalisables','Export PDF pour vos clients'] },
       // ── SEO ──
@@ -10070,7 +10156,12 @@ function renderBilling() {
       ? STATE.billing.addons.filter(a => a.includedInPlan).length : 0;
     const _frontendIncluded = allAddons.filter(a => isIncluded(a)).length;
     const includedCount = Math.max(_frontendIncluded, _backendIncluded);
+    // "Active" derives from the canonical plan catalogue: a plan-included add-on is
+    // active for that plan even with no manual purchase. With no extra add-ons an
+    // Ultra workspace therefore shows exactly its 10 included = 10 active.
     const activeCount = allAddons.filter(a => a.active || isIncluded(a)).length;
+    // Manual (paid) extras only — never counts plan-included ones twice.
+    const manualActiveCount = allAddons.filter(a => a.active && !isIncluded(a)).length;
 
     return `
       ${aiBlock(
@@ -10079,7 +10170,7 @@ function renderBilling() {
       )}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Add-ons actifs', String(allAddons.filter(a=>a.active).length), 'activés manuellement', 'up')}
+        ${statCard('Add-ons actifs', String(activeCount), manualActiveCount > 0 ? manualActiveCount + ' extra(s) + ' + includedCount + ' inclus' : 'inclus dans votre plan', activeCount > 0 ? 'up' : 'neutral')}
         ${statCard('Add-ons inclus dans le plan', String(includedCount), 'sans coût additionnel', includedCount > 0 ? 'up' : 'neutral')}
         ${statCard('Modules IA dispo', String(allAddons.filter(a => a.cat === 'IA').length), 'modules d\'intelligence', 'up')}
         ${statCard('ROI estimé', '—', 'Connectez analytics', 'neutral')}
@@ -10804,7 +10895,7 @@ function renderAlertRules() {
     { name: 'Score SEO critique (< 50)', type: 'seo_score', operator: 'lt', threshold: 50, durationMin: 0, channels: ['email'], siteUrls: [] },
     { name: 'Chute ranking (> 5 positions)', type: 'keyword_ranking_drop', operator: 'gt', threshold: 5, durationMin: 0, channels: ['email'], siteUrls: [] },
     { name: 'Latence élevée (> 1s)', type: 'latency', operator: 'gt', threshold: 1000, durationMin: 5, channels: ['email'], siteUrls: [] },
-    { name: 'Uptime faible (< 98%)', type: 'uptime', operator: 'lt', threshold: 98, durationMin: 10, channels: ['email', 'sms'], siteUrls: [] },
+    { name: 'Uptime faible (< 98%)', type: 'uptime', operator: 'lt', threshold: 98, durationMin: 10, channels: ['email'], siteUrls: [] },
   ];
 
   const availableSiteUrls = [...new Set([
@@ -14475,36 +14566,8 @@ function openMonitorPanel(monitor) {
         if (STATE.route === 'monitors') render();
       } catch(e) { showToast('error', fpT('Erreur lors de la mise à jour')); }
     });
-    $('#monitor-panel-save-phone')?.addEventListener('click', async () => {
-      const phone = $('#monitor-panel-phone')?.value.trim() || '';
-      const isCritical = $('#monitor-panel-critical')?.checked ?? false;
-      if (phone && !/^\+\d{7,15}$/.test(phone.replace(/\s/g,''))) {
-        showToast('warning', fpT('Format invalide — utilisez +336XXXXXXXX')); return;
-      }
-      try {
-        const updated = await apiAction('PATCH', `/api/monitors/${monitor.id}`, { alertPhone: phone, isCritical });
-        const m = STATE.monitors.find(x => x.id === monitor.id);
-        if (m) { m.alertPhone = updated?.alertPhone ?? phone; m.isCritical = updated?.isCritical ?? isCritical; }
-        showToast('success', phone ? 'Numéro SMS enregistré' : 'SMS désactivé');
-        if (STATE.route === 'monitors') render();
-      } catch(e) {
-        const m = STATE.monitors.find(x => x.id === monitor.id);
-        if (m) { m.alertPhone = phone; m.isCritical = isCritical; }
-        showToast('success', phone ? 'Numéro SMS enregistré (hors-ligne)' : 'SMS désactivé');
-        if (STATE.route === 'monitors') render();
-      }
-    });
-    $('#monitor-panel-test-sms')?.addEventListener('click', async () => {
-      const phone = $('#monitor-panel-phone')?.value.trim() || monitor.alertPhone || '';
-      if (!phone) { showToast('warning', fpT('Entrez d\'abord un numéro SMS')); return; }
-      showToast('info', fpT('Envoi du SMS de test…'));
-      try {
-        await apiAction('POST', `/api/monitors/${monitor.id}/test-sms`, { phone });
-        showToast('success', `SMS de test envoyé à ${escHtml(phone)}`);
-      } catch(e) {
-        showToast('success', `SMS de test envoyé à ${escHtml(phone)}`);
-      }
-    });
+    // SMS alerts are not yet available ("Bientôt disponible"); no phone save/test
+    // bindings are wired because the panel renders a disabled placeholder only.
   }, 50);
 }
 
@@ -16451,54 +16514,18 @@ function bindSectionEvents() {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.monitorId;
         const emailInput = document.querySelector(`.monitor-cfg-email[data-monitor-id="${id}"]`);
-        const phoneInput = document.querySelector(`.monitor-cfg-phone[data-monitor-id="${id}"]`);
-        const criticalInput = document.querySelector(`.monitor-cfg-critical[data-monitor-id="${id}"]`);
         const emailVal = emailInput?.value.trim() || '';
-        const phoneVal = phoneInput?.value.trim() || '';
-        const isCritical = criticalInput?.checked ?? false;
         try {
-          const updated = await apiAction('PATCH', `/api/monitors/${id}`, { alertEmail: emailVal, alertPhone: phoneVal, isCritical });
+          // Email Alert only — SMS ("Bientôt disponible") is not persisted.
+          const updated = await apiAction('PATCH', `/api/monitors/${id}`, { alertEmail: emailVal });
           const m = STATE.monitors.find(x => x.id === id);
-          if (m) { m.alertEmail = updated?.alertEmail ?? emailVal; m.alertPhone = updated?.alertPhone ?? phoneVal; m.isCritical = updated?.isCritical ?? isCritical; }
-          showToast('success', fpT('Alertes email + SMS mis à jour'));
+          if (m) m.alertEmail = updated?.alertEmail ?? emailVal;
+          showToast('success', fpT('Email d\'alerte enregistré'));
         } catch(e) { showToast('error', fpT('Erreur lors de la mise à jour')); }
       });
     });
-    $$('.monitor-cfg-save-phone').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const id = btn.dataset.monitorId;
-        const phoneInput = document.querySelector(`.monitor-cfg-phone[data-monitor-id="${id}"]`);
-        const phone = phoneInput?.value.trim() || '';
-        if (phone && !/^\+\d{7,15}$/.test(phone.replace(/\s/g,''))) {
-          showToast('warning', fpT('Format invalide — utilisez +336XXXXXXXX')); return;
-        }
-        try {
-          const updated = await apiAction('PATCH', `/api/monitors/${id}`, { alertPhone: phone });
-          const m = STATE.monitors.find(x => x.id === id);
-          if (m) m.alertPhone = updated?.alertPhone ?? phone;
-          showToast('success', phone ? 'SMS configuré ✓' : 'SMS désactivé');
-        } catch(e) {
-          const m = STATE.monitors.find(x => x.id === id);
-          if (m) m.alertPhone = phone;
-          showToast('success', phone ? 'SMS configuré ✓' : 'SMS désactivé');
-        }
-      });
-    });
-    $$('.monitor-cfg-test-sms').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const id = btn.dataset.monitorId;
-        const phoneInput = document.querySelector(`.monitor-cfg-phone[data-monitor-id="${id}"]`);
-        const phone = phoneInput?.value.trim() || STATE.monitors.find(x => x.id === id)?.alertPhone || '';
-        if (!phone) { showToast('warning', fpT('Entrez d\'abord un numéro SMS')); return; }
-        showToast('info', `Envoi SMS de test à ${escHtml(phone)}…`);
-        try {
-          await apiAction('POST', `/api/monitors/${id}/test-sms`, { phone });
-          showToast('success', `SMS de test envoyé à ${escHtml(phone)}`);
-        } catch(e) {
-          showToast('success', `SMS de test envoyé à ${escHtml(phone)}`);
-        }
-      });
-    });
+    // SMS alerts ("Bientôt disponible") have no save/test bindings — the SMS
+    // controls in the config table are rendered disabled and never wired.
   }
 
   if (route === 'missions') {
@@ -17229,7 +17256,7 @@ function bindSectionEvents() {
         const durationMin = parseInt($('#rule-duration')?.value || '0', 10);
         const channels = [];
         if ($('#rule-ch-email')?.checked) channels.push('email');
-        if ($('#rule-ch-sms')?.checked) channels.push('sms');
+        // SMS channel ("Bientôt disponible") is not persisted — the checkbox is disabled.
         const siteUrls = [...$$('.new-rule-site:checked')].map(cb => cb.dataset.url).filter(Boolean);
         if (!name || !type) { showToast('error', fpT('Remplissez le nom et le type')); return; }
         const isEvt = _ALT_EVENT_TYPES.includes(type);
@@ -17327,7 +17354,7 @@ function bindSectionEvents() {
           const durationMin = parseInt(formEl.querySelector('.edit-rule-duration')?.value || '0', 10);
           const channels = [];
           if (formEl.querySelector('.edit-rule-ch-email')?.checked) channels.push('email');
-          if (formEl.querySelector('.edit-rule-ch-sms')?.checked) channels.push('sms');
+          // SMS channel ("Bientôt disponible") is not persisted — the checkbox is disabled.
           const siteUrls = [...formEl.querySelectorAll('.edit-rule-site:checked')].map(cb => cb.dataset.url).filter(Boolean);
           if (!name || !type) { showToast('error', fpT('Remplissez le nom et le type')); return; }
           const _isEvtEdit = _ALT_EVENT_TYPES.includes(type);
@@ -17356,7 +17383,7 @@ function bindSectionEvents() {
         { name: 'Score SEO critique (< 50)', type: 'seo_score', operator: 'lt', threshold: 50, durationMin: 0, channels: ['email'], siteUrls: [] },
         { name: 'Chute ranking (> 5 positions)', type: 'keyword_ranking_drop', operator: 'gt', threshold: 5, durationMin: 0, channels: ['email'], siteUrls: [] },
         { name: 'Latence élevée (> 1s)', type: 'latency', operator: 'gt', threshold: 1000, durationMin: 5, channels: ['email'], siteUrls: [] },
-        { name: 'Uptime faible (< 98%)', type: 'uptime', operator: 'lt', threshold: 98, durationMin: 10, channels: ['email', 'sms'], siteUrls: [] },
+        { name: 'Uptime faible (< 98%)', type: 'uptime', operator: 'lt', threshold: 98, durationMin: 10, channels: ['email'], siteUrls: [] },
       ];
       $('#dismiss-templates')?.addEventListener('click', () => {
         localStorage.setItem('fp-alert-templates-hidden', 'done');
@@ -47617,7 +47644,7 @@ async function init() {
       { name: 'Score SEO critique (< 50)', type: 'seo_score', operator: 'lt', threshold: 50, durationMin: 0, channels: ['email'], siteUrls: [] },
       { name: 'Chute ranking (> 5 positions)', type: 'keyword_ranking_drop', operator: 'gt', threshold: 5, durationMin: 0, channels: ['email'], siteUrls: [] },
       { name: 'Latence élevée (> 1s)', type: 'latency', operator: 'gt', threshold: 1000, durationMin: 5, channels: ['email'], siteUrls: [] },
-      { name: 'Uptime faible (< 98%)', type: 'uptime', operator: 'lt', threshold: 98, durationMin: 10, channels: ['email', 'sms'], siteUrls: [] },
+      { name: 'Uptime faible (< 98%)', type: 'uptime', operator: 'lt', threshold: 98, durationMin: 10, channels: ['email'], siteUrls: [] },
     ];
     const t = TMPL[idx];
     if (!t) return;
@@ -48366,16 +48393,17 @@ async function init() {
         if (r.rankings) {
           if (!STATE.localSeo) STATE.localSeo = {};
           STATE.localSeo.rankings = r.rankings;
-          // Increment quota counter locally so the X/1000 display updates immediately
+          // Use only the durable usage returned by the ranking transaction.
           if (!STATE.dfsStatus) STATE.dfsStatus = {};
-          if (!STATE.dfsStatus.quota) STATE.dfsStatus.quota = { used: 0, limit: 1000 };
-          STATE.dfsStatus.quota.used = (STATE.dfsStatus.quota.used || 0) + 1;
+          if (r.usage) {
+            STATE.dfsStatus.quota = {
+              used: Number(r.usage.used || 0),
+              limit: Number(r.usage.limit || 0),
+              remaining: Math.max(0, Number(r.usage.limit || 0) - Number(r.usage.used || 0)),
+            };
+          }
           STATE.localSeo.rankingKeyword = kw;
           STATE.localSeo.rankingCity = city;
-          // Reload real quota from server (server incremented the DB counter)
-          apiFetch('/api/seo/status').then(s => {
-            if (s && s.quota) { if (!STATE.dfsStatus) STATE.dfsStatus = {}; STATE.dfsStatus.quota = s.quota; }
-          }).catch(() => {});
           // Load full ranking history from DB for the scrollable history section
           // Reset the guard so the history widget re-fetches fresh data on next render
           if (STATE.localSeo) { STATE.localSeo.rankingHistory = null; STATE.localSeo._historyLoading = false; }
@@ -48383,6 +48411,15 @@ async function init() {
             if (!STATE.localSeo) STATE.localSeo = {};
             STATE.localSeo.rankingHistory = Array.isArray(h?.history) ? h.history : [];
             STATE.localSeo._historyLoading = false;
+            STATE.localSeo._historyError = null;
+            if (h?.usage) {
+              if (!STATE.dfsStatus) STATE.dfsStatus = {};
+              STATE.dfsStatus.quota = {
+                used: Number(h.usage.used || 0),
+                limit: Number(h.usage.limit || 0),
+                remaining: Math.max(0, Number(h.usage.limit || 0) - Number(h.usage.used || 0)),
+              };
+            }
             const widget = document.getElementById('dfs-rank-history');
             if (widget) {
               const items = STATE.localSeo.rankingHistory;
@@ -48397,11 +48434,17 @@ async function init() {
                       + '<div style="font-size:11px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
                       + '<div style="font-size:10px;color:var(--fp-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🥇 '+escHtml(topResult)+'</div>'
                       + '</div>'
-                      + '<span style="font-size:10px;color:#64748b;flex-shrink:0">'+((Array.isArray(h2.results)?h2.results.length:0))+' rés.</span>'
+                      + '<span style="font-size:10px;color:#64748b;flex-shrink:0">'+((h2.total_results!=null&&h2.total_results>0)?h2.total_results:(Array.isArray(h2.results)?h2.results.length:0))+' rés.</span>'
                       + '</div>';
                   }).join('');
             }
-          }).catch(() => {});
+          }).catch((err) => {
+            if (STATE.localSeo) {
+              STATE.localSeo._historyLoading = false;
+              STATE.localSeo._historyError = err?.message || 'Historique indisponible';
+            }
+            showToast('error', 'Le classement est enregistré, mais l’historique n’a pas pu être rechargé.');
+          });
         }
         showToast('success', fpT('Rankings chargés !'));
         render(STATE.currentSection);
@@ -48564,12 +48607,29 @@ async function init() {
   window.fpLoadCompetitorAnalysis = async function(id) {
     if (!id) return;
     if (!STATE.competitorAnalyses) STATE.competitorAnalyses = {};
-    if (STATE.competitorAnalyses[id]) return; // already cached
+    if (!STATE._competitorAnalysisHydrated) STATE._competitorAnalysisHydrated = {};
+    if (!STATE._competitorAnalysisErrors) STATE._competitorAnalysisErrors = {};
+    if (STATE.competitorAnalyses[id] || STATE._competitorAnalysisHydrated[id]) return;
+    STATE._competitorAnalysisHydrated[id] = true;
     try {
       const r = await apiFetch('/api/competitors/' + id + '/analysis');
-      if (r && r.ok && r.analysis) STATE.competitorAnalyses[id] = r.analysis;
-    } catch(_) {}
+      if (r && r.ok && r.analysis) {
+        STATE.competitorAnalyses[id] = r.analysis;
+        delete STATE._competitorAnalysisErrors[id];
+      }
+    } catch(e) {
+      // A 404 is a genuine "no saved analysis yet" state. Other failures must
+      // remain visible and retryable rather than looking like an empty result.
+      if (e?.status !== 404) STATE._competitorAnalysisErrors[id] = e?.message || 'Analyse indisponible';
+    }
     render();
+  };
+
+  window.fpRetryLoadCompetitorAnalysis = function(id) {
+    if (!id) return;
+    if (STATE._competitorAnalysisHydrated) delete STATE._competitorAnalysisHydrated[id];
+    if (STATE._competitorAnalysisErrors) delete STATE._competitorAnalysisErrors[id];
+    window.fpLoadCompetitorAnalysis(id);
   };
 
   window.fpCreateMissionFromOpportunity = async function(title, desc) {
@@ -51014,7 +51074,7 @@ function renderMonitorsIncidents() {
   return `
     ${aiBlock(
       `<strong>${incidents.length} incident${incidents.length > 1 ? 's' : ''} actif${incidents.length > 1 ? 's' : ''}</strong> · ${_monDown.length} DOWN · ${_monWarn.length} dégradé${_monWarn.length !== 1 ? 's' : ''}. ${_monDown.length > 0 ? 'Action immédiate requise sur les sites DOWN.' : 'Surveillez la latence sur les sites dégradés.'}`,
-      ['Plan de résolution IA', 'Rapport incidents PDF', 'Activer alertes SMS']
+      ['Plan de résolution IA', 'Rapport incidents PDF', 'Alertes SMS — bientôt disponible']
     )}
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
@@ -51156,7 +51216,7 @@ function renderMonitorsConfig() {
     { icon: '📧', name: 'Email',    active: true,    detail: `${STATE.monitors.filter(m => m.alertEmail).length} monitors configurés`, color: '#22c55e', gate: null },
     { icon: '💬', name: 'Slack',    active: isPro,   detail: isPro ? '#flowpoint-alerts actif' : 'Disponible à partir de Pro', color: isPro ? '#22c55e' : '#64748b', gate: 'Pro' },
     { icon: '🎮', name: 'Discord',  active: isPro,   detail: isPro ? 'Bot FlowPoint connecté' : 'Disponible à partir de Pro', color: isPro ? '#8b5cf6' : '#64748b', gate: 'Pro' },
-    { icon: '📱', name: 'SMS',      active: false, detail: 'Bientôt disponible (Ultra)', color: '#f59e0b', gate: 'Ultra' },
+    { icon: '📱', name: 'SMS',      active: false, detail: fpT('Bientôt disponible'), color: '#f59e0b', gate: null, soon: true },
     { icon: '🔗', name: 'Webhook',  active: isPro,   detail: isPro ? ((STATE.settings&&STATE.settings.webhookUrl)||'URL non configurée') : 'Disponible à partir de Pro', color: isPro ? '#2563EB' : '#64748b', gate: 'Pro' },
     { icon: '📢', name: 'PagerDuty',active: isUltra, detail: isUltra ? 'Intégration active' : 'Disponible Ultra', color: isUltra ? '#f59e0b' : '#64748b', gate: 'Ultra' },
   ];
@@ -51216,8 +51276,8 @@ function renderMonitorsConfig() {
               <div style="width:8px;height:8px;border-radius:50%;background:${ch.active ? ch.color : '#64748b'};${ch.active ? 'box-shadow:0 0 6px ' + ch.color + '60' : ''}"></div>
             </div>
             <div style="font-size:10.5px;color:var(--fp-text-muted);margin-bottom:10px">${ch.detail}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px"${ch.active && ch.name !== 'Email' ? ' disabled title="Configuration en libre-service bientôt disponible — les alertes sont envoyées par email en attendant"' : ''} onclick="${!ch.active ? "navigate('billing')" : ch.name === 'Email' ? "openFloatPanel('Configurer les alertes Email',`<div style='padding:4px'><div class='fp-form-group'><label class='fp-form-label'>Email de réception des alertes</label><input class='fp-input' id='ch-email-input' placeholder='alerte@email.com' value='${escHtml(STATE.me?.email||'')}'/></div><div class='fp-form-group'><label class='fp-form-label'>Alertes à recevoir</label><div style='display:flex;flex-direction:column;gap:6px'><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Site DOWN</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/>Latence élevée</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox'/> Reprise (site UP)</label></div></div><button class='fp-btn fp-btn-primary' style='width:100%' id='ch-email-save'>Sauvegarder</button></div>`);setTimeout(()=>{document.getElementById('ch-email-save')?.addEventListener('click',async()=>{const v=document.getElementById('ch-email-input')?.value?.trim();if(!v||!/^[^@]+@[^@]+\.[^@]+$/.test(v)){showToast('warning', fpT('Email invalide'));return;}try{await apiAction('PATCH','/api/me/prefs',{settings:{alertEmail:v}});showToast('success','Email d\\'alerte sauvegardé');closeFloatPanel();}catch(e){showToast('error', fpT('Erreur lors de la sauvegarde'));}});},50)" : ''}">
-              ${!ch.active ? `🔒 ${ch.gate} requis` : ch.name === 'Email' ? 'Configurer' : 'Bientôt disponible'}
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px${ch.soon ? ';cursor:not-allowed' : ''}"${ch.soon ? ` disabled title="${fpT('Bientôt disponible')}"` : (ch.active && ch.name !== 'Email' ? ' disabled title="Configuration en libre-service bientôt disponible — les alertes sont envoyées par email en attendant"' : '')} onclick="${ch.soon ? '' : (!ch.active ? "navigate('billing')" : ch.name === 'Email' ? "openFloatPanel('Configurer les alertes Email',`<div style='padding:4px'><div class='fp-form-group'><label class='fp-form-label'>Email de réception des alertes</label><input class='fp-input' id='ch-email-input' placeholder='alerte@email.com' value='${escHtml(STATE.me?.email||'')}'/></div><div class='fp-form-group'><label class='fp-form-label'>Alertes à recevoir</label><div style='display:flex;flex-direction:column;gap:6px'><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Site DOWN</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/>Latence élevée</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox'/> Reprise (site UP)</label></div></div><button class='fp-btn fp-btn-primary' style='width:100%' id='ch-email-save'>Sauvegarder</button></div>`);setTimeout(()=>{document.getElementById('ch-email-save')?.addEventListener('click',async()=>{const v=document.getElementById('ch-email-input')?.value?.trim();if(!v||!/^[^@]+@[^@]+\.[^@]+$/.test(v)){showToast('warning', fpT('Email invalide'));return;}try{await apiAction('PATCH','/api/me/prefs',{settings:{alertEmail:v}});showToast('success','Email d\\'alerte sauvegardé');closeFloatPanel();}catch(e){showToast('error', fpT('Erreur lors de la sauvegarde'));}});},50)" : '')}">
+              ${ch.soon ? fpT('Bientôt disponible') : (!ch.active ? `🔒 ${ch.gate} requis` : ch.name === 'Email' ? 'Configurer' : 'Bientôt disponible')}
             </button>
           </div>
         `).join('')}
@@ -51290,7 +51350,7 @@ function renderMonitorsConfig() {
         <div style="display:grid;grid-template-columns:minmax(140px,1.5fr) minmax(180px,2fr) minmax(160px,2fr) 80px;gap:0;padding:7px 18px 7px 18px;background:var(--fp-bg-inset);border-bottom:1px solid var(--fp-border);min-width:576px;padding-right:24px">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint)">Monitor</div>
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint)">📧 Email alerte</div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint)">📱 SMS alerte ${!isUltra?'<span style="font-size:9px;background:rgba(139,92,246,0.12);color:#8b5cf6;padding:1px 5px;border-radius:4px;font-weight:700">Ultra</span>':''}</div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint)">📱 SMS alerte <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:4px;font-weight:700">${fpT('Bientôt disponible')}</span></div>
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint);text-align:center">Statut</div>
         </div>
         ${STATE.monitors.map((m,i) => `
@@ -51308,10 +51368,10 @@ function renderMonitorsConfig() {
               <input class="fp-input monitor-cfg-email" data-monitor-id="${m.id}" placeholder="alerte@email.com" value="${escHtml(m.alertEmail || '')}" style="flex:1;height:28px;font-size:11px;min-width:0"/>
               <button class="fp-btn fp-btn-primary fp-btn-sm monitor-cfg-save" data-monitor-id="${m.id}" style="flex-shrink:0;height:28px;padding:0 10px">✓</button>
             </div>
-            <!-- SMS -->
-            <div style="display:flex;gap:6px;align-items:center;padding-right:12px;${isUltra?'':'opacity:0.45'}">
-              <input class="fp-input" placeholder="+33 6…" value="${escHtml(m.alertPhone || '')}" style="flex:1;height:28px;font-size:11px;min-width:0" ${isUltra?'':'disabled'}/>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" ${isUltra?'':'disabled'} style="flex-shrink:0;height:28px;padding:0 10px">✓</button>
+            <!-- SMS — Bientôt disponible (disabled, not wired) -->
+            <div style="display:flex;gap:6px;align-items:center;padding-right:12px;opacity:0.45" title="${fpT('Alertes SMS — bientôt disponible')}">
+              <input class="fp-input" placeholder="+33 6…" value="${escHtml(m.alertPhone || '')}" style="flex:1;height:28px;font-size:11px;min-width:0" disabled/>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="flex-shrink:0;height:28px;padding:0 10px;cursor:not-allowed">✓</button>
             </div>
             <!-- Status badge -->
             <div style="display:flex;justify-content:center">
@@ -53470,6 +53530,13 @@ function renderCompetitor() {
       available: fpT('Données disponibles'),
       unavailable: fpT('Données indisponibles'),
     }[status] || fpT('Données indisponibles'));
+    // Persisted AI analyses are independent from provider metrics. Hydrate them
+    // in every production competitor view, including the default list.
+    competitors.forEach(c => {
+      if (typeof window.fpLoadCompetitorAnalysis === 'function') {
+        window.fpLoadCompetitorAnalysis(c.id);
+      }
+    });
     return `
       <div class="fp-section-header">
         <div>
@@ -53670,24 +53737,29 @@ function renderCompetitor() {
               </tr></thead>
               <tbody>${competitors.map(c => {
                 const available = c.dataStatus === 'available';
+                // Persisted AI analysis is independent of provider metrics: it must
+                // render even when the provider metrics are unavailable, and never be
+                // replaced by a generic "data unavailable" placeholder.
+                const _persistedA = STATE.competitorAnalyses && STATE.competitorAnalyses[c.id];
+                const _isLoading = STATE._competitorAnalysisLoading && STATE._competitorAnalysisLoading[c.id];
+                const _analysisError = STATE._competitorAnalysisErrors && STATE._competitorAnalysisErrors[c.id];
                 return `<tr>
                   <td><div style="font-weight:700">${escHtml(c.name || fpT('Concurrent sans nom'))}</div><div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(String(c.url || '—').replace(/^https?:\/\//, ''))}</div></td>
-                  <td><span class="fp-badge ${available ? 'fp-badge--success' : 'fp-badge--ghost'}">${statusLabel(c.dataStatus)}</span>${c.dataError ? `<div style="font-size:10px;color:var(--fp-text-faint);max-width:220px;margin-top:4px">${escHtml(c.dataError)}</div>` : ''}</td>
+                  <td><span class="fp-badge ${available ? 'fp-badge--success' : 'fp-badge--ghost'}">${statusLabel(c.dataStatus)}</span>${(!available && c.dataError) ? `<div style="font-size:10px;color:#ef4444;max-width:220px;margin-top:4px" title="${escHtml(String(c.dataError))}">⚠ ${escHtml(fpT('Erreur fournisseur') + ' : ' + String(c.dataError))}</div>` : ''}</td>
                   <td>${available ? displayMetric(c.domainRating) : '—'}</td>
                   <td>${available ? displayMetric(c.keywords) : '—'}</td>
                   <td>${available ? displayMetric(c.traffic) : '—'}</td>
                   <td style="white-space:nowrap;min-width:160px">
-                    ${available
-                      ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px" onclick="window.fpAnalyzeCompetitor('${escHtml(c.id)}','${escHtml(c.name||'')}')">
-                          ${STATE._competitorAnalysisLoading&&STATE._competitorAnalysisLoading[c.id]?'Analyse…':'🔬 Analyser'}
-                        </button>`
-                      : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRefreshCompetitor('${escHtml(c.id)}')" style="margin-right:4px">${fpT('Réessayer')}</button>`}
+                    <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px" onclick="window.fpAnalyzeCompetitor('${escHtml(c.id)}','${escHtml(c.name||'')}'${_persistedA?',true':''})">
+                      ${_isLoading ? fpT('Analyse…') : (_persistedA ? '↺ ' + fpT('Actualiser') : '🔬 ' + fpT('Analyser'))}
+                    </button>
+                    ${!available ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRefreshCompetitor('${escHtml(c.id)}')" style="margin-left:4px" title="${escHtml(fpT('Relancer la récupération des métriques fournisseur'))}">${fpT('Réessayer métriques')}</button>` : ''}
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;margin-left:4px" onclick="window.fpDeleteCompetitor('${escHtml(c.id)}','${escHtml(c.name || '')}')">${fpT('Supprimer')}</button>
+                    ${_analysisError ? `<div style="font-size:10px;color:#ef4444;margin-top:5px">${fpT('Analyse enregistrée indisponible')} — <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRetryLoadCompetitorAnalysis('${escHtml(c.id)}')" style="font-size:9px">${fpT('Réessayer')}</button></div>` : ''}
                   </td>
                 </tr>
                 ${(() => {
-                  if (!available) return '';
-                  const _a = STATE.competitorAnalyses && STATE.competitorAnalyses[c.id];
+                  const _a = _persistedA;
                   if (!_a) return '';
                   const _nd = 'Non déterminé';
                   return `<tr style="background:var(--fp-inner-card)"><td colspan="6" style="padding:12px 16px">
@@ -56795,6 +56867,9 @@ function renderActivityFeed() {
   const isStd   = plan === 'Standard';
   const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
+  const activityTotal = Number.isFinite(Number(STATE.activityTotal))
+    ? Number(STATE.activityTotal)
+    : (Array.isArray(STATE.activityEvents) ? STATE.activityEvents.length : 0);
 
   const colors = { success:'#22c55e', error:'#ef4444', info:'#2563EB', warning:'#f59e0b', purple:'#8b5cf6', cyan:'#06b6d4' };
   const _fAS = i => { const s = STATE.audits||[]; const u = (s.length>0?(s[i%s.length]?.url||''):'').replace(/^https?:\/\//,''); return u||'votre-site.fr'; };
@@ -56846,34 +56921,47 @@ function renderActivityFeed() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'team') {
     const _mColors = ['#2563EB','#8b5cf6','#22c55e','#f59e0b','#06b6d4'];
-    // Activity attribution requires server-side actor IDs which the current API
-    // does not expose per-member. Show identity/role from STATE.team but mark all
-    // quantitative contribution metrics as unavailable — never assign org totals
-    // to an arbitrary member.
     const members = (STATE.team && STATE.team.length > 0 ? STATE.team : []).map((t, i) => {
       const nm = t.name || t.email || 'Membre';
+      const id = String(t.id || t.userId || t.user_id || '');
+      const email = String(t.email || '').toLowerCase();
+      const contrib = (STATE.teamContributions && (
+        (id && STATE.teamContributions[id]) ||
+        (email && (STATE.teamContributions[email] || STATE.teamContributions[t.email]))
+      )) || null;
+      const audits = contrib ? Number(contrib.audits || 0) : null;
+      const missions = contrib ? Number(contrib.missions || 0) : null;
+      const reports = contrib ? Number(contrib.reports || 0) : null;
       return {
+        id, email,
         name: nm, role: t.role || 'member',
         avatar: nm.slice(0,2).toUpperCase(),
         color: _mColors[i % _mColors.length],
-        // null signals "data unavailable" — rendered as "—" in the UI
-        actions: null, score: null, trend: '—',
-        contribs: null,
+        actions: contrib ? audits + missions + reports : null,
+        score: null, trend: '—',
+        contribs: contrib ? { audits, missions, reports } : null,
+        streak: (STATE.teamStreaks && (
+          (id && STATE.teamStreaks[id]) ||
+          (email && (STATE.teamStreaks[email] || STATE.teamStreaks[t.email]))
+        )) || null,
       };
     });
     const teamActs = liveFeed.filter(a => a.cat === 'team');
-    const _orgActs = Array.isArray(STATE.activityEvents) ? STATE.activityEvents.length : 0;
+    const _orgActs = activityTotal;
     const _orgScore = STATE.overview ? (STATE.overview.seoScore||STATE.overview.avgScore||0) : 0;
+    const _membersWithContribs = members.filter(m => m.contribs).length;
     return `
       ${isPro
-        ? aiBlock(fpT('Analyse de l\'équipe indisponible — attribution par membre non disponible.') + ' ' + _orgActs + ' ' + fpT('événement(s)') + ' · Score SEO ' + _orgScore + '/100.',
+        ? aiBlock((_membersWithContribs > 0
+              ? _membersWithContribs + ' membre(s) avec contributions persistées.'
+              : fpT('Aucune contribution individuelle enregistrée.')) + ' ' + _orgActs + ' ' + fpT('événement(s)') + ' · Score SEO ' + _orgScore + '/100.',
             ['Rapport équipe complet', 'Assigner des missions', 'Planifier une réunion'])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">👥</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Analytics équipe — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Scores de productivité, contributions par membre et IA collaboration.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Membres actifs', String(members.length), 'cette semaine', 'up')}
-        ${statCard('Actions totales', String(Array.isArray(STATE.activityEvents) ? STATE.activityEvents.length : '—'), 'cette organisation', 'up')}
+        ${statCard('Actions totales', String(activityTotal), 'cette organisation', activityTotal > 0 ? 'up' : 'neutral')}
         ${statCard('Score productivité', displayStat(null, '82/100'), PREVIEW_MODE ? '+8 pts vs S-1' : 'Analyse en cours', 'neutral')}
         ${statCard('Missions ouvertes', displayStat(STATE.missions && STATE.missions.length > 0 ? String(STATE.missions.length) : null, '4'), STATE.missions && STATE.missions.length > 0 ? 'missions actives' : PREVIEW_MODE ? 'dont 2 prioritaires' : 'Aucune mission', 'neutral')}
       </div>
@@ -56899,7 +56987,7 @@ function renderActivityFeed() {
                   <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('N/D')}</div>
                 </div>
               </div>
-              ${(()=>{ const evts = Array.isArray(STATE.activityEvents) ? STATE.activityEvents.filter(e => e.userId === m.id || e.user_id === m.id || e.actorId === m.id) : []; const audits = (STATE.audits||[]).filter(a => a.createdBy === m.id || a.userId === m.id); const missions = (STATE.missions||[]).filter(x => x.assignedTo === m.id || x.createdBy === m.id); return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px"><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#2563EB">${evts.length || audits.length || '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Actions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#22c55e">${missions.length || '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Missions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#8b5cf6">${STATE.teamStreaks?.[m.id]?.current ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Streak 🔥</div></div></div>`; })()}
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px"><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#2563EB">${m.actions ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Actions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#22c55e">${m.contribs ? m.contribs.missions : '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Missions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#8b5cf6">${m.streak?.current ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Streak 🔥</div></div></div>
             </div>`;
           }).join('')}
         </div>
@@ -57480,7 +57568,7 @@ function renderActivityFeed() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Score ops global', '—', 'Les données apparaîtront avec votre activité réelle', 'neutral')}
-        ${statCard('Actions totales', String((STATE.activityEvents||[]).length), 'événements enregistrés', (STATE.activityEvents||[]).length > 0 ? 'up' : 'neutral')}
+        ${statCard('Actions totales', String(activityTotal), 'événements enregistrés', activityTotal > 0 ? 'up' : 'neutral')}
         ${statCard('Taux automatisation', (()=>{ const _wfs=(window.FP_DATA?.automation?.workflows||STATE.workflows||[]); const _active=_wfs.filter(w=>w.active!==false).length; return _wfs.length > 0 ? String(Math.round(_active/_wfs.length*100))+'%' : '—'; })(), 'automatisations actives', 'neutral')}
         ${statCard('MTTR incidents', '—', 'Aucun incident résolu', 'neutral')}
       </div>
@@ -58804,7 +58892,7 @@ function renderClientMode() {
                 <td style="text-align:center;vertical-align:middle">
                   <div style="display:inline-flex;gap:4px;justify-content:center">
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="${fpT('Copier l\'URL de la page')}" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success', fpT('URL copiée !'))).catch(()=>showToast('info',window.location.href))">${fpT('Copier URL')}</button>
-                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="if(r?.id){downloadReportPdf(r.id,r.name||'rapport');showToast('success', fpT('Téléchargement PDF…'));}else{showToast('info', fpT('PDF non disponible'))}">PDF</button>
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" data-rid="${escHtml(r.id||'')}" data-rname="${escHtml(r.name||'rapport')}" onclick="if(this.dataset.rid){downloadReportPdf(this.dataset.rid,this.dataset.rname||'rapport');showToast('success', fpT('Téléchargement PDF…'));}else{showToast('info', fpT('PDF non disponible'))}">PDF</button>
                   </div>
                 </td>
               </tr>`).join('')}
@@ -59147,7 +59235,7 @@ function renderClientMode() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${escHtml(r.name||r.client||'Client')} — Risque churn ${r.churnRisk||'?'}%</div>
                 <div style="font-size:11px;color:var(--fp-text-muted)">${r.loginDays<=3?'Dernière connexion : '+r.loginDays+' jour(s). Action urgente recommandée.':'Engagement en baisse — suivre de près.'}</div>
               </div>
-              <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="_fpMQ('Rétention client : '+encodeURIComponent(r.name||r.client||'Client'),'Clients','high')">Action</button>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;flex-shrink:0" data-cname="${escHtml(r.name||r.client||'Client')}" onclick="_fpMQ('Rétention client : '+this.dataset.cname,'Clients','high')">Action</button>
             </div>`; }).join('')}
         </div>
       </div>
@@ -59158,15 +59246,22 @@ function renderClientMode() {
   // SUB: AGENCY LAB
   // ══════════════════════════════════════════════════════════
   if (sub === 'agency') {
-    const templates = [
-      { name:"Executive SEO",         pages:12, desc:"Rapport mensuel premium pour dirigeants",   uses:18 },
-      { name:"Local SEO Performance", pages:8,  desc:"Focus Maps, GBP, visibilité locale",         uses:11 },
-      { name:"Rapport de démarrage",  pages:6,  desc:"Bilan initial + plan 90 jours",              uses:4  },
-      { name:"Bilan trimestriel",     pages:15, desc:"Q1/Q2/Q3/Q4 — Executive summary complet",   uses:7  },
-    ];
+    const templates = (Array.isArray(STATE.whiteLabelTemplates) ? STATE.whiteLabelTemplates : []).map(t => ({
+      id: t.id || '',
+      name: t.name || 'Template',
+      desc: [
+        t.is_default ? 'Template par défaut' : '',
+        t.font ? 'Police ' + t.font : '',
+        t.hide_flowpoint_branding ? 'Marque FlowPoint masquée' : '',
+      ].filter(Boolean).join(' · ') || 'Template white-label enregistré',
+    }));
+    const agencyBranding = (STATE.settings?.wlBranding || STATE.whiteLabel || STATE.branding || {});
+    const agencyTemplateSummary = STATE.whiteLabelTemplatesError
+      ? 'Les templates enregistrés sont temporairement indisponibles.'
+      : `${templates.length} template${templates.length!==1?'s':''} enregistré${templates.length!==1?'s':''}.`;
     return `
       ${isUltra
-        ? aiBlock(`Votre agence gère <strong>${STATE.clients?.length||0} client${(STATE.clients?.length||0)!==1?'s actifs':'actif'}</strong>. Branding white-label configuré. Recommandation : activer le domaine personnalisé pour une expérience client premium (1 seul clic). ${templates.length} template${templates.length!==1?'s':''} disponible${templates.length!==1?'s':''} — template ${escHtml(templates[0]?.name||'Executive')} le plus utilisé (${templates[0]?.uses||0}×).`,
+        ? aiBlock(`Votre agence gère <strong>${STATE.clients?.length||0} client${(STATE.clients?.length||0)!==1?'s actifs':'actif'}</strong>. ${agencyTemplateSummary}`,
             ['Configurer le domaine', 'Créer un template', 'Rapport agence complet'])
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:20px 24px;margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
@@ -59185,7 +59280,7 @@ function renderClientMode() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Clients actifs', String(clients.length), 'gérés ce mois', 'up')}
-        ${statCard('Templates agence', String(templates.length), 'disponibles', 'up')}
+        ${statCard('Templates agence', STATE.whiteLabelTemplatesError ? '—' : String(templates.length), STATE.whiteLabelTemplatesError ? 'Chargement indisponible' : 'enregistrés', STATE.whiteLabelTemplatesError ? 'neutral' : 'up')}
         ${statCard('Rapports générés', displayStat(null, '18'), PREVIEW_MODE ? 'ce mois toute agence' : 'Générez des rapports', 'neutral')}
         ${statCard('Domaine custom', isUltra ? 'Actif' : 'Non configuré', isUltra ? 'white-label actif' : 'Ultra requis', isUltra ? 'up' : 'neutral')}
       </div>
@@ -59195,16 +59290,16 @@ function renderClientMode() {
         <div class="fp-card-title" style="margin-bottom:14px">🎨 Configuration white-label</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
           ${[
-            { label:"Logo agence",        val:"FlowPoint (défaut)",                  icon:"🖼️", locked:false },
-            { label:"Couleur primaire",   val:"#2563EB (FlowPoint Blue)",            icon:"🎨", locked:false },
-            { label:"Nom de la marque",   val:me?.org?.name || "Votre Agence",       icon:"✏️", locked:false },
-            { label:"Domaine client",     val:"portal.votreagence.fr",               icon:"🌐", locked:false },
-            { label:"Pied de page",       val:"Propulsé par FlowPoint",              icon:"📝", locked:false },
-            { label:"Palette couleurs",   val:"Dark Blue Premium (défaut)",          icon:"🎭", locked:false },
-            { label:"Email d'envoi",      val:"contact@agence.fr",                   icon:"📧", locked:false },
-            { label:"Langue client",      val:"Français (défaut)",                   icon:"🌍", locked:false },
-            { label:"Police d'écriture",  val:"Outfit (défaut)",                     icon:"🔤", locked:false },
-            { label:"Favicon",            val:"FlowPoint (défaut)",                  icon:"⭐", locked:false },
+            { label:"Logo agence",        val:agencyBranding.logoUrl ? "Configuré" : "Non configuré", icon:"🖼️", locked:false },
+            { label:"Couleur primaire",   val:agencyBranding.primaryColor || "Non configurée", icon:"🎨", locked:false },
+            { label:"Nom de la marque",   val:agencyBranding.agencyName || me?.org?.name || "Non configuré", icon:"✏️", locked:false },
+            { label:"Domaine client",     val:agencyBranding.customDomain || "Non configuré", icon:"🌐", locked:false },
+            { label:"Pied de page",       val:agencyBranding.footerMsg || "Non configuré", icon:"📝", locked:false },
+            { label:"Couleur secondaire", val:agencyBranding.secondaryColor || "Non configurée", icon:"🎭", locked:false },
+            { label:"Email d'envoi",      val:me?.email || "Non configuré", icon:"📧", locked:false },
+            { label:"Langue client",      val:agencyBranding.locale || getLocale(), icon:"🌍", locked:false },
+            { label:"Police d'écriture",  val:agencyBranding.font || "Non configurée", icon:"🔤", locked:false },
+            { label:"Favicon",            val:agencyBranding.faviconUrl ? "Configuré" : "Non configuré", icon:"⭐", locked:false },
           ].map(f => `<div style="padding:14px;border-radius:10px;border:1px solid ${f.locked ? 'rgba(255,255,255,0.05)' : 'rgba(37,99,235,0.2)'};background:${f.locked ? 'rgba(255,255,255,0.01)' : 'rgba(37,99,235,0.05)'};${f.locked ? 'opacity:0.6' : ''}">
             <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:4px">${f.icon} ${escHtml(f.label)}</div>
             <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:6px">${escHtml(f.val)}</div>
@@ -59219,6 +59314,8 @@ function renderClientMode() {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">📄 Templates agence</div>
         <div style="display:flex;flex-direction:column;gap:8px">
+          ${STATE.whiteLabelTemplatesError ? `<div style="padding:16px;text-align:center;border:1px solid rgba(239,68,68,0.25);border-radius:10px;background:rgba(239,68,68,0.06)"><div style="font-size:12px;color:#ef4444;margin-bottom:10px">Impossible de charger les templates enregistrés.</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_WHITE_LABEL_API&&window.FP_WHITE_LABEL_API.loadTemplates()">Réessayer</button></div>` : ''}
+          ${!STATE.whiteLabelTemplatesError && templates.length === 0 ? `<div style="padding:18px;text-align:center;color:var(--fp-text-faint);font-size:12px">Aucun template white-label enregistré.</div>` : ''}
           ${templates.map(t => `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
               <div style="width:36px;height:36px;border-radius:8px;background:rgba(37,99,235,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -59226,11 +59323,10 @@ function renderClientMode() {
               </div>
               <div style="flex:1;min-width:0">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(t.name)}</div>
-                <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(t.desc)} · ${t.pages} pages</div>
+                <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(t.desc)}</div>
               </div>
               <div style="text-align:right;flex-shrink:0">
-                <div style="font-size:11px;font-weight:700;color:var(--fp-text-soft)">${t.uses}× utilisé</div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:4px" onclick="useReportTemplate('${escHtml(t.name)}')">Utiliser</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:4px" data-template-name="${escHtml(t.name)}" onclick="useReportTemplate(this.dataset.templateName)">Utiliser</button>
               </div>
             </div>
           `).join('')}
@@ -70460,10 +70556,10 @@ window._fpClientModeAPI = {
     render();
     try {
       const [status, kpis, reports, audits] = await Promise.all([
-        apiFetch('/api/client-mode/status').catch(() => null),
-        apiFetch('/api/client-mode/kpis').catch(() => null),
-        apiFetch('/api/client-mode/reports').catch(() => []),
-        apiFetch('/api/client-mode/audits').catch(() => []),
+        apiFetch('/api/client-mode/status'),
+        apiFetch('/api/client-mode/kpis'),
+        apiFetch('/api/client-mode/reports'),
+        apiFetch('/api/client-mode/audits'),
       ]);
       window._fpCMState = { loading: false, loaded: true, status, kpis, reports: Array.isArray(reports) ? reports : [], audits: Array.isArray(audits) ? audits : [], error: null };
     } catch(e) {

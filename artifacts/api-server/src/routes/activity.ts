@@ -14,8 +14,42 @@ router.get("/activity", async (req: Request, res: Response) => {
     const page     = Number.isFinite(rawPage)  ? Math.max(rawPage, 0) : 0;
     const type     = typeof req.query.type === "string" && req.query.type ? req.query.type : undefined;
 
-    const events = await store.getFilteredActivity({ limit, offset: page * limit, type, orgId });
-    res.json(events);
+    const offset = page * limit;
+    const result = await store.getFilteredActivityPage({ limit, offset, type, orgId });
+
+    // A genuine query/connection failure must NOT be served as an empty feed
+    // (which the client would render as "no activity"). Surface it as 500 so
+    // the caller can retry instead of caching a false-empty page.
+    if (result.error) {
+      res.status(500).json({ error: "activity_fetch_failed" });
+      return;
+    }
+
+    // Expose the TRUE total (distinct from the returned page size) via headers
+    // so even legacy array consumers get pagination metadata.
+    res.setHeader("X-Total-Count", String(result.total));
+    res.setHeader("X-Page-Size", String(result.events.length));
+    res.setHeader("X-Has-More", result.hasMore ? "1" : "0");
+
+    // Backward compatibility: existing frontend/timeline consumers expect a
+    // bare array. Opt into the richer envelope with ?meta=1 (or ?format=page).
+    const wantsEnvelope =
+      req.query.meta === "1" || req.query.meta === "true" || req.query.format === "page";
+
+    if (wantsEnvelope) {
+      res.json({
+        events: result.events,     // this page's slice
+        pageSize: result.events.length, // number actually returned
+        total: result.total,       // true total across all pages
+        hasMore: result.hasMore,
+        limit: result.limit,
+        offset: result.offset,
+        page,
+      });
+      return;
+    }
+
+    res.json(result.events);
   } catch (err) {
     logger.error({ err }, "[activity] GET /activity failed");
     res.status(500).json({ error: "activity_fetch_failed" });

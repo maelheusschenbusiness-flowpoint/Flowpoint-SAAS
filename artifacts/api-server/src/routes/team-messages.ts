@@ -7,15 +7,29 @@ const router = Router();
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
   orgId?: string;
-  orgContext?: { email?: string; userId?: string };
+  orgContext?: { orgId?: string; email?: string; userId?: string; userUuid?: string };
 };
-const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
+// Canonical org bucket — the tenant every teammate (owner + invited member)
+// shares. orgContext.orgId is authoritative (set from the verified session and
+// identical for the owner and everyone they invited); fall back to req.orgId,
+// then "default". Normalized (trim) so REST reads and SSE broadcasts key the
+// exact same bucket and messages are never split across two org strings.
+const org = (req: Request): string => {
+  const ctx = (req as OrgReq).orgContext;
+  const raw = ctx?.orgId ?? (req as OrgReq).orgId ?? "default";
+  const s = String(raw).trim();
+  return s || "default";
+};
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 // Stable identity of the requester — used to persist sender_id and to compute
-// per-recipient "self" on reads. Prefers userId, falls back to email.
+// per-recipient "self" on reads. Prefers the immutable user UUID, then userId,
+// then email. Trimmed so the same person always resolves to the same senderId
+// regardless of whitespace/casing drift in the session record.
 const requesterId = (req: Request): string => {
   const ctx = (req as OrgReq).orgContext;
-  return String(ctx?.userId || ctx?.email || "user");
+  const raw = ctx?.userUuid || ctx?.userId || ctx?.email || "user";
+  const s = String(raw).trim();
+  return s || "user";
 };
 // Canonical channel form: bare lowercase name without '#' prefix ("general", "seo", …)
 const normChannel = (c: unknown): string =>

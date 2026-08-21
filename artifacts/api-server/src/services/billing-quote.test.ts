@@ -23,7 +23,7 @@ const planMinor = (id: string) => eur(PLAN_DEFINITIONS[id]!.priceEur);
 const addonMinor = (key: string) => eur(ADDON_DEFINITIONS[key]!.priceEur);
 
 /** An add-on that no plan bundles, so it is always genuinely payable. */
-const PAID_ADDON = "whiteLabel";
+const PAID_ADDON = "aiCro";
 /** A one-time pack (AI credits) — never deferred by a trial. */
 const ONE_TIME_ADDON = "aiCreditsPack50k";
 
