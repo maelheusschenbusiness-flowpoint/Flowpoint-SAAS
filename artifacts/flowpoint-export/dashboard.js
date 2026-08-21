@@ -6642,13 +6642,13 @@ function renderMonitors() {
             { icon: '📧', name: 'Email',   detail: `${monitors.filter(m => m.alertEmail).length} monitors`, color: '#22c55e',  active: true },
             { icon: '💬', name: 'Slack',   detail: isPro ? '#flowpoint-alerts' : 'Pro requis →',              color: isPro ? '#22c55e' : '#64748b', active: isPro },
             { icon: '🎮', name: 'Discord', detail: isPro ? 'Webhook configuré' : 'Pro requis →',              color: isPro ? '#8b5cf6' : '#64748b', active: isPro },
-            { icon: '📱', name: 'SMS',     detail: 'Bientôt disponible (Ultra)', color: '#94a3b8', active: false, disabled: true },
+            { icon: '📱', name: 'SMS',     detail: '⏳ Bientôt disponible', color: '#94a3b8', active: false, disabled: true, bdv: true },
           ].map(ch => `
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="font-size:16px">${ch.icon}</span>
+            <div style="display:flex;align-items:center;gap:8px;${ch.disabled ? 'opacity:0.65' : ''}">
+              <span style="font-size:16px;${ch.disabled ? 'filter:grayscale(1)' : ''}">${ch.icon}</span>
               <div style="flex:1">
-                <div style="font-size:11.5px;font-weight:600;color:${ch.active ? 'var(--fp-text)' : 'var(--fp-text-muted)'}">${ch.name}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${ch.detail}</div>
+                <div style="font-size:11.5px;font-weight:600;color:${ch.active ? 'var(--fp-text)' : 'var(--fp-text-muted)'}">${ch.name}${ch.disabled ? ' <span style="font-size:9px;background:rgba(148,163,184,0.12);color:#94a3b8;padding:1px 5px;border-radius:4px;font-weight:500">Indisponible</span>' : ''}</div>
+                <div style="font-size:10px;color:${ch.disabled ? '#94a3b8' : 'var(--fp-text-faint)'};font-style:${ch.disabled ? 'italic' : 'normal'}">${ch.detail}</div>
               </div>
               <div style="width:8px;height:8px;border-radius:50%;background:${ch.color}"></div>
             </div>
@@ -60699,7 +60699,7 @@ function renderConversionHeatmap() {
     </div>
     <div class="fp-card" style="text-align:center;padding:32px 20px">
       <div style="width:56px;height:56px;border-radius:16px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.14);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
-        ${svgIcon('monitor').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="22"').replace('height="14"','height="22"')}
+        ${(typeof svgIcon==='function' ? svgIcon('monitor') : '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="22"').replace('height="14"','height="22"')}
       </div>
       <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:6px">Heatmap live — Bientôt disponible</div>
       <div style="font-size:13px;color:var(--fp-text-muted);max-width:380px;margin:0 auto 18px;line-height:1.6">
