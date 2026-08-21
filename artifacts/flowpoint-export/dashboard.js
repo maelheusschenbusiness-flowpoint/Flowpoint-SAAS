@@ -47827,12 +47827,14 @@ async function init() {
             window.FP_DATA.reviewIntel.stats = _st;
           }
         } catch(_e) { /* non-blocking */ }
-        const sentColor = a.sentiment === 'positif' ? '#22c55e' : a.sentiment === 'négatif' ? '#ef4444' : '#f59e0b';
+        const _isPos = /posit/i.test(a.sentiment || '');
+        const _isNeg = /n[eé]gat/i.test(a.sentiment || '');
+        const sentColor = _isPos ? '#22c55e' : _isNeg ? '#ef4444' : '#f59e0b';
         const renderList = (items) => (items||[]).map(it=>`<li style="font-size:12px;color:var(--fp-text-muted);margin-bottom:2px">${escHtml(it)}</li>`).join('');
         openFloatPanel(fpT('📊 Analyse IA — résultat'),
           `<div style="display:flex;flex-direction:column;gap:14px;padding:4px 0">
             <div style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;background:${sentColor}12;border:1px solid ${sentColor}30">
-              <div style="font-size:24px">${a.sentiment === 'positif' ? '😊' : a.sentiment === 'négatif' ? '😟' : '😐'}</div>
+              <div style="font-size:24px">${_isPos ? '😊' : _isNeg ? '😟' : '😐'}</div>
               <div>
                 <div style="font-size:14px;font-weight:700;color:${sentColor}">Sentiment : ${escHtml(a.sentiment || 'neutre')}</div>
                 ${a.score != null ? `<div style="font-size:11px;color:var(--fp-text-muted)">Score : ${escHtml(String(a.score))}/10</div>` : ''}
@@ -48239,8 +48241,30 @@ async function init() {
             if (s && s.quota) { if (!STATE.dfsStatus) STATE.dfsStatus = {}; STATE.dfsStatus.quota = s.quota; }
           }).catch(() => {});
           // Load full ranking history from DB for the scrollable history section
+          // Reset the guard so the history widget re-fetches fresh data on next render
+          if (STATE.localSeo) { STATE.localSeo.rankingHistory = null; STATE.localSeo._historyLoading = false; }
           apiFetch('/api/local-seo/rankings/history').then(h => {
-            if (h?.history) { if (!STATE.localSeo) STATE.localSeo = {}; STATE.localSeo.rankingHistory = h.history; }
+            if (!STATE.localSeo) STATE.localSeo = {};
+            STATE.localSeo.rankingHistory = Array.isArray(h?.history) ? h.history : [];
+            STATE.localSeo._historyLoading = false;
+            const widget = document.getElementById('dfs-rank-history');
+            if (widget) {
+              const items = STATE.localSeo.rankingHistory;
+              widget.innerHTML = items.length === 0
+                ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique.</div>'
+                : items.map(h2 => {
+                    const date = h2.searched_at ? new Date(h2.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}) : '—';
+                    const topResult = Array.isArray(h2.results) && h2.results.length > 0 ? h2.results[0].title || '—' : '—';
+                    return '<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-top:1px solid var(--fp-border)">'
+                      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px;text-align:right;padding-top:2px">'+escHtml(date)+'</div>'
+                      + '<div style="flex:1;min-width:0">'
+                      + '<div style="font-size:11px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
+                      + '<div style="font-size:10px;color:var(--fp-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🥇 '+escHtml(topResult)+'</div>'
+                      + '</div>'
+                      + '<span style="font-size:10px;color:#64748b;flex-shrink:0">'+((Array.isArray(h2.results)?h2.results.length:0))+' rés.</span>'
+                      + '</div>';
+                  }).join('');
+            }
           }).catch(() => {});
         }
         showToast('success', fpT('Rankings chargés !'));
@@ -48338,6 +48362,21 @@ async function init() {
       render();
     }
     else showToast('error', fpT('Erreur lors de l\'ajout'));
+  };
+  window.fpDeleteCompetitor = async function(id, name) {
+    if (!id) return;
+    const label = name ? `"${name}"` : 'ce concurrent';
+    if (!window.confirm(`Supprimer ${label} ? Cette action est irréversible.`)) return;
+    try {
+      const r = await apiFetch(`/api/competitors/${id}`, { method: 'DELETE' });
+      if (r?.ok) {
+        if (Array.isArray(STATE.competitors)) STATE.competitors = STATE.competitors.filter(c => c.id !== id);
+        showToast('success', fpT('Concurrent supprimé'));
+        render();
+      } else {
+        showToast('error', r?.error || fpT('Erreur lors de la suppression'));
+      }
+    } catch(e) { showToast('error', String(e)); }
   };
   window.fpRefreshCompetitor = async function(id) {
     if (!id || !window.FP_COMPETITORS_API) return;
@@ -53309,7 +53348,7 @@ function renderCompetitor() {
                   <td>${available ? displayMetric(c.domainRating) : '—'}</td>
                   <td>${available ? displayMetric(c.keywords) : '—'}</td>
                   <td>${available ? displayMetric(c.traffic) : '—'}</td>
-                  <td>${available ? '' : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRefreshCompetitor('${escHtml(c.id)}')">${fpT('Réessayer')}</button>`}</td>
+                  <td style="white-space:nowrap">${available ? '' : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRefreshCompetitor('${escHtml(c.id)}')" style="margin-right:4px">${fpT('Réessayer')}</button><button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444" onclick="window.fpDeleteCompetitor('${escHtml(c.id)}','${escHtml(c.name || '')}')">${fpT('Supprimer')}</button>`}</td>
                 </tr>`;
               }).join('')}</tbody>
             </table>
@@ -57986,25 +58025,6 @@ function renderDataExplorer() {
         </div>
       </div>
 
-      <!-- SCHEDULED REPORTS -->
-      <div class="fp-card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">⏰ Rapports planifiés</div>
-          ${isPro ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('reports');setTimeout(()=>navigateSub('scheduled'),50)" class="fp-btn fp-btn-ghost fp-btn-sm">+ Planifier</button>` : ''}
-        </div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          ${scheduled.map(s => `
-            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:9px;background:var(--fp-inner-card);border:1px solid ${s.active ? 'rgba(34,197,94,0.2)' : 'var(--fp-border)'}">
-              <div style="flex:1">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:2px">${escHtml(s.name)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(s.freq)} · via ${escHtml(s.dest)} · Prochain : ${escHtml(s.next)}</div>
-              </div>
-              ${badge(s.active ? 'Actif' : 'En pause', s.active ? '#22c55e' : '#64748b')}
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigate('settings')">Config.</button>
-            </div>
-          `).join('')}
-        </div>
-      </div>
     `;
   }
 
@@ -58841,7 +58861,7 @@ function renderClientMode() {
               </div>
               <div style="text-align:right;flex-shrink:0">
                 <div style="font-size:11px;font-weight:700;color:var(--fp-text-soft)">${t.uses}× utilisé</div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:4px" onclick="useReportTemplate(t.name)">Utiliser</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:4px" onclick="useReportTemplate('${escHtml(t.name)}')">Utiliser</button>
               </div>
             </div>
           `).join('')}
@@ -64503,10 +64523,10 @@ function renderCWVCards(cwv) {
 function renderOpportunities(opps) {
   if (!opps || !opps.length) return `<div class="fp-empty-state" style="padding:24px"><p>Aucune opportunité détectée — super score !</p></div>`;
   const catIcons = { 'render-blocking':'⚡','unused-js':'📦','unused-css':'🎨','images':'🖼','other':'🔧' };
-  return `<div class="fp-flex-col" style="gap:8px">
-    ${opps.slice(0,10).map(o => {
+  return `<div class="fp-flex-col" style="gap:0">
+    ${opps.slice(0,10).map((o, i) => {
       const savings = o.savingsMs > 0 ? `-${(o.savingsMs/1000).toFixed(1)}s` : o.savingsBytes > 0 ? `-${(o.savingsBytes/1024).toFixed(0)}KB` : '';
-      return `<div class="fp-psi-opportunity">
+      return `<div class="fp-psi-opportunity" style="${i > 0 ? 'border-top:1px solid var(--fp-border);' : ''}padding-top:${i > 0 ? '10' : '0'}px;margin-top:${i > 0 ? '2' : '0'}px">
         <div class="fp-psi-opp-icon" style="background:var(--fp-bg-body)">${catIcons[o.category]||'🔧'}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:2px;word-break:break-word;overflow-wrap:anywhere">${escHtml(o.title)}</div>
