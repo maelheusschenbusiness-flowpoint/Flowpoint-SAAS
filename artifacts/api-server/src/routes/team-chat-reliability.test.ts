@@ -19,14 +19,31 @@
  * Run with:  pnpm vitest run src/routes/team-chat-reliability.test.ts
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import express from "express";
 import request from "supertest";
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import teamMessagesRouter from "./team-messages.js";
 import { store } from "../services/store.js";
 
 type Row = Record<string, unknown>;
 type OrgDb = (sql: string, values?: unknown[]) => Promise<{ rows: Row[] }>;
+
+function extractNamedFunction(source: string, name: string): string {
+  const start = source.indexOf(`function ${name}(`);
+  if (start < 0) throw new Error(`Missing browser function ${name}`);
+  const open = source.indexOf("{", start);
+  let depth = 0;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === "{") depth++;
+    if (source[i] === "}") {
+      depth--;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error(`Unclosed browser function ${name}`);
+}
 
 // ─── Shared in-memory DB (channels + messages + members), multi-org ──────────
 function makeSharedDb() {
@@ -188,6 +205,77 @@ describe("team chat bidirectional reliability (task #628)", () => {
     // The same person (matched by userUuid) reads their own message as self.
     const ownerView = await request(makeApp(shared.db, ownerU)).get("/team/messages?channel=general");
     expect(ownerView.body[0].self).toBe(true);
+  });
+
+  it("UUID-backed browser sender consumes its SSE echo once as self with no unread badge", () => {
+    const backendSource = readFileSync(
+      new URL("../../../flowpoint-export/fp-backend.js", import.meta.url),
+      "utf8",
+    );
+    const meSource = readFileSync(new URL("./me.ts", import.meta.url), "utf8");
+    expect(meSource).toContain("userUuid:            req.orgContext?.userUuid ?? null");
+
+    const identityFn = extractNamedFunction(backendSource, "_fpChatMessageIsSelf");
+    const handlerFn = extractNamedFunction(backendSource, "_fpHandleChatMessage");
+    const refreshBadge = vi.fn();
+    const playSound = vi.fn();
+    const render = vi.fn();
+    const state = {
+      route: "team",
+      me: {
+        userId: "org-session-id",
+        userUuid: "uuid-owner",
+        email: "owner@x.co",
+      },
+      channelMessages: {
+        general: [{
+          id: "optimistic_1",
+          text: "uuid echo",
+          self: true,
+          read: true,
+        }],
+      },
+    };
+    const context = {
+      data: {
+        channel: "general",
+        message: {
+          id: "server-1",
+          channel: "general",
+          senderId: "uuid-owner",
+          from: "owner",
+          text: "uuid echo",
+          createdAt: "2026-08-21T20:00:00.000Z",
+        },
+      },
+      window: {
+        STATE: state,
+        _fpRefreshMsgBadge: refreshBadge,
+        _fpPlayChatSound: playSound,
+        render,
+      },
+      document: { getElementById: () => null },
+      setTimeout: (fn: () => void) => { fn(); return 0; },
+      Date,
+      console,
+      _fpNormChannel: (channel: unknown) => String(channel ?? "general").replace(/^#+/, "").toLowerCase(),
+    };
+
+    runInNewContext(
+      `${identityFn}\n${handlerFn}\n_fpHandleChatMessage(data);`,
+      context,
+    );
+
+    expect(state.channelMessages.general).toHaveLength(1);
+    expect(state.channelMessages.general[0]).toMatchObject({
+      id: "server-1",
+      senderId: "uuid-owner",
+      self: true,
+      read: true,
+    });
+    expect(refreshBadge).not.toHaveBeenCalled();
+    expect(playSound).not.toHaveBeenCalled();
+    expect(render).toHaveBeenCalledOnce();
   });
 
   // ── Channel normalization on REST hydration ────────────────────────────────

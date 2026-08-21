@@ -47519,13 +47519,13 @@ async function init() {
               if (!STATE.channelMessages) STATE.channelMessages = {};
               if (!STATE.channelMessages[_ch]) STATE.channelMessages[_ch] = [];
               // Avoid duplicate if we sent this message ourselves (check by senderId)
-              const _myId = STATE.me?.id || STATE.me?.userId;
-              // Check senderId against all identity forms (UUID, email) to avoid duplicate on sender side
-              const _myEmail = STATE.me?.email;
-              const _alreadyMine = _cm.senderId && (
-                (_myId && String(_cm.senderId) === String(_myId)) ||
-                (_myEmail && String(_cm.senderId) === String(_myEmail))
-              );
+              // Check senderId against all identity forms exposed by /api/me.
+              // userUuid is canonical for migrated sessions; the others retain
+              // compatibility with legacy sessions.
+              const _myIds = [STATE.me?.userUuid, STATE.me?.id, STATE.me?.userId, STATE.me?.email]
+                .filter(Boolean)
+                .map(String);
+              const _alreadyMine = _cm.senderId && _myIds.includes(String(_cm.senderId));
               if (!_alreadyMine && !STATE.channelMessages[_ch].find(m => m.id && m.id === _cm.id)) {
                 STATE.channelMessages[_ch].push({
                   id: _cm.id || String(Date.now()),
@@ -47533,6 +47533,7 @@ async function init() {
                   text: _cm.content || _cm.text || '',
                   msg: _cm.content || _cm.text || '',
                   time: new Date().toLocaleTimeString(getLocale(), {hour:'2-digit',minute:'2-digit'}),
+                   senderId: _cm.senderId || null,
                   read: false,
                   self: false,
                   attachmentUrl: _cm.attachmentUrl || null,
@@ -52022,9 +52023,11 @@ function renderTeamChat() {
         ${msgs.map(m => {
           const _mFrom = m.from || '?';
           // Prefer explicit senderId comparison (server-computed) to avoid name collisions.
-          const _myId = STATE.me?.id || STATE.me?.userId || STATE.me?.email;
+          const _myIds = [STATE.me?.userUuid, STATE.me?.id, STATE.me?.userId, STATE.me?.email]
+            .filter(Boolean)
+            .map(String);
           const isMe = m.self === true
-            || (_myId && m.senderId && String(m.senderId) === String(_myId))
+            || (m.senderId && _myIds.includes(String(m.senderId)))
             || (!m.senderId && (_mFrom === myName || _mFrom.split(' ')[0] === myName.split(' ')[0]));
           const avatarBg = isMe ? 'rgba(37,99,235,0.25)' : 'rgba(139,92,246,0.2)';
           const avatarCol = isMe ? '#2563EB' : '#8b5cf6';

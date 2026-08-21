@@ -894,9 +894,17 @@
       /* neutralized: canonical delivery is handled by fp:chat:message */
     });
 
+    function _fpChatMessageIsSelf(msgData, me) {
+      var myIds = [me && me.userUuid, me && me.userId, me && me.id, me && me.email]
+        .filter(Boolean)
+        .map(String);
+      return msgData && msgData.senderId != null
+        ? myIds.indexOf(String(msgData.senderId)) >= 0
+        : !!(msgData && msgData.self);
+    }
+
     // ── Chat SSE (nouveau format depuis /api/team/messages) ──
-    document.addEventListener('fp:chat:message', function (e) {
-      var data = e.detail;
+    function _fpHandleChatMessage(data) {
       if (!data || !window.STATE) return;
       var ch = _fpNormChannel((data.channel || (data.message && data.message.channel)) || 'general');
       var msgData = data.message || data;
@@ -904,12 +912,10 @@
       if (!window.STATE.channelMessages[ch]) window.STATE.channelMessages[ch] = [];
       // Recipient-side "self" computation: the SSE broadcast reaches every
       // client of the org, so the server can't decide per-recipient. Compare
-      // the stable senderId against our own identity (userId or email).
+      // the stable senderId against every identity exposed by /api/me. UUID is
+      // canonical for migrated sessions; userId/email preserve legacy sessions.
       var me = window.STATE.me || {};
-      var myIds = [me.userId, me.id, me.email].filter(Boolean).map(String);
-      var isSelf = msgData.senderId != null
-        ? myIds.indexOf(String(msgData.senderId)) >= 0
-        : (msgData.self || false);
+      var isSelf = _fpChatMessageIsSelf(msgData, me);
       var serverId = msgData.id;
       var existingIndex = window.STATE.channelMessages[ch].findIndex(function (m) {
         return (serverId && m.id === serverId) ||
@@ -952,6 +958,9 @@
           var ml = dd.querySelector('#fp-msg-list'); if (ml) ml.scrollTop = ml.scrollHeight;
         }
       }, 50);
+    }
+    document.addEventListener('fp:chat:message', function (e) {
+      _fpHandleChatMessage(e.detail);
     });
 
     // ── Audit terminé ──
