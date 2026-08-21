@@ -48490,6 +48490,68 @@ async function init() {
     render();
   };
 
+  // ── Competitor AI Analysis ──────────────────────────────────────────────────
+  window.fpAnalyzeCompetitor = async function(id, name, forceRefresh) {
+    if (!id) return;
+    if (!STATE.competitorAnalyses) STATE.competitorAnalyses = {};
+    // If already loading, skip
+    if (STATE._competitorAnalysisLoading && STATE._competitorAnalysisLoading[id]) return;
+    if (!STATE._competitorAnalysisLoading) STATE._competitorAnalysisLoading = {};
+    STATE._competitorAnalysisLoading[id] = true;
+    render(); // show spinner
+    try {
+      const r = await apiFetch('/api/competitors/' + id + '/analyze', { method: 'POST', body: JSON.stringify({}) });
+      if (r && r.ok && r.analysis) {
+        STATE.competitorAnalyses[id] = r.analysis;
+        showToast('success', fpT('Analyse IA terminée — ') + escHtml(name || ''));
+        if (r.analysis.changes_detected && r.analysis.changes_detected.length > 0) {
+          showToast('info', '🔄 ' + r.analysis.changes_detected.length + ' changement(s) détecté(s) depuis la dernière analyse');
+        }
+      } else {
+        showToast('error', (r && r.error) ? r.error : fpT('Erreur analyse IA'));
+      }
+    } catch(e) { showToast('error', fpT('Erreur réseau')); }
+    finally {
+      STATE._competitorAnalysisLoading[id] = false;
+      render();
+    }
+  };
+
+  window.fpLoadCompetitorAnalysis = async function(id) {
+    if (!id) return;
+    if (!STATE.competitorAnalyses) STATE.competitorAnalyses = {};
+    if (STATE.competitorAnalyses[id]) return; // already cached
+    try {
+      const r = await apiFetch('/api/competitors/' + id + '/analysis');
+      if (r && r.ok && r.analysis) STATE.competitorAnalyses[id] = r.analysis;
+    } catch(_) {}
+    render();
+  };
+
+  window.fpCreateMissionFromOpportunity = async function(title, desc) {
+    if (!title) return;
+    try {
+      const r = await apiFetch('/api/missions', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: title,
+          description: desc || '',
+          category: 'seo',
+          type: 'content',
+          priority: 'medium',
+          status: 'todo',
+          impact: 'high',
+          effort: 'medium',
+        }),
+      });
+      if (r && r.id) {
+        showToast('success', fpT('Mission créée : ') + escHtml(title));
+      } else {
+        showToast('error', (r && r.error) ? r.error : fpT('Erreur lors de la création de la mission'));
+      }
+    } catch(e) { showToast('error', fpT('Erreur réseau')); }
+  };
+
   // ── Fix 2: AI Competitor Suggestions ────────────────────────────────────────
   // Load suggestions from /api/competitors/suggestions and cache in STATE
   window.fpLoadCompSuggestions = async function() {
@@ -53372,13 +53434,146 @@ function renderCompetitor() {
         </div>
         <button class="fp-btn fp-btn-primary" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
       </div>
-      ${sub === 'comparison' ? `
-        <div class="fp-card" style="text-align:center;padding:48px 24px;margin-bottom:16px">
-          <div style="font-size:40px;margin-bottom:12px">⚔️</div>
-          <div style="font-size:16px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Comparaison concurrents</div>
-          <div style="font-size:13px;color:var(--fp-text-muted);max-width:360px;margin:0 auto">Bientôt disponible — comparaison côte-à-côte des métriques SEO, trafic et mots-clés de vos concurrents.</div>
-        </div>
-      ` : ''}
+      ${sub === 'comparison' ? (() => {
+        // ── Comparaison IA ────────────────────────────────────────────────────
+        if (competitors.length === 0) return `<div class="fp-card" style="text-align:center;padding:48px 24px;margin-bottom:16px"><div style="font-size:40px;margin-bottom:12px">⚔️</div><div style="font-weight:700;margin-bottom:8px">Comparaison IA</div><div style="font-size:13px;color:var(--fp-text-muted)">Ajoutez d'abord des concurrents puis lancez une analyse IA.</div></div>`;
+        // Load analyses for all competitors in background
+        competitors.forEach(c => {
+          if (!STATE.competitorAnalyses || !STATE.competitorAnalyses[c.id]) {
+            if (typeof window.fpLoadCompetitorAnalysis === 'function') window.fpLoadCompetitorAnalysis(c.id);
+          }
+        });
+        const analyses = STATE.competitorAnalyses || {};
+        const analyzed = competitors.filter(c => analyses[c.id]);
+        if (analyzed.length === 0) {
+          return `<div class="fp-card fp-mb-16" style="padding:28px 24px">
+            <div class="fp-card-title" style="margin-bottom:12px">⚔️ Comparaison IA — Vous vs Concurrent</div>
+            <div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:18px">Lancez une analyse IA sur un concurrent pour obtenir la comparaison détaillée.</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              ${competitors.map(c => {
+                const loading = STATE._competitorAnalysisLoading && STATE._competitorAnalysisLoading[c.id];
+                return `<div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
+                  <div style="flex:1"><div style="font-weight:600;font-size:12px">${escHtml(c.name)}</div><div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(String(c.url||'').replace(/^https?:\/\//,''))}</div></div>
+                  ${loading
+                    ? `<span class="fp-badge fp-badge--ghost" style="font-size:10px">Analyse en cours…</span>`
+                    : `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpAnalyzeCompetitor('${escHtml(c.id)}','${escHtml(c.name||'')}')">🔬 Analyser</button>`}
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+        }
+        // Show comparison for first analyzed competitor (or user-selected one)
+        const selId = STATE._selectedCompetitorId || analyzed[0].id;
+        const selComp = competitors.find(c => c.id === selId) || analyzed[0];
+        const analysis = analyses[selId];
+        const confidence = {'high':'🟢','medium':'🟡','low':'🔴'};
+        return `
+          <div class="fp-card fp-mb-12">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-size:12px;font-weight:600;color:var(--fp-text-muted)">Concurrent analysé :</span>
+              ${competitors.map(c => {
+                const hasA = !!analyses[c.id];
+                const loading = STATE._competitorAnalysisLoading && STATE._competitorAnalysisLoading[c.id];
+                return `<button class="fp-btn fp-btn-sm ${c.id===selId?'fp-btn-primary':'fp-btn-ghost'}"
+                  style="font-size:11px"
+                  onclick="STATE._selectedCompetitorId='${escHtml(c.id)}';render()"
+                >${escHtml(c.name)}${hasA?' ✓':loading?' ⏳':''}</button>`;
+              }).join('')}
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-left:auto;font-size:11px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}',true)">↺ Actualiser l'analyse</button>
+            </div>
+          </div>
+          ${!analysis ? `<div class="fp-card" style="text-align:center;padding:28px"><div style="font-size:13px;color:var(--fp-text-muted)">Cliquez <strong>Analyser</strong> sur ce concurrent pour lancer l'analyse IA.</div><button class="fp-btn fp-btn-primary" style="margin-top:14px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}')">🔬 Analyser ${escHtml(selComp.name||'')}</button></div>` : `
+          <div class="fp-grid fp-grid-2 fp-mb-16">
+            <div class="fp-card" style="border-left:3px solid #22c55e">
+              <div class="fp-card-title" style="margin-bottom:10px;color:#22c55e">✅ Ce que vous faites mieux</div>
+              ${(analysis.you_better||[]).length===0
+                ? `<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">Non déterminé — contexte de votre entreprise non fourni</div>`
+                : `<ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px">${(analysis.you_better).map(s=>`<li style="font-size:12px">${escHtml(String(s))}</li>`).join('')}</ul>`}
+            </div>
+            <div class="fp-card" style="border-left:3px solid #ef4444">
+              <div class="fp-card-title" style="margin-bottom:10px;color:#ef4444">⚠️ Ce qu'ils font mieux</div>
+              ${(analysis.they_better||[]).length===0
+                ? `<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">Aucun avantage détecté</div>`
+                : `<ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px">${(analysis.they_better).map(s=>`<li style="font-size:12px">${escHtml(String(s))}</li>`).join('')}</ul>`}
+            </div>
+          </div>
+          ${(analysis.opportunities||[]).length>0 ? `
+          <div class="fp-card fp-mb-16">
+            <div class="fp-card-title" style="margin-bottom:12px">💡 Opportunités recommandées</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              ${(analysis.opportunities).map((op,i)=>`
+                <div style="padding:12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
+                  <div style="display:flex;align-items:flex-start;gap:10px">
+                    <span style="font-size:14px;flex-shrink:0">${['🎯','💼','📈','🔑','⚡'][i%5]}</span>
+                    <div style="flex:1">
+                      <div style="font-weight:600;font-size:12px;margin-bottom:4px">${escHtml(String(op.title||''))}</div>
+                      <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:8px">${escHtml(String(op.description||''))}</div>
+                      <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px"
+                        onclick="window.fpCreateMissionFromOpportunity('${escHtml(String(op.missionTitle||op.title||''))}','${escHtml(String(op.missionDesc||op.description||''))}')">
+                        ✚ Créer une mission
+                      </button>
+                    </div>
+                  </div>
+                </div>`).join('')}
+            </div>
+          </div>` : ''}
+          ${(analysis.feature_matrix||[]).length>0 ? `
+          <div class="fp-card fp-mb-16">
+            <div class="fp-card-title" style="margin-bottom:12px">📊 Matrice fonctionnalités</div>
+            <div style="overflow-x:auto">
+              <table class="fp-table" style="width:100%">
+                <thead><tr><th>Fonctionnalité</th><th>Vous</th><th>${escHtml(selComp.name||'Concurrent')}</th></tr></thead>
+                <tbody>${(analysis.feature_matrix).map(row=>`<tr>
+                  <td style="font-size:12px">${escHtml(String(row.feature||''))}</td>
+                  <td style="font-size:12px;color:${String(row.you||'')==='✓'||String(row.you||'').toLowerCase().includes('oui')?'#22c55e':String(row.you||'')==='—'?'var(--fp-text-faint)':'var(--fp-text)'}">${escHtml(String(row.you||'—'))}</td>
+                  <td style="font-size:12px;color:${String(row.competitor||'')==='✓'||String(row.competitor||'').toLowerCase().includes('oui')?'#22c55e':String(row.competitor||'')==='—'?'var(--fp-text-faint)':'var(--fp-text)'}">${escHtml(String(row.competitor||'—'))}</td>
+                </tr>`).join('')}</tbody>
+              </table>
+            </div>
+          </div>` : ''}
+          <div class="fp-grid fp-grid-2 fp-mb-16">
+            <div class="fp-card">
+              <div class="fp-card-title" style="margin-bottom:8px">💪 Forces détectées</div>
+              ${(analysis.strengths||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.strengths).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
+            </div>
+            <div class="fp-card">
+              <div class="fp-card-title" style="margin-bottom:8px">⚠️ Faiblesses détectées</div>
+              ${(analysis.weaknesses||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.weaknesses).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
+            </div>
+          </div>
+          <div class="fp-card fp-mb-16">
+            <div class="fp-card-title" style="margin-bottom:8px">📋 Positionnement — ${escHtml(selComp.name||'')}</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:10px">
+              ${[
+                {label:'Proposition de valeur',val:analysis.value_prop},
+                {label:'Cible',val:analysis.target_audience},
+                {label:'Produits / Services',val:analysis.products},
+                {label:'Tarification',val:analysis.pricing},
+                {label:'Essai gratuit / Démo',val:analysis.trial},
+              ].map(item=>`<div style="padding:10px;background:var(--fp-inner-card);border-radius:8px;border:1px solid var(--fp-border)">
+                <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${escHtml(item.label)}</div>
+                <div style="font-size:12px;color:${String(item.val||'')!=='Non déterminé'?'var(--fp-text)':'var(--fp-text-faint)'};font-style:${String(item.val||'')==='Non déterminé'?'italic':'normal'}">${escHtml(String(item.val||'Non déterminé'))}</div>
+              </div>`).join('')}
+            </div>
+          </div>
+          ${(analysis.sources||[]).length>0 ? `
+          <div class="fp-card" style="opacity:0.85">
+            <div class="fp-card-title" style="margin-bottom:10px;font-size:11px">🔍 Sources & niveau de confiance</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${(analysis.sources).slice(0,6).map(s=>{
+                const conf = s.confidence==='high'?'🟢':s.confidence==='medium'?'🟡':'🔴';
+                return `<div style="display:flex;align-items:center;gap:8px;font-size:10px">
+                  <span style="flex-shrink:0">${conf}</span>
+                  <span style="color:var(--fp-text-muted);min-width:60px;flex-shrink:0">${escHtml(s.type||'page')}</span>
+                  <a href="${escHtml(String(s.url||''))}" target="_blank" rel="noopener" style="color:var(--fp-accent);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px">${escHtml(String(s.url||''))}</a>
+                  <span style="color:var(--fp-text-faint);margin-left:auto;flex-shrink:0">${escHtml(s.detected_at||'')}</span>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>` : ''}
+          `}
+        `;
+      })() : ''}
       ${(sub && sub !== 'overview' && sub !== 'apercu' && sub !== 'comparison' && competitors.length > 0) ? (() => {
         // Only tabs backed by fields the API actually returns: keywords and traffic
         const avail = competitors.filter(c => c.dataStatus === 'available');
@@ -53437,8 +53632,42 @@ function renderCompetitor() {
                   <td>${available ? displayMetric(c.domainRating) : '—'}</td>
                   <td>${available ? displayMetric(c.keywords) : '—'}</td>
                   <td>${available ? displayMetric(c.traffic) : '—'}</td>
-                  <td style="white-space:nowrap">${available ? '' : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRefreshCompetitor('${escHtml(c.id)}')" style="margin-right:4px">${fpT('Réessayer')}</button><button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444" onclick="window.fpDeleteCompetitor('${escHtml(c.id)}','${escHtml(c.name || '')}')">${fpT('Supprimer')}</button>`}</td>
-                </tr>`;
+                  <td style="white-space:nowrap;min-width:160px">
+                    ${available
+                      ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px" onclick="window.fpAnalyzeCompetitor('${escHtml(c.id)}','${escHtml(c.name||'')}')">
+                          ${STATE._competitorAnalysisLoading&&STATE._competitorAnalysisLoading[c.id]?'Analyse…':'🔬 Analyser'}
+                        </button>`
+                      : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRefreshCompetitor('${escHtml(c.id)}')" style="margin-right:4px">${fpT('Réessayer')}</button>`}
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;margin-left:4px" onclick="window.fpDeleteCompetitor('${escHtml(c.id)}','${escHtml(c.name || '')}')">${fpT('Supprimer')}</button>
+                  </td>
+                </tr>
+                ${(() => {
+                  if (!available) return '';
+                  const _a = STATE.competitorAnalyses && STATE.competitorAnalyses[c.id];
+                  if (!_a) return '';
+                  const _nd = 'Non déterminé';
+                  return `<tr style="background:var(--fp-inner-card)"><td colspan="6" style="padding:12px 16px">
+                    <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
+                      <div style="flex:2;min-width:200px">
+                        <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Analyse IA — ${escHtml(c.name||'')}</div>
+                        <div style="font-size:11px;font-weight:600;margin-bottom:2px">Proposition de valeur</div>
+                        <div style="font-size:11px;color:${_a.value_prop!==_nd?'var(--fp-text)':'var(--fp-text-faint)'};font-style:${_a.value_prop===_nd?'italic':'normal'};margin-bottom:8px">${escHtml(_a.value_prop||_nd)}</div>
+                        <div style="font-size:11px;font-weight:600;margin-bottom:2px">Tarification</div>
+                        <div style="font-size:11px;color:${_a.pricing!==_nd?'var(--fp-text)':'var(--fp-text-faint)'};font-style:${_a.pricing===_nd?'italic':'normal'};margin-bottom:8px">${escHtml(_a.pricing||_nd)}</div>
+                        ${_a.trial&&_a.trial!==_nd?`<div style="font-size:11px;padding:4px 8px;background:rgba(34,197,94,0.1);border-radius:6px;color:#22c55e;display:inline-block;margin-bottom:8px">✓ ${escHtml(_a.trial)}</div>`:''}
+                      </div>
+                      <div style="flex:3;min-width:280px">
+                        ${(_a.features||[]).length>0?`<div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;margin-bottom:4px">Fonctionnalités détectées</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">${(_a.features).slice(0,8).map(f=>`<span style="font-size:10px;padding:2px 7px;background:rgba(37,99,235,0.08);border-radius:10px;color:var(--fp-accent)">${escHtml(String(f))}</span>`).join('')}</div>`:''}
+                        ${(_a.strengths||[]).length>0?`<div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;margin-bottom:4px">Forces</div><div style="font-size:11px;margin-bottom:8px">${(_a.strengths).slice(0,3).map(s=>`• ${escHtml(String(s))}`).join(' &nbsp;')}</div>`:''}
+                        ${(_a.changes_detected||[]).length>0?`<div style="font-size:10px;padding:6px 10px;background:rgba(245,158,11,0.1);border-radius:6px;color:#f59e0b;margin-bottom:6px">🔄 ${_a.changes_detected.length} changement(s) depuis la dernière analyse</div>`:''}
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+                        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="STATE._selectedCompetitorId='${escHtml(c.id)}';navigateSub('comparison')">⚔️ Voir comparaison</button>
+                        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window.fpAnalyzeCompetitor('${escHtml(c.id)}','${escHtml(c.name||'')}',true)">↺ Actualiser</button>
+                      </div>
+                    </div>
+                  </td></tr>`;
+                })()}`;
               }).join('')}</tbody>
             </table>
           </div>

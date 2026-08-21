@@ -401,6 +401,49 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS competitors_domain_rating_idx ON competitors(domain_rating);`);
     await run(client, `CREATE INDEX IF NOT EXISTS competitors_org_id_idx ON competitors(org_id);`);
 
+    // ── competitor_analysis ───────────────────────────────────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS competitor_analysis (
+        id              TEXT PRIMARY KEY,
+        org_id          TEXT NOT NULL DEFAULT 'default',
+        competitor_id   TEXT NOT NULL,
+        url_fetched     TEXT NOT NULL DEFAULT '',
+        value_prop      TEXT NOT NULL DEFAULT 'Non déterminé',
+        target_audience TEXT NOT NULL DEFAULT 'Non déterminé',
+        products        TEXT NOT NULL DEFAULT 'Non déterminé',
+        arguments       JSONB NOT NULL DEFAULT '[]',
+        differentiators JSONB NOT NULL DEFAULT '[]',
+        features        JSONB NOT NULL DEFAULT '[]',
+        plans           JSONB NOT NULL DEFAULT '[]',
+        pricing         TEXT NOT NULL DEFAULT 'Non déterminé',
+        trial           TEXT NOT NULL DEFAULT 'Non déterminé',
+        ctas            JSONB NOT NULL DEFAULT '[]',
+        strengths       JSONB NOT NULL DEFAULT '[]',
+        weaknesses      JSONB NOT NULL DEFAULT '[]',
+        advantages      JSONB NOT NULL DEFAULT '[]',
+        disadvantages   JSONB NOT NULL DEFAULT '[]',
+        differentiating JSONB NOT NULL DEFAULT '[]',
+        you_better      JSONB NOT NULL DEFAULT '[]',
+        they_better     JSONB NOT NULL DEFAULT '[]',
+        opportunities   JSONB NOT NULL DEFAULT '[]',
+        feature_matrix  JSONB NOT NULL DEFAULT '[]',
+        sources         JSONB NOT NULL DEFAULT '[]',
+        snapshot_hash   TEXT NOT NULL DEFAULT '',
+        changes_detected JSONB NOT NULL DEFAULT '[]',
+        pages_fetched   INTEGER NOT NULL DEFAULT 0,
+        ai_available    BOOLEAN NOT NULL DEFAULT false,
+        created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE(competitor_id, org_id)
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS competitor_analysis_org_idx ON competitor_analysis(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS competitor_analysis_comp_idx ON competitor_analysis(competitor_id);`);
+    await run(client, `ALTER TABLE competitor_analysis ADD COLUMN IF NOT EXISTS feature_matrix JSONB NOT NULL DEFAULT '[]';`);
+    await run(client, `ALTER TABLE competitor_analysis ADD COLUMN IF NOT EXISTS you_better JSONB NOT NULL DEFAULT '[]';`);
+    await run(client, `ALTER TABLE competitor_analysis ADD COLUMN IF NOT EXISTS they_better JSONB NOT NULL DEFAULT '[]';`);
+    await run(client, `ALTER TABLE competitor_analysis ADD COLUMN IF NOT EXISTS opportunities JSONB NOT NULL DEFAULT '[]';`);
+
     // ── alert_events ──────────────────────────────────────────────────────────
     await run(client, `
       CREATE TABLE IF NOT EXISTS alert_events (
