@@ -471,8 +471,10 @@ function _confirmSessionExpired() {
   // FIX P0 (Cause B): if STATE.me is already populated the session is confirmed valid.
   // A 401 from a secondary endpoint (activity, billing, monitors) must NOT trigger
   // a global logout when the user's identity is already established. Return early.
-  if (STATE.me && STATE.me.orgId) {
-    console.warn('[FP-AUTH]', new Date().toISOString(), 'Suppressed false-logout — STATE.me is confirmed; background 401 on secondary endpoint ignored.');
+  // NOTE: /api/me does NOT return a top-level orgId field — use .email as the
+  // presence sentinel (always set when STATE.me is fully loaded from /api/me).
+  if (STATE.me && STATE.me.email) {
+    console.warn('[FP-AUTH]', new Date().toISOString(), 'Suppressed false-logout — STATE.me is confirmed (email=' + STATE.me.email.slice(0,6) + '…); background 401 on secondary endpoint ignored.');
     _401BackgroundCount = 0;
     return;
   }
@@ -633,6 +635,25 @@ async function apiFetch(path, opts = {}) {
         _err401.status = 401;
         if (isGet) _apiFetchInFlight.delete(path);
         throw _err401;
+      }
+      // STRUCTURAL RULE: if STATE.me is already populated, the session was recently
+      // confirmed valid (this tab successfully loaded /api/me earlier in this session).
+      // A single /api/me 401 after an attempted recovery should NOT immediately destroy
+      // the session — it may be a transient server hiccup, rolling deploy, or brief
+      // DB issue.  Route through the background confirmation path instead of redirecting.
+      // STATE.me.email is the presence sentinel: /api/me always returns email when authenticated.
+      if (STATE.me && STATE.me.email) {
+        console.warn('[FP-AUTH]', _ts, 'Foreground 401 on', path, 'after recovery, but STATE.me is populated — deferring to background confirmation instead of immediate redirect.');
+        // Inject enough background 401s to trigger the confirmation threshold,
+        // then schedule the confirmation check on a short delay.
+        _401BackgroundCount = (_401BackgroundCount || 0) + 3;
+        if (!_401ConfirmTimer) {
+          _401ConfirmTimer = setTimeout(function() { _401ConfirmTimer = null; _confirmSessionExpired(); }, 800);
+        }
+        if (isGet) _apiFetchInFlight.delete(path);
+        const _deferErr = new Error('Unauthorized');
+        _deferErr.status = 401;
+        throw _deferErr;
       }
       console.warn('[FP-AUTH]', _ts, 'Foreground 401 on session-critical', path, '— clearing session and redirecting.');
       _401BackgroundCount = 0;
