@@ -62595,7 +62595,7 @@ function renderGA4Traffic() {
 // inside innerHTML. Uses apiFetch() for authenticated API calls.
 // ══════════════════════════════════════════════════════════════════════
 
-window._fpFunnelState = { loading: false, funnels: null, editing: null, running: null, runResult: null, runError: null };
+window._fpFunnelState = { loading: false, funnels: null, editing: null, running: null, runResult: null, runError: null, showNewForm: false };
 
 // Escape HTML for safe rendering of user-supplied strings
 function _fpFunnelEsc(s) {
@@ -62788,6 +62788,7 @@ window._fpFunnelShowForm = function(funnel) {
   const resSec  = document.getElementById('fp-funnel-result-section');
   if (!formSec) return;
   window._fpFunnelState.editing = funnel || null;
+  window._fpFunnelState.showNewForm = !funnel;
   if (listSec) listSec.style.display = 'none';
   if (resSec)  resSec.style.display  = 'none';
   formSec.style.display = 'block';
@@ -62800,6 +62801,7 @@ window._fpFunnelCancel = function() {
   const formSec = document.getElementById('fp-funnel-form-section');
   const resSec  = document.getElementById('fp-funnel-result-section');
   window._fpFunnelState.editing = null;
+  window._fpFunnelState.showNewForm = false;
   if (formSec) formSec.style.display = 'none';
   if (resSec)  resSec.style.display  = 'none';
   if (listSec) listSec.style.display = 'block';
@@ -63031,11 +63033,13 @@ function renderGA4Funnels() {
 
   // If a funnel form was in progress when the user navigated away, restore it after DOM injection.
   const _funnelRestoreEditing = !!window._fpFunnelState?.editing;
+  const _funnelRestoreNew    = !_funnelRestoreEditing && !!window._fpFunnelState?.showNewForm;
 
   setTimeout(() => {
     if (_funnelRestoreEditing && window._fpFunnelState?.editing) {
-      // Show the saved form immediately without re-loading
       window._fpFunnelShowForm(window._fpFunnelState.editing);
+    } else if (_funnelRestoreNew) {
+      window._fpFunnelShowForm();
     } else {
       window._fpFunnelLoad?.();
     }
@@ -69478,7 +69482,7 @@ function renderLocalSEOReviews() {
                 <span style="font-size:18px">${sentimentEmoji(r.sentiment)}</span>
                 <div style="flex:1;min-width:0">
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
-                    <span style="font-size:13px;font-weight:700">${escHtml(r.author_name || 'Anonyme')}</span>
+                    <span style="font-size:13px;font-weight:700">${escHtml(r.author_name || r.author || r.reviewer_name || 'Anonyme')}</span>
                     <span style="color:var(--fp-warning);font-size:11px">${'⭐'.repeat(Math.min(r.rating || 0, 5))}</span>
                     <span style="font-size:9px;padding:1px 6px;border-radius:6px;background:${r.sentiment === 'positive' ? 'rgba(34,197,94,0.15)' : r.sentiment === 'negative' ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.05)'};color:${sentimentColor(r.sentiment)}">${r.sentiment || '—'} ${r.sentiment_score ? '(' + (parseFloat(r.sentiment_score) * 100).toFixed(0) + '%)' : ''}</span>
                   </div>
