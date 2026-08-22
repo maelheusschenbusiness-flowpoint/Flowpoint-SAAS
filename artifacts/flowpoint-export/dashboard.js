@@ -8789,15 +8789,20 @@ function renderLocalSEO() {
           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Local Pack Rankings</div>
           <div id="dfs-local-rank-widget">
             ${(STATE.localSeo?.rankings && STATE.localSeo.rankings.length > 0) ? `
-              ${STATE.localSeo.rankings.map((r, i) => `
-                <div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;${i > 0 ? 'border-top:1px solid var(--fp-border)' : ''}">
-                  <div style="font-size:15px;font-weight:800;color:${i===0?'#22c55e':i===1?'#2563EB':'#f59e0b'};min-width:22px;text-align:center">#${r.rank}</div>
+              ${STATE.localSeo.rankings.map((r, i) => {
+                const _sel = (STATE.localSeo._selectedRankings||new Set()).has(i);
+                const _rankColors = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
+                return `<div data-rank-row="${i}" style="display:flex;align-items:flex-start;gap:8px;padding:7px 6px;border-radius:7px;cursor:pointer;transition:background 0.12s;${i > 0 ? 'border-top:1px solid var(--fp-border)' : ''};background:${_sel?'rgba(37,99,235,0.08)':'transparent'}"
+                  onclick="(function(el,idx){var cb=el.querySelector('.fp-rank-cb');if(cb){cb.checked=!cb.checked;cb.dispatchEvent(new Event('change',{bubbles:true}));}else{if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();STATE.localSeo._selectedRankings.has(idx)?STATE.localSeo._selectedRankings.delete(idx):STATE.localSeo._selectedRankings.add(idx);render(STATE.currentSection);}})(this,${i})">
+                  <input type="checkbox" class="fp-rank-cb" data-rank-idx="${i}" style="width:14px;height:14px;accent-color:#2563EB;cursor:pointer;flex-shrink:0;margin-top:3px" ${_sel?'checked':''} onclick="event.stopPropagation()">
+                  <div style="font-size:15px;font-weight:800;color:${_rankColors[i%_rankColors.length]};min-width:22px;text-align:center">#${r.rank}</div>
                   <div style="flex:1;min-width:0">
                     <div style="font-size:12px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.title)}</div>
                     ${r.rating > 0 ? `<div style="font-size:10px;color:#f59e0b">★ ${r.rating} (${r.reviews} avis)</div>` : ''}
                     ${r.address ? `<div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.address)}</div>` : ''}
                   </div>
-                </div>`).join('')}
+                </div>`;
+              }).join('')}
               <div style="margin-top:8px;font-size:10px;color:#64748b;font-style:italic">${fpT('Classement pour')} « ${escHtml(STATE.localSeo.rankingKeyword||'')} » — ${escHtml(STATE.localSeo.rankingCity||'')}</div>` : `
             <div style="text-align:center;padding:16px;color:#64748b;font-size:12px">
               Cliquez <strong>${fpT('Charger rankings')}</strong> pour voir vos positions locales Google en direct
@@ -63259,7 +63264,8 @@ function _fpFunnelBuildForm(funnel) {
   // Also check sessionStorage backup (survives navigate-away even if STATE was reset)
   let _ssDraft = null;
   try { const _ss = sessionStorage.getItem('fp:funnel-draft'); if (_ss) _ssDraft = JSON.parse(_ss); } catch(_) {}
-  const _draft = (!isEdit && window._fpFunnelState && (window._fpFunnelState.draft || _ssDraft)) ? (window._fpFunnelState.draft || _ssDraft) : null;
+  // Fix: use optional chaining so sessionStorage draft survives navigate-away (when _fpFunnelState is reset)
+  const _draft = !isEdit ? (window._fpFunnelState?.draft || _ssDraft) : null;
   const bd = funnel?.breakdown_dimension || _draft?.bd || '';
   const bdOpts = ['','deviceCategory','country','browser','operatingSystem','sessionDefaultChannelGrouping','sourceMedium','city','region'];
   const lookback = funnel?.lookback_days || _draft?.lookback || 30;
@@ -63361,6 +63367,7 @@ window._fpFunnelShowForm = function(funnel) {
 // Cancel form — go back to list
 window._fpFunnelCancel = function() {
   if (window._fpFunnelState) window._fpFunnelState.draft = null;
+  try { sessionStorage.removeItem('fp:funnel-draft'); } catch(_) {}
   const listSec = document.getElementById('fp-funnels-list-section');
   const formSec = document.getElementById('fp-funnel-form-section');
   const resSec  = document.getElementById('fp-funnel-result-section');
@@ -70006,10 +70013,10 @@ function renderLocalSEOReviews() {
 
     <!-- STATS -->
     <div class="fp-stat-row fp-mb-16">
-      ${statCard('Score réputation', String(stats.reputationScore || 0) + '/100', 'global calculé IA', stats.reputationScore >= 70 ? 'up' : 'down')}
-      ${statCard('Note moyenne', String(stats.avgRating || '—') + '⭐', `${stats.totalReviews || 0} avis analysés`, 'up')}
-      ${statCard('Avis positifs', String(stats.sentimentDist?.positive || 0), 'sentiment détecté par IA', 'up')}
-      ${statCard('Avis négatifs', String(stats.sentimentDist?.negative || 0), 'nécessitent réponse urgente', stats.sentimentDist?.negative > 0 ? 'down' : 'up')}
+      ${statCard('Score réputation', stats.totalReviews > 0 ? String(stats.reputationScore || 0) + '/100' : '—', stats.totalReviews > 0 ? 'global calculé IA' : 'Aucune donnée', stats.reputationScore >= 70 ? 'up' : 'neutral')}
+      ${statCard('Note moyenne', stats.avgRating ? String(stats.avgRating) + ' ⭐' : '—', `${stats.totalReviews || 0} avis analysés`, 'up')}
+      ${statCard('Avis positifs', stats.totalReviews > 0 ? String(stats.sentimentDist?.positive || 0) : '—', stats.totalReviews > 0 ? 'sentiment détecté par IA' : 'Aucune donnée', 'up')}
+      ${statCard('Avis négatifs', stats.totalReviews > 0 ? String(stats.sentimentDist?.negative || 0) : '—', stats.totalReviews > 0 ? 'nécessitent réponse urgente' : 'Aucune donnée', stats.sentimentDist?.negative > 0 ? 'down' : 'neutral')}
     </div>
 
     <!-- ALERTS -->
