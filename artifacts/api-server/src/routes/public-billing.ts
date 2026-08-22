@@ -1206,15 +1206,33 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           } else if (_aoPlanSub) {
             /* Add add-on items to the subscriber's existing plan subscription so no second
                subscription is created. proration_behavior:"none" because month 1 was already
-               collected via the PaymentIntent — Stripe will bill the add-on at next renewal. */
+               collected via the PaymentIntent — Stripe will bill the add-on at next renewal.
+               CRITICAL: check for an existing item with the same Price ID before creating —
+               Stripe rejects a duplicate create with "already using that Price". Use UPDATE
+               (quantity++) instead. */
             for (const item of _aoItems) {
-              await (stripe as unknown as { subscriptionItems: { create: (p: Record<string, unknown>) => Promise<unknown> } })
-                .subscriptionItems.create({
-                  subscription:       _aoPlanSub.id,
-                  price:              item.price,
-                  quantity:           item.quantity,
+              type SubItem = { id: string; price?: { id?: string }; quantity?: number };
+              const _existingAoItem: SubItem | undefined = (_aoPlanSub.items?.data ?? []).find(
+                (it: SubItem) => it.price?.id === item.price
+              );
+              if (_existingAoItem) {
+                // Price already on this subscription — increment quantity
+                const _newQty = ((_existingAoItem as SubItem).quantity ?? 0) + (item.quantity ?? 1);
+                await stripe.subscriptionItems.update(_existingAoItem.id, {
+                  quantity:           _newQty,
                   proration_behavior: "none",
                 });
+                logger.info({ subscriptionId: _aoPlanSub.id, priceId: item.price, oldQty: _existingAoItem.quantity, newQty: _newQty },
+                  "[PublicBilling] finalize: addon quantity updated on existing subscription item (idempotent create-vs-update)");
+              } else {
+                await (stripe as unknown as { subscriptionItems: { create: (p: Record<string, unknown>) => Promise<unknown> } })
+                  .subscriptionItems.create({
+                    subscription:       _aoPlanSub.id,
+                    price:              item.price,
+                    quantity:           item.quantity,
+                    proration_behavior: "none",
+                  });
+              }
             }
             _aoSubId = _aoPlanSub.id;
             logger.info({ subscriptionId: _aoSubId, addons: _aoRecurring },
@@ -1377,8 +1395,22 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       logger.warn({ customerId }, "[PublicBilling] finalize: new Stripe customer created (last resort — check for duplicates)");
     }
 
-    // Attach payment method to resolved customer (safe even if already attached)
-    await stripe.paymentMethods.attach(paymentMethodId!, { customer: customerId! }).catch(() => {});
+    // Attach payment method to resolved customer — idempotent guard to avoid 400
+    // "PaymentMethod already attached" when finalize-checkout is called twice.
+    const _pmInfo = await stripe.paymentMethods.retrieve(paymentMethodId!).catch(() => null);
+    const _pmAlreadyOnCustomer = _pmInfo?.customer && _pmInfo.customer === customerId!;
+    if (!_pmAlreadyOnCustomer) {
+      await stripe.paymentMethods.attach(paymentMethodId!, { customer: customerId! }).catch((pmErr: { message?: string }) => {
+        const msg = String(pmErr?.message ?? pmErr ?? "");
+        if (msg.includes("already been attached") || msg.includes("already attached")) {
+          logger.info({ paymentMethodId, customerId }, "[PublicBilling] finalize: PM already attached — skipping (idempotent)");
+        } else {
+          logger.error({ pmErr, paymentMethodId, customerId }, "[PublicBilling] finalize: PM attach failed");
+        }
+      });
+    } else {
+      logger.info({ paymentMethodId, customerId }, "[PublicBilling] finalize: PM already on customer — skipping attach (idempotent)");
+    }
 
     // Keep the canonical billing record in sync before creating the subscription.
     // A trial checkout may create the Stripe customer before the activation

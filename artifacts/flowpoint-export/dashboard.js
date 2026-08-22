@@ -573,6 +573,22 @@ function _confirmSessionExpired() {
     }
     return;
   }
+  // ── Guard 2b: auth state machine is still RESTORING — wait for resolution. ───
+  // Redirecting while __fpAuthState === 'restoring' causes Flash Sign-In on F5:
+  // the session-restore promise hasn't settled yet, so STATE.me is not populated.
+  // Defer until the state machine resolves to 'authenticated' or 'unknown'.
+  if (window.__fpAuthState === 'restoring') {
+    console.warn('[FP-AUTH]', new Date().toISOString(), 'Auth state RESTORING — deferring confirmation until session-restore settles.');
+    var _restoringDefer = window.__fpSessionReady || Promise.resolve(false);
+    Promise.resolve(_restoringDefer).then(function() {
+      // After session-restore, only proceed if still not authenticated
+      if (window.__fpAuthState !== 'authenticated') {
+        _401ConfirmTimer = null;
+        _confirmSessionExpired();
+      }
+    });
+    return;
+  }
   // ── Guard 3: if STATE.me is already populated the session is confirmed valid. ──
   // A 401 from a secondary endpoint (activity, billing, monitors) must NOT trigger
   // a global logout when the user's identity is already established. Return early.
