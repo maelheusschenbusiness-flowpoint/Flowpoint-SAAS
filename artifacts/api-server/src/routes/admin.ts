@@ -369,7 +369,9 @@ router.get("/admin/db-check", async (req: Request, res: Response): Promise<void>
 router.post("/admin/test-session", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
 
-  const { orgId = "default", ttlMinutes = 60 } = req.body as { orgId?: string; ttlMinutes?: number };
+  const { orgId = "default", ttlMinutes = 60, role: rawRole = "admin" } = req.body as { orgId?: string; ttlMinutes?: number; role?: string };
+  const VALID_ROLES = ["owner", "admin", "member", "viewer"];
+  const role = VALID_ROLES.includes(rawRole) ? rawRole : "admin";
 
   const client = await pool.connect();
   try {
@@ -388,9 +390,9 @@ router.post("/admin/test-session", async (req: Request, res: Response): Promise<
     const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
     await client.query(
       `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at)
-       VALUES ($1, 'test-admin', $2, 'test@flowpoint.pro', 'admin', $3, NOW())
+       VALUES ($1, 'test-admin', $2, 'test@flowpoint.pro', $4, $3, NOW())
        ON CONFLICT DO NOTHING`,
-      [token, orgId, expiresAt]
+      [token, orgId, expiresAt, role]
     );
     res.json({
       ok: true,
