@@ -295,35 +295,31 @@ export async function getLocalPackRank(
 ): Promise<Array<{ rank: number; title: string; rating: number; reviews: number; address?: string }>> {
   if (!await isDataForSEOConfigured(orgId)) return [];
   try {
-    type DFSResult = Array<{
-      status_code: number;
-      result?: Array<{
-        items?: Array<{
-          type: string;
-          rank_absolute: number;
-          title?: string;
-          rating?: { value: number; votes_count: number };
-          address?: string;
-        }>;
-      }>;
+    // Use business_listings/search/live — works on the standard DFS subscription tier.
+    // The legacy /serp/google/local_pack/live/regular endpoint requires a higher-tier SERP plan.
+    type BLItem = {
+      title?: string;
+      rating?: { value?: number; votes_count?: number };
+      address?: string;
+      place_id?: string;
+    };
+    type BLResult = Array<{
+      status_code?: number;
+      result?: Array<{ items?: BLItem[] }>;
     }>;
-    const data = await dfsRequest<DFSResult>("/serp/google/local_pack/live/regular", [{
+    const data = await dfsRequest<BLResult>("/business_data/business_listings/search/live", [{
       keyword,
-      location_name: location,
-      language_code: "fr",
-      depth: 3,
+      location_code: 2056, // Belgium — most FlowPoint users; fallback for unknown location
+      limit: 5,
     }], orgId);
 
-    const items = (data[0]?.result?.[0]?.items ?? [])
-      .filter(i => i.type === "local_pack")
-      .slice(0, 3);
-
-    return items.map((item, idx) => ({
-      rank:     item.rank_absolute ?? idx + 1,
-      title:    item.title ?? `Résultat ${idx + 1}`,
-      rating:   item.rating?.value ?? 0,
-      reviews:  item.rating?.votes_count ?? 0,
-      address:  item.address,
+    const items = data[0]?.result?.[0]?.items ?? [];
+    return items.slice(0, 3).map((item, idx) => ({
+      rank:    idx + 1,
+      title:   item.title ?? `Résultat ${idx + 1}`,
+      rating:  item.rating?.value ?? 0,
+      reviews: item.rating?.votes_count ?? 0,
+      address: item.address,
     }));
   } catch (e) {
     logger.warn({ e }, "[dfs] getLocalPackRank failed");
