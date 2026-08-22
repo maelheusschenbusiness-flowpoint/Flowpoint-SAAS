@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
-import { ownerOnly } from "../middlewares/requireRole.js";
+import { ownerOnly, canAdmin, canWrite } from "../middlewares/requireRole.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
@@ -130,12 +130,12 @@ function parseAddons(raw: unknown, res: Response): AddonsMap | null {
 }
 
 
-router.post("/billing/create-checkout-session", billingCheckoutRateLimit, async (req: Request, res: Response) => {
+router.post("/billing/create-checkout-session", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
   res.redirect(307, "/api/billing/checkout");
 });
 
 // ── POST /billing/checkout ───────────────────────────────────────────────────
-router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, res: Response) => {
+router.post("/billing/checkout", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
   const plan = parsePlan(req.body?.plan, res);
   if (plan === null) return;
   const addons = parseAddons(req.body?.addons, res);
@@ -590,7 +590,7 @@ router.get("/billing/payment-methods", async (req: Request, res: Response) => {
 });
 
 // ── POST /billing/trial ──────────────────────────────────────────────────────
-router.post("/billing/trial", async (req: Request, res: Response) => {
+router.post("/billing/trial", ownerOnly, async (req: Request, res: Response) => {
   const plan = parsePlanWithDefault(req.body?.plan, "pro", res);
   if (plan === null) return;
   const rawDays = req.body?.days;
@@ -618,7 +618,7 @@ router.post("/billing/trial", async (req: Request, res: Response) => {
 });
 
 // ── POST /billing/coupon/validate ────────────────────────────────────────────
-router.post("/billing/coupon/validate", async (req: Request, res: Response) => {
+router.post("/billing/coupon/validate", canAdmin, async (req: Request, res: Response) => {
   const { code } = req.body as { code?: string };
   if (!code) { res.status(400).json({ error: "Coupon code requis" }); return; }
   try {
@@ -1618,7 +1618,7 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
 });
 
 // ── POST /billing/checkout/annual ────────────────────────────────────────────
-router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
+router.post("/billing/checkout/annual", ownerOnly, async (req: Request, res: Response) => {
   const plan = parsePlan(req.body?.plan, res);
   if (plan === null) return;
   const addons = parseAddons(req.body?.addons, res);
@@ -1798,7 +1798,7 @@ router.get("/billing/usage-details", async (req: Request, res: Response): Promis
 // ── POST /billing/usage-events ────────────────────────────────────────────────
 // Client-side exports (CSV, Health-Score PDF generated in-browser) report their
 // consumption here so the cumulative counters include them.
-router.post("/billing/usage-events", async (req: Request, res: Response): Promise<void> => {
+router.post("/billing/usage-events", canWrite, async (req: Request, res: Response): Promise<void> => {
   const orgId = req.orgContext?.orgId ?? req.orgId ?? "default";
   const kind = String((req.body as { kind?: string })?.kind ?? "");
   const CLIENT_KINDS = new Set(["export", "health_export", "pdf_export"]);
@@ -1983,7 +1983,7 @@ router.get("/billing/events", async (req: Request, res: Response) => {
 });
 
 // ── POST /billing/addon-checkout ───────────────────────────────────────────────
-router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Request, res: Response): Promise<void> => {
+router.post("/billing/addon-checkout", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response): Promise<void> => {
   const { addonKey = "", addonName = "" } = req.body as { addonKey?: string; addonName?: string; price?: string; quantity?: unknown };
   if (!addonKey) { res.status(400).json({ error: "addonKey required" }); return; }
   // Quantity is honoured only for quantity add-ons (QTY_ADDONS); flag add-ons are always 1.

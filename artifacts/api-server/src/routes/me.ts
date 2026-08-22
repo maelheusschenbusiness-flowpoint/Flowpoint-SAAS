@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
 import { requireOrgId } from "../lib/require-org-id.js";
+import { canAdmin, ownerOnly, canWrite } from "../middlewares/requireRole.js";
 
 import { PLAN_LIMITS, PLAN_INCLUDED_ADDONS, QTY_ADDON_GRANTS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
@@ -311,7 +312,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
 // Fully org-isolated: reads from DB, applies only provided fields, returns DB-confirmed data.
 // Never reads from store.me (global singleton) to prevent multi-tenant leaks.
 // ── PATCH /api/org — update organisation name / website ─────────────────────
-router.patch("/org", async (req: Request, res: Response): Promise<void> => {
+router.patch("/org", canAdmin, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   const { name, website } = req.body as { name?: string; website?: string };
@@ -456,7 +457,7 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
 });
 
 // ── PUT /api/me/addons ────────────────────────────────────────────────────────
-router.put("/me/addons", async (req: Request, res: Response): Promise<void> => {
+router.put("/me/addons", ownerOnly, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   const body = req.body as Partial<Record<string, boolean | number>>;
@@ -797,7 +798,7 @@ router.get("/me/settings", async (req: Request, res: Response): Promise<void> =>
 // ── PATCH /api/me/settings — write canonical user preferences (timezone, etc.) ──
 // Canonical storage for timezone. Merges into user_prefs.settings JSONB so that
 // GET /api/me/settings always returns the authoritative value.
-router.patch("/me/settings", async (req: Request, res: Response): Promise<void> => {
+router.patch("/me/settings", canAdmin, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
 
@@ -859,7 +860,7 @@ router.get("/me/dataforseo/status", async (req: Request, res: Response): Promise
 });
 
 /** POST /api/me/dataforseo/credentials — save org-scoped credentials */
-router.post("/me/dataforseo/credentials", async (req: Request, res: Response): Promise<void> => {
+router.post("/me/dataforseo/credentials", canAdmin, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   const { login, password } = req.body as { login?: string; password?: string };
@@ -882,7 +883,7 @@ router.post("/me/dataforseo/credentials", async (req: Request, res: Response): P
 });
 
 /** DELETE /api/me/dataforseo/credentials — clear org-scoped credentials */
-router.delete("/me/dataforseo/credentials", async (req: Request, res: Response): Promise<void> => {
+router.delete("/me/dataforseo/credentials", canAdmin, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   try {
@@ -995,7 +996,7 @@ router.get("/settings/api-keys", async (req: Request, res: Response): Promise<vo
 
 // ── DELETE /api/settings/data ─────────────────────────────────────────────────
 // Purge all product data for this org but keep the account intact.
-router.delete("/settings/data", async (req: Request, res: Response): Promise<void> => {
+router.delete("/settings/data", ownerOnly, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   const tables = [
@@ -1044,7 +1045,7 @@ router.delete("/settings/data", async (req: Request, res: Response): Promise<voi
 });
 
 // ── POST /api/settings/api-keys/regenerate ────────────────────────────────────
-router.post("/settings/api-keys/regenerate", async (req: Request, res: Response): Promise<void> => {
+router.post("/settings/api-keys/regenerate", ownerOnly, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
 

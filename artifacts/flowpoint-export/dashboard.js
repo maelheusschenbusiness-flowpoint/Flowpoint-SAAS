@@ -69,7 +69,8 @@ const _FP_ROLE_PERMS = {
   owner:  { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
   admin:  { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:false },
   member: { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
-  viewer: { audits:false, monitors:false, reports:false, billing:false, team:false,  settings:false },
+  // Viewer: read-only access to audits/monitors/reports — backend blocks all mutations (canWrite/canAdmin)
+  viewer: { audits:true,  monitors:true,  reports:true,  billing:false, team:false,  settings:false },
 };
 // Routes that require a specific permission key (absent = open to all roles)
 const _FP_ROUTE_PERM = {
