@@ -73,7 +73,10 @@ router.post("/automation/workflows", async (req: Request, res: Response) => {
     );
     // Return the created row so the frontend can update its list without a reload
     const created = await db(req)(`SELECT * FROM automation_workflows WHERE id=$1 AND org_id=$2`, [id, org(req)]).catch(() => ({ rows: [] }));
-    store.logActivity({ type: "settings", label: `Workflow créé : ${name}`, targetId: id, targetType: "workflow", orgId: org(req) }).catch(() => {});
+    const _awCtx = (req as any).orgContext || {};
+    store.logActivity({ type: "settings", label: `Workflow créé : ${name}`, targetId: id, targetType: "workflow", orgId: org(req),
+      actionKey: "activity.workflow.created", actionParams: { name: String(name) },
+      userId: _awCtx.userId || _awCtx.email || null, userName: _awCtx.name || _awCtx.email || null }).catch(() => {});
     res.status(201).json({ ok: true, id, workflow: created.rows[0] ?? null });
   } catch {
     res.status(500).json({ error: "Failed to create workflow" });
@@ -127,7 +130,10 @@ router.post("/automation/workflows/:id/run", async (req: Request, res: Response)
       res.status(500).json({ error: runError, runId: result.runId });
       return;
     }
-    store.logActivity({ type: "audit", label: `Workflow exécuté : ${id}`, targetId: id, targetType: "workflow", orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
+    const _arCtx = (req as any).orgContext || {};
+    store.logActivity({ type: "audit", label: `Workflow exécuté : ${id}`, targetId: id, targetType: "workflow", orgId: org(req),
+      actionKey: "activity.workflow.run", actionParams: { id: String(id) },
+      userId: _arCtx.userId || _arCtx.email || null, userName: _arCtx.name || _arCtx.email || null }).catch(err => console.warn("[logActivity]", err?.message));
     store.broadcast({ type: "fp:workflow:completed", workflowId: id }, org(req));
     res.json(result);
   } catch (execErr) {
