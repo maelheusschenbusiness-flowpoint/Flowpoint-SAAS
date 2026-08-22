@@ -362,6 +362,11 @@ window.__fpPageLoadTs = Date.now();
                   return null;
                 });
               }
+              // Guard 0: if page just loaded and session not yet confirmed, suppress flash redirect
+              if (performance.now() < 6000 && !window.__fpSessionConfirmed) {
+                console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Guard 0: early-boot, suppressing redirect.');
+                return null;
+              }
               window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
             }
             return null;

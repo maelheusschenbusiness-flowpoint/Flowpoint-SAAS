@@ -559,6 +559,16 @@ var _401ConfirmTimer    = null;
 var _loadDataInProgress = false;
 
 function _confirmSessionExpired() {
+  // ── Guard 0: early-boot window (< 5s) — session-restore may not be settled yet. ─
+  // On F5 or BFCache restore, background 401s can arrive before /api/me has confirmed
+  // the session. Defer instead of flashing sign-in.
+  if (performance.now() < 5000 && !window.__fpSessionConfirmed) {
+    console.warn('[FP-AUTH]', new Date().toISOString(), 'Guard 0: early-boot, deferring redirect.');
+    if (!_401ConfirmTimer) {
+      _401ConfirmTimer = setTimeout(function() { _401ConfirmTimer = null; _confirmSessionExpired(); }, Math.ceil(5000 - performance.now()) + 200);
+    }
+    return;
+  }
   // ── Guard 1: another redirect is already in flight — do nothing. ─────────────
   if (window.__fpRedirecting) {
     _401BackgroundCount = 0;
@@ -11639,7 +11649,7 @@ function renderSettings() {
     const permMatrix = {
       // Colonnes : Audits | Monitors | Rapports | Facturation | Équipe | Paramètres
       Owner:   [true,  true,  true,  true,  true,  true ],
-      Manager: [true,  true,  true,  false, true,  false],
+      Manager: [true,  true,  true,  false, true,  true ],
       Editor:  [true,  false, true,  false, false, false],
       Viewer:  [false, false, false, false, false, false],
     };
@@ -15471,6 +15481,8 @@ async function fpGoToPricing(targetPlan) {
 function navigate(route, subRoute) {
   const _n = normalizeRoute(route, subRoute || null);
   if (_n.route === STATE.route && subRoute == null && _n.subRoute == null && STATE.subRoute) _n.subRoute = STATE.subRoute;
+  // Settings default sub-route: 'workspace' so the page is never blank for any role
+  if (_n.route === 'settings' && !_n.subRoute && !STATE.subRoute) _n.subRoute = 'workspace';
   const _prevRoute    = STATE.route;
   const _prevSubRoute = STATE.subRoute;
   STATE.route    = _n.route;
