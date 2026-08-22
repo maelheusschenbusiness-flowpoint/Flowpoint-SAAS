@@ -3740,7 +3740,7 @@ function openNewChannelPanel() {
         }
       } catch(e) {
         showToast('error', fpT('Erreur lors de la création du canal'));
-        if (btn) { btn.disabled = false; btn.textContent = 'Créer le canal'; }
+        if (btn) { btn.disabled = false; btn.textContent = fpT('Créer le canal'); }
       }
     });
   }, 50);
@@ -4046,7 +4046,7 @@ function renderActivityList() {
     if (STATE.activityFilterLoading) {
       list.innerHTML = `<div class="fp-activity-empty" style="opacity:.6">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="animation:spin 1.2s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
-        <div>Chargement…</div>
+        <div>${fpT('Chargement\u2026')}</div>
       </div>`;
       return;
     }
@@ -4108,7 +4108,7 @@ function renderActivityList() {
   // ACT-002: bind "Voir plus" click — loads next page from API
   document.getElementById('fp-act-load-more')?.addEventListener('click', async () => {
     const btn = document.getElementById('fp-act-load-more');
-    if (btn) btn.textContent = 'Chargement…';
+    if (btn) btn.textContent = fpT('Chargement\u2026');
     try {
       const nextPage = STATE.activityPage + 1;
       const pageData = await apiFetch('/api/activity?meta=1&page=' + nextPage + '&limit=50');
@@ -5415,7 +5415,7 @@ function renderSidebarStatus() {
   const topStatus = $('#topbar-status');
   const _totMon = (STATE.monitors||[]).length;
   if (topDot) topDot.className = 'fp-status-dot' + (down > 0 ? ' down' : '');
-  if (topTxt) topTxt.textContent = down > 0 ? `${down} DOWN` : _totMon > 0 ? 'Tous UP' : 'Aucun monitor';
+  if (topTxt) topTxt.textContent = down > 0 ? `${down} DOWN` : _totMon > 0 ? fpT('Tous UP') : fpT('Aucun monitor');
   if (topStatus) topStatus.className = 'fp-topbar-status' + (down > 0 ? ' down' : '');
 
   // Monitors sidebar badge removed on user request — never show a red dot there.
@@ -48180,11 +48180,11 @@ async function init() {
     const cancel = document.createElement('button');
     cancel.type = 'button';
     cancel.className = 'fp-btn fp-btn-ghost';
-    cancel.textContent = 'Annuler';
+    cancel.textContent = fpT('Annuler');
     const confirm = document.createElement('button');
     confirm.type = 'button';
     confirm.className = 'fp-btn fp-btn-primary fp-confirm-danger';
-    confirm.textContent = 'Supprimer';
+    confirm.textContent = fpT('Supprimer');
     actions.append(cancel, confirm);
     dialog.append(heading, body, actions);
     overlay.appendChild(dialog);
