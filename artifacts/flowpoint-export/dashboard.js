@@ -10686,7 +10686,7 @@ function renderBilling() {
     const strategies = PREVIEW_MODE ? [
       {
         title:'Passage Ultra recommandé dans 6 semaines',
-        body:'Au rythme actuel, vos audits dépasseront 250/mois le 22 juin. Le passage Ultra (' + fpPlanPriceLabel('ultra') + ') coûte +' + fpPlanDeltaEur('pro','ultra') + '€ mais génère 4h/semaine d\'économie d\'automatisation = 200€ de valeur temps. ROI positif en 1 mois.',
+        body:fpT('Au rythme actuel, vos audits dépasseront 250/mois le 22 juin. Le passage Ultra (') + fpPlanPriceLabel('ultra') + ') coûte +' + fpPlanDeltaEur('pro','ultra') + '€ mais génère 4h/semaine d\'économie d\'automatisation = 200€ de valeur temps. ROI positif en 1 mois.',
         priority:'Haute', color:'#f59e0b', action:'Simuler Ultra',
         metrics:['Audits 76% de capacité', 'Seuil prévu J+8', 'ROI : +200€/mois'],
       },
@@ -10704,7 +10704,7 @@ function renderBilling() {
       },
       {
         title:'White-Label — Activer le portail client',
-        body:'Votre portail White-Label est inclus mais pas encore configuré. Ajoutez votre logo et vos couleurs pour offrir une expérience premium à vos clients. Temps de setup : moins de 10 minutes.',
+        body:fpT('Votre portail White-Label est inclus mais pas encore configuré. Ajoutez votre logo et vos couleurs pour offrir une expérience premium à vos clients. Temps de setup : moins de 10 minutes.'),
         priority:'Faible', color:'#22c55e', action:'Configurer White-Label',
         metrics:['Logo & couleurs personnalisés', 'Pied de page custom', 'Domaine portail inclus'],
       },
@@ -10719,7 +10719,7 @@ function renderBilling() {
       });
       arr.push({
         title:'White-Label — Personnaliser le portail client',
-        body:'Personnalisez le portail client avec votre logo et vos couleurs pour offrir une expérience premium à vos clients. Temps de setup : moins de 10 minutes.',
+        body:fpT('Personnalisez le portail client avec votre logo et vos couleurs. Temps de setup : moins de 10 minutes.'),
         priority:'Faible', color:'#22c55e', action:'Configurer White-Label',
         metrics:['Logo & couleurs personnalisés', 'Pied de page custom', 'Domaine portail inclus'],
       });
@@ -13319,31 +13319,31 @@ function renderAI() {
       _hasLowSpd ? {
         icon:'🟡', color:'#eab308', priority:'Cette semaine',
         title:'Friction mobile sur ' + ((STATE.audits.reduce((b,a)=>(a.speed||a.score||0)<(b.speed||b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')||'votre site'),
-        body:'Score mobile faible détecté. Analysez le LCP, le CLS et le FID pour identifier les points de friction.',
+        body:fpT('Score mobile faible détecté. Analysez le LCP, le CLS et le FID pour identifier les points de friction.'),
         chips:[chip('Analyse UX','conversion','ux-lab'), chip('Revenue Leak','conversion','revenue-leak')],
       } : null,
       _hasGbpUnanswered ? {
         icon:'🟡', color:'#eab308', priority:'Cette semaine',
         title:STATE.gbp.unansweredReviews + ' avis Google sans réponse',
-        body:'Impact négatif sur le score GBP et le trust signal local. Recommandation\u00a0: répondre sous 24h.',
+        body:fpT('Impact négatif sur le score GBP et le trust signal local. Répondre sous 24h.'),
         chips:[chip('Gérer le GBP','local-seo','gbp'), chip('Dashboard local','local-seo',null)],
       } : null,
       _hasLowScore ? {
         icon:'🟢', color:'#22c55e', priority:'Opportunité',
         title:'Quick wins SEO — ' + STATE.audits.filter(a=>(a.score||100)<70).length + ' site(s) sous 70/100',
-        body:'Améliorez les balises title manquantes et les Core Web Vitals pour progresser rapidement.',
+        body:fpT('Améliorez les balises title manquantes et les Core Web Vitals pour progresser rapidement.'),
         chips:[chip('Quick Wins','overview','quick-wins'), chip('Lancer les audits','audits',null)],
       } : null,
       _hasLocalOpp ? {
         icon:'🟢', color:'#22c55e', priority:'Opportunité',
         title:'Opportunités Local SEO disponibles',
-        body:'Des zones géographiques à fort potentiel ont été identifiées dans votre heatmap locale.',
+        body:fpT('Des zones géographiques à fort potentiel ont été identifiées dans votre heatmap locale.'),
         chips:[chip('Voir les opportunités','local-seo','opportunities'), chip('Analyser les zones','local-seo','zones')],
       } : null,
       _hasReports ? {
         icon:'🔵', color:'#2563EB', priority:'Pro tip',
         title:STATE.reports.length + ' rapport(s) prêt(s) à partager',
-        body:'Activez le Mode Client pour notifier vos clients et suivre les consultations de vos rapports PDF.',
+        body:fpT('Activez le Mode Client pour notifier vos clients et suivre les consultations de vos rapports PDF.'),
         chips:[chip('Voir les rapports','reports',null), chip('Mode Client','client-mode',null)],
       } : null,
     ].filter(Boolean);
@@ -13495,28 +13495,28 @@ function renderAI() {
       {
         n:1, color:'#ef4444',
         title:'Domination Local SEO — 60 jours',
-        body:'Votre score local stagne à 68% pendant que vos concurrents gagnent du terrain. Plan d\'action : optimiser les fiches GBP des 3 sites principaux, couvrir 2 nouvelles zones, générer 20 posts locaux IA.',
+        body:fpT('Votre score local stagne à 68%. Plan : optimiser les fiches GBP des 3 sites principaux, couvrir 2 nouvelles zones.'),
         metrics:[{l:'Impact estimé',v:'+18 pts local'},{l:'Leads potentiels',v:'+40%'},{l:'Durée',v:'60 jours'}],
         chips:[chip('Lancer le plan Local SEO','local-seo',null), chip('Analyser les zones','local-seo','zones')],
       },
       {
         n:2, color:'#f59e0b',
         title:'Recovery SEO — 3 sites critiques',
-        body:'Plombier Paris (38/100), Restaurant Le Soleil (61/100) et 1 autre site sont sous le seuil de rentabilité SEO.',
+        body:fpT('Plombier Paris (38/100), Restaurant Le Soleil (61/100) et 1 autre site sont sous le seuil SEO.'),
         metrics:[{l:'ROI estimé',v:'+35% leads'},{l:'Corrections',v:'47 issues'},{l:'Durée',v:'45 jours'}],
         chips:[chip('Voir les audits','audits',null), chip('Quick Wins','overview','quick-wins')],
       },
       {
         n:3, color:'#8b5cf6',
         title:'Conversion Intelligence — Mobile First',
-        body:'Votre taux de conversion mobile est 3x inférieur au benchmark sectoriel. Plan : CWV mobile, CTA optimization, A/B testing IA.',
+        body:fpT('Votre taux de conversion mobile est 3x inférieur au benchmark. Plan : CWV mobile, CTA optimization, A/B testing IA.'),
         metrics:[{l:'Conversion actuelle',v:'1.2%'},{l:'Objectif',v:'3.5%'},{l:'Impact',v:'Voir rapport'}],
         chips:[chip('Analyse conversion','conversion','cro'), chip('UX & Friction','conversion','ux-lab')],
       },
       {
         n:4, color:'#22c55e',
         title:'Scale Agency — 5 nouveaux clients',
-        body:'Votre infrastructure est prête pour 5 clients supplémentaires sans surcoût. Add-ons actifs, Mode Client opérationnel, rapports white-label configurés. Seul manque : la prospection ciblée.',
+        body:fpT('Votre infrastructure est prête pour 5 clients supplémentaires sans surcoût. Add-ons actifs, Mode Client opérationnel.'),
         metrics:[{l:'Capacité disponible',v:'5 clients'},{l:'MRR potentiel',v:'+2 000€'},{l:'Setup',v:'2 jours'}],
         chips:[chip('Mode Client','client-mode','agency'), chip('Facturation','billing','enterprise')],
       },
@@ -29904,6 +29904,24 @@ function bindGlobalEvents() {
     "Priorité locale": "Priorità locale",
     "Désactivée": "Disattivata",
     "Agressive": "Aggressiva",
+    "Score mobile faible détecté. Analysez le LCP, le CLS et le FID pour identifier les points de friction.": "Velocità mobile bassa. Analizza LCP, CLS e FID per identificare i punti di attrito.",
+    "Impact négatif sur le score GBP et le trust signal local. Répondre sous 24h.": "Impatto negativo sul punteggio GBP. Rispondi entro 24h.",
+    "Améliorez les balises title manquantes et les Core Web Vitals pour progresser rapidement.": "Migliora i tag title mancanti e i Core Web Vitals per avanzare rapidamente.",
+    "Des zones géographiques à fort potentiel ont été identifiées dans votre heatmap locale.": "Zone geografiche ad alto potenziale identificate nella heatmap locale.",
+    "Activez le Mode Client pour notifier vos clients et suivre les consultations de vos rapports PDF.": "Attiva la Modalità Cliente per notificare i clienti e monitorare le consultazioni dei PDF.",
+    "Votre portail White-Label est inclus mais pas encore configuré. Ajoutez votre logo et vos couleurs pour offrir une expérience premium.": "Il tuo portale White-Label è incluso ma non ancora configurato. Aggiungi logo e colori per un'esperienza premium.",
+    "Personnalisez le portail client avec votre logo et vos couleurs pour offrir une expérience premium. Temps de setup : 15 min.": "Personalizza il portale con logo e colori per un'esperienza premium. Tempo di setup: 15 min.",
+    "Votre fiche GBP incomplète. Complétez photos, horaires et description, puis mesurez l'évolution de la visibilité locale.": "La tua scheda GBP è incompleta. Completa foto, orari e descrizione, poi misura l'evoluzione della visibilità locale.",
+    "Sites critiques à corriger": "Siti critici da correggere",
+    "Priorité absolue : conversion mobile": "Priorità assoluta: conversione mobile",
+    "Accélérer le Local SEO Maps": "Accelera il Local SEO Maps",
+    "Reconquérir le trafic référent": "Riconquista il traffico referral",
+    "+12 clients/mois": "+12 clienti/mese",
+    "+400 sessions/mois": "+400 sessioni/mese",
+    "Optimiser Google Business Profile": "Ottimizza Google Business Profile",
+    "Créer une mission": "Crea una missione",
+    "Planifiez vos actions SEO et suivez leur avancement": "Pianifica le azioni SEO e monitora l'avanzamento",
+    "3. Créer une mission": "3. Creare una missione",
     },
     pt: {
     "Sites critiques à corriger": "Sites críticos a corrigir",
@@ -32843,6 +32861,22 @@ function bindGlobalEvents() {
     "Priorité locale": "Prioridade local",
     "Désactivée": "Desativada",
     "Agressive": "Agressiva",
+    "Score mobile faible détecté. Analysez le LCP, le CLS et le FID pour identifier les points de friction.": "Velocidade mobile baixa. Analise LCP, CLS e FID para identificar pontos de atrito.",
+    "Impact négatif sur le score GBP et le trust signal local. Répondre sous 24h.": "Impacto negativo na pontuação GBP. Responda em 24h.",
+    "Améliorez les balises title manquantes et les Core Web Vitals pour progresser rapidement.": "Melhore as tags title em falta e os Core Web Vitals para avançar rapidamente.",
+    "Des zones géographiques à fort potentiel ont été identifiées dans votre heatmap locale.": "Zonas geográficas de alto potencial identificadas no heatmap local.",
+    "Activez le Mode Client pour notifier vos clients et suivre les consultations de vos rapports PDF.": "Ative o Modo Cliente para notificar clientes e acompanhar consultas de PDFs.",
+    "Votre portail White-Label est inclus mais pas encore configuré. Ajoutez votre logo et vos couleurs pour offrir une expérience premium.": "O seu portal White-Label está incluído mas não configurado. Adicione logo e cores para uma experiência premium.",
+    "Personnalisez le portail client avec votre logo et vos couleurs pour offrir une expérience premium. Temps de setup : 15 min.": "Personalize o portal com logo e cores para uma experiência premium. Tempo de configuração: 15 min.",
+    "Votre fiche GBP incomplète. Complétez photos, horaires et description, puis mesurez l'évolution de la visibilité locale.": "A sua ficha GBP está incompleta. Complete fotos, horários e descrição, e meça a evolução da visibilidade local.",
+    "Créer une mission": "Criar uma missão",
+    "Planifiez vos actions SEO et suivez leur avancement": "Planeie as suas ações SEO e acompanhe o progresso",
+    "3. Créer une mission": "3. Criar uma missão",
+    "Optimiser Google Business Profile": "Otimizar Google Business Profile",
+    "Sites critiques à corriger": "Sites críticos a corrigir",
+    "Priorité absolue : conversion mobile": "Prioridade absoluta: conversão mobile",
+    "+12 clients/mois": "+12 clientes/mês",
+    "+400 sessions/mois": "+400 sessões/mês",
     },
     nl: {
     "Sites critiques à corriger": "Kritieke sites om te herstellen",
@@ -48520,6 +48554,12 @@ async function init() {
               ai_reply: a.suggestedReply || null, created_at: new Date().toISOString(),
             };
             window.FP_DATA.reviewIntel.reviews.unshift(_newRev);
+            // Persist to DB so review survives F5 and shows in stats
+            apiAction('POST', '/api/google/reviews', {
+              author_name: _newRev.author_name, rating: _newRev.rating,
+              text: _newRev.review_text, sentiment: _newRev.sentiment,
+              ai_reply: _newRev.ai_reply, analyzed_at: _newRev.created_at, source: 'manual'
+            }).catch(() => {});
             const _rvs = window.FP_DATA.reviewIntel.reviews;
             const _st  = window.FP_DATA.reviewIntel.stats || {};
             _st.totalReviews = _rvs.length;

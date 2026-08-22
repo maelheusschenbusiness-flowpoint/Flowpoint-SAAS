@@ -469,6 +469,30 @@ router.post("/google/post", async (req: Request, res: Response) => {
 // ── GBP — reply to review ─────────────────────────────────────────────────────
 
 // ── GBP — delete a manually-added review ──────────────────────────────────────
+// POST /api/google/reviews — persist a manually analyzed review to DB
+router.post("/google/reviews", async (req: Request, res: Response) => {
+  const orgId = (req as any).orgId;
+  if (!orgId || orgId === "default") { res.status(401).json({ ok: false }); return; }
+  try {
+    const { author_name, rating, text, sentiment, ai_reply, analyzed_at, source } = req.body || {};
+    if (!author_name || rating == null) { res.status(400).json({ ok: false, error: "author_name and rating required" }); return; }
+    const reviewId = `manual_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    await pool.query(`
+      INSERT INTO google_reviews (org_id, review_id, author_name, rating, text, sentiment, ai_reply, analyzed_at, source, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+      ON CONFLICT (review_id, org_id) DO UPDATE
+        SET author_name=EXCLUDED.author_name, rating=EXCLUDED.rating, text=EXCLUDED.text,
+            sentiment=EXCLUDED.sentiment, ai_reply=EXCLUDED.ai_reply, analyzed_at=EXCLUDED.analyzed_at
+    `, [orgId, reviewId, String(author_name).slice(0,200), Number(rating), String(text||'').slice(0,5000),
+        String(sentiment||'').slice(0,50), String(ai_reply||'').slice(0,5000),
+        analyzed_at || new Date().toISOString(), String(source||'manual').slice(0,50)]);
+    res.json({ ok: true, reviewId });
+  } catch (err: unknown) {
+    logger.error({ err }, "[google/reviews POST] failed");
+    res.status(500).json({ ok: false });
+  }
+});
+
 router.delete("/google/reviews/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
   const orgId = (req as Request & { orgId?: string }).orgId;
