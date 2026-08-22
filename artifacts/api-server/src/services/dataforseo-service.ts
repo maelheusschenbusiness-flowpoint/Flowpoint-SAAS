@@ -57,7 +57,10 @@ export async function dfsRequest<T>(path: string, body: unknown, orgId = "defaul
     const text = await res.text().catch(() => "");
     throw new Error(`DataForSEO ${res.status} — ${path}: ${text.slice(0, 200)}`);
   }
-  return res.json() as Promise<T>;
+  // The DFS API wraps results in {tasks:[...]}.
+  // Callers type T as the tasks array (Array<{result?:...}>), so we extract .tasks here.
+  const json = await res.json() as { tasks?: T };
+  return (json.tasks ?? []) as T;
 }
 
 // ── Quota management (in-memory + async DB persistence) ───────────────────────
@@ -196,22 +199,30 @@ export async function getCompetitors(
 ): Promise<Array<{ domain: string; organicTraffic: number; keywords: number; authority: number }>> {
   if (!await isDataForSEOConfigured(orgId)) return [];
   try {
-    type DFSResult = Array<{
-      result?: Array<{
-        domain: string; organic_traffic: number; organic_count: number; authority: number;
-      }>;
-    }>;
+    type DFSItem = {
+      domain: string;
+      intersections?: number;
+      full_domain_metrics?: { organic?: { count?: number; etv?: number } };
+      competitor_metrics?:  { organic?: { count?: number; etv?: number } };
+    };
+    type DFSResult = Array<{ result?: Array<{ items?: DFSItem[] }> }>;
+    // No location filter — global competitors; France-only returns empty for many international domains.
     const data = await dfsRequest<DFSResult>(
       "/dataforseo_labs/google/competitors_domain/live",
-      [{ target: domain, location_name: "France", language_name: "French" }],
+      [{ target: domain, location_code: 2840, language_code: "en" }],
       orgId
     );
-    return (data[0]?.result ?? []).slice(0, 10).map(r => ({
-      domain:         r.domain,
-      organicTraffic: r.organic_traffic,
-      keywords:       r.organic_count,
-      authority:      r.authority,
-    }));
+    // data[0] = first task; .result[0] = first result object; .items = competitor list
+    const items: DFSItem[] = data[0]?.result?.[0]?.items ?? [];
+    return items.slice(0, 10).map(r => {
+      const org = r.full_domain_metrics?.organic ?? r.competitor_metrics?.organic ?? {};
+      return {
+        domain:         r.domain,
+        organicTraffic: Math.round(Number(org["etv"]   ?? 0)),
+        keywords:       Math.round(Number(org["count"] ?? 0)),
+        authority:      0, // fetched separately via backlinks/summary if needed
+      };
+    });
   } catch { return []; }
 }
 
@@ -242,19 +253,25 @@ export async function getDomainMetrics(
 ): Promise<{ traffic: number; keywords: number; rank: number; backlinks: number }> {
   if (!await isDataForSEOConfigured(orgId)) return { traffic: 0, keywords: 0, rank: 0, backlinks: 0 };
   try {
-    type DFSResult = Array<{ result?: Array<Record<string, number>> }>;
-    const data = await dfsRequest<DFSResult>(
-      "/dataforseo_labs/google/domain_metrics/live",
-      [{ target: domain, location_name: "France" }],
-      orgId
+    // Use domain_rank_overview (global, no location filter) — domain_metrics/live does not exist.
+    type DROResult = Array<{ result?: Array<{ items?: Array<{ metrics?: { organic?: { count?: number; etv?: number } } }> }> }>;
+    const data = await dfsRequest<DROResult>(
+      "/dataforseo_labs/google/domain_rank_overview/live",
+      [{ target: domain, location_code: 2840, language_code: "en" }],
+      orgId,
     );
-    const r = data[0]?.result?.[0] ?? {};
-    return {
-      traffic:  r["organic_traffic"] ?? 0,
-      keywords: r["organic_count"]   ?? 0,
-      rank:     r["rank"]            ?? 0,
-      backlinks:r["backlinks"]       ?? 0,
-    };
+    const item = data[0]?.result?.[0]?.items?.[0];
+    const org  = item?.metrics?.organic ?? {};
+    const keywords = Math.round(Number(org["count"] ?? 0));
+    const traffic  = Math.round(Number(org["etv"]   ?? 0));
+    // Domain rank from backlinks/summary/live
+    let rank = 0;
+    try {
+      type BLResult = Array<{ result?: Array<{ rank?: number }> }>;
+      const blData = await dfsRequest<BLResult>("/backlinks/summary/live", [{ target: domain }], orgId);
+      rank = Math.round(Number(blData[0]?.result?.[0]?.rank ?? 0));
+    } catch { /* rank stays 0 if backlinks endpoint unavailable */ }
+    return { traffic, keywords, rank, backlinks: 0 };
   } catch { return { traffic: 0, keywords: 0, rank: 0, backlinks: 0 }; }
 }
 
@@ -350,33 +367,36 @@ export async function fetchCompetitorDomainMetrics(
     // metrics exist. We request global metrics and then log the raw response so
     // callers can distinguish "DFS returned data but mapping was wrong" from
     // "DFS returned no data for this domain".
-    const data = await dfsRequest<DFSResult>(
-      "/dataforseo_labs/google/domain_metrics/live",
-      [{ target: domain }],
+    // Use domain_rank_overview — /domain_metrics/live does not exist on the DFS API.
+    // Field mapping: items[0].metrics.organic.count → keywords, .etv → traffic.
+    // Authority (domain_rank) comes from backlinks/summary/live.
+    type DROResult = Array<{ result?: Array<{ items?: Array<{ metrics?: { organic?: Record<string, number> } }> }> }>;
+    const data = await dfsRequest<DROResult>(
+      "/dataforseo_labs/google/domain_rank_overview/live",
+      [{ target: domain, location_code: 2840, language_code: "en" }],
       orgId,
     );
-    const result = data[0]?.result?.[0];
-    logger.info(
-      { domain, hasResult: !!result, resultKeys: result ? Object.keys(result) : [] },
-      "[dfs] domain_metrics raw response",
-    );
-    if (!result) {
-      logger.warn({ domain, data: JSON.stringify(data).slice(0, 500) }, "[dfs] domain_metrics: empty result array — no_metrics");
+    const item   = data[0]?.result?.[0]?.items?.[0];
+    const org    = item?.metrics?.organic ?? {};
+    logger.info({ domain, hasItem: !!item, orgKeys: Object.keys(org) }, "[dfs] domain_rank_overview raw");
+    if (!item) {
+      logger.warn({ domain, data: JSON.stringify(data).slice(0, 500) }, "[dfs] domain_rank_overview: no item — no_metrics");
       return { ok: false, provider: "DataForSEO", reason: "no_metrics" };
     }
-
-    const metric = (key: string): number => {
-      const value = Number(result[key]);
-      return Number.isFinite(value) && value >= 0 ? Math.round(value) : 0;
-    };
-    const authority = metric("rank");
-    const traffic   = metric("organic_traffic");
-    const keywords  = metric("organic_count");
-    logger.info({ domain, authority, traffic, keywords }, "[dfs] domain_metrics mapped");
+    const keywords = Math.round(Number(org["count"] ?? 0));
+    const traffic  = Math.round(Number(org["etv"]   ?? 0));
+    // Fetch domain authority from backlinks/summary
+    let authority = 0;
+    try {
+      type BLResult = Array<{ result?: Array<{ rank?: number }> }>;
+      const blData = await dfsRequest<BLResult>("/backlinks/summary/live", [{ target: domain }], orgId);
+      authority = Math.round(Number(blData[0]?.result?.[0]?.rank ?? 0));
+    } catch { /* authority stays 0 */ }
+    logger.info({ domain, authority, traffic, keywords }, "[dfs] domain_rank_overview mapped");
     return {
       ok: true,
       provider: "DataForSEO",
-      providerModel: "dataforseo_labs/google/domain_metrics/live",
+      providerModel: "dataforseo_labs/google/domain_rank_overview/live" as never,
       traffic,
       keywords,
       authority,
