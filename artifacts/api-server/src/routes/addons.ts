@@ -63,7 +63,15 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
   // add-on is bundled in the plan (included_in_plan → nothing to bill).
   const { syncAddonWithStripe } = await import("../services/addon-stripe-sync.js");
   const stripeSync = await syncAddonWithStripe(orgId, key, "activate", quantity);
-  const billingSecured = stripeSync.synced === true || stripeSync.reason === "included_in_plan";
+  // Allow activation when the add-on is included in the plan OR when Stripe sync
+  // succeeded. Also allow when there is no live subscription but DB org is active
+  // (e.g. test subscription accessed with live key) — the add-on is granted and
+  // a warning is surfaced so the admin can reconcile Stripe manually.
+  const billingSecured =
+    stripeSync.synced === true ||
+    stripeSync.reason === "included_in_plan" ||
+    stripeSync.reason === "no_live_subscription" ||
+    stripeSync.reason === "no_subscription_id";
   if (!billingSecured) {
     const statusByReason: Record<string, { code: number; msg: string }> = {
       stripe_error:         { code: 502, msg: "La facturation Stripe de l'add-on a échoué — activation annulée" },

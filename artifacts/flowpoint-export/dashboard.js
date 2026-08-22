@@ -70,13 +70,15 @@ const isDemoMode = () => !!(STATE && (STATE.demoMode || STATE.demo));
 const _FP_ROLE_PERMS = {
   // Source de vérité RBAC — ne pas modifier sans validation product :
   // Owner   : tout
-  // Manager : Audits + Monitors + Rapports + Équipe
+  // Manager : Audits + Monitors + Rapports + Équipe + Paramètres
   // Editor  : Audits + Rapports (PAS Monitors)
   // Viewer  : aucun des 6 modules
-  owner:  { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
-  admin:  { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:false },
-  member: { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
-  viewer: { audits:false, monitors:false, reports:false, billing:false, team:false,  settings:false },
+  owner:   { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
+  admin:   { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:false },
+  manager: { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:true  },
+  member:  { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
+  editor:  { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
+  viewer:  { audits:false, monitors:false, reports:false, billing:false, team:false,  settings:false },
 };
 // Routes that require a specific permission key (absent = open to all roles)
 const _FP_ROUTE_PERM = {
@@ -115,6 +117,25 @@ function _fpApplyRoleNav() {
     } else {
       btn.style.display = '';
     }
+  });
+  // Hide section group labels when ALL items under them are hidden
+  document.querySelectorAll('.fp-nav-group, .fp-nav-section').forEach(function(grp) {
+    var items = grp.querySelectorAll('.fp-nav-item[data-route]');
+    if (!items.length) return;
+    var allHidden = Array.from(items).every(function(el){ return el.style.display === 'none'; });
+    grp.style.display = allHidden ? 'none' : '';
+  });
+  // Also hide standalone group label elements (divs with class fp-nav-group-label / fp-sidebar-section-title)
+  // by scanning siblings of hidden nav items
+  document.querySelectorAll('.fp-nav-section-label, .fp-sidebar-label, .fp-nav-label').forEach(function(label) {
+    var next = label.nextElementSibling;
+    var hasVisible = false;
+    while (next && !next.classList.contains('fp-nav-section-label') && !next.classList.contains('fp-sidebar-label') && !next.classList.contains('fp-nav-label')) {
+      if (next.style.display !== 'none' && next.querySelector && next.querySelector('.fp-nav-item[data-route]')) hasVisible = true;
+      else if (next.classList && next.classList.contains('fp-nav-item') && next.style.display !== 'none') hasVisible = true;
+      next = next.nextElementSibling;
+    }
+    label.style.display = hasVisible ? '' : 'none';
   });
 }
 
@@ -6697,7 +6718,7 @@ function renderMonitors() {
           </span>
         </h1>
         <div class="fp-section-sub">${fpT('Protection enterprise 24/7')} · ${monitors.length} ${fpT('sites surveillés')} · ${fpT('Alertes instantanées')}</div>
-        ${(function(){const _mPacks=['monitorsPack10','monitorsPack50','globalMonitoring','slaMonitoring'];const _active=_mPacks.filter(k=>me.addons&&me.addons[k]);if(!_active.length)return '';const _labels={'monitorsPack10':'+10 Monitors','monitorsPack50':'+50 Monitors','globalMonitoring':'Global Monitoring 15 régions','slaMonitoring':'SLA Monitoring Avancé'};return `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">${_active.map(k=>`<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700;color:#f59e0b">📡 ${escHtml(_labels[k]||k)} — ${fpT('Actif')}${k==='monitorsPack10'&&me.addons[k]>0?` (×${me.addons[k]} = +${me.addons[k]*10} monitors)`:''}${k==='monitorsPack50'&&me.addons[k]>0?` (×${me.addons[k]} = +${me.addons[k]*50} monitors)`:''}</span>`).join('')}</div>`;})()} 
+        ${(function(){const _me2=STATE.me||{};const _mPacks=['monitorsPack10','monitorsPack50','globalMonitoring','slaMonitoring'];const _active=_mPacks.filter(k=>_me2.addons&&_me2.addons[k]);if(!_active.length)return '';const _labels={'monitorsPack10':'+10 Monitors','monitorsPack50':'+50 Monitors','globalMonitoring':'Global Monitoring 15 régions','slaMonitoring':'SLA Monitoring Avancé'};return `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">${_active.map(k=>`<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700;color:#f59e0b">📡 ${escHtml(_labels[k]||k)} — ${fpT('Actif')}${k==='monitorsPack10'&&_me2.addons[k]>0?` (×${_me2.addons[k]} = +${_me2.addons[k]*10} monitors)`:''}${k==='monitorsPack50'&&_me2.addons[k]>0?` (×${_me2.addons[k]} = +${_me2.addons[k]*50} monitors)`:''}</span>`).join('')}</div>`;})()} 
       </div>
       <div class="fp-section-actions">
         ${btn('Vérifier tout', 'fp-btn fp-btn-ghost fp-btn-sm', 'refresh', 'id="monitor-check-all"')}
@@ -8953,7 +8974,7 @@ function renderLocalSEO() {
                   }).join('');
             return `<div style="margin-top:12px;border-top:1px solid var(--fp-border);padding-top:10px">
               <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Historique des recherches <span style="font-size:9px;font-weight:400;color:#475569">(cochez pour afficher sur la carte)</span></div>
-              <div id="dfs-rank-history" style="overflow-y:auto;overflow-x:hidden;padding-right:2px">${histHtml}</div>
+              <div id="dfs-rank-history" style="overflow-y:auto;overflow-x:hidden;padding-right:2px;max-height:220px">${histHtml}</div>
             </div>`;
           })()}
         </div>
@@ -48157,7 +48178,12 @@ async function init() {
           try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(e) {}
           try { localStorage.clear(); sessionStorage.clear(); } catch(e) {}
           showToast('success', fpT('Compte supprimé. Redirection…'));
-          setTimeout(() => { window.location.href = '/signin.html'; }, 1800);
+          // Only redirect if the page has been visible for >2s (prevents BFCache flash)
+          if (document.visibilityState === 'visible' && performance.now() > 2000) {
+            setTimeout(() => { window.location.href = '/signin.html'; }, 400);
+          } else {
+            setTimeout(() => { window.location.href = '/signin.html'; }, 1800);
+          }
         } else { showToast('error', (r && r.error) || 'Erreur lors de la suppression du compte'); }
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible')); }
     }, 'Supprimer définitivement');
@@ -48356,7 +48382,7 @@ async function init() {
           <button style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--fp-text-muted);padding:4px" onclick="document.getElementById('fp-rv-detail-modal')?.remove()">✕</button>
         </div>
         <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6;padding:12px;background:var(--fp-inner-card);border-radius:10px;margin-bottom:16px;min-height:60px">
-          ${escHtml(r.review_text || '— Texte non disponible —')}
+          ${escHtml(r.review_text || r.text || r.body || r.comment || '— Texte non disponible —')}
         </div>
         <div style="margin-bottom:12px">
           <div style="font-size:11px;font-weight:700;color:var(--fp-accent);margin-bottom:8px">🤖 Réponse IA</div>
@@ -48364,6 +48390,28 @@ async function init() {
         </div>
         ${!hasGbpId ? '<div style="font-size:11px;color:#f59e0b;padding:8px 12px;border-radius:8px;background:#f59e0b15;border:1px solid #f59e0b30;margin-bottom:12px">⚠ Cet avis a été soumis manuellement — il n\'est pas lié à votre fiche Google Business Profile. Pour publier directement depuis FlowPoint, synchronisez vos avis GBP via la connexion Google.</div>' : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;color:#ef4444;border-color:rgba(239,68,68,0.3)" data-rv-del-id="${rid}"
+            onclick="(function(btn){
+              var id=btn.dataset.rvDelId;
+              if(!id)return;
+              if(!confirm(fpT('Supprimer cet avis ?')))return;
+              apiFetch('/api/google/reviews/'+encodeURIComponent(id),{method:'DELETE'}).then(function(r){
+                if(r&&r.ok){
+                  showToast('success',fpT('Avis supprimé'));
+                  document.getElementById('fp-rv-detail-modal')?.remove();
+                  // Remove from local state
+                  if(window.FP_DATA?.reviewIntel?.reviews){
+                    window.FP_DATA.reviewIntel.reviews=window.FP_DATA.reviewIntel.reviews.filter(function(rv){return rv.id!==id&&rv.reviewId!==id&&rv.review_id!==id;});
+                  }
+                  if(STATE.gbp?.reviews){
+                    STATE.gbp.reviews=STATE.gbp.reviews.filter(function(rv){return rv.id!==id&&rv.reviewId!==id&&rv.review_id!==id;});
+                  }
+                  render(STATE.currentSection);
+                } else {
+                  showToast('error',r?.error||fpT('Erreur de suppression'));
+                }
+              }).catch(function(){showToast('error',fpT('Erreur réseau'));});
+            })(this)">🗑 Supprimer</button>
           <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" id="fp-rv-gen-btn" data-rv-id="${rid}"
             onclick="(function(btn){
               btn.disabled=true;btn.textContent='Génération…';
@@ -54222,7 +54270,7 @@ function renderCompetitor() {
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
         </div>
       ` : ''}
-      <div class="fp-card fp-mb-20" style="padding:14px 16px">
+      <div class="fp-card fp-mb-20" style="padding:10px 16px;margin-top:16px">
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
           <span class="fp-badge fp-badge--ghost">${escHtml(knownPlan.charAt(0).toUpperCase() + knownPlan.slice(1))}</span>
           <span style="font-size:12px;color:var(--fp-text-muted)">${competitors.length} / ${competitorLimit} ${fpT('concurrents utilisés')}</span>
@@ -54280,7 +54328,7 @@ function renderCompetitor() {
                         ${_a.trial&&_a.trial!==_nd?`<div style="font-size:11px;padding:4px 8px;background:rgba(34,197,94,0.1);border-radius:6px;color:#22c55e;display:inline-block;margin-bottom:8px">✓ ${escHtml(_a.trial)}</div>`:''}
                       </div>
                       <div style="flex:3;min-width:280px">
-                        ${(_a.features||[]).length>0?`<div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;margin-bottom:4px">Fonctionnalités détectées</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">${(_a.features).slice(0,8).map(f=>`<span style="font-size:10px;padding:2px 7px;background:rgba(37,99,235,0.08);border-radius:10px;color:var(--fp-accent)">${escHtml(String(f))}</span>`).join('')}</div>`:''}
+                        ${(_a.features||[]).length>0?`<div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;margin-bottom:4px">Fonctionnalités détectées</div><div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;padding:8px 10px;background:var(--fp-inner-card);border-radius:8px;border:1px solid var(--fp-border)">${(_a.features).slice(0,8).map(f=>`<span style="font-size:11px;padding:3px 10px;background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.2);border-radius:20px;color:var(--fp-accent);font-weight:500">${escHtml(String(f))}</span>`).join('')}</div>`:''}
                         ${(_a.strengths||[]).length>0?`<div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;margin-bottom:4px">Forces</div><div style="font-size:11px;margin-bottom:8px">${(_a.strengths).slice(0,3).map(s=>`• ${escHtml(String(s))}`).join(' &nbsp;')}</div>`:''}
                         ${(_a.changes_detected||[]).length>0?`<div style="font-size:10px;padding:6px 10px;background:rgba(245,158,11,0.1);border-radius:6px;color:#f59e0b;margin-bottom:6px">🔄 ${_a.changes_detected.length} changement(s) depuis la dernière analyse</div>`:''}
                       </div>
@@ -57481,6 +57529,10 @@ function renderActivityFeed() {
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${members.map(m => {
+            const _mUid = m.userId || m.id || m.user_id || m.email;
+            const _mC = (STATE.teamContributions && _mUid && STATE.teamContributions[_mUid]) || (STATE.teamContributions && m.email && STATE.teamContributions[m.email]) || null;
+            if (_mC && !m.contribs) m.contribs = _mC;
+            if (_mC && m.contribs && !m.streak?.current && _mC.streak != null) { if (!m.streak) m.streak = {}; m.streak.current = _mC.streak; }
             const pct = m.score ?? 0;
             return `<div style="padding:16px;border-radius:12px;border:1px solid ${m.color}28;background:${m.color}07">
               <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
@@ -57490,11 +57542,11 @@ function renderActivityFeed() {
                   <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(m.role)}</div>
                 </div>
                 <div style="text-align:right">
-                  <div style="font-size:14px;font-weight:600;color:var(--fp-text-faint)">—</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('N/D')}</div>
+                  <div style="font-size:14px;font-weight:600;color:var(--fp-text)">${(function(){var s=m.streak?.current;return s!=null?s+'j':'—';})()}</div>
+                  <div style="font-size:10px;color:var(--fp-text-faint)">Streak 🔥</div>
                 </div>
               </div>
-              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px"><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#2563EB">${m.actions ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Actions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#22c55e">${m.contribs ? m.contribs.missions : '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Missions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#8b5cf6">${m.streak?.current ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Streak 🔥</div></div></div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px"><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#2563EB">${m.contribs?(m.contribs.audits??0):(m.actions??'—')}</div><div style="font-size:10px;color:var(--fp-text-faint)">Audits</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#22c55e">${m.contribs?(m.contribs.missions??0):'—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Missions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#8b5cf6">${m.contribs?(m.contribs.reports??0):'—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Rapports</div></div></div>
             </div>`;
           }).join('')}
         </div>
@@ -63851,7 +63903,7 @@ window._fpFunnelSave = async function() {
     // Provide a guided error when the site URL is not yet registered in FlowPoint
     if (_errMsg.toLowerCase().includes('site not found') || _errMsg.toLowerCase().includes('site introuvable') || _errMsg.includes('SITE_NOT_FOUND')) {
       const _listSec = document.getElementById('fp-funnels-list-section');
-      if (_listSec) _listSec.innerHTML = `<div style="text-align:center;padding:40px;max-width:480px;margin:0 auto">
+      if (_listSec) _listSec.innerHTML = `<div style="text-align:center;padding:40px;max-width:480px;margin:0 auto;margin-top:16px">
         <div style="font-size:36px;margin-bottom:12px">⚙️</div>
         <div style="font-size:14px;font-weight:700;margin-bottom:8px">${fpT('Site non configuré dans FlowPoint')}</div>
         <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:20px;line-height:1.6">
@@ -63980,7 +64032,7 @@ window._fpFunnelRun = async function(btn) {
       resSec.style.display = 'block';
       resSec.innerHTML = _isGA4Miss
         ? `<div class="fp-card" style="padding:18px;border-left:3px solid #f59e0b">
-            <div style="font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:6px">⚠️ Propriété GA4 non configurée</div>
+            <div style="font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:6px;margin-top:12px">⚠️ Propriété GA4 non configurée</div>
             <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Connectez votre compte Google et sélectionnez une propriété GA4 pour exécuter vos funnels.</div>
             <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('analytics')">⚙ Configurer GA4 →</button>
           </div>`
@@ -64048,7 +64100,7 @@ function renderGA4Funnels() {
         <div style="text-align:center;padding:32px;color:var(--fp-text-muted);font-size:13px">⏳ Chargement…</div>
       </div>
       <div id="fp-funnel-form-section" style="${_funnelRestoreEditing ? '' : 'display:none'}"></div>
-      <div id="fp-funnel-result-section" style="display:none"></div>
+      <div id="fp-funnel-result-section" style="display:none;margin-top:16px"></div>
     </div>`;
 }
 
@@ -68114,9 +68166,12 @@ window.FP_GBP_API = {
 
   openReplyModal(reviewId, author, stars) {
     // Find the full review data from STATE
-    const allReviews = STATE.gbp?.reviews || [];
-    const review = allReviews.find(rv => rv.reviewId === reviewId || rv.id === reviewId || rv.review_id === reviewId) || { reviewId, author, stars, text: '' };
-    const fullText = review.text || review.review_text || review.comment || '';
+    const allReviews = [
+      ...(STATE.gbp?.reviews || []),
+      ...(window.FP_DATA?.reviewIntel?.reviews || []),
+    ];
+    const review = allReviews.find(rv => rv.reviewId === reviewId || rv.id === reviewId || rv.review_id === reviewId) || { reviewId, author, stars, review_text: '' };
+    const fullText = review.text || review.review_text || review.comment || review.body || '';
     const existingReply = review.reply || review.ai_reply || '';
     const panelId = 'fp-gbp-reply-panel';
     const starsHtml = '⭐'.repeat(Math.min(Number(stars) || 0, 5));

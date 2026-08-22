@@ -114,6 +114,15 @@ export async function syncAddonWithStripe(
     logger.info({ orgId, addonKey, priceId }, "[AddonSync] addon removed from Stripe subscription");
     return { synced: true, reason: "item_removed" };
   } catch (err) {
+    // If the subscription does not exist in the current Stripe mode (e.g. a test
+    // subscription being accessed with a live key, or vice-versa), treat it as
+    // "no live subscription" so the route can decide whether to still grant access.
+    const errMsg = String((err as { message?: string })?.message ?? err ?? "");
+    const isNoSuch = /No such subscription|resource_missing|does not exist/i.test(errMsg);
+    if (isNoSuch) {
+      logger.warn({ orgId, addonKey, action, errMsg }, "[AddonSync] subscription not found in current Stripe mode — treating as no_live_subscription");
+      return { synced: false, reason: "no_live_subscription" };
+    }
     logger.error({ err, orgId, addonKey, action }, "[AddonSync] Stripe sync failed");
     return { synced: false, reason: "stripe_error" };
   }

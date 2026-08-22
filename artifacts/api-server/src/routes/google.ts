@@ -468,6 +468,30 @@ router.post("/google/post", async (req: Request, res: Response) => {
 
 // ── GBP — reply to review ─────────────────────────────────────────────────────
 
+// ── GBP — delete a manually-added review ──────────────────────────────────────
+router.delete("/google/reviews/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const orgId = (req as Request & { orgId?: string }).orgId;
+  if (!id) { res.status(400).json({ ok: false, error: "id required" }); return; }
+  const { pool } = await import("@workspace/db");
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      `DELETE FROM google_reviews WHERE org_id=$1 AND (id::text=$2 OR review_id=$2)`,
+      [orgId, id]
+    );
+    if ((r.rowCount ?? 0) === 0) {
+      res.status(404).json({ ok: false, error: "Review not found" });
+    } else {
+      res.json({ ok: true, deleted: id });
+    }
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to delete review" });
+  } finally {
+    client.release();
+  }
+});
+
 router.post("/google/reply", async (req: Request, res: Response) => {
   const orgId = getOrgId(req);
   const { reviewId, locationId, comment, useAI } = req.body as {
