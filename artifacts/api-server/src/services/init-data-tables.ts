@@ -1747,6 +1747,8 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS metadata    JSONB NOT NULL DEFAULT '{}'`);
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS action_key TEXT`);
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS action_params JSONB`);
+    await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS user_id TEXT`);
+    await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS user_name TEXT`);
     // ── RLS on activity_logs — enable inline so it takes effect on first boot ──
     // init-rls-migration runs before this table is created on the slow path;
     // adding ENABLE here ensures the table has RLS immediately after creation.
