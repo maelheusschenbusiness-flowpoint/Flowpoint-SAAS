@@ -1147,6 +1147,14 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
          Month 1 was already charged via the PaymentIntent. */
       if (_aoRecurring.length > 0) {
         try {
+          /* Ensure _authenticatedOrgId is a UUID — legacy email-keyed sessions must be
+             resolved to their canonical organizations.id before DB writes that have a UUID FK. */
+          try {
+            const { resolveCanonicalOrgUuid: _aoResolve } = await import("../services/ai-engine.js");
+            const _resolved = await _aoResolve(_authenticatedOrgId!);
+            if (_resolved) _authenticatedOrgId = _resolved;
+          } catch (_resolveErr) { /* non-fatal: proceed with original orgId */ }
+
           /* Resolve the subscriber's Stripe customer (recovers deleted customers). */
           const { loadBillingContext: _aoLbc } = await import("../services/billing-context.js");
           const _aoCtx = await _aoLbc(_authenticatedOrgId);

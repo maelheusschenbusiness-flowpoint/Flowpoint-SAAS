@@ -349,7 +349,6 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
     "retention90d",
     "advancedSeoLab",
     "backlinkIntelligence",
-    "prioritySupport",
   ]),
   ultra: new Set<string>([
     "whiteLabel",
@@ -357,7 +356,7 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
     "advancedWebhooks",
     "advancedSeoLab",
     "backlinkIntelligence",
-    "prioritySupport",
+    "enterprisePermissions",
     "retention365d",
     "keywordDomination",
     "behavioralAI",

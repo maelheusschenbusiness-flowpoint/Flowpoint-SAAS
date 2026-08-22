@@ -201,7 +201,7 @@ const MOCK_ME = {
   org: { name: 'FlowPoint Agency' },
   subscriptionStatus: 'active', trialEndsAt: null,
   usage: { audit:{used:87,limit:300}, pdf:{used:34,limit:300}, exports:{used:12,limit:300}, monitor:{used:18,limit:50} },
-  addons: { whiteLabel:true, prioritySupport:true, customDomain:false, extraSeats:2, monitorsPack50:0 },
+  addons: { whiteLabel:true, enterprisePermissions:true, customDomain:false, extraSeats:2, monitorsPack50:0 },
 };
 
 const MOCK_AUDITS = [
@@ -3746,6 +3746,7 @@ function openNewChannelPanel() {
   }, 50);
 }
 window.openNewChannelPanel = openNewChannelPanel;
+window.openAssignTaskModal = openAssignTaskModal;
 
 function openAssignTaskModal() {
   const members = (STATE.team || []).map(t => `<option value="${escHtml(t.id || t.userId || t.email || '')}">${escHtml(t.name || t.email || 'Membre')}</option>`).join('');
@@ -10609,7 +10610,7 @@ function renderBilling() {
       { name:'2FA / MFA',             active:true, desc:'Authentification à deux facteurs obligatoire pour sécuriser chaque connexion',     icon:'🔐', color:'#ef4444' },
       { name:'Analytics Temps Réel',  active:true, desc:'Tableaux de bord live, graphiques instantanés et alertes en temps réel',          icon:'📊', color:'#2563EB' },
       { name:'RGPD Compliance',       active:true, desc:'Droit à l\'oubli, exports de données, consentements et DPA disponibles',          icon:'🛡️', color:'#22c55e' },
-      { name:(function(){var _el=STATE.me?.limits?.exports;var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=_el||_map[_pl]||30;return 'Exports '+(_q>=1000?fmtNum(_q):_q)+'/mois';}()), active:true, desc:(function(){var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=STATE.me?.limits?.exports||_map[_pl]||30;return 'Exportez vos données en CSV, PDF ou JSON — quota: '+_q+' exports/mois selon votre plan';}()), icon:'📤', color:'#8b5cf6' },
+      { name:(function(){var _el=STATE.me?.limits?.exports;var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=_el||_map[_pl]||30;var _fmt=function(n){return n>=1000?(Math.round(n/1000))+'k':String(n);};return 'Exports '+(_q>=1000?_fmt(_q):_q)+'/mois';}()), active:true, desc:(function(){var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=STATE.me?.limits?.exports||_map[_pl]||30;return 'Exportez vos données en CSV, PDF ou JSON — quota: '+_q+' exports/mois selon votre plan';}()), icon:'📤', color:'#8b5cf6' },
       { name:'API GraphQL',           active:true, desc:'Accès complet à l\'API GraphQL pour intégrer FlowPoint dans vos outils métier',   icon:'⚡', color:'#06b6d4' },
     ];
     return `
@@ -69980,7 +69981,7 @@ function renderLocalSEOReviews() {
                 </div>
               </div>
               <div class="fp-rv-body" style="display:none;margin-top:10px">
-                ${(r.review_text || '').length > 120 ? `<div style="font-size:12px;color:var(--fp-text-soft);line-height:1.6;padding:8px;background:var(--fp-bg-inset);border-radius:8px;margin-bottom:8px">${escHtml(r.review_text || '')}</div>` : ''}
+                ${(r.review_text || '') ? `<div style="font-size:12px;color:var(--fp-text-soft);line-height:1.6;padding:8px;background:var(--fp-bg-inset);border-radius:8px;margin-bottom:8px">${escHtml(r.review_text || '')}</div>` : ''}
                 ${r.ai_reply ? `
                   <div style="padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border-left:2px solid rgba(37,99,235,0.3)">
                     <div style="font-size:9px;color:var(--fp-accent);font-weight:700;margin-bottom:4px">🤖 RÉPONSE IA GÉNÉRÉE</div>
