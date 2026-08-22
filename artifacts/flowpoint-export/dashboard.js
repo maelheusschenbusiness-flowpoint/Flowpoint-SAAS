@@ -58,6 +58,60 @@ const PREVIEW_MODE = false; // Production mode: demo/preview disabled — all da
 const isDemoMode = () => !!(STATE && (STATE.demoMode || STATE.demo));
 
 // ─────────────────────────────────────────────────────────────────
+// RBAC — Role-Based Access Control for invited team members
+// DB role → UI permission flags
+//   owner  : full access (all ✓)
+//   admin  : = manager  (audits ✓  monitors ✓  reports ✓  billing ✗  team ✓  settings ✗)
+//   member : = editor   (audits ✓  monitors ✗  reports ✓  billing ✗  team ✗  settings ✗)
+//   viewer :            (overview/missions/activity only — all managed sections ✗)
+// ─────────────────────────────────────────────────────────────────
+const _FP_ROLE_PERMS = {
+  owner:  { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
+  admin:  { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:false },
+  member: { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
+  viewer: { audits:false, monitors:false, reports:false, billing:false, team:false,  settings:false },
+};
+// Routes that require a specific permission key (absent = open to all roles)
+const _FP_ROUTE_PERM = {
+  audits:'audits', 'local-seo':'audits', performance:'audits',
+  'core-web-vitals':'audits', 'technical-audit':'audits', 'search-console':'audits',
+  monitors:'monitors',
+  reports:'reports', 'alerts-center':'reports', analytics:'reports',
+  traffic:'reports', funnels:'reports', audience:'reports', campaigns:'reports',
+  live:'reports', conversion:'reports', 'data-explorer':'reports',
+  competitor:'reports', crm:'reports', 'market-intelligence':'reports',
+  team:'team', 'client-mode':'team',
+  billing:'billing',
+  settings:'settings', permissions:'settings', automations:'settings',
+  'github-integration':'settings', 'code-analysis':'settings',
+  deployments:'settings', 'repository-health':'settings',
+};
+function _fpRolePerms() {
+  const role = (STATE.me?.role || 'owner').toLowerCase();
+  return _FP_ROLE_PERMS[role] || _FP_ROLE_PERMS.viewer;
+}
+function _fpCanAccess(route) {
+  if (!route) return true;
+  // Owners always have full access
+  if ((STATE.me?.role || 'owner') === 'owner') return true;
+  const permKey = _FP_ROUTE_PERM[route];
+  if (!permKey) return true; // overview, missions, growth, ai, activity-feed = open
+  return !!_fpRolePerms()[permKey];
+}
+// Hide/show nav items based on the current user's role.
+// Called after STATE.me is resolved; idempotent.
+function _fpApplyRoleNav() {
+  document.querySelectorAll('.fp-nav-item[data-route]').forEach(function(btn) {
+    const route = btn.dataset.route;
+    if (!_fpCanAccess(route)) {
+      btn.style.display = 'none';
+    } else {
+      btn.style.display = '';
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────
 // localStorage MIGRATION: fp- → fp: (one-time, on first load)
 // ─────────────────────────────────────────────────────────────────
 (function migrateLocalStorage() {
@@ -1583,6 +1637,8 @@ async function loadData(options = {}) {
   STATE.me = me || (PREVIEW_MODE ? MOCK_ME : null);
   if (!STATE.me) { clearTimeout(_loadSafetyTimer); _loadDataInProgress = false; window.__fpLoadDataInProgress = false; showFatalError('/api/me n\'a pas répondu.'); return; }
   if (STATE.me?.plan) STATE.me.plan = STATE.me.plan.charAt(0).toUpperCase() + STATE.me.plan.slice(1);
+  // Apply role-based nav filtering now that STATE.me is set
+  try { _fpApplyRoleNav(); } catch(_) {}
   // Seed STATE.dfsStatus from /api/me on every page load so X/N quota survives F5.
   // FP_DATAFORSEO_API.loadStatus() will overwrite this with a fresh value from /api/seo/status
   // a few milliseconds later, but this prevents the initial render showing 0/50.
@@ -15594,6 +15650,25 @@ function _doRender() {
     closeCtxMenu();
     updatePlanSwitcher();
     if (window.fpSyncAiBadge) window.fpSyncAiBadge();
+    window.fpHideNavSpinner();
+    return;
+  }
+
+  // ── RBAC guard: redirect to overview if the member's role forbids this route ──
+  if (STATE.me && !_fpCanAccess(STATE.route)) {
+    const _permKey = _FP_ROUTE_PERM[STATE.route] || 'section';
+    const _roleLabel = { owner:'Propriétaire', admin:'Manager', member:'Éditeur', viewer:'Lecteur' }[(STATE.me.role||'viewer').toLowerCase()] || 'Lecteur';
+    const _permLabel = { audits:'Audits SEO', monitors:'Monitors', reports:'Rapports & Analytics', billing:'Facturation', team:'Équipe', settings:'Paramètres' }[_permKey] || _permKey;
+    const page = $('#fp-page');
+    if (page) page.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center;padding:40px">
+      <div style="font-size:48px">🔒</div>
+      <div style="font-size:20px;font-weight:700;color:var(--fp-text)">Accès restreint</div>
+      <div style="font-size:13px;color:var(--fp-text-muted);max-width:380px">
+        Votre rôle <strong>${escHtml(_roleLabel)}</strong> n'inclut pas l'accès à la section <strong>${escHtml(_permLabel)}</strong>.<br>
+        Contactez un <strong>Propriétaire</strong> ou <strong>Manager</strong> de l'espace de travail pour modifier vos permissions.
+      </div>
+      <button class="fp-btn fp-btn-ghost" onclick="navigate('overview')" style="margin-top:8px">← Retour à l'accueil</button>
+    </div>`;
     window.fpHideNavSpinner();
     return;
   }
