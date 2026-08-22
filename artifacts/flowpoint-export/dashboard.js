@@ -5224,7 +5224,7 @@ function renderNotifications() {
 
   dropdown.innerHTML = `
     <div class="fp-notif-header">
-      <span class="fp-notif-title">Notifications</span>
+      <span class="fp-notif-title">${fpT('Notifications')}</span>
       <button class="fp-notif-mark-all" id="fp-notif-mark-all">Tout marquer lu</button>
     </div>
     ${visible.length === 0 ? `<div style="padding:24px;text-align:center;color:var(--fp-text-faint);font-size:12px">${fpT(showHidden ? 'Aucune notification masquée' : 'Aucune notification')}</div>` : ''}
@@ -9899,6 +9899,8 @@ function renderBilling() {
     const planLevel = currentPlan === 'ultra' ? 2 : currentPlan === 'pro' ? 1 : 0;
     const isIncluded = a => {
       if (a.includedFrom === 'standard') return true;
+      // retention90d is superseded by retention365d on Ultra — hide it to avoid confusion
+      if (a.key === 'retention90d' && planLevel >= 2) return false;
       if (a.includedFrom === 'pro'   && planLevel >= 1) return true;
       if (a.includedFrom === 'ultra' && planLevel >= 2) return true;
       return false;
@@ -14550,7 +14552,17 @@ function openMonitorPanel(monitor) {
         } else { showToast('error', fpT('Ping échoué — site inaccessible')); }
       } catch(e) { showToast('error', 'Ping échoué — ' + (e?.message || 'Erreur réseau')); }
     });
-    $('#monitor-panel-delete')?.addEventListener('click', () => {
+    $('#monitor-panel-delete')?.addEventListener('click', async () => {
+      try {
+        const _delRes = await apiAction('DELETE', `/api/monitors/${monitor.id}`);
+        if (_delRes && (_delRes.ok === false || _delRes.error)) {
+          showToast('error', fpT('Erreur lors de la suppression — réessayez'));
+          return;
+        }
+      } catch(e) {
+        showToast('error', fpT('Erreur lors de la suppression — réessayez'));
+        return;
+      }
       STATE.monitors = STATE.monitors.filter(m => m.id !== monitor.id);
       closeFloatPanel();
       showToast('error', fpT('Monitor supprimé'));
@@ -15336,7 +15348,7 @@ function aiBlock(text, chips = []) {
     <div class="fp-ai-block-content">
       <div class="fp-ai-block-label">Analyse IA · FlowPoint${_iaSug === 'proactive' ? ' <span style="font-size:9px;background:rgba(34,197,94,0.15);color:#22c55e;padding:1px 5px;border-radius:5px;margin-left:4px">Proactive</span>' : _iaSug === 'low' ? ' <span style="font-size:9px;color:var(--fp-text-faint);margin-left:4px">· Silencieux</span>' : ''}</div>
       <div class="fp-ai-block-text">${text}</div>
-      ${_chips.length ? `<div class="fp-ai-block-actions">${_chips.map(c=>`<button class="fp-ai-chip" data-q="${escHtml(c)}" onclick="var q=this.dataset.q;navigate('ai');setTimeout(function(){var inp=document.getElementById('ai-input');if(inp){inp.value=q;inp.dispatchEvent(new Event('input'));}},120)">${escHtml(c)}</button>`).join('')}</div>` : ''}
+      ${_chips.length ? `<div class="fp-ai-block-actions">${_chips.map(c=>`<button class="fp-ai-chip" data-q="${escHtml(c)}" onclick="var q=this.dataset.q;navigate('ai');setTimeout(function(){var inp=document.getElementById('ai-input');if(inp){inp.value=q;inp.dispatchEvent(new Event('input'));}},120)">${escHtml(fpT(c))}</button>`).join('')}</div>` : ''}
     </div>
   </div>`;
 }
@@ -48598,7 +48610,7 @@ async function init() {
       } else {
         showToast('error', (r && r.error) ? r.error : fpT('Erreur analyse IA'));
       }
-    } catch(e) { showToast('error', fpT('Erreur réseau')); }
+    } catch(e) { showToast('error', e?.message || fpT('Erreur réseau')); }
     finally {
       STATE._competitorAnalysisLoading[id] = false;
       render();
@@ -57703,9 +57715,9 @@ function renderActivityFeed() {
 
     <!-- KPI CARDS -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Activités totales', String(liveFeed.length), 'toutes catégories', 'up')}
+      ${statCard('Activités totales', String(STATE.activityTotal != null ? STATE.activityTotal : liveFeed.length), 'toutes catégories', 'up')}
       ${statCard('Actions critiques', String(liveFeed.filter(a => a.impact === 'Critique').length), 'à fort impact', 'neutral')}
-      ${statCard('Automations exec.', displayStat(null, '52'), PREVIEW_MODE ? 'ce mois · 98% succès' : 'Configurez les automations', 'neutral')}
+      ${statCard('Automations exec.', displayStat(null, null), PREVIEW_MODE ? 'ce mois · 98% succès' : 'Configurez les automations', 'neutral')}
       ${statCard('Membres actifs', displayStat(STATE.team && STATE.team.length > 0 ? String(STATE.team.length) : null, '3'), STATE.team && STATE.team.length > 0 ? 'membres de l\'équipe' : PREVIEW_MODE ? 'cette semaine' : 'Invitez des membres', 'neutral')}
     </div>
 
@@ -59284,7 +59296,7 @@ function renderClientMode() {
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Clients actifs', String(clients.length), 'gérés ce mois', 'up')}
         ${statCard('Templates agence', STATE.whiteLabelTemplatesError ? '—' : String(templates.length), STATE.whiteLabelTemplatesError ? 'Chargement indisponible' : 'enregistrés', STATE.whiteLabelTemplatesError ? 'neutral' : 'up')}
-        ${statCard('Rapports générés', displayStat(null, '18'), PREVIEW_MODE ? 'ce mois toute agence' : 'Générez des rapports', 'neutral')}
+        ${statCard('Rapports générés', displayStat(STATE.reports && STATE.reports.length > 0 ? String(STATE.reports.length) : null, null), PREVIEW_MODE ? 'ce mois toute agence' : 'Générez des rapports', 'neutral')}
         ${statCard('Domaine custom', isUltra ? 'Actif' : 'Non configuré', isUltra ? 'white-label actif' : 'Ultra requis', isUltra ? 'up' : 'neutral')}
       </div>
 
@@ -60192,8 +60204,15 @@ function renderLocalSEOGBP() {
             <span style="font-size:11px;color:var(--fp-text-muted)">Suggestions IA disponibles en plan Ultra</span>
           </div>
         </div>`}
-        <!-- DRAFT POST COMPOSER — Ultra only -->
-        ${(function(){var _plLc=(STATE.me&&STATE.me.plan||'').toLowerCase();var _gbpUltra=_plLc==='ultra'||_plLc==='agency';if(_gbpUltra){return '<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:600;color:var(--fp-text-soft);margin-bottom:8px">✏️ Rédiger un post</div><textarea id="gbp-post-draft" placeholder="Rédigez votre post GBP ici…" style="width:100%;min-height:80px;padding:10px;border-radius:8px;border:1px solid var(--fp-border);background:var(--fp-bg-inset);color:var(--fp-text);font-size:12px;resize:vertical;font-family:inherit;box-sizing:border-box"></textarea><div style="display:flex;gap:8px;margin-top:8px"><button class="fp-btn fp-btn-primary fp-btn-sm" id="gbp-post-save" onclick="(function(){var ta=document.getElementById(\'gbp-post-draft\');var text=ta?ta.value.trim():\'\';if(!text){showToast(\'error\',\'Rédigez votre post avant de sauvegarder\');return;}apiAction(\'POST\',\'/api/gbp-posts\',{content:text,status:\'draft\'}).then(r=>{if(r?.ok||r?.post?.id||r?.id){showToast(\'info\',\'Post sauvegardé — connectez GBP pour le publier sur Google\');ta.value=\'\';}else showToast(\'error\',\'Erreur de sauvegarde\');}).catch(()=>showToast(\'error\',\'Erreur de sauvegarde\'));})()">Enregistrer le brouillon</button><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(){var ta=document.getElementById(\'gbp-post-draft\');if(ta)ta.value=\'\';})()">Effacer</button></div></div>';}else{return '<div style="margin-bottom:14px;padding:12px 14px;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.18);border-radius:10px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">✏️</span><div style="flex:1"><div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Rédiger un post GBP</div><div style="font-size:11px;color:var(--fp-text-muted)">Fonctionnalité Ultra — publiez des posts directement sur Google depuis FlowPoint.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta(\'ultra\')">💎 Passer Ultra</button></div>';}})()}
+        <!-- DRAFT POST COMPOSER — bientôt disponible (publication directe GBP à venir) -->
+        <div style="margin-bottom:14px;padding:12px 14px;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.18);border-radius:10px;display:flex;align-items:center;gap:10px;opacity:0.8">
+          <span style="font-size:20px">✏️</span>
+          <div style="flex:1">
+            <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Publication de posts GBP</div>
+            <div style="font-size:11px;color:var(--fp-text-muted)">Génération IA et publication directe sur Google — bientôt disponible.</div>
+          </div>
+          <span style="font-size:10px;font-weight:700;padding:3px 9px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);border-radius:12px;color:#8b5cf6;flex-shrink:0">Bientôt</span>
+        </div>
         <!-- Q&A MONITORING -->
         <div class="fp-card-title" style="font-size:12px;margin-bottom:10px">❓ Questions & réponses (Q&A)</div>
         <div style="display:flex;flex-direction:column;gap:6px">
@@ -61442,6 +61461,8 @@ function bindNewRouteEvents() {
   });
 
   if (route === 'team' && STATE.subRoute === 'chat') {
+    // Scroll to the most recent message on every page load
+    setTimeout(() => { const msgs = $('#team-chat-msgs'); if (msgs) msgs.scrollTop = msgs.scrollHeight; }, 80);
     const sendChat = async () => {
       const input = $('#team-chat-input');
       const typedMsg = input?.value.trim() || '';
@@ -69881,6 +69902,7 @@ function renderLocalSEOReviews() {
   const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const sentimentColor = (s) => s === 'positive' ? 'var(--fp-success)' : s === 'negative' ? 'var(--fp-danger)' : 'var(--fp-text-faint)';
   const sentimentEmoji = (s) => s === 'positive' ? '😊' : s === 'negative' ? '😟' : '😐';
+  const ratingEmoji = (n) => n >= 4 ? '😊' : n >= 3 ? '😐' : n >= 2 ? '🙁' : '😞';
 
   return `
     <div class="fp-section-header">
@@ -69938,30 +69960,39 @@ function renderLocalSEOReviews() {
         </div>
       ` : `
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${reviews.slice(0, 10).map(r => `
-            <div style="padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card)">
-              <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
-                <span style="font-size:18px">${sentimentEmoji(r.sentiment)}</span>
+          ${reviews.slice(0, 10).map((r, _ri) => {
+            // Use a safe numeric index for DOM ids — never r.id (could contain quotes/special chars).
+            const _rId = 'fp-rv-' + _ri;
+            // HTML-escape r.id for use in data-attributes; the browser unescapes it into dataset.
+            const _safeApiId = escHtml(String(r.id || ''));
+            return `
+            <div id="${_rId}" style="padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card);cursor:pointer;transition:border-color 0.15s" onclick="(function(el){el.classList.toggle('fp-rv-expanded');el.querySelector('.fp-rv-body').style.display=el.classList.contains('fp-rv-expanded')?'block':'none';})(document.getElementById('${_rId}'))">
+              <div style="display:flex;align-items:flex-start;gap:10px">
+                <span style="font-size:18px">${ratingEmoji(r.rating || 0)}</span>
                 <div style="flex:1;min-width:0">
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
                     <span style="font-size:13px;font-weight:700">${escHtml(r.author_name || r.author || r.reviewer_name || 'Anonyme')}</span>
-                    <span style="color:var(--fp-warning);font-size:11px">${'⭐'.repeat(Math.min(r.rating || 0, 5))}</span>
-                    <span style="font-size:9px;padding:1px 6px;border-radius:6px;background:${r.sentiment === 'positive' ? 'rgba(34,197,94,0.15)' : r.sentiment === 'negative' ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.05)'};color:${sentimentColor(r.sentiment)}">${r.sentiment || '—'} ${r.sentiment_score ? '(' + (parseFloat(r.sentiment_score) * 100).toFixed(0) + '%)' : ''}</span>
+                    <span style="color:#f59e0b;font-size:11px">${'⭐'.repeat(Math.min(r.rating || 0, 5))}</span>
+                    <span style="font-size:9px;padding:1px 6px;border-radius:6px;background:${r.sentiment === 'positive' ? 'rgba(34,197,94,0.15)' : r.sentiment === 'negative' ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.05)'};color:${sentimentColor(r.sentiment)}">${r.sentiment || '—'}</span>
+                    <span style="margin-left:auto;font-size:10px;color:var(--fp-text-faint)">▾</span>
                   </div>
                   <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml((r.review_text || '').slice(0, 120))}${(r.review_text || '').length > 120 ? '…' : ''}</div>
                 </div>
               </div>
-              ${r.ai_reply ? `
-                <div style="margin-top:8px;padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border-left:2px solid rgba(37,99,235,0.3)">
-                  <div style="font-size:9px;color:var(--fp-accent);font-weight:700;margin-bottom:4px">🤖 RÉPONSE IA SUGGÉRÉE</div>
-                  <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml((r.ai_reply || '').slice(0, 150))}${r.ai_reply?.length > 150 ? '…' : ''}</div>
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px;font-size:9px" title="Copiez la réponse puis publiez-la sur la plateforme d'avis" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.closest('div').querySelector('div:nth-child(2)')?.textContent||'').then(()=>showToast('success', fpT('Réponse copiée — publiez-la sur la plateforme d\'avis')))">📋 Copier la réponse</button>
-                </div>
-              ` : isPro ? `
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px;font-size:10px" onclick="showToast('info', fpT('Génération réponse IA…'));window.FP_REVIEW_INTEL_API?.generateReply('${r.id}','professional','fr').then(reply=>{showToast('success', fpT('Réponse générée !'));window.FP_REVIEW_INTEL_API.load();render(STATE.currentSection)})">🤖 Générer réponse IA</button>
-              ` : `<div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">Réponses IA — Pro requis</div>`}
-            </div>
-          `).join('')}
+              <div class="fp-rv-body" style="display:none;margin-top:10px">
+                ${(r.review_text || '').length > 120 ? `<div style="font-size:12px;color:var(--fp-text-soft);line-height:1.6;padding:8px;background:var(--fp-bg-inset);border-radius:8px;margin-bottom:8px">${escHtml(r.review_text || '')}</div>` : ''}
+                ${r.ai_reply ? `
+                  <div style="padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border-left:2px solid rgba(37,99,235,0.3)">
+                    <div style="font-size:9px;color:var(--fp-accent);font-weight:700;margin-bottom:4px">🤖 RÉPONSE IA GÉNÉRÉE</div>
+                    <div class="fp-rv-ai-text" style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml(r.ai_reply || '')}</div>
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" data-rv-id="${_rId}" style="margin-top:6px;font-size:9px" onclick="event.stopPropagation();(function(btn){var el=document.getElementById(btn.dataset.rvId);var txt=el&&el.querySelector('.fp-rv-ai-text');if(txt&&navigator.clipboard)navigator.clipboard.writeText(txt.textContent||'').then(()=>showToast('success',fpT('Réponse copiée')));})(this)">📋 Copier la réponse</button>
+                  </div>
+                ` : isPro ? `
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" data-rv-api-id="${_safeApiId}" style="font-size:10px" onclick="event.stopPropagation();(function(btn){var id=btn.dataset.rvApiId;showToast('info',fpT('Génération réponse IA…'));window.FP_REVIEW_INTEL_API&&window.FP_REVIEW_INTEL_API.generateReply(id,'professional','fr').then(function(){showToast('success',fpT('Réponse générée !'));window.FP_REVIEW_INTEL_API.load();render(STATE.currentSection);});})(this)">🤖 Générer réponse IA</button>
+                ` : `<div style="font-size:10px;color:var(--fp-text-faint)">Réponses IA — Pro requis</div>`}
+              </div>
+            </div>`;
+          }).join('')}
         </div>
       `}
     </div>
