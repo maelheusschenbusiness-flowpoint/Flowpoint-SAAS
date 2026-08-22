@@ -4053,16 +4053,44 @@ const ACTIVITY_TYPE_CONFIG = {
 };
 // i18n keys for structured activity labels — action_key → fpT() mapping
 const ACTIVITY_I18N_KEYS = {
-  'activity.mission.created': (p) => fpT('Mission créée :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
-  'activity.mission.done':    (p) => fpT('Mission accomplie :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
-  'activity.mission.deleted': (p) => fpT('Mission supprimée :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
-  'activity.audit.started':   (p) => fpT('Audit lancé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
-  'activity.audit.done':      (p) => fpT('Audit terminé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
-  'activity.keyword.added':   (p) => fpT('Keyword ajouté :') + ' ' + (p&&p.keyword ? escHtml(String(p.keyword)) : ''),
-  'activity.keyword.removed': (p) => fpT('Keyword retiré :') + ' ' + (p&&p.keyword ? escHtml(String(p.keyword)) : ''),
-  'activity.monitor.created': (p) => fpT('Monitor créé :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
-  'activity.connector.connected':    (p) => fpT('Connecteur connecté :') + ' ' + (p&&p.provider ? escHtml(String(p.provider)) : ''),
-  'activity.connector.disconnected': (p) => fpT('Connecteur déconnecté :') + ' ' + (p&&p.provider ? escHtml(String(p.provider)) : ''),
+  // Missions
+  'activity.mission.created':         (p) => fpT('Mission créée :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
+  'activity.mission.done':            (p) => fpT('Mission accomplie :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
+  'activity.mission.deleted':         (p) => fpT('Mission supprimée :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
+  // Audits
+  'activity.audit.started':           (p) => fpT('Audit lancé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
+  'activity.audit.done':              (p) => fpT('Audit terminé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
+  'activity.audit.scheduled.started': (p) => fpT('Audit planifié lancé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
+  // Keywords
+  'activity.keyword.added':           (p) => fpT('Keyword ajouté :') + ' ' + (p&&p.keyword ? escHtml(String(p.keyword)) : ''),
+  'activity.keyword.removed':         (p) => fpT('Keyword retiré :') + ' ' + (p&&p.keyword ? escHtml(String(p.keyword)) : ''),
+  // Monitors
+  'activity.monitor.created':         (p) => fpT('Monitor créé :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
+  'activity.monitor.deleted':         (p) => fpT('Monitor supprimé :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
+  'activity.monitor.state':           (p) => fpT('Monitor ') + (p&&p.name ? escHtml(String(p.name)) : '') + ' — ' + (p&&p.state ? escHtml(String(p.state)) : ''),
+  // Connectors
+  'activity.connector.connected':     (p) => fpT('Connecteur connecté :') + ' ' + (p&&p.provider ? escHtml(String(p.provider)) : ''),
+  'activity.connector.disconnected':  (p) => fpT('Connecteur déconnecté :') + ' ' + (p&&p.provider ? escHtml(String(p.provider)) : ''),
+  // Settings
+  'activity.settings.updated':        (p) => fpT('Paramètres mis à jour') + (p&&p.keys ? ' : ' + escHtml(String(p.keys)) : ''),
+  'activity.settings.apikey':         () => fpT('Clé API régénérée'),
+  // Reports
+  'activity.report.created':          (p) => fpT('Rapport généré :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
+  'activity.report.shared':           (p) => fpT('Rapport partagé :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
+  // Google / GBP
+  'activity.google.connected':        () => fpT('Google connecté'),
+  'activity.google.disconnected':     () => fpT('Google déconnecté'),
+  'activity.gbp.post':                (p) => fpT('Post GBP publié :') + ' ' + (p&&p.text ? escHtml(String(p.text).slice(0,60)) : ''),
+  'activity.gbp.reply':               (p) => fpT('Réponse GBP publiée — avis') + ' ' + (p&&p.reviewId ? escHtml(String(p.reviewId)) : ''),
+  // Billing / Add-ons
+  'activity.addon.activated':         (p) => fpT('Add-on activé :') + ' ' + (p&&p.key ? escHtml(String(p.key)) : ''),
+  'activity.addon.deactivated':       (p) => fpT('Add-on désactivé :') + ' ' + (p&&p.key ? escHtml(String(p.key)) : ''),
+  // Competitors
+  'activity.competitor.added':        (p) => fpT('Concurrent ajouté :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
+  'activity.competitor.analyzed':     (p) => fpT('Analyse IA lancée :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
+  // Automation
+  'activity.workflow.created':        (p) => fpT('Workflow créé :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
+  'activity.workflow.run':            (p) => fpT('Workflow exécuté :') + ' ' + (p&&p.id ? escHtml(String(p.id)) : ''),
 };
 function translateActivityLabel(e) {
   if (e.actionKey && ACTIVITY_I18N_KEYS[e.actionKey]) {
@@ -48247,6 +48275,39 @@ async function init() {
     overlay.id = existingId;
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px';
     overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+    // google_review_id is the real GBP review name (accounts/.../reviews/...) set by the GBP sync.
+    // Manually-submitted reviews (analyze modal) have no google_review_id → r.id is a local DB id.
+    const googleReviewId = escHtml(String(r.google_review_id || r.review_id || ''));
+    const hasGbpId = !!(r.google_review_id || r.review_id);
+    const publishBtnLabel = hasGbpId ? '✅ Publier la réponse via GBP' : '🌐 Ouvrir Google Business';
+    const publishBtnOnclick = hasGbpId
+      ? `(function(btn){
+          var ta=document.getElementById('fp-rv-reply-text');
+          var reply=ta?ta.value.trim():'';
+          if(!reply){showToast('error',fpT('Écrivez ou générez une réponse d\\'abord'));return;}
+          btn.disabled=true;btn.textContent='Publication…';
+          (window.FP_GBP_API?window.FP_GBP_API.replyToReview('${googleReviewId}',reply):Promise.reject('GBP API indisponible')).then(function(r){
+            if(r&&r.ok){
+              showToast('success',fpT('Réponse publiée sur Google Business'));
+              document.getElementById('fp-rv-detail-modal')?.remove();
+            } else {
+              btn.disabled=false;btn.textContent='${publishBtnLabel}';
+              showToast('error',fpT(r&&r.error||'Échec — vérifiez la connexion Google Business'));
+            }
+          }).catch(function(e){
+            btn.disabled=false;btn.textContent='${publishBtnLabel}';
+            showToast('error',fpT('Erreur API GBP : ')+String(e));
+          });
+        })(this)`
+      : `(function(){
+          var ta=document.getElementById('fp-rv-reply-text');
+          var reply=ta?ta.value.trim():'';
+          if(reply&&navigator.clipboard)navigator.clipboard.writeText(reply).catch(()=>{});
+          showToast('info',fpT('Avis sans ID Google — copiez la réponse et répondez sur Google Business'));
+          window.open('https://business.google.com/reviews','_blank');
+        })()`;
+
+    overlay.dataset.googleReviewId = googleReviewId;
     overlay.innerHTML = `
       <div style="background:var(--fp-bg-sidebar);border:1px solid var(--fp-border);border-radius:16px;width:560px;max-width:95vw;max-height:90vh;overflow-y:auto;padding:24px">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px">
@@ -48257,6 +48318,7 @@ async function init() {
               <span style="color:#f59e0b;font-size:13px">${stars}</span>
               ${r.rating ? `<span style="font-size:12px;color:var(--fp-text-muted)">${r.rating}/5</span>` : ''}
               ${r.sentiment ? `<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${sentCol}22;color:${sentCol}">${escHtml(r.sentiment)}</span>` : ''}
+              ${hasGbpId ? '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:#22c55e22;color:#22c55e">🔗 Lié GBP</span>' : '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:#94a3b822;color:#94a3b8">Avis manuel</span>'}
             </div>
           </div>
           <button style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--fp-text-muted);padding:4px" onclick="document.getElementById('fp-rv-detail-modal')?.remove()">✕</button>
@@ -48268,6 +48330,7 @@ async function init() {
           <div style="font-size:11px;font-weight:700;color:var(--fp-accent);margin-bottom:8px">🤖 Réponse IA</div>
           <textarea id="fp-rv-reply-text" style="width:100%;min-height:100px;padding:10px;border-radius:8px;border:1px solid var(--fp-border);background:var(--fp-inner-card);color:var(--fp-text);font-size:12px;line-height:1.5;resize:vertical;box-sizing:border-box">${escHtml(r.ai_reply || '')}</textarea>
         </div>
+        ${!hasGbpId ? '<div style="font-size:11px;color:#f59e0b;padding:8px 12px;border-radius:8px;background:#f59e0b15;border:1px solid #f59e0b30;margin-bottom:12px">⚠ Cet avis a été soumis manuellement — il n\'est pas lié à votre fiche Google Business Profile. Pour publier directement depuis FlowPoint, synchronisez vos avis GBP via la connexion Google.</div>' : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" id="fp-rv-gen-btn" data-rv-id="${rid}"
             onclick="(function(btn){
@@ -48288,9 +48351,9 @@ async function init() {
             onclick="(function(){var t=document.getElementById('fp-rv-reply-text');if(t&&t.value&&navigator.clipboard){navigator.clipboard.writeText(t.value).then(function(){showToast('success',fpT('Réponse copiée !'));});}})()">
             📋 Copier
           </button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;color:#22c55e"
-            onclick="(function(){var t=document.getElementById('fp-rv-reply-text');if(t&&t.value){window.open('https://business.google.com/',\'_blank\');showToast('info',fpT('Répondez sur Google Business en collant le texte copié.'));}})()">
-            🌐 Publier sur Google
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;color:#22c55e" id="fp-rv-publish-btn"
+            onclick="${publishBtnOnclick}">
+            ${publishBtnLabel}
           </button>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;margin-left:auto" onclick="document.getElementById('fp-rv-detail-modal')?.remove()">Fermer</button>
         </div>
@@ -68114,16 +68177,32 @@ window.fpUpdateRankingMarkersFromHistory = function() {
   if (!map || typeof google === 'undefined' || !google.maps) return;
   var history = (STATE.localSeo && STATE.localSeo.rankingHistory) || [];
   var selectedIds = (STATE.localSeo && STATE.localSeo._selectedHistoryIds) || new Set();
-  if (selectedIds.size === 0) return;
+
+  if (selectedIds.size === 0) {
+    // All history items unchecked → restore default markers (current live search results)
+    if (typeof window.fpUpdateRankingMarkers === 'function') window.fpUpdateRankingMarkers();
+    return;
+  }
+
   // Collect all results from selected history entries
   var merged = [];
   history.forEach(function(h, hIdx) {
     var hid = h.id != null ? h.id : hIdx;
-    if (selectedIds.has(hid) && Array.isArray(h.results)) {
+    if (selectedIds.has(hid) && Array.isArray(h.results) && h.results.length > 0) {
       h.results.forEach(function(r) { merged.push(r); });
     }
   });
-  // Temporarily replace STATE.localSeo.rankings so fpUpdateRankingMarkers can draw them
+
+  if (merged.length === 0) {
+    // Selected entries have no persisted results — clear markers and warn
+    if (typeof window.fpUpdateRankingMarkers === 'function') window.fpUpdateRankingMarkers();
+    showToast('info', fpT('Les résultats sélectionnés ne contiennent aucune donnée cartographiable.'));
+    return;
+  }
+
+  // Snapshot current state to restore after the synchronous call to fpUpdateRankingMarkers.
+  // Note: fpUpdateRankingMarkers starts async geocoding internally; the snapshot ensures
+  // STATE is correct for subsequent live searches while geocoding callbacks finish.
   var prevRankings = STATE.localSeo.rankings;
   var prevSelected = STATE.localSeo._selectedRankings;
   STATE.localSeo.rankings = merged;
