@@ -53900,6 +53900,12 @@ function renderCompetitor() {
             </div>
           </div>
           ${!analysis ? `<div class="fp-card" style="text-align:center;padding:28px"><div style="font-size:13px;color:var(--fp-text-muted)">Cliquez <strong>Analyser</strong> sur ce concurrent pour lancer l'analyse IA.</div><button class="fp-btn fp-btn-primary" style="margin-top:14px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}')">🔬 Analyser ${escHtml(selComp.name||'')}</button></div>` : `
+          <div style="padding:8px 12px;border-radius:8px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);font-size:10px;color:var(--fp-text-muted);margin-bottom:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:700;color:var(--fp-accent)">📡 Provenance des données</span>
+            <span style="padding:2px 7px;background:rgba(37,99,235,0.1);border-radius:8px">Métriques SEO → <strong>DataForSEO Labs</strong> (Authority, Mots-clés, Trafic)</span>
+            <span style="padding:2px 7px;background:rgba(139,92,246,0.1);border-radius:8px">Analyse comparative → <strong>IA</strong> (Forces, Opportunités, Matrice)</span>
+            <span style="padding:2px 7px;background:rgba(100,116,139,0.08);border-radius:8px">Interprétation → estimations, non faits vérifiés</span>
+          </div>
           <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px">
             <div class="fp-card" style="border-left:3px solid #22c55e">
               <div class="fp-card-title" style="margin-bottom:10px;color:#22c55e">✅ Ce que vous faites mieux</div>
@@ -53916,61 +53922,93 @@ function renderCompetitor() {
           </div>
           ${(analysis.opportunities||[]).length>0 ? `
           <div class="fp-card fp-mb-16">
-            <div class="fp-card-title" style="margin-bottom:12px">💡 Opportunités recommandées</div>
-            <div style="display:flex;flex-direction:column;gap:10px">
-              ${(analysis.opportunities).map((op,i)=>`
-                <div style="padding:12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
-                  <div style="display:flex;align-items:flex-start;gap:10px">
-                    <span style="font-size:14px;flex-shrink:0">${['🎯','💼','📈','🔑','⚡'][i%5]}</span>
-                    <div style="flex:1">
-                      <div style="font-weight:600;font-size:12px;margin-bottom:4px">${escHtml(String(op.title||''))}</div>
-                      <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:8px">${escHtml(String(op.description||''))}</div>
-                      <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px"
-                        onclick="window.fpCreateMissionFromOpportunity('${escHtml(String(op.missionTitle||op.title||''))}','${escHtml(String(op.missionDesc||op.description||''))}')">
-                        ✚ Créer une mission
-                      </button>
-                    </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div class="fp-card-title" style="margin-bottom:0">💡 Opportunités recommandées</div>
+              <span style="font-size:10px;color:var(--fp-text-faint);padding:2px 7px;background:rgba(139,92,246,0.08);border-radius:10px">Analyse IA</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">
+              ${(analysis.opportunities).map((op,i)=>{
+                const _opTitle = String(op.missionTitle||op.title||'');
+                const _opDesc = String(op.missionDesc||op.description||'');
+                const _opDescShort = _opDesc.length > 120 ? _opDesc.slice(0,117)+'…' : _opDesc;
+                return `<div style="padding:14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border);display:flex;flex-direction:column;gap:8px">
+                  <div style="display:flex;align-items:flex-start;gap:8px">
+                    <span style="font-size:16px;flex-shrink:0;margin-top:1px">${['🎯','💼','📈','🔑','⚡'][i%5]}</span>
+                    <div style="font-weight:600;font-size:12px;line-height:1.35">${escHtml(String(op.title||''))}</div>
                   </div>
-                </div>`).join('')}
+                  <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.45">${escHtml(_opDescShort)}</div>
+                  <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;margin-top:auto;align-self:flex-start"
+                    data-comp-op-title="${escHtml(_opTitle)}" data-comp-op-desc="${escHtml(_opDesc)}"
+                    onclick="(function(b){window.fpCreateMissionFromOpportunity(b.dataset.compOpTitle,b.dataset.compOpDesc);})(this)">
+                    ✚ Créer une mission
+                  </button>
+                </div>`;
+              }).join('')}
             </div>
           </div>` : ''}
-          ${(analysis.feature_matrix||[]).length>0 ? `
-          <div class="fp-card fp-mb-16">
-            <div class="fp-card-title" style="margin-bottom:12px">📊 Matrice fonctionnalités</div>
-            <div style="overflow-x:auto">
-              <table class="fp-table" style="width:100%">
-                <thead><tr><th>Fonctionnalité</th><th>Vous</th><th>${escHtml(selComp.name||'Concurrent')}</th></tr></thead>
-                <tbody>${(analysis.feature_matrix).map(row=>`<tr>
-                  <td style="font-size:12px">${escHtml(String(row.feature||''))}</td>
-                  <td style="font-size:12px;color:${String(row.you||'')==='✓'||String(row.you||'').toLowerCase().includes('oui')?'#22c55e':String(row.you||'')==='—'?'var(--fp-text-faint)':'var(--fp-text)'}">${escHtml(String(row.you||'—'))}</td>
-                  <td style="font-size:12px;color:${String(row.competitor||'')==='✓'||String(row.competitor||'').toLowerCase().includes('oui')?'#22c55e':String(row.competitor||'')==='—'?'var(--fp-text-faint)':'var(--fp-text)'}">${escHtml(String(row.competitor||'—'))}</td>
-                </tr>`).join('')}</tbody>
-              </table>
-            </div>
-          </div>` : ''}
+          ${(analysis.feature_matrix||[]).length>0 ? (()=>{
+            const _fm = analysis.feature_matrix;
+            const _fmLimit = 10;
+            const _fmId = 'fm_' + selId.replace(/[^a-z0-9]/gi,'_');
+            const cellColor = v => String(v||'')==='✓'||String(v||'').toLowerCase().includes('oui')?'#22c55e':String(v||'')==='—'||!v?'var(--fp-text-faint)':'var(--fp-text)';
+            return `
+            <div class="fp-card fp-mb-16">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                <div class="fp-card-title" style="margin-bottom:0">📊 Matrice fonctionnalités <span style="font-size:10px;font-weight:400;color:var(--fp-text-faint)">(${_fm.length})</span></div>
+                <span style="font-size:10px;color:var(--fp-text-faint);padding:2px 7px;background:rgba(139,92,246,0.08);border-radius:10px">Analyse IA</span>
+              </div>
+              <div style="overflow-x:auto" id="${_fmId}">
+                <table class="fp-table" style="width:100%;table-layout:fixed">
+                  <colgroup><col style="width:55%"><col style="width:22.5%"><col style="width:22.5%"></colgroup>
+                  <thead><tr>
+                    <th style="font-size:11px">Fonctionnalité</th>
+                    <th style="font-size:11px;text-align:center">Vous</th>
+                    <th style="font-size:11px;text-align:center">${escHtml(selComp.name||'Concurrent')}</th>
+                  </tr></thead>
+                  <tbody>${_fm.map((row,ri)=>`<tr${ri>=_fmLimit?` class="fp-fm-extra" style="display:none"`:''}><td style="font-size:11px">${escHtml(String(row.feature||''))}</td><td style="font-size:12px;text-align:center;color:${cellColor(row.you)}">${escHtml(String(row.you||'—'))}</td><td style="font-size:12px;text-align:center;color:${cellColor(row.competitor)}">${escHtml(String(row.competitor||'—'))}</td></tr>`).join('')}</tbody>
+                </table>
+              </div>
+              ${_fm.length>_fmLimit ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:8px;font-size:11px" onclick="(function(btn){document.querySelectorAll('#${_fmId} .fp-fm-extra').forEach(r=>r.style.display='');btn.style.display='none';})(this)">Voir tout — ${_fm.length} fonctionnalités ↓</button>` : ''}
+            </div>`;
+          })() : ''}
           <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px">
-            <div class="fp-card">
-              <div class="fp-card-title" style="margin-bottom:8px">💪 Forces détectées</div>
-              ${(analysis.strengths||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.strengths).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
+            <div class="fp-card" style="border-top:2px solid #22c55e">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                <div class="fp-card-title" style="margin-bottom:0">💪 Forces</div>
+                <span style="font-size:10px;color:var(--fp-text-faint);padding:2px 7px;background:rgba(34,197,94,0.08);border-radius:10px">${(analysis.strengths||[]).length} détectées</span>
+              </div>
+              ${(analysis.strengths||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:7px">${(analysis.strengths).map(s=>`<li style="font-size:12px;line-height:1.4">${escHtml(String(s))}</li>`).join('')}</ul>`}
             </div>
-            <div class="fp-card">
-              <div class="fp-card-title" style="margin-bottom:8px">⚠️ Faiblesses détectées</div>
-              ${(analysis.weaknesses||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.weaknesses).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
+            <div class="fp-card" style="border-top:2px solid #f59e0b">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                <div class="fp-card-title" style="margin-bottom:0">⚠️ Faiblesses</div>
+                <span style="font-size:10px;color:var(--fp-text-faint);padding:2px 7px;background:rgba(245,158,11,0.08);border-radius:10px">${(analysis.weaknesses||[]).length} détectées</span>
+              </div>
+              ${(analysis.weaknesses||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:7px">${(analysis.weaknesses).map(s=>`<li style="font-size:12px;line-height:1.4">${escHtml(String(s))}</li>`).join('')}</ul>`}
             </div>
           </div>
           <div class="fp-card fp-mb-16">
-            <div class="fp-card-title" style="margin-bottom:8px">📋 Positionnement — ${escHtml(selComp.name||'')}</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div class="fp-card-title" style="margin-bottom:0">📋 Positionnement — ${escHtml(selComp.name||'')}</div>
+              <span style="font-size:10px;color:var(--fp-text-faint);padding:2px 7px;background:rgba(139,92,246,0.08);border-radius:10px">Analyse IA</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
               ${[
-                {label:'Proposition de valeur',val:analysis.value_prop},
-                {label:'Cible',val:analysis.target_audience},
-                {label:'Produits / Services',val:analysis.products},
-                {label:'Tarification',val:analysis.pricing},
-                {label:'Essai gratuit / Démo',val:analysis.trial},
-              ].map(item=>`<div style="padding:10px;background:var(--fp-inner-card);border-radius:8px;border:1px solid var(--fp-border)">
-                <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${escHtml(item.label)}</div>
-                <div style="font-size:12px;color:${String(item.val||'')!=='Non déterminé'?'var(--fp-text)':'var(--fp-text-faint)'};font-style:${String(item.val||'')==='Non déterminé'?'italic':'normal'}">${escHtml(String(item.val||'Non déterminé'))}</div>
-              </div>`).join('')}
+                {label:'Proposition de valeur', val:analysis.value_prop, icon:'💡', full:true},
+                {label:'Cible', val:analysis.target_audience, icon:'🎯'},
+                {label:'Produits / Services', val:analysis.products, icon:'📦'},
+                {label:'Tarification', val:analysis.pricing, icon:'💰'},
+                {label:'Essai gratuit / Démo', val:analysis.trial, icon:'🆓'},
+              ].map((item,i)=>{
+                const nd = !item.val || item.val==='Non déterminé';
+                return `<div style="padding:12px;background:var(--fp-inner-card);border-radius:10px;border:1px solid var(--fp-border)${i===0?';grid-column:1/-1':''}">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                    <span style="font-size:13px">${item.icon}</span>
+                    <span style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.05em">${escHtml(item.label)}</span>
+                  </div>
+                  <div style="font-size:12px;color:${nd?'var(--fp-text-faint)':'var(--fp-text)'};font-style:${nd?'italic':'normal'};line-height:1.45">${nd?'Non déterminé':escHtml(String(item.val))}</div>
+                </div>`;
+              }).join('')}
             </div>
           </div>
           ${(analysis.sources||[]).length>0 ? `
@@ -54051,7 +54089,7 @@ function renderCompetitor() {
                 const _analysisError = STATE._competitorAnalysisErrors && STATE._competitorAnalysisErrors[c.id];
                 return `<tr>
                   <td><div style="font-weight:700">${escHtml(c.name || fpT('Concurrent sans nom'))}</div><div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(String(c.url || '—').replace(/^https?:\/\//, ''))}</div></td>
-                  <td><span class="fp-badge ${available ? 'fp-badge--success' : 'fp-badge--ghost'}">${statusLabel(c.dataStatus)}</span>${(!available && c.dataError) ? `<div style="font-size:10px;color:#ef4444;max-width:220px;margin-top:4px" title="${escHtml(String(c.dataError))}">⚠ ${escHtml(fpT('Erreur fournisseur') + ' : ' + String(c.dataError))}</div>` : ''}</td>
+                  <td><span class="fp-badge ${available ? 'fp-badge--success' : 'fp-badge--ghost'}">${statusLabel(c.dataStatus)}</span>${(!available && c.dataError) ? `<div style="font-size:10px;color:var(--fp-text-muted);max-width:240px;margin-top:4px;padding:3px 7px;background:rgba(100,116,139,0.08);border-radius:5px;line-height:1.4" title="${escHtml(String(c.dataError))}">ℹ ${escHtml(String(c.dataError).replace(/\. Réessayez.*/,'').replace(/ — DataForSEO.*/,''))}</div>` : ''}</td>
                   <td>${available ? displayMetric(c.domainRating) : '—'}</td>
                   <td>${available ? displayMetric(c.keywords) : '—'}</td>
                   <td>${available ? displayMetric(c.traffic) : '—'}</td>
@@ -54059,7 +54097,7 @@ function renderCompetitor() {
                     <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px" onclick="window.fpAnalyzeCompetitor('${escHtml(c.id)}','${escHtml(c.name||'')}'${_persistedA?',true':''})">
                       ${_isLoading ? fpT('Analyse…') : (_persistedA ? '↺ ' + fpT('Actualiser') : '🔬 ' + fpT('Analyser'))}
                     </button>
-                    ${!available ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRefreshCompetitor('${escHtml(c.id)}')" style="margin-left:4px" title="${escHtml(fpT('Relancer la récupération des métriques fournisseur'))}">${fpT('Réessayer métriques')}</button>` : ''}
+                    ${!available ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRefreshCompetitor('${escHtml(c.id)}')" style="margin-left:4px" title="${escHtml(fpT('Relancer la récupération des métriques SEO via DataForSEO'))}">${fpT('Réessayer métriques')}</button>` : ''}
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;margin-left:4px" onclick="window.fpDeleteCompetitor('${escHtml(c.id)}','${escHtml(c.name || '')}')">${fpT('Supprimer')}</button>
                     ${_analysisError ? `<div style="font-size:10px;color:#ef4444;margin-top:5px">${fpT('Analyse enregistrée indisponible')} — <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRetryLoadCompetitorAnalysis('${escHtml(c.id)}')" style="font-size:9px">${fpT('Réessayer')}</button></div>` : ''}
                   </td>

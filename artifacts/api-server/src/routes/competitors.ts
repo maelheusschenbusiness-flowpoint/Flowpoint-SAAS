@@ -208,11 +208,10 @@ async function enrichCompetitor(
   }
 
   const message: Record<typeof metrics.reason, string> = {
-    // This is customer-facing copy: a third-party data supplier is platform
-    // infrastructure, never something the customer needs to configure.
-    not_configured: "Les métriques de ce concurrent ne sont pas encore disponibles.",
-    no_metrics: "Aucune métrique n’est disponible pour ce domaine pour le moment.",
-    provider_error: "Les métriques sont temporairement indisponibles. Réessayez plus tard.",
+    // Customer-facing copy: clear, actionable, no "fournisseur" language.
+    not_configured: "Métriques SEO non disponibles — DataForSEO non configuré pour cette organisation.",
+    no_metrics: "Aucune métrique SEO disponible pour ce domaine via DataForSEO.",
+    provider_error: "Métriques SEO temporairement indisponibles (DataForSEO). Réessayez dans quelques minutes.",
   };
   const update = await req.orgDb(
     `UPDATE competitors
