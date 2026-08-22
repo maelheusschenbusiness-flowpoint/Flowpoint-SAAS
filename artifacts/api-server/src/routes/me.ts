@@ -15,6 +15,65 @@ import {
 
 const router = Router();
 
+/**
+ * Validate and sanitize an IANA timezone string.
+ * Maps common French UI labels to their IANA equivalents (e.g. "Bruxelles" → "Europe/Brussels").
+ * Falls back to "Europe/Brussels" for completely unrecognised values rather than
+ * storing an invalid string that would cause PostgreSQL AT TIME ZONE errors (22023).
+ */
+function sanitizeTimezone(raw: string): string {
+  // Common UI-label → IANA mappings (French labels, city-only labels, etc.)
+  const LABEL_MAP: Record<string, string> = {
+    "Bruxelles":      "Europe/Brussels",
+    "bruxelles":      "Europe/Brussels",
+    "Paris":          "Europe/Paris",
+    "paris":          "Europe/Paris",
+    "Amsterdam":      "Europe/Amsterdam",
+    "amsterdam":      "Europe/Amsterdam",
+    "Berlin":         "Europe/Berlin",
+    "berlin":         "Europe/Berlin",
+    "London":         "Europe/London",
+    "london":         "Europe/London",
+    "Madrid":         "Europe/Madrid",
+    "madrid":         "Europe/Madrid",
+    "Rome":           "Europe/Rome",
+    "rome":           "Europe/Rome",
+    "Zurich":         "Europe/Zurich",
+    "zurich":         "Europe/Zurich",
+    "Lisbon":         "Europe/Lisbon",
+    "lisbon":         "Europe/Lisbon",
+    "Varsovie":       "Europe/Warsaw",
+    "varsovie":       "Europe/Warsaw",
+    "New York":       "America/New_York",
+    "new york":       "America/New_York",
+    "Los Angeles":    "America/Los_Angeles",
+    "los angeles":    "America/Los_Angeles",
+    "Chicago":        "America/Chicago",
+    "chicago":        "America/Chicago",
+    "Toronto":        "America/Toronto",
+    "toronto":        "America/Toronto",
+    "Tokyo":          "Asia/Tokyo",
+    "tokyo":          "Asia/Tokyo",
+    "Dubai":          "Asia/Dubai",
+    "dubai":          "Asia/Dubai",
+    "Singapour":      "Asia/Singapore",
+    "singapour":      "Asia/Singapore",
+    "Sydney":         "Australia/Sydney",
+    "sydney":         "Australia/Sydney",
+  };
+
+  const mapped = LABEL_MAP[raw] ?? raw;
+
+  // Validate as a proper IANA timezone — Intl.DateTimeFormat throws on invalid zones
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: mapped });
+    return mapped;
+  } catch {
+    logger.warn({ raw, mapped }, "[sanitizeTimezone] Invalid IANA timezone — falling back to Europe/Brussels");
+    return "Europe/Brussels";
+  }
+}
+
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
   orgId?: string;
@@ -331,7 +390,7 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   // frontend uses to write it (PATCH /api/me or PATCH /api/me/settings both write here).
   let resolvedTimezone: string | null = current?.timezone ?? null;
   if (typeof timezone === "string" && timezone.trim()) {
-    const tz = timezone.trim();
+    const tz = sanitizeTimezone(timezone.trim());
     resolvedTimezone = tz;
     try {
       await orgDb(req)(
