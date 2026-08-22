@@ -297,6 +297,7 @@ router.post(
         type: "alert", label: `Concurrent ajouté : ${name}`,
         targetId: id, targetType: "competitor",
         orgId,
+        actionKey: "activity.competitor.added", actionParams: { name: String(name) },
         userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
         userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
       }).catch(() => {});
