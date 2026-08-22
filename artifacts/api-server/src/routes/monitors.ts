@@ -554,7 +554,16 @@ router.get("/monitors/:id/checks-summary", async (req: Request, res: Response) =
 router.get("/monitors/:id/checks", async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const days  = Math.min(Number(req.query["days"] ?? 30), 90);
+    const orgId = req.orgId ?? "default";
+    // retention365d add-on: extend monitor check history beyond 90 days
+    let maxDays = 90;
+    try {
+      const { loadBillingContext } = await import("../services/billing-context.js");
+      const bCtx = await loadBillingContext(orgId).catch(() => null);
+      if (bCtx?.addons?.["retention365d"]) maxDays = 365;
+    } catch { /* non-blocking */ }
+    const requestedDays = Number(req.query["days"] ?? 30);
+    const days  = Math.min(requestedDays, maxDays);
     const since = Date.now() - days * 24 * 60 * 60 * 1000;
 
     const result = await req.orgDb(
