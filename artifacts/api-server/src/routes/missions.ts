@@ -384,6 +384,8 @@ router.post("/missions", canWrite, async (req: Request, res: Response) => {
       targetId: id, targetType: "mission",
       metadata: { category, impact }, orgId: org,
       actionKey: "activity.mission.created", actionParams: { title: String(title) },
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
     }).catch(() => {});
 
     res.status(201).json(mission);
@@ -463,6 +465,8 @@ router.patch("/missions/:id", canWrite, async (req: Request, res: Response) => {
           targetId: id, targetType: "mission",
           metadata: { category: prev.category, impact: prev.impact }, orgId: org,
           actionKey: "activity.mission.done", actionParams: { title: String(prev.title) },
+          userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+          userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
         }).catch(() => {});
       }
     }
