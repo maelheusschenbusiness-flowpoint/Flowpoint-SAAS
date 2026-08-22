@@ -63180,7 +63180,10 @@ window._fpFunnelRemoveStep = function(btn) {
 // Build the create/edit form HTML
 function _fpFunnelBuildForm(funnel) {
   const isEdit = !!funnel;
-  const _draft = (!isEdit && window._fpFunnelState && window._fpFunnelState.draft) ? window._fpFunnelState.draft : null;
+  // Also check sessionStorage backup (survives navigate-away even if STATE was reset)
+  let _ssDraft = null;
+  try { const _ss = sessionStorage.getItem('fp:funnel-draft'); if (_ss) _ssDraft = JSON.parse(_ss); } catch(_) {}
+  const _draft = (!isEdit && window._fpFunnelState && (window._fpFunnelState.draft || _ssDraft)) ? (window._fpFunnelState.draft || _ssDraft) : null;
   const bd = funnel?.breakdown_dimension || _draft?.bd || '';
   const bdOpts = ['','deviceCategory','country','browser','operatingSystem','sessionDefaultChannelGrouping','sourceMedium','city','region'];
   const lookback = funnel?.lookback_days || _draft?.lookback || 30;
@@ -63270,6 +63273,7 @@ window._fpFunnelShowForm = function(funnel) {
             page_path_value:      (row.querySelector('.fp-step-path')||{value:''}).value };
         }),
       };
+      try { sessionStorage.setItem('fp:funnel-draft', JSON.stringify(window._fpFunnelState.draft)); } catch(_) {}
     };
     if (formSec) {
       formSec.addEventListener('input', _dSave, { passive: true });
