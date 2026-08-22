@@ -14266,6 +14266,23 @@ async function sendAIMessage(text) {
   // Declared outside try so the catch can preserve partial content received before the error.
   let fullText = '';
 
+  // Phase status messages — show user progress before first SSE token
+  const _phaseSteps = [
+    fpT('Analyse de vos données…'),
+    fpT('Recherche des informations pertinentes…'),
+    fpT('Préparation de la réponse…'),
+  ];
+  let _phaseIdx = 0;
+  STATE.aiMessages[streamIdx] = { from:'ai', text: _phaseSteps[0], streaming: true };
+  updateAIUI();
+  const _phaseTimer = setInterval(function() {
+    _phaseIdx = Math.min(_phaseIdx + 1, _phaseSteps.length - 1);
+    if (STATE.aiMessages[streamIdx] && STATE.aiMessages[streamIdx].streaming && !STATE.aiMessages[streamIdx]._hasContent) {
+      STATE.aiMessages[streamIdx].text = _phaseSteps[_phaseIdx];
+      updateAIUI();
+    }
+  }, 1800);
+
   try {
     const resp = await fetch('/api/ai/chat', _fpSessionFetchOptions({
       method: 'POST',
@@ -14299,6 +14316,7 @@ async function sendAIMessage(text) {
         : resp.status >= 500
         ? `⚠ Erreur serveur (${resp.status}) — réessayez dans quelques instants.`
         : (err.error || '⚠ Le service IA est temporairement indisponible.');
+      clearInterval(_phaseTimer);
       STATE.aiMessages[streamIdx] = { from:'ai', text: msg, streaming: false };
       STATE.aiLoading = false;
       saveAIHistory();
@@ -14337,7 +14355,9 @@ async function sendAIMessage(text) {
             // Clear progress hint on first real content
             if (!fullText) { const _ph = document.getElementById('fp-ai-progress-hint'); if (_ph) _ph.textContent = ''; }
             fullText += parsed.delta;
-            STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: true, proposal: _proposal };
+            if (fullText.length > 0) STATE.aiMessages[streamIdx]._hasContent = true;
+            if (fullText.length > 0) clearInterval(_phaseTimer);
+            STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: true, proposal: _proposal, _hasContent: true };
             // Guard: updateAIUI() may access detached DOM when user navigated away — never let it kill the stream.
             try { updateAIUI(); } catch(_) {}
           } else if (parsed.action_proposal) {
@@ -14348,7 +14368,8 @@ async function sendAIMessage(text) {
             // Le serveur envoie le conversationId AVEC la carte — le mémoriser
             // immédiatement pour que Confirmer fonctionne toujours (fix « Session perdue »).
             if (_confirmReq.conversationId) STATE._aiConversationId = _confirmReq.conversationId;
-            STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: false, proposal: _proposal, confirmRequest: _confirmReq };
+            clearInterval(_phaseTimer);
+      STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: false, proposal: _proposal, confirmRequest: _confirmReq };
             STATE.aiLoading = false;
             saveAIHistory();
             try { updateAIUI(); } catch(_) {}
@@ -49258,6 +49279,10 @@ async function init() {
         }),
       });
       if (r && r.id) {
+        // Optimistic STATE update + cache bust so navigate('missions') shows new mission
+        if (!Array.isArray(STATE.missions)) STATE.missions = [];
+        STATE.missions.unshift(r);
+        for (const _k of _apiFetchCache.keys()) { if (_k.includes('/api/missions')) _apiFetchCache.delete(_k); }
         showToast('success', fpT('Mission créée : ') + escHtml(title));
       } else {
         showToast('error', (r && r.error) ? r.error : fpT('Erreur lors de la création de la mission'));
@@ -54292,14 +54317,14 @@ function renderCompetitor() {
                 <div class="fp-card-title" style="margin-bottom:0">💪 Forces</div>
                 <span style="font-size:10px;color:var(--fp-text-faint);padding:2px 7px;background:rgba(34,197,94,0.08);border-radius:10px">${(analysis.strengths||[]).length} détectées</span>
               </div>
-              ${(analysis.strengths||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:7px">${(analysis.strengths).map(s=>`<li style="font-size:12px;line-height:1.4">${escHtml(String(s))}</li>`).join('')}</ul>`}
+              ${(analysis.strengths||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">Non déterminé</div>`:`<div style="display:flex;flex-wrap:wrap;gap:6px">${(analysis.strengths).map(s=>`<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);border-radius:20px;font-size:11px;color:#16a34a;font-weight:500">✓ ${escHtml(String(s))}</span>`).join('')}</div>`}
             </div>
             <div class="fp-card" style="border-top:2px solid #f59e0b">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
                 <div class="fp-card-title" style="margin-bottom:0">⚠️ Faiblesses</div>
                 <span style="font-size:10px;color:var(--fp-text-faint);padding:2px 7px;background:rgba(245,158,11,0.08);border-radius:10px">${(analysis.weaknesses||[]).length} détectées</span>
               </div>
-              ${(analysis.weaknesses||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:7px">${(analysis.weaknesses).map(s=>`<li style="font-size:12px;line-height:1.4">${escHtml(String(s))}</li>`).join('')}</ul>`}
+              ${(analysis.weaknesses||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">Non déterminé</div>`:`<div style="display:flex;flex-wrap:wrap;gap:6px">${(analysis.weaknesses).map(s=>`<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:20px;font-size:11px;color:#d97706;font-weight:500">⚠ ${escHtml(String(s))}</span>`).join('')}</div>`}
             </div>
           </div>
           <div class="fp-card fp-mb-16">
@@ -57589,15 +57614,15 @@ function renderActivityFeed() {
         (id && STATE.teamContributions[id]) ||
         (email && (STATE.teamContributions[email] || STATE.teamContributions[t.email]))
       )) || null;
-      const audits = contrib ? Number(contrib.audits || 0) : null;
-      const missions = contrib ? Number(contrib.missions || 0) : null;
-      const reports = contrib ? Number(contrib.reports || 0) : null;
+      const audits = contrib ? Number(contrib.audits || 0) : 0;
+      const missions = contrib ? Number(contrib.missions || 0) : 0;
+      const reports = contrib ? Number(contrib.reports || 0) : 0;
       return {
         id, email,
         name: nm, role: t.role || 'member',
         avatar: nm.slice(0,2).toUpperCase(),
         color: _mColors[i % _mColors.length],
-        actions: contrib ? audits + missions + reports : null,
+        actions: audits + missions + reports,
         score: null, trend: '—',
         contribs: contrib ? { audits, missions, reports } : null,
         streak: (STATE.teamStreaks && (
@@ -57656,7 +57681,7 @@ function renderActivityFeed() {
                   <div style="font-size:10px;color:var(--fp-text-faint)">Streak 🔥</div>
                 </div>
               </div>
-              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px"><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#2563EB">${m.contribs?(m.contribs.audits??0):(m.actions??'—')}</div><div style="font-size:10px;color:var(--fp-text-faint)">Audits</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#22c55e">${m.contribs?(m.contribs.missions??0):'—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Missions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#8b5cf6">${m.contribs?(m.contribs.reports??0):'—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Rapports</div></div></div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px"><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#2563EB">${m.contribs?(m.contribs.audits??0):(m.actions??0)}</div><div style="font-size:10px;color:var(--fp-text-faint)">Audits</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#22c55e">${m.contribs?(m.contribs.missions??0):'—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Missions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#8b5cf6">${m.contribs?(m.contribs.reports??0):'—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Rapports</div></div></div>
             </div>`;
           }).join('')}
         </div>
@@ -68410,8 +68435,9 @@ window.fpUpdateRankingMarkersFromHistory = function() {
   STATE.localSeo.rankings = merged;
   STATE.localSeo._selectedRankings = new Set(merged.map(function(_, i){ return i; }));
   if (typeof window.fpUpdateRankingMarkers === 'function') window.fpUpdateRankingMarkers();
-  STATE.localSeo.rankings = prevRankings;
-  STATE.localSeo._selectedRankings = prevSelected;
+  // Do NOT restore prevRankings: fpUpdateRankingMarkers() does async geocoding and reads
+  // STATE.localSeo.rankings in callbacks. Restoring immediately breaks geocoded marker placement.
+  // The merged history results are the intended display state when checkboxes are active.
 };
 
 window.fpUpdateRankingMarkers = (function() {
