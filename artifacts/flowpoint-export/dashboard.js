@@ -8827,8 +8827,13 @@ function renderLocalSEO() {
                 const _sel = (STATE.localSeo._selectedRankings||new Set()).has(i);
                 const _rankColors = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
                 return `<div data-rank-row="${i}" style="display:flex;align-items:flex-start;gap:8px;padding:7px 6px;border-radius:7px;cursor:pointer;transition:background 0.12s;${i > 0 ? 'border-top:1px solid var(--fp-border)' : ''};background:${_sel?'rgba(37,99,235,0.08)':'transparent'}"
+<<<<<<< HEAD
                   onclick="(function(el,idx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();var sel=STATE.localSeo._selectedRankings.has(idx);if(sel){STATE.localSeo._selectedRankings.delete(idx);el.style.background='transparent';}else{STATE.localSeo._selectedRankings.add(idx);el.style.background='rgba(37,99,235,0.08)';}var cb=el.querySelector('.fp-rank-cb');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkers==='function')window.fpUpdateRankingMarkers();})(this,${i})">
                   <input type="checkbox" class="fp-rank-cb" data-rank-idx="${i}" style="width:14px;height:14px;accent-color:#2563EB;cursor:pointer;flex-shrink:0;margin-top:3px" ${_sel?'checked':''} onclick="event.stopPropagation();(function(cb,idx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();var row=cb.closest('[data-rank-row]');if(cb.checked){STATE.localSeo._selectedRankings.add(idx);if(row)row.style.background='rgba(37,99,235,0.08)';}else{STATE.localSeo._selectedRankings.delete(idx);if(row)row.style.background='transparent';}if(typeof window.fpUpdateRankingMarkers==='function')window.fpUpdateRankingMarkers();})(this,${i})">
+=======
+                  onclick="(function(el,idx){var cb=el.querySelector('.fp-rank-cb');if(cb){cb.checked=!cb.checked;cb.dispatchEvent(new Event('change',{bubbles:true}));}else{if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();STATE.localSeo._selectedRankings.has(idx)?STATE.localSeo._selectedRankings.delete(idx):STATE.localSeo._selectedRankings.add(idx);render(STATE.currentSection);}})(this,${i})">
+                  <input type="checkbox" class="fp-rank-cb" data-rank-idx="${i}" style="width:14px;height:14px;accent-color:#2563EB;cursor:pointer;flex-shrink:0;margin-top:3px" ${_sel?'checked':''} onclick="event.stopPropagation()">
+>>>>>>> 83819fd (feat: 5 feature fixes — funnel draft, rankings checkboxes, reviews stats, competitor analysis layout, activity userName)
                   <div style="font-size:15px;font-weight:800;color:${_rankColors[i%_rankColors.length]};min-width:22px;text-align:center">#${r.rank}</div>
                   <div style="flex:1;min-width:0">
                     <div style="font-size:12px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.title)}</div>
@@ -27717,6 +27722,25 @@ function bindGlobalEvents() {
     "Tous les audits →": "Tutti gli audit →",
     "Tous les systèmes OK": "Tutti i sistemi OK",
     "Tout marquer lu": "Segna tutto come letto",
+    "Appliquer": "Applica",
+    "Recommandation IA": "Raccomandazione IA",
+    "Recommandations IA": "Raccomandazioni IA",
+    "Concurrent analysé": "Concorrente analizzato",
+    "Actualiser l'analyse": "Aggiorna l'analisi",
+    "Forces détectées": "Punti di forza rilevati",
+    "Faiblesses détectées": "Punti deboli rilevati",
+    "Sources & niveau de confiance": "Fonti e livello di fiducia",
+    "Propriété GA4 non configurée": "Proprietà GA4 non configurata",
+    "⚙ Configurer GA4 →": "⚙ Configura GA4 →",
+    "Filtrer": "Filtra",
+    "Voir les détails →": "Vedi dettagli →",
+    "Rapport complet": "Report completo",
+    "Partager": "Condividi",
+    "Matrice fonctionnalités": "Matrice delle funzionalità",
+    "Positionnement": "Posizionamento",
+    "Proposition de valeur": "Proposta di valore",
+    "Tarification": "Prezzi",
+    "Essai gratuit / Démo": "Prova gratuita / Demo",
     "Tout sélectionner": "Seleziona tutto",
     "Tout voir": "Visualizza tutto",
     "Toutes": "Tutte",
