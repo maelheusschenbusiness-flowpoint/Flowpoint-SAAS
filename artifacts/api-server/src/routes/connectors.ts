@@ -136,7 +136,10 @@ router.post("/connectors/:provider/connect", requireAdmin, async (req: Request, 
         lastSync: new Date().toISOString(),
         syncStatus: "ok",
       }).where(eq(connectorsTable.provider, provider)).returning();
-      store.logActivity({ type: "team", label: `Connecteur ${provider} connecté`, targetType: "connector", orgId: (req as unknown as Record<string, string>)["orgId"] ?? "default" }).catch(err => console.warn("[logActivity]", err?.message));
+      const _cCtx1 = (req as any).orgContext || {};
+      store.logActivity({ type: "team", label: `Connecteur ${provider} connecté`, targetType: "connector", orgId: (req as unknown as Record<string, string>)["orgId"] ?? "default",
+        actionKey: "activity.connector.connected", actionParams: { provider },
+        userId: _cCtx1.userId || _cCtx1.email || null, userName: _cCtx1.name || _cCtx1.email || null }).catch(err => console.warn("[logActivity]", err?.message));
       res.json({ ok: true, connector: { ...updated, accessToken: "••••••", webhookSecret: null } });
     } else {
       const [created] = await db.insert(connectorsTable).values({
@@ -150,7 +153,10 @@ router.post("/connectors/:provider/connect", requireAdmin, async (req: Request, 
         lastSync: new Date().toISOString(),
         syncStatus: "ok",
       }).returning();
-      store.logActivity({ type: "team", label: `Connecteur ${provider} connecté`, targetType: "connector", orgId: (req as unknown as Record<string, string>)["orgId"] ?? "default" }).catch(err => console.warn("[logActivity]", err?.message));
+      const _cCtx2 = (req as any).orgContext || {};
+      store.logActivity({ type: "team", label: `Connecteur ${provider} connecté`, targetType: "connector", orgId: (req as unknown as Record<string, string>)["orgId"] ?? "default",
+        actionKey: "activity.connector.connected", actionParams: { provider },
+        userId: _cCtx2.userId || _cCtx2.email || null, userName: _cCtx2.name || _cCtx2.email || null }).catch(err => console.warn("[logActivity]", err?.message));
       res.status(201).json({ ok: true, connector: { ...created, accessToken: "••••••", webhookSecret: null } });
     }
   } catch (e) {
@@ -164,7 +170,10 @@ router.post("/connectors/:provider/disconnect", requireAdmin, async (req: Reques
     await db.update(connectorsTable).set({
       status: "disconnected", connected: false, accessToken: null, refreshToken: null, webhookSecret: null, syncStatus: "idle",
     }).where(eq(connectorsTable.provider, provider));
-    store.logActivity({ type: "team", label: `Connecteur ${provider} déconnecté`, targetType: "connector", orgId: (req as unknown as Record<string, string>)["orgId"] ?? "default" }).catch(err => console.warn("[logActivity]", err?.message));
+    const _cCtxD = (req as any).orgContext || {};
+    store.logActivity({ type: "team", label: `Connecteur ${provider} déconnecté`, targetType: "connector", orgId: (req as unknown as Record<string, string>)["orgId"] ?? "default",
+      actionKey: "activity.connector.disconnected", actionParams: { provider },
+      userId: _cCtxD.userId || _cCtxD.email || null, userName: _cCtxD.name || _cCtxD.email || null }).catch(err => console.warn("[logActivity]", err?.message));
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to disconnect" });
