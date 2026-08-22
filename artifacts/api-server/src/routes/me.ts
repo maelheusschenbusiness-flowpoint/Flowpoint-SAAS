@@ -781,6 +781,7 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
       const _settingsCtx = (req as any).orgContext || {};
       import("../services/store.js")
         .then(m => m.store.logActivity({ type: "settings", label: `Paramètres mis à jour : ${keys}`, orgId,
+          actionKey: "activity.settings.updated", actionParams: { keys },
           userId: _settingsCtx.userId || _settingsCtx.email || null,
           userName: _settingsCtx.name || _settingsCtx.email || null }))
         .catch(() => {});
@@ -1095,6 +1096,7 @@ router.post("/settings/api-keys/regenerate", ownerOnly, async (req: Request, res
     const _apiKeyCtx = (req as any).orgContext || {};
     import("../services/store.js")
       .then(m => m.store.logActivity({ type: "security", label: `Clé API ${type === "secret" ? "secrète" : "publique"} régénérée`, orgId,
+        actionKey: "activity.settings.apikey", actionParams: { type },
         userId: _apiKeyCtx.userId || _apiKeyCtx.email || null,
         userName: _apiKeyCtx.name || _apiKeyCtx.email || null }))
       .catch(() => {});
