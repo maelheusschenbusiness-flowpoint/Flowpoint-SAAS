@@ -1,3 +1,6 @@
+- [custom_domains RLS + missing tables pattern](custom-domains-rls-missing-tables.md) — custom_domains needed ENABLE+FORCE RLS; gsc_keyword_data/gsc_page_data/gsc_sync_logs/revenue_leaks/gbp_profiles were never CREATE'd in init-data-tables.ts
+- [Timezone Bruxelles 22023 fix](timezone-bruxelles-fix.md) — sanitizeTimezone() in me.ts validates IANA + maps French labels; DB migration fixes stored "Bruxelles" in user_prefs/organizations/org_settings
+- [25P01 double-ROLLBACK pattern](txactive-pattern.md) — use txActive flag so catch block only sends ROLLBACK when transaction is still open; prevents 25P01 in Postgres logs
 - [Google OAuth — organizations table check](google-oauth-org-check.md) — callback must query organizations BEFORE org_settings; magic-link users only exist in organizations; skip creates duplicate Stripe customer
 - [apiFetch auth state machine](apifetch-auth-state-machine.md) — global logout ONLY on /api/me failure; secondary endpoint 401 must throw (not redirect); recovery call must send Bearer; structural fix for false F5→login
 - [Magic link + session + billing refresh fixes](magic-link-session-billing-fixes.md) — storeMagicToken 15min→1h; finalize-checkout sends email not assumes; SESSION_TTL 24h→7d; fp:billing:updated re-fetches /api/me; suppression check ML-2.5; ALERT_EMAIL_FROM from-field bug
