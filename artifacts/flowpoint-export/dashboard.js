@@ -1659,6 +1659,9 @@ async function loadData(options = {}) {
         if (_cp.me)            STATE.me            = _cp.me;
         if (_cp.overview)      STATE.overview      = _cp.overview;
         if (_cp.audits)        STATE.audits        = _cp.audits;
+        if (_cp.missions && Array.isArray(_cp.missions) && _cp.missions.length > 0) {
+          STATE.missions = _cp.missions; STATE._missionsLoaded = true;
+        }
         if (_cp.monitors)      STATE.monitors      = _cp.monitors;
         if (_cp.reports)       STATE.reports       = _cp.reports;
         if (_cp.team)          STATE.team          = _cp.team;
@@ -7340,13 +7343,17 @@ function renderMissions() {
             </div>
           </div>`;
         }).join('')}
-        ${filtered.length===0?`
+        ${filtered.length===0?(STATE._missionsLoading||!STATE._missionsLoaded?`
+          <div style="padding:48px 20px;text-align:center;color:var(--fp-text-muted);font-size:13px">
+            <div style="margin-bottom:10px;opacity:.6">⏳</div>${fpT('Chargement des missions…')}
+          </div>
+        `:`
           <div class="fp-empty-state" style="padding:48px 20px;text-align:center">
             <div style="font-size:40px;margin-bottom:12px;opacity:.5">🤖</div>
             <h3 style="font-size:15px;font-weight:700;color:var(--fp-text);margin:0 0 6px">${fpT('Aucune mission trouvée')}</h3>
             <p style="font-size:12px;color:var(--fp-text-muted);margin:0 0 14px">${fpT('Lancez le scanner IA pour générer des missions automatiquement depuis vos données SEO.')}</p>
             <button class="fp-btn fp-btn-primary fp-btn-sm" id="mission-ai-scan-empty" style="gap:6px">${svgIcon('zap')} Scanner maintenant</button>
-          </div>`:''}
+          </div>`):''}
       </div>
     ` : STATE.missionView === 'kanban' ? `
       <div class="fp-kanban">
@@ -14494,13 +14501,30 @@ function updateAIUI() {
 
 /** Load (or reload) missions from the server and update STATE. Called after AI write actions. */
 window.loadMissions = async function loadMissions() {
+  STATE._missionsLoading = true;
   try {
     const r = await apiFetch('/api/missions');
     if (r && Array.isArray(r.missions)) {
-      STATE.missions = r.missions;
+      // Merge: keep locally-created missions not yet committed to DB (within 30s window)
+      const _now = Date.now();
+      const _serverIds = new Set(r.missions.map(function(m){ return m.id; }));
+      const _localOnly = Array.isArray(STATE.missions)
+        ? STATE.missions.filter(function(m){
+            return m && m.id && !_serverIds.has(m.id)
+              && m._localTs && (_now - m._localTs < 30000);
+          })
+        : [];
+      STATE.missions = _localOnly.concat(r.missions);
+      STATE._missionsLoaded = true;
+      STATE._missionsLoading = false;
       if (STATE.currentSection === 'missions') render();
+    } else {
+      STATE._missionsLoading = false;
     }
-  } catch(e) { console.warn('[AI] loadMissions failed:', e && e.message); }
+  } catch(e) {
+    STATE._missionsLoading = false;
+    console.warn('[AI] loadMissions failed:', e && e.message);
+  }
 };
 
 /** Stop the in-flight AI generation — calls the server cancel endpoint then aborts the SSE. */
@@ -14917,14 +14941,10 @@ function setupNewMissionPanel() {
         const saved = await apiAction('POST', '/api/missions', payload);
         if (saved && (saved.id || saved.title)) {
           const m = saved.id ? saved : { id: 'ms'+Date.now(), ...payload };
+          m._localTs = Date.now();
           STATE.missions.unshift(m);
+          STATE._missionsLoaded = true;
           saveMissions();
-          // Invalidate missions API cache so navigate/loadData re-fetches fresh list
-          if (_apiFetchCache) {
-            for (const [k] of _apiFetchCache.entries()) {
-              if (k.includes('/api/missions')) _apiFetchCache.delete(k);
-            }
-          }
           showToast('success', fpT('Mission créée !'));
           closeFloatPanel();
           if (STATE.route === 'missions') render(); else navigate('missions');
@@ -49457,10 +49477,12 @@ async function init() {
         }),
       });
       if (r && r.id) {
-        // Optimistic STATE update + cache bust so navigate('missions') shows new mission
+        // Optimistic STATE update — tag with _localTs so loadMissions merge keeps it
+        // DO NOT bust /api/missions cache: avoids race where re-fetch returns before DB commit
         if (!Array.isArray(STATE.missions)) STATE.missions = [];
+        r._localTs = Date.now();
         STATE.missions.unshift(r);
-        for (const _k of _apiFetchCache.keys()) { if (_k.includes('/api/missions')) _apiFetchCache.delete(_k); }
+        STATE._missionsLoaded = true; // prevent "Aucune mission" flash on navigate
         showToast('success', fpT('Mission créée : ') + escHtml(title));
       } else {
         showToast('error', (r && r.error) ? r.error : fpT('Erreur lors de la création de la mission'));
@@ -51467,7 +51489,7 @@ function renderAuditsOpportunites() {
       <div style="display:flex;flex-direction:column;gap:8px">
         ${(()=>{
           const rankBadge = n => `<div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#1d4ed8);display:flex;align-items:center;justify-content:center;font-size:${n>9?'12':'14'}px;font-weight:800;color:#fff;font-family:var(--fp-font-head);box-shadow:0 2px 10px rgba(37,99,235,0.45);flex-shrink:0;letter-spacing:-0.5px">${n}</div>`;
-          const missionBtn = (idx) => `<button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0;width:110px;justify-content:center" data-kw-idx="${idx}" onclick="(function(btn){var idx=+btn.dataset.kwIdx;var o=window._fpKwOpps[idx];if(!o)return;var m={id:'m_'+Date.now(),title:o.title,desc:o.desc,site:o.site,status:'todo',priority:'high',createdAt:new Date().toISOString()};if(!STATE.missions)STATE.missions=[];STATE.missions.unshift(m);showToast('success','Mission créée · '+o.site);openFloatPanel('✅ Mission créée — '+o.site,'<div style=\\'padding:16px\\'><div style=\\'font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:6px\\'>'+o.title+'</div><div style=\\'font-size:11px;color:var(--fp-text-muted);line-height:1.6;margin-bottom:14px\\'>'+o.desc+'</div><div style=\\'display:flex;gap:8px\\'><button class=\\'fp-btn fp-btn-primary fp-btn-sm\\' onclick=\\'navigate(\\'missions\\');closeFloatPanel&&closeFloatPanel()\\'>Voir les missions</button><button class=\\'fp-btn fp-btn-ghost fp-btn-sm\\' onclick=\\'closeFloatPanel&&closeFloatPanel()\\'>Fermer</button></div></div>');})(this)">+ Mission</button>`;
+          const missionBtn = (idx) => `<button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0;width:110px;justify-content:center" data-kw-idx="${idx}" onclick="(function(btn){var idx=+btn.dataset.kwIdx;var o=window._fpKwOpps[idx];if(!o)return;var m={id:'m_'+Date.now(),title:o.title,desc:o.desc,site:o.site,status:'todo',priority:'high',createdAt:new Date().toISOString()};if(!STATE.missions)STATE.missions=[];m._localTs=Date.now();STATE.missions.unshift(m);STATE._missionsLoaded=true;showToast('success','Mission créée · '+o.site);openFloatPanel('✅ Mission créée — '+o.site,'<div style=\\'padding:16px\\'><div style=\\'font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:6px\\'>'+o.title+'</div><div style=\\'font-size:11px;color:var(--fp-text-muted);line-height:1.6;margin-bottom:14px\\'>'+o.desc+'</div><div style=\\'display:flex;gap:8px\\'><button class=\\'fp-btn fp-btn-primary fp-btn-sm\\' onclick=\\'navigate(\\'missions\\');closeFloatPanel&&closeFloatPanel()\\'>Voir les missions</button><button class=\\'fp-btn fp-btn-ghost fp-btn-sm\\' onclick=\\'closeFloatPanel&&closeFloatPanel()\\'>Fermer</button></div></div>');})(this)">+ Mission</button>`;
           const cardHtml = (kw, i, globalIdx) => `
             <div class="fp-opp-card" style="gap:14px;align-items:center">
               ${rankBadge(globalIdx+1)}
