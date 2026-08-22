@@ -1247,24 +1247,41 @@ function markAllAlertsRead() {
 }
 
 async function changeTeamMemberRole(memberId, currentRole) {
-  const roles = ['viewer', 'editor', 'admin'];
+  // DB role values the backend accepts: admin (Manager), member (Editor), viewer (Viewer)
+  // Display labels map: admin→Manager, member→Editor, viewer→Viewer
+  const _ROLE_DB_TO_LABEL = { admin: 'Manager', member: 'Editor', viewer: 'Viewer' };
+  const _ROLE_LABEL_TO_DB = { Manager: 'admin', Editor: 'member', Viewer: 'viewer' };
+  // Normalize currentRole to DB form (handle legacy 'editor'/'manager' spellings)
+  const _normalize = r => ({ editor:'member', manager:'admin', admin:'admin', member:'member', viewer:'viewer' }[String(r||'viewer').toLowerCase()] || 'viewer');
+  const currentRoleDb = _normalize(currentRole);
+  const roles = ['viewer', 'member', 'admin'];
   openFloatPanel(fpT('Changer le rôle'), `
     <div class="fp-form-group">
       <label class="fp-form-label">${fpT('Nouveau rôle pour ce membre')}</label>
       <select class="fp-select" id="role-picker" style="width:100%">
-        ${roles.map(r => `<option value="${r}"${r === currentRole ? ' selected' : ''}>${r.charAt(0).toUpperCase() + r.slice(1)}</option>`).join('')}
+        ${roles.map(r => `<option value="${r}"${r === currentRoleDb ? ' selected' : ''}>${_ROLE_DB_TO_LABEL[r] || r}</option>`).join('')}
       </select>
     </div>
-    <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" id="role-confirm">${fpT('Confirmer le rôle')}</button>
+    <div style="margin-top:10px;padding:10px;background:var(--fp-bg-inset);border-radius:8px;font-size:11px;color:var(--fp-text-muted)">
+      <strong>Viewer</strong> — Lecture seule · <strong>Editor</strong> — Peut modifier · <strong>Manager</strong> — Accès opérationnel (sans billing propriétaire)
+    </div>
+    <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:10px" id="role-confirm">${fpT('Confirmer le rôle')}</button>
   `);
   await new Promise(r => setTimeout(r, 60));
   document.getElementById('role-confirm')?.addEventListener('click', async () => {
     const role = document.getElementById('role-picker')?.value;
-    try {
-      await apiAction('PATCH', `/api/team/${memberId}`, { role });
-    } catch(e) { console.warn('[FP] Role patch fallback'); }
+    const r = await apiAction('PATCH', `/api/team/${memberId}`, { role }).catch(() => null);
+    if (!r || r.error) {
+      showToast('error', (r && r.error) || fpT('Erreur lors du changement de rôle'));
+      return;
+    }
     const m = STATE.team.find(t => t.id === memberId);
     if (m) m.role = role;
+    // If the changed member is the current user, also update STATE.me immediately
+    if (STATE.me && (STATE.me.id === memberId || STATE.me.userId === memberId)) {
+      STATE.me.role = role;
+      _fpApplyRoleNav();
+    }
     showToast('success', fpT('Rôle mis à jour !'));
     closeFloatPanel();
     render();
@@ -11554,8 +11571,8 @@ function renderSettings() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(m.name)}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(m.email)} · ${escHtml(m.last)}</div>
               </div>
-              <select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="(async(el)=>{const bv=el.value;const r=await apiAction('PATCH','/api/team/${m.id}',{role:bv}).catch(()=>null);if(r&&!r.error){const tm=(STATE.team||[]).find(t=>t.id==='${m.id}');if(tm)tm.role=bv;showToast('success', fpT('R\u00f4le mis \u00e0 jour'));render();}else{showToast('error',(r&&r.error)||'Erreur mise \u00e0 jour r\u00f4le');}el.blur();})(this)">
-                ${(()=>{const _vm={Owner:'owner',Manager:'admin',Editor:'member',Viewer:'viewer'};return roles.map(r=>`<option value="${_vm[r]}" ${_vm[r]===m.role.toLowerCase()?'selected':''}>${r}</option>`).join('');})()}
+              <select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="(async(el)=>{const bv=el.value;const r=await apiAction('PATCH','/api/team/${m.id}',{role:bv}).catch(()=>null);if(r&&!r.error){const tm=(STATE.team||[]).find(t=>t.id==='${m.id}');if(tm)tm.role=bv;if(STATE.me&&(STATE.me.id==='${m.id}'||STATE.me.userId==='${m.id}')){STATE.me.role=bv;_fpApplyRoleNav();}showToast('success', fpT('R\u00f4le mis \u00e0 jour'));render();}else{showToast('error',(r&&r.error)||fpT('Erreur mise \u00e0 jour r\u00f4le'));}el.blur();})(this)">
+                ${(()=>{const _vm={Manager:'admin',Editor:'member',Viewer:'viewer'};const _selRoles=['Manager','Editor','Viewer'];return _selRoles.map(r=>`<option value="${_vm[r]}" ${_vm[r]===m.role.toLowerCase()?'selected':''}>${r}</option>`).join('');})()}
               </select>
               ${m.role !== 'Owner' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="window.fpDarkConfirm('Retirer ce membre de l\\'équipe ?',async function(){const r=await apiAction('DELETE','/api/team/${m.id}').catch(()=>null);if(r&&!r.error){STATE.team=(STATE.team||[]).filter(t=>t.id!=='${m.id}');if(STATE.seatUsage&&STATE.seatUsage.used>0)STATE.seatUsage.used--;showToast('success', fpT('Membre retir\u00e9'));render();}else{showToast('error', fpT('Erreur lors du retrait'));}}, 'Retirer le membre')">${fpT('Retirer')}</button>` : ''}
             </div>
@@ -47751,6 +47768,42 @@ async function init() {
                       if (c) c.scrollTop = c.scrollHeight;
                     }, 30);
                   } catch(_) {}
+                }
+              }
+            // ── Role change broadcast — re-sync permissions without page refresh ──
+            } else if (msg.type === 'fp:role_updated' && msg.email && msg.role) {
+              // Check if this event concerns the currently logged-in user
+              const _myEmail = (STATE.me?.email || '').toLowerCase();
+              const _evEmail = String(msg.email).toLowerCase();
+              if (_myEmail && _myEmail === _evEmail) {
+                const _newRole = String(msg.role).toLowerCase();
+                const _oldRole = (STATE.me?.role || 'viewer').toLowerCase();
+                if (_newRole !== _oldRole) {
+                  // 1. Update STATE.me immediately for instant UI response
+                  if (STATE.me) STATE.me.role = _newRole;
+                  // 2. Re-apply nav visibility (hide/show sidebar items)
+                  try { _fpApplyRoleNav(); } catch(_) {}
+                  // 3. If current route is now forbidden, redirect to overview
+                  if (!_fpCanAccess(STATE.route)) {
+                    STATE.route = 'overview';
+                    try { localStorage.setItem('fp:last-route', 'overview'); } catch(_) {}
+                  }
+                  // 4. Bust caches and re-fetch /api/me for full server-authoritative sync
+                  try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+                  _apiFetchCache && _apiFetchCache.clear();
+                  apiFetch('/api/me', { force: true }).then(function(me) {
+                    if (me && !me.error && STATE.me) {
+                      STATE.me.role = (me.role || _newRole).toLowerCase();
+                      STATE.me.permissions = me.permissions || STATE.me.permissions;
+                    }
+                    try { _fpApplyRoleNav(); } catch(_) {}
+                    try { render(); } catch(_) {}
+                  }).catch(function() {
+                    try { render(); } catch(_) {}
+                  });
+                  // 5. Notify the user their permissions changed
+                  const _labelMap = { admin:'Manager', member:'Éditeur', viewer:'Lecteur', owner:'Propriétaire' };
+                  showToast('info', '🔐 ' + fpT('Votre rôle') + ' : ' + (_labelMap[_newRole] || _newRole));
                 }
               }
             }

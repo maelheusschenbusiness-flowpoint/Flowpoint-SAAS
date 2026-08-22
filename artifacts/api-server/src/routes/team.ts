@@ -23,6 +23,7 @@ import { pool, withOrgDb }                     from "@workspace/db";
 import { canAdmin }                             from "../middlewares/requireRole.js";
 import { createSession, SESSION_TTL_MS } from "../services/sessions.js";
 import { resolveSeatEntitlement, SeatEntitlementUnavailableError } from "../services/seat-entitlement.js";
+import { store }                                from "../services/store.js";
 
 // ── Public router (registered before requireAuth in index.ts) ─────────────────
 export const publicTeamRouter = Router();
@@ -883,6 +884,15 @@ router.patch("/team/:id", canAdmin, async (req: Request, res: Response) => {
        WHERE u.id = om.user_id AND lower(u.email) = lower($2) AND om.organization_id = $3`,
       [newRole, m.email as string, org]
     ).catch(err => logger.warn({ err: (err as Error).message }, "[team/patch] org_members dual-write failed (non-fatal)"));
+
+    // Broadcast SSE so the affected member's browser immediately re-syncs
+    // their role without needing a manual page refresh.
+    try {
+      store.broadcast(
+        { type: "fp:role_updated", memberId, email: m.email, role: m.role },
+        org
+      );
+    } catch (_) { /* non-fatal — member will re-sync on next /api/me poll */ }
 
     res.json({
       ok: true,
