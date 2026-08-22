@@ -89,27 +89,27 @@ function validateParameterFilters(pfs: unknown[], stepName: string): string | nu
 }
 
 function validateSteps(steps: unknown[]): string | null {
-  if (steps.length < 2) return "Funnel requires at least 2 steps";
-  if (steps.length > 10) return "Funnel allows at most 10 steps";
+  if (steps.length < 2) return "Le funnel nécessite au moins 2 étapes";
+  if (steps.length > 10) return "Le funnel ne peut pas dépasser 10 étapes";
   const positions = new Set<number>();
   for (const raw of steps) {
-    if (typeof raw !== "object" || raw === null) return "Each step must be an object";
+    if (typeof raw !== "object" || raw === null) return "Chaque étape doit être un objet valide";
     const s = raw as StepInput;
     const pos = s.position;
     if (typeof pos !== "number" || !Number.isInteger(pos) || pos < 1 || pos > 10) {
-      return `Step position must be an integer 1–10 (got ${String(pos)})`;
+      return `La position de l'étape doit être un entier entre 1 et 10 (reçu : ${String(pos)})`;
     }
-    if (positions.has(pos)) return `Duplicate step position: ${pos}`;
+    if (positions.has(pos)) return `Position d'étape en double : ${pos}`;
     positions.add(pos);
     const name = s.name;
     if (!name || typeof name !== "string" || !name.trim()) {
-      return `Step at position ${pos} has empty name`;
+      return `L'étape à la position ${pos} n'a pas de nom`;
     }
     const hasEvent = !!(s.eventName as string | undefined)?.trim();
     const hasPage = !!(s.pagePathValue as string | undefined)?.trim();
     const hasLocation = !!(s.pageLocationValue as string | undefined)?.trim();
     if (!hasEvent && !hasPage && !hasLocation) {
-      return `Step "${String(name)}" at position ${pos} requires eventName, pagePathValue, or pageLocationValue`;
+      return `L'étape "${String(name)}" (position ${pos}) doit avoir un événement, un chemin de page ou une URL`;
     }
     const mt = s.pagePathMatchType as string | undefined;
     if (mt && !ALLOWED_MATCH_TYPES.has(mt)) {
@@ -263,8 +263,11 @@ router.post("/funnels", async (req: Request, res: Response) => {
     const stepsErr = validateSteps(steps);
     if (stepsErr) return void res.status(400).json({ ok: false, error: stepsErr });
 
+    // Site ownership check is advisory only — GA4 funnels work without behaviour tracking
     const owned = await assertSiteOwnership(orgId, siteUrl);
-    if (!owned) return void res.status(404).json({ ok: false, error: "Site not found for this organisation" });
+    if (!owned) {
+      console.warn(`[funnels] siteUrl ${siteUrl} not in behavior_site_tokens for org ${orgId} — creating funnel anyway`);
+    }
 
     const funnelId = randomUUID();
     const now = new Date().toISOString();
