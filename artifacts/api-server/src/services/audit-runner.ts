@@ -49,7 +49,7 @@ export interface LaunchedAudit {
  * Insert the processing audit row and kick off the async PSI analysis.
  * `url` must already be normalized via normalizeAuditUrl.
  */
-export async function launchAudit(opts: { orgId: string; url: string; origin: string; name?: string }): Promise<LaunchedAudit> {
+export async function launchAudit(opts: { orgId: string; url: string; origin: string; name?: string; userId?: string; userName?: string }): Promise<LaunchedAudit> {
   const { orgId, url, origin } = opts;
   const auditId = `a${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
   const dateStr = new Date().toISOString();
@@ -66,6 +66,8 @@ export async function launchAudit(opts: { orgId: string; url: string; origin: st
     label: origin === "scheduled" ? `Audit planifié lancé : ${url}` : `Audit lancé : ${url}`,
     targetId: auditId, targetType: "audit",
     metadata: { url, origin, type: "SEO complet" }, orgId,
+    userId: origin === "scheduled" ? "system" : (opts.userId ?? "system"),
+    userName: origin === "scheduled" ? "Scheduler" : (opts.userName ?? "Système"),
   }).catch(err => logger.error({ err }, "[audit-runner] logActivity failed"));
 
   // Async PSI analysis — never blocks the caller.
