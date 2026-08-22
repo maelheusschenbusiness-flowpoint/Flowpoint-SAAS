@@ -110,6 +110,37 @@ export function getQuotaUsage(
   };
 }
 
+/**
+ * DB-backed quota read — warms the in-memory cache from `dataforseo_quota`
+ * so the value survives server restarts and F5.
+ * Callers that need the authoritative used count (e.g. /api/me, /api/seo/status)
+ * should prefer this over the sync `getQuotaUsage()`.
+ */
+export async function getQuotaUsageFromDB(
+  orgId = "default", _plan?: string
+): Promise<{ used: number; limit: number; resetAt: string }> {
+  const today = new Date().toISOString().slice(0, 10);
+  const key   = `${orgId}:${today}`;
+  // Only hit the DB when the in-memory cache is cold (missing key = fresh process/restart).
+  if (!_quotaMemory.has(key)) {
+    const client = await pool.connect();
+    try {
+      const r = await client.query(
+        `SELECT requests_used FROM dataforseo_quota WHERE org_id=$1 AND date=$2`,
+        [orgId, today]
+      );
+      if (r.rows.length > 0) {
+        _quotaMemory.set(key, Number(r.rows[0]!["requests_used"] ?? 0));
+      }
+    } catch { /* non-fatal — fall through with 0 */ } finally { client.release(); }
+  }
+  return {
+    used:    _quotaMemory.get(key) ?? 0,
+    limit:   MAX_DAILY_REQUESTS,
+    resetAt: _quotaResetAt(),
+  };
+}
+
 // ── Keywords ──────────────────────────────────────────────────────────────────
 
 export async function getKeywordSuggestions(

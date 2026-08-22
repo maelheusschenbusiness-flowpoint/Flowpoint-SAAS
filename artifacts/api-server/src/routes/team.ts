@@ -1355,13 +1355,14 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
 
     // Each table may not yet exist — use allSettled so one missing table
     // doesn't kill the whole response.
-    const [auditsRes, missionsRes, reportsRes] = await Promise.allSettled([
+    const [auditsRes, missionsRes, reportsRes, monitorsRes] = await Promise.allSettled([
       pool.query(canonicalCountSql("audits"), [orgId]),
       pool.query(
         canonicalCountSql("missions", "AND (t.status = 'done' OR t.status = 'completed')"),
         [orgId]
       ),
       pool.query(canonicalCountSql("reports"), [orgId]),
+      pool.query(canonicalCountSql("monitors"), [orgId]),
     ]);
 
     // If EVERY query rejected, this is a real backend failure, not "zero work".
@@ -1378,9 +1379,9 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
       return;
     }
 
-    const byUser: Record<string, { audits: number; missions: number; reports: number }> = {};
+    const byUser: Record<string, { audits: number; missions: number; reports: number; monitors: number }> = {};
     const get = (id: string) => {
-      if (!byUser[id]) byUser[id] = { audits: 0, missions: 0, reports: 0 };
+      if (!byUser[id]) byUser[id] = { audits: 0, missions: 0, reports: 0, monitors: 0 };
       return byUser[id]!;
     };
 
@@ -1390,7 +1391,7 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     // key names the SAME member.
     const applyCount = (
       settled: PromiseSettledResult<{ rows: Record<string, unknown>[] }>,
-      field: "audits" | "missions" | "reports"
+      field: "audits" | "missions" | "reports" | "monitors"
     ) => {
       if (settled.status !== "fulfilled") return;
       settled.value.rows.forEach((r) => {
@@ -1405,6 +1406,7 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     applyCount(auditsRes, "audits");
     applyCount(missionsRes, "missions");
     applyCount(reportsRes, "reports");
+    applyCount(monitorsRes, "monitors");
 
     res.json({ ok: true, contributions: byUser });
   } catch (err) {

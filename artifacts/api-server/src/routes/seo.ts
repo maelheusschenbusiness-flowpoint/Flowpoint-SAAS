@@ -5,6 +5,7 @@ import {
   isDataForSEOConfigured,
   checkAndIncrementQuota,
   getQuotaUsage,
+  getQuotaUsageFromDB,
   getKeywordSuggestions,
   getSERP,
   getCompetitors,
@@ -125,7 +126,8 @@ function withQuota(handler: (req: import("express").Request, res: import("expres
 router.get("/seo/status", async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const plan  = ((req as unknown as Record<string, unknown>)["me"] as Record<string,string> | undefined)?.plan ?? "Pro";
-  const { used, limit } = getQuotaUsage(orgId, plan);
+  // Use the DB-backed version so the count survives server restarts (F5-safe).
+  const { used, limit } = await getQuotaUsageFromDB(orgId, plan);
   res.json({
     configured: await isDataForSEOConfigured(orgId),
     plan, quota: { used, limit, remaining: Math.max(0, limit - used) },

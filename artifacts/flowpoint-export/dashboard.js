@@ -8832,13 +8832,8 @@ function renderLocalSEO() {
                 const _sel = (STATE.localSeo._selectedRankings||new Set()).has(i);
                 const _rankColors = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
                 return `<div data-rank-row="${i}" style="display:flex;align-items:flex-start;gap:8px;padding:7px 6px;border-radius:7px;cursor:pointer;transition:background 0.12s;${i > 0 ? 'border-top:1px solid var(--fp-border)' : ''};background:${_sel?'rgba(37,99,235,0.08)':'transparent'}"
-<<<<<<< HEAD
                   onclick="(function(el,idx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();var sel=STATE.localSeo._selectedRankings.has(idx);if(sel){STATE.localSeo._selectedRankings.delete(idx);el.style.background='transparent';}else{STATE.localSeo._selectedRankings.add(idx);el.style.background='rgba(37,99,235,0.08)';}var cb=el.querySelector('.fp-rank-cb');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkers==='function')window.fpUpdateRankingMarkers();})(this,${i})">
-                  <input type="checkbox" class="fp-rank-cb" data-rank-idx="${i}" style="width:14px;height:14px;accent-color:#2563EB;cursor:pointer;flex-shrink:0;margin-top:3px" ${_sel?'checked':''} onclick="event.stopPropagation();(function(cb,idx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();var row=cb.closest('[data-rank-row]');if(cb.checked){STATE.localSeo._selectedRankings.add(idx);if(row)row.style.background='rgba(37,99,235,0.08)';}else{STATE.localSeo._selectedRankings.delete(idx);if(row)row.style.background='transparent';}if(typeof window.fpUpdateRankingMarkers==='function')window.fpUpdateRankingMarkers();})(this,${i})">
-=======
-                  onclick="(function(el,idx){var cb=el.querySelector('.fp-rank-cb');if(cb){cb.checked=!cb.checked;cb.dispatchEvent(new Event('change',{bubbles:true}));}else{if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();STATE.localSeo._selectedRankings.has(idx)?STATE.localSeo._selectedRankings.delete(idx):STATE.localSeo._selectedRankings.add(idx);render(STATE.currentSection);}})(this,${i})">
-                  <input type="checkbox" class="fp-rank-cb" data-rank-idx="${i}" style="width:14px;height:14px;accent-color:#2563EB;cursor:pointer;flex-shrink:0;margin-top:3px" ${_sel?'checked':''} onclick="event.stopPropagation()">
->>>>>>> 83819fd (feat: 5 feature fixes — funnel draft, rankings checkboxes, reviews stats, competitor analysis layout, activity userName)
+                  <input type="checkbox" class="fp-rank-cb" data-rank-idx="${i}" style="width:14px;height:14px;accent-color:#2563EB;cursor:pointer;flex-shrink:0;margin-top:3px" ${_sel?'checked':''} onclick="event.stopPropagation();(function(cb,idx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();var row=cb.closest('[data-rank-row]');if(cb.checked){STATE.localSeo._selectedRankings.add(idx);if(row)row.style.background='rgba(37,99,235,0.08)';}else{STATE.localSeo._selectedRankings.delete(idx);if(row)row.style.background='transparent';}if(typeof window.fpUpdateRankingMarkers==='function')window.fpUpdateRankingMarkers();})(this,${i})"
                   <div style="font-size:15px;font-weight:800;color:${_rankColors[i%_rankColors.length]};min-width:22px;text-align:center">#${r.rank}</div>
                   <div style="flex:1;min-width:0">
                     <div style="font-size:12px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.title)}</div>
@@ -8876,17 +8871,18 @@ function renderLocalSEO() {
                   const items = STATE.localSeo.rankingHistory;
                   widget.innerHTML = items.length === 0
                     ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique.</div>'
-                    : items.map(h2 => {
+                    : items.map((h2, hIdx2) => {
                         const date = h2.searched_at ? new Date(h2.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
-                        // Use the real total when available; only show 0 when the source
-                        // genuinely returned no results (never a false 0 over real data).
                         const resultCount = (h2.total_results != null && h2.total_results > 0)
                           ? h2.total_results
-                          : (Array.isArray(h2.results) ? h2.results.length : (h2.total_results || 0));
-                        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
-                          + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:38px">'+escHtml(date)+'</div>'
+                          : (Array.isArray(h2.results) ? h2.results.length : 0);
+                        const _selH2 = (STATE.localSeo?._selectedHistoryIds||new Set()).has(h2.id!=null?h2.id:hIdx2);
+                        return '<div data-hist-row="'+hIdx2+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,0.04);border-radius:6px;cursor:pointer;background:'+(_selH2?'rgba(37,99,235,0.08)':'transparent')+'"'
+                          + ' onclick="(function(el,hid,hIdx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid!=null?hid:hIdx);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid!=null?hid:hIdx);}else{STATE.localSeo._selectedHistoryIds.add(hid!=null?hid:hIdx);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+JSON.stringify(h2.id!=null?h2.id:hIdx2)+','+hIdx2+'">'
+                          + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH2?'checked':'')+' onclick="event.stopPropagation()">'
+                          + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px">'+escHtml(date)+'</div>'
                           + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
-                          + '<span style="font-size:10px;font-weight:700;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px">'+resultCount+' rés.</span>'
+                          + (resultCount > 0 ? '<span style="font-size:10px;font-weight:700;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px">'+resultCount+' rés.</span>' : '<span style="font-size:10px;color:#64748b;flex-shrink:0">—</span>')
                           + '</div>';
                       }).join('');
                 }
@@ -8906,22 +8902,25 @@ function renderLocalSEO() {
               ? '<div style="text-align:center;padding:10px;color:#64748b;font-size:11px">Chargement…</div>'
               : histItems.length === 0
                 ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">'+fpT("Aucun historique — effectuez votre première recherche.")+'</div>'
-                : histItems.map(h => {
+                : histItems.map((h, hIdx) => {
                     const date = h.searched_at ? new Date(h.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
-                    // Use the real total when available; only show 0 when the source
-                    // genuinely returned no results (never a false 0 over real data).
                     const resultCount = (h.total_results != null && h.total_results > 0)
                       ? h.total_results
-                      : (Array.isArray(h.results) ? h.results.length : (h.total_results || 0));
-                    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
-                      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:38px">'+escHtml(date)+'</div>'
+                      : (Array.isArray(h.results) ? h.results.length : 0);
+                    const _selH = (STATE.localSeo?._selectedHistoryIds||new Set()).has(h.id||hIdx);
+                    return '<div data-hist-row="'+hIdx+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,0.04);border-radius:6px;cursor:pointer;background:'+(_selH?'rgba(37,99,235,0.08)':'transparent')+'"'
+                      + ' onclick="(function(el,hid,hIdx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid!=null?hid:hIdx);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid!=null?hid:hIdx);}else{STATE.localSeo._selectedHistoryIds.add(hid!=null?hid:hIdx);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+JSON.stringify(h.id!=null?h.id:hIdx)+','+hIdx+'">'
+                      + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH?'checked':'')+' onclick="event.stopPropagation()">'
+                      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px">'+escHtml(date)+'</div>'
                       + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h.keyword)+' — '+escHtml(h.location)+'</div>'
-                      + '<span style="font-size:10px;font-weight:700;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px">'+resultCount+' rés.</span>'
+                      + (resultCount > 0
+                          ? '<span style="font-size:10px;font-weight:700;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px">'+resultCount+' rés.</span>'
+                          : '<span style="font-size:10px;color:#64748b;flex-shrink:0">—</span>')
                       + '</div>';
                   }).join('');
             return `<div style="margin-top:12px;border-top:1px solid var(--fp-border);padding-top:10px">
-              <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Historique des recherches</div>
-              <div id="dfs-rank-history" style="max-height:200px;overflow-y:auto;overflow-x:hidden;padding-right:2px">${histHtml}</div>
+              <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Historique des recherches <span style="font-size:9px;font-weight:400;color:#475569">(cochez pour afficher sur la carte)</span></div>
+              <div id="dfs-rank-history" style="overflow-y:auto;overflow-x:hidden;padding-right:2px">${histHtml}</div>
             </div>`;
           })()}
         </div>
@@ -48730,16 +48729,16 @@ async function init() {
               const items = STATE.localSeo.rankingHistory;
               widget.innerHTML = items.length === 0
                 ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique.</div>'
-                : items.map(h2 => {
+                : items.map((h2, hIdx2) => {
                     const date = h2.searched_at ? new Date(h2.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}) : '—';
-                    const topResult = Array.isArray(h2.results) && h2.results.length > 0 ? h2.results[0].title || '—' : '—';
-                    return '<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-top:1px solid var(--fp-border)">'
-                      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px;text-align:right;padding-top:2px">'+escHtml(date)+'</div>'
-                      + '<div style="flex:1;min-width:0">'
-                      + '<div style="font-size:11px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
-                      + '<div style="font-size:10px;color:var(--fp-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🥇 '+escHtml(topResult)+'</div>'
-                      + '</div>'
-                      + '<span style="font-size:10px;color:#64748b;flex-shrink:0">'+((h2.total_results!=null&&h2.total_results>0)?h2.total_results:(Array.isArray(h2.results)?h2.results.length:0))+' rés.</span>'
+                    const resultCount2 = (h2.total_results!=null&&h2.total_results>0)?h2.total_results:(Array.isArray(h2.results)?h2.results.length:0);
+                    const _selH2 = (STATE.localSeo?._selectedHistoryIds||new Set()).has(h2.id!=null?h2.id:hIdx2);
+                    return '<div data-hist-row="'+hIdx2+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-top:1px solid var(--fp-border);border-radius:6px;cursor:pointer;background:'+(_selH2?'rgba(37,99,235,0.08)':'transparent')+'"'
+                      + ' onclick="(function(el,hid,hIdx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid!=null?hid:hIdx);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid!=null?hid:hIdx);}else{STATE.localSeo._selectedHistoryIds.add(hid!=null?hid:hIdx);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+JSON.stringify(h2.id!=null?h2.id:hIdx2)+','+hIdx2+'">'
+                      + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH2?'checked':'')+' onclick="event.stopPropagation()">'
+                      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px">'+escHtml(date)+'</div>'
+                      + '<div style="flex:1;min-width:0;font-size:11px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
+                      + (resultCount2 > 0 ? '<span style="font-size:10px;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px;font-weight:700">'+resultCount2+' rés.</span>' : '<span style="font-size:10px;color:#64748b;flex-shrink:0">—</span>')
                       + '</div>';
                   }).join('');
             }
@@ -66264,6 +66263,10 @@ async function fpGetPSIAIReco() {
       return `- ${o.title || o.id}${savMs || savKb}`;
     }).join('\n');
 
+    const _lang = (STATE.me?.language || navigator.language || 'fr').slice(0,2);
+    const _langNames = {fr:'français',en:'English',es:'español',de:'Deutsch',it:'italiano',nl:'Nederlands',pt:'português'};
+    const _langInstruction = _lang !== 'fr' ? `\n\nRéponds entièrement en ${_langNames[_lang]||_lang} — aucune phrase en français.` : '';
+
     const _prompt = [
       `Voici les données PageSpeed Insights réelles pour le site **${psi.url}** :`,
       ``,
@@ -66281,14 +66284,14 @@ async function fpGetPSIAIReco() {
       ``,
       _opps.length ? `**Opportunités d'optimisation identifiées (${_opps.length}) :**\n${_oppLines}` : `**Aucune opportunité majeure détectée**`,
       ``,
-      `Sur la base de ces données **réelles et précises**, génère un **plan d'optimisation complet et personnalisé** pour ce site. Pour chaque Core Web Vital hors des seuils recommandés (LCP > 2500ms, CLS > 0.1, INP > 200ms, TTFB > 800ms), explique la cause probable et les actions concrètes. Priorise par impact sur le score. Termine par un plan d'action en 3 phases : Quick Wins (< 1 semaine), Améliorations structurelles (1 mois), Refactoring long terme.`,
+      `Sur la base de ces données **réelles et précises**, génère un **plan d'optimisation complet et personnalisé** pour ce site. Pour chaque Core Web Vital hors des seuils recommandés (LCP > 2500ms, CLS > 0.1, INP > 200ms, TTFB > 800ms), explique la cause probable et les actions concrètes. Priorise par impact sur le score. Termine par un plan d'action en 3 phases : Quick Wins (< 1 semaine), Améliorations structurelles (1 mois), Refactoring long terme.` + _langInstruction,
     ].join('\n');
 
     const _base = window.__FP_BACKEND_URL || '';
     const resp = await fetch(_base + '/api/ai/chat', _fpSessionFetchOptions({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: _prompt, stream: false }),
+      body: JSON.stringify({ message: _prompt, stream: false, language: _lang }),
     }));
 
     if (resp.ok) {
@@ -67997,6 +68000,32 @@ window.FP_GBP_API = {
 // ═══════════════════════════════════════════════════════════════════════════════
 // RANKINGS MAP MARKERS — updates Google Map markers when checkboxes change
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// ── History-selection → map markers ──────────────────────────────────────────
+// When the user checks history items, their results are merged and shown on map.
+window.fpUpdateRankingMarkersFromHistory = function() {
+  var map = STATE._gmap;
+  if (!map || typeof google === 'undefined' || !google.maps) return;
+  var history = (STATE.localSeo && STATE.localSeo.rankingHistory) || [];
+  var selectedIds = (STATE.localSeo && STATE.localSeo._selectedHistoryIds) || new Set();
+  if (selectedIds.size === 0) return;
+  // Collect all results from selected history entries
+  var merged = [];
+  history.forEach(function(h, hIdx) {
+    var hid = h.id != null ? h.id : hIdx;
+    if (selectedIds.has(hid) && Array.isArray(h.results)) {
+      h.results.forEach(function(r) { merged.push(r); });
+    }
+  });
+  // Temporarily replace STATE.localSeo.rankings so fpUpdateRankingMarkers can draw them
+  var prevRankings = STATE.localSeo.rankings;
+  var prevSelected = STATE.localSeo._selectedRankings;
+  STATE.localSeo.rankings = merged;
+  STATE.localSeo._selectedRankings = new Set(merged.map(function(_, i){ return i; }));
+  if (typeof window.fpUpdateRankingMarkers === 'function') window.fpUpdateRankingMarkers();
+  STATE.localSeo.rankings = prevRankings;
+  STATE.localSeo._selectedRankings = prevSelected;
+};
 
 window.fpUpdateRankingMarkers = (function() {
   var _markers = [];

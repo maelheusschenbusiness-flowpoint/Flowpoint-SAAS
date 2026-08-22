@@ -237,9 +237,11 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         // can show a correct X/N value immediately on F5, before /api/seo/status loads.
         dfsQuota: await (async () => {
           try {
-            const { isDataForSEOConfigured, getQuotaUsage } = await import("../services/dataforseo-service.js");
+            const { isDataForSEOConfigured, getQuotaUsageFromDB } = await import("../services/dataforseo-service.js");
             const configured = await isDataForSEOConfigured(orgId);
-            const { used, limit } = getQuotaUsage(orgId, rawPlan);
+            // DB-backed: reads dataforseo_quota for today, warms in-memory cache.
+            // This ensures /api/me returns the correct used count on F5/reconnect.
+            const { used, limit } = await getQuotaUsageFromDB(orgId, rawPlan);
             return { configured, used, limit, remaining: Math.max(0, limit - used) };
           } catch { return null; }
         })(),
