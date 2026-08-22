@@ -174,11 +174,22 @@ router.get("/seo/competitors", withQuota(async (req, res) => {
 }));
 
 // ── GET /api/seo/backlinks ────────────────────────────────────────────────────
+// Requires backlinkIntelligence add-on (Pro/Ultra include it; Standard requires purchase).
 
 router.get("/seo/backlinks", withQuota(async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { domain = "exemple.fr" } = req.query as Record<string,string>;
   try {
+    // Feature gate: backlinkIntelligence add-on required
+    const { loadBillingContext } = await import("../services/billing-context.js");
+    const bCtx = await loadBillingContext(orgId).catch(() => null);
+    if (!bCtx?.addons?.["backlinkIntelligence"]) {
+      res.status(403).json({
+        error: "L'add-on Backlink Intelligence est requis pour accéder à cette fonctionnalité.",
+        code: "ADDON_REQUIRED", addonKey: "backlinkIntelligence",
+      });
+      return;
+    }
     const data = await getBacklinks(domain, orgId);
     res.json({ domain, ...data });
   } catch (e) {
@@ -258,6 +269,16 @@ router.post("/seo/content-optimization", canWrite, withQuota(async (req, res) =>
   const { url } = req.body as { url?: string };
   if (!url) { res.status(400).json({ error: "url required" }); return; }
   try {
+    // Feature gate: advancedSeoLab add-on required for deep content analysis
+    const { loadBillingContext } = await import("../services/billing-context.js");
+    const bCtx = await loadBillingContext(orgId).catch(() => null);
+    if (!bCtx?.addons?.["advancedSeoLab"]) {
+      res.status(403).json({
+        error: "L'add-on Advanced SEO Lab est requis pour l'optimisation de contenu avancée.",
+        code: "ADDON_REQUIRED", addonKey: "advancedSeoLab",
+      });
+      return;
+    }
     const data = await getContentOptimization(url, "seo local", orgId);
     await store.logActivity({
       type: "audit", label: `Analyse de contenu : ${url}`, targetId: url, targetType: "url", orgId,
