@@ -80,7 +80,8 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
   }
   const ok = await activateAddon(key, orgId, quantity);
   if (ok) {
-    store.logActivity({ type: "billing", label: `Add-on activé : ${key}`, targetId: key, targetType: "addon", orgId }).catch(err => console.warn("[logActivity]", err?.message));
+    const _actCtx = (req as Request & { orgContext?: { userId?: string; email?: string; name?: string } }).orgContext;
+    store.logActivity({ type: "billing", label: `Add-on activé : ${key}`, targetId: key, targetType: "addon", orgId, userId: _actCtx?.userId ?? _actCtx?.email, userName: _actCtx?.name ?? _actCtx?.email }).catch(err => console.warn("[logActivity]", err?.message));
     store.broadcast({ type: "fp:addon:activated", addonKey: key }, orgId);
     const freshAddons = await getOrgAddons(orgId);
     res.json({ ok: true, addonKey: key, addons: freshAddons, stripe: stripeSync });
@@ -123,7 +124,8 @@ router.post("/addons/:key/deactivate", ownerOnly, async (req: Request, res: Resp
     return;
   }
 
-  store.logActivity({ type: "billing", label: `Add-on désactivé : ${key}`, targetId: key, targetType: "addon", orgId }).catch(err => console.warn("[logActivity]", err?.message));
+  const _deactCtx = (req as Request & { orgContext?: { userId?: string; email?: string; name?: string } }).orgContext;
+  store.logActivity({ type: "billing", label: `Add-on désactivé : ${key}`, targetId: key, targetType: "addon", orgId, userId: _deactCtx?.userId ?? _deactCtx?.email, userName: _deactCtx?.name ?? _deactCtx?.email }).catch(err => console.warn("[logActivity]", err?.message));
   store.broadcast({ type: "fp:addon:deactivated", addonKey: key }, orgId);
 
   // Now stop Stripe billing. If this fails, compensate by re-activating in DB so the two

@@ -125,13 +125,23 @@ export async function getQuotaUsageFromDB(
   if (!_quotaMemory.has(key)) {
     const client = await pool.connect();
     try {
-      const r = await client.query(
-        `SELECT requests_used FROM dataforseo_quota WHERE org_id=$1 AND date=$2`,
-        [orgId, today]
-      );
-      if (r.rows.length > 0) {
-        _quotaMemory.set(key, Number(r.rows[0]!["requests_used"] ?? 0));
-      }
+      // Rankings use reserveRankingSearch → local_seo_ranking_history (not dataforseo_quota).
+      // General DFS API calls use checkAndIncrementQuota → dataforseo_quota.
+      // Both are daily per-org counters; take the maximum so neither is hidden.
+      const [qr, rh] = await Promise.all([
+        client.query<{ n: string }>(
+          `SELECT COALESCE(requests_used, 0) AS n FROM dataforseo_quota WHERE org_id=$1 AND date=$2::date`,
+          [orgId, today]
+        ),
+        client.query<{ n: string }>(
+          `SELECT COUNT(*)::int AS n FROM local_seo_ranking_history WHERE org_id=$1 AND searched_at::date=$2::date`,
+          [orgId, today]
+        ),
+      ]);
+      const quotaUsed = Number(qr.rows[0]?.n ?? 0);
+      const rankUsed  = Number(rh.rows[0]?.n ?? 0);
+      // Rankings dominate the quota UI — use the higher of the two sources.
+      _quotaMemory.set(key, Math.max(quotaUsed, rankUsed));
     } catch { /* non-fatal — fall through with 0 */ } finally { client.release(); }
   }
   return {

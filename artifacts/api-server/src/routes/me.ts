@@ -508,14 +508,17 @@ async function recordActivityDay(db: DbFn, orgId: string, userId?: string): Prom
     if (s && typeof s["timezone"] === "string" && s["timezone"]) tz = s["timezone"];
   } catch { /* non-fatal — fall through with default tz */ }
 
+  // Use the real userId when available; fall back to org_id so org-level streak always records.
+  const activityUserId = userId && !userId.startsWith("apikey:") ? userId : orgId;
+
   // Primary path: RLS-scoped insert (org-level streak)
   let inserted = false;
   try {
     await db(
       `INSERT INTO user_activity_days (org_id, user_id, day)
-       VALUES ($1, $1, (NOW() AT TIME ZONE $2)::date)
+       VALUES ($1, $2, (NOW() AT TIME ZONE $3)::date)
        ON CONFLICT (org_id, user_id, day) DO NOTHING`,
-      [orgId, tz]
+      [orgId, activityUserId, tz]
     );
     inserted = true;
   } catch { /* fall through to pool fallback */ }
@@ -525,9 +528,9 @@ async function recordActivityDay(db: DbFn, orgId: string, userId?: string): Prom
     try {
       await pool.query(
         `INSERT INTO user_activity_days (org_id, user_id, day)
-         VALUES ($1, $1, (NOW() AT TIME ZONE $2)::date)
+         VALUES ($1, $2, (NOW() AT TIME ZONE $3)::date)
          ON CONFLICT (org_id, user_id, day) DO NOTHING`,
-        [orgId, tz]
+        [orgId, activityUserId, tz]
       );
     } catch { /* non-fatal */ }
   }

@@ -43,7 +43,25 @@ export async function syncAddonWithStripe(
   try {
     const ctx = await loadBillingContext(orgId);
     const status = ctx.subscriptionStatus;
-    if (status !== "active" && status !== "trialing") return { synced: false, reason: "no_live_subscription" };
+    if (status !== "active" && status !== "trialing") {
+      // DB status may be stale when a webhook was missed. If the org has a Stripe
+      // customer, do a live look-up to find any active subscription before giving up.
+      if (!ctx.stripeCustomerId) return { synced: false, reason: "no_live_subscription" };
+      const stripe = await createStripeClient(stripeKey);
+      const liveSubs = await stripe.subscriptions.list({ customer: ctx.stripeCustomerId, status: "active", limit: 5 });
+      const planSub = liveSubs.data.find((s: { metadata?: Record<string, string>; items?: { data?: unknown[] } }) =>
+        !s.metadata?.["addonOnly"] && (s.items?.data ?? []).length > 0
+      );
+      if (!planSub) return { synced: false, reason: "no_live_subscription" };
+      // Back-fill the DB so future calls don't need to hit Stripe again
+      const { persistOrgData } = await import("./org-data.js");
+      persistOrgData(orgId, {
+        stripeSubscriptionId: planSub.id,
+        subscriptionStatus: "active",
+      }).catch(() => {});
+      ctx.stripeSubscriptionId = planSub.id;
+      (ctx as { subscriptionStatus: string }).subscriptionStatus = "active";
+    }
     if (!ctx.stripeSubscriptionId) return { synced: false, reason: "no_subscription_id" };
 
     const included = PLAN_INCLUDED_ADDONS[ctx.plan.toLowerCase()] ?? new Set<string>();

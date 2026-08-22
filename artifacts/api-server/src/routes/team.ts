@@ -1337,39 +1337,49 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     return;
   }
   try {
-    // Resolve created_by → canonical identity. created_by may be a users.id
-    // (UUID) or an email; the LEFT JOINs normalise both to (user_id, email).
-    const canonicalCountSql = (table: string, extraWhere = "") => `
+    // audits/missions/reports/monitors do NOT have a created_by column —
+    // attribution is tracked in activity_logs (user_id + type).
+    // Query activity_logs per type, then fall back to unattributed row counts.
+    const activityCountSql = (types: string[]) => `
       SELECT
-        COALESCE(u.id::text, NULLIF(t.created_by, '')) AS user_id,
-        LOWER(COALESCE(u.email, ''))                   AS email,
-        COUNT(*)::int                                  AS cnt
-      FROM ${table} t
-      LEFT JOIN users u
-        ON u.id::text = t.created_by
-        OR LOWER(u.email) = LOWER(t.created_by)
-      WHERE t.org_id = $1
-        AND COALESCE(NULLIF(t.created_by, ''), '') <> ''
-        ${extraWhere}
+        COALESCE(NULLIF(al.user_id, ''), al.org_id)   AS user_id,
+        LOWER(COALESCE(u.email, ''))                  AS email,
+        COUNT(*)::int                                 AS cnt
+      FROM activity_logs al
+      LEFT JOIN users u ON u.id::text = al.user_id OR LOWER(u.email) = LOWER(al.user_id)
+      WHERE al.org_id = $1
+        AND al.type = ANY($2::text[])
       GROUP BY 1, 2`;
+
+    // Unattributed fallback: count all rows per table (shown as org-level total
+    // when no user_id is recorded yet).
+    const unattributedSql = (table: string, extraWhere = "") => `
+      SELECT
+        $1::text AS user_id,
+        ''       AS email,
+        COUNT(*)::int AS cnt
+      FROM ${table}
+      WHERE org_id = $1 ${extraWhere}`;
 
     // Each table may not yet exist — use allSettled so one missing table
     // doesn't kill the whole response.
     const [auditsRes, missionsRes, reportsRes, monitorsRes] = await Promise.allSettled([
-      pool.query(canonicalCountSql("audits"), [orgId]),
-      pool.query(
-        canonicalCountSql("missions", "AND (t.status = 'done' OR t.status = 'completed')"),
-        [orgId]
-      ),
-      pool.query(canonicalCountSql("reports"), [orgId]),
-      pool.query(canonicalCountSql("monitors"), [orgId]),
+      pool.query(activityCountSql(["audit"]), [orgId, ["audit"]]).catch(() =>
+        pool.query(unattributedSql("audits"), [orgId])),
+      pool.query(activityCountSql(["mission"]), [orgId, ["mission"]]).catch(() =>
+        pool.query(unattributedSql("missions", "AND (status='done' OR status='completed')"), [orgId])),
+      pool.query(activityCountSql(["report"]), [orgId, ["report"]]).catch(() =>
+        pool.query(unattributedSql("reports"), [orgId])),
+      pool.query(activityCountSql(["monitor"]), [orgId, ["monitor"]]).catch(() =>
+        pool.query(unattributedSql("monitors"), [orgId])),
     ]);
 
     // If EVERY query rejected, this is a real backend failure, not "zero work".
     const anyFulfilled =
       auditsRes.status === "fulfilled" ||
       missionsRes.status === "fulfilled" ||
-      reportsRes.status === "fulfilled";
+      reportsRes.status === "fulfilled" ||
+      monitorsRes.status === "fulfilled";
     if (!anyFulfilled) {
       logger.error(
         { orgId: orgId.slice(0, 20) },
