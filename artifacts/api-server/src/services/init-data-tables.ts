@@ -575,6 +575,33 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     await run(client, `CREATE INDEX IF NOT EXISTS custom_domains_org_id_idx ON custom_domains(org_id);`);
 
+    // ── custom_domains — ENABLE + FORCE RLS + 4 tenant isolation policies ─────
+    // Supabase Security Advisor flagged custom_domains as public without RLS.
+    // FORCE ensures even superuser pool connections are subject to the policy.
+    await run(client, `ALTER TABLE custom_domains ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE custom_domains FORCE ROW LEVEL SECURITY`);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='custom_domains' AND policyname='custom_domains_tenant_select') THEN
+          CREATE POLICY custom_domains_tenant_select ON custom_domains FOR SELECT
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='custom_domains' AND policyname='custom_domains_tenant_insert') THEN
+          CREATE POLICY custom_domains_tenant_insert ON custom_domains FOR INSERT
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='custom_domains' AND policyname='custom_domains_tenant_update') THEN
+          CREATE POLICY custom_domains_tenant_update ON custom_domains FOR UPDATE
+            USING  (org_id = current_setting('app.current_org_id', true))
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='custom_domains' AND policyname='custom_domains_tenant_delete') THEN
+          CREATE POLICY custom_domains_tenant_delete ON custom_domains FOR DELETE
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$;
+    `);
+
     // ── report_templates (unconditional self-heal) ─────────────────────────────
     // Also created inside the missing-production-tables-v3 migration block below,
     // but that block is skipped once the migration flag is set. White-label GET
@@ -1317,15 +1344,32 @@ export async function initDataTables(): Promise<void> {
       END $$;
     `);
 
-    // ── revenue_leaks — add org_id ────────────────────────────────────────────
+    // ── revenue_leaks — CREATE (idempotent) + org_id self-heal ───────────────
+    // Previously only added org_id IF the table existed, but never created it.
+    // Routes (overview.ts, revenue-leak.ts, overview-service.ts) all query this
+    // table unconditionally and fail with 42P01 on a fresh DB.
+    // Schema matches the Drizzle revenueLeaksTable in lib/db/src/index.ts.
     await run(client, `
-      DO $$ BEGIN
-        IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='revenue_leaks') THEN
-          EXECUTE 'ALTER TABLE revenue_leaks ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''default''';
-          EXECUTE 'CREATE INDEX IF NOT EXISTS revenue_leaks_org_id_idx ON revenue_leaks(org_id)';
-        END IF;
-      END $$;
+      CREATE TABLE IF NOT EXISTS revenue_leaks (
+        id                     TEXT        PRIMARY KEY,
+        org_id                 TEXT        NOT NULL DEFAULT 'default',
+        site_url               TEXT,
+        leak_type              TEXT        NOT NULL DEFAULT 'conversion',
+        page                   TEXT        NOT NULL DEFAULT '/',
+        title                  TEXT        NOT NULL DEFAULT '',
+        description            TEXT,
+        estimated_monthly_loss REAL        DEFAULT 0,
+        impact_score           INTEGER     DEFAULT 50,
+        fix_difficulty_min     INTEGER     DEFAULT 60,
+        quick_fix              TEXT,
+        status                 TEXT        NOT NULL DEFAULT 'active',
+        metadata               JSONB       DEFAULT '{}',
+        detected_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        resolved_at            TIMESTAMPTZ
+      )
     `);
+    await run(client, `ALTER TABLE revenue_leaks ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `CREATE INDEX IF NOT EXISTS revenue_leaks_org_id_idx ON revenue_leaks(org_id);`);
 
     // ── Fix RLS on behavioral/CRO tables: USING=(true) → org_id filter ───────
     // Drop both old *_isolation policies AND old tenant_* permissive bypass policies.
@@ -1402,10 +1446,28 @@ export async function initDataTables(): Promise<void> {
         END IF;
       END $$;
     `);
+    // revenue_leaks — ENABLE + FORCE RLS + 4 tenant policies (table now always exists)
+    await run(client, `ALTER TABLE revenue_leaks ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE revenue_leaks FORCE ROW LEVEL SECURITY`);
     await run(client, `
       DO $$ BEGIN
-        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'revenue_leaks' AND rowsecurity = true) THEN
-          CREATE POLICY revenue_leaks_isolation ON revenue_leaks
+        -- Drop old single-operation isolation policy if it exists
+        DROP POLICY IF EXISTS revenue_leaks_isolation ON revenue_leaks;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leaks' AND policyname='revenue_leaks_tenant_select') THEN
+          CREATE POLICY revenue_leaks_tenant_select ON revenue_leaks FOR SELECT
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leaks' AND policyname='revenue_leaks_tenant_insert') THEN
+          CREATE POLICY revenue_leaks_tenant_insert ON revenue_leaks FOR INSERT
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leaks' AND policyname='revenue_leaks_tenant_update') THEN
+          CREATE POLICY revenue_leaks_tenant_update ON revenue_leaks FOR UPDATE
+            USING  (org_id = current_setting('app.current_org_id', true))
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leaks' AND policyname='revenue_leaks_tenant_delete') THEN
+          CREATE POLICY revenue_leaks_tenant_delete ON revenue_leaks FOR DELETE
             USING (org_id = current_setting('app.current_org_id', true));
         END IF;
       END $$;
@@ -1883,6 +1945,26 @@ export async function initDataTables(): Promise<void> {
       await run(client, `CREATE INDEX IF NOT EXISTS google_reviews_org_loc_idx ON google_reviews(org_id, location_id)`);
       await applyTenantRls("google_reviews");
 
+      // ── gbp_profiles — queried by overview-service.ts and client-mode-service.ts ─
+      // Populated by GBP sync (google-service.ts). Contains aggregate review stats
+      // and profile completion percentage per org (one row per org, upserted on sync).
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS gbp_profiles (
+          id               TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+          org_id           TEXT        NOT NULL DEFAULT 'default',
+          location_id      TEXT,
+          location_name    TEXT,
+          avg_rating       REAL,
+          review_count     INTEGER     NOT NULL DEFAULT 0,
+          unanswered_count INTEGER     NOT NULL DEFAULT 0,
+          completion_pct   REAL,
+          updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gbp_profiles_org_idx ON gbp_profiles(org_id)`);
+      await applyTenantRls("gbp_profiles");
+
       // ── gbp_posts — gbp-posting-service.ts UPDATE sets published_at ──────────
       await run(client, `
         CREATE TABLE IF NOT EXISTS gbp_posts (
@@ -1958,6 +2040,57 @@ export async function initDataTables(): Promise<void> {
       `);
       await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gsc_sites_org_url_idx ON gsc_sites(org_id, site_url)`);
       await applyTenantRls("gsc_sites");
+
+      // ── gsc_keyword_data — written by gsc-service.ts syncGSCData ─────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS gsc_keyword_data (
+          id          TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+          org_id      TEXT        NOT NULL DEFAULT 'default',
+          keyword     TEXT        NOT NULL DEFAULT '',
+          date        TEXT        NOT NULL DEFAULT '',
+          impressions INTEGER     NOT NULL DEFAULT 0,
+          clicks      INTEGER     NOT NULL DEFAULT 0,
+          ctr         REAL        NOT NULL DEFAULT 0,
+          position    REAL        NOT NULL DEFAULT 0,
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gsc_keyword_data_org_kw_date_idx ON gsc_keyword_data(org_id, keyword, date)`);
+      await run(client, `CREATE INDEX IF NOT EXISTS gsc_keyword_data_org_idx ON gsc_keyword_data(org_id)`);
+      await applyTenantRls("gsc_keyword_data");
+
+      // ── gsc_page_data — written by gsc-service.ts syncGSCData ─────────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS gsc_page_data (
+          id          TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+          org_id      TEXT        NOT NULL DEFAULT 'default',
+          page        TEXT        NOT NULL DEFAULT '',
+          date        TEXT        NOT NULL DEFAULT '',
+          impressions INTEGER     NOT NULL DEFAULT 0,
+          clicks      INTEGER     NOT NULL DEFAULT 0,
+          ctr         REAL        NOT NULL DEFAULT 0,
+          position    REAL        NOT NULL DEFAULT 0,
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gsc_page_data_org_page_date_idx ON gsc_page_data(org_id, page, date)`);
+      await run(client, `CREATE INDEX IF NOT EXISTS gsc_page_data_org_idx ON gsc_page_data(org_id)`);
+      await applyTenantRls("gsc_page_data");
+
+      // ── gsc_sync_logs — written by gsc-service.ts after each sync ─────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS gsc_sync_logs (
+          id          TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+          org_id      TEXT        NOT NULL DEFAULT 'default',
+          site_url    TEXT        NOT NULL DEFAULT '',
+          rows_synced INTEGER     NOT NULL DEFAULT 0,
+          synced_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS gsc_sync_logs_org_idx ON gsc_sync_logs(org_id)`);
+      await applyTenantRls("gsc_sync_logs");
 
       // ── reviews ─────────────────────────────────────────────────────────────
       await run(client, `
@@ -2934,6 +3067,44 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE POLICY "cd_insert" ON "custom_dashboards" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "cd_update" ON "custom_dashboards" FOR UPDATE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "cd_delete" ON "custom_dashboards" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+
+    // ── Timezone migration — fix invalid French city labels stored in DB ───────
+    // Postgres raises 22023 when AT TIME ZONE receives a non-IANA timezone string
+    // (e.g. "Bruxelles" instead of "Europe/Brussels").  This migration corrects
+    // both the user_prefs JSONB field and the organizations.timezone column.
+    await run(client, `
+      UPDATE user_prefs
+      SET settings = jsonb_set(settings, '{timezone}', '"Europe/Brussels"')
+      WHERE (settings->>'timezone') IN (
+        'Bruxelles','bruxelles','Brussels','brussels',
+        'Belgique','belgique','Belgium','belgium'
+      )
+    `);
+    await run(client, `
+      UPDATE organizations
+      SET timezone = 'Europe/Brussels'
+      WHERE timezone IN (
+        'Bruxelles','bruxelles','Brussels','brussels',
+        'Belgique','belgique','Belgium','belgium'
+      )
+    `);
+    await run(client, `
+      UPDATE org_settings
+      SET timezone = 'Europe/Brussels'
+      WHERE timezone IN (
+        'Bruxelles','bruxelles','Brussels','brussels',
+        'Belgique','belgique','Belgium','belgium'
+      )
+    `);
+    // Also fix any other bare city labels that PostgreSQL won't accept
+    await run(client, `
+      UPDATE user_prefs
+      SET settings = settings - 'timezone'
+      WHERE settings ? 'timezone'
+        AND (settings->>'timezone') NOT LIKE '%/%'
+        AND (settings->>'timezone') NOT IN ('UTC','utc','GMT','gmt')
+        AND (settings->>'timezone') != ''
+    `);
 
     logger.info("[init-data-tables] all tables, schema_migrations, missing-production-tables, P0-5 ALTERs, P1-2 type fixes done");
   } catch (err) {
