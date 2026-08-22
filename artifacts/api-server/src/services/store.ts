@@ -300,10 +300,10 @@ class Store {
       try {
         const id = `act_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         await client.query(
-          `INSERT INTO activity_logs (id, org_id, type, label, target_id, target_type, metadata, action_key, action_params, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+          `INSERT INTO activity_logs (id, org_id, type, label, target_id, target_type, metadata, action_key, action_params, user_id, user_name, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
            ON CONFLICT (id) DO NOTHING`,
-          [id, opts.orgId ?? "default", opts.type, opts.label, opts.targetId ?? null, opts.targetType ?? null, JSON.stringify(opts.metadata ?? {}), opts.actionKey ?? null, opts.actionParams ? JSON.stringify(opts.actionParams) : null]
+          [id, opts.orgId ?? "default", opts.type, opts.label, opts.targetId ?? null, opts.targetType ?? null, JSON.stringify(opts.metadata ?? {}), opts.actionKey ?? null, opts.actionParams ? JSON.stringify(opts.actionParams) : null, opts.userId ?? null, opts.userName ?? null]
         );
       } finally {
         client.release();
