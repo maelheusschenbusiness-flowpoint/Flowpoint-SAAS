@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, getAddonPriceId } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 import type Stripe from "stripe";
@@ -210,12 +210,15 @@ function buildLineItems(
   const planPriceId = PLAN_PRICE_IDS[plan.toLowerCase()];
   if (planPriceId) subscriptionItems.push({ price: planPriceId, quantity: 1 });
 
+  /* Resolve the Stripe key once so getAddonPriceId() can prefer test-mode overrides */
+  const _stripeKeyForPrices = (() => { try { return getStripeKey() ?? ""; } catch { return ""; } })();
+
   /* Monthly flag add-ons */
   for (const key of FLAG_ADDONS) {
     if (!addons[key]) continue;
     if (included.has(key)) continue; /* skip included */
     if (AI_CREDIT_PACKS.has(key)) continue;
-    const priceId = ADDON_PRICE_IDS[key];
+    const priceId = getAddonPriceId(key, _stripeKeyForPrices) ?? ADDON_PRICE_IDS[key];
     if (priceId) subscriptionItems.push({ price: priceId, quantity: 1 });
   }
 
@@ -225,10 +228,10 @@ function buildLineItems(
     if (qty <= 0) continue;
     if (AI_CREDIT_PACKS.has(key)) {
       /* One-time */
-      const priceId = ADDON_PRICE_IDS[key];
+      const priceId = getAddonPriceId(key, _stripeKeyForPrices) ?? ADDON_PRICE_IDS[key];
       if (priceId) oneTimeItems.push({ price: priceId, quantity: qty });
     } else {
-      const priceId = ADDON_PRICE_IDS[key];
+      const priceId = getAddonPriceId(key, _stripeKeyForPrices) ?? ADDON_PRICE_IDS[key];
       if (priceId) subscriptionItems.push({ price: priceId, quantity: qty });
     }
   }
@@ -919,7 +922,14 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
   //   B) preRegisterToken in body → new signup who just paid via checkout-payment.html;
   //      validated against pending_signups (must exist and not yet expired).
   //      The account may already be activated by the webhook — that's fine (idempotent).
-  const _fckToken = (req.cookies as Record<string, string>)?.["fp_token"] ?? "";
+  // Accept both fp_token cookie AND Authorization: Bearer header (existing users
+  // arriving from checkout-return.html send Bearer from localStorage, not a cookie).
+  const _fckToken = (req.cookies as Record<string, string>)?.["fp_token"]
+    ?? (() => {
+      const ah = req.headers["authorization"];
+      if (typeof ah === "string" && ah.startsWith("Bearer ")) return ah.slice(7).trim();
+      return "";
+    })();
   const _preRegToken = typeof (req.body as Record<string, unknown>)?.preRegisterToken === "string"
     ? ((req.body as Record<string, unknown>).preRegisterToken as string).trim()
     : "";
