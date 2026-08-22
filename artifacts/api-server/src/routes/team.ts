@@ -565,10 +565,18 @@ router.get("/team", async (req: Request, res: Response) => {
       const o = ownerRes.rows[0];
       const ownerEmail = String(o?.email ?? "").toLowerCase();
       if (ownerEmail) {
-        const alreadyListed = members.some(m =>
+        // Always force the owner to have role='owner', regardless of what may
+        // be stored in team_members (legacy rows can have 'admin' or 'member').
+        // This is the canonical source: organizations.owner_email.
+        const ownerMemberIdx = members.findIndex(m =>
           String(m.email ?? "").toLowerCase() === ownerEmail ||
           (o?.user_id && String(m.userId ?? "") === String(o.user_id)));
-        if (!alreadyListed) {
+
+        if (ownerMemberIdx !== -1) {
+          // Owner already in list — ensure their role is 'owner'
+          (members[ownerMemberIdx] as Record<string, unknown>).role = "owner";
+        } else {
+          // Owner not in team_members — prepend synthetic entry
           members.unshift({
             id:        "owner",
             email:     ownerEmail,

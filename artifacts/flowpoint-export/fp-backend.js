@@ -1,3 +1,7 @@
+// Bootstrap timestamp: used to provide a grace period before redirecting to
+// login on a 401 error, preventing the Sign-In flash during normal page refresh.
+window.__fpPageLoadTs = Date.now();
+
 /**
  * FLOWPOINT — Couche d'intégration Backend
  * ══════════════════════════════════════════
@@ -301,7 +305,23 @@
                         console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), '/api/me returned 401 but STATE.me is present — suppressed (BFCache/back-fwd false positive).');
                         var _err4 = new Error('Unauthorized'); _err4.status = 401; throw _err4;
                       }
-                      if (!window.__fpRedirecting) { window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html'); }
+                      // Bootstrap grace period: within 5 s of page load, session-restore
+                      // may still be settling (race condition causes a false 401).
+                      // Delay the redirect to prevent the Sign-In flash on F5 refresh.
+                      if (!window.__fpRedirecting) {
+                        var _pageAge1 = Date.now() - (window.__fpPageLoadTs || Date.now());
+                        if (_pageAge1 < 5000 && !window.__fpBootstrapRedirectScheduled) {
+                          window.__fpBootstrapRedirectScheduled = true;
+                          console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Bootstrap grace period active — deferring login redirect by', Math.ceil(5000-_pageAge1), 'ms');
+                          setTimeout(function() {
+                            if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+                              window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
+                            }
+                          }, 5000 - _pageAge1 + 500);
+                          return null;
+                        }
+                        window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
+                      }
                       return null;
                     }
                     if (!rr.ok) throw new Error('HTTP ' + rr.status + ' ' + path);
@@ -316,7 +336,19 @@
               var _err2 = new Error('Unauthorized'); _err2.status = 401; throw _err2;
             }
             console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed on session-critical endpoint — redirecting to login.');
-            if (!window.__fpRedirecting) { window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html'); }
+            if (!window.__fpRedirecting) {
+              var _pageAge2 = Date.now() - (window.__fpPageLoadTs || Date.now());
+              if (_pageAge2 < 5000 && !window.__fpBootstrapRedirectScheduled) {
+                window.__fpBootstrapRedirectScheduled = true;
+                setTimeout(function() {
+                  if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+                    window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
+                  }
+                }, 5000 - _pageAge2 + 500);
+                return null;
+              }
+              window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
+            }
             return null;
           }).catch(function(e) {
             // Network error during session-restore. Apply the same structural rule.
@@ -326,7 +358,19 @@
               var _err3 = new Error('Unauthorized'); _err3.status = 401; throw _err3;
             }
             console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on session-critical endpoint — redirecting to login.');
-            if (!window.__fpRedirecting) { window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html'); }
+            if (!window.__fpRedirecting) {
+              var _pageAge3 = Date.now() - (window.__fpPageLoadTs || Date.now());
+              if (_pageAge3 < 5000 && !window.__fpBootstrapRedirectScheduled) {
+                window.__fpBootstrapRedirectScheduled = true;
+                setTimeout(function() {
+                  if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+                    window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
+                  }
+                }, 5000 - _pageAge3 + 500);
+                return null;
+              }
+              window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
+            }
             return null;
           });
         }

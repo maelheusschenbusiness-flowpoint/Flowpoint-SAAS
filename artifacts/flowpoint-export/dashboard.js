@@ -59,18 +59,19 @@ const isDemoMode = () => !!(STATE && (STATE.demoMode || STATE.demo));
 
 // ─────────────────────────────────────────────────────────────────
 // RBAC — Role-Based Access Control for invited team members
-// DB role → UI permission flags
+// DB role → UI permission flags (controls sidebar visibility + route guards)
 //   owner  : full access (all ✓)
-//   admin  : = manager  (audits ✓  monitors ✓  reports ✓  billing ✗  team ✓  settings ✗)
-//   member : = editor   (audits ✓  monitors ✗  reports ✓  billing ✗  team ✗  settings ✗)
-//   viewer :            (overview/missions/activity only — all managed sections ✗)
+//   admin  : = Manager  (audits ✓  monitors ✓  reports ✓  billing ✗  team ✓  settings ✗)
+//   member : = Editor   (audits ✓  monitors ✓  reports ✗  billing ✗  team ✗  settings ✗)
+//             Editor can SEE monitors (read), but backend canAdmin blocks creation/mutation.
+//   viewer :            (audits ✓  — overview/missions/activity/audits read-only, all else ✗)
+//             Backend canAdmin/canWrite blocks all mutations for viewer.
 // ─────────────────────────────────────────────────────────────────
 const _FP_ROLE_PERMS = {
   owner:  { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
   admin:  { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:false },
-  member: { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
-  // Viewer: read-only access to audits/monitors/reports — backend blocks all mutations (canWrite/canAdmin)
-  viewer: { audits:true,  monitors:true,  reports:true,  billing:false, team:false,  settings:false },
+  member: { audits:true,  monitors:true,  reports:false, billing:false, team:false,  settings:false },
+  viewer: { audits:true,  monitors:false, reports:false, billing:false, team:false,  settings:false },
 };
 // Routes that require a specific permission key (absent = open to all roles)
 const _FP_ROUTE_PERM = {
@@ -9279,8 +9280,8 @@ function renderTeam() {
   const rolePerms = {
     owner:   { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
     manager: { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:false },
-    editor:  { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
-    viewer:  { audits:false, monitors:false, reports:false, billing:false, team:false,  settings:false },
+    editor:  { audits:true,  monitors:true,  reports:false, billing:false, team:false,  settings:false },
+    viewer:  { audits:true,  monitors:false, reports:false, billing:false, team:false,  settings:false },
   };
   const permLabels = ['Audits','Monitors','Rapports','Facturation','Équipe','Paramètres'];
   const permKeys   = ['audits','monitors','reports','billing','team','settings'];
@@ -11543,10 +11544,10 @@ function renderSettings() {
     const roles = ['Owner','Manager','Editor','Viewer'];
     const modules = ['Audits','Monitors','Rapports','Facturation','Paramètres'];
     const permMatrix = {
-      Owner:    [true, true, true, true, true],
-      Manager:  [true, true, true, false, false],
-      Editor:   [true, true, false, false, false],
-      Viewer:   [true, false, false, false, false],
+      Owner:    [true,  true,  true,  true,  true ],
+      Manager:  [true,  true,  true,  false, false],
+      Editor:   [true,  true,  false, false, false],  // Monitors=lecture seule, Rapports=✗
+      Viewer:   [true,  false, false, false, false],  // Audits=lecture seule, tout reste=✗
     };
     return `
       ${aiBlock(
@@ -11595,9 +11596,12 @@ function renderSettings() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(m.name)}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(m.email)} · ${escHtml(m.last)}</div>
               </div>
-              <select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="(async(el)=>{const bv=el.value;const r=await apiAction('PATCH','/api/team/${m.id}',{role:bv}).catch(()=>null);if(r&&!r.error){const tm=(STATE.team||[]).find(t=>t.id==='${m.id}');if(tm)tm.role=bv;if(STATE.me&&(STATE.me.id==='${m.id}'||STATE.me.userId==='${m.id}')){STATE.me.role=bv;_fpApplyRoleNav();}showToast('success', fpT('R\u00f4le mis \u00e0 jour'));render();}else{showToast('error',(r&&r.error)||fpT('Erreur mise \u00e0 jour r\u00f4le'));}el.blur();})(this)">
-                ${(()=>{const _vm={Manager:'admin',Editor:'member',Viewer:'viewer'};const _selRoles=['Manager','Editor','Viewer'];return _selRoles.map(r=>`<option value="${_vm[r]}" ${_vm[r]===m.role.toLowerCase()?'selected':''}>${r}</option>`).join('');})()}
-              </select>
+              ${m.role === 'Owner'
+                ? `<span style="font-size:11px;padding:4px 10px;border-radius:7px;background:rgba(245,158,11,0.12);color:#f59e0b;font-weight:700;flex-shrink:0">Owner</span>`
+                : `<select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="(async(el)=>{const bv=el.value;const r=await apiAction('PATCH','/api/team/${m.id}',{role:bv}).catch(()=>null);if(r&&!r.error){const tm=(STATE.team||[]).find(t=>t.id==='${m.id}');if(tm)tm.role=bv;if(STATE.me&&(STATE.me.id==='${m.id}'||STATE.me.userId==='${m.id}')){STATE.me.role=bv;_fpApplyRoleNav();}showToast('success', fpT('R\u00f4le mis \u00e0 jour'));render();}else{showToast('error',(r&&r.error)||fpT('Erreur mise \u00e0 jour r\u00f4le'));}el.blur();})(this)">
+                  ${(()=>{const _vm={Manager:'admin',Editor:'member',Viewer:'viewer'};const _selRoles=['Manager','Editor','Viewer'];return _selRoles.map(r=>`<option value="${_vm[r]}" ${_vm[r]===m.role.toLowerCase()?'selected':''}>${r}</option>`).join('');})()}
+                </select>`
+              }
               ${m.role !== 'Owner' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="window.fpDarkConfirm('Retirer ce membre de l\\'équipe ?',async function(){const r=await apiAction('DELETE','/api/team/${m.id}').catch(()=>null);if(r&&!r.error){STATE.team=(STATE.team||[]).filter(t=>t.id!=='${m.id}');if(STATE.seatUsage&&STATE.seatUsage.used>0)STATE.seatUsage.used--;showToast('success', fpT('Membre retir\u00e9'));render();}else{showToast('error', fpT('Erreur lors du retrait'));}}, 'Retirer le membre')">${fpT('Retirer')}</button>` : ''}
             </div>
           `).join('')}

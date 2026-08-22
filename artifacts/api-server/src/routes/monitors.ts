@@ -591,7 +591,9 @@ router.get("/monitors/:id/incidents", async (req: Request, res: Response) => {
 
 // ── POST /monitors ────────────────────────────────────────────────────────────
 
-router.post("/monitors", monitorCreateRateLimit, canWrite, async (req: Request, res: Response) => {
+// Monitor creation and modification require owner or admin (Manager).
+// Editor (member) can READ monitors but not create/modify them per the RBAC matrix.
+router.post("/monitors", monitorCreateRateLimit, canAdmin, async (req: Request, res: Response) => {
   const { url, name, alertEmail, alertPhone, isCritical, frequency } = req.body as {
     url?: string; name?: string; alertEmail?: string; alertPhone?: string;
     isCritical?: boolean; frequency?: string;
@@ -649,7 +651,7 @@ router.post("/monitors", monitorCreateRateLimit, canWrite, async (req: Request, 
 
 // ── PATCH /monitors/:id ───────────────────────────────────────────────────────
 
-router.patch("/monitors/:id", canWrite, async (req: Request, res: Response) => {
+router.patch("/monitors/:id", canAdmin, async (req: Request, res: Response) => {
   const { id } = req.params;
   const body = req.body as {
     name?: string; url?: string; alertEmail?: string;
