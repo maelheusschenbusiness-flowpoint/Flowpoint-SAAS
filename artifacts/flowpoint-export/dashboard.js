@@ -2745,7 +2745,8 @@ window._fpMQ = async function(title, category, priority, navAfter) {
     }
   } catch(e) {}
   saveMissions();
-  showToast('success', 'Mission créée · ' + title.slice(0, 40));
+  const _cleanTitle = title.replace(/[#@*_`~\[\]]/g,'').trim();
+  showToast('success', fpT('Mission créée') + ' · ' + _cleanTitle.slice(0, 40));
   addLocalNotification('mission', fpT('🚀 Mission créée'), title.slice(0, 55));
   logActivityEvent('success', 'Mission créée : ' + title.slice(0, 60));
   if (navAfter) setTimeout(function() { navigate('missions'); }, 600);
@@ -4124,7 +4125,7 @@ const ACTIVITY_I18N_KEYS = {
   'activity.gbp.post':                (p) => fpT('Post GBP publié :') + ' ' + (p&&p.text ? escHtml(String(p.text).slice(0,60)) : ''),
   'activity.gbp.reply':               (p) => fpT('Réponse GBP publiée — avis') + ' ' + (p&&p.reviewId ? escHtml(String(p.reviewId)) : ''),
   // Billing / Add-ons
-  'activity.addon.activated':         (p) => fpT('Add-on activé :') + ' ' + (p&&p.key ? escHtml(String(p.key)) : ''),
+  'activity.addon.activated':         (p) => fpT('Add-on activé :') + ' ' + (p&&p.key ? escHtml(String(p.key).replace('Pack','Pack +').replace(/([A-Z])/g,' $1').trim()) : ''),
   'activity.addon.deactivated':       (p) => fpT('Add-on désactivé :') + ' ' + (p&&p.key ? escHtml(String(p.key)) : ''),
   // Competitors
   'activity.competitor.added':        (p) => fpT('Concurrent ajouté :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
@@ -4156,9 +4157,18 @@ function formatActivityDetails(metadata) {
   if (!metadata || typeof metadata !== 'object') return '';
   const entries = Object.entries(metadata).filter(([, value]) => value !== null && value !== undefined && value !== '');
   if (!entries.length) return '';
+  const _metaKeyLabels = {
+    title: fpT('Titre'), url: fpT('URL'), score: fpT('Score'), category: fpT('Catégorie'),
+    impact: fpT('Impact'), priority: fpT('Priorité'), status: fpT('Statut'),
+    key: fpT('Clé'), addonKey: fpT('Add-on'), plan: fpT('Plan'),
+    email: fpT('Email'), role: fpT('Rôle'), name: fpT('Nom'),
+    message: fpT('Message'), type: fpT('Type'), value: fpT('Valeur'),
+    from: fpT('De'), to: fpT('À'), duration: fpT('Durée'),
+  };
   const rows = entries.map(([key, value]) => {
+    const label = _metaKeyLabels[key] || fpT(key.replace(/([A-Z])/g, ' $1').toLowerCase().replace(/^./, s => s.toUpperCase()));
     const display = Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value) : String(value);
-    return `<div><strong>${escHtml(key.replace(/([A-Z])/g, ' $1'))}</strong> : ${escHtml(display)}</div>`;
+    return `<div><strong>${escHtml(label)}</strong> : ${escHtml(display)}</div>`;
   }).join('');
   return `<div class="fp-activity-details" hidden>${rows}</div><button type="button" class="fp-activity-expand" aria-expanded="false">${fpT('Voir plus')}</button>`;
 }
@@ -4935,6 +4945,10 @@ function initLocalSEOMap() {
       });
       STATE._gmap = map;
       STATE._gmapDark = darkStyles;
+      // Flush any pending history marker update that was queued before map loaded
+      if (window._fpPendingHistoryMarkerUpdate && typeof window.fpUpdateRankingMarkersFromHistory === 'function') {
+        setTimeout(function() { window.fpUpdateRankingMarkersFromHistory(); }, 200);
+      }
       // Business marker — center is always a valid {lat,lng} here
       const _bizAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
       const bm = new google.maps.Marker({
@@ -13882,10 +13896,10 @@ function renderAI() {
       <div style="border-top:1px solid rgba(255,255,255,0.06);padding:10px 12px">
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
-          <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
+          <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
           <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:hidden;line-height:1.5;height:38px;max-height:120px;padding-right:8px;flex:1 1 auto;min-width:0"></textarea>
-          <button class="fp-ai-send" id="ai-send" style="flex:0 0 auto;width:36px;height:36px;align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="18"').replace('height="14"','height="18"')}</button>
-          <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
+          <button class="fp-ai-send" id="ai-send" style="flex:0 0 auto;width:36px;height:36px;align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="20"').replace('height="14"','height="20"')}</button>
+          <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
         <!-- Progress hint: shows server-side step name (e.g. "Identification des informations…")
              while waiting for the first AI token. Hidden when real text arrives. -->
@@ -14041,7 +14055,7 @@ function renderAIMessages() {
     const dedupedChips = allChips.filter((c, i, arr) => arr.findIndex(x => x.route === c.route) === i);
 
     const _aiAvatar = isAI
-      ? svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="18"').replace('height="14"','height="18"')
+      ? svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="20"').replace('height="14"','height="20"')
       : svgIcon('user').replace('stroke="currentColor"','stroke="#60a5fa"').replace('width="14"','width="12"').replace('height="14"','height="12"');
     return `<div class="fp-ai-message ${m.from}" style="margin-bottom:10px;display:flex;align-items:flex-end;gap:8px;flex-direction:${isAI ? 'row' : 'row-reverse'}">
       <div style="width:26px;height:26px;border-radius:8px;background:${isAI ? 'transparent' : 'rgba(37,99,235,0.22)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -14060,7 +14074,7 @@ function renderAIMessages() {
 
   const typing = STATE.aiLoading && !STATE.aiMessages.some(m => m.streaming) ? `<div class="fp-ai-message ai" style="margin-bottom:10px;display:flex;align-items:flex-start;gap:8px">
     <div style="width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-      ${svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="18"').replace('height="14"','height="18"')}
+      ${svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="20"').replace('height="14"','height="20"')}
     </div>
     <div style="padding:9px 12px;border-radius:4px 12px 12px 12px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.07)">
       <div class="fp-ai-typing"><div class="fp-ai-typing-dot"></div><div class="fp-ai-typing-dot"></div><div class="fp-ai-typing-dot"></div></div>
@@ -15326,7 +15340,7 @@ function renderAIPanelContent() {
     <div class="fp-ai-input-row">
       <textarea class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" rows="1" style="font-size:11px;resize:none;min-height:34px;height:34px;max-height:120px;overflow-y:hidden;line-height:1.4;flex:1 1 auto;min-width:0"></textarea>
       <button class="fp-ai-send" id="ai-panel-send" style="flex:0 0 auto;width:34px;height:34px;align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send')}</button>
-      <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
+      <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
     </div>
   `;
 }
@@ -47847,7 +47861,13 @@ async function init() {
               }
               showToast('success', fpT('Add-on activé ✓'));
               try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-              _apiFetchCache && _apiFetchCache.clear();
+              // Clear API cache including /api/me so quotas/limits are re-fetched
+              if (_apiFetchCache) { _apiFetchCache.clear(); }
+              if (_apiFetchInFlight) { try { Object.keys(_apiFetchInFlight).forEach(k => delete _apiFetchInFlight[k]); } catch(_) {} }
+              // Re-fetch /api/me immediately to update quotas + addon state
+              apiFetch('/api/me', { _skipCache: true }).then(me => {
+                if (me && me.email) { STATE.me = me; render(); }
+              }).catch(() => {});
               loadData().catch(() => {});
             // ── Add-on deactivated ─────────────────────────────────────────────────
             } else if (msg.type === 'addon:deactivated' || msg.type === 'fp:addon:deactivated') {
@@ -54069,6 +54089,18 @@ function renderCompetitor() {
       if (typeof window.fpLoadCompetitorAnalysis === 'function') {
         window.fpLoadCompetitorAnalysis(c.id);
       }
+      // Auto-trigger DFS data refresh for competitors without metrics (pending/unavailable)
+      if (c.dataStatus !== 'available' && !window._fpRefreshingComp?.[c.id]) {
+        window._fpRefreshingComp = window._fpRefreshingComp || {};
+        window._fpRefreshingComp[c.id] = true;
+        setTimeout(() => {
+          if (typeof window.fpRefreshCompetitor === 'function') {
+            window.fpRefreshCompetitor(c.id).catch(() => {}).finally(() => {
+              if (window._fpRefreshingComp) delete window._fpRefreshingComp[c.id];
+            });
+          }
+        }, 800);
+      }
     });
     return `
       <div class="fp-section-header">
@@ -54167,7 +54199,7 @@ function renderCompetitor() {
                   <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;margin-top:auto;align-self:flex-start"
                     data-comp-op-title="${escHtml(_opTitle)}" data-comp-op-desc="${escHtml(_opDesc)}"
                     onclick="(function(b){window.fpCreateMissionFromOpportunity(b.dataset.compOpTitle,b.dataset.compOpDesc);})(this)">
-                    ✚ Créer une mission
+                    ✚ ${fpT('Créer une mission')}
                   </button>
                 </div>`;
               }).join('')}
@@ -57497,6 +57529,7 @@ function renderActivityFeed() {
       const id = String(t.id || t.userId || t.user_id || '');
       const email = String(t.email || '').toLowerCase();
       const contrib = (STATE.teamContributions && (
+        (t.userId && STATE.teamContributions[t.userId]) ||
         (id && STATE.teamContributions[id]) ||
         (email && (STATE.teamContributions[email] || STATE.teamContributions[t.email]))
       )) || null;
@@ -57546,7 +57579,12 @@ function renderActivityFeed() {
         <div style="display:flex;flex-direction:column;gap:10px">
           ${members.map(m => {
             const _mUid = m.userId || m.id || m.user_id || m.email;
-            const _mC = (STATE.teamContributions && _mUid && STATE.teamContributions[_mUid]) || (STATE.teamContributions && m.email && STATE.teamContributions[m.email]) || null;
+            const _mUidFallback = m.userId || _mUid;
+            const _mC = (STATE.teamContributions && (
+              (_mUidFallback && STATE.teamContributions[_mUidFallback]) ||
+              (_mUid && STATE.teamContributions[_mUid]) ||
+              (m.email && STATE.teamContributions[m.email])
+            )) || null;
             if (_mC && !m.contribs) m.contribs = _mC;
             if (_mC && m.contribs && !m.streak?.current && _mC.streak != null) { if (!m.streak) m.streak = {}; m.streak.current = _mC.streak; }
             const pct = m.score ?? 0;
@@ -68277,7 +68315,12 @@ window.FP_GBP_API = {
 // When the user checks history items, their results are merged and shown on map.
 window.fpUpdateRankingMarkersFromHistory = function() {
   var map = STATE._gmap;
-  if (!map || typeof google === 'undefined' || !google.maps) return;
+  if (!map || typeof google === 'undefined' || !google.maps) {
+    // Map not yet initialized — queue for execution once map loads
+    window._fpPendingHistoryMarkerUpdate = true;
+    return;
+  }
+  window._fpPendingHistoryMarkerUpdate = false;
   var history = (STATE.localSeo && STATE.localSeo.rankingHistory) || [];
   var selectedIds = (STATE.localSeo && STATE.localSeo._selectedHistoryIds) || new Set();
 
