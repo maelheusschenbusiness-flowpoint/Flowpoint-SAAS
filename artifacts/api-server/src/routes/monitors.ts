@@ -648,6 +648,7 @@ router.post("/monitors", monitorCreateRateLimit, canAdmin, async (req: Request, 
     store.logActivity({
       type: "monitor", label: `Monitor créé : ${name} (${url})`,
       targetId: id, targetType: "monitor", metadata: { url, name }, orgId,
+      actionKey: "activity.monitor.created", actionParams: { name: String(name), url: String(url) },
       userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
       userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
@@ -774,6 +775,7 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
           targetId: id, targetType: "monitor",
           metadata: { url: monitor["url"], responseTime: result.latencyMs, status: newStatus },
           orgId,
+          actionKey: "activity.monitor.pinged", actionParams: { name: String(monitor["name"]), status: newStatus, latencyMs: result.latencyMs },
           userId: (req as any).orgContext?.userId || (req as any).orgContext?.email || "system",
           userName: (req as any).orgContext?.name || (req as any).orgContext?.email || "Système",
         }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
@@ -811,6 +813,7 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
       targetId: id, targetType: "monitor",
       metadata: { url: monitor["url"], responseTime: result.latencyMs, status: newStatus },
       orgId,
+      actionKey: "activity.monitor.pinged", actionParams: { name: String(monitor["name"]), status: newStatus, latencyMs: result.latencyMs },
       userId: (req as any).orgContext?.userId || (req as any).orgContext?.email || "system",
       userName: (req as any).orgContext?.name || (req as any).orgContext?.email || "Système",
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
@@ -920,6 +923,7 @@ router.delete("/monitors/:id", canAdmin, async (req: Request, res: Response) => 
       targetId: id, targetType: "monitor",
       metadata: { url: m["url"], name: m["name"] },
       orgId: String(m["org_id"] ?? (req as unknown as Record<string, unknown>)["orgId"] ?? "default"),
+      actionKey: "activity.monitor.deleted", actionParams: { name: String(m["name"]), url: String(m["url"]) },
       userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
       userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
