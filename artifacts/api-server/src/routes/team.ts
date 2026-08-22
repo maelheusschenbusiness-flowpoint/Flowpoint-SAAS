@@ -21,7 +21,7 @@ import { logger }                               from "../lib/logger.js";
 import { randomBytes, createHash, randomUUID }  from "crypto";
 import { pool, withOrgDb }                     from "@workspace/db";
 import { canAdmin }                             from "../middlewares/requireRole.js";
-import { createSession, SESSION_TTL_MS } from "../services/sessions.js";
+import { createSession, SESSION_TTL_MS, updateSessionsRole } from "../services/sessions.js";
 import { resolveSeatEntitlement, SeatEntitlementUnavailableError } from "../services/seat-entitlement.js";
 import { store }                                from "../services/store.js";
 
@@ -884,6 +884,10 @@ router.patch("/team/:id", canAdmin, async (req: Request, res: Response) => {
        WHERE u.id = om.user_id AND lower(u.email) = lower($2) AND om.organization_id = $3`,
       [newRole, m.email as string, org]
     ).catch(err => logger.warn({ err: (err as Error).message }, "[team/patch] org_members dual-write failed (non-fatal)"));
+
+    // Update all active sessions for this member so req.orgContext.role
+    // reflects the new role on their very next API request (no logout needed).
+    updateSessionsRole(m.email as string, org, newRole).catch(() => {});
 
     // Broadcast SSE so the affected member's browser immediately re-syncs
     // their role without needing a manual page refresh.

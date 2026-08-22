@@ -5026,8 +5026,12 @@ function _fpUnreadChatNotifs() {
 
 function getMsgUnreadTotal() {
   if (!STATE.channelMessages) STATE.channelMessages = PREVIEW_MODE ? JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT)) : {general:[],seo:[],rapports:[],support:[]};
-  return Object.values(STATE.channelMessages).flat().filter(m => !m.read && !m.self).length
-       + _fpUnreadChatNotifs().length;
+  // Use persisted notification read-state as the sole source of truth for the
+  // badge count.  channelMessages.read is in-memory only and resets on every
+  // page load, which caused the badge to reappear after refresh even though
+  // the user had already seen the messages.  Notification rows (type='chat')
+  // survive reloads because their read flag is persisted to the DB.
+  return _fpUnreadChatNotifs().length;
 }
 
 // ── Global chat notification helpers (called from fp-backend.js SSE handler) ──
@@ -5133,8 +5137,16 @@ function bindMsgPanel(dd) {
   if (STATE.channelMessages && STATE.channelMessages[curCh]) {
     STATE.channelMessages[curCh].forEach(m => { if (!m.self) m.read = true; });
   }
-  // Also clear chat-type notification rows so badge stays at 0 after opening
+  // Persist chat notification read-state so the badge stays at 0 after refresh.
+  // Collect unread chat notification IDs before mutating STATE to avoid double-calls.
+  const _unreadChatIds = (STATE.notifications || [])
+    .filter(n => n && n.type === 'chat' && !n.read && n.id)
+    .map(n => n.id);
   (STATE.notifications || []).forEach(n => { if (n && n.type === 'chat' && !n.read) { n.read = true; } });
+  // Fire-and-forget: mark each via the per-row endpoint so DB stays in sync.
+  _unreadChatIds.forEach(nid => {
+    apiAction('PATCH', `/api/notifications/${encodeURIComponent(nid)}/read`).catch(() => {});
+  });
   refreshBadge();
   // Scroll message list to bottom whenever the panel is opened or re-rendered
   setTimeout(() => { const ml = dd.querySelector('#fp-msg-list'); if (ml) ml.scrollTop = ml.scrollHeight; }, 50);

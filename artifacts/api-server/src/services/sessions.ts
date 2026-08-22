@@ -142,3 +142,31 @@ export async function invalidateAllSessions(userId: string): Promise<void> {
     }
   } catch { /* non-fatal */ }
 }
+
+/**
+ * Propagate a role change to all active sessions for a member so that
+ * req.orgContext.role on their next request reflects the new value immediately,
+ * without forcing a logout.
+ *
+ * Matches by email (case-insensitive) inside the given org because user_id in
+ * user_sessions may be a legacy string that differs from team_members.user_id.
+ */
+export async function updateSessionsRole(email: string, orgId: string, newRole: string): Promise<void> {
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `UPDATE user_sessions
+            SET role = $1
+          WHERE org_id = $2
+            AND LOWER(email) = LOWER($3)
+            AND expires_at > NOW()`,
+        [newRole, orgId, email]
+      );
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    logger.warn({ err: (err as Error).message, orgId }, "[sessions] updateSessionsRole failed (non-fatal)");
+  }
+}
