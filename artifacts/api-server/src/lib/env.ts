@@ -41,6 +41,13 @@ function validateEnv(): Env {
     process.env["OPENAI_API_KEY"] = process.env["OPEN_AI_KEY"];
   }
 
+  // JWT_SECRET fallback: use SESSION_SECRET when JWT_SECRET is absent,
+  // provided it meets the 32-character minimum length requirement.
+  if (!process.env["JWT_SECRET"] && process.env["SESSION_SECRET"] &&
+      process.env["SESSION_SECRET"].length >= 32) {
+    process.env["JWT_SECRET"] = process.env["SESSION_SECRET"];
+  }
+
   const result = envSchema.safeParse(process.env);
   if (!result.success) {
     const errors = result.error.errors
