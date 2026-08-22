@@ -826,14 +826,16 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   // store.me is a global singleton — writing user-specific data here causes cross-user
   // data leakage when /api/me falls back to the in-memory store.
 
-  // Log activity
+  // Log activity — actor is the new user themselves (signup)
   store.logActivity({
     type: "account",
     label: `Compte créé : ${fn} ${ln} (${company})`,
     targetId: normalizedEmail,
     targetType: "user",
     metadata: { country: country ?? null, companySize: companySize ?? null, objective: objective ?? null },
-      orgId,
+    orgId,
+    userId: normalizedEmail,
+    userName: `${fn} ${ln}`.trim() || normalizedEmail,
   }).catch(err => logger.error({ err }, "[auth] logActivity failed"));
 
   logger.info(
@@ -1364,6 +1366,8 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
       targetId: metaOrgId || email,
       targetType: "user",
       orgId: metaOrgId || undefined,
+      userId: email || undefined,
+      userName: email || undefined,
     }).catch(() => {});
 
     if (!emailSent) {

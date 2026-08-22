@@ -344,25 +344,42 @@ export async function fetchCompetitorDomainMetrics(
 
   try {
     type DFSResult = Array<{ result?: Array<Record<string, unknown>> }>;
+    // Domain authority metrics are global — do NOT filter by location_name.
+    // A per-location filter on /domain_metrics silently returns empty results for
+    // many international domains (e.g. odoo.com, salesforce.com) even when global
+    // metrics exist. We request global metrics and then log the raw response so
+    // callers can distinguish "DFS returned data but mapping was wrong" from
+    // "DFS returned no data for this domain".
     const data = await dfsRequest<DFSResult>(
       "/dataforseo_labs/google/domain_metrics/live",
-      [{ target: domain, location_name: "France" }],
+      [{ target: domain }],
       orgId,
     );
     const result = data[0]?.result?.[0];
-    if (!result) return { ok: false, provider: "DataForSEO", reason: "no_metrics" };
+    logger.info(
+      { domain, hasResult: !!result, resultKeys: result ? Object.keys(result) : [] },
+      "[dfs] domain_metrics raw response",
+    );
+    if (!result) {
+      logger.warn({ domain, data: JSON.stringify(data).slice(0, 500) }, "[dfs] domain_metrics: empty result array — no_metrics");
+      return { ok: false, provider: "DataForSEO", reason: "no_metrics" };
+    }
 
     const metric = (key: string): number => {
       const value = Number(result[key]);
       return Number.isFinite(value) && value >= 0 ? Math.round(value) : 0;
     };
+    const authority = metric("rank");
+    const traffic   = metric("organic_traffic");
+    const keywords  = metric("organic_count");
+    logger.info({ domain, authority, traffic, keywords }, "[dfs] domain_metrics mapped");
     return {
       ok: true,
       provider: "DataForSEO",
       providerModel: "dataforseo_labs/google/domain_metrics/live",
-      traffic: metric("organic_traffic"),
-      keywords: metric("organic_count"),
-      authority: metric("rank"),
+      traffic,
+      keywords,
+      authority,
     };
   } catch (err) {
     logger.warn({ err, domain }, "[dfs] competitor domain metrics failed");

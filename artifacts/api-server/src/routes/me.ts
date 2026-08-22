@@ -778,8 +778,11 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
     // Journalise la modification de paramètres dans le fil d'activité (Command Center)
     if (settings && Object.keys(settings).length > 0) {
       const keys = Object.keys(settings).slice(0, 5).join(", ");
+      const _settingsCtx = (req as any).orgContext || {};
       import("../services/store.js")
-        .then(m => m.store.logActivity({ type: "settings", label: `Paramètres mis à jour : ${keys}`, orgId }))
+        .then(m => m.store.logActivity({ type: "settings", label: `Paramètres mis à jour : ${keys}`, orgId,
+          userId: _settingsCtx.userId || _settingsCtx.email || null,
+          userName: _settingsCtx.name || _settingsCtx.email || null }))
         .catch(() => {});
     }
     res.json({ ok: true });
@@ -1089,8 +1092,11 @@ router.post("/settings/api-keys/regenerate", ownerOnly, async (req: Request, res
       res.json({ ok: true, key: publicKey, type: "public", createdAt });
     }
     // Journalise la rotation de clé dans le fil d'activité
+    const _apiKeyCtx = (req as any).orgContext || {};
     import("../services/store.js")
-      .then(m => m.store.logActivity({ type: "security", label: `Clé API ${type === "secret" ? "secrète" : "publique"} régénérée`, orgId }))
+      .then(m => m.store.logActivity({ type: "security", label: `Clé API ${type === "secret" ? "secrète" : "publique"} régénérée`, orgId,
+        userId: _apiKeyCtx.userId || _apiKeyCtx.email || null,
+        userName: _apiKeyCtx.name || _apiKeyCtx.email || null }))
       .catch(() => {});
   } catch (err) {
     logger.error({ err }, "[api-keys/regenerate] failed");

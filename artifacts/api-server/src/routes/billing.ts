@@ -2094,6 +2094,8 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, ownerOnly, asyn
       targetType: "billing",
       metadata: { addonKey },
       orgId,
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email || null,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email || null,
     }).catch(() => {});
 
     res.json({ url: session.url });
