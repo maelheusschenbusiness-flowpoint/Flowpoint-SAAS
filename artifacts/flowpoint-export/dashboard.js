@@ -5918,7 +5918,7 @@ function renderOverview() {
         </div>
         <div onclick="navigate('missions')" style="padding:14px;background:var(--fp-inner-card);border-radius:12px;cursor:pointer;border:1px solid var(--fp-border);transition:border 0.15s" onmouseover="this.style.borderColor='rgba(37,99,235,0.4)'" onmouseout="this.style.borderColor='var(--fp-border)'">
           <div style="font-size:20px;margin-bottom:8px">🎯</div>
-          <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">3. Créer une mission</div>
+          <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${fpT('3. Créer une mission')}</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Planifiez vos actions SEO et suivez leur avancement')}</div>
         </div>
       </div>
@@ -6339,7 +6339,7 @@ function _sectionErrorBanner(section) {
   const m = msgs[err] || msgs.unknown;
   return `<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:8px;padding:10px 16px;margin-bottom:14px;font-size:13px;color:var(--fp-text-secondary);display:flex;align-items:center;gap:8px">
     <span>${m.icon}</span><span>${m.text}</span>
-    <button onclick="loadData().catch(()=>{})" style="margin-left:auto;font-size:11px;padding:2px 10px;border:1px solid rgba(239,68,68,0.3);border-radius:6px;background:transparent;color:var(--fp-text-secondary);cursor:pointer">↺ Réessayer</button>
+    <button onclick="loadData().catch(()=>{})" style="margin-left:auto;font-size:11px;padding:2px 10px;border:1px solid rgba(239,68,68,0.3);border-radius:6px;background:transparent;color:var(--fp-text-secondary);cursor:pointer">${fpT('↺ Réessayer')}</button>
   </div>`;
 }
 
@@ -6447,7 +6447,7 @@ function renderAudits() {
     <div class="fp-card fp-card-sm fp-mb-16" style="padding:12px 14px">
       <div style="font-size:11px;font-weight:700;color:var(--fp-text);margin-bottom:8px;display:flex;align-items:center;gap:6px">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        Prochains audits planifiés
+        ${fpT('Prochains audits planifiés')}
       </div>
       <div style="display:flex;flex-direction:column;gap:5px">
         ${STATE.auditUpcoming.map(s => {
@@ -6512,7 +6512,7 @@ function renderAudits() {
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                   ${a.pinned ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>` : ''}
                   <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(a.url)}</span>
-                  ${sched ? `<span style="background:rgba(37,99,235,0.15);color:#2563EB;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid rgba(37,99,235,0.3)">⏰ Planifié</span>` : ''}
+                  ${sched ? `<span style="background:rgba(37,99,235,0.15);color:#2563EB;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid rgba(37,99,235,0.3)">${fpT('⏰ Planifié')}</span>` : ''}
                   ${a.origin === 'auto' ? `<span style="background:rgba(139,92,246,0.15);color:#8b5cf6;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid rgba(139,92,246,0.3)">Auto</span>` : ''}
                 </div>
               </td>
@@ -6742,7 +6742,7 @@ function renderMonitors() {
 
       <!-- Dependency Monitoring -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:4px">🔗 Dépendances externes</div>
+        <div class="fp-card-title" style="margin-bottom:4px">${fpT('🔗 Dépendances externes')}</div>
         <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">${fpT('Services tiers critiques surveillés en temps réel')}</div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${deps.map(d => `
@@ -6761,7 +6761,7 @@ function renderMonitors() {
           <span>${deps.filter(d => d.status === 'operational').length}/${deps.length} opérationnels</span>
           ${deps.filter(d => d.status !== 'operational').length > 0
             ? `<span style="color:#f59e0b">⚠ ${deps.filter(d => d.status !== 'operational').length} dégradé(s)</span>`
-            : '<span style="color:#22c55e">✅ Tous opérationnels</span>'}
+            : '<span style="color:#22c55e">'+fpT('✅ Tous opérationnels')+'</span>'}
         </div>
       </div>
     </div>
@@ -6936,7 +6936,7 @@ function renderMissionDetail(m) {
         <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--fp-text-muted);display:block;margin-bottom:4px">${fpT('Assigné à')}</label>
         ${teamMembers.length > 0
           ? `<select class="fp-input mission-assignee-select" data-id="${m.id}" style="font-size:12px;padding:5px 8px;height:auto">
-               <option value="">— Non assigné —</option>
+               <option value="">${fpT('— Non assigné —')}</option>
                ${assigneeOptions}
              </select>`
           : `<div style="font-size:11px;color:var(--fp-text-faint);padding:6px 0">Aucun siège d'équipe — <a href="#" onclick="closeFloatPanel();navigate('billing');setTimeout(function(){navigateSub('plans')},80)" style="color:var(--fp-accent)">${fpT('ajouter des membres')}</a></div>`
@@ -7379,7 +7379,7 @@ function applyCalendarFilterInPlace() {
   const countEl = document.querySelector('.fp-cal-rdv-count');
   if (countEl) {
     if (isFiltering) {
-      countEl.innerHTML = '<span style="color:var(--fp-accent)">' + matchCount + ' RDV trouvé' + (matchCount !== 1 ? 's' : '') + '</span>';
+      countEl.innerHTML = '<span style="color:var(--fp-accent)">' + matchCount + ' ' + fpT('RDV trouvé') + (matchCount !== 1 ? 's' : '') + '</span>';
     } else {
       countEl.textContent = matchCount + ' RDV';
     }
@@ -7905,7 +7905,7 @@ function renderReports() {
             ${svgIcon('trending-up').replace('stroke="currentColor"','stroke="#2563EB"')}
             Evolution globale — 4 mois
           </div>
-          ${hasMeasuredSeoHistory ? '<span style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--fp-text-faint)"><span style="width:8px;height:3px;background:#2563EB;border-radius:2px;display:inline-block"></span>SEO mesuré</span>' : ''}
+          ${hasMeasuredSeoHistory ? '<span style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--fp-text-faint)"><span style="width:8px;height:3px;background:#2563EB;border-radius:2px;display:inline-block"></span>'+fpT('SEO mesuré')+'</span>' : ''}
         </div>
         ${hasMeasuredSeoHistory ? `
           <div style="display:flex;gap:10px;align-items:flex-end">
@@ -7924,12 +7924,12 @@ function renderReports() {
                 </div>`;
             }).join('')}
           </div>
-          ${numericAuditScores.length < 2 ? '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:12px">Historique insuffisant : seule la mesure disponible est affichée.</div>' : ''}
+          ${numericAuditScores.length < 2 ? '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:12px">'+fpT('Historique insuffisant : seule la mesure disponible est affichée.')+'</div>' : ''}
         ` : `
           <div style="text-align:center;padding:28px 16px;color:var(--fp-text-muted)">
             <div style="font-size:22px;margin-bottom:8px">📈</div>
-            <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:4px">Aucun historique mesuré disponible</div>
-            <div style="font-size:11px">Lancez des audits à différentes dates pour afficher une évolution réelle.</div>
+            <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:4px">${fpT('Aucun historique mesuré disponible')}</div>
+            <div style="font-size:11px">${fpT('Lancez des audits à différentes dates pour afficher une évolution réelle.')}</div>
           </div>
         `}
       </div>
@@ -8776,7 +8776,7 @@ function renderLocalSEO() {
           <span class="fp-card-title" style="margin-bottom:0">${fpT('Intelligence de visibilité locale')}</span>
           ${STATE.dfsStatus?.configured
             ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#22c55e">● API LIVE</span>`
-            : `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b">● DONNÉES INDISPONIBLES</span>`}
+            : `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b">${fpT('● DONNÉES INDISPONIBLES')}</span>`}
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           ${STATE.dfsStatus ? `<span style="font-size:10px;color:#64748b">${STATE.dfsStatus.quota?.used||0}/${STATE.dfsStatus.quota?.limit||50} req aujourd\'hui</span>` : ''}
@@ -8852,16 +8852,16 @@ function renderLocalSEO() {
                   STATE.localSeo._historyError = err?.message || 'Historique indisponible';
                 }
                 const widget = document.getElementById('dfs-rank-history');
-                if (widget) widget.innerHTML = '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">Impossible de charger l’historique. Réessayez.</div>';
+                if (widget) widget.innerHTML = '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">'+fpT("Impossible de charger l'historique. Réessayez.")+'</div>';
               });
             }
             const histItems = Array.isArray(_hist) ? _hist : [];
             const histHtml = STATE.localSeo?._historyError
-              ? '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">Impossible de charger l’historique. Réessayez.</div>'
+              ? '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">'+fpT("Impossible de charger l'historique. Réessayez.")+'</div>'
               : !Array.isArray(_hist)
               ? '<div style="text-align:center;padding:10px;color:#64748b;font-size:11px">Chargement…</div>'
               : histItems.length === 0
-                ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique — effectuez votre première recherche.</div>'
+                ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">'+fpT("Aucun historique — effectuez votre première recherche.")+'</div>'
                 : histItems.map(h => {
                     const date = h.searched_at ? new Date(h.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
                     // Use the real total when available; only show 0 when the source
@@ -9167,7 +9167,7 @@ function renderLocalSEO() {
           <span>▬ <span style="color:#2563EB">${fpT('Actuel')}</span></span>
         </div>
         ${PREVIEW_MODE ? `<div style="margin-top:12px;padding:10px;background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.15);border-radius:8px;font-size:12px;color:#22c55e">
-          📈 <strong>+62% de trafic local estimé</strong> en 4 mois si les 12 opportunités sont activées
+          📈 <strong>${fpT('+62% de trafic local estimé')}</strong> ${fpT('en 4 mois si les 12 opportunités sont activées')}
         </div>` : ''}
         ` : isUltra ? `<div style="height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;opacity:0.5">
           <div style="font-size:28px">📈</div>
@@ -9208,7 +9208,7 @@ function renderLocalSEO() {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div class="fp-card-title" style="margin-bottom:0;color:#f59e0b">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          Pages locales manquantes détectées
+          ${fpT('Pages locales manquantes détectées')}
         </div>
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('opportunities')">${fpT('Voir toutes →')}</button>
       </div>
@@ -9411,7 +9411,7 @@ function renderTeam() {
     <!-- ACTIVITE RECENTE EQUIPE -->
     <div class="fp-card">
       <div class="fp-flex-between" style="margin-bottom:14px">
-        <div class="fp-card-title" style="margin-bottom:0">Activité récente de l\'équipe</div>
+        <div class="fp-card-title" style="margin-bottom:0">${fpT("Activité récente de l'équipe")}</div>
         <button class="fp-link-btn" onclick="navigateSub('activity')">${fpT('Voir tout →')}</button>
       </div>
       <div class="fp-team-activity-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
@@ -9779,7 +9779,7 @@ function renderBilling() {
       <!-- COMPARISON TABLE -->
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-          <div class="fp-card-title" style="margin-bottom:0">📊 Comparaison détaillée des plans</div>
+          <div class="fp-card-title" style="margin-bottom:0">${fpT('📊 Comparaison détaillée des plans')}</div>
           <div style="display:flex;gap:6px">
             ${PLANS.map(p => `<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:${p.id==='ultra'?'rgba(37,99,235,0.15)':p.color+'18'};color:${p.id==='ultra'?'#2563EB':p.color};border:1px solid ${p.id==='ultra'?'rgba(37,99,235,0.3)':p.color+'33'}">${p.name} — ${p.price}€/mois</span>`).join('')}
           </div>
@@ -9867,13 +9867,13 @@ function renderBilling() {
 
         // ── Suspendu (past_due / unpaid) ─────────────────────────────────────
         if (_ss === 'past_due' || _ss === 'unpaid') {
-          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #ef4444"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">🔴 Suspendu · Paiement en échec</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="background:#ef4444;border-color:#ef4444;flex-shrink:0" onclick="fpOpenStripePortal ? fpOpenStripePortal() : navigateSub('plans')">${fpT('Mettre à jour le paiement')}</button></div><div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444">Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.</div>${_dangerZone}</div>`;
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #ef4444"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('🔴 Suspendu · Paiement en échec')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="background:#ef4444;border-color:#ef4444;flex-shrink:0" onclick="fpOpenStripePortal ? fpOpenStripePortal() : navigateSub('plans')">${fpT('Mettre à jour le paiement')}</button></div><div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444">Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.</div>${_dangerZone}</div>`;
         }
 
         // ── Expiré (canceled / none — ancien abonné) ─────────────────────────
         if (_ss === 'canceled' || (_ss === 'none' && _bs.hadSubscription)) {
           const _resubPlan = (_bs.plan || (STATE.me && STATE.me.plan) || 'standard').toLowerCase();
-          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">⚫ Expiré · Fonctionnalités Premium désactivées</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpGoToPricing('${_resubPlan}')">${fpT('Reprendre un abonnement')}</button></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.</div>${_dangerZone}</div>`;
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('⚫ Expiré · Fonctionnalités Premium désactivées')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpGoToPricing('${_resubPlan}')">${fpT('Reprendre un abonnement')}</button></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.</div>${_dangerZone}</div>`;
         }
 
         // ── États actifs ─────────────────────────────────────────────────────
@@ -10195,7 +10195,7 @@ function renderBilling() {
               <div style="font-size:18px;font-weight:900;color:${isInc ? '#22c55e' : 'var(--fp-text)'}">${isInc ? 'Inclus dans votre plan' : escHtml(a.price)}</div>
             </div>
             ${isInc
-              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">✓ Déjà inclus</button>`
+              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">${fpT('✓ Déjà inclus')}</button>`
               : a.active
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`
                 : a.wizardFn
@@ -10342,7 +10342,7 @@ function renderBilling() {
       <!-- PAYMENT METHODS -->
       <div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">💳 Méthodes de paiement</div>
+          <div class="fp-card-title" style="margin-bottom:0">${fpT('💳 Méthodes de paiement')}</div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('success', fpT('Redirection vers le portail de paiement Stripe…'))}).catch(()=>showToast('info', fpT('Portail Stripe — vérifiez votre plan')))">+ Ajouter une carte</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
@@ -10420,7 +10420,7 @@ function renderBilling() {
           })(),
           ['Ajouter des crédits', 'Voir prévisions 30j', 'Rapport usage complet']
           )
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('Usage Analytics avancé — Pro requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions, alertes de seuil et analytics d\'utilisation détaillés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('Usage Analytics avancé — Pro requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT("Prévisions, alertes de seuil et analytics d'utilisation détaillés.")}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">${fpT('Passer Pro')}</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -10512,7 +10512,7 @@ function renderBilling() {
       <!-- ADOPTION TRACKING -->
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">📈 Adoption des fonctionnalités — Ce mois</div>
+          <div class="fp-card-title" style="margin-bottom:0">${fpT('📈 Adoption des fonctionnalités — Ce mois')}</div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
           ${(()=>{ const _adopt = PREVIEW_MODE ? [
@@ -10527,7 +10527,7 @@ function renderBilling() {
             { feat:'API & Webhooks',     rate:29, trend:'+14%' },
             { feat:'White-Label',        rate:73, trend:'+6%'  },
           ] : [];
-          if (_adopt.length === 0) return `<div style="grid-column:1/-1;padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Les statistiques d\'adoption s\'afficheront avec l\'activité de votre équipe.</div>`;
+          if (_adopt.length === 0) return `<div style="grid-column:1/-1;padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">${fpT("Les statistiques d'adoption s'afficheront avec l'activité de votre équipe.")}</div>`;
           return _adopt.map(f => {
             const c = f.rate > 75 ? '#22c55e' : f.rate > 50 ? '#f59e0b' : '#ef4444';
             return `<div style="padding:12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.05)">
@@ -10600,7 +10600,7 @@ function renderBilling() {
             ? "IA Stratégiste activé — analyse complète du compte. <strong>3 opportunités d\'optimisation détectées</strong>. Priorité : activer Review Intelligence (ROI < 1 semaine). Prévision : dépassement plan dans 8 jours. White-Label non configuré — setup en 10 minutes."
             : "IA Stratégiste activé. <strong>" + strategies.length + " opportunité" + (strategies.length > 1 ? "s" : "") + " d\'optimisation identifiée" + (strategies.length > 1 ? "s" : "") + "</strong> à partir de vos données réelles.",
             ['Appliquer toutes les recommandations', 'Rapport ROI complet', 'Prévision 6 mois'])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('IA Stratégiste complet — Ultra requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse ROI, prévision d\'upgrade, et optimisation des coûts SaaS automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('IA Stratégiste complet — Ultra requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT("Analyse ROI, prévision d'upgrade, et optimisation des coûts SaaS automatisée.")}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">${fpT('Passer Ultra')}</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -10635,7 +10635,7 @@ function renderBilling() {
 
       <!-- CHURN PREVENTION -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🛡️ Prévention churn — Signaux faibles</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('🛡️ Prévention churn — Signaux faibles')}</div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${churnRisks.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">${fpT('Aucun signal de churn détecté')}</div>` : ''}${churnRisks.map(r => `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:${r.color}07;border:1px solid ${r.color}28">
@@ -10718,7 +10718,7 @@ function renderBilling() {
       <div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">🏢 Gestion des workspaces</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.55;cursor:not-allowed" title="${fpT('Gestion multi-workspace bientôt disponible')}">+ Workspace (bientôt)</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.55;cursor:not-allowed" title="${fpT('Gestion multi-workspace bientôt disponible')}">${fpT('+ Workspace (bientôt)')}</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${workspaces.map(ws => `
@@ -10740,7 +10740,7 @@ function renderBilling() {
 
       <!-- FEATURE STATUS -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">⚡ Fonctionnalités Ultra</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('⚡ Fonctionnalités Ultra')}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px">
           ${features.map(f => `
             <div style="padding:14px;border-radius:10px;border:1px solid ${f.active ? f.color + '33' : 'rgba(255,255,255,0.05)'};background:${f.active ? f.color + '07' : 'rgba(255,255,255,0.01)'};${f.locked ? 'opacity:0.55' : ''}">
@@ -10790,7 +10790,7 @@ function renderBilling() {
             : fpT('Usage sain — toutes les ressources sont sous contrôle.') + " <strong>" + fpT('3 add-ons IA recommandés') + "</strong> " + fpT('pour maximiser l\'efficacité de votre agence. Sans engagement, résiliable à tout moment.'),
           [fpT('Optimiser mon plan'), fpT('Voir les add-ons IA'), fpT('Comparer les plans')]
         )
-      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">💡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Billing Insights — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Recommandations IA, prévisions d\'usage et optimisation de coûts automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
+      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">💡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('IA Billing Insights — Pro requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT("Recommandations IA, prévisions d'usage et optimisation de coûts automatisée.")}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">${fpT('Passer Pro')}</button></div>`
     }
 
     <!-- HERO KPI ROW -->
@@ -11072,7 +11072,7 @@ function renderAlertRules() {
           <div class="fp-card-title">Règles d\'alerte personnalisées</div>
           <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${rules.length} règle${rules.length !== 1 ? 's' : ''} configurée${rules.length !== 1 ? 's' : ''}</div>
         </div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" id="show-add-rule-form">+ Nouvelle règle</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" id="show-add-rule-form">${fpT('+ Nouvelle règle')}</button>
       </div>
 
       ${rules.length === 0 ? `
@@ -11160,7 +11160,7 @@ function renderAlertRules() {
       const showTemplates = localStorage.getItem(firstAccessKey) !== 'done';
       if (!showTemplates) return `
     <div style="display:flex;justify-content:flex-end;margin-bottom:4px">
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="localStorage.removeItem('fp-alert-templates-hidden');render()">📋 Afficher les templates prédéfinis</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="localStorage.removeItem('fp-alert-templates-hidden');render()">${fpT('📋 Afficher les templates prédéfinis')}</button>
     </div>`;
       return `
     <div class="fp-card">
@@ -11186,7 +11186,7 @@ function renderAlertRules() {
                 </div>
               </div>
               ${alreadyExists
-                ? `<span style="font-size:10px;color:var(--fp-success);font-weight:600">✓ Activée</span>`
+                ? `<span style="font-size:10px;color:var(--fp-success);font-weight:600">${fpT('✓ Activée')}</span>`
                 : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="fpApplyAlertTemplate(${i},this)" style="font-size:11px">${fpT('Activer')}</button>`
               }
             </div>
@@ -11303,7 +11303,7 @@ function renderSettings() {
           ].map(f => `<div class="fp-form-group">
             <label class="fp-form-label">${escHtml(f.l)}</label>
             <input class="fp-input" id="${f.id}" type="${f.t}" value="${escHtml(f.v)}"${f.ph ? ` placeholder="${escHtml(f.ph)}"` : ''}${f.ro ? ' readonly style="opacity:0.6;cursor:not-allowed"' : ''}/>
-            ${f.ro ? '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">Votre adresse email est gérée par votre méthode d\'authentification.</div>' : ''}
+            ${f.ro ? '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">'+fpT("Votre adresse email est gérée par votre méthode d'authentification.")+'</div>' : ''}
           </div>`).join('')}
           <hr style="border:none;border-top:1px solid var(--fp-border);margin:14px 0 10px"/>
           <div style="font-size:11px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">${fpT("Canaux d'alerte")}</div>
@@ -11680,7 +11680,7 @@ function renderSettings() {
 
       <!-- SECURITY CHECKLIST -->
       <div class="fp-card fp-mb-20">
-        <div class="fp-card-title" style="margin-bottom:14px">🛡️ Checklist de sécurité</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('🛡️ Checklist de sécurité')}</div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${secItems.map(item => `
             <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;background:${item.done ? 'rgba(34,197,94,0.05)' : 'rgba(239,68,68,0.05)'};border:1px solid ${item.done ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}">
@@ -11848,7 +11848,7 @@ function renderSettings() {
             ${svgIcon('zap').replace('stroke="currentColor"','stroke="#f59e0b"')}
             Workflows configurés
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openNewWorkflowPanel()">+ Créer</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openNewWorkflowPanel()">${fpT('+ Créer')}</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${workflows.map(wf => `
@@ -12257,7 +12257,7 @@ function renderSettings() {
       return ic[name] || `<div style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px">🔗</div>`;
     };
     const statusDot = (active, verified) => `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${active&&verified?'var(--fp-success)':active?'var(--fp-warning)':'rgba(255,255,255,0.2)'}"></span>`;
-    const runStatus = s => s==='success'?'<span style="color:var(--fp-success);font-size:10px;font-weight:700">✓ OK</span>':s==='failed'?'<span style="color:var(--fp-danger);font-size:10px;font-weight:700">✗ Échec</span>':s==='retrying'?'<span style="color:var(--fp-warning);font-size:10px;font-weight:700">↺ Retry</span>':'<span style="color:var(--fp-text-faint);font-size:10px">⏳ Pending</span>';
+    const runStatus = s => s==='success'?'<span style="color:var(--fp-success);font-size:10px;font-weight:700">✓ OK</span>':s==='failed'?'<span style="color:var(--fp-danger);font-size:10px;font-weight:700">'+fpT('✗ Échec')+'</span>':s==='retrying'?'<span style="color:var(--fp-warning);font-size:10px;font-weight:700">↺ Retry</span>':'<span style="color:var(--fp-text-faint);font-size:10px">⏳ Pending</span>';
 
     // ── PLATFORM CARDS DATA ───────────────────────────────────────────────────
     const platformCards = [
@@ -12321,7 +12321,7 @@ function renderSettings() {
 
           <!-- NATIVE INTEGRATIONS -->
           <div class="fp-card">
-            <div class="fp-card-title" style="margin-bottom:14px">🔍 Intégrations natives FlowPoint</div>
+            <div class="fp-card-title" style="margin-bottom:14px">${fpT('🔍 Intégrations natives FlowPoint')}</div>
             <div style="display:flex;flex-direction:column;gap:0">
               ${[
                 {name:'Google Business Profile', svc:'gbp', icon:'🏢', connected:gbpConn, btn:gbpConn?"navigate('local-seo')"  :"typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.openConnect():navigate('local-seo')", disconnectEndpoint:'/api/google/disconnect', desc:'Fiches GBP, avis, posts locaux'},
@@ -12354,7 +12354,7 @@ function renderSettings() {
         return `
           <div class="fp-card fp-mb-16">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-              <div class="fp-card-title" style="margin-bottom:0">🔗 Webhooks sortants configurés</div>
+              <div class="fp-card-title" style="margin-bottom:0">${fpT('🔗 Webhooks sortants configurés')}</div>
               <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showNewWebhookModal()">+ Nouveau webhook</button>
             </div>
             ${intgs.length === 0 ? `
@@ -12362,7 +12362,7 @@ function renderSettings() {
                 <div style="font-size:32px;margin-bottom:8px">🔌</div>
                 <div style="font-size:14px;font-weight:600;margin-bottom:6px">${fpT('Aucun webhook configuré')}</div>
                 <div style="font-size:12px">${fpT('Créez votre premier webhook pour déclencher des automatisations externes.')}</div>
-                <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:16px" onclick="window._showNewWebhookModal()">+ Créer un webhook</button>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:16px" onclick="window._showNewWebhookModal()">${fpT('+ Créer un webhook')}</button>
               </div>
             ` : `
               <div style="overflow-x:auto">
@@ -12426,7 +12426,7 @@ function renderSettings() {
           <div class="fp-card">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
               <div class="fp-card-title" style="margin-bottom:0">📥 Webhooks entrants</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._createIncomingWebhook()">+ Créer endpoint</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._createIncomingWebhook()">${fpT('+ Créer endpoint')}</button>
             </div>
             ${incoming.length === 0 ? `
               <div style="padding:20px;text-align:center;color:var(--fp-text-muted);font-size:12px">
@@ -12551,7 +12551,7 @@ function renderSettings() {
 
           <!-- EVENT LOGS -->
           <div class="fp-card">
-            <div class="fp-card-title" style="margin-bottom:14px">📝 Journal des événements</div>
+            <div class="fp-card-title" style="margin-bottom:14px">${fpT('📝 Journal des événements')}</div>
             ${logs.length===0 ? `<div style="text-align:center;padding:20px;color:var(--fp-text-muted);font-size:12px">${fpT('Aucun événement enregistré.')}</div>` : `
               <div style="display:flex;flex-direction:column;gap:4px;max-height:400px;overflow-y:auto">
                 ${logs.map(l => {
@@ -12589,7 +12589,7 @@ function renderSettings() {
         </div>
         <div class="fp-section-actions">
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._intgRefresh(this)">⟳ Actualiser</button>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._intgTab='webhooks';render(STATE.currentSection);setTimeout(()=>window._showNewWebhookModal&&window._showNewWebhookModal(),100)">+ Créer une intégration</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._intgTab='webhooks';render(STATE.currentSection);setTimeout(()=>window._showNewWebhookModal&&window._showNewWebhookModal(),100)">${fpT('+ Créer une intégration')}</button>
         </div>
       </div>
 
@@ -12675,7 +12675,7 @@ function renderSettings() {
             (()=>{ const _avail=aiModules.filter(m=>!((m.plan==='Pro'&&isStd)||(m.plan==='Ultra'&&!isUltra))); const _on=_avail.filter(m=>m.active); const _off=_avail.filter(m=>!m.active); return `IA Config Lab actif. <strong>${_avail.length} modules IA disponibles</strong> — ${_on.length} actif${_on.length>1?'s':''}.${_off.length?` Recommandation : activer le module <strong>${escHtml(_off[0].label)}</strong>.`:''} Intensité IA actuelle : ${escHtml(_savedIntensity)}.`; })(),
             ['Activer tous les modules', 'Optimiser l\'intensité IA', 'Rapport IA Lab']
           )
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Config Lab complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('IA Stratégiste, churn prevention, market intelligence et automation agressive.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('IA Config Lab complet — Ultra requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('IA Stratégiste, churn prevention, market intelligence et automation agressive.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">${fpT('Passer Ultra')}</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -12687,7 +12687,7 @@ function renderSettings() {
 
       <!-- AI INTENSITY -->
       <div class="fp-card fp-mb-20">
-        <div class="fp-card-title" style="margin-bottom:14px">🎛️ Intensité des recommandations IA</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('🎛️ Intensité des recommandations IA')}</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;align-items:stretch">
           ${intensityLevels.map((lvl, i) => `
             <div class="fp-ai-int-opt${lvl === _savedIntensity ? ' fp-ai-int-opt--active' : ''}" data-intensity="${lvl}" onclick="(async(el)=>{document.querySelectorAll('.fp-ai-int-opt').forEach(e=>{e.classList.remove('fp-ai-int-opt--active');const d=e.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-text)';d.textContent=e.dataset.intensity;}});el.classList.add('fp-ai-int-opt--active');const d=el.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-accent)';d.textContent=(el.dataset.intensity||'')+' ✓';}if(STATE.settings)STATE.settings.aiIntensity='${lvl}';await apiAction('PATCH','/api/me/prefs',{settings:{aiIntensity:'${lvl}'}}).catch(()=>{});showToast('success', fpT('Intensité ${lvl} appliquée'));})(this)">
@@ -13139,7 +13139,7 @@ function renderAI() {
       </div>
 
       <!-- CROSS-SYSTEM CORRELATIONS -->
-      <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:12px">🔗 Corrélations inter-systèmes</div>
+      <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:12px">${fpT('🔗 Corrélations inter-systèmes')}</div>
       ${correlations.length > 0
         ? correlations.map(c => insightCard(c.icon, c.title, c.body, c.chips, c.color)).join('')
         : '<div style="color:var(--fp-text-faint);font-size:12px;padding:20px;text-align:center;border:1px dashed var(--fp-border);border-radius:12px">' + fpT('Pas encore assez de données pour détecter des corrélations inter-modules.') + '</div>'
@@ -13406,15 +13406,15 @@ function renderAI() {
     ].map((s,i)=>({ ...s, n:i+1 }));
     return `
       <div class="fp-section-header">
-        <div><h1 style="display:flex;align-items:center;gap:10px">IA Stratégiste
+        <div><h1 style="display:flex;align-items:center;gap:10px">${fpT('IA Stratégiste')}
         </h1>
-        <div class="fp-section-sub">Analyse stratégique complète · Plans d\'action priorisés · ROI calculé</div></div>
+        <div class="fp-section-sub">${fpT("Analyse stratégique complète · Plans d'action priorisés · ROI calculé")}</div></div>
       </div>
 
       ${!isUltra ? `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:20px;margin-bottom:20px;text-align:center">
         <div style="font-size:28px;margin-bottom:8px">🧠</div>
         <div style="font-size:15px;font-weight:800;margin-bottom:6px">${fpT('IA Stratégiste — Plan Ultra requis')}</div>
-        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:14px">Analyse stratégique complète, plans d\'action ROI et intelligence prédictive.</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:14px">${fpT("Analyse stratégique complète, plans d'action ROI et intelligence prédictive.")}</div>
         <button class="fp-btn fp-btn-primary" onclick="fpUpgradeCta('ultra')">Passer Ultra — ${fpPlanPriceLabel('ultra')} →</button>
       </div>` : ''}
 
@@ -13576,7 +13576,7 @@ function renderAI() {
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:20px">
         <!-- Répartition par fonctionnalité -->
         <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">📊 Répartition par fonctionnalité</div>
+          <div class="fp-card-title" style="margin-bottom:14px">${fpT('📊 Répartition par fonctionnalité')}</div>
           <div style="display:flex;flex-direction:column;gap:10px">
             ${usageBreakdown.map(u => `
               <div>
@@ -13599,7 +13599,7 @@ function renderAI() {
         <!-- Acheter des AI Credits -->
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:4px">⚡ Acheter des AI Credits</div>
-          <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:12px">Disponibles immédiatement · Valables jusqu\'au prochain rechargement</div>
+          <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:12px">${fpT("Disponibles immédiatement · Valables jusqu'au prochain rechargement")}</div>
           <div style="display:flex;flex-direction:column;gap:10px">
             ${creditPackages.map(p => `
               <button onclick="fpBuyAICredits('${p.pack}')" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:10px;border:${p.badge?'2px solid rgba(37,99,235,0.5)':'1px solid rgba(255,255,255,0.08)'};background:${p.badge?'rgba(37,99,235,0.1)':'var(--fp-inner-card)'};cursor:pointer;width:100%;position:relative;overflow:hidden;transition:all 0.15s">
@@ -13613,7 +13613,7 @@ function renderAI() {
             `).join('')}
           </div>
           ${!isUltra ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);text-align:center">
-            <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">Passer au plan supérieur pour plus d\'AI Credits inclus</div>
+            <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">${fpT("Passer au plan supérieur pour plus d'AI Credits inclus")}</div>
             <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%" onclick="navigate('billing');setTimeout(function(){navigateSub('plans');},50)">
               ${plan === 'Pro' ? 'Passer Ultra — Crédits illimités →' : 'Passer Pro — 500k AI Credits/mois →'}
             </button>
@@ -13624,7 +13624,7 @@ function renderAI() {
       <!-- DAILY HISTORY CHART -->
       <div class="fp-card fp-mb-16">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">📈 Consommation journalière — 30 derniers jours</div>
+          <div class="fp-card-title" style="margin-bottom:0">${fpT('📈 Consommation journalière — 30 derniers jours')}</div>
           <div style="font-size:10px;color:var(--fp-text-faint)">en milliers d\'AI Credits</div>
         </div>
         <div style="display:flex;align-items:flex-end;gap:2px;height:72px;width:100%">
@@ -13693,7 +13693,7 @@ function renderAI() {
           Assistant IA FlowPoint
           <span style="font-size:10px;font-weight:600;padding:2px 8px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:20px;color:#22c55e">● En ligne</span>
         </h1>
-        <div class="fp-section-sub"><span style="color:#2563EB;font-weight:700">IA Performante</span> · Contexte complet workspace · Réponses &lt; 3s</div>
+        <div class="fp-section-sub"><span style="color:#2563EB;font-weight:700">IA Performante</span> ${fpT('· Contexte complet workspace · Réponses < 3s')}</div>
       </div>
       <div class="fp-section-actions">
         <div style="display:flex;align-items:center;gap:6px">
@@ -13723,7 +13723,7 @@ function renderAI() {
     <div class="fp-card fp-card-sm fp-mb-16">
       <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">Suggestions rapides</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px">
-        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Que faire en priorité ?" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">🚨 Que faire en priorité ?</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Que faire en priorité ?" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${fpT('🚨 Que faire en priorité ?')}</button>
         <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Plan d'action 30 jours" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">📅 Plan d'action 30 jours</button>
         <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Analyse les baisses de positions et indique les actions prioritaires." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">📉 Analyser mes positions</button>
         <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Compare mes derniers audits et résume les progrès à réaliser." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">🔎 Comparer mes audits</button>
@@ -14468,7 +14468,7 @@ function renderAuditDetailPanel(audit) {
       <div style="margin-bottom:16px">
         <div style="font-size:11px;font-weight:700;color:var(--fp-text);margin-bottom:10px;display:flex;align-items:center;gap:6px">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          Santé SEO par catégorie
+          ${fpT('Santé SEO par catégorie')}
         </div>
         <div style="display:flex;flex-direction:column;gap:7px">
           ${categories.map(c=>`
@@ -14499,7 +14499,7 @@ function renderAuditDetailPanel(audit) {
 
       <div style="font-size:11px;font-weight:700;color:var(--fp-text);margin-bottom:10px;display:flex;align-items:center;gap:5px">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        Problèmes · Insights IA
+        ${fpT('Problèmes · Insights IA')}
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
         ${issueList.map((issue, i) => {
@@ -14548,7 +14548,7 @@ function renderAuditDetailPanel(audit) {
       <div style="display:flex;flex-direction:column;gap:6px">
         <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;background:linear-gradient(135deg,#1d4ed8,#7c3aed)" onclick="fetchAuditAIInsights(${JSON.stringify({ id: escHtml(audit.id), url: escHtml(audit.url), score: audit.score, speed: audit.speed })})">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-          Analyse IA complète
+          ${fpT('Analyse IA complète')}
         </button>
         ${btn('🔄 Relancer l\'audit','fp-btn fp-btn-primary fp-btn-sm','','id="audit-panel-rerun" style="width:100%"')}
         <div style="display:flex;gap:6px">
@@ -14990,7 +14990,7 @@ function renderNewReportPanel() {
     <div class="fp-form-group">
       <label class="fp-form-label">${fpT('Site audité')}</label>
       <select class="fp-select" style="width:100%" id="nr-audit">
-        <option value="">— Sélectionner un audit —</option>
+        <option value="">${fpT('— Sélectionner un audit —')}</option>
         ${auditOptions}
       </select>
     </div>
@@ -15032,7 +15032,7 @@ function renderNewReportPanel() {
       </div>
     </div>
     <div id="nr-notes-preview" style="display:none;margin-bottom:12px;padding:12px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:8px">
-      <div style="font-size:11px;font-weight:600;color:#8b5cf6;margin-bottom:8px">📝 Notes de réunion</div>
+      <div style="font-size:11px;font-weight:600;color:#8b5cf6;margin-bottom:8px">${fpT('📝 Notes de réunion')}</div>
       <div id="nr-notes-list" style="font-size:11px;color:var(--fp-text-soft)"></div>
     </div>
     ${btn('Générer le rapport','fp-btn fp-btn-primary','file','id="nr-generate"')}
@@ -15663,17 +15663,17 @@ function _doRender() {
   // ── RBAC guard: redirect to overview if the member's role forbids this route ──
   if (STATE.me && !_fpCanAccess(STATE.route)) {
     const _permKey = _FP_ROUTE_PERM[STATE.route] || 'section';
-    const _roleLabel = { owner:'Propriétaire', admin:'Manager', member:'Éditeur', viewer:'Lecteur' }[(STATE.me.role||'viewer').toLowerCase()] || 'Lecteur';
+    const _roleLabel = { owner:fpT('Propriétaire'), admin:fpT('Manager'), member:fpT('Éditeur'), viewer:fpT('Lecteur') }[(STATE.me.role||'viewer').toLowerCase()] || fpT('Lecteur');
     const _permLabel = { audits:'Audits SEO', monitors:'Monitors', reports:'Rapports & Analytics', billing:'Facturation', team:'Équipe', settings:'Paramètres' }[_permKey] || _permKey;
     const page = $('#fp-page');
     if (page) page.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center;padding:40px">
       <div style="font-size:48px">🔒</div>
-      <div style="font-size:20px;font-weight:700;color:var(--fp-text)">Accès restreint</div>
+      <div style="font-size:20px;font-weight:700;color:var(--fp-text)">${fpT('Accès restreint')}</div>
       <div style="font-size:13px;color:var(--fp-text-muted);max-width:380px">
-        Votre rôle <strong>${escHtml(_roleLabel)}</strong> n'inclut pas l'accès à la section <strong>${escHtml(_permLabel)}</strong>.<br>
-        Contactez un <strong>Propriétaire</strong> ou <strong>Manager</strong> de l'espace de travail pour modifier vos permissions.
+        ${fpT('Votre rôle')} <strong>${escHtml(_roleLabel)}</strong> ${fpT("n'inclut pas l'accès à la section")} <strong>${escHtml(_permLabel)}</strong>.<br>
+        ${fpT('Contactez un')} <strong>${fpT('Propriétaire')}</strong> ${fpT('ou')} <strong>${fpT('Manager')}</strong> ${fpT("de l'espace de travail pour modifier vos permissions.")}
       </div>
-      <button class="fp-btn fp-btn-ghost" onclick="navigate('overview')" style="margin-top:8px">← Retour à l'accueil</button>
+      <button class="fp-btn fp-btn-ghost" onclick="navigate('overview')" style="margin-top:8px">${fpT("← Retour à l'accueil")}</button>
     </div>`;
     window.fpHideNavSpinner();
     return;
@@ -15848,7 +15848,7 @@ function syncBulkBar() {
         <div class="fp-bulk-progress"><div class="fp-bulk-progress-fill" id="bulk-progress-fill" style="width:0%"></div></div>
         <span id="bulk-progress-label" style="font-size:11px;color:var(--fp-text-muted)"></span>
       </div>
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" id="bulk-deselect" style="color:var(--fp-text-muted)">✕ Désélectionner</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" id="bulk-deselect" style="color:var(--fp-text-muted)">${fpT('✕ Désélectionner')}</button>
     `;
   } else if (route === 'monitors') {
     bar.innerHTML = `
@@ -15861,7 +15861,7 @@ function syncBulkBar() {
         <div class="fp-bulk-progress"><div class="fp-bulk-progress-fill" id="bulk-progress-fill" style="width:0%"></div></div>
         <span id="bulk-progress-label" style="font-size:11px;color:var(--fp-text-muted)"></span>
       </div>
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" id="bulk-deselect" style="color:var(--fp-text-muted)">✕ Désélectionner</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" id="bulk-deselect" style="color:var(--fp-text-muted)">${fpT('✕ Désélectionner')}</button>
     `;
   }
 
@@ -16073,7 +16073,7 @@ function bindSectionEvents() {
           })
         : (PREVIEW_MODE ? ACTIVITY_FEED : []);
       if (_liveItems.length === 0) {
-        openFloatPanel('Historique complet', '<div style="text-align:center;padding:32px;color:var(--fp-text-faint);font-size:13px">Aucune activité enregistrée pour l\'instant.</div>');
+        openFloatPanel(fpT('Historique complet'), '<div style="text-align:center;padding:32px;color:var(--fp-text-faint);font-size:13px">'+fpT("Aucune activité enregistrée pour l'instant.")+'</div>');
         return;
       }
       openFloatPanel('Historique complet', _liveItems.map(item => {
@@ -18205,6 +18205,16 @@ function bindGlobalEvents() {
     'Automatisations': 'Automations', 'Workflows': 'Workflows', 'Webhooks': 'Webhooks',
     'Clés API': 'API keys', 'Membres': 'Members', 'Rôle': 'Role', 'Propriétaire': 'Owner',
     'Administrateur': 'Administrator', 'Éditeur': 'Editor', 'Lecteur': 'Viewer',
+    'Accès restreint': 'Access restricted',
+    "← Retour à l'accueil": '← Back to home',
+    'RDV trouvé': 'appointment found',
+    "Impossible de charger l'historique. Réessayez.": 'Unable to load history. Please try again.',
+    "Aucun historique — effectuez votre première recherche.": 'No history — perform your first search.',
+    'Historique complet': 'Complete history',
+    'Votre rôle': 'Your role',
+    "n'inclut pas l'accès à la section": 'does not include access to the section',
+    'Contactez un': 'Contact a',
+    "de l'espace de travail pour modifier vos permissions.": 'from the workspace to modify your permissions.',
     'Inviter un membre': 'Invite a member', 'Passer Pro': 'Upgrade to Pro', 'Passer Ultra': 'Upgrade to Ultra',
     'Plan Standard': 'Standard plan', 'Plan Pro': 'Pro plan', 'Plan Ultra': 'Ultra plan',
     'Factures': 'Invoices', 'Moyens de paiement': 'Payment methods', 'Add-ons': 'Add-ons',
@@ -21627,6 +21637,15 @@ function bindGlobalEvents() {
     "Priorité": "Prioridad",
     "Pro requis": "Pro requerido",
     "Pro — 79€/mois": "Pro — 79€/mes",
+    "Accès restreint": "Acceso restringido",
+    "← Retour à l'accueil": "← Volver al inicio",
+    "Impossible de charger l'historique. Réessayez.": "No se puede cargar el historial. Inténtalo de nuevo.",
+    "Aucun historique — effectuez votre première recherche.": "Sin historial — realiza tu primera búsqueda.",
+    "Historique complet": "Historial completo",
+    "Votre rôle": "Tu rol",
+    "n'inclut pas l'accès à la section": "no incluye acceso a la sección",
+    "Contactez un": "Contacta a un",
+    "de l'espace de travail pour modifier vos permissions.": "del espacio de trabajo para modificar sus permisos.",
     "Problèmes": "Problemas",
     "Problèmes détectés": "Problemas encontrados",
     "Prochain envoi auto :": "Próximo envío automático:",
@@ -24572,6 +24591,15 @@ function bindGlobalEvents() {
     "Priorité": "Priorität",
     "Pro requis": "Pro erforderlich",
     "Pro — 79€/mois": "Pro — 79€/Monat",
+    "Accès restreint": "Zugriff beschränkt",
+    "← Retour à l'accueil": "← Zurück zur Startseite",
+    "Impossible de charger l'historique. Réessayez.": "Verlauf konnte nicht geladen werden. Bitte erneut versuchen.",
+    "Aucun historique — effectuez votre première recherche.": "Kein Verlauf — führen Sie Ihre erste Suche durch.",
+    "Historique complet": "Vollständiger Verlauf",
+    "Votre rôle": "Ihre Rolle",
+    "n'inclut pas l'accès à la section": "beinhaltet keinen Zugang zum Abschnitt",
+    "Contactez un": "Kontaktieren Sie einen",
+    "de l'espace de travail pour modifier vos permissions.": "aus dem Workspace, um Ihre Berechtigungen zu ändern.",
     "Problèmes": "Probleme",
     "Problèmes détectés": "Gefundene Probleme",
     "Prochain envoi auto :": "Nächster automatischer Versand:",
@@ -27499,6 +27527,15 @@ function bindGlobalEvents() {
     "Priorité": "Priorità",
     "Pro requis": "Pro richiesto",
     "Pro — 79€/mois": "Pro — 79€/mese",
+    "Accès restreint": "Accesso limitato",
+    "← Retour à l'accueil": "← Torna alla home",
+    "Impossible de charger l'historique. Réessayez.": "Impossibile caricare la cronologia. Riprova.",
+    "Aucun historique — effectuez votre première recherche.": "Nessuna cronologia — esegui la tua prima ricerca.",
+    "Historique complet": "Cronologia completa",
+    "Votre rôle": "Il tuo ruolo",
+    "n'inclut pas l'accès à la section": "non include l'accesso alla sezione",
+    "Contactez un": "Contatta un",
+    "de l'espace de travail pour modifier vos permissions.": "dello spazio di lavoro per modificare le tue autorizzazioni.",
     "Problèmes": "Problemi",
     "Problèmes détectés": "Problemi trovati",
     "Prochain envoi auto :": "Prossimo invio automatico:",
@@ -30426,6 +30463,15 @@ function bindGlobalEvents() {
     "Priorité": "Prioridade",
     "Pro requis": "Pro necessário",
     "Pro — 79€/mois": "Pro — 79€/mês",
+    "Accès restreint": "Acesso restrito",
+    "← Retour à l'accueil": "← Voltar ao início",
+    "Impossible de charger l'historique. Réessayez.": "Não foi possível carregar o histórico. Tente novamente.",
+    "Aucun historique — effectuez votre première recherche.": "Sem histórico — realize sua primeira pesquisa.",
+    "Historique complet": "Histórico completo",
+    "Votre rôle": "Seu papel",
+    "n'inclut pas l'accès à la section": "não inclui acesso à seção",
+    "Contactez un": "Entre em contato com um",
+    "de l'espace de travail pour modifier vos permissions.": "do espaço de trabalho para modificar suas permissões.",
     "Problèmes": "Problemas",
     "Problèmes détectés": "Problemas encontrados",
     "Prochain envoi auto :": "Próximo envio automático:",
@@ -33353,6 +33399,15 @@ function bindGlobalEvents() {
     "Priorité": "Prioriteit",
     "Pro requis": "Pro vereist",
     "Pro — 79€/mois": "Pro — €79/maand",
+    "Accès restreint": "Toegang beperkt",
+    "← Retour à l'accueil": "← Terug naar home",
+    "Impossible de charger l'historique. Réessayez.": "Kan geschiedenis niet laden. Probeer het opnieuw.",
+    "Aucun historique — effectuez votre première recherche.": "Geen geschiedenis — voer uw eerste zoekopdracht uit.",
+    "Historique complet": "Volledige geschiedenis",
+    "Votre rôle": "Uw rol",
+    "n'inclut pas l'accès à la section": "omvat geen toegang tot de sectie",
+    "Contactez un": "Neem contact op met een",
+    "de l'espace de travail pour modifier vos permissions.": "van de werkruimte om uw machtigingen te wijzigen.",
     "Problèmes": "Problemen",
     "Problèmes détectés": "Gevonden problemen",
     "Prochain envoi auto :": "Volgende automatische verzending:",
@@ -36283,6 +36338,15 @@ function bindGlobalEvents() {
     "Problèmes": "Problemy",
     "Problèmes détectés": "Wykryte problemy",
     "Prochain envoi auto :": "Następna automatyczna wysyłka:",
+    "Accès restreint": "Ograniczony dostęp",
+    "← Retour à l'accueil": "← Powrót do strony głównej",
+    "Impossible de charger l'historique. Réessayez.": "Nie można załadować historii. Spróbuj ponownie.",
+    "Aucun historique — effectuez votre première recherche.": "Brak historii — wykonaj pierwsze wyszukiwanie.",
+    "Historique complet": "Pełna historia",
+    "Votre rôle": "Twoja rola",
+    "n'inclut pas l'accès à la section": "nie obejmuje dostępu do sekcji",
+    "Contactez un": "Skontaktuj się z",
+    "de l'espace de travail pour modifier vos permissions.": "z obszaru roboczego, aby zmodyfikować swoje uprawnienia.",
     "Prochaine facturation": "Następne rozliczenie",
     "Prochaine facture": "Następna faktura",
     "Prochaine étape": "Następny krok",
@@ -39210,6 +39274,15 @@ function bindGlobalEvents() {
     "Problèmes": "Problem",
     "Problèmes détectés": "Hittade problem",
     "Prochain envoi auto :": "Nästa automatiska skick:",
+    "Accès restreint": "Begränsad åtkomst",
+    "← Retour à l'accueil": "← Tillbaka till startsidan",
+    "Impossible de charger l'historique. Réessayez.": "Det gick inte att läsa in historiken. Försök igen.",
+    "Aucun historique — effectuez votre première recherche.": "Ingen historik — utför din första sökning.",
+    "Historique complet": "Fullständig historik",
+    "Votre rôle": "Din roll",
+    "n'inclut pas l'accès à la section": "inkluderar inte åtkomst till avsnittet",
+    "Contactez un": "Kontakta en",
+    "de l'espace de travail pour modifier vos permissions.": "från arbetsytan för att ändra dina behörigheter.",
     "Prochaine facturation": "Nästa fakturering",
     "Prochaine facture": "Nästa faktura",
     "Prochaine étape": "Nästa steg",
@@ -42137,6 +42210,15 @@ function bindGlobalEvents() {
     "Problèmes": "Probleme",
     "Problèmes détectés": "Probleme găsite",
     "Prochain envoi auto :": "Următoarea trimitere automată:",
+    "Accès restreint": "Acces restricționat",
+    "← Retour à l'accueil": "← Înapoi la pagina principală",
+    "Impossible de charger l'historique. Réessayez.": "Nu se poate încărca istoricul. Încearcă din nou.",
+    "Aucun historique — effectuez votre première recherche.": "Niciun istoric — efectuează prima ta căutare.",
+    "Historique complet": "Istoric complet",
+    "Votre rôle": "Rolul dvs.",
+    "n'inclut pas l'accès à la section": "nu include accesul la secțiunea",
+    "Contactez un": "Contactați un",
+    "de l'espace de travail pour modifier vos permissions.": "din spațiul de lucru pentru a modifica permisiunile dvs.",
     "Prochaine facturation": "Următoarea facturare",
     "Prochaine facture": "Următoarea factură",
     "Prochaine étape": "Următorul pas",
@@ -45064,6 +45146,15 @@ function bindGlobalEvents() {
     "Problèmes": "Problémy",
     "Problèmes détectés": "Zjištěné problémy",
     "Prochain envoi auto :": "Další automatické odeslání:",
+    "Accès restreint": "Přístup omezen",
+    "← Retour à l'accueil": "← Zpět na domovskou stránku",
+    "Impossible de charger l'historique. Réessayez.": "Historii nelze načíst. Zkuste to znovu.",
+    "Aucun historique — effectuez votre première recherche.": "Žádná historie — proveďte první vyhledávání.",
+    "Historique complet": "Kompletní historie",
+    "Votre rôle": "Vaše role",
+    "n'inclut pas l'accès à la section": "nezahrnuje přístup k sekci",
+    "Contactez un": "Kontaktujte",
+    "de l'espace de travail pour modifier vos permissions.": "z pracovního prostoru pro úpravu vašich oprávnění.",
     "Prochaine facturation": "Další fakturace",
     "Prochaine facture": "Další faktura",
     "Prochaine étape": "Další krok",
@@ -52165,7 +52256,7 @@ function renderTeamActivity() {
     ${aiBlock('Activité de l\'équipe ce mois. <strong>' + _topAct + '</strong> est le membre le plus actif (' + _actCount + ' événements enregistrés). Aucune activité suspecte détectée.',[])}
     <div class="fp-timeline">
       ${(PREVIEW_MODE ? ACTIVITY_FEED : (STATE.activityEvents||[])).length === 0
-        ? '<div style="padding:32px;text-align:center;color:var(--fp-text-faint);font-size:13px">Aucune activité enregistrée pour le moment. Les événements apparaîtront ici au fil de vos actions.</div>'
+        ? '<div style="padding:32px;text-align:center;color:var(--fp-text-faint);font-size:13px">'+fpT("Aucune activité enregistrée pour le moment. Les événements apparaîtront ici au fil de vos actions.")+'</div>'
         : (PREVIEW_MODE ? ACTIVITY_FEED : (STATE.activityEvents||[]).map(e => ({type:e.type==='monitor'?'info':e.type==='alert'?'warning':e.type==='audit'?'success':'info',icon:e.type==='monitor'?'activity':e.type==='alert'?'alert-triangle':e.type==='audit'?'trending-up':'zap',title:e.label||'Événement',desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'',time:e.createdAt?new Date(e.createdAt).toLocaleDateString(getLocale()):'—'}))).map(item => {
         const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
         const c = colors[item.type] || '#2563EB';
@@ -57373,7 +57464,7 @@ function renderActivityFeed() {
             ? _activeCount + " automatisation" + (_activeCount > 1 ? 's' : '') + " active" + (_activeCount > 1 ? 's' : '') + " — <strong>" + _totalSuccess + " exécution" + (_totalSuccess > 1 ? 's' : '') + " réussie" + (_totalSuccess > 1 ? 's' : '') + "</strong> au total. "
             : "Aucune automatisation configurée. ") + (aiInsights.length > 0 ? aiInsights.length + " action" + (aiInsights.length > 1 ? 's' : '') + " IA journalisée" + (aiInsights.length > 1 ? 's' : '') + "." : "Les actions IA apparaîtront ici dès leur exécution."),
             ['Créer une automatisation', 'Rapport IA complet', 'Voir les prévisions'])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🤖</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA & Automations — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Logs complets des actions IA, automatisations avancées et plans exécutés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🤖</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA & Automations — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Logs complets des actions IA, automatisations avancées et plans exécutés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">${fpT('Passer Ultra')}</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -57660,7 +57751,7 @@ function renderActivityFeed() {
             ? "Performance opérationnelle solide — score global 71/100. <strong>Momentum en hausse</strong> depuis 3 semaines consécutives (+13 pts). Productivité équipe : " + (STATE.team&&STATE.team.length>0?escHtml(STATE.team[0].name||'Équipe')+' en tête':'activité en hausse') + ". Prévision : activité SEO +18% M+1."
             : "Les scores opérationnels et les prévisions seront calculés à partir de votre activité réelle (audits, monitors, missions).",
             ['Rapport ops complet', 'Optimiser la productivité', 'Voir les prévisions'])
-        : `<div style="background:linear-gradient(135deg,rgba(6,182,212,0.08),rgba(37,99,235,0.06));border:1px solid rgba(6,182,212,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🔬</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Ops Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions opérationnelles, scoring de productivité et intelligence stratégique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(6,182,212,0.08),rgba(37,99,235,0.06));border:1px solid rgba(6,182,212,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🔬</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Ops Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions opérationnelles, scoring de productivité et intelligence stratégique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">${fpT('Passer Ultra')}</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -59261,7 +59352,7 @@ function renderClientMode() {
       ${isUltra
         ? aiBlock((()=>{const _highRisk=engagementData.sort((a,b)=>(b.churnRisk||0)-(a.churnRisk||0))[0];const _topEngage=engagementData.sort((a,b)=>(b.engScore||0)-(a.engScore||0))[0];if(!engagementData.length)return 'Ajoutez des clients pour activer l\'analyse engagement IA.';return 'Analyse engagement client IA. '+(_highRisk&&_highRisk.churnRisk>40?'<strong>'+escHtml(_highRisk.name||_highRisk.client||'Client')+' — risque churn '+(_highRisk.churnRisk||'?')+'%</strong> : action urgente. ':'')+(_topEngage&&_topEngage.churnRisk<20?escHtml(_topEngage.name||_topEngage.client||'Client')+' : engagement exemplaire '+(_topEngage.engScore||'?')+'%.':'');})(),
             ['Plan rétention', 'Rapport engagement', 'Stratégie satisfaction'])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Analytics & Engagement — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Détection churn IA, scoring engagement client et analyse relationnelle avancée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Analytics & Engagement — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Détection churn IA, scoring engagement client et analyse relationnelle avancée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">${fpT('Passer Ultra')}</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -59467,7 +59558,7 @@ function renderClientMode() {
     ${isUltra
       ? aiBlock((()=>{if(!clients.length)return 'Aucun client configuré. Ajoutez vos clients pour accéder à l\'intelligence client IA.';const _sat=Math.round(clients.reduce((s,c)=>s+(c.satisfaction||c.seoScore||0),0)/clients.length);const _risk=clients.filter(c=>c.health==='critique'||c.health==='attention');return clients.length+' client(s) actif(s). Score satisfaction global <strong>'+_sat+'/100</strong>.'+(_risk.length?'Alerte : <strong>'+escHtml(_risk[0].name)+'</strong> nécessite une action immédiate.':'Tous les clients sont en bonne santé.')})(),
           ['Plan rétention clients', 'Rapport agence complet', 'Générer rapport executive'])
-      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🤝</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Client Intelligence IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse satisfaction, détection churn IA et stratégie relationnelle automatique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button></div>`
+      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🤝</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Client Intelligence IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse satisfaction, détection churn IA et stratégie relationnelle automatique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">${fpT('Passer Ultra')}</button></div>`
     }
 
     <!-- KPI CARDS -->
