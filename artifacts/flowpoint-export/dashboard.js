@@ -8793,8 +8793,8 @@ function renderLocalSEO() {
                 const _sel = (STATE.localSeo._selectedRankings||new Set()).has(i);
                 const _rankColors = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
                 return `<div data-rank-row="${i}" style="display:flex;align-items:flex-start;gap:8px;padding:7px 6px;border-radius:7px;cursor:pointer;transition:background 0.12s;${i > 0 ? 'border-top:1px solid var(--fp-border)' : ''};background:${_sel?'rgba(37,99,235,0.08)':'transparent'}"
-                  onclick="(function(el,idx){var cb=el.querySelector('.fp-rank-cb');if(cb){cb.checked=!cb.checked;cb.dispatchEvent(new Event('change',{bubbles:true}));}else{if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();STATE.localSeo._selectedRankings.has(idx)?STATE.localSeo._selectedRankings.delete(idx):STATE.localSeo._selectedRankings.add(idx);render(STATE.currentSection);}})(this,${i})">
-                  <input type="checkbox" class="fp-rank-cb" data-rank-idx="${i}" style="width:14px;height:14px;accent-color:#2563EB;cursor:pointer;flex-shrink:0;margin-top:3px" ${_sel?'checked':''} onclick="event.stopPropagation()">
+                  onclick="(function(el,idx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();var sel=STATE.localSeo._selectedRankings.has(idx);if(sel){STATE.localSeo._selectedRankings.delete(idx);el.style.background='transparent';}else{STATE.localSeo._selectedRankings.add(idx);el.style.background='rgba(37,99,235,0.08)';}var cb=el.querySelector('.fp-rank-cb');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkers==='function')window.fpUpdateRankingMarkers();})(this,${i})">
+                  <input type="checkbox" class="fp-rank-cb" data-rank-idx="${i}" style="width:14px;height:14px;accent-color:#2563EB;cursor:pointer;flex-shrink:0;margin-top:3px" ${_sel?'checked':''} onclick="event.stopPropagation();(function(cb,idx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();var row=cb.closest('[data-rank-row]');if(cb.checked){STATE.localSeo._selectedRankings.add(idx);if(row)row.style.background='rgba(37,99,235,0.08)';}else{STATE.localSeo._selectedRankings.delete(idx);if(row)row.style.background='transparent';}if(typeof window.fpUpdateRankingMarkers==='function')window.fpUpdateRankingMarkers();})(this,${i})">
                   <div style="font-size:15px;font-weight:800;color:${_rankColors[i%_rankColors.length]};min-width:22px;text-align:center">#${r.rank}</div>
                   <div style="flex:1;min-width:0">
                     <div style="font-size:12px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.title)}</div>
@@ -67780,7 +67780,202 @@ window.FP_GBP_API = {
     else showToast('error', r?.error || 'Erreur de publication');
     return r;
   },
+
+  openReplyModal(reviewId, author, stars) {
+    // Find the full review data from STATE
+    const allReviews = STATE.gbp?.reviews || [];
+    const review = allReviews.find(rv => rv.reviewId === reviewId || rv.id === reviewId || rv.review_id === reviewId) || { reviewId, author, stars, text: '' };
+    const fullText = review.text || review.review_text || review.comment || '';
+    const existingReply = review.reply || review.ai_reply || '';
+    const panelId = 'fp-gbp-reply-panel';
+    const starsHtml = '⭐'.repeat(Math.min(Number(stars) || 0, 5));
+
+    openFloatPanel('🤖 ' + fpT('Répondre avec IA') + ' — ' + escHtml(author), `
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <!-- Review header -->
+        <div style="padding:12px 14px;background:var(--fp-bg-inset);border-radius:10px;border:1px solid var(--fp-border)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="font-size:13px;font-weight:700;color:var(--fp-text)">${escHtml(author)}</span>
+            <span style="font-size:13px">${starsHtml}</span>
+          </div>
+          <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6;font-style:italic">${fullText ? '&ldquo;' + escHtml(fullText) + '&rdquo;' : '<span style="color:var(--fp-text-faint)">Texte non disponible</span>'}</div>
+        </div>
+
+        <!-- AI Reply area -->
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--fp-accent);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">🤖 Réponse IA générée</div>
+          <textarea id="fp-gbp-reply-ta" style="width:100%;min-height:120px;padding:10px;border-radius:8px;border:1px solid var(--fp-border);background:var(--fp-bg-inset);color:var(--fp-text);font-size:12px;line-height:1.6;resize:vertical;box-sizing:border-box">${escHtml(existingReply)}</textarea>
+        </div>
+
+        <!-- Tone selector -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--fp-text-muted)">Ton :</span>
+          ${['professional','friendly','empathetic'].map(t => `<button class="fp-btn fp-btn-ghost fp-btn-sm fp-reply-tone" data-tone="${t}" style="font-size:10px">${t==='professional'?'💼 Professionnel':t==='friendly'?'😊 Convivial':'💙 Empathique'}</button>`).join('')}
+        </div>
+
+        <!-- Actions -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="fp-gbp-gen-btn" class="fp-btn fp-btn-ghost fp-btn-sm" style="flex:1" onclick="
+            (function(){
+              var btn=document.getElementById('fp-gbp-gen-btn');
+              var ta=document.getElementById('fp-gbp-reply-ta');
+              var tone=(document.querySelector('.fp-reply-tone.active')||{}).dataset?.tone||'professional';
+              if(btn)btn.textContent='⏳ Génération…';
+              apiFetch('/api/google/reviews/'+encodeURIComponent('${escHtml(reviewId)}')+'/generate-reply',{method:'POST',body:JSON.stringify({tone:tone,lang:'fr'})}).then(function(r){
+                if(r?.reply&&ta)ta.value=r.reply;
+                else if(ta)ta.value='Merci pour votre avis ! Nous sommes ravis de votre satisfaction et espérons vous revoir bientôt.';
+                if(btn)btn.textContent='🤖 Re-générer';
+              }).catch(function(){
+                if(ta)ta.value='Merci pour votre avis ! Votre retour est précieux pour nous.';
+                if(btn)btn.textContent='🤖 Re-générer';
+              });
+            })()
+          ">🤖 ${existingReply ? 'Re-générer' : 'Générer réponse IA'}</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="
+            var ta=document.getElementById('fp-gbp-reply-ta');
+            if(ta&&navigator.clipboard)navigator.clipboard.writeText(ta.value||'').then(()=>showToast('success',fpT('Réponse copiée')));
+          ">📋 Copier</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex:1" onclick="
+            (function(){
+              var ta=document.getElementById('fp-gbp-reply-ta');
+              var reply=ta?ta.value.trim():'';
+              if(!reply){showToast('error',fpT('Écrivez ou générez une réponse d\'abord'));return;}
+              showToast('info',fpT('Publication de la réponse…'));
+              window.FP_GBP_API.replyToReview('${escHtml(reviewId)}',reply).then(function(r){
+                if(r&&r.ok){document.getElementById('fp-float-panel')&&(document.getElementById('fp-float-panel').style.display='none');}
+              });
+            })()
+          ">✅ Publier la réponse</button>
+        </div>
+      </div>
+    `);
+
+    // Activate tone buttons
+    setTimeout(function() {
+      var btns = document.querySelectorAll('.fp-reply-tone');
+      btns.forEach(function(b) {
+        b.addEventListener('click', function() {
+          btns.forEach(function(x){x.classList.remove('active');x.style.borderColor='';});
+          b.classList.add('active');
+          b.style.borderColor='#2563EB';
+        });
+      });
+      if (btns.length) { btns[0].classList.add('active'); btns[0].style.borderColor='#2563EB'; }
+      // Auto-generate if no existing reply
+      if (!existingReply) document.getElementById('fp-gbp-gen-btn')?.click();
+    }, 80);
+  },
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RANKINGS MAP MARKERS — updates Google Map markers when checkboxes change
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window.fpUpdateRankingMarkers = (function() {
+  var _markers = [];
+  var _infoWindows = [];
+  var _geocodePending = {};
+
+  return function() {
+    var map = STATE._gmap;
+    if (!map || typeof google === 'undefined' || !google.maps) return;
+
+    var rankings = (STATE.localSeo && STATE.localSeo.rankings) || [];
+    var selected = (STATE.localSeo && STATE.localSeo._selectedRankings) || new Set();
+    var rankColors = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
+
+    // Clear existing ranking markers
+    _markers.forEach(function(m) { m.setMap(null); });
+    _infoWindows.forEach(function(iw) { iw.close(); });
+    _markers = [];
+    _infoWindows = [];
+
+    if (selected.size === 0) return;
+
+    var bounds = new google.maps.LatLngBounds();
+    var hasAnyCoord = false;
+    var userLat = STATE.me && STATE.me.location && STATE.me.location.latitude != null ? parseFloat(String(STATE.me.location.latitude)) : null;
+    var userLng = STATE.me && STATE.me.location && STATE.me.location.longitude != null ? parseFloat(String(STATE.me.location.longitude)) : null;
+
+    function addMarker(lat, lng, ranking, idx) {
+      var color = rankColors[idx % rankColors.length];
+      var labelText = '#' + ranking.rank;
+      var marker = new google.maps.Marker({
+        position: { lat: lat, lng: lng },
+        map: map,
+        title: ranking.title,
+        label: { text: labelText, color: '#fff', fontWeight: '800', fontSize: '11px' },
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 18,
+          fillColor: color,
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+        },
+      });
+      var ratingLine = ranking.rating > 0 ? '<br><span style="color:#f59e0b">★ ' + ranking.rating + ' (' + ranking.reviews + ' avis)</span>' : '';
+      var addrLine = ranking.address ? '<br><span style="color:#94a3b8;font-size:11px">' + escHtml(ranking.address) + '</span>' : '';
+      var iw = new google.maps.InfoWindow({
+        content: '<div style="min-width:160px;padding:4px 6px"><b style="color:' + color + '">' + labelText + '</b> ' + escHtml(ranking.title) + ratingLine + addrLine + '</div>',
+      });
+      marker.addListener('click', function() { iw.open(map, marker); });
+      _markers.push(marker);
+      _infoWindows.push(iw);
+      bounds.extend({ lat: lat, lng: lng });
+      hasAnyCoord = true;
+    }
+
+    var geocoder = (google.maps.Geocoder) ? new google.maps.Geocoder() : null;
+    var pending = 0;
+
+    selected.forEach(function(idx) {
+      var r = rankings[idx];
+      if (!r) return;
+
+      // Use lat/lng if available directly on the object
+      var rLat = r.lat != null ? parseFloat(r.lat) : (r.latitude != null ? parseFloat(r.latitude) : null);
+      var rLng = r.lng != null ? parseFloat(r.lng) : (r.longitude != null ? parseFloat(r.longitude) : null);
+
+      if (Number.isFinite(rLat) && Number.isFinite(rLng)) {
+        addMarker(rLat, rLng, r, idx);
+      } else if (r.address && geocoder && !_geocodePending[r.address]) {
+        _geocodePending[r.address] = true;
+        pending++;
+        geocoder.geocode({ address: r.address }, function(results, status) {
+          _geocodePending[r.address] = false;
+          if (status === 'OK' && results && results[0]) {
+            var loc = results[0].geometry.location;
+            // Cache on the ranking object for future calls
+            r.lat = loc.lat();
+            r.lng = loc.lng();
+            addMarker(loc.lat(), loc.lng(), r, idx);
+          } else if (userLat != null && userLng != null) {
+            // Fallback: offset from user location
+            var offsetLat = userLat + (idx % 2 === 0 ? 1 : -1) * 0.004 * (Math.floor(idx / 2) + 1);
+            var offsetLng = userLng + (idx % 2 === 0 ? -1 : 1) * 0.006 * (Math.floor(idx / 2) + 1);
+            addMarker(offsetLat, offsetLng, r, idx);
+          }
+          pending--;
+          if (pending <= 0 && hasAnyCoord) {
+            map.fitBounds(bounds, 80);
+            if (map.getZoom() > 15) map.setZoom(15);
+          }
+        });
+      } else if (userLat != null && userLng != null) {
+        // No geocoder or no address — offset from user center
+        var offsetLat = userLat + (idx % 2 === 0 ? 1 : -1) * 0.004 * (Math.floor(idx / 2) + 1);
+        var offsetLng = userLng + (idx % 2 === 0 ? -1 : 1) * 0.006 * (Math.floor(idx / 2) + 1);
+        addMarker(offsetLat, offsetLng, r, idx);
+      }
+    });
+
+    if (pending <= 0 && hasAnyCoord) {
+      map.fitBounds(bounds, 80);
+      if (map.getZoom() > 15) map.setZoom(15);
+    }
+  };
+})();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FP GA4 API — Real GA4 data client
