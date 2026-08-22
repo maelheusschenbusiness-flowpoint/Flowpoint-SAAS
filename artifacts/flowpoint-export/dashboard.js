@@ -1655,6 +1655,10 @@ async function loadData(options = {}) {
   STATE.me = me || (PREVIEW_MODE ? MOCK_ME : null);
   if (!STATE.me) { clearTimeout(_loadSafetyTimer); _loadDataInProgress = false; window.__fpLoadDataInProgress = false; showFatalError('/api/me n\'a pas répondu.'); return; }
   if (STATE.me?.plan) STATE.me.plan = STATE.me.plan.charAt(0).toUpperCase() + STATE.me.plan.slice(1);
+  // Session confirmed: live /api/me succeeded — it is now safe to show billing/plans.
+  // Any route restored from localStorage that was gated behind this flag will
+  // re-render correctly once STATE.loading = false at the end of loadData().
+  window.__fpSessionConfirmed = true;
   // Apply role-based nav filtering now that STATE.me is set
   try { _fpApplyRoleNav(); } catch(_) {}
   // Seed STATE.dfsStatus from /api/me on every page load so X/N quota survives F5.
@@ -9490,6 +9494,14 @@ function renderTeam() {
 /* ── BILLING ── */
 function renderBilling() {
   if (STATE.loading) {
+    return renderPageSkeleton({ stats: 3, statH: 80, toolbar: false, cards: 0, rows: 1, rowH: 200 });
+  }
+  // Guard: if the live session is not yet confirmed (page just loaded, /api/me
+  // not yet returned), do not render the plan-selection tab — its cards are
+  // visually identical to pricing.html and cause a "Pricing page flash".
+  // Once __fpSessionConfirmed is true (set right after live /api/me succeeds),
+  // plan cards render normally.
+  if (!window.__fpSessionConfirmed && STATE.subRoute === 'plans') {
     return renderPageSkeleton({ stats: 3, statH: 80, toolbar: false, cards: 0, rows: 1, rowH: 200 });
   }
   // ── Stripe-sync on every billing page render ───────────────────────────────
@@ -47449,12 +47461,20 @@ async function init() {
   // Apply free modules (compact mode, focus mode, etc.)
   applyFreeModules();
 
-  // Restore last route immediately so first render shows correct page
+  // Restore last route immediately so first render shows correct page.
+  // Guard: never restore billing/plans on page refresh — the plan-selection cards
+  // are visually identical to pricing.html and would flash before the live session
+  // is confirmed. Billing overview (no sub-tab) is safe because it shows usage
+  // metrics, not plan-selection UI.
+  window.__fpSessionConfirmed = false; // cleared after first live /api/me completes
   try {
     const savedRoute = localStorage.getItem('fp:last-route');
     const savedSub   = localStorage.getItem('fp:last-sub');
     if (savedRoute) STATE.route = savedRoute;
-    if (savedSub)   STATE.subRoute = savedSub || null;
+    // Drop 'plans' sub-tab on restore — will be re-applied after session confirmed
+    if (savedSub && !(savedRoute === 'billing' && savedSub === 'plans')) {
+      STATE.subRoute = savedSub || null;
+    }
   } catch(e) {}
 
   // P0.1: Hash wins over localStorage — resolve BEFORE loadData() so every render
