@@ -66,6 +66,8 @@ export async function launchAudit(opts: { orgId: string; url: string; origin: st
     label: origin === "scheduled" ? `Audit planifié lancé : ${url}` : `Audit lancé : ${url}`,
     targetId: auditId, targetType: "audit",
     metadata: { url, origin, type: "SEO complet" }, orgId,
+    actionKey: origin === "scheduled" ? "activity.audit.scheduled" : "activity.audit.launched",
+    actionParams: { url: String(url) },
     userId: origin === "scheduled" ? "system" : (opts.userId ?? "system"),
     userName: origin === "scheduled" ? "Scheduler" : (opts.userName ?? "Système"),
   }).catch(err => logger.error({ err }, "[audit-runner] logActivity failed"));
@@ -128,6 +130,9 @@ export async function launchAudit(opts: { orgId: string; url: string; origin: st
         label: `Audit terminé : ${url} — Score ${score}/100`,
         targetId: auditId, targetType: "audit",
         metadata: { url, score, status, origin }, orgId,
+        actionKey: "activity.audit.completed", actionParams: { url: String(url), score },
+        userId: origin === "scheduled" ? "system" : (opts.userId ?? "system"),
+        userName: origin === "scheduled" ? "Scheduler" : (opts.userName ?? "Système"),
       }).catch(err => logger.error({ err }, "[audit-runner] logActivity (complete) failed"));
     } catch {
       await pool.query(
