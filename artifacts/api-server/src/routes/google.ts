@@ -136,6 +136,7 @@ async function handleGoogleCallback(req: Request, res: Response): Promise<void> 
       label: `Google connecté — ${userInfo.email ?? ""}`,
       targetType: "connector",
       orgId,
+      actionKey: "activity.google.connected", actionParams: { email: userInfo.email ?? "" },
       userId: (req as any).orgContext?.userId || userInfo.email || null,
       userName: (req as any).orgContext?.name || userInfo.email || null,
     });
@@ -280,6 +281,7 @@ router.post("/google/disconnect", async (req: Request, res: Response) => {
     ).catch(() => {});
 
     store.logActivity({ type: "team", label: "Google déconnecté", targetType: "connector", orgId,
+      actionKey: "activity.google.disconnected",
       userId: (req as any).orgContext?.userId || (req as any).orgContext?.email || null,
       userName: (req as any).orgContext?.name || (req as any).orgContext?.email || null });
     res.json({ ok: true });
