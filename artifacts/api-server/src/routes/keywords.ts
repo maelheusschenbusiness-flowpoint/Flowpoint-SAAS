@@ -254,7 +254,7 @@ router.post("/keywords", canWrite, async (req, res) => {
     );
     const kw = r.rows[0];
     if (!kw) { res.status(409).json({ error: "Keyword already tracked", keyword }); return; }
-    store.logActivity({ type:"audit", label:`Keyword ajouté : ${keyword}`, targetId: String(kw["id"]), targetType:"keyword", orgId }).catch((err: Error) => logger.warn({ err: err?.message }, "logActivity failed"));
+    store.logActivity({ type:"audit", label:`Keyword ajouté : ${keyword}`, targetId: String(kw["id"]), targetType:"keyword", orgId, userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch((err: Error) => logger.warn({ err: err?.message }, "logActivity failed"));
     res.status(201).json(kw);
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
@@ -292,7 +292,7 @@ router.delete("/keywords/:id", canWrite, async (req, res) => {
       `UPDATE tracked_keywords SET active = false, updated_at = now() WHERE id = $1 AND org_id = $2 RETURNING keyword`,
       [req.params.id, orgId]);
     if (deleted.rows.length > 0) {
-      store.logActivity({ type:"audit", label:`Keyword retiré : "${String(deleted.rows[0]?.["keyword"] ?? "")}"`, targetId:String(req.params.id), targetType:"keyword", orgId }).catch((err: Error) => logger.warn({ err: err?.message }, "logActivity failed"));
+      store.logActivity({ type:"audit", label:`Keyword retiré : "${String(deleted.rows[0]?.["keyword"] ?? "")}"`, targetId:String(req.params.id), targetType:"keyword", orgId, userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch((err: Error) => logger.warn({ err: err?.message }, "logActivity failed"));
       res.json({ ok: true });
     } else {
       res.status(404).json({ error: "not found" });

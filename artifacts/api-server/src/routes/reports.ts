@@ -106,7 +106,7 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
     );
     const r = await db(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [id, org(req)]);
     const report = r.rows[0] ?? { id, name };
-    store.logActivity({ type: "report", label: `Rapport généré : ${reportName}`, targetId: id, targetType: "report", metadata: { name: reportName, format, templateKey: resolvedTemplate }, orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
+    store.logActivity({ type: "report", label: `Rapport généré : ${reportName}`, targetId: id, targetType: "report", metadata: { name: reportName, format, templateKey: resolvedTemplate }, orgId: org(req), userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch(err => console.warn("[logActivity]", err?.message));
     // Cumulative usage accounting — never decremented on deletion
     import("../services/usage-events.js").then(m => m.recordUsageEvent(org(req), "report_created")).catch(() => {});
     res.status(201).json(report);
@@ -247,7 +247,7 @@ router.post("/reports/:id/share", canWrite, async (req: Request, res: Response) 
 
     await db(req)(`UPDATE reports SET shared=true WHERE id=$1 AND org_id=$2`, [report.id, orgId]);
 
-    store.logActivity({ type: "report", label: `Rapport partagé : ${report.name}`, targetId: report.id as string, targetType: "report", metadata: { name: report.name }, orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
+    store.logActivity({ type: "report", label: `Rapport partagé : ${report.name}`, targetId: report.id as string, targetType: "report", metadata: { name: report.name }, orgId: org(req), userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch(err => console.warn("[logActivity]", err?.message));
     res.status(201).json({ token, expiresAt, path: `/report/${token}` });
   } catch {
     res.status(500).json({ ok: false, error: "Failed to share report" });

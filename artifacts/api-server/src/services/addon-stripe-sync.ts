@@ -6,7 +6,7 @@
  * no pricing/cart detour. Included-in-plan add-ons and one-time AI credit
  * packs are never added as subscription items.
  */
-import { ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
+import { ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, getPlanForPriceId } from "../lib/plans.js";
 import { loadBillingContext } from "./billing-context.js";
 import { createStripeClient, getStripeKey } from "./stripe-factory.js";
 import { logger } from "../lib/logger.js";
@@ -48,10 +48,21 @@ export async function syncAddonWithStripe(
       // customer, do a live look-up to find any active subscription before giving up.
       if (!ctx.stripeCustomerId) return { synced: false, reason: "no_live_subscription" };
       const stripe = await createStripeClient(stripeKey);
-      const liveSubs = await stripe.subscriptions.list({ customer: ctx.stripeCustomerId, status: "active", limit: 5 });
-      const planSub = liveSubs.data.find((s: { metadata?: Record<string, string>; items?: { data?: unknown[] } }) =>
-        !s.metadata?.["addonOnly"] && (s.items?.data ?? []).length > 0
-      );
+      const liveSubs = await stripe.subscriptions.list({ customer: ctx.stripeCustomerId, status: "active", limit: 10, expand: ["data.items.data.price"] });
+      // 1. Prefer subscriptions whose metadata.orgId matches exactly.
+      // 2. Fall back to any subscription containing a known FlowPoint plan price.
+      // 3. Final fallback: any non-addon-only subscription with items.
+      // This prevents grabbing an unrelated Stripe subscription on the same customer.
+      type StripeSub = { id: string; metadata?: Record<string, string>; items?: { data?: Array<{ price?: { id?: string } }> } };
+      const isFlowPointPlanSub = (s: StripeSub): boolean => {
+        if (s.metadata?.["addonOnly"]) return false;
+        const items = s.items?.data ?? [];
+        return items.length > 0 && items.some(it => getPlanForPriceId(it.price?.id ?? "") !== null);
+      };
+      const planSub: StripeSub | undefined =
+        liveSubs.data.find((s: StripeSub) => s.metadata?.["orgId"] === orgId && !s.metadata?.["addonOnly"] && (s.items?.data ?? []).length > 0) ??
+        liveSubs.data.find((s: StripeSub) => isFlowPointPlanSub(s)) ??
+        liveSubs.data.find((s: StripeSub) => !s.metadata?.["addonOnly"] && (s.items?.data ?? []).length > 0);
       if (!planSub) return { synced: false, reason: "no_live_subscription" };
       // Back-fill the DB so future calls don't need to hit Stripe again
       const { persistOrgData } = await import("./org-data.js");

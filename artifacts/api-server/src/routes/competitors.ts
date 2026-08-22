@@ -298,6 +298,8 @@ router.post(
         type: "alert", label: `Concurrent ajouté : ${name}`,
         targetId: id, targetType: "competitor",
         orgId,
+        userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+        userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
       }).catch(() => {});
       res.status(201).json(toPublic(competitor));
     } catch (err) {
@@ -475,6 +477,8 @@ router.post("/competitors/:id/analyze", reportRateLimit, canWrite, async (req, r
       label: `Analyse IA lancée sur le concurrent : ${String(row["name"])}`,
       targetId: String(row["id"]), targetType: "competitor",
       orgId,
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
     }).catch(() => {});
 
     res.json({ ok: true, analysis: result.analysis });

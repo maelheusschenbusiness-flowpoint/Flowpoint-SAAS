@@ -497,6 +497,8 @@ router.delete("/missions/:id", canWrite, async (req: Request, res: Response) => 
       targetId: String(req.params.id), targetType: "mission",
       metadata: { category: existing.rows[0].category }, orgId: org,
       actionKey: "activity.mission.deleted", actionParams: { title: String(existing.rows[0].title) },
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
     }).catch(() => {});
 
     res.json({ ok: true });

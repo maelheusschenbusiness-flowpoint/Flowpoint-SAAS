@@ -904,6 +904,8 @@ router.delete("/monitors/:id", canAdmin, async (req: Request, res: Response) => 
       targetId: id, targetType: "monitor",
       metadata: { url: m["url"], name: m["name"] },
       orgId: String(m["org_id"] ?? (req as unknown as Record<string, unknown>)["orgId"] ?? "default"),
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
     res.json({ ok: true });
