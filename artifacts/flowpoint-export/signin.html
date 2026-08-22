@@ -389,6 +389,21 @@
 </style>
 
 <script>
+  /* ── Session guard: already logged-in users should never land on signin ──
+     Pressing browser back from the dashboard routes here. Detect the session
+     token (sessionStorage) or cookie and immediately replace with dashboard. */
+  (function() {
+    try {
+      var _st = sessionStorage.getItem('fp_session_token');
+      if (_st && _st.length > 10) { window.location.replace('/dashboard.html'); return; }
+    } catch(_) {}
+    try {
+      if (document.cookie && document.cookie.split(';').some(function(c){ return c.trim().startsWith('fp_token=') && c.trim().length > 'fp_token='.length + 5; })) {
+        window.location.replace('/dashboard.html'); return;
+      }
+    } catch(_) {}
+  })();
+
   var _preRegisterToken = '';
   var _planBtnsLocked   = false;
 
