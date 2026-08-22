@@ -68,10 +68,15 @@ const isDemoMode = () => !!(STATE && (STATE.demoMode || STATE.demo));
 //             Backend canAdmin/canWrite blocks all mutations for viewer.
 // ─────────────────────────────────────────────────────────────────
 const _FP_ROLE_PERMS = {
+  // Source de vérité RBAC — ne pas modifier sans validation product :
+  // Owner   : tout
+  // Manager : Audits + Monitors + Rapports + Équipe
+  // Editor  : Audits + Rapports (PAS Monitors)
+  // Viewer  : aucun des 6 modules
   owner:  { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
   admin:  { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:false },
-  member: { audits:true,  monitors:true,  reports:false, billing:false, team:false,  settings:false },
-  viewer: { audits:true,  monitors:false, reports:false, billing:false, team:false,  settings:false },
+  member: { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
+  viewer: { audits:false, monitors:false, reports:false, billing:false, team:false,  settings:false },
 };
 // Routes that require a specific permission key (absent = open to all roles)
 const _FP_ROUTE_PERM = {
@@ -1666,7 +1671,7 @@ async function loadData(options = {}) {
   // FP_DATAFORSEO_API.loadStatus() will overwrite this with a fresh value from /api/seo/status
   // a few milliseconds later, but this prevents the initial render showing 0/50.
   if (STATE.me?.dfsQuota && !STATE.dfsStatus) {
-    STATE.dfsStatus = { configured: !!STATE.me.dfsQuota.configured, quota: { used: STATE.me.dfsQuota.used || 0, limit: STATE.me.dfsQuota.limit || 50, remaining: STATE.me.dfsQuota.remaining || 50 } };
+    STATE.dfsStatus = { configured: !!STATE.me.dfsQuota.configured, quota: { used: STATE.me.dfsQuota.used || 0, limit: STATE.me.dfsQuota.limit || 1000, remaining: STATE.me.dfsQuota.remaining ?? Math.max(0, (STATE.me.dfsQuota.limit || 1000) - (STATE.me.dfsQuota.used || 0)) } };
   }
 
   // ── Route-critical data map: endpoints that must be ready before the loader disappears ──
@@ -5317,7 +5322,7 @@ function renderNotifications() {
   dropdown.innerHTML = `
     <div class="fp-notif-header">
       <span class="fp-notif-title">${fpT('Notifications')}</span>
-      <button class="fp-notif-mark-all" id="fp-notif-mark-all">Tout marquer lu</button>
+      <button class="fp-notif-mark-all" id="fp-notif-mark-all">${fpT('Tout marquer lu')}</button>
     </div>
     ${visible.length === 0 ? `<div style="padding:24px;text-align:center;color:var(--fp-text-faint);font-size:12px">${fpT(showHidden ? 'Aucune notification masquée' : 'Aucune notification')}</div>` : ''}
     ${visible.map(n => {
@@ -8813,7 +8818,7 @@ function renderLocalSEO() {
             : `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b">${fpT('● DONNÉES INDISPONIBLES')}</span>`}
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          ${STATE.dfsStatus ? `<span style="font-size:10px;color:#64748b">${STATE.dfsStatus.quota?.used||0}/${STATE.dfsStatus.quota?.limit||50} req aujourd\'hui</span>` : ''}
+          ${STATE.dfsStatus ? `<span style="font-size:10px;color:#64748b">${STATE.dfsStatus.quota?.used||0}/${STATE.dfsStatus.quota?.limit||STATE.me?.dfsQuota?.limit||1000} req aujourd\'hui</span>` : ''}
           <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="window._showLoadRankingsModal()">🔎 Charger rankings</button>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="window._generateLocalMissions()">⚡ Auto-missions</button>
         </div>
@@ -9285,8 +9290,8 @@ function renderTeam() {
   const rolePerms = {
     owner:   { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
     manager: { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:false },
-    editor:  { audits:true,  monitors:true,  reports:false, billing:false, team:false,  settings:false },
-    viewer:  { audits:true,  monitors:false, reports:false, billing:false, team:false,  settings:false },
+    editor:  { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
+    viewer:  { audits:false, monitors:false, reports:false, billing:false, team:false,  settings:false },
   };
   const permLabels = ['Audits','Monitors','Rapports','Facturation','Équipe','Paramètres'];
   const permKeys   = ['audits','monitors','reports','billing','team','settings'];
@@ -11549,10 +11554,11 @@ function renderSettings() {
     const roles = ['Owner','Manager','Editor','Viewer'];
     const modules = ['Audits','Monitors','Rapports','Facturation','Paramètres'];
     const permMatrix = {
-      Owner:    [true,  true,  true,  true,  true ],
-      Manager:  [true,  true,  true,  false, false],
-      Editor:   [true,  true,  false, false, false],  // Monitors=lecture seule, Rapports=✗
-      Viewer:   [true,  false, false, false, false],  // Audits=lecture seule, tout reste=✗
+      // Colonnes : Audits | Monitors | Rapports | Facturation | Équipe | Paramètres
+      Owner:   [true,  true,  true,  true,  true,  true ],
+      Manager: [true,  true,  true,  false, true,  false],
+      Editor:  [true,  false, true,  false, false, false],
+      Viewer:  [false, false, false, false, false, false],
     };
     return `
       ${aiBlock(
@@ -53895,7 +53901,7 @@ function renderCompetitor() {
             </div>
           </div>
           ${!analysis ? `<div class="fp-card" style="text-align:center;padding:28px"><div style="font-size:13px;color:var(--fp-text-muted)">Cliquez <strong>Analyser</strong> sur ce concurrent pour lancer l'analyse IA.</div><button class="fp-btn fp-btn-primary" style="margin-top:14px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}')">🔬 Analyser ${escHtml(selComp.name||'')}</button></div>` : `
-          <div class="fp-grid fp-grid-2 fp-mb-16">
+          <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px">
             <div class="fp-card" style="border-left:3px solid #22c55e">
               <div class="fp-card-title" style="margin-bottom:10px;color:#22c55e">✅ Ce que vous faites mieux</div>
               ${(analysis.you_better||[]).length===0
@@ -53943,7 +53949,7 @@ function renderCompetitor() {
               </table>
             </div>
           </div>` : ''}
-          <div class="fp-grid fp-grid-2 fp-mb-16">
+          <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px">
             <div class="fp-card">
               <div class="fp-card-title" style="margin-bottom:8px">💪 Forces détectées</div>
               ${(analysis.strengths||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.strengths).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
@@ -63768,11 +63774,19 @@ window._fpFunnelRun = async function(btn) {
     showToast?.('success', 'Rapport GA4 chargé');
   } catch (e) {
     const resSec = document.getElementById('fp-funnel-result-section');
+    const _errMsg = String(e.message || e);
+    const _isGA4Miss = /GA4 property not configured|No GA4 property/i.test(_errMsg);
     if (resSec) {
       resSec.style.display = 'block';
-      resSec.innerHTML = `<div class="fp-card" style="padding:16px;color:#ef4444;font-size:13px">❌ Erreur : ${_fpFunnelEsc(String(e.message||e))}</div>`;
+      resSec.innerHTML = _isGA4Miss
+        ? `<div class="fp-card" style="padding:18px;border-left:3px solid #f59e0b">
+            <div style="font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:6px">⚠️ Propriété GA4 non configurée</div>
+            <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Connectez votre compte Google et sélectionnez une propriété GA4 pour exécuter vos funnels.</div>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('analytics')">⚙ Configurer GA4 →</button>
+          </div>`
+        : `<div class="fp-card" style="padding:16px;color:#ef4444;font-size:13px">❌ ${_fpFunnelEsc(_errMsg)}</div>`;
     }
-    showToast?.('error', String(e.message || e));
+    showToast?.(_isGA4Miss ? 'warning' : 'error', _isGA4Miss ? 'Propriété GA4 non configurée — configurez Analytics d\'abord' : _errMsg);
   } finally {
     btn.disabled = false;
     btn.textContent = origText;
