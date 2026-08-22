@@ -283,6 +283,7 @@ async function saveCheckResult(
         }
 
         // Log activity so the activity feed reflects the state change
+        // userId is null here (automated cron check) — actor is "system"
         store.logActivity({
           type: "monitor",
           label: notifTitle,
@@ -290,6 +291,8 @@ async function saveCheckResult(
           targetType: "monitor",
           metadata: { url: String(mon.url), kind: _notify.kind },
           orgId,
+          userId: "system",
+          userName: "Système",
         }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
         // Resolve recipient using the 3-tier priority chain:
@@ -762,6 +765,8 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
           targetId: id, targetType: "monitor",
           metadata: { url: monitor["url"], responseTime: result.latencyMs, status: newStatus },
           orgId,
+          userId: (req as any).orgContext?.userId || (req as any).orgContext?.email || "system",
+          userName: (req as any).orgContext?.name || (req as any).orgContext?.email || "Système",
         }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
         store.broadcast({ type: "monitor:ping", monitorId: id, status: newStatus, responseTime: result.latencyMs }, orgId);
         res.json({
@@ -797,6 +802,8 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
       targetId: id, targetType: "monitor",
       metadata: { url: monitor["url"], responseTime: result.latencyMs, status: newStatus },
       orgId,
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email || "system",
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email || "Système",
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
     store.broadcast({ type: "monitor:ping", monitorId: id, status: newStatus, responseTime: result.latencyMs }, orgId);

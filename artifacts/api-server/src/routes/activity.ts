@@ -63,8 +63,12 @@ router.post("/activity", canWrite, async (req: Request, res: Response) => {
     res.status(400).json({ error: "type and label are required strings" }); return;
   }
   try {
-    // userId/userName are intentionally NOT accepted from client — actor identity is server-authoritative
-    await store.logActivity({ type, label, targetId, targetType, metadata, orgId });
+    // Derive actor identity from session — never trust client-supplied userId.
+    const ctx = (req as any).orgContext || {};
+    const sessionUserId = ctx.userId || ctx.email || null;
+    const sessionUserName = ctx.name || ctx.email || null;
+    await store.logActivity({ type, label, targetId, targetType, metadata, orgId,
+      userId: sessionUserId, userName: sessionUserName });
     res.status(201).json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Failed to log activity" });

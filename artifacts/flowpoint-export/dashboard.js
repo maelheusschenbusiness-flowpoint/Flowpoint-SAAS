@@ -48230,6 +48230,74 @@ async function init() {
       } else showToast('error', r?.error || 'Erreur lors de la création');
     } catch(e) { showToast('error', 'Erreur : ' + String(e)); }
   };
+  // ── Review detail modal — full view with editable AI reply ─────────────────
+  window._fpReviewsData = window._fpReviewsData || [];
+
+  window._openReviewDetail = function(idx) {
+    const r = (window._fpReviewsData || [])[idx];
+    if (!r) return;
+    const emoji = r.rating >= 4 ? '😊' : r.rating >= 3 ? '😐' : r.rating >= 2 ? '🙁' : '😞';
+    const stars = '⭐'.repeat(Math.min(r.rating || 0, 5));
+    const sentCol = r.sentiment === 'positive' ? '#22c55e' : r.sentiment === 'negative' ? '#ef4444' : '#94a3b8';
+    const rid = escHtml(String(r.id || ''));
+    const existingId = 'fp-rv-detail-modal';
+    let modal = document.getElementById(existingId);
+    if (modal) modal.remove();
+    const overlay = document.createElement('div');
+    overlay.id = existingId;
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px';
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+    overlay.innerHTML = `
+      <div style="background:var(--fp-bg-sidebar);border:1px solid var(--fp-border);border-radius:16px;width:560px;max-width:95vw;max-height:90vh;overflow-y:auto;padding:24px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px">
+          <div>
+            <div style="font-size:20px;margin-bottom:4px">${emoji}</div>
+            <div style="font-size:16px;font-weight:700">${escHtml(r.author_name || r.author || r.reviewer_name || 'Anonyme')}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+              <span style="color:#f59e0b;font-size:13px">${stars}</span>
+              ${r.rating ? `<span style="font-size:12px;color:var(--fp-text-muted)">${r.rating}/5</span>` : ''}
+              ${r.sentiment ? `<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${sentCol}22;color:${sentCol}">${escHtml(r.sentiment)}</span>` : ''}
+            </div>
+          </div>
+          <button style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--fp-text-muted);padding:4px" onclick="document.getElementById('fp-rv-detail-modal')?.remove()">✕</button>
+        </div>
+        <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6;padding:12px;background:var(--fp-inner-card);border-radius:10px;margin-bottom:16px;min-height:60px">
+          ${escHtml(r.review_text || '— Texte non disponible —')}
+        </div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;color:var(--fp-accent);margin-bottom:8px">🤖 Réponse IA</div>
+          <textarea id="fp-rv-reply-text" style="width:100%;min-height:100px;padding:10px;border-radius:8px;border:1px solid var(--fp-border);background:var(--fp-inner-card);color:var(--fp-text);font-size:12px;line-height:1.5;resize:vertical;box-sizing:border-box">${escHtml(r.ai_reply || '')}</textarea>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" id="fp-rv-gen-btn" data-rv-id="${rid}"
+            onclick="(function(btn){
+              btn.disabled=true;btn.textContent='Génération…';
+              var id=btn.dataset.rvId;
+              var lang=(STATE.settings&&STATE.settings.language)||localStorage.getItem('fp:language')||'fr';
+              window.FP_REVIEW_INTEL_API&&window.FP_REVIEW_INTEL_API.generateReply(id,'professional',lang).then(function(res){
+                var reply=res&&res.reply||res&&res.ai_reply||'';
+                var ta=document.getElementById('fp-rv-reply-text');
+                if(ta)ta.value=reply;
+                btn.disabled=false;btn.textContent='↺ Régénérer';
+                showToast('success',fpT('Réponse générée !'));
+              }).catch(function(){btn.disabled=false;btn.textContent='↺ Régénérer';showToast('error',fpT('Erreur de génération'));});
+            })(this)">
+            ${r.ai_reply ? '↺ Régénérer' : '🤖 Générer la réponse'}
+          </button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px"
+            onclick="(function(){var t=document.getElementById('fp-rv-reply-text');if(t&&t.value&&navigator.clipboard){navigator.clipboard.writeText(t.value).then(function(){showToast('success',fpT('Réponse copiée !'));});}})()">
+            📋 Copier
+          </button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;color:#22c55e"
+            onclick="(function(){var t=document.getElementById('fp-rv-reply-text');if(t&&t.value){window.open('https://business.google.com/',\'_blank\');showToast('info',fpT('Répondez sur Google Business en collant le texte copié.'));}})()">
+            🌐 Publier sur Google
+          </button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;margin-left:auto" onclick="document.getElementById('fp-rv-detail-modal')?.remove()">Fermer</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+  };
+
   // Review analyze modal — extracted from innerHTML <script>
   window._showAnalyzeReviewModal = function() {
     const m = document.getElementById('fp-review-modal');
@@ -70464,6 +70532,8 @@ document.addEventListener('click', (event) => {
 function renderLocalSEOReviews() {
   const reviewData = window.FP_DATA?.reviewIntel || {};
   const reviews = reviewData.reviews || [];
+  // Store reviews globally so _openReviewDetail can access them by index
+  window._fpReviewsData = reviews;
   const stats = reviewData.stats || {};
   const alerts = reviewData.alerts || [];
   const plan = STATE.me?.plan || 'Pro';
@@ -70534,7 +70604,7 @@ function renderLocalSEOReviews() {
             // HTML-escape r.id for use in data-attributes; the browser unescapes it into dataset.
             const _safeApiId = escHtml(String(r.id || ''));
             return `
-            <div id="${_rId}" style="padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card);cursor:pointer;transition:border-color 0.15s" onclick="(function(el){el.classList.toggle('fp-rv-expanded');el.querySelector('.fp-rv-body').style.display=el.classList.contains('fp-rv-expanded')?'block':'none';})(document.getElementById('${_rId}'))">
+            <div id="${_rId}" style="padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card);cursor:pointer;transition:border-color 0.15s" onclick="window._openReviewDetail(${_ri})">
               <div style="display:flex;align-items:flex-start;gap:10px">
                 <span style="font-size:18px">${ratingEmoji(r.rating || 0)}</span>
                 <div style="flex:1;min-width:0">

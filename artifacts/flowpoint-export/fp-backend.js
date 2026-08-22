@@ -98,7 +98,18 @@ window.__fpPageLoadTs = Date.now();
     return restore;
   }
   window.__fpRestoreSession = _restoreSession;
+  // ── Auth state machine ──────────────────────────────────────────────────────
+  // States: 'restoring' → 'authenticated' | 'unknown'
+  // Sign-In must NEVER render while 'restoring' — only after 'unknown' is confirmed.
+  window.__fpAuthState = 'restoring';
   var _sessionReady = _restoreSession();
+  _sessionReady.then(function(ok) {
+    window.__fpAuthState = ok ? 'authenticated' : 'unknown';
+    console.log('[FP-AUTH-STATE]', new Date().toISOString(), 'authState →', window.__fpAuthState);
+  }).catch(function() {
+    window.__fpAuthState = 'unknown';
+    console.log('[FP-AUTH-STATE]', new Date().toISOString(), 'authState → unknown (restore error)');
+  });
 
   function _authHeaders() {
     try {
@@ -305,20 +316,22 @@ window.__fpPageLoadTs = Date.now();
                         console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), '/api/me returned 401 but STATE.me is present — suppressed (BFCache/back-fwd false positive).');
                         var _err4 = new Error('Unauthorized'); _err4.status = 401; throw _err4;
                       }
-                      // Bootstrap grace period: within 5 s of page load, session-restore
-                      // may still be settling (race condition causes a false 401).
-                      // Delay the redirect to prevent the Sign-In flash on F5 refresh.
+                      // Auth state machine: redirect only after session restore has confirmed 'unknown'.
+                      // 'authenticated' → restore succeeded; this 401 is transient — throw, do NOT redirect.
+                      // 'restoring'    → await restore result before deciding.
+                      // 'unknown'      → restore confirmed no valid session — redirect immediately.
                       if (!window.__fpRedirecting) {
-                        var _pageAge1 = Date.now() - (window.__fpPageLoadTs || Date.now());
-                        if (_pageAge1 < 5000 && !window.__fpBootstrapRedirectScheduled) {
-                          window.__fpBootstrapRedirectScheduled = true;
-                          console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Bootstrap grace period active — deferring login redirect by', Math.ceil(5000-_pageAge1), 'ms');
-                          setTimeout(function() {
-                            if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+                        if (window.__fpAuthState === 'authenticated') {
+                          console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'State=authenticated; /api/me 401 is transient — suppressed.');
+                          var _e1 = new Error('Transient 401 — session active'); _e1.status = 401; throw _e1;
+                        }
+                        if (window.__fpAuthState === 'restoring') {
+                          return Promise.resolve(_sessionReady).then(function(ok) {
+                            if (!ok && !window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
                               window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
                             }
-                          }, 5000 - _pageAge1 + 500);
-                          return null;
+                            return null;
+                          });
                         }
                         window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
                       }
@@ -335,17 +348,19 @@ window.__fpPageLoadTs = Date.now();
               console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed on secondary endpoint', path, '— throwing (no global logout).');
               var _err2 = new Error('Unauthorized'); _err2.status = 401; throw _err2;
             }
-            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed on session-critical endpoint — redirecting to login.');
+            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed on session-critical endpoint — state machine redirect.');
             if (!window.__fpRedirecting) {
-              var _pageAge2 = Date.now() - (window.__fpPageLoadTs || Date.now());
-              if (_pageAge2 < 5000 && !window.__fpBootstrapRedirectScheduled) {
-                window.__fpBootstrapRedirectScheduled = true;
-                setTimeout(function() {
-                  if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+              if (window.__fpAuthState === 'authenticated') {
+                console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'State=authenticated; session-restore failure on /api/me is transient — suppressed.');
+                var _e2 = new Error('Transient 401 — session active'); _e2.status = 401; throw _e2;
+              }
+              if (window.__fpAuthState === 'restoring') {
+                return Promise.resolve(_sessionReady).then(function(ok) {
+                  if (!ok && !window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
                     window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
                   }
-                }, 5000 - _pageAge2 + 500);
-                return null;
+                  return null;
+                });
               }
               window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
             }
@@ -357,17 +372,19 @@ window.__fpPageLoadTs = Date.now();
               console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on secondary endpoint', path, '— throwing (no global logout).');
               var _err3 = new Error('Unauthorized'); _err3.status = 401; throw _err3;
             }
-            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on session-critical endpoint — redirecting to login.');
+            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on session-critical endpoint — state machine redirect.');
             if (!window.__fpRedirecting) {
-              var _pageAge3 = Date.now() - (window.__fpPageLoadTs || Date.now());
-              if (_pageAge3 < 5000 && !window.__fpBootstrapRedirectScheduled) {
-                window.__fpBootstrapRedirectScheduled = true;
-                setTimeout(function() {
-                  if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+              if (window.__fpAuthState === 'authenticated') {
+                console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'State=authenticated; network error is transient — suppressed.');
+                var _e3 = new Error('Transient 401 — session active'); _e3.status = 401; throw _e3;
+              }
+              if (window.__fpAuthState === 'restoring') {
+                return Promise.resolve(_sessionReady).then(function(ok) {
+                  if (!ok && !window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
                     window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
                   }
-                }, 5000 - _pageAge3 + 500);
-                return null;
+                  return null;
+                });
               }
               window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
             }
