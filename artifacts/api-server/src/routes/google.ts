@@ -341,7 +341,8 @@ router.get("/google/reviews", async (req: Request, res: Response) => {
   const client = await pool.connect();
   try {
     const rows = await client.query(
-      `SELECT id, location_id, reviewer_name, reviewer_photo, rating, comment, create_time, update_time, reply_comment
+      `SELECT id, location_id, reviewer_name, reviewer_photo, rating, comment, create_time, update_time, reply_comment,
+              COALESCE(sentiment,'') AS sentiment, COALESCE(ai_reply,'') AS ai_reply, COALESCE(source,'') AS source
        FROM google_reviews WHERE org_id=$1 ORDER BY create_time DESC LIMIT 50`,
       [getOrgId(req)]
     );
@@ -477,15 +478,23 @@ router.post("/google/reviews", async (req: Request, res: Response) => {
     const { author_name, rating, text, sentiment, ai_reply, analyzed_at, source } = req.body || {};
     if (!author_name || rating == null) { res.status(400).json({ ok: false, error: "author_name and rating required" }); return; }
     const reviewId = `manual_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    // google_reviews real schema: reviewer_name, comment, owner_reply, reply_comment
+    // We store sentiment + ai_reply in reply_comment (json) and source in reply_updated_at as marker
+    // Self-heal: add columns if not exist
+    await pool.query(`ALTER TABLE google_reviews ADD COLUMN IF NOT EXISTS sentiment TEXT`).catch(()=>{});
+    await pool.query(`ALTER TABLE google_reviews ADD COLUMN IF NOT EXISTS ai_reply TEXT`).catch(()=>{});
+    await pool.query(`ALTER TABLE google_reviews ADD COLUMN IF NOT EXISTS source TEXT`).catch(()=>{});
     await pool.query(`
-      INSERT INTO google_reviews (org_id, review_id, author_name, rating, text, sentiment, ai_reply, analyzed_at, source, created_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+      INSERT INTO google_reviews
+        (id, org_id, review_id, location_id, reviewer_name, rating, comment, create_time, sentiment, ai_reply, source)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       ON CONFLICT (review_id, org_id) DO UPDATE
-        SET author_name=EXCLUDED.author_name, rating=EXCLUDED.rating, text=EXCLUDED.text,
-            sentiment=EXCLUDED.sentiment, ai_reply=EXCLUDED.ai_reply, analyzed_at=EXCLUDED.analyzed_at
-    `, [orgId, reviewId, String(author_name).slice(0,200), Number(rating), String(text||'').slice(0,5000),
+        SET reviewer_name=EXCLUDED.reviewer_name, rating=EXCLUDED.rating, comment=EXCLUDED.comment,
+            sentiment=EXCLUDED.sentiment, ai_reply=EXCLUDED.ai_reply
+    `, [reviewId, orgId, reviewId, 'manual', String(author_name).slice(0,200), Number(rating),
+        String(text||'').slice(0,5000), analyzed_at || new Date().toISOString(),
         String(sentiment||'').slice(0,50), String(ai_reply||'').slice(0,5000),
-        analyzed_at || new Date().toISOString(), String(source||'manual').slice(0,50)]);
+        String(source||'manual').slice(0,50)]);
     res.json({ ok: true, reviewId });
   } catch (err: unknown) {
     logger.error({ err }, "[google/reviews POST] failed");
