@@ -4059,14 +4059,18 @@ const ACTIVITY_I18N_KEYS = {
   'activity.mission.deleted':         (p) => fpT('Mission supprimée :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
   // Audits
   'activity.audit.started':           (p) => fpT('Audit lancé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
+  'activity.audit.launched':          (p) => fpT('Audit lancé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
   'activity.audit.done':              (p) => fpT('Audit terminé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
+  'activity.audit.completed':         (p) => fpT('Audit terminé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : '') + (p&&p.score ? ' — Score ' + p.score + '/100' : ''),
   'activity.audit.scheduled.started': (p) => fpT('Audit planifié lancé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
+  'activity.audit.scheduled':         (p) => fpT('Audit planifié lancé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
   // Keywords
   'activity.keyword.added':           (p) => fpT('Keyword ajouté :') + ' ' + (p&&p.keyword ? escHtml(String(p.keyword)) : ''),
   'activity.keyword.removed':         (p) => fpT('Keyword retiré :') + ' ' + (p&&p.keyword ? escHtml(String(p.keyword)) : ''),
   // Monitors
   'activity.monitor.created':         (p) => fpT('Monitor créé :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
   'activity.monitor.deleted':         (p) => fpT('Monitor supprimé :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
+  'activity.monitor.pinged':          (p) => fpT('Monitor') + ' ' + (p&&p.name ? escHtml(String(p.name)) : '') + ' — ' + (p&&p.status ? escHtml(String(p.status).toUpperCase()) : '') + (p&&p.latencyMs ? ' (' + p.latencyMs + 'ms)' : ''),
   'activity.monitor.state':           (p) => fpT('Monitor ') + (p&&p.name ? escHtml(String(p.name)) : '') + ' — ' + (p&&p.state ? escHtml(String(p.state)) : ''),
   // Connectors
   'activity.connector.connected':     (p) => fpT('Connecteur connecté :') + ' ' + (p&&p.provider ? escHtml(String(p.provider)) : ''),
