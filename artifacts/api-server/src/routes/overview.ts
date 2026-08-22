@@ -180,8 +180,13 @@ async function _acquireInsightsSlot(
   orgId: string
 ): Promise<{ ok: true } | { ok: false; retryAfterSeconds: number }> {
   const client = await pool.connect();
+  // txActive tracks whether we hold an open transaction so the catch block
+  // only sends ROLLBACK when needed — prevents 25P01 "no transaction in progress"
+  // errors in Postgres logs when ROLLBACK/COMMIT already closed the transaction.
+  let txActive = false;
   try {
     await client.query("BEGIN");
+    txActive = true;
 
     // Ensure the row exists (idempotent)
     await client.query(
@@ -211,6 +216,7 @@ async function _acquireInsightsSlot(
         Math.ceil((genStarted + INSIGHTS_GEN_TIMEOUT_S * 1_000 - now) / 1_000)
       );
       await client.query("ROLLBACK");
+      txActive = false;
       return { ok: false, retryAfterSeconds };
     }
 
@@ -221,6 +227,7 @@ async function _acquireInsightsSlot(
         : windowStart + INSIGHTS_WINDOW_S * 1_000;
       const retryAfterSeconds = Math.max(1, Math.ceil((windowEnd - now) / 1_000));
       await client.query("ROLLBACK");
+      txActive = false;
       return { ok: false, retryAfterSeconds };
     }
 
@@ -232,9 +239,13 @@ async function _acquireInsightsSlot(
       [orgId, effectiveWindowStart, effectiveCount]
     );
     await client.query("COMMIT");
+    txActive = false;
     return { ok: true };
   } catch (err) {
-    try { await client.query("ROLLBACK"); } catch { /* ignore */ }
+    // Only ROLLBACK if the transaction is still open — prevents 25P01
+    if (txActive) {
+      try { await client.query("ROLLBACK"); } catch { /* ignore */ }
+    }
     throw err;
   } finally {
     client.release();
