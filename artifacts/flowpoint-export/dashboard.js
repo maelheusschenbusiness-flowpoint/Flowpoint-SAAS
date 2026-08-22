@@ -7992,15 +7992,15 @@ function renderReports() {
       : null;
     const _recs_live = (() => {
       const r = [];
-      if (numericAuditScores.some(a => a.score < 50)) r.push({ icon:'🎯', title:'Sites critiques à corriger', body:'Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.', gain:'À prioriser', color:'#ef4444' });
-      if (STATE.monitors && STATE.monitors.some(m => m.status === 'down')) r.push({ icon:'🚨', title:'Monitors DOWN', body:'Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.', gain:'SLA protégé', color:'#ef4444' });
-      if (STATE.gbp && Number(STATE.gbp.completionScore) < 90) r.push({ icon:'📍', title:'Optimiser Google Business Profile', body:'Votre fiche GBP n\'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.', gain:'À mesurer', color:'#22c55e' });
+      if (numericAuditScores.some(a => a.score < 50)) r.push({ icon:'🎯', title:fpT('Sites critiques à corriger'), body:fpT('Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.'), gain:fpT('À prioriser'), color:'#ef4444' });
+      if (STATE.monitors && STATE.monitors.some(m => m.status === 'down')) r.push({ icon:'🚨', title:fpT('Monitors DOWN'), body:fpT('Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.'), gain:fpT('SLA protégé'), color:'#ef4444' });
+      if (STATE.gbp && Number(STATE.gbp.completionScore) < 90) r.push({ icon:'📍', title:fpT('Optimiser Google Business Profile'), body:fpT('Votre fiche GBP incomplète. Complétez photos, horaires et description, puis mesurez l\'évolution de la visibilité locale.'), gain:fpT('À mesurer'), color:'#22c55e' });
       return r;
     })();
     const recs = _recs_live.length > 0 ? _recs_live : (PREVIEW_MODE ? [
-      { icon: '🎯', title: 'Priorité absolue : conversion mobile',  body: 'Le taux de conversion mobile est 2.8x inférieur au desktop. Simplifier le formulaire de contact pourrait générer +12 clients/mois.',         gain: '+12 clients/mois', color: '#ef4444' },
-      { icon: '📍', title: 'Accélérer le Local SEO Maps',            body: 'Renforcez la fiche GBP et les avis, puis comparez la visibilité locale mesurée avant et après optimisation.',    gain: 'À mesurer', color: '#22c55e' },
-      { icon: '🔗', title: 'Reconquérir le trafic référent',         body: 'Les référents ont baissé de -4% avec un taux de rebond de 58%. Revoir les partenariats et créer du contenu co-marque ciblé.',                  gain: '+400 sessions/mois', color: '#f59e0b' },
+      { icon: '🎯', title: fpT('Priorité absolue : conversion mobile'),  body: fpT('Le taux de conversion mobile est 2.8x inférieur au desktop. Simplifier le formulaire de contact pourrait générer +12 clients/mois.'),         gain: fpT('+12 clients/mois'), color: '#ef4444' },
+      { icon: '📍', title: fpT('Accélérer le Local SEO Maps'),            body: fpT('Renforcez la fiche GBP et les avis, puis comparez la visibilité locale mesurée avant et après optimisation.'),    gain: fpT('À mesurer'), color: '#22c55e' },
+      { icon: '🔗', title: fpT('Reconquérir le trafic référent'),         body: fpT('Les référents ont baissé de -4% avec un taux de rebond de 58%. Revoir les partenariats et créer du contenu co-marque ciblé.'),                  gain: fpT('+400 sessions/mois'), color: '#f59e0b' },
     ] : []);
     const _execAvg = _execCurAvg;
     return `
@@ -14888,6 +14888,12 @@ function setupNewMissionPanel() {
           const m = saved.id ? saved : { id: 'ms'+Date.now(), ...payload };
           STATE.missions.unshift(m);
           saveMissions();
+          // Invalidate missions API cache so navigate/loadData re-fetches fresh list
+          if (_apiFetchCache) {
+            for (const [k] of _apiFetchCache.entries()) {
+              if (k.includes('/api/missions')) _apiFetchCache.delete(k);
+            }
+          }
           showToast('success', fpT('Mission créée !'));
           closeFloatPanel();
           if (STATE.route === 'missions') render(); else navigate('missions');
@@ -54089,17 +54095,15 @@ function renderCompetitor() {
       if (typeof window.fpLoadCompetitorAnalysis === 'function') {
         window.fpLoadCompetitorAnalysis(c.id);
       }
-      // Auto-trigger DFS data refresh for competitors without metrics (pending/unavailable)
-      if (c.dataStatus !== 'available' && !window._fpRefreshingComp?.[c.id]) {
-        window._fpRefreshingComp = window._fpRefreshingComp || {};
-        window._fpRefreshingComp[c.id] = true;
+      // Auto-trigger DFS data refresh for competitors without metrics — once per session
+      window._fpRefreshAttempted = window._fpRefreshAttempted || new Set();
+      if (c.dataStatus !== 'available' && !window._fpRefreshAttempted.has(c.id)) {
+        window._fpRefreshAttempted.add(c.id); // persist across re-renders/navigation
         setTimeout(() => {
           if (typeof window.fpRefreshCompetitor === 'function') {
-            window.fpRefreshCompetitor(c.id).catch(() => {}).finally(() => {
-              if (window._fpRefreshingComp) delete window._fpRefreshingComp[c.id];
-            });
+            window.fpRefreshCompetitor(c.id).catch(() => {});
           }
-        }, 800);
+        }, 800 + Math.random() * 400); // slight jitter to avoid bursting
       }
     });
     return `

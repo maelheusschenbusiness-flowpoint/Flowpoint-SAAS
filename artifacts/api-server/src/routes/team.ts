@@ -1366,8 +1366,21 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     const [auditsRes, missionsRes, reportsRes, monitorsRes] = await Promise.allSettled([
       pool.query(activityCountSql(["audit"]), [orgId, ["audit"]]).catch(() =>
         pool.query(unattributedSql("audits"), [orgId])),
-      pool.query(activityCountSql(["mission"]), [orgId, ["mission"]]).catch(() =>
-        pool.query(unattributedSql("missions", "AND (status='done' OR status='completed')"), [orgId])),
+      pool.query(
+        // missions are logged with type='report' + actionKey LIKE 'activity.mission.%'
+        // fall back to standard activityCountSql if no rows found
+        `SELECT
+          COALESCE(NULLIF(al.user_id, ''), al.org_id) AS user_id,
+          LOWER(COALESCE(u.email, ''))                AS email,
+          COUNT(*)::int                               AS cnt
+         FROM activity_logs al
+         LEFT JOIN users u ON u.id::text = al.user_id OR LOWER(u.email) = LOWER(al.user_id)
+         WHERE al.org_id = $1
+           AND (al.action_key LIKE 'activity.mission.%' OR al.type = 'mission')
+         GROUP BY 1, 2`,
+        [orgId]
+      ).catch(() =>
+        pool.query(unattributedSql("missions"), [orgId])),
       pool.query(activityCountSql(["report"]), [orgId, ["report"]]).catch(() =>
         pool.query(unattributedSql("reports"), [orgId])),
       pool.query(activityCountSql(["monitor"]), [orgId, ["monitor"]]).catch(() =>
