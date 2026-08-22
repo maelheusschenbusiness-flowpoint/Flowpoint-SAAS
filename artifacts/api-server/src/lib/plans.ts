@@ -145,6 +145,45 @@ export const PLAN_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
   }).filter(([, v]) => v !== "")
 );
 
+// ── Add-on price IDs — test-mode overrides (Stripe CLI / test dashboard) ─────
+// Set STRIPE_TEST_PRICE_ID_ADDON_<KEY> to override any addon price in test mode.
+// These are resolved at call-time in getAddonPriceId() below.
+export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
+  Object.entries({
+    // Keys follow existing Replit secret naming conventions for backward compat.
+    monitorsPack10:       process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS10"]  // set via Replit secret
+                       ?? process.env["STRIPE_TEST_PRICE_ID_10MONITORS"]        ?? "",
+    monitorsPack50:       process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS50"]
+                       ?? process.env["STRIPE_TEST_PRICE_ID_50MONITORS"]        ?? "",
+    advancedSeoLab:       process.env["STRIPE_TEST_PRICE_ID_ADDON_SEOLA"]       ?? "",
+    keywordDomination:    process.env["STRIPE_TEST_PRICE_ID_ADDON_KDE"]         ?? "",
+    backlinkIntelligence: process.env["STRIPE_TEST_PRICE_ID_ADDON_BACKLINK"]    ?? "",
+    behavioralAI:         process.env["STRIPE_TEST_PRICE_ID_ADDON_BEHAVAI"]     ?? "",
+    aiForecasting:        process.env["STRIPE_TEST_PRICE_ID_ADDON_FORECAST"]    ?? "",
+    enterprisePermissions:process.env["STRIPE_TEST_PRICE_ID_ADDON_ENT"]         ?? "",
+    advancedWebhooks:     process.env["STRIPE_TEST_PRICE_ID_ADDON_WEBHOOKS"]    ?? "",
+    retention365d:        process.env["STRIPE_TEST_PRICE_ID_ADDON_RET365"]      ?? "",
+    whiteLabel:           process.env["STRIPE_TEST_PRICE_ID_ADDON_WL"]          ?? "",
+    customDomain:         process.env["STRIPE_TEST_PRICE_ID_ADDON_CD"]          ?? "",
+    extraSeats:           process.env["STRIPE_TEST_PRICE_ID_ADDON_SEATS"]       ?? "",
+    gbpSlots10:           process.env["STRIPE_TEST_PRICE_ID_ADDON_GBP10"]       ?? "",
+    aiCreditsPack50k:     process.env["STRIPE_TEST_PRICE_AI_50K"]               ?? "",
+    aiCreditsPack200k:    process.env["STRIPE_TEST_PRICE_AI_200K"]              ?? "",
+    aiCreditsPack500k:    process.env["STRIPE_TEST_PRICE_AI_500K"]              ?? "",
+  }).filter(([, v]) => v !== "")
+);
+
+/**
+ * Returns the correct Stripe price ID for an add-on, respecting test-mode overrides.
+ * In test mode (sk_test_ key active) → prefer ADDON_PRICE_IDS_TEST[key].
+ * In live mode or when no test override exists → fall back to ADDON_PRICE_IDS[key].
+ */
+export function getAddonPriceId(key: string, stripeKey?: string): string | undefined {
+  const isTestMode = stripeKey ? stripeKey.startsWith("sk_test_") : false;
+  if (isTestMode && ADDON_PRICE_IDS_TEST[key]) return ADDON_PRICE_IDS_TEST[key];
+  return ADDON_PRICE_IDS[key] || undefined;
+}
+
 // ── Add-on price IDs (live Stripe — confirmed 23/06/2026) ────────────────────
 export const ADDON_PRICE_IDS: Record<string, string> = {
   // ── Monitoring ──────────────────────────────────────────────────────────────
