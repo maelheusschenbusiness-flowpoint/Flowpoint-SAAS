@@ -89,9 +89,12 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
     }
     // Shared runner (#437): identical path for manual and scheduled audits —
     // insert, async PSI, alert rules, broadcast, activity, usage accounting.
+    const _aCtx = (req as any).orgContext || {};
     const launched = await launchAudit({
       orgId, url: normalizedUrl, origin,
       name: ((req.body as Record<string,unknown>)["name"] as string) || "",
+      userId: _aCtx.userId || _aCtx.email || "system",
+      userName: _aCtx.name || _aCtx.email || "Système",
     });
     res.status(201).json({ ...launched, type: type ?? "SEO complet" });
   } catch (err) {
@@ -106,12 +109,25 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
 router.get("/audits/history", async (req: Request, res: Response) => {
   const url     = req.query.url as string | undefined;
   const daysRaw = parseInt((req.query.days as string) || "90", 10);
-  const days    = Number.isFinite(daysRaw) ? Math.max(1, Math.min(365, daysRaw)) : 90;
-  if (!url) { res.status(400).json({ error: "url required" }); return; }
-
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
+
+  // retention365d add-on: extend historical lookback beyond 90 days (up to 365)
+  let maxDays = 90; // default: 90 days
+  try {
+    const { loadBillingContext } = await import("../services/billing-context.js");
+    const bCtx = await loadBillingContext(orgId).catch(() => null);
+    if (bCtx?.addons?.["retention365d"]) maxDays = 365;
+    else if (bCtx?.addons?.["retention90d"]) maxDays = 90;
+  } catch { /* non-blocking */ }
+
+  // Cap requested days to what the org is entitled to
+  const requestedDays = Number.isFinite(daysRaw) ? Math.max(1, daysRaw) : 90;
+  const days = Math.min(requestedDays, maxDays);
+
+  if (!url) { res.status(400).json({ error: "url required", maxDays }); return; }
+
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   try {
     const result = await req.orgDb(
       `SELECT * FROM audits WHERE url = $1 AND date >= $2 AND org_id = $3 ORDER BY date ASC LIMIT 365`,
