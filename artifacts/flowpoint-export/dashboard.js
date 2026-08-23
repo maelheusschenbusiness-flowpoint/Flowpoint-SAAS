@@ -13982,9 +13982,9 @@ function renderAI() {
       <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">Suggestions rapides</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px">
         <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Que faire en priorité ?" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${fpT('🚨 Que faire en priorité ?')}</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Plan d'action 30 jours" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">📅 Plan d'action 30 jours</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Analyse les baisses de positions et indique les actions prioritaires." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">📉 Analyser mes positions</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Compare mes derniers audits et résume les progrès à réaliser." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">🔎 Comparer mes audits</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Plan d'action 30 jours" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${fpT('📅 Plan d\'action 30 jours')}</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Analyse les baisses de positions et indique les actions prioritaires." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${fpT('📉 Analyser mes positions')}</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Compare mes derniers audits et résume les progrès à réaliser." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${fpT('🔎 Comparer mes audits')}</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
         ${[
@@ -13992,7 +13992,7 @@ function renderAI() {
           {icon:'🔴', label:'Analyser les monitors DOWN',    prompt:'Analyse mes monitors DOWN et indique les causes probables et les actions à faire.'},
           {icon:'📄', label:'Créer un rapport mensuel',      prompt:'Crée un rapport mensuel résumant mes performances SEO, monitors et missions.'},
           {icon:'📍', label:'Opportunités Local SEO',        prompt:'Quelles sont mes meilleures opportunités Local SEO en ce moment ?'},
-        ].map(p =>`<button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="${escHtml(p.prompt)}" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${p.icon} ${p.label}</button>`).join('')}
+        ].map(p =>`<button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="${escHtml(p.prompt)}" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${p.icon} ${fpT(p.label)}</button>`).join('')}
       </div>
     </div>
 
@@ -15491,7 +15491,7 @@ function renderAIPanelContent() {
       </div>
     </div>
     <div class="fp-ai-quick-prompts" style="margin-bottom:10px">
-      ${['Que faire en priorité ?','Monitors DOWN','Score SEO moyen','Rapport mensuel'].map(p =>`<button class="fp-ai-quick" data-ai-prompt="${p}" style="font-size:10px;padding:4px 9px">${p}</button>`).join('')}
+      ${[['Que faire en priorité ?','Que faire en priorité ?'],['Monitors DOWN','Monitors DOWN'],['Score SEO moyen','Score SEO moyen'],['Rapport mensuel','Rapport mensuel']].map(([p,l]) =>`<button class="fp-ai-quick" data-ai-prompt="${p}" style="font-size:10px;padding:4px 9px">${fpT(l)}</button>`).join('')}
     </div>
     <div id="ai-panel-messages" style="display:flex;flex-direction:column;max-height:280px;overflow-y:auto;margin-bottom:10px">
       ${renderAIMessages()}
@@ -20822,6 +20822,12 @@ function bindGlobalEvents() {
     "📄 Rapports partagés": "📄 Shared reports",
     "📅 Calendrier d'opportunités saisonnières": "📅 Seasonal opportunities calendar",
     "📅 Plan d'action 30 jours": "📅 30-day action plan",
+    "📉 Analyser mes positions": "📉 Analyze my rankings",
+    "🔎 Comparer mes audits": "🔎 Compare my audits",
+    "Améliorer mon score SEO moyen": "Improve my average SEO score",
+    "Analyser les monitors DOWN": "Analyze DOWN monitors",
+    "Créer un rapport mensuel": "Create a monthly report",
+    "Opportunités Local SEO": "Local SEO opportunities",
     "📅 Projection mois par mois": "📅 Month-by-month projection",
     "📅 Timeline SEO — Actions récentes": "📅 SEO timeline — recent actions",
     "📈 Clics & Impressions — évolution quotidienne": "📈 Clicks & Impressions — daily trend",

@@ -3323,12 +3323,14 @@ Sections :
 
 // ── POST /ai/conversion — CRO & conversion analysis ──────────────────────────
 router.post("/ai/conversion", aiRateLimit, async (req, res) => {
-  const { url, metrics, funnel } = req.body as {
+  const { url, metrics, funnel, language: _convLang1 } = req.body as {
     url?: string;
     metrics?: Record<string, unknown>;
     funnel?: unknown[];
+    language?: string;
     context?: Record<string, unknown>;
   };
+  const _langLine1 = (() => { const c = (typeof _convLang1 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang1.trim())) ? _convLang1.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
 
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
@@ -3358,7 +3360,7 @@ Analyse en 4 sections:
   try {
     const aiResult = await callAIWithFallback({
       task: "cro_analysis",
-      systemPrompt: "Tu es un expert CRO et UX. Réponds en français avec des recommandations concrètes.",
+      systemPrompt: `Tu es un expert CRO et UX. ${_langLine1} avec des recommandations concrètes.`,
       userPrompt: prompt,
       maxTokens: 1000,
       orgId,
@@ -3373,13 +3375,15 @@ Analyse en 4 sections:
 
 // ── POST /ai/local — Local SEO recommendations ────────────────────────────────
 router.post("/ai/local", aiRateLimit, async (req, res) => {
-  const { business, location, keywords, gbpData } = req.body as {
+  const { business, location, keywords, gbpData, language: _convLang2 } = req.body as {
     business?: string;
     location?: string;
     keywords?: string[];
     gbpData?: Record<string, unknown>;
+    language?: string;
     context?: Record<string, unknown>;
   };
+  const _langLine2 = (() => { const c = (typeof _convLang2 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang2.trim())) ? _convLang2.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
 
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
@@ -3409,7 +3413,7 @@ Génère une stratégie Local SEO complète:
   try {
     const aiResult = await callAIWithFallback({
       task: "market_intel",
-      systemPrompt: "Tu es un expert Local SEO et Google Business Profile. Réponds en français.",
+      systemPrompt: `Tu es un expert Local SEO et Google Business Profile. ${_langLine2}.`,
       userPrompt: prompt,
       maxTokens: 1200,
       orgId,
@@ -3424,12 +3428,14 @@ Génère une stratégie Local SEO complète:
 
 // ── POST /ai/competitors — Competitor analysis ────────────────────────────────
 router.post("/ai/competitors", aiRateLimit, async (req, res) => {
-  const { competitors, ourUrl, ourScore } = req.body as {
+  const { competitors, ourUrl, ourScore, language: _convLang3 } = req.body as {
     competitors?: Array<{ name: string; url?: string; rating?: number }>;
     ourUrl?: string;
     ourScore?: number;
+    language?: string;
     context?: Record<string, unknown>;
   };
+  const _langLine3 = (() => { const c = (typeof _convLang3 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang3.trim())) ? _convLang3.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
 
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
@@ -3457,7 +3463,7 @@ Fournis:
   try {
     const aiResult = await callAIWithFallback({
       task: "market_intel",
-      systemPrompt: "Tu es un analyste stratégique SEO. Réponds en français avec des insights actionnables.",
+      systemPrompt: `Tu es un analyste stratégique SEO. ${_langLine3} avec des insights actionnables.`,
       userPrompt: prompt,
       maxTokens: 1200,
       orgId,
@@ -3687,12 +3693,14 @@ Réponds uniquement avec le JSON array.`;
 
 // ── POST /ai/pagespeed-insights — AI analysis of PSI data ────────────────────
 router.post("/ai/pagespeed-insights", aiRateLimit, async (req, res) => {
-  const { url, mobile, desktop } = req.body as {
+  const { url, mobile, desktop, language: _convLang4 } = req.body as {
     url?: string;
     mobile?: Record<string, unknown>;
     desktop?: Record<string, unknown>;
+    language?: string;
     context?: Record<string, unknown>;
   };
+  const _langLine4 = (() => { const c = (typeof _convLang4 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang4.trim())) ? _convLang4.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
 
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
 
@@ -3727,7 +3735,7 @@ Génère:
   try {
     const aiResult = await callAIWithFallback({
       task: "seo_audit",
-      systemPrompt: "Tu es un expert performance web (Core Web Vitals, PageSpeed). Réponds en français avec des actions concrètes et du code si nécessaire.",
+      systemPrompt: `Tu es un expert performance web (Core Web Vitals, PageSpeed). ${_langLine4} avec des actions concrètes et du code si nécessaire.`,
       userPrompt: prompt,
       maxTokens: 1200,
       orgId,
@@ -3803,7 +3811,8 @@ router.get("/ai/recommendations", async (req: Request, res: Response) => {
 });
 
 router.post("/ai/generate", aiRateLimit, async (req: Request, res: Response) => {
-  const { prompt, type = "general" } = req.body as { prompt?: string; type?: string };
+  const { prompt, type = "general", language: _convLang5 } = req.body as { prompt?: string; type?: string; language?: string };
+  const _langLine5 = (() => { const c = (typeof _convLang5 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang5.trim())) ? _convLang5.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
   if (!prompt) return res.status(400).json({ error: "prompt required" });
 
   const orgId     = req.orgId  ?? "default";
@@ -3821,7 +3830,7 @@ router.post("/ai/generate", aiRateLimit, async (req: Request, res: Response) => 
   try {
     const result = await aiChat({
       task: "chat",
-      systemPrompt: `Tu es un assistant marketing expert. Type de contenu: ${type}. Réponds en français, de façon professionnelle et directement utilisable.`,
+      systemPrompt: `Tu es un assistant marketing expert. Type de contenu: ${type}. ${_langLine5}, de façon professionnelle et directement utilisable.`,
       messages: [{ role: "user", content: prompt }],
       maxTokens: 800,
     });
