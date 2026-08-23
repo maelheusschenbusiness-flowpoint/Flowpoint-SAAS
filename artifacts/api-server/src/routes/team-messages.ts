@@ -121,12 +121,20 @@ router.delete("/team/channels/:name", canWrite, async (req, res) => {
 router.get("/team/messages", async (req, res) => {
   try {
     const channel = normChannel(req.query["channel"]);
+    // ?since=<epoch_ms> — only return messages newer than this timestamp.
+    // Used by the 15s polling fallback in fp-backend.js to fetch only new
+    // messages instead of re-processing the full 100-message history.
+    const sinceMs = Number(req.query["since"]) || 0;
+    const params: unknown[] = [org(req), channel];
+    const sinceClause = sinceMs > 0
+      ? (() => { params.push(new Date(sinceMs).toISOString()); return `AND created_at > $3`; })()
+      : "";
     const r = await db(req)(
       `SELECT id, org_id, channel, sender_id, sender_name, content, type, attachment_url, attachment_name, created_at
        FROM team_messages
-       WHERE org_id=$1 AND channel=$2
+       WHERE org_id=$1 AND channel=$2 ${sinceClause}
        ORDER BY created_at DESC LIMIT 100`,
-      [org(req), channel]
+      params
     );
     const me = requesterId(req);
     res.json(r.rows.reverse().map((m: Record<string, unknown>) => mapMsg(m, String(m["sender_id"] ?? "") === me)));
@@ -196,6 +204,7 @@ router.post("/team/messages", canWrite, async (req, res) => {
   const senderName = (req as OrgReq).orgContext?.email?.split("@")[0] ?? "Équipe";
   const senderId = requesterId(req);
   const id = "msg" + Date.now();
+  console.log("[CHAT SEND]", { messageId: id, orgId: org(req), senderId, channel });
   try {
     // Auto-persist the channel so it always appears in the channel list.
     // AWAITED (not fire-and-forget): /team/messages/all derives its channel

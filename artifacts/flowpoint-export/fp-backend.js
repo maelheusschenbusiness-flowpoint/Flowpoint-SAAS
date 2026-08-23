@@ -1040,7 +1040,7 @@ window.__fpPageLoadTs = Date.now();
         setTimeout(function() { var c = document.getElementById('team-chat-msgs'); if (c) c.scrollTop = c.scrollHeight; }, 50);
         return;
       }
-      window.STATE.channelMessages[ch].unshift({
+      window.STATE.channelMessages[ch].push({
         ...normalizedMessage,
       });
       // Teammate message: refresh the header badge, play the chat sound.
@@ -1074,7 +1074,7 @@ window.__fpPageLoadTs = Date.now();
       _chatPollInterval = setInterval(async function() {
         if (!window.STATE || !window.STATE.me) return;
         try {
-          var ch = (window.STATE.teamChatChannel || 'general');
+          var ch = (window.STATE.msgChannel || 'general');
           var since = _chatLastPollTs;
           _chatLastPollTs = Date.now();
           var data = await apiFetch('/api/team/messages?channel=' + encodeURIComponent(ch) + '&since=' + since);
@@ -3302,7 +3302,11 @@ window.__fpPageLoadTs = Date.now();
       if (data.type === 'notification'   && data.notification) handleNotificationUpdate(data.notification);
       // ── Team chat — dispatch CustomEvent so fp-backend chat handler picks it up ──
       if (data.type === 'chat:message') {
-        try { document.dispatchEvent(new CustomEvent('fp:chat:message', { detail: data })); } catch(_) {}
+        try {
+          var _chatMsg = data.message || {};
+          console.log('[CHAT EVENT RECEIVED]', { messageId: _chatMsg.id, orgId: data.orgId || '(server-scoped)', senderId: _chatMsg.senderId, channel: data.channel || _chatMsg.channel });
+          document.dispatchEvent(new CustomEvent('fp:chat:message', { detail: data }));
+        } catch(_) {}
       }
       // Legacy format support
       if (data.type === 'team:message' || data.type === 'chat') {
