@@ -1431,6 +1431,57 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     applyCount(reportsRes, "reports");
     applyCount(monitorsRes, "monitors");
 
+    // ── Re-attribute org-level counts to the owner ────────────────────────────
+    // When activity_logs.user_id = orgId (i.e. action logged at the org level,
+    // not to a specific user), byUser[orgId] accumulates those counts. They
+    // belong to the owner — fetch their email/UUID and merge them in.
+    if (byUser[orgId]) {
+      try {
+        const ownerRow = await pool.query<{ email: string; user_id: string }>(
+          `SELECT LOWER(o.owner_email) AS email, u.id::text AS user_id
+           FROM organizations o
+           LEFT JOIN users u ON LOWER(u.email) = LOWER(o.owner_email)
+           WHERE o.id::text = $1 LIMIT 1`,
+          [orgId]
+        );
+        const own = ownerRow.rows[0];
+        if (own?.email || own?.user_id) {
+          const orgCounts = byUser[orgId]!;
+          const fields = ["audits", "missions", "reports", "monitors"] as const;
+          const ensureKey = (k: string) => {
+            if (!byUser[k]) byUser[k] = { audits: 0, missions: 0, reports: 0, monitors: 0 };
+          };
+          if (own.user_id) {
+            ensureKey(own.user_id);
+            for (const f of fields) byUser[own.user_id]![f] += orgCounts[f];
+          }
+          if (own.email && own.email !== own.user_id) {
+            ensureKey(own.email);
+            for (const f of fields) byUser[own.email]![f] += orgCounts[f];
+          }
+          // Remove the ambiguous orgId key so the frontend never matches
+          // a member to org-aggregate counts by accident.
+          delete byUser[orgId];
+          logger.info(
+            { orgId: orgId.slice(0, 8), ownerEmail: own.email?.slice(0, 10), orgCounts },
+            "[team/contributions] org-level counts re-attributed to owner"
+          );
+        }
+      } catch (ownerErr) {
+        logger.warn({ err: ownerErr }, "[team/contributions] owner re-attribution failed (non-fatal)");
+      }
+    }
+
+    // ── Debug log: per-member contribution snapshot ────────────────────────────
+    // Lists every key resolved, so we can verify userId/email alignment.
+    try {
+      const memberSnap = Object.entries(byUser).map(([k, v]) => ({
+        key: k.length > 36 ? k.slice(0, 8) + "…" : k,
+        ...v,
+      }));
+      logger.info({ orgId: orgId.slice(0, 8), members: memberSnap }, "[team/contributions] resolved");
+    } catch (_) { /* non-fatal */ }
+
     res.json({ ok: true, contributions: byUser });
   } catch (err) {
     logger.error({ err }, "[team/contributions] failed");
@@ -1455,7 +1506,9 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
     // NO LIMIT — every active member's streak must be computed; capping at 50
     // silently dropped members past the 50th from the leaderboard.
     // Org isolation: filtered by om.organization_id = $1.
-    const memberRes = await pool.query<{ user_id: string; email: string; name: string; role: string }>(
+    // Prefer organization_members (new schema); fall back to team_members (legacy)
+    // so invited members who haven't migrated still get a streak computed.
+    let memberRes = await pool.query<{ user_id: string; email: string; name: string; role: string }>(
       `SELECT DISTINCT om.user_id::text AS user_id,
               COALESCE(u.email,'') AS email,
               COALESCE(u.first_name||' '||u.last_name, u.first_name, u.email, om.user_id::text) AS name,
@@ -1465,6 +1518,37 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
        WHERE om.organization_id::text = $1 AND om.status = 'active'`,
       [orgId]
     );
+    // If organization_members returned no rows, try legacy team_members table.
+    if (memberRes.rows.length === 0) {
+      try {
+        memberRes = await pool.query(
+          `SELECT DISTINCT tm.user_id::text AS user_id,
+                  COALESCE(u.email,'') AS email,
+                  COALESCE(u.first_name||' '||u.last_name, u.first_name, u.email, tm.user_id::text) AS name,
+                  COALESCE(tm.role,'member') AS role
+           FROM team_members tm
+           JOIN users u ON u.id::text = tm.user_id::text
+           WHERE tm.org_id = $1 AND tm.status = 'active'`,
+          [orgId]
+        );
+      } catch (_) { /* team_members might not exist — ignore */ }
+    }
+    // Always include the org owner (may not be in either members table).
+    try {
+      const ownerQ = await pool.query(
+        `SELECT u.id::text AS user_id, LOWER(o.owner_email) AS email,
+                COALESCE(u.first_name||' '||u.last_name, u.first_name, o.owner_email) AS name
+         FROM organizations o
+         LEFT JOIN users u ON LOWER(u.email) = LOWER(o.owner_email)
+         WHERE o.id::text = $1 LIMIT 1`,
+        [orgId]
+      );
+      const own = ownerQ.rows[0];
+      if (own && own.user_id && !memberRes.rows.some(r => r.user_id === own.user_id)) {
+        (memberRes.rows as Array<{ user_id: string; email: string; name: string; role: string }>)
+          .unshift({ user_id: own.user_id, email: own.email || '', name: own.name || '', role: 'owner' });
+      }
+    } catch (_) { /* non-fatal */ }
 
     const streaks: Array<{
       userId: string; email: string; name: string; role: string;

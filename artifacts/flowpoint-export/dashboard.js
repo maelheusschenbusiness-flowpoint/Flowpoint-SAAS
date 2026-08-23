@@ -57912,28 +57912,38 @@ function renderActivityFeed() {
     const _mColors = ['#2563EB','#8b5cf6','#22c55e','#f59e0b','#06b6d4'];
     const members = (STATE.team && STATE.team.length > 0 ? STATE.team : []).map((t, i) => {
       const nm = t.name || t.email || 'Membre';
-      const id = String(t.id || t.userId || t.user_id || '');
+      // Preserve the canonical userId separately from the synthetic 'owner' id.
+      const userId = t.userId || t.user_id || '';
+      const id = String(userId || t.id || '');
+      const rawId = String(t.id || '');
       const email = String(t.email || '').toLowerCase();
+      const isOwner = t.role === 'owner' || (!STATE.team.some(m => m.role === 'owner') && (t.id === STATE.me?.id || email === String(STATE.me?.email||'').toLowerCase()));
+      // Lookup order: UUID → raw id → email — matches Team performance page.
       const contrib = (STATE.teamContributions && (
-        (t.userId && STATE.teamContributions[t.userId]) ||
-        (id && STATE.teamContributions[id]) ||
+        (userId && STATE.teamContributions[userId]) ||
+        (rawId && rawId !== 'owner' && STATE.teamContributions[rawId]) ||
         (email && (STATE.teamContributions[email] || STATE.teamContributions[t.email]))
       )) || null;
-      const audits = contrib ? Number(contrib.audits || 0) : 0;
-      const missions = contrib ? Number(contrib.missions || 0) : 0;
-      const reports = contrib ? Number(contrib.reports || 0) : 0;
+      // Owner fallback: when activity_logs attribution hasn't resolved yet,
+      // show org-total counts (identical to Team performance page behaviour).
+      const audits   = contrib ? Number(contrib.audits   || 0) : (isOwner ? (STATE.audits  ? STATE.audits.length  : 0) : 0);
+      const missions = contrib ? Number(contrib.missions || 0) : (isOwner ? ((STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length) : 0);
+      const reports  = contrib ? Number(contrib.reports  || 0) : (isOwner ? (STATE.reports ? STATE.reports.length : 0) : 0);
+      // Streak: prefer team streaks keyed by UUID, then email.
+      const streakEntry = (STATE.teamStreaks && (
+        (userId && STATE.teamStreaks[userId]) ||
+        (id && STATE.teamStreaks[id]) ||
+        (email && (STATE.teamStreaks[email] || STATE.teamStreaks[t.email]))
+      )) || null;
       return {
-        id, email,
+        id, userId, email, rawId,
         name: nm, role: t.role || 'member',
         avatar: nm.slice(0,2).toUpperCase(),
         color: _mColors[i % _mColors.length],
         actions: audits + missions + reports,
         score: null, trend: '—',
-        contribs: contrib ? { audits, missions, reports } : null,
-        streak: (STATE.teamStreaks && (
-          (id && STATE.teamStreaks[id]) ||
-          (email && (STATE.teamStreaks[email] || STATE.teamStreaks[t.email]))
-        )) || null,
+        contribs: { audits, missions, reports },
+        streak: streakEntry,
       };
     });
     const teamActs = liveFeed.filter(a => a.cat === 'team');
@@ -57964,15 +57974,9 @@ function renderActivityFeed() {
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${members.map(m => {
-            const _mUid = m.userId || m.id || m.user_id || m.email;
-            const _mUidFallback = m.userId || _mUid;
-            const _mC = (STATE.teamContributions && (
-              (_mUidFallback && STATE.teamContributions[_mUidFallback]) ||
-              (_mUid && STATE.teamContributions[_mUid]) ||
-              (m.email && STATE.teamContributions[m.email])
-            )) || null;
-            if (_mC && !m.contribs) m.contribs = _mC;
-            if (_mC && m.contribs && !m.streak?.current && _mC.streak != null) { if (!m.streak) m.streak = {}; m.streak.current = _mC.streak; }
+            // m.contribs is always set in the members.map() above (with owner fallback).
+            // A second lookup here is not needed and could overwrite correct data with
+            // a stale/null match. Keep only for the streak supplement.
             const pct = m.score ?? 0;
             return `<div style="padding:16px;border-radius:12px;border:1px solid ${m.color}28;background:${m.color}07">
               <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
