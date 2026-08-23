@@ -3731,16 +3731,21 @@ router.post("/ai/summary", aiRateLimit, async (req, res) => {
 
   const fpCtx = await buildFlowpointContext(context, orgId);
 
-  const prompt = `Génère un résumé exécutif de la situation SEO et web pour ce compte Flowpoint.
-Données: ${fpCtx}
-Données additionnelles: ${JSON.stringify(context ?? {})}
+  const _sumLangNames: Record<string,string> = { fr:"French", en:"English", es:"Spanish", de:"German", it:"Italian", pt:"Portuguese", nl:"Dutch", pl:"Polish", sv:"Swedish", ro:"Romanian", cs:"Czech" };
+  const _sumLc = (typeof _sumLang === "string" && /^[a-zA-Z]{2,5}/.test(_sumLang)) ? _sumLang.trim().toLowerCase().slice(0,2) : "fr";
+  const _sumLangName = _sumLangNames[_sumLc] ?? _sumLc.toUpperCase();
+  const _sumLangHeader = _sumLc === "fr" ? "" : `⚠️ CRITICAL: Write the ENTIRE response in ${_sumLangName}. Not a single French word.\n\n`;
 
-Format:
-## Situation Actuelle
-## Points Critiques (max 3)
-## Opportunités Immédiates (top 3 quick wins)
-## Recommandation Stratégique
-## Prévision 3 mois`;
+  const prompt = `${_sumLangHeader}Generate an executive summary of the SEO and web situation for this Flowpoint account. Write entirely in ${_sumLangName}.
+Data: ${fpCtx}
+Additional data: ${JSON.stringify(context ?? {})}
+
+Format (section headings also in ${_sumLangName}):
+## Current Situation
+## Critical Points (max 3)
+## Immediate Opportunities (top 3 quick wins)
+## Strategic Recommendation
+## 3-Month Forecast`;
 
   try {
     const aiResult = await callAIWithFallback({
@@ -3781,33 +3786,40 @@ router.post("/ai/missions", aiRateLimit, async (req, res) => {
 
   const fpCtx = await buildFlowpointContext(context, orgId);
 
-  const prompt = `Tu es consultant SEO senior. Génère 6 missions SEO prioritaires basées UNIQUEMENT sur les données réelles ci-dessous.
+  const _misLangNames: Record<string,string> = { fr:"French", en:"English", es:"Spanish", de:"German", it:"Italian", pt:"Portuguese", nl:"Dutch", pl:"Polish", sv:"Swedish", ro:"Romanian", cs:"Czech" };
+  const _misLc = (typeof _misLang === "string" && /^[a-zA-Z]{2,5}/.test(_misLang)) ? _misLang.trim().toLowerCase().slice(0,2) : "fr";
+  const _misLangName = _misLangNames[_misLc] ?? _misLc.toUpperCase();
+  const _misLangHeader = _misLc === "fr"
+    ? ""
+    : `⚠️ CRITICAL LANGUAGE RULE: Every single word of title, description, and expectedGain MUST be written in ${_misLangName}. No French words allowed in the output.\n\n`;
 
-=== DONNÉES RÉELLES ===
+  const prompt = `${_misLangHeader}You are a senior SEO consultant. Generate 6 priority SEO missions based ONLY on the real data below.
+
+=== REAL DATA ===
 ${fpCtx}
 
-Profil additionnel : ${JSON.stringify(profile ?? {})}
-Missions déjà en cours : ${JSON.stringify((currentMissions ?? []).slice(0, 3))}
+Additional profile: ${JSON.stringify(profile ?? {})}
+Missions already in progress: ${JSON.stringify((currentMissions ?? []).slice(0, 3))}
 
-RÈGLES IMPORTANTES :
-- Chaque mission doit être ancrée à un problème réel cité dans les données (URL précise, score réel, issue réelle).
-- Pas de missions génériques du type "optimiser les images" sans référencer le site concerné.
-- Calcule expectedGain à partir des scores réels (ex: si score=40/100, corriger les issues critiques = +15 à +25 pts).
-- Ordonne par priorité décroissante : les issues les plus bloquantes en premier.
-- N'inclus pas une mission déjà "en cours" dans la liste.
+IMPORTANT RULES:
+- Each mission must be anchored to a real problem cited in the data (exact URL, real score, real issue).
+- No generic missions like "optimize images" without referencing the specific site.
+- Calculate expectedGain from real scores (e.g. if score=40/100, fixing critical issues = +15 to +25 pts).
+- Order by descending priority: most blocking issues first.
+- Do not include a mission already "in progress".
 
-Retourne un JSON array de 6 missions :
+Return a JSON array of 6 missions:
 {
-  "title": "string (court, spécifique — cite le site ou le problème exact)",
-  "description": "string (2-3 phrases, cite les chiffres réels)",
+  "title": "string (short, specific — cite the site or exact problem) — MUST be in ${_misLangName}",
+  "description": "string (2-3 sentences, cite real numbers) — MUST be in ${_misLangName}",
   "category": "seo|performance|content|local|conversion|technical",
   "priority": 1-10,
-  "estimatedImpact": "Faible|Moyen|Élevé|Critique",
-  "estimatedEffort": "1h|4h|1j|1sem|2sem",
-  "expectedGain": "string (ex: +12 points SEO, +20% trafic)"
+  "estimatedImpact": "Low|Medium|High|Critical",
+  "estimatedEffort": "1h|4h|1d|1w|2w",
+  "expectedGain": "string (e.g. +12 SEO points, +20% traffic) — MUST be in ${_misLangName}"
 }
 
-Réponds uniquement avec le JSON array.`;
+Respond ONLY with the JSON array. Language of text fields: ${_misLangName}.`;
 
   try {
     const aiResult = await callAIWithFallback({
