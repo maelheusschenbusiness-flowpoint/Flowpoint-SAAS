@@ -68913,8 +68913,8 @@ window.fpDeleteHistoryEntry = async function(entryId) {
     var _cols = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
     w.style.display = 'block';
     w.innerHTML = '<div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">'
-      + 'Résultats de l\'historique sélectionné'
-      + ' <span style="font-weight:400;color:#475569;font-size:9px">(' + merged.length + ' établissement' + (merged.length > 1 ? 's' : '') + ')</span></div>'
+      + fpT('Résultats de l\'historique sélectionné')
+      + ' <span style="font-weight:400;color:#475569;font-size:9px">(' + merged.length + ' ' + fpT('établissement' + (merged.length > 1 ? 's' : '')) + ')</span></div>'
       + merged.map(function(r, i) {
         var col = _cols[i % _cols.length];
         var title = escHtml(r.title || r.name || r.business_name || '');
@@ -70191,7 +70191,8 @@ window.FP_MARKET_INTEL_API = {
     } catch(e) { console.warn('[FP_MARKET_INTEL_API]', e); }
   },
   async generateReport() {
-    return await apiFetch('/api/market-intelligence/report/generate', { method:'POST', body: JSON.stringify({}) });
+    const _repLang = (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr';
+    return await apiFetch('/api/market-intelligence/report/generate', { method:'POST', body: JSON.stringify({ language: _repLang }) });
   },
 };
 

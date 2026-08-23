@@ -3674,29 +3674,36 @@ router.post("/ai/reports", aiRateLimit, async (req, res) => {
     }
   } catch { /* ignore */ }
 
-  const prompt = `Génère un rapport ${reportType ?? "SEO mensuel"} pour la période ${dynamicPeriod}.
-Sites analysés : ${(sites ?? []).join(", ") || "selon les audits en base"}
-${scoreEvolution ? scoreEvolution + "\n" : ""}Métriques additionnelles : ${JSON.stringify(metrics ?? {})}
+  const _repLangNames2: Record<string,string> = { fr:"French", en:"English", es:"Spanish", de:"German", it:"Italian", pt:"Portuguese", nl:"Dutch", pl:"Polish", sv:"Swedish", ro:"Romanian", cs:"Czech" };
+  const _repLc2 = (typeof _repLang === "string" && /^[a-zA-Z]{2,5}/.test(_repLang)) ? _repLang.trim().toLowerCase().slice(0,2) : "fr";
+  const _repLangName2 = _repLangNames2[_repLc2] ?? _repLc2.toUpperCase();
+  const _repLangHeader = _repLc2 === "fr" ? "" : `⚠️ CRITICAL: Write the ENTIRE report in ${_repLangName2}. Not a single French word in any section or heading.\n\n`;
 
-=== DONNÉES RÉELLES DU COMPTE ===
+  const prompt = `${_repLangHeader}Generate a ${reportType ?? "monthly SEO"} report for the period ${dynamicPeriod}. Write entirely in ${_repLangName2}.
+Analysed sites: ${(sites ?? []).join(", ") || "all sites in the account"}
+${scoreEvolution ? scoreEvolution + "\n" : ""}Additional metrics: ${JSON.stringify(metrics ?? {})}
+
+=== REAL ACCOUNT DATA ===
 ${fpCtx}
 
-Génère le rapport comme un consultant senior qui présente les résultats à son client. Cite UNIQUEMENT les chiffres réels ci-dessus.
+Write this report as a senior consultant presenting results to their client. Cite ONLY the real figures above.
 
-# Résumé Exécutif
-(2-3 phrases avec les vrais chiffres : score actuel, évolution, nombre d'issues)
+(All section headings must be in ${_repLangName2})
 
-# Points Forts — ${dynamicPeriod}
-(3-5 victoires avec chiffres exacts issus du contexte)
+## Executive Summary
+(2-3 sentences with real numbers: current score, evolution, issue count)
 
-# Problèmes Prioritaires
-(3-5 points avec : nom du problème, URL concernée, impact estimé, délai de correction)
+## Highlights — ${dynamicPeriod}
+(3-5 wins with exact figures from the context)
 
-# Plan d'Actions — 30 prochains jours
-(Actions ordonnées par priorité, avec responsable suggéré et délai)
+## Priority Issues
+(3-5 points with: issue name, affected URL, estimated impact, correction timeline)
 
-# Prévisions Mois Prochain
-(Objectifs SMART basés sur l'état actuel)`;
+## Action Plan — Next 30 days
+(Actions ordered by priority, with suggested owner and deadline)
+
+## Next Month Forecast
+(SMART objectives based on current state)`;
 
   try {
     const aiResult = await callAIWithFallback({
