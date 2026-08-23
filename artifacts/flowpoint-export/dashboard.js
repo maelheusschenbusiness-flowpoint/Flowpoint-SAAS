@@ -14128,7 +14128,7 @@ function renderAIMessages() {
   // AI Agents Phase 2 : carte de confirmation pour les actions en attente
   const renderConfirmCard = (cr) => {
     if (!cr || !cr.proposalId) return '';
-    const isDestructive = cr.confirmationLevel === 'full';
+    const isDestructive = cr.confirmationLevel === 'full' && cr.toolName && /^delete_/.test(String(cr.toolName || ''));
     const preview = escHtml(cr.preview || fpT('Confirmer cette action ?'));
     const pid = escHtml(cr.proposalId);
     // The conversationId travels with the card (data-cid) so Confirmer works even
@@ -14136,7 +14136,7 @@ function renderAIMessages() {
     // fixes the « Session perdue » dead-end.
     const cid = escHtml(cr.conversationId || '');
     return `<div style="margin-top:8px;padding:10px 12px;border-radius:8px;background:${isDestructive ? 'rgba(239,68,68,0.07)' : 'rgba(37,99,235,0.07)'};border:1px solid ${isDestructive ? 'rgba(239,68,68,0.25)' : 'rgba(37,99,235,0.2)'};font-size:11px;color:var(--fp-text-soft)">
-      <div style="font-weight:600;margin-bottom:8px;color:var(--fp-text);line-height:1.4">${isDestructive ? '⚠️ ' : ''}${preview}</div>
+      <div style="font-weight:600;margin-bottom:8px;color:var(--fp-text);line-height:1.4">${isDestructive ? '⚠️ ' : '✅ '}${preview}</div>
       <div style="display:flex;gap:6px">
         <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5${isDestructive ? ';background:#ef4444;border-color:#ef4444' : ''}" data-pid="${pid}" data-cid="${cid}" onclick="window.fpAiConfirmAction(this.dataset.pid, this)">${escHtml(fpT('Confirmer'))}</button>
         <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5" data-pid="${pid}" onclick="window.fpAiDismissConfirm(this.dataset.pid, this)">${escHtml(fpT('Ignorer'))}</button>
@@ -67448,11 +67448,12 @@ setTimeout(function() {
             var convId = cr.conversationId || (window.FP_AI_CHAT_API && window.FP_AI_CHAT_API._convId) || '';
             if (cr.conversationId && window.FP_AI_CHAT_API) window.FP_AI_CHAT_API._convId = cr.conversationId;
             var isD = cr.confirmationLevel === 'full';
+            var isDangerous = isD && cr.toolName && /^delete_/.test(String(cr.toolName || ''));
             var card = document.createElement('div');
-            card.style.cssText = 'margin-top:8px;padding:10px 12px;border-radius:8px;background:' + (isD ? 'rgba(239,68,68,0.07)' : 'rgba(37,99,235,0.07)') + ';border:1px solid ' + (isD ? 'rgba(239,68,68,0.25)' : 'rgba(37,99,235,0.2)') + ';font-size:11px';
-            card.innerHTML = '<div style="font-weight:600;margin-bottom:6px;color:var(--fp-text);line-height:1.4">' + (isD ? '⚠️ ' : '') + (cr.preview || fpT('Confirmer cette action ?')) + '</div>'
+            card.style.cssText = 'margin-top:8px;padding:10px 12px;border-radius:8px;background:' + (isDangerous ? 'rgba(239,68,68,0.07)' : 'rgba(37,99,235,0.07)') + ';border:1px solid ' + (isDangerous ? 'rgba(239,68,68,0.25)' : 'rgba(37,99,235,0.2)') + ';font-size:11px';
+            card.innerHTML = '<div style="font-weight:600;margin-bottom:6px;color:var(--fp-text);line-height:1.4">' + (isDangerous ? '⚠️ ' : '✅ ') + (cr.preview || fpT('Confirmer cette action ?')) + '</div>'
               + '<div style="display:flex;gap:6px">'
-              + '<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5' + (isD ? ';background:#ef4444;border-color:#ef4444' : '') + '">' + escHtml(fpT('Confirmer')) + '</button>'
+              + '<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5' + (isDangerous ? ';background:#ef4444;border-color:#ef4444' : '') + '">' + escHtml(fpT('Confirmer')) + '</button>'
               + '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5">' + escHtml(fpT('Ignorer')) + '</button>'
               + '</div>';
             var btns = card.querySelectorAll('button');

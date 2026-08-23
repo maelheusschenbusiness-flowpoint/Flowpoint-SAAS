@@ -220,11 +220,12 @@ export const RECOMMENDATION_TOOLS: ToolDef[] = [
   {
     name: "create_missions_from_strategy",
     description:
-      "Transforme automatiquement une stratégie SEO en missions concrètes FlowPoint. " +
-      "Réutilise intégralement le système missions Phase 2. " +
-      "Utiliser quand l'utilisateur dit : 'crée les missions pour cette stratégie', " +
-      "'transforme en tâches', 'mets en œuvre la stratégie'. " +
-      "Appeler generate_seo_strategy ou search_recommendations d'abord. " +
+      "Transforme directement une demande utilisateur en missions SEO concrètes FlowPoint. " +
+      "Appeler IMMÉDIATEMENT quand l'utilisateur demande : 'crée des missions', " +
+      "'stratégie sous forme de missions', 'plan d'action en missions', " +
+      "'transforme en tâches', 'missions sur 30 jours', 'missions SEO', " +
+      "'mets en œuvre la stratégie'. " +
+      "NE PAS appeler d'autres outils avant — cet outil est autonome et génère les missions directement. " +
       "Confirmation obligatoire (niveau full). Annulation globale possible dans les 30 minutes.",
     requiredPermission: "strategy.generate",
     confirmationLevel: "full",

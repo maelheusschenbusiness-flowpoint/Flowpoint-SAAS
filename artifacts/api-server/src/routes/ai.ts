@@ -2499,7 +2499,7 @@ DONNÉES MANQUANTES — règle stricte :
       ? selectToolsForIntent(_intent, message)
       : [];
 
-    logger.info({ orgId, needsTools, isHypothetical, isExplicitAction, isSimpleGreeting, isSimpleKnowledge, enableTools, intent: _intent, toolCount: _selectedTools.length }, "[AI] routing decision");
+    logger.info({ orgId, needsTools, isHypothetical, isExplicitAction, isSimpleGreeting, isSimpleKnowledge, enableTools, intent: _intent, toolCount: _selectedTools.length, toolNames: _selectedTools.slice(0, 10).map(t => t.name) }, "[AI] routing decision");
     if (needsTools) {
       logger.info({ orgId, model: finalModel, isLightRequest, t_context_ms: _t_context_ms, t_preToolLoop_ms: _t_preProvider - _t_context_start, intent: _intent, toolCount: _selectedTools.length }, "[AI] entering tool loop");
       const toolCtx: ExecuteContext = {
