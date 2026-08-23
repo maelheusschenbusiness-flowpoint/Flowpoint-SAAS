@@ -1534,19 +1534,33 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
       } catch (_) { /* team_members might not exist — ignore */ }
     }
     // Always include the org owner (may not be in either members table).
+    // Three-step lookup so the owner appears even when owner_email is NULL:
+    //   1. Match users by owner_email (canonical).
+    //   2. Fallback: match users by owner_user_id (UUID or legacy string).
+    //   3. If still no users row, use owner_user_id as the raw identifier so
+    //      member_activity_days can still be queried (legacy string user_ids).
     try {
       const ownerQ = await pool.query(
-        `SELECT u.id::text AS user_id, LOWER(o.owner_email) AS email,
-                COALESCE(u.first_name||' '||u.last_name, u.first_name, o.owner_email) AS name
+        `SELECT
+           COALESCE(
+             (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
+             (SELECT u.id::text FROM users u WHERE u.id::text = o.owner_user_id::text LIMIT 1),
+             o.owner_user_id::text
+           ) AS user_id,
+           COALESCE(LOWER(o.owner_email), '') AS email,
+           COALESCE(
+             (SELECT u.first_name||' '||u.last_name FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
+             (SELECT u.first_name||' '||u.last_name FROM users u WHERE u.id::text = o.owner_user_id::text LIMIT 1),
+             o.owner_email, o.owner_user_id::text, 'Owner'
+           ) AS name
          FROM organizations o
-         LEFT JOIN users u ON LOWER(u.email) = LOWER(o.owner_email)
          WHERE o.id::text = $1 LIMIT 1`,
         [orgId]
       );
       const own = ownerQ.rows[0];
       if (own && own.user_id && !memberRes.rows.some(r => r.user_id === own.user_id)) {
         (memberRes.rows as Array<{ user_id: string; email: string; name: string; role: string }>)
-          .unshift({ user_id: own.user_id, email: own.email || '', name: own.name || '', role: 'owner' });
+          .unshift({ user_id: own.user_id, email: own.email || '', name: (own.name || '').trim() || 'Owner', role: 'owner' });
       }
     } catch (_) { /* non-fatal */ }
 
