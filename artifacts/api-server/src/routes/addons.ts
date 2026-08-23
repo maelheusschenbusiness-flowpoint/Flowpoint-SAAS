@@ -3,7 +3,7 @@ import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuo
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
-import { PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS } from "../lib/plans.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -56,6 +56,30 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
     // add-on. Do not call Stripe or create an org_addons duplicate.
     res.json({ ok: true, addonKey: key, includedInPlan: true, addons: await getOrgAddons(orgId) });
     return;
+  }
+  // ── Plan gate: block add-ons incompatible with current plan tier ─────────
+  // Three-layer enforcement: API (here) + checkout (public-billing) + UI.
+  if (!isPlanAllowedAddon(plan, key)) {
+    logger.warn({ orgId, addonKey: key, plan }, "[Addons] plan gate: add-on not allowed for plan tier");
+    res.status(403).json({
+      error: `L'add-on "${key}" n'est pas disponible sur le plan ${plan}. Passez à un plan supérieur pour y accéder.`,
+      code: "ADDON_PLAN_GATE",
+      currentPlan: plan,
+      addonKey: key,
+    });
+    return;
+  }
+  // ── Ensure Stripe customer exists before any subscription mutation ────────
+  // syncAddonWithStripe relies on loadBillingContext to find the customer.
+  // If the org has no customer row in DB (e.g. new org, never subscribed),
+  // ensureStripeCustomer creates one and writes it back — preventing a
+  // silent no_live_subscription failure that looks like a Stripe error.
+  try {
+    const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
+    await ensureStripeCustomer(orgId);
+  } catch (_ensureErr) {
+    logger.warn({ orgId, addonKey: key, err: String(_ensureErr) },
+      "[Addons] ensureStripeCustomer failed — proceeding; syncAddonWithStripe will block if no sub");
   }
   // Bill the paid add-on on the existing Stripe subscription BEFORE granting access.
   // A Stripe failure — OR any unsynced result — must not create a free paid feature.

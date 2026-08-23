@@ -521,6 +521,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
       const sessionParams = urlOrEmbedded({
         mode: "subscription",
+        currency: "eur",
         line_items: allLineItems,
         subscription_data: {
           /* Only grant the trial the server actually quoted. Hardcoding 14 here

@@ -403,6 +403,62 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
   ]),
 };
 
+/**
+ * PLAN_ALLOWED_ADDONS — which add-ons can be PURCHASED (paid) per plan tier.
+ * Distinct from PLAN_INCLUDED_ADDONS (bundled for free).
+ * An add-on absent from this set for the user's plan is BLOCKED at:
+ *   1. API level   — POST /api/addons/:key/activate returns 403
+ *   2. Checkout    — public-billing.ts strips incompatible add-on keys
+ *   3. Frontend    — UI should grey-out/hide (enforced by /api/addons response)
+ *
+ * Hierarchy: standard ⊂ pro ⊂ ultra.
+ */
+const _STANDARD_PURCHASABLE = new Set<string>([
+  // Capacity packs — available on all plans
+  "monitorsPack10", "monitorsPack50",
+  "gbpSlots10",
+  "extraSeats",
+  "auditsPack200", "auditsPack1000",
+  "pdfPack200", "exportsPack1000",
+  "aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k",
+  "retention90d",
+  "prioritySupport",
+]);
+
+const _PRO_EXCLUSIVE = new Set<string>([
+  "globalMonitoring", "slaMonitoring",
+  "keywordDomination", "aiContentStrategist",
+  "aiGbpPosting", "reviewIntelligence", "localDominationMaps",
+  "aiCro", "behavioralAI", "revenueLeak", "abTestingAI",
+  "zapierIntegration", "crmIntegration",
+  "aiExecutiveReport", "aiForecasting", "marketIntelligence", "aiWorkflows",
+  "enterprisePermissions",
+]);
+
+const _ULTRA_EXCLUSIVE = new Set<string>([
+  "agencyPacks",
+  "retention365d",
+  "ssoEnterprise", "aiWorkspaceLaunch",
+]);
+
+export const PLAN_ALLOWED_ADDONS: Record<string, ReadonlySet<string>> = {
+  standard: _STANDARD_PURCHASABLE,
+  pro:      new Set<string>([..._STANDARD_PURCHASABLE, ..._PRO_EXCLUSIVE]),
+  ultra:    new Set<string>([..._STANDARD_PURCHASABLE, ..._PRO_EXCLUSIVE, ..._ULTRA_EXCLUSIVE]),
+  agency:   new Set<string>([..._STANDARD_PURCHASABLE, ..._PRO_EXCLUSIVE, ..._ULTRA_EXCLUSIVE]),
+};
+
+/** Returns true when a plan is allowed to purchase the given add-on key. */
+export function isPlanAllowedAddon(plan: string, addonKey: string): boolean {
+  const planNorm = plan.toLowerCase();
+  const allowed = PLAN_ALLOWED_ADDONS[planNorm];
+  if (!allowed) {
+    // Unknown/free plan: only capacity packs
+    return _STANDARD_PURCHASABLE.has(addonKey);
+  }
+  return allowed.has(addonKey);
+}
+
 export function getPlanForPriceId(priceId: string): string | null {
   // Check live-mode price IDs first
   for (const [plan, id] of Object.entries(PLAN_PRICE_IDS)) {
