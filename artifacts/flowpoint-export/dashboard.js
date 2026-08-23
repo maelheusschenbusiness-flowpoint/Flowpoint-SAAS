@@ -9078,7 +9078,7 @@ function renderLocalSEO() {
                         const resultCount = (h2.total_results != null && h2.total_results > 0)
                           ? h2.total_results
                           : (Array.isArray(h2.results) ? h2.results.length : 0);
-                        const _selH2 = (STATE.localSeo?._selectedHistoryIds||new Set()).has(h2.id!=null?h2.id:hIdx2);
+                        const _selH2 = (STATE.localSeo?._selectedHistoryIds||new Set()).has(hIdx2);
                         return '<div data-hist-row="'+hIdx2+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,0.04);border-radius:6px;cursor:pointer;background:'+(_selH2?'rgba(37,99,235,0.08)':'transparent')+'"'
                           + ' onclick="(function(el,hid){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid);}else{STATE.localSeo._selectedHistoryIds.add(hid);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+hIdx2+'">'
                           + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH2?'checked':'')+' onclick="event.stopPropagation()">'
@@ -9109,7 +9109,7 @@ function renderLocalSEO() {
                     const resultCount = (h.total_results != null && h.total_results > 0)
                       ? h.total_results
                       : (Array.isArray(h.results) ? h.results.length : 0);
-                    const _selH = (STATE.localSeo?._selectedHistoryIds||new Set()).has(h.id||hIdx);
+                    const _selH = (STATE.localSeo?._selectedHistoryIds||new Set()).has(hIdx);
                     return '<div data-hist-row="'+hIdx+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,0.04);border-radius:6px;cursor:pointer;background:'+(_selH?'rgba(37,99,235,0.08)':'transparent')+'"'
                       + ' onclick="(function(el,hid){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid);}else{STATE.localSeo._selectedHistoryIds.add(hid);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+hIdx+'">'
                       + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH?'checked':'')+' onclick="event.stopPropagation()">'
@@ -11001,7 +11001,7 @@ function renderBilling() {
                 <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${f.active ? '#22c55e' : 'rgba(255,255,255,0.12)'};${f.active ? 'box-shadow:0 0 6px rgba(34,197,94,0.4)' : ''}"></div>
               </div>
               <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.4;margin-bottom:8px">${escHtml(f.desc)}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="${f.locked ? `navigateSub('plans')` : f.active ? `navigate('settings');setTimeout(()=>navigateSub(f.sub||'workspace'),80)` : `navigateSub('addons')`}">
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="${f.locked ? `navigateSub('plans')` : f.active ? `navigate('settings');setTimeout(()=>navigateSub('${f.sub||'workspace'}'),80)` : `navigateSub('addons')`}">
                 ${f.locked ? '🔒 Ultra requis' : f.active ? '✓ Configurer' : 'Activer →'}
               </button>
             </div>
@@ -14264,8 +14264,8 @@ window.fpClearAiChat = function() {
       <p><strong>Bonjour !</strong> Je suis votre assistant SEO FlowPoint.<br>${fpT('Posez-moi des questions sur vos sites, performances, opportunités ou demandez-moi de générer un rapport.')}</p>
       <div class="fp-ai-chat-chips" id="fp-ai-chat-chips">
         <button class="fp-ai-quick-chip" data-msg="Quel est le score SEO moyen de mes sites ?">${fpT('Score SEO moyen')}</button>
-        <button class="fp-ai-quick-chip" data-msg="Quelles sont les 3 actions prioritaires à faire cette semaine ?">Actions prioritaires</button>
-        <button class="fp-ai-quick-chip" data-msg="Analyse mes Core Web Vitals et donne-moi des recommandations.">Core Web Vitals</button>
+        <button class="fp-ai-quick-chip" data-msg="Quelles sont les 3 actions prioritaires à faire cette semaine ?">${fpT('Actions prioritaires')}</button>
+        <button class="fp-ai-quick-chip" data-msg="Analyse mes Core Web Vitals et donne-moi des recommandations.">${fpT('Core Web Vitals')}</button>
         <button class="fp-ai-quick-chip" data-msg="Génère un résumé exécutif de la situation SEO.">${fpT('Résumé exécutif')}</button>
       </div>
     </div>`;
@@ -15495,7 +15495,7 @@ function renderAIPanelContent() {
     </div>
     <div class="fp-ai-input-row">
       <textarea class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" rows="1" style="font-size:11px;resize:none;min-height:34px;height:34px;max-height:120px;overflow-y:hidden;line-height:1.4;flex:1 1 auto;min-width:0"></textarea>
-      <button class="fp-ai-send" id="ai-panel-send" style="flex:0 0 auto;width:34px;height:34px;align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send')}</button>
+      <button class="fp-ai-send" id="ai-panel-send" style="flex:0 0 auto;width:38px;height:38px;border-radius:var(--fp-radius-md);align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="16"').replace('height="14"','height="16"')}</button>
       <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:38px;height:38px;border-radius:var(--fp-radius-md);background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
     </div>
   `;
@@ -49355,7 +49355,7 @@ async function init() {
                 : items.map((h2, hIdx2) => {
                     const date = h2.searched_at ? new Date(h2.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}) : '—';
                     const resultCount2 = (h2.total_results!=null&&h2.total_results>0)?h2.total_results:(Array.isArray(h2.results)?h2.results.length:0);
-                    const _selH2 = (STATE.localSeo?._selectedHistoryIds||new Set()).has(h2.id!=null?h2.id:hIdx2);
+                    const _selH2 = (STATE.localSeo?._selectedHistoryIds||new Set()).has(hIdx2);
                     return '<div data-hist-row="'+hIdx2+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-top:1px solid var(--fp-border);border-radius:6px;cursor:pointer;background:'+(_selH2?'rgba(37,99,235,0.08)':'transparent')+'"'
                       + ' onclick="(function(el,hid){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid);}else{STATE.localSeo._selectedHistoryIds.add(hid);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+hIdx2+'">'
                       + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH2?'checked':'')+' onclick="event.stopPropagation()">'
@@ -67337,10 +67337,10 @@ setTimeout(function() {
       </div>
       <p><strong>Bonjour !</strong> Je suis votre assistant SEO FlowPoint.<br>Posez-moi des questions sur vos sites, performances, opportunités ou demandez-moi de générer un rapport.</p>
       <div class="fp-ai-chat-chips" id="fp-ai-chat-chips">
-        <button class="fp-ai-quick-chip" data-msg="Quel est le score SEO moyen de mes sites ?">Score SEO moyen</button>
-        <button class="fp-ai-quick-chip" data-msg="Quelles sont les 3 actions prioritaires à faire cette semaine ?">Actions prioritaires</button>
-        <button class="fp-ai-quick-chip" data-msg="Analyse mes Core Web Vitals et donne-moi des recommandations.">Core Web Vitals</button>
-        <button class="fp-ai-quick-chip" data-msg="Génère un résumé exécutif de la situation SEO.">Résumé exécutif</button>
+        <button class="fp-ai-quick-chip" data-msg="Quel est le score SEO moyen de mes sites ?">${fpT('Score SEO moyen')}</button>
+        <button class="fp-ai-quick-chip" data-msg="Quelles sont les 3 actions prioritaires à faire cette semaine ?">${fpT('Actions prioritaires')}</button>
+        <button class="fp-ai-quick-chip" data-msg="Analyse mes Core Web Vitals et donne-moi des recommandations.">${fpT('Core Web Vitals')}</button>
+        <button class="fp-ai-quick-chip" data-msg="Génère un résumé exécutif de la situation SEO.">${fpT('Résumé exécutif')}</button>
       </div>
     </div>`;
     if (window.FP_AI_CHAT_API) window.FP_AI_CHAT_API.history = [];
@@ -68753,6 +68753,13 @@ window.fpUpdateRankingMarkersFromHistory = function() {
   // Do NOT restore prevRankings: fpUpdateRankingMarkers() does async geocoding and reads
   // STATE.localSeo.rankings in callbacks. Restoring immediately breaks geocoded marker placement.
   // The merged history results are the intended display state when checkboxes are active.
+
+  // Re-render text results panel so the list cards reflect the selected history data.
+  // Use setTimeout(0) to let fpUpdateRankingMarkers start geocoding before the render.
+  setTimeout(function() {
+    if (typeof window._doRender === 'function') window._doRender();
+    else if (typeof window.render === 'function') window.render();
+  }, 0);
 };
 
 window.fpUpdateRankingMarkers = (function() {

@@ -149,6 +149,20 @@ window.__fpPageLoadTs = Date.now();
   // ── Own pageshow handler — fp-backend.js ────────────────────────────────────
   // dashboard.js's pageshow calls window.__fpResetAuth401() but that requires
   // fp-backend.js to already be loaded. Add a direct handler here as a backstop.
+  // ── BFCache suppression window ───────────────────────────────────────────────
+  // Set for 3s after BFCache restore to prevent background 401s from firing a
+  // redirect while session-restore is still in flight.
+  var _fpBFCacheRestoring = false;
+  var _fpBFCacheRestoreTimer = null;
+  function _startBFCacheSuppress() {
+    _fpBFCacheRestoring = true;
+    if (_fpBFCacheRestoreTimer) clearTimeout(_fpBFCacheRestoreTimer);
+    _fpBFCacheRestoreTimer = setTimeout(function() {
+      _fpBFCacheRestoring = false;
+      _fpBFCacheRestoreTimer = null;
+    }, 3000);
+  }
+
   window.addEventListener('pageshow', function(evt) {
     if (!evt.persisted) return;
     if (_fp401ConfirmTimer) { clearTimeout(_fp401ConfirmTimer); _fp401ConfirmTimer = null; }
@@ -156,6 +170,8 @@ window.__fpPageLoadTs = Date.now();
     // Reset the redirect mutex — a BFCache-restored page must be able to redirect
     // if the session is truly expired after revalidation.
     window.__fpRedirecting = false;
+    // Suppress redirect attempts for 3s while session-restore settles.
+    _startBFCacheSuppress();
     // Kick off a fresh session-restore so background timers that fire immediately
     // after BFCache restore pick up a verified token, not a stale sessionStorage one.
     if (typeof window.__fpRestoreSession === 'function') {
@@ -166,6 +182,12 @@ window.__fpPageLoadTs = Date.now();
   function _confirmSessionExpiredBackend() {
     // ── Guard 1: another redirect is already in flight — do nothing. ─────────────
     if (window.__fpRedirecting) {
+      _fp401BackgroundCount = 0;
+      return;
+    }
+    // ── Guard BFCache: BFCache restore just fired — wait for session-restore. ────
+    if (_fpBFCacheRestoring) {
+      console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'BFCache restore in progress — suppressing redirect.');
       _fp401BackgroundCount = 0;
       return;
     }
@@ -1038,6 +1060,32 @@ window.__fpPageLoadTs = Date.now();
     document.addEventListener('fp:chat:message', function (e) {
       _fpHandleChatMessage(e.detail);
     });
+
+    // ── Chat polling fallback (SSE drop recovery) ────────────────────────────
+    // If SSE drops, new messages won't arrive. Poll every 15s as a fallback so
+    // users always see recent messages even without a live SSE connection.
+    var _chatPollInterval = null;
+    var _chatLastPollTs = Date.now();
+    function _startChatPoll() {
+      if (_chatPollInterval) return;
+      _chatPollInterval = setInterval(async function() {
+        if (!window.STATE || !window.STATE.me) return;
+        try {
+          var ch = (window.STATE.teamChatChannel || 'general');
+          var since = _chatLastPollTs;
+          _chatLastPollTs = Date.now();
+          var data = await apiFetch('/api/team/messages?channel=' + encodeURIComponent(ch) + '&since=' + since);
+          if (!Array.isArray(data)) return;
+          data.forEach(function(msg) { _fpHandleChatMessage({ message: msg, channel: ch }); });
+        } catch(_) {}
+      }, 15000);
+    }
+    // Start polling once session is ready
+    if (window.__fpSessionReady) {
+      Promise.resolve(window.__fpSessionReady).then(function(ok) { if (ok) _startChatPoll(); });
+    } else {
+      _startChatPoll();
+    }
 
     // ── Audit terminé ──
     document.addEventListener('fp:audit:complete', function (e) {
