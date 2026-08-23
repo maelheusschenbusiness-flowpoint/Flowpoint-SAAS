@@ -14007,11 +14007,13 @@ function renderAI() {
         /* AI input textarea — grows to max-height then scrolls */
         #ai-input, #ai-panel-input {
           max-height: 120px;
-          overflow-y: auto;       /* always auto — scrollbar appears only when content overflows */
+          overflow-y: auto;       /* always auto — scrollbar appears automatically when content > max-height */
           scrollbar-width: thin;  /* Firefox */
           scrollbar-color: rgba(148,163,184,0.45) transparent;
+          -webkit-overflow-scrolling: touch;   /* smooth scroll on iOS Safari */
         }
-        #ai-input::-webkit-scrollbar, #ai-panel-input::-webkit-scrollbar { width:5px; }
+        /* -webkit-appearance:none forces scrollbar visible on macOS Safari (hidden by default). */
+        #ai-input::-webkit-scrollbar, #ai-panel-input::-webkit-scrollbar { width:5px; -webkit-appearance:none; }
         #ai-input::-webkit-scrollbar-track, #ai-panel-input::-webkit-scrollbar-track { background:transparent; border-radius:4px; }
         #ai-input::-webkit-scrollbar-thumb, #ai-panel-input::-webkit-scrollbar-thumb { background:rgba(148,163,184,0.45); border-radius:4px; min-height:28px; }
         #ai-input::-webkit-scrollbar-thumb:hover, #ai-panel-input::-webkit-scrollbar-thumb:hover { background:rgba(100,116,139,0.75); }
@@ -17848,13 +17850,23 @@ function bindSectionEvents() {
     }
     function _resizeAiInput() {
       if (!aiInput) return;
-      // Measure full content height: reset to min, read scrollHeight, cap at 120px.
-      // overflow-y is always 'auto' (set in CSS) — the browser shows the scrollbar
-      // automatically once the content exceeds max-height:120px.
-      aiInput.style.height = '38px';
+      // height='auto' before reading scrollHeight — Safari-safe.
+      // A fixed-pixel reset causes Safari to clamp scrollHeight to the set height,
+      // giving a wrong measurement and preventing growth beyond the reset value.
+      aiInput.style.height = 'auto';
       var sh = aiInput.scrollHeight;
-      aiInput.style.height = Math.min(sh, 120) + 'px';
-      console.debug('[AI textarea resize]', { scrollHeight: sh, appliedHeight: Math.min(sh, 120), capped: sh > 120 });
+      var capped = Math.min(sh, 120);
+      aiInput.style.height = capped + 'px';
+      // NEVER set overflow-y inline — CSS (overflow-y:auto; max-height:120px) handles it.
+      console.debug('[AI TEXTAREA DEBUG]', {
+        element: '#ai-input',
+        overflowY: window.getComputedStyle(aiInput).overflowY,
+        height: aiInput.style.height,
+        maxHeight: '120px',
+        scrollHeight: sh,
+        clientHeight: aiInput.clientHeight,
+        capped: sh > 120,
+      });
     }
     aiInput?.addEventListener('input', () => {
       _resizeAiInput();
@@ -18301,10 +18313,19 @@ function bindGlobalEvents() {
       // content exceeds the max, reset to min height after send.
       function _panelResize() {
         if (!panelInput) return;
-        // CSS handles overflow-y — only adjust height here.
-        panelInput.style.height = '34px';
+        // height='auto' before reading scrollHeight — Safari-safe.
+        panelInput.style.height = 'auto';
         var sh = panelInput.scrollHeight;
         panelInput.style.height = Math.min(sh, 120) + 'px';
+        // NEVER set overflow-y inline — CSS handles it.
+        console.debug('[AI TEXTAREA DEBUG]', {
+          element: '#ai-panel-input',
+          overflowY: window.getComputedStyle(panelInput).overflowY,
+          height: panelInput.style.height,
+          maxHeight: '120px',
+          scrollHeight: sh,
+          clientHeight: panelInput.clientHeight,
+        });
       }
       function _panelReset() {
         if (!panelInput) return;
@@ -67330,26 +67351,36 @@ setTimeout(function() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function initAIChatPanel() {
-  // Autosize textarea to content between the min (42px) and max (120px) heights.
-  // Below max: no scrollbar (overflow-y hidden). At/above max: overflow-y auto so
-  // the discreet ~5px scrollbar (styled in dashboard.css) appears. Mirrors the
-  // full-page #ai-input behavior so both AI textareas share identical UX.
+  // Autosize textarea between min (42px) and max (120px).
+  // CSS (dashboard.css) owns overflow-y:auto permanently — JS never touches overflow-y.
+  // Using height='auto' before reading scrollHeight is required on Safari: a fixed
+  // pixel reset causes Safari to return the clamped (not true content) scrollHeight.
   var _FP_CHAT_MIN_H = 42;
   var _FP_CHAT_MAX_H = 120;
   function _fpChatResize(el) {
     if (!el) return;
-    el.style.height = _FP_CHAT_MIN_H + 'px';
+    el.style.height = 'auto';                      // Safari-safe: let browser measure true content height
     var sh = el.scrollHeight;
-    el.style.height = Math.min(sh, _FP_CHAT_MAX_H) + 'px';
-    el.style.overflowY = sh > _FP_CHAT_MAX_H ? 'auto' : 'hidden';
+    var capped = Math.min(sh, _FP_CHAT_MAX_H);
+    el.style.height = capped + 'px';
+    // NEVER set overflowY here — dashboard.css overflow-y:auto handles scrollbar display
+    console.debug('[AI TEXTAREA DEBUG]', {
+      element: el.id || el.className,
+      overflowY: window.getComputedStyle(el).overflowY,
+      height: el.style.height,
+      maxHeight: _FP_CHAT_MAX_H + 'px',
+      scrollHeight: sh,
+      clientHeight: el.clientHeight,
+      capped: sh > _FP_CHAT_MAX_H,
+    });
   }
-  // After send: clear content and return to min height with no scrollbar.
-  // Shared by both send paths (click + Enter) via sendMessage().
+  // After send: clear content and return to min height.
+  // CSS remains overflow-y:auto — no overflowY reset here.
   function _fpChatReset(el) {
     if (!el) return;
     el.value = '';
     el.style.height = _FP_CHAT_MIN_H + 'px';
-    el.style.overflowY = 'hidden';
+    // Do NOT set el.style.overflowY — CSS owns this property
   }
 
   function openPanel() {

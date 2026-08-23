@@ -6531,15 +6531,16 @@ html:not([data-theme="light"]) span[style*="color:#94a3b8"] {
   flex: 1; background: var(--fp-bg-body); border: 1px solid var(--fp-border);
   border-radius: 10px; padding: 10px 18px 10px 14px; color: var(--fp-text);
   font-size: 13px; resize: none; max-height: 120px; min-height: 42px;
-  /* overflow-y default hidden — JS (_fpChatResize) toggles to auto only when
-     scrollHeight exceeds max-height (120px). Never shows a scrollbar below max. */
-  overflow-y: hidden; line-height: 1.5; outline: none; font-family: inherit;
+  /* overflow-y:auto — browser shows scrollbar automatically once content
+     exceeds max-height:120px. JS must never override this with 'hidden'. */
+  overflow-y: auto; line-height: 1.5; outline: none; font-family: inherit;
   transition: border-color 0.15s; display: block; width: 100%;
+  -webkit-overflow-scrolling: touch;   /* smooth scroll on iOS Safari */
 }
 .fp-ai-chat-input:focus { border-color: var(--fp-accent); }
-/* Discreet ~5px scrollbar shown only when overflow-y:auto is toggled on by JS.
-   Scoped to #fp-ai-chat-input so no global scrollbar styling is affected. */
-#fp-ai-chat-input::-webkit-scrollbar { width: 5px; }
+/* Always-visible 5px scrollbar — -webkit-appearance:none forces it visible on
+   macOS Safari (otherwise hidden until hover by default). */
+#fp-ai-chat-input::-webkit-scrollbar { width: 5px; -webkit-appearance: none; }
 #fp-ai-chat-input::-webkit-scrollbar-track { background: transparent; border-radius: 4px; margin: 4px 0; }
 #fp-ai-chat-input::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.45); border-radius: 4px; min-height: 28px; }
 #fp-ai-chat-input::-webkit-scrollbar-thumb:hover { background: rgba(100,116,139,0.75); }
