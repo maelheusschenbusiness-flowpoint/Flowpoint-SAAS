@@ -98,14 +98,21 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
   // regardless of whether /api/me/streak or /api/me/prefs is reached later.
   recordActivityDay(orgDb(req), orgId, req.orgContext?.userId ?? undefined).catch(() => {});
 
-  // Canonical timezone from user_prefs.settings (written by PATCH /api/me/settings).
-  // Queried unconditionally so it appears even when org_settings row is missing.
+  // Canonical timezone + language from user_prefs.settings (written by PATCH /api/me/settings).
+  // Queried unconditionally so they appear even when org_settings row is missing
+  // (new-auth orgs only have an organizations row, not org_settings).
   let settingsTimezone: string | null = null;
+  let settingsLanguage: string | null = null;
   try {
     const pRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
     const prefs = pRow.rows[0]?.settings as Record<string, unknown> | null;
-    if (prefs && typeof prefs.timezone === "string" && prefs.timezone) {
-      settingsTimezone = prefs.timezone;
+    if (prefs) {
+      if (typeof prefs.timezone === "string" && prefs.timezone) {
+        settingsTimezone = prefs.timezone;
+      }
+      if (typeof prefs.language === "string" && prefs.language) {
+        settingsLanguage = prefs.language;
+      }
     }
   } catch { /* non-fatal */ }
 
@@ -255,7 +262,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         publicApiKey:       _publicApiKey,
         createdAt:          dbData?.createdAt ?? new Date().toISOString(),
         timezone:  settingsTimezone ?? dbData?.timezone  ?? null,
-        language:  dbData?.language  ?? null,
+        language:  dbData?.language  ?? settingsLanguage ?? null,
         currency:  dbData?.currency  ?? null,
         dateFormat: dbData?.dateFormat ?? null,
         timeFormat: dbData?.timeFormat ?? null,
@@ -445,7 +452,7 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
     publicApiKey:       _publicApiKey,
     createdAt:          current?.createdAt ?? new Date().toISOString(),
     timezone:           resolvedTimezone,
-    language:           current?.language  ?? null,
+    language:           current?.language  ?? (typeof _patchStoredKey?.language === "string" ? _patchStoredKey.language : null) ?? null,
     currency:           current?.currency  ?? null,
     dateFormat:         current?.dateFormat ?? null,
     timeFormat:         current?.timeFormat ?? null,
@@ -621,7 +628,8 @@ router.get("/me/streak", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   try {
-    await recordActivityDay(orgDb(req), orgId);
+    // [FIX] Pass real userId so member_activity_days is populated for team-streak display.
+    await recordActivityDay(orgDb(req), orgId, req.orgContext?.userId);
     let tz = "Europe/Brussels";
     let storedStreak = 0;
     try {

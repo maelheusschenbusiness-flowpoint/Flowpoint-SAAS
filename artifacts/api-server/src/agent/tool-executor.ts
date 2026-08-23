@@ -3168,11 +3168,19 @@ async function dispatchTool(
     } else {
       // INSERT new monitor
       cfResultId = `mon${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      await pool.query(
+      const cfInsertResult = await pool.query(
         `INSERT INTO monitors (id, org_id, name, url, status, uptime, latency, frequency, enabled, is_critical, alert_email, alert_phone, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,'unknown',100,0,$5,true,$6,$7,$8,NOW(),NOW())`,
+         VALUES ($1,$2,$3,$4,'unknown',100,0,$5,true,$6,$7,$8,NOW(),NOW())
+         RETURNING id`,
         [cfResultId, orgId, cfName ?? cfUrl, cfUrl, cfFreq ?? 300, cfCritical ?? false, cfEmail ?? null, cfPhone ?? null]
       );
+      // [Phase 4] Fail-closed: verify the row was actually written before claiming success.
+      if (!cfInsertResult.rows[0]?.id) {
+        return { toolCallId: logId, toolName: name2, ok: false,
+          content: `Échec de la création du monitor — l'insertion en base n'a pas retourné d'identifiant.`,
+          actionLogId: logId };
+      }
+      cfResultId = cfInsertResult.rows[0].id as string;
       cfAction = "créé";
     }
 

@@ -464,6 +464,30 @@ router.get("/local-seo/rankings/history", async (req, res) => {
   }
 });
 
+// ── DELETE /local-seo/rankings/history/:id ────────────────────────────────────
+// Permanently removes one ranking history entry for this org.
+// After deletion the entry will not reappear on refresh or reconnection.
+router.delete("/local-seo/rankings/history/:id", canWrite, async (req, res) => {
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
+  const { id } = req.params;
+  if (!id) { res.status(400).json({ error: "id required" }); return; }
+  try {
+    const r = await pool.query(
+      `DELETE FROM local_seo_ranking_history WHERE id = $1 AND org_id = $2 RETURNING id`,
+      [id, orgId]
+    );
+    if (!r.rowCount) {
+      res.status(404).json({ ok: false, error: "Entry not found or already deleted" });
+      return;
+    }
+    logger.info({ orgId, id }, "[seo] local-seo history entry deleted");
+    res.json({ ok: true, deleted: id });
+  } catch (err) {
+    logger.error({ err, orgId, id }, "[seo] local-seo history delete failed");
+    res.status(500).json({ ok: false, error: "Deletion failed" });
+  }
+});
+
 router.get("/seo/llm-visibility", withQuota(async (req, res) => {
   const { domain = "exemple.fr", sector } = req.query as Record<string,string>;
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";

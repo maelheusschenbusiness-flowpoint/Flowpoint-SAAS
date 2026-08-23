@@ -9123,6 +9123,7 @@ function renderLocalSEO() {
                       + (resultCount > 0
                           ? '<span style="font-size:10px;font-weight:700;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px">'+resultCount+' rés.</span>'
                           : '<span style="font-size:10px;color:#64748b;flex-shrink:0">—</span>')
+                      + (h.id ? '<button onclick="event.stopPropagation();window.fpDeleteHistoryEntry('+JSON.stringify(h.id)+')" title="Supprimer" style="flex-shrink:0;background:transparent;border:none;color:#64748b;font-size:13px;cursor:pointer;padding:0 2px;line-height:1" onmouseover="this.style.color=\'#ef4444\'" onmouseout="this.style.color=\'#64748b\'">✕</button>' : '')
                       + '</div>';
                   }).join('');
             return `<div style="margin-top:12px;border-top:1px solid var(--fp-border);padding-top:10px">
@@ -9668,7 +9669,7 @@ function renderTeam() {
         <div class="fp-card-title" style="margin-bottom:0">${fpT("Activité récente de l'équipe")}</div>
         <button class="fp-link-btn" onclick="navigateSub('activity')">${fpT('Voir tout →')}</button>
       </div>
-      <div class="fp-team-activity-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+      <div class="fp-team-activity-grid" style="display:grid;grid-template-columns:1fr;gap:8px">
         ${(STATE.activityEvents && STATE.activityEvents.length > 0)
           ? STATE.activityEvents.slice(0,6).map(e => {
               const tMap = { audit:'success', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'purple', misc:'info' };
@@ -15670,6 +15671,10 @@ function navigate(route, subRoute) {
   } catch(e) { /* sandboxed iframe */ }
   try { localStorage.setItem('fp:last-route', STATE.route); if (STATE.subRoute) localStorage.setItem('fp:last-sub', STATE.subRoute); else localStorage.removeItem('fp:last-sub'); } catch(e) {}
   document.querySelectorAll('.fp-chart-tooltip').forEach(t => t.remove());
+  // Dismiss calendar daily-agenda panel when navigating away from calendar
+  if (_n.route !== 'missions' && STATE.calendarSelectedDate) {
+    STATE.calendarSelectedDate = null;
+  }
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
   _doRender();
   const _p = document.getElementById('fp-page'); if (_p) _p.scrollTo({ top: 0, behavior: 'instant' });
@@ -51829,13 +51834,13 @@ function renderMonitorsPerformance() {
         <span style="font-size:13px;font-weight:700;color:#2563EB">IA Performance Intelligence</span>
         ${isUltra ? '' : '<span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.12);padding:1px 7px;border-radius:4px;font-weight:600">Ultra</span>'}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <div style="display:flex;gap:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;scrollbar-width:none">
         ${[
           { icon: '📱', title: 'Mobile Europe', msg: 'La latence mobile augmente en Europe (+18% cette semaine)' + (STATE.monitors&&STATE.monitors.length>0?' — site le plus lent : ' + (STATE.monitors.reduce((b,m)=>(m.latency||0)>(b.latency||0)?m:b,STATE.monitors[0]).url||STATE.monitors[0].name||'').replace(/^https?:\/\//,''):'') + '.', color: '#f59e0b' },
           { icon: '⚡', title: 'Pics serveur', msg: 'Les temps de réponse serveur spikent 08h–09h et 19h–20h. Pattern de charge cyclique — cache à activer.', color: '#ef4444' },
           { icon: '🔮', title: 'Prévision', msg: 'Dégradation probable vendredi 18h' + (STATE.monitors&&STATE.monitors.length>0?' sur '+((STATE.monitors[0].url||STATE.monitors[0].name||'').replace(/^https?:\/\//,'')):'') + ' — basée sur l\'historique de monitoring.', color: '#2563EB' },
         ].map(ins => `
-          <div style="padding:10px;background:var(--fp-inner-card);border-radius:8px;border-left:2px solid ${ins.color}">
+          <div style="flex-shrink:0;width:160px;padding:10px;background:var(--fp-inner-card);border-radius:8px;border-left:2px solid ${ins.color}">
             <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:4px">${ins.icon} ${ins.title}</div>
             <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5">${isUltra ? ins.msg : ins.msg.slice(0, 40) + '… <span style=\"color:#8b5cf6;font-weight:600\">Ultra requis</span>'}</div>
           </div>
@@ -56462,7 +56467,7 @@ function renderConversion() {
             <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Aucune fuite de revenus détectée</div>
             <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 16px">${escHtml(_rlEmptyReason)}</div>
             <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button>
+              ${!(window.fpIsConnected ? window.fpIsConnected('ga4') : !!(window.FP_DATA?.ga4?.connected || (STATE.ga4Status && STATE.ga4Status.connected))) ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button>` : ''}
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_REVENUE_LEAK_API.detect(window.FP_DATA?.activeSite)">Lancer la détection</button>
             </div>
            </div>`
@@ -61936,7 +61941,7 @@ function renderCompetitorsMap() {
         </h1>
         <div class="fp-section-sub">Analyse de menace concurrentielle — Intelligence géographique locale</div>
       </div>
-      <div class="fp-section-actions">
+      <div class="fp-section-actions" style="flex-wrap:wrap;row-gap:8px">
         <select id="fp-comp-radius" onchange="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.setRadius('fp-competitors-map',parseInt(this.value))"
           style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:6px 10px">
           <option value="2000">2 km</option>
@@ -61945,7 +61950,7 @@ function renderCompetitorsMap() {
           <option value="20000">20 km</option>
         </select>
         <input id="fp-comp-keyword" type="text" placeholder="Secteur d\'activité" value="${escHtml(defKeyword)}"
-          style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text);font-size:12px;padding:6px 10px;width:160px"
+          style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text);font-size:12px;padding:6px 10px;min-width:0;flex:1"
           onkeydown="if(event.key==='Enter')typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-competitors-map',this.value)">
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-competitors-map',document.getElementById('fp-comp-keyword').value)">🔍 Analyser</button>
       </div>
@@ -68791,7 +68796,8 @@ window.FP_GBP_API = {
               var ta=document.getElementById('fp-gbp-reply-ta');
               var tone=(document.querySelector('.fp-reply-tone.active')||{}).dataset?.tone||'professional';
               if(btn)btn.textContent='⏳ Génération…';
-              apiFetch('/api/google/reviews/'+encodeURIComponent('${escHtml(reviewId)}')+'/generate-reply',{method:'POST',body:JSON.stringify({tone:tone,lang:'fr'})}).then(function(r){
+              var _gbpLang2=(STATE?.me?.language||STATE?.settings?.language||navigator.language||'fr').slice(0,2);
+              apiFetch('/api/google/reviews/'+encodeURIComponent('${escHtml(reviewId)}')+'/generate-reply',{method:'POST',body:JSON.stringify({tone:tone,lang:_gbpLang2})}).then(function(r){
                 if(r?.reply&&ta)ta.value=r.reply;
                 else if(ta)ta.value='Merci pour votre avis ! Nous sommes ravis de votre satisfaction et espérons vous revoir bientôt.';
                 if(btn)btn.textContent='🤖 Re-générer';
@@ -68840,6 +68846,46 @@ window.FP_GBP_API = {
 // ═══════════════════════════════════════════════════════════════════════════════
 // RANKINGS MAP MARKERS — updates Google Map markers when checkboxes change
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Delete a Local SEO history entry (backend + STATE) ───────────────────────
+window.fpDeleteHistoryEntry = async function(entryId) {
+  if (!entryId) return;
+  try {
+    const r = await apiAction('DELETE', '/api/local-seo/rankings/history/' + encodeURIComponent(entryId));
+    if (r && r.ok) {
+      // Remove from STATE immediately — no refresh needed
+      if (STATE.localSeo && Array.isArray(STATE.localSeo.rankingHistory)) {
+        STATE.localSeo.rankingHistory = STATE.localSeo.rankingHistory.filter(function(h) {
+          return h.id !== entryId;
+        });
+      }
+      // Deselect if it was selected
+      if (STATE.localSeo && STATE.localSeo._selectedHistoryIds instanceof Set) {
+        STATE.localSeo._selectedHistoryIds.delete(entryId);
+      }
+      // Re-render the history panel inline (no full page reload)
+      var histContainer = document.getElementById('dfs-rank-history');
+      if (!histContainer) {
+        // Full re-render if the widget is not in view
+        render(STATE.currentSection);
+      } else {
+        // Remove just the row that was deleted
+        var rows = histContainer.querySelectorAll('[data-hist-row]');
+        // Simplest approach: trigger re-render of the section
+        render(STATE.currentSection);
+      }
+      // Update map markers
+      if (typeof window.fpUpdateRankingMarkersFromHistory === 'function') {
+        window.fpUpdateRankingMarkersFromHistory();
+      }
+      showToast('success', fpT('Entrée supprimée'));
+    } else {
+      showToast('error', (r && r.error) || fpT('Erreur suppression'));
+    }
+  } catch(e) {
+    showToast('error', fpT('Erreur réseau'));
+  }
+};
 
 // ── History-selection → map markers ──────────────────────────────────────────
 // When the user checks history items, their results are merged and shown on map.
@@ -69423,7 +69469,8 @@ window.FP_MISSIONS_API = {
   async generate() {
     // Let HTTP errors propagate so _doAiScan can inspect err.status / err.code
     // (402 = quota, 503 = AI unavailable, 403 = module disabled)
-    return await apiFetch('/api/missions/generate', { method: 'POST', body: '{}' });
+    var _missionLang = (window.STATE?.settings?.language || localStorage.getItem('fp:language') || 'fr');
+    return await apiFetch('/api/missions/generate', { method: 'POST', body: JSON.stringify({ language: _missionLang }) });
   },
 
   async create(mission) {

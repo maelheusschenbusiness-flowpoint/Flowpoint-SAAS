@@ -8,6 +8,7 @@ import { createRateLimit } from "../middlewares/rateLimiter.js";
 import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
 import { isQaFixturesEnabled } from "./qa-fixtures.js";
+import { checkQuota } from "../services/billing-service.js";
 
 const router = Router();
 const monitorCreateRateLimit = createRateLimit("reportsPerHour");
@@ -622,9 +623,25 @@ router.post("/monitors", monitorCreateRateLimit, canAdmin, async (req: Request, 
   if (phoneError) { res.status(400).json({ error: phoneError }); return; }
 
   try {
-    const id    = `m${Date.now()}`;
     const orgId = requireOrgId(req, res);
     if (!orgId) return;
+
+    // ── P0 Quota enforcement — must run before any INSERT ──────────────────
+    const quota = await checkQuota("monitors", orgId);
+    if (!quota.allowed) {
+      logger.warn({ orgId, used: quota.used, limit: quota.limit, plan: quota.plan },
+        "[monitors] POST blocked — monitor quota reached");
+      res.status(429).json({
+        error: `Quota de monitors atteint (${quota.used}/${quota.limit} sur le plan ${quota.plan}). Activez le pack +50 monitors ou passez à un plan supérieur.`,
+        code:  "MONITOR_QUOTA_EXCEEDED",
+        used:  quota.used,
+        limit: quota.limit,
+        plan:  quota.plan,
+      });
+      return;
+    }
+
+    const id = `m${Date.now()}`;
 
     // Guard: same URL already monitored for this org
     const dup = await req.orgDb(
