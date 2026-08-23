@@ -464,16 +464,13 @@
 <script>
   /* ── Session guard: already logged-in users should never land on signin ──
      Pressing browser back from the dashboard routes here. Detect the session
-     token (sessionStorage) or cookie and immediately replace with dashboard. */
+     token (sessionStorage) and immediately replace with dashboard.
+     Note: fp_token is httpOnly — document.cookie cannot read it. The async
+     session-restore fetch in the HEAD guard handles the cookie path. */
   (function() {
     try {
       var _st = sessionStorage.getItem('fp_session_token');
       if (_st && _st.length > 10) { window.location.replace('/dashboard.html'); return; }
-    } catch(_) {}
-    try {
-      if (document.cookie && document.cookie.split(';').some(function(c){ return c.trim().startsWith('fp_token=') && c.trim().length > 'fp_token='.length + 5; })) {
-        window.location.replace('/dashboard.html'); return;
-      }
     } catch(_) {}
   })();
 

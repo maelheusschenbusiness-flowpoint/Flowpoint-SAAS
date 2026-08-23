@@ -53011,6 +53011,7 @@ function renderReportsTemplates() {
 function renderTeamChat() {
   const ch = STATE.msgChannel || 'general';
   const msgs = (STATE.channelMessages && STATE.channelMessages[ch]) || STATE.teamChatHistory || [];
+  console.debug('[CHAT RENDER]', { channel: ch, messageCount: msgs.length });
   const myName = STATE.me?.name || STATE.me?.email?.split('@')[0] || 'Vous';
   return `
     <div class="fp-card" style="display:flex;flex-direction:column;height:460px">

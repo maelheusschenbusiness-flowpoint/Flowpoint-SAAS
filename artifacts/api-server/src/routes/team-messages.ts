@@ -237,6 +237,7 @@ router.post("/team/messages", canWrite, async (req, res) => {
     // self:true would suppress their unread badge. Send self:false + senderId;
     // each client compares senderId to its own identity to decide "self".
     store.broadcast({ type: "chat:message", channel, message: { ...msg, self: false, read: false } }, org(req));
+    console.log("[CHAT SSE BROADCAST]", { messageId: id, orgId: org(req), channel, senderId, recipients: "all-org-sse-clients" });
     // Persist PER-RECIPIENT notification rows so offline teammates see the
     // message in their notification feed. One row per active member (excluding
     // the sender), each with its own read state — one member marking all read
