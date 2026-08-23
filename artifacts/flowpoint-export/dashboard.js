@@ -3409,15 +3409,15 @@ const CMD_ITEMS = [
   { cat:'Équipe & Admin', label:'Mode client',                 icon:'users',        route:'client-mode',        shortcut:'' },
   { cat:'Équipe & Admin', label:'Permissions',                 icon:'shield',       route:'permissions',        shortcut:'' },
   { cat:'Équipe & Admin', label:'Paramètres › Sécurité',       icon:'shield',       route:'settings',           shortcut:'',
-    fn: () => { navigate('settings'); setTimeout(() => { STATE.subRoute='security'; render(); }, 150); } },
+    fn: () => { navigate('settings', 'security'); } },
   { cat:'Équipe & Admin', label:'Paramètres › Intégrations',   icon:'activity',     route:'settings',           shortcut:'',
-    fn: () => { navigate('settings'); setTimeout(() => { STATE.subRoute='integrations'; render(); }, 150); } },
+    fn: () => { navigate('settings', 'integrations'); } },
   { cat:'Équipe & Admin', label:'Paramètres › Canaux d\'alerte',icon:'alert',      route:'settings',           shortcut:'',
-    fn: () => { navigate('settings'); setTimeout(() => { STATE.subRoute='alerts'; render(); }, 150); } },
+    fn: () => { navigate('settings', 'alerts'); } },
   { cat:'Équipe & Admin', label:'SSO SAML',             icon:'shield',       route:'settings',           shortcut:'',
-    fn: () => { navigate('settings'); setTimeout(() => { window._ssoTab='providers'; render(STATE.currentSection); }, 150); } },
+    fn: () => { window._ssoTab = 'providers'; navigate('settings', 'security'); } },
   { cat:'Équipe & Admin', label:'Authentification SSO',       icon:'shield',       route:'settings',           shortcut:'',
-    fn: () => { navigate('settings'); setTimeout(() => { window._ssoTab='providers'; render(STATE.currentSection); }, 150); } },
+    fn: () => { window._ssoTab = 'providers'; navigate('settings', 'security'); } },
   // ── Actions rapides ───────────────────────────────────────────────
   { cat:'Actions', label:'Nouvel audit',                       icon:'zap',          route:'audits',             shortcut:'' },
   { cat:'Actions', label:'Nouveau monitor',                    icon:'activity',     route:'monitors',           shortcut:'' },
@@ -8720,7 +8720,7 @@ function renderReports() {
                 ? `<div style="display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;border-radius:5px;background:${f.val};flex-shrink:0"></div><span style="font-size:12px;font-weight:600;color:var(--fp-text-soft)">${f.val}</span></div>`
                 : `<div style="font-size:12px;color:var(--fp-text-soft);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(f.val)}</div>`
               }
-              ${!f.locked ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%;margin-top:8px" onclick="navigate('settings');setTimeout(function(){navigateSub('workspace');},60)">${fpT('Modifier')}</button>` : ''}
+              ${!f.locked ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%;margin-top:8px" onclick="navigate('settings','workspace')">${fpT('Modifier')}</button>` : ''}
             </div>
           `).join('')}
         </div>
@@ -10942,7 +10942,7 @@ function renderBilling() {
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),60)">${fpT('Modifier mon workspace')}</button>
+<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings','workspace')">${fpT('Modifier mon workspace')}</button>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('reports');setTimeout(()=>{openFloatPanel(fpT('Nouveau rapport'),renderNewReportPanel());setupNewReportPanel();},120)">${fpT('Générer rapport agence')}</button>
             </div>
           </div>`
@@ -11004,7 +11004,7 @@ function renderBilling() {
                 <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${f.active ? '#22c55e' : 'rgba(255,255,255,0.12)'};${f.active ? 'box-shadow:0 0 6px rgba(34,197,94,0.4)' : ''}"></div>
               </div>
               <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.4;margin-bottom:8px">${escHtml(f.desc)}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="${f.locked ? `navigateSub('plans')` : f.active ? `navigate('settings');setTimeout(()=>navigateSub('${f.sub||'workspace'}'),80)` : `navigateSub('addons')`}">
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="${f.locked ? `navigateSub('plans')` : f.active ? `(function(){var _ts='${f.sub||'workspace'}';console.log('[Agency Lab nav]',{clickedFeature:'${escHtml(f.name).replace(/'/g,"\\'")}',targetSub:_ts,firstRenderedSub:_ts});navigate('settings',_ts);})()` : `navigateSub('addons')`}">
                 ${f.locked ? '🔒 Ultra requis' : f.active ? '✓ Configurer' : 'Activer →'}
               </button>
             </div>
@@ -11957,7 +11957,7 @@ function renderSettings() {
                     : item.label === 'CSP absente'
                       ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="showToast('warning', fpT('Ajoutez Content-Security-Policy dans vos en-têtes HTTP. Exemple : default-src \'self\''))">${fpT('Voir guide →')}</button>`
                       : item.label === 'CORS wildcard potentiel'
-                        ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings');setTimeout(()=>navigateSub('api'),50)">Restreindre →</button>`
+                        ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings','api')">Restreindre →</button>`
                         : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;opacity:0.6" onclick="showToast('info', fpT('Disponible prochainement'))">${fpT('Bientôt →')}</button>`)
                 : `<span style="font-size:10px;color:#22c55e;font-weight:700;flex-shrink:0">✓ OK</span>`}
             </div>
@@ -13542,9 +13542,9 @@ function renderAI() {
         actions:[
           {label:'Voir les incidents actifs',   icon:'🚨', onclick:"navigate('alerts-center')",                              desc:(STATE.monitors&&STATE.monitors.filter(m=>m.status==='down').length>0?STATE.monitors.filter(m=>m.status==='down').length+' monitor'+(STATE.monitors.filter(m=>m.status==='down').length>1?'s':'')+' DOWN':'Incidents actifs')},
           {label:'Status monitors',             icon:'📊', onclick:"navigate('monitors')",                                  desc:(STATE.monitors&&STATE.monitors.length>0?STATE.monitors.length+' monitor'+(STATE.monitors.length>1?'s':'')+' configuré'+(STATE.monitors.length>1?'s':''):'Uptime et disponibilité')},
-          {label:'Créer une règle d\'alerte',   icon:'🔔', onclick:"navigate('settings');setTimeout(()=>navigateSub('automations'),50)", desc:'Automatisations et workflows'},
-          {label:'Rapport SLA',                 icon:'📄', onclick:"navigate('monitors');setTimeout(()=>navigateSub('sla'),50)", desc:'Uptime et disponibilité'},
-          {label:'Configurer les monitors',     icon:'⚙️', onclick:"navigate('settings');setTimeout(()=>navigateSub('monitors-config'),50)", desc:'Seuils, fréquences et canaux'},
+          {label:'Créer une règle d\'alerte',   icon:'🔔', onclick:"navigate('settings','automations')", desc:'Automatisations et workflows'},
+          {label:'Rapport SLA',                 icon:'📄', onclick:"navigate('monitors','sla')", desc:'Uptime et disponibilité'},
+          {label:'Configurer les monitors',     icon:'⚙️', onclick:"navigate('settings','monitors-config')", desc:'Seuils, fréquences et canaux'},
         ],
       },
       {
@@ -15279,7 +15279,7 @@ function renderNewReportPanel() {
   return `
     <div style="padding:8px 12px;background:rgba(${_rtInfo.col},0.08);border:1px solid rgba(${_rtInfo.col},0.22);border-radius:8px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
       <span style="font-size:18px">${_rtInfo.icon}</span>
-      <div style="flex:1"><div style="font-size:11px;font-weight:700;color:rgba(${_rtInfo.col},1)">Préréglage : ${_rtInfo.lbl}</div><div style="font-size:10px;color:var(--fp-text-faint)">${_rtInfo.desc} · <span style="cursor:pointer;text-decoration:underline" onclick="navigate('settings');setTimeout(function(){navigateSub('workspace');},50);closeFloatPanel()">${fpT('Modifier')}</span></div></div>
+      <div style="flex:1"><div style="font-size:11px;font-weight:700;color:rgba(${_rtInfo.col},1)">Préréglage : ${_rtInfo.lbl}</div><div style="font-size:10px;color:var(--fp-text-faint)">${_rtInfo.desc} · <span style="cursor:pointer;text-decoration:underline" onclick="navigate('settings','workspace');closeFloatPanel()">${fpT('Modifier')}</span></div></div>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">${fpT('Nom du rapport')}</label>
@@ -57699,7 +57699,7 @@ function renderAlertsCenter() {
       </div>
       <div class="fp-section-actions">
         ${btn('Tout marquer lu', 'fp-btn fp-btn-ghost fp-btn-sm', 'check', "onclick=\"apiAction('PATCH','/api/alert-rules/mark-all-read').then(()=>{if(Array.isArray(STATE.notifications))STATE.notifications.forEach(n=>{n.read=true;});STATE.alertUnread=0;showToast('success', fpT('Alertes marquées lues'));render(STATE.currentSection);}).catch(()=>showToast('error', fpT('Erreur')))\"" )}
-        ${btn('Config alertes',  'fp-btn fp-btn-ghost fp-btn-sm', 'settings', "onclick=\"navigate('settings');setTimeout(()=>navigateSub('alerts'),50)\"" )}
+        ${btn('Config alertes',  'fp-btn fp-btn-ghost fp-btn-sm', 'settings', "onclick=\"navigate('settings','alerts')\"" )}
       </div>
     </div>
 
@@ -57729,7 +57729,7 @@ function renderAlertsCenter() {
           ${svgIcon('bell').replace('stroke="currentColor"','stroke="#ef4444"')}
           ${fpT("Règles d'alerte —")} ${(STATE.alertRules||[]).length} ${fpT(pluralizeFr((STATE.alertRules||[]).length,'règle'))} ${fpT((STATE.alertRules||[]).length > 1 ? 'configurées' : 'configurée')}
         </div>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('alerts'),50)">+ Nouvelle règle</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings','alerts')">+ Nouvelle règle</button>
       </div>
       ${(STATE.alertRules||[]).length === 0
         ? '<div style="text-align:center;padding:24px;color:var(--fp-text-faint);font-size:12px">Aucune règle configurée.</div>'
@@ -58297,7 +58297,7 @@ function renderActivityFeed() {
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${automations.length === 0
-            ? `<div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint);font-size:12px;line-height:1.6"><div style="font-size:24px;margin-bottom:8px">⚙️</div><div style="font-weight:600;margin-bottom:4px">Aucune automatisation configurée</div><div>Les données apparaîtront avec votre activité réelle</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:10px" onclick="navigate('settings');setTimeout(()=>navigateSub('automations'),50)">Configurer →</button></div>`
+            ? `<div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint);font-size:12px;line-height:1.6"><div style="font-size:24px;margin-bottom:8px">⚙️</div><div style="font-weight:600;margin-bottom:4px">Aucune automatisation configurée</div><div>Les données apparaîtront avec votre activité réelle</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:10px" onclick="navigate('settings','automations')">Configurer →</button></div>`
             : automations.map(a => {
               const ac = a.status === 'actif' ? '#22c55e' : '#f59e0b';
               return `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid ${ac}22">
@@ -64361,7 +64361,7 @@ window._fpFunnelSave = async function() {
           <strong>Paramètres → Tracking</strong>
           ${fpT('puis réessayez de créer ce funnel.')}
         </div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('tracking'),60)">${fpT('Configurer le tracking →')}</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings','tracking')">${fpT('Configurer le tracking →')}</button>
       </div>`;
     } else {
       showToast?.('error', _errMsg);
@@ -72551,9 +72551,9 @@ function renderGA4ClientMode() {
                   <div style="font-size:11px;color:var(--fp-text-muted)">${wlBranding.primaryColor || '#2563EB'} · White-label actif</div>
                 </div>
               </div>
-              <div style="display:flex;gap:6px">${badge('White-label actif','#22c55e')}<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),50)">Modifier →</button></div>`
+              <div style="display:flex;gap:6px">${badge('White-label actif','#22c55e')}<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings','workspace')">Modifier →</button></div>`
             : `<div style="flex:1;color:var(--fp-text-muted);font-size:12px">Aucun branding configuré. Personnalisez logo, couleurs et nom d'agence dans les Paramètres → Workspace.</div>
-               <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),50)">Configurer →</button>`}
+               <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings','workspace')">Configurer →</button>`}
         </div>
       </div>`;
     return header + permsBanner + auditsHtml + reportsHtml + wlBlock;
