@@ -320,7 +320,29 @@ export const FLAG_ADDONS = new Set([
   "enterprisePermissions",
   "retention90d","retention365d",
   "advancedWebhooks","zapierIntegration","crmIntegration",
-  "customDomain","ssoEnterprise","aiWorkspaceLaunch","prioritySupport",
+  "customDomain","ssoEnterprise","aiWorkspaceLaunch",
+  // NOTE: "prioritySupport" removed — feature not implemented, no commercial exposure
+]);
+
+/**
+ * COMING_SOON_ADDONS — add-ons visible in the UI (roadmap) but NOT yet
+ * available for purchase.  Activation is blocked at every layer:
+ *   1. API  — POST /api/addons/:key/activate returns 503
+ *   2. Checkout — public-billing.ts must reject these keys
+ *   3. Frontend — UI renders disabled "Bientôt disponible" badge/button
+ *
+ * When an add-on ships, remove it from this set and add a Stripe price.
+ */
+export const COMING_SOON_ADDONS = new Set<string>([
+  "globalMonitoring",
+  "backlinkIntelligence",
+  "aiContentStrategist",
+  "abTestingAI",
+  "agencyPacks",
+  "aiExecutiveReport",
+  "aiWorkflows",
+  "crmIntegration",
+  "ssoEnterprise",
 ]);
 
 export const QTY_ADDONS = new Set([
@@ -422,7 +444,7 @@ const _STANDARD_PURCHASABLE = new Set<string>([
   "pdfPack200", "exportsPack1000",
   "aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k",
   "retention90d",
-  "prioritySupport",
+  // NOTE: "prioritySupport" removed — feature not implemented
 ]);
 
 const _PRO_EXCLUSIVE = new Set<string>([

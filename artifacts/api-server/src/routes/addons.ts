@@ -3,7 +3,7 @@ import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuo
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
-import { PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS } from "../lib/plans.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -45,6 +45,24 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
   const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
   if (!ADDON_DEFINITIONS[key]) {
     res.status(400).json({ error: "Unknown addon key" }); return;
+  }
+  // ── Removed-from-catalogue gate ────────────────────────────────────────────
+  // "prioritySupport" was removed from the commercial catalogue (feature not
+  // implemented). Block any activation attempt regardless of plan.
+  if (key === "prioritySupport") {
+    logger.warn({ orgId, addonKey: key }, "[Addons] activation blocked — removed from catalogue");
+    res.status(410).json({ error: "Cet add-on n'est plus disponible.", code: "ADDON_REMOVED" }); return;
+  }
+  // ── Coming-soon gate ───────────────────────────────────────────────────────
+  // Add-ons in COMING_SOON_ADDONS are visible on the pricing/UI as roadmap items
+  // but are NOT yet available for purchase.  Block activation at every layer.
+  if (COMING_SOON_ADDONS.has(key)) {
+    logger.warn({ orgId, addonKey: key }, "[Addons] activation blocked — add-on not yet available (COMING_SOON)");
+    res.status(503).json({
+      error: "Cet add-on n'est pas encore disponible. Il sera lancé prochainement.",
+      code: "ADDON_COMING_SOON",
+      addonKey: key,
+    }); return;
   }
   // Optional quantity (quantity add-ons only) — clamped 1..20 to match the UI.
   const rawQty = (req.body as { quantity?: unknown } | undefined)?.quantity;
