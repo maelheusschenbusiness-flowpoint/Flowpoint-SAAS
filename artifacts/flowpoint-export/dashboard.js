@@ -9123,6 +9123,7 @@ function renderLocalSEO() {
             return `<div style="margin-top:12px;border-top:1px solid var(--fp-border);padding-top:10px">
               <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Historique des recherches <span style="font-size:9px;font-weight:400;color:#475569">(cochez pour afficher sur la carte)</span></div>
               <div id="dfs-rank-history" style="overflow-y:auto;overflow-x:hidden;padding-right:2px;max-height:220px">${histHtml}</div>
+              <div id="dfs-history-results-widget" style="display:none;margin-top:8px;border-top:1px solid rgba(37,99,235,0.15);padding-top:8px"></div>
             </div>`;
           })()}
         </div>
@@ -49337,6 +49338,8 @@ async function init() {
       if (r?.ok || r?.rankings) {
         if (r.rankings) {
           if (!STATE.localSeo) STATE.localSeo = {};
+          // Clear history overlay — a live search replaces any history selection
+          if (typeof window.fpClearHistoryMarkers === 'function') window.fpClearHistoryMarkers();
           STATE.localSeo.rankings = r.rankings;
           // Prepend a history entry with the fresh results so checkbox filtering works immediately.
           // The DB history fetch below will replace this with the server-side canonical list.
@@ -68775,89 +68778,176 @@ window.FP_GBP_API = {
 
 // ── History-selection → map markers ──────────────────────────────────────────
 // When the user checks history items, their results are merged and shown on map.
-window.fpUpdateRankingMarkersFromHistory = function() {
-  var map = STATE._gmap;
-  if (!map || typeof google === 'undefined' || !google.maps) {
-    // Map not yet initialized — queue for execution once map loads
-    window._fpPendingHistoryMarkerUpdate = true;
-    return;
-  }
-  window._fpPendingHistoryMarkerUpdate = false;
-  var history = (STATE.localSeo && STATE.localSeo.rankingHistory) || [];
-  var selectedIds = (STATE.localSeo && STATE.localSeo._selectedHistoryIds) || new Set();
+// ── History-specific marker registry — completely isolated from live rankings ──
+// fpUpdateRankingMarkers manages _markers[] for live searches.
+// History markers live here so the two registries never interfere.
+(function() {
+  var _hm = [];   // {marker, infoWindow}[] — current history markers on the map
+  var _geocodePending = {};
 
-  // Parse results if stored as string (legacy/network drift)
-  history.forEach(function(h) {
-    if (h && typeof h.results === 'string') {
-      try { h.results = JSON.parse(h.results); } catch(_) { h.results = []; }
+  function _clearHistoryMarkers() {
+    _hm.forEach(function(x) { try { x.marker.setMap(null); x.iw.close(); } catch(_e){} });
+    _hm = [];
+    _geocodePending = {};
+  }
+
+  function _updateHistoryResultsWidget(merged) {
+    var w = document.getElementById('dfs-history-results-widget');
+    if (!w) return;
+    if (!merged || merged.length === 0) {
+      w.style.display = 'none';
+      w.innerHTML = '';
+      return;
     }
-  });
-
-  if (selectedIds.size === 0) {
-    // All history items unchecked → restore default markers (current live search results)
-    if (typeof window.fpUpdateRankingMarkers === 'function') window.fpUpdateRankingMarkers();
-    return;
+    var _cols = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
+    w.style.display = 'block';
+    w.innerHTML = '<div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">'
+      + 'Résultats de l\'historique sélectionné'
+      + ' <span style="font-weight:400;color:#475569;font-size:9px">(' + merged.length + ' établissement' + (merged.length > 1 ? 's' : '') + ')</span></div>'
+      + merged.map(function(r, i) {
+        var col = _cols[i % _cols.length];
+        var title = escHtml(r.title || r.name || r.business_name || '');
+        var addr  = r.address ? ('<div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(r.address) + '</div>') : '';
+        var rating = (r.rating > 0) ? ('<div style="font-size:10px;color:#f59e0b">★ ' + r.rating + ' (' + (r.reviews || r.reviews_count || 0) + ' avis)</div>') : '';
+        var rank = r.rank || (i + 1);
+        return '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 4px;' + (i > 0 ? 'border-top:1px solid var(--fp-border);' : '') + '">'
+          + '<div style="font-size:13px;font-weight:800;color:' + col + ';min-width:20px;text-align:center">#' + rank + '</div>'
+          + '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:600;color:var(--fp-text)">' + title + '</div>' + rating + addr + '</div></div>';
+      }).join('');
   }
 
-  // Collect all results from selected history entries.
-  // IDs in _selectedHistoryIds are always numeric array indices (see history onclick).
-  var merged = [];
-  history.forEach(function(h, hIdx) {
-    if (selectedIds.has(hIdx) && Array.isArray(h.results) && h.results.length > 0) {
-      h.results.forEach(function(r) {
-        // Normalize common DFS field names so geocoding works regardless of API version
-        var norm = Object.assign({}, r);
-        if (!norm.address) norm.address = r.formatted_address || r.full_address || r.address_info?.address || null;
-        if (!norm.title)   norm.title   = r.name || r.business_name || r.title || '';
-        merged.push(norm);
+  function _placeHistoryMarkers(map, merged) {
+    _clearHistoryMarkers();
+    if (!merged.length) return;
+
+    var _cols = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
+    var bounds = new google.maps.LatLngBounds();
+    var hasCoord = false;
+    var geocoder = (google.maps.Geocoder) ? new google.maps.Geocoder() : null;
+    var pendingGeo = 0;
+    var markersPlaced = 0;
+
+    function _addMarker(lat, lng, r, i) {
+      var col = _cols[i % _cols.length];
+      var rank = r.rank || (i + 1);
+      var marker = new google.maps.Marker({
+        position: { lat: lat, lng: lng }, map: map,
+        title: r.title || r.name || '',
+        label: { text: '#' + rank, color: '#fff', fontWeight: '800', fontSize: '10px' },
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 16, fillColor: col, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
+        zIndex: 200 + i,
       });
+      var ratingLine = r.rating > 0 ? '<br><span style="color:#f59e0b">★ ' + r.rating + '</span>' : '';
+      var addrLine = r.address ? '<br><span style="color:#94a3b8;font-size:11px">' + escHtml(r.address) + '</span>' : '';
+      var iw = new google.maps.InfoWindow({
+        content: '<div style="min-width:150px;padding:4px 6px"><b style="color:' + col + '">#' + rank + '</b> '
+          + escHtml(r.title || r.name || '') + ratingLine + addrLine + '</div>',
+      });
+      marker.addListener('click', function() { iw.open(map, marker); });
+      _hm.push({ marker: marker, iw: iw });
+      bounds.extend({ lat: lat, lng: lng });
+      hasCoord = true;
+      markersPlaced++;
+      if (pendingGeo <= 0 && hasCoord) { map.fitBounds(bounds, 60); if (map.getZoom() > 15) map.setZoom(15); }
     }
-  });
 
-  if (merged.length === 0) {
-    // Selected entries have no persisted results — clear markers and warn
-    if (typeof window.fpUpdateRankingMarkers === 'function') window.fpUpdateRankingMarkers();
-    showToast('info', fpT('Les résultats sélectionnés ne contiennent aucune donnée cartographiable.'));
-    return;
+    // User coords as geocode fallback offset
+    var uLat = STATE.me && STATE.me.location && STATE.me.location.latitude  != null ? parseFloat(String(STATE.me.location.latitude))  : null;
+    var uLng = STATE.me && STATE.me.location && STATE.me.location.longitude != null ? parseFloat(String(STATE.me.location.longitude)) : null;
+
+    merged.forEach(function(r, i) {
+      var rLat = r.lat != null ? parseFloat(r.lat) : (r.latitude  != null ? parseFloat(r.latitude)  : null);
+      var rLng = r.lng != null ? parseFloat(r.lng) : (r.longitude != null ? parseFloat(r.longitude) : null);
+      if (Number.isFinite(rLat) && Number.isFinite(rLng)) {
+        _addMarker(rLat, rLng, r, i);
+      } else if (r.address && geocoder && !_geocodePending[r.address + '_' + i]) {
+        _geocodePending[r.address + '_' + i] = true;
+        pendingGeo++;
+        geocoder.geocode({ address: r.address }, function(results, status) {
+          pendingGeo--;
+          if (status === 'OK' && results && results[0]) {
+            var loc = results[0].geometry.location;
+            r.lat = loc.lat(); r.lng = loc.lng();
+            _addMarker(loc.lat(), loc.lng(), r, i);
+          } else if (uLat != null && uLng != null) {
+            _addMarker(uLat + (i % 2 === 0 ? 1 : -1) * 0.004 * (Math.floor(i / 2) + 1),
+                       uLng + (i % 2 === 0 ? -1 : 1) * 0.006 * (Math.floor(i / 2) + 1), r, i);
+          }
+          if (pendingGeo <= 0 && hasCoord) { map.fitBounds(bounds, 60); if (map.getZoom() > 15) map.setZoom(15); }
+        });
+      } else if (uLat != null && uLng != null) {
+        _addMarker(uLat + (i % 2 === 0 ? 1 : -1) * 0.004 * (Math.floor(i / 2) + 1),
+                   uLng + (i % 2 === 0 ? -1 : 1) * 0.006 * (Math.floor(i / 2) + 1), r, i);
+      }
+    });
+
+    console.log('[LocalSEO history checkbox]', { historyId: 'done', rankingsLoaded: merged.length, markersDisplayed: _hm.length });
   }
 
-  STATE.localSeo.rankings = merged;
-  STATE.localSeo._selectedRankings = new Set(merged.map(function(_, i){ return i; }));
+  window.fpUpdateRankingMarkersFromHistory = function() {
+    var map = STATE._gmap;
+    if (!map || typeof google === 'undefined' || !google.maps) {
+      window._fpPendingHistoryMarkerUpdate = true;
+      return;
+    }
+    window._fpPendingHistoryMarkerUpdate = false;
 
-  // ── Debug log (visible in browser console) ──────────────────────────────────
-  var _selIds = Array.from(selectedIds);
-  console.log('[LocalSEO] history selection → selectedIds:', _selIds,
-    '| merged:', merged.length, 'results',
-    '| STATE.localSeo.rankings:', STATE.localSeo.rankings.length,
-    '| STATE.loading:', !!STATE.loading);
+    var history    = (STATE.localSeo && STATE.localSeo.rankingHistory) || [];
+    var selectedIds = (STATE.localSeo && STATE.localSeo._selectedHistoryIds) || new Set();
 
-  // ── 1. Update text results panel IN-PLACE ───────────────────────────────────
-  // Do NOT call _doRender() — it replaces #fp-page innerHTML which destroys the
-  // Google Maps div, causing all async geocoded markers to be placed on a
-  // detached (invisible) map instance. Direct DOM patch preserves the map.
-  var _rankWidget = document.getElementById('dfs-local-rank-widget');
-  if (_rankWidget) {
-    var _rankColors = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
-    _rankWidget.innerHTML = merged.map(function(r, i) {
-      var _col = _rankColors[i % _rankColors.length];
-      var _title = escHtml(r.title || r.name || r.business_name || '');
-      var _addr  = r.address ? ('<div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(r.address) + '</div>') : '';
-      var _rating = (r.rating > 0) ? ('<div style="font-size:10px;color:#f59e0b">★ ' + r.rating + ' (' + (r.reviews || r.reviews_count || 0) + ' avis)</div>') : '';
-      var _rank = r.rank || (i + 1);
-      return '<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 6px;border-radius:7px;' + (i > 0 ? 'border-top:1px solid var(--fp-border);' : '') + 'background:rgba(37,99,235,0.06)">'
-        + '<div style="font-size:15px;font-weight:800;color:' + _col + ';min-width:22px;text-align:center">#' + _rank + '</div>'
-        + '<div style="flex:1;min-width:0">'
-        + '<div style="font-size:12px;font-weight:600;color:var(--fp-text)">' + _title + '</div>'
-        + _rating + _addr
-        + '</div></div>';
-    }).join('') + '<div style="margin-top:8px;font-size:10px;color:#64748b;font-style:italic">'
-      + fpT('Historique sélectionné — ') + merged.length + ' ' + fpT('résultats') + '</div>';
-  }
-  console.log('[LocalSEO] rank widget updated in-place | markers to place:', merged.length);
+    // Parse JSON-string results (legacy DB rows)
+    history.forEach(function(h) {
+      if (h && typeof h.results === 'string') {
+        try { h.results = JSON.parse(h.results); } catch(_e) { h.results = []; }
+      }
+    });
 
-  // ── 2. Update map markers AFTER DOM patch (map div still intact) ─────────────
-  if (typeof window.fpUpdateRankingMarkers === 'function') window.fpUpdateRankingMarkers();
-};
+    if (selectedIds.size === 0) {
+      // All unchecked — clear history markers; leave live rankings untouched
+      _clearHistoryMarkers();
+      _updateHistoryResultsWidget([]);
+      return;
+    }
+
+    // Merge results from all selected entries (deduplicate by title+address)
+    var seen = new Set();
+    var merged = [];
+    history.forEach(function(h, hIdx) {
+      if (!selectedIds.has(hIdx)) return;
+      console.log('[LocalSEO history checkbox]', { historyId: hIdx, keyword: h.keyword, location: h.location, rankingsLoaded: Array.isArray(h.results) ? h.results.length : 0, markersDisplayed: '(placing)' });
+      if (!Array.isArray(h.results)) return;
+      h.results.forEach(function(r) {
+        var norm = Object.assign({}, r);
+        if (!norm.address) norm.address = r.formatted_address || r.full_address || (r.address_info && r.address_info.address) || null;
+        if (!norm.title)   norm.title   = r.name || r.business_name || r.title || '';
+        var key = (norm.title + '|' + (norm.address || '')).toLowerCase();
+        if (!seen.has(key)) { seen.add(key); merged.push(norm); }
+      });
+    });
+
+    // Update the dedicated history results widget — NEVER touch dfs-local-rank-widget
+    _updateHistoryResultsWidget(merged);
+
+    if (merged.length === 0) {
+      _clearHistoryMarkers();
+      showToast('info', fpT('Les résultats sélectionnés ne contiennent aucune donnée cartographiable.'));
+      return;
+    }
+
+    // Place isolated history markers — does NOT mutate STATE.localSeo.rankings
+    _placeHistoryMarkers(map, merged);
+  };
+
+  // Expose clear method so live-search reload can wipe history overlay
+  window.fpClearHistoryMarkers = function() {
+    _clearHistoryMarkers();
+    _updateHistoryResultsWidget([]);
+    if (STATE.localSeo) STATE.localSeo._selectedHistoryIds = new Set();
+    // Uncheck all checkboxes visually
+    document.querySelectorAll('.fp-hist-cb').forEach(function(cb) { cb.checked = false; });
+    document.querySelectorAll('[data-hist-row]').forEach(function(el) { el.style.background = 'transparent'; });
+  };
+})();
 
 window.fpUpdateRankingMarkers = (function() {
   var _markers = [];
