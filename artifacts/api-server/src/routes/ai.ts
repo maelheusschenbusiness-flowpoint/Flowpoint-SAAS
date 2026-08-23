@@ -2993,7 +2993,11 @@ STYLE RULES (absolute):
   } catch (err) {
     const traceId = (req.headers["x-request-id"] as string | undefined) ?? `tr${Date.now().toString(36)}`;
     logger.error({ err, proposalId, orgId, traceId }, "[agent] confirm failed");
-    res.status(500).json({ ok: false, error: "Erreur lors de l'exécution", traceId });
+    // Include a sanitized version of the real error message so the frontend can
+    // surface the actual cause instead of a generic fallback.
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const safeMsg = rawMsg.replace(/password|secret|token|key/gi, "***").slice(0, 300);
+    res.status(500).json({ ok: false, error: `Erreur lors de l'exécution : ${safeMsg}`, traceId });
   }
 });
 

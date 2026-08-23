@@ -65521,11 +65521,54 @@ window.fpAiConfirmAction = async function(proposalId, btnEl) {
       return;
     }
     // When ok:false, prefer r.content (executor rejection reason) then r.error, then fallback.
-    var resultText = r.ok
-      ? '✅ ' + (r.content || fpT('Action effectuée.'))
-      : '⚠ ' + (r.content || r.error || fpT('Échec de l\'exécution.'));
-    _applyResult(r.ok, resultText, r.undoToken);
-    if (r.ok) { STATE.missions = null; loadMissions && loadMissions().catch(function(){}); }
+    var resultText;
+    if (r.ok) {
+      // ── Faux positif guard ─────────────────────────────────────────────────
+      // If the tool returned ok:true but created 0 missions, surface a warning
+      // instead of the misleading ✅ success.
+      var _rMissions = (r.data && Array.isArray(r.data.missions)) ? r.data.missions : null;
+      var _rCount    = _rMissions !== null ? _rMissions.length : null;
+      if (_rCount !== null && _rCount === 0) {
+        resultText = '⚠ ' + fpT('Confirmation reçue mais aucune mission n\'a été créée.') +
+          ' ' + (r.content || '');
+        _applyResult(false, resultText, null);
+      } else {
+        // ── Success with navigation hint ───────────────────────────────────
+        var _navLink = (_rCount !== null && _rCount > 0)
+          ? ' <a href="#" onclick="navigate(\'missions\');return false;" style="color:var(--fp-accent);font-weight:600">' + fpT('Voir les missions') + ' →</a>'
+          : '';
+        resultText = '✅ ' + (r.content || fpT('Action effectuée.')) + _navLink;
+        _applyResult(r.ok, resultText, r.undoToken);
+
+        // Reload missions — show explicit error if reload fails (prevents false-positive
+        // where ✅ appears but the missions page still shows the old list).
+        STATE.missions = null;
+        if (typeof loadMissions === 'function') {
+          loadMissions().then(function() {
+            render(); // ensure mission count in sidebar badge updates
+          }).catch(function(loadErr) {
+            var _loadErrMsgIdx = STATE.aiMessages.findIndex(function(m2) {
+              return m2.undoToken || (m2.text && m2.text.indexOf('✅') === 0);
+            });
+            // Append reload-failure notice to the most recent ✅ message
+            var _targetIdx = _loadErrMsgIdx !== -1 ? _loadErrMsgIdx : (STATE.aiMessages.length - 1);
+            if (_targetIdx >= 0 && STATE.aiMessages[_targetIdx]) {
+              STATE.aiMessages[_targetIdx] = Object.assign({}, STATE.aiMessages[_targetIdx], {
+                text: (STATE.aiMessages[_targetIdx].text || '') +
+                  '\n\n⚠ ' + fpT('Rechargement de la liste de missions échoué — rafraîchissez la page (F5) pour les voir.') +
+                  (loadErr && loadErr.message ? ' (' + loadErr.message + ')' : ''),
+              });
+              saveAIHistory();
+              updateAIUI();
+            }
+            console.warn('[AI Chat] loadMissions reload failed after confirm:', loadErr);
+          });
+        }
+      }
+    } else {
+      resultText = '⚠ ' + (r.content || r.error || fpT('Échec de l\'exécution.'));
+      _applyResult(false, resultText, null);
+    }
   } catch(e) {
     // Erreur visible dans le fil — ne jamais restaurer silencieusement le bouton.
     var status = e && e.status;
