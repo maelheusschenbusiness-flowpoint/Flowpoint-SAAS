@@ -359,12 +359,13 @@ window.__fpPageLoadTs = Date.now();
                         }
                         if (window.__fpAuthState === 'restoring') {
                           return Promise.resolve(_sessionReady).then(function(ok) {
-                            if (!ok && !window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+                            if (!ok && !window.__fpRedirecting && !_fpBFCacheRestoring && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
                               window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
                             }
                             return null;
                           });
                         }
+                        if (_fpBFCacheRestoring) { return null; }
                         window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
                       }
                       return null;
@@ -388,7 +389,7 @@ window.__fpPageLoadTs = Date.now();
               }
               if (window.__fpAuthState === 'restoring') {
                 return Promise.resolve(_sessionReady).then(function(ok) {
-                  if (!ok && !window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+                  if (!ok && !window.__fpRedirecting && !_fpBFCacheRestoring && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
                     window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
                   }
                   return null;
@@ -399,6 +400,7 @@ window.__fpPageLoadTs = Date.now();
                 console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Guard 0: early-boot, suppressing redirect.');
                 return null;
               }
+              if (_fpBFCacheRestoring) { return null; }
               window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
             }
             return null;
@@ -417,12 +419,13 @@ window.__fpPageLoadTs = Date.now();
               }
               if (window.__fpAuthState === 'restoring') {
                 return Promise.resolve(_sessionReady).then(function(ok) {
-                  if (!ok && !window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+                  if (!ok && !window.__fpRedirecting && !_fpBFCacheRestoring && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
                     window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
                   }
                   return null;
                 });
               }
+              if (_fpBFCacheRestoring) { return null; }
               window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
             }
             return null;

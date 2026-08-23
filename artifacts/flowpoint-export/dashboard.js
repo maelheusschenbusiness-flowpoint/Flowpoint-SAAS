@@ -9487,7 +9487,10 @@ function renderTeam() {
   try {
   const _teamErrBanner = _sectionErrorBanner('team');
   const me = STATE.me;
-  const roleColors = { owner:'#f59e0b', manager:'#2563EB', editor:'#8b5cf6', viewer:'#94a3b8' };
+  const roleColors = { owner:'#f59e0b', admin:'#2563EB', manager:'#2563EB', editor:'#8b5cf6', member:'#8b5cf6', viewer:'#94a3b8', guest:'#94a3b8' };
+  // Translate raw DB role to the same friendly labels used in the invite dropdown.
+  // DB: 'admin' was stored when invited as "Manager"; 'member' when invited as "Editor".
+  const ROLE_DISPLAY = { owner:'Propriétaire', admin:'Manager', manager:'Manager', editor:'Éditeur', member:'Éditeur', viewer:'Lecteur', guest:'Invité' };
   const rolePerms = {
     owner:   { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
     manager: { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:false },
@@ -9541,7 +9544,7 @@ function renderTeam() {
                 <div style="font-size:11px;color:var(--fp-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.email)}</div>
               </div>
               <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
-                ${badge(t.role, roleColors[t.role]||'#94a3b8')}
+                ${badge(ROLE_DISPLAY[t.role]||t.role, roleColors[t.role]||'#94a3b8')}
                 <div style="width:7px;height:7px;border-radius:50%;background:${t.status==='active'?'#22c55e':'#94a3b8'};flex-shrink:0" title="${t.status==='active'?'En ligne':'Hors ligne'}"></div>
               </div>
               ${t.role!=='owner'?`<button class="fp-hover-toolbar-btn" title="${fpT('Retirer')}" data-remove-member="${t.id}" style="flex-shrink:0">${svgIcon('x')}</button>`:''}
@@ -9638,7 +9641,7 @@ function renderTeam() {
               <tbody>
                 ${Object.entries(rolePerms).map(([role, perms]) => `
                   <tr>
-                    <td style="padding:5px 8px 5px 0">${badge(role, roleColors[role]||'#94a3b8')}</td>
+                    <td style="padding:5px 8px 5px 0">${badge(ROLE_DISPLAY[role]||role, roleColors[role]||'#94a3b8')}</td>
                     ${permKeys.map(k => `<td style="text-align:center;padding:4px">
                       ${perms[k]
                         ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`
