@@ -562,10 +562,10 @@ function _confirmSessionExpired() {
   // ── Guard 0: early-boot window (< 5s) — session-restore may not be settled yet. ─
   // On F5 or BFCache restore, background 401s can arrive before /api/me has confirmed
   // the session. Defer instead of flashing sign-in.
-  if (performance.now() < 5000 && !window.__fpSessionConfirmed) {
+  if (performance.now() < 8000 && !window.__fpSessionConfirmed) {
     console.warn('[FP-AUTH]', new Date().toISOString(), 'Guard 0: early-boot, deferring redirect.');
     if (!_401ConfirmTimer) {
-      _401ConfirmTimer = setTimeout(function() { _401ConfirmTimer = null; _confirmSessionExpired(); }, Math.ceil(5000 - performance.now()) + 200);
+      _401ConfirmTimer = setTimeout(function() { _401ConfirmTimer = null; _confirmSessionExpired(); }, Math.ceil(8000 - performance.now()) + 200);
     }
     return;
   }
@@ -2042,7 +2042,10 @@ async function loadData(options = {}) {
       time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}) : '',
       createdAt: m.createdAt || null,
       senderId: m.senderId || null,
-      read: true, self: !!m.self, attachmentUrl: m.attachmentUrl||null, attachmentName: m.attachmentName||null,
+      read: true,
+      // Recompute self flag from current identity (survives role changes)
+      self: !!m.self || (m.senderId && [STATE.me?.userId, STATE.me?.id, STATE.me?.email].filter(Boolean).map(String).indexOf(String(m.senderId)) >= 0),
+      attachmentUrl: m.attachmentUrl||null, attachmentName: m.attachmentName||null,
     });
     // Build channel map: include known channels + any extras from server response
     const _knownChs = ['general','seo','rapports','support'];
@@ -10838,8 +10841,7 @@ function renderBilling() {
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),60)">${fpT('Configurer portail client')}</button>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),60)">${fpT('Modifier mon workspace')}</button>
+<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),60)">${fpT('Modifier mon workspace')}</button>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('reports');setTimeout(()=>{openFloatPanel(fpT('Nouveau rapport'),renderNewReportPanel());setupNewReportPanel();},120)">${fpT('Générer rapport agence')}</button>
             </div>
           </div>`
@@ -10884,7 +10886,6 @@ function renderBilling() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${ws.mrr}</div>
                 ${badge(ws.status, ws.status === 'Actif' ? '#22c55e' : '#2563EB')}
               </div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),80)">${fpT('Gérer')}</button>
             </div>
           `).join('')}
         </div>
@@ -13915,8 +13916,8 @@ function renderAI() {
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
           <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
           <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:hidden;line-height:1.5;height:38px;max-height:120px;padding-right:8px;flex:1 1 auto;min-width:0"></textarea>
-          <button class="fp-ai-send" id="ai-send" style="flex:0 0 auto;width:36px;height:36px;align-self:flex-end;display:flex;align-items:center;justify-content:center;border-radius:var(--fp-radius-md);background:var(--fp-accent,#2563EB);color:#fff;border:none;cursor:pointer;transition:background 0.15s">${svgIcon('send').replace('width="14"','width="20"').replace('height="14"','height="20"')}</button>
-          <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
+          <button class="fp-ai-send" id="ai-send" style="flex:0 0 auto;width:38px;height:38px;align-self:flex-end;display:flex;align-items:center;justify-content:center;border-radius:var(--fp-radius-md);background:var(--fp-accent,#2563EB);color:#fff;border:none;cursor:pointer;transition:background 0.15s">${svgIcon('send').replace('width="14"','width="18"').replace('height="14"','height="18"')}</button>
+          <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:38px;height:38px;border-radius:var(--fp-radius-md);background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
         <!-- Progress hint: shows server-side step name (e.g. "Identification des informations…")
              while waiting for the first AI token. Hidden when real text arrives. -->
@@ -15397,7 +15398,7 @@ function renderAIPanelContent() {
     <div class="fp-ai-input-row">
       <textarea class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" rows="1" style="font-size:11px;resize:none;min-height:34px;height:34px;max-height:120px;overflow-y:hidden;line-height:1.4;flex:1 1 auto;min-width:0"></textarea>
       <button class="fp-ai-send" id="ai-panel-send" style="flex:0 0 auto;width:34px;height:34px;align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send')}</button>
-      <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
+      <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:38px;height:38px;border-radius:var(--fp-radius-md);background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
     </div>
   `;
 }
@@ -54440,7 +54441,7 @@ function renderCompetitor() {
             </div>
           </div>
           ${!analysis ? `<div class="fp-card" style="text-align:center;padding:28px"><div style="font-size:13px;color:var(--fp-text-muted)">Cliquez <strong>Analyser</strong> sur ce concurrent pour lancer l'analyse IA.</div><button class="fp-btn fp-btn-primary" style="margin-top:14px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}')">🔬 Analyser ${escHtml(selComp.name||'')}</button></div>` : `
-          <div style="padding:8px 12px;border-radius:8px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);font-size:10px;color:var(--fp-text-muted);margin-bottom:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="padding:8px 12px;border-radius:8px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);font-size:10px;color:var(--fp-text-muted);margin-top:20px;margin-bottom:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span style="font-weight:700;color:var(--fp-accent)">📡 Provenance des données</span>
             <span style="padding:2px 7px;background:rgba(37,99,235,0.1);border-radius:8px">Métriques SEO → <strong>DataForSEO Labs</strong> (Authority, Mots-clés, Trafic)</span>
             <span style="padding:2px 7px;background:rgba(139,92,246,0.1);border-radius:8px">Analyse comparative → <strong>IA</strong> (Forces, Opportunités, Matrice)</span>
@@ -57877,7 +57878,7 @@ function renderActivityFeed() {
                   <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(m.role)}</div>
                 </div>
                 <div style="text-align:right">
-                  <div style="font-size:14px;font-weight:600;color:var(--fp-text)">${(function(){var s=m.streak?.current;return s!=null?s+'j':'—';})()}</div>
+                  <div style="font-size:14px;font-weight:600;color:var(--fp-text)">${(function(){var s=m.streak?.current;return s!=null?s+'j':'0j';})()}</div>
                   <div style="font-size:10px;color:var(--fp-text-faint)">Streak 🔥</div>
                 </div>
               </div>
@@ -62038,15 +62039,15 @@ function renderTeamPerformance() {
               <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${m.role} · Streak : <span style="color:#f97316">🔥 ${typeof m.streak === 'number' ? m.streak + ' j' : m.streak}</span></div>
             </div>
             <div style="text-align:right">
-              <div style="font-size:24px;font-weight:800;color:${m.roleColor};font-family:var(--fp-font-head)">${m.score ?? '—'}</div>
+              <div style="font-size:24px;font-weight:800;color:${m.roleColor};font-family:var(--fp-font-head)">${m.score ?? 0}</div>
               <div style="font-size:10px;color:var(--fp-text-faint)">score activité</div>
             </div>
           </div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
             ${[
-              {l:'Audits',v:m.audits,c:'#2563EB'},
-              {l:'Missions',v:m.missions,c:'#22c55e'},
-              {l:'Rapports',v:m.reports,c:'#8b5cf6'},
+              {l:'Audits',v:m.audits??0,c:'#2563EB'},
+              {l:'Missions',v:m.missions??0,c:'#22c55e'},
+              {l:'Rapports',v:m.reports??0,c:'#8b5cf6'},
             ].map(s=>`
               <div style="background:var(--fp-inner-card);border-radius:8px;padding:10px;text-align:center">
                 <div style="font-size:20px;font-weight:800;color:${s.c};font-family:var(--fp-font-head)">${s.v}</div>
@@ -68604,6 +68605,13 @@ window.fpUpdateRankingMarkersFromHistory = function() {
   window._fpPendingHistoryMarkerUpdate = false;
   var history = (STATE.localSeo && STATE.localSeo.rankingHistory) || [];
   var selectedIds = (STATE.localSeo && STATE.localSeo._selectedHistoryIds) || new Set();
+
+  // Parse results if stored as string (legacy/network drift)
+  history.forEach(function(h) {
+    if (h && typeof h.results === 'string') {
+      try { h.results = JSON.parse(h.results); } catch(_) { h.results = []; }
+    }
+  });
 
   if (selectedIds.size === 0) {
     // All history items unchecked → restore default markers (current live search results)
