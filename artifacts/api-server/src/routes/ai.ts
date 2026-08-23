@@ -1095,7 +1095,7 @@ router.patch("/ai/config", async (req: Request, res: Response): Promise<void> =>
 // Classification priority: ACTION > HYPOTHETICAL > SIMPLE_KNOWLEDGE/GREETING > CONTEXTUAL
 // Rule: explicit user intent always overrides surface lexical signals ("mon site" etc.).
 const _CI_HYPO_RE = /\b(imagine[z]?|supposons|suppose[z]?|si on avait|si j'avais|what if|au cas où|en supposant|fictif|par hypothèse|hypothétiquement|pour l'exercice|par exemple si|mettons que|faisons comme si|scénario fictif)\b/i;
-const _CI_ACTION_RE = /\b(crée[rz]?|créer|ajoute[rz]?|ajouter|supprime[rz]?|supprimer|modifie[rz]?|modifier|planifie[rz]?|planifier|programme[rz]?|programmer|lance[rz]?|lancer|démarre[rz]?|démarrer|génère[rz]?|générer|schedule|create\s+a|add\s+a|delete\s+|remove\s+|update\s+)\b/i;
+const _CI_ACTION_RE = /\b(crée[rz]?|créer|ajoute[rz]?|ajouter|supprime[rz]?|supprimer|modifie[rz]?|modifier|planifie[rz]?|planifier|programme[rz]?|programmer|lance[rz]?|lancer|démarre[rz]?|démarrer|génère[rz]?|générer|schedule|create\s+a|add\s+a|delete\s+|remove\s+|update\s+|suis\s+(le|un|une|ce|les|mon|cette)|suivre\s+(un|le|ce|les)|track\s+(a\s+)?keyword|retire[rz]?\s+(le|un|ce|les)|désactive[rz]?)\b/i;
 const _CI_GREETING_RE = /^(bonjour|bonsoir|salut|hello|hi|merci|ça va|ok|oui|non|d'accord|pas de problème|super|parfait|génial|cool|thanks|thank you|👍|🙏|😊)\s*[!?.]?$/i;
 const _CI_KNOWLEDGE_RE = /^(qu[''']est[- ]ce\s+(que\s+|qu[''']|c[''']est\s+)?|c[''']est\s+quoi\s+|que\s+signifie[nt]?\s+|comment\s+fonctionne[nt]?\s+|pourquoi\s+\w|explique[zmr]?-?moi?\s+|définition\s+(de\s+)?|comment\s+(se\s+)?calcule[nt]?\s+|qu[''']appelle-?t-?on\s+|how\s+does\s+|what\s+is\s+|what[''']s\s+|why\s+is\s+|explain\s+|define\s+|what\s+does\s+)/i;
 const _CI_PERSONAL_RE = /\b(mon\s+site|notre\s+site|mes\s+|notre\s+|ma\s+|nôtre|nos\s+|chez\s+nous|pour\s+nous|mon\s+seo|notre\s+seo|mon\s+audit|mon\s+domaine|notre\s+domaine|mon\s+url|notre\s+url|ici\b|ce\s+site|cette\s+page|cette\s+url|show\s+me|give\s+me|my\s+site|my\s+|our\s+|we\s+have|i\s+have|j[''']ai\b|on\s+a\b|analyse\s+le|analyse\s+notre|analyse\s+mon)\b/i;
@@ -1111,7 +1111,7 @@ export type AIIntentCategory =
   | "HYBRID";             // External URL + FlowPoint data + possible action
 
 /** Tool families corresponding to the src/agent tool modules. */
-export type AIToolFamily = "missions" | "calendar" | "audits" | "recommendations" | "monitors" | "url";
+export type AIToolFamily = "missions" | "calendar" | "audits" | "recommendations" | "monitors" | "url" | "keywords";
 
 // ── AI error codes for structured Render logs ─────────────────────────────────
 // Logged in every timeout/error path. Users see clean messages; logs show codes.
@@ -1137,6 +1137,10 @@ const _CI_FAMILY_RE: Record<AIToolFamily, RegExp> = {
   recommendations: /\b(recommandation[s]?|suggestion[s]?|opportunité[s]?|conseil[s]?|amélioration[s]?|stratégie\s+seo)\b/i,
   calendar:        /\b(calendrier|agenda|événement[s]?|rendez-vous|planning|réunion[s]?|rappel|schedule)\b/i,
   url:             /\b(analyse[r]?\s+(ce\s+site|cette\s+url|cette\s+page|le\s+site|le\s+concurrent)|concurrent[s]?|domaine\s+concurrent)\b|https?:\/\//i,
+  // NOTE: \b does not work reliably with accented chars (é, è...) in JS regex.
+  // Match patterns that unambiguously indicate keyword intent without \b anchors
+  // on accented tokens. "audit" alone should NOT trigger this family.
+  keywords:        /\bkeyword[s]?\b|mot-cl[eé]|mot\s+cl[eé]|mots\s+cl[eé]|ajouter?\s+(?:un\s+|le\s+|les\s+)?mot\b|suivre?\s+(?:un\s+|le\s+|les\s+)?mot\b|retirer?\s+(?:un\s+|le\s+|les\s+)?mot\b|suivi\s+(?:de[s]?\s+)?mot\b|positionnement\s+(?:de[s]?\s+)?mot\b/i,
 };
 
 export function _detectToolFamilies(message: string): AIToolFamily[] {
@@ -1163,6 +1167,8 @@ function _toolFamilyOf(toolName: string): AIToolFamily {
   if (AUDIT_TOOLS.some(t => t.name === toolName))           return "audits";
   if (RECOMMENDATION_TOOLS.some(t => t.name === toolName))  return "recommendations";
   if (MONITOR_TOOLS.some(t => t.name === toolName))         return "monitors";
+  // Workspace keyword tools — must come before the url fallback
+  if (["list_keywords", "add_keyword", "remove_keyword"].includes(toolName)) return "keywords";
   return "url";
 }
 
@@ -1797,6 +1803,11 @@ export function buildConfirmationPreview(toolName: string, args: Record<string, 
     generate_recommendations:     { fr: "Générer des recommandations SEO", en: "Generate SEO recommendations", es: "Generar recomendaciones SEO" },
     generate_seo_strategy:        { fr: "Générer une stratégie SEO", en: "Generate an SEO strategy", es: "Generar una estrategia SEO" },
     create_missions_from_strategy:{ fr: "Créer des missions à partir de la stratégie", en: "Create missions from the strategy", es: "Crear misiones a partir de la estrategia" },
+    add_keyword:                  { fr: "Ajouter un mot-clé au suivi de positionnement", en: "Add a keyword to position tracking", es: "Agregar una palabra clave al seguimiento" },
+    remove_keyword:               { fr: "⚠ Retirer un mot-clé du suivi", en: "⚠ Remove a keyword from tracking", es: "⚠ Quitar una palabra clave del seguimiento" },
+    list_keywords:                { fr: "Lister les mots-clés suivis", en: "List tracked keywords", es: "Listar palabras clave seguidas" },
+    add_competitor:               { fr: "Ajouter un concurrent au suivi", en: "Add a competitor to tracking", es: "Agregar un competidor al seguimiento" },
+    delete_competitor:            { fr: "⚠ Supprimer définitivement un concurrent", en: "⚠ Permanently delete a competitor", es: "⚠ Eliminar definitivamente un competidor" },
   };
   const langKey = (lang === "en" || lang === "es") ? lang : "fr";
   if (lang === "en") {
