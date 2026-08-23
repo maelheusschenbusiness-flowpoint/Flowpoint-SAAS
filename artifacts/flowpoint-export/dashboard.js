@@ -5217,12 +5217,27 @@ function _fpUnreadChatNotifs() {
 
 function getMsgUnreadTotal() {
   if (!STATE.channelMessages) STATE.channelMessages = PREVIEW_MODE ? JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT)) : {general:[],seo:[],rapports:[],support:[]};
-  // Use persisted notification read-state as the sole source of truth for the
-  // badge count.  channelMessages.read is in-memory only and resets on every
-  // page load, which caused the badge to reappear after refresh even though
-  // the user had already seen the messages.  Notification rows (type='chat')
-  // survive reloads because their read flag is persisted to the DB.
-  return _fpUnreadChatNotifs().length;
+  // Two sources:
+  // 1. In-memory channelMessages: SSE-delivered messages (live session).
+  // 2. Persisted notification rows (type='chat'): offline fallback only.
+  // We count in-memory unread first, then add notification rows that have
+  // no corresponding in-memory entry (to avoid double-counting).
+  const chMsgUnreadIds = new Set();
+  let chTotal = 0;
+  if (STATE.channelMessages && typeof STATE.channelMessages === 'object') {
+    Object.values(STATE.channelMessages).flat().forEach(function(m) {
+      if (m && !m.read && !m.self) {
+        chTotal++;
+        if (m.id) chMsgUnreadIds.add(String(m.id));
+      }
+    });
+  }
+  // Notification rows that have no in-memory counterpart (offline messages)
+  const notifExtra = _fpUnreadChatNotifs().filter(function(n) {
+    const match = /^ntf_chat_(.+)_\d+$/.exec(String(n.id || ''));
+    return !(match && chMsgUnreadIds.has(match[1]));
+  }).length;
+  return chTotal + notifExtra;
 }
 
 // ── Global chat notification helpers (called from fp-backend.js SSE handler) ──
@@ -5286,9 +5301,10 @@ function renderMsgDropdown() {
         return `<div class="fp-msg-item${m.read?'':' unread'}${m.self?' self':''}" style="${m.self?'flex-direction:row-reverse':''};display:flex;align-items:flex-end;gap:7px">
           <div class="fp-msg-avatar" style="background:${bg};color:${col};flex-shrink:0">${escHtml(m.from[0])}</div>
           <div class="fp-msg-body" style="${m.self?'align-items:flex-end':''};display:flex;flex-direction:column">
-            <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:2px;${m.self?'flex-direction:row-reverse':''}">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;${m.self?'flex-direction:row-reverse':''}">
               <div class="fp-msg-from" style="${m.self?'color:#2563EB':''}">${m.self?'Vous':escHtml(m.from)}</div>
               <div class="fp-msg-time">${escHtml(m.time)}</div>
+              ${!m.read&&!m.self?`<span style="width:7px;height:7px;border-radius:50%;background:var(--fp-accent,#6366f1);flex-shrink:0;display:inline-block" title="Non lu"></span>`:''}
             </div>
             <div class="fp-msg-text" style="border-radius:${m.self?'12px 4px 12px 12px':'4px 12px 12px 12px'};background:${m.self?'rgba(37,99,235,0.15)':'var(--fp-inner-card, rgba(255,255,255,0.07))'};border-color:${m.self?'rgba(37,99,235,0.25)':'rgba(255,255,255,0.06)'};color:${m.self?'#c7d9ff':''}">
               ${m.text ? escHtml(m.text) : ''}

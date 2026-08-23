@@ -169,6 +169,16 @@ window.__fpPageLoadTs = Date.now();
       _fp401BackgroundCount = 0;
       return;
     }
+    // ── Guard 0: early-boot window (< 8s) — session-restore may not have settled. ──
+    // Mirrors dashboard.js _confirmSessionExpired Guard 0 so neither code path
+    // can flash the sign-in screen while the page is still bootstrapping.
+    if (performance.now() < 8000 && !window.__fpSessionConfirmed) {
+      console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Guard 0: early-boot, deferring redirect.');
+      if (!_fp401ConfirmTimer) {
+        _fp401ConfirmTimer = setTimeout(function() { _fp401ConfirmTimer = null; _confirmSessionExpiredBackend(); }, Math.ceil(8000 - performance.now()) + 200);
+      }
+      return;
+    }
     // ── Guard 2: loadData() is still running — STATE.me may not be set yet. ──────
     // Defer the confirmation check until loading completes.
     if (window.__fpLoadDataInProgress) {
@@ -3334,12 +3344,10 @@ window.__fpPageLoadTs = Date.now();
       if (b) b.remove();
     }
 
-    // Start SSE after page loads (give backend 2s to settle)
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', function() { setTimeout(connect, 2000); });
-    } else {
-      setTimeout(connect, 2000);
-    }
+    // Start SSE only after session restore completes so the token is ready.
+    // A cold connect without a token → immediate 401 → 2s reconnect delay → late delivery.
+    // _sessionReady is the fp-backend.js module-level restore promise (always defined).
+    Promise.resolve(_sessionReady).then(function() { connect(); }).catch(function() { connect(); });
   })();
 
   // ─── REAL-TIME DATA REFRESH ───────────────────────────────────────────────
