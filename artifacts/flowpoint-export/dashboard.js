@@ -68964,10 +68964,29 @@ window.FP_GBP_API = {
     });
 
     if (selectedIds.size === 0) {
-      // All unchecked — clear history markers; leave live rankings untouched
+      // All unchecked — clear history markers AND restore live markers
       _clearHistoryMarkers();
       _updateHistoryResultsWidget([]);
+      // Restore live ranking markers (were hidden while history was active)
+      if (typeof window.fpShowLiveRankingMarkers === 'function') {
+        window.fpShowLiveRankingMarkers();
+      }
+      console.log('[LOCAL SEO HISTORY MAP DEBUG]', {
+        selectedHistoryCount: 0,
+        liveMarkersVisible: true,
+        historyMarkersCreated: 0,
+        historyMarkersVisible: false,
+        action: 'restored live markers'
+      });
       return;
+    }
+
+    // Hide live ranking markers so only history results are visible
+    var _liveMarkersBefore = 0;
+    if (typeof window.fpHideLiveRankingMarkers === 'function') {
+      // Count approximate live markers via the live rankings array
+      _liveMarkersBefore = ((STATE.localSeo && STATE.localSeo._selectedRankings) || new Set()).size;
+      window.fpHideLiveRankingMarkers();
     }
 
     // Merge results from all selected entries (deduplicate by title+address)
@@ -68997,6 +69016,13 @@ window.FP_GBP_API = {
 
     // Place isolated history markers — does NOT mutate STATE.localSeo.rankings
     _placeHistoryMarkers(map, merged);
+    console.log('[LOCAL SEO HISTORY MAP DEBUG]', {
+      selectedHistoryCount: selectedIds.size,
+      liveMarkersBefore: _liveMarkersBefore,
+      historyMarkersCreated: merged.length,
+      liveMarkersVisible: false,
+      historyMarkersVisible: true,
+    });
   };
 
   // Expose clear method so live-search reload can wipe history overlay
@@ -69007,6 +69033,8 @@ window.FP_GBP_API = {
     // Uncheck all checkboxes visually
     document.querySelectorAll('.fp-hist-cb').forEach(function(cb) { cb.checked = false; });
     document.querySelectorAll('[data-hist-row]').forEach(function(el) { el.style.background = 'transparent'; });
+    // Restore live ranking markers
+    if (typeof window.fpShowLiveRankingMarkers === 'function') window.fpShowLiveRankingMarkers();
   };
 })();
 
@@ -69014,6 +69042,18 @@ window.fpUpdateRankingMarkers = (function() {
   var _markers = [];
   var _infoWindows = [];
   var _geocodePending = {};
+
+  // ── Live marker visibility control (called by history checkbox logic) ──────
+  // Hiding live markers when history is checked creates a clean layer separation:
+  // only history results appear on the map. Showing restores the live layer.
+  window.fpHideLiveRankingMarkers = function() {
+    _markers.forEach(function(m) { try { m.setMap(null); } catch(_e){} });
+  };
+  window.fpShowLiveRankingMarkers = function() {
+    var _m = STATE && STATE._gmap;
+    if (!_m) return;
+    _markers.forEach(function(m) { try { m.setMap(_m); } catch(_e){} });
+  };
 
   return function() {
     var map = STATE._gmap;

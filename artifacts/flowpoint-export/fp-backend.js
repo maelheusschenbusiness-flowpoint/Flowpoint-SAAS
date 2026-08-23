@@ -1011,6 +1011,15 @@ window.__fpPageLoadTs = Date.now();
       var msgData = data.message || data;
       if (!window.STATE.channelMessages) window.STATE.channelMessages = {};
       if (!window.STATE.channelMessages[ch]) window.STATE.channelMessages[ch] = [];
+      console.log('[CHAT FLOW DEBUG]', {
+        sender: msgData.senderId || msgData.from || '?',
+        receiverOrg: (window.STATE.me && (window.STATE.me.orgId || window.STATE.me.email)) || '?',
+        channel: ch,
+        messageId: msgData.id || '?',
+        sseReceived: true,
+        bucketBefore: window.STATE.channelMessages[ch].length,
+        currentRoute: window.STATE.route || '?',
+      });
       // Recipient-side "self" computation: the SSE broadcast reaches every
       // client of the org, so the server can't decide per-recipient. Compare
       // the stable senderId against every identity exposed by /api/me. UUID is

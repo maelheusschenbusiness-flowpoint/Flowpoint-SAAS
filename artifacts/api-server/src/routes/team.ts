@@ -1561,15 +1561,25 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
       const uid = member.user_id;
       const base = { userId: uid, email: member.email, name: member.name.trim(), role: member.role };
       try {
-        const actRes = await pool.query<{ d: string }>(
+        // Primary lookup: by user UUID (canonical for auth-v2 users).
+        // Fallback: also match rows where user_id was stored as the user's email
+        // (legacy sessions where req.orgContext.userId was an email string).
+        let actRes = await pool.query<{ d: string }>(
           `SELECT day::text AS d FROM member_activity_days
-           WHERE org_id=$1 AND user_id=$2
+           WHERE org_id=$1
+             AND (user_id=$2
+               OR user_id = COALESCE((SELECT email FROM users WHERE id::text=$2 LIMIT 1), ''))
              AND day >= (NOW() AT TIME ZONE $3)::date - INTERVAL '365 days'
            ORDER BY d DESC`,
           [orgId, uid, tz]
         );
+        logger.info(
+          { userId: uid.slice(0, 8), email: member.email, activityRowsFound: actRes.rows.length },
+          "[STREAK DEBUG]"
+        );
         if (actRes.rows.length === 0) {
           // Genuine zero: table accessible, member simply has no active days.
+          logger.info({ userId: uid.slice(0, 8), email: member.email, calculatedCurrentStreak: 0, bestStreak: 0 }, "[STREAK DEBUG]");
           streaks.push({ ...base, current: 0, best: 0 });
           continue;
         }

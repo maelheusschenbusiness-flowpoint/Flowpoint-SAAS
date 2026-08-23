@@ -853,6 +853,13 @@ OBLIGATION D'OUTIL — RÈGLE ABSOLUE (priorité maximale)
 - Si tu ne peux pas appeler l'outil (permissions manquantes, données insuffisantes), DIS-LE clairement et demande ce qui manque — ne simule jamais l'action.
 - Cette règle s'applique à tous les outils d'écriture : create_mission, create_missions_from_strategy, create_audit, update_calendar_event, create_monitor, dismiss_recommendation, etc.
 
+INTÉGRITÉ DES RÉSULTATS D'OUTILS — RÈGLE ABSOLUE (priorité maximale)
+- Si un outil retourne une erreur ou ok:false, tu DOIS informer l'utilisateur de l'échec EXACTEMENT, sans minimiser. Tu ne peux JAMAIS dire "créé", "ajouté", "terminé", "planifié", "supprimé" ou toute formulation de succès si l'outil n'a pas retourné ok:true avec un identifiant réel.
+- INTERDIT : "Mission créée avec succès !", "Ajouté au calendrier !", "C'est fait !" si le tool_result indique ok:false ou contient une erreur.
+- REQUIS sur échec : "Je n'ai pas pu créer la mission. Voici l'erreur : [contenu exact de l'erreur]. Voulez-vous réessayer ?"
+- REQUIS sur succès : confirmer UNIQUEMENT avec l'identifiant réel retourné par le backend (id de la mission, id de l'événement, etc.).
+- Cette règle s'applique à TOUTES les actions sans exception : création, modification, suppression, planification, envoi, activation.
+
 DISCIPLINE DE PORTÉE — CONTRAINTES EXPLICITES (règle absolue)
 - ORDRE DE PRIORITÉ en cas de conflit entre règles de format : 1) contrainte explicite de l'utilisateur ("en 3 phrases", "1 priorité") ; 2) nature de la demande (valeur unique → une phrase ; question simple → 2–3 phrases) ; 3) plafonds généraux (250–350 mots pour une question ouverte). La règle la plus spécifique gagne TOUJOURS.
 - Si la demande contient une contrainte de quantité ou de format ("exactement N", "en X phrases", "uniquement", "juste", "seulement", "sans conseil supplémentaire", "une seule"), respecte-la À LA LETTRE : N éléments demandés = N éléments livrés, ni plus, ni moins.
@@ -1660,6 +1667,13 @@ async function runToolCallingLoop(opts: {
         });
         toolsCalledTotal++;
         if (execResult.ok) toolsSucceeded++; else toolsFailed++;
+        logger.info({
+          intent: opts.intent ?? "(none)",
+          tool: toolCall.name,
+          apiStatus: execResult.ok ? "ok" : "failed",
+          createdId: (execResult as Record<string, unknown>).actionLogId ?? null,
+          toolContent: execResult.content?.slice?.(0, 200) ?? String(execResult.content ?? "").slice(0, 200),
+        }, "[AI ACTION DEBUG]");
         opts.sseWrite(`data: ${JSON.stringify({
           tool_result: { id: execResult.actionLogId, toolCallId: toolCall.id, name: toolCall.name, ok: execResult.ok, content: execResult.content },
         })}\n\n`);
@@ -2131,11 +2145,31 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
   const allowedDestinations = filterDestinations(effectivePerms, orgPlan);
   const navPromptSection = buildNavPromptSection(allowedDestinations);
 
-  // Resolve the user's preferred language (sent by the frontend as a BCP-47 code).
-  // Falls back to French so existing behaviour is preserved when not provided.
-  const _langCode = (typeof language === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(language.trim()))
+  // Resolve the user's preferred language. The frontend sends it as a BCP-47 code.
+  // If the frontend omits it or sends the default "fr", try to read the org's
+  // configured language from user_prefs so German/English/etc accounts always
+  // get responses in their configured language, not French.
+  let _langCode = (typeof language === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(language.trim()))
     ? language.trim().toLowerCase()
     : "fr";
+  // Server-side org language override: authoritative when frontend sends default
+  if (_langCode === "fr") {
+    try {
+      const _langRow = await pool.query(
+        `SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`,
+        [orgId]
+      );
+      const _prefs = _langRow.rows[0]?.["settings"] as Record<string, unknown> | null;
+      const _orgLang = typeof _prefs?.["language"] === "string" ? (_prefs["language"] as string).trim().toLowerCase() : null;
+      if (_orgLang && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_orgLang) && _orgLang !== "fr") {
+        _langCode = _orgLang;
+        logger.info({ orgId, clientLang: language, orgLang: _orgLang }, "[AI LANGUAGE DEBUG] org language override applied");
+      }
+    } catch (_langErr) {
+      logger.debug({ orgId, err: String(_langErr) }, "[AI LANGUAGE DEBUG] org language lookup failed (non-fatal)");
+    }
+  }
+  logger.info({ orgId, clientLanguage: language ?? "(none)", resolvedLangCode: _langCode }, "[AI LANGUAGE DEBUG]");
   const _langNames: Record<string, string> = {
     fr: "français", en: "English", es: "español", de: "Deutsch", it: "italiano",
     pt: "português", nl: "Nederlands", pl: "polski", sv: "svenska", ro: "română", cs: "čeština",
