@@ -155,70 +155,47 @@
     }
   </style>
   <script>
-    /* ── Auth-boot guard (HEAD) ─────────────────────────────────────────────────
-       Runs synchronously before any paint. A valid-session user who lands on
-       /login.html (browser back, transient redirect) is immediately bounced to
-       the dashboard without ever seeing the login form.                          */
-    (function() {
-      try {
-        var st = sessionStorage.getItem('fp_session_token');
-        if (st && st.length > 10) { window.location.replace('/dashboard.html'); return; }
-      } catch(_) {}
-      // Note: fp_token is httpOnly — document.cookie cannot read it.
-      // Session restore via the backend is the only reliable check for the cookie path.
-      /* No session found in sessionStorage — async backend check for httpOnly cookie. */
-      window.addEventListener('DOMContentLoaded', function() {
-        fetch('/api/auth/session-restore', {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' }
-        }).then(function(r) {
-          if (r.ok) return r.json().catch(function() { return null; });
-          return null;
-        }).then(function(data) {
-          if (data && data.token) {
-            try { sessionStorage.setItem('fp_session_token', data.token); } catch(_) {}
+    /* ── Auth-boot guard ────────────────────────────────────────────────────────
+       Never redirect based on sessionStorage alone — a stale/expired/revoked
+       token would silently bypass the login form. Always validate with /api/me
+       before touching window.location.                                           */
+    function _loginCheckSession(source) {
+      var _st, _hasCookie, _headers;
+      try { _st = sessionStorage.getItem('fp_session_token'); } catch(_) {}
+      // fp_token is httpOnly — cannot read it, but the browser sends it automatically.
+      // We detect its presence indirectly: if no sessionStorage token exists, still
+      // let the backend check via credentials:'include'.
+      _hasCookie = true; // always ask backend; cost is one request, benefit is correctness.
+      if (!_st && !_hasCookie) return;
+      document.body.style.visibility = 'hidden';
+      _headers = { 'Accept': 'application/json' };
+      if (_st) _headers['Authorization'] = 'Bearer ' + _st;
+      fetch('/api/me', { method: 'GET', credentials: 'include', headers: _headers })
+        .then(function(r) {
+          if (r.ok) {
+            // Backend confirmed valid session → go to dashboard.
             window.location.replace('/dashboard.html');
           } else {
+            // 401/403 → wipe any stale token; stay on login form.
+            try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
+            try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
+            document.cookie = 'fp_token=; Max-Age=0; path=/';
             document.body.style.visibility = 'visible';
           }
-        }).catch(function() {
+        })
+        .catch(function() {
+          // Network error → fail-closed: stay on login form, show it.
           document.body.style.visibility = 'visible';
         });
-      });
-    })();
+    }
+
+    window.addEventListener('DOMContentLoaded', function() { _loginCheckSession('DOMContentLoaded'); });
 
     // ── BFCache protection (Safari / all browsers) ────────────────────────────
-    // The sync guard above runs only once at initial load. When Safari restores
-    // this page from BFCache (browser back/forward), the frozen DOM comes back
-    // with the form already visible. We must re-check the session immediately.
     window.addEventListener('pageshow', function(evt) {
       if (!evt.persisted) return;
-      // Hide immediately — prevent any flash of the login form.
       document.body.style.visibility = 'hidden';
-      // Fast path: sessionStorage still has a token.
-      try {
-        var _st = sessionStorage.getItem('fp_session_token');
-        if (_st && _st.length > 10) { window.location.replace('/dashboard.html'); return; }
-      } catch(_) {}
-      // Slow path: ask the backend — lets the httpOnly cookie authenticate us.
-      fetch('/api/auth/session-restore', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }
-      }).then(function(r) {
-        if (r.ok) return r.json().catch(function() { return null; });
-        return null;
-      }).then(function(data) {
-        if (data && data.token) {
-          try { sessionStorage.setItem('fp_session_token', data.token); } catch(_) {}
-          window.location.replace('/dashboard.html');
-        } else {
-          // Confirmed unauthenticated — reveal the form.
-          document.body.style.visibility = 'visible';
-        }
-      }).catch(function() {
-        // Network error — fail open: show the form so the user can log in.
-        document.body.style.visibility = 'visible';
-      });
+      _loginCheckSession('pageshow-BFCache');
     });
   </script>
 </head>

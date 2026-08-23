@@ -3619,13 +3619,15 @@ Fournis:
 
 // ── POST /ai/reports — AI report generation ───────────────────────────────────
 router.post("/ai/reports", aiRateLimit, async (req, res) => {
-  const { reportType, period, sites, metrics } = req.body as {
+  const { reportType, period, sites, metrics, language: _repLang } = req.body as {
     reportType?: string;
     period?: string;
     sites?: string[];
     metrics?: Record<string, unknown>;
     context?: Record<string, unknown>;
+    language?: string;
   };
+  const _repLangLine = (() => { const c = (typeof _repLang === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_repLang.trim())) ? _repLang.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All your text output must be in ${n[c] || c}, not in French.`; })();
 
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
@@ -3699,7 +3701,7 @@ Génère le rapport comme un consultant senior qui présente les résultats à s
   try {
     const aiResult = await callAIWithFallback({
       task: "executive_report",
-      systemPrompt: "Tu es un consultant SEO senior. Tu génères des rapports basés UNIQUEMENT sur les données réelles fournies. Cite les chiffres exacts. Jamais de généralités ou de données inventées. Format markdown professionnel, français formel.",
+      systemPrompt: `Tu es un consultant SEO senior. Tu génères des rapports basés UNIQUEMENT sur les données réelles fournies. Cite les chiffres exacts. Jamais de généralités ou de données inventées. Format markdown professionnel. ${_repLangLine}`,
       userPrompt: prompt,
       maxTokens: 1800,
       orgId,
@@ -3714,7 +3716,8 @@ Génère le rapport comme un consultant senior qui présente les résultats à s
 
 // ── POST /ai/summary — Executive summary ──────────────────────────────────────
 router.post("/ai/summary", aiRateLimit, async (req, res) => {
-  const { context } = req.body as { context?: Record<string, unknown> };
+  const { context, language: _sumLang } = req.body as { context?: Record<string, unknown>; language?: string };
+  const _sumLangLine = (() => { const c = (typeof _sumLang === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_sumLang.trim())) ? _sumLang.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All your text output must be in ${n[c] || c}, not in French.`; })();
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
   const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -3742,7 +3745,7 @@ Format:
   try {
     const aiResult = await callAIWithFallback({
       task: "strategist",
-      systemPrompt: "Tu es un directeur stratégique digital. Résumé concis, chiffré, actionnable. Français.",
+      systemPrompt: `Tu es un directeur stratégique digital. Résumé concis, chiffré, actionnable. ${_sumLangLine}`,
       userPrompt: prompt,
       maxTokens: 1600,
       orgId,
@@ -3757,11 +3760,13 @@ Format:
 
 // ── POST /ai/missions — AI mission generation ─────────────────────────────────
 router.post("/ai/missions", aiRateLimit, async (req, res) => {
-  const { profile, currentMissions, context } = req.body as {
+  const { profile, currentMissions, context, language: _misLang } = req.body as {
     profile?: Record<string, unknown>;
     currentMissions?: unknown[];
     context?: Record<string, unknown>;
+    language?: string;
   };
+  const _misLangLine = (() => { const c = (typeof _misLang === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_misLang.trim())) ? _misLang.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français dans les champs texte." : `You MUST write all text fields (title, description, expectedGain) in ${n[c] || c}, not in French.`; })();
 
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
@@ -3807,7 +3812,7 @@ Réponds uniquement avec le JSON array.`;
   try {
     const aiResult = await callAIWithFallback({
       task: "mission_auto",
-      systemPrompt: "Tu génères des missions SEO JSON structurées. Réponds UNIQUEMENT avec du JSON valide, aucun autre texte.",
+      systemPrompt: `Tu génères des missions SEO JSON structurées. Réponds UNIQUEMENT avec du JSON valide, aucun autre texte. ${_misLangLine}`,
       userPrompt: prompt,
       maxTokens: 1000,
       json: true,
