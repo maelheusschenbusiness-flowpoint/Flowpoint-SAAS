@@ -443,6 +443,30 @@ async function main() {
   process.on("SIGINT",  () => void shutdown("SIGINT"));
 }
 
+// ── Global unhandled rejection / uncaught exception guards ───────────────────
+// Node 20 exits by default on any unhandled rejection. Background async work
+// (deferred usage recording, SSE cleanup, cron callbacks) must never crash the
+// server. Log the rejection loudly so we can trace the root cause, but keep
+// the process alive so in-flight requests are not dropped.
+process.on("unhandledRejection", (reason: unknown, promise: Promise<unknown>) => {
+  logger.error(
+    {
+      reason: reason instanceof Error
+        ? { message: reason.message, stack: reason.stack, code: (reason as NodeJS.ErrnoException).code }
+        : String(reason),
+      promise: String(promise),
+    },
+    "[CRITICAL] Unhandled promise rejection — server kept alive; fix the root cause",
+  );
+});
+
+process.on("uncaughtException", (err: Error) => {
+  logger.error(
+    { message: err.message, stack: err.stack, code: (err as NodeJS.ErrnoException).code },
+    "[CRITICAL] Uncaught exception — server kept alive",
+  );
+});
+
 main().catch((err: unknown) => {
   logger.error(
     {
