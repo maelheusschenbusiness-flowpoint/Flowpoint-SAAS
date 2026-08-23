@@ -69,6 +69,7 @@ export async function initMissionsTables(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_missions_org_id ON missions(org_id);
       CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status);
       CREATE INDEX IF NOT EXISTS idx_mission_history_mission_id ON mission_history(mission_id);
+      CREATE INDEX IF NOT EXISTS idx_missions_org_priority ON missions(org_id, priority_score DESC, created_at DESC);
 
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS source_url TEXT;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS source_audit_id TEXT;

@@ -1932,7 +1932,7 @@ async function loadData(options = {}) {
       ? (_criticalErrors.whiteLabelTemplates.message || String(_criticalErrors.whiteLabelTemplates))
       : null;
   }
-  if ('missions'    in _preloaded) STATE.missions = _preloaded.missions ?? (PREVIEW_MODE ? MOCK_MISSIONS : []);
+  if ('missions'    in _preloaded) { STATE.missions = _preloaded.missions ?? (PREVIEW_MODE ? MOCK_MISSIONS : []); STATE._missionsLoaded = true; STATE._missionsLoading = false; console.log('[MISSIONS] Phase2 loaded | count:', STATE.missions.length); }
   if ('keywords'    in _preloaded && _preloaded.keywords)    STATE.keywords    = _preloaded.keywords;
   if ('competitors' in _preloaded && _preloaded.competitors) STATE.competitors = _preloaded.competitors;
 
@@ -2171,8 +2171,8 @@ async function loadData(options = {}) {
     'missions' in _preloaded
       ? Promise.resolve()
       : (window.FP_MISSIONS_API
-        ? window.FP_MISSIONS_API.load().then(r => { if (r !== null) STATE.missions = r; else if (!(STATE.missions && STATE.missions.length)) STATE.missions = PREVIEW_MODE ? MOCK_MISSIONS : []; })
-        : Promise.resolve().then(() => { if (!(STATE.missions && STATE.missions.length)) STATE.missions = PREVIEW_MODE ? MOCK_MISSIONS : []; })),
+        ? window.FP_MISSIONS_API.load().then(r => { if (r !== null) STATE.missions = r; else if (!(STATE.missions && STATE.missions.length)) STATE.missions = PREVIEW_MODE ? MOCK_MISSIONS : []; STATE._missionsLoaded = true; STATE._missionsLoading = false; })
+        : Promise.resolve().then(() => { if (!(STATE.missions && STATE.missions.length)) STATE.missions = PREVIEW_MODE ? MOCK_MISSIONS : []; STATE._missionsLoaded = true; STATE._missionsLoading = false; })),
     'keywords' in _preloaded
       ? Promise.resolve()
       : (window.FP_KEYWORDS_API
@@ -7232,6 +7232,7 @@ function _missionCatIcon(cat) {
 }
 
 function renderMissions() {
+  console.log('[MISSIONS] render start | loaded:', STATE._missionsLoaded, '| loading:', STATE._missionsLoading, '| count:', Array.isArray(STATE.missions) ? STATE.missions.length : 0, '| STATE.loading:', STATE.loading);
   if (STATE.loading) {
     return renderPageSkeleton({ stats: 0, rows: 5, rowH: 80, cards: 0 });
   }
@@ -14610,29 +14611,35 @@ function updateAIUI() {
 
 /** Load (or reload) missions from the server and update STATE. Called after AI write actions. */
 window.loadMissions = async function loadMissions() {
+  console.log('[MISSIONS] API start (loadMissions)');
+  var _lm_t0 = Date.now();
   STATE._missionsLoading = true;
   try {
-    const r = await apiFetch('/api/missions');
-    if (r && Array.isArray(r.missions)) {
+    var r = await apiFetch('/api/missions');
+    console.log('[MISSIONS] API end', Date.now() - _lm_t0, 'ms | rows:', Array.isArray(r) ? r.length : typeof r);
+    if (Array.isArray(r)) {
       // Merge: keep locally-created missions not yet committed to DB (within 30s window)
-      const _now = Date.now();
-      const _serverIds = new Set(r.missions.map(function(m){ return m.id; }));
-      const _localOnly = Array.isArray(STATE.missions)
+      var _now = Date.now();
+      var _serverIds = new Set(r.map(function(m){ return m.id; }));
+      var _localOnly = Array.isArray(STATE.missions)
         ? STATE.missions.filter(function(m){
             return m && m.id && !_serverIds.has(m.id)
               && m._localTs && (_now - m._localTs < 30000);
           })
         : [];
-      STATE.missions = _localOnly.concat(r.missions);
+      STATE.missions = _localOnly.concat(r);
       STATE._missionsLoaded = true;
       STATE._missionsLoading = false;
       if (STATE.currentSection === 'missions') render();
     } else {
+      // API returned unexpected shape — still mark as loaded so spinner stops
+      STATE._missionsLoaded = true;
       STATE._missionsLoading = false;
     }
   } catch(e) {
+    STATE._missionsLoaded = true; // stop spinner even on error
     STATE._missionsLoading = false;
-    console.warn('[AI] loadMissions failed:', e && e.message);
+    console.warn('[MISSIONS] loadMissions failed:', e && e.message);
   }
 };
 
@@ -69289,7 +69296,10 @@ window.FP_GSC_API = {
 window.FP_MISSIONS_API = {
   async load() {
     try {
+      console.log('[MISSIONS] API start (FP_MISSIONS_API.load)');
+      const _t0 = Date.now();
       const missions = await apiFetch('/api/missions?limit=200').catch(() => null);
+      console.log('[MISSIONS] API end', Date.now() - _t0, 'ms | rows:', Array.isArray(missions) ? missions.length : '?');
       return Array.isArray(missions) ? missions : null;
     } catch(e) { console.warn('[FP_MISSIONS_API] load error:', e); return null; }
   },

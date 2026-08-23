@@ -79,6 +79,8 @@ async function logHistory(
 // can silently return [] when SET LOCAL ROLE app_user fails on Supabase pooled connections.
 // Tenant isolation is enforced by the WHERE org_id = $1 clause, same pattern as list_missions AI tool.
 router.get("/missions", async (req: Request, res: Response) => {
+  const _t0 = Date.now();
+  logger.info({ org: orgId(req) }, "[MISSIONS] API start");
   try {
     const org = orgId(req);
     const { status, category, priority, quick_win, limit = "100", offset = "0" } = req.query as Record<string, string>;
@@ -96,9 +98,11 @@ router.get("/missions", async (req: Request, res: Response) => {
     params.push(parseInt(limit) || 100, parseInt(offset) || 0);
 
     const result = await pool.query(query, params);
+    const ms = Date.now() - _t0;
+    logger.info({ org, rows: result.rows.length, ms }, "[MISSIONS] API end");
     res.json(result.rows.map(rowToMission));
   } catch (err) {
-    logger.error({ err }, "[Missions] GET /missions error");
+    logger.error({ err, ms: Date.now() - _t0 }, "[Missions] GET /missions error");
     res.json([]);
   }
 });
