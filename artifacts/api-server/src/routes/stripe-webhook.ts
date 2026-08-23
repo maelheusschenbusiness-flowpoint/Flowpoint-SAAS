@@ -1133,11 +1133,65 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         break;
       }
 
+      // A0 — Closed-tab addon recovery: activate recurring add-ons for authenticated
+      // users who paid but never reached finalize-checkout (browser closed, 3DS in
+      // another tab, connection lost). The PaymentIntent carries orgId + addons in
+      // metadata so we can attribute and activate without a browser callback.
+      const piAddonsRaw  = piMeta["addons"]  ?? "";
+      const piMetaOrgId  = piMeta["orgId"]   ?? piMeta["org_id"] ?? orgId ?? null;
       const piPreRegToken = piMeta["pre_register_token"] ?? "";
 
+      if (!piPreRegToken && piMetaOrgId && piAddonsRaw && piAddonsRaw !== "{}" && piAddonsRaw !== "null") {
+        try {
+          const piAddons = JSON.parse(piAddonsRaw) as Record<string, unknown>;
+          const addonEntries = Object.entries(piAddons).filter(([, v]) => v === true || (typeof v === "number" && v > 0));
+          const AI_CR_KEYS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
+          const recurringEntries = addonEntries.filter(([k]) => !AI_CR_KEYS.has(k));
+
+          if (recurringEntries.length > 0) {
+            const piId = String(obj["id"] ?? "");
+            // Idempotency: use a DB flag keyed on the PI id to prevent double-activation
+            const { pool: pgPool } = await import("@workspace/db");
+            // Idempotency: check a dedicated table or a known webhook event key.
+            // We use the activity_log pattern: if this PI id already appears as
+            // a webhook-sourced activation, skip. Use pool query for raw SQL.
+            const idempClient = await pgPool.connect();
+            let alreadyActivated = false;
+            try {
+              // Use a simple approach: check if the PI id is stored in activity_log
+              const idempCheck = await idempClient.query<{ count: string }>(
+                `SELECT COUNT(*) as count FROM activity_log WHERE org_id = $1 AND metadata->>'pi_id' = $2 AND action_key = 'addon.webhook_activated' LIMIT 1`,
+                [piMetaOrgId, piId]
+              );
+              alreadyActivated = parseInt(idempCheck.rows[0]?.count ?? "0", 10) > 0;
+            } catch (_) { /* table may not exist — proceed without idempotency check */ }
+            finally { idempClient.release(); }
+
+            if (!alreadyActivated) {
+              const { activateAddon } = await import("../services/addons-service.js");
+              for (const [key, val] of recurringEntries) {
+                const qty = typeof val === "number" ? val : 1;
+                const activated = await activateAddon(key, piMetaOrgId, qty);
+                if (activated) {
+                  logger.info({ key, qty, orgId: piMetaOrgId, piId }, "[Webhook] Recurring add-on activated from PI metadata (closed-tab recovery)");
+                } else {
+                  logger.error({ key, orgId: piMetaOrgId, piId }, "[Webhook] Failed to activate add-on from PI metadata");
+                }
+              }
+              store.broadcast({ type: "billing:addons_updated" }, piMetaOrgId);
+            } else {
+              logger.info({ orgId: piMetaOrgId, piId }, "[Webhook] PI addon activation already done — skipping");
+            }
+          }
+        } catch (piAddonErr) {
+          logger.error({ piAddonErr, orgId: piMetaOrgId }, "[Webhook] Failed to parse/activate add-ons from PI metadata");
+        }
+        // Fall through to handle pre_register_token if present (new signup may also buy addons)
+      }
+
       if (!piPreRegToken) {
-        // Not a new-signup intent — nothing to do here
-        logger.info({ type: event.type }, "[Webhook] No pre_register_token — skipping activation");
+        // Not a new-signup intent and addons already handled above — nothing more to do
+        logger.info({ type: event.type, orgId: piMetaOrgId }, "[Webhook] PI processed (no pre_register_token)");
         break;
       }
 

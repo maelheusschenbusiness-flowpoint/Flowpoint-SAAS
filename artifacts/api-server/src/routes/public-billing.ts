@@ -114,7 +114,11 @@ function parseAddonsPub(raw: unknown, res: Response): AddonsMap | null {
       res.status(400).json({ error: `Add-on inconnu : "${key}"` });
       return null;
     }
-    if (typeof val === "boolean") { result[key] = val; continue; }
+    if (typeof val === "boolean") {
+      // Flag add-ons: boolean true/false is fine; clamp to canonical 1
+      result[key] = val;
+      continue;
+    }
     if (typeof val !== "number" || !Number.isFinite(val) || !Number.isInteger(val)) {
       const typ = Array.isArray(val) ? "array" : typeof val;
       res.status(400).json({ error: `Quantité invalide pour "${key}" : entier attendu (reçu : ${typ})` });
@@ -122,6 +126,12 @@ function parseAddonsPub(raw: unknown, res: Response): AddonsMap | null {
     }
     if (val <= 0) { res.status(400).json({ error: `Quantité invalide pour "${key}" : doit être > 0` }); return null; }
     if (val > MAX_ADDON_QTY_PUB) { res.status(400).json({ error: `Quantité invalide pour "${key}" : maximum ${MAX_ADDON_QTY_PUB}` }); return null; }
+    // A2 — quantity:false add-ons (flag add-ons submitted as numbers) must be capped at 1.
+    // whiteLabel x500 → 1; negative/float/string already rejected above.
+    if (ADDON_DEFINITIONS[key]?.quantity === false) {
+      result[key] = 1;
+      continue;
+    }
     result[key] = val;
   }
   return result;
@@ -583,6 +593,20 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
   const preRegisterToken   = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
+
+  // A1 — Auth guard for addon-only carts (no new signup):
+  // If there's no plan and no preRegisterToken, the buyer must be an authenticated
+  // existing user. Without an orgId we cannot attribute the payment in the webhook.
+  // Reject early so we never create a PI that Stripe cannot route back to an org.
+  const _piReqOrgId = (req as Request & { orgId?: string }).orgId;
+  if (!plan && !preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
+    const addonKeys = Object.keys(addons as Record<string, unknown>);
+    if (addonKeys.length > 0) {
+      logger.warn({ addonKeys }, "[PublicBilling] payment-intent: addon-only cart rejected — unauthenticated (no orgId)");
+      res.status(401).json({ error: "Authentification requise pour acheter des add-ons.", code: "UNAUTHENTICATED" });
+      return;
+    }
+  }
   let quote: BillingQuote;
   try {
     const trialEligible = await resolveTrialEligibility(req);
@@ -825,9 +849,11 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
       }
     }
 
-    // For the closed-tab webhook path: inject the authenticated orgId into PI metadata
-    // so the webhook can attribute credits without a Stripe customer→org lookup.
-    if (metadata["type"] === "ai_credits" && !metadata["orgId"]) {
+    // A0 — Closed-tab webhook recovery: inject orgId for ALL authenticated purchases.
+    // Previously only injected for AI-credit carts; now covers recurring add-ons too.
+    // The webhook reads metadata.orgId to activate add-ons even if the browser
+    // closes before finalize-checkout is called.
+    if (!metadata["orgId"]) {
       const _piMetaOrgId = (req as Request & { orgId?: string }).orgId;
       if (_piMetaOrgId && _piMetaOrgId !== "default") {
         metadata["orgId"]   = _piMetaOrgId;
