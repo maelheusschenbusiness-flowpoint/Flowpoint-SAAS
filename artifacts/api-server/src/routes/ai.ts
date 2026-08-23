@@ -2559,13 +2559,17 @@ DONNÉES MANQUANTES — règle stricte :
       toolLoopUndoTokens = loopResult.undoTokens;
 
       if (loopResult.suspended || loopResult.finalTextEmitted) {
-        // Emit undo tokens before the _ai + [DONE] frame
-        for (const ut of toolLoopUndoTokens) {
-          res.write(`data: ${JSON.stringify({ undo_available: { actionLogId: ut.actionLogId, label: ut.label, ttlMinutes: 30 } })}\n\n`);
+        // sseClose() (called inside runToolCallingLoop) may already have sent [DONE]
+        // and called res.end() — writing to a finished response throws
+        // ERR_STREAM_WRITE_AFTER_END and crashes the process. Guard every write.
+        if (!res.writableEnded) {
+          for (const ut of toolLoopUndoTokens) {
+            res.write(`data: ${JSON.stringify({ undo_available: { actionLogId: ut.actionLogId, label: ut.label, ttlMinutes: 30 } })}\n\n`);
+          }
+          res.write(`data: ${JSON.stringify({ _ai: aiMeta })}\n\n`);
+          res.write(`data: [DONE]\n\n`);
+          res.end();
         }
-        res.write(`data: ${JSON.stringify({ _ai: aiMeta })}\n\n`);
-        res.write(`data: [DONE]\n\n`);
-        res.end();
         recordCompletedUsageDeferred({ feature: "chat", orgId, userId, model: finalModel as AIModel,
           provider: selectedProvider, tokensIn: 0, tokensOut: 0,
           latencyMs: Date.now() - t0, success: true, requestId,
