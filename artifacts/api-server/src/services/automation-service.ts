@@ -198,12 +198,31 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
           auditData = r.rows[0] ?? null;
         } finally { client.release(); }
         if (!auditData) { logger.warn("[Automation] generate_recommendations: no audit data"); break; }
+        // Detect org language from settings
+        let _autoLang = "fr";
+        try {
+          const _langRow = await pool.query(
+            `SELECT settings FROM user_prefs WHERE org_id = $1 LIMIT 1`,
+            [o]
+          );
+          const _settings = _langRow.rows[0]?.settings as Record<string, unknown> | null;
+          if (_settings && typeof _settings["language"] === "string") _autoLang = (_settings["language"] as string).slice(0, 2).toLowerCase();
+        } catch { /* non-fatal */ }
         const prefs = await loadOrgAIPrefs(o);
         const aiCfg = resolveAIModel(prefs, "seo_audit");
+        const _autoSysFr = "Tu es un consultant SEO senior. Génère 5 recommandations prioritaires basées sur les données d'audit fournies. Format: liste numérotée avec impact estimé.";
+        const _autoSysEn = "You are a senior SEO consultant. Generate 5 priority recommendations based on the provided audit data. Format: numbered list with estimated impact.";
+        const _autoSysDe = "Sie sind ein Senior-SEO-Berater. Erstellen Sie 5 prioritäre Empfehlungen basierend auf den bereitgestellten Audit-Daten. Format: nummerierte Liste mit geschätztem Impact.";
+        const _autoSysEs = "Eres un consultor SEO senior. Genera 5 recomendaciones prioritarias basadas en los datos de auditoría proporcionados. Formato: lista numerada con impacto estimado.";
+        const _autoSystem = _autoLang === "de" ? _autoSysDe : _autoLang === "es" ? _autoSysEs : _autoLang === "en" ? _autoSysEn : _autoSysFr;
+        const _autoUserFr = `Audit ${auditData.url} — Score SEO ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} issues.`;
+        const _autoUserEn = `Audit ${auditData.url} — SEO score ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} issues.`;
+        const _autoUser = _autoLang === "en" ? _autoUserEn : _autoLang === "de" ? `Audit ${auditData.url} — SEO-Score ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} Issues.` : _autoLang === "es" ? `Auditoría ${auditData.url} — Puntuación SEO ${auditData.score}/100, Rendimiento ${auditData.speed}/100, ${auditData.issues} problemas.` : _autoUserFr;
+        logger.info({ userLanguage: _autoLang, aiPromptLanguage: _autoLang, recommendationLanguage: _autoLang }, "[Automation/generate_recommendations] language chain");
         await aiChat({
           provider: aiCfg.provider, model: aiCfg.model,
-          systemPrompt: "Tu es un consultant SEO senior. Génère 5 recommandations prioritaires basées sur les données d'audit fournies. Format: liste numérotée avec impact estimé.",
-          messages: [{ role: "user", content: `Audit ${auditData.url} — Score SEO ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} issues.` }],
+          systemPrompt: _autoSystem,
+          messages: [{ role: "user", content: _autoUser }],
           maxTokens: aiCfg.maxTokens,
         });
         logger.info({ url: auditData.url, provider: aiCfg.provider, model: aiCfg.model }, "[Automation] generate_recommendations complete");

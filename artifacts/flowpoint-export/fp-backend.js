@@ -2952,7 +2952,8 @@ window.__fpPageLoadTs = Date.now();
 
     seo: async function(url, data) {
       try {
-        return await window._fpFetch('/api/ai/seo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url, ...data }) });
+        var _lang = localStorage.getItem('fp:language') || (window.STATE && window.STATE.settings && window.STATE.settings.language) || 'fr';
+        return await window._fpFetch('/api/ai/seo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url, ...data, language: _lang }) });
       } catch(e) { return null; }
     },
 

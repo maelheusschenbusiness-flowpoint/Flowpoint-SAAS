@@ -2227,6 +2227,18 @@ async function dispatchTool(
     const genFocus      = (args["focus"] as string | undefined)?.toLowerCase();
     const genMaxResults = Math.min((args["maxResults"] as number) ?? 5, 10);
     const genUrgency    = (args["urgencyOnly"] as boolean) ?? false;
+    // Language of the requesting user — controls all generated text stored in DB
+    const _gl = (ctx.language ?? "fr").slice(0, 2).toLowerCase();
+    const _recoLog = { userLanguage: _gl, recommendationLanguage: _gl, aiPromptLanguage: "n/a (deterministic)" };
+    logger.info(_recoLog, "[generate_recommendations] language chain");
+
+    /** Returns a localized string for recommendation candidate text. */
+    const _rt = (fr: string, en: string, de: string, es: string): string => {
+      if (_gl === "de") return de;
+      if (_gl === "es") return es;
+      if (_gl === "en") return en;
+      return fr;
+    };
 
     const [genAudits, genKw, genComp, genMon] = await Promise.allSettled([
       pool.query(`SELECT id, url, score, status, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 5`, [orgId]),
@@ -2243,45 +2255,105 @@ async function dispatchTool(
     for (const a of genAuditRows) {
       const sc = Number(a["score"] ?? 0); const sp = Number(a["speed"] ?? 0);
       if ((!genFocus || ["performance","technique"].includes(genFocus)) && sp < 60) {
-        candidates.push({ title: `Améliorer la vitesse PageSpeed de ${a["url"]}`,
-          description: `Score vitesse actuel : ${sp}/100. Optimiser LCP, réduire le JS inutilisé, activer la compression.`,
+        candidates.push({
+          title: _rt(
+            `Améliorer la vitesse PageSpeed de ${a["url"]}`,
+            `Improve PageSpeed performance for ${a["url"]}`,
+            `PageSpeed-Leistung von ${a["url"]} verbessern`,
+            `Mejorar velocidad PageSpeed de ${a["url"]}`
+          ),
+          description: _rt(
+            `Score vitesse actuel : ${sp}/100. Optimiser LCP, réduire le JS inutilisé, activer la compression.`,
+            `Current speed score: ${sp}/100. Optimize LCP, reduce unused JS, enable compression.`,
+            `Aktueller Geschwindigkeitswert: ${sp}/100. LCP optimieren, ungenutztes JS reduzieren, Kompression aktivieren.`,
+            `Puntuación de velocidad actual: ${sp}/100. Optimizar LCP, reducir JS no utilizado, activar compresión.`
+          ),
           category: "performance", urgency: 100 - sp, impact: 80, effort: 50, confidence: 90, source: "audit",
           metadata: { auditId: a["id"], url: a["url"], currentSpeed: sp } });
       }
       if ((!genFocus || ["technique","seo"].includes(genFocus)) && sc < 70) {
-        candidates.push({ title: `Corriger les erreurs SEO critiques de ${a["url"]}`,
-          description: `Score SEO : ${sc}/100. ${a["issues"]} problème(s) critique(s) détecté(s).`,
+        candidates.push({
+          title: _rt(
+            `Corriger les erreurs SEO critiques de ${a["url"]}`,
+            `Fix critical SEO errors on ${a["url"]}`,
+            `Kritische SEO-Fehler auf ${a["url"]} beheben`,
+            `Corregir errores SEO críticos de ${a["url"]}`
+          ),
+          description: _rt(
+            `Score SEO : ${sc}/100. ${a["issues"]} problème(s) critique(s) détecté(s).`,
+            `SEO score: ${sc}/100. ${a["issues"]} critical issue(s) detected.`,
+            `SEO-Score: ${sc}/100. ${a["issues"]} kritisches Problem(e) erkannt.`,
+            `Puntuación SEO: ${sc}/100. ${a["issues"]} problema(s) crítico(s) detectado(s).`
+          ),
           category: "technique", urgency: 100 - sc, impact: 85, effort: 40, confidence: 95, source: "audit",
           metadata: { auditId: a["id"], url: a["url"], currentScore: sc, issues: a["issues"] } });
       }
     }
     for (const kw of genKwRows) {
       const pos = Number(kw["current_position"] ?? 999); const vol = Number(kw["search_volume"] ?? 0);
-      if ((!genFocus || ["contenu","seo"].includes(genFocus)) && pos >= 4 && pos <= 15 && vol > 0) {
-        candidates.push({ title: `Pousser "${kw["keyword"]}" de la position ${pos} vers le Top 3`,
-          description: `Mot-clé en position ${pos} avec ${vol} recherches/mois. Fort potentiel de trafic en Top 3.`,
+      if ((!genFocus || ["contenu","seo","content"].includes(genFocus)) && pos >= 4 && pos <= 15 && vol > 0) {
+        candidates.push({
+          title: _rt(
+            `Pousser "${kw["keyword"]}" de la position ${pos} vers le Top 3`,
+            `Push "${kw["keyword"]}" from position ${pos} into the Top 3`,
+            `"${kw["keyword"]}" von Position ${pos} in die Top 3 bringen`,
+            `Impulsar "${kw["keyword"]}" desde la posición ${pos} al Top 3`
+          ),
+          description: _rt(
+            `Mot-clé en position ${pos} avec ${vol} recherches/mois. Fort potentiel de trafic en Top 3.`,
+            `Keyword at position ${pos} with ${vol} searches/month. High traffic potential in Top 3.`,
+            `Keyword auf Position ${pos} mit ${vol} Suchen/Monat. Hohes Traffic-Potenzial in den Top 3.`,
+            `Palabra clave en posición ${pos} con ${vol} búsquedas/mes. Alto potencial de tráfico en el Top 3.`
+          ),
           category: "contenu", urgency: vol > 1000 ? 75 : 55, impact: 85, effort: 45, confidence: 80, source: "keyword",
           metadata: { keyword: kw["keyword"], position: pos, volume: vol } });
       }
     }
     for (const comp of genCompRows) {
       if ((!genFocus || genFocus === "backlinks") && Number(comp["domain_rating"] ?? 0) > 30) {
-        candidates.push({ title: `Analyser la stratégie backlinks de ${comp["name"]}`,
-          description: `Concurrent ${comp["name"]} DR=${comp["domain_rating"]}. Identifier leurs sources de backlinks.`,
+        candidates.push({
+          title: _rt(
+            `Analyser la stratégie backlinks de ${comp["name"]}`,
+            `Analyse backlink strategy of ${comp["name"]}`,
+            `Backlink-Strategie von ${comp["name"]} analysieren`,
+            `Analizar estrategia de backlinks de ${comp["name"]}`
+          ),
+          description: _rt(
+            `Concurrent ${comp["name"]} DR=${comp["domain_rating"]}. Identifier leurs sources de backlinks.`,
+            `Competitor ${comp["name"]} DR=${comp["domain_rating"]}. Identify their backlink sources.`,
+            `Wettbewerber ${comp["name"]} DR=${comp["domain_rating"]}. Backlink-Quellen identifizieren.`,
+            `Competidor ${comp["name"]} DR=${comp["domain_rating"]}. Identificar sus fuentes de backlinks.`
+          ),
           category: "backlinks", urgency: 55, impact: 70, effort: 60, confidence: 75, source: "competitor",
           metadata: { competitor: comp["name"], dr: comp["domain_rating"] } });
       }
     }
     const downMonitors = genMonRows.filter(m => m["status"] === "down");
     if ((!genFocus || genFocus === "performance") && downMonitors.length > 0) {
-      candidates.push({ title: `Résoudre la panne détectée sur ${String(downMonitors[0]!["url"] ?? "")}`,
-        description: `Monitor détecte le site en DOWN. Impact immédiat sur SEO et expérience utilisateur.`,
+      candidates.push({
+        title: _rt(
+          `Résoudre la panne détectée sur ${String(downMonitors[0]!["url"] ?? "")}`,
+          `Resolve detected outage on ${String(downMonitors[0]!["url"] ?? "")}`,
+          `Erkannten Ausfall auf ${String(downMonitors[0]!["url"] ?? "")} beheben`,
+          `Resolver la interrupción detectada en ${String(downMonitors[0]!["url"] ?? "")}`
+        ),
+        description: _rt(
+          `Monitor détecte le site en DOWN. Impact immédiat sur SEO et expérience utilisateur.`,
+          `Monitor detects the site as DOWN. Immediate impact on SEO and user experience.`,
+          `Monitor erkennt die Website als DOWN. Unmittelbare Auswirkungen auf SEO und Nutzererfahrung.`,
+          `El monitor detecta el sitio como DOWN. Impacto inmediato en SEO y experiencia del usuario.`
+        ),
         category: "performance", urgency: 100, impact: 95, effort: 20, confidence: 100, source: "monitor",
         metadata: { url: downMonitors[0]!["url"] } });
     }
     if (!candidates.length) {
       return { toolCallId: logId, toolName: name2, ok: true,
-        content: "Données insuffisantes pour générer des recommandations. Commencez par lancer un audit SEO et ajoutez des mots-clés à suivre.",
+        content: _rt(
+          "Données insuffisantes pour générer des recommandations. Commencez par lancer un audit SEO et ajoutez des mots-clés à suivre.",
+          "Insufficient data to generate recommendations. Start by running an SEO audit and adding keywords to track.",
+          "Zu wenig Daten für Empfehlungen. Starten Sie zunächst ein SEO-Audit und fügen Sie Keywords hinzu.",
+          "Datos insuficientes para generar recomendaciones. Empiece ejecutando una auditoría SEO y añadiendo palabras clave."
+        ),
         actionLogId: logId };
     }
     const scored = candidates
@@ -2308,7 +2380,7 @@ async function dispatchTool(
          VALUES ($1,$2,'recommendation',$3,$4,$5,'active',$6,$7::jsonb,NOW(),NOW())
          ON CONFLICT (id) DO NOTHING`,
         [rId, orgId, rec.title, rec.description, rec.score, rec.source,
-         JSON.stringify({ ...rec.metadata, category: rec.category, urgency: rec.urgency, impact: rec.impact, effort: rec.effort, confidence: rec.confidence })]
+         JSON.stringify({ ...rec.metadata, category: rec.category, urgency: rec.urgency, impact: rec.impact, effort: rec.effort, confidence: rec.confidence, language: _gl })]
       );
       genCreated.push({ id: rId, title: rec.title, priority: rec.score, category: rec.category, source: rec.source });
     }

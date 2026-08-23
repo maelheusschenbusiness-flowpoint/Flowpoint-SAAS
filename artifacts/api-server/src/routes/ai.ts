@@ -3215,12 +3215,19 @@ Après ces corrections je recommande :
 
 // ── POST /ai/seo — SEO recommendations ───────────────────────────────────────
 router.post("/ai/seo", aiRateLimit, async (req, res) => {
-  const { url, keywords, currentScore, context } = req.body as {
+  const { url, keywords, currentScore, context, language: reqLanguage } = req.body as {
     url?: string;
     keywords?: string[];
     currentScore?: number;
     context?: Record<string, unknown>;
+    language?: string;
   };
+  // Resolve language: explicit body param → Accept-Language header → default fr
+  const _seoLang = (
+    (typeof reqLanguage === "string" && reqLanguage.slice(0, 2)) ||
+    (req.headers["accept-language"] as string | undefined)?.slice(0, 2) ||
+    "fr"
+  ).toLowerCase();
 
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
 
@@ -3280,7 +3287,21 @@ router.post("/ai/seo", aiRateLimit, async (req, res) => {
   // Merge: DB keywords take precedence over frontend-provided
   const effectiveKeywords = dbKeywords.length > 0 ? dbKeywords : (keywords ?? []);
 
-  const prompt = `Tu es consultant SEO senior pour ${url}.
+  // Language-aware prompt templates for /ai/seo
+  const _seoIsEn = _seoLang === "en";
+  const _seoIsDe = _seoLang === "de";
+  const _seoIsEs = _seoLang === "es";
+  const _seoT = (fr: string, en: string, de: string, es: string) =>
+    _seoIsDe ? de : _seoIsEs ? es : _seoIsEn ? en : fr;
+
+  logger.info(
+    { userLanguage: _seoLang, aiPromptLanguage: _seoLang, recommendationLanguage: _seoLang },
+    "[AI/seo] language chain"
+  );
+
+  const prompt = _seoT(
+    // FR
+    `Tu es consultant SEO senior pour ${url}.
 
 DONNÉES RÉELLES :
 Score SEO actuel : ${realScore}/100
@@ -3303,15 +3324,97 @@ Sections :
 2. **Optimisation mots-clés** (basé sur les positions réelles)
 3. **Performance & Core Web Vitals** (basé sur le score ${realSpeed}/100)
 4. **Autorité & maillage**
-5. **Prochaines étapes recommandées**`;
+5. **Prochaines étapes recommandées**`,
+    // EN
+    `You are a senior SEO consultant for ${url}.
+
+REAL DATA:
+Current SEO score: ${realScore}/100
+Performance score: ${realSpeed}/100
+Critical PSI issues: ${realIssues.length > 0 ? realIssues.join(" | ") : "not available"}
+Tracked keywords: ${effectiveKeywords.join(", ") || "no active tracking"}
+
+Account context:
+${fpCtx}
+
+Generate priority SEO recommendations based on this real data.
+For each recommendation:
+🔴 Critical / 🟡 Important / 🟢 Bonus
+- Cite the real issue or exact score concerned
+- Estimate impact in SEO points or % traffic
+- Estimate fix time
+
+Sections:
+1. **Critical issues to fix first** (based on real PSI issues)
+2. **Keyword optimisation** (based on real positions)
+3. **Performance & Core Web Vitals** (based on score ${realSpeed}/100)
+4. **Authority & internal linking**
+5. **Recommended next steps**`,
+    // DE
+    `Sie sind Senior-SEO-Berater für ${url}.
+
+ECHTE DATEN:
+Aktueller SEO-Score: ${realScore}/100
+Performance-Score: ${realSpeed}/100
+Kritische PSI-Probleme: ${realIssues.length > 0 ? realIssues.join(" | ") : "nicht verfügbar"}
+Verfolgte Keywords: ${effectiveKeywords.join(", ") || "kein aktives Tracking"}
+
+Kontokontext:
+${fpCtx}
+
+Erstellen Sie prioritäre SEO-Empfehlungen basierend auf diesen echten Daten.
+Für jede Empfehlung:
+🔴 Kritisch / 🟡 Wichtig / 🟢 Bonus
+- Zitieren Sie das echte Problem oder den genauen Score
+- Schätzen Sie den Impact in SEO-Punkten oder % Traffic
+- Schätzen Sie die Behebungszeit
+
+Abschnitte:
+1. **Kritische Probleme (Priorität)** (basierend auf echten PSI-Issues)
+2. **Keyword-Optimierung** (basierend auf echten Positionen)
+3. **Performance & Core Web Vitals** (Score ${realSpeed}/100)
+4. **Autorität & interne Verlinkung**
+5. **Empfohlene nächste Schritte**`,
+    // ES
+    `Eres consultor SEO senior para ${url}.
+
+DATOS REALES:
+Puntuación SEO actual: ${realScore}/100
+Puntuación de rendimiento: ${realSpeed}/100
+Problemas críticos PSI: ${realIssues.length > 0 ? realIssues.join(" | ") : "no disponibles"}
+Palabras clave rastreadas: ${effectiveKeywords.join(", ") || "sin seguimiento activo"}
+
+Contexto de cuenta:
+${fpCtx}
+
+Genera recomendaciones SEO prioritarias basadas en estos datos reales.
+Por cada recomendación:
+🔴 Crítico / 🟡 Importante / 🟢 Bonus
+- Cita el problema real o la puntuación exacta
+- Estima el impacto en puntos SEO o % de tráfico
+- Estima el tiempo de corrección
+
+Secciones:
+1. **Problemas críticos a corregir primero** (basado en issues PSI reales)
+2. **Optimización de palabras clave** (basado en posiciones reales)
+3. **Rendimiento & Core Web Vitals** (puntuación ${realSpeed}/100)
+4. **Autoridad & enlazado interno**
+5. **Próximos pasos recomendados**`
+  );
 
   try {
     const t0 = Date.now();
     const aiCfg = await selectOptimalModel("cro_analysis", orgId);
+    const _seoSystemPrompt = _seoT(
+      "Tu es un consultant SEO senior. Tu as accès aux données réelles du site. Chaque recommandation doit citer les chiffres exacts fournis — jamais de généralités.",
+      "You are a senior SEO consultant. You have access to real site data. Every recommendation must cite the exact figures provided — no generalities.",
+      "Sie sind ein erfahrener SEO-Berater. Sie haben Zugriff auf echte Website-Daten. Jede Empfehlung muss die genauen bereitgestellten Zahlen zitieren — keine Allgemeinheiten.",
+      "Eres un consultor SEO senior. Tienes acceso a datos reales del sitio. Cada recomendación debe citar las cifras exactas proporcionadas, sin generalidades."
+    );
     const resp = await aiChat({
       provider: aiCfg.provider,
       model: aiCfg.model,
-      systemPrompt: `Tu es un consultant SEO senior. Tu as accès aux données réelles du site. Chaque recommandation doit citer les chiffres exacts fournis — jamais de généralités.`,
+      systemPrompt: _seoSystemPrompt,
       messages: [{ role: "user", content: prompt }],
       maxTokens: aiCfg.maxTokens,
     });
