@@ -55,7 +55,8 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       font-size: 15px; line-height: 1.5;
     }
-    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; flex-direction: column; }
+    /* Auth-boot guard: body stays invisible until session check resolves. */
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; flex-direction: column; visibility: hidden; }
 
     .fp-login-wrap { width: 100%; max-width: 480px; }
 
@@ -153,6 +154,29 @@
       input[type="email"] { padding: 10px 12px; font-size: 14px; }
     }
   </style>
+  <script>
+    /* ── Auth-boot guard (HEAD) ─────────────────────────────────────────────────
+       Runs synchronously before any paint. A valid-session user who lands on
+       /login.html (browser back, transient redirect) is immediately bounced to
+       the dashboard without ever seeing the login form.                          */
+    (function() {
+      try {
+        var st = sessionStorage.getItem('fp_session_token');
+        if (st && st.length > 10) { window.location.replace('/dashboard.html'); return; }
+      } catch(_) {}
+      try {
+        if (document.cookie && document.cookie.split(';').some(function(c) {
+          var t = c.trim();
+          return (t.startsWith('fp_token=') && t.length > 'fp_token='.length + 5) ||
+                 (t.startsWith('fp_session=') && t.length > 'fp_session='.length + 5);
+        })) { window.location.replace('/dashboard.html'); return; }
+      } catch(_) {}
+      /* No session found — reveal the login form. */
+      window.addEventListener('DOMContentLoaded', function() {
+        document.body.style.visibility = 'visible';
+      });
+    })();
+  </script>
 </head>
 <body>
 

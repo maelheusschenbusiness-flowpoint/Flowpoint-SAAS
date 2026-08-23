@@ -53,7 +53,9 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 15px; line-height: 1.5;
     }
-    body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; }
+    /* Auth-boot guard: body stays invisible until session check resolves.
+       Eliminates the ~400ms flash of sign-in form on browser-back from dashboard. */
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; visibility: hidden; }
 
     .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; text-decoration: none; }
     .logo-wordmark { font-size: 19px; font-weight: 700; color: var(--text); letter-spacing: -.3px; }
@@ -172,6 +174,32 @@
       .plan-cards { grid-template-columns: 1fr; }
     }
   </style>
+  <script>
+    /* ── Auth-boot guard (HEAD) ─────────────────────────────────────────────────
+       Runs synchronously before ANY paint. If the user already has a valid session
+       (sessionStorage token OR fp_token cookie), redirect immediately to the
+       dashboard without ever making the sign-in form visible.
+       Only when no session is detected do we reveal the body.            */
+    (function() {
+      try {
+        var st = sessionStorage.getItem('fp_session_token');
+        if (st && st.length > 10) { window.location.replace('/dashboard.html'); return; }
+      } catch(_) {}
+      try {
+        if (document.cookie && document.cookie.split(';').some(function(c) {
+          var t = c.trim();
+          return (t.startsWith('fp_token=') && t.length > 'fp_token='.length + 5) ||
+                 (t.startsWith('fp_session=') && t.length > 'fp_session='.length + 5);
+        })) { window.location.replace('/dashboard.html'); return; }
+      } catch(_) {}
+      /* No session — reveal the form now (DOMContentLoaded not needed: this script
+         is in <head>, body.style is settable via CSS but body element doesn't exist
+         yet; use a tiny load listener instead).                                   */
+      window.addEventListener('DOMContentLoaded', function() {
+        document.body.style.visibility = 'visible';
+      });
+    })();
+  </script>
 </head>
 <body>
 
