@@ -68752,24 +68752,42 @@ window.fpUpdateRankingMarkersFromHistory = function() {
     return;
   }
 
-  // Snapshot current state to restore after the synchronous call to fpUpdateRankingMarkers.
-  // Note: fpUpdateRankingMarkers starts async geocoding internally; the snapshot ensures
-  // STATE is correct for subsequent live searches while geocoding callbacks finish.
-  var prevRankings = STATE.localSeo.rankings;
-  var prevSelected = STATE.localSeo._selectedRankings;
   STATE.localSeo.rankings = merged;
   STATE.localSeo._selectedRankings = new Set(merged.map(function(_, i){ return i; }));
-  if (typeof window.fpUpdateRankingMarkers === 'function') window.fpUpdateRankingMarkers();
-  // Do NOT restore prevRankings: fpUpdateRankingMarkers() does async geocoding and reads
-  // STATE.localSeo.rankings in callbacks. Restoring immediately breaks geocoded marker placement.
-  // The merged history results are the intended display state when checkboxes are active.
 
-  // Re-render text results panel so the list cards reflect the selected history data.
-  // Use setTimeout(0) to let fpUpdateRankingMarkers start geocoding before the render.
-  setTimeout(function() {
-    if (typeof window._doRender === 'function') window._doRender();
-    else if (typeof window.render === 'function') window.render();
-  }, 0);
+  // ── Debug log (visible in browser console) ──────────────────────────────────
+  var _selIds = Array.from(selectedIds);
+  console.log('[LocalSEO] history selection → selectedIds:', _selIds,
+    '| merged:', merged.length, 'results',
+    '| STATE.localSeo.rankings:', STATE.localSeo.rankings.length,
+    '| STATE.loading:', !!STATE.loading);
+
+  // ── 1. Update text results panel IN-PLACE ───────────────────────────────────
+  // Do NOT call _doRender() — it replaces #fp-page innerHTML which destroys the
+  // Google Maps div, causing all async geocoded markers to be placed on a
+  // detached (invisible) map instance. Direct DOM patch preserves the map.
+  var _rankWidget = document.getElementById('dfs-local-rank-widget');
+  if (_rankWidget) {
+    var _rankColors = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
+    _rankWidget.innerHTML = merged.map(function(r, i) {
+      var _col = _rankColors[i % _rankColors.length];
+      var _title = escHtml(r.title || r.name || r.business_name || '');
+      var _addr  = r.address ? ('<div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(r.address) + '</div>') : '';
+      var _rating = (r.rating > 0) ? ('<div style="font-size:10px;color:#f59e0b">★ ' + r.rating + ' (' + (r.reviews || r.reviews_count || 0) + ' avis)</div>') : '';
+      var _rank = r.rank || (i + 1);
+      return '<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 6px;border-radius:7px;' + (i > 0 ? 'border-top:1px solid var(--fp-border);' : '') + 'background:rgba(37,99,235,0.06)">'
+        + '<div style="font-size:15px;font-weight:800;color:' + _col + ';min-width:22px;text-align:center">#' + _rank + '</div>'
+        + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:12px;font-weight:600;color:var(--fp-text)">' + _title + '</div>'
+        + _rating + _addr
+        + '</div></div>';
+    }).join('') + '<div style="margin-top:8px;font-size:10px;color:#64748b;font-style:italic">'
+      + fpT('Historique sélectionné — ') + merged.length + ' ' + fpT('résultats') + '</div>';
+  }
+  console.log('[LocalSEO] rank widget updated in-place | markers to place:', merged.length);
+
+  // ── 2. Update map markers AFTER DOM patch (map div still intact) ─────────────
+  if (typeof window.fpUpdateRankingMarkers === 'function') window.fpUpdateRankingMarkers();
 };
 
 window.fpUpdateRankingMarkers = (function() {
