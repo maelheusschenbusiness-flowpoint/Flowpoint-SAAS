@@ -121,6 +121,36 @@ async function resolveOrCreateLegacyOrg({
       }
     }
 
+    // ── Step A2: guard against guest users getting a new org ─────────────────
+    // Before checking if this email OWNS an org (Step B), verify the user is
+    // not exclusively a team member of someone else's org.  A guest who lands
+    // here (no organization_members row) MUST NOT reach Step C (org creation).
+    // Check team_members: if found, return that org instead of creating one.
+    const guestMember = await client.query<{ org_id: string; role: string }>(
+      `SELECT org_id, COALESCE(role, 'member') AS role
+       FROM team_members
+       WHERE (LOWER(email) = LOWER($1) OR (user_id IS NOT NULL AND user_id = $2))
+         AND status = 'active'
+       ORDER BY created_at ASC
+       LIMIT 1`,
+      [email, resolvedUserUuid ?? ""],
+    );
+    if (guestMember.rows.length > 0) {
+      const guestOrgId = guestMember.rows[0].org_id;
+      const guestRole  = guestMember.rows[0].role;
+      // Back-fill organization_members so the canonical path works next login.
+      try {
+        await client.query(
+          `INSERT INTO organization_members (id, organization_id, user_id, role, status, joined_at)
+           VALUES (gen_random_uuid(), $1, $2::uuid, $3, 'active', NOW())
+           ON CONFLICT (organization_id, user_id) DO NOTHING`,
+          [guestOrgId, resolvedUserUuid, guestRole]
+        );
+      } catch { /* non-fatal */ }
+      await client.query("COMMIT");
+      return { orgId: guestOrgId, userUuid: resolvedUserUuid! };
+    }
+
     // ── Step B: look for an existing UUID org keyed by owner_email ───────────
     const existing = await client.query<{ id: string }>(
       `SELECT id FROM organizations
@@ -1562,7 +1592,57 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
         // That endpoint runs a locked transaction with the RLS GUC correctly set.
         // If the user somehow has an active users row but no membership, they must
         // re-click their invitation link.
-        // S6-fallback: user exists but no org_members row — try org_settings (legacy owners)
+        // ── S6-team-members: check legacy team_members table BEFORE touching org_settings ──
+        // A guest/invited user has a users row + active team_members row but NO
+        // organization_members row (this happens when the invitation was created via the
+        // old team_members path and the user completed their email verification but the
+        // organization_members row was never back-filled, or when the session was created
+        // before the org_members migration).  We MUST find their existing org here;
+        // falling straight through to resolveOrCreateLegacyOrg would create a fresh
+        // Standard workspace for them — a critical isolation breach.
+        let s6GuestOrgId: string | null = null;
+        let s6GuestRole: string = "member";
+        try {
+          const tmRow = await pool.query<{ org_id: string; role: string }>(
+            `SELECT org_id, COALESCE(role, 'member') AS role
+             FROM team_members
+             WHERE (LOWER(email) = LOWER($1) OR user_id = $2)
+               AND status = 'active'
+             ORDER BY created_at ASC
+             LIMIT 1`,
+            [email, user.id]
+          );
+          if (tmRow.rows.length > 0) {
+            s6GuestOrgId = tmRow.rows[0].org_id;
+            s6GuestRole  = tmRow.rows[0].role || "member";
+            logger.info(
+              { email, userId: user.id, guestOrgId: s6GuestOrgId, role: s6GuestRole, source: "team_members" },
+              "[AUTH CONTEXT DEBUG] S6: guest resolved via team_members — skipping org creation"
+            );
+          }
+        } catch (_tmErr) {
+          logger.warn({ err: String(_tmErr) }, "login-verify: S6-team-members lookup failed (non-fatal)");
+        }
+
+        if (s6GuestOrgId) {
+          // Guest belongs to an existing org via team_members — use it directly.
+          // Attempt to back-fill organization_members so future logins use the canonical path.
+          try {
+            await pool.query(
+              `INSERT INTO organization_members (id, organization_id, user_id, role, status, joined_at)
+               VALUES (gen_random_uuid(), $1, $2::uuid, $3, 'active', NOW())
+               ON CONFLICT (organization_id, user_id) DO NOTHING`,
+              [s6GuestOrgId, user.id, s6GuestRole]
+            );
+          } catch (_backfill) {
+            // Non-fatal — the session still works without the organization_members row.
+            logger.warn({ err: String(_backfill) }, "login-verify: S6 org_members backfill failed (non-fatal)");
+          }
+          sessionOrgId    = s6GuestOrgId;
+          sessionRole     = s6GuestRole;
+          sessionUserUuid = user.id;
+        } else {
+        // S6-fallback: user exists but no org_members row AND no team_members row — try org_settings (legacy owners)
         let orgFallback: Awaited<ReturnType<typeof loadOrgSettings>> | null;
         try {
           orgFallback = await loadOrgSettings(email).catch(() => null);
@@ -1591,6 +1671,7 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
         sessionOrgId    = s6Result.orgId;
         sessionRole     = "owner";
         sessionUserUuid = s6Result.userUuid;
+        } // end else (no team_members row found)
 
       } else {
         const member = memberRow.rows[0]!;
@@ -1635,6 +1716,13 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
 
   // ── ML-6-ok: Token consumed ──────────────────────────────────────────────
   logger.info({ step: "ML-6-ok", email, orgIdPrefix: sessionOrgId?.slice(0, 8) }, "[ML] step-6-ok: token consumed — proceeding to session creation");
+  logger.info({
+    userId:    sessionUserUuid?.slice(0, 8) ?? "(none)",
+    email,
+    orgId:     sessionOrgId?.slice(0, 8),
+    role:      sessionRole,
+    source:    "login-verify",
+  }, "[AUTH CONTEXT DEBUG]");
 
   // ── S10: Create session ───────────────────────────────────────────────────
   let sessionToken: string;

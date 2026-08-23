@@ -193,6 +193,13 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
       }
       const _canStartTrial = !rawTrialConsumedAt && !rawStripeSubId;
 
+      logger.info({
+        user:  (req.orgContext?.email ?? "").slice(0, 30),
+        org:   (dbData?.orgName ?? "").slice(0, 30),
+        plan:  normPlan(rawPlan),
+        role:  req.orgContext?.role ?? "member",
+        orgId: orgId?.slice(0, 8),
+      }, "[ME CONTEXT DEBUG]");
       res.json({
         firstName,
         lastName:            dbData?.lastName ?? "",
