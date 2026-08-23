@@ -14002,13 +14002,19 @@ function renderAI() {
         ${renderAIMessages()}
       </div>
       <style>
-        /* AI input textarea — scrollbar only visible when text exceeds max-height */
-        #ai-input::-webkit-scrollbar { width:0; }
-        #ai-input.fp-ai-scrolling::-webkit-scrollbar { width:5px; }
-        #ai-input.fp-ai-scrolling::-webkit-scrollbar-track { background:transparent; border-radius:4px; }
-        #ai-input.fp-ai-scrolling::-webkit-scrollbar-thumb { background:rgba(148,163,184,0.45); border-radius:4px; min-height:28px; }
-        #ai-input.fp-ai-scrolling::-webkit-scrollbar-thumb:hover { background:rgba(100,116,139,0.75); }
-        html[data-theme="dark"] #ai-input.fp-ai-scrolling::-webkit-scrollbar-thumb { background:rgba(100,116,139,0.5); }
+        /* AI input textarea — grows to max-height then scrolls */
+        #ai-input, #ai-panel-input {
+          max-height: 120px;
+          overflow-y: auto;       /* always auto — scrollbar appears only when content overflows */
+          scrollbar-width: thin;  /* Firefox */
+          scrollbar-color: rgba(148,163,184,0.45) transparent;
+        }
+        #ai-input::-webkit-scrollbar, #ai-panel-input::-webkit-scrollbar { width:5px; }
+        #ai-input::-webkit-scrollbar-track, #ai-panel-input::-webkit-scrollbar-track { background:transparent; border-radius:4px; }
+        #ai-input::-webkit-scrollbar-thumb, #ai-panel-input::-webkit-scrollbar-thumb { background:rgba(148,163,184,0.45); border-radius:4px; min-height:28px; }
+        #ai-input::-webkit-scrollbar-thumb:hover, #ai-panel-input::-webkit-scrollbar-thumb:hover { background:rgba(100,116,139,0.75); }
+        html[data-theme="dark"] #ai-input::-webkit-scrollbar-thumb,
+        html[data-theme="dark"] #ai-panel-input::-webkit-scrollbar-thumb { background:rgba(100,116,139,0.5); }
         /* Progress step text shown while waiting for first AI token */
         .fp-ai-progress-hint { font-size:11px; color:var(--fp-text-faint); font-style:italic; padding:2px 0 0; display:block; min-height:14px; }
       </style>
@@ -14016,7 +14022,7 @@ function renderAI() {
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
           <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
-          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:hidden;line-height:1.5;height:38px;max-height:120px;padding-right:8px;flex:1 1 auto;min-width:0"></textarea>
+          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;line-height:1.5;height:38px;padding-right:8px;flex:1 1 auto;min-width:0"></textarea>
           <button class="fp-ai-send" id="ai-send" style="flex:0 0 auto;width:40px;height:40px;align-self:flex-end;display:flex;align-items:center;justify-content:center;border-radius:var(--fp-radius-md);background:var(--fp-accent,#2563EB);color:#fff;border:none;cursor:pointer;transition:background 0.15s">${svgIcon('send').replace('width="14"','width="20"').replace('height="14"','height="20"')}</button>
           <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:38px;height:38px;border-radius:var(--fp-radius-md);background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
@@ -15497,7 +15503,7 @@ function renderAIPanelContent() {
       ${renderAIMessages()}
     </div>
     <div class="fp-ai-input-row">
-      <textarea class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" rows="1" style="font-size:11px;resize:none;min-height:34px;height:34px;max-height:120px;overflow-y:hidden;line-height:1.4;flex:1 1 auto;min-width:0"></textarea>
+      <textarea class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" rows="1" style="font-size:11px;resize:none;min-height:34px;height:34px;line-height:1.4;flex:1 1 auto;min-width:0"></textarea>
       <button class="fp-ai-send" id="ai-panel-send" style="flex:0 0 auto;width:40px;height:40px;border-radius:var(--fp-radius-md);align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="20"').replace('height="14"','height="20"')}</button>
       <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:38px;height:38px;border-radius:var(--fp-radius-md);background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
     </div>
@@ -17823,8 +17829,25 @@ function bindSectionEvents() {
     $$('.fp-ai-quick').forEach(btn => btn.addEventListener('click', () => sendAIMessage(btn.dataset.aiPrompt)));
     const aiInput = $('#ai-input');
     const aiSend = $('#ai-send');
-    function _resetAiInput() { if(!aiInput) return; aiInput.value=''; aiInput.style.height='38px'; aiInput.style.overflowY='hidden'; aiInput.style.removeProperty('overflow-y'); aiInput.style.setProperty('overflow-y','hidden','important'); aiInput.classList.remove('fp-ai-scrolling'); try { sessionStorage.removeItem('fp:ai-draft'); } catch(_) {} const _ph=document.getElementById('fp-ai-progress-hint'); if(_ph) _ph.textContent=''; }
-    function _resizeAiInput() { if(!aiInput) return; aiInput.style.overflowY='hidden'; aiInput.style.height='38px'; var sh=aiInput.scrollHeight; var newH=Math.min(sh,120); aiInput.style.height=newH+'px'; if(sh>120){ aiInput.style.removeProperty('overflow-y'); aiInput.style.overflowY='auto'; aiInput.classList.add('fp-ai-scrolling'); } else { aiInput.style.overflowY='hidden'; aiInput.classList.remove('fp-ai-scrolling'); } }
+    function _resetAiInput() {
+      if (!aiInput) return;
+      aiInput.value = '';
+      // Reset height only — CSS handles overflow-y (max-height:120px; overflow-y:auto in stylesheet)
+      aiInput.style.height = '38px';
+      try { sessionStorage.removeItem('fp:ai-draft'); } catch(_) {}
+      const _ph = document.getElementById('fp-ai-progress-hint');
+      if (_ph) _ph.textContent = '';
+    }
+    function _resizeAiInput() {
+      if (!aiInput) return;
+      // Measure full content height: reset to min, read scrollHeight, cap at 120px.
+      // overflow-y is always 'auto' (set in CSS) — the browser shows the scrollbar
+      // automatically once the content exceeds max-height:120px.
+      aiInput.style.height = '38px';
+      var sh = aiInput.scrollHeight;
+      aiInput.style.height = Math.min(sh, 120) + 'px';
+      console.debug('[AI textarea resize]', { scrollHeight: sh, appliedHeight: Math.min(sh, 120), capped: sh > 120 });
+    }
     aiInput?.addEventListener('input', () => {
       _resizeAiInput();
       // Draft persistence: keep the unsent text across remounts (hard refresh,
@@ -18270,16 +18293,15 @@ function bindGlobalEvents() {
       // content exceeds the max, reset to min height after send.
       function _panelResize() {
         if (!panelInput) return;
+        // CSS handles overflow-y — only adjust height here.
         panelInput.style.height = '34px';
         var sh = panelInput.scrollHeight;
         panelInput.style.height = Math.min(sh, 120) + 'px';
-        panelInput.style.overflowY = sh > 120 ? 'auto' : 'hidden';
       }
       function _panelReset() {
         if (!panelInput) return;
         panelInput.value = '';
         panelInput.style.height = '34px';
-        panelInput.style.overflowY = 'hidden';
       }
       panelInput?.addEventListener('input', _panelResize);
       panelInput?.addEventListener('paste', () => setTimeout(_panelResize, 0));
