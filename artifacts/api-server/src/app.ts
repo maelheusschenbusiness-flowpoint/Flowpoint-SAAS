@@ -310,7 +310,32 @@ app.get("/index.html", (_req: Request, res: Response) => res.redirect(301, "/sig
 app.get("/", (_req: Request, res: Response) => res.redirect(301, "/signin.html"));
 app.get(["/index", "/signup", "/inscription", "/signin", "/signin.html"], servePage("signin.html"));
 // Dashboard — primary app entry point (authenticated)
-app.get(["/dashboard", "/dashboard.html"], servePage("dashboard.html"));
+// Server-side gate: if no fp_token cookie is present the visitor is definitely
+// unauthenticated (sessionStorage tokens never reach the server).  We redirect
+// to signin.html so that CTAs on flowpoint.pro (or any direct link to
+// /dashboard.html) never land an unauthenticated visitor directly on the app.
+// Authenticated users with a valid cookie pass through instantly (<1ms); users
+// whose cookie has expired will be re-verified by signin.html session-restore.
+app.get(["/dashboard", "/dashboard.html"], (req: Request, res: Response) => {
+  const cookieToken: string = (req as any).cookies?.fp_token ?? "";
+  if (!cookieToken) {
+    // No httpOnly cookie → definitely not logged in → send to signin
+    logger.info(
+      {
+        source: req.headers.referer ?? "(direct)",
+        target: "/signin.html",
+        ip: req.ip ?? "(unknown)",
+        userAgent: (req.headers["user-agent"] as string | undefined)?.slice(0, 80) ?? "",
+        hasCookie: false,
+      },
+      "[MARKETING AUTH REDIRECT] Unauthenticated /dashboard.html → /signin.html"
+    );
+    res.redirect(302, "/signin.html");
+    return;
+  }
+  logger.debug({ source: req.headers.referer ?? "(direct)", hasCookie: true }, "[MARKETING AUTH REDIRECT] Cookie present — serving dashboard.html");
+  servePage("dashboard.html")(req, res);
+});
 // Login (kept for direct link access / legacy)
 app.get(["/login", "/login.html"], servePage("login.html"));
 // Login verify (magic-link callback)
