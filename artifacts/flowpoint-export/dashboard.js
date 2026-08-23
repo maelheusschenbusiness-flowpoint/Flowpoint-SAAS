@@ -9080,7 +9080,7 @@ function renderLocalSEO() {
                           : (Array.isArray(h2.results) ? h2.results.length : 0);
                         const _selH2 = (STATE.localSeo?._selectedHistoryIds||new Set()).has(h2.id!=null?h2.id:hIdx2);
                         return '<div data-hist-row="'+hIdx2+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,0.04);border-radius:6px;cursor:pointer;background:'+(_selH2?'rgba(37,99,235,0.08)':'transparent')+'"'
-                          + ' onclick="(function(el,hid,hIdx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid!=null?hid:hIdx);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid!=null?hid:hIdx);}else{STATE.localSeo._selectedHistoryIds.add(hid!=null?hid:hIdx);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+JSON.stringify(h2.id!=null?h2.id:hIdx2)+','+hIdx2+'">'
+                          + ' onclick="(function(el,hid){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid);}else{STATE.localSeo._selectedHistoryIds.add(hid);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+hIdx2+'">'
                           + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH2?'checked':'')+' onclick="event.stopPropagation()">'
                           + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px">'+escHtml(date)+'</div>'
                           + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
@@ -9111,7 +9111,7 @@ function renderLocalSEO() {
                       : (Array.isArray(h.results) ? h.results.length : 0);
                     const _selH = (STATE.localSeo?._selectedHistoryIds||new Set()).has(h.id||hIdx);
                     return '<div data-hist-row="'+hIdx+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,0.04);border-radius:6px;cursor:pointer;background:'+(_selH?'rgba(37,99,235,0.08)':'transparent')+'"'
-                      + ' onclick="(function(el,hid,hIdx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid!=null?hid:hIdx);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid!=null?hid:hIdx);}else{STATE.localSeo._selectedHistoryIds.add(hid!=null?hid:hIdx);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+JSON.stringify(h.id!=null?h.id:hIdx)+','+hIdx+'">'
+                      + ' onclick="(function(el,hid){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid);}else{STATE.localSeo._selectedHistoryIds.add(hid);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+hIdx+'">'
                       + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH?'checked':'')+' onclick="event.stopPropagation()">'
                       + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px">'+escHtml(date)+'</div>'
                       + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h.keyword)+' — '+escHtml(h.location)+'</div>'
@@ -9618,7 +9618,7 @@ function renderTeam() {
           </div>
           <div style="display:flex;gap:6px;border-top:1px solid var(--fp-border);padding-top:10px">
             <input type="file" id="team-chat-attach" style="display:none" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip" onchange="handleChatAttach(this)"/>
-            <label for="team-chat-attach" title="${fpT('Joindre un fichier')}" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;width:32px;height:32px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="13"').replace('height="14"','height="13"')}</label>
+            <label for="team-chat-attach" title="${fpT('Joindre un fichier')}" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:var(--fp-radius-md);width:38px;height:38px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="16"').replace('height="14"','height="16"')}</label>
             <input id="team-chat-input" class="fp-input" placeholder="Écrire un message… (@mention)" style="flex:1"/>
             <button id="team-chat-send" class="fp-btn fp-btn-primary fp-btn-sm">${svgIcon('send').replace('width="14"','width="14"')}</button>
           </div>
@@ -10919,14 +10919,14 @@ function renderBilling() {
           { name:'Client Plombier',    clients:1, seats:1, plan:'Shared', mrr:'—',   status:'Géré',  color:'#22c55e' },
         ] : [{ name: STATE.me?.orgName || 'Espace principal', clients: (STATE.clients||[]).length || 0, seats: (STATE.team||[]).length || 1, plan: STATE.me?.plan || 'Pro', mrr: '—', status: 'Actif', color: '#2563EB' }]);
     const features = [
-      { name:'White-Label Rapports',  active:true, desc:'Rapports PDF 100% à votre marque — logo, couleurs, pied de page personnalisés',    icon:'🎨', color:'#f59e0b' },
-      { name:'Multi-workspace',       active:true, desc:'Gérez plusieurs workspaces clients séparés dans une seule interface unifiée',       icon:'🏢', color:'#2563EB' },
-      { name:'Audit Log Complet',     active:true, desc:'Historique exhaustif de toutes les actions de l\'équipe — conformité RGPD native',  icon:'📋', color:'#22c55e' },
-      { name:'2FA / MFA',             active:true, desc:'Authentification à deux facteurs obligatoire pour sécuriser chaque connexion',     icon:'🔐', color:'#ef4444' },
-      { name:'Analytics Temps Réel',  active:true, desc:'Tableaux de bord live, graphiques instantanés et alertes en temps réel',          icon:'📊', color:'#2563EB' },
-      { name:'RGPD Compliance',       active:true, desc:'Droit à l\'oubli, exports de données, consentements et DPA disponibles',          icon:'🛡️', color:'#22c55e' },
-      { name:(function(){var _el=STATE.me?.limits?.exports;var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=_el||_map[_pl]||30;var _fmt=function(n){return n>=1000?(Math.round(n/1000))+'k':String(n);};return 'Exports '+(_q>=1000?_fmt(_q):_q)+'/mois';}()), active:true, desc:(function(){var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=STATE.me?.limits?.exports||_map[_pl]||30;return 'Exportez vos données en CSV, PDF ou JSON — quota: '+_q+' exports/mois selon votre plan';}()), icon:'📤', color:'#8b5cf6' },
-      { name:'API GraphQL',           active:true, desc:'Accès complet à l\'API GraphQL pour intégrer FlowPoint dans vos outils métier',   icon:'⚡', color:'#06b6d4' },
+      { name:'White-Label Rapports',  active:true, desc:'Rapports PDF 100% à votre marque — logo, couleurs, pied de page personnalisés',    icon:'🎨', color:'#f59e0b', sub:'workspace' },
+      { name:'Multi-workspace',       active:true, desc:'Gérez plusieurs workspaces clients séparés dans une seule interface unifiée',       icon:'🏢', color:'#2563EB', sub:'workspace' },
+      { name:'Audit Log Complet',     active:true, desc:'Historique exhaustif de toutes les actions de l\'équipe — conformité RGPD native',  icon:'📋', color:'#22c55e', sub:'security' },
+      { name:'2FA / MFA',             active:true, desc:'Authentification à deux facteurs obligatoire pour sécuriser chaque connexion',     icon:'🔐', color:'#ef4444', sub:'security' },
+      { name:'Analytics Temps Réel',  active:true, desc:'Tableaux de bord live, graphiques instantanés et alertes en temps réel',          icon:'📊', color:'#2563EB', sub:'integrations' },
+      { name:'RGPD Compliance',       active:true, desc:'Droit à l\'oubli, exports de données, consentements et DPA disponibles',          icon:'🛡️', color:'#22c55e', sub:'data' },
+      { name:(function(){var _el=STATE.me?.limits?.exports;var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=_el||_map[_pl]||30;var _fmt=function(n){return n>=1000?(Math.round(n/1000))+'k':String(n);};return 'Exports '+(_q>=1000?_fmt(_q):_q)+'/mois';}()), active:true, desc:(function(){var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=STATE.me?.limits?.exports||_map[_pl]||30;return 'Exportez vos données en CSV, PDF ou JSON — quota: '+_q+' exports/mois selon votre plan';}()), icon:'📤', color:'#8b5cf6', sub:'data' },
+      { name:'API GraphQL',           active:true, desc:'Accès complet à l\'API GraphQL pour intégrer FlowPoint dans vos outils métier',   icon:'⚡', color:'#06b6d4', sub:'api' },
     ];
     return `
       ${isUltra
@@ -15622,7 +15622,7 @@ function navigate(route, subRoute) {
   const _n = normalizeRoute(route, subRoute || null);
   if (_n.route === STATE.route && subRoute == null && _n.subRoute == null && STATE.subRoute) _n.subRoute = STATE.subRoute;
   // Settings default sub-route: 'workspace' so the page is never blank for any role
-  if (_n.route === 'settings' && !_n.subRoute && !STATE.subRoute) _n.subRoute = 'workspace';
+  // Settings default sub-route: null → Command Center (same behaviour as all other sections)
   const _prevRoute    = STATE.route;
   const _prevSubRoute = STATE.subRoute;
   STATE.route    = _n.route;
@@ -49357,7 +49357,7 @@ async function init() {
                     const resultCount2 = (h2.total_results!=null&&h2.total_results>0)?h2.total_results:(Array.isArray(h2.results)?h2.results.length:0);
                     const _selH2 = (STATE.localSeo?._selectedHistoryIds||new Set()).has(h2.id!=null?h2.id:hIdx2);
                     return '<div data-hist-row="'+hIdx2+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-top:1px solid var(--fp-border);border-radius:6px;cursor:pointer;background:'+(_selH2?'rgba(37,99,235,0.08)':'transparent')+'"'
-                      + ' onclick="(function(el,hid,hIdx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid!=null?hid:hIdx);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid!=null?hid:hIdx);}else{STATE.localSeo._selectedHistoryIds.add(hid!=null?hid:hIdx);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+JSON.stringify(h2.id!=null?h2.id:hIdx2)+','+hIdx2+'">'
+                      + ' onclick="(function(el,hid){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid);}else{STATE.localSeo._selectedHistoryIds.add(hid);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+hIdx2+'">'
                       + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH2?'checked':'')+' onclick="event.stopPropagation()">'
                       + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px">'+escHtml(date)+'</div>'
                       + '<div style="flex:1;min-width:0;font-size:11px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
@@ -49562,9 +49562,7 @@ async function init() {
   window.fpCreateMissionFromOpportunity = async function(title, desc) {
     if (!title) return;
     try {
-      const r = await apiFetch('/api/missions', {
-        method: 'POST',
-        body: JSON.stringify({
+      const r = await apiAction('POST', '/api/missions', {
           title: title,
           description: desc || '',
           category: 'seo',
@@ -49573,8 +49571,7 @@ async function init() {
           status: 'todo',
           impact: 'high',
           effort: 'medium',
-        }),
-      });
+        });
       if (r && r.id) {
         // Optimistic STATE update — tag with _localTs so loadMissions merge keeps it
         // DO NOT bust /api/missions cache: avoids race where re-fetch returns before DB commit
@@ -52985,7 +52982,7 @@ function renderTeamChat() {
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <input type="file" id="team-chat-attach-main" style="display:none" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip" onchange="handleChatAttach(this)"/>
-          <label for="team-chat-attach-main" title="Joindre un fichier" style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:8px;width:34px;height:34px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="14"').replace('height="14"','height="14"')}</label>
+          <label for="team-chat-attach-main" title="Joindre un fichier" style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:var(--fp-radius-md);width:38px;height:38px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="16"').replace('height="14"','height="16"')}</label>
           <input id="team-chat-input" class="fp-input" placeholder="Écrire un message… (@mention)" style="flex:1;height:34px;font-size:12px"/>
           <button id="team-chat-send" class="fp-btn fp-btn-primary fp-btn-sm" style="height:34px;padding:0 14px;flex-shrink:0;display:flex;align-items:center;gap:5px">${svgIcon('send').replace('width="14"','width="12"').replace('height="14"','height="12"')} Envoyer</button>
         </div>
@@ -62091,7 +62088,13 @@ function renderTeamPerformance() {
     const memberStreak = STATE.teamStreaks && STATE.teamStreaks[memberId];
     const streakVal = memberStreak ? memberStreak.current : (isOwner ? (STATE.streak || 0) : '—');
     const _uid = t.id || t.userId || t.email || '';
-    const _contrib = (STATE.teamContributions && _uid && STATE.teamContributions[_uid]) ? STATE.teamContributions[_uid] : null;
+    const _uid2 = t.userId || t.user_id || '';
+    const _email = String(t.email || '').toLowerCase();
+    const _contrib = (STATE.teamContributions && (
+      (_uid && STATE.teamContributions[_uid]) ||
+      (_uid2 && STATE.teamContributions[_uid2]) ||
+      (_email && (STATE.teamContributions[_email] || STATE.teamContributions[t.email]))
+    )) || null;
     return {
       name: t.name || t.email || 'Membre',
       role: t.role || 'member',
@@ -68717,12 +68720,18 @@ window.fpUpdateRankingMarkersFromHistory = function() {
     return;
   }
 
-  // Collect all results from selected history entries
+  // Collect all results from selected history entries.
+  // IDs in _selectedHistoryIds are always numeric array indices (see history onclick).
   var merged = [];
   history.forEach(function(h, hIdx) {
-    var hid = h.id != null ? h.id : hIdx;
-    if (selectedIds.has(hid) && Array.isArray(h.results) && h.results.length > 0) {
-      h.results.forEach(function(r) { merged.push(r); });
+    if (selectedIds.has(hIdx) && Array.isArray(h.results) && h.results.length > 0) {
+      h.results.forEach(function(r) {
+        // Normalize common DFS field names so geocoding works regardless of API version
+        var norm = Object.assign({}, r);
+        if (!norm.address) norm.address = r.formatted_address || r.full_address || r.address_info?.address || null;
+        if (!norm.title)   norm.title   = r.name || r.business_name || r.title || '';
+        merged.push(norm);
+      });
     }
   });
 
