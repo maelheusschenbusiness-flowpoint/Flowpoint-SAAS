@@ -1962,7 +1962,11 @@ async function loadData(options = {}) {
     // Per-member streaks from member_activity_days table
     if (_streaksRes && _streaksRes.status === 'fulfilled' && _streaksRes.value && Array.isArray(_streaksRes.value.streaks)) {
       STATE.teamStreaks = {};
-      (_streaksRes.value.streaks).forEach(function(s) { if (s.userId) STATE.teamStreaks[s.userId] = s; });
+      (_streaksRes.value.streaks).forEach(function(s) {
+        if (s.userId) STATE.teamStreaks[s.userId] = s;
+        // Also index by email so email-keyed lookups (invited members) work.
+        if (s.email) STATE.teamStreaks[String(s.email).toLowerCase()] = s;
+      });
     }
     // Per-user real contribution counts from DB (audits, missions, reports)
     if (_contribRes && _contribRes.status === 'fulfilled' && _contribRes.value && _contribRes.value.contributions) {
@@ -57982,21 +57986,29 @@ function renderActivityFeed() {
       const audits   = contrib ? Number(contrib.audits   || 0) : (isOwner ? (STATE.audits  ? STATE.audits.length  : 0) : 0);
       const missions = contrib ? Number(contrib.missions || 0) : (isOwner ? ((STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length) : 0);
       const reports  = contrib ? Number(contrib.reports  || 0) : (isOwner ? (STATE.reports ? STATE.reports.length : 0) : 0);
-      // Streak: prefer team streaks keyed by UUID, then email.
-      const streakEntry = (STATE.teamStreaks && (
+      // Streak: UUID first (correct user id), then email fallback.
+      // Guard on STATE.teamStreaks — independent from contributions loading state.
+      const streakEntry = STATE.teamStreaks ? (
         (userId && STATE.teamStreaks[userId]) ||
-        (id && STATE.teamStreaks[id]) ||
-        (email && (STATE.teamStreaks[email] || STATE.teamStreaks[t.email]))
-      )) || null;
+        (id && id !== 'owner' && STATE.teamStreaks[id]) ||
+        (email && (STATE.teamStreaks[email] || STATE.teamStreaks[String(t.email||'').toLowerCase()]))
+      ) : null;
+      const streakDays  = streakEntry ? (streakEntry.current || 0) : 0;
+      // activityScore: 0-80 from action volume (capped at 60), 0-20 from streak (capped at 10d)
+      const _totalActs  = audits + missions + reports;
+      const activityScore = Math.round(Math.min(_totalActs, 60) / 60 * 80 + Math.min(streakDays, 10) / 10 * 20);
+      console.debug('[TEAM PERFORMANCE DEBUG]', { member: nm, userId, email, audits, missions, reports, streakDays, activityScore });
       return {
         id, userId, email, rawId,
         name: nm, role: t.role || 'member',
         avatar: nm.slice(0,2).toUpperCase(),
         color: _mColors[i % _mColors.length],
-        actions: audits + missions + reports,
-        score: null, trend: '—',
+        actions: _totalActs,
+        score: activityScore,
+        trend: '—',
         contribs: { audits, missions, reports },
         streak: streakEntry,
+        streakDays,
       };
     });
     const teamActs = liveFeed.filter(a => a.cat === 'team');
@@ -62150,25 +62162,35 @@ function renderTeamPerformance() {
   const teamData = STATE.team && STATE.team.length > 0 ? STATE.team : [];
   const metrics = teamData.map((t, i) => {
     const isOwner = t.role === 'owner' || (!teamData.some(m => m.role === 'owner') && (t.id === STATE.me?.id || t.email === STATE.me?.email));
-    const memberId = t.id || t.userId || '';
-    const memberStreak = STATE.teamStreaks && STATE.teamStreaks[memberId];
-    const streakVal = memberStreak ? memberStreak.current : (isOwner ? (STATE.streak || 0) : '—');
-    const _uid = t.id || t.userId || t.email || '';
-    const _uid2 = t.userId || t.user_id || '';
-    const _email = String(t.email || '').toLowerCase();
-    const _contrib = (STATE.teamContributions && (
+    // UUID lookup: t.userId (user.id) is the correct key; t.id is team_members.id (row id, ≠ user id)
+    const _memberUserId = t.userId || t.user_id || '';
+    const _memberEmail  = String(t.email || '').toLowerCase();
+    const _memberStreak = STATE.teamStreaks && (
+      (_memberUserId && STATE.teamStreaks[_memberUserId]) ||
+      (_memberEmail  && STATE.teamStreaks[_memberEmail])
+    );
+    const streakVal = _memberStreak ? (_memberStreak.current || 0) : 0;
+    // Contribution lookup: try userId → email → fallback
+    const _uid  = _memberUserId || t.id || '';
+    const _contrib = STATE.teamContributions ? (
       (_uid && STATE.teamContributions[_uid]) ||
-      (_uid2 && STATE.teamContributions[_uid2]) ||
-      (_email && (STATE.teamContributions[_email] || STATE.teamContributions[t.email]))
-    )) || null;
+      (_memberEmail && (STATE.teamContributions[_memberEmail] || STATE.teamContributions[t.email]))
+    ) : null;
+    const auditCnt   = _contrib != null ? Number(_contrib.audits   || 0) : (isOwner ? (STATE.audits ? STATE.audits.length : 0) : 0);
+    const missionCnt = _contrib != null ? Number(_contrib.missions || 0) : (isOwner ? ((STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length) : 0);
+    const reportCnt  = _contrib != null ? Number(_contrib.reports  || 0) : (isOwner ? (STATE.reports ? STATE.reports.length : 0) : 0);
+    const totalActs  = auditCnt + missionCnt + reportCnt;
+    // activityScore computed for ALL members — never hard-coded '—'
+    const actScore   = Math.round(Math.min(totalActs, 60) / 60 * 80 + Math.min(streakVal, 10) / 10 * 20);
+    console.debug('[TEAM PERFORMANCE DEBUG]', { member: t.name||t.email, userId: _memberUserId, email: _memberEmail, audits: auditCnt, missions: missionCnt, reports: reportCnt, streakDays: streakVal, activityScore: actScore });
     return {
       name: t.name || t.email || 'Membre',
       role: t.role || 'member',
       roleColor: _roleColors[t.role] || '#64748b',
-      audits:   _contrib != null ? _contrib.audits   : (isOwner ? (STATE.audits ? STATE.audits.length : 0) : '—'),
-      missions: _contrib != null ? _contrib.missions : (isOwner ? ((STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length) : '—'),
-      reports:  _contrib != null ? _contrib.reports  : (isOwner ? (STATE.reports ? STATE.reports.length : 0) : '—'),
-      score: isOwner ? (STATE.userScore || (STATE.overview && (STATE.overview.seoScore||STATE.overview.avgScore)) || 0) : '—',
+      audits:   auditCnt,
+      missions: missionCnt,
+      reports:  reportCnt,
+      score: actScore,
       streak: streakVal,
     };
   });

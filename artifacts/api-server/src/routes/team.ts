@@ -1592,6 +1592,10 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
           if (run > best) best = run;
         }
         streaks.push({ ...base, current, best: Math.max(best, current) });
+        logger.info(
+          { member: base.name.slice(0, 20), userId: uid.slice(0, 8), email: base.email.slice(0, 20), streakDays: current, best: Math.max(best, current) },
+          "[TEAM PERFORMANCE DEBUG]"
+        );
       } catch (memberErr) {
         // Query error for THIS member — do NOT fabricate a genuine zero.
         // Mark error:true so the caller can distinguish "no activity" from
