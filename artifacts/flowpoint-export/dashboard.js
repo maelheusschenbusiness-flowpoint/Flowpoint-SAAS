@@ -4156,6 +4156,88 @@ function translateActivityLabel(e) {
   }
   return escHtml(e.label || '');
 }
+
+// ── Activity label prefix translation (Option A) ─────────────────────────────
+// Server stores labels in French. This function replaces known structural
+// prefixes so the timeline and notifications respect the user's language.
+(function() {
+  var _ACT_PREFIXES = [
+    // [french_prefix, {en, de, it, pt, es, nl, pl, sv, ro, cs}]
+    ['Mission créée : ',        {en:'Mission created: ',de:'Mission erstellt: ',it:'Missione creata: ',pt:'Missão criada: ',es:'Misión creada: ',nl:'Missie aangemaakt: ',pl:'Misja utworzona: ',sv:'Uppdrag skapat: ',ro:'Misiune creată: ',cs:'Mise vytvořena: '}],
+    ['Mission modifiée : ',     {en:'Mission updated: ',de:'Mission aktualisiert: ',it:'Missione aggiornata: ',pt:'Missão atualizada: ',es:'Misión actualizada: ',nl:'Missie bijgewerkt: ',pl:'Misja zaktualizowana: ',sv:'Uppdrag uppdaterat: ',ro:'Misiune actualizată: ',cs:'Mise aktualizována: '}],
+    ['Mission terminée : ',     {en:'Mission completed: ',de:'Mission abgeschlossen: ',it:'Missione completata: ',pt:'Missão concluída: ',es:'Misión completada: ',nl:'Missie voltooid: ',pl:'Misja ukończona: ',sv:'Uppdrag slutfört: ',ro:'Misiune finalizată: ',cs:'Mise dokončena: '}],
+    ['Mission supprimée : ',    {en:'Mission deleted: ',de:'Mission gelöscht: ',it:'Missione eliminata: ',pt:'Missão excluída: ',es:'Misión eliminada: ',nl:'Missie verwijderd: ',pl:'Misja usunięta: ',sv:'Uppdrag raderat: ',ro:'Misiune ștearsă: ',cs:'Mise smazána: '}],
+    ['[IA] Mission créée : ',   {en:'[AI] Mission created: ',de:'[KI] Mission erstellt: ',it:'[IA] Missione creata: ',pt:'[IA] Missão criada: ',es:'[IA] Misión creada: ',nl:'[AI] Missie aangemaakt: ',pl:'[AI] Misja utworzona: ',sv:'[AI] Uppdrag skapat: ',ro:'[AI] Misiune creată: ',cs:'[AI] Mise vytvořena: '}],
+    ['[IA] Mission modifiée : ',{en:'[AI] Mission updated: ',de:'[KI] Mission aktualisiert: ',it:'[IA] Missione aggiornata: ',pt:'[IA] Missão atualizada: ',es:'[IA] Misión actualizada: ',nl:'[AI] Missie bijgewerkt: ',pl:'[AI] Misja zaktualizowana: ',sv:'[AI] Uppdrag uppdaterat: ',ro:'[AI] Misiune actualizată: ',cs:'[AI] Mise aktualizována: '}],
+    ['[IA] Mission supprimée : ',{en:'[AI] Mission deleted: ',de:'[KI] Mission gelöscht: ',it:'[IA] Missione eliminata: ',pt:'[IA] Missão excluída: ',es:'[IA] Misión eliminada: ',nl:'[AI] Missie verwijderd: ',pl:'[AI] Misja usunięta: ',sv:'[AI] Uppdrag raderat: ',ro:'[AI] Misiune ștearsă: ',cs:'[AI] Mise smazána: '}],
+    ['[IA] Événement créé : ',  {en:'[AI] Event created: ',de:'[KI] Ereignis erstellt: ',it:'[IA] Evento creato: ',pt:'[IA] Evento criado: ',es:'[IA] Evento creado: ',nl:'[AI] Evenement aangemaakt: ',pl:'[AI] Zdarzenie utworzone: ',sv:'[AI] Händelse skapad: ',ro:'[AI] Eveniment creat: ',cs:'[AI] Událost vytvořena: '}],
+    ['Audit lancé : ',          {en:'Audit started: ',de:'Audit gestartet: ',it:'Audit avviato: ',pt:'Auditoria iniciada: ',es:'Auditoría iniciada: ',nl:'Audit gestart: ',pl:'Audyt uruchomiony: ',sv:'Granskning startad: ',ro:'Audit pornit: ',cs:'Audit spuštěn: '}],
+    ['Audit terminé : ',        {en:'Audit completed: ',de:'Audit abgeschlossen: ',it:'Audit completato: ',pt:'Auditoria concluída: ',es:'Auditoría completada: ',nl:'Audit voltooid: ',pl:'Audyt ukończony: ',sv:'Granskning slutförd: ',ro:'Audit finalizat: ',cs:'Audit dokončen: '}],
+    ['Audit automatique: ',     {en:'Automatic audit: ',de:'Automatischer Audit: ',it:'Audit automatico: ',pt:'Auditoria automática: ',es:'Auditoría automática: ',nl:'Automatische audit: ',pl:'Automatyczny audyt: ',sv:'Automatisk granskning: ',ro:'Audit automat: ',cs:'Automatický audit: '}],
+    ['Analyse IA lancée sur le concurrent : ',{en:'AI analysis launched on competitor: ',de:'KI-Analyse des Konkurrenten gestartet: ',it:'Analisi IA avviata sul concorrente: ',pt:'Análise IA iniciada no concorrente: ',es:'Análisis IA iniciado sobre competidor: ',nl:'AI-analyse concurrent gestart: ',pl:'Analiza AI uruchomiona dla konkurenta: ',sv:'AI-analys startad för konkurrent: ',ro:'Analiză AI lansată pe competitor: ',cs:'AI analýza spuštěna pro konkurenta: '}],
+    ['Concurrent ajouté : ',    {en:'Competitor added: ',de:'Mitbewerber hinzugefügt: ',it:'Concorrente aggiunto: ',pt:'Concorrente adicionado: ',es:'Competidor añadido: ',nl:'Concurrent toegevoegd: ',pl:'Konkurent dodany: ',sv:'Konkurrent tillagd: ',ro:'Concurent adăugat: ',cs:'Konkurent přidán: '}],
+    ['Monitor créé : ',         {en:'Monitor created: ',de:'Monitor erstellt: ',it:'Monitor creato: ',pt:'Monitor criado: ',es:'Monitor creado: ',nl:'Monitor aangemaakt: ',pl:'Monitor utworzony: ',sv:'Övervakare skapad: ',ro:'Monitor creat: ',cs:'Monitor vytvořen: '}],
+    ['Monitor supprimé : ',     {en:'Monitor deleted: ',de:'Monitor gelöscht: ',it:'Monitor eliminato: ',pt:'Monitor excluído: ',es:'Monitor eliminado: ',nl:'Monitor verwijderd: ',pl:'Monitor usunięty: ',sv:'Övervakare raderad: ',ro:'Monitor șters: ',cs:'Monitor smazán: '}],
+    ['Keyword ajouté : ',       {en:'Keyword added: ',de:'Keyword hinzugefügt: ',it:'Keyword aggiunto: ',pt:'Palavra-chave adicionada: ',es:'Palabra clave añadida: ',nl:'Zoekwoord toegevoegd: ',pl:'Słowo kluczowe dodane: ',sv:'Nyckelord tillagt: ',ro:'Cuvânt cheie adăugat: ',cs:'Klíčové slovo přidáno: '}],
+    ['Keyword retiré : ',       {en:'Keyword removed: ',de:'Keyword entfernt: ',it:'Keyword rimosso: ',pt:'Palavra-chave removida: ',es:'Palabra clave eliminada: ',nl:'Zoekwoord verwijderd: ',pl:'Słowo kluczowe usunięte: ',sv:'Nyckelord borttaget: ',ro:'Cuvânt cheie eliminat: ',cs:'Klíčové slovo odebráno: '}],
+    ['Rapport généré : ',       {en:'Report generated: ',de:'Bericht erstellt: ',it:'Report generato: ',pt:'Relatório gerado: ',es:'Informe generado: ',nl:'Rapport gegenereerd: ',pl:'Raport wygenerowany: ',sv:'Rapport genererad: ',ro:'Raport generat: ',cs:'Zpráva vygenerována: '}],
+    ['Rapport partagé : ',      {en:'Report shared: ',de:'Bericht geteilt: ',it:'Report condiviso: ',pt:'Relatório compartilhado: ',es:'Informe compartido: ',nl:'Rapport gedeeld: ',pl:'Raport udostępniony: ',sv:'Rapport delad: ',ro:'Raport partajat: ',cs:'Zpráva sdílena: '}],
+    ['Add-on activé : ',        {en:'Add-on activated: ',de:'Add-on aktiviert: ',it:'Add-on attivato: ',pt:'Add-on ativado: ',es:'Complemento activado: ',nl:'Add-on geactiveerd: ',pl:'Dodatek aktywowany: ',sv:'Tillägg aktiverat: ',ro:'Add-on activat: ',cs:'Doplněk aktivován: '}],
+    ['Add-on désactivé : ',     {en:'Add-on deactivated: ',de:'Add-on deaktiviert: ',it:'Add-on disattivato: ',pt:'Add-on desativado: ',es:'Complemento desactivado: ',nl:'Add-on gedeactiveerd: ',pl:'Dodatek dezaktywowany: ',sv:'Tillägg inaktiverat: ',ro:'Add-on dezactivat: ',cs:'Doplněk deaktivován: '}],
+    ['Workflow créé : ',        {en:'Workflow created: ',de:'Workflow erstellt: ',it:'Workflow creato: ',pt:'Fluxo criado: ',es:'Flujo de trabajo creado: ',nl:'Workflow aangemaakt: ',pl:'Przepływ pracy utworzony: ',sv:'Arbetsflöde skapat: ',ro:'Flux de lucru creat: ',cs:'Pracovní postup vytvořen: '}],
+    ['Workflow exécuté : ',     {en:'Workflow executed: ',de:'Workflow ausgeführt: ',it:'Workflow eseguito: ',pt:'Fluxo executado: ',es:'Flujo de trabajo ejecutado: ',nl:'Workflow uitgevoerd: ',pl:'Przepływ pracy wykonany: ',sv:'Arbetsflöde kört: ',ro:'Flux de lucru executat: ',cs:'Pracovní postup spuštěn: '}],
+    ['Paramètres mis à jour : ',{en:'Settings updated: ',de:'Einstellungen aktualisiert: ',it:'Impostazioni aggiornate: ',pt:'Configurações atualizadas: ',es:'Configuración actualizada: ',nl:'Instellingen bijgewerkt: ',pl:'Ustawienia zaktualizowane: ',sv:'Inställningar uppdaterade: ',ro:'Setări actualizate: ',cs:'Nastavení aktualizována: '}],
+    ['Clé API secrète régénérée',{en:'Secret API key regenerated',de:'Geheimer API-Schlüssel neu generiert',it:'Chiave API segreta rigenerata',pt:'Chave API secreta regenerada',es:'Clave API secreta regenerada',nl:'Geheime API-sleutel opnieuw gegenereerd',pl:'Tajny klucz API wygenerowany ponownie',sv:'Hemlig API-nyckel återskapad',ro:'Cheie API secretă regenerată',cs:'Tajný API klíč znovu vygenerován'}],
+    ['Clé API publique régénérée',{en:'Public API key regenerated',de:'Öffentlicher API-Schlüssel neu generiert',it:'Chiave API pubblica rigenerata',pt:'Chave API pública regenerada',es:'Clave API pública regenerada',nl:'Publieke API-sleutel opnieuw gegenereerd',pl:'Publiczny klucz API wygenerowany ponownie',sv:'Publik API-nyckel återskapad',ro:'Cheie API publică regenerată',cs:'Veřejný API klíč znovu vygenerován'}],
+    ['Post GBP publié : ',      {en:'GBP post published: ',de:'GBP-Beitrag veröffentlicht: ',it:'Post GBP pubblicato: ',pt:'Post GBP publicado: ',es:'Post GBP publicado: ',nl:'GBP-bericht gepubliceerd: ',pl:'Post GBP opublikowany: ',sv:'GBP-inlägg publicerat: ',ro:'Post GBP publicat: ',cs:'Příspěvek GBP zveřejněn: '}],
+    ['Post GBP : ',             {en:'GBP post: ',de:'GBP-Beitrag: ',it:'Post GBP: ',pt:'Post GBP: ',es:'Post GBP: ',nl:'GBP-bericht: ',pl:'Post GBP: ',sv:'GBP-inlägg: ',ro:'Post GBP: ',cs:'Příspěvek GBP: '}],
+    ['Réponse GBP publiée — avis ',{en:'GBP response published — review ',de:'GBP-Antwort veröffentlicht — Bewertung ',it:'Risposta GBP pubblicata — recensione ',pt:'Resposta GBP publicada — avaliação ',es:'Respuesta GBP publicada — reseña ',nl:'GBP-antwoord gepubliceerd — beoordeling ',pl:'Odpowiedź GBP opublikowana — recenzja ',sv:'GBP-svar publicerat — recension ',ro:'Răspuns GBP publicat — recenzie ',cs:'Odpověď GBP zveřejněna — recenze '}],
+    ['Recommandations générées: ',{en:'Recommendations generated: ',de:'Empfehlungen generiert: ',it:'Raccomandazioni generate: ',pt:'Recomendações geradas: ',es:'Recomendaciones generadas: ',nl:'Aanbevelingen gegenereerd: ',pl:'Rekomendacje wygenerowane: ',sv:'Rekommendationer genererade: ',ro:'Recomandări generate: ',cs:'Doporučení vygenerována: '}],
+    ['Incident automatique créé',{en:'Automatic incident created',de:'Automatischer Vorfall erstellt',it:'Incidente automatico creato',pt:'Incidente automático criado',es:'Incidente automático creado',nl:'Automatisch incident aangemaakt',pl:'Automatyczny incydent utworzony',sv:'Automatisk incident skapad',ro:'Incident automat creat',cs:'Automatický incident vytvořen'}],
+    ['Google déconnecté',       {en:'Google disconnected',de:'Google getrennt',it:'Google disconnesso',pt:'Google desconectado',es:'Google desconectado',nl:'Google ontkoppeld',pl:'Google odłączony',sv:'Google frånkopplad',ro:'Google deconectat',cs:'Google odpojen'}],
+    ['Connecteur ',             {en:'Connector ',de:'Connector ',it:'Connettore ',pt:'Conector ',es:'Conector ',nl:'Connector ',pl:'Złącze ',sv:'Koppling ',ro:'Conector ',cs:'Konektor '}],
+  ];
+  // Suffix map for "Connecteur X connecté/déconnecté"
+  var _ACT_SUFFIXES = [
+    [' connecté',   {en:' connected',de:' verbunden',it:' connesso',pt:' conectado',es:' conectado',nl:' verbonden',pl:' połączony',sv:' ansluten',ro:' conectat',cs:' připojen'}],
+    [' déconnecté', {en:' disconnected',de:' getrennt',it:' disconnesso',pt:' desconectado',es:' desconectado',nl:' ontkoppeld',pl:' odłączony',sv:' frånkopplad',ro:' deconectat',cs:' odpojen'}],
+  ];
+
+  window.fpTranslateActivityLabel = function(label) {
+    if (!label || typeof label !== 'string') return label || '';
+    var lang = (STATE && STATE.prefs && STATE.prefs.language) || 'fr';
+    if (lang === 'fr') return label;
+    var langKey = lang.toLowerCase().slice(0, 2);
+    for (var i = 0; i < _ACT_PREFIXES.length; i++) {
+      var pair = _ACT_PREFIXES[i];
+      var fr = pair[0];
+      var trMap = pair[1];
+      if (label.startsWith(fr)) {
+        var tr = trMap[langKey] || trMap['en'] || fr;
+        var rest = label.slice(fr.length);
+        // For "Connecteur X connecté/déconnecté", also translate the suffix
+        if (fr === 'Connecteur ') {
+          for (var j = 0; j < _ACT_SUFFIXES.length; j++) {
+            var sp = _ACT_SUFFIXES[j];
+            if (rest.endsWith(sp[0])) {
+              rest = rest.slice(0, rest.length - sp[0].length) + (sp[1][langKey] || sp[1]['en'] || sp[0]);
+              break;
+            }
+          }
+        }
+        return tr + rest;
+      }
+      // Exact match (no trailing ": ")
+      if (label === fr.replace(/\s*:\s*$/, '').replace(/\s*—\s*$/, '')) {
+        var tr2 = (trMap[langKey] || trMap['en'] || fr).replace(/\s*:\s*$/, '');
+        return tr2;
+      }
+    }
+    return label;
+  };
+})();
+// ── End activity label translation ────────────────────────────────────────────
+
 const AVATAR_COLORS = ['#2563EB','#22c55e','#f59e0b','#8b5cf6','#ef4444','#06b6d4'];
 
 function getAvatarColor(name) {
@@ -5940,7 +6022,7 @@ function renderOverview() {
     if (missionsCompleted > 0) items.push({ type: 'success', msg: missionsCompleted + ' mission' + (missionsCompleted > 1 ? 's' : '') + ' complétée' + (missionsCompleted > 1 ? 's' : '') + ' dans votre portefeuille' });
     if (missionsActive > 0) items.push({ type: 'info',    msg: missionsActive + ' mission' + (missionsActive > 1 ? 's' : '') + ' active' + (missionsActive > 1 ? 's' : '') + ' en cours — continuez !' });
     if (STATE.activityEvents && STATE.activityEvents.length > 0 && STATE.activityEvents[0].label) {
-      items.push({ type: 'info', msg: STATE.activityEvents[0].label });
+      items.push({ type: 'info', msg: fpTranslateActivityLabel(STATE.activityEvents[0].label) });
     }
     if (items.length === 0) items.push({ type: 'info', msg: 'Connectez vos premiers sites pour voir les insights IA ici.' });
     return items;
@@ -6402,7 +6484,7 @@ function renderOverview() {
                 const _ts4 = e.createdAt || e.created_at;
                 const _mins = _ts4 ? Math.round((Date.now() - new Date(_ts4).getTime()) / 60000) : 0;
                 const _t = _mins < 1 ? 'À l\'instant' : _mins < 60 ? _mins + ' min' : _mins < 1440 ? Math.round(_mins/60) + 'h' : Math.round(_mins/1440) + 'j';
-                return { type: tMap[e.type] || 'info', icon: iMap[e.type] || 'activity', title: e.label || 'Événement', desc: (e.metadata && (e.metadata.url || e.metadata.message)) || '', time: _t };
+                return { type: tMap[e.type] || 'info', icon: iMap[e.type] || 'activity', title: fpTranslateActivityLabel(e.label) || 'Événement', desc: (e.metadata && (e.metadata.url || e.metadata.message)) || '', time: _t };
               })
             : (PREVIEW_MODE ? ACTIVITY_FEED : [])
           ).slice(0,6).map(item => {
@@ -9569,7 +9651,7 @@ function renderTeam() {
               const _ts = e.createdAt || e.created_at;
               const _m = _ts ? Math.round((Date.now() - new Date(_ts).getTime()) / 60000) : 0;
               const _t = _m < 1 ? 'l\'instant' : _m < 60 ? _m + ' min' : _m < 1440 ? Math.round(_m/60) + 'h' : Math.round(_m/1440) + 'j';
-              const it = { type: tMap[e.type]||'info', icon: iMap[e.type]||'activity', title: e.label||'Événement', desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'', time: _t };
+              const it = { type: tMap[e.type]||'info', icon: iMap[e.type]||'activity', title: fpTranslateActivityLabel(e.label)||'Événement', desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'', time: _t };
               const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
               const c = colors[it.type] || '#2563EB';
               return `<div class="fp-activity-item" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:8px 12px">
@@ -11085,7 +11167,7 @@ function renderBilling() {
             <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
               <span style="font-size:16px">${n.icon}</span>
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(n.label)}</div>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(fpTranslateActivityLabel(n.label))}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(n.desc)}</div>
               </div>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--fp-text-faint)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
@@ -11516,7 +11598,7 @@ function renderSettings() {
                   ${svgIcon(item.icon).replace('stroke="currentColor"', `stroke="${on ? '#2563EB' : 'var(--fp-text-faint)'}"`)}
                 </div>
                 <div style="flex:1;min-width:0">
-                  <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(item.label)}</div>
+                  <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(fpTranslateActivityLabel(item.label))}</div>
                   <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(item.desc)}</div>
                 </div>
                 <button class="fp-check-btn${on ? ' on' : ''}" data-pref-check="${escHtml(item.key)}" aria-pressed="${on}" title="${on ? 'Désactiver' : 'Activer'}" onclick="(function(k){STATE.settings[k]=!STATE.settings[k];saveSettings();render();}('${item.key}'))" style="width:26px;height:26px;border-radius:7px;border:2px solid ${on ? '#2563EB' : 'var(--fp-border)'};background:${on ? '#2563EB' : 'transparent'};display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all 0.15s">
@@ -11847,7 +11929,7 @@ function renderSettings() {
                 </svg>
               </div>
               <div style="flex:1">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(item.label)}</div>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(fpTranslateActivityLabel(item.label))}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(item.desc)} · +${item.weight} pts</div>
               </div>
               ${!item.done
@@ -13133,7 +13215,7 @@ function renderSettings() {
           <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="${n.isRoute ? `navigate('${n.sub}')` : `navigateSub('${n.sub}')`}">
             <span style="font-size:16px;flex-shrink:0">${n.icon}</span>
             <div style="flex:1;min-width:0">
-              <div style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(n.label)}</div>
+              <div style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(fpTranslateActivityLabel(n.label))}</div>
               <div style="font-size:10px;color:var(--fp-text-faint);line-height:1.4">${escHtml(n.desc)}</div>
               <div style="font-size:9px;font-weight:700;color:${n.sc};margin-top:3px">${n.status}</div>
             </div>
@@ -16268,7 +16350,7 @@ function bindSectionEvents() {
             const _t = _mins < 1 ? 'À l\'instant' : _mins < 60 ? _mins + ' min' : _mins < 1440 ? Math.round(_mins/60) + 'h' : Math.round(_mins/1440) + 'j';
             const tMap = { audit:'success', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'purple', misc:'info' };
             const iMap = { audit:'check', monitor:'wifi', alert:'alert', report:'file', team:'users', misc:'activity' };
-            return { type: tMap[e.type]||'info', icon: iMap[e.type]||'activity', title: e.label||'Événement', desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'', time: _t };
+            return { type: tMap[e.type]||'info', icon: iMap[e.type]||'activity', title: fpTranslateActivityLabel(e.label)||'Événement', desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'', time: _t };
           })
         : (PREVIEW_MODE ? ACTIVITY_FEED : []);
       if (_liveItems.length === 0) {
@@ -57728,7 +57810,7 @@ function renderAlertsCenter() {
             return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
               <span style="font-size:16px">${n.icon}</span>
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(n.label)}</div>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(fpTranslateActivityLabel(n.label))}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(n.desc)}</div>
               </div>
               <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
@@ -60344,7 +60426,7 @@ function renderClientMode() {
             <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
               <span style="font-size:16px">${n.icon}</span>
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(n.label)}</div>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(fpTranslateActivityLabel(n.label))}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(n.desc)}</div>
               </div>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--fp-text-faint)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
