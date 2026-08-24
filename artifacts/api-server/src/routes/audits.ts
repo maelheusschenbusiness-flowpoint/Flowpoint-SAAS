@@ -87,6 +87,28 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
         return;
       }
     }
+
+    // ── Server-side quota enforcement ───────────────────────────────────────
+    // Enforce the billing plan's monthly audit limit before accepting the request.
+    // Clients that call the API directly (bypassing the dashboard) are blocked here.
+    try {
+      const { checkQuota } = await import("../services/billing-service.js");
+      const quota = await checkQuota("audits", orgId);
+      if (!quota.allowed) {
+        res.status(402).json({
+          error: `Limite mensuelle d'audits atteinte (${quota.used}/${quota.limit}). Upgradez votre plan ou achetez un pack d'audits supplémentaires.`,
+          code: "QUOTA_EXCEEDED",
+          resource: "audits",
+          used: quota.used,
+          limit: quota.limit,
+        });
+        return;
+      }
+    } catch (quotaErr) {
+      // Non-fatal: if quota check fails (e.g. billing-service unavailable),
+      // allow the audit rather than blocking legitimate users.
+      logger.warn({ err: quotaErr, orgId }, "[audits] quota check failed — allowing audit");
+    }
     // Shared runner (#437): identical path for manual and scheduled audits —
     // insert, async PSI, alert rules, broadcast, activity, usage accounting.
     const _aCtx = (req as any).orgContext || {};
