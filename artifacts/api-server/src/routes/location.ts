@@ -371,6 +371,33 @@ router.patch("/location", async (req: Request, res: Response): Promise<void> => 
     if (dateFormat !== undefined) toSave.dateFormat = dateFormat;
     if (timeFormat !== undefined) toSave.timeFormat = timeFormat;
     await upsertOrgSettings(orgId, toSave);
+
+    // ── Language canonical source synchronisation ──────────────────────────
+    // user_prefs.settings.language is the single canonical store read by the
+    // dashboard and the AI engine. PATCH /api/location is the Settings form
+    // that the user interacts with; it must keep both stores in sync so that
+    // the language stored in org_settings (legacy locale blob) stays in
+    // agreement with user_prefs (canonical). Any read path that currently uses
+    // org_settings.language is scheduled for deprecation.
+    if (language !== undefined) {
+      try {
+        await (req as any).orgDb(
+          `INSERT INTO user_prefs (org_id, settings)
+           VALUES ($1, jsonb_build_object('language', $2::text))
+           ON CONFLICT (org_id) DO UPDATE
+             SET settings = jsonb_set(
+               COALESCE(user_prefs.settings, '{}'::jsonb),
+               '{language}',
+               to_jsonb($2::text)
+             )`,
+          [orgId, language]
+        );
+      } catch (syncErr) {
+        // Non-fatal: org_settings was already updated; user_prefs sync failure
+        // must not roll back the primary write.
+        logger.warn({ err: syncErr, orgId }, "[location] user_prefs language sync failed — org_settings already updated");
+      }
+    }
     const updated = await loadOrgSettings(orgId);
     res.json({
       ok: true,
