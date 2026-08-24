@@ -345,45 +345,79 @@ export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
  * When an add-on ships, remove it from this set and add a Stripe price.
  */
 export const COMING_SOON_ADDONS = new Set<string>([
-  "globalMonitoring",
-  // slaMonitoring: no requireAddon gate exists in any route — buying it unlocks nothing yet
+  // ── No requireAddon gate in any route ─────────────────────────────────────
+  // slaMonitoring: no requireAddon("slaMonitoring",...) found in any route file.
+  // Buying it unlocks nothing. Existing /betterstack/monitors/:id/sla is ungated.
   "slaMonitoring",
+  // globalMonitoring: no routes exist.
+  "globalMonitoring",
+  // backlinkIntelligence / aiContentStrategist / abTestingAI: no routes exist.
   "backlinkIntelligence",
   "aiContentStrategist",
   "abTestingAI",
   "agencyPacks",
   "aiExecutiveReport",
   "aiWorkflows",
+
+  // ── Routes exist but not commercially released ─────────────────────────────
+  // crmIntegration: crm.ts routes are complete but addon not yet sold.
+  // Route exists and works, blocked by this set (POST /api/addons/crmIntegration/activate → 503).
   "crmIntegration",
+
+  // ssoEnterprise: sso.ts line 82 TODO, SAML_ROADMAP_PROVIDERS → 501.
+  // Only Google Workspace OIDC works today (plan feature, not this addon).
   "ssoEnterprise",
-  // The current launch wizard still creates generic roadmap content and does
-  // not provision the promised workspace surfaces end-to-end.
+
+  // aiWorkspaceLaunch: ai-workspace-launch.ts routes exist (POST + GET /:sessionId)
+  // but NO requireAddon("aiWorkspaceLaunch",...) gate — the addon key is not enforced.
+  // Route uses DEFAULT_ROADMAP / DEFAULT_MISSIONS hardcoded fallbacks as primary content.
+  // Not commercially released.
   "aiWorkspaceLaunch",
 ]);
 
 /**
- * Implemented AI/data products currently offered as a limited release.
+ * Audit fonctionnel (2026-08-24) — critère BETA :
+ * "route réelle, activable, mais partielle ou dépendante d'une intégration externe."
  *
- * Audit fonctionnel (2026-08-24) — classification par route requireAddon réelle :
- *   aiCro            → cro.ts:17  requireAddon gate + full CRO service  → "available"
- *   revenueLeak      → revenue-leak.ts:15  requireAddon + detect/resolve routes → "available"
- *   marketIntelligence → market-intelligence.ts:12 requireAddon + 7 routes → "available"
- *   reviewIntelligence → review-intelligence.ts:23 requireAddonOrFeature + routes → "available"
- *   behavioralAI     → behavioral.ts:377 requireAddon + full routes → "available"
- *   aiForecasting    → forecast.ts:11 requireAddon + full routes → "available"
- *   keywordDomination → keywords.ts:188 limit extension to 10k → "available"
- *   aiGbpPosting     → gbp-posts.ts:86 requireAddon on AI generation → "available"
- *   zapierIntegration → integrations.ts:131/158 requireAddon gates → "available"
- *   customDomain     → white-label.ts:141 check → "available"
- *   localDominationMaps → local-maps.ts:15 requireAddon → "available"
- *   slaMonitoring    → NO requireAddon gate → moved to COMING_SOON
+ *   behavioralAI      → behavioral.ts:377 gate réelle. Mais dépend du snippet JS
+ *                        installé côté client (intégration externe). Sans snippet,
+ *                        les insights sont vides. → BETA
  *
- * BETA is reserved for add-ons that have partial server implementation
- * (routes exist but data coverage or DFS quota is explicitly limited).
- * None currently qualify after the audit — leave empty to avoid false claims.
+ *   aiForecasting     → forecast.ts:11 gate réelle. Memory documente "fabricated
+ *                        past curves" pour les pages forecast. Couverture données
+ *                        limitée. → BETA
+ *
+ *   marketIntelligence → market-intelligence.ts:12 gate réelle. Task PROPOSÉE
+ *                        "Remplacer données concurrentes hardcodées par vraies DFS"
+ *                        non terminée. Données partiellement mockées. → BETA
+ *
+ *   revenueLeak       → revenue-leak.ts:15 gate réelle. Dépend de behavioral data
+ *                        (snippet onsite requis). Sans snippet = détection vide. → BETA
+ *
+ *   aiCro             → cro.ts:17 gate réelle. Dépend de behavioral data (snippet).
+ *                        Recommandations génériques sans données visiteurs. → BETA
+ *
+ *   reviewIntelligence → review-intelligence.ts:23 gate réelle. Analyse DFS/GBP
+ *                        reviews — intégration DFS partielle. → BETA
+ *
+ *   aiGbpPosting      → gbp-posts.ts:86 gate réelle sur génération IA. Dépend
+ *                        d'une connexion OAuth GBP active (intégration externe). → BETA
+ *
+ *   zapierIntegration → integrations.ts:131/158 gate réelle. Dépend OAuth
+ *                        Zapier/Make (connexion externe non bundlée). → BETA
  */
 export const BETA_ADDONS = new Set<string>([
-  // (intentionally empty — see audit comment above)
+  // Dépendance snippet onsite
+  "behavioralAI",
+  "revenueLeak",
+  "aiCro",
+  // Couverture données partielle / DFS non complète
+  "aiForecasting",
+  "marketIntelligence",
+  "reviewIntelligence",
+  // Dépendance OAuth externe
+  "aiGbpPosting",
+  "zapierIntegration",
 ]);
 
 /** Product lifecycle independent of an organisation's current entitlements. */
