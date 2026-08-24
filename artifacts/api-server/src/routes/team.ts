@@ -1354,14 +1354,23 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
            o.owner_user_id::text  AS owner_raw_uid
          FROM organizations o WHERE o.id::text = $1 LIMIT 1
        ),
+       org_activity AS (
+         SELECT owner_email, owner_raw_uid
+         FROM owner_ids
+       ),
        canonical_activity AS (
          -- Path 1: activity resolved through the users table
          SELECT al.*, u.id::text AS canonical_user_id
          FROM activity_logs al
+         LEFT JOIN org_activity oa ON TRUE
          JOIN users u
            ON u.id::text = al.user_id
            OR LOWER(u.email) = LOWER(al.user_id)
-         WHERE al.org_id = $1
+         WHERE (
+             al.org_id = $1
+             OR LOWER(al.org_id) = oa.owner_email
+             OR al.org_id = oa.owner_raw_uid
+           )
            AND (
              EXISTS (
                SELECT 1 FROM organization_members om
@@ -1381,7 +1390,11 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
          -- (user_id stored as non-UUID before migration)
          SELECT al.*, (SELECT canonical_uid FROM owner_ids) AS canonical_user_id
          FROM activity_logs al, owner_ids
-         WHERE al.org_id = $1
+         WHERE (
+             al.org_id = $1
+             OR LOWER(al.org_id) = owner_ids.owner_email
+             OR al.org_id = owner_ids.owner_raw_uid
+           )
            AND al.user_id IS NOT NULL
            AND al.user_id != ''
            AND (
