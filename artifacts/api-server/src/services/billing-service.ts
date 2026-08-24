@@ -125,6 +125,13 @@ export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, p
     // to "included" or "active" for an authenticated organisation.
     availability: getAddonAvailability(id),
     status:       getAddonAvailability(id),
+    // allowedPlans: plans that may purchase this add-on. All non-coming_soon
+    // add-ons are purchasable on every billable plan unless the plan already
+    // bundles them (frontend should hide if status === "included").
+    // coming_soon add-ons are not purchasable on any plan.
+    allowedPlans: getAddonAvailability(id) === "coming_soon"
+      ? []
+      : ["standard", "pro", "ultra"],
   }];
 });
 
