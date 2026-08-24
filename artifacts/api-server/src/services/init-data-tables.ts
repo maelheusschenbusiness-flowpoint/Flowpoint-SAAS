@@ -2968,13 +2968,14 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE POLICY "uad_delete" ON "user_activity_days" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     // Self-heal: rows inserted before the $1/$2/$3 fix had user_id = org_id (primary key used orgId twice).
     // Delete those rows so real-user streaks can be re-inserted correctly on next login.
-    // Only removes rows where user_id = org_id AND the org has real members in org_members.
+    // Only removes rows where user_id = org_id AND the org has real members in team_members
+    // (the canonical member table — org_members does not exist).
     await run(client, `
       DELETE FROM user_activity_days uad
       WHERE uad.user_id = uad.org_id
         AND EXISTS (
-          SELECT 1 FROM org_members om
-          WHERE om.org_id = uad.org_id
+          SELECT 1 FROM team_members tm
+          WHERE tm.org_id = uad.org_id
         )
     `);
 
