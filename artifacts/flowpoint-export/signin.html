@@ -202,31 +202,55 @@
         var headers = { 'Content-Type': 'application/json' };
         if (_st) headers['Authorization'] = 'Bearer ' + _st;
 
+        var _traceTs = new Date().toISOString();
         fetch('/api/auth/session-restore', {
           method: 'POST', credentials: 'include', headers: headers
         }).then(function(r) {
           if (r.ok) return r.json().catch(function() { return null; });
-          return null;
+          // Non-2xx → no session; ensure we know the status for the trace
+          return r.json().catch(function() { return null; }).then(function(d) {
+            return { _httpStatus: r.status, _noToken: true };
+          });
         }).then(function(data) {
-          var sessionRestoreStatus = data && data.token ? 'authenticated' : 'unauthenticated';
+          var hasToken = !!(data && data.token && !data._noToken);
+          // ── [AUTH REDIRECT TRACE] ─────────────────────────────────────────
           try {
-            console.log('[MARKETING AUTH REDIRECT]', {
+            console.log('[AUTH REDIRECT TRACE]', {
+              file: 'signin.html',
+              fn: '_checkAndRedirect',
               source: source,
-              target: data && data.token ? '/dashboard.html' : '(stay on signin.html)',
-              hasSessionStorageToken: !!_st,
-              sessionRestoreStatus: sessionRestoreStatus,
+              url: window.location.href,
+              destination: hasToken ? '/dashboard.html' : '(stay — no redirect)',
+              sessionStorageToken: !!_st,
+              fp_had_session: _hadSession,
+              sessionRestoreResult: hasToken ? 'authenticated' : 'unauthenticated',
               referrer: document.referrer || '(direct)',
+              timestamp: _traceTs,
             });
           } catch(_) {}
-          if (data && data.token) {
+          if (hasToken) {
             try { sessionStorage.setItem('fp_session_token', data.token); } catch(_) {}
             try { localStorage.setItem('fp_had_session', '1'); } catch(_) {}
             window.location.replace('/dashboard.html');
           } else {
+            // Session-restore failed → purge ALL auth state including fp_had_session
+            // so subsequent visits don't re-trigger this check on a dead session.
             try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
+            try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
+            try { localStorage.removeItem('fp_had_session'); } catch(_) {}
             document.body.style.visibility = 'visible';
           }
         }).catch(function() {
+          // Network error → fail-open, show form, do NOT redirect
+          try {
+            console.log('[AUTH REDIRECT TRACE]', {
+              file: 'signin.html', fn: '_checkAndRedirect',
+              source: source, url: window.location.href,
+              destination: '(stay — network error)',
+              sessionStorageToken: !!_st, fp_had_session: _hadSession,
+              sessionRestoreResult: 'network-error', timestamp: _traceTs,
+            });
+          } catch(_) {}
           document.body.style.visibility = 'visible';
         });
       }
