@@ -48154,6 +48154,10 @@ async function init() {
       // plan_changed: also purge in-memory API caches so /api/me and
       // /api/billing/subscription are re-fetched with the NEW plan.
       try { _apiFetchCache.clear(); _apiFetchInFlight.clear(); } catch(_) {}
+      // Remember we came from a checkout so we can trigger a delayed quota refresh below.
+      if (_href.includes('checkout=success') || _href.includes('plan_activated') || _href.includes('addon_success')) {
+        window._fpWasCheckoutReturn = true;
+      }
       // Clean the URL so a page refresh does not repeat the cache-bust
       window.history.replaceState({}, '', window.location.pathname + (window.location.hash || ''));
     }
@@ -48183,6 +48187,25 @@ async function init() {
   // Update sidebar
   renderSidebarStatus();
   renderNotifications();
+
+  // ── Post-checkout delayed quota refresh ────────────────────────────────────
+  // After an add-on or plan checkout, the DB activation may not be reflected
+  // immediately in the first loadData() pass. A 2-second delayed re-fetch of
+  // usage-details ensures sidebar quota bars show the new limits.
+  if (window._fpWasCheckoutReturn) {
+    window._fpWasCheckoutReturn = false;
+    setTimeout(async function() {
+      try {
+        _apiFetchCache && _apiFetchCache.delete('/api/billing/usage-details');
+        _apiFetchInFlight && _apiFetchInFlight.delete('/api/billing/usage-details');
+        const _freshUd = await apiFetch('/api/billing/usage-details');
+        if (_freshUd && typeof _freshUd === 'object') {
+          STATE.usageDetails = _freshUd;
+          renderSidebarStatus();
+        }
+      } catch(_) {}
+    }, 2000);
+  }
 
   // Init messages badge (uses channels system)
   { if (!STATE.channelMessages) STATE.channelMessages = PREVIEW_MODE ? JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT)) : {general:[],seo:[],rapports:[],support:[]};
@@ -48380,7 +48403,15 @@ async function init() {
               apiFetch('/api/me', { _skipCache: true }).then(me => {
                 if (me && me.email) { STATE.me = me; render(); }
               }).catch(() => {});
-              loadData().catch(() => {});
+              // Also re-fetch usage-details so sidebar quota bars reflect new limits
+              loadData().then(() => {
+                try {
+                  apiFetch('/api/billing/usage-details', { force: true }).then(ud => {
+                    if (ud && typeof ud === 'object') { STATE.usageDetails = ud; }
+                    try { renderSidebarStatus(); } catch(_) {}
+                  }).catch(() => { try { renderSidebarStatus(); } catch(_) {} });
+                } catch(_) {}
+              }).catch(() => {});
             // ── Add-on deactivated ─────────────────────────────────────────────────
             } else if (msg.type === 'addon:deactivated' || msg.type === 'fp:addon:deactivated') {
               const addonKey = msg.addonKey || msg.addon_key || '';
