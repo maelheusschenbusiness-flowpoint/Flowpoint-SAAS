@@ -4,6 +4,7 @@ import { streamReportPdf } from "../services/pdf.js";
 import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 import { canWrite, canAdmin } from "../middlewares/requireRole.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -81,6 +82,25 @@ router.get("/reports/:id", async (req, res) => {
 
 // ── POST /reports ─────────────────────────────────────────────────────────────
 router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
+  // ── Server-side quota enforcement ─────────────────────────────────────────
+  const _qOrgId = org(req);
+  try {
+    const { checkQuota } = await import("../services/billing-service.js");
+    const _quota = await checkQuota("reports", _qOrgId);
+    if (!_quota.allowed) {
+      res.status(402).json({
+        error: `Limite mensuelle de rapports PDF atteinte (${_quota.used}/${_quota.limit}). Upgradez votre plan ou achetez un pack de rapports.`,
+        code: "QUOTA_EXCEEDED",
+        resource: "reports",
+        used: _quota.used,
+        limit: _quota.limit,
+      });
+      return;
+    }
+  } catch (_qErr) {
+    logger.warn({ err: _qErr, orgId: _qOrgId }, "[reports] quota check failed — allowing report");
+  }
+
   const { name, auditId, format, templateKey, whiteLabel, meetingNotes, dateStart, dateEnd } = req.body as {
     name?: string; auditId?: string; format?: string; whiteLabel?: boolean;
     templateKey?: string;
@@ -170,6 +190,14 @@ router.post("/reports/send-invoice", canAdmin, async (req, res) => {
 // ── GET /reports/:id/download ─────────────────────────────────────────────────
 router.get("/reports/:id/download", async (req: Request, res: Response) => {
   const orgId = org(req);
+
+  // ── Server-side quota enforcement for PDF download ─────────────────────────
+  // A report creation already checked the quota; the download is the delivery.
+  // We do NOT double-count here (usage-events.js records pdf_export separately
+  // from report_created). The quota gate only blocks creation, not re-download
+  // of an existing report — so quota check is intentionally skipped here and
+  // only applied at POST /reports (creation time).
+
   const rr = await db(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [req.params.id, orgId]);
   const report = rr.rows[0];
   if (!report) { res.status(404).json({ error: "Report not found" }); return; }
