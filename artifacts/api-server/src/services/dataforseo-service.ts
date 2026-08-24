@@ -292,16 +292,20 @@ export async function getKeywordDifficulty(keyword: string, orgId = "default"): 
 
 export async function getLocalPackRank(
   keyword: string, location: string, orgId = "default"
-): Promise<Array<{ rank: number; title: string; rating: number; reviews: number; address?: string }>> {
+): Promise<Array<{ rank: number; title: string; rating: number; reviews: number; address?: string; lat?: number; lng?: number; place_id?: string }>> {
   if (!await isDataForSEOConfigured(orgId)) return [];
   try {
     // Use business_listings/search/live — works on the standard DFS subscription tier.
     // The legacy /serp/google/local_pack/live/regular endpoint requires a higher-tier SERP plan.
+    // We request 10 results and extract lat/lng so the frontend can place markers without
+    // relying on a secondary geocoding pass (which fails silently for non-FR addresses).
     type BLItem = {
       title?: string;
       rating?: { value?: number; votes_count?: number };
       address?: string;
       place_id?: string;
+      latitude?: number;
+      longitude?: number;
     };
     type BLResult = Array<{
       status_code?: number;
@@ -309,17 +313,20 @@ export async function getLocalPackRank(
     }>;
     const data = await dfsRequest<BLResult>("/business_data/business_listings/search/live", [{
       keyword,
-      location_code: 2056, // Belgium — most FlowPoint users; fallback for unknown location
-      limit: 5,
+      location_name: location, // Use the caller-supplied location string, not a hardcoded country code
+      limit: 10,
     }], orgId);
 
     const items = data[0]?.result?.[0]?.items ?? [];
-    return items.slice(0, 3).map((item, idx) => ({
-      rank:    idx + 1,
-      title:   item.title ?? `Résultat ${idx + 1}`,
-      rating:  item.rating?.value ?? 0,
-      reviews: item.rating?.votes_count ?? 0,
-      address: item.address,
+    return items.map((item, idx) => ({
+      rank:     idx + 1,
+      title:    item.title ?? `Résultat ${idx + 1}`,
+      rating:   item.rating?.value ?? 0,
+      reviews:  item.rating?.votes_count ?? 0,
+      address:  item.address,
+      lat:      item.latitude  != null ? Number(item.latitude)  : undefined,
+      lng:      item.longitude != null ? Number(item.longitude) : undefined,
+      place_id: item.place_id,
     }));
   } catch (e) {
     logger.warn({ e }, "[dfs] getLocalPackRank failed");
@@ -405,7 +412,7 @@ export async function fetchCompetitorDomainMetrics(
 
 export async function getGoogleMapsResults(
   keyword: string, location: string, orgId = "default"
-): Promise<{ results: Array<{ name: string; rating: number; reviews: number; address: string; category: string; placeId: string; rank: number; photoUrl: string | null }>; error?: string }> {
+): Promise<{ results: Array<{ name: string; rating: number; reviews: number; address: string; category: string; placeId: string; rank: number; photoUrl: string | null; lat?: number; lng?: number }>; error?: string }> {
   if (!await isDataForSEOConfigured(orgId)) return { results: [] };
   try {
     type DFSResult = Array<{
@@ -420,6 +427,8 @@ export async function getGoogleMapsResults(
           place_id?: string;
           rank_absolute?: number;
           image_url?: string;
+          latitude?: number;
+          longitude?: number;
         }>;
       }>;
     }>;
@@ -443,6 +452,8 @@ export async function getGoogleMapsResults(
       placeId:  item.place_id ?? "",
       rank:     item.rank_absolute ?? 0,
       photoUrl: item.image_url ?? null,
+      lat:      item.latitude  != null ? Number(item.latitude)  : undefined,
+      lng:      item.longitude != null ? Number(item.longitude) : undefined,
     })) };
   } catch (e) {
     logger.warn({ e }, "[dfs] getGoogleMapsResults failed");
