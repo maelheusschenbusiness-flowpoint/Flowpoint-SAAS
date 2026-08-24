@@ -1339,7 +1339,23 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     const countsRes = await pool.query<{
       user_id: string; audits: number; missions: number; reports: number; monitors: number;
     }>(
-      `WITH canonical_activity AS (
+      // Path 1: resolve via users table (handles UUIDs and email-shaped user_ids)
+      // Path 2: owner activity where legacy user_id doesn't resolve through users
+      //         (e.g. 'user-owner-abc' stored before the UUID migration)
+      // Both paths emit canonical_user_id = users.id from the org owner lookup.
+      `WITH owner_ids AS (
+         SELECT
+           COALESCE(
+             (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
+             (SELECT u.id::text FROM users u WHERE u.id::text = o.owner_user_id::text LIMIT 1),
+             o.owner_user_id::text
+           ) AS canonical_uid,
+           LOWER(o.owner_email)   AS owner_email,
+           o.owner_user_id::text  AS owner_raw_uid
+         FROM organizations o WHERE o.id::text = $1 LIMIT 1
+       ),
+       canonical_activity AS (
+         -- Path 1: activity resolved through the users table
          SELECT al.*, u.id::text AS canonical_user_id
          FROM activity_logs al
          JOIN users u
@@ -1359,6 +1375,24 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
                  AND (LOWER(o.owner_email) = LOWER(u.email)
                       OR o.owner_user_id::text = u.id::text)
              )
+           )
+         UNION ALL
+         -- Path 2: owner legacy activity that doesn't resolve through users
+         -- (user_id stored as non-UUID before migration)
+         SELECT al.*, (SELECT canonical_uid FROM owner_ids) AS canonical_user_id
+         FROM activity_logs al, owner_ids
+         WHERE al.org_id = $1
+           AND al.user_id IS NOT NULL
+           AND al.user_id != ''
+           AND (
+             al.user_id = owner_ids.owner_raw_uid
+             OR LOWER(al.user_id) = owner_ids.owner_email
+           )
+           -- exclude rows that Path 1 already covers (user resolved via JOIN users)
+           AND NOT EXISTS (
+             SELECT 1 FROM users u2
+             WHERE u2.id::text = al.user_id
+                OR LOWER(u2.email) = LOWER(al.user_id)
            )
        )
        SELECT canonical_user_id AS user_id,
