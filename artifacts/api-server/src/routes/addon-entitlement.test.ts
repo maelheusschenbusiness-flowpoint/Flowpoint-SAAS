@@ -47,12 +47,12 @@ describe("PLAN_INCLUDED_ADDONS", () => {
     expect(ultra.has("retention365d")).toBe(true);
   });
 
-  it("Ultra has exactly 7 included add-ons", () => {
+  it("Ultra has exactly 9 included add-ons", () => {
     // backlinkIntelligence removed: COMING_SOON — cannot be active entitlement.
-    // behavioralAI removed: BETA — invariant BETA_ADDONS ∩ PLAN_INCLUDED_ADDONS = ∅.
-    // aiForecasting removed: BETA — same invariant.
+    // behavioralAI + aiForecasting: BETA + included — intentional FlowPoint design.
+    // Beta describes maturity; included describes commercial mode (non-billable).
     const ultra = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set();
-    expect(ultra.size).toBe(7);
+    expect(ultra.size).toBe(9);
   });
 
   it("Standard includes whiteLabel", () => {
@@ -65,11 +65,13 @@ describe("PLAN_INCLUDED_ADDONS", () => {
     expect(pro.has("advancedSeoLab")).toBe(true);
   });
 
-  it("Ultra includes keywordDomination but NOT behavioralAI (beta)", () => {
+  it("Ultra includes keywordDomination AND behavioralAI (beta + included)", () => {
     const ultra = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set();
     expect(ultra.has("keywordDomination")).toBe(true);
-    // behavioralAI is BETA — it is purchasable on Pro/Ultra but never bundled for free
-    expect(ultra.has("behavioralAI")).toBe(false);
+    // behavioralAI is BETA + included in Ultra: renders as "🧪 Beta — Inclus dans votre plan"
+    // Beta ∩ Included is valid — beta describes maturity, included describes commercial mode.
+    expect(ultra.has("behavioralAI")).toBe(true);
+    expect(ultra.has("aiForecasting")).toBe(true);
   });
 });
 
@@ -101,10 +103,9 @@ describe("requireAddon — entitlement logic", () => {
     expect(checkEntitlement("pro", "aiCro", ["aiCro"])).toBe(true);
   });
 
-  it("Ultra + behavioralAI NOT bundled → requires explicit purchase (beta)", () => {
-    // behavioralAI is BETA: purchasable on Pro/Ultra but NOT bundled for free
-    expect(checkEntitlement("ultra", "behavioralAI", [])).toBe(false);
-    expect(checkEntitlement("ultra", "behavioralAI", ["behavioralAI"])).toBe(true);
+  it("Ultra + behavioralAI included → entitled without purchase (beta + included)", () => {
+    // behavioralAI is BETA but bundled in Ultra: no purchase needed
+    expect(checkEntitlement("ultra", "behavioralAI", [])).toBe(true);
   });
 
   it("Standard + aiForecasting purchased → allowed", () => {

@@ -166,12 +166,13 @@ describe("addons entitlement merge logic", () => {
 });
 
 describe("canonical add-on availability", () => {
-  it("keeps beta classification narrow and free of roadmap or bundled add-ons", () => {
-    const included = new Set(
-      Object.values(PLAN_INCLUDED_ADDONS).flatMap((addons) => [...addons]),
-    );
+  it("keeps beta classification free of coming_soon add-ons (BETA ∩ INCLUDED is intentionally non-empty)", () => {
+    // Beta describes feature maturity; included describes commercial mode.
+    // A beta add-on can be bundled in a plan (e.g. Ultra) and shown as
+    // "🧪 Beta — Inclus dans votre plan" — this is intentional FlowPoint behaviour.
+    // The only forbidden overlap is BETA ∩ COMING_SOON (roadmap items cannot
+    // be simultaneously described as in-progress / beta).
     expect([...BETA_ADDONS].filter((key) => COMING_SOON_ADDONS.has(key))).toEqual([]);
-    expect([...BETA_ADDONS].filter((key) => included.has(key))).toEqual([]);
   });
 
   it("reports product lifecycle independently of entitlement", () => {
