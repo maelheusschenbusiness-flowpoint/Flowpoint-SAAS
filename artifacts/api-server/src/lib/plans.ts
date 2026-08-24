@@ -407,13 +407,17 @@ export const COMING_SOON_ADDONS = new Set<string>([
  *                        Zapier/Make (connexion externe non bundlée). → BETA
  */
 export const BETA_ADDONS = new Set<string>([
-  // NOTE: behavioralAI and aiForecasting are included in Ultra plan (commercial
-  // entitlements, not beta-only). They must NOT appear here to avoid the
-  // invariant violation: BETA_ADDONS ∩ PLAN_INCLUDED_ADDONS = ∅.
+  // Invariant: BETA_ADDONS ∩ PLAN_INCLUDED_ADDONS = ∅.
+  // Beta addons are NOT bundled in any plan (even Ultra) — purchasing them
+  // requires an explicit add-on activation. The prior classification of
+  // behavioralAI/aiForecasting as Ultra inclusions violated this invariant
+  // and is corrected here: they are removed from PLAN_INCLUDED_ADDONS["ultra"].
   // Dépendance snippet onsite
+  "behavioralAI",
   "revenueLeak",
   "aiCro",
   // Couverture données partielle / DFS non complète
+  "aiForecasting",
   "marketIntelligence",
   "reviewIntelligence",
   // Dépendance OAuth externe
@@ -517,12 +521,12 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
     "customDomain",
     "advancedWebhooks",
     "advancedSeoLab",
-    // backlinkIntelligence removed: it is in COMING_SOON_ADDONS and cannot be an active entitlement
+    // backlinkIntelligence removed: COMING_SOON — cannot be an active entitlement
+    // behavioralAI removed: BETA — must not appear in PLAN_INCLUDED_ADDONS (invariant BETA ∩ INCLUDED = ∅)
+    // aiForecasting removed: BETA — same invariant
     "enterprisePermissions",
     "retention365d",
     "keywordDomination",
-    "behavioralAI",
-    "aiForecasting",
   ]),
 };
 

@@ -47,11 +47,12 @@ describe("PLAN_INCLUDED_ADDONS", () => {
     expect(ultra.has("retention365d")).toBe(true);
   });
 
-  it("Ultra has exactly 9 included add-ons", () => {
-    // backlinkIntelligence removed: it is in COMING_SOON_ADDONS and cannot be
-    // an active entitlement (would show as "unlocked" when feature doesn't exist).
+  it("Ultra has exactly 7 included add-ons", () => {
+    // backlinkIntelligence removed: COMING_SOON — cannot be active entitlement.
+    // behavioralAI removed: BETA — invariant BETA_ADDONS ∩ PLAN_INCLUDED_ADDONS = ∅.
+    // aiForecasting removed: BETA — same invariant.
     const ultra = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set();
-    expect(ultra.size).toBe(9);
+    expect(ultra.size).toBe(7);
   });
 
   it("Standard includes whiteLabel", () => {
@@ -64,10 +65,11 @@ describe("PLAN_INCLUDED_ADDONS", () => {
     expect(pro.has("advancedSeoLab")).toBe(true);
   });
 
-  it("Ultra includes keywordDomination and behavioralAI", () => {
+  it("Ultra includes keywordDomination but NOT behavioralAI (beta)", () => {
     const ultra = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set();
     expect(ultra.has("keywordDomination")).toBe(true);
-    expect(ultra.has("behavioralAI")).toBe(true);
+    // behavioralAI is BETA — it is purchasable on Pro/Ultra but never bundled for free
+    expect(ultra.has("behavioralAI")).toBe(false);
   });
 });
 
@@ -99,9 +101,10 @@ describe("requireAddon — entitlement logic", () => {
     expect(checkEntitlement("pro", "aiCro", ["aiCro"])).toBe(true);
   });
 
-  it("Ultra + behavioralAI included → allowed without purchase", () => {
-    // behavioralAI is bundled in Ultra
-    expect(checkEntitlement("ultra", "behavioralAI", [])).toBe(true);
+  it("Ultra + behavioralAI NOT bundled → requires explicit purchase (beta)", () => {
+    // behavioralAI is BETA: purchasable on Pro/Ultra but NOT bundled for free
+    expect(checkEntitlement("ultra", "behavioralAI", [])).toBe(false);
+    expect(checkEntitlement("ultra", "behavioralAI", ["behavioralAI"])).toBe(true);
   });
 
   it("Standard + aiForecasting purchased → allowed", () => {
