@@ -1547,8 +1547,11 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
         // The owner uses the same authoritative org activity source as
         // /api/me/streak. Other members use their canonical per-user rows.
         const isCurrentOwner = uid === ownerUserId;
+        // Both owner and members use their own canonical user_id filter.
+        // The previous "AND $2::text = $2::text" tautology for the owner was a bug
+        // that aggregated ALL rows for the org, inflating the owner's streak.
         const activityTable = isCurrentOwner ? "user_activity_days" : "member_activity_days";
-        const identityClause = isCurrentOwner ? "AND $2::text = $2::text" : "AND user_id=$2";
+        const identityClause = "AND user_id=$2";
         const actRes = await pool.query<{ d: string }>(
           `SELECT day::text AS d FROM ${activityTable}
            WHERE org_id=$1

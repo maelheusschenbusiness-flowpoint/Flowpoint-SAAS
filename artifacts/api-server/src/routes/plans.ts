@@ -3,7 +3,9 @@ import {
   ADDON_DEFINITIONS,
   PLAN_DEFINITIONS,
   PLAN_INCLUDED_ADDONS,
+  PLAN_ALLOWED_ADDONS,
   QTY_ADDONS,
+  getAddonAvailability,
 } from "../lib/plans.js";
 
 const router = Router();
@@ -53,16 +55,37 @@ router.get("/plans/catalog", (_req: Request, res: Response): void => {
     includedAddons:  [...(PLAN_INCLUDED_ADDONS[def.id] ?? new Set<string>())],
   }));
 
-  const addons = Object.entries(ADDON_DEFINITIONS).map(([key, def]) => ({
-    key,
-    name:        def.name,
-    category:    def.category,
-    description: def.description,
-    priceEur:    def.priceEur,
-    priceMinor:  Math.round(def.priceEur * 100),
-    oneTime:     def.oneTime,
-    quantity:    def.quantity || QTY_ADDONS.has(key),
-  }));
+  // Build allowedPlans lookup: for each addon, which plans permit purchasing it.
+  const _addonAllowedPlans: Record<string, string[]> = {};
+  for (const [planId, allowed] of Object.entries(PLAN_ALLOWED_ADDONS)) {
+    if (!["standard", "pro", "ultra"].includes(planId)) continue;
+    for (const addonKey of allowed) {
+      if (!_addonAllowedPlans[addonKey]) _addonAllowedPlans[addonKey] = [];
+      _addonAllowedPlans[addonKey]!.push(planId);
+    }
+  }
+
+  const addons = Object.entries(ADDON_DEFINITIONS).map(([key, def]) => {
+    const availability = getAddonAvailability(key);
+    return {
+      key,
+      name:          def.name,
+      category:      def.category,
+      description:   def.description,
+      priceEur:      def.priceEur,
+      priceMinor:    Math.round(def.priceEur * 100),
+      oneTime:       def.oneTime,
+      quantity:      def.quantity || QTY_ADDONS.has(key),
+      availability,
+      status:        availability,
+      allowedPlans:  availability === "coming_soon" ? [] : (_addonAllowedPlans[key] ?? []),
+      includedByPlan: Object.fromEntries(
+        Object.entries(PLAN_INCLUDED_ADDONS)
+          .filter(([, set]) => set.has(key))
+          .map(([planId]) => [planId, true])
+      ),
+    };
+  });
 
   const includedByPlan = Object.fromEntries(
     Object.keys(PLAN_DEFINITIONS).map(planId => [

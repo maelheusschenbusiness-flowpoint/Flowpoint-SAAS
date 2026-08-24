@@ -22,8 +22,8 @@ const eur = (n: number) => Math.round(n * 100);
 const planMinor = (id: string) => eur(PLAN_DEFINITIONS[id]!.priceEur);
 const addonMinor = (key: string) => eur(ADDON_DEFINITIONS[key]!.priceEur);
 
-/** An add-on that no plan bundles, so it is always genuinely payable. */
-const PAID_ADDON = "aiCro";
+/** An add-on that no plan bundles and is purchasable on all plans (standard+). */
+const PAID_ADDON = "monitorsPack10";
 /** A one-time pack (AI credits) — never deferred by a trial. */
 const ONE_TIME_ADDON = "aiCreditsPack50k";
 
@@ -175,5 +175,70 @@ describe("billing quote — inclusions", () => {
       .toThrow("UNKNOWN_OR_UNBILLABLE_ADDON");
     expect(() => createBillingQuote({ plan: "pro", addons: { [PAID_ADDON]: 0.5 } }))
       .toThrow("INVALID_ADDON_QUANTITY");
+  });
+});
+
+// ── P0 — addon lifecycle guards ───────────────────────────────────────────────
+import { COMING_SOON_ADDONS, REMOVED_ADDONS, PLAN_ALLOWED_ADDONS } from "../lib/plans.js";
+
+describe("billing quote — addon lifecycle guards (P0)", () => {
+  const COMING_SOON_KEYS = [...COMING_SOON_ADDONS].slice(0, 4); // slaMonitoring, crmIntegration, ssoEnterprise, aiWorkspaceLaunch, ...
+
+  it("blocks every coming_soon addon on all checkout paths", () => {
+    for (const key of COMING_SOON_KEYS) {
+      expect(
+        () => createBillingQuote({ plan: "ultra", addons: { [key]: true } }),
+        `${key} must throw ADDON_COMING_SOON`,
+      ).toThrow("ADDON_COMING_SOON");
+
+      expect(
+        () => createBillingQuote({ plan: "", addons: { [key]: true }, inclusionPlan: "ultra" }),
+        `${key} (addon-only cart) must throw ADDON_COMING_SOON`,
+      ).toThrow("ADDON_COMING_SOON");
+    }
+  });
+
+  it("blocks slaMonitoring, aiWorkspaceLaunch, crmIntegration, ssoEnterprise explicitly", () => {
+    for (const key of ["slaMonitoring", "aiWorkspaceLaunch", "crmIntegration", "ssoEnterprise"]) {
+      expect(
+        () => createBillingQuote({ plan: "ultra", addons: { [key]: true } }),
+      ).toThrow("ADDON_COMING_SOON");
+    }
+  });
+
+  it("blocks a removed addon", () => {
+    const removedKey = [...REMOVED_ADDONS][0]!;
+    // Inject a fake entry in ADDON_DEFINITIONS-compatible shape just to reach the guard
+    // (removed addons already fail at ADDON_REMOVED before UNKNOWN_OR_UNBILLABLE_ADDON)
+    expect(
+      () => createBillingQuote({ plan: "ultra", addons: { [removedKey]: true } }),
+    ).toThrow("ADDON_REMOVED");
+  });
+
+  it("blocks an addon that is not purchasable on the chosen plan", () => {
+    // ssoEnterprise and aiWorkspaceLaunch are coming_soon so skip those.
+    // Find an addon that is ONLY in ultra's allowed set, not standard.
+    const ultraOnlyKey = [...(PLAN_ALLOWED_ADDONS["ultra"] ?? [])].find(
+      k => !PLAN_ALLOWED_ADDONS["standard"]?.has(k) && !COMING_SOON_ADDONS.has(k) && !REMOVED_ADDONS.has(k),
+    );
+    if (!ultraOnlyKey) return; // No ultra-only addon available — skip gracefully
+
+    expect(
+      () => createBillingQuote({ plan: "standard", addons: { [ultraOnlyKey]: true } }),
+    ).toThrow("ADDON_NOT_ALLOWED_FOR_PLAN");
+  });
+
+  it("allowedPlans in PLAN_ALLOWED_ADDONS never includes coming_soon addons", () => {
+    for (const key of COMING_SOON_ADDONS) {
+      for (const [, allowed] of Object.entries(PLAN_ALLOWED_ADDONS)) {
+        expect(allowed.has(key)).toBe(false);
+      }
+    }
+  });
+
+  it("never charges a coming_soon addon even if rawQuantity is truthy (guard fires first)", () => {
+    expect(
+      () => createBillingQuote({ plan: "ultra", addons: { slaMonitoring: 3 } }),
+    ).toThrow("ADDON_COMING_SOON");
   });
 });

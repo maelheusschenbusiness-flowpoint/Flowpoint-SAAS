@@ -570,13 +570,16 @@ async function recordActivityDay(db: DbFn, orgId: string, userId?: string): Prom
  * Today counts if present; if today absent, start from yesterday
  * so the streak never decreases during the same calendar day.
  */
-async function computeStreakFromTable(db: DbFn, orgId: string, tz: string): Promise<{ current: number; best: number; rowCount: number }> {
+async function computeStreakFromTable(db: DbFn, orgId: string, tz: string, userId?: string): Promise<{ current: number; best: number; rowCount: number }> {
   // Primary path via orgDb; if it returns empty (RLS/withOrgDb poison on Supabase), fall back to pool.
+  // userId filter is mandatory: streak is personal, never org-wide.
+  const userFilter = userId ? "AND user_id=$3" : "";
+  const userParams = userId ? [orgId, tz, userId] : [orgId, tz];
   let actRes = await db(
     `SELECT day::text AS d FROM user_activity_days
-     WHERE org_id=$1 AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
+     WHERE org_id=$1 ${userFilter} AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
      ORDER BY d DESC`,
-    [orgId, tz]
+    userParams
   ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
   if (actRes.rows.length === 0) {
     // Pool.query bypasses RLS entirely — use it as fallback so Supabase pooled-connection
@@ -584,9 +587,9 @@ async function computeStreakFromTable(db: DbFn, orgId: string, tz: string): Prom
     try {
       const poolRes = await pool.query(
         `SELECT day::text AS d FROM user_activity_days
-         WHERE org_id=$1 AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
+         WHERE org_id=$1 ${userFilter} AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
          ORDER BY d DESC`,
-        [orgId, tz]
+        userParams
       );
       actRes = poolRes as { rows: Record<string, unknown>[] };
     } catch { /* non-fatal — table may not exist yet */ }
@@ -640,7 +643,8 @@ router.get("/me/streak", async (req: Request, res: Response): Promise<void> => {
       if (s && typeof s["timezone"] === "string" && s["timezone"]) tz = s["timezone"];
       storedStreak = typeof tzRow.rows[0]?.["streak"] === "number" ? (tzRow.rows[0]["streak"] as number) : 0;
     } catch { /* non-fatal */ }
-    const streak = await computeStreakFromTable(orgDb(req), orgId, tz);
+    const userId = req.orgContext?.userId ?? req.userId ?? undefined;
+    const streak = await computeStreakFromTable(orgDb(req), orgId, tz, userId);
     // Never return 0 if the activity table is empty for this org —
     // that means the row insertion hasn't happened yet (RLS race), not a genuine gap.
     const safeStreak = (streak.rowCount === 0 && storedStreak > 0) ? storedStreak : streak.current;

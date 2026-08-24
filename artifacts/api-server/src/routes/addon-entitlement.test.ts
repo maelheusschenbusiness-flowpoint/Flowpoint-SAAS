@@ -47,9 +47,11 @@ describe("PLAN_INCLUDED_ADDONS", () => {
     expect(ultra.has("retention365d")).toBe(true);
   });
 
-  it("Ultra has exactly 10 included add-ons", () => {
+  it("Ultra has exactly 9 included add-ons", () => {
+    // backlinkIntelligence removed: it is in COMING_SOON_ADDONS and cannot be
+    // an active entitlement (would show as "unlocked" when feature doesn't exist).
     const ultra = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set();
-    expect(ultra.size).toBe(10);
+    expect(ultra.size).toBe(9);
   });
 
   it("Standard includes whiteLabel", () => {

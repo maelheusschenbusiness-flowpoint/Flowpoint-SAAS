@@ -4,6 +4,9 @@ import {
   PLAN_DEFINITIONS,
   PLAN_INCLUDED_ADDONS,
   PLAN_PRICE_IDS,
+  COMING_SOON_ADDONS,
+  REMOVED_ADDONS,
+  isPlanAllowedAddon,
 } from "../lib/plans.js";
 
 /** Free-trial length granted to first-time subscribers. Single source of truth. */
@@ -151,12 +154,25 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
 
   for (const [key, rawQuantity] of Object.entries(selection.addons)) {
     if (!rawQuantity) continue;
+
+    // ── Server-side addon guard — trust no frontend input ─────────────────────
+    // Order matters: COMING_SOON/REMOVED fire before definition checks so that
+    // unknown coming-soon keys still get a descriptive error code.
+    if (REMOVED_ADDONS.has(key))      throw new Error("ADDON_REMOVED");
+    if (COMING_SOON_ADDONS.has(key))  throw new Error("ADDON_COMING_SOON");
     const definition = ADDON_DEFINITIONS[key];
     const priceId = ADDON_PRICE_IDS[key];
     if (!definition || !priceId) throw new Error("UNKNOWN_OR_UNBILLABLE_ADDON");
     const quantity = typeof rawQuantity === "number" ? rawQuantity : 1;
     if (!Number.isInteger(quantity) || quantity < 1) throw new Error("INVALID_ADDON_QUANTITY");
+    // Included addons are always compatible with the plan (they're free).
+    // Only block addons that are neither included nor purchasable on this tier.
     const includedInPlan = included.has(key);
+    const gatingPlan = plan || (selection.inclusionPlan ?? "").trim().toLowerCase();
+    if (gatingPlan && !includedInPlan && !isPlanAllowedAddon(gatingPlan, key)) {
+      throw new Error("ADDON_NOT_ALLOWED_FOR_PLAN");
+    }
+    // ─────────────────────────────────────────────────────────────────────────
     const unitAmountMinor = Math.round(definition.priceEur * 100);
     const interval: "month" | "one_time" = definition.oneTime ? "one_time" : "month";
     /* One-time packs are always taken now. For recurring add-ons the answer

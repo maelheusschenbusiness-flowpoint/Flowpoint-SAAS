@@ -598,8 +598,35 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   // A1 — Auth guard for addon-only carts (no new signup):
   // If there's no plan and no preRegisterToken, the buyer must be an authenticated
   // existing user. Without an orgId we cannot attribute the payment in the webhook.
-  // Reject early so we never create a PI that Stripe cannot route back to an org.
-  const _piReqOrgId = (req as Request & { orgId?: string }).orgId;
+  // orgContext middleware populates req.orgId from Bearer/cookie globally,
+  // but as a safety net we also perform the same manual resolution that
+  // checkout-session does, so pricing.html fetches without explicit credentials
+  // never produce a false 401.
+  let _piReqOrgId = (req as Request & { orgId?: string }).orgId;
+  if (!plan && !preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
+    // Manual session resolution — mirrors checkout-session logic at lines 415-449.
+    try {
+      const _authHeader  = req.headers["authorization"];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const _cookieToken = (req as any).cookies?.["fp_token"];
+      let _piSessionToken: string | undefined;
+      if (typeof _authHeader === "string" && _authHeader.startsWith("Bearer ")) {
+        _piSessionToken = _authHeader.slice(7).trim();
+      } else if (typeof _cookieToken === "string" && _cookieToken.trim()) {
+        _piSessionToken = _cookieToken.trim();
+      }
+      if (_piSessionToken) {
+        const { getSession } = await import("../services/sessions.js");
+        const _piSess = await getSession(_piSessionToken);
+        if (_piSess?.orgId && _piSess.orgId !== "default") {
+          _piReqOrgId = _piSess.orgId;
+          logger.info({ orgId: _piReqOrgId }, "[PublicBilling] payment-intent: orgId resolved via manual session lookup");
+        }
+      }
+    } catch (_piAuthErr) {
+      logger.warn({ _piAuthErr }, "[PublicBilling] payment-intent: optional session resolution failed (non-fatal)");
+    }
+  }
   if (!plan && !preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
     const addonKeys = Object.keys(addons as Record<string, unknown>);
     if (addonKeys.length > 0) {

@@ -74,7 +74,7 @@ describe("GET /api/team/contributions — real per-member counts", () => {
     const capturedOrg: unknown[] = [];
     queryHandler = async (sql, values) => {
       capturedOrg.push(values?.[0]);
-      if (/WITH canonical_activity/.test(sql)) {
+      if (/canonical_activity/.test(sql)) {
         return { rows: [
           { user_id: "u-1", audits: 4, missions: 2, reports: 0, monitors: 1 },
           { user_id: "u-2", audits: 0, missions: 0, reports: 1, monitors: 0 },

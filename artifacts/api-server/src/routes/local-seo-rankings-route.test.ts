@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   clientQuery: vi.fn(),
   clientRelease: vi.fn(),
   getLocalPackRank: vi.fn(),
+  getGoogleMapsResults: vi.fn(),
   isDataForSEOConfigured: vi.fn(),
   getQuotaUsage: vi.fn(),
 }));
@@ -41,7 +42,7 @@ vi.mock("../services/dataforseo-service.js", () => ({
   getBacklinks: vi.fn(),
   getDomainMetrics: vi.fn(),
   getKeywordDifficulty: vi.fn(),
-  getGoogleMapsResults: vi.fn(),
+  getGoogleMapsResults: (...args: unknown[]) => mocks.getGoogleMapsResults(...args),
   getAIVisibility: vi.fn(),
   getContentOptimization: vi.fn(),
   generateSEOMissions: vi.fn(),
@@ -69,6 +70,8 @@ describe("Local SEO ranking route — durable history and quota", () => {
     mocks.getQuotaUsage.mockReturnValue({ used: 0, limit: 3, remaining: 3 });
     mocks.isDataForSEOConfigured.mockResolvedValue(true);
     mocks.getLocalPackRank.mockResolvedValue([{ title: "A" }, { title: "B" }]);
+    // Route now calls getGoogleMapsResults (includes lat/lng for map markers)
+    mocks.getGoogleMapsResults.mockResolvedValue({ results: [{ title: "A" }, { title: "B" }] });
     mocks.poolQuery.mockResolvedValue({ rows: [{ n: "0" }], rowCount: 1 });
     mocks.clientQuery.mockImplementation(async (sql: unknown) => {
       const text = String(sql);
@@ -105,7 +108,7 @@ describe("Local SEO ranking route — durable history and quota", () => {
     );
     expect(insertIndex).toBeGreaterThanOrEqual(0);
     expect(mocks.clientQuery.mock.invocationCallOrder[insertIndex]).toBeLessThan(
-      mocks.getLocalPackRank.mock.invocationCallOrder[0]!,
+      mocks.getGoogleMapsResults.mock.invocationCallOrder[0]!,
     );
     expect(mocks.poolQuery.mock.calls.some((call) =>
       String(call[0]).includes("UPDATE local_seo_ranking_history"),
@@ -128,7 +131,7 @@ describe("Local SEO ranking route — durable history and quota", () => {
     expect(res.status).toBe(502);
     expect(res.body).toMatchObject({ ok: false, reason: "persist_error" });
     expect(mocks.clientQuery).toHaveBeenCalledWith("ROLLBACK");
-    expect(mocks.getLocalPackRank).not.toHaveBeenCalled();
+    expect(mocks.getGoogleMapsResults).not.toHaveBeenCalled();
   });
 
   it("keeps the durable reservation counted when provider data cannot be finalized", async () => {
@@ -140,14 +143,14 @@ describe("Local SEO ranking route — durable history and quota", () => {
 
     expect(res.status).toBe(502);
     expect(res.body).toMatchObject({ ok: false, reason: "persist_error" });
-    expect(mocks.getLocalPackRank).toHaveBeenCalledOnce();
+    expect(mocks.getGoogleMapsResults).toHaveBeenCalledOnce();
     expect(mocks.clientQuery.mock.calls.some((call) =>
       String(call[0]).includes("INSERT INTO local_seo_ranking_history"),
     )).toBe(true);
   });
 
   it("releases the invisible reservation when the provider call fails", async () => {
-    mocks.getLocalPackRank.mockRejectedValueOnce(new Error("provider unavailable"));
+    mocks.getGoogleMapsResults.mockRejectedValueOnce(new Error("provider unavailable"));
 
     const res = await request(makeApp())
       .post("/api/local-seo/rankings")
@@ -179,7 +182,7 @@ describe("Local SEO ranking route — durable history and quota", () => {
       reason: "quota_exceeded",
       usage: { used: 3, limit: 3 },
     });
-    expect(mocks.getLocalPackRank).not.toHaveBeenCalled();
+    expect(mocks.getGoogleMapsResults).not.toHaveBeenCalled();
     expect(mocks.poolConnect).toHaveBeenCalledOnce();
   });
 
@@ -222,7 +225,7 @@ describe("Local SEO ranking route — durable history and quota", () => {
     ]);
 
     expect([first.status, second.status].sort()).toEqual([200, 429]);
-    expect(mocks.getLocalPackRank).toHaveBeenCalledOnce();
+    expect(mocks.getGoogleMapsResults).toHaveBeenCalledOnce();
     expect(persistedReservations).toBe(1);
   });
 

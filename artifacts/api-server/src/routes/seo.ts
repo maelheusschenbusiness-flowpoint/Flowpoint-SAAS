@@ -414,7 +414,7 @@ router.post("/local-seo/rankings", canWrite, async (req, res) => {
 
       // Use getGoogleMapsResults (Maps API) so stored results include lat/lng for
       // direct map-marker placement and real result counts (not capped at 3).
-      const { getGoogleMapsResults } = await import("../services/dataforseo-service.js");
+      // NOTE: use the static import (top of file) — dynamic import bypasses vitest mocks.
       let rankings: unknown[];
       try {
         const mapsResult = await getGoogleMapsResults(keyword, location, orgId);

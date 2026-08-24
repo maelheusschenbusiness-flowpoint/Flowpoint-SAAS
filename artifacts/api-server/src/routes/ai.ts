@@ -861,7 +861,7 @@ OBLIGATION D'OUTIL — RÈGLE ABSOLUE (priorité maximale)
 - INTERDIT : dire "Je vais créer des missions", "La fenêtre de confirmation va s'afficher", "Je procède à la création" sans avoir APPELÉ l'outil create_mission / create_missions_from_strategy / ou autre outil d'action.
 - Si l'outil appelle une confirmation (preview / full), le serveur envoie automatiquement la carte de confirmation — TU N'AS PAS À L'ANNONCER DANS LE TEXTE.
 - Si tu ne peux pas appeler l'outil (permissions manquantes, données insuffisantes), DIS-LE clairement et demande ce qui manque — ne simule jamais l'action.
-- Cette règle s'applique à tous les outils d'écriture : create_mission, create_missions_from_strategy, create_audit, update_calendar_event, create_monitor, dismiss_recommendation, etc.
+- Cette règle s'applique à tous les outils d'écriture : create_mission, create_missions_from_strategy, run_audit, update_calendar_event, configure_monitor, dismiss_recommendation, etc.
 
 INTÉGRITÉ DES RÉSULTATS D'OUTILS — RÈGLE ABSOLUE (priorité maximale)
 - Si un outil retourne une erreur ou ok:false, tu DOIS informer l'utilisateur de l'échec EXACTEMENT, sans minimiser. Tu ne peux JAMAIS dire "créé", "ajouté", "terminé", "planifié", "supprimé" ou toute formulation de succès si l'outil n'a pas retourné ok:true avec un identifiant réel.
@@ -2872,7 +2872,22 @@ router.post("/ai/conversations/:id/confirm", async (req: Request, res: Response)
   const userId = req.userId ?? "anonymous";
   const convId = String(req.params["id"] ?? "");
   const { proposalId } = req.body as { proposalId?: string };
-  const requestedLanguage = typeof req.body?.language === "string" ? req.body.language : "fr";
+  // Canonical language: prefer client-supplied value, then user_prefs, then fr.
+  // This ensures F5, logout/login, and confirm actions never revert to French
+  // if the account language is set to English.
+  let requestedLanguage = typeof req.body?.language === "string" && req.body.language ? req.body.language : "";
+  if (!requestedLanguage || requestedLanguage === "fr") {
+    try {
+      const { rows: _lpRows } = await pool.query(
+        `SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`,
+        [orgId]
+      );
+      const _lpSettings = _lpRows[0]?.["settings"] as Record<string, unknown> | null;
+      const _storedLang = _lpSettings && typeof _lpSettings["language"] === "string" ? _lpSettings["language"] : "";
+      if (_storedLang && _storedLang !== "fr") requestedLanguage = _storedLang;
+    } catch { /* non-fatal */ }
+  }
+  if (!requestedLanguage) requestedLanguage = "fr";
 
   if (!/^[a-zA-Z0-9_-]{1,64}$/.test(convId)) {
     res.status(400).json({ ok: false, error: "conversationId invalide" });

@@ -407,12 +407,13 @@ export const COMING_SOON_ADDONS = new Set<string>([
  *                        Zapier/Make (connexion externe non bundlée). → BETA
  */
 export const BETA_ADDONS = new Set<string>([
+  // NOTE: behavioralAI and aiForecasting are included in Ultra plan (commercial
+  // entitlements, not beta-only). They must NOT appear here to avoid the
+  // invariant violation: BETA_ADDONS ∩ PLAN_INCLUDED_ADDONS = ∅.
   // Dépendance snippet onsite
-  "behavioralAI",
   "revenueLeak",
   "aiCro",
   // Couverture données partielle / DFS non complète
-  "aiForecasting",
   "marketIntelligence",
   "reviewIntelligence",
   // Dépendance OAuth externe
@@ -509,14 +510,14 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
     "advancedWebhooks",
     "retention90d",
     "advancedSeoLab",
-    "backlinkIntelligence",
+    // backlinkIntelligence removed: it is in COMING_SOON_ADDONS and cannot be an active entitlement
   ]),
   ultra: new Set<string>([
     "whiteLabel",
     "customDomain",
     "advancedWebhooks",
     "advancedSeoLab",
-    "backlinkIntelligence",
+    // backlinkIntelligence removed: it is in COMING_SOON_ADDONS and cannot be an active entitlement
     "enterprisePermissions",
     "retention365d",
     "keywordDomination",
@@ -548,19 +549,20 @@ const _STANDARD_PURCHASABLE = new Set<string>([
 ]);
 
 const _PRO_EXCLUSIVE = new Set<string>([
-  "globalMonitoring", "slaMonitoring",
-  "keywordDomination", "aiContentStrategist",
+  // NOTE: COMING_SOON_ADDONS must never appear here — they are not purchasable.
+  // Removed: globalMonitoring, slaMonitoring, aiContentStrategist, abTestingAI,
+  //          crmIntegration, aiExecutiveReport, aiWorkflows (all COMING_SOON)
+  "keywordDomination",
   "aiGbpPosting", "reviewIntelligence", "localDominationMaps",
-  "aiCro", "behavioralAI", "revenueLeak", "abTestingAI",
-  "zapierIntegration", "crmIntegration",
-  "aiExecutiveReport", "aiForecasting", "marketIntelligence", "aiWorkflows",
+  "aiCro", "behavioralAI", "revenueLeak",
+  "zapierIntegration",
+  "aiForecasting", "marketIntelligence",
   "enterprisePermissions",
 ]);
 
 const _ULTRA_EXCLUSIVE = new Set<string>([
-  "agencyPacks",
+  // NOTE: agencyPacks, ssoEnterprise, aiWorkspaceLaunch are COMING_SOON — not purchasable.
   "retention365d",
-  "ssoEnterprise", "aiWorkspaceLaunch",
 ]);
 
 export const PLAN_ALLOWED_ADDONS: Record<string, ReadonlySet<string>> = {

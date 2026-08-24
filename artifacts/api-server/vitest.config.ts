@@ -74,6 +74,9 @@ export default defineConfig({
       "src/routes/me-entitlement.test.ts",
       // Add-on entitlement: plan inclusion + org_addons gate logic
       "src/routes/addon-entitlement.test.ts",
+      // P0 — addon lifecycle guards: coming_soon, removed, plan-restricted
+      // P0/P1 — streak owner vs member isolation
+      "src/routes/streak-owner-member.test.ts",
       // Task #628 — Activity real aggregates: pagination contract + per-member counts/streaks
       "src/routes/activity-pagination.test.ts",
       "src/routes/team-aggregates.test.ts",
