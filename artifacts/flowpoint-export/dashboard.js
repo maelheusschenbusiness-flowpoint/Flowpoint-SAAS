@@ -779,7 +779,7 @@ function _confirmSessionExpired() {
         // Clear auth artefacts. sessionStorage is tab-isolated so removing
         // fp_session_token here does NOT affect sibling tabs — each tab has its
         // own independent sessionStorage context.
-        ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(function(k) {
+        ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_had_session'].forEach(function(k) {
           try { localStorage.removeItem(k); } catch(_) {}
         });
         try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
@@ -949,7 +949,7 @@ async function apiFetch(path, opts = {}) {
       if (_401ConfirmTimer) { clearTimeout(_401ConfirmTimer); _401ConfirmTimer = null; }
       if (!window.__fpRedirecting) {
         window.__fpRedirecting = true;
-        ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
+        ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_had_session'].forEach(k => localStorage.removeItem(k));
         // sessionStorage is tab-isolated — removing fp_session_token here only
         // affects THIS tab; sibling tabs each have their own sessionStorage context.
         try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
@@ -18446,7 +18446,7 @@ function bindGlobalEvents() {
       sessionStorage.removeItem('fp-state-cache');
     } catch(_) {}
     try {
-      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_tab_uid']
+      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_tab_uid','fp_had_session']
         .forEach(function(k) { localStorage.removeItem(k); });
     } catch(_) {}
     try { await window.apiFetch('/api/auth/logout', { method: 'POST' }); } catch(_) {}
@@ -48646,7 +48646,7 @@ async function init() {
         headers: { 'Content-Type': 'application/json' },
       }));
     } catch (_) { /* non-fatal — still clear local state */ }
-    ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid']
+    ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid', 'fp_had_session']
       .forEach(function(k) { localStorage.removeItem(k); });
     sessionStorage.clear(); // also clears fp_session_token + fp_tab_uid
     showToast('success', fpT('Toutes les sessions fermées'));
