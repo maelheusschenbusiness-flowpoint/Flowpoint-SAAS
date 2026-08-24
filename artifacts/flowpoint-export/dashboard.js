@@ -62249,7 +62249,9 @@ function renderConversionHeatmap() {
 }
 
 function renderTeamPerformance() {
-  const _roleColors = { owner:'#f59e0b', admin:'#f59e0b', manager:'#2563EB', editor:'#8b5cf6', viewer:'#64748b', member:'#64748b' };
+  const _roleColors = { owner:'#f59e0b', admin:'#2563EB', manager:'#2563EB', editor:'#8b5cf6', viewer:'#64748b', member:'#8b5cf6', guest:'#94a3b8' };
+  // Keep this local: ROLE_DISPLAY in renderTeam() is function-scoped.
+  const _roleDisplay = { owner:'Propriétaire', admin:'Manager', manager:'Manager', editor:'Éditeur', member:'Éditeur', viewer:'Lecteur', guest:'Invité' };
   const teamData = STATE.team && STATE.team.length > 0 ? STATE.team : [];
   const metrics = teamData.map((t, i) => {
     // UUID lookup: t.userId (user.id) is the correct key; t.id is team_members.id (row id, ≠ user id)
@@ -62318,7 +62320,7 @@ function renderTeamPerformance() {
             <div style="width:46px;height:46px;border-radius:14px;background:${m.roleColor}20;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:${m.roleColor};flex-shrink:0">${(m.name||'?').charAt(0).toUpperCase()}</div>
             <div style="flex:1">
               <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${escHtml(m.name)}</div>
-              <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${(ROLE_DISPLAY[m.role]||m.role)} · Streak : <span style="color:#f97316">🔥 ${m.streak != null ? m.streak + ' j' : '—'}</span></div>
+              <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${(_roleDisplay[m.role]||m.role)} · Streak : <span style="color:#f97316">🔥 ${m.streak != null ? m.streak + ' j' : '—'}</span></div>
             </div>
             <div style="text-align:right">
                <div style="font-size:24px;font-weight:800;color:${m.roleColor};font-family:var(--fp-font-head)">${(m.audits != null && m.missions != null && m.reports != null) ? (Number(m.audits)+Number(m.missions)+Number(m.reports)) : '—'}</div>
@@ -69123,7 +69125,7 @@ window.fpDeleteHistoryEntry = async function(entryId) {
       _clearHistoryMarkers();
       _updateHistoryResultsWidget([]);
       _updateMapKeywordBadge([]);
-      if (typeof window.fpHideLiveRankingMarkers === 'function') window.fpHideLiveRankingMarkers();
+      if (typeof window.fpShowLiveRankingMarkers === 'function') window.fpShowLiveRankingMarkers();
       return;
     }
 
@@ -69223,7 +69225,6 @@ window.fpUpdateRankingMarkers = (function() {
     _markers = [];
     _infoWindows = [];
     if (typeof window.fpUpdateRankingMarkersFromHistory === 'function') window.fpUpdateRankingMarkersFromHistory();
-    return;
 
     if (selected.size === 0) return;
 
