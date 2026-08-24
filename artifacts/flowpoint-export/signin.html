@@ -184,14 +184,24 @@
        unauthenticated visitors arriving via marketing CTAs.               */
     (function() {
       // Helper: call session-restore and redirect on success, reveal form on failure.
+      // Only runs when there is evidence of a prior session — never for anonymous
+      // visitors so they see the form immediately without a round-trip.
       function _checkAndRedirect(source) {
-        var hasStorageToken = false;
-        try { hasStorageToken = !!(sessionStorage.getItem('fp_session_token')); } catch(_) {}
+        var _st = null;
+        var _hadSession = false;
+        try { _st = sessionStorage.getItem('fp_session_token'); } catch(_) {}
+        try { _hadSession = !!localStorage.getItem('fp_had_session'); } catch(_) {}
+
+        // No credentials and no prior-session marker → show form immediately.
+        if (!_st && !_hadSession) {
+          document.body.style.visibility = 'visible';
+          return;
+        }
+
+        document.body.style.visibility = 'hidden';
         var headers = { 'Content-Type': 'application/json' };
-        try {
-          var _t = sessionStorage.getItem('fp_session_token');
-          if (_t) headers['Authorization'] = 'Bearer ' + _t;
-        } catch(_) {}
+        if (_st) headers['Authorization'] = 'Bearer ' + _st;
+
         fetch('/api/auth/session-restore', {
           method: 'POST', credentials: 'include', headers: headers
         }).then(function(r) {
@@ -199,12 +209,11 @@
           return null;
         }).then(function(data) {
           var sessionRestoreStatus = data && data.token ? 'authenticated' : 'unauthenticated';
-          // [MARKETING AUTH REDIRECT] diagnostic log
           try {
             console.log('[MARKETING AUTH REDIRECT]', {
               source: source,
               target: data && data.token ? '/dashboard.html' : '(stay on signin.html)',
-              hasSessionStorageToken: hasStorageToken,
+              hasSessionStorageToken: !!_st,
               sessionRestoreStatus: sessionRestoreStatus,
               referrer: document.referrer || '(direct)',
             });
@@ -214,12 +223,10 @@
             try { localStorage.setItem('fp_had_session', '1'); } catch(_) {}
             window.location.replace('/dashboard.html');
           } else {
-            // Confirmed unauthenticated — clear any stale token and show form.
             try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
             document.body.style.visibility = 'visible';
           }
         }).catch(function() {
-          // Network error — fail open: show form so user can log in.
           document.body.style.visibility = 'visible';
         });
       }

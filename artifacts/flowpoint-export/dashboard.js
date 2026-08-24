@@ -58035,12 +58035,16 @@ function renderActivityFeed() {
       const rawId = String(t.id || '');
       const email = String(t.email || '').toLowerCase();
       const isOwner = t.role === 'owner' || (!STATE.team.some(m => m.role === 'owner') && (t.id === STATE.me?.id || email === String(STATE.me?.email||'').toLowerCase()));
-      const contrib = (STATE.teamContributions && userId)
-        ? STATE.teamContributions[String(userId)] || null
+      // When the API loaded successfully (STATE.teamContributions !== null), a member
+      // absent from the map has 0 contributions — show 0, not "—".
+      // Only show "—" when the API itself failed (STATE.teamContributions === null).
+      const _zeroContrib = { audits: 0, missions: 0, reports: 0, monitors: 0 };
+      const contrib = STATE.teamContributions != null
+        ? (userId ? (STATE.teamContributions[String(userId)] || _zeroContrib) : _zeroContrib)
         : null;
-      const audits   = contrib ? Number(contrib.audits   ?? 0) : null;
-      const missions = contrib ? Number(contrib.missions ?? 0) : null;
-      const reports  = contrib ? Number(contrib.reports  ?? 0) : null;
+      const audits   = contrib !== null ? Number(contrib.audits   ?? 0) : null;
+      const missions = contrib !== null ? Number(contrib.missions ?? 0) : null;
+      const reports  = contrib !== null ? Number(contrib.reports  ?? 0) : null;
       // Streak: UUID first (correct user id), then email fallback.
       // Guard on STATE.teamStreaks — independent from contributions loading state.
       const streakEntry = STATE.teamStreaks ? (
@@ -62225,15 +62229,17 @@ function renderTeamPerformance() {
     // email, so resolve their canonical id from the signed-in user before
     // looking up counts. Never substitute organisation-wide totals here.
     const _ownUserId = ownCurrentUser ? (STATE.me?.id || STATE.me?.userId || '') : '';
-    const _contrib = STATE.teamContributions
-      ? [_memberUserId, _ownUserId, _memberEmail]
+    // When the API loaded (STATE.teamContributions !== null), a missing entry = 0, not "—".
+    const _zeroContrib2 = { audits: 0, missions: 0, reports: 0 };
+    const _contrib = STATE.teamContributions != null
+      ? ([_memberUserId, _ownUserId, _memberEmail]
           .filter(Boolean)
           .map(key => STATE.teamContributions[String(key)] || null)
-          .find(Boolean) || null
+          .find(Boolean) || _zeroContrib2)
       : null;
-    const auditCnt   = _contrib ? Number(_contrib.audits   ?? 0) : null;
-    const missionCnt = _contrib ? Number(_contrib.missions ?? 0) : null;
-    const reportCnt  = _contrib ? Number(_contrib.reports  ?? 0) : null;
+    const auditCnt   = _contrib !== null ? Number(_contrib.audits   ?? 0) : null;
+    const missionCnt = _contrib !== null ? Number(_contrib.missions ?? 0) : null;
+    const reportCnt  = _contrib !== null ? Number(_contrib.reports  ?? 0) : null;
     return {
       name: t.name || t.email || 'Membre',
       role: t.role || 'member',
