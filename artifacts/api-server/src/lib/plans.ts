@@ -346,6 +346,8 @@ export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
  */
 export const COMING_SOON_ADDONS = new Set<string>([
   "globalMonitoring",
+  // slaMonitoring: no requireAddon gate exists in any route — buying it unlocks nothing yet
+  "slaMonitoring",
   "backlinkIntelligence",
   "aiContentStrategist",
   "abTestingAI",
@@ -362,19 +364,26 @@ export const COMING_SOON_ADDONS = new Set<string>([
 /**
  * Implemented AI/data products currently offered as a limited release.
  *
- * Keep this deliberately narrow: beta means usable and purchasable, unlike
- * COMING_SOON_ADDONS. Plan-bundled products are intentionally omitted so their
- * canonical state remains "included".
+ * Audit fonctionnel (2026-08-24) — classification par route requireAddon réelle :
+ *   aiCro            → cro.ts:17  requireAddon gate + full CRO service  → "available"
+ *   revenueLeak      → revenue-leak.ts:15  requireAddon + detect/resolve routes → "available"
+ *   marketIntelligence → market-intelligence.ts:12 requireAddon + 7 routes → "available"
+ *   reviewIntelligence → review-intelligence.ts:23 requireAddonOrFeature + routes → "available"
+ *   behavioralAI     → behavioral.ts:377 requireAddon + full routes → "available"
+ *   aiForecasting    → forecast.ts:11 requireAddon + full routes → "available"
+ *   keywordDomination → keywords.ts:188 limit extension to 10k → "available"
+ *   aiGbpPosting     → gbp-posts.ts:86 requireAddon on AI generation → "available"
+ *   zapierIntegration → integrations.ts:131/158 requireAddon gates → "available"
+ *   customDomain     → white-label.ts:141 check → "available"
+ *   localDominationMaps → local-maps.ts:15 requireAddon → "available"
+ *   slaMonitoring    → NO requireAddon gate → moved to COMING_SOON
+ *
+ * BETA is reserved for add-ons that have partial server implementation
+ * (routes exist but data coverage or DFS quota is explicitly limited).
+ * None currently qualify after the audit — leave empty to avoid false claims.
  */
 export const BETA_ADDONS = new Set<string>([
-  // Conversion IA — functional, limited release
-  "aiCro",
-  "revenueLeak",
-  "marketIntelligence",
-  // Monitoring — SLA tracking backend is live; UI surfaces SLA data
-  "slaMonitoring",
-  // Local SEO — review analysis backend wired (DFS); limited features
-  "reviewIntelligence",
+  // (intentionally empty — see audit comment above)
 ]);
 
 /** Product lifecycle independent of an organisation's current entitlements. */
