@@ -62318,11 +62318,11 @@ function renderTeamPerformance() {
             <div style="width:46px;height:46px;border-radius:14px;background:${m.roleColor}20;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:${m.roleColor};flex-shrink:0">${(m.name||'?').charAt(0).toUpperCase()}</div>
             <div style="flex:1">
               <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${escHtml(m.name)}</div>
-              <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${m.role} · Streak : <span style="color:#f97316">🔥 ${m.streak != null ? m.streak + ' j' : '—'}</span></div>
+              <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${(ROLE_DISPLAY[m.role]||m.role)} · Streak : <span style="color:#f97316">🔥 ${m.streak != null ? m.streak + ' j' : '—'}</span></div>
             </div>
             <div style="text-align:right">
-               <div style="font-size:24px;font-weight:800;color:${m.roleColor};font-family:var(--fp-font-head)">—</div>
-               <div style="font-size:10px;color:var(--fp-text-faint)">activité</div>
+               <div style="font-size:24px;font-weight:800;color:${m.roleColor};font-family:var(--fp-font-head)">${(m.audits != null && m.missions != null && m.reports != null) ? (Number(m.audits)+Number(m.missions)+Number(m.reports)) : '—'}</div>
+               <div style="font-size:10px;color:var(--fp-text-faint)">actions</div>
             </div>
           </div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
