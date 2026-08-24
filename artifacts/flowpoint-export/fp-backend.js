@@ -255,7 +255,7 @@ window.__fpPageLoadTs = Date.now();
 
   function _clearAuth() {
     try {
-      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(function(k) {
+      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_had_session'].forEach(function(k) {
         localStorage.removeItem(k);
       });
       sessionStorage.removeItem('fp_session_token');
