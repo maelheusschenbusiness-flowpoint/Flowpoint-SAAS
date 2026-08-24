@@ -49505,7 +49505,12 @@ async function init() {
           STATE.localSeo._historyLoading = true;
           apiFetch('/api/local-seo/rankings/history', { force:true }).then(h => {
             if (!STATE.localSeo) STATE.localSeo = {};
-            fpSetRankingHistory(Array.isArray(h?.history) ? h.history : [], r.historyId);
+            // Auto-select: prefer the historyId returned by POST; fall back to the
+            // newest entry in the history so the map always updates after a load.
+            var _rows = Array.isArray(h?.history) ? h.history : [];
+            var _autoId = r.historyId != null ? r.historyId
+              : (_rows.length > 0 ? _rows[0].id : null);
+            fpSetRankingHistory(_rows, _autoId);
             STATE.localSeo._historyLoading = false;
             STATE.localSeo._historyError = null;
             if (h?.usage) {
@@ -69050,6 +69055,52 @@ window.fpDeleteHistoryEntry = async function(entryId) {
     console.log('[LocalSEO history checkbox]', { historyId: 'done', rankingsLoaded: merged.length, markersDisplayed: _hm.length });
   }
 
+  // ── Keyword+location badge overlay on the map ────────────────────────────
+  function _updateMapKeywordBadge(entries) {
+    var mapEl = document.getElementById('fp-gmap');
+    if (!mapEl) return;
+    var badge = document.getElementById('fp-ranking-map-badge');
+    if (!entries || !entries.length) {
+      if (badge) badge.style.display = 'none';
+      return;
+    }
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'fp-ranking-map-badge';
+      badge.style.cssText = [
+        'position:absolute', 'top:10px', 'left:50%', 'transform:translateX(-50%)',
+        'z-index:20', 'background:rgba(37,99,235,0.93)', 'color:#fff',
+        'font-size:11px', 'font-weight:700', 'padding:5px 14px',
+        'border-radius:20px', 'white-space:nowrap',
+        'box-shadow:0 2px 8px rgba(0,0,0,0.35)', 'pointer-events:none',
+        'letter-spacing:0.02em', 'max-width:80%', 'overflow:hidden',
+        'text-overflow:ellipsis',
+      ].join(';');
+      if (getComputedStyle(mapEl).position === 'static') mapEl.style.position = 'relative';
+      mapEl.appendChild(badge);
+    }
+    var label = entries.map(function(e) {
+      return (e.keyword || '') + (e.location ? ' — ' + e.location : '');
+    }).filter(Boolean).join(' · ');
+    badge.textContent = '🔍 ' + label;
+    badge.style.display = 'block';
+  }
+
+  // ── Geocode location string and pan+zoom map to that city ────────────────
+  function _panMapToLocation(map, locationStr) {
+    if (!locationStr || !google.maps.Geocoder) return;
+    var geocoder = new google.maps.Geocoder();
+    geocoder.geocode({ address: locationStr }, function(results, status) {
+      if (status === 'OK' && results && results[0]) {
+        map.panTo(results[0].geometry.location);
+        var z = map.getZoom();
+        // Zoom to city level (12-14) without overriding a close zoom already set
+        if (z < 11) map.setZoom(13);
+        else if (z > 15) map.setZoom(14);
+      }
+    });
+  }
+
   window.fpUpdateRankingMarkersFromHistory = function() {
     var map = STATE._gmap;
     if (!map || typeof google === 'undefined' || !google.maps) {
@@ -69058,10 +69109,10 @@ window.fpDeleteHistoryEntry = async function(entryId) {
     }
     window._fpPendingHistoryMarkerUpdate = false;
 
-    var history    = (STATE.localSeo && STATE.localSeo.rankingHistory) || [];
+    var history     = (STATE.localSeo && STATE.localSeo.rankingHistory) || [];
     var selectedIds = (STATE.localSeo && STATE.localSeo._selectedHistoryIds) || new Set();
 
-    // Parse JSON-string results (legacy DB rows)
+    // Parse JSON-string results stored in DB as a string
     history.forEach(function(h) {
       if (h && typeof h.results === 'string') {
         try { h.results = JSON.parse(h.results); } catch(_e) { h.results = []; }
@@ -69069,35 +69120,28 @@ window.fpDeleteHistoryEntry = async function(entryId) {
     });
 
     if (selectedIds.size === 0) {
-      // All unchecked means no ranking marker layer.
       _clearHistoryMarkers();
       _updateHistoryResultsWidget([]);
+      _updateMapKeywordBadge([]);
       if (typeof window.fpHideLiveRankingMarkers === 'function') window.fpHideLiveRankingMarkers();
-      console.log('[LOCAL SEO HISTORY MAP DEBUG]', {
-        selectedHistoryCount: 0,
-        liveMarkersVisible: false,
-        historyMarkersCreated: 0,
-        historyMarkersVisible: false,
-        action: 'cleared all ranking markers'
-      });
       return;
     }
 
-    // Hide live ranking markers so only history results are visible
-    var _liveMarkersBefore = 0;
-    if (typeof window.fpHideLiveRankingMarkers === 'function') {
-      // Count approximate live markers via the live rankings array
-      _liveMarkersBefore = 0;
-      window.fpHideLiveRankingMarkers();
-    }
+    // Hide live ranking markers — only history layer is shown when a ranking is selected
+    if (typeof window.fpHideLiveRankingMarkers === 'function') window.fpHideLiveRankingMarkers();
 
-    // Merge results from all selected entries (deduplicate by title+address)
+    // Collect selected history entries + merge their results (deduplicated)
+    var selectedEntries = [];
     var seen = new Set();
     var merged = [];
     history.forEach(function(h) {
-      const historyId = h && h.id != null ? String(h.id) : '';
-      if (!selectedIds.has(historyId)) return;
-      console.log('[LocalSEO history checkbox]', { historyId: historyId, keyword: h.keyword, location: h.location, rankingsLoaded: Array.isArray(h.results) ? h.results.length : 0, markersDisplayed: '(placing)' });
+      var hid = h && h.id != null ? String(h.id) : '';
+      if (!selectedIds.has(hid)) return;
+      selectedEntries.push(h);
+      console.log('[LocalSEO history checkbox]', {
+        historyId: hid, keyword: h.keyword, location: h.location,
+        rankingsLoaded: Array.isArray(h.results) ? h.results.length : 0,
+      });
       if (!Array.isArray(h.results)) return;
       h.results.forEach(function(r) {
         var norm = Object.assign({}, r);
@@ -69108,7 +69152,16 @@ window.fpDeleteHistoryEntry = async function(entryId) {
       });
     });
 
-    // Update the dedicated persisted-history results widget.
+    // Show keyword + location badge on the map
+    _updateMapKeywordBadge(selectedEntries);
+
+    // Center the map on the searched location of the primary (first) selected entry
+    if (selectedEntries.length > 0) {
+      var locStr = selectedEntries[0].location || selectedEntries[0].city || '';
+      if (locStr) _panMapToLocation(map, locStr);
+    }
+
+    // Update results widget
     _updateHistoryResultsWidget(merged);
 
     if (merged.length === 0) {
@@ -69117,14 +69170,13 @@ window.fpDeleteHistoryEntry = async function(entryId) {
       return;
     }
 
-    // Place isolated history markers — does NOT mutate STATE.localSeo.rankings
+    // Place history markers (isolated layer — does NOT touch STATE.localSeo.rankings)
     _placeHistoryMarkers(map, merged);
     console.log('[LOCAL SEO HISTORY MAP DEBUG]', {
-      selectedHistoryCount: selectedIds.size,
-      liveMarkersBefore: _liveMarkersBefore,
-      historyMarkersCreated: merged.length,
-      liveMarkersVisible: false,
-      historyMarkersVisible: true,
+      selectedCount: selectedIds.size,
+      entriesFound: selectedEntries.length,
+      markersPlaced: merged.length,
+      centeredOn: selectedEntries[0] ? (selectedEntries[0].location || '') : '',
     });
   };
 
@@ -69153,7 +69205,8 @@ window.fpUpdateRankingMarkers = (function() {
     _markers.forEach(function(m) { try { m.setMap(null); } catch(_e){} });
   };
   window.fpShowLiveRankingMarkers = function() {
-    _markers.forEach(function(m) { try { m.setMap(null); } catch(_e){} });
+    var _liveMap = STATE._gmap;
+    _markers.forEach(function(m) { try { m.setMap(_liveMap); } catch(_e){} });
   };
 
   return function() {
