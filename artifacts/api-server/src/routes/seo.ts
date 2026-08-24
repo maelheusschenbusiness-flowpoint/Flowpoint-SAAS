@@ -412,10 +412,13 @@ router.post("/local-seo/rankings", canWrite, async (req, res) => {
         return;
       }
 
-      const { getLocalPackRank } = await import("../services/dataforseo-service.js");
+      // Use getGoogleMapsResults (Maps API) so stored results include lat/lng for
+      // direct map-marker placement and real result counts (not capped at 3).
+      const { getGoogleMapsResults } = await import("../services/dataforseo-service.js");
       let rankings: unknown[];
       try {
-        rankings = await getLocalPackRank(keyword, location, orgId);
+        const mapsResult = await getGoogleMapsResults(keyword, location, orgId);
+        rankings = mapsResult.results;
       } catch (providerErr) {
         try {
           await releaseRankingSearch(orgId, histId);
