@@ -4,7 +4,7 @@
  * Covers the two per-member aggregate endpoints:
  *
  * GET /api/team/contributions
- *   1. Real counts keyed by BOTH canonical user_id and email alias, org-scoped.
+ *   1. Real, correctly attributed counts keyed by canonical user_id, org-scoped.
  *   2. A genuine zero (some tables fulfilled, member has no rows) is a normal 200.
  *   3. Total backend failure (ALL count queries reject) → 503 error, NOT a
  *      false-empty {} that would show every member as idle.
@@ -70,18 +70,15 @@ function makeApp() {
 describe("GET /api/team/contributions — real per-member counts", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("1. keys counts by canonical user_id AND email alias, org-scoped", async () => {
+  it("1. returns correctly attributed counts under canonical user IDs only", async () => {
     const capturedOrg: unknown[] = [];
     queryHandler = async (sql, values) => {
       capturedOrg.push(values?.[0]);
-      if (/FROM audits/.test(sql)) {
-        return { rows: [{ user_id: "u-1", email: "alice@example.com", cnt: 4 }] };
-      }
-      if (/FROM missions/.test(sql)) {
-        return { rows: [{ user_id: "u-1", email: "alice@example.com", cnt: 2 }] };
-      }
-      if (/FROM reports/.test(sql)) {
-        return { rows: [{ user_id: "u-2", email: "bob@example.com", cnt: 1 }] };
+      if (/WITH canonical_activity/.test(sql)) {
+        return { rows: [
+          { user_id: "u-1", audits: 4, missions: 2, reports: 0, monitors: 1 },
+          { user_id: "u-2", audits: 0, missions: 0, reports: 1, monitors: 0 },
+        ] };
       }
       return { rows: [] };
     };
@@ -90,12 +87,10 @@ describe("GET /api/team/contributions — real per-member counts", () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     // canonical user_id key
-    expect(res.body.contributions["u-1"]).toEqual({ audits: 4, missions: 2, reports: 0 });
-    // email alias key mirrors the same member
-    expect(res.body.contributions["alice@example.com"]).toEqual({ audits: 4, missions: 2, reports: 0 });
-    expect(res.body.contributions["u-2"]).toEqual({ audits: 0, missions: 0, reports: 1 });
-    expect(res.body.contributions["bob@example.com"]).toEqual({ audits: 0, missions: 0, reports: 1 });
-    // org isolation: every count query filtered by ORG_ID as $1
+    expect(res.body.contributions["u-1"]).toEqual({ audits: 4, missions: 2, reports: 0, monitors: 1 });
+    expect(res.body.contributions["u-2"]).toEqual({ audits: 0, missions: 0, reports: 1, monitors: 0 });
+    expect(res.body.contributions["alice@example.com"]).toBeUndefined();
+    expect(res.body.contributions[ORG_ID]).toBeUndefined();
     expect(capturedOrg.every(o => o === ORG_ID)).toBe(true);
   });
 
@@ -107,7 +102,7 @@ describe("GET /api/team/contributions — real per-member counts", () => {
     expect(res.body.contributions).toEqual({});
   });
 
-  it("3. total backend failure (all queries reject) → 503, not false-empty", async () => {
+  it("3. backend failure → 503, not false-empty", async () => {
     queryHandler = async () => { throw new Error("db down"); };
     const res = await request(makeApp()).get("/api/team/contributions");
     expect(res.status).toBe(503);
@@ -166,5 +161,32 @@ describe("GET /api/team/streaks — all members, error vs genuine zero", () => {
     expect(byUser["u-zero"].error).toBeUndefined();
     // query error — flagged, not fabricated zero
     expect(byUser["u-err"].error).toBe(true);
+  });
+
+  it("6. owner uses user_activity_days, matching /api/me/streak", async () => {
+    const activityQueries: Array<{ sql: string; values?: unknown[] }> = [];
+    queryHandler = async (sql, values) => {
+      if (/FROM user_prefs/.test(sql)) return { rows: [{ settings: { timezone: "UTC" } }] };
+      if (/FROM organization_members/.test(sql)) {
+        return { rows: [
+          { user_id: "owner-uuid", email: "owner@example.com", name: "Owner", role: "member" },
+          { user_id: "member-uuid", email: "member@example.com", name: "Member", role: "member" },
+        ] };
+      }
+      if (/FROM organizations o/.test(sql)) {
+        return { rows: [{ user_id: "owner-uuid", email: "owner@example.com", name: "Owner" }] };
+      }
+      if (/activity_days/.test(sql)) {
+        activityQueries.push({ sql, values });
+        return { rows: [] };
+      }
+      return { rows: [] };
+    };
+
+    const res = await request(makeApp()).get("/api/team/streaks");
+    expect(res.status).toBe(200);
+    expect(res.body.streaks.find((s: Row) => s.userId === "owner-uuid")?.role).toBe("owner");
+    expect(activityQueries.find(q => q.values?.[1] === "owner-uuid")?.sql).toContain("FROM user_activity_days");
+    expect(activityQueries.find(q => q.values?.[1] === "member-uuid")?.sql).toContain("FROM member_activity_days");
   });
 });

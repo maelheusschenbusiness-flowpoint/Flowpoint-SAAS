@@ -263,6 +263,14 @@ export interface AddonDefinition {
 }
 
 /**
+ * Public lifecycle/entitlement state used by every add-on catalogue surface.
+ * The first three values describe an organisation's entitlement; the final
+ * three describe the product lifecycle when there is no entitlement.
+ */
+export type AddonStatus = "included" | "active" | "beta" | "coming_soon" | "available";
+export type AddonAvailability = "beta" | "coming_soon" | "available";
+
+/**
  * Canonical public add-on catalogue.
  * Stripe price IDs above control collection; this metadata controls every
  * customer-facing label and amount. Frontends must obtain it from the API.
@@ -324,6 +332,9 @@ export const FLAG_ADDONS = new Set([
   // NOTE: "prioritySupport" removed — feature not implemented, no commercial exposure
 ]);
 
+/** Legacy keys retained only for historical Stripe/DB reconciliation. */
+export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
+
 /**
  * COMING_SOON_ADDONS — add-ons visible in the UI (roadmap) but NOT yet
  * available for purchase.  Activation is blocked at every layer:
@@ -343,7 +354,48 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "aiWorkflows",
   "crmIntegration",
   "ssoEnterprise",
+  // The current launch wizard still creates generic roadmap content and does
+  // not provision the promised workspace surfaces end-to-end.
+  "aiWorkspaceLaunch",
 ]);
+
+/**
+ * Implemented AI/data products currently offered as a limited release.
+ *
+ * Keep this deliberately narrow: beta means usable and purchasable, unlike
+ * COMING_SOON_ADDONS. Plan-bundled products are intentionally omitted so their
+ * canonical state remains "included".
+ */
+export const BETA_ADDONS = new Set<string>([
+  "aiCro",
+  "revenueLeak",
+  "marketIntelligence",
+]);
+
+/** Product lifecycle independent of an organisation's current entitlements. */
+export function getAddonAvailability(addonKey: string): AddonAvailability {
+  // COMING_SOON is authoritative even if a key is accidentally classified
+  // elsewhere while catalogue metadata is being updated.
+  if (COMING_SOON_ADDONS.has(addonKey)) return "coming_soon";
+  if (BETA_ADDONS.has(addonKey)) return "beta";
+  return "available";
+}
+
+/**
+ * Resolve the single display state for an add-on in an organisation catalogue.
+ * Roadmap state has highest precedence, followed by bundled and paid
+ * entitlements; beta is only shown when neither entitlement applies.
+ */
+export function getAddonStatus(
+  addonKey: string,
+  options: { included?: boolean; active?: boolean | number } = {},
+): AddonStatus {
+  const availability = getAddonAvailability(addonKey);
+  if (availability === "coming_soon") return "coming_soon";
+  if (options.included) return "included";
+  if (options.active === true || (typeof options.active === "number" && options.active > 0)) return "active";
+  return availability;
+}
 
 export const QTY_ADDONS = new Set([
   "monitorsPack10","monitorsPack50","gbpSlots10","extraSeats",

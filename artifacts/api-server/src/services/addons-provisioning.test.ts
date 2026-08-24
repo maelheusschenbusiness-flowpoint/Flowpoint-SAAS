@@ -43,9 +43,9 @@ describe("provisionPlanAddons — Pro plan", () => {
     expect(activatedKeys).toContain("whiteLabel");
   });
 
-  it("provisions prioritySupport for Pro (bundled in plan)", async () => {
+  it("does not provision prioritySupport for Pro because it is not bundled", async () => {
     await provisionPlanAddons("pro", "org-pro", activatorStub);
-    expect(activatedKeys).toContain("prioritySupport");
+    expect(activatedKeys).not.toContain("prioritySupport");
   });
 
   it("provisions advancedWebhooks + retention90d for Pro", async () => {

@@ -125,14 +125,14 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
     cro:false, multiLocation:false, prioritySupport:false,
   },
   pro: {
-    // whiteLabel + prioritySupport + webhooks bundled in Pro (see PLAN_INCLUDED_ADDONS in plans.ts)
+    // prioritySupport is intentionally disabled: the feature has no commercial implementation.
     sso:true, saml:false, whiteLabel:true, customDomain:false,
     localDominationMaps:true, geoGridSize9x9:false, competitorIntelAI:true,
     marketIntelligence:true, reviewIntelAI:true, gbpPosting:false,
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,
     pdfExport:true, apiAccess:true, webhooks:true, zapierIntegration:false,
     behavioralAI:true, forecastingAI:true, revenueLeakAI:true,
-    cro:true, multiLocation:false, prioritySupport:true,
+    cro:true, multiLocation:false, prioritySupport:false,
   },
   ultra: {
     sso:true, saml:true, whiteLabel:true, customDomain:true,
@@ -141,7 +141,7 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,
     pdfExport:true, apiAccess:true, webhooks:true, zapierIntegration:true,
     behavioralAI:true, forecastingAI:true, revenueLeakAI:true,
-    cro:true, multiLocation:true, prioritySupport:true,
+    cro:true, multiLocation:true, prioritySupport:false,
   },
   agency: {
     sso:true, saml:true, whiteLabel:true, customDomain:true,
@@ -150,7 +150,7 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,
     pdfExport:true, apiAccess:true, webhooks:true, zapierIntegration:true,
     behavioralAI:true, forecastingAI:true, revenueLeakAI:true,
-    cro:true, multiLocation:true, prioritySupport:true,
+    cro:true, multiLocation:true, prioritySupport:false,
   },
 };
 

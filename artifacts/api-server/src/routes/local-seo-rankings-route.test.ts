@@ -146,6 +146,22 @@ describe("Local SEO ranking route — durable history and quota", () => {
     )).toBe(true);
   });
 
+  it("releases the invisible reservation when the provider call fails", async () => {
+    mocks.getLocalPackRank.mockRejectedValueOnce(new Error("provider unavailable"));
+
+    const res = await request(makeApp())
+      .post("/api/local-seo/rankings")
+      .send({ keyword: "restaurant", location: "Bruxelles" });
+
+    expect(res.status).toBe(502);
+    expect(res.body).toMatchObject({ ok: false, reason: "provider_error" });
+    const cleanupCall = mocks.poolQuery.mock.calls.find((call) =>
+      String(call[0]).includes("DELETE FROM local_seo_ranking_history"),
+    );
+    expect(cleanupCall).toBeDefined();
+    expect(cleanupCall?.[1]).toEqual([expect.stringMatching(/^rh_/), ORG_ID]);
+  });
+
   it("does not call the provider when persisted usage has reached the quota", async () => {
     mocks.clientQuery.mockImplementation(async (sql: unknown) => {
       const text = String(sql);

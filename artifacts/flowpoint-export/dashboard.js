@@ -261,7 +261,162 @@ const STATE = {
   cmpB: null,
   backlinks: null,
   llmVisibility: null,
+  aiRecommendations: null,
 };
+
+function fpRankingSelectionStorageKey() {
+  const me = STATE.me || {};
+  const org = me.org || me.organization || {};
+  const orgId = (typeof org === 'string' ? org : (org.id || org._id))
+    || me.orgId || me.organizationId || me.organization_id
+    || ('user-' + String(me.id || me.userId || me.email || 'anonymous'));
+  return 'fp:local-seo:selected-history:' + String(orgId);
+}
+
+function fpPersistRankingHistorySelection() {
+  try {
+    const ids = STATE.localSeo?._selectedHistoryIds instanceof Set
+      ? Array.from(STATE.localSeo._selectedHistoryIds, String)
+      : [];
+    localStorage.setItem(fpRankingSelectionStorageKey(), JSON.stringify(ids));
+  } catch (_) {}
+}
+
+function fpSetRankingHistory(history, selectId) {
+  if (!STATE.localSeo) STATE.localSeo = {};
+  const rows = Array.isArray(history) ? history : [];
+  const validIds = new Set(rows.filter(h => h && h.id != null).map(h => String(h.id)));
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(fpRankingSelectionStorageKey()) || '[]'); } catch (_) {}
+  const current = STATE.localSeo._selectedHistoryIds instanceof Set
+    ? Array.from(STATE.localSeo._selectedHistoryIds)
+    : saved;
+  const selected = new Set(current.map(String).filter(id => validIds.has(id)));
+  if (selectId != null && validIds.has(String(selectId))) selected.add(String(selectId));
+  STATE.localSeo.rankingHistory = rows;
+  STATE.localSeo._selectedHistoryIds = selected;
+  fpPersistRankingHistorySelection();
+  if (typeof window.fpUpdateRankingMarkersFromHistory === 'function') {
+    window.fpUpdateRankingMarkersFromHistory();
+  }
+}
+
+window.fpToggleHistorySelection = function(historyId, checked) {
+  if (historyId == null) return;
+  if (!STATE.localSeo) STATE.localSeo = {};
+  if (!(STATE.localSeo._selectedHistoryIds instanceof Set)) STATE.localSeo._selectedHistoryIds = new Set();
+  const id = String(historyId);
+  const shouldSelect = typeof checked === 'boolean'
+    ? checked
+    : !STATE.localSeo._selectedHistoryIds.has(id);
+  if (shouldSelect) STATE.localSeo._selectedHistoryIds.add(id);
+  else STATE.localSeo._selectedHistoryIds.delete(id);
+  fpPersistRankingHistorySelection();
+  document.querySelectorAll('[data-history-id]').forEach(function(row) {
+    if (row.dataset.historyId !== id) return;
+    row.style.background = shouldSelect ? 'rgba(37,99,235,0.08)' : 'transparent';
+    const cb = row.querySelector('.fp-hist-cb');
+    if (cb) cb.checked = shouldSelect;
+  });
+  if (typeof window.fpUpdateRankingMarkersFromHistory === 'function') {
+    window.fpUpdateRankingMarkersFromHistory();
+  }
+};
+
+function fpRankingHistoryRows(history) {
+  const selected = STATE.localSeo?._selectedHistoryIds instanceof Set
+    ? STATE.localSeo._selectedHistoryIds
+    : new Set();
+  if (!Array.isArray(history)) return '<div style="text-align:center;padding:10px;color:#64748b;font-size:11px">Chargement…</div>';
+  if (!history.length) return '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">' + fpT("Aucun historique — effectuez votre première recherche.") + '</div>';
+  return history.map(function(h) {
+    if (!h || h.id == null) return '';
+    const id = String(h.id);
+    const date = h.searched_at ? new Date(h.searched_at).toLocaleDateString(getLocale(), { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—';
+    const count = h.total_results != null ? Number(h.total_results) : (Array.isArray(h.results) ? h.results.length : 0);
+    const isSelected = selected.has(id);
+    const idJson = JSON.stringify(id);
+    return '<div data-history-id="' + escHtml(id) + '" style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,0.04);border-radius:6px;cursor:pointer;background:' + (isSelected ? 'rgba(37,99,235,0.08)' : 'transparent') + '" onclick="window.fpToggleHistorySelection(' + idJson.replace(/"/g, '&quot;') + ')">'
+      + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation();window.fpToggleHistorySelection(' + idJson.replace(/"/g, '&quot;') + ',this.checked)">'
+      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:70px">' + escHtml(date) + '</div>'
+      + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(h.keyword || '') + ' — ' + escHtml(h.location || '') + '</div>'
+      + '<span style="font-size:10px;font-weight:700;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px">' + (Number.isFinite(count) ? count : 0) + ' rés.</span>'
+      + '<button onclick="event.stopPropagation();window.fpDeleteHistoryEntry(' + idJson.replace(/"/g, '&quot;') + ')" title="Supprimer" style="flex-shrink:0;background:transparent;border:none;color:#64748b;font-size:13px;cursor:pointer;padding:0 2px;line-height:1">✕</button>'
+      + '</div>';
+  }).join('');
+}
+
+function fpEnsureRankingHistory() {
+  if (!STATE.localSeo) STATE.localSeo = {};
+  if (Array.isArray(STATE.localSeo.rankingHistory) || STATE.localSeo._historyLoading) return;
+  STATE.localSeo._historyLoading = true;
+  apiFetch('/api/local-seo/rankings/history', { force:true }).then(function(data) {
+    fpSetRankingHistory(Array.isArray(data?.history) ? data.history : []);
+    STATE.localSeo._historyLoading = false;
+    STATE.localSeo._historyError = null;
+    if (data?.usage) {
+      if (!STATE.dfsStatus) STATE.dfsStatus = {};
+      STATE.dfsStatus.quota = {
+        used: Number(data.usage.used || 0),
+        limit: Number(data.usage.limit || 0),
+        remaining: Math.max(0, Number(data.usage.limit || 0) - Number(data.usage.used || 0)),
+      };
+    }
+    const widget = document.getElementById('fp-persisted-rank-history');
+    if (widget) widget.innerHTML = fpRankingHistoryRows(STATE.localSeo.rankingHistory);
+    const quota = document.getElementById('fp-ranking-history-quota');
+    if (quota && STATE.dfsStatus?.quota) quota.textContent = STATE.dfsStatus.quota.used + '/' + STATE.dfsStatus.quota.limit + ' req aujourd’hui';
+  }).catch(function(err) {
+    STATE.localSeo._historyLoading = false;
+    STATE.localSeo._historyError = err?.message || 'Historique indisponible';
+    const widget = document.getElementById('fp-persisted-rank-history');
+    if (widget) widget.innerHTML = '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">' + fpT("Impossible de charger l'historique. Réessayez.") + '</div>';
+  });
+}
+
+function fpActiveLanguage() {
+  return String(STATE.settings?.language || localStorage.getItem('fp:language') || document.documentElement.lang || 'fr');
+}
+
+window.fpLoadAiRecommendations = function(force) {
+  const language = fpActiveLanguage();
+  if (!force && (STATE._aiRecommendationsLoading || STATE._aiRecommendationsLanguage === language)) {
+    return Promise.resolve(STATE.aiRecommendations);
+  }
+  STATE._aiRecommendationsLoading = true;
+  return apiFetch('/api/ai/recommendations?language=' + encodeURIComponent(language), force ? { force:true } : {}).then(function(data) {
+    const recommendations = Array.isArray(data) ? data : (Array.isArray(data?.recommendations) ? data.recommendations : []);
+    STATE.aiRecommendations = recommendations;
+    STATE._aiRecommendationsLanguage = language;
+    STATE._aiRecommendationsLoading = false;
+    if (STATE.route === 'ai') render();
+    return recommendations;
+  }).catch(function() {
+    STATE.aiRecommendations = [];
+    STATE._aiRecommendationsLanguage = language;
+    STATE._aiRecommendationsLoading = false;
+    if (STATE.route === 'ai') render();
+    return [];
+  });
+};
+
+function fpRenderPersistedAiRecommendations() {
+  const recommendations = STATE.aiRecommendations;
+  if (!Array.isArray(recommendations)) {
+    return '<div class="fp-card fp-card-sm fp-mb-16" style="color:var(--fp-text-faint);font-size:12px">Chargement des recommandations…</div>';
+  }
+  if (!recommendations.length) {
+    return '<div class="fp-card fp-card-sm fp-mb-16" style="color:var(--fp-text-faint);font-size:12px;text-align:center">Aucune recommandation disponible pour le moment.</div>';
+  }
+  return '<div class="fp-card fp-card-sm fp-mb-16"><div class="fp-card-title">Recommandations IA</div><div style="display:grid;gap:8px">'
+    + recommendations.map(function(rec) {
+      return '<div style="padding:10px 12px;border:1px solid var(--fp-border);border-radius:10px;background:var(--fp-inner-card)">'
+        + '<div style="font-size:12px;font-weight:700;color:var(--fp-text)">' + escHtml(rec?.title || '') + '</div>'
+        + '<div style="font-size:11px;line-height:1.5;color:var(--fp-text-muted);margin-top:3px">' + escHtml(rec?.description || '') + '</div>'
+        + '</div>';
+    }).join('')
+    + '</div></div>';
+}
 
 // Default checklist
 if (!STATE.checklist) {
@@ -1971,6 +2126,9 @@ async function loadData(options = {}) {
     // Per-user real contribution counts from DB (audits, missions, reports)
     if (_contribRes && _contribRes.status === 'fulfilled' && _contribRes.value && _contribRes.value.contributions) {
       STATE.teamContributions = _contribRes.value.contributions;
+    } else {
+      // A failed refresh must not retain another organisation's old values.
+      STATE.teamContributions = null;
     }
     const _aud = normArr(audits,   'audits');   STATE.audits   = (_aud  && _aud.length  > 0) ? _aud  : (PREVIEW_MODE ? MOCK_AUDITS   : []);
     const _mon = normArr(monitors, 'monitors'); STATE.monitors = (_mon  && _mon.length  > 0) ? _mon  : (PREVIEW_MODE ? MOCK_MONITORS : []);
@@ -4654,7 +4812,10 @@ function handleFABAction(action) {
   if (action === 'new-report')  { openFloatPanel(fpT('Générer un rapport PDF'), renderNewReportPanel()); setupNewReportPanel(); }
   if (action === 'export-data') { openFloatPanel(fpT('Exporter les données'), renderExportPanel()); setupExportPanel(); }
   if (action === 'new-geo')     { navigate('local-seo'); setTimeout(()=>{ window._mapsTab='grid'; render(STATE.currentSection); window._showCreateHeatmapModal?.(); }, 300); }
-  if (action === 'open-chat') { navigate('ai'); }
+  if (action === 'open-chat') {
+    if (typeof window.fpOpenAIChat === 'function') window.fpOpenAIChat();
+    else navigate('ai');
+  }
   if (action === 'layout-edit') { toggleLayoutEditMode(); }
 }
 
@@ -8932,6 +9093,7 @@ function renderLocalSEO() {
   const isStd  = plan === 'Standard';
   const isPro  = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
+  setTimeout(fpEnsureRankingHistory, 0);
 
   const _lseo = STATE.localSeo || {};
   const domScore = _lseo.domScore ?? (PREVIEW_MODE ? 72 : null);
@@ -9014,144 +9176,22 @@ function renderLocalSEO() {
       ${statCard('Menaces actives', String(STATE.competitors && STATE.competitors.length > 0 ? STATE.competitors.length : PREVIEW_MODE ? 3 : 0), STATE.competitors && STATE.competitors.length > 0 ? 'concurrents configurés' : PREVIEW_MODE ? 'concurrents en hausse' : 'Aucun concurrent', STATE.competitors && STATE.competitors.length > 0 ? 'down' : 'neutral')}
     </div>
 
-    <!-- DATAFORSEO LIVE INTELLIGENCE PANEL -->
-    <div class="fp-card fp-mb-20" style="padding:0;overflow:hidden;border:1px solid rgba(37,99,235,0.2)">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 18px;border-bottom:1px solid var(--fp-border);background:linear-gradient(90deg,rgba(37,99,235,0.06),transparent)">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span style="font-size:16px">🔍</span>
-          <span class="fp-card-title" style="margin-bottom:0">${fpT('Intelligence de visibilité locale')}</span>
-          ${STATE.dfsStatus?.configured
-            ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#22c55e">● API LIVE</span>`
-            : `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b">${fpT('● DONNÉES INDISPONIBLES')}</span>`}
+    <!-- PERSISTED RANKING HISTORY -->
+    <div class="fp-card fp-mb-20" style="padding:16px 18px">
+      <div class="fp-ranking-history-header">
+        <div>
+          <div class="fp-card-title" style="margin-bottom:2px">${fpT('Historique des recherches')}</div>
+          <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Cochez les recherches à afficher sur la carte')}</div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          ${STATE.dfsStatus ? `<span style="font-size:10px;color:#64748b">${STATE.dfsStatus.quota?.used||0}/${STATE.dfsStatus.quota?.limit||STATE.me?.dfsQuota?.limit||1000} req aujourd\'hui</span>` : ''}
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="window._showLoadRankingsModal()">🔎 Charger rankings</button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="window._generateLocalMissions()">⚡ Auto-missions</button>
+        <div class="fp-ranking-history-actions">
+          <span id="fp-ranking-history-quota" style="font-size:10px;color:var(--fp-text-faint)">${STATE.dfsStatus?.quota ? STATE.dfsStatus.quota.used + '/' + STATE.dfsStatus.quota.limit + ' req aujourd’hui' : ''}</span>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showLoadRankingsModal()">🔎 ${fpT('Charger rankings')}</button>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
-        <div style="padding:16px 18px;border-right:1px solid var(--fp-border)">
-          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Local Pack Rankings</div>
-          <div id="dfs-local-rank-widget">
-            ${(STATE.localSeo?.rankings && STATE.localSeo.rankings.length > 0) ? `
-              ${STATE.localSeo.rankings.map((r, i) => {
-                const _sel = (STATE.localSeo._selectedRankings||new Set()).has(i);
-                const _rankColors = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
-                return `<div data-rank-row="${i}" style="display:flex;align-items:flex-start;gap:8px;padding:7px 6px;border-radius:7px;cursor:pointer;transition:background 0.12s;${i > 0 ? 'border-top:1px solid var(--fp-border)' : ''};background:${_sel?'rgba(37,99,235,0.08)':'transparent'}"
-                  onclick="(function(el,idx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();var sel=STATE.localSeo._selectedRankings.has(idx);if(sel){STATE.localSeo._selectedRankings.delete(idx);el.style.background='transparent';}else{STATE.localSeo._selectedRankings.add(idx);el.style.background='rgba(37,99,235,0.08)';}var cb=el.querySelector('.fp-rank-cb');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkers==='function')window.fpUpdateRankingMarkers();})(this,${i})">
-                  <input type="checkbox" class="fp-rank-cb" data-rank-idx="${i}" style="width:14px;height:14px;accent-color:#2563EB;cursor:pointer;flex-shrink:0;margin-top:3px" ${_sel?'checked':''} onclick="event.stopPropagation();(function(cb,idx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();var row=cb.closest('[data-rank-row]');if(cb.checked){STATE.localSeo._selectedRankings.add(idx);if(row)row.style.background='rgba(37,99,235,0.08)';}else{STATE.localSeo._selectedRankings.delete(idx);if(row)row.style.background='transparent';}if(typeof window.fpUpdateRankingMarkers==='function')window.fpUpdateRankingMarkers();})(this,${i})"
-                  <div style="font-size:15px;font-weight:800;color:${_rankColors[i%_rankColors.length]};min-width:22px;text-align:center">#${r.rank}</div>
-                  <div style="flex:1;min-width:0">
-                    <div style="font-size:12px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.title)}</div>
-                    ${r.rating > 0 ? `<div style="font-size:10px;color:#f59e0b">★ ${r.rating} (${r.reviews} avis)</div>` : ''}
-                    ${r.address ? `<div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.address)}</div>` : ''}
-                  </div>
-                </div>`;
-              }).join('')}
-              <div style="margin-top:8px;font-size:10px;color:#64748b;font-style:italic">${fpT('Classement pour')} « ${escHtml(STATE.localSeo.rankingKeyword||'')} » — ${escHtml(STATE.localSeo.rankingCity||'')}</div>` : `
-            <div style="text-align:center;padding:16px;color:#64748b;font-size:12px">
-              Cliquez <strong>${fpT('Charger rankings')}</strong> pour voir vos positions locales Google en direct
-            </div>`}
-          </div>
-          ${(()=>{
-            // Load history from DB on first render of this section (non-blocking)
-            const _hist = STATE.localSeo?.rankingHistory;
-            if (!Array.isArray(_hist) && !STATE.localSeo?._historyLoading) {
-              if (!STATE.localSeo) STATE.localSeo = {};
-              STATE.localSeo._historyLoading = true;
-              apiFetch('/api/local-seo/rankings/history').then(h => {
-                if (!STATE.localSeo) STATE.localSeo = {};
-                STATE.localSeo.rankingHistory = Array.isArray(h?.history) ? h.history : [];
-                STATE.localSeo._historyLoading = false;
-                STATE.localSeo._historyError = null;
-                if (h?.usage) {
-                  if (!STATE.dfsStatus) STATE.dfsStatus = {};
-                  STATE.dfsStatus.quota = {
-                    used: Number(h.usage.used || 0),
-                    limit: Number(h.usage.limit || 0),
-                    remaining: Math.max(0, Number(h.usage.limit || 0) - Number(h.usage.used || 0)),
-                  };
-                }
-                const widget = document.getElementById('dfs-rank-history');
-                if (widget) {
-                  const items = STATE.localSeo.rankingHistory;
-                  widget.innerHTML = items.length === 0
-                    ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique.</div>'
-                    : items.map((h2, hIdx2) => {
-                        const date = h2.searched_at ? new Date(h2.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
-                        const resultCount = (h2.total_results != null && h2.total_results > 0)
-                          ? h2.total_results
-                          : (Array.isArray(h2.results) ? h2.results.length : 0);
-                        const _selH2 = (STATE.localSeo?._selectedHistoryIds||new Set()).has(hIdx2);
-                        return '<div data-hist-row="'+hIdx2+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,0.04);border-radius:6px;cursor:pointer;background:'+(_selH2?'rgba(37,99,235,0.08)':'transparent')+'"'
-                          + ' onclick="(function(el,hid){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid);}else{STATE.localSeo._selectedHistoryIds.add(hid);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+hIdx2+'">'
-                          + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH2?'checked':'')+' onclick="event.stopPropagation()">'
-                          + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px">'+escHtml(date)+'</div>'
-                          + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
-                          + (resultCount > 0 ? '<span style="font-size:10px;font-weight:700;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px">'+resultCount+' rés.</span>' : '<span style="font-size:10px;color:#64748b;flex-shrink:0">—</span>')
-                          + '</div>';
-                      }).join('');
-                }
-              }).catch((err) => {
-                if (STATE.localSeo) {
-                  STATE.localSeo._historyLoading = false;
-                  STATE.localSeo._historyError = err?.message || 'Historique indisponible';
-                }
-                const widget = document.getElementById('dfs-rank-history');
-                if (widget) widget.innerHTML = '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">'+fpT("Impossible de charger l'historique. Réessayez.")+'</div>';
-              });
-            }
-            const histItems = Array.isArray(_hist) ? _hist : [];
-            const histHtml = STATE.localSeo?._historyError
-              ? '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">'+fpT("Impossible de charger l'historique. Réessayez.")+'</div>'
-              : !Array.isArray(_hist)
-              ? '<div style="text-align:center;padding:10px;color:#64748b;font-size:11px">Chargement…</div>'
-              : histItems.length === 0
-                ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">'+fpT("Aucun historique — effectuez votre première recherche.")+'</div>'
-                : histItems.map((h, hIdx) => {
-                    const date = h.searched_at ? new Date(h.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
-                    const resultCount = (h.total_results != null && h.total_results > 0)
-                      ? h.total_results
-                      : (Array.isArray(h.results) ? h.results.length : 0);
-                    const _selH = (STATE.localSeo?._selectedHistoryIds||new Set()).has(hIdx);
-                    return '<div data-hist-row="'+hIdx+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,0.04);border-radius:6px;cursor:pointer;background:'+(_selH?'rgba(37,99,235,0.08)':'transparent')+'"'
-                      + ' onclick="(function(el,hid){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid);}else{STATE.localSeo._selectedHistoryIds.add(hid);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+hIdx+'">'
-                      + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH?'checked':'')+' onclick="event.stopPropagation()">'
-                      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px">'+escHtml(date)+'</div>'
-                      + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h.keyword)+' — '+escHtml(h.location)+'</div>'
-                      + (resultCount > 0
-                          ? '<span style="font-size:10px;font-weight:700;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px">'+resultCount+' rés.</span>'
-                          : '<span style="font-size:10px;color:#64748b;flex-shrink:0">—</span>')
-                      + (h.id ? '<button onclick="event.stopPropagation();window.fpDeleteHistoryEntry('+JSON.stringify(h.id)+')" title="Supprimer" style="flex-shrink:0;background:transparent;border:none;color:#64748b;font-size:13px;cursor:pointer;padding:0 2px;line-height:1" onmouseover="this.style.color=\'#ef4444\'" onmouseout="this.style.color=\'#64748b\'">✕</button>' : '')
-                      + '</div>';
-                  }).join('');
-            return `<div style="margin-top:12px;border-top:1px solid var(--fp-border);padding-top:10px">
-              <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Historique des recherches <span style="font-size:9px;font-weight:400;color:#475569">(cochez pour afficher sur la carte)</span></div>
-              <div id="dfs-rank-history" style="overflow-y:auto;overflow-x:hidden;padding-right:2px;max-height:220px">${histHtml}</div>
-              <div id="dfs-history-results-widget" style="display:none;margin-top:8px;border-top:1px solid rgba(37,99,235,0.15);padding-top:8px"></div>
-            </div>`;
-          })()}
-        </div>
-        <div style="padding:16px 18px">
-          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">${fpT('Quota & Fonctionnalités')}</div>
-          ${[
-            {icon:'📈', label:'Keyword Strategist',  desc:'Suggestions + difficulty + intent'},
-            {icon:'🥇', label:'SERP Intelligence',    desc:'Top 10 Google + AI Overviews'},
-            {icon:'🔗', label:'Backlink Intelligence', desc:'DR, toxiques, nouveaux/perdus'},
-            {icon:'⚔️', label:'Competitor Engine',    desc:'Gaps mots-clés + traffic'},
-            {icon:'🤖', label:'AI Visibility',         desc:'ChatGPT + Gemini mentions'},
-            {icon:'📝', label:'Content Optimizer',     desc:'Score contenu + recommandations'},
-          ].map(f => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
-            <span style="font-size:13px">${f.icon}</span>
-            <div>
-              <div style="font-size:11px;font-weight:600;color:#e2e8f0">${f.label}</div>
-              <div style="font-size:10px;color:#64748b">${f.desc}</div>
-            </div>
-          </div>`).join('')}
-          ${!STATE.dfsStatus?.configured ? `<div style="margin-top:12px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-size:11px;color:#f59e0b">${fpT('Les données de classement sont temporairement indisponibles.')}</div>` : ''}
-        </div>
+      <div id="fp-persisted-rank-history" style="overflow-y:auto;max-height:240px">
+        ${STATE.localSeo?._historyError ? '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">'+fpT("Impossible de charger l'historique. Réessayez.")+'</div>' : fpRankingHistoryRows(STATE.localSeo?.rankingHistory)}
       </div>
+      <div id="dfs-history-results-widget" style="display:none;margin-top:8px;border-top:1px solid rgba(37,99,235,0.15);padding-top:8px"></div>
     </div>
 
     <!-- GOOGLE MAPS LIVE -->
@@ -10201,7 +10241,7 @@ function renderBilling() {
       // ── Enterprise ──
       { key:'customDomain', cat:'Ultra', name:'Custom Domain',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, targetNav:'settings', tag:'Ultra inclus', roi:'portal.votreagence.fr', desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
       { key:'ssoEnterprise', cat:'Ultra', name:'SSO SAML', icon:'🔑', color:'#6366f1', active:!!(me.addons?.ssoEnterprise), targetNav:'settings', tag:'Enterprise',     roi:'SAML 2.0 / OIDC', desc:'Single Sign-On enterprise. Compatible SAML 2.0, OIDC, Azure AD, et Okta.', features:['SSO SAML 2.0 et OIDC natif','Compatible Azure AD, Okta, Google Workspace','Provisioning/déprovisioning automatique (SCIM)','Logs de connexion centralisés','Support dédié configuration SSO'], comingSoon: true },
-      { key:'aiWorkspaceLaunch', cat:'Ultra', name:'AI Workspace Launch', icon:'🤖', color:'#6366f1', active:!!(me.addons?.aiWorkspaceLaunch), targetNav:'ai', tag:'IA Setup',        roi:'Workspace auto en 2 min',    desc:'L\'IA configure automatiquement votre workspace FlowPoint : dashboards, KPIs, alertes, missions et stratégie business.', features:['Configuration complète workspace en 2 min','KPIs et alertes adaptés à votre secteur','Missions et stratégie SEO pré-configurées','Dashboards personnalisés par votre métier','Accompagnement IA en continu'], wizardFn:'openAIWorkspaceLaunch' },
+      { key:'aiWorkspaceLaunch', cat:'Ultra', name:'AI Workspace Launch', icon:'🤖', color:'#6366f1', active:!!(me.addons?.aiWorkspaceLaunch), targetNav:'ai', tag:'IA Setup',        roi:'Workspace auto en 2 min',    desc:'L\'IA configure automatiquement votre workspace FlowPoint : dashboards, KPIs, alertes, missions et stratégie business.', features:['Configuration complète workspace en 2 min','KPIs et alertes adaptés à votre secteur','Missions et stratégie SEO pré-configurées','Dashboards personnalisés par votre métier','Accompagnement IA en continu'], wizardFn:'openAIWorkspaceLaunch', comingSoon:true },
     ];
 
     // ── Money and bundling are injected from the server catalogue; this file
@@ -10214,16 +10254,30 @@ function renderBilling() {
     const _fpCat = STATE.billingCatalog || null;
     allAddons.forEach(a => {
       const d = _fpCat ? _fpCat.addonsByKey[a.key] : null;
+      const apiDef = window.FP_DATA?.addons?.definitions?.[a.key]
+        || (typeof window.FP_DATA?.addons?.active?.[a.key] === 'object' ? window.FP_DATA.addons.active[a.key] : null);
+      const apiActive = window.FP_DATA?.addons?.active?.[a.key];
       a.catalogMissing = !d;
       a.priceMinor     = d ? d.priceMinor : null;
       a.oneTime        = d ? !!d.oneTime : false;
       a.price          = d ? _fpEurMinor(d.priceMinor) + (d.oneTime ? '' : '/mois') : '—';
       a.includedFrom   = (_fpCat && _fpCat.includedFromByKey[a.key]) || null;
+      // The API owns lifecycle status. `comingSoon` is only a conservative
+      // presentation fallback while the asynchronous catalogue is loading.
+      a.status         = apiDef?.status ?? apiDef?.availability ?? (a.comingSoon ? 'coming_soon' : null);
+      a.availability   = apiDef?.availability ?? null;
+      a.includedInPlan = typeof apiDef?.includedInPlan === 'boolean' ? apiDef.includedInPlan : null;
+      if (typeof apiDef?.active === 'boolean') a.active = apiDef.active;
+      else if (typeof apiActive === 'boolean') a.active = apiActive;
+      else if (typeof apiActive?.active === 'boolean') a.active = apiActive.active;
+      if (a.status === 'active') a.active = true;
     });
 
     const currentPlan = ((STATE.billing && STATE.billing.plan) || me.plan || '').toLowerCase();
     const planLevel = currentPlan === 'ultra' ? 2 : currentPlan === 'pro' ? 1 : 0;
     const isIncluded = a => {
+      if (a.status === 'included') return true;
+      if (typeof a.includedInPlan === 'boolean') return a.includedInPlan;
       if (a.includedFrom === 'standard') return true;
       // retention90d is superseded by retention365d on Ultra — hide it to avoid confusion
       if (a.key === 'retention90d' && planLevel >= 2) return false;
@@ -10431,7 +10485,9 @@ function renderBilling() {
           <span style="font-size:12px;color:var(--fp-text-soft);line-height:1.5">${escHtml(f)}</span>
         </div>`
       ).join('');
-      const inclBadge = a.includedFrom === 'standard' ? 'Tous les plans' : a.includedFrom === 'pro' ? 'Plan Pro & Ultra' : a.includedFrom === 'ultra' ? 'Plan Ultra' : null;
+      const inclBadge = isInc
+        ? (a.includedFrom === 'standard' ? 'Tous les plans' : a.includedFrom === 'pro' ? 'Plan Pro & Ultra' : a.includedFrom === 'ultra' ? 'Plan Ultra' : 'Votre plan')
+        : null;
       openFloatPanel(
         `${a.icon} ${a.name}`,
         `<div style="padding:20px;display:flex;flex-direction:column;gap:16px">
@@ -10440,6 +10496,9 @@ function renderBilling() {
               <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,0.07);color:var(--fp-text-muted)">${escHtml(a.cat)}</span>
               <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${accentColor}18;color:${accentColor}">${escHtml(a.tag)}</span>
               ${inclBadge ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(34,197,94,0.12);color:#22c55e">✓ Inclus — ${inclBadge}</span>` : ''}
+               ${!isInc && a.active && a.status !== 'coming_soon' ? '<span class="fp-badge" style="background:rgba(34,197,94,.12);color:#22c55e">Activé</span>' : ''}
+               ${!isInc && !a.active && a.status === 'beta' ? '<span class="fp-badge" style="background:rgba(139,92,246,.14);color:#8b5cf6">Bêta</span>' : ''}
+               ${!isInc && !a.active && a.status === 'coming_soon' ? '<span class="fp-badge" style="background:rgba(148,163,184,.12);color:#94a3b8">Bientôt</span>' : ''}
             </div>
             <button onclick="closeFloatPanel&&closeFloatPanel()" style="width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--fp-text-muted);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0" title="${fpT('Fermer')}">×</button>
           </div>
@@ -10459,13 +10518,13 @@ function renderBilling() {
             </div>
             ${isInc
               ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">${fpT('✓ Déjà inclus')}</button>`
-              : a.active
-                ? `<div style="display:flex;gap:8px;align-items:center">${a.targetNav ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="closeFloatPanel&&closeFloatPanel();navigate('${escHtml(a.targetNav)}')">${fpT('Accéder →')}</button>` : ''}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
-                : a.comingSoon
-                  ? `<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;background:rgba(148,163,184,0.1);border:1px solid rgba(148,163,184,0.25)"><span style="font-size:18px">🚧</span><div><div style="font-size:12px;font-weight:700;color:var(--fp-text)">${fpT('Bientôt disponible')}</div><div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Cet add-on sera lancé prochainement.')}</div></div></div>`
-                  : a.wizardFn
+              : a.status === 'coming_soon'
+                ? `<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;background:rgba(148,163,184,0.1);border:1px solid rgba(148,163,184,0.25)"><span style="font-size:18px">🚧</span><div><div style="font-size:12px;font-weight:700;color:var(--fp-text)">${fpT('Bientôt disponible')}</div><div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Cet add-on sera lancé prochainement.')}</div></div></div>`
+                : a.active
+                  ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="fp-badge" style="background:rgba(34,197,94,.14);color:#22c55e">✓ ${fpT('Activé')}</span>${a.targetNav ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="closeFloatPanel&&closeFloatPanel();navigate('${escHtml(a.targetNav)}')">${fpT('Accéder →')}</button>` : ''}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
+                   : a.wizardFn
                   ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 Lancer →</button>`
-                  : `${_FP_QTY_ADDON_KEYS[a.key] ? `
+                   : `${a.status === 'beta' ? '<span class="fp-badge" style="margin-right:8px;background:rgba(139,92,246,.14);color:#8b5cf6">Bêta</span>' : ''}${_FP_QTY_ADDON_KEYS[a.key] ? `
                     <div style="display:flex;align-items:center;gap:10px">
                       <div style="display:flex;align-items:center;gap:4px" title="Nombre de packs">
                         <button onclick="window._fpAddonQtyStep('${a.key}',-1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">−</button>
@@ -10518,15 +10577,16 @@ function renderBilling() {
         if (!_visibleAddons.length) return `<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">${fpT('Aucun add-on dans cette catégorie.')}</div>`;
         return `<div class="fp-addon-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
         ${_visibleAddons.map((a, _i) => {
+          const _addonIdx = allAddons.indexOf(a);
           const _rc = ['#f59e0b','#2563EB','#22c55e','#ef4444'][Math.floor(_i / 4) % 4];
           const inc = isIncluded(a);
           const cardAccent = _rc;
           const _addonDark = document.documentElement.getAttribute('data-theme') !== 'light';
-          const borderColor = (inc || a.active) ? cardAccent + '88' : _addonDark ? cardAccent + '33' : cardAccent + '44';
+          const borderColor = (inc || (a.active && a.status !== 'coming_soon')) ? cardAccent + '88' : _addonDark ? cardAccent + '33' : cardAccent + '44';
           const bgColor     = _addonDark ? 'rgba(8,13,27,0.92)' : cardAccent + '08';
           return `
-          <div onclick="window.fpShowAddonDetail(${_i})" style="border-radius:14px;border:1px solid ${borderColor};background:${bgColor};padding:16px;position:relative;overflow:hidden;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s" onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.18)'" onmouseleave="this.style.transform='';this.style.boxShadow=''">
-            ${(inc || a.active) ? `<div style="position:absolute;top:0;right:0;width:3px;height:100%;background:linear-gradient(to bottom,${cardAccent},${cardAccent}44)"></div>` : ''}
+          <div onclick="window.fpShowAddonDetail(${_addonIdx})" style="border-radius:14px;border:1px solid ${borderColor};background:${bgColor};padding:16px;position:relative;overflow:hidden;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s" onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.18)'" onmouseleave="this.style.transform='';this.style.boxShadow=''">
+            ${(inc || (a.active && a.status !== 'coming_soon')) ? `<div style="position:absolute;top:0;right:0;width:3px;height:100%;background:linear-gradient(to bottom,${cardAccent},${cardAccent}44)"></div>` : ''}
             <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
               <div style="font-size:20px;flex-shrink:0">${a.icon}</div>
               <div style="flex:1;min-width:0">
@@ -10536,21 +10596,21 @@ function renderBilling() {
                   ${badge(a.tag, cardAccent)}
                 </div>
               </div>
-              ${(inc || a.active) ? `<div style="width:8px;height:8px;border-radius:50%;background:${cardAccent};flex-shrink:0;margin-top:4px;box-shadow:0 0 8px ${cardAccent}88"></div>` : ''}
+              ${(inc || (a.active && a.status !== 'coming_soon')) ? `<div style="width:8px;height:8px;border-radius:50%;background:${cardAccent};flex-shrink:0;margin-top:4px;box-shadow:0 0 8px ${cardAccent}88"></div>` : ''}
             </div>
             <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(a.desc)}</div>
             <div style="font-size:10px;color:${cardAccent};font-weight:600;margin-bottom:10px">✦ ${escHtml(a.roi)}</div>
             <div style="display:flex;align-items:center;justify-content:space-between" onclick="event.stopPropagation()">
-              <span style="font-size:12px;font-weight:800;color:${(inc || a.active) ? cardAccent : 'var(--fp-text)'}">${inc ? 'Inclus ✓' : escHtml(a.price)}</span>
+              <span style="font-size:12px;font-weight:800;color:${(inc || (a.active && a.status !== 'coming_soon')) ? cardAccent : 'var(--fp-text)'}">${inc ? 'Inclus ✓' : a.status === 'coming_soon' ? fpT('Bientôt') : a.active ? 'Activé' : a.status === 'beta' ? 'Bêta' : escHtml(a.price)}</span>
               ${inc
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">✓ Inclus</button>`
-                : a.active
-                  ? `<div style="display:flex;gap:6px">${a.targetNav?`<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigate('${escHtml(a.targetNav)}')">${fpT('Accéder →')}</button>`:''}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
-                  : a.comingSoon
-                    ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:rgba(148,163,184,0.3);color:#94a3b8" title="${fpT('Bientôt disponible')}">🚧 ${fpT('Bientôt')}</button>`
-                    : a.wizardFn
+                : a.status === 'coming_soon'
+                  ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:rgba(148,163,184,0.3);color:#94a3b8" title="${fpT('Bientôt disponible')}">🚧 ${fpT('Bientôt')}</button>`
+                  : a.active
+                    ? `<div style="display:flex;gap:6px"><span class="fp-badge" style="font-size:10px;background:rgba(34,197,94,.14);color:#22c55e">✓ ${fpT('Activé')}</span>${a.targetNav?`<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigate('${escHtml(a.targetNav)}')">${fpT('Accéder →')}</button>`:''}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
+                    : a.wizardFn && a.status !== 'coming_soon'
                       ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 Lancer →</button>`
-                      : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">${fpT('Activer →')}</button>`
+                      : `<div style="display:flex;align-items:center;gap:5px">${a.status === 'beta' ? '<span class="fp-badge" style="background:rgba(139,92,246,.14);color:#8b5cf6">Bêta</span>' : ''}<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_addonIdx})">${fpT('Activer →')}</button></div>`
               }
             </div>
           </div>`;
@@ -13271,6 +13331,9 @@ function renderAI() {
   const isStd   = plan === 'Standard';
   const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
+  if (!STATE._aiRecommendationsLoading && STATE._aiRecommendationsLanguage !== fpActiveLanguage()) {
+    setTimeout(function() { window.fpLoadAiRecommendations(false); }, 0);
+  }
 
   // ── Action chip helper ─────────────────────────────────────
   const chip = (label, route, sub_) => {
@@ -13420,6 +13483,7 @@ function renderAI() {
   // SUB: INSIGHTS & RECOMMANDATIONS
   // ══════════════════════════════════════════════════════════
   if (sub === 'insights') {
+    const persistedRecommendations = fpRenderPersistedAiRecommendations();
     const _hasMonDown        = !!(STATE.monitors && STATE.monitors.some(m=>m.status==='down'));
     const _hasAudits         = !!(STATE.audits && STATE.audits.length > 0);
     const _hasLowSpd         = _hasAudits && STATE.audits.some(a=>(a.speed||100)<60);
@@ -13490,6 +13554,7 @@ function renderAI() {
           ${statCard('Opportunités', '0', 'connectez vos sources', 'neutral')}
           ${statCard('Score global', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,null); })(), 'score moyen portfolio', 'neutral')}
         </div>
+        ${persistedRecommendations}
         <div style="padding:40px 20px;text-align:center;color:var(--fp-text-faint)">
           <div style="font-size:32px;margin-bottom:12px">💡</div>
           <div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">${fpT('Aucun insight disponible pour le moment.')}</div>
@@ -13511,6 +13576,7 @@ function renderAI() {
         ${statCard('Opportunités', String(insights.filter(i => i.priority === 'Opportunité').length), 'quick wins détectés', 'up')}
         ${statCard('Score global', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,null); })(), 'score moyen portfolio', 'neutral')}
       </div>
+      ${persistedRecommendations}
       ${['Critique','Urgent','Cette semaine','Opportunité','Pro tip'].map(prio => {
         const group = insights.filter(i => i.priority === prio);
         if (!group.length) return '';
@@ -48017,8 +48083,10 @@ function bindGlobalEvents() {
     document.documentElement.lang = langCode;
     if (STATE.settings) STATE.settings.language = val;
     localStorage.setItem('fp:language', val);
-    // Re-render applies the chosen locale catalog without mutating user content.
+    STATE.aiRecommendations = null;
+    STATE._aiRecommendationsLanguage = null;
     render();
+    window.fpLoadAiRecommendations(true);
   };
 
 // ─────────────────────────────────────────────────────────────────
@@ -49377,24 +49445,7 @@ async function init() {
     try {
       const r = await apiAction('POST', '/api/local-seo/rankings', { keyword: kw, location: city });
       if (r?.ok || r?.rankings) {
-        if (r.rankings) {
           if (!STATE.localSeo) STATE.localSeo = {};
-          // Clear history overlay — a live search replaces any history selection
-          if (typeof window.fpClearHistoryMarkers === 'function') window.fpClearHistoryMarkers();
-          STATE.localSeo.rankings = r.rankings;
-          // Prepend a history entry with the fresh results so checkbox filtering works immediately.
-          // The DB history fetch below will replace this with the server-side canonical list.
-          if (!STATE.localSeo.rankingHistory) STATE.localSeo.rankingHistory = [];
-          const _freshEntry = {
-            id: Date.now(),
-            keyword: kw,
-            location: city,
-            date: new Date().toISOString(),
-            results: r.rankings,
-          };
-          STATE.localSeo.rankingHistory = [_freshEntry].concat(
-            (STATE.localSeo.rankingHistory || []).filter(function(h){ return h.keyword !== kw || h.location !== city; }).slice(0, 19)
-          );
           // Use only the durable usage returned by the ranking transaction.
           if (!STATE.dfsStatus) STATE.dfsStatus = {};
           if (r.usage) {
@@ -49404,14 +49455,12 @@ async function init() {
               remaining: Math.max(0, Number(r.usage.limit || 0) - Number(r.usage.used || 0)),
             };
           }
-          STATE.localSeo.rankingKeyword = kw;
-          STATE.localSeo.rankingCity = city;
           // Load full ranking history from DB for the scrollable history section
-          // Reset the guard so the history widget re-fetches fresh data on next render
-          if (STATE.localSeo) { STATE.localSeo.rankingHistory = null; STATE.localSeo._historyLoading = false; }
-          apiFetch('/api/local-seo/rankings/history').then(h => {
+          STATE.localSeo.rankingHistory = null;
+          STATE.localSeo._historyLoading = true;
+          apiFetch('/api/local-seo/rankings/history', { force:true }).then(h => {
             if (!STATE.localSeo) STATE.localSeo = {};
-            STATE.localSeo.rankingHistory = Array.isArray(h?.history) ? h.history : [];
+            fpSetRankingHistory(Array.isArray(h?.history) ? h.history : [], r.historyId);
             STATE.localSeo._historyLoading = false;
             STATE.localSeo._historyError = null;
             if (h?.usage) {
@@ -49422,32 +49471,19 @@ async function init() {
                 remaining: Math.max(0, Number(h.usage.limit || 0) - Number(h.usage.used || 0)),
               };
             }
-            const widget = document.getElementById('dfs-rank-history');
-            if (widget) {
-              const items = STATE.localSeo.rankingHistory;
-              widget.innerHTML = items.length === 0
-                ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique.</div>'
-                : items.map((h2, hIdx2) => {
-                    const date = h2.searched_at ? new Date(h2.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}) : '—';
-                    const resultCount2 = (h2.total_results!=null&&h2.total_results>0)?h2.total_results:(Array.isArray(h2.results)?h2.results.length:0);
-                    const _selH2 = (STATE.localSeo?._selectedHistoryIds||new Set()).has(hIdx2);
-                    return '<div data-hist-row="'+hIdx2+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-top:1px solid var(--fp-border);border-radius:6px;cursor:pointer;background:'+(_selH2?'rgba(37,99,235,0.08)':'transparent')+'"'
-                      + ' onclick="(function(el,hid){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid);}else{STATE.localSeo._selectedHistoryIds.add(hid);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+hIdx2+'">'
-                      + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH2?'checked':'')+' onclick="event.stopPropagation()">'
-                      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px">'+escHtml(date)+'</div>'
-                      + '<div style="flex:1;min-width:0;font-size:11px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
-                      + (resultCount2 > 0 ? '<span style="font-size:10px;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px;font-weight:700">'+resultCount2+' rés.</span>' : '<span style="font-size:10px;color:#64748b;flex-shrink:0">—</span>')
-                      + '</div>';
-                  }).join('');
-            }
+            const persistedWidget = document.getElementById('fp-persisted-rank-history');
+            if (persistedWidget) persistedWidget.innerHTML = fpRankingHistoryRows(STATE.localSeo.rankingHistory);
+            const quota = document.getElementById('fp-ranking-history-quota');
+            if (quota && STATE.dfsStatus?.quota) quota.textContent = STATE.dfsStatus.quota.used + '/' + STATE.dfsStatus.quota.limit + ' req aujourd’hui';
           }).catch((err) => {
             if (STATE.localSeo) {
               STATE.localSeo._historyLoading = false;
               STATE.localSeo._historyError = err?.message || 'Historique indisponible';
             }
+            const persistedWidget = document.getElementById('fp-persisted-rank-history');
+            if (persistedWidget) persistedWidget.innerHTML = '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">' + fpT("Impossible de charger l'historique. Réessayez.") + '</div>';
             showToast('error', 'Le classement est enregistré, mais l’historique n’a pas pu être rechargé.');
           });
-        }
         showToast('success', fpT('Rankings chargés !'));
         render(STATE.currentSection);
       } else if (r?.reason === 'not_configured' || r?.configured === false) {
@@ -57985,38 +58021,30 @@ function renderActivityFeed() {
       const rawId = String(t.id || '');
       const email = String(t.email || '').toLowerCase();
       const isOwner = t.role === 'owner' || (!STATE.team.some(m => m.role === 'owner') && (t.id === STATE.me?.id || email === String(STATE.me?.email||'').toLowerCase()));
-      // Lookup order: UUID → raw id → email — matches Team performance page.
-      const contrib = (STATE.teamContributions && (
-        (userId && STATE.teamContributions[userId]) ||
-        (rawId && rawId !== 'owner' && STATE.teamContributions[rawId]) ||
-        (email && (STATE.teamContributions[email] || STATE.teamContributions[t.email]))
-      )) || null;
-      // Owner fallback: when activity_logs attribution hasn't resolved yet,
-      // show org-total counts (identical to Team performance page behaviour).
-      const audits   = contrib ? Number(contrib.audits   || 0) : (isOwner ? (STATE.audits  ? STATE.audits.length  : 0) : 0);
-      const missions = contrib ? Number(contrib.missions || 0) : (isOwner ? ((STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length) : 0);
-      const reports  = contrib ? Number(contrib.reports  || 0) : (isOwner ? (STATE.reports ? STATE.reports.length : 0) : 0);
+      const contrib = (STATE.teamContributions && userId)
+        ? STATE.teamContributions[String(userId)] || null
+        : null;
+      const audits   = contrib ? Number(contrib.audits   ?? 0) : null;
+      const missions = contrib ? Number(contrib.missions ?? 0) : null;
+      const reports  = contrib ? Number(contrib.reports  ?? 0) : null;
       // Streak: UUID first (correct user id), then email fallback.
       // Guard on STATE.teamStreaks — independent from contributions loading state.
       const streakEntry = STATE.teamStreaks ? (
         (userId && STATE.teamStreaks[userId]) ||
-        (id && id !== 'owner' && STATE.teamStreaks[id]) ||
         (email && (STATE.teamStreaks[email] || STATE.teamStreaks[String(t.email||'').toLowerCase()]))
       ) : null;
-      const streakDays  = streakEntry ? (streakEntry.current || 0) : 0;
-      // activityScore: 0-80 from action volume (capped at 60), 0-20 from streak (capped at 10d)
-      const _totalActs  = audits + missions + reports;
-      const activityScore = Math.round(Math.min(_totalActs, 60) / 60 * 80 + Math.min(streakDays, 10) / 10 * 20);
-      console.debug('[TEAM PERFORMANCE DEBUG]', { member: nm, userId, email, audits, missions, reports, streakDays, activityScore });
+      const ownCurrentUser = isOwner && (String(userId) === String(STATE.me?.id || STATE.me?.userId || '') || email === String(STATE.me?.email || '').toLowerCase());
+      const streakDays = streakEntry ? Number(streakEntry.current ?? 0) : (ownCurrentUser && STATE.streak != null ? Number(STATE.streak) : null);
+      const _totalActs = contrib ? audits + missions + reports : null;
       return {
         id, userId, email, rawId,
         name: nm, role: t.role || 'member',
         avatar: nm.slice(0,2).toUpperCase(),
         color: _mColors[i % _mColors.length],
         actions: _totalActs,
-        score: activityScore,
+        score: null,
         trend: '—',
-        contribs: { audits, missions, reports },
+        contribs: contrib ? { audits, missions, reports } : null,
         streak: streakEntry,
         streakDays,
       };
@@ -58052,7 +58080,6 @@ function renderActivityFeed() {
             // m.contribs is always set in the members.map() above (with owner fallback).
             // A second lookup here is not needed and could overwrite correct data with
             // a stale/null match. Keep only for the streak supplement.
-            const pct = m.score ?? 0;
             return `<div style="padding:16px;border-radius:12px;border:1px solid ${m.color}28;background:${m.color}07">
               <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
                 <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,${m.color},${m.color}88);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;flex-shrink:0">${m.avatar}</div>
@@ -58061,11 +58088,11 @@ function renderActivityFeed() {
                   <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(m.role)}</div>
                 </div>
                 <div style="text-align:right">
-                  <div style="font-size:14px;font-weight:600;color:var(--fp-text)">${(function(){var s=m.streak?.current;return s!=null?s+'j':'0j';})()}</div>
+                   <div style="font-size:14px;font-weight:600;color:var(--fp-text)">${m.streakDays != null ? m.streakDays + 'j' : '—'}</div>
                   <div style="font-size:10px;color:var(--fp-text-faint)">Streak 🔥</div>
                 </div>
               </div>
-              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px"><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#2563EB">${m.contribs?(m.contribs.audits??0):(m.actions??0)}</div><div style="font-size:10px;color:var(--fp-text-faint)">Audits</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#22c55e">${m.contribs?(m.contribs.missions??0):0}</div><div style="font-size:10px;color:var(--fp-text-faint)">Missions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#8b5cf6">${m.contribs?(m.contribs.reports??0):0}</div><div style="font-size:10px;color:var(--fp-text-faint)">Rapports</div></div></div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px"><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#2563EB">${m.contribs?.audits ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Audits</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#22c55e">${m.contribs?.missions ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Missions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#8b5cf6">${m.contribs?.reports ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Rapports</div></div></div>
             </div>`;
           }).join('')}
         </div>
@@ -62171,7 +62198,6 @@ function renderTeamPerformance() {
   const _roleColors = { owner:'#f59e0b', admin:'#f59e0b', manager:'#2563EB', editor:'#8b5cf6', viewer:'#64748b', member:'#64748b' };
   const teamData = STATE.team && STATE.team.length > 0 ? STATE.team : [];
   const metrics = teamData.map((t, i) => {
-    const isOwner = t.role === 'owner' || (!teamData.some(m => m.role === 'owner') && (t.id === STATE.me?.id || t.email === STATE.me?.email));
     // UUID lookup: t.userId (user.id) is the correct key; t.id is team_members.id (row id, ≠ user id)
     const _memberUserId = t.userId || t.user_id || '';
     const _memberEmail  = String(t.email || '').toLowerCase();
@@ -62179,20 +62205,21 @@ function renderTeamPerformance() {
       (_memberUserId && STATE.teamStreaks[_memberUserId]) ||
       (_memberEmail  && STATE.teamStreaks[_memberEmail])
     );
-    const streakVal = _memberStreak ? (_memberStreak.current || 0) : 0;
-    // Contribution lookup: try userId → email → fallback
-    const _uid  = _memberUserId || t.id || '';
-    const _contrib = STATE.teamContributions ? (
-      (_uid && STATE.teamContributions[_uid]) ||
-      (_memberEmail && (STATE.teamContributions[_memberEmail] || STATE.teamContributions[t.email]))
-    ) : null;
-    const auditCnt   = _contrib != null ? Number(_contrib.audits   || 0) : (isOwner ? (STATE.audits ? STATE.audits.length : 0) : 0);
-    const missionCnt = _contrib != null ? Number(_contrib.missions || 0) : (isOwner ? ((STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length) : 0);
-    const reportCnt  = _contrib != null ? Number(_contrib.reports  || 0) : (isOwner ? (STATE.reports ? STATE.reports.length : 0) : 0);
-    const totalActs  = auditCnt + missionCnt + reportCnt;
-    // activityScore computed for ALL members — never hard-coded '—'
-    const actScore   = Math.round(Math.min(totalActs, 60) / 60 * 80 + Math.min(streakVal, 10) / 10 * 20);
-    console.debug('[TEAM PERFORMANCE DEBUG]', { member: t.name||t.email, userId: _memberUserId, email: _memberEmail, audits: auditCnt, missions: missionCnt, reports: reportCnt, streakDays: streakVal, activityScore: actScore });
+    const ownCurrentUser = t.role === 'owner' && (String(_memberUserId) === String(STATE.me?.id || STATE.me?.userId || '') || _memberEmail === String(STATE.me?.email || '').toLowerCase());
+    const streakVal = _memberStreak ? Number(_memberStreak.current ?? 0) : (ownCurrentUser && STATE.streak != null ? Number(STATE.streak) : null);
+    // Contributions are keyed by users.id. Some owner records only carry an
+    // email, so resolve their canonical id from the signed-in user before
+    // looking up counts. Never substitute organisation-wide totals here.
+    const _ownUserId = ownCurrentUser ? (STATE.me?.id || STATE.me?.userId || '') : '';
+    const _contrib = STATE.teamContributions
+      ? [_memberUserId, _ownUserId, _memberEmail]
+          .filter(Boolean)
+          .map(key => STATE.teamContributions[String(key)] || null)
+          .find(Boolean) || null
+      : null;
+    const auditCnt   = _contrib ? Number(_contrib.audits   ?? 0) : null;
+    const missionCnt = _contrib ? Number(_contrib.missions ?? 0) : null;
+    const reportCnt  = _contrib ? Number(_contrib.reports  ?? 0) : null;
     return {
       name: t.name || t.email || 'Membre',
       role: t.role || 'member',
@@ -62200,7 +62227,7 @@ function renderTeamPerformance() {
       audits:   auditCnt,
       missions: missionCnt,
       reports:  reportCnt,
-      score: actScore,
+      score: null,
       streak: streakVal,
     };
   });
@@ -62235,18 +62262,18 @@ function renderTeamPerformance() {
             <div style="width:46px;height:46px;border-radius:14px;background:${m.roleColor}20;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:${m.roleColor};flex-shrink:0">${(m.name||'?').charAt(0).toUpperCase()}</div>
             <div style="flex:1">
               <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${escHtml(m.name)}</div>
-              <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${m.role} · Streak : <span style="color:#f97316">🔥 ${typeof m.streak === 'number' ? m.streak + ' j' : m.streak}</span></div>
+              <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${m.role} · Streak : <span style="color:#f97316">🔥 ${m.streak != null ? m.streak + ' j' : '—'}</span></div>
             </div>
             <div style="text-align:right">
-              <div style="font-size:24px;font-weight:800;color:${m.roleColor};font-family:var(--fp-font-head)">${m.score ?? 0}</div>
-              <div style="font-size:10px;color:var(--fp-text-faint)">score activité</div>
+               <div style="font-size:24px;font-weight:800;color:${m.roleColor};font-family:var(--fp-font-head)">—</div>
+               <div style="font-size:10px;color:var(--fp-text-faint)">activité</div>
             </div>
           </div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
             ${[
-              {l:'Audits',v:m.audits??0,c:'#2563EB'},
-              {l:'Missions',v:m.missions??0,c:'#22c55e'},
-              {l:'Rapports',v:m.reports??0,c:'#8b5cf6'},
+              {l:'Audits',v:m.audits??'—',c:'#2563EB'},
+              {l:'Missions',v:m.missions??'—',c:'#22c55e'},
+              {l:'Rapports',v:m.reports??'—',c:'#8b5cf6'},
             ].map(s=>`
               <div style="background:var(--fp-inner-card);border-radius:8px;padding:10px;text-align:center">
                 <div style="font-size:20px;font-weight:800;color:${s.c};font-family:var(--fp-font-head)">${s.v}</div>
@@ -67645,10 +67672,6 @@ setTimeout(function() {
   }
 
   function bindPanel() {
-    // Open panel — topbar AI button
-    const topbarAI = document.getElementById('topbar-ai');
-    if (topbarAI) topbarAI.addEventListener('click', openPanel);
-
     // Close
     const closeBtn = document.getElementById('fp-ai-chat-close');
     if (closeBtn) closeBtn.addEventListener('click', closePanel);
@@ -68856,24 +68879,15 @@ window.fpDeleteHistoryEntry = async function(entryId) {
       // Remove from STATE immediately — no refresh needed
       if (STATE.localSeo && Array.isArray(STATE.localSeo.rankingHistory)) {
         STATE.localSeo.rankingHistory = STATE.localSeo.rankingHistory.filter(function(h) {
-          return h.id !== entryId;
+          return String(h.id) !== String(entryId);
         });
       }
       // Deselect if it was selected
       if (STATE.localSeo && STATE.localSeo._selectedHistoryIds instanceof Set) {
-        STATE.localSeo._selectedHistoryIds.delete(entryId);
+        STATE.localSeo._selectedHistoryIds.delete(String(entryId));
+        fpPersistRankingHistorySelection();
       }
-      // Re-render the history panel inline (no full page reload)
-      var histContainer = document.getElementById('dfs-rank-history');
-      if (!histContainer) {
-        // Full re-render if the widget is not in view
-        render(STATE.currentSection);
-      } else {
-        // Remove just the row that was deleted
-        var rows = histContainer.querySelectorAll('[data-hist-row]');
-        // Simplest approach: trigger re-render of the section
-        render(STATE.currentSection);
-      }
+      render(STATE.currentSection);
       // Update map markers
       if (typeof window.fpUpdateRankingMarkersFromHistory === 'function') {
         window.fpUpdateRankingMarkersFromHistory();
@@ -68962,10 +68976,6 @@ window.fpDeleteHistoryEntry = async function(entryId) {
       if (pendingGeo <= 0 && hasCoord) { map.fitBounds(bounds, 60); if (map.getZoom() > 15) map.setZoom(15); }
     }
 
-    // User coords as geocode fallback offset
-    var uLat = STATE.me && STATE.me.location && STATE.me.location.latitude  != null ? parseFloat(String(STATE.me.location.latitude))  : null;
-    var uLng = STATE.me && STATE.me.location && STATE.me.location.longitude != null ? parseFloat(String(STATE.me.location.longitude)) : null;
-
     merged.forEach(function(r, i) {
       var rLat = r.lat != null ? parseFloat(r.lat) : (r.latitude  != null ? parseFloat(r.latitude)  : null);
       var rLng = r.lng != null ? parseFloat(r.lng) : (r.longitude != null ? parseFloat(r.longitude) : null);
@@ -68980,15 +68990,9 @@ window.fpDeleteHistoryEntry = async function(entryId) {
             var loc = results[0].geometry.location;
             r.lat = loc.lat(); r.lng = loc.lng();
             _addMarker(loc.lat(), loc.lng(), r, i);
-          } else if (uLat != null && uLng != null) {
-            _addMarker(uLat + (i % 2 === 0 ? 1 : -1) * 0.004 * (Math.floor(i / 2) + 1),
-                       uLng + (i % 2 === 0 ? -1 : 1) * 0.006 * (Math.floor(i / 2) + 1), r, i);
           }
           if (pendingGeo <= 0 && hasCoord) { map.fitBounds(bounds, 60); if (map.getZoom() > 15) map.setZoom(15); }
         });
-      } else if (uLat != null && uLng != null) {
-        _addMarker(uLat + (i % 2 === 0 ? 1 : -1) * 0.004 * (Math.floor(i / 2) + 1),
-                   uLng + (i % 2 === 0 ? -1 : 1) * 0.006 * (Math.floor(i / 2) + 1), r, i);
       }
     });
 
@@ -69014,19 +69018,16 @@ window.fpDeleteHistoryEntry = async function(entryId) {
     });
 
     if (selectedIds.size === 0) {
-      // All unchecked — clear history markers AND restore live markers
+      // All unchecked means no ranking marker layer.
       _clearHistoryMarkers();
       _updateHistoryResultsWidget([]);
-      // Restore live ranking markers (were hidden while history was active)
-      if (typeof window.fpShowLiveRankingMarkers === 'function') {
-        window.fpShowLiveRankingMarkers();
-      }
+      if (typeof window.fpHideLiveRankingMarkers === 'function') window.fpHideLiveRankingMarkers();
       console.log('[LOCAL SEO HISTORY MAP DEBUG]', {
         selectedHistoryCount: 0,
-        liveMarkersVisible: true,
+        liveMarkersVisible: false,
         historyMarkersCreated: 0,
         historyMarkersVisible: false,
-        action: 'restored live markers'
+        action: 'cleared all ranking markers'
       });
       return;
     }
@@ -69035,16 +69036,17 @@ window.fpDeleteHistoryEntry = async function(entryId) {
     var _liveMarkersBefore = 0;
     if (typeof window.fpHideLiveRankingMarkers === 'function') {
       // Count approximate live markers via the live rankings array
-      _liveMarkersBefore = ((STATE.localSeo && STATE.localSeo._selectedRankings) || new Set()).size;
+      _liveMarkersBefore = 0;
       window.fpHideLiveRankingMarkers();
     }
 
     // Merge results from all selected entries (deduplicate by title+address)
     var seen = new Set();
     var merged = [];
-    history.forEach(function(h, hIdx) {
-      if (!selectedIds.has(hIdx)) return;
-      console.log('[LocalSEO history checkbox]', { historyId: hIdx, keyword: h.keyword, location: h.location, rankingsLoaded: Array.isArray(h.results) ? h.results.length : 0, markersDisplayed: '(placing)' });
+    history.forEach(function(h) {
+      const historyId = h && h.id != null ? String(h.id) : '';
+      if (!selectedIds.has(historyId)) return;
+      console.log('[LocalSEO history checkbox]', { historyId: historyId, keyword: h.keyword, location: h.location, rankingsLoaded: Array.isArray(h.results) ? h.results.length : 0, markersDisplayed: '(placing)' });
       if (!Array.isArray(h.results)) return;
       h.results.forEach(function(r) {
         var norm = Object.assign({}, r);
@@ -69055,7 +69057,7 @@ window.fpDeleteHistoryEntry = async function(entryId) {
       });
     });
 
-    // Update the dedicated history results widget — NEVER touch dfs-local-rank-widget
+    // Update the dedicated persisted-history results widget.
     _updateHistoryResultsWidget(merged);
 
     if (merged.length === 0) {
@@ -69080,11 +69082,11 @@ window.fpDeleteHistoryEntry = async function(entryId) {
     _clearHistoryMarkers();
     _updateHistoryResultsWidget([]);
     if (STATE.localSeo) STATE.localSeo._selectedHistoryIds = new Set();
+    fpPersistRankingHistorySelection();
     // Uncheck all checkboxes visually
     document.querySelectorAll('.fp-hist-cb').forEach(function(cb) { cb.checked = false; });
-    document.querySelectorAll('[data-hist-row]').forEach(function(el) { el.style.background = 'transparent'; });
-    // Restore live ranking markers
-    if (typeof window.fpShowLiveRankingMarkers === 'function') window.fpShowLiveRankingMarkers();
+    document.querySelectorAll('[data-history-id]').forEach(function(el) { el.style.background = 'transparent'; });
+    if (typeof window.fpHideLiveRankingMarkers === 'function') window.fpHideLiveRankingMarkers();
   };
 })();
 
@@ -69100,9 +69102,7 @@ window.fpUpdateRankingMarkers = (function() {
     _markers.forEach(function(m) { try { m.setMap(null); } catch(_e){} });
   };
   window.fpShowLiveRankingMarkers = function() {
-    var _m = STATE && STATE._gmap;
-    if (!_m) return;
-    _markers.forEach(function(m) { try { m.setMap(_m); } catch(_e){} });
+    _markers.forEach(function(m) { try { m.setMap(null); } catch(_e){} });
   };
 
   return function() {
@@ -69110,7 +69110,7 @@ window.fpUpdateRankingMarkers = (function() {
     if (!map || typeof google === 'undefined' || !google.maps) return;
 
     var rankings = (STATE.localSeo && STATE.localSeo.rankings) || [];
-    var selected = (STATE.localSeo && STATE.localSeo._selectedRankings) || new Set();
+    var selected = new Set();
     var rankColors = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
 
     // Clear existing ranking markers
@@ -69118,6 +69118,8 @@ window.fpUpdateRankingMarkers = (function() {
     _infoWindows.forEach(function(iw) { iw.close(); });
     _markers = [];
     _infoWindows = [];
+    if (typeof window.fpUpdateRankingMarkersFromHistory === 'function') window.fpUpdateRankingMarkersFromHistory();
+    return;
 
     if (selected.size === 0) return;
 
@@ -69966,10 +69968,14 @@ window.FP_ADDONS_API = {
       const data = await apiFetch('/api/addons').catch(() => null);
       if (!data) return;
       window.FP_DATA = window.FP_DATA || {};
+      const rawDefinitions = data.definitions || {};
+      const definitions = Array.isArray(rawDefinitions)
+        ? Object.fromEntries(rawDefinitions.filter(d => d && d.key).map(d => [d.key, d]))
+        : rawDefinitions;
       window.FP_DATA.addons = {
         active:      data.addons      || {},
         orgAddons:   data.orgAddons   || [],
-        definitions: data.definitions || {},
+        definitions: definitions,
         quotas:      data.quotas      || {},
         plan:        data.plan        || 'pro',
       };

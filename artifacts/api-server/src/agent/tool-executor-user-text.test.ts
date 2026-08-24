@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import * as ts from "typescript";
 import { MISSION_TOOLS } from "./mission-tools.js";
 import { CALENDAR_TOOLS } from "./calendar-tools.js";
 import { AUDIT_TOOLS } from "./audit-tools.js";
@@ -22,49 +23,48 @@ describe("tool-executor — textes user-facing sans identifiants d'outils", () =
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const rawSrc = readFileSync(path.join(__dirname, "tool-executor.ts"), "utf8");
 
-  // Mini state machine : retire les commentaires (// et /* */) SANS toucher aux
-  // chaînes — un scan naïf prend les apostrophes/quotes des commentaires pour
-  // des débuts de chaîne et produit des faux positifs.
-  function stripComments(code: string): string {
-    let out = "";
-    let i = 0;
-    let mode: "code" | "line" | "block" | "sq" | "dq" | "tpl" = "code";
-    while (i < code.length) {
-      const c = code[i], n = code[i + 1];
-      if (mode === "code") {
-        if (c === "/" && n === "/") { mode = "line"; i += 2; continue; }
-        if (c === "/" && n === "*") { mode = "block"; i += 2; continue; }
-        if (c === "'") mode = "sq";
-        else if (c === '"') mode = "dq";
-        else if (c === "`") mode = "tpl";
-        out += c; i++; continue;
-      }
-      if (mode === "line") { if (c === "\n") { mode = "code"; out += c; } i++; continue; }
-      if (mode === "block") { if (c === "*" && n === "/") { mode = "code"; i += 2; } else { if (c === "\n") out += c; i++; } continue; }
-      // dans une chaîne : gérer l'échappement et la fermeture
-      if (c === "\\") { out += c + (n ?? ""); i += 2; continue; }
-      if ((mode === "sq" && c === "'") || (mode === "dq" && c === '"') || (mode === "tpl" && c === "`")) mode = "code";
-      out += c; i++;
-    }
-    return out;
-  }
-  const src = stripComments(rawSrc);
-
   const allToolNames = [
     ...MISSION_TOOLS, ...CALENDAR_TOOLS, ...AUDIT_TOOLS,
     ...MONITOR_TOOLS, ...RECOMMENDATION_TOOLS,
   ].map((t) => t.name);
 
-  // Extrait TOUS les littéraux de chaîne du fichier (template, double, simple),
-  // où qu'ils apparaissent — y compris ceux qui transitent par des tableaux ou
-  // des variables intermédiaires avant d'atteindre `content`.
+  // Extrait les vrais nœuds de chaîne TypeScript. Contrairement à une regex,
+  // l'AST ne confond pas les templates imbriqués avec du code adjacent.
   const allLiterals: { line: number; text: string }[] = [];
-  const re = /(`(?:[^`\\]|\\.)*`|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(src)) !== null) {
-    const line = src.slice(0, m.index).split("\n").length;
-    allLiterals.push({ line, text: m[1].slice(1, -1) }); // sans les quotes
+  const sourceFile = ts.createSourceFile(
+    "tool-executor.ts",
+    rawSrc,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  function isLoggerArgument(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current && !ts.isSourceFile(current)) {
+      if (ts.isCallExpression(current)) {
+        const expression = current.expression;
+        return ts.isPropertyAccessExpression(expression)
+          && expression.expression.getText(sourceFile) === "logger";
+      }
+      current = current.parent;
+    }
+    return false;
   }
+  function visit(node: ts.Node): void {
+    if (
+      (ts.isStringLiteral(node)
+        || ts.isNoSubstitutionTemplateLiteral(node)
+        || ts.isTemplateHead(node)
+        || ts.isTemplateMiddle(node)
+        || ts.isTemplateTail(node))
+      && !isLoggerArgument(node)
+    ) {
+      const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+      allLiterals.push({ line, text: node.text });
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
 
   it("le scan trouve bien des littéraux (sanity)", () => {
     expect(allLiterals.length).toBeGreaterThan(500);

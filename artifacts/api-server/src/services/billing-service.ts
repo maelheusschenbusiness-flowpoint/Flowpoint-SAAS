@@ -4,7 +4,7 @@ import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, computeQtyAddonExtras } from "../lib/plans.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, computeQtyAddonExtras, getAddonAvailability } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
 const _PLAN_PRESENTATION: Record<string, {
@@ -12,7 +12,7 @@ const _PLAN_PRESENTATION: Record<string, {
   addons: string[]; highlighted: string[];
 }> = {
   standard: { color: "#64748b", popular: false, annualPrice: 24, addons: [], highlighted: [] },
-  pro:      { color: "#2563eb", popular: true,  annualPrice: 65, addons: ["whiteLabel","prioritySupport","extraSeats","monitorsPack50"], highlighted: ["IA Insights Pro","50 monitors"] },
+  pro:      { color: "#2563eb", popular: true,  annualPrice: 65, addons: ["whiteLabel","extraSeats","monitorsPack50"], highlighted: ["IA Insights Pro","50 monitors"] },
   ultra:    { color: "#7c3aed", popular: false, annualPrice: 120, addons: [], highlighted: ["1 000 audits/mois","SLA 99.9%"] },
 };
 
@@ -92,7 +92,6 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   customDomain:          { icon: "🌐", unit: "domaine personnalisé"  },
   ssoEnterprise:         { icon: "🔑", unit: "SSO SAML/OIDC"        },
   aiWorkspaceLaunch:     { icon: "🎯", unit: "lancement IA"          },
-  prioritySupport:       { icon: "🎧", unit: "support prioritaire"   },
   // ── Packs audits / exports ─────────────────────────────────────────────────
   auditsPack200:         { icon: "🔍", unit: "+200 audits"           },
   auditsPack1000:        { icon: "🔍", unit: "+1 000 audits"         },
@@ -105,6 +104,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
 };
 
 export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, pres]) => {
+  if (REMOVED_ADDONS.has(id)) return [];
   const def = ADDON_DEFINITIONS[id];
   if (!def) {
     logger.error({ addonKey: id }, "[Billing] ADDON_CATALOG references an unknown add-on key — omitted");
@@ -120,6 +120,11 @@ export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, p
     oneTime:  def.oneTime,
     quantity: def.quantity,
     priceId:  ADDON_PRICE_IDS[id] ?? "",
+    // Public billing has no organisation entitlement context. Its status is
+    // therefore the canonical product lifecycle; GET /api/addons refines this
+    // to "included" or "active" for an authenticated organisation.
+    availability: getAddonAvailability(id),
+    status:       getAddonAvailability(id),
   }];
 });
 

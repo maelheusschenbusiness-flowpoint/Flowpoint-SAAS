@@ -5,9 +5,10 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
+import type { PoolClient } from "pg";
 import { logger } from "../lib/logger.js";
 import { getRateLimit, type RateLimits } from "../lib/config.js";
-import { pool } from "@workspace/db";
+import { withOrgDb, withOrgDbClient } from "@workspace/db";
 import { store } from "../services/store.js";
 
 interface Window {
@@ -48,11 +49,20 @@ function getOrgId(req: Request): string {
   return (req as { orgId?: string }).orgId ?? 'default';
 }
 
-async function getPlanForOrg(orgId: string): Promise<string> {
+function runOrgScoped<T>(
+  orgId: string,
+  existingClient: PoolClient | undefined,
+  callback: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  return existingClient
+    ? withOrgDbClient(existingClient, orgId, callback)
+    : withOrgDb(orgId, callback);
+}
+
+async function getPlanForOrg(orgId: string, existingClient?: PoolClient): Promise<string> {
   if (orgId === "default") return (store.me?.plan || "standard").toLowerCase();
   try {
-    const client = await pool.connect();
-    try {
+    return await runOrgScoped(orgId, existingClient, async (client) => {
       // Source primaire : organizations
       const r = await client.query<{ plan: string }>(
         `SELECT plan FROM organizations WHERE id = $1 LIMIT 1`,
@@ -65,12 +75,53 @@ async function getPlanForOrg(orgId: string): Promise<string> {
         [orgId],
       );
       return (legacy.rows[0]?.plan || "standard").toLowerCase();
-    } finally {
-      client.release();
-    }
+    });
   } catch {
     return (store.me?.plan || "standard").toLowerCase();
   }
+}
+
+export async function checkDistributedAiProviderRateLimit(
+  orgId: string,
+  bucket = "ai_provider",
+  existingClient?: PoolClient,
+): Promise<{ allowed: boolean; remaining: number; resetInMs: number; limit: number; plan: string }> {
+  const plan = await getPlanForOrg(orgId, existingClient);
+  const limit = getRateLimit(plan, "aiPerMinute");
+  const result = await runOrgScoped(
+    orgId,
+    existingClient,
+    (client) => client.query<{ request_count: number; reset_ms: string | number }>(
+      `INSERT INTO ai_rate_limit_windows
+         (org_id, bucket, window_start, request_count, updated_at)
+       VALUES ($1, $2, NOW(), 1, NOW())
+       ON CONFLICT (org_id, bucket) DO UPDATE
+         SET request_count = CASE
+               WHEN ai_rate_limit_windows.window_start <= NOW() - INTERVAL '60 seconds' THEN 1
+               ELSE ai_rate_limit_windows.request_count + 1
+             END,
+             window_start = CASE
+               WHEN ai_rate_limit_windows.window_start <= NOW() - INTERVAL '60 seconds' THEN NOW()
+               ELSE ai_rate_limit_windows.window_start
+             END,
+             updated_at = NOW()
+       RETURNING request_count,
+         GREATEST(
+           0,
+           EXTRACT(EPOCH FROM (window_start + INTERVAL '60 seconds' - NOW())) * 1000
+         )::BIGINT AS reset_ms`,
+      [orgId, bucket],
+    ),
+  );
+  const count = Number(result.rows[0]?.request_count ?? limit + 1);
+  const resetInMs = Math.max(0, Number(result.rows[0]?.reset_ms ?? 60_000));
+  return {
+    allowed: count <= limit,
+    remaining: Math.max(0, limit - count),
+    resetInMs,
+    limit,
+    plan,
+  };
 }
 
 /** General API rate limiter (global per org) */

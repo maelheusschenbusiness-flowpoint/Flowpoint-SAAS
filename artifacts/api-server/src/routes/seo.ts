@@ -100,6 +100,16 @@ async function finalizeRankingSearch(orgId: string, id: string, rankings: unknow
   }
 }
 
+async function releaseRankingSearch(orgId: string, id: string): Promise<void> {
+  await pool.query(
+    `DELETE FROM local_seo_ranking_history
+     WHERE id=$1 AND org_id=$2
+       AND jsonb_typeof(results)='object'
+       AND results->>'_status'='pending'`,
+    [id, orgId],
+  );
+}
+
 // ── Helper — quota check middleware factory ───────────────────────────────────
 
 function withQuota(handler: (req: import("express").Request, res: import("express").Response) => Promise<void>) {
@@ -403,7 +413,20 @@ router.post("/local-seo/rankings", canWrite, async (req, res) => {
       }
 
       const { getLocalPackRank } = await import("../services/dataforseo-service.js");
-      const rankings = await getLocalPackRank(keyword, location, orgId);
+      let rankings: unknown[];
+      try {
+        rankings = await getLocalPackRank(keyword, location, orgId);
+      } catch (providerErr) {
+        try {
+          await releaseRankingSearch(orgId, histId);
+        } catch (cleanupErr) {
+          logger.error(
+            { err: cleanupErr, orgId, histId },
+            "[seo] local-seo failed reservation cleanup failed",
+          );
+        }
+        throw providerErr;
+      }
       const resultCount = Array.isArray(rankings) ? rankings.length : 0;
       try {
         await finalizeRankingSearch(orgId, histId, rankings);
@@ -416,7 +439,9 @@ router.post("/local-seo/rankings", canWrite, async (req, res) => {
         return;
       }
       const usage = { used: reservation.used, limit: reservation.limit };
-      res.json({ ok: true, keyword, location, rankings, count: resultCount, configured: true, usage });
+      // Return the durable persisted row ID so the frontend can select the
+      // newly-created history entry immediately without guessing by array index.
+      res.json({ ok: true, keyword, location, rankings, count: resultCount, configured: true, usage, historyId: histId });
       return;
     }
     res.json({ ok: false, rankings: [], configured: false, reason: "not_configured",

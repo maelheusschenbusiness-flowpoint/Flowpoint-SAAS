@@ -300,7 +300,11 @@ describe("ensureStripeCustomer — v4", async () => {
       );
 
       expect(_mockCreate).toHaveBeenCalledWith(
-        expect.objectContaining({ email: "hint@example.com", name: "Jane ACME" }),
+        expect.objectContaining({
+          email: "hint@example.com",
+          name: "Jane",
+          description: "ACME",
+        }),
         expect.any(Object),
       );
     });

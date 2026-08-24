@@ -34,6 +34,16 @@ vi.mock("@workspace/db", () => ({
     })),
     query: vi.fn().mockResolvedValue({ rows: [] }),
   },
+  withOrgDb: vi.fn().mockImplementation(async (_orgId: string, callback: (client: { query: (sql: string) => Promise<{ rows: Array<{ plan?: string; request_count?: number; reset_ms?: number }> }> }) => Promise<unknown>) => {
+    return callback({
+      query: vi.fn().mockImplementation(async (sql: string) => {
+        if (sql.includes("INSERT INTO ai_rate_limit_windows")) {
+          return { rows: [{ request_count: 1, reset_ms: 60_000 }] };
+        }
+        return { rows: [{ plan: state.plan }] };
+      }),
+    });
+  }),
   db: {},
 }));
 vi.mock("../services/store.js", () => ({

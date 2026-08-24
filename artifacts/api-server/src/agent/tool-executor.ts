@@ -2228,17 +2228,14 @@ async function dispatchTool(
     const genMaxResults = Math.min((args["maxResults"] as number) ?? 5, 10);
     const genUrgency    = (args["urgencyOnly"] as boolean) ?? false;
     // Language of the requesting user — controls all generated text stored in DB
-    const _gl = (ctx.language ?? "fr").slice(0, 2).toLowerCase();
-    const _recoLog = { userLanguage: _gl, recommendationLanguage: _gl, aiPromptLanguage: "n/a (deterministic)" };
+    const supportedRecommendationLanguages = new Set(["fr", "en", "es", "de", "it", "pt", "nl", "pl", "sv", "ro", "cs"]);
+    const requestedCode = (ctx.language ?? "fr").trim().toLowerCase().split(/[-_]/)[0] ?? "fr";
+    const _gl = supportedRecommendationLanguages.has(requestedCode) ? requestedCode : "fr";
+    const _recoLog = { userLanguage: _gl, recommendationLanguage: _gl, aiPromptLanguage: _gl };
     logger.info(_recoLog, "[generate_recommendations] language chain");
 
     /** Returns a localized string for recommendation candidate text. */
-    const _rt = (fr: string, en: string, de: string, es: string): string => {
-      if (_gl === "de") return de;
-      if (_gl === "es") return es;
-      if (_gl === "en") return en;
-      return fr;
-    };
+    const _rt = (fr: string, _en: string, _de: string, _es: string): string => fr;
 
     const [genAudits, genKw, genComp, genMon] = await Promise.allSettled([
       pool.query(`SELECT id, url, score, status, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 5`, [orgId]),
@@ -2380,7 +2377,19 @@ async function dispatchTool(
          VALUES ($1,$2,'recommendation',$3,$4,$5,'active',$6,$7::jsonb,NOW(),NOW())
          ON CONFLICT (id) DO NOTHING`,
         [rId, orgId, rec.title, rec.description, rec.score, rec.source,
-         JSON.stringify({ ...rec.metadata, category: rec.category, urgency: rec.urgency, impact: rec.impact, effort: rec.effort, confidence: rec.confidence, language: _gl })]
+          JSON.stringify({
+            ...rec.metadata,
+            category: rec.category,
+            urgency: rec.urgency,
+            impact: rec.impact,
+            effort: rec.effort,
+            confidence: rec.confidence,
+            language: "fr",
+            requestedLanguage: _gl,
+            sourceLanguage: "fr",
+            originalTitle: rec.title,
+            originalDescription: rec.description,
+          })]
       );
       genCreated.push({ id: rId, title: rec.title, priority: rec.score, category: rec.category, source: rec.source });
     }

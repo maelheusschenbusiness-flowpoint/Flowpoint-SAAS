@@ -3,7 +3,7 @@ import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuo
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
-import { PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, REMOVED_ADDONS, getAddonAvailability, getAddonStatus } from "../lib/plans.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -17,17 +17,25 @@ router.get("/addons", async (req: Request, res: Response) => {
     // Use DB-sourced addons — never the store.me singleton (cross-tenant contamination risk).
     // org_addons is the source of truth; legacy org_settings JSON only fills gaps.
     const liveAddons: Record<string, boolean | number> = { ...((dbData?.addons ?? {}) as Record<string, boolean | number>), ...(orgAddons ?? {}) };
+    for (const removedKey of REMOVED_ADDONS) delete liveAddons[removedKey];
     // Overlay plan-bundled addons so subscribers see entitlements without manual activation.
     const planIncluded = PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>();
     for (const key of planIncluded) {
       if (!(key in liveAddons)) liveAddons[key] = true;
     }
     const quotas = getQuotaLimits(plan, liveAddons);
-    const catalog = Object.fromEntries(Object.entries(CANONICAL_ADDON_DEFINITIONS).map(([key, definition]) => [key, {
-      ...definition,
-      active: liveAddons[key] ?? false,
-      includedInPlan: planIncluded.has(key),
-    }]));
+    const catalog = Object.fromEntries(Object.entries(CANONICAL_ADDON_DEFINITIONS).filter(([key]) => !REMOVED_ADDONS.has(key)).map(([key, definition]) => {
+      const active = liveAddons[key] ?? false;
+      const includedInPlan = planIncluded.has(key);
+      return [key, {
+        ...definition,
+        active,
+        includedInPlan,
+        allowedForPlan: isPlanAllowedAddon(plan, key),
+        availability: getAddonAvailability(key),
+        status: getAddonStatus(key, { included: includedInPlan, active }),
+      }];
+    }));
     res.json({
       addons: liveAddons,
       orgAddons,
@@ -49,7 +57,7 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
   // ── Removed-from-catalogue gate ────────────────────────────────────────────
   // "prioritySupport" was removed from the commercial catalogue (feature not
   // implemented). Block any activation attempt regardless of plan.
-  if (key === "prioritySupport") {
+  if (REMOVED_ADDONS.has(key)) {
     logger.warn({ orgId, addonKey: key }, "[Addons] activation blocked — removed from catalogue");
     res.status(410).json({ error: "Cet add-on n'est plus disponible.", code: "ADDON_REMOVED" }); return;
   }

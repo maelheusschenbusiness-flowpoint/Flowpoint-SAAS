@@ -569,11 +569,11 @@ export async function probeAppUserRole(): Promise<void> {
   }
 }
 
-export async function withOrgDb<T>(
+export async function withOrgDbClient<T>(
+  client: PoolClient,
   orgId: string,
   callback: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
-  const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
@@ -611,6 +611,16 @@ export async function withOrgDb<T>(
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     throw err;
+  }
+}
+
+export async function withOrgDb<T>(
+  orgId: string,
+  callback: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    return await withOrgDbClient(client, orgId, callback);
   } finally {
     client.release();
   }

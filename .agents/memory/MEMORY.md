@@ -33,7 +33,7 @@
 - [FlowPoint RLS 100% coverage](flowpoint-rls-migration.md) — 150/150 tables, 600 policies; google_oauth_states patched in init-rls-setup.ts startup hook (migrations/015 SQL for docs)
 - [FlowPoint mailer service](flowpoint-mailer.md) — centralized mailer at services/mailer.ts; 11 email types; all fire-and-forget; TEST_MAIL_DIR transport captures email to disk (no Resend); token extracted via regex [?&]token=([a-f0-9]{64})
 - [Billing store.me singleton email bug](billing-email-singleton.md) — store.me.email is always null; use req.orgContext?.email instead
-- [withOrgDb Supabase role degradation](withorgdb-supabase.md) — SET LOCAL ROLE app_user must be try/caught; Supabase DATABASE_URL user may not have the role granted; GUC-only mode still enforces RLS
+- [withOrgDb role and locked-session rules](withorgdb-supabase.md) — probe app_user before requests; reuse one client throughout session advisory-lock critical sections
 - [workflow_runs schema gaps](workflow-runs-schema.md) — ended_at, duration_ms, steps_completed, steps_failed must be ADD COLUMN'd in init-automation.ts; automation-service.ts uses all 4
 - [Rate limit 429 structural fix](rate-limit-GET-exemption.md) — authenticated GET requests must bypass globalRateLimit; only writes + anonymous are counted; dashboard loads ~60 GETs per session
 - [init-data-tables.ts self-healing schema](init-data-tables-self-healing.md) — only init-*.ts files auto-run in prod; raw migrations/*.sql never do; fix prod schema drift there, not in migration files
@@ -144,4 +144,4 @@
 - [Team removal canonical identity](team-removal-canonical-identity.md) — normalize legacy member identities before scoped access revocation
 - [Pricing anonymous state & visitor cart](pricing-anonymous-state.md) — cached billing render gated on token + reversed on 401 via resetBillingUIToAnonymous; visitor carts kept <1h without _orgId; checkout-return redirects must carry a cache-bust param
 - [AI rate-limit buckets](ai-ratelimit-buckets.md) — chat vs batch buckets must be separate; no per-IP limiter post-auth; 429s carry details.source; cert prompts need _CI_ACTION_RE verbs; monthly token quota resets via ai_monthly_usage
-- [PSI categories explicit](psi-category-params.md) — PSI returns only performance unless category params given; never fabricate 0; psiRealScore() render heuristic neutralizes legacy fake zeros
+- [PSI categories explicit](psi-category-params.md) — PSI returns only performance unless category params given; never fabricate 0; psiRealScore() render heuristic neutralizes legacy fake zeros- [AI chat crash fix](chat-crash-fix.md) — ERR_STREAM_WRITE_AFTER_END: sseClose closes res before outer handler writes; guard writableEnded; add global unhandledRejection handler

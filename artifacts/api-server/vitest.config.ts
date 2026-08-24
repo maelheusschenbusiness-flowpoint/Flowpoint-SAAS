@@ -24,6 +24,7 @@ export default defineConfig({
       "src/routes/ai-chat-ratelimit.test.ts",
       "src/routes/ai-lock-lifecycle.test.ts",
       "src/routes/ai-confirmation-preview.test.ts",
+      "src/routes/ai-recommendations-localization.test.ts",
       "src/agent/tool-executor-user-text.test.ts",
       "src/services/ai-attachments.test.ts",
       "src/services/ai-attachments-db.test.ts",

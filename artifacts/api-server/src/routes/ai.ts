@@ -1,9 +1,14 @@
 import { Router, type Request, type Response } from "express";
-import { pool, db, auditsTable, monitorsTable } from "@workspace/db";
+import { createHash } from "node:crypto";
+import { pool, db, auditsTable, monitorsTable, withOrgDb, withOrgDbClient } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
-import { aiRateLimit, aiChatRateLimit } from "../middlewares/rateLimiter.js";
+import {
+  aiRateLimit,
+  aiChatRateLimit,
+  checkDistributedAiProviderRateLimit,
+} from "../middlewares/rateLimiter.js";
 import { isAiMigrationComplete } from "../services/init-ai-migration.js";
 import {
   consumeAICredits,
@@ -75,7 +80,8 @@ import { executeTool, type ExecuteContext } from "../agent/tool-executor.js";
 import { undoAction } from "../agent/undo.js";
 
 const router = Router();
-// aiRateLimit applied per POST route below — GET endpoints (history, usage, recommendations) are not rate-limited
+// aiRateLimit is applied to every provider-backed route below, including the
+// recommendations GET because a cache miss can trigger paid localization.
 
 // ── AI schema-readiness gate ─────────────────────────────────────────────────
 // If the startup AI migration failed (legacy schema not repaired), quota/usage
@@ -146,7 +152,11 @@ async function callAIWithFallback(args: {
   let model = args.model ?? "gpt-5-mini";
   let maxTokens = args.maxTokens ?? 1400;
 
-  if (args.orgId) {
+  if (args.provider && args.model) {
+    // The caller already resolved the org-specific model before entering a
+    // connection-sensitive critical section. Use it directly without another
+    // preference lookup or task-router pass.
+  } else if (args.orgId) {
     try {
       const cfg = await selectOptimalModel(args.task, args.orgId);
       provider = cfg.provider;
@@ -3960,35 +3970,427 @@ router.get("/ai/usage", async (req, res) => {
 });
 
 
-router.get("/ai/recommendations", async (req: Request, res: Response) => {
+export const RECOMMENDATION_UI_LANGUAGES = new Set([
+  "fr", "en", "es", "de", "it", "pt", "nl", "pl", "sv", "ro", "cs",
+]);
+
+export function normalizeRecommendationLanguage(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const code = value.trim().toLowerCase().split(/[-_]/)[0] ?? "";
+  return RECOMMENDATION_UI_LANGUAGES.has(code) ? code : null;
+}
+
+export function getRecommendationCanonicalSource(row: Record<string, unknown>): {
+  title: string;
+  description: string;
+  sourceLanguage: string;
+} {
+  const metadata = row["metadata"] && typeof row["metadata"] === "object"
+    ? row["metadata"] as Record<string, unknown>
+    : {};
+  const retainedTitle = typeof metadata["originalTitle"] === "string"
+    ? metadata["originalTitle"].trim()
+    : "";
+  const retainedDescription = typeof metadata["originalDescription"] === "string"
+    ? metadata["originalDescription"].trim()
+    : "";
+  const retainedSourceLanguage = normalizeRecommendationLanguage(metadata["sourceLanguage"]);
+  const hasRetainedSource = Boolean(retainedSourceLanguage && retainedTitle && retainedDescription);
+  return {
+    title: hasRetainedSource ? retainedTitle : String(row["title"] ?? ""),
+    description: hasRetainedSource ? retainedDescription : String(row["description"] ?? ""),
+    sourceLanguage: hasRetainedSource
+      ? retainedSourceLanguage!
+      : normalizeRecommendationLanguage(metadata["language"]) ?? "fr",
+  };
+}
+
+export type RecommendationTranslation = { title: string; description: string };
+
+export function getCachedRecommendationTranslation(
+  metadata: Record<string, unknown>,
+  targetLanguage: string,
+  sourceLanguage: string,
+): RecommendationTranslation | null {
+  const translations = metadata["translations"] && typeof metadata["translations"] === "object"
+    ? metadata["translations"] as Record<string, unknown>
+    : {};
+  const cached = translations[targetLanguage];
+  if (!cached || typeof cached !== "object") return null;
+  const value = cached as Record<string, unknown>;
+  if (
+    typeof value["title"] !== "string" || !value["title"].trim()
+    || typeof value["description"] !== "string" || !value["description"].trim()
+    || value["sourceLanguage"] !== sourceLanguage
+  ) return null;
+  return { title: value["title"].trim(), description: value["description"].trim() };
+}
+
+export function buildRecommendationTranslationRequestId(
+  orgId: string,
+  targetLanguage: string,
+  rows: Array<{ id: string; sourceLanguage: string; title: string; description: string }>,
+): string {
+  const digest = createHash("sha256")
+    .update(JSON.stringify(rows.map((row) => ({
+      id: row.id,
+      sourceLanguage: row.sourceLanguage,
+      title: row.title,
+      description: row.description,
+    }))))
+    .digest("hex")
+    .slice(0, 32);
+  return `recommendation_translation:${orgId}:${targetLanguage}:${digest}`;
+}
+
+export function parseRecommendationTranslations(
+  text: string,
+  allowedIds: Set<string>,
+): Map<string, RecommendationTranslation> {
+  const result = new Map<string, RecommendationTranslation>();
+  try {
+    const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    const parsed = JSON.parse(cleaned) as unknown;
+    const entries = Array.isArray(parsed)
+      ? parsed
+      : (parsed && typeof parsed === "object" && Array.isArray((parsed as { translations?: unknown }).translations))
+        ? (parsed as { translations: unknown[] }).translations
+        : [];
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object") continue;
+      const item = entry as Record<string, unknown>;
+      const id = typeof item["id"] === "string" ? item["id"] : "";
+      const title = typeof item["title"] === "string" ? item["title"].trim() : "";
+      const description = typeof item["description"] === "string" ? item["description"].trim() : "";
+      if (allowedIds.has(id) && title && description) result.set(id, { title, description });
+    }
+  } catch {
+    // Invalid provider output is handled as a source-text fallback by the route.
+  }
+  return result;
+}
+
+export async function recommendationsHandler(req: Request, res: Response): Promise<void> {
   const orgId = req.orgId ?? "default";
-  const client = await pool.connect();
+  const requestedValue = req.query["language"] ?? req.query["lang"];
+  const requestedLanguage = requestedValue == null
+    ? normalizeRecommendationLanguage(req.get("accept-language")?.split(",")[0]) ?? "fr"
+    : normalizeRecommendationLanguage(requestedValue);
+  if (!requestedLanguage) {
+    res.status(400).json({
+      error: "Unsupported language",
+      supportedLanguages: [...RECOMMENDATION_UI_LANGUAGES],
+    });
+    return;
+  }
   try {
     // DISTINCT ON (title): historical duplicates (same title generated several
     // times) are collapsed to the most recent entry so the UI never shows
     // repeated recommendations.
-    const { rows } = await client.query(
-      `SELECT id, type, title, description, priority, status, source, metadata, created_at, expires_at
-       FROM (
-         SELECT DISTINCT ON (title)
-                id, type, title, description, priority, status, source, metadata, created_at, expires_at
-         FROM ai_recommendations
-         WHERE org_id = $1
-           AND (expires_at IS NULL OR expires_at > NOW())
-         ORDER BY title, created_at DESC
-       ) dedup
-       ORDER BY priority ASC, created_at DESC
-       LIMIT 50`,
-      [orgId]
+    const { rows } = await withOrgDb(
+      orgId,
+      (orgClient) => orgClient.query(
+        `SELECT id, type, title, description, priority, status, source, metadata, created_at, expires_at
+         FROM (
+           SELECT DISTINCT ON (title)
+                  id, type, title, description, priority, status, source, metadata, created_at, expires_at
+           FROM ai_recommendations
+           WHERE org_id = $1
+             AND (expires_at IS NULL OR expires_at > NOW())
+           ORDER BY title, created_at DESC
+         ) dedup
+         ORDER BY priority ASC, created_at DESC
+         LIMIT 50`,
+        [orgId],
+      ),
     );
-    res.json({ recommendations: rows });
+    const normalizedRows = (rows as Array<Record<string, unknown>>).map((row) => {
+      const metadata = row["metadata"] && typeof row["metadata"] === "object"
+        ? row["metadata"] as Record<string, unknown>
+        : {};
+      const canonicalSource = getRecommendationCanonicalSource(row);
+      const sourceLanguage = canonicalSource.sourceLanguage;
+      const cachedTranslation = getCachedRecommendationTranslation(
+        metadata,
+        requestedLanguage,
+        sourceLanguage,
+      );
+      const originalTitle = canonicalSource.title;
+      const originalDescription = canonicalSource.description;
+      const validCached = cachedTranslation !== null;
+      return {
+        ...row,
+        id: String(row["id"] ?? ""),
+        metadata,
+        originalTitle,
+        originalDescription,
+        sourceLanguage,
+        language: validCached || sourceLanguage === requestedLanguage ? requestedLanguage : sourceLanguage,
+        title: cachedTranslation?.title ?? originalTitle,
+        description: cachedTranslation?.description ?? originalDescription,
+        _needsTranslation: sourceLanguage !== requestedLanguage && !validCached,
+      };
+    });
+
+    const missing = normalizedRows.filter((row) => row._needsTranslation);
+    if (missing.length > 0) {
+      let providerPreflightError: Error | null = null;
+      let localizationModel: {
+        provider: AIProviderId;
+        model: string;
+        maxTokens: number;
+      } = {
+        provider: "openai",
+        model: "gpt-5-mini",
+        maxTokens: Math.min(4000, Math.max(500, missing.length * 140)),
+      };
+      try {
+        if (!isAiMigrationComplete()) {
+          throw new Error("AI usage tracking schema is not ready");
+        }
+        const aiPrefs = await loadOrgAIPrefs(orgId);
+        if (!checkModuleEnabled(aiPrefs, "aiStrategist")) {
+          logger.warn({ orgId, requestedLanguage }, "[AI] recommendation translation blocked — module disabled");
+          throw new Error("AI strategist module disabled");
+        }
+        const quotaCheck = await checkAIQuota({ feature: "strategist", orgId });
+        if (!quotaCheck.allowed) {
+          logger.warn({ orgId, requestedLanguage }, "[AI] recommendation translation blocked — quota exhausted");
+          throw new Error("AI quota exhausted");
+        }
+        try {
+          const selected = await selectOptimalModel("strategist", orgId);
+          localizationModel = {
+            provider: selected.provider,
+            model: selected.model,
+            maxTokens: selected.maxTokens,
+          };
+        } catch (err) {
+          logger.warn({ err, orgId }, "[AI] recommendation translation model selection failed — using defaults");
+        }
+      } catch (err) {
+        providerPreflightError = err instanceof Error ? err : new Error(String(err));
+      }
+
+      const client = await pool.connect();
+      const lockKey = `ai:recommendation-translation:${orgId}:${requestedLanguage}`;
+      let lockHeld = false;
+      try {
+        // Session-level advisory lock gives cross-instance single-flight
+        // semantics. Waiters re-read the cache after the lock owner finishes.
+        await client.query(`SELECT pg_advisory_lock(hashtext($1)::bigint)`, [lockKey]);
+        lockHeld = true;
+
+        const refreshed = await withOrgDbClient(
+          client,
+          orgId,
+          (orgClient) => orgClient.query(
+            `SELECT id, metadata
+             FROM ai_recommendations
+             WHERE org_id=$1 AND id = ANY($2::text[])`,
+            [orgId, missing.map((row) => row.id)],
+          ),
+        );
+        const metadataById = new Map(
+          (refreshed.rows as Array<Record<string, unknown>>).map((row) => [
+            String(row["id"] ?? ""),
+            row["metadata"] && typeof row["metadata"] === "object"
+              ? row["metadata"] as Record<string, unknown>
+              : {},
+          ]),
+        );
+        for (const row of missing) {
+          const freshMetadata = metadataById.get(row.id);
+          if (!freshMetadata) continue;
+          row.metadata = freshMetadata;
+          const cached = getCachedRecommendationTranslation(
+            freshMetadata,
+            requestedLanguage,
+            row.sourceLanguage,
+          );
+          if (!cached) continue;
+          row.title = cached.title;
+          row.description = cached.description;
+          row.language = requestedLanguage;
+          row._needsTranslation = false;
+        }
+
+        const unresolved = missing.filter((row) => row._needsTranslation);
+        if (unresolved.length === 0) {
+          // Another request populated the cache while this one waited.
+          res.json({
+            recommendations: normalizedRows.map(({ _needsTranslation: _omitted, ...row }) => row),
+            language: requestedLanguage,
+          });
+          return;
+        }
+
+        const payload = unresolved.map((row) => ({
+          id: row.id,
+          sourceLanguage: row.sourceLanguage,
+          title: row.originalTitle,
+          description: row.originalDescription,
+        }));
+        const requestId = buildRecommendationTranslationRequestId(
+          orgId,
+          requestedLanguage,
+          payload,
+        );
+        const allowedIds = new Set(unresolved.map((row) => row.id));
+
+        const persistAndApply = async (
+          translated: Map<string, RecommendationTranslation>,
+        ): Promise<void> => {
+          await withOrgDbClient(client, orgId, async (orgClient) => {
+            for (const row of unresolved) {
+              const value = translated.get(row.id)!;
+              const cachedValue = { ...value, sourceLanguage: row.sourceLanguage };
+              await orgClient.query(
+                `UPDATE ai_recommendations
+                 SET metadata = COALESCE(metadata, '{}'::jsonb) ||
+                   jsonb_build_object(
+                     'translations',
+                     COALESCE(metadata->'translations', '{}'::jsonb) ||
+                       jsonb_build_object($3::text, $4::jsonb)
+                   ),
+                   updated_at = NOW()
+                 WHERE id = $1 AND org_id = $2`,
+                [row.id, orgId, requestedLanguage, JSON.stringify(cachedValue)],
+              );
+            }
+          });
+
+          for (const row of unresolved) {
+            const value = translated.get(row.id)!;
+            row.title = value.title;
+            row.description = value.description;
+            row.language = requestedLanguage;
+            row._needsTranslation = false;
+            const existingTranslations = row.metadata["translations"] && typeof row.metadata["translations"] === "object"
+              ? row.metadata["translations"] as Record<string, unknown>
+              : {};
+            const cachedValue = { ...value, sourceLanguage: row.sourceLanguage };
+            row.metadata = {
+              ...row.metadata,
+              translations: { ...existingTranslations, [requestedLanguage]: cachedValue },
+            };
+          }
+        };
+
+        // If usage was already settled but a previous cache transaction failed,
+        // recover the durable provider result instead of calling the provider a
+        // second time with an idempotency key that would suppress accounting.
+        const settled = await withOrgDbClient(
+          client,
+          orgId,
+          (orgClient) => orgClient.query(
+            `SELECT metadata
+             FROM ai_usage_logs
+             WHERE org_id::text = $1 AND idempotency_key = $2
+             LIMIT 1`,
+            [orgId, requestId],
+          ),
+        );
+        let translated: Map<string, RecommendationTranslation> | null = null;
+        if (settled.rows.length > 0) {
+          const rawMetadata = settled.rows[0]?.["metadata"];
+          let usageMetadata: Record<string, unknown> = {};
+          if (rawMetadata && typeof rawMetadata === "object") {
+            usageMetadata = rawMetadata as Record<string, unknown>;
+          } else if (typeof rawMetadata === "string") {
+            try {
+              usageMetadata = JSON.parse(rawMetadata) as Record<string, unknown>;
+            } catch {
+              usageMetadata = {};
+            }
+          }
+          translated = parseRecommendationTranslations(
+            JSON.stringify({ translations: usageMetadata["translationResults"] }),
+            allowedIds,
+          );
+          if (translated.size !== unresolved.length) {
+            throw new Error("Settled recommendation translation has no recoverable durable result");
+          }
+          await persistAndApply(translated);
+        } else {
+          if (providerPreflightError) throw providerPreflightError;
+          const distributedLimit = await checkDistributedAiProviderRateLimit(
+            orgId,
+            "recommendation_translation",
+            client,
+          );
+          res.setHeader("X-AI-Distributed-RateLimit-Remaining", String(distributedLimit.remaining));
+          if (!distributedLimit.allowed) {
+            logger.warn(
+              { orgId, requestedLanguage, plan: distributedLimit.plan, limit: distributedLimit.limit },
+              "[AI] recommendation translation blocked — distributed rate limit",
+            );
+            throw new Error("Distributed AI provider rate limit exceeded");
+          }
+
+          const aiResult = await callAIWithFallback({
+            task: "strategist",
+            provider: localizationModel.provider,
+            model: localizationModel.model,
+            systemPrompt: `You are a precise localization translator. Translate recommendation titles and descriptions into ${requestedLanguage}. Preserve IDs, URLs, numbers, product names and meaning. Return only valid JSON as {"translations":[{"id":"...","title":"...","description":"..."}]}.`,
+            userPrompt: JSON.stringify(payload),
+            maxTokens: localizationModel.maxTokens,
+            temperature: 0,
+            json: true,
+          });
+          translated = parseRecommendationTranslations(aiResult.text, allowedIds);
+          if (translated.size !== unresolved.length) {
+            throw new Error("AI recommendation localization response is incomplete");
+          }
+          const translationResults = unresolved.map((row) => ({
+            id: row.id,
+            ...translated!.get(row.id)!,
+          }));
+          await recordCompletedUsage({
+            feature: "strategist",
+            orgId,
+            userId: req.userId ?? "system",
+            model: aiResult.model as AIModel,
+            provider: aiResult.provider,
+            tokensIn: aiResult.tokensIn,
+            tokensOut: aiResult.tokensOut,
+            latencyMs: aiResult.latencyMs,
+            success: true,
+            requestId,
+            metadata: {
+              operation: "recommendation_translation",
+              targetLanguage: requestedLanguage,
+              recommendationCount: unresolved.length,
+              translationResults,
+            },
+          }, {
+            client,
+            canonicalOrgId: orgId,
+          });
+          await persistAndApply(translated);
+        }
+      } catch (err) {
+        logger.warn({ err, orgId, requestedLanguage }, "[AI] recommendation translation failed — using source text");
+      } finally {
+        if (lockHeld) {
+          await client.query(`SELECT pg_advisory_unlock(hashtext($1)::bigint)`, [lockKey])
+            .catch((err) => logger.warn({ err, orgId, requestedLanguage }, "[AI] recommendation translation lock release failed"));
+        }
+        client.release();
+      }
+    }
+
+    res.json({
+      recommendations: normalizedRows.map(({ _needsTranslation: _omitted, ...row }) => row),
+      language: requestedLanguage,
+    });
   } catch (err) {
     logger.warn({ err }, "[AI] /ai/recommendations query failed — returning empty");
     res.json({ recommendations: [] });
-  } finally {
-    client.release();
   }
-});
+}
+
+router.get("/ai/recommendations", aiRateLimit, recommendationsHandler);
 
 router.post("/ai/generate", aiRateLimit, async (req: Request, res: Response) => {
   const { prompt, type = "general", language: _convLang5 } = req.body as { prompt?: string; type?: string; language?: string };

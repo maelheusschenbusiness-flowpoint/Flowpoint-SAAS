@@ -1319,10 +1319,9 @@ router.post("/organizations/:id/switch", async (req: Request, res: Response) => 
 
 // ── GET /api/team/contributions — per-user action + mission counts from real DB ─
 //
-// Counts are keyed by the CANONICAL user_id (users.id) AND, as an alias, by the
-// member's canonical email — because `created_by` may historically store either
-// a user UUID or an email. Emitting both keys lets the frontend match a member
-// by whichever identity it holds without guessing.
+// Counts are keyed only by the canonical users.id.  Historical activity rows
+// may identify their actor by UUID or email, but that legacy identity is
+// resolved to users.id before aggregation.
 //
 // A genuine zero (table accessible, no rows for a member) is distinct from a
 // query error: if EVERY underlying count query fails we surface `ok:false`
@@ -1337,139 +1336,59 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     return;
   }
   try {
-    // audits/missions/reports/monitors do NOT have a created_by column —
-    // attribution is tracked in activity_logs (user_id + type).
-    // Query activity_logs per type, then fall back to unattributed row counts.
-    const activityCountSql = (types: string[]) => `
-      SELECT
-        COALESCE(NULLIF(al.user_id, ''), al.org_id)   AS user_id,
-        LOWER(COALESCE(u.email, ''))                  AS email,
-        COUNT(*)::int                                 AS cnt
-      FROM activity_logs al
-      LEFT JOIN users u ON u.id::text = al.user_id OR LOWER(u.email) = LOWER(al.user_id)
-      WHERE al.org_id = $1
-        AND al.type = ANY($2::text[])
-      GROUP BY 1, 2`;
-
-    // Unattributed fallback: count all rows per table (shown as org-level total
-    // when no user_id is recorded yet).
-    const unattributedSql = (table: string, extraWhere = "") => `
-      SELECT
-        $1::text AS user_id,
-        ''       AS email,
-        COUNT(*)::int AS cnt
-      FROM ${table}
-      WHERE org_id = $1 ${extraWhere}`;
-
-    // Each table may not yet exist — use allSettled so one missing table
-    // doesn't kill the whole response.
-    const [auditsRes, missionsRes, reportsRes, monitorsRes] = await Promise.allSettled([
-      pool.query(activityCountSql(["audit"]), [orgId, ["audit"]]).catch(() =>
-        pool.query(unattributedSql("audits"), [orgId])),
-      pool.query(
-        // missions are logged with type='report' + actionKey LIKE 'activity.mission.%'
-        // fall back to standard activityCountSql if no rows found
-        `SELECT
-          COALESCE(NULLIF(al.user_id, ''), al.org_id) AS user_id,
-          LOWER(COALESCE(u.email, ''))                AS email,
-          COUNT(*)::int                               AS cnt
+    const countsRes = await pool.query<{
+      user_id: string; audits: number; missions: number; reports: number; monitors: number;
+    }>(
+      `WITH canonical_activity AS (
+         SELECT al.*, u.id::text AS canonical_user_id
          FROM activity_logs al
-         LEFT JOIN users u ON u.id::text = al.user_id OR LOWER(u.email) = LOWER(al.user_id)
+         JOIN users u
+           ON u.id::text = al.user_id
+           OR LOWER(u.email) = LOWER(al.user_id)
          WHERE al.org_id = $1
-           AND (al.action_key LIKE 'activity.mission.%' OR al.type = 'mission')
-         GROUP BY 1, 2`,
-        [orgId]
-      ).catch(() =>
-        pool.query(unattributedSql("missions"), [orgId])),
-      pool.query(activityCountSql(["report"]), [orgId, ["report"]]).catch(() =>
-        pool.query(unattributedSql("reports"), [orgId])),
-      pool.query(activityCountSql(["monitor"]), [orgId, ["monitor"]]).catch(() =>
-        pool.query(unattributedSql("monitors"), [orgId])),
-    ]);
-
-    // If EVERY query rejected, this is a real backend failure, not "zero work".
-    const anyFulfilled =
-      auditsRes.status === "fulfilled" ||
-      missionsRes.status === "fulfilled" ||
-      reportsRes.status === "fulfilled" ||
-      monitorsRes.status === "fulfilled";
-    if (!anyFulfilled) {
-      logger.error(
-        { orgId: orgId.slice(0, 20) },
-        "[team/contributions] all count queries failed"
-      );
-      res.status(503).json({ ok: false, error: "contributions_unavailable", retryable: true });
-      return;
-    }
+           AND (
+             EXISTS (
+               SELECT 1 FROM organization_members om
+               WHERE om.organization_id::text = $1
+                 AND om.user_id = u.id
+                 AND om.status = 'active'
+             )
+             OR EXISTS (
+               SELECT 1 FROM organizations o
+               WHERE o.id::text = $1
+                 AND (LOWER(o.owner_email) = LOWER(u.email)
+                      OR o.owner_user_id::text = u.id::text)
+             )
+           )
+       )
+       SELECT canonical_user_id AS user_id,
+              COUNT(*) FILTER (
+                WHERE type = 'audit' AND target_type = 'audit'
+              )::int AS audits,
+              COUNT(*) FILTER (
+                WHERE target_type = 'mission'
+                   OR action_key LIKE 'activity.mission.%'
+              )::int AS missions,
+              COUNT(*) FILTER (
+                WHERE type = 'report' AND target_type = 'report'
+              )::int AS reports,
+              COUNT(*) FILTER (
+                WHERE type = 'monitor' AND target_type = 'monitor'
+              )::int AS monitors
+       FROM canonical_activity
+       GROUP BY canonical_user_id`,
+      [orgId]
+    );
 
     const byUser: Record<string, { audits: number; missions: number; reports: number; monitors: number }> = {};
-    const get = (id: string) => {
-      if (!byUser[id]) byUser[id] = { audits: 0, missions: 0, reports: 0, monitors: 0 };
-      return byUser[id]!;
-    };
-
-    // Emit the count under both the canonical user_id and the email alias so a
-    // member is matchable by whichever identity the caller holds. Only distinct
-    // non-empty keys are written; adding to both is additive-safe because each
-    // key names the SAME member.
-    const applyCount = (
-      settled: PromiseSettledResult<{ rows: Record<string, unknown>[] }>,
-      field: "audits" | "missions" | "reports" | "monitors"
-    ) => {
-      if (settled.status !== "fulfilled") return;
-      settled.value.rows.forEach((r) => {
-        const cnt = Number(r["cnt"] ?? 0);
-        const uid = r["user_id"] ? String(r["user_id"]) : "";
-        const email = r["email"] ? String(r["email"]) : "";
-        if (uid) get(uid)[field] = cnt;
-        if (email && email !== uid) get(email)[field] = cnt;
-      });
-    };
-
-    applyCount(auditsRes, "audits");
-    applyCount(missionsRes, "missions");
-    applyCount(reportsRes, "reports");
-    applyCount(monitorsRes, "monitors");
-
-    // ── Re-attribute org-level counts to the owner ────────────────────────────
-    // When activity_logs.user_id = orgId (i.e. action logged at the org level,
-    // not to a specific user), byUser[orgId] accumulates those counts. They
-    // belong to the owner — fetch their email/UUID and merge them in.
-    if (byUser[orgId]) {
-      try {
-        const ownerRow = await pool.query<{ email: string; user_id: string }>(
-          `SELECT LOWER(o.owner_email) AS email, u.id::text AS user_id
-           FROM organizations o
-           LEFT JOIN users u ON LOWER(u.email) = LOWER(o.owner_email)
-           WHERE o.id::text = $1 LIMIT 1`,
-          [orgId]
-        );
-        const own = ownerRow.rows[0];
-        if (own?.email || own?.user_id) {
-          const orgCounts = byUser[orgId]!;
-          const fields = ["audits", "missions", "reports", "monitors"] as const;
-          const ensureKey = (k: string) => {
-            if (!byUser[k]) byUser[k] = { audits: 0, missions: 0, reports: 0, monitors: 0 };
-          };
-          if (own.user_id) {
-            ensureKey(own.user_id);
-            for (const f of fields) byUser[own.user_id]![f] += orgCounts[f];
-          }
-          if (own.email && own.email !== own.user_id) {
-            ensureKey(own.email);
-            for (const f of fields) byUser[own.email]![f] += orgCounts[f];
-          }
-          // Remove the ambiguous orgId key so the frontend never matches
-          // a member to org-aggregate counts by accident.
-          delete byUser[orgId];
-          logger.info(
-            { orgId: orgId.slice(0, 8), ownerEmail: own.email?.slice(0, 10), orgCounts },
-            "[team/contributions] org-level counts re-attributed to owner"
-          );
-        }
-      } catch (ownerErr) {
-        logger.warn({ err: ownerErr }, "[team/contributions] owner re-attribution failed (non-fatal)");
-      }
+    for (const row of countsRes.rows) {
+      if (!row.user_id) continue;
+      byUser[row.user_id] = {
+        audits: Number(row.audits ?? 0),
+        missions: Number(row.missions ?? 0),
+        reports: Number(row.reports ?? 0),
+        monitors: Number(row.monitors ?? 0),
+      };
     }
 
     // ── Debug log: per-member contribution snapshot ────────────────────────────
@@ -1533,19 +1452,15 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
         );
       } catch (_) { /* team_members might not exist — ignore */ }
     }
-    // Always include the org owner (may not be in either members table).
-    // Three-step lookup so the owner appears even when owner_email is NULL:
-    //   1. Match users by owner_email (canonical).
-    //   2. Fallback: match users by owner_user_id (UUID or legacy string).
-    //   3. If still no users row, use owner_user_id as the raw identifier so
-    //      member_activity_days can still be queried (legacy string user_ids).
+    // Always include the org owner (may not be in either members table), but
+    // only when the owner resolves to a canonical users.id.
+    let ownerUserId = "";
     try {
       const ownerQ = await pool.query(
         `SELECT
            COALESCE(
              (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
-             (SELECT u.id::text FROM users u WHERE u.id::text = o.owner_user_id::text LIMIT 1),
-             o.owner_user_id::text
+              (SELECT u.id::text FROM users u WHERE u.id::text = o.owner_user_id::text LIMIT 1)
            ) AS user_id,
            COALESCE(LOWER(o.owner_email), '') AS email,
            COALESCE(
@@ -1558,9 +1473,16 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
         [orgId]
       );
       const own = ownerQ.rows[0];
-      if (own && own.user_id && !memberRes.rows.some(r => r.user_id === own.user_id)) {
-        (memberRes.rows as Array<{ user_id: string; email: string; name: string; role: string }>)
-          .unshift({ user_id: own.user_id, email: own.email || '', name: (own.name || '').trim() || 'Owner', role: 'owner' });
+      if (own?.user_id) {
+        ownerUserId = String(own.user_id);
+        const existingOwner = memberRes.rows.find(r => r.user_id === own.user_id);
+        if (existingOwner) {
+          existingOwner.role = "owner";
+          if (!existingOwner.email && own.email) existingOwner.email = own.email;
+        } else {
+          (memberRes.rows as Array<{ user_id: string; email: string; name: string; role: string }>)
+            .unshift({ user_id: own.user_id, email: own.email || '', name: (own.name || '').trim() || 'Owner', role: 'owner' });
+        }
       }
     } catch (_) { /* non-fatal */ }
 
@@ -1575,15 +1497,16 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
       const uid = member.user_id;
       const base = { userId: uid, email: member.email, name: member.name.trim(), role: member.role };
       try {
-        // Primary lookup: by user UUID (canonical for auth-v2 users).
-        // Fallback: also match rows where user_id was stored as the user's email
-        // (legacy sessions where req.orgContext.userId was an email string).
-        let actRes = await pool.query<{ d: string }>(
-          `SELECT day::text AS d FROM member_activity_days
+        // The owner uses the same authoritative org activity source as
+        // /api/me/streak. Other members use their canonical per-user rows.
+        const isCurrentOwner = uid === ownerUserId;
+        const activityTable = isCurrentOwner ? "user_activity_days" : "member_activity_days";
+        const identityClause = isCurrentOwner ? "AND $2::text = $2::text" : "AND user_id=$2";
+        const actRes = await pool.query<{ d: string }>(
+          `SELECT day::text AS d FROM ${activityTable}
            WHERE org_id=$1
-             AND (user_id=$2
-               OR user_id = COALESCE((SELECT email FROM users WHERE id::text=$2 LIMIT 1), ''))
-             AND day >= (NOW() AT TIME ZONE $3)::date - INTERVAL '365 days'
+              ${identityClause}
+              AND day >= (NOW() AT TIME ZONE $3)::date - INTERVAL '365 days'
            ORDER BY d DESC`,
           [orgId, uid, tz]
         );

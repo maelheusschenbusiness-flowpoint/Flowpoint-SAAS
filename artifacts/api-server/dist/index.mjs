@@ -66062,6 +66062,7 @@ __export(src_exports, {
   trackedKeywordsTable: () => trackedKeywordsTable,
   userSessionsTable: () => userSessionsTable,
   withOrgDb: () => withOrgDb,
+  withOrgDbClient: () => withOrgDbClient,
   workflowRunsTable: () => workflowRunsTable
 });
 async function probeAppUserRole() {
@@ -66090,8 +66091,7 @@ async function probeAppUserRole() {
     client.release();
   }
 }
-async function withOrgDb(orgId3, callback) {
-  const client = await pool.connect();
+async function withOrgDbClient(client, orgId3, callback) {
   try {
     await client.query("BEGIN");
     const safeOrgId = orgId3.replace(/'/g, "''");
@@ -66118,6 +66118,12 @@ async function withOrgDb(orgId3, callback) {
     await client.query("ROLLBACK").catch(() => {
     });
     throw err;
+  }
+}
+async function withOrgDb(orgId3, callback) {
+  const client = await pool.connect();
+  try {
+    return await withOrgDbClient(client, orgId3, callback);
   } finally {
     client.release();
   }
@@ -66789,9 +66795,12 @@ __export(plans_exports, {
   ADDON_DEFINITIONS: () => ADDON_DEFINITIONS,
   ADDON_PRICE_IDS: () => ADDON_PRICE_IDS,
   ADDON_PRICE_IDS_TEST: () => ADDON_PRICE_IDS_TEST,
+  BETA_ADDONS: () => BETA_ADDONS,
+  COMING_SOON_ADDONS: () => COMING_SOON_ADDONS,
   FLAG_ADDONS: () => FLAG_ADDONS,
   PLAN_AI_CREDITS: () => PLAN_AI_CREDITS,
   PLAN_AI_TOKENS: () => PLAN_AI_TOKENS,
+  PLAN_ALLOWED_ADDONS: () => PLAN_ALLOWED_ADDONS,
   PLAN_DEFINITIONS: () => PLAN_DEFINITIONS,
   PLAN_INCLUDED_ADDONS: () => PLAN_INCLUDED_ADDONS,
   PLAN_LIMITS: () => PLAN_LIMITS,
@@ -66799,15 +66808,31 @@ __export(plans_exports, {
   PLAN_PRICE_IDS_TEST: () => PLAN_PRICE_IDS_TEST,
   QTY_ADDONS: () => QTY_ADDONS,
   QTY_ADDON_GRANTS: () => QTY_ADDON_GRANTS,
+  REMOVED_ADDONS: () => REMOVED_ADDONS,
   computeQtyAddonExtras: () => computeQtyAddonExtras,
+  getAddonAvailability: () => getAddonAvailability,
   getAddonForPriceId: () => getAddonForPriceId,
   getAddonPriceId: () => getAddonPriceId,
-  getPlanForPriceId: () => getPlanForPriceId
+  getAddonStatus: () => getAddonStatus,
+  getPlanForPriceId: () => getPlanForPriceId,
+  isPlanAllowedAddon: () => isPlanAllowedAddon
 });
 function getAddonPriceId(key, stripeKey) {
   const isTestMode = stripeKey ? stripeKey.startsWith("sk_test_") : false;
   if (isTestMode && ADDON_PRICE_IDS_TEST[key]) return ADDON_PRICE_IDS_TEST[key];
   return ADDON_PRICE_IDS[key] || void 0;
+}
+function getAddonAvailability(addonKey) {
+  if (COMING_SOON_ADDONS.has(addonKey)) return "coming_soon";
+  if (BETA_ADDONS.has(addonKey)) return "beta";
+  return "available";
+}
+function getAddonStatus(addonKey, options = {}) {
+  const availability = getAddonAvailability(addonKey);
+  if (availability === "coming_soon") return "coming_soon";
+  if (options.included) return "included";
+  if (options.active === true || typeof options.active === "number" && options.active > 0) return "active";
+  return availability;
 }
 function computeQtyAddonExtras(addons) {
   const extras = {};
@@ -66817,6 +66842,14 @@ function computeQtyAddonExtras(addons) {
     if (packs > 0) extras[grant.resource] = (extras[grant.resource] ?? 0) + packs * grant.perPack;
   }
   return extras;
+}
+function isPlanAllowedAddon(plan4, addonKey) {
+  const planNorm = plan4.toLowerCase();
+  const allowed = PLAN_ALLOWED_ADDONS[planNorm];
+  if (!allowed) {
+    return _STANDARD_PURCHASABLE.has(addonKey);
+  }
+  return allowed.has(addonKey);
 }
 function getPlanForPriceId(priceId) {
   for (const [plan4, id] of Object.entries(PLAN_PRICE_IDS)) {
@@ -66833,7 +66866,7 @@ function getAddonForPriceId(priceId) {
   }
   return null;
 }
-var PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_AI_TOKENS, PLAN_PRICE_IDS, PLAN_PRICE_IDS_TEST, ADDON_PRICE_IDS_TEST, ADDON_PRICE_IDS, ADDON_DEFINITIONS, FLAG_ADDONS, QTY_ADDONS, QTY_ADDON_GRANTS, PLAN_INCLUDED_ADDONS;
+var PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_AI_TOKENS, PLAN_PRICE_IDS, PLAN_PRICE_IDS_TEST, ADDON_PRICE_IDS_TEST, ADDON_PRICE_IDS, ADDON_DEFINITIONS, FLAG_ADDONS, REMOVED_ADDONS, COMING_SOON_ADDONS, BETA_ADDONS, QTY_ADDONS, QTY_ADDON_GRANTS, PLAN_INCLUDED_ADDONS, _STANDARD_PURCHASABLE, _PRO_EXCLUSIVE, _ULTRA_EXCLUSIVE, PLAN_ALLOWED_ADDONS;
 var init_plans = __esm({
   "src/lib/plans.ts"() {
     "use strict";
@@ -67123,8 +67156,28 @@ var init_plans = __esm({
       "crmIntegration",
       "customDomain",
       "ssoEnterprise",
-      "aiWorkspaceLaunch",
-      "prioritySupport"
+      "aiWorkspaceLaunch"
+      // NOTE: "prioritySupport" removed — feature not implemented, no commercial exposure
+    ]);
+    REMOVED_ADDONS = /* @__PURE__ */ new Set(["prioritySupport"]);
+    COMING_SOON_ADDONS = /* @__PURE__ */ new Set([
+      "globalMonitoring",
+      "backlinkIntelligence",
+      "aiContentStrategist",
+      "abTestingAI",
+      "agencyPacks",
+      "aiExecutiveReport",
+      "aiWorkflows",
+      "crmIntegration",
+      "ssoEnterprise",
+      // The current launch wizard still creates generic roadmap content and does
+      // not provision the promised workspace surfaces end-to-end.
+      "aiWorkspaceLaunch"
+    ]);
+    BETA_ADDONS = /* @__PURE__ */ new Set([
+      "aiCro",
+      "revenueLeak",
+      "marketIntelligence"
     ]);
     QTY_ADDONS = /* @__PURE__ */ new Set([
       "monitorsPack10",
@@ -67170,6 +67223,54 @@ var init_plans = __esm({
         "behavioralAI",
         "aiForecasting"
       ])
+    };
+    _STANDARD_PURCHASABLE = /* @__PURE__ */ new Set([
+      // Capacity packs — available on all plans
+      "monitorsPack10",
+      "monitorsPack50",
+      "gbpSlots10",
+      "extraSeats",
+      "auditsPack200",
+      "auditsPack1000",
+      "pdfPack200",
+      "exportsPack1000",
+      "aiCreditsPack50k",
+      "aiCreditsPack200k",
+      "aiCreditsPack500k",
+      "retention90d"
+      // NOTE: "prioritySupport" removed — feature not implemented
+    ]);
+    _PRO_EXCLUSIVE = /* @__PURE__ */ new Set([
+      "globalMonitoring",
+      "slaMonitoring",
+      "keywordDomination",
+      "aiContentStrategist",
+      "aiGbpPosting",
+      "reviewIntelligence",
+      "localDominationMaps",
+      "aiCro",
+      "behavioralAI",
+      "revenueLeak",
+      "abTestingAI",
+      "zapierIntegration",
+      "crmIntegration",
+      "aiExecutiveReport",
+      "aiForecasting",
+      "marketIntelligence",
+      "aiWorkflows",
+      "enterprisePermissions"
+    ]);
+    _ULTRA_EXCLUSIVE = /* @__PURE__ */ new Set([
+      "agencyPacks",
+      "retention365d",
+      "ssoEnterprise",
+      "aiWorkspaceLaunch"
+    ]);
+    PLAN_ALLOWED_ADDONS = {
+      standard: _STANDARD_PURCHASABLE,
+      pro: /* @__PURE__ */ new Set([..._STANDARD_PURCHASABLE, ..._PRO_EXCLUSIVE]),
+      ultra: /* @__PURE__ */ new Set([..._STANDARD_PURCHASABLE, ..._PRO_EXCLUSIVE, ..._ULTRA_EXCLUSIVE]),
+      agency: /* @__PURE__ */ new Set([..._STANDARD_PURCHASABLE, ..._PRO_EXCLUSIVE, ..._ULTRA_EXCLUSIVE])
     };
   }
 });
@@ -67259,7 +67360,7 @@ var init_config = __esm({
         prioritySupport: false
       },
       pro: {
-        // whiteLabel + prioritySupport + webhooks bundled in Pro (see PLAN_INCLUDED_ADDONS in plans.ts)
+        // prioritySupport is intentionally disabled: the feature has no commercial implementation.
         sso: true,
         saml: false,
         whiteLabel: true,
@@ -67282,7 +67383,7 @@ var init_config = __esm({
         revenueLeakAI: true,
         cro: true,
         multiLocation: false,
-        prioritySupport: true
+        prioritySupport: false
       },
       ultra: {
         sso: true,
@@ -67307,7 +67408,7 @@ var init_config = __esm({
         revenueLeakAI: true,
         cro: true,
         multiLocation: true,
-        prioritySupport: true
+        prioritySupport: false
       },
       agency: {
         sso: true,
@@ -67332,7 +67433,7 @@ var init_config = __esm({
         revenueLeakAI: true,
         cro: true,
         multiLocation: true,
-        prioritySupport: true
+        prioritySupport: false
       }
     };
     DATA_RETENTION_DAYS = {
@@ -67627,11 +67728,13 @@ function checkRate(key, limitPerMinute) {
 function getOrgId(req) {
   return req.orgId ?? "default";
 }
-async function getPlanForOrg(orgId3) {
+function runOrgScoped(orgId3, existingClient, callback) {
+  return existingClient ? withOrgDbClient(existingClient, orgId3, callback) : withOrgDb(orgId3, callback);
+}
+async function getPlanForOrg(orgId3, existingClient) {
   if (orgId3 === "default") return (store.me?.plan || "standard").toLowerCase();
   try {
-    const client = await pool.connect();
-    try {
+    return await runOrgScoped(orgId3, existingClient, async (client) => {
       const r = await client.query(
         `SELECT plan FROM organizations WHERE id = $1 LIMIT 1`,
         [orgId3]
@@ -67642,12 +67745,48 @@ async function getPlanForOrg(orgId3) {
         [orgId3]
       );
       return (legacy.rows[0]?.plan || "standard").toLowerCase();
-    } finally {
-      client.release();
-    }
+    });
   } catch {
     return (store.me?.plan || "standard").toLowerCase();
   }
+}
+async function checkDistributedAiProviderRateLimit(orgId3, bucket = "ai_provider", existingClient) {
+  const plan4 = await getPlanForOrg(orgId3, existingClient);
+  const limit2 = getRateLimit(plan4, "aiPerMinute");
+  const result = await runOrgScoped(
+    orgId3,
+    existingClient,
+    (client) => client.query(
+      `INSERT INTO ai_rate_limit_windows
+         (org_id, bucket, window_start, request_count, updated_at)
+       VALUES ($1, $2, NOW(), 1, NOW())
+       ON CONFLICT (org_id, bucket) DO UPDATE
+         SET request_count = CASE
+               WHEN ai_rate_limit_windows.window_start <= NOW() - INTERVAL '60 seconds' THEN 1
+               ELSE ai_rate_limit_windows.request_count + 1
+             END,
+             window_start = CASE
+               WHEN ai_rate_limit_windows.window_start <= NOW() - INTERVAL '60 seconds' THEN NOW()
+               ELSE ai_rate_limit_windows.window_start
+             END,
+             updated_at = NOW()
+       RETURNING request_count,
+         GREATEST(
+           0,
+           EXTRACT(EPOCH FROM (window_start + INTERVAL '60 seconds' - NOW())) * 1000
+         )::BIGINT AS reset_ms`,
+      [orgId3, bucket]
+    )
+  );
+  const count = Number(result.rows[0]?.request_count ?? limit2 + 1);
+  const resetInMs = Math.max(0, Number(result.rows[0]?.reset_ms ?? 6e4));
+  return {
+    allowed: count <= limit2,
+    remaining: Math.max(0, limit2 - count),
+    resetInMs,
+    limit: limit2,
+    plan: plan4
+  };
 }
 function globalRateLimit(req, res, next) {
   const orgId3 = getOrgId(req);
@@ -75779,9 +75918,52 @@ async function handleStripeWebhook(req, res) {
           }
           break;
         }
+        const piAddonsRaw = piMeta["addons"] ?? "";
+        const piMetaOrgId = piMeta["orgId"] ?? piMeta["org_id"] ?? orgId3 ?? null;
         const piPreRegToken = piMeta["pre_register_token"] ?? "";
+        if (!piPreRegToken && piMetaOrgId && piAddonsRaw && piAddonsRaw !== "{}" && piAddonsRaw !== "null") {
+          try {
+            const piAddons = JSON.parse(piAddonsRaw);
+            const addonEntries = Object.entries(piAddons).filter(([, v]) => v === true || typeof v === "number" && v > 0);
+            const AI_CR_KEYS = /* @__PURE__ */ new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
+            const recurringEntries = addonEntries.filter(([k]) => !AI_CR_KEYS.has(k));
+            if (recurringEntries.length > 0) {
+              const piId = String(obj["id"] ?? "");
+              const { pool: pgPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+              const idempClient = await pgPool.connect();
+              let alreadyActivated = false;
+              try {
+                const idempCheck = await idempClient.query(
+                  `SELECT COUNT(*) as count FROM activity_log WHERE org_id = $1 AND metadata->>'pi_id' = $2 AND action_key = 'addon.webhook_activated' LIMIT 1`,
+                  [piMetaOrgId, piId]
+                );
+                alreadyActivated = parseInt(idempCheck.rows[0]?.count ?? "0", 10) > 0;
+              } catch (_) {
+              } finally {
+                idempClient.release();
+              }
+              if (!alreadyActivated) {
+                const { activateAddon: activateAddon2 } = await Promise.resolve().then(() => (init_addons_service(), addons_service_exports));
+                for (const [key, val] of recurringEntries) {
+                  const qty = typeof val === "number" ? val : 1;
+                  const activated = await activateAddon2(key, piMetaOrgId, qty);
+                  if (activated) {
+                    logger.info({ key, qty, orgId: piMetaOrgId, piId }, "[Webhook] Recurring add-on activated from PI metadata (closed-tab recovery)");
+                  } else {
+                    logger.error({ key, orgId: piMetaOrgId, piId }, "[Webhook] Failed to activate add-on from PI metadata");
+                  }
+                }
+                store.broadcast({ type: "billing:addons_updated" }, piMetaOrgId);
+              } else {
+                logger.info({ orgId: piMetaOrgId, piId }, "[Webhook] PI addon activation already done \u2014 skipping");
+              }
+            }
+          } catch (piAddonErr) {
+            logger.error({ piAddonErr, orgId: piMetaOrgId }, "[Webhook] Failed to parse/activate add-ons from PI metadata");
+          }
+        }
         if (!piPreRegToken) {
-          logger.info({ type: event.type }, "[Webhook] No pre_register_token \u2014 skipping activation");
+          logger.info({ type: event.type, orgId: piMetaOrgId }, "[Webhook] PI processed (no pre_register_token)");
           break;
         }
         let piOrgId = orgId3;
@@ -90111,7 +90293,7 @@ async function trackAIUsage(opts) {
     metadata: opts.metadata
   });
 }
-async function recordCompletedUsage(opts) {
+async function recordCompletedUsage(opts, execution) {
   const { userId, model, feature, tokensIn, tokensOut, latencyMs } = opts;
   const provider = opts.provider ?? "openai";
   const cachedTok = opts.cachedTokens ?? 0;
@@ -90121,7 +90303,7 @@ async function recordCompletedUsage(opts) {
   const logId = `aul_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const idemKey = opts.requestId ?? null;
   const metaJson = opts.metadata ? JSON.stringify(opts.metadata) : null;
-  const orgId3 = await resolveCanonicalOrgUuid(opts.orgId);
+  const orgId3 = execution?.canonicalOrgId ?? await resolveCanonicalOrgUuid(opts.orgId);
   if (!orgId3) {
     logger.error(
       { rawOrgId: opts.orgId, feature, model, tokensIn, tokensOut },
@@ -90133,7 +90315,7 @@ async function recordCompletedUsage(opts) {
   }
   let recorded = false;
   try {
-    recorded = await withOrgDb(orgId3, async (client) => {
+    const recordUsage = async (client) => {
       const ins = await client.query(
         `INSERT INTO ai_usage_logs
            (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
@@ -90178,7 +90360,8 @@ async function recordCompletedUsage(opts) {
         [`amu_${orgId3}_${month}`, orgId3, month, creditsDeb, realCostEur, tokensIn + tokensOut, monthResetDate()]
       );
       return true;
-    });
+    };
+    recorded = execution ? await withOrgDbClient(execution.client, orgId3, recordUsage) : await withOrgDb(orgId3, recordUsage);
   } catch (err) {
     logger.error(
       { err, orgId: orgId3, feature, model, requestId: idemKey },
@@ -90188,6 +90371,23 @@ async function recordCompletedUsage(opts) {
   }
   if (!recorded && idemKey) {
     logger.info({ orgId: orgId3, requestId: idemKey }, "[AI] recordCompletedUsage: duplicate requestId \u2014 usage already recorded, aggregate not re-incremented");
+  }
+  if (execution) {
+    const usage = await withOrgDbClient(execution.client, orgId3, async (client) => {
+      const result = await client.query(
+        `SELECT credits_used, credits_limit, credits_extra
+         FROM ai_monthly_usage
+         WHERE org_id::text = $1 AND month = $2
+         LIMIT 1`,
+        [orgId3, month]
+      );
+      return result.rows[0];
+    });
+    const totalAvailable = Number(usage?.credits_limit ?? 0) + Number(usage?.credits_extra ?? 0);
+    return {
+      creditsDebited: creditsDeb,
+      remaining: Math.max(0, totalAvailable - Number(usage?.credits_used ?? 0))
+    };
   }
   try {
     const usage = await getOrCreateMonthlyUsage(orgId3);
@@ -92624,7 +92824,7 @@ var init_recommendation_tools = __esm({
       },
       {
         name: "create_missions_from_strategy",
-        description: "Transforme automatiquement une strat\xE9gie SEO en missions concr\xE8tes FlowPoint. R\xE9utilise int\xE9gralement le syst\xE8me missions Phase 2. Utiliser quand l'utilisateur dit : 'cr\xE9e les missions pour cette strat\xE9gie', 'transforme en t\xE2ches', 'mets en \u0153uvre la strat\xE9gie'. Appeler generate_seo_strategy ou search_recommendations d'abord. Confirmation obligatoire (niveau full). Annulation globale possible dans les 30 minutes.",
+        description: "Transforme directement une demande utilisateur en missions SEO concr\xE8tes FlowPoint. Appeler IMM\xC9DIATEMENT quand l'utilisateur demande : 'cr\xE9e des missions', 'strat\xE9gie sous forme de missions', 'plan d'action en missions', 'transforme en t\xE2ches', 'missions sur 30 jours', 'missions SEO', 'mets en \u0153uvre la strat\xE9gie'. NE PAS appeler d'autres outils avant \u2014 cet outil est autonome et g\xE9n\xE8re les missions directement. Confirmation obligatoire (niveau full). Annulation globale possible dans les 30 minutes.",
         requiredPermission: "strategy.generate",
         confirmationLevel: "full",
         isWrite: true,
@@ -97044,6 +97244,12 @@ ${recLines.join("\n")}`,
     const genFocus = args["focus"]?.toLowerCase();
     const genMaxResults = Math.min(args["maxResults"] ?? 5, 10);
     const genUrgency = args["urgencyOnly"] ?? false;
+    const supportedRecommendationLanguages = /* @__PURE__ */ new Set(["fr", "en", "es", "de", "it", "pt", "nl", "pl", "sv", "ro", "cs"]);
+    const requestedCode = (ctx.language ?? "fr").trim().toLowerCase().split(/[-_]/)[0] ?? "fr";
+    const _gl = supportedRecommendationLanguages.has(requestedCode) ? requestedCode : "fr";
+    const _recoLog = { userLanguage: _gl, recommendationLanguage: _gl, aiPromptLanguage: _gl };
+    logger.info(_recoLog, "[generate_recommendations] language chain");
+    const _rt = (fr, _en, _de, _es) => fr;
     const [genAudits, genKw, genComp, genMon] = await Promise.allSettled([
       pool.query(`SELECT id, url, score, status, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 5`, [orgId3]),
       pool.query(`SELECT keyword, current_position, search_volume FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC LIMIT 10`, [orgId3]),
@@ -97060,8 +97266,18 @@ ${recLines.join("\n")}`,
       const sp = Number(a["speed"] ?? 0);
       if ((!genFocus || ["performance", "technique"].includes(genFocus)) && sp < 60) {
         candidates.push({
-          title: `Am\xE9liorer la vitesse PageSpeed de ${a["url"]}`,
-          description: `Score vitesse actuel : ${sp}/100. Optimiser LCP, r\xE9duire le JS inutilis\xE9, activer la compression.`,
+          title: _rt(
+            `Am\xE9liorer la vitesse PageSpeed de ${a["url"]}`,
+            `Improve PageSpeed performance for ${a["url"]}`,
+            `PageSpeed-Leistung von ${a["url"]} verbessern`,
+            `Mejorar velocidad PageSpeed de ${a["url"]}`
+          ),
+          description: _rt(
+            `Score vitesse actuel : ${sp}/100. Optimiser LCP, r\xE9duire le JS inutilis\xE9, activer la compression.`,
+            `Current speed score: ${sp}/100. Optimize LCP, reduce unused JS, enable compression.`,
+            `Aktueller Geschwindigkeitswert: ${sp}/100. LCP optimieren, ungenutztes JS reduzieren, Kompression aktivieren.`,
+            `Puntuaci\xF3n de velocidad actual: ${sp}/100. Optimizar LCP, reducir JS no utilizado, activar compresi\xF3n.`
+          ),
           category: "performance",
           urgency: 100 - sp,
           impact: 80,
@@ -97073,8 +97289,18 @@ ${recLines.join("\n")}`,
       }
       if ((!genFocus || ["technique", "seo"].includes(genFocus)) && sc < 70) {
         candidates.push({
-          title: `Corriger les erreurs SEO critiques de ${a["url"]}`,
-          description: `Score SEO : ${sc}/100. ${a["issues"]} probl\xE8me(s) critique(s) d\xE9tect\xE9(s).`,
+          title: _rt(
+            `Corriger les erreurs SEO critiques de ${a["url"]}`,
+            `Fix critical SEO errors on ${a["url"]}`,
+            `Kritische SEO-Fehler auf ${a["url"]} beheben`,
+            `Corregir errores SEO cr\xEDticos de ${a["url"]}`
+          ),
+          description: _rt(
+            `Score SEO : ${sc}/100. ${a["issues"]} probl\xE8me(s) critique(s) d\xE9tect\xE9(s).`,
+            `SEO score: ${sc}/100. ${a["issues"]} critical issue(s) detected.`,
+            `SEO-Score: ${sc}/100. ${a["issues"]} kritisches Problem(e) erkannt.`,
+            `Puntuaci\xF3n SEO: ${sc}/100. ${a["issues"]} problema(s) cr\xEDtico(s) detectado(s).`
+          ),
           category: "technique",
           urgency: 100 - sc,
           impact: 85,
@@ -97088,10 +97314,20 @@ ${recLines.join("\n")}`,
     for (const kw of genKwRows) {
       const pos = Number(kw["current_position"] ?? 999);
       const vol = Number(kw["search_volume"] ?? 0);
-      if ((!genFocus || ["contenu", "seo"].includes(genFocus)) && pos >= 4 && pos <= 15 && vol > 0) {
+      if ((!genFocus || ["contenu", "seo", "content"].includes(genFocus)) && pos >= 4 && pos <= 15 && vol > 0) {
         candidates.push({
-          title: `Pousser "${kw["keyword"]}" de la position ${pos} vers le Top 3`,
-          description: `Mot-cl\xE9 en position ${pos} avec ${vol} recherches/mois. Fort potentiel de trafic en Top 3.`,
+          title: _rt(
+            `Pousser "${kw["keyword"]}" de la position ${pos} vers le Top 3`,
+            `Push "${kw["keyword"]}" from position ${pos} into the Top 3`,
+            `"${kw["keyword"]}" von Position ${pos} in die Top 3 bringen`,
+            `Impulsar "${kw["keyword"]}" desde la posici\xF3n ${pos} al Top 3`
+          ),
+          description: _rt(
+            `Mot-cl\xE9 en position ${pos} avec ${vol} recherches/mois. Fort potentiel de trafic en Top 3.`,
+            `Keyword at position ${pos} with ${vol} searches/month. High traffic potential in Top 3.`,
+            `Keyword auf Position ${pos} mit ${vol} Suchen/Monat. Hohes Traffic-Potenzial in den Top 3.`,
+            `Palabra clave en posici\xF3n ${pos} con ${vol} b\xFAsquedas/mes. Alto potencial de tr\xE1fico en el Top 3.`
+          ),
           category: "contenu",
           urgency: vol > 1e3 ? 75 : 55,
           impact: 85,
@@ -97105,8 +97341,18 @@ ${recLines.join("\n")}`,
     for (const comp of genCompRows) {
       if ((!genFocus || genFocus === "backlinks") && Number(comp["domain_rating"] ?? 0) > 30) {
         candidates.push({
-          title: `Analyser la strat\xE9gie backlinks de ${comp["name"]}`,
-          description: `Concurrent ${comp["name"]} DR=${comp["domain_rating"]}. Identifier leurs sources de backlinks.`,
+          title: _rt(
+            `Analyser la strat\xE9gie backlinks de ${comp["name"]}`,
+            `Analyse backlink strategy of ${comp["name"]}`,
+            `Backlink-Strategie von ${comp["name"]} analysieren`,
+            `Analizar estrategia de backlinks de ${comp["name"]}`
+          ),
+          description: _rt(
+            `Concurrent ${comp["name"]} DR=${comp["domain_rating"]}. Identifier leurs sources de backlinks.`,
+            `Competitor ${comp["name"]} DR=${comp["domain_rating"]}. Identify their backlink sources.`,
+            `Wettbewerber ${comp["name"]} DR=${comp["domain_rating"]}. Backlink-Quellen identifizieren.`,
+            `Competidor ${comp["name"]} DR=${comp["domain_rating"]}. Identificar sus fuentes de backlinks.`
+          ),
           category: "backlinks",
           urgency: 55,
           impact: 70,
@@ -97120,8 +97366,18 @@ ${recLines.join("\n")}`,
     const downMonitors = genMonRows.filter((m) => m["status"] === "down");
     if ((!genFocus || genFocus === "performance") && downMonitors.length > 0) {
       candidates.push({
-        title: `R\xE9soudre la panne d\xE9tect\xE9e sur ${String(downMonitors[0]["url"] ?? "")}`,
-        description: `Monitor d\xE9tecte le site en DOWN. Impact imm\xE9diat sur SEO et exp\xE9rience utilisateur.`,
+        title: _rt(
+          `R\xE9soudre la panne d\xE9tect\xE9e sur ${String(downMonitors[0]["url"] ?? "")}`,
+          `Resolve detected outage on ${String(downMonitors[0]["url"] ?? "")}`,
+          `Erkannten Ausfall auf ${String(downMonitors[0]["url"] ?? "")} beheben`,
+          `Resolver la interrupci\xF3n detectada en ${String(downMonitors[0]["url"] ?? "")}`
+        ),
+        description: _rt(
+          `Monitor d\xE9tecte le site en DOWN. Impact imm\xE9diat sur SEO et exp\xE9rience utilisateur.`,
+          `Monitor detects the site as DOWN. Immediate impact on SEO and user experience.`,
+          `Monitor erkennt die Website als DOWN. Unmittelbare Auswirkungen auf SEO und Nutzererfahrung.`,
+          `El monitor detecta el sitio como DOWN. Impacto inmediato en SEO y experiencia del usuario.`
+        ),
         category: "performance",
         urgency: 100,
         impact: 95,
@@ -97136,7 +97392,12 @@ ${recLines.join("\n")}`,
         toolCallId: logId,
         toolName: name2,
         ok: true,
-        content: "Donn\xE9es insuffisantes pour g\xE9n\xE9rer des recommandations. Commencez par lancer un audit SEO et ajoutez des mots-cl\xE9s \xE0 suivre.",
+        content: _rt(
+          "Donn\xE9es insuffisantes pour g\xE9n\xE9rer des recommandations. Commencez par lancer un audit SEO et ajoutez des mots-cl\xE9s \xE0 suivre.",
+          "Insufficient data to generate recommendations. Start by running an SEO audit and adding keywords to track.",
+          "Zu wenig Daten f\xFCr Empfehlungen. Starten Sie zun\xE4chst ein SEO-Audit und f\xFCgen Sie Keywords hinzu.",
+          "Datos insuficientes para generar recomendaciones. Empiece ejecutando una auditor\xEDa SEO y a\xF1adiendo palabras clave."
+        ),
         actionLogId: logId
       };
     }
@@ -97163,7 +97424,19 @@ ${recLines.join("\n")}`,
           rec.description,
           rec.score,
           rec.source,
-          JSON.stringify({ ...rec.metadata, category: rec.category, urgency: rec.urgency, impact: rec.impact, effort: rec.effort, confidence: rec.confidence })
+          JSON.stringify({
+            ...rec.metadata,
+            category: rec.category,
+            urgency: rec.urgency,
+            impact: rec.impact,
+            effort: rec.effort,
+            confidence: rec.confidence,
+            language: "fr",
+            requestedLanguage: _gl,
+            sourceLanguage: "fr",
+            originalTitle: rec.title,
+            originalDescription: rec.description
+          })
         ]
       );
       genCreated.push({ id: rId, title: rec.title, priority: rec.score, category: rec.category, source: rec.source });
@@ -97535,13 +97808,24 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
       msSourceRecs = msRecR.rows;
     }
     if (!msSourceRecs.length) {
-      return {
-        toolCallId: logId,
-        toolName: name2,
-        ok: false,
-        content: "Aucune recommandation active. Demandez-moi d'abord de g\xE9n\xE9rer des recommandations ou une strat\xE9gie SEO.",
-        actionLogId: logId
-      };
+      const [fbAudits, fbKw] = await Promise.allSettled([
+        pool.query(`SELECT url, score, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 3`, [orgId3]),
+        pool.query(`SELECT keyword, current_position FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC LIMIT 5`, [orgId3])
+      ]);
+      const fbAuditRows = fbAudits.status === "fulfilled" ? fbAudits.value.rows : [];
+      const fbKwRows = fbKw.status === "fulfilled" ? fbKw.value.rows : [];
+      const fbAvgScore = fbAuditRows.length > 0 ? Math.round(fbAuditRows.reduce((s, a) => s + Number(a["score"] ?? 0), 0) / fbAuditRows.length) : 60;
+      const fbKwWeak = fbKwRows.filter((k) => Number(k["current_position"] ?? 999) > 10).slice(0, 3);
+      const fbTemplates = [
+        { title: `Am\xE9liorer la vitesse de chargement mobile`, desc: `Le score moyen actuel est ${fbAvgScore}/100. Optimiser les images en WebP, activer le cache navigateur et passer \xE0 HTTP/2. Objectif : d\xE9passer 80/100.`, cat: "PERFORMANCE" },
+        { title: `Corriger les balises title et meta manquantes`, desc: `Auditer chaque page et s'assurer que chaque URL a une balise title unique (55-60 car.) et une meta description (150-160 car.). Prioriser les pages \xE0 fort trafic.`, cat: "SEO" },
+        { title: `Optimiser le maillage interne`, desc: `Ajouter 2-3 liens internes par page vers les contenus strat\xE9giques. Am\xE9liore l'indexation et transmet l'autorit\xE9 entre les pages.`, cat: "SEO" },
+        { title: `Cr\xE9er du contenu SEO cibl\xE9`, desc: fbKwWeak.length > 0 ? `R\xE9diger des articles ciblant les mots-cl\xE9s hors Top 10 : ${fbKwWeak.map((k) => String(k["keyword"])).join(", ")}. Objectif : int\xE9grer le Top 10 sous 30 jours.` : `R\xE9diger 2 articles de blog ciblant les mots-cl\xE9s strat\xE9giques du secteur. Format long (1500+ mots) avec FAQ schema markup.`, cat: "CONTENU" },
+        { title: `Obtenir des backlinks qualifi\xE9s`, desc: `Identifier 10 sites partenaires potentiels du secteur et leur proposer des \xE9changes de liens contextuels. Objectif : +5 backlinks en 30 jours.`, cat: "NETLINKING" }
+      ];
+      const fbMissionsRaw = fbTemplates.slice(0, msMaxMiss).map((t, i) => ({ title: t.title, description: t.desc, cat: t.cat, index: i }));
+      msSourceRecs = fbMissionsRaw.map((m) => ({ id: `fb_${m.index}`, title: m.title, description: m.description, metadata: { category: m.cat } }));
+      logger.info({ orgId: orgId3, count: msSourceRecs.length }, "[create_missions_from_strategy] using fallback SEO template missions");
     }
     const msToday = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     const msMissions = [];
@@ -98253,11 +98537,22 @@ ${siSummary}`,
       cfAction = "mis \xE0 jour";
     } else {
       cfResultId = `mon${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      await pool.query(
+      const cfInsertResult = await pool.query(
         `INSERT INTO monitors (id, org_id, name, url, status, uptime, latency, frequency, enabled, is_critical, alert_email, alert_phone, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,'unknown',100,0,$5,true,$6,$7,$8,NOW(),NOW())`,
+         VALUES ($1,$2,$3,$4,'unknown',100,0,$5,true,$6,$7,$8,NOW(),NOW())
+         RETURNING id`,
         [cfResultId, orgId3, cfName ?? cfUrl, cfUrl, cfFreq ?? 300, cfCritical ?? false, cfEmail ?? null, cfPhone ?? null]
       );
+      if (!cfInsertResult.rows[0]?.id) {
+        return {
+          toolCallId: logId,
+          toolName: name2,
+          ok: false,
+          content: `\xC9chec de la cr\xE9ation du monitor \u2014 l'insertion en base n'a pas retourn\xE9 d'identifiant.`,
+          actionLogId: logId
+        };
+      }
+      cfResultId = cfInsertResult.rows[0].id;
       cfAction = "cr\xE9\xE9";
     }
     await logActionLog({
@@ -99265,52 +99560,6 @@ var init_qa_fixtures = __esm({
   }
 });
 
-// src/services/sms-service.ts
-var sms_service_exports = {};
-__export(sms_service_exports, {
-  sendSms: () => sendSms,
-  twilioConfigured: () => twilioConfigured
-});
-function twilioConfigured() {
-  return Boolean(
-    process.env["TWILIO_ACCOUNT_SID"] && process.env["TWILIO_AUTH_TOKEN"] && process.env["TWILIO_FROM_NUMBER"]
-  );
-}
-async function sendSms(to, body) {
-  const sid = process.env["TWILIO_ACCOUNT_SID"];
-  const authToken = process.env["TWILIO_AUTH_TOKEN"];
-  const from = process.env["TWILIO_FROM_NUMBER"];
-  if (!sid || !authToken || !from) {
-    return { ok: false, error: "not_configured" };
-  }
-  try {
-    const params = new URLSearchParams({ To: to, From: from, Body: body });
-    const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${Buffer.from(`${sid}:${authToken}`).toString("base64")}`
-      },
-      body: params.toString()
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      logger.warn({ status: resp.status, data }, "[sms-service] Twilio send failed");
-      return { ok: false, error: data.message ?? `Twilio error ${resp.status}` };
-    }
-    return { ok: true, sid: data.sid };
-  } catch (err) {
-    logger.error({ err }, "[sms-service] Twilio request failed");
-    return { ok: false, error: "network_error" };
-  }
-}
-var init_sms_service = __esm({
-  "src/services/sms-service.ts"() {
-    "use strict";
-    init_logger();
-  }
-});
-
 // src/services/billing-context.ts
 var billing_context_exports = {};
 __export(billing_context_exports, {
@@ -99429,6 +99678,534 @@ var init_billing_context = __esm({
       code = "BILLING_CONTEXT_UNAVAILABLE";
       retryable = true;
     };
+  }
+});
+
+// src/services/billing-service.ts
+async function getUsageSummary(orgId3 = "default") {
+  const billingCtx = await loadBillingContext(orgId3).catch(async () => {
+    const orgData = await loadOrgData(orgId3).catch(() => null);
+    return {
+      plan: orgData?.plan ?? "standard",
+      addons: orgData?.addons ?? {},
+      subscriptionStatus: orgData?.subscriptionStatus ?? "inactive",
+      trialEndsAt: orgData?.trialEndsAt ?? null,
+      stripeSubscriptionId: orgData?.stripeSubscriptionId ?? null,
+      stripeCustomerId: orgData?.stripeCustomerId ?? null,
+      trialConsumedAt: null
+    };
+  });
+  const plan4 = (billingCtx.plan || "standard").toLowerCase();
+  const limits = PLAN_LIMITS[plan4] || PLAN_LIMITS["standard"];
+  const planIncluded = PLAN_INCLUDED_ADDONS[plan4] ?? /* @__PURE__ */ new Set();
+  const addonsWithFlags = {};
+  for (const [key, val] of Object.entries(billingCtx.addons)) {
+    addonsWithFlags[key] = {
+      active: val,
+      includedInPlan: planIncluded.has(key)
+    };
+  }
+  for (const key of planIncluded) {
+    if (!(key in addonsWithFlags)) {
+      addonsWithFlags[key] = { active: true, includedInPlan: true };
+    }
+  }
+  const qtyExtras = computeQtyAddonExtras(billingCtx.addons);
+  const extraMonitors = qtyExtras["monitors"] ?? 0;
+  const extraAudits = qtyExtras["audits"] ?? 0;
+  const extraReports = qtyExtras["reports"] ?? 0;
+  const extraExports = qtyExtras["exports"] ?? 0;
+  const extraSeats = qtyExtras["teamMembers"] ?? 0;
+  let nextBillingDate = null;
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  if (stripeKey && billingCtx.stripeSubscriptionId) {
+    try {
+      const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
+      const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+      const sub = await stripe.subscriptions.retrieve(billingCtx.stripeSubscriptionId);
+      const _cpe = typeof sub.current_period_end === "number" ? sub.current_period_end : (sub.items?.data ?? []).reduce(
+        (m, it) => typeof it.current_period_end === "number" ? m === null ? it.current_period_end : Math.max(m, it.current_period_end) : m,
+        null
+      );
+      if (sub.status === "trialing" && sub.trial_end) {
+        nextBillingDate = new Date(sub.trial_end * 1e3).toISOString();
+      } else if (_cpe) {
+        nextBillingDate = new Date(_cpe * 1e3).toISOString();
+      }
+    } catch {
+      nextBillingDate = billingCtx.trialEndsAt ?? null;
+    }
+  } else if (billingCtx.subscriptionStatus === "trialing" && billingCtx.trialEndsAt) {
+    nextBillingDate = billingCtx.trialEndsAt;
+  }
+  const client = await pool.connect();
+  try {
+    const safeCount = async (query, params) => {
+      try {
+        const r = await client.query(query, params);
+        return Number(r.rows[0]?.count ?? 0);
+      } catch {
+        return 0;
+      }
+    };
+    const [auditsUsed, monitorsUsed, reportsUsed, seatsUsed, exportsUsed, pdfsUsed] = await Promise.all([
+      safeCount(`SELECT COUNT(*) FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId3]),
+      safeCount(`SELECT COUNT(*) FROM monitors WHERE org_id=$1`, [orgId3]),
+      safeCount(`SELECT COUNT(*) FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId3]),
+      safeCount(`SELECT COUNT(*) FROM team_members WHERE org_id=$1`, [orgId3]),
+      safeCount(`SELECT COUNT(*) FROM report_exports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId3]),
+      safeCount(`SELECT COUNT(*) FROM report_exports WHERE org_id=$1 AND created_at > date_trunc('month', now()) AND (format='pdf' OR format IS NULL)`, [orgId3])
+    ]);
+    return {
+      plan: plan4,
+      billing_period: (/* @__PURE__ */ new Date()).toISOString().slice(0, 7),
+      usage: {
+        audits: { used: auditsUsed, limit: limits.audits + extraAudits, pct: Math.round(auditsUsed / Math.max(limits.audits + extraAudits, 1) * 100) },
+        monitors: { used: monitorsUsed, limit: limits.monitors + extraMonitors, pct: Math.round(monitorsUsed / Math.max(limits.monitors + extraMonitors, 1) * 100) },
+        reports: { used: reportsUsed, limit: limits.reports + extraReports, pct: Math.round(reportsUsed / Math.max(limits.reports + extraReports, 1) * 100) },
+        exports: { used: exportsUsed, limit: limits.exports + extraExports, pct: Math.round(exportsUsed / Math.max((limits.exports ?? limits.reports) + extraExports, 1) * 100) },
+        pdfs: { used: pdfsUsed, limit: limits.reports + extraReports, pct: Math.round(pdfsUsed / Math.max(limits.reports + extraReports, 1) * 100) },
+        seats: { used: seatsUsed, limit: limits.teamMembers + extraSeats, pct: Math.round(seatsUsed / Math.max(limits.teamMembers + extraSeats, 1) * 100) }
+      },
+      // Bug-4 fix: addons includes plan-included items flagged with includedInPlan:true
+      addons: addonsWithFlags,
+      // Legacy flat addons map for backward-compat consumers
+      addonsFlat: billingCtx.addons,
+      subscriptionStatus: billingCtx.subscriptionStatus ?? "inactive",
+      trialEndsAt: billingCtx.trialEndsAt ?? null,
+      // Bug-5 fix: nextBillingDate exposed here
+      nextBillingDate
+    };
+  } finally {
+    client.release();
+  }
+}
+async function checkQuota(resource, orgId3) {
+  const resolvedOrgId = orgId3 && orgId3 !== "default" ? orgId3 : null;
+  let plan4 = "standard";
+  let qtyExtras = {};
+  if (resolvedOrgId) {
+    try {
+      const settings = await loadOrgSettings(resolvedOrgId);
+      plan4 = (settings?.plan || "standard").toLowerCase();
+      const { pool: pgPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+      const addonsResult = await pgPool.query(
+        `SELECT addon_key, quantity FROM org_addons WHERE org_id = $1 AND active = true`,
+        [resolvedOrgId]
+      );
+      const addonMap = {};
+      for (const row of addonsResult.rows) {
+        addonMap[row.addon_key] = Math.max(1, Number(row.quantity ?? 1));
+      }
+      qtyExtras = computeQtyAddonExtras(addonMap);
+    } catch (err) {
+      logger.warn({ err, orgId: resolvedOrgId }, "[Billing] checkQuota: DB load failed \u2014 using standard limits");
+    }
+  }
+  const extraMonitors = qtyExtras["monitors"] ?? 0;
+  const extraAudits = qtyExtras["audits"] ?? 0;
+  const extraReports = qtyExtras["reports"] ?? 0;
+  const extraExports = qtyExtras["exports"] ?? 0;
+  const extraSeats = qtyExtras["teamMembers"] ?? 0;
+  const limits = PLAN_LIMITS[plan4] || PLAN_LIMITS.standard;
+  let usedCount = 0;
+  let limit2 = 0;
+  if (resolvedOrgId) {
+    try {
+      const { pool: pgPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+      const client = await pgPool.connect();
+      try {
+        switch (resource) {
+          case "audits": {
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
+            limit2 = limits.audits + extraAudits;
+            break;
+          }
+          case "monitors": {
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
+            limit2 = limits.monitors + extraMonitors;
+            break;
+          }
+          case "reports": {
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
+            limit2 = limits.reports + extraReports;
+            break;
+          }
+          case "seats": {
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM team_members WHERE org_id=$1`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
+            limit2 = limits.teamMembers + extraSeats;
+            break;
+          }
+          case "exports": {
+            limit2 = limits.exports + extraExports;
+            usedCount = 0;
+            break;
+          }
+        }
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      logger.warn({ err, orgId: resolvedOrgId, resource }, "[Billing] checkQuota: usage count failed \u2014 allowing");
+      return { allowed: true, used: 0, limit: limits[resource] || 0, plan: plan4 };
+    }
+  } else {
+    limit2 = limits[resource] || 0;
+    logger.warn({ resource }, "[Billing] checkQuota: unresolved orgId \u2014 returning standard limit, usage=0");
+  }
+  return {
+    allowed: usedCount < limit2,
+    used: usedCount,
+    limit: limit2,
+    plan: plan4
+  };
+}
+async function trackBillingEvent(type, data, orgId3 = "default") {
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `INSERT INTO billing_events (org_id, type, amount, currency, plan, metadata, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,now())`,
+      [orgId3, type, data.amount ?? 0, data.currency ?? "eur", String(data.plan ?? "unknown"), JSON.stringify(data)]
+    );
+  } catch (err) {
+    logger.warn({ err }, "[Billing] Failed to track billing event");
+  } finally {
+    client.release();
+  }
+}
+async function getMRRData(orgId3 = "default") {
+  const orgData = await loadOrgData(orgId3).catch(() => null);
+  const plan4 = (orgData?.plan || "standard").toLowerCase();
+  const currentMRR = PLAN_DEFINITIONS[plan4]?.priceEur ?? 0;
+  const client = await pool.connect();
+  try {
+    const rows = await client.query(`
+      SELECT
+        date_trunc('month', created_at) AS month,
+        SUM(CASE WHEN type IN ('subscription_created','subscription_renewed') THEN amount ELSE 0 END) AS mrr,
+        SUM(CASE WHEN type = 'subscription_canceled' THEN amount ELSE 0 END) AS churn,
+        COUNT(CASE WHEN type = 'subscription_created' THEN 1 END) AS new_subs,
+        COUNT(CASE WHEN type = 'subscription_canceled' THEN 1 END) AS cancels
+      FROM billing_events
+      WHERE org_id=$1 AND created_at > now() - INTERVAL '12 months'
+      GROUP BY 1 ORDER BY 1 DESC LIMIT 12
+    `, [orgId3]);
+    return {
+      currentMRR,
+      arr: currentMRR * 12,
+      history: rows.rows.map((r) => ({
+        month: String(r.month).slice(0, 7),
+        mrr: Number(r.mrr) || currentMRR,
+        churn: Number(r.churn) || 0,
+        newSubs: Number(r.new_subs) || 0,
+        cancels: Number(r.cancels) || 0
+      }))
+    };
+  } catch {
+    return { currentMRR, arr: currentMRR * 12, history: [] };
+  } finally {
+    client.release();
+  }
+}
+async function getSubscriptionAnalytics(orgId3 = "default") {
+  const [mrr, usage, orgData] = await Promise.all([
+    getMRRData(orgId3),
+    getUsageSummary(orgId3),
+    loadOrgData(orgId3).catch(() => null)
+  ]);
+  const trialDaysLeft = orgData?.trialEndsAt ? Math.max(0, Math.ceil((new Date(orgData.trialEndsAt).getTime() - Date.now()) / 864e5)) : null;
+  return {
+    ...mrr,
+    usage,
+    plan: orgData?.plan ?? "standard",
+    subscriptionStatus: orgData?.subscriptionStatus ?? "inactive",
+    trialDaysLeft,
+    stripeCustomerId: orgData?.stripeCustomerId ?? null,
+    addons: orgData?.addons ?? {}
+  };
+}
+async function startTrial(plan4 = "pro", days = 14, orgId3 = "default") {
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      throw new Error("STRIPE_LIVE_API_KEY is required in production \u2014 cannot activate trial");
+    }
+    const trialEnd = new Date(Date.now() + days * 864e5).toISOString();
+    store.broadcastPlanUpdate(plan4, orgId3);
+    logger.info({ plan: plan4, days }, "[Billing] Trial activated (dev mode \u2014 no Stripe key)");
+    return { ok: true, trialEndsAt: trialEnd, plan: plan4, mock: true };
+  }
+  try {
+    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
+    const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const planPriceId = PLAN_PRICE_IDS[plan4.toLowerCase()];
+    if (!planPriceId) {
+      const trialEnd2 = new Date(Date.now() + days * 864e5).toISOString();
+      store.broadcastPlanUpdate(plan4, orgId3);
+      return { ok: true, trialEndsAt: trialEnd2, plan: plan4, noPrice: true };
+    }
+    const { ensureStripeCustomer: ensureStripeCustomer2 } = await Promise.resolve().then(() => (init_ensure_stripe_customer(), ensure_stripe_customer_exports));
+    const customerId = await ensureStripeCustomer2(orgId3, null, stripeKey);
+    const [existingActive, existingTrialing] = await Promise.all([
+      stripe.subscriptions.list({ customer: customerId, status: "active", limit: 1 }),
+      stripe.subscriptions.list({ customer: customerId, status: "trialing", limit: 1 })
+    ]);
+    const existingSub = existingActive.data[0] ?? existingTrialing.data[0];
+    if (existingSub) {
+      const trialEnd2 = existingSub.trial_end ? new Date(existingSub.trial_end * 1e3).toISOString() : new Date(Date.now() + days * 864e5).toISOString();
+      logger.info({ subId: existingSub.id, orgId: orgId3 }, "[Billing] startTrial \u2014 existing subscription found, returning idempotent result");
+      return { ok: true, trialEndsAt: trialEnd2, subscriptionId: existingSub.id, plan: plan4, idempotent: true };
+    }
+    const sub = await stripe.subscriptions.create({
+      customer: customerId,
+      items: [{ price: planPriceId }],
+      trial_period_days: days
+    });
+    const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1e3).toISOString() : new Date(Date.now() + days * 864e5).toISOString();
+    store.broadcastPlanUpdate(plan4, orgId3);
+    logger.info({ plan: plan4, days, subId: sub.id }, "[Billing] Stripe trial started");
+    return { ok: true, trialEndsAt: trialEnd, subscriptionId: sub.id, plan: plan4 };
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to start trial");
+    throw err;
+  }
+}
+async function validateCoupon(code) {
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      return { valid: false, error: "Payment service not configured" };
+    }
+    if (code === "FLOWPOINT20") return { valid: true, discount: 20, type: "percent", name: "Demo coupon (dev)", mock: true };
+    return { valid: false, error: "Code invalide (mode dev)" };
+  }
+  try {
+    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
+    const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const coupon = await stripe.coupons.retrieve(code);
+    if (!coupon.valid) return { valid: false, error: "Code expir\xE9 ou invalide" };
+    return {
+      valid: true,
+      id: coupon.id,
+      name: coupon.name || code,
+      type: coupon.percent_off ? "percent" : "amount",
+      discount: coupon.percent_off || (coupon.amount_off ? coupon.amount_off / 100 : 0),
+      duration: coupon.duration
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("No such coupon")) return { valid: false, error: "Code coupon introuvable" };
+    throw err;
+  }
+}
+async function getInvoices(limit2 = 20, stripeCustomerId) {
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const customerId = stripeCustomerId ?? null;
+  if (!stripeKey || !customerId) {
+    return { invoices: [], mock: !stripeKey };
+  }
+  try {
+    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
+    const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const invoices = await stripe.invoices.list({ customer: customerId, limit: limit2 });
+    return {
+      invoices: invoices.data.map((inv) => ({
+        id: inv.id,
+        number: inv.number,
+        amount: (inv.amount_paid || inv.amount_due) / 100,
+        currency: inv.currency.toUpperCase(),
+        status: inv.status,
+        date: new Date((inv.created || 0) * 1e3).toISOString(),
+        pdfUrl: inv.invoice_pdf,
+        hostedUrl: inv.hosted_invoice_url,
+        period: {
+          start: inv.period_start ? new Date(inv.period_start * 1e3).toISOString() : null,
+          end: inv.period_end ? new Date(inv.period_end * 1e3).toISOString() : null
+        }
+      }))
+    };
+  } catch (err) {
+    logger.warn({ err }, "[Billing] Failed to fetch invoices");
+    return { invoices: [], error: "Failed to fetch invoices" };
+  }
+}
+var _PLAN_PRESENTATION, PLAN_CONFIG, _ADDON_PRESENTATION, ADDON_CATALOG;
+var init_billing_service = __esm({
+  "src/services/billing-service.ts"() {
+    "use strict";
+    init_src();
+    init_store();
+    init_logger();
+    init_org_settings();
+    init_org_data();
+    init_billing_context();
+    init_plans();
+    _PLAN_PRESENTATION = {
+      standard: { color: "#64748b", popular: false, annualPrice: 24, addons: [], highlighted: [] },
+      pro: { color: "#2563eb", popular: true, annualPrice: 65, addons: ["whiteLabel", "extraSeats", "monitorsPack50"], highlighted: ["IA Insights Pro", "50 monitors"] },
+      ultra: { color: "#7c3aed", popular: false, annualPrice: 120, addons: [], highlighted: ["1 000 audits/mois", "SLA 99.9%"] }
+    };
+    PLAN_CONFIG = Object.fromEntries(
+      Object.entries(PLAN_DEFINITIONS).map(([id, def]) => {
+        const pres = _PLAN_PRESENTATION[id] ?? { color: "#64748b", popular: false, annualPrice: Math.round(def.priceEur * 0.8), addons: [], highlighted: [] };
+        return [id, {
+          id: def.id,
+          name: def.name,
+          monthlyPrice: def.priceEur,
+          annualPrice: pres.annualPrice,
+          badge: def.badge,
+          tagline: def.tagline,
+          color: pres.color,
+          popular: pres.popular,
+          limits: def.limits,
+          aiCredits: def.aiCredits,
+          features: def.features,
+          locked: def.locked,
+          addons: pres.addons,
+          highlighted: pres.highlighted
+        }];
+      })
+    );
+    _ADDON_PRESENTATION = {
+      // ── Monitoring ─────────────────────────────────────────────────────────────
+      monitorsPack10: { icon: "\u{1F4E1}", unit: "+10 monitors" },
+      monitorsPack50: { icon: "\u{1F4E1}", unit: "+50 monitors" },
+      globalMonitoring: { icon: "\u{1F30D}", unit: "mondial" },
+      slaMonitoring: { icon: "\u{1F4CA}", unit: "SLA avanc\xE9" },
+      // ── SEO ────────────────────────────────────────────────────────────────────
+      advancedSeoLab: { icon: "\u{1F52C}", unit: "lab SEO complet" },
+      keywordDomination: { icon: "\u{1F3AF}", unit: "domination mots-cl\xE9s" },
+      backlinkIntelligence: { icon: "\u{1F517}", unit: "backlinks IA" },
+      aiContentStrategist: { icon: "\u270D\uFE0F", unit: "IA contenu" },
+      // ── Local SEO ──────────────────────────────────────────────────────────────
+      gbpSlots10: { icon: "\u{1F4CD}", unit: "+10 fiches GBP" },
+      aiGbpPosting: { icon: "\u{1F4F1}", unit: "publication IA GBP" },
+      reviewIntelligence: { icon: "\u2B50", unit: "IA avis clients" },
+      localDominationMaps: { icon: "\u{1F5FA}\uFE0F", unit: "cartes locales" },
+      // ── Conversion / IA ────────────────────────────────────────────────────────
+      aiCro: { icon: "\u{1F680}", unit: "CRO IA" },
+      behavioralAI: { icon: "\u{1F9E0}", unit: "comportemental IA" },
+      revenueLeak: { icon: "\u{1F4B0}", unit: "fuites revenus IA" },
+      abTestingAI: { icon: "\u{1F9EA}", unit: "A/B tests IA" },
+      // ── Reporting ──────────────────────────────────────────────────────────────
+      whiteLabel: { icon: "\u{1F3F7}\uFE0F", unit: "portail complet" },
+      agencyPacks: { icon: "\u{1F3E2}", unit: "packs agence" },
+      aiExecutiveReport: { icon: "\u{1F4CB}", unit: "rapport ex\xE9cutif IA" },
+      aiForecasting: { icon: "\u{1F4C8}", unit: "pr\xE9visions IA" },
+      // ── Intelligence ───────────────────────────────────────────────────────────
+      marketIntelligence: { icon: "\u{1F310}", unit: "intelligence march\xE9" },
+      aiWorkflows: { icon: "\u2699\uFE0F", unit: "workflows IA" },
+      // ── Équipe ─────────────────────────────────────────────────────────────────
+      extraSeats: { icon: "\u{1F465}", unit: "+5 si\xE8ges" },
+      enterprisePermissions: { icon: "\u{1F510}", unit: "permissions avanc\xE9es" },
+      // ── Rétention de données ───────────────────────────────────────────────────
+      retention90d: { icon: "\u{1F5C4}\uFE0F", unit: "90 jours" },
+      retention365d: { icon: "\u{1F3DB}\uFE0F", unit: "365 jours" },
+      // ── Intégrations ───────────────────────────────────────────────────────────
+      advancedWebhooks: { icon: "\u{1F514}", unit: "webhooks avanc\xE9s" },
+      zapierIntegration: { icon: "\u26A1", unit: "Zapier + Make" },
+      crmIntegration: { icon: "\u{1F91D}", unit: "CRM int\xE9gr\xE9" },
+      // ── Enterprise ─────────────────────────────────────────────────────────────
+      customDomain: { icon: "\u{1F310}", unit: "domaine personnalis\xE9" },
+      ssoEnterprise: { icon: "\u{1F511}", unit: "SSO SAML/OIDC" },
+      aiWorkspaceLaunch: { icon: "\u{1F3AF}", unit: "lancement IA" },
+      // ── Packs audits / exports ─────────────────────────────────────────────────
+      auditsPack200: { icon: "\u{1F50D}", unit: "+200 audits" },
+      auditsPack1000: { icon: "\u{1F50D}", unit: "+1 000 audits" },
+      pdfPack200: { icon: "\u{1F4C4}", unit: "+200 PDF" },
+      exportsPack1000: { icon: "\u{1F4E4}", unit: "+1 000 exports" },
+      // ── Crédits IA ─────────────────────────────────────────────────────────────
+      aiCreditsPack50k: { icon: "\u{1F916}", unit: "+50 000 cr\xE9dits" },
+      aiCreditsPack200k: { icon: "\u{1F916}", unit: "+200 000 cr\xE9dits" },
+      aiCreditsPack500k: { icon: "\u{1F916}", unit: "+500 000 cr\xE9dits" }
+    };
+    ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, pres]) => {
+      if (REMOVED_ADDONS.has(id)) return [];
+      const def = ADDON_DEFINITIONS[id];
+      if (!def) {
+        logger.error({ addonKey: id }, "[Billing] ADDON_CATALOG references an unknown add-on key \u2014 omitted");
+        return [];
+      }
+      return [{
+        id,
+        name: def.name,
+        icon: pres.icon,
+        price: def.priceEur,
+        unit: pres.unit,
+        desc: def.description,
+        oneTime: def.oneTime,
+        quantity: def.quantity,
+        priceId: ADDON_PRICE_IDS[id] ?? "",
+        // Public billing has no organisation entitlement context. Its status is
+        // therefore the canonical product lifecycle; GET /api/addons refines this
+        // to "included" or "active" for an authenticated organisation.
+        availability: getAddonAvailability(id),
+        status: getAddonAvailability(id)
+      }];
+    });
+  }
+});
+
+// src/services/sms-service.ts
+var sms_service_exports = {};
+__export(sms_service_exports, {
+  sendSms: () => sendSms,
+  twilioConfigured: () => twilioConfigured
+});
+function twilioConfigured() {
+  return Boolean(
+    process.env["TWILIO_ACCOUNT_SID"] && process.env["TWILIO_AUTH_TOKEN"] && process.env["TWILIO_FROM_NUMBER"]
+  );
+}
+async function sendSms(to, body) {
+  const sid = process.env["TWILIO_ACCOUNT_SID"];
+  const authToken = process.env["TWILIO_AUTH_TOKEN"];
+  const from = process.env["TWILIO_FROM_NUMBER"];
+  if (!sid || !authToken || !from) {
+    return { ok: false, error: "not_configured" };
+  }
+  try {
+    const params = new URLSearchParams({ To: to, From: from, Body: body });
+    const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${Buffer.from(`${sid}:${authToken}`).toString("base64")}`
+      },
+      body: params.toString()
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      logger.warn({ status: resp.status, data }, "[sms-service] Twilio send failed");
+      return { ok: false, error: data.message ?? `Twilio error ${resp.status}` };
+    }
+    return { ok: true, sid: data.sid };
+  } catch (err) {
+    logger.error({ err }, "[sms-service] Twilio request failed");
+    return { ok: false, error: "network_error" };
+  }
+}
+var init_sms_service = __esm({
+  "src/services/sms-service.ts"() {
+    "use strict";
+    init_logger();
   }
 });
 
@@ -100054,6 +100831,7 @@ var init_monitors = __esm({
     init_logger();
     init_store();
     init_qa_fixtures();
+    init_billing_service();
     router9 = (0, import_express9.Router)();
     monitorCreateRateLimit = createRateLimit("reportsPerHour");
     E164_RE = /^\+[1-9]\d{7,14}$/;
@@ -100186,9 +100964,24 @@ var init_monitors = __esm({
         return;
       }
       try {
-        const id = `m${Date.now()}`;
         const orgId3 = requireOrgId(req, res);
         if (!orgId3) return;
+        const quota = await checkQuota("monitors", orgId3);
+        if (!quota.allowed) {
+          logger.warn(
+            { orgId: orgId3, used: quota.used, limit: quota.limit, plan: quota.plan },
+            "[monitors] POST blocked \u2014 monitor quota reached"
+          );
+          res.status(429).json({
+            error: `Quota de monitors atteint (${quota.used}/${quota.limit} sur le plan ${quota.plan}). Activez le pack +50 monitors ou passez \xE0 un plan sup\xE9rieur.`,
+            code: "MONITOR_QUOTA_EXCEEDED",
+            used: quota.used,
+            limit: quota.limit,
+            plan: quota.plan
+          });
+          return;
+        }
+        const id = `m${Date.now()}`;
         const dup = await req.orgDb(
           `SELECT id FROM monitors WHERE org_id = $1 AND url = $2 LIMIT 1`,
           [orgId3, url]
@@ -105638,6 +106431,30 @@ async function resolveOrCreateLegacyOrg({
         resolvedUserUuid = freshUuid;
       }
     }
+    const guestMember = await client.query(
+      `SELECT org_id, COALESCE(role, 'member') AS role
+       FROM team_members
+       WHERE (LOWER(email) = LOWER($1) OR (user_id IS NOT NULL AND user_id = $2))
+         AND status = 'active'
+       ORDER BY created_at ASC
+       LIMIT 1`,
+      [email, resolvedUserUuid ?? ""]
+    );
+    if (guestMember.rows.length > 0) {
+      const guestOrgId = guestMember.rows[0].org_id;
+      const guestRole = guestMember.rows[0].role;
+      try {
+        await client.query(
+          `INSERT INTO organization_members (id, organization_id, user_id, role, status, joined_at)
+           VALUES (gen_random_uuid(), $1, $2::uuid, $3, 'active', NOW())
+           ON CONFLICT (organization_id, user_id) DO NOTHING`,
+          [guestOrgId, resolvedUserUuid, guestRole]
+        );
+      } catch {
+      }
+      await client.query("COMMIT");
+      return { orgId: guestOrgId, userUuid: resolvedUserUuid };
+    }
     const existing = await client.query(
       `SELECT id FROM organizations
         WHERE owner_email = $1 AND status != 'deleted'
@@ -106767,32 +107584,71 @@ async function handleLoginVerify(tokenRaw, req, res) {
         return;
       }
       if (memberRow.rows.length === 0) {
-        let orgFallback;
+        let s6GuestOrgId = null;
+        let s6GuestRole = "member";
         try {
-          orgFallback = await loadOrgSettings(email).catch(() => null);
-        } catch (osErr) {
-          logger.error({ err: osErr instanceof Error ? osErr.message : String(osErr) }, "login-verify: S6-fallback loadOrgSettings error");
-          throw osErr;
+          const tmRow = await pool.query(
+            `SELECT org_id, COALESCE(role, 'member') AS role
+             FROM team_members
+             WHERE (LOWER(email) = LOWER($1) OR user_id = $2)
+               AND status = 'active'
+             ORDER BY created_at ASC
+             LIMIT 1`,
+            [email, user.id]
+          );
+          if (tmRow.rows.length > 0) {
+            s6GuestOrgId = tmRow.rows[0].org_id;
+            s6GuestRole = tmRow.rows[0].role || "member";
+            logger.info(
+              { email, userId: user.id, guestOrgId: s6GuestOrgId, role: s6GuestRole, source: "team_members" },
+              "[AUTH CONTEXT DEBUG] S6: guest resolved via team_members \u2014 skipping org creation"
+            );
+          }
+        } catch (_tmErr) {
+          logger.warn({ err: String(_tmErr) }, "login-verify: S6-team-members lookup failed (non-fatal)");
         }
-        if (!orgFallback) {
-          res.status(403).json({
-            error: "Votre compte n'est associ\xE9 \xE0 aucune organisation active. Si vous avez re\xE7u une invitation, veuillez cliquer sur le lien d'invitation pour rejoindre l'\xE9quipe.",
-            code: "NO_ACTIVE_ORG"
+        if (s6GuestOrgId) {
+          try {
+            await pool.query(
+              `INSERT INTO organization_members (id, organization_id, user_id, role, status, joined_at)
+               VALUES (gen_random_uuid(), $1, $2::uuid, $3, 'active', NOW())
+               ON CONFLICT (organization_id, user_id) DO NOTHING`,
+              [s6GuestOrgId, user.id, s6GuestRole]
+            );
+          } catch (_backfill) {
+            logger.warn({ err: String(_backfill) }, "login-verify: S6 org_members backfill failed (non-fatal)");
+          }
+          sessionOrgId = s6GuestOrgId;
+          sessionRole = s6GuestRole;
+          sessionUserUuid = user.id;
+        } else {
+          let orgFallback;
+          try {
+            orgFallback = await loadOrgSettings(email).catch(() => null);
+          } catch (osErr) {
+            logger.error({ err: osErr instanceof Error ? osErr.message : String(osErr) }, "login-verify: S6-fallback loadOrgSettings error");
+            throw osErr;
+          }
+          if (!orgFallback) {
+            res.status(403).json({
+              error: "Votre compte n'est associ\xE9 \xE0 aucune organisation active. Si vous avez re\xE7u une invitation, veuillez cliquer sur le lien d'invitation pour rejoindre l'\xE9quipe.",
+              code: "NO_ACTIVE_ORG"
+            });
+            return;
+          }
+          if (orgFallback.subscriptionStatus === "pending_billing") {
+            res.status(402).json({ error: "Votre compte n'est pas encore activ\xE9. Veuillez compl\xE9ter votre inscription.", redirectTo: "/signin.html" });
+            return;
+          }
+          const s6Result = await resolveOrCreateLegacyOrg({
+            email,
+            userUuid: user.id,
+            orgSettings: orgFallback
           });
-          return;
+          sessionOrgId = s6Result.orgId;
+          sessionRole = "owner";
+          sessionUserUuid = s6Result.userUuid;
         }
-        if (orgFallback.subscriptionStatus === "pending_billing") {
-          res.status(402).json({ error: "Votre compte n'est pas encore activ\xE9. Veuillez compl\xE9ter votre inscription.", redirectTo: "/signin.html" });
-          return;
-        }
-        const s6Result = await resolveOrCreateLegacyOrg({
-          email,
-          userUuid: user.id,
-          orgSettings: orgFallback
-        });
-        sessionOrgId = s6Result.orgId;
-        sessionRole = "owner";
-        sessionUserUuid = s6Result.userUuid;
       } else {
         const member = memberRow.rows[0];
         if (!["owner", "admin", "member", "viewer"].includes(member.role)) {
@@ -106826,6 +107682,13 @@ async function handleLoginVerify(tokenRaw, req, res) {
     logger.warn({ err: err instanceof Error ? err.message : String(err) }, "login-verify: invalidateAllSessions failed (non-fatal)");
   });
   logger.info({ step: "ML-6-ok", email, orgIdPrefix: sessionOrgId?.slice(0, 8) }, "[ML] step-6-ok: token consumed \u2014 proceeding to session creation");
+  logger.info({
+    userId: sessionUserUuid?.slice(0, 8) ?? "(none)",
+    email,
+    orgId: sessionOrgId?.slice(0, 8),
+    role: sessionRole,
+    source: "login-verify"
+  }, "[AUTH CONTEXT DEBUG]");
   let sessionToken;
   try {
     sessionToken = await createSession({
@@ -107618,11 +108481,17 @@ router6.get("/me", async (req, res) => {
   recordActivityDay(orgDb(req), orgId3, req.orgContext?.userId ?? void 0).catch(() => {
   });
   let settingsTimezone = null;
+  let settingsLanguage = null;
   try {
     const pRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId3]);
     const prefs = pRow.rows[0]?.settings;
-    if (prefs && typeof prefs.timezone === "string" && prefs.timezone) {
-      settingsTimezone = prefs.timezone;
+    if (prefs) {
+      if (typeof prefs.timezone === "string" && prefs.timezone) {
+        settingsTimezone = prefs.timezone;
+      }
+      if (typeof prefs.language === "string" && prefs.language) {
+        settingsLanguage = prefs.language;
+      }
     }
   } catch {
   }
@@ -107683,6 +108552,13 @@ router6.get("/me", async (req, res) => {
         }
       }
       const _canStartTrial = !rawTrialConsumedAt && !rawStripeSubId;
+      logger.info({
+        user: (req.orgContext?.email ?? "").slice(0, 30),
+        org: (dbData?.orgName ?? "").slice(0, 30),
+        plan: normPlan(rawPlan),
+        role: req.orgContext?.role ?? "member",
+        orgId: orgId3?.slice(0, 8)
+      }, "[ME CONTEXT DEBUG]");
       res.json({
         firstName,
         lastName: dbData?.lastName ?? "",
@@ -107740,7 +108616,7 @@ router6.get("/me", async (req, res) => {
         publicApiKey: _publicApiKey,
         createdAt: dbData?.createdAt ?? (/* @__PURE__ */ new Date()).toISOString(),
         timezone: settingsTimezone ?? dbData?.timezone ?? null,
-        language: dbData?.language ?? null,
+        language: dbData?.language ?? settingsLanguage ?? null,
         currency: dbData?.currency ?? null,
         dateFormat: dbData?.dateFormat ?? null,
         timeFormat: dbData?.timeFormat ?? null,
@@ -107905,7 +108781,7 @@ router6.patch("/me", async (req, res) => {
     publicApiKey: _publicApiKey,
     createdAt: current?.createdAt ?? (/* @__PURE__ */ new Date()).toISOString(),
     timezone: resolvedTimezone,
-    language: current?.language ?? null,
+    language: current?.language ?? (typeof _patchStoredKey?.language === "string" ? _patchStoredKey.language : null) ?? null,
     currency: current?.currency ?? null,
     dateFormat: current?.dateFormat ?? null,
     timeFormat: current?.timeFormat ?? null,
@@ -107934,8 +108810,8 @@ router6.put("/me/addons", ownerOnly, async (req, res) => {
   }
   const orgData = await loadOrgData(orgId3).catch(() => null);
   const currentAddons = { ...orgData?.addons ?? {} };
+  delete currentAddons.prioritySupport;
   if (typeof body.whiteLabel === "boolean") currentAddons.whiteLabel = body.whiteLabel;
-  if (typeof body.prioritySupport === "boolean") currentAddons.prioritySupport = body.prioritySupport;
   if (typeof body.customDomain === "boolean") currentAddons.customDomain = body.customDomain;
   if (typeof body.extraSeats === "number" && body.extraSeats >= 0) currentAddons.extraSeats = Math.floor(body.extraSeats);
   if (typeof body.monitorsPack10 === "number" && body.monitorsPack10 >= 0) currentAddons.monitorsPack10 = Math.floor(body.monitorsPack10);
@@ -108048,7 +108924,7 @@ router6.get("/me/streak", async (req, res) => {
   const orgId3 = requireOrgId(req, res);
   if (!orgId3) return;
   try {
-    await recordActivityDay(orgDb(req), orgId3);
+    await recordActivityDay(orgDb(req), orgId3, req.orgContext?.userId);
     let tz = "Europe/Brussels";
     let storedStreak = 0;
     try {
@@ -112117,70 +112993,65 @@ router12.get("/team/contributions", async (req, res) => {
     return;
   }
   try {
-    const activityCountSql = (types3) => `
-      SELECT
-        COALESCE(NULLIF(al.user_id, ''), al.org_id)   AS user_id,
-        LOWER(COALESCE(u.email, ''))                  AS email,
-        COUNT(*)::int                                 AS cnt
-      FROM activity_logs al
-      LEFT JOIN users u ON u.id::text = al.user_id OR LOWER(u.email) = LOWER(al.user_id)
-      WHERE al.org_id = $1
-        AND al.type = ANY($2::text[])
-      GROUP BY 1, 2`;
-    const unattributedSql = (table, extraWhere = "") => `
-      SELECT
-        $1::text AS user_id,
-        ''       AS email,
-        COUNT(*)::int AS cnt
-      FROM ${table}
-      WHERE org_id = $1 ${extraWhere}`;
-    const [auditsRes, missionsRes, reportsRes, monitorsRes] = await Promise.allSettled([
-      pool.query(activityCountSql(["audit"]), [orgId3, ["audit"]]).catch(() => pool.query(unattributedSql("audits"), [orgId3])),
-      pool.query(
-        // missions are logged with type='report' + actionKey LIKE 'activity.mission.%'
-        // fall back to standard activityCountSql if no rows found
-        `SELECT
-          COALESCE(NULLIF(al.user_id, ''), al.org_id) AS user_id,
-          LOWER(COALESCE(u.email, ''))                AS email,
-          COUNT(*)::int                               AS cnt
+    const countsRes = await pool.query(
+      `WITH canonical_activity AS (
+         SELECT al.*, u.id::text AS canonical_user_id
          FROM activity_logs al
-         LEFT JOIN users u ON u.id::text = al.user_id OR LOWER(u.email) = LOWER(al.user_id)
+         JOIN users u
+           ON u.id::text = al.user_id
+           OR LOWER(u.email) = LOWER(al.user_id)
          WHERE al.org_id = $1
-           AND (al.action_key LIKE 'activity.mission.%' OR al.type = 'mission')
-         GROUP BY 1, 2`,
-        [orgId3]
-      ).catch(() => pool.query(unattributedSql("missions"), [orgId3])),
-      pool.query(activityCountSql(["report"]), [orgId3, ["report"]]).catch(() => pool.query(unattributedSql("reports"), [orgId3])),
-      pool.query(activityCountSql(["monitor"]), [orgId3, ["monitor"]]).catch(() => pool.query(unattributedSql("monitors"), [orgId3]))
-    ]);
-    const anyFulfilled = auditsRes.status === "fulfilled" || missionsRes.status === "fulfilled" || reportsRes.status === "fulfilled" || monitorsRes.status === "fulfilled";
-    if (!anyFulfilled) {
-      logger.error(
-        { orgId: orgId3.slice(0, 20) },
-        "[team/contributions] all count queries failed"
-      );
-      res.status(503).json({ ok: false, error: "contributions_unavailable", retryable: true });
-      return;
-    }
+           AND (
+             EXISTS (
+               SELECT 1 FROM organization_members om
+               WHERE om.organization_id::text = $1
+                 AND om.user_id = u.id
+                 AND om.status = 'active'
+             )
+             OR EXISTS (
+               SELECT 1 FROM organizations o
+               WHERE o.id::text = $1
+                 AND (LOWER(o.owner_email) = LOWER(u.email)
+                      OR o.owner_user_id::text = u.id::text)
+             )
+           )
+       )
+       SELECT canonical_user_id AS user_id,
+              COUNT(*) FILTER (
+                WHERE type = 'audit' AND target_type = 'audit'
+              )::int AS audits,
+              COUNT(*) FILTER (
+                WHERE target_type = 'mission'
+                   OR action_key LIKE 'activity.mission.%'
+              )::int AS missions,
+              COUNT(*) FILTER (
+                WHERE type = 'report' AND target_type = 'report'
+              )::int AS reports,
+              COUNT(*) FILTER (
+                WHERE type = 'monitor' AND target_type = 'monitor'
+              )::int AS monitors
+       FROM canonical_activity
+       GROUP BY canonical_user_id`,
+      [orgId3]
+    );
     const byUser = {};
-    const get = (id) => {
-      if (!byUser[id]) byUser[id] = { audits: 0, missions: 0, reports: 0, monitors: 0 };
-      return byUser[id];
-    };
-    const applyCount = (settled, field) => {
-      if (settled.status !== "fulfilled") return;
-      settled.value.rows.forEach((r) => {
-        const cnt = Number(r["cnt"] ?? 0);
-        const uid3 = r["user_id"] ? String(r["user_id"]) : "";
-        const email = r["email"] ? String(r["email"]) : "";
-        if (uid3) get(uid3)[field] = cnt;
-        if (email && email !== uid3) get(email)[field] = cnt;
-      });
-    };
-    applyCount(auditsRes, "audits");
-    applyCount(missionsRes, "missions");
-    applyCount(reportsRes, "reports");
-    applyCount(monitorsRes, "monitors");
+    for (const row of countsRes.rows) {
+      if (!row.user_id) continue;
+      byUser[row.user_id] = {
+        audits: Number(row.audits ?? 0),
+        missions: Number(row.missions ?? 0),
+        reports: Number(row.reports ?? 0),
+        monitors: Number(row.monitors ?? 0)
+      };
+    }
+    try {
+      const memberSnap = Object.entries(byUser).map(([k, v]) => ({
+        key: k.length > 36 ? k.slice(0, 8) + "\u2026" : k,
+        ...v
+      }));
+      logger.info({ orgId: orgId3.slice(0, 8), members: memberSnap }, "[team/contributions] resolved");
+    } catch (_) {
+    }
     res.json({ ok: true, contributions: byUser });
   } catch (err) {
     logger.error({ err }, "[team/contributions] failed");
@@ -112203,7 +113074,7 @@ router12.get("/team/streaks", async (req, res) => {
         return "Europe/Brussels";
       }
     })();
-    const memberRes = await pool.query(
+    let memberRes = await pool.query(
       `SELECT DISTINCT om.user_id::text AS user_id,
               COALESCE(u.email,'') AS email,
               COALESCE(u.first_name||' '||u.last_name, u.first_name, u.email, om.user_id::text) AS name,
@@ -112213,19 +113084,74 @@ router12.get("/team/streaks", async (req, res) => {
        WHERE om.organization_id::text = $1 AND om.status = 'active'`,
       [orgId3]
     );
+    if (memberRes.rows.length === 0) {
+      try {
+        memberRes = await pool.query(
+          `SELECT DISTINCT tm.user_id::text AS user_id,
+                  COALESCE(u.email,'') AS email,
+                  COALESCE(u.first_name||' '||u.last_name, u.first_name, u.email, tm.user_id::text) AS name,
+                  COALESCE(tm.role,'member') AS role
+           FROM team_members tm
+           JOIN users u ON u.id::text = tm.user_id::text
+           WHERE tm.org_id = $1 AND tm.status = 'active'`,
+          [orgId3]
+        );
+      } catch (_) {
+      }
+    }
+    let ownerUserId = "";
+    try {
+      const ownerQ = await pool.query(
+        `SELECT
+           COALESCE(
+             (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
+              (SELECT u.id::text FROM users u WHERE u.id::text = o.owner_user_id::text LIMIT 1)
+           ) AS user_id,
+           COALESCE(LOWER(o.owner_email), '') AS email,
+           COALESCE(
+             (SELECT u.first_name||' '||u.last_name FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
+             (SELECT u.first_name||' '||u.last_name FROM users u WHERE u.id::text = o.owner_user_id::text LIMIT 1),
+             o.owner_email, o.owner_user_id::text, 'Owner'
+           ) AS name
+         FROM organizations o
+         WHERE o.id::text = $1 LIMIT 1`,
+        [orgId3]
+      );
+      const own = ownerQ.rows[0];
+      if (own?.user_id) {
+        ownerUserId = String(own.user_id);
+        const existingOwner = memberRes.rows.find((r) => r.user_id === own.user_id);
+        if (existingOwner) {
+          existingOwner.role = "owner";
+          if (!existingOwner.email && own.email) existingOwner.email = own.email;
+        } else {
+          memberRes.rows.unshift({ user_id: own.user_id, email: own.email || "", name: (own.name || "").trim() || "Owner", role: "owner" });
+        }
+      }
+    } catch (_) {
+    }
     const streaks = [];
     for (const member of memberRes.rows) {
       const uid3 = member.user_id;
       const base = { userId: uid3, email: member.email, name: member.name.trim(), role: member.role };
       try {
+        const isCurrentOwner = uid3 === ownerUserId;
+        const activityTable = isCurrentOwner ? "user_activity_days" : "member_activity_days";
+        const identityClause = isCurrentOwner ? "AND $2::text = $2::text" : "AND user_id=$2";
         const actRes = await pool.query(
-          `SELECT day::text AS d FROM member_activity_days
-           WHERE org_id=$1 AND user_id=$2
-             AND day >= (NOW() AT TIME ZONE $3)::date - INTERVAL '365 days'
+          `SELECT day::text AS d FROM ${activityTable}
+           WHERE org_id=$1
+              ${identityClause}
+              AND day >= (NOW() AT TIME ZONE $3)::date - INTERVAL '365 days'
            ORDER BY d DESC`,
           [orgId3, uid3, tz]
         );
+        logger.info(
+          { userId: uid3.slice(0, 8), email: member.email, activityRowsFound: actRes.rows.length },
+          "[STREAK DEBUG]"
+        );
         if (actRes.rows.length === 0) {
+          logger.info({ userId: uid3.slice(0, 8), email: member.email, calculatedCurrentStreak: 0, bestStreak: 0 }, "[STREAK DEBUG]");
           streaks.push({ ...base, current: 0, best: 0 });
           continue;
         }
@@ -112254,6 +113180,10 @@ router12.get("/team/streaks", async (req, res) => {
           if (run3 > best) best = run3;
         }
         streaks.push({ ...base, current, best: Math.max(best, current) });
+        logger.info(
+          { member: base.name.slice(0, 20), userId: uid3.slice(0, 8), email: base.email.slice(0, 20), streakDays: current, best: Math.max(best, current) },
+          "[TEAM PERFORMANCE DEBUG]"
+        );
       } catch (memberErr) {
         logger.warn({ err: memberErr, userId: uid3.slice(0, 8) }, "[team/streaks] per-member streak query failed");
         streaks.push({ ...base, current: 0, best: 0, error: true });
@@ -112274,6 +113204,7 @@ init_drizzle_orm();
 init_store();
 init_logger();
 init_rateLimiter();
+import { createHash as createHash7 } from "node:crypto";
 
 // src/services/init-ai-migration.ts
 init_src();
@@ -112376,6 +113307,18 @@ async function initAiMigration() {
         END IF;
       END $$
     `);
+    await run3("ai_rate_limit_windows table", `
+      CREATE TABLE IF NOT EXISTS public.ai_rate_limit_windows (
+        org_id        TEXT NOT NULL,
+        bucket        TEXT NOT NULL,
+        window_start  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        request_count INTEGER NOT NULL DEFAULT 0,
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (org_id, bucket)
+      )
+    `);
+    await run3("ai_rate_limit_windows RLS", `ALTER TABLE public.ai_rate_limit_windows ENABLE ROW LEVEL SECURITY`);
+    await tenantPolicies2("ai_rate_limit_windows");
     await run3("ai_usage_logs idempotency_key column", `
       ALTER TABLE public.ai_usage_logs ADD COLUMN IF NOT EXISTS idempotency_key TEXT
     `);
@@ -112652,7 +113595,8 @@ async function initAiMigration() {
       "public.ai_workspace_profiles",
       "public.ai_generated_missions",
       "public.ai_setup_logs",
-      "public.ai_recommendations"
+      "public.ai_recommendations",
+      "public.ai_rate_limit_windows"
     ];
     const checkRes = await client.query(
       `SELECT
@@ -115132,7 +116076,8 @@ async function callAIWithFallback(args) {
   let provider = args.provider ?? "openai";
   let model = args.model ?? "gpt-5-mini";
   let maxTokens = args.maxTokens ?? 1400;
-  if (args.orgId) {
+  if (args.provider && args.model) {
+  } else if (args.orgId) {
     try {
       const cfg = await selectOptimalModel(args.task, args.orgId);
       provider = cfg.provider;
@@ -115609,7 +116554,7 @@ ${topMissions.map(
         `- "plan d'action", "feuille de route" \u2192 appeler create_action_plan.`,
         `- "par o\xF9 commencer", "le plus urgent" \u2192 appeler prioritize_recommendations.`,
         `- "explique cette recommandation" \u2192 appeler explain_recommendation (chercher l'ID avec search_recommendations d'abord).`,
-        `- "transforme en missions", "missions de la strat\xE9gie" \u2192 appeler create_missions_from_strategy.`,
+        `- "transforme en missions", "missions de la strat\xE9gie", "sous forme de missions", "cr\xE9e des missions", "cr\xE9e X missions", "planifie X missions", "strat\xE9gie.*missions", "missions sur N jours", "missions \xE0 r\xE9aliser" \u2192 appeler create_missions_from_strategy.`,
         `- "ignore cette recommandation" \u2192 appeler dismiss_recommendation.`,
         `- "restaure cette recommandation" \u2192 appeler restore_recommendation.`,
         `- Les recommandations sont bas\xE9es UNIQUEMENT sur les donn\xE9es r\xE9elles FlowPoint. Aucune donn\xE9e invent\xE9e.`
@@ -115727,6 +116672,20 @@ R\xC9PONDRE D'ABORD \xC0 LA QUESTION (point le plus important)
 - Exemple : "Mon site est-il bon ?" \u2192 r\xE9ponse directe (1 phrase), explication courte (2 phrases), 3 actions max.
 - Exemple : "Quel est mon score SEO ?" \u2192 UNE phrase (la valeur + son contexte). PAS de liste d'actions, pas de "prochaines \xE9tapes".
 - Si l'utilisateur veut plus de d\xE9tails, il les demandera. Ne jamais anticiper avec une page de texte.
+
+OBLIGATION D'OUTIL \u2014 R\xC8GLE ABSOLUE (priorit\xE9 maximale)
+- Quand l'utilisateur demande une ACTION explicite (cr\xE9e, g\xE9n\xE8re, ajoute, planifie, supprime, modifie, lance, programme), tu DOIS appeler l'outil correspondant \u2014 JAMAIS simplement d\xE9crire ce que tu ferais.
+- INTERDIT : dire "Je vais cr\xE9er des missions", "La fen\xEAtre de confirmation va s'afficher", "Je proc\xE8de \xE0 la cr\xE9ation" sans avoir APPEL\xC9 l'outil create_mission / create_missions_from_strategy / ou autre outil d'action.
+- Si l'outil appelle une confirmation (preview / full), le serveur envoie automatiquement la carte de confirmation \u2014 TU N'AS PAS \xC0 L'ANNONCER DANS LE TEXTE.
+- Si tu ne peux pas appeler l'outil (permissions manquantes, donn\xE9es insuffisantes), DIS-LE clairement et demande ce qui manque \u2014 ne simule jamais l'action.
+- Cette r\xE8gle s'applique \xE0 tous les outils d'\xE9criture : create_mission, create_missions_from_strategy, create_audit, update_calendar_event, create_monitor, dismiss_recommendation, etc.
+
+INT\xC9GRIT\xC9 DES R\xC9SULTATS D'OUTILS \u2014 R\xC8GLE ABSOLUE (priorit\xE9 maximale)
+- Si un outil retourne une erreur ou ok:false, tu DOIS informer l'utilisateur de l'\xE9chec EXACTEMENT, sans minimiser. Tu ne peux JAMAIS dire "cr\xE9\xE9", "ajout\xE9", "termin\xE9", "planifi\xE9", "supprim\xE9" ou toute formulation de succ\xE8s si l'outil n'a pas retourn\xE9 ok:true avec un identifiant r\xE9el.
+- INTERDIT : "Mission cr\xE9\xE9e avec succ\xE8s !", "Ajout\xE9 au calendrier !", "C'est fait !" si le tool_result indique ok:false ou contient une erreur.
+- REQUIS sur \xE9chec : "Je n'ai pas pu cr\xE9er la mission. Voici l'erreur : [contenu exact de l'erreur]. Voulez-vous r\xE9essayer ?"
+- REQUIS sur succ\xE8s : confirmer UNIQUEMENT avec l'identifiant r\xE9el retourn\xE9 par le backend (id de la mission, id de l'\xE9v\xE9nement, etc.).
+- Cette r\xE8gle s'applique \xE0 TOUTES les actions sans exception : cr\xE9ation, modification, suppression, planification, envoi, activation.
 
 DISCIPLINE DE PORT\xC9E \u2014 CONTRAINTES EXPLICITES (r\xE8gle absolue)
 - ORDRE DE PRIORIT\xC9 en cas de conflit entre r\xE8gles de format : 1) contrainte explicite de l'utilisateur ("en 3 phrases", "1 priorit\xE9") ; 2) nature de la demande (valeur unique \u2192 une phrase ; question simple \u2192 2\u20133 phrases) ; 3) plafonds g\xE9n\xE9raux (250\u2013350 mots pour une question ouverte). La r\xE8gle la plus sp\xE9cifique gagne TOUJOURS.
@@ -115941,7 +116900,7 @@ router13.patch("/ai/config", async (req, res) => {
   }
 });
 var _CI_HYPO_RE = /\b(imagine[z]?|supposons|suppose[z]?|si on avait|si j'avais|what if|au cas où|en supposant|fictif|par hypothèse|hypothétiquement|pour l'exercice|par exemple si|mettons que|faisons comme si|scénario fictif)\b/i;
-var _CI_ACTION_RE = /\b(crée[rz]?|créer|ajoute[rz]?|ajouter|supprime[rz]?|supprimer|modifie[rz]?|modifier|planifie[rz]?|planifier|programme[rz]?|programmer|lance[rz]?|lancer|démarre[rz]?|démarrer|génère[rz]?|générer|schedule|create\s+a|add\s+a|delete\s+|remove\s+|update\s+)\b/i;
+var _CI_ACTION_RE = /\b(crée[rz]?|créer|ajoute[rz]?|ajouter|supprime[rz]?|supprimer|modifie[rz]?|modifier|planifie[rz]?|planifier|programme[rz]?|programmer|lance[rz]?|lancer|démarre[rz]?|démarrer|génère[rz]?|générer|schedule|create\s+a|add\s+a|delete\s+|remove\s+|update\s+|suis\s+(le|un|une|ce|les|mon|cette)|suivre\s+(un|le|ce|les)|track\s+(a\s+)?keyword|retire[rz]?\s+(le|un|ce|les)|désactive[rz]?)\b/i;
 var _CI_GREETING_RE = /^(bonjour|bonsoir|salut|hello|hi|merci|ça va|ok|oui|non|d'accord|pas de problème|super|parfait|génial|cool|thanks|thank you|👍|🙏|😊)\s*[!?.]?$/i;
 var _CI_KNOWLEDGE_RE = /^(qu[''']est[- ]ce\s+(que\s+|qu[''']|c[''']est\s+)?|c[''']est\s+quoi\s+|que\s+signifie[nt]?\s+|comment\s+fonctionne[nt]?\s+|pourquoi\s+\w|explique[zmr]?-?moi?\s+|définition\s+(de\s+)?|comment\s+(se\s+)?calcule[nt]?\s+|qu[''']appelle-?t-?on\s+|how\s+does\s+|what\s+is\s+|what[''']s\s+|why\s+is\s+|explain\s+|define\s+|what\s+does\s+)/i;
 var _CI_PERSONAL_RE = /\b(mon\s+site|notre\s+site|mes\s+|notre\s+|ma\s+|nôtre|nos\s+|chez\s+nous|pour\s+nous|mon\s+seo|notre\s+seo|mon\s+audit|mon\s+domaine|notre\s+domaine|mon\s+url|notre\s+url|ici\b|ce\s+site|cette\s+page|cette\s+url|show\s+me|give\s+me|my\s+site|my\s+|our\s+|we\s+have|i\s+have|j[''']ai\b|on\s+a\b|analyse\s+le|analyse\s+notre|analyse\s+mon)\b/i;
@@ -115968,7 +116927,11 @@ var _CI_FAMILY_RE = {
   monitors: /\b(monitor[s]?|incident[s]?|downtime|uptime|down|alerte[s]?|disponibilité|surveillance|ping|status\s+du\s+site)\b/i,
   recommendations: /\b(recommandation[s]?|suggestion[s]?|opportunité[s]?|conseil[s]?|amélioration[s]?|stratégie\s+seo)\b/i,
   calendar: /\b(calendrier|agenda|événement[s]?|rendez-vous|planning|réunion[s]?|rappel|schedule)\b/i,
-  url: /\b(analyse[r]?\s+(ce\s+site|cette\s+url|cette\s+page|le\s+site|le\s+concurrent)|concurrent[s]?|domaine\s+concurrent)\b|https?:\/\//i
+  url: /\b(analyse[r]?\s+(ce\s+site|cette\s+url|cette\s+page|le\s+site|le\s+concurrent)|concurrent[s]?|domaine\s+concurrent)\b|https?:\/\//i,
+  // NOTE: \b does not work reliably with accented chars (é, è...) in JS regex.
+  // Match patterns that unambiguously indicate keyword intent without \b anchors
+  // on accented tokens. "audit" alone should NOT trigger this family.
+  keywords: /\bkeyword[s]?\b|mot-cl[eé]|mot\s+cl[eé]|mots\s+cl[eé]|ajouter?\s+(?:un\s+|le\s+|les\s+)?mot\b|suivre?\s+(?:un\s+|le\s+|les\s+)?mot\b|retirer?\s+(?:un\s+|le\s+|les\s+)?mot\b|suivi\s+(?:de[s]?\s+)?mot\b|positionnement\s+(?:de[s]?\s+)?mot\b/i
 };
 function _detectToolFamilies(message) {
   return Object.keys(_CI_FAMILY_RE).filter((f) => _CI_FAMILY_RE[f].test(message));
@@ -115991,6 +116954,7 @@ function _toolFamilyOf(toolName2) {
   if (AUDIT_TOOLS.some((t) => t.name === toolName2)) return "audits";
   if (RECOMMENDATION_TOOLS.some((t) => t.name === toolName2)) return "recommendations";
   if (MONITOR_TOOLS.some((t) => t.name === toolName2)) return "monitors";
+  if (["list_keywords", "add_keyword", "remove_keyword"].includes(toolName2)) return "keywords";
   return "url";
 }
 function selectToolsForIntent(intent, message) {
@@ -116261,6 +117225,13 @@ async function runToolCallingLoop(opts) {
         toolsCalledTotal++;
         if (execResult.ok) toolsSucceeded++;
         else toolsFailed++;
+        logger.info({
+          intent: opts.intent ?? "(none)",
+          tool: toolCall.name,
+          apiStatus: execResult.ok ? "ok" : "failed",
+          createdId: execResult.actionLogId ?? null,
+          toolContent: execResult.content?.slice?.(0, 200) ?? String(execResult.content ?? "").slice(0, 200)
+        }, "[AI ACTION DEBUG]");
         opts.sseWrite(`data: ${JSON.stringify({
           tool_result: { id: execResult.actionLogId, toolCallId: toolCall.id, name: toolCall.name, ok: execResult.ok, content: execResult.content }
         })}
@@ -116375,7 +117346,12 @@ function buildConfirmationPreview(toolName2, args, language = "fr") {
     delete_monitor: { fr: "\u26A0 Supprimer d\xE9finitivement ce monitor", en: "\u26A0 Permanently delete this monitor", es: "\u26A0 Eliminar definitivamente este monitor" },
     generate_recommendations: { fr: "G\xE9n\xE9rer des recommandations SEO", en: "Generate SEO recommendations", es: "Generar recomendaciones SEO" },
     generate_seo_strategy: { fr: "G\xE9n\xE9rer une strat\xE9gie SEO", en: "Generate an SEO strategy", es: "Generar una estrategia SEO" },
-    create_missions_from_strategy: { fr: "Cr\xE9er des missions \xE0 partir de la strat\xE9gie", en: "Create missions from the strategy", es: "Crear misiones a partir de la estrategia" }
+    create_missions_from_strategy: { fr: "Cr\xE9er des missions \xE0 partir de la strat\xE9gie", en: "Create missions from the strategy", es: "Crear misiones a partir de la estrategia" },
+    add_keyword: { fr: "Ajouter un mot-cl\xE9 au suivi de positionnement", en: "Add a keyword to position tracking", es: "Agregar una palabra clave al seguimiento" },
+    remove_keyword: { fr: "\u26A0 Retirer un mot-cl\xE9 du suivi", en: "\u26A0 Remove a keyword from tracking", es: "\u26A0 Quitar una palabra clave del seguimiento" },
+    list_keywords: { fr: "Lister les mots-cl\xE9s suivis", en: "List tracked keywords", es: "Listar palabras clave seguidas" },
+    add_competitor: { fr: "Ajouter un concurrent au suivi", en: "Add a competitor to tracking", es: "Agregar un competidor al seguimiento" },
+    delete_competitor: { fr: "\u26A0 Supprimer d\xE9finitivement un concurrent", en: "\u26A0 Permanently delete a competitor", es: "\u26A0 Eliminar definitivamente un competidor" }
   };
   const langKey = lang === "en" || lang === "es" ? lang : "fr";
   if (lang === "en") {
@@ -116619,7 +117595,24 @@ async function chatHandler(req, res) {
   const orgPlan = (orgPlanRaw ?? "standard").toLowerCase();
   const allowedDestinations = filterDestinations(effectivePerms, orgPlan);
   const navPromptSection = buildNavPromptSection(allowedDestinations);
-  const _langCode = typeof language === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(language.trim()) ? language.trim().toLowerCase() : "fr";
+  let _langCode = typeof language === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(language.trim()) ? language.trim().toLowerCase() : "fr";
+  if (_langCode === "fr") {
+    try {
+      const _langRow = await pool.query(
+        `SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`,
+        [orgId3]
+      );
+      const _prefs = _langRow.rows[0]?.["settings"];
+      const _orgLang = typeof _prefs?.["language"] === "string" ? _prefs["language"].trim().toLowerCase() : null;
+      if (_orgLang && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_orgLang) && _orgLang !== "fr") {
+        _langCode = _orgLang;
+        logger.info({ orgId: orgId3, clientLang: language, orgLang: _orgLang }, "[AI LANGUAGE DEBUG] org language override applied");
+      }
+    } catch (_langErr) {
+      logger.debug({ orgId: orgId3, err: String(_langErr) }, "[AI LANGUAGE DEBUG] org language lookup failed (non-fatal)");
+    }
+  }
+  logger.info({ orgId: orgId3, clientLanguage: language ?? "(none)", resolvedLangCode: _langCode }, "[AI LANGUAGE DEBUG]");
   const _langNames = {
     fr: "fran\xE7ais",
     en: "English",
@@ -116916,7 +117909,7 @@ DONN\xC9ES MANQUANTES \u2014 r\xE8gle stricte :
       return "FLOWPOINT_READ";
     })();
     const _selectedTools = needsTools && message ? selectToolsForIntent(_intent, message) : [];
-    logger.info({ orgId: orgId3, needsTools, isHypothetical, isExplicitAction, isSimpleGreeting, isSimpleKnowledge, enableTools, intent: _intent, toolCount: _selectedTools.length }, "[AI] routing decision");
+    logger.info({ orgId: orgId3, needsTools, isHypothetical, isExplicitAction, isSimpleGreeting, isSimpleKnowledge, enableTools, intent: _intent, toolCount: _selectedTools.length, toolNames: _selectedTools.slice(0, 10).map((t) => t.name) }, "[AI] routing decision");
     if (needsTools) {
       logger.info({ orgId: orgId3, model: finalModel, isLightRequest, t_context_ms: _t_context_ms, t_preToolLoop_ms: _t_preProvider - _t_context_start, intent: _intent, toolCount: _selectedTools.length }, "[AI] entering tool loop");
       const toolCtx = {
@@ -116950,18 +117943,20 @@ DONN\xC9ES MANQUANTES \u2014 r\xE8gle stricte :
       });
       toolLoopUndoTokens = loopResult.undoTokens;
       if (loopResult.suspended || loopResult.finalTextEmitted) {
-        for (const ut of toolLoopUndoTokens) {
-          res.write(`data: ${JSON.stringify({ undo_available: { actionLogId: ut.actionLogId, label: ut.label, ttlMinutes: 30 } })}
+        if (!res.writableEnded) {
+          for (const ut of toolLoopUndoTokens) {
+            res.write(`data: ${JSON.stringify({ undo_available: { actionLogId: ut.actionLogId, label: ut.label, ttlMinutes: 30 } })}
 
 `);
+          }
+          res.write(`data: ${JSON.stringify({ _ai: aiMeta })}
+
+`);
+          res.write(`data: [DONE]
+
+`);
+          res.end();
         }
-        res.write(`data: ${JSON.stringify({ _ai: aiMeta })}
-
-`);
-        res.write(`data: [DONE]
-
-`);
-        res.end();
         recordCompletedUsageDeferred({
           feature: "chat",
           orgId: orgId3,
@@ -117429,7 +118424,9 @@ Now provide a clear, contextual, and useful synthesis.`;
   } catch (err) {
     const traceId = req.headers["x-request-id"] ?? `tr${Date.now().toString(36)}`;
     logger.error({ err, proposalId, orgId: orgId3, traceId }, "[agent] confirm failed");
-    res.status(500).json({ ok: false, error: "Erreur lors de l'ex\xE9cution", traceId });
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const safeMsg = rawMsg.replace(/password|secret|token|key/gi, "***").slice(0, 300);
+    res.status(500).json({ ok: false, error: `Erreur lors de l'ex\xE9cution : ${safeMsg}`, traceId });
   }
 });
 router13.get("/ai/tools", async (req, res) => {
@@ -117624,7 +118621,8 @@ Apr\xE8s ces corrections je recommande :
   }
 });
 router13.post("/ai/seo", aiRateLimit, async (req, res) => {
-  const { url, keywords, currentScore, context } = req.body;
+  const { url, keywords, currentScore, context, language: reqLanguage } = req.body;
+  const _seoLang = (typeof reqLanguage === "string" && reqLanguage.slice(0, 2) || req.headers["accept-language"]?.slice(0, 2) || "fr").toLowerCase();
   if (!url) {
     res.status(400).json({ error: "url requis" });
     return;
@@ -117684,7 +118682,17 @@ router13.post("/ai/seo", aiRateLimit, async (req, res) => {
   } catch {
   }
   const effectiveKeywords = dbKeywords.length > 0 ? dbKeywords : keywords ?? [];
-  const prompt = `Tu es consultant SEO senior pour ${url}.
+  const _seoIsEn = _seoLang === "en";
+  const _seoIsDe = _seoLang === "de";
+  const _seoIsEs = _seoLang === "es";
+  const _seoT = (fr, en, de, es) => _seoIsDe ? de : _seoIsEs ? es : _seoIsEn ? en : fr;
+  logger.info(
+    { userLanguage: _seoLang, aiPromptLanguage: _seoLang, recommendationLanguage: _seoLang },
+    "[AI/seo] language chain"
+  );
+  const prompt = _seoT(
+    // FR
+    `Tu es consultant SEO senior pour ${url}.
 
 DONN\xC9ES R\xC9ELLES :
 Score SEO actuel : ${realScore}/100
@@ -117707,14 +118715,96 @@ Sections :
 2. **Optimisation mots-cl\xE9s** (bas\xE9 sur les positions r\xE9elles)
 3. **Performance & Core Web Vitals** (bas\xE9 sur le score ${realSpeed}/100)
 4. **Autorit\xE9 & maillage**
-5. **Prochaines \xE9tapes recommand\xE9es**`;
+5. **Prochaines \xE9tapes recommand\xE9es**`,
+    // EN
+    `You are a senior SEO consultant for ${url}.
+
+REAL DATA:
+Current SEO score: ${realScore}/100
+Performance score: ${realSpeed}/100
+Critical PSI issues: ${realIssues.length > 0 ? realIssues.join(" | ") : "not available"}
+Tracked keywords: ${effectiveKeywords.join(", ") || "no active tracking"}
+
+Account context:
+${fpCtx}
+
+Generate priority SEO recommendations based on this real data.
+For each recommendation:
+\u{1F534} Critical / \u{1F7E1} Important / \u{1F7E2} Bonus
+- Cite the real issue or exact score concerned
+- Estimate impact in SEO points or % traffic
+- Estimate fix time
+
+Sections:
+1. **Critical issues to fix first** (based on real PSI issues)
+2. **Keyword optimisation** (based on real positions)
+3. **Performance & Core Web Vitals** (based on score ${realSpeed}/100)
+4. **Authority & internal linking**
+5. **Recommended next steps**`,
+    // DE
+    `Sie sind Senior-SEO-Berater f\xFCr ${url}.
+
+ECHTE DATEN:
+Aktueller SEO-Score: ${realScore}/100
+Performance-Score: ${realSpeed}/100
+Kritische PSI-Probleme: ${realIssues.length > 0 ? realIssues.join(" | ") : "nicht verf\xFCgbar"}
+Verfolgte Keywords: ${effectiveKeywords.join(", ") || "kein aktives Tracking"}
+
+Kontokontext:
+${fpCtx}
+
+Erstellen Sie priorit\xE4re SEO-Empfehlungen basierend auf diesen echten Daten.
+F\xFCr jede Empfehlung:
+\u{1F534} Kritisch / \u{1F7E1} Wichtig / \u{1F7E2} Bonus
+- Zitieren Sie das echte Problem oder den genauen Score
+- Sch\xE4tzen Sie den Impact in SEO-Punkten oder % Traffic
+- Sch\xE4tzen Sie die Behebungszeit
+
+Abschnitte:
+1. **Kritische Probleme (Priorit\xE4t)** (basierend auf echten PSI-Issues)
+2. **Keyword-Optimierung** (basierend auf echten Positionen)
+3. **Performance & Core Web Vitals** (Score ${realSpeed}/100)
+4. **Autorit\xE4t & interne Verlinkung**
+5. **Empfohlene n\xE4chste Schritte**`,
+    // ES
+    `Eres consultor SEO senior para ${url}.
+
+DATOS REALES:
+Puntuaci\xF3n SEO actual: ${realScore}/100
+Puntuaci\xF3n de rendimiento: ${realSpeed}/100
+Problemas cr\xEDticos PSI: ${realIssues.length > 0 ? realIssues.join(" | ") : "no disponibles"}
+Palabras clave rastreadas: ${effectiveKeywords.join(", ") || "sin seguimiento activo"}
+
+Contexto de cuenta:
+${fpCtx}
+
+Genera recomendaciones SEO prioritarias basadas en estos datos reales.
+Por cada recomendaci\xF3n:
+\u{1F534} Cr\xEDtico / \u{1F7E1} Importante / \u{1F7E2} Bonus
+- Cita el problema real o la puntuaci\xF3n exacta
+- Estima el impacto en puntos SEO o % de tr\xE1fico
+- Estima el tiempo de correcci\xF3n
+
+Secciones:
+1. **Problemas cr\xEDticos a corregir primero** (basado en issues PSI reales)
+2. **Optimizaci\xF3n de palabras clave** (basado en posiciones reales)
+3. **Rendimiento & Core Web Vitals** (puntuaci\xF3n ${realSpeed}/100)
+4. **Autoridad & enlazado interno**
+5. **Pr\xF3ximos pasos recomendados**`
+  );
   try {
     const t0 = Date.now();
     const aiCfg = await selectOptimalModel("cro_analysis", orgId3);
+    const _seoSystemPrompt = _seoT(
+      "Tu es un consultant SEO senior. Tu as acc\xE8s aux donn\xE9es r\xE9elles du site. Chaque recommandation doit citer les chiffres exacts fournis \u2014 jamais de g\xE9n\xE9ralit\xE9s.",
+      "You are a senior SEO consultant. You have access to real site data. Every recommendation must cite the exact figures provided \u2014 no generalities.",
+      "Sie sind ein erfahrener SEO-Berater. Sie haben Zugriff auf echte Website-Daten. Jede Empfehlung muss die genauen bereitgestellten Zahlen zitieren \u2014 keine Allgemeinheiten.",
+      "Eres un consultor SEO senior. Tienes acceso a datos reales del sitio. Cada recomendaci\xF3n debe citar las cifras exactas proporcionadas, sin generalidades."
+    );
     const resp = await aiChat({
       provider: aiCfg.provider,
       model: aiCfg.model,
-      systemPrompt: `Tu es un consultant SEO senior. Tu as acc\xE8s aux donn\xE9es r\xE9elles du site. Chaque recommandation doit citer les chiffres exacts fournis \u2014 jamais de g\xE9n\xE9ralit\xE9s.`,
+      systemPrompt: _seoSystemPrompt,
       messages: [{ role: "user", content: prompt }],
       maxTokens: aiCfg.maxTokens
     });
@@ -117728,7 +118818,12 @@ Sections :
   }
 });
 router13.post("/ai/conversion", aiRateLimit, async (req, res) => {
-  const { url, metrics, funnel } = req.body;
+  const { url, metrics, funnel, language: _convLang1 } = req.body;
+  const _langLine1 = (() => {
+    const c = typeof _convLang1 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang1.trim()) ? _convLang1.trim().toLowerCase() : "fr";
+    const n = { en: "English", es: "espa\xF1ol", de: "Deutsch", it: "italiano", pt: "portugu\xEAs", nl: "Nederlands", pl: "polski", sv: "svenska", ro: "rom\xE2n\u0103", cs: "\u010De\u0161tina" };
+    return c === "fr" ? "R\xE9ponds en fran\xE7ais" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`;
+  })();
   const orgId3 = req.orgId ?? "default";
   const userId = req.userId ?? "anonymous";
   const requestId2 = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -117756,7 +118851,7 @@ Analyse en 4 sections:
   try {
     const aiResult = await callAIWithFallback({
       task: "cro_analysis",
-      systemPrompt: "Tu es un expert CRO et UX. R\xE9ponds en fran\xE7ais avec des recommandations concr\xE8tes.",
+      systemPrompt: `Tu es un expert CRO et UX. ${_langLine1} avec des recommandations concr\xE8tes.`,
       userPrompt: prompt,
       maxTokens: 1e3,
       orgId: orgId3
@@ -117769,7 +118864,12 @@ Analyse en 4 sections:
   }
 });
 router13.post("/ai/local", aiRateLimit, async (req, res) => {
-  const { business, location, keywords, gbpData } = req.body;
+  const { business, location, keywords, gbpData, language: _convLang2 } = req.body;
+  const _langLine2 = (() => {
+    const c = typeof _convLang2 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang2.trim()) ? _convLang2.trim().toLowerCase() : "fr";
+    const n = { en: "English", es: "espa\xF1ol", de: "Deutsch", it: "italiano", pt: "portugu\xEAs", nl: "Nederlands", pl: "polski", sv: "svenska", ro: "rom\xE2n\u0103", cs: "\u010De\u0161tina" };
+    return c === "fr" ? "R\xE9ponds en fran\xE7ais" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`;
+  })();
   const orgId3 = req.orgId ?? "default";
   const userId = req.userId ?? "anonymous";
   const requestId2 = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -117797,7 +118897,7 @@ G\xE9n\xE8re une strat\xE9gie Local SEO compl\xE8te:
   try {
     const aiResult = await callAIWithFallback({
       task: "market_intel",
-      systemPrompt: "Tu es un expert Local SEO et Google Business Profile. R\xE9ponds en fran\xE7ais.",
+      systemPrompt: `Tu es un expert Local SEO et Google Business Profile. ${_langLine2}.`,
       userPrompt: prompt,
       maxTokens: 1200,
       orgId: orgId3
@@ -117810,7 +118910,12 @@ G\xE9n\xE8re une strat\xE9gie Local SEO compl\xE8te:
   }
 });
 router13.post("/ai/competitors", aiRateLimit, async (req, res) => {
-  const { competitors, ourUrl, ourScore } = req.body;
+  const { competitors, ourUrl, ourScore, language: _convLang3 } = req.body;
+  const _langLine3 = (() => {
+    const c = typeof _convLang3 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang3.trim()) ? _convLang3.trim().toLowerCase() : "fr";
+    const n = { en: "English", es: "espa\xF1ol", de: "Deutsch", it: "italiano", pt: "portugu\xEAs", nl: "Nederlands", pl: "polski", sv: "svenska", ro: "rom\xE2n\u0103", cs: "\u010De\u0161tina" };
+    return c === "fr" ? "R\xE9ponds en fran\xE7ais" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`;
+  })();
   const orgId3 = req.orgId ?? "default";
   const userId = req.userId ?? "anonymous";
   const requestId2 = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -117836,7 +118941,7 @@ Fournis:
   try {
     const aiResult = await callAIWithFallback({
       task: "market_intel",
-      systemPrompt: "Tu es un analyste strat\xE9gique SEO. R\xE9ponds en fran\xE7ais avec des insights actionnables.",
+      systemPrompt: `Tu es un analyste strat\xE9gique SEO. ${_langLine3} avec des insights actionnables.`,
       userPrompt: prompt,
       maxTokens: 1200,
       orgId: orgId3
@@ -117849,7 +118954,12 @@ Fournis:
   }
 });
 router13.post("/ai/reports", aiRateLimit, async (req, res) => {
-  const { reportType, period, sites, metrics } = req.body;
+  const { reportType, period, sites, metrics, language: _repLang } = req.body;
+  const _repLangLine = (() => {
+    const c = typeof _repLang === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_repLang.trim()) ? _repLang.trim().toLowerCase() : "fr";
+    const n = { en: "English", es: "espa\xF1ol", de: "Deutsch", it: "italiano", pt: "portugu\xEAs", nl: "Nederlands", pl: "polski", sv: "svenska", ro: "rom\xE2n\u0103", cs: "\u010De\u0161tina" };
+    return c === "fr" ? "R\xE9ponds en fran\xE7ais" : `You MUST respond in ${n[c] || c}. All your text output must be in ${n[c] || c}, not in French.`;
+  })();
   const orgId3 = req.orgId ?? "default";
   const userId = req.userId ?? "anonymous";
   const requestId2 = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -117895,33 +119005,41 @@ router13.post("/ai/reports", aiRateLimit, async (req, res) => {
     }
   } catch {
   }
-  const prompt = `G\xE9n\xE8re un rapport ${reportType ?? "SEO mensuel"} pour la p\xE9riode ${dynamicPeriod}.
-Sites analys\xE9s : ${(sites ?? []).join(", ") || "selon les audits en base"}
-${scoreEvolution ? scoreEvolution + "\n" : ""}M\xE9triques additionnelles : ${JSON.stringify(metrics ?? {})}
+  const _repLangNames2 = { fr: "French", en: "English", es: "Spanish", de: "German", it: "Italian", pt: "Portuguese", nl: "Dutch", pl: "Polish", sv: "Swedish", ro: "Romanian", cs: "Czech" };
+  const _repLc2 = typeof _repLang === "string" && /^[a-zA-Z]{2,5}/.test(_repLang) ? _repLang.trim().toLowerCase().slice(0, 2) : "fr";
+  const _repLangName2 = _repLangNames2[_repLc2] ?? _repLc2.toUpperCase();
+  const _repLangHeader = _repLc2 === "fr" ? "" : `\u26A0\uFE0F CRITICAL: Write the ENTIRE report in ${_repLangName2}. Not a single French word in any section or heading.
 
-=== DONN\xC9ES R\xC9ELLES DU COMPTE ===
+`;
+  const prompt = `${_repLangHeader}Generate a ${reportType ?? "monthly SEO"} report for the period ${dynamicPeriod}. Write entirely in ${_repLangName2}.
+Analysed sites: ${(sites ?? []).join(", ") || "all sites in the account"}
+${scoreEvolution ? scoreEvolution + "\n" : ""}Additional metrics: ${JSON.stringify(metrics ?? {})}
+
+=== REAL ACCOUNT DATA ===
 ${fpCtx}
 
-G\xE9n\xE8re le rapport comme un consultant senior qui pr\xE9sente les r\xE9sultats \xE0 son client. Cite UNIQUEMENT les chiffres r\xE9els ci-dessus.
+Write this report as a senior consultant presenting results to their client. Cite ONLY the real figures above.
 
-# R\xE9sum\xE9 Ex\xE9cutif
-(2-3 phrases avec les vrais chiffres : score actuel, \xE9volution, nombre d'issues)
+(All section headings must be in ${_repLangName2})
 
-# Points Forts \u2014 ${dynamicPeriod}
-(3-5 victoires avec chiffres exacts issus du contexte)
+## Executive Summary
+(2-3 sentences with real numbers: current score, evolution, issue count)
 
-# Probl\xE8mes Prioritaires
-(3-5 points avec : nom du probl\xE8me, URL concern\xE9e, impact estim\xE9, d\xE9lai de correction)
+## Highlights \u2014 ${dynamicPeriod}
+(3-5 wins with exact figures from the context)
 
-# Plan d'Actions \u2014 30 prochains jours
-(Actions ordonn\xE9es par priorit\xE9, avec responsable sugg\xE9r\xE9 et d\xE9lai)
+## Priority Issues
+(3-5 points with: issue name, affected URL, estimated impact, correction timeline)
 
-# Pr\xE9visions Mois Prochain
-(Objectifs SMART bas\xE9s sur l'\xE9tat actuel)`;
+## Action Plan \u2014 Next 30 days
+(Actions ordered by priority, with suggested owner and deadline)
+
+## Next Month Forecast
+(SMART objectives based on current state)`;
   try {
     const aiResult = await callAIWithFallback({
       task: "executive_report",
-      systemPrompt: "Tu es un consultant SEO senior. Tu g\xE9n\xE8res des rapports bas\xE9s UNIQUEMENT sur les donn\xE9es r\xE9elles fournies. Cite les chiffres exacts. Jamais de g\xE9n\xE9ralit\xE9s ou de donn\xE9es invent\xE9es. Format markdown professionnel, fran\xE7ais formel.",
+      systemPrompt: `Tu es un consultant SEO senior. Tu g\xE9n\xE8res des rapports bas\xE9s UNIQUEMENT sur les donn\xE9es r\xE9elles fournies. Cite les chiffres exacts. Jamais de g\xE9n\xE9ralit\xE9s ou de donn\xE9es invent\xE9es. Format markdown professionnel. ${_repLangLine}`,
       userPrompt: prompt,
       maxTokens: 1800,
       orgId: orgId3
@@ -117934,7 +119052,12 @@ G\xE9n\xE8re le rapport comme un consultant senior qui pr\xE9sente les r\xE9sult
   }
 });
 router13.post("/ai/summary", aiRateLimit, async (req, res) => {
-  const { context } = req.body;
+  const { context, language: _sumLang } = req.body;
+  const _sumLangLine = (() => {
+    const c = typeof _sumLang === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_sumLang.trim()) ? _sumLang.trim().toLowerCase() : "fr";
+    const n = { en: "English", es: "espa\xF1ol", de: "Deutsch", it: "italiano", pt: "portugu\xEAs", nl: "Nederlands", pl: "polski", sv: "svenska", ro: "rom\xE2n\u0103", cs: "\u010De\u0161tina" };
+    return c === "fr" ? "R\xE9ponds en fran\xE7ais" : `You MUST respond in ${n[c] || c}. All your text output must be in ${n[c] || c}, not in French.`;
+  })();
   const orgId3 = req.orgId ?? "default";
   const userId = req.userId ?? "anonymous";
   const requestId2 = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -117949,20 +119072,26 @@ router13.post("/ai/summary", aiRateLimit, async (req, res) => {
     return;
   }
   const fpCtx = await buildFlowpointContext(context, orgId3);
-  const prompt = `G\xE9n\xE8re un r\xE9sum\xE9 ex\xE9cutif de la situation SEO et web pour ce compte Flowpoint.
-Donn\xE9es: ${fpCtx}
-Donn\xE9es additionnelles: ${JSON.stringify(context ?? {})}
+  const _sumLangNames = { fr: "French", en: "English", es: "Spanish", de: "German", it: "Italian", pt: "Portuguese", nl: "Dutch", pl: "Polish", sv: "Swedish", ro: "Romanian", cs: "Czech" };
+  const _sumLc = typeof _sumLang === "string" && /^[a-zA-Z]{2,5}/.test(_sumLang) ? _sumLang.trim().toLowerCase().slice(0, 2) : "fr";
+  const _sumLangName = _sumLangNames[_sumLc] ?? _sumLc.toUpperCase();
+  const _sumLangHeader = _sumLc === "fr" ? "" : `\u26A0\uFE0F CRITICAL: Write the ENTIRE response in ${_sumLangName}. Not a single French word.
 
-Format:
-## Situation Actuelle
-## Points Critiques (max 3)
-## Opportunit\xE9s Imm\xE9diates (top 3 quick wins)
-## Recommandation Strat\xE9gique
-## Pr\xE9vision 3 mois`;
+`;
+  const prompt = `${_sumLangHeader}Generate an executive summary of the SEO and web situation for this Flowpoint account. Write entirely in ${_sumLangName}.
+Data: ${fpCtx}
+Additional data: ${JSON.stringify(context ?? {})}
+
+Format (section headings also in ${_sumLangName}):
+## Current Situation
+## Critical Points (max 3)
+## Immediate Opportunities (top 3 quick wins)
+## Strategic Recommendation
+## 3-Month Forecast`;
   try {
     const aiResult = await callAIWithFallback({
       task: "strategist",
-      systemPrompt: "Tu es un directeur strat\xE9gique digital. R\xE9sum\xE9 concis, chiffr\xE9, actionnable. Fran\xE7ais.",
+      systemPrompt: `Tu es un directeur strat\xE9gique digital. R\xE9sum\xE9 concis, chiffr\xE9, actionnable. ${_sumLangLine}`,
       userPrompt: prompt,
       maxTokens: 1600,
       orgId: orgId3
@@ -117975,7 +119104,12 @@ Format:
   }
 });
 router13.post("/ai/missions", aiRateLimit, async (req, res) => {
-  const { profile, currentMissions, context } = req.body;
+  const { profile, currentMissions, context, language: _misLang } = req.body;
+  const _misLangLine = (() => {
+    const c = typeof _misLang === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_misLang.trim()) ? _misLang.trim().toLowerCase() : "fr";
+    const n = { en: "English", es: "espa\xF1ol", de: "Deutsch", it: "italiano", pt: "portugu\xEAs", nl: "Nederlands", pl: "polski", sv: "svenska", ro: "rom\xE2n\u0103", cs: "\u010De\u0161tina" };
+    return c === "fr" ? "R\xE9ponds en fran\xE7ais dans les champs texte." : `You MUST write all text fields (title, description, expectedGain) in ${n[c] || c}, not in French.`;
+  })();
   const orgId3 = req.orgId ?? "default";
   const userId = req.userId ?? "anonymous";
   const requestId2 = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -117990,37 +119124,43 @@ router13.post("/ai/missions", aiRateLimit, async (req, res) => {
     return;
   }
   const fpCtx = await buildFlowpointContext(context, orgId3);
-  const prompt = `Tu es consultant SEO senior. G\xE9n\xE8re 6 missions SEO prioritaires bas\xE9es UNIQUEMENT sur les donn\xE9es r\xE9elles ci-dessous.
+  const _misLangNames = { fr: "French", en: "English", es: "Spanish", de: "German", it: "Italian", pt: "Portuguese", nl: "Dutch", pl: "Polish", sv: "Swedish", ro: "Romanian", cs: "Czech" };
+  const _misLc = typeof _misLang === "string" && /^[a-zA-Z]{2,5}/.test(_misLang) ? _misLang.trim().toLowerCase().slice(0, 2) : "fr";
+  const _misLangName = _misLangNames[_misLc] ?? _misLc.toUpperCase();
+  const _misLangHeader = _misLc === "fr" ? "" : `\u26A0\uFE0F CRITICAL LANGUAGE RULE: Every single word of title, description, and expectedGain MUST be written in ${_misLangName}. No French words allowed in the output.
 
-=== DONN\xC9ES R\xC9ELLES ===
+`;
+  const prompt = `${_misLangHeader}You are a senior SEO consultant. Generate 6 priority SEO missions based ONLY on the real data below.
+
+=== REAL DATA ===
 ${fpCtx}
 
-Profil additionnel : ${JSON.stringify(profile ?? {})}
-Missions d\xE9j\xE0 en cours : ${JSON.stringify((currentMissions ?? []).slice(0, 3))}
+Additional profile: ${JSON.stringify(profile ?? {})}
+Missions already in progress: ${JSON.stringify((currentMissions ?? []).slice(0, 3))}
 
-R\xC8GLES IMPORTANTES :
-- Chaque mission doit \xEAtre ancr\xE9e \xE0 un probl\xE8me r\xE9el cit\xE9 dans les donn\xE9es (URL pr\xE9cise, score r\xE9el, issue r\xE9elle).
-- Pas de missions g\xE9n\xE9riques du type "optimiser les images" sans r\xE9f\xE9rencer le site concern\xE9.
-- Calcule expectedGain \xE0 partir des scores r\xE9els (ex: si score=40/100, corriger les issues critiques = +15 \xE0 +25 pts).
-- Ordonne par priorit\xE9 d\xE9croissante : les issues les plus bloquantes en premier.
-- N'inclus pas une mission d\xE9j\xE0 "en cours" dans la liste.
+IMPORTANT RULES:
+- Each mission must be anchored to a real problem cited in the data (exact URL, real score, real issue).
+- No generic missions like "optimize images" without referencing the specific site.
+- Calculate expectedGain from real scores (e.g. if score=40/100, fixing critical issues = +15 to +25 pts).
+- Order by descending priority: most blocking issues first.
+- Do not include a mission already "in progress".
 
-Retourne un JSON array de 6 missions :
+Return a JSON array of 6 missions:
 {
-  "title": "string (court, sp\xE9cifique \u2014 cite le site ou le probl\xE8me exact)",
-  "description": "string (2-3 phrases, cite les chiffres r\xE9els)",
+  "title": "string (short, specific \u2014 cite the site or exact problem) \u2014 MUST be in ${_misLangName}",
+  "description": "string (2-3 sentences, cite real numbers) \u2014 MUST be in ${_misLangName}",
   "category": "seo|performance|content|local|conversion|technical",
   "priority": 1-10,
-  "estimatedImpact": "Faible|Moyen|\xC9lev\xE9|Critique",
-  "estimatedEffort": "1h|4h|1j|1sem|2sem",
-  "expectedGain": "string (ex: +12 points SEO, +20% trafic)"
+  "estimatedImpact": "Low|Medium|High|Critical",
+  "estimatedEffort": "1h|4h|1d|1w|2w",
+  "expectedGain": "string (e.g. +12 SEO points, +20% traffic) \u2014 MUST be in ${_misLangName}"
 }
 
-R\xE9ponds uniquement avec le JSON array.`;
+Respond ONLY with the JSON array. Language of text fields: ${_misLangName}.`;
   try {
     const aiResult = await callAIWithFallback({
       task: "mission_auto",
-      systemPrompt: "Tu g\xE9n\xE8res des missions SEO JSON structur\xE9es. R\xE9ponds UNIQUEMENT avec du JSON valide, aucun autre texte.",
+      systemPrompt: `Tu g\xE9n\xE8res des missions SEO JSON structur\xE9es. R\xE9ponds UNIQUEMENT avec du JSON valide, aucun autre texte. ${_misLangLine}`,
       userPrompt: prompt,
       maxTokens: 1e3,
       json: true,
@@ -118045,7 +119185,12 @@ R\xE9ponds uniquement avec le JSON array.`;
   }
 });
 router13.post("/ai/pagespeed-insights", aiRateLimit, async (req, res) => {
-  const { url, mobile, desktop } = req.body;
+  const { url, mobile, desktop, language: _convLang4 } = req.body;
+  const _langLine4 = (() => {
+    const c = typeof _convLang4 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang4.trim()) ? _convLang4.trim().toLowerCase() : "fr";
+    const n = { en: "English", es: "espa\xF1ol", de: "Deutsch", it: "italiano", pt: "portugu\xEAs", nl: "Nederlands", pl: "polski", sv: "svenska", ro: "rom\xE2n\u0103", cs: "\u010De\u0161tina" };
+    return c === "fr" ? "R\xE9ponds en fran\xE7ais" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`;
+  })();
   if (!url) {
     res.status(400).json({ error: "url requis" });
     return;
@@ -118080,7 +119225,7 @@ G\xE9n\xE8re:
   try {
     const aiResult = await callAIWithFallback({
       task: "seo_audit",
-      systemPrompt: "Tu es un expert performance web (Core Web Vitals, PageSpeed). R\xE9ponds en fran\xE7ais avec des actions concr\xE8tes et du code si n\xE9cessaire.",
+      systemPrompt: `Tu es un expert performance web (Core Web Vitals, PageSpeed). ${_langLine4} avec des actions concr\xE8tes et du code si n\xE9cessaire.`,
       userPrompt: prompt,
       maxTokens: 1200,
       orgId: orgId3
@@ -118121,34 +119266,364 @@ router13.get("/ai/usage", async (req, res) => {
     res.status(500).json({ error: "Impossible de lire l'usage IA" });
   }
 });
-router13.get("/ai/recommendations", async (req, res) => {
-  const orgId3 = req.orgId ?? "default";
-  const client = await pool.connect();
+var RECOMMENDATION_UI_LANGUAGES = /* @__PURE__ */ new Set([
+  "fr",
+  "en",
+  "es",
+  "de",
+  "it",
+  "pt",
+  "nl",
+  "pl",
+  "sv",
+  "ro",
+  "cs"
+]);
+function normalizeRecommendationLanguage(value) {
+  if (typeof value !== "string") return null;
+  const code = value.trim().toLowerCase().split(/[-_]/)[0] ?? "";
+  return RECOMMENDATION_UI_LANGUAGES.has(code) ? code : null;
+}
+function getRecommendationCanonicalSource(row) {
+  const metadata = row["metadata"] && typeof row["metadata"] === "object" ? row["metadata"] : {};
+  const retainedTitle = typeof metadata["originalTitle"] === "string" ? metadata["originalTitle"].trim() : "";
+  const retainedDescription = typeof metadata["originalDescription"] === "string" ? metadata["originalDescription"].trim() : "";
+  const retainedSourceLanguage = normalizeRecommendationLanguage(metadata["sourceLanguage"]);
+  const hasRetainedSource = Boolean(retainedSourceLanguage && retainedTitle && retainedDescription);
+  return {
+    title: hasRetainedSource ? retainedTitle : String(row["title"] ?? ""),
+    description: hasRetainedSource ? retainedDescription : String(row["description"] ?? ""),
+    sourceLanguage: hasRetainedSource ? retainedSourceLanguage : normalizeRecommendationLanguage(metadata["language"]) ?? "fr"
+  };
+}
+function getCachedRecommendationTranslation(metadata, targetLanguage, sourceLanguage) {
+  const translations = metadata["translations"] && typeof metadata["translations"] === "object" ? metadata["translations"] : {};
+  const cached = translations[targetLanguage];
+  if (!cached || typeof cached !== "object") return null;
+  const value = cached;
+  if (typeof value["title"] !== "string" || !value["title"].trim() || typeof value["description"] !== "string" || !value["description"].trim() || value["sourceLanguage"] !== sourceLanguage) return null;
+  return { title: value["title"].trim(), description: value["description"].trim() };
+}
+function buildRecommendationTranslationRequestId(orgId3, targetLanguage, rows) {
+  const digest = createHash7("sha256").update(JSON.stringify(rows.map((row) => ({
+    id: row.id,
+    sourceLanguage: row.sourceLanguage,
+    title: row.title,
+    description: row.description
+  })))).digest("hex").slice(0, 32);
+  return `recommendation_translation:${orgId3}:${targetLanguage}:${digest}`;
+}
+function parseRecommendationTranslations(text2, allowedIds) {
+  const result = /* @__PURE__ */ new Map();
   try {
-    const { rows } = await client.query(
-      `SELECT id, type, title, description, priority, status, source, metadata, created_at, expires_at
-       FROM (
-         SELECT DISTINCT ON (title)
-                id, type, title, description, priority, status, source, metadata, created_at, expires_at
-         FROM ai_recommendations
-         WHERE org_id = $1
-           AND (expires_at IS NULL OR expires_at > NOW())
-         ORDER BY title, created_at DESC
-       ) dedup
-       ORDER BY priority ASC, created_at DESC
-       LIMIT 50`,
-      [orgId3]
+    const cleaned = text2.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    const parsed2 = JSON.parse(cleaned);
+    const entries = Array.isArray(parsed2) ? parsed2 : parsed2 && typeof parsed2 === "object" && Array.isArray(parsed2.translations) ? parsed2.translations : [];
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object") continue;
+      const item = entry;
+      const id = typeof item["id"] === "string" ? item["id"] : "";
+      const title = typeof item["title"] === "string" ? item["title"].trim() : "";
+      const description = typeof item["description"] === "string" ? item["description"].trim() : "";
+      if (allowedIds.has(id) && title && description) result.set(id, { title, description });
+    }
+  } catch {
+  }
+  return result;
+}
+async function recommendationsHandler(req, res) {
+  const orgId3 = req.orgId ?? "default";
+  const requestedValue = req.query["language"] ?? req.query["lang"];
+  const requestedLanguage = requestedValue == null ? normalizeRecommendationLanguage(req.get("accept-language")?.split(",")[0]) ?? "fr" : normalizeRecommendationLanguage(requestedValue);
+  if (!requestedLanguage) {
+    res.status(400).json({
+      error: "Unsupported language",
+      supportedLanguages: [...RECOMMENDATION_UI_LANGUAGES]
+    });
+    return;
+  }
+  try {
+    const { rows } = await withOrgDb(
+      orgId3,
+      (orgClient) => orgClient.query(
+        `SELECT id, type, title, description, priority, status, source, metadata, created_at, expires_at
+         FROM (
+           SELECT DISTINCT ON (title)
+                  id, type, title, description, priority, status, source, metadata, created_at, expires_at
+           FROM ai_recommendations
+           WHERE org_id = $1
+             AND (expires_at IS NULL OR expires_at > NOW())
+           ORDER BY title, created_at DESC
+         ) dedup
+         ORDER BY priority ASC, created_at DESC
+         LIMIT 50`,
+        [orgId3]
+      )
     );
-    res.json({ recommendations: rows });
+    const normalizedRows = rows.map((row) => {
+      const metadata = row["metadata"] && typeof row["metadata"] === "object" ? row["metadata"] : {};
+      const canonicalSource = getRecommendationCanonicalSource(row);
+      const sourceLanguage = canonicalSource.sourceLanguage;
+      const cachedTranslation = getCachedRecommendationTranslation(
+        metadata,
+        requestedLanguage,
+        sourceLanguage
+      );
+      const originalTitle = canonicalSource.title;
+      const originalDescription = canonicalSource.description;
+      const validCached = cachedTranslation !== null;
+      return {
+        ...row,
+        id: String(row["id"] ?? ""),
+        metadata,
+        originalTitle,
+        originalDescription,
+        sourceLanguage,
+        language: validCached || sourceLanguage === requestedLanguage ? requestedLanguage : sourceLanguage,
+        title: cachedTranslation?.title ?? originalTitle,
+        description: cachedTranslation?.description ?? originalDescription,
+        _needsTranslation: sourceLanguage !== requestedLanguage && !validCached
+      };
+    });
+    const missing = normalizedRows.filter((row) => row._needsTranslation);
+    if (missing.length > 0) {
+      let providerPreflightError = null;
+      let localizationModel = {
+        provider: "openai",
+        model: "gpt-5-mini",
+        maxTokens: Math.min(4e3, Math.max(500, missing.length * 140))
+      };
+      try {
+        if (!isAiMigrationComplete()) {
+          throw new Error("AI usage tracking schema is not ready");
+        }
+        const aiPrefs = await loadOrgAIPrefs(orgId3);
+        if (!checkModuleEnabled(aiPrefs, "aiStrategist")) {
+          logger.warn({ orgId: orgId3, requestedLanguage }, "[AI] recommendation translation blocked \u2014 module disabled");
+          throw new Error("AI strategist module disabled");
+        }
+        const quotaCheck = await checkAIQuota({ feature: "strategist", orgId: orgId3 });
+        if (!quotaCheck.allowed) {
+          logger.warn({ orgId: orgId3, requestedLanguage }, "[AI] recommendation translation blocked \u2014 quota exhausted");
+          throw new Error("AI quota exhausted");
+        }
+        try {
+          const selected = await selectOptimalModel("strategist", orgId3);
+          localizationModel = {
+            provider: selected.provider,
+            model: selected.model,
+            maxTokens: selected.maxTokens
+          };
+        } catch (err) {
+          logger.warn({ err, orgId: orgId3 }, "[AI] recommendation translation model selection failed \u2014 using defaults");
+        }
+      } catch (err) {
+        providerPreflightError = err instanceof Error ? err : new Error(String(err));
+      }
+      const client = await pool.connect();
+      const lockKey = `ai:recommendation-translation:${orgId3}:${requestedLanguage}`;
+      let lockHeld = false;
+      try {
+        await client.query(`SELECT pg_advisory_lock(hashtext($1)::bigint)`, [lockKey]);
+        lockHeld = true;
+        const refreshed = await withOrgDbClient(
+          client,
+          orgId3,
+          (orgClient) => orgClient.query(
+            `SELECT id, metadata
+             FROM ai_recommendations
+             WHERE org_id=$1 AND id = ANY($2::text[])`,
+            [orgId3, missing.map((row) => row.id)]
+          )
+        );
+        const metadataById = new Map(
+          refreshed.rows.map((row) => [
+            String(row["id"] ?? ""),
+            row["metadata"] && typeof row["metadata"] === "object" ? row["metadata"] : {}
+          ])
+        );
+        for (const row of missing) {
+          const freshMetadata = metadataById.get(row.id);
+          if (!freshMetadata) continue;
+          row.metadata = freshMetadata;
+          const cached = getCachedRecommendationTranslation(
+            freshMetadata,
+            requestedLanguage,
+            row.sourceLanguage
+          );
+          if (!cached) continue;
+          row.title = cached.title;
+          row.description = cached.description;
+          row.language = requestedLanguage;
+          row._needsTranslation = false;
+        }
+        const unresolved = missing.filter((row) => row._needsTranslation);
+        if (unresolved.length === 0) {
+          res.json({
+            recommendations: normalizedRows.map(({ _needsTranslation: _omitted, ...row }) => row),
+            language: requestedLanguage
+          });
+          return;
+        }
+        const payload = unresolved.map((row) => ({
+          id: row.id,
+          sourceLanguage: row.sourceLanguage,
+          title: row.originalTitle,
+          description: row.originalDescription
+        }));
+        const requestId2 = buildRecommendationTranslationRequestId(
+          orgId3,
+          requestedLanguage,
+          payload
+        );
+        const allowedIds = new Set(unresolved.map((row) => row.id));
+        const persistAndApply = async (translated2) => {
+          await withOrgDbClient(client, orgId3, async (orgClient) => {
+            for (const row of unresolved) {
+              const value = translated2.get(row.id);
+              const cachedValue = { ...value, sourceLanguage: row.sourceLanguage };
+              await orgClient.query(
+                `UPDATE ai_recommendations
+                 SET metadata = COALESCE(metadata, '{}'::jsonb) ||
+                   jsonb_build_object(
+                     'translations',
+                     COALESCE(metadata->'translations', '{}'::jsonb) ||
+                       jsonb_build_object($3::text, $4::jsonb)
+                   ),
+                   updated_at = NOW()
+                 WHERE id = $1 AND org_id = $2`,
+                [row.id, orgId3, requestedLanguage, JSON.stringify(cachedValue)]
+              );
+            }
+          });
+          for (const row of unresolved) {
+            const value = translated2.get(row.id);
+            row.title = value.title;
+            row.description = value.description;
+            row.language = requestedLanguage;
+            row._needsTranslation = false;
+            const existingTranslations = row.metadata["translations"] && typeof row.metadata["translations"] === "object" ? row.metadata["translations"] : {};
+            const cachedValue = { ...value, sourceLanguage: row.sourceLanguage };
+            row.metadata = {
+              ...row.metadata,
+              translations: { ...existingTranslations, [requestedLanguage]: cachedValue }
+            };
+          }
+        };
+        const settled = await withOrgDbClient(
+          client,
+          orgId3,
+          (orgClient) => orgClient.query(
+            `SELECT metadata
+             FROM ai_usage_logs
+             WHERE org_id::text = $1 AND idempotency_key = $2
+             LIMIT 1`,
+            [orgId3, requestId2]
+          )
+        );
+        let translated = null;
+        if (settled.rows.length > 0) {
+          const rawMetadata = settled.rows[0]?.["metadata"];
+          let usageMetadata = {};
+          if (rawMetadata && typeof rawMetadata === "object") {
+            usageMetadata = rawMetadata;
+          } else if (typeof rawMetadata === "string") {
+            try {
+              usageMetadata = JSON.parse(rawMetadata);
+            } catch {
+              usageMetadata = {};
+            }
+          }
+          translated = parseRecommendationTranslations(
+            JSON.stringify({ translations: usageMetadata["translationResults"] }),
+            allowedIds
+          );
+          if (translated.size !== unresolved.length) {
+            throw new Error("Settled recommendation translation has no recoverable durable result");
+          }
+          await persistAndApply(translated);
+        } else {
+          if (providerPreflightError) throw providerPreflightError;
+          const distributedLimit = await checkDistributedAiProviderRateLimit(
+            orgId3,
+            "recommendation_translation",
+            client
+          );
+          res.setHeader("X-AI-Distributed-RateLimit-Remaining", String(distributedLimit.remaining));
+          if (!distributedLimit.allowed) {
+            logger.warn(
+              { orgId: orgId3, requestedLanguage, plan: distributedLimit.plan, limit: distributedLimit.limit },
+              "[AI] recommendation translation blocked \u2014 distributed rate limit"
+            );
+            throw new Error("Distributed AI provider rate limit exceeded");
+          }
+          const aiResult = await callAIWithFallback({
+            task: "strategist",
+            provider: localizationModel.provider,
+            model: localizationModel.model,
+            systemPrompt: `You are a precise localization translator. Translate recommendation titles and descriptions into ${requestedLanguage}. Preserve IDs, URLs, numbers, product names and meaning. Return only valid JSON as {"translations":[{"id":"...","title":"...","description":"..."}]}.`,
+            userPrompt: JSON.stringify(payload),
+            maxTokens: localizationModel.maxTokens,
+            temperature: 0,
+            json: true
+          });
+          translated = parseRecommendationTranslations(aiResult.text, allowedIds);
+          if (translated.size !== unresolved.length) {
+            throw new Error("AI recommendation localization response is incomplete");
+          }
+          const translationResults = unresolved.map((row) => ({
+            id: row.id,
+            ...translated.get(row.id)
+          }));
+          await recordCompletedUsage({
+            feature: "strategist",
+            orgId: orgId3,
+            userId: req.userId ?? "system",
+            model: aiResult.model,
+            provider: aiResult.provider,
+            tokensIn: aiResult.tokensIn,
+            tokensOut: aiResult.tokensOut,
+            latencyMs: aiResult.latencyMs,
+            success: true,
+            requestId: requestId2,
+            metadata: {
+              operation: "recommendation_translation",
+              targetLanguage: requestedLanguage,
+              recommendationCount: unresolved.length,
+              translationResults
+            }
+          }, {
+            client,
+            canonicalOrgId: orgId3
+          });
+          await persistAndApply(translated);
+        }
+      } catch (err) {
+        logger.warn({ err, orgId: orgId3, requestedLanguage }, "[AI] recommendation translation failed \u2014 using source text");
+      } finally {
+        if (lockHeld) {
+          await client.query(`SELECT pg_advisory_unlock(hashtext($1)::bigint)`, [lockKey]).catch((err) => logger.warn({ err, orgId: orgId3, requestedLanguage }, "[AI] recommendation translation lock release failed"));
+        }
+        client.release();
+      }
+    }
+    res.json({
+      recommendations: normalizedRows.map(({ _needsTranslation: _omitted, ...row }) => row),
+      language: requestedLanguage
+    });
   } catch (err) {
     logger.warn({ err }, "[AI] /ai/recommendations query failed \u2014 returning empty");
     res.json({ recommendations: [] });
-  } finally {
-    client.release();
   }
-});
+}
+router13.get("/ai/recommendations", aiRateLimit, recommendationsHandler);
 router13.post("/ai/generate", aiRateLimit, async (req, res) => {
-  const { prompt, type = "general" } = req.body;
+  const { prompt, type = "general", language: _convLang5 } = req.body;
+  const _langLine5 = (() => {
+    const c = typeof _convLang5 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang5.trim()) ? _convLang5.trim().toLowerCase() : "fr";
+    const n = { en: "English", es: "espa\xF1ol", de: "Deutsch", it: "italiano", pt: "portugu\xEAs", nl: "Nederlands", pl: "polski", sv: "svenska", ro: "rom\xE2n\u0103", cs: "\u010De\u0161tina" };
+    return c === "fr" ? "R\xE9ponds en fran\xE7ais" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`;
+  })();
   if (!prompt) return res.status(400).json({ error: "prompt required" });
   const orgId3 = req.orgId ?? "default";
   const userId = req.userId ?? "anonymous";
@@ -118162,7 +119637,7 @@ router13.post("/ai/generate", aiRateLimit, async (req, res) => {
   try {
     const result = await aiChat({
       task: "chat",
-      systemPrompt: `Tu es un assistant marketing expert. Type de contenu: ${type}. R\xE9ponds en fran\xE7ais, de fa\xE7on professionnelle et directement utilisable.`,
+      systemPrompt: `Tu es un assistant marketing expert. Type de contenu: ${type}. ${_langLine5}, de fa\xE7on professionnelle et directement utilisable.`,
       messages: [{ role: "user", content: prompt }],
       maxTokens: 800
     });
@@ -118290,339 +119765,8 @@ function createBillingQuote(selection) {
   };
 }
 
-// src/services/billing-service.ts
-init_src();
-init_store();
-init_logger();
-init_org_settings();
-init_org_data();
-init_billing_context();
-init_plans();
-var _PLAN_PRESENTATION = {
-  standard: { color: "#64748b", popular: false, annualPrice: 24, addons: [], highlighted: [] },
-  pro: { color: "#2563eb", popular: true, annualPrice: 65, addons: ["whiteLabel", "prioritySupport", "extraSeats", "monitorsPack50"], highlighted: ["IA Insights Pro", "50 monitors"] },
-  ultra: { color: "#7c3aed", popular: false, annualPrice: 120, addons: [], highlighted: ["1 000 audits/mois", "SLA 99.9%"] }
-};
-var PLAN_CONFIG = Object.fromEntries(
-  Object.entries(PLAN_DEFINITIONS).map(([id, def]) => {
-    const pres = _PLAN_PRESENTATION[id] ?? { color: "#64748b", popular: false, annualPrice: Math.round(def.priceEur * 0.8), addons: [], highlighted: [] };
-    return [id, {
-      id: def.id,
-      name: def.name,
-      monthlyPrice: def.priceEur,
-      annualPrice: pres.annualPrice,
-      badge: def.badge,
-      tagline: def.tagline,
-      color: pres.color,
-      popular: pres.popular,
-      limits: def.limits,
-      aiCredits: def.aiCredits,
-      features: def.features,
-      locked: def.locked,
-      addons: pres.addons,
-      highlighted: pres.highlighted
-    }];
-  })
-);
-var _ADDON_PRESENTATION = {
-  aiCreditsPack50k: { icon: "\u{1F916}", unit: "+50 000 cr\xE9dits" },
-  monitorsPack10: { icon: "\u{1F4E1}", unit: "+10 monitors" },
-  monitorsPack50: { icon: "\u{1F4E1}", unit: "+50 monitors" },
-  extraSeats: { icon: "\u{1F465}", unit: "+5 si\xE8ges" },
-  exportsPack1000: { icon: "\u{1F4E4}", unit: "+1 000 exports" },
-  pdfPack200: { icon: "\u{1F4C4}", unit: "+200 PDF" },
-  whiteLabel: { icon: "\u{1F3F7}\uFE0F", unit: "portail complet" },
-  retention90d: { icon: "\u{1F5C4}\uFE0F", unit: "/mois" },
-  retention365d: { icon: "\u{1F3DB}\uFE0F", unit: "/mois" }
-};
-var ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, pres]) => {
-  const def = ADDON_DEFINITIONS[id];
-  if (!def) {
-    logger.error({ addonKey: id }, "[Billing] ADDON_CATALOG references an unknown add-on key \u2014 omitted");
-    return [];
-  }
-  return [{
-    id,
-    name: def.name,
-    icon: pres.icon,
-    price: def.priceEur,
-    unit: pres.unit,
-    desc: def.description,
-    oneTime: def.oneTime,
-    quantity: def.quantity,
-    priceId: ADDON_PRICE_IDS[id] ?? ""
-  }];
-});
-async function getUsageSummary(orgId3 = "default") {
-  const billingCtx = await loadBillingContext(orgId3).catch(async () => {
-    const orgData = await loadOrgData(orgId3).catch(() => null);
-    return {
-      plan: orgData?.plan ?? "standard",
-      addons: orgData?.addons ?? {},
-      subscriptionStatus: orgData?.subscriptionStatus ?? "inactive",
-      trialEndsAt: orgData?.trialEndsAt ?? null,
-      stripeSubscriptionId: orgData?.stripeSubscriptionId ?? null,
-      stripeCustomerId: orgData?.stripeCustomerId ?? null,
-      trialConsumedAt: null
-    };
-  });
-  const plan4 = (billingCtx.plan || "standard").toLowerCase();
-  const limits = PLAN_LIMITS[plan4] || PLAN_LIMITS["standard"];
-  const planIncluded = PLAN_INCLUDED_ADDONS[plan4] ?? /* @__PURE__ */ new Set();
-  const addonsWithFlags = {};
-  for (const [key, val] of Object.entries(billingCtx.addons)) {
-    addonsWithFlags[key] = {
-      active: val,
-      includedInPlan: planIncluded.has(key)
-    };
-  }
-  for (const key of planIncluded) {
-    if (!(key in addonsWithFlags)) {
-      addonsWithFlags[key] = { active: true, includedInPlan: true };
-    }
-  }
-  const qtyExtras = computeQtyAddonExtras(billingCtx.addons);
-  const extraMonitors = qtyExtras["monitors"] ?? 0;
-  const extraAudits = qtyExtras["audits"] ?? 0;
-  const extraReports = qtyExtras["reports"] ?? 0;
-  const extraExports = qtyExtras["exports"] ?? 0;
-  const extraSeats = qtyExtras["teamMembers"] ?? 0;
-  let nextBillingDate = null;
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
-  if (stripeKey && billingCtx.stripeSubscriptionId) {
-    try {
-      const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
-      const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-      const sub = await stripe.subscriptions.retrieve(billingCtx.stripeSubscriptionId);
-      const _cpe = typeof sub.current_period_end === "number" ? sub.current_period_end : (sub.items?.data ?? []).reduce(
-        (m, it) => typeof it.current_period_end === "number" ? m === null ? it.current_period_end : Math.max(m, it.current_period_end) : m,
-        null
-      );
-      if (sub.status === "trialing" && sub.trial_end) {
-        nextBillingDate = new Date(sub.trial_end * 1e3).toISOString();
-      } else if (_cpe) {
-        nextBillingDate = new Date(_cpe * 1e3).toISOString();
-      }
-    } catch {
-      nextBillingDate = billingCtx.trialEndsAt ?? null;
-    }
-  } else if (billingCtx.subscriptionStatus === "trialing" && billingCtx.trialEndsAt) {
-    nextBillingDate = billingCtx.trialEndsAt;
-  }
-  const client = await pool.connect();
-  try {
-    const safeCount = async (query, params) => {
-      try {
-        const r = await client.query(query, params);
-        return Number(r.rows[0]?.count ?? 0);
-      } catch {
-        return 0;
-      }
-    };
-    const [auditsUsed, monitorsUsed, reportsUsed, seatsUsed, exportsUsed, pdfsUsed] = await Promise.all([
-      safeCount(`SELECT COUNT(*) FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId3]),
-      safeCount(`SELECT COUNT(*) FROM monitors WHERE org_id=$1`, [orgId3]),
-      safeCount(`SELECT COUNT(*) FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId3]),
-      safeCount(`SELECT COUNT(*) FROM team_members WHERE org_id=$1`, [orgId3]),
-      safeCount(`SELECT COUNT(*) FROM report_exports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId3]),
-      safeCount(`SELECT COUNT(*) FROM report_exports WHERE org_id=$1 AND created_at > date_trunc('month', now()) AND (format='pdf' OR format IS NULL)`, [orgId3])
-    ]);
-    return {
-      plan: plan4,
-      billing_period: (/* @__PURE__ */ new Date()).toISOString().slice(0, 7),
-      usage: {
-        audits: { used: auditsUsed, limit: limits.audits + extraAudits, pct: Math.round(auditsUsed / Math.max(limits.audits + extraAudits, 1) * 100) },
-        monitors: { used: monitorsUsed, limit: limits.monitors + extraMonitors, pct: Math.round(monitorsUsed / Math.max(limits.monitors + extraMonitors, 1) * 100) },
-        reports: { used: reportsUsed, limit: limits.reports + extraReports, pct: Math.round(reportsUsed / Math.max(limits.reports + extraReports, 1) * 100) },
-        exports: { used: exportsUsed, limit: limits.exports + extraExports, pct: Math.round(exportsUsed / Math.max((limits.exports ?? limits.reports) + extraExports, 1) * 100) },
-        pdfs: { used: pdfsUsed, limit: limits.reports + extraReports, pct: Math.round(pdfsUsed / Math.max(limits.reports + extraReports, 1) * 100) },
-        seats: { used: seatsUsed, limit: limits.teamMembers + extraSeats, pct: Math.round(seatsUsed / Math.max(limits.teamMembers + extraSeats, 1) * 100) }
-      },
-      // Bug-4 fix: addons includes plan-included items flagged with includedInPlan:true
-      addons: addonsWithFlags,
-      // Legacy flat addons map for backward-compat consumers
-      addonsFlat: billingCtx.addons,
-      subscriptionStatus: billingCtx.subscriptionStatus ?? "inactive",
-      trialEndsAt: billingCtx.trialEndsAt ?? null,
-      // Bug-5 fix: nextBillingDate exposed here
-      nextBillingDate
-    };
-  } finally {
-    client.release();
-  }
-}
-async function trackBillingEvent(type, data, orgId3 = "default") {
-  const client = await pool.connect();
-  try {
-    await client.query(
-      `INSERT INTO billing_events (org_id, type, amount, currency, plan, metadata, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,now())`,
-      [orgId3, type, data.amount ?? 0, data.currency ?? "eur", String(data.plan ?? "unknown"), JSON.stringify(data)]
-    );
-  } catch (err) {
-    logger.warn({ err }, "[Billing] Failed to track billing event");
-  } finally {
-    client.release();
-  }
-}
-async function getMRRData(orgId3 = "default") {
-  const orgData = await loadOrgData(orgId3).catch(() => null);
-  const plan4 = (orgData?.plan || "standard").toLowerCase();
-  const currentMRR = PLAN_DEFINITIONS[plan4]?.priceEur ?? 0;
-  const client = await pool.connect();
-  try {
-    const rows = await client.query(`
-      SELECT
-        date_trunc('month', created_at) AS month,
-        SUM(CASE WHEN type IN ('subscription_created','subscription_renewed') THEN amount ELSE 0 END) AS mrr,
-        SUM(CASE WHEN type = 'subscription_canceled' THEN amount ELSE 0 END) AS churn,
-        COUNT(CASE WHEN type = 'subscription_created' THEN 1 END) AS new_subs,
-        COUNT(CASE WHEN type = 'subscription_canceled' THEN 1 END) AS cancels
-      FROM billing_events
-      WHERE org_id=$1 AND created_at > now() - INTERVAL '12 months'
-      GROUP BY 1 ORDER BY 1 DESC LIMIT 12
-    `, [orgId3]);
-    return {
-      currentMRR,
-      arr: currentMRR * 12,
-      history: rows.rows.map((r) => ({
-        month: String(r.month).slice(0, 7),
-        mrr: Number(r.mrr) || currentMRR,
-        churn: Number(r.churn) || 0,
-        newSubs: Number(r.new_subs) || 0,
-        cancels: Number(r.cancels) || 0
-      }))
-    };
-  } catch {
-    return { currentMRR, arr: currentMRR * 12, history: [] };
-  } finally {
-    client.release();
-  }
-}
-async function getSubscriptionAnalytics(orgId3 = "default") {
-  const [mrr, usage, orgData] = await Promise.all([
-    getMRRData(orgId3),
-    getUsageSummary(orgId3),
-    loadOrgData(orgId3).catch(() => null)
-  ]);
-  const trialDaysLeft = orgData?.trialEndsAt ? Math.max(0, Math.ceil((new Date(orgData.trialEndsAt).getTime() - Date.now()) / 864e5)) : null;
-  return {
-    ...mrr,
-    usage,
-    plan: orgData?.plan ?? "standard",
-    subscriptionStatus: orgData?.subscriptionStatus ?? "inactive",
-    trialDaysLeft,
-    stripeCustomerId: orgData?.stripeCustomerId ?? null,
-    addons: orgData?.addons ?? {}
-  };
-}
-async function startTrial(plan4 = "pro", days = 14, orgId3 = "default") {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
-  if (!stripeKey) {
-    if (process.env["NODE_ENV"] === "production") {
-      throw new Error("STRIPE_LIVE_API_KEY is required in production \u2014 cannot activate trial");
-    }
-    const trialEnd = new Date(Date.now() + days * 864e5).toISOString();
-    store.broadcastPlanUpdate(plan4, orgId3);
-    logger.info({ plan: plan4, days }, "[Billing] Trial activated (dev mode \u2014 no Stripe key)");
-    return { ok: true, trialEndsAt: trialEnd, plan: plan4, mock: true };
-  }
-  try {
-    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
-    const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-    const planPriceId = PLAN_PRICE_IDS[plan4.toLowerCase()];
-    if (!planPriceId) {
-      const trialEnd2 = new Date(Date.now() + days * 864e5).toISOString();
-      store.broadcastPlanUpdate(plan4, orgId3);
-      return { ok: true, trialEndsAt: trialEnd2, plan: plan4, noPrice: true };
-    }
-    const { ensureStripeCustomer: ensureStripeCustomer2 } = await Promise.resolve().then(() => (init_ensure_stripe_customer(), ensure_stripe_customer_exports));
-    const customerId = await ensureStripeCustomer2(orgId3, null, stripeKey);
-    const [existingActive, existingTrialing] = await Promise.all([
-      stripe.subscriptions.list({ customer: customerId, status: "active", limit: 1 }),
-      stripe.subscriptions.list({ customer: customerId, status: "trialing", limit: 1 })
-    ]);
-    const existingSub = existingActive.data[0] ?? existingTrialing.data[0];
-    if (existingSub) {
-      const trialEnd2 = existingSub.trial_end ? new Date(existingSub.trial_end * 1e3).toISOString() : new Date(Date.now() + days * 864e5).toISOString();
-      logger.info({ subId: existingSub.id, orgId: orgId3 }, "[Billing] startTrial \u2014 existing subscription found, returning idempotent result");
-      return { ok: true, trialEndsAt: trialEnd2, subscriptionId: existingSub.id, plan: plan4, idempotent: true };
-    }
-    const sub = await stripe.subscriptions.create({
-      customer: customerId,
-      items: [{ price: planPriceId }],
-      trial_period_days: days
-    });
-    const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1e3).toISOString() : new Date(Date.now() + days * 864e5).toISOString();
-    store.broadcastPlanUpdate(plan4, orgId3);
-    logger.info({ plan: plan4, days, subId: sub.id }, "[Billing] Stripe trial started");
-    return { ok: true, trialEndsAt: trialEnd, subscriptionId: sub.id, plan: plan4 };
-  } catch (err) {
-    logger.error({ err }, "[Billing] Failed to start trial");
-    throw err;
-  }
-}
-async function validateCoupon(code) {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
-  if (!stripeKey) {
-    if (process.env["NODE_ENV"] === "production") {
-      return { valid: false, error: "Payment service not configured" };
-    }
-    if (code === "FLOWPOINT20") return { valid: true, discount: 20, type: "percent", name: "Demo coupon (dev)", mock: true };
-    return { valid: false, error: "Code invalide (mode dev)" };
-  }
-  try {
-    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
-    const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-    const coupon = await stripe.coupons.retrieve(code);
-    if (!coupon.valid) return { valid: false, error: "Code expir\xE9 ou invalide" };
-    return {
-      valid: true,
-      id: coupon.id,
-      name: coupon.name || code,
-      type: coupon.percent_off ? "percent" : "amount",
-      discount: coupon.percent_off || (coupon.amount_off ? coupon.amount_off / 100 : 0),
-      duration: coupon.duration
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("No such coupon")) return { valid: false, error: "Code coupon introuvable" };
-    throw err;
-  }
-}
-async function getInvoices(limit2 = 20, stripeCustomerId) {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
-  const customerId = stripeCustomerId ?? null;
-  if (!stripeKey || !customerId) {
-    return { invoices: [], mock: !stripeKey };
-  }
-  try {
-    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
-    const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-    const invoices = await stripe.invoices.list({ customer: customerId, limit: limit2 });
-    return {
-      invoices: invoices.data.map((inv) => ({
-        id: inv.id,
-        number: inv.number,
-        amount: (inv.amount_paid || inv.amount_due) / 100,
-        currency: inv.currency.toUpperCase(),
-        status: inv.status,
-        date: new Date((inv.created || 0) * 1e3).toISOString(),
-        pdfUrl: inv.invoice_pdf,
-        hostedUrl: inv.hosted_invoice_url,
-        period: {
-          start: inv.period_start ? new Date(inv.period_start * 1e3).toISOString() : null,
-          end: inv.period_end ? new Date(inv.period_end * 1e3).toISOString() : null
-        }
-      }))
-    };
-  } catch (err) {
-    logger.warn({ err }, "[Billing] Failed to fetch invoices");
-    return { invoices: [], error: "Failed to fetch invoices" };
-  }
-}
-
 // src/routes/billing.ts
+init_billing_service();
 init_mailer();
 init_rateLimiter();
 var billingPortalRateLimit = createRateLimit("billingPortalPerMinute");
@@ -121394,6 +122538,8 @@ async function logHistory(db15, missionId, org16, action, fromStatus, toStatus) 
   });
 }
 router18.get("/missions", async (req, res) => {
+  const _t0 = Date.now();
+  logger.info({ org: orgId(req) }, "[MISSIONS] API start");
   try {
     const org16 = orgId(req);
     const { status, category, priority, quick_win, limit: limit2 = "100", offset = "0" } = req.query;
@@ -121418,9 +122564,11 @@ router18.get("/missions", async (req, res) => {
     query += ` ORDER BY priority_score DESC, created_at DESC LIMIT $${p++} OFFSET $${p++}`;
     params.push(parseInt(limit2) || 100, parseInt(offset) || 0);
     const result = await pool.query(query, params);
+    const ms = Date.now() - _t0;
+    logger.info({ org: org16, rows: result.rows.length, ms }, "[MISSIONS] API end");
     res.json(result.rows.map(rowToMission));
   } catch (err) {
-    logger.error({ err }, "[Missions] GET /missions error");
+    logger.error({ err, ms: Date.now() - _t0 }, "[Missions] GET /missions error");
     res.json([]);
   }
 });
@@ -123721,12 +124869,18 @@ router22.delete("/team/channels/:name", canWrite, async (req, res) => {
 router22.get("/team/messages", async (req, res) => {
   try {
     const channel = normChannel(req.query["channel"]);
+    const sinceMs = Number(req.query["since"]) || 0;
+    const params = [org3(req), channel];
+    const sinceClause = sinceMs > 0 ? (() => {
+      params.push(new Date(sinceMs).toISOString());
+      return `AND created_at > $3`;
+    })() : "";
     const r = await db4(req)(
       `SELECT id, org_id, channel, sender_id, sender_name, content, type, attachment_url, attachment_name, created_at
        FROM team_messages
-       WHERE org_id=$1 AND channel=$2
+       WHERE org_id=$1 AND channel=$2 ${sinceClause}
        ORDER BY created_at DESC LIMIT 100`,
-      [org3(req), channel]
+      params
     );
     const me = requesterId(req);
     res.json(r.rows.reverse().map((m) => mapMsg(m, String(m["sender_id"] ?? "") === me)));
@@ -123791,6 +124945,7 @@ router22.post("/team/messages", canWrite, async (req, res) => {
   const senderName = req.orgContext?.email?.split("@")[0] ?? "\xC9quipe";
   const senderId = requesterId(req);
   const id = "msg" + Date.now();
+  console.log("[CHAT SEND]", { messageId: id, orgId: org3(req), senderId, channel });
   try {
     await db4(req)(
       `INSERT INTO team_channels (org_id, name, created_by, created_at)
@@ -123823,6 +124978,7 @@ router22.post("/team/messages", canWrite, async (req, res) => {
       attachmentName: attachmentName ?? null
     };
     store.broadcast({ type: "chat:message", channel, message: { ...msg, self: false, read: false } }, org3(req));
+    console.log("[CHAT SSE BROADCAST]", { messageId: id, orgId: org3(req), channel, senderId, recipients: "all-org-sse-clients" });
     (async () => {
       const senderEmail = req.orgContext?.email ?? "";
       const members = await db4(req)(
@@ -124329,16 +125485,24 @@ router25.get("/addons", async (req, res) => {
     const plan4 = (dbData?.plan || "standard").toLowerCase();
     const orgAddons = await getOrgAddons(orgId3);
     const liveAddons = { ...dbData?.addons ?? {}, ...orgAddons ?? {} };
+    for (const removedKey of REMOVED_ADDONS) delete liveAddons[removedKey];
     const planIncluded = PLAN_INCLUDED_ADDONS[plan4] ?? /* @__PURE__ */ new Set();
     for (const key of planIncluded) {
       if (!(key in liveAddons)) liveAddons[key] = true;
     }
     const quotas = getQuotaLimits(plan4, liveAddons);
-    const catalog = Object.fromEntries(Object.entries(ADDON_DEFINITIONS).map(([key, definition]) => [key, {
-      ...definition,
-      active: liveAddons[key] ?? false,
-      includedInPlan: planIncluded.has(key)
-    }]));
+    const catalog = Object.fromEntries(Object.entries(ADDON_DEFINITIONS).filter(([key]) => !REMOVED_ADDONS.has(key)).map(([key, definition]) => {
+      const active = liveAddons[key] ?? false;
+      const includedInPlan = planIncluded.has(key);
+      return [key, {
+        ...definition,
+        active,
+        includedInPlan,
+        allowedForPlan: isPlanAllowedAddon(plan4, key),
+        availability: getAddonAvailability(key),
+        status: getAddonStatus(key, { included: includedInPlan, active })
+      }];
+    }));
     res.json({
       addons: liveAddons,
       orgAddons,
@@ -124357,6 +125521,20 @@ router25.post("/addons/:key/activate", ownerOnly, async (req, res) => {
     res.status(400).json({ error: "Unknown addon key" });
     return;
   }
+  if (REMOVED_ADDONS.has(key)) {
+    logger.warn({ orgId: orgId3, addonKey: key }, "[Addons] activation blocked \u2014 removed from catalogue");
+    res.status(410).json({ error: "Cet add-on n'est plus disponible.", code: "ADDON_REMOVED" });
+    return;
+  }
+  if (COMING_SOON_ADDONS.has(key)) {
+    logger.warn({ orgId: orgId3, addonKey: key }, "[Addons] activation blocked \u2014 add-on not yet available (COMING_SOON)");
+    res.status(503).json({
+      error: "Cet add-on n'est pas encore disponible. Il sera lanc\xE9 prochainement.",
+      code: "ADDON_COMING_SOON",
+      addonKey: key
+    });
+    return;
+  }
   const rawQty = req.body?.quantity;
   const quantity = Math.min(20, Math.max(1, Math.floor(Number(rawQty ?? 1)) || 1));
   const dbData = await loadOrgData(orgId3).catch(() => null);
@@ -124364,6 +125542,25 @@ router25.post("/addons/:key/activate", ownerOnly, async (req, res) => {
   if ((PLAN_INCLUDED_ADDONS[plan4] ?? /* @__PURE__ */ new Set()).has(key)) {
     res.json({ ok: true, addonKey: key, includedInPlan: true, addons: await getOrgAddons(orgId3) });
     return;
+  }
+  if (!isPlanAllowedAddon(plan4, key)) {
+    logger.warn({ orgId: orgId3, addonKey: key, plan: plan4 }, "[Addons] plan gate: add-on not allowed for plan tier");
+    res.status(403).json({
+      error: `L'add-on "${key}" n'est pas disponible sur le plan ${plan4}. Passez \xE0 un plan sup\xE9rieur pour y acc\xE9der.`,
+      code: "ADDON_PLAN_GATE",
+      currentPlan: plan4,
+      addonKey: key
+    });
+    return;
+  }
+  try {
+    const { ensureStripeCustomer: ensureStripeCustomer2 } = await Promise.resolve().then(() => (init_ensure_stripe_customer(), ensure_stripe_customer_exports));
+    await ensureStripeCustomer2(orgId3);
+  } catch (_ensureErr) {
+    logger.warn(
+      { orgId: orgId3, addonKey: key, err: String(_ensureErr) },
+      "[Addons] ensureStripeCustomer failed \u2014 proceeding; syncAddonWithStripe will block if no sub"
+    );
   }
   const { syncAddonWithStripe: syncAddonWithStripe2 } = await Promise.resolve().then(() => (init_addon_stripe_sync(), addon_stripe_sync_exports));
   const stripeSync = await syncAddonWithStripe2(orgId3, key, "activate", quantity);
@@ -124545,7 +125742,7 @@ var ai_credits_default = router26;
 
 // src/routes/behavioral.ts
 var import_express27 = __toESM(require_express2(), 1);
-import { createHash as createHash7, createHmac as createHmac3, timingSafeEqual as timingSafeEqual3 } from "crypto";
+import { createHash as createHash8, createHmac as createHmac3, timingSafeEqual as timingSafeEqual3 } from "crypto";
 import { randomBytes as randomBytes7 } from "crypto";
 
 // src/services/behavioral-service.ts
@@ -124703,7 +125900,7 @@ init_rateLimiter();
 var publicBehavioralRouter = (0, import_express27.Router)();
 var behavioralOriginAllowlist = /* @__PURE__ */ new Set();
 function hashToken2(token) {
-  return createHash7("sha256").update(token).digest("hex");
+  return createHash8("sha256").update(token).digest("hex");
 }
 function verifyHmac(key, message, receivedHex) {
   const expected = createHmac3("sha256", key).update(message).digest("hex");
@@ -125938,13 +127135,32 @@ async function executeAction(type, params, orgId3) {
           logger.warn("[Automation] generate_recommendations: no audit data");
           break;
         }
+        let _autoLang = "fr";
+        try {
+          const _langRow = await pool.query(
+            `SELECT settings FROM user_prefs WHERE org_id = $1 LIMIT 1`,
+            [o]
+          );
+          const _settings = _langRow.rows[0]?.settings;
+          if (_settings && typeof _settings["language"] === "string") _autoLang = _settings["language"].slice(0, 2).toLowerCase();
+        } catch {
+        }
         const prefs = await loadOrgAIPrefs(o);
         const aiCfg = resolveAIModel(prefs, "seo_audit");
+        const _autoSysFr = "Tu es un consultant SEO senior. G\xE9n\xE8re 5 recommandations prioritaires bas\xE9es sur les donn\xE9es d'audit fournies. Format: liste num\xE9rot\xE9e avec impact estim\xE9.";
+        const _autoSysEn = "You are a senior SEO consultant. Generate 5 priority recommendations based on the provided audit data. Format: numbered list with estimated impact.";
+        const _autoSysDe = "Sie sind ein Senior-SEO-Berater. Erstellen Sie 5 priorit\xE4re Empfehlungen basierend auf den bereitgestellten Audit-Daten. Format: nummerierte Liste mit gesch\xE4tztem Impact.";
+        const _autoSysEs = "Eres un consultor SEO senior. Genera 5 recomendaciones prioritarias basadas en los datos de auditor\xEDa proporcionados. Formato: lista numerada con impacto estimado.";
+        const _autoSystem = _autoLang === "de" ? _autoSysDe : _autoLang === "es" ? _autoSysEs : _autoLang === "en" ? _autoSysEn : _autoSysFr;
+        const _autoUserFr = `Audit ${auditData.url} \u2014 Score SEO ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} issues.`;
+        const _autoUserEn = `Audit ${auditData.url} \u2014 SEO score ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} issues.`;
+        const _autoUser = _autoLang === "en" ? _autoUserEn : _autoLang === "de" ? `Audit ${auditData.url} \u2014 SEO-Score ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} Issues.` : _autoLang === "es" ? `Auditor\xEDa ${auditData.url} \u2014 Puntuaci\xF3n SEO ${auditData.score}/100, Rendimiento ${auditData.speed}/100, ${auditData.issues} problemas.` : _autoUserFr;
+        logger.info({ userLanguage: _autoLang, aiPromptLanguage: _autoLang, recommendationLanguage: _autoLang }, "[Automation/generate_recommendations] language chain");
         await aiChat({
           provider: aiCfg.provider,
           model: aiCfg.model,
-          systemPrompt: "Tu es un consultant SEO senior. G\xE9n\xE8re 5 recommandations prioritaires bas\xE9es sur les donn\xE9es d'audit fournies. Format: liste num\xE9rot\xE9e avec impact estim\xE9.",
-          messages: [{ role: "user", content: `Audit ${auditData.url} \u2014 Score SEO ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} issues.` }],
+          systemPrompt: _autoSystem,
+          messages: [{ role: "user", content: _autoUser }],
           maxTokens: aiCfg.maxTokens
         });
         logger.info({ url: auditData.url, provider: aiCfg.provider, model: aiCfg.model }, "[Automation] generate_recommendations complete");
@@ -130555,6 +131771,15 @@ async function finalizeRankingSearch(orgId3, id, rankings) {
     throw new Error("ranking reservation unavailable during finalization");
   }
 }
+async function releaseRankingSearch(orgId3, id) {
+  await pool.query(
+    `DELETE FROM local_seo_ranking_history
+     WHERE id=$1 AND org_id=$2
+       AND jsonb_typeof(results)='object'
+       AND results->>'_status'='pending'`,
+    [id, orgId3]
+  );
+}
 function withQuota(handler) {
   return async (req, res) => {
     const orgId3 = req["orgId"] ?? "default";
@@ -130835,7 +132060,20 @@ router43.post("/local-seo/rankings", canWrite, async (req, res) => {
         return;
       }
       const { getLocalPackRank: getLocalPackRank2 } = await Promise.resolve().then(() => (init_dataforseo_service(), dataforseo_service_exports));
-      const rankings = await getLocalPackRank2(keyword, location, orgId3);
+      let rankings;
+      try {
+        rankings = await getLocalPackRank2(keyword, location, orgId3);
+      } catch (providerErr) {
+        try {
+          await releaseRankingSearch(orgId3, histId);
+        } catch (cleanupErr) {
+          logger.error(
+            { err: cleanupErr, orgId: orgId3, histId },
+            "[seo] local-seo failed reservation cleanup failed"
+          );
+        }
+        throw providerErr;
+      }
       const resultCount = Array.isArray(rankings) ? rankings.length : 0;
       try {
         await finalizeRankingSearch(orgId3, histId, rankings);
@@ -130851,7 +132089,7 @@ router43.post("/local-seo/rankings", canWrite, async (req, res) => {
         return;
       }
       const usage = { used: reservation.used, limit: reservation.limit };
-      res.json({ ok: true, keyword, location, rankings, count: resultCount, configured: true, usage });
+      res.json({ ok: true, keyword, location, rankings, count: resultCount, configured: true, usage, historyId: histId });
       return;
     }
     res.json({
@@ -130902,6 +132140,29 @@ router43.get("/local-seo/rankings/history", async (req, res) => {
       reason: "history_unavailable",
       error: "Impossible de charger l'historique des classements locaux."
     });
+  }
+});
+router43.delete("/local-seo/rankings/history/:id", canWrite, async (req, res) => {
+  const orgId3 = req["orgId"] ?? "default";
+  const { id } = req.params;
+  if (!id) {
+    res.status(400).json({ error: "id required" });
+    return;
+  }
+  try {
+    const r = await pool.query(
+      `DELETE FROM local_seo_ranking_history WHERE id = $1 AND org_id = $2 RETURNING id`,
+      [id, orgId3]
+    );
+    if (!r.rowCount) {
+      res.status(404).json({ ok: false, error: "Entry not found or already deleted" });
+      return;
+    }
+    logger.info({ orgId: orgId3, id }, "[seo] local-seo history entry deleted");
+    res.json({ ok: true, deleted: id });
+  } catch (err) {
+    logger.error({ err, orgId: orgId3, id }, "[seo] local-seo history delete failed");
+    res.status(500).json({ ok: false, error: "Deletion failed" });
   }
 });
 router43.get("/seo/llm-visibility", withQuota(async (req, res) => {
@@ -135922,6 +137183,7 @@ router53.patch("/location", async (req, res) => {
 var import_express54 = __toESM(require_express2(), 1);
 init_logger();
 init_plans();
+init_billing_service();
 init_rateLimiter();
 init_stripe_factory();
 init_store();
@@ -136007,6 +137269,10 @@ function parseAddonsPub(raw, res) {
     if (val > MAX_ADDON_QTY_PUB) {
       res.status(400).json({ error: `Quantit\xE9 invalide pour "${key}" : maximum ${MAX_ADDON_QTY_PUB}` });
       return null;
+    }
+    if (ADDON_DEFINITIONS[key]?.quantity === false) {
+      result[key] = 1;
+      continue;
     }
     result[key] = val;
   }
@@ -136310,6 +137576,7 @@ router54.post("/public/checkout-session", publicCheckoutRateLimit, async (req, r
       const allLineItems = quoteToStripeLineItems(quote);
       const sessionParams = urlOrEmbedded2({
         mode: "subscription",
+        currency: "eur",
         line_items: allLineItems,
         subscription_data: {
           /* Only grant the trial the server actually quoted. Hardcoding 14 here
@@ -136369,6 +137636,15 @@ router54.post("/public/payment-intent", publicCheckoutRateLimit, async (req, res
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
   const preRegisterToken = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
+  const _piReqOrgId = req.orgId;
+  if (!plan4 && !preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
+    const addonKeys = Object.keys(addons);
+    if (addonKeys.length > 0) {
+      logger.warn({ addonKeys }, "[PublicBilling] payment-intent: addon-only cart rejected \u2014 unauthenticated (no orgId)");
+      res.status(401).json({ error: "Authentification requise pour acheter des add-ons.", code: "UNAUTHENTICATED" });
+      return;
+    }
+  }
   let quote;
   try {
     const trialEligible = await resolveTrialEligibility(req);
@@ -136571,7 +137847,7 @@ router54.post("/public/payment-intent", publicCheckoutRateLimit, async (req, res
         }
       }
     }
-    if (metadata["type"] === "ai_credits" && !metadata["orgId"]) {
+    if (!metadata["orgId"]) {
       const _piMetaOrgId = req.orgId;
       if (_piMetaOrgId && _piMetaOrgId !== "default") {
         metadata["orgId"] = _piMetaOrgId;
@@ -140444,7 +141720,25 @@ app.get("/.well-known/security.txt", (_req, res) => {
 app.get("/index.html", (_req, res) => res.redirect(301, "/signin.html"));
 app.get("/", (_req, res) => res.redirect(301, "/signin.html"));
 app.get(["/index", "/signup", "/inscription", "/signin", "/signin.html"], servePage("signin.html"));
-app.get(["/dashboard", "/dashboard.html"], servePage("dashboard.html"));
+app.get(["/dashboard", "/dashboard.html"], (req, res) => {
+  const cookieToken = req.cookies?.fp_token ?? "";
+  if (!cookieToken) {
+    logger.info(
+      {
+        source: req.headers.referer ?? "(direct)",
+        target: "/signin.html",
+        ip: req.ip ?? "(unknown)",
+        userAgent: req.headers["user-agent"]?.slice(0, 80) ?? "",
+        hasCookie: false
+      },
+      "[MARKETING AUTH REDIRECT] Unauthenticated /dashboard.html \u2192 /signin.html"
+    );
+    res.redirect(302, "/signin.html");
+    return;
+  }
+  logger.debug({ source: req.headers.referer ?? "(direct)", hasCookie: true }, "[MARKETING AUTH REDIRECT] Cookie present \u2014 serving dashboard.html");
+  servePage("dashboard.html")(req, res);
+});
 app.get(["/login", "/login.html"], servePage("login.html"));
 app.get(["/login-verify", "/login-verify.html"], servePage("login-verify.html"));
 app.get(["/pricing", "/pricing.html"], servePage("pricing.html"));
@@ -140605,6 +141899,7 @@ async function initMissionsTables() {
       CREATE INDEX IF NOT EXISTS idx_missions_org_id ON missions(org_id);
       CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status);
       CREATE INDEX IF NOT EXISTS idx_mission_history_mission_id ON mission_history(mission_id);
+      CREATE INDEX IF NOT EXISTS idx_missions_org_priority ON missions(org_id, priority_score DESC, created_at DESC);
 
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS source_url TEXT;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS source_audit_id TEXT;
@@ -142195,6 +143490,21 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
 }
+process.on("unhandledRejection", (reason, promise) => {
+  logger.error(
+    {
+      reason: reason instanceof Error ? { message: reason.message, stack: reason.stack, code: reason.code } : String(reason),
+      promise: String(promise)
+    },
+    "[CRITICAL] Unhandled promise rejection \u2014 server kept alive; fix the root cause"
+  );
+});
+process.on("uncaughtException", (err) => {
+  logger.error(
+    { message: err.message, stack: err.stack, code: err.code },
+    "[CRITICAL] Uncaught exception \u2014 server kept alive"
+  );
+});
 main().catch((err) => {
   logger.error(
     {

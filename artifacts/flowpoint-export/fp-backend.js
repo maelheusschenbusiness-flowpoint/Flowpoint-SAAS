@@ -3410,9 +3410,9 @@ window.__fpPageLoadTs = Date.now();
     }
 
     // Start SSE only after session restore completes so the token is ready.
-    // A cold connect without a token → immediate 401 → 2s reconnect delay → late delivery.
-    // _sessionReady is the fp-backend.js module-level restore promise (always defined).
-    Promise.resolve(_sessionReady).then(function() { connect(); }).catch(function() { connect(); });
+    // This section lives outside the bootstrap IIFE, so only the exported
+    // promise is in scope here.
+    Promise.resolve(window.__fpSessionReady).then(function() { connect(); }).catch(function() { connect(); });
   })();
 
   // ─── REAL-TIME DATA REFRESH ───────────────────────────────────────────────
@@ -3686,25 +3686,7 @@ window.__fpPageLoadTs = Date.now();
 
   (function fpV8dInit() {
 
-    // ── 1. FERMER & DÉSACTIVER l'AI panel ─────────────────────────────────
-    // CSS le cache déjà. On s'assure aussi via JS qu'il ne s'ouvre jamais.
-    function killAIPanel() {
-      var panel   = document.getElementById('fp-ai-chat-panel');
-      var overlay = document.getElementById('fp-ai-chat-overlay');
-      var btn     = document.getElementById('topbar-ai');
-      if (panel)   { panel.hidden = true;   panel.setAttribute('aria-hidden','true'); }
-      if (overlay) { overlay.hidden = true; }
-      if (btn)     { btn.style.display = 'none'; btn.disabled = true; }
-      document.body.classList.remove('fp-ai-open');
-
-      // Bloquer le clic sur le bouton IA (belt+suspenders)
-      if (btn && !btn._fpAiBlocked) {
-        btn._fpAiBlocked = true;
-        btn.addEventListener('click', function(e){ e.stopImmediatePropagation(); e.preventDefault(); }, true);
-      }
-    }
-
-    // ── 2. PATCH render() IMMÉDIAT en DOMContentLoaded ────────────────────
+    // ── 1. PATCH render() IMMÉDIAT en DOMContentLoaded ────────────────────
     // À ce moment tous les scripts ont tourné → window.render est défini.
     // On enveloppe render() dans un try/catch AVANT le premier appel async.
     function patchRenderNow() {
@@ -3732,7 +3714,7 @@ window.__fpPageLoadTs = Date.now();
       console.log('[FP v8d] render() patché au DOMContentLoaded');
     }
 
-    // ── 3. POLLING — appelle render() dès que STATE.me est prêt ──────────
+    // ── 2. POLLING — appelle render() dès que STATE.me est prêt ──────────
     // Tire toutes les 300ms; s'arrête quand du vrai contenu est visible
     // ou après 20s (évite toute fuite mémoire).
     function startRenderPoller() {
@@ -3799,20 +3781,14 @@ window.__fpPageLoadTs = Date.now();
     // ── Boot ──────────────────────────────────────────────────────────────
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', function() {
-        killAIPanel();
         patchRenderNow();
         startRenderPoller();
       });
     } else {
-      killAIPanel();
       patchRenderNow();
       startRenderPoller();
     }
 
-    // Reforcer killAIPanel à 500ms au cas où dashboard.js ouvrirait le panel
-    setTimeout(killAIPanel, 500);
-    setTimeout(killAIPanel, 1500);
-
-    console.log('[FP] v8d — render garanti + AI panel désactivé');
+    console.log('[FP] v8d — render garanti');
   })();
 

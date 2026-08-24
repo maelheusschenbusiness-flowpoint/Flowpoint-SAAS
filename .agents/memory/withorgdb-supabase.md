@@ -1,7 +1,7 @@
 ---
-name: withOrgDb Supabase role degradation
-description: SET LOCAL ROLE app_user fails on Supabase unless explicitly granted; must probe at startup or transaction aborts
-updated: 2026-07-01
+name: withOrgDb role degradation and locked-session reuse
+description: Safe RLS context under managed Postgres and while a caller owns a session-level advisory lock
+updated: 2026-08-24
 ---
 
 **Rule:** Call `probeAppUserRole()` at server startup (before any request). This tests `SET ROLE app_user` at session level (no transaction) — failure is a normal exception, not a transaction abort. The `_appUserRoleUnavailable` flag is set before the first request arrives.
@@ -15,3 +15,11 @@ updated: 2026-07-01
 4. Tenant isolation still holds via `SET LOCAL "app.current_org_id"` GUC — all RLS policies check `current_setting('app.current_org_id', true)`.
 
 **To restore full role isolation on prod:** `GRANT app_user TO <db-connection-user>;` in Supabase SQL editor.
+
+## Session-level advisory locks
+
+**Rule:** While holding a session-level advisory lock on a pooled client, every tenant-scoped operation in that critical section must reuse that same client through `withOrgDbClient()`. Do not call `withOrgDb()` or any helper that acquires another connection.
+
+**Why:** If N concurrent waiters occupy all N pool connections while waiting on the same advisory lock, the lock owner deadlocks when it asks the exhausted pool for an additional RLS-scoped connection. Reusing the owner’s session guarantees progress while preserving the tenant GUC and role behavior.
+
+**How to apply:** Complete module/quota/model preflight before acquiring the lock. Inside the lock, pass the existing client transitively into rate-limit, usage-accounting, cache, and recovery helpers; ensure none silently call `pool.connect()`.

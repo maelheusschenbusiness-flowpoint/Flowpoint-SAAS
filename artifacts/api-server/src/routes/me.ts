@@ -486,8 +486,10 @@ router.put("/me/addons", ownerOnly, async (req: Request, res: Response): Promise
   const orgData = await loadOrgData(orgId).catch(() => null);
   const currentAddons: Record<string, boolean | number> = { ...(orgData?.addons ?? {}) as Record<string, boolean | number> };
 
+  // Removed from the commercial catalogue; never accept or retain this legacy
+  // compatibility value as an entitlement.
+  delete currentAddons.prioritySupport;
   if (typeof body.whiteLabel      === "boolean") currentAddons.whiteLabel      = body.whiteLabel;
-  if (typeof body.prioritySupport === "boolean") currentAddons.prioritySupport = body.prioritySupport;
   if (typeof body.customDomain    === "boolean") currentAddons.customDomain    = body.customDomain;
   if (typeof body.extraSeats      === "number" && body.extraSeats     >= 0) currentAddons.extraSeats     = Math.floor(body.extraSeats);
   if (typeof body.monitorsPack10  === "number" && body.monitorsPack10 >= 0) currentAddons.monitorsPack10 = Math.floor(body.monitorsPack10);

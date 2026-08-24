@@ -15,7 +15,14 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { PLAN_INCLUDED_ADDONS, ADDON_PRICE_IDS } from "./plans.js";
+import {
+  PLAN_INCLUDED_ADDONS,
+  ADDON_PRICE_IDS,
+  BETA_ADDONS,
+  COMING_SOON_ADDONS,
+  getAddonAvailability,
+  getAddonStatus,
+} from "./plans.js";
 import { ADDON_DEFINITIONS } from "../services/addons-service.js";
 import { FEATURE_FLAGS } from "./config.js";
 
@@ -81,7 +88,6 @@ describe("PLAN_INCLUDED_ADDONS integrity", () => {
     expect(PLAN_INCLUDED_ADDONS).toHaveProperty("ultra");
   });
 });
-
 describe("FEATURE_FLAGS entitlement alignment with PLAN_INCLUDED_ADDONS", () => {
   // whiteLabel is bundled in Pro → Pro feature flag must be true
   it("FEATURE_FLAGS.pro.whiteLabel is true (whiteLabel bundled in Pro)", () => {
@@ -106,10 +112,10 @@ describe("FEATURE_FLAGS entitlement alignment with PLAN_INCLUDED_ADDONS", () => 
     expect(FEATURE_FLAGS["ultra"].customDomain).toBe(true);
   });
 
-  // prioritySupport is bundled in Pro → Pro feature flag must be true
-  it("FEATURE_FLAGS.pro.prioritySupport is true (prioritySupport bundled in Pro)", () => {
-    expect(PLAN_INCLUDED_ADDONS["pro"]?.has("prioritySupport")).toBe(true);
-    expect(FEATURE_FLAGS["pro"].prioritySupport).toBe(true);
+  it("prioritySupport is neither bundled nor enabled because it is not implemented", () => {
+    expect(PLAN_INCLUDED_ADDONS["pro"]?.has("prioritySupport")).toBe(false);
+    expect(FEATURE_FLAGS["pro"].prioritySupport).toBe(false);
+    expect(FEATURE_FLAGS["ultra"].prioritySupport).toBe(false);
   });
 });
 
@@ -126,7 +132,7 @@ describe("addons entitlement merge logic", () => {
     }
     expect(liveAddons["whiteLabel"]).toBe(true);
     expect(liveAddons["advancedWebhooks"]).toBe(true);
-    expect(liveAddons["prioritySupport"]).toBe(true);
+    expect(liveAddons["prioritySupport"]).toBeUndefined();
     expect(liveAddons["retention90d"]).toBe(true);
     // customDomain must NOT appear for a Pro subscriber
     expect(liveAddons["customDomain"]).toBeUndefined();
@@ -156,5 +162,31 @@ describe("addons entitlement merge logic", () => {
     expect(liveAddons["customDomain"]).toBe(true);
     expect(liveAddons["retention365d"]).toBe(true);
     expect(liveAddons["keywordDomination"]).toBe(true);
+  });
+});
+
+describe("canonical add-on availability", () => {
+  it("keeps beta classification narrow and free of roadmap or bundled add-ons", () => {
+    const included = new Set(
+      Object.values(PLAN_INCLUDED_ADDONS).flatMap((addons) => [...addons]),
+    );
+    expect([...BETA_ADDONS].filter((key) => COMING_SOON_ADDONS.has(key))).toEqual([]);
+    expect([...BETA_ADDONS].filter((key) => included.has(key))).toEqual([]);
+  });
+
+  it("reports product lifecycle independently of entitlement", () => {
+    expect(getAddonAvailability("globalMonitoring")).toBe("coming_soon");
+    expect(getAddonAvailability("aiWorkspaceLaunch")).toBe("coming_soon");
+    expect(getAddonAvailability("marketIntelligence")).toBe("beta");
+    expect(getAddonAvailability("monitorsPack10")).toBe("available");
+  });
+
+  it("uses coming-soon, included, active, beta, available precedence", () => {
+    expect(getAddonStatus("globalMonitoring", { included: true, active: true })).toBe("coming_soon");
+    expect(getAddonStatus("aiWorkspaceLaunch", { active: true })).toBe("coming_soon");
+    expect(getAddonStatus("whiteLabel", { included: true, active: true })).toBe("included");
+    expect(getAddonStatus("monitorsPack10", { active: 2 })).toBe("active");
+    expect(getAddonStatus("marketIntelligence")).toBe("beta");
+    expect(getAddonStatus("monitorsPack10")).toBe("available");
   });
 });
