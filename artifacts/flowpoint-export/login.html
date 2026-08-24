@@ -203,6 +203,7 @@
 
       // Use session-restore (not /api/me) so the response tells us the canonical
       // live token and lets the server clear stale cookies when neither token is valid.
+      var _traceTs = new Date().toISOString();
       fetch('/api/auth/session-restore', {
         method: 'POST', credentials: 'include', headers: _headers
       })
@@ -211,21 +212,47 @@
           return null;
         })
         .then(function(data) {
-          if (data && data.token) {
+          var hasToken = !!(data && data.token);
+          // ── [AUTH REDIRECT TRACE] ─────────────────────────────────────────
+          try {
+            console.log('[AUTH REDIRECT TRACE]', {
+              file: 'login.html',
+              fn: '_loginCheckSession',
+              source: source,
+              url: window.location.href,
+              destination: hasToken ? '/dashboard.html' : '(stay — no redirect)',
+              sessionStorageToken: !!_st,
+              fp_had_session: _hadSession,
+              isBFCache: _isBFCache,
+              sessionRestoreResult: hasToken ? 'authenticated' : 'unauthenticated',
+              referrer: document.referrer || '(direct)',
+              timestamp: _traceTs,
+            });
+          } catch(_) {}
+          if (hasToken) {
             // Backend confirmed valid session — update sessionStorage, redirect.
             try { sessionStorage.setItem('fp_session_token', data.token); } catch(_) {}
             window.location.replace('/dashboard.html');
           } else {
-            // No live session — clear stale credentials, reveal the login form.
+            // No live session — purge ALL auth state including fp_had_session so
+            // the NEXT visit to login.html doesn't re-fire this probe on a dead session.
             try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
             try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
-            // Do NOT clear fp_had_session here — we want the next load to still
-            // do the quick check in case a new login happens in another tab.
+            try { localStorage.removeItem('fp_had_session'); } catch(_) {}
             document.body.style.visibility = 'visible';
           }
         })
         .catch(function() {
           // Network error → fail-open: show the login form.
+          try {
+            console.log('[AUTH REDIRECT TRACE]', {
+              file: 'login.html', fn: '_loginCheckSession',
+              source: source, url: window.location.href,
+              destination: '(stay — network error)',
+              sessionStorageToken: !!_st, fp_had_session: _hadSession,
+              sessionRestoreResult: 'network-error', timestamp: _traceTs,
+            });
+          } catch(_) {}
           document.body.style.visibility = 'visible';
         });
     }
