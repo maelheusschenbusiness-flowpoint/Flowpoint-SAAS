@@ -367,9 +367,14 @@ export const COMING_SOON_ADDONS = new Set<string>([
  * canonical state remains "included".
  */
 export const BETA_ADDONS = new Set<string>([
+  // Conversion IA — functional, limited release
   "aiCro",
   "revenueLeak",
   "marketIntelligence",
+  // Monitoring — SLA tracking backend is live; UI surfaces SLA data
+  "slaMonitoring",
+  // Local SEO — review analysis backend wired (DFS); limited features
+  "reviewIntelligence",
 ]);
 
 /** Product lifecycle independent of an organisation's current entitlements. */
