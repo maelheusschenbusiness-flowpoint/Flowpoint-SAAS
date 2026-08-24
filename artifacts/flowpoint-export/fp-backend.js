@@ -79,6 +79,7 @@ window.__fpPageLoadTs = Date.now();
             if (!sessionStorage.getItem('fp_tab_uid')) {
               sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
             }
+            try { localStorage.setItem('fp_had_session', '1'); } catch(_) {}
             return true;
           }
         }

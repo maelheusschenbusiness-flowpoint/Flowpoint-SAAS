@@ -156,35 +156,76 @@
   </style>
   <script>
     /* ── Auth-boot guard ────────────────────────────────────────────────────────
-       Never redirect based on sessionStorage alone — a stale/expired/revoked
-       token would silently bypass the login form. Always validate with /api/me
-       before touching window.location.                                           */
+       SECURITY RULES (all must hold simultaneously):
+       1. A redirect to dashboard ONLY happens when the backend explicitly confirms
+          a live session via /api/auth/session-restore — never from a client-side
+          token alone.
+       2. The body is hidden ONLY when there is a sessionStorage token to validate
+          (or during BFCache restore where a session might still be live).
+          When no credential is present we show the form immediately, avoiding an
+          unnecessary hidden state for unauthenticated visitors.
+       3. Any 401 response immediately purges the stale sessionStorage token.
+       4. Network errors are fail-open: show the form so the user can sign in.    */
+
+    // ── Cookie-presence sentinel ──────────────────────────────────────────────
+    // We cannot read the HttpOnly fp_token cookie from JS. Use a lightweight
+    // session-restore call to discover whether the cookie is still alive. We only
+    // skip the call entirely when:
+    //   a) sessionStorage holds no token (set by this tab's previous auth), AND
+    //   b) we have no indication from localStorage that a session was ever started
+    //      in this browser (fp_had_session flag written at login time).
+    // This keeps the fast path: truly anonymous visitors see the form immediately
+    // without any background request. Users with an active session (from a live
+    // or recent tab) are still correctly redirected.
+
     function _loginCheckSession(source) {
-      var _st, _hasCookie, _headers;
+      var _st = null;
       try { _st = sessionStorage.getItem('fp_session_token'); } catch(_) {}
-      // fp_token is httpOnly — cannot read it, but the browser sends it automatically.
-      // We detect its presence indirectly: if no sessionStorage token exists, still
-      // let the backend check via credentials:'include'.
-      _hasCookie = true; // always ask backend; cost is one request, benefit is correctness.
-      if (!_st && !_hasCookie) return;
+
+      // Only make a request when we have reason to believe a session might exist.
+      // Conditions: there is a sessionStorage token (definite), OR it is a BFCache
+      // restore (the user navigated back from dashboard while logged in), OR
+      // localStorage records that a session was started in this browser.
+      var _hadSession = false;
+      try { _hadSession = !!localStorage.getItem('fp_had_session'); } catch(_) {}
+      var _isBFCache = (source === 'pageshow-BFCache');
+
+      if (!_st && !_hadSession && !_isBFCache) {
+        // Definitely no credential — show form immediately without a round-trip.
+        document.body.style.visibility = 'visible';
+        return;
+      }
+
+      // We may have a live session — hide the form while we verify.
       document.body.style.visibility = 'hidden';
-      _headers = { 'Accept': 'application/json' };
+      var _headers = { 'Content-Type': 'application/json' };
       if (_st) _headers['Authorization'] = 'Bearer ' + _st;
-      fetch('/api/me', { method: 'GET', credentials: 'include', headers: _headers })
+
+      // Use session-restore (not /api/me) so the response tells us the canonical
+      // live token and lets the server clear stale cookies when neither token is valid.
+      fetch('/api/auth/session-restore', {
+        method: 'POST', credentials: 'include', headers: _headers
+      })
         .then(function(r) {
-          if (r.ok) {
-            // Backend confirmed valid session → go to dashboard.
+          if (r.ok) return r.json().catch(function() { return null; });
+          return null;
+        })
+        .then(function(data) {
+          if (data && data.token) {
+            // Backend confirmed valid session — update sessionStorage, redirect.
+            try { sessionStorage.setItem('fp_session_token', data.token); } catch(_) {}
             window.location.replace('/dashboard.html');
           } else {
-            // 401/403 → wipe any stale token; stay on login form.
+            // No live session — clear stale credentials, reveal the login form.
             try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
             try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
-            document.cookie = 'fp_token=; Max-Age=0; path=/';
+            // Do NOT clear fp_had_session here — we want the next load to still
+            // do the quick check in case a new login happens in another tab.
             document.body.style.visibility = 'visible';
           }
         })
         .catch(function() {
-          // Network error → fail-closed: stay on login form, show it.
+          // Network error → fail-open: show the login form.
           document.body.style.visibility = 'visible';
         });
     }
@@ -192,8 +233,10 @@
     window.addEventListener('DOMContentLoaded', function() { _loginCheckSession('DOMContentLoaded'); });
 
     // ── BFCache protection (Safari / all browsers) ────────────────────────────
+    // When Safari restores from BFCache the page state is frozen — revalidate.
     window.addEventListener('pageshow', function(evt) {
       if (!evt.persisted) return;
+      // Always re-check on BFCache: the user might have logged out in another tab.
       document.body.style.visibility = 'hidden';
       _loginCheckSession('pageshow-BFCache');
     });

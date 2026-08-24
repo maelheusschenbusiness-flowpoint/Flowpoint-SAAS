@@ -211,6 +211,7 @@
           } catch(_) {}
           if (data && data.token) {
             try { sessionStorage.setItem('fp_session_token', data.token); } catch(_) {}
+            try { localStorage.setItem('fp_had_session', '1'); } catch(_) {}
             window.location.replace('/dashboard.html');
           } else {
             // Confirmed unauthenticated — clear any stale token and show form.

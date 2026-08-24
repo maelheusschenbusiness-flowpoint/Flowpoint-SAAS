@@ -18432,9 +18432,23 @@ function bindGlobalEvents() {
   }
 
   // Logout — révocation session côté serveur avant redirection
+  // SECURITY: always clear ALL client-side auth state before redirecting, even
+  // if the server call fails (prevents stale Bearer from re-authenticating the
+  // user on login.html after a failed logout).
   $('#fp-logout-btn')?.addEventListener('click', async () => {
-    try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
     showToast('info', fpT('Déconnexion…'));
+    // Clear ALL per-tab and cross-tab auth state immediately — before the API
+    // call — so that even if the network request fails, login.html will not find
+    // a sessionStorage token and will not redirect back to dashboard.
+    try {
+      sessionStorage.removeItem('fp_session_token');
+      sessionStorage.removeItem('fp_tab_uid');
+      sessionStorage.removeItem('fp-state-cache');
+    } catch(_) {}
+    try {
+      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_tab_uid']
+        .forEach(function(k) { localStorage.removeItem(k); });
+    } catch(_) {}
     try { await window.apiFetch('/api/auth/logout', { method: 'POST' }); } catch(_) {}
     setTimeout(() => { window.location.replace('/login.html'); }, 1200);
   });

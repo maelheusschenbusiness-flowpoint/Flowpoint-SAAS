@@ -108086,10 +108086,27 @@ router5.post("/auth/logout", async (req, res) => {
   const cookieToken = req.cookies?.fp_token ?? "";
   const authHeader = req.headers["authorization"] ?? "";
   const bearerToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-  const sessionToken = bearerToken || cookieToken;
-  if (sessionToken) {
-    await deleteSession(sessionToken);
-    logger.info("[Auth] Session revoked on logout");
+  const primaryToken = bearerToken || cookieToken;
+  let nukedByUserId = false;
+  if (primaryToken) {
+    const session = await getSession(primaryToken);
+    if (session?.userId) {
+      await invalidateAllSessions(session.userId);
+      nukedByUserId = true;
+      logger.info(
+        { userId: session.userId.slice(0, 8), via: bearerToken ? "bearer" : "cookie" },
+        "[Auth] All sessions revoked on logout (invalidateAllSessions)"
+      );
+    }
+  }
+  if (!nukedByUserId) {
+    const delPromises = [];
+    if (bearerToken) delPromises.push(deleteSession(bearerToken));
+    if (cookieToken && cookieToken !== bearerToken) delPromises.push(deleteSession(cookieToken));
+    if (delPromises.length) {
+      await Promise.allSettled(delPromises);
+      logger.info("[Auth] Session(s) revoked on logout (fallback individual delete)");
+    }
   }
   const isProd2 = isDeployedProd();
   res.clearCookie("fp_token", {

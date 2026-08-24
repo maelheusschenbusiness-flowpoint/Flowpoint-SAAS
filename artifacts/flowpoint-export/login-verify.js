@@ -75,6 +75,9 @@
           // Purge any legacy localStorage token so the old fallback path is dead
           localStorage.removeItem('fp_token');
           localStorage.removeItem('token');
+          // Mark that this browser has ever had a session so login.html's
+          // auth-boot knows to probe for a live cookie on subsequent visits.
+          try { localStorage.setItem('fp_had_session', '1'); } catch(_) {}
         }
       } catch(e) { /* non-fatal */ }
       show('fp-success');
