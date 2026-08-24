@@ -1561,6 +1561,24 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
           { userId: uid.slice(0, 8), email: member.email, activityRowsFound: actRes.rows.length },
           "[STREAK DEBUG]"
         );
+        if (actRes.rows.length === 0 && !isCurrentOwner) {
+          // member_activity_days empty for this member — check user_activity_days
+          // as fallback. This covers members who visited before member_activity_days
+          // was introduced, or whose writes went only to user_activity_days.
+          try {
+            const fallbackRes = await pool.query<{ d: string }>(
+              `SELECT day::text AS d FROM user_activity_days
+               WHERE org_id=$1 AND user_id=$2
+                 AND day >= (NOW() AT TIME ZONE $3)::date - INTERVAL '365 days'
+               ORDER BY d DESC`,
+              [orgId, uid, tz]
+            );
+            if (fallbackRes.rows.length > 0) {
+              actRes.rows.push(...fallbackRes.rows);
+              logger.info({ userId: uid.slice(0, 8), fallbackRows: fallbackRes.rows.length }, "[STREAK] member_activity_days empty — used user_activity_days fallback");
+            }
+          } catch { /* non-fatal fallback */ }
+        }
         if (actRes.rows.length === 0) {
           // Genuine zero: table accessible, member simply has no active days.
           logger.info({ userId: uid.slice(0, 8), email: member.email, calculatedCurrentStreak: 0, bestStreak: 0 }, "[STREAK DEBUG]");
