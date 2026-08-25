@@ -1336,6 +1336,62 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     return;
   }
   try {
+    // ── Temporary diagnostic: trace owner identity chain ──────────────────────
+    // Helps debug why the org owner shows 0 contributions despite activity_log
+    // rows existing. Logs: session orgId, owner_email, owner_user_id,
+    // canonical_uid (what CTE would resolve to), raw activity_log count
+    // for that user, days of activity, and the userId from the session token.
+    try {
+      const diagRes = await pool.query<{
+        owner_email: string | null;
+        owner_raw_uid: string | null;
+        canonical_uid: string | null;
+        al_count: number;
+        al_user_ids: string;
+        days_of_activity: number;
+      }>(
+        `WITH owner_info AS (
+           SELECT LOWER(o.owner_email) AS owner_email,
+                  o.owner_user_id::text AS owner_raw_uid,
+                  COALESCE(
+                    (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
+                    (SELECT u.id::text FROM users u WHERE u.id::text = o.owner_user_id::text LIMIT 1),
+                    o.owner_user_id::text
+                  ) AS canonical_uid
+           FROM organizations o WHERE o.id::text = $1 LIMIT 1
+         )
+         SELECT
+           oi.owner_email,
+           oi.owner_raw_uid,
+           oi.canonical_uid,
+           COUNT(al.id)::int                   AS al_count,
+           STRING_AGG(DISTINCT al.user_id, '|' ORDER BY al.user_id) FILTER (WHERE al.user_id IS NOT NULL) AS al_user_ids,
+           COUNT(DISTINCT DATE(al.created_at))::int AS days_of_activity
+         FROM owner_info oi
+         LEFT JOIN activity_logs al
+           ON (al.org_id = $1
+               OR LOWER(al.org_id) = oi.owner_email
+               OR al.org_id = oi.owner_raw_uid)
+         GROUP BY oi.owner_email, oi.owner_raw_uid, oi.canonical_uid`,
+        [orgId]
+      );
+      const d = diagRes.rows[0];
+      const sessionCtx = (req as unknown as Record<string, unknown>)["orgContext"] as Record<string,unknown> | undefined;
+      logger.info({
+        orgId: orgId.slice(0, 8),
+        sessionUserId: String(sessionCtx?.userId ?? "").slice(0, 36),
+        sessionEmail: String(sessionCtx?.email ?? ""),
+        ownerEmail: d?.owner_email ?? null,
+        ownerRawUid: d?.owner_raw_uid ?? null,
+        canonicalUid: d?.canonical_uid ?? null,
+        activityLogCount: d?.al_count ?? 0,
+        activityUserIds: d?.al_user_ids ?? null,
+        daysOfActivity: d?.days_of_activity ?? 0,
+      }, "[team/contributions] OWNER DIAG");
+    } catch (diagErr) {
+      logger.warn({ diagErr }, "[team/contributions] diag query failed (non-fatal)");
+    }
+
     const countsRes = await pool.query<{
       user_id: string; audits: number; missions: number; reports: number; monitors: number;
     }>(
