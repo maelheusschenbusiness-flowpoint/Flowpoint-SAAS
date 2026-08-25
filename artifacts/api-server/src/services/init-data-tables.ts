@@ -185,6 +185,19 @@ export async function initDataTables(): Promise<void> {
         AND a.created_by IS NULL;
     `).catch(() => { /* non-fatal: activity_logs may not exist yet */ });
 
+    // Second-pass backfill: if activity_logs had no user_id (system/null),
+    // attribute remaining NULL created_by rows to the org owner (email or user_id).
+    // This covers audits created before the created_by column was populated.
+    await run(client, `
+      UPDATE audits a
+      SET created_by = COALESCE(NULLIF(o.owner_user_id, ''), o.owner_email)
+      FROM organizations o
+      WHERE a.org_id = o.id::text
+        AND (a.created_by IS NULL OR a.created_by = '')
+        AND (o.owner_user_id IS NOT NULL AND o.owner_user_id != ''
+             OR o.owner_email IS NOT NULL AND o.owner_email != '');
+    `).catch(() => { /* non-fatal */ });
+
     // ── reports + share_tokens ───────────────────────────────────────────────
     // BUGFIX: the `reports` table was never created on production — it only
     // existed in migrations/002_dashboard_tables.sql, which is not wired into
@@ -226,6 +239,16 @@ export async function initDataTables(): Promise<void> {
       ) al
       WHERE al.target_id = r.id
         AND r.created_by IS NULL;
+    `).catch(() => { /* non-fatal */ });
+    // Second-pass backfill: attribute remaining NULL reports to the org owner
+    await run(client, `
+      UPDATE reports r
+      SET created_by = COALESCE(NULLIF(o.owner_user_id, ''), o.owner_email)
+      FROM organizations o
+      WHERE r.org_id = o.id::text
+        AND (r.created_by IS NULL OR r.created_by = '')
+        AND (COALESCE(NULLIF(o.owner_user_id,''), o.owner_email) IS NOT NULL
+             AND COALESCE(NULLIF(o.owner_user_id,''), o.owner_email) != '');
     `).catch(() => { /* non-fatal */ });
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'PDF';`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS template_key TEXT NOT NULL DEFAULT 'seo';`);
