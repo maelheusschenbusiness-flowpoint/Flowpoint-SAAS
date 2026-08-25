@@ -10496,6 +10496,7 @@ function renderBilling() {
               <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,0.07);color:var(--fp-text-muted)">${escHtml(a.cat)}</span>
               <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${accentColor}18;color:${accentColor}">${escHtml(a.tag)}</span>
               ${inclBadge ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(34,197,94,0.12);color:#22c55e">✓ Inclus — ${inclBadge}</span>` : ''}
+               ${inclBadge && a.status === 'beta' ? '<span class="fp-badge" style="background:rgba(139,92,246,.14);color:#8b5cf6">🧪 Bêta</span>' : ''}
                ${!isInc && a.active && a.status !== 'coming_soon' ? '<span class="fp-badge" style="background:rgba(34,197,94,.12);color:#22c55e">Activé</span>' : ''}
                ${!isInc && !a.active && a.status === 'beta' ? '<span class="fp-badge" style="background:rgba(139,92,246,.14);color:#8b5cf6">Bêta</span>' : ''}
                ${!isInc && !a.active && a.status === 'coming_soon' ? '<span class="fp-badge" style="background:rgba(148,163,184,.12);color:#94a3b8">Bientôt</span>' : ''}
@@ -10601,9 +10602,9 @@ function renderBilling() {
             <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(a.desc)}</div>
             <div style="font-size:10px;color:${cardAccent};font-weight:600;margin-bottom:10px">✦ ${escHtml(a.roi)}</div>
             <div style="display:flex;align-items:center;justify-content:space-between" onclick="event.stopPropagation()">
-              <span style="font-size:12px;font-weight:800;color:${(inc || (a.active && a.status !== 'coming_soon')) ? cardAccent : 'var(--fp-text)'}">${inc ? 'Inclus ✓' : a.status === 'coming_soon' ? fpT('Bientôt') : a.active ? 'Activé' : a.status === 'beta' ? 'Bêta' : escHtml(a.price)}</span>
+              <span style="font-size:12px;font-weight:800;color:${(inc || (a.active && a.status !== 'coming_soon')) ? cardAccent : 'var(--fp-text)'}">${inc ? (a.status === 'beta' ? '🧪 Bêta — Inclus' : 'Inclus ✓') : a.status === 'coming_soon' ? fpT('Bientôt') : a.active ? 'Activé' : a.status === 'beta' ? 'Bêta' : escHtml(a.price)}</span>
               ${inc
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">✓ Inclus</button>`
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">${a.status === 'beta' ? '🧪 Bêta — Inclus' : '✓ Inclus'}</button>`
                 : a.status === 'coming_soon'
                   ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:rgba(148,163,184,0.3);color:#94a3b8" title="${fpT('Bientôt disponible')}">🚧 ${fpT('Bientôt')}</button>`
                   : a.active
