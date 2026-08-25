@@ -677,6 +677,25 @@ export async function initDataTables(): Promise<void> {
     `);
     await run(client, `CREATE INDEX IF NOT EXISTS org_secrets_org_id_idx ON org_secrets(org_id);`);
 
+    // ── billing_events — Stripe webhook idempotency table ────────────────────
+    // Self-heal: table may be missing on older deployments (schema gap).
+    // stripe-webhook.ts fails-open with 42P01 and logs a warning until this runs.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS billing_events (
+        id               SERIAL PRIMARY KEY,
+        org_id           TEXT        NOT NULL DEFAULT '_system_',
+        type             TEXT        NOT NULL DEFAULT '',
+        stripe_event_id  TEXT        UNIQUE,
+        amount           INTEGER     NOT NULL DEFAULT 0,
+        currency         TEXT        NOT NULL DEFAULT 'eur',
+        metadata         JSONB,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS billing_events_org_id_idx        ON billing_events(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS billing_events_stripe_event_id_idx ON billing_events(stripe_event_id);`);
+    await run(client, `ALTER TABLE billing_events ADD COLUMN IF NOT EXISTS metadata JSONB;`);
+
     // ── ai_usage_logs — extended cost logging columns ────────────────────────
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS provider TEXT;`);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS cached_tokens INTEGER NOT NULL DEFAULT 0;`);
