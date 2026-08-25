@@ -3043,18 +3043,9 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE POLICY "uad_select" ON "user_activity_days" FOR SELECT USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "uad_insert" ON "user_activity_days" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "uad_delete" ON "user_activity_days" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
-    // Self-heal: rows inserted before the $1/$2/$3 fix had user_id = org_id (primary key used orgId twice).
-    // Delete those rows so real-user streaks can be re-inserted correctly on next login.
-    // Only removes rows where user_id = org_id AND the org has real members in team_members
-    // (the canonical member table — org_members does not exist).
-    await run(client, `
-      DELETE FROM user_activity_days uad
-      WHERE uad.user_id = uad.org_id
-        AND EXISTS (
-          SELECT 1 FROM team_members tm
-          WHERE tm.org_id = uad.org_id
-        )
-    `);
+    // NOTE: the one-time self-heal DELETE (user_id = org_id) has been removed.
+    // recordActivityDay() now always uses the real userId; running a broad DELETE
+    // on every restart was wiping valid streak rows after each deploy.
 
     // ── member_activity_days — per-member streak tracking (one row per user per day) ──
     await run(client, `
