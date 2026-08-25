@@ -9,7 +9,7 @@
  * Uses mock pool queries to avoid live DB.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, BETA_ADDONS, COMING_SOON_ADDONS } from "../lib/plans.js";
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -47,12 +47,23 @@ describe("PLAN_INCLUDED_ADDONS", () => {
     expect(ultra.has("retention365d")).toBe(true);
   });
 
-  it("Ultra has exactly 9 included add-ons", () => {
-    // backlinkIntelligence removed: COMING_SOON — cannot be active entitlement.
+  it("Ultra has exactly 10 included add-ons", () => {
+    // backlinkIntelligence: BETA + included (restored — regression fix).
     // behavioralAI + aiForecasting: BETA + included — intentional FlowPoint design.
     // Beta describes maturity; included describes commercial mode (non-billable).
     const ultra = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set();
-    expect(ultra.size).toBe(9);
+    expect(ultra.size).toBe(10);
+  });
+
+  it("backlinkIntelligence: non-regression — must be beta AND included in Pro & Ultra simultaneously", () => {
+    // Invariant: BETA ∩ INCLUDED is intentionally non-empty (beta = maturity, included = commercial mode).
+    // Invariant: BETA ∩ COMING_SOON = ∅ (mutually exclusive lifecycle stages).
+    // Regression guard: commit 28b266b incorrectly removed backlinkIntelligence from
+    // PLAN_INCLUDED_ADDONS under the false assumption that COMING_SOON and INCLUDED are exclusive.
+    expect(BETA_ADDONS.has("backlinkIntelligence")).toBe(true);
+    expect(COMING_SOON_ADDONS.has("backlinkIntelligence")).toBe(false);
+    expect(PLAN_INCLUDED_ADDONS["pro"]?.has("backlinkIntelligence")).toBe(true);
+    expect(PLAN_INCLUDED_ADDONS["ultra"]?.has("backlinkIntelligence")).toBe(true);
   });
 
   it("Standard includes whiteLabel", () => {
