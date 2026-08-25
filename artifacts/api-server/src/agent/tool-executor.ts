@@ -194,8 +194,16 @@ export async function executeTool(
     await logActionLog({ id: logId, ...ctx, tool: call.name, args: validArgs,
       confirmationLevel: toolDef.confirmationLevel, result: "error",
       error: msg, durationMs: Date.now() - t0 });
+    // Sanitize raw DB / internal error messages before they reach the UI.
+    // PostgreSQL constraint violations (e.g. "null value in column...") must
+    // never leak to the chat interface — replace with a user-facing message.
+    const sanitizedMsg = /null value in column|violates not-null|violates check|duplicate key|foreign key|relation .* does not exist|syntax error at or near|could not serialize|deadlock detected/i.test(msg)
+      ? `L'opération a échoué côté base de données. Vérifiez les paramètres et réessayez, ou contactez le support si le problème persiste.`
+      : /ECONNREFUSED|ENOTFOUND|getaddrinfo|ETIMEOUT|socket hang up/i.test(msg)
+      ? `Le service est temporairement indisponible. Réessayez dans quelques instants.`
+      : msg;
     return { toolCallId: call.id, toolName: call.name, ok: false,
-      content: `Erreur lors de l'exécution de ${call.name} : ${msg}`, actionLogId: logId };
+      content: `L'action "${call.name}" n'a pas pu être exécutée : ${sanitizedMsg}`, actionLogId: logId };
   }
 }
 
@@ -1627,25 +1635,29 @@ async function dispatchTool(
         actionLogId: logId };
     }
 
+    // force=true bypasses the 24-hour duplicate guard (user explicitly requested a new analysis)
+    const forceRerun = !!(args["force"] as boolean | undefined);
+
     // Check for a recent duplicate — return existing data so the LLM can use it immediately
-    const dupCheck = await pool.query(
-      `SELECT id, score, status FROM audits WHERE org_id=$1 AND url=$2 AND created_at > NOW() - INTERVAL '24 hours' ORDER BY created_at DESC LIMIT 1`,
-      [orgId, url]
-    );
-    if (dupCheck.rows.length > 0) {
-      const ex = dupCheck.rows[0] as Record<string, unknown>;
-      const exId     = String(ex["id"]);
-      const exScore  = Number(ex["score"] ?? 0);
-      const exStatus = String(ex["status"] ?? "");
-      if (exStatus === "processing") {
-        // Existing audit still running — fall through and await it via keepalive poll below
-        // (handled after the insert block by reusing exId)
-        return await _awaitAuditCompletion(exId, orgId, url, logId, name, ctx);
+    if (!forceRerun) {
+      const dupCheck = await pool.query(
+        `SELECT id, score, status FROM audits WHERE org_id=$1 AND url=$2 AND created_at > NOW() - INTERVAL '24 hours' ORDER BY created_at DESC LIMIT 1`,
+        [orgId, url]
+      );
+      if (dupCheck.rows.length > 0) {
+        const ex = dupCheck.rows[0] as Record<string, unknown>;
+        const exId     = String(ex["id"]);
+        const exScore  = Number(ex["score"] ?? 0);
+        const exStatus = String(ex["status"] ?? "");
+        if (exStatus === "processing") {
+          // Existing audit still running — await its completion
+          return await _awaitAuditCompletion(exId, orgId, url, logId, name, ctx);
+        }
+        return { toolCallId: logId, toolName: name, ok: true,
+          content: `Un audit récent (< 24 h) est disponible pour ${url}.\nScore : ${exScore}/100 — Statut : ${fmtAuditStatus(exStatus, exScore)} — ID : ${exId}.\nSi l'utilisateur souhaite relancer un nouvel audit, utilisez force=true.`,
+          data: { auditId: exId, url, status: exStatus, score: exScore },
+          actionLogId: logId };
       }
-      return { toolCallId: logId, toolName: name, ok: true,
-        content: `Un audit récent (< 24 h) est disponible pour ${url}.\nScore : ${exScore}/100 — Statut : ${fmtAuditStatus(exStatus, exScore)} — ID : ${exId}.\nDemandez-moi le résumé détaillé de cet audit, ou preciser "rerun" pour forcer une nouvelle analyse.`,
-        data: { auditId: exId, url, status: exStatus, score: exScore },
-        actionLogId: logId };
     }
 
     const today    = new Date().toISOString().slice(0, 10);
@@ -3147,6 +3159,14 @@ async function dispatchTool(
     const cfCritical = (args["is_critical"] as boolean | undefined) ?? null;
     const cfEnabled  = (args["enabled"]     as boolean | undefined) ?? null;
 
+    // Multi-turn recovery: if creating a new monitor and alert_email is not provided,
+    // ask the user for it instead of letting a DB constraint blow up.
+    if (!cfMonId && !cfEmail) {
+      return { toolCallId: logId, toolName: name2, ok: false,
+        content: `Pour créer un monitor, j'ai besoin d'une adresse email pour les alertes. Quelle adresse email souhaitez-vous utiliser pour recevoir les notifications de ce monitor ?`,
+        actionLogId: logId };
+    }
+
     let cfSnap: Record<string, unknown> | null = null;
     if (cfMonId) {
       cfSnap = await snapMonitor(cfMonId, orgId, pool);
@@ -3185,7 +3205,7 @@ async function dispatchTool(
         `INSERT INTO monitors (id, org_id, name, url, status, uptime, latency, frequency, enabled, is_critical, alert_email, alert_phone, created_at, updated_at)
          VALUES ($1,$2,$3,$4,'unknown',100,0,$5,true,$6,$7,$8,NOW(),NOW())
          RETURNING id`,
-        [cfResultId, orgId, cfName ?? cfUrl, cfUrl, cfFreq ?? 300, cfCritical ?? false, cfEmail ?? null, cfPhone ?? null]
+        [cfResultId, orgId, cfName ?? cfUrl, cfUrl, cfFreq ?? 300, cfCritical ?? false, cfEmail ?? "", cfPhone ?? ""]
       );
       // [Phase 4] Fail-closed: verify the row was actually written before claiming success.
       if (!cfInsertResult.rows[0]?.id) {
@@ -3194,7 +3214,7 @@ async function dispatchTool(
           actionLogId: logId };
       }
       cfResultId = cfInsertResult.rows[0].id as string;
-      cfAction = "créé";
+      cfAction   = "créé";
     }
 
     await logActionLog({ id: logId, orgId, userId, conversationId, provider, model,

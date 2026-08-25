@@ -2987,7 +2987,14 @@ router.post("/ai/conversations/:id/confirm", async (req: Request, res: Response)
       } else if (new Date(check[0]["expires_at"] as string) < new Date()) {
         res.status(410).json({ ok: false, error: "Cette proposition a expiré" });
       } else {
-        res.status(409).json({ ok: false, error: `Cette action est déjà dans l'état "${check[0]["status"]}"` });
+        const rawStatus = String(check[0]["status"] ?? "");
+        // Provide user-facing messages instead of leaking internal state names
+        const friendlyMsg = rawStatus === "confirmed"
+          ? "Cette action a déjà été exécutée avec succès."
+          : rawStatus === "claimed"
+          ? "Une exécution de cette action est déjà en cours. Attendez quelques instants."
+          : "Cette proposition n'est plus disponible (expirée ou annulée).";
+        res.status(409).json({ ok: false, error: friendlyMsg });
       }
       return;
     }

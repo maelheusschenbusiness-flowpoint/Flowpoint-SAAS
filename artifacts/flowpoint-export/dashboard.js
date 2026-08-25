@@ -14107,10 +14107,10 @@ function renderAI() {
       <div style="border-top:1px solid rgba(255,255,255,0.06);padding:10px 12px">
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
-          <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
-          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;line-height:1.5;height:38px;padding-right:8px;flex:1 1 auto;min-width:0"></textarea>
-          <button class="fp-ai-send" id="ai-send" style="flex:0 0 auto;width:44px;height:44px;align-self:flex-end;display:flex;align-items:center;justify-content:center;border-radius:var(--fp-radius-md);background:var(--fp-accent,#2563EB);color:#fff;border:none;cursor:pointer;transition:background 0.15s">${svgIcon('send').replace('width="14"','width="22"').replace('height="14"','height="22"')}</button>
-          <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:38px;height:38px;border-radius:var(--fp-radius-md);background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
+          <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted);align-self:flex-end" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
+          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;line-height:1.5;min-height:38px;height:38px;padding-right:8px;flex:1 1 auto;min-width:0"></textarea>
+          <button class="fp-ai-send" id="ai-send" style="flex:0 0 auto;width:38px;height:38px;align-self:flex-end;display:flex;align-items:center;justify-content:center;border-radius:var(--fp-radius-md);background:var(--fp-accent,#2563EB);color:#fff;border:none;cursor:pointer;transition:background 0.15s">${svgIcon('send').replace('width="14"','width="18"').replace('height="14"','height="18"')}</button>
+          <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:38px;height:38px;align-self:flex-end;border-radius:var(--fp-radius-md);background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
         <!-- Progress hint: shows server-side step name (e.g. "Identification des informations…")
              while waiting for the first AI token. Hidden when real text arrives. -->
@@ -15596,8 +15596,8 @@ function renderAIPanelContent() {
     </div>
     <div class="fp-ai-input-row">
       <textarea class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" rows="1" style="font-size:11px;resize:none;min-height:34px;height:34px;line-height:1.4;flex:1 1 auto;min-width:0"></textarea>
-      <button class="fp-ai-send" id="ai-panel-send" style="flex:0 0 auto;width:44px;height:44px;border-radius:var(--fp-radius-md);align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="22"').replace('height="14"','height="22"')}</button>
-      <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:38px;height:38px;border-radius:var(--fp-radius-md);background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
+      <button class="fp-ai-send" id="ai-panel-send" style="flex:0 0 auto;width:34px;height:34px;border-radius:var(--fp-radius-md);align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="16"').replace('height="14"','height="16"')}</button>
+      <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;align-self:flex-end;border-radius:var(--fp-radius-md);background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:14px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
     </div>
   `;
 }
@@ -65837,37 +65837,64 @@ window.fpAiPanelConfirm = async function(proposalId, convId, confirmBtn, card, m
     if (card) card.innerHTML = '<span style="font-size:11px;color:#ef4444">⚠ ' + fpT('Session expirée — renvoyez votre demande') + '</span>';
     return;
   }
+  // Atomically lock — never re-enable on any failure path.
+  // Tracks confirmed proposalIds so re-renders don't show the button again.
+  window._fpConfirmedProposals = window._fpConfirmedProposals || new Set();
+  if (window._fpConfirmedProposals.has(proposalId)) {
+    if (card) card.innerHTML = '<span style="font-size:11px;color:var(--fp-text-soft)">✅ ' + fpT('Action déjà exécutée.') + '</span>';
+    return;
+  }
   confirmBtn.disabled = true;
   confirmBtn.textContent = fpT('En cours…');
-  try {
-    var _confirmPromise = window.FP_AI_CHAT_API ? window.FP_AI_CHAT_API.confirmAction(convId, proposalId) : Promise.reject(new Error('API non dispo'));
-    var _confirmTimeout = new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('Délai dépassé (15s) — réessayez')); }, 15000); });
-    var r = await Promise.race([_confirmPromise, _confirmTimeout]);
+
+  /** Replace card content and mark proposalId as done in STATE so re-renders never show the button again. */
+  function _settle(ok, text, undoToken) {
+    window._fpConfirmedProposals.add(proposalId);
+    // Invalidate any cached data that this action may have affected so the
+    // next render fetches fresh state (competitors, missions, monitors, etc.)
+    if (window.STATE) {
+      window.STATE.competitors = null;
+      window.STATE._competitorsLoaded = false;
+      if (window.FP_DATA) window.FP_DATA.missions = null;
+    }
     if (card) {
-      // When ok:false, prefer r.content (executor rejection reason) then r.error, then fallback.
-      var resultText = r.ok ? '✅ ' + (r.content || fpT('Action effectuée.')) : '⚠ ' + (r.content || r.error || fpT('Échec de l\'exécution.'));
-      card.innerHTML = '<span style="font-size:11px;color:var(--fp-text-soft)">' + resultText + '</span>';
-      if (r.ok && r.undoToken && r.undoToken.actionLogId) {
-        var logId = r.undoToken.actionLogId;
-        var exp = new Date(Date.now() + (r.undoToken.ttlMinutes || 30) * 60000).toISOString();
+      card.innerHTML = '<span style="font-size:11px;color:var(--fp-text-soft)">' + (ok ? '✅ ' : '⚠ ') + escHtml(text) + '</span>';
+      if (ok && undoToken && undoToken.actionLogId) {
+        var logId = undoToken.actionLogId;
+        var exp = new Date(Date.now() + (undoToken.ttlMinutes || 30) * 60000).toISOString();
         var undoBtn = document.createElement('button');
         undoBtn.className = 'fp-btn fp-btn-ghost fp-btn-sm';
         undoBtn.style.cssText = 'margin-top:6px;font-size:11px;padding:3px 10px;border-radius:20px;height:auto;line-height:1.5;color:#6b7280;border-color:rgba(107,114,128,0.3)';
         undoBtn.textContent = '↩ ' + fpT('Annuler l\'action');
         undoBtn.onclick = function() { window.fpAiPanelUndo(logId, exp, undoBtn, card); };
         card.appendChild(undoBtn);
-        if (r.ok) { window.FP_DATA && window.FP_DATA.missions && (window.FP_DATA.missions = null); }
       }
     }
+  }
+
+  try {
+    var _confirmPromise = window.FP_AI_CHAT_API ? window.FP_AI_CHAT_API.confirmAction(convId, proposalId) : Promise.reject(new Error('API non dispo'));
+    var _confirmTimeout = new Promise(function(_, rej) { setTimeout(function(){ rej(new Error(fpT('Délai dépassé — réessayez dans un instant'))); }, 18000); });
+    var r = await Promise.race([_confirmPromise, _confirmTimeout]);
+    var resultText = r.ok
+      ? (r.content || fpT('Action effectuée.'))
+      : (r.content || r.error || fpT('Échec de l\'exécution.'));
+    _settle(r.ok, resultText, r.ok ? r.undoToken : null);
   } catch(e) {
-    // Erreur visible dans la carte — jamais de retour silencieux au bouton Confirmer.
     console.error('[AI Panel] confirmAction failed:', e && e.message);
-    if (card) {
-      card.innerHTML = '<span style="font-size:11px;color:#ef4444">⚠ ' + escHtml((e && e.message) || fpT('Échec de l\'exécution.')) + '</span>';
-    } else if (confirmBtn) {
-      confirmBtn.disabled = false;
-      confirmBtn.textContent = fpT('Confirmer');
-    }
+    // Build a user-friendly message — never expose raw Postgres or internal errors.
+    var errMsg = e && e.message || '';
+    var friendlyErr = /expiré|expired|410/i.test(errMsg)
+      ? fpT('Cette proposition a expiré — renvoyez votre demande.')
+      : /déjà été exécutée|already.*confirm|409/i.test(errMsg)
+      ? fpT('Cette action a déjà été exécutée.')
+      : /introuvable|not found|404/i.test(errMsg)
+      ? fpT('Proposition introuvable — renvoyez votre demande.')
+      : /délai|timeout|abort/i.test(errMsg)
+      ? fpT('Délai dépassé — réessayez dans un instant.')
+      : fpT('Échec de l\'exécution. Réessayez ou renvoyez votre demande.');
+    // Never re-enable the button — show error in card instead.
+    _settle(false, friendlyErr, null);
   }
 };
 
