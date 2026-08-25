@@ -852,11 +852,21 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         idClient.release();
       }
     } catch (e) {
-      // Without a durable claim, processing could race another webhook worker.
-      // Return a retryable error instead of applying a paid entitlement twice.
-      logger.error({ e, eventId }, "[Webhook] Idempotency claim failed — returning 500 for safe retry");
-      res.status(500).json({ received: false, error: "Webhook idempotency unavailable" });
-      return;
+      const pgCode = (e as { code?: string }).code;
+      if (pgCode === "42P01") {
+        // billing_events table doesn't exist yet (schema gap in production).
+        // Fail-open: proceed without idempotency tracking rather than blocking
+        // ALL webhooks. The table will be created by the next server restart
+        // via init-data-tables self-heal. idempotencyTracked stays false so
+        // markEventStatus() no-ops as well.
+        logger.warn({ eventId }, "[Webhook] billing_events table missing — proceeding without idempotency (self-heal pending)");
+      } else {
+        // Without a durable claim, processing could race another webhook worker.
+        // Return a retryable error instead of applying a paid entitlement twice.
+        logger.error({ e, eventId }, "[Webhook] Idempotency claim failed — returning 500 for safe retry");
+        res.status(500).json({ received: false, error: "Webhook idempotency unavailable" });
+        return;
+      }
     }
   }
 
