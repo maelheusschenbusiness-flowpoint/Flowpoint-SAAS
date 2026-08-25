@@ -1392,142 +1392,129 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
       logger.warn({ diagErr }, "[team/contributions] diag query failed (non-fatal)");
     }
 
-    const countsRes = await pool.query<{
-      user_id: string; audits: number; missions: number; reports: number; monitors: number;
+    // ── REAL-TABLE contributions: count from audits/missions/reports.created_by ─
+    //
+    // Root cause of owner showing 0: activity_logs.user_id is stored in
+    // heterogeneous formats (UUID, email, "system") depending on when the action
+    // was taken.  Cross-table identity resolution fails for legacy user_ids.
+    //
+    // Fix: count directly from the business-object tables (audits, missions,
+    // reports) using their created_by column.  No dependency on activity_logs
+    // for business-object counts.  created_by can be a UUID or an email —
+    // we resolve both to the member's canonical users.id in TypeScript.
+    //
+    // Step 1: build a resolution map  created_by_value → canonical_user_id
+    //   - collect all member canonical UIDs + emails from team_members + org owner
+    //   - match by UUID first, then by email (case-insensitive)
+    //
+    // Step 2: count audits/missions/reports per created_by from DB
+    //
+    // Step 3: merge into byUser keyed by canonical_user_id
+
+    // ── Step 1: build principal map ──────────────────────────────────────────
+    const principalRes = await pool.query<{
+      canonical_uid: string; email: string;
     }>(
-      // Path 1: resolve via users table (handles UUIDs and email-shaped user_ids)
-      // Path 2: owner activity where legacy user_id doesn't resolve through users
-      //         (e.g. 'user-owner-abc' stored before the UUID migration)
-      // Both paths emit canonical_user_id = users.id from the org owner lookup.
-      `WITH owner_ids AS (
-         SELECT
-           COALESCE(
-             (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
-             (SELECT u.id::text FROM users u WHERE u.id::text = o.owner_user_id::text LIMIT 1),
-             o.owner_user_id::text
-           ) AS canonical_uid,
-           LOWER(o.owner_email)   AS owner_email,
-           o.owner_user_id::text  AS owner_raw_uid
-         FROM organizations o WHERE o.id::text = $1 LIMIT 1
-       ),
-       org_activity AS (
-         SELECT owner_email, owner_raw_uid
-         FROM owner_ids
-       ),
-       canonical_activity AS (
-         -- Path 1: activity resolved through the users table
-         SELECT al.*, u.id::text AS canonical_user_id
-         FROM activity_logs al
-         LEFT JOIN org_activity oa ON TRUE
-         JOIN users u
-           ON u.id::text = al.user_id
-           OR LOWER(u.email) = LOWER(al.user_id)
-         WHERE (
-             al.org_id = $1
-             OR LOWER(al.org_id) = oa.owner_email
-             OR al.org_id = oa.owner_raw_uid
-           )
-           AND (
-             EXISTS (
-               SELECT 1 FROM organization_members om
-               WHERE om.organization_id::text = $1
-                 AND om.user_id = u.id
-                 AND om.status = 'active'
-             )
-             OR EXISTS (
-               SELECT 1 FROM organizations o
-               WHERE o.id::text = $1
-                 AND (LOWER(o.owner_email) = LOWER(u.email)
-                      OR o.owner_user_id::text = u.id::text)
-             )
-           )
-         UNION ALL
-         -- Path 2: owner legacy activity that doesn't resolve through users
-         -- (user_id stored as non-UUID before migration)
-         SELECT al.*, (SELECT canonical_uid FROM owner_ids) AS canonical_user_id
-         FROM activity_logs al, owner_ids
-         WHERE (
-             al.org_id = $1
-             OR LOWER(al.org_id) = owner_ids.owner_email
-             OR al.org_id = owner_ids.owner_raw_uid
-           )
-           AND al.user_id IS NOT NULL
-           AND al.user_id != ''
-           AND (
-             al.user_id = owner_ids.owner_raw_uid
-             OR LOWER(al.user_id) = owner_ids.owner_email
-           )
-           -- exclude rows that Path 1 already covers (user resolved via JOIN users)
-           AND NOT EXISTS (
-             SELECT 1 FROM users u2
-             WHERE u2.id::text = al.user_id
-                OR LOWER(u2.email) = LOWER(al.user_id)
-           )
-       )
-       SELECT canonical_user_id AS user_id,
-              COUNT(*) FILTER (
-                WHERE type = 'audit' AND target_type = 'audit'
-              )::int AS audits,
-              COUNT(*) FILTER (
-                WHERE target_type = 'mission'
-                   OR action_key LIKE 'activity.mission.%'
-              )::int AS missions,
-              COUNT(*) FILTER (
-                WHERE type = 'report' AND target_type = 'report'
-              )::int AS reports,
-              COUNT(*) FILTER (
-                WHERE type = 'monitor' AND target_type = 'monitor'
-              )::int AS monitors
-       FROM canonical_activity
-       GROUP BY canonical_user_id`,
+      `SELECT
+         COALESCE(
+           (SELECT u.id::text FROM users u WHERE u.id::text = tm.user_id LIMIT 1),
+           (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(tm.email) LIMIT 1),
+           tm.user_id
+         ) AS canonical_uid,
+         LOWER(tm.email) AS email
+       FROM team_members tm
+       WHERE tm.org_id = $1
+       UNION
+       SELECT
+         COALESCE(
+           o.owner_user_id::text,
+           (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1)
+         ) AS canonical_uid,
+         LOWER(o.owner_email) AS email
+       FROM organizations o WHERE o.id::text = $1`,
       [orgId]
     );
 
-    const byUser: Record<string, { audits: number; missions: number; reports: number; monitors: number }> = {};
-    for (const row of countsRes.rows) {
-      if (!row.user_id) continue;
-      byUser[row.user_id] = {
-        audits: Number(row.audits ?? 0),
-        missions: Number(row.missions ?? 0),
-        reports: Number(row.reports ?? 0),
-        monitors: Number(row.monitors ?? 0),
-      };
+    // Map: UUID → canonical_uid  AND  email → canonical_uid
+    const uidToCanonical = new Map<string, string>();
+    const emailToCanonical = new Map<string, string>();
+    for (const p of principalRes.rows) {
+      if (!p.canonical_uid) continue;
+      uidToCanonical.set(p.canonical_uid.toLowerCase(), p.canonical_uid);
+      if (p.email) emailToCanonical.set(p.email.toLowerCase(), p.canonical_uid);
     }
 
-    // ── Real-table supplement: count from missions.created_by (canonical UUID) ─
-    // Missions created via the API or tool-executor now set created_by = userId.
-    // This ensures owners and members who created missions see the correct count
-    // even when the activity_logs identity chain couldn't resolve their row.
+    // Resolve a created_by value (UUID or email or legacy) → canonical_uid
+    const resolve = (cb: string | null): string | null => {
+      if (!cb || cb === "system" || cb === "") return null;
+      const lower = cb.toLowerCase();
+      return uidToCanonical.get(lower) ?? emailToCanonical.get(lower) ?? null;
+    };
+
+    const byUser: Record<string, { audits: number; missions: number; reports: number; monitors: number }> = {};
+    const ensure = (uid: string) => {
+      if (!byUser[uid]) byUser[uid] = { audits: 0, missions: 0, reports: 0, monitors: 0 };
+    };
+
+    // ── Step 2a: audits.created_by ────────────────────────────────────────────
+    try {
+      const auditCounts = await pool.query<{ created_by: string; cnt: number }>(
+        `SELECT created_by, COUNT(*)::int AS cnt
+         FROM audits
+         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         GROUP BY created_by`,
+        [orgId]
+      );
+      for (const row of auditCounts.rows) {
+        const uid = resolve(row.created_by);
+        if (!uid) continue;
+        ensure(uid);
+        byUser[uid].audits = Math.max(byUser[uid].audits, Number(row.cnt ?? 0));
+      }
+    } catch (_e) { /* created_by column may not exist yet on older schema — non-fatal */ }
+
+    // ── Step 2b: missions.created_by ──────────────────────────────────────────
     try {
       const missionCounts = await pool.query<{ created_by: string; cnt: number }>(
         `SELECT created_by, COUNT(*)::int AS cnt
          FROM missions
-         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by != ''
+         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
          GROUP BY created_by`,
         [orgId]
       );
       for (const row of missionCounts.rows) {
-        const uid2 = row.created_by;
-        if (!uid2) continue;
-        if (!byUser[uid2]) {
-          byUser[uid2] = { audits: 0, missions: 0, reports: 0, monitors: 0 };
-        }
-        // Take MAX of the two sources — never regress a count.
-        if (row.cnt > byUser[uid2].missions) {
-          byUser[uid2].missions = row.cnt;
-        }
+        const uid = resolve(row.created_by);
+        if (!uid) continue;
+        ensure(uid);
+        byUser[uid].missions = Math.max(byUser[uid].missions, Number(row.cnt ?? 0));
       }
-    } catch (_err) {
-      // missions.created_by column may not yet exist on older prod schema — non-fatal
-    }
+    } catch (_e) { /* non-fatal */ }
 
-    // ── Debug log: per-member contribution snapshot ────────────────────────────
+    // ── Step 2c: reports.created_by ───────────────────────────────────────────
     try {
-      const memberSnap = Object.entries(byUser).map(([k, v]) => ({
-        key: k.length > 36 ? k.slice(0, 8) + "…" : k,
+      const reportCounts = await pool.query<{ created_by: string; cnt: number }>(
+        `SELECT created_by, COUNT(*)::int AS cnt
+         FROM reports
+         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         GROUP BY created_by`,
+        [orgId]
+      );
+      for (const row of reportCounts.rows) {
+        const uid = resolve(row.created_by);
+        if (!uid) continue;
+        ensure(uid);
+        byUser[uid].reports = Math.max(byUser[uid].reports, Number(row.cnt ?? 0));
+      }
+    } catch (_e) { /* non-fatal */ }
+
+    // ── Debug log ─────────────────────────────────────────────────────────────
+    try {
+      const snap = Object.entries(byUser).map(([k, v]) => ({
+        uid: k.length > 36 ? k.slice(0, 8) + "…" : k,
         ...v,
       }));
-      logger.info({ orgId: orgId.slice(0, 8), members: memberSnap }, "[team/contributions] resolved");
+      logger.info({ orgId: orgId.slice(0, 8), principals: principalRes.rows.length, members: snap },
+        "[team/contributions] real-table resolved");
     } catch (_) { /* non-fatal */ }
 
     res.json({ ok: true, contributions: byUser });

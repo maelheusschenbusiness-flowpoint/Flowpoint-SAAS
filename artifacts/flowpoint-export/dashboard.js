@@ -5213,11 +5213,15 @@ function initLocalSEOMap() {
         setTimeout(function() { window.renderSelectedRankingHistoryOnMap(); }, 200);
       }
       // Business marker — center is always a valid {lat,lng} here
+      // Track in STATE._staticMapMarkers so fpHideLiveRankingMarkers can hide them
+      // when a ranking history is selected (prevents persistent "ghost" markers).
+      STATE._staticMapMarkers = [];
       const _bizAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
       const bm = new google.maps.Marker({
         position:center, map, zIndex:10, title:'Votre établissement',
         icon:{ path:google.maps.SymbolPath.CIRCLE, scale:13, fillColor:'#2563EB', fillOpacity:1, strokeColor:'#fff', strokeWeight:3 }
       });
+      STATE._staticMapMarkers.push(bm);
       // InfoWindow colors use CSS variables so they follow theme switches live.
       // Hardcoded hex values (#475569, #94a3b8, #0f172a, #e2e8f0) were frozen at
       // init time and never updated when the user toggled the theme.
@@ -5249,6 +5253,8 @@ function initLocalSEOMap() {
         });
         const iw = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:190px"><strong style="font-size:13px">${c.name}</strong><div style="display:flex;gap:16px;margin-top:8px"><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.score}</div><div style="font-size:10px;color:var(--fp-text-muted,#94a3b8)">${fpT('Score SEO')}</div></div><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.reviews}</div><div style="font-size:10px;color:var(--fp-text-muted,#94a3b8)">Avis Google</div></div></div><div style="margin-top:8px;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block;background:${c.color}22;color:${c.color}">Menace: ${c.threat}</div></div>` });
         mk.addListener('click', () => iw.open(map, mk));
+        // Track competitor markers so they can be hidden when history is selected
+        STATE._staticMapMarkers.push(mk);
       });
       // Geolocation marker — only from stored coordinates (no browser permission prompt).
       // Users set their location via Settings > Localisation or the Workspace address fields.
@@ -69206,10 +69212,19 @@ window.fpUpdateRankingMarkers = (function() {
   // only history results appear on the map. Showing restores the live layer.
   window.fpHideLiveRankingMarkers = function() {
     _markers.forEach(function(m) { try { m.setMap(null); } catch(_e){} });
+    // Also hide the static init markers (business marker + competitors) so they
+    // don't persist as "ghost" markers when a ranking history entry is selected.
+    if (Array.isArray(STATE._staticMapMarkers)) {
+      STATE._staticMapMarkers.forEach(function(m) { try { m.setMap(null); } catch(_e){} });
+    }
   };
   window.fpShowLiveRankingMarkers = function() {
     var _liveMap = STATE._gmap;
     _markers.forEach(function(m) { try { m.setMap(_liveMap); } catch(_e){} });
+    // Restore static init markers when no history is selected.
+    if (Array.isArray(STATE._staticMapMarkers)) {
+      STATE._staticMapMarkers.forEach(function(m) { try { m.setMap(_liveMap); } catch(_e){} });
+    }
   };
 
   return function() {

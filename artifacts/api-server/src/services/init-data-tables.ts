@@ -162,9 +162,28 @@ export async function initDataTables(): Promise<void> {
     // POST /api/audits INSERTs an org_id column that did not exist there,
     // causing a 500 (Postgres 42703 "column audits.org_id does not exist").
     await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    // created_by: the userId (UUID or email) of the user who created the audit.
+    // Used for real-table attribution in /team/contributions — avoids relying on
+    // activity_logs identity chain which breaks for legacy/pre-migration user_ids.
+    await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS created_by TEXT;`);
     await run(client, `CREATE INDEX IF NOT EXISTS audits_url_idx ON audits(url);`);
     await run(client, `CREATE INDEX IF NOT EXISTS audits_created_at_idx ON audits(created_at);`);
     await run(client, `CREATE INDEX IF NOT EXISTS audits_org_id_idx ON audits(org_id);`);
+    // Back-fill created_by for historical audits from activity_logs (best-effort, non-fatal).
+    // Rows already having a non-null created_by are left untouched.
+    await run(client, `
+      UPDATE audits a
+      SET created_by = al.user_id
+      FROM (
+        SELECT DISTINCT ON (target_id) target_id, user_id
+        FROM activity_logs
+        WHERE target_type = 'audit'
+          AND user_id IS NOT NULL AND user_id NOT IN ('system','')
+        ORDER BY target_id, created_at ASC
+      ) al
+      WHERE al.target_id = a.id
+        AND a.created_by IS NULL;
+    `).catch(() => { /* non-fatal: activity_logs may not exist yet */ });
 
     // ── reports + share_tokens ───────────────────────────────────────────────
     // BUGFIX: the `reports` table was never created on production — it only
@@ -192,6 +211,22 @@ export async function initDataTables(): Promise<void> {
       );
     `);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    // created_by: real-table attribution for /team/contributions (same pattern as audits + missions)
+    await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS created_by TEXT;`);
+    // Back-fill created_by for historical reports from activity_logs (best-effort, non-fatal).
+    await run(client, `
+      UPDATE reports r
+      SET created_by = al.user_id
+      FROM (
+        SELECT DISTINCT ON (target_id) target_id, user_id
+        FROM activity_logs
+        WHERE target_type = 'report'
+          AND user_id IS NOT NULL AND user_id NOT IN ('system','')
+        ORDER BY target_id, created_at ASC
+      ) al
+      WHERE al.target_id = r.id
+        AND r.created_by IS NULL;
+    `).catch(() => { /* non-fatal */ });
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'PDF';`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS template_key TEXT NOT NULL DEFAULT 'seo';`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS pages INTEGER NOT NULL DEFAULT 0;`);

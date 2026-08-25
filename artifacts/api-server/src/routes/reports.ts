@@ -117,12 +117,13 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
   const id = `r_${randomBytes(12).toString("hex")}`;
   try {
     await db(req)(
-      `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end)
-       VALUES ($1,$2,$3,$4,$5,$6,0,false,$7,$8,true,$9,$10,$11)`,
+      `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,0,false,$7,$8,true,$9,$10,$11,$12)`,
       [id, org(req), reportName, format ?? "PDF", resolvedTemplate, new Date().toISOString(),
        auditId ?? "", !!whiteLabel,
        JSON.stringify(sanitizeMeetingNotes(meetingNotes)),
-       dateStart ?? "", dateEnd ?? ""]
+       dateStart ?? "", dateEnd ?? "",
+       (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
     );
     const r = await db(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [id, org(req)]);
     const report = r.rows[0] ?? { id, name };
@@ -160,9 +161,10 @@ router.post("/reports/clients", canWrite, async (req, res) => {
   const id = `cl${Date.now()}`;
   try {
     await db(req)(
-      `INSERT INTO reports (id, org_id, name, type, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end)
-       VALUES ($1,$2,$3,'client',$4,0,false,'',false,false,'[]','','')`,
-      [id, org(req), name, new Date().toISOString()]
+      `INSERT INTO reports (id, org_id, name, type, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by)
+       VALUES ($1,$2,$3,'client',$4,0,false,'',false,false,'[]','','',$5)`,
+      [id, org(req), name, new Date().toISOString(),
+       (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
     );
     const r = await db(req)(`SELECT * FROM reports WHERE id=$1`, [id]);
     res.status(201).json(r.rows[0] ?? { id, name });

@@ -55,10 +55,11 @@ export async function launchAudit(opts: { orgId: string; url: string; origin: st
   const dateStr = new Date().toISOString();
   const name = opts.name ?? "";
 
+  const createdBy = origin === "scheduled" ? null : (opts.userId ?? null);
   await pool.query(
-    `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_at)
-     VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,NOW())`,
-    [auditId, url, name, dateStr, origin, orgId],
+    `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_by, created_at)
+     VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,$7,NOW())`,
+    [auditId, url, name, dateStr, origin, orgId, createdBy],
   );
 
   store.logActivity({
