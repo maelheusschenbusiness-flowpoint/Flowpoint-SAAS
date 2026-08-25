@@ -327,12 +327,12 @@ async function dispatchTool(
 
     await pool.query(`
       INSERT INTO missions (id, org_id, title, description, category, priority, priority_score,
-        status, steps, due_date, assigned_to, source_type, created_at, updated_at, last_refreshed_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,'todo',$8,$9,$10,'ai',NOW(),NOW(),NOW())
+        status, steps, due_date, assigned_to, source_type, created_by, created_at, updated_at, last_refreshed_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,'todo',$8,$9,$10,'ai',$11,NOW(),NOW(),NOW())
     `, [id, orgId, title, (args["description"] as string) ?? null,
         (args["category"] as string) ?? "seo", priority, pScore,
         JSON.stringify(stepsArr), (args["dueDate"] as string) ?? null,
-        (args["assignedTo"] as string) ?? null]);
+        (args["assignedTo"] as string) ?? null, userId]);
 
     // Verify that the mission was actually inserted into THIS org — cross-org read would
     // produce a false positive if the wrong orgId was used in the INSERT.
@@ -2036,10 +2036,10 @@ async function dispatchTool(
         const cat   = "SEO";
         const row = await mClient.query(
           `INSERT INTO missions (id, org_id, title, description, status, priority, category, due_date,
-                                 source_type, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,'todo',$5,$6,$7,'agent',NOW(),NOW())
+                                 source_type, created_by, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,'todo',$5,$6,$7,'agent',$8,NOW(),NOW())
            RETURNING id, title, description, status, priority, category, due_date, updated_at`,
-          [mId, orgId, title, desc, priority, cat, now]
+          [mId, orgId, title, desc, priority, cat, now, userId]
         );
         if (row.rows[0]) createdMissions.push(row.rows[0] as Record<string, unknown>);
       }
@@ -2234,8 +2234,12 @@ async function dispatchTool(
     const _recoLog = { userLanguage: _gl, recommendationLanguage: _gl, aiPromptLanguage: _gl };
     logger.info(_recoLog, "[generate_recommendations] language chain");
 
-    /** Returns a localized string for recommendation candidate text. */
-    const _rt = (fr: string, _en: string, _de: string, _es: string): string => fr;
+    /** Returns a localized string for recommendation candidate text in the user's language.
+     *  Falls back to English (not French) for languages beyond the 4 supported strings. */
+    const _rt = (fr: string, en: string, de: string, es: string): string => {
+      const t: Record<string, string> = { fr, en, de, es };
+      return t[_gl] ?? en;
+    };
 
     const [genAudits, genKw, genComp, genMon] = await Promise.allSettled([
       pool.query(`SELECT id, url, score, status, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 5`, [orgId]),
@@ -2686,10 +2690,10 @@ async function dispatchTool(
         const meta = (rec["metadata"] as Record<string, unknown>) ?? {};
         const cat  = String(meta["category"] ?? "SEO").toUpperCase();
         const row  = await msClient.query(
-          `INSERT INTO missions (id, org_id, title, description, status, priority, category, due_date, source_type, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,'todo',$5,$6,$7,'agent',NOW(),NOW())
+          `INSERT INTO missions (id, org_id, title, description, status, priority, category, due_date, source_type, created_by, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,'todo',$5,$6,$7,'agent',$8,NOW(),NOW())
            RETURNING id, title, description, status, priority, category, due_date, updated_at`,
-          [mId, orgId, `[Stratégie] ${rec["title"]}`, String(rec["description"] ?? "Mission issue de la stratégie SEO."), msPriority, cat, msToday]
+          [mId, orgId, `[Stratégie] ${rec["title"]}`, String(rec["description"] ?? "Mission issue de la stratégie SEO."), msPriority, cat, msToday, userId]
         );
         if (row.rows[0]) msMissions.push(row.rows[0] as Record<string, unknown>);
       }
@@ -3043,9 +3047,9 @@ async function dispatchTool(
       if (!def) continue;
       const mId = `m_inc${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       await pool.query(
-        `INSERT INTO missions (id, org_id, title, description, status, priority, assigned_to, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,'pending',$5,$6,NOW(),NOW()) ON CONFLICT (id) DO NOTHING`,
-        [mId, orgId, def.title, def.description, def.priority, cmiAssignee]
+        `INSERT INTO missions (id, org_id, title, description, status, priority, assigned_to, created_by, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,'pending',$5,$6,$7,NOW(),NOW()) ON CONFLICT (id) DO NOTHING`,
+        [mId, orgId, def.title, def.description, def.priority, cmiAssignee, userId]
       );
       cmiMissions.push({ id: mId, type: mType, title: def.title, priority: def.priority });
     }

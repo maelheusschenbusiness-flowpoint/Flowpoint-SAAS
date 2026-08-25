@@ -1789,7 +1789,7 @@ export function buildConfirmationPreview(toolName: string, args: Record<string, 
   const lang = language.split("-")[0].toLowerCase();
   // Human-readable fallback labels for every confirmable tool — the card must
   // NEVER surface a raw tool name like « Exécuter l'action "run_audit" ».
-  const TOOL_LABELS: Record<string, { fr: string; en: string; es: string }> = {
+  const TOOL_LABELS: Record<string, { fr: string; en: string; es: string; de?: string; it?: string; nl?: string; pt?: string }> = {
     run_audit:                    { fr: "Lancer un audit SEO complet", en: "Run a full SEO audit", es: "Lanzar una auditoría SEO completa" },
     rerun_audit:                  { fr: "Relancer l'audit de ce site", en: "Re-run the audit for this site", es: "Repetir la auditoría de este sitio" },
     create_missions_from_audit:   { fr: "Créer des missions à partir de l'audit", en: "Create missions from the audit", es: "Crear misiones a partir de la auditoría" },
@@ -1819,7 +1819,9 @@ export function buildConfirmationPreview(toolName: string, args: Record<string, 
     add_competitor:               { fr: "Ajouter un concurrent au suivi", en: "Add a competitor to tracking", es: "Agregar un competidor al seguimiento" },
     delete_competitor:            { fr: "⚠ Supprimer définitivement un concurrent", en: "⚠ Permanently delete a competitor", es: "⚠ Eliminar definitivamente un competidor" },
   };
-  const langKey = (lang === "en" || lang === "es") ? lang : "fr";
+  // Map language to the nearest key available in TOOL_LABELS.
+  // FR and ES have their own labels; all other languages fall back to EN (not FR).
+  const langKey: "fr" | "en" | "es" = lang === "fr" ? "fr" : lang === "es" ? "es" : "en";
   if (lang === "en") {
     switch (toolName) {
       case "create_mission": return `Create a mission titled "${args["title"] ?? "?"}"`;
@@ -1848,6 +1850,66 @@ export function buildConfirmationPreview(toolName: string, args: Record<string, 
       default: return TOOL_LABELS[toolName]?.es ?? `Ejecutar la acción "${toolName}"`;
     }
   }
+  // ── German (de) ─────────────────────────────────────────────────────────────
+  if (lang === "de") {
+    switch (toolName) {
+      case "create_mission": return `Eine Mission erstellen: „${args["title"] ?? "?"}"`;
+      case "update_mission": return `Mission ID „${args["id"] ?? "?"}" bearbeiten`;
+      case "complete_mission": return `Mission ID „${args["id"] ?? "?"}" als abgeschlossen markieren`;
+      case "delete_mission": return `⚠ Mission ID „${args["id"] ?? "?"}" dauerhaft löschen`;
+      case "run_audit": return `Vollständiges SEO-Audit für ${args["url"] ?? "Ihre Website"} starten – dauert 30–60 Sekunden`;
+      case "rerun_audit": return `SEO-Audit erneut ausführen (ein neuer Eintrag wird erstellt)`;
+      case "configure_monitor": return args["monitor_id"]
+        ? `Monitor-Konfiguration aktualisieren${args["name"] ? ` „${args["name"]}"` : ""}${args["url"] ? ` (${args["url"]})` : ""}`
+        : `Neuen Monitor erstellen${args["url"] ? ` für ${args["url"]}` : ""}${args["name"] ? ` namens „${args["name"]}"` : ""}`;
+      default: return TOOL_LABELS[toolName]?.de ?? TOOL_LABELS[toolName]?.en ?? `Aktion „${toolName}" ausführen`;
+    }
+  }
+  // ── Italian (it) ─────────────────────────────────────────────────────────────
+  if (lang === "it") {
+    switch (toolName) {
+      case "create_mission": return `Creare una missione intitolata "${args["title"] ?? "?"}"`;
+      case "update_mission": return `Modificare la missione ID "${args["id"] ?? "?"}"`;
+      case "complete_mission": return `Contrassegnare la missione ID "${args["id"] ?? "?"}" come completata`;
+      case "delete_mission": return `⚠ Eliminare definitivamente la missione ID "${args["id"] ?? "?"}"`;
+      case "run_audit": return `Avviare un audit SEO completo di ${args["url"] ?? "il tuo sito"} — richiede 30-60 secondi`;
+      case "rerun_audit": return `Rieseguire l'audit SEO (verrà creato un nuovo record)`;
+      case "configure_monitor": return args["monitor_id"]
+        ? `Aggiornare la configurazione del monitor${args["name"] ? ` "${args["name"]}"` : ""}${args["url"] ? ` (${args["url"]})` : ""}`
+        : `Creare un nuovo monitor${args["url"] ? ` per ${args["url"]}` : ""}${args["name"] ? ` chiamato "${args["name"]}"` : ""}`;
+      default: return TOOL_LABELS[toolName]?.it ?? TOOL_LABELS[toolName]?.en ?? `Eseguire l'azione "${toolName}"`;
+    }
+  }
+  // ── Dutch (nl) ────────────────────────────────────────────────────────────────
+  if (lang === "nl") {
+    switch (toolName) {
+      case "create_mission": return `Missie aanmaken: "${args["title"] ?? "?"}"`;
+      case "update_mission": return `Missie ID "${args["id"] ?? "?"}" bewerken`;
+      case "complete_mission": return `Missie ID "${args["id"] ?? "?"}" markeren als voltooid`;
+      case "delete_mission": return `⚠ Missie ID "${args["id"] ?? "?"}" definitief verwijderen`;
+      case "run_audit": return `Volledige SEO-audit starten voor ${args["url"] ?? "uw site"} — duurt 30-60 seconden`;
+      case "rerun_audit": return `SEO-audit opnieuw uitvoeren (er wordt een nieuw item aangemaakt)`;
+      case "configure_monitor": return args["monitor_id"]
+        ? `Monitorconfiguratie bijwerken${args["name"] ? ` "${args["name"]}"` : ""}${args["url"] ? ` (${args["url"]})` : ""}`
+        : `Nieuwe monitor aanmaken${args["url"] ? ` voor ${args["url"]}` : ""}${args["name"] ? ` genaamd "${args["name"]}"` : ""}`;
+      default: return TOOL_LABELS[toolName]?.nl ?? TOOL_LABELS[toolName]?.en ?? `Actie "${toolName}" uitvoeren`;
+    }
+  }
+  // ── All other languages (pt, pl, sv, ro, cs…): English neutral fallback ─────
+  if (lang !== "fr") {
+    switch (toolName) {
+      case "create_mission": return `Create a mission titled "${args["title"] ?? "?"}"`;
+      case "update_mission": return `Update mission ID "${args["id"] ?? "?"}"`;
+      case "complete_mission": return `Mark mission ID "${args["id"] ?? "?"}" as completed`;
+      case "delete_mission": return `⚠ Permanently delete mission ID "${args["id"] ?? "?"}"`;
+      case "run_audit": return `Run a full SEO audit of ${args["url"] ?? "your site"} — takes 30-60 seconds`;
+      case "rerun_audit": return `Re-run the SEO audit (a new entry will be created)`;
+      case "configure_monitor": return args["monitor_id"]
+        ? `Update the monitor settings${args["name"] ? ` for "${args["name"]}"` : ""}${args["url"] ? ` (${args["url"]})` : ""}`
+        : `Create a new monitor${args["url"] ? ` for ${args["url"]}` : ""}${args["name"] ? ` named "${args["name"]}"` : ""}`;
+      default: return TOOL_LABELS[toolName]?.en ?? `Run the "${toolName}" action`;
+    }
+  }
   switch (toolName) {
     case "create_mission":
       return `Créer une mission intitulée "${args["title"] ?? "?"}"${args["priority"] ? ` (priorité: ${args["priority"]})` : ""}${args["category"] ? ` dans la catégorie "${args["category"]}"` : ""}`;
@@ -1866,7 +1928,8 @@ export function buildConfirmationPreview(toolName: string, args: Record<string, 
         ? `Modifier la configuration du monitor${args["name"] ? ` "${args["name"]}"` : ""}${args["url"] ? ` (${args["url"]})` : ""}`
         : `Créer un nouveau monitor${args["url"] ? ` pour ${args["url"]}` : ""}${args["name"] ? ` nommé "${args["name"]}"` : ""}`;
     default:
-      return TOOL_LABELS[toolName]?.[langKey] ?? `Exécuter l'action "${toolName}"`;
+      // langKey is "fr" here (FR switch is reached only when lang==="fr")
+      return TOOL_LABELS[toolName]?.fr ?? `Exécuter l'action "${toolName}"`;
   }
 }
 

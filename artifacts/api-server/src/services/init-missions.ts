@@ -93,6 +93,7 @@ export async function initMissionsTables(): Promise<void> {
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS ai_summary                TEXT;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS history                   JSONB DEFAULT '[]';
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS last_refreshed_at         TIMESTAMP;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS created_by                TEXT;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS completed_at              TIMESTAMP;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS dismissed_at              TIMESTAMP;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS due_date                  TEXT;

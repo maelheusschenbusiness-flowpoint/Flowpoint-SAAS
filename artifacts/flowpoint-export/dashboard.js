@@ -296,8 +296,8 @@ function fpSetRankingHistory(history, selectId) {
   STATE.localSeo.rankingHistory = rows;
   STATE.localSeo._selectedHistoryIds = selected;
   fpPersistRankingHistorySelection();
-  if (typeof window.fpUpdateRankingMarkersFromHistory === 'function') {
-    window.fpUpdateRankingMarkersFromHistory();
+  if (typeof window.renderSelectedRankingHistoryOnMap === 'function') {
+    window.renderSelectedRankingHistoryOnMap();
   }
 }
 
@@ -318,8 +318,8 @@ window.fpToggleHistorySelection = function(historyId, checked) {
     const cb = row.querySelector('.fp-hist-cb');
     if (cb) cb.checked = shouldSelect;
   });
-  if (typeof window.fpUpdateRankingMarkersFromHistory === 'function') {
-    window.fpUpdateRankingMarkersFromHistory();
+  if (typeof window.renderSelectedRankingHistoryOnMap === 'function') {
+    window.renderSelectedRankingHistoryOnMap();
   }
 };
 
@@ -5209,8 +5209,8 @@ function initLocalSEOMap() {
       STATE._gmap = map;
       STATE._gmapDark = darkStyles;
       // Flush any pending history marker update that was queued before map loaded
-      if (window._fpPendingHistoryMarkerUpdate && typeof window.fpUpdateRankingMarkersFromHistory === 'function') {
-        setTimeout(function() { window.fpUpdateRankingMarkersFromHistory(); }, 200);
+      if (window._fpPendingHistoryMarkerUpdate && typeof window.renderSelectedRankingHistoryOnMap === 'function') {
+        setTimeout(function() { window.renderSelectedRankingHistoryOnMap(); }, 200);
       }
       // Business marker — center is always a valid {lat,lng} here
       const _bizAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
@@ -68948,8 +68948,8 @@ window.fpDeleteHistoryEntry = async function(entryId) {
       }
       render(STATE.currentSection);
       // Update map markers
-      if (typeof window.fpUpdateRankingMarkersFromHistory === 'function') {
-        window.fpUpdateRankingMarkersFromHistory();
+      if (typeof window.renderSelectedRankingHistoryOnMap === 'function') {
+        window.renderSelectedRankingHistoryOnMap();
       }
       showToast('success', fpT('Entrée supprimée'));
     } else {
@@ -69104,7 +69104,7 @@ window.fpDeleteHistoryEntry = async function(entryId) {
     });
   }
 
-  window.fpUpdateRankingMarkersFromHistory = function() {
+  window.renderSelectedRankingHistoryOnMap = function() {
     var map = STATE._gmap;
     if (!map || typeof google === 'undefined' || !google.maps) {
       window._fpPendingHistoryMarkerUpdate = true;
@@ -69225,7 +69225,7 @@ window.fpUpdateRankingMarkers = (function() {
     _infoWindows.forEach(function(iw) { iw.close(); });
     _markers = [];
     _infoWindows = [];
-    if (typeof window.fpUpdateRankingMarkersFromHistory === 'function') window.fpUpdateRankingMarkersFromHistory();
+    if (typeof window.renderSelectedRankingHistoryOnMap === 'function') window.renderSelectedRankingHistoryOnMap();
 
     if (selected.size === 0) return;
 

@@ -1494,8 +1494,34 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
       };
     }
 
+    // ── Real-table supplement: count from missions.created_by (canonical UUID) ─
+    // Missions created via the API or tool-executor now set created_by = userId.
+    // This ensures owners and members who created missions see the correct count
+    // even when the activity_logs identity chain couldn't resolve their row.
+    try {
+      const missionCounts = await pool.query<{ created_by: string; cnt: number }>(
+        `SELECT created_by, COUNT(*)::int AS cnt
+         FROM missions
+         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by != ''
+         GROUP BY created_by`,
+        [orgId]
+      );
+      for (const row of missionCounts.rows) {
+        const uid2 = row.created_by;
+        if (!uid2) continue;
+        if (!byUser[uid2]) {
+          byUser[uid2] = { audits: 0, missions: 0, reports: 0, monitors: 0 };
+        }
+        // Take MAX of the two sources — never regress a count.
+        if (row.cnt > byUser[uid2].missions) {
+          byUser[uid2].missions = row.cnt;
+        }
+      }
+    } catch (_err) {
+      // missions.created_by column may not yet exist on older prod schema — non-fatal
+    }
+
     // ── Debug log: per-member contribution snapshot ────────────────────────────
-    // Lists every key resolved, so we can verify userId/email alignment.
     try {
       const memberSnap = Object.entries(byUser).map(([k, v]) => ({
         key: k.length > 36 ? k.slice(0, 8) + "…" : k,

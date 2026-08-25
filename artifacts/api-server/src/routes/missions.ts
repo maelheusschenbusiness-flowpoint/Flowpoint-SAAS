@@ -203,13 +203,14 @@ router.post("/missions/from-template", canWrite, async (req: Request, res: Respo
       ? (steps as string[]).map((text, i) => ({ id: `s${Date.now()}${i}`, text, done: false, tag: `Étape ${i + 1}` }))
       : [];
 
+    const tmplCreatedBy = (req as any).orgContext?.userId || (req as any).orgContext?.email || null;
     await db(`
       INSERT INTO missions (
         id, org_id, title, category, priority, priority_score,
-        status, impact, effort, steps, source_type, created_at, updated_at, last_refreshed_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,'todo',$7,$8,$9,'template',NOW(),NOW(),NOW())
+        status, impact, effort, steps, source_type, created_by, created_at, updated_at, last_refreshed_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,'todo',$7,$8,$9,'template',$10,NOW(),NOW(),NOW())
     `, [id, org, templateTitle, category || "SEO Technique", priority, pScore,
-        impact || "Moyen", effort || "Moyen", JSON.stringify(stepsArr)]);
+        impact || "Moyen", effort || "Moyen", JSON.stringify(stepsArr), tmplCreatedBy]);
 
     const row = await db(`SELECT * FROM missions WHERE id = $1`, [id]);
     res.json(rowToMission(row.rows[0]));
@@ -255,11 +256,12 @@ router.post("/missions/bulk-create", canWrite, async (req: Request, res: Respons
           }))
         : [];
 
+      const bulkCreatedBy = (req as any).orgContext?.userId || (req as any).orgContext?.email || null;
       await db(`
         INSERT INTO missions (
           id, org_id, title, category, priority, priority_score,
-          status, impact, effort, steps, source_type, created_at, updated_at, last_refreshed_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW(),NOW())
+          status, impact, effort, steps, source_type, created_by, created_at, updated_at, last_refreshed_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW(),NOW())
       `, [id, org, title,
           (m.category as string) || "SEO",
           priority, pScore,
@@ -267,7 +269,8 @@ router.post("/missions/bulk-create", canWrite, async (req: Request, res: Respons
           (m.impact as string) || "Moyen",
           (m.effort as string) || "Moyen",
           JSON.stringify(stepsArr),
-          (m.source as string) || "manual"]);
+          (m.source as string) || "manual",
+          bulkCreatedBy]);
 
       const row = await db(`SELECT * FROM missions WHERE id = $1`, [id]);
       created.push(rowToMission(row.rows[0]));
@@ -365,13 +368,14 @@ router.post("/missions", canWrite, async (req: Request, res: Response) => {
     const id = uid();
     const pScore = Number(priorityScore) || ({ critical: 90, high: 75, medium: 50, low: 25 }[(priority as string)] ?? 50);
 
+    const createdBy = (req as any).orgContext?.userId || (req as any).orgContext?.email || null;
     await db(`
       INSERT INTO missions (
         id, org_id, title, description, category, type, priority, priority_score,
-        status, impact, effort, steps, due_date, assigned_to, source_type, created_at, updated_at, last_refreshed_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'manual',NOW(),NOW(),NOW())
+        status, impact, effort, steps, due_date, assigned_to, source_type, created_by, created_at, updated_at, last_refreshed_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'manual',$15,NOW(),NOW(),NOW())
     `, [id, org, normalizedTitle, description || null, category, type, priority, pScore, status, impact, effort,
-        JSON.stringify(steps || []), (dueDate as string) || null, (assignedTo as string) || null]);
+        JSON.stringify(steps || []), (dueDate as string) || null, (assignedTo as string) || null, createdBy]);
 
     const row = await db(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
     // BUG-003 guard: INSERT committed but SELECT returned no row — log full context for diagnosis
