@@ -58123,7 +58123,12 @@ function renderActivityFeed() {
         (email && (STATE.teamStreaks[email] || STATE.teamStreaks[String(t.email||'').toLowerCase()]))
       ) : null;
       const ownCurrentUser = isOwner && (String(userId) === String(STATE.me?.id || STATE.me?.userId || '') || email === String(STATE.me?.email || '').toLowerCase());
-      const streakDays = streakEntry ? Number(streakEntry.current ?? 0) : (ownCurrentUser && STATE.streak != null ? Number(STATE.streak) : null);
+      // Canonical rule: for the signed-in owner, STATE.streak (from /api/me) is
+      // the single source of truth — same value the sidebar uses.
+      // teamStreaks may lag or return 0 if the webhook fires before /api/me reloads.
+      const streakDays = (ownCurrentUser && STATE.streak != null)
+        ? Number(STATE.streak)
+        : (streakEntry ? Number(streakEntry.current ?? 0) : null);
       const _totalActs = contrib ? audits + missions + reports : null;
       return {
         id, userId, email, rawId,
@@ -69239,6 +69244,8 @@ window.fpDeleteHistoryEntry = async function(entryId) {
 
     if (merged.length === 0) {
       _clearHistoryMarkers();
+      // No history markers to show — restore live/global markers so the map is not blank.
+      if (typeof window.fpShowLiveRankingMarkers === 'function') window.fpShowLiveRankingMarkers();
       showToast('info', fpT('Les résultats sélectionnés ne contiennent aucune donnée cartographiable.'));
       return;
     }
@@ -69262,7 +69269,8 @@ window.fpDeleteHistoryEntry = async function(entryId) {
     // Uncheck all checkboxes visually
     document.querySelectorAll('.fp-hist-cb').forEach(function(cb) { cb.checked = false; });
     document.querySelectorAll('[data-history-id]').forEach(function(el) { el.style.background = 'transparent'; });
-    if (typeof window.fpHideLiveRankingMarkers === 'function') window.fpHideLiveRankingMarkers();
+    // Clearing history means no selection is active — restore global/live markers.
+    if (typeof window.fpShowLiveRankingMarkers === 'function') window.fpShowLiveRankingMarkers();
   };
 })();
 

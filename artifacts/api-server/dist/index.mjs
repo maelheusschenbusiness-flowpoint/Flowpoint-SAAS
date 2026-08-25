@@ -102819,6 +102819,16 @@ async function initDataTables() {
     `).catch(() => {
     });
     await run(client, `
+      UPDATE audits a
+      SET created_by = COALESCE(NULLIF(o.owner_user_id, ''), o.owner_email)
+      FROM organizations o
+      WHERE a.org_id = o.id::text
+        AND (a.created_by IS NULL OR a.created_by = '')
+        AND (o.owner_user_id IS NOT NULL AND o.owner_user_id != ''
+             OR o.owner_email IS NOT NULL AND o.owner_email != '');
+    `).catch(() => {
+    });
+    await run(client, `
       CREATE TABLE IF NOT EXISTS reports (
         id                 TEXT PRIMARY KEY,
         org_id             TEXT NOT NULL DEFAULT 'default',
@@ -102851,6 +102861,16 @@ async function initDataTables() {
       ) al
       WHERE al.target_id = r.id
         AND r.created_by IS NULL;
+    `).catch(() => {
+    });
+    await run(client, `
+      UPDATE reports r
+      SET created_by = COALESCE(NULLIF(o.owner_user_id, ''), o.owner_email)
+      FROM organizations o
+      WHERE r.org_id = o.id::text
+        AND (r.created_by IS NULL OR r.created_by = '')
+        AND (COALESCE(NULLIF(o.owner_user_id,''), o.owner_email) IS NOT NULL
+             AND COALESCE(NULLIF(o.owner_user_id,''), o.owner_email) != '');
     `).catch(() => {
     });
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'PDF';`);
@@ -105232,14 +105252,6 @@ async function initDataTables() {
     await run(client, `CREATE POLICY "uad_select" ON "user_activity_days" FOR SELECT USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "uad_insert" ON "user_activity_days" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "uad_delete" ON "user_activity_days" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
-    await run(client, `
-      DELETE FROM user_activity_days uad
-      WHERE uad.user_id = uad.org_id
-        AND EXISTS (
-          SELECT 1 FROM team_members tm
-          WHERE tm.org_id = uad.org_id
-        )
-    `);
     await run(client, `
       CREATE TABLE IF NOT EXISTS member_activity_days (
         org_id  TEXT NOT NULL,
@@ -113282,8 +113294,9 @@ router12.get("/team/contributions", async (req, res) => {
        UNION
        SELECT
          COALESCE(
-           o.owner_user_id::text,
-           (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1)
+           NULLIF(o.owner_user_id, ''),
+           (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
+           o.owner_email
          ) AS canonical_uid,
          LOWER(o.owner_email) AS email
        FROM organizations o WHERE o.id::text = $1`,
@@ -113292,9 +113305,14 @@ router12.get("/team/contributions", async (req, res) => {
     const uidToCanonical = /* @__PURE__ */ new Map();
     const emailToCanonical = /* @__PURE__ */ new Map();
     for (const p of principalRes.rows) {
-      if (!p.canonical_uid) continue;
+      if (!p.canonical_uid || p.canonical_uid.trim() === "") continue;
       uidToCanonical.set(p.canonical_uid.toLowerCase(), p.canonical_uid);
-      if (p.email) emailToCanonical.set(p.email.toLowerCase(), p.canonical_uid);
+      if (p.email) {
+        emailToCanonical.set(p.email.toLowerCase(), p.canonical_uid);
+        if (p.canonical_uid.toLowerCase() === p.email.toLowerCase()) {
+          uidToCanonical.set(p.email.toLowerCase(), p.canonical_uid);
+        }
+      }
     }
     const resolve4 = (cb) => {
       if (!cb || cb === "system" || cb === "") return null;
@@ -142431,6 +142449,14 @@ async function initMissionsTables() {
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS history                   JSONB DEFAULT '[]';
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS last_refreshed_at         TIMESTAMP;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS created_by                TEXT;
+      -- Backfill: attribute pre-fix missions (created_by IS NULL) to the org owner
+      UPDATE missions m
+      SET created_by = COALESCE(NULLIF(o.owner_user_id, ''), o.owner_email)
+      FROM organizations o
+      WHERE m.org_id = o.id::text
+        AND (m.created_by IS NULL OR m.created_by = '')
+        AND (COALESCE(NULLIF(o.owner_user_id,''), o.owner_email) IS NOT NULL
+             AND COALESCE(NULLIF(o.owner_user_id,''), o.owner_email) != '');
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS completed_at              TIMESTAMP;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS dismissed_at              TIMESTAMP;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS due_date                  TEXT;
