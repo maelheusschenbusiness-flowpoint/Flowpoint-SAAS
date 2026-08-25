@@ -351,8 +351,10 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "slaMonitoring",
   // globalMonitoring: no routes exist.
   "globalMonitoring",
-  // backlinkIntelligence / aiContentStrategist / abTestingAI: no routes exist.
-  "backlinkIntelligence",
+  // aiContentStrategist / abTestingAI: no routes exist.
+  // backlinkIntelligence: moved to BETA_ADDONS — route /seo/backlinks exists with
+  // requireAddon gate. DFS integration partial (backlinks endpoint live, citation
+  // health fallback). Included in Pro & Ultra plans.
   "aiContentStrategist",
   "abTestingAI",
   "agencyPacks",
@@ -423,6 +425,9 @@ export const BETA_ADDONS = new Set<string>([
   // Dépendance OAuth externe
   "aiGbpPosting",
   "zapierIntegration",
+  // Route /seo/backlinks réelle + requireAddon gate. DFS backlink integration
+  // partielle (endpoint live, couverture données limitée). Inclus Pro & Ultra.
+  "backlinkIntelligence",
 ]);
 
 /** Product lifecycle independent of an organisation's current entitlements. */
@@ -514,14 +519,16 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
     "advancedWebhooks",
     "retention90d",
     "advancedSeoLab",
-    // backlinkIntelligence removed: it is in COMING_SOON_ADDONS and cannot be an active entitlement
+    // BETA + included: status=beta, commercial mode=included. Renders as "🧪 Bêta — Inclus".
+    "backlinkIntelligence",
   ]),
   ultra: new Set<string>([
     "whiteLabel",
     "customDomain",
     "advancedWebhooks",
     "advancedSeoLab",
-    // backlinkIntelligence removed: COMING_SOON — cannot be an active entitlement
+    // BETA + included: status=beta, commercial mode=included. Renders as "🧪 Bêta — Inclus".
+    "backlinkIntelligence",
     // behavioralAI: BETA + included in Ultra → shows as "🧪 Beta — Inclus dans votre plan"
     "behavioralAI",
     // aiForecasting: BETA + included in Ultra → same "🧪 Beta — Inclus" rendering
