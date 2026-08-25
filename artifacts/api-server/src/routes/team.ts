@@ -1427,21 +1427,29 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
        UNION
        SELECT
          COALESCE(
-           o.owner_user_id::text,
-           (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1)
+           NULLIF(o.owner_user_id, ''),
+           (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
+           o.owner_email
          ) AS canonical_uid,
          LOWER(o.owner_email) AS email
        FROM organizations o WHERE o.id::text = $1`,
       [orgId]
     );
 
-    // Map: UUID → canonical_uid  AND  email → canonical_uid
+    // Map: UUID/email → canonical_uid  AND  email → canonical_uid
     const uidToCanonical = new Map<string, string>();
     const emailToCanonical = new Map<string, string>();
     for (const p of principalRes.rows) {
-      if (!p.canonical_uid) continue;
+      // canonical_uid may be an email (owner fallback) — still a valid key
+      if (!p.canonical_uid || p.canonical_uid.trim() === "") continue;
       uidToCanonical.set(p.canonical_uid.toLowerCase(), p.canonical_uid);
-      if (p.email) emailToCanonical.set(p.email.toLowerCase(), p.canonical_uid);
+      if (p.email) {
+        emailToCanonical.set(p.email.toLowerCase(), p.canonical_uid);
+        // If canonical_uid IS an email, also register it via uidToCanonical lookup
+        if (p.canonical_uid.toLowerCase() === p.email.toLowerCase()) {
+          uidToCanonical.set(p.email.toLowerCase(), p.canonical_uid);
+        }
+      }
     }
 
     // Resolve a created_by value (UUID or email or legacy) → canonical_uid

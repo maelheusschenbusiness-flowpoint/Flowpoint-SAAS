@@ -48419,6 +48419,19 @@ async function init() {
                   }).catch(() => { try { renderSidebarStatus(); } catch(_) {} });
                 } catch(_) {}
               }).catch(() => {});
+            // ── billing:addons_updated (from Stripe webhook after PaymentIntent) ──────
+            } else if (msg.type === 'billing:addons_updated') {
+              try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+              if (_apiFetchCache) { _apiFetchCache.clear(); }
+              if (_apiFetchInFlight) { try { Object.keys(_apiFetchInFlight).forEach(k => delete _apiFetchInFlight[k]); } catch(_) {} }
+              // Re-fetch /api/me to update all entitlements (monitor quotas, addon state)
+              apiFetch('/api/me', { _skipCache: true }).then(me => {
+                if (me && me.email) { STATE.me = me; render(); }
+              }).catch(() => {});
+              apiFetch('/api/billing/usage-details', { force: true }).then(ud => {
+                if (ud && typeof ud === 'object') { STATE.usageDetails = ud; }
+                try { renderSidebarStatus(); } catch(_) {}
+              }).catch(() => {});
             // ── Add-on deactivated ─────────────────────────────────────────────────
             } else if (msg.type === 'addon:deactivated' || msg.type === 'fp:addon:deactivated') {
               const addonKey = msg.addonKey || msg.addon_key || '';
@@ -49682,7 +49695,12 @@ async function init() {
     STATE._competitorAnalysisLoading[id] = true;
     render(); // show spinner
     try {
-      const r = await apiFetch('/api/competitors/' + id + '/analyze', { method: 'POST', body: JSON.stringify({}) });
+      // AI analysis can take up to 60s — override the default 15s apiFetch timeout.
+      const r = await apiFetch('/api/competitors/' + id + '/analyze', {
+        method: 'POST',
+        body: JSON.stringify({}),
+        timeout: 60000,
+      });
       if (r && r.ok && r.analysis) {
         STATE.competitorAnalyses[id] = r.analysis;
         showToast('success', fpT('Analyse IA terminée — ') + escHtml(name || ''));
@@ -49690,9 +49708,17 @@ async function init() {
           showToast('info', '🔄 ' + r.analysis.changes_detected.length + ' changement(s) détecté(s) depuis la dernière analyse');
         }
       } else {
-        showToast('error', (r && r.error) ? r.error : fpT('Erreur analyse IA'));
+        showToast('error', (r && r.error) ? r.error : fpT('Erreur lors de l\'analyse IA'));
       }
-    } catch(e) { showToast('error', e?.message || fpT('Erreur réseau')); }
+    } catch(e) {
+      // Never expose raw "Fetch is aborted" to the user
+      const errMsg = (e && e.name === 'AbortError') || /abort|timeout/i.test(e?.message || '')
+        ? fpT('L\'analyse a dépassé le délai — le concurrent est peut-être trop volumineux. Réessayez dans un instant.')
+        : /network|failed to fetch/i.test(e?.message || '')
+        ? fpT('Connexion impossible — vérifiez votre réseau et réessayez.')
+        : fpT('Erreur lors de l\'analyse IA. Réessayez dans un instant.');
+      showToast('error', errMsg);
+    }
     finally {
       STATE._competitorAnalysisLoading[id] = false;
       render();
@@ -54704,7 +54730,7 @@ function renderCompetitor() {
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-left:auto;font-size:11px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}',true)">↺ Actualiser l'analyse</button>
             </div>
           </div>
-          ${!analysis ? `<div class="fp-card" style="text-align:center;padding:28px"><div style="font-size:13px;color:var(--fp-text-muted)">Cliquez <strong>Analyser</strong> sur ce concurrent pour lancer l'analyse IA.</div><button class="fp-btn fp-btn-primary" style="margin-top:14px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}')">🔬 Analyser ${escHtml(selComp.name||'')}</button></div>` : `
+          ${!analysis ? `<div class="fp-card" style="text-align:center;padding:28px;margin-top:16px"><div style="font-size:13px;color:var(--fp-text-muted)">Cliquez <strong>Analyser</strong> sur ce concurrent pour lancer l'analyse IA.</div><button class="fp-btn fp-btn-primary" style="margin-top:14px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}')">🔬 Analyser ${escHtml(selComp.name||'')}</button></div>` : `
           <div style="padding:8px 12px;border-radius:8px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);font-size:10px;color:var(--fp-text-muted);margin-top:20px;margin-bottom:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span style="font-weight:700;color:var(--fp-accent)">📡 Provenance des données</span>
             <span style="padding:2px 7px;background:rgba(37,99,235,0.1);border-radius:8px">Métriques SEO → <strong>DataForSEO Labs</strong> (Authority, Mots-clés, Trafic)</span>
@@ -58082,8 +58108,10 @@ function renderActivityFeed() {
       // absent from the map has 0 contributions — show 0, not "—".
       // Only show "—" when the API itself failed (STATE.teamContributions === null).
       const _zeroContrib = { audits: 0, missions: 0, reports: 0, monitors: 0 };
+      // Try UUID first, then email — owner may be keyed by email if owner_user_id was empty
+      const _contribKeys = [String(userId), email].filter(Boolean);
       const contrib = STATE.teamContributions != null
-        ? (userId ? (STATE.teamContributions[String(userId)] || _zeroContrib) : _zeroContrib)
+        ? (_contribKeys.reduce((acc, k) => acc || STATE.teamContributions[k] || null, null) || _zeroContrib)
         : null;
       const audits   = contrib !== null ? Number(contrib.audits   ?? 0) : null;
       const missions = contrib !== null ? Number(contrib.missions ?? 0) : null;
@@ -69001,8 +69029,12 @@ window.fpDeleteHistoryEntry = async function(entryId) {
 (function() {
   var _hm = [];   // {marker, infoWindow}[] — current history markers on the map
   var _geocodePending = {};
+  // Generation counter: incremented on every clear so stale geocode callbacks can
+  // detect that a newer clear has happened and skip placing their marker.
+  var _generation = 0;
 
   function _clearHistoryMarkers() {
+    _generation++;
     _hm.forEach(function(x) { try { x.marker.setMap(null); x.iw.close(); } catch(_e){} });
     _hm = [];
     _geocodePending = {};
@@ -69076,8 +69108,13 @@ window.fpDeleteHistoryEntry = async function(entryId) {
       } else if (r.address && geocoder && !_geocodePending[r.address + '_' + i]) {
         _geocodePending[r.address + '_' + i] = true;
         pendingGeo++;
+        // Capture generation at time of geocode request so stale callbacks
+        // can detect that _clearHistoryMarkers() ran while they were in flight.
+        var _genAtRequest = _generation;
         geocoder.geocode({ address: r.address }, function(results, status) {
           pendingGeo--;
+          // If generation changed, a clear happened — discard stale result.
+          if (_genAtRequest !== _generation) return;
           if (status === 'OK' && results && results[0]) {
             var loc = results[0].geometry.location;
             r.lat = loc.lat(); r.lng = loc.lng();
