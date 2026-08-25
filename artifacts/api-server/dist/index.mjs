@@ -67161,23 +67161,54 @@ var init_plans = __esm({
     ]);
     REMOVED_ADDONS = /* @__PURE__ */ new Set(["prioritySupport"]);
     COMING_SOON_ADDONS = /* @__PURE__ */ new Set([
+      // ── No requireAddon gate in any route ─────────────────────────────────────
+      // slaMonitoring: no requireAddon("slaMonitoring",...) found in any route file.
+      // Buying it unlocks nothing. Existing /betterstack/monitors/:id/sla is ungated.
+      "slaMonitoring",
+      // globalMonitoring: no routes exist.
       "globalMonitoring",
-      "backlinkIntelligence",
+      // aiContentStrategist / abTestingAI: no routes exist.
+      // backlinkIntelligence: moved to BETA_ADDONS — route /seo/backlinks exists with
+      // requireAddon gate. DFS integration partial (backlinks endpoint live, citation
+      // health fallback). Included in Pro & Ultra plans.
       "aiContentStrategist",
       "abTestingAI",
       "agencyPacks",
       "aiExecutiveReport",
       "aiWorkflows",
+      // ── Routes exist but not commercially released ─────────────────────────────
+      // crmIntegration: crm.ts routes are complete but addon not yet sold.
+      // Route exists and works, blocked by this set (POST /api/addons/crmIntegration/activate → 503).
       "crmIntegration",
+      // ssoEnterprise: sso.ts line 82 TODO, SAML_ROADMAP_PROVIDERS → 501.
+      // Only Google Workspace OIDC works today (plan feature, not this addon).
       "ssoEnterprise",
-      // The current launch wizard still creates generic roadmap content and does
-      // not provision the promised workspace surfaces end-to-end.
+      // aiWorkspaceLaunch: ai-workspace-launch.ts routes exist (POST + GET /:sessionId)
+      // but NO requireAddon("aiWorkspaceLaunch",...) gate — the addon key is not enforced.
+      // Route uses DEFAULT_ROADMAP / DEFAULT_MISSIONS hardcoded fallbacks as primary content.
+      // Not commercially released.
       "aiWorkspaceLaunch"
     ]);
     BETA_ADDONS = /* @__PURE__ */ new Set([
-      "aiCro",
+      // Beta describes feature maturity, NOT commercial mode.
+      // A beta add-on CAN be included in a plan (e.g. Ultra) — it then shows as
+      // "🧪 Beta — Inclus dans votre plan" and cannot be re-purchased.
+      // BETA_ADDONS ∩ PLAN_INCLUDED_ADDONS is a valid non-empty set by design.
+      //
+      // Dépendance snippet onsite
+      "behavioralAI",
       "revenueLeak",
-      "marketIntelligence"
+      "aiCro",
+      // Couverture données partielle / DFS non complète
+      "aiForecasting",
+      "marketIntelligence",
+      "reviewIntelligence",
+      // Dépendance OAuth externe
+      "aiGbpPosting",
+      "zapierIntegration",
+      // Route /seo/backlinks réelle + requireAddon gate. DFS backlink integration
+      // partielle (endpoint live, couverture données limitée). Inclus Pro & Ultra.
+      "backlinkIntelligence"
     ]);
     QTY_ADDONS = /* @__PURE__ */ new Set([
       "monitorsPack10",
@@ -67209,6 +67240,7 @@ var init_plans = __esm({
         "advancedWebhooks",
         "retention90d",
         "advancedSeoLab",
+        // BETA + included: status=beta, commercial mode=included. Renders as "🧪 Bêta — Inclus".
         "backlinkIntelligence"
       ]),
       ultra: /* @__PURE__ */ new Set([
@@ -67216,12 +67248,15 @@ var init_plans = __esm({
         "customDomain",
         "advancedWebhooks",
         "advancedSeoLab",
+        // BETA + included: status=beta, commercial mode=included. Renders as "🧪 Bêta — Inclus".
         "backlinkIntelligence",
+        // behavioralAI: BETA + included in Ultra → shows as "🧪 Beta — Inclus dans votre plan"
+        "behavioralAI",
+        // aiForecasting: BETA + included in Ultra → same "🧪 Beta — Inclus" rendering
+        "aiForecasting",
         "enterprisePermissions",
         "retention365d",
-        "keywordDomination",
-        "behavioralAI",
-        "aiForecasting"
+        "keywordDomination"
       ])
     };
     _STANDARD_PURCHASABLE = /* @__PURE__ */ new Set([
@@ -67241,30 +67276,24 @@ var init_plans = __esm({
       // NOTE: "prioritySupport" removed — feature not implemented
     ]);
     _PRO_EXCLUSIVE = /* @__PURE__ */ new Set([
-      "globalMonitoring",
-      "slaMonitoring",
+      // NOTE: COMING_SOON_ADDONS must never appear here — they are not purchasable.
+      // Removed: globalMonitoring, slaMonitoring, aiContentStrategist, abTestingAI,
+      //          crmIntegration, aiExecutiveReport, aiWorkflows (all COMING_SOON)
       "keywordDomination",
-      "aiContentStrategist",
       "aiGbpPosting",
       "reviewIntelligence",
       "localDominationMaps",
       "aiCro",
       "behavioralAI",
       "revenueLeak",
-      "abTestingAI",
       "zapierIntegration",
-      "crmIntegration",
-      "aiExecutiveReport",
       "aiForecasting",
       "marketIntelligence",
-      "aiWorkflows",
       "enterprisePermissions"
     ]);
     _ULTRA_EXCLUSIVE = /* @__PURE__ */ new Set([
-      "agencyPacks",
-      "retention365d",
-      "ssoEnterprise",
-      "aiWorkspaceLaunch"
+      // NOTE: agencyPacks, ssoEnterprise, aiWorkspaceLaunch are COMING_SOON — not purchasable.
+      "retention365d"
     ]);
     PLAN_ALLOWED_ADDONS = {
       standard: _STANDARD_PURCHASABLE,
@@ -75699,9 +75728,14 @@ async function handleStripeWebhook(req, res) {
         idClient.release();
       }
     } catch (e) {
-      logger.error({ e, eventId }, "[Webhook] Idempotency claim failed \u2014 returning 500 for safe retry");
-      res.status(500).json({ received: false, error: "Webhook idempotency unavailable" });
-      return;
+      const pgCode3 = e.code;
+      if (pgCode3 === "42P01") {
+        logger.warn({ eventId }, "[Webhook] billing_events table missing \u2014 proceeding without idempotency (self-heal pending)");
+      } else {
+        logger.error({ e, eventId }, "[Webhook] Idempotency claim failed \u2014 returning 500 for safe retry");
+        res.status(500).json({ received: false, error: "Webhook idempotency unavailable" });
+        return;
+      }
     }
   }
   try {
@@ -77022,17 +77056,20 @@ async function getLocalPackRank(keyword, location, orgId3 = "default") {
   try {
     const data = await dfsRequest("/business_data/business_listings/search/live", [{
       keyword,
-      location_code: 2056,
-      // Belgium — most FlowPoint users; fallback for unknown location
-      limit: 5
+      location_name: location,
+      // Use the caller-supplied location string, not a hardcoded country code
+      limit: 10
     }], orgId3);
     const items = data[0]?.result?.[0]?.items ?? [];
-    return items.slice(0, 3).map((item, idx) => ({
+    return items.map((item, idx) => ({
       rank: idx + 1,
       title: item.title ?? `R\xE9sultat ${idx + 1}`,
       rating: item.rating?.value ?? 0,
       reviews: item.rating?.votes_count ?? 0,
-      address: item.address
+      address: item.address,
+      lat: item.latitude != null ? Number(item.latitude) : void 0,
+      lng: item.longitude != null ? Number(item.longitude) : void 0,
+      place_id: item.place_id
     }));
   } catch (e) {
     logger.warn({ e }, "[dfs] getLocalPackRank failed");
@@ -77096,7 +77133,9 @@ async function getGoogleMapsResults(keyword, location, orgId3 = "default") {
       category: item.category ?? "",
       placeId: item.place_id ?? "",
       rank: item.rank_absolute ?? 0,
-      photoUrl: item.image_url ?? null
+      photoUrl: item.image_url ?? null,
+      lat: item.latitude != null ? Number(item.latitude) : void 0,
+      lng: item.longitude != null ? Number(item.longitude) : void 0
     })) };
   } catch (e) {
     logger.warn({ e }, "[dfs] getGoogleMapsResults failed");
@@ -92607,7 +92646,9 @@ var init_audit_tools = __esm({
       }),
       run_audit: external_exports.object({
         url: external_exports.string().min(1).max(500),
-        origin: external_exports.enum(["manual", "agent"]).optional()
+        origin: external_exports.enum(["manual", "agent"]).optional(),
+        force: external_exports.boolean().optional()
+        // bypass 24-hour deduplication guard
       }),
       rerun_audit: external_exports.object({
         auditId: external_exports.string().min(1).max(100)
@@ -94624,11 +94665,12 @@ async function executeTool(call, ctx) {
       error: msg,
       durationMs: Date.now() - t0
     });
+    const sanitizedMsg = /null value in column|violates not-null|violates check|duplicate key|foreign key|relation .* does not exist|syntax error at or near|could not serialize|deadlock detected/i.test(msg) ? `L'op\xE9ration a \xE9chou\xE9 c\xF4t\xE9 base de donn\xE9es. V\xE9rifiez les param\xE8tres et r\xE9essayez, ou contactez le support si le probl\xE8me persiste.` : /ECONNREFUSED|ENOTFOUND|getaddrinfo|ETIMEOUT|socket hang up/i.test(msg) ? `Le service est temporairement indisponible. R\xE9essayez dans quelques instants.` : msg;
     return {
       toolCallId: call.id,
       toolName: call.name,
       ok: false,
-      content: `Erreur lors de l'ex\xE9cution de ${call.name} : ${msg}`,
+      content: `L'action "${call.name}" n'a pas pu \xEAtre ex\xE9cut\xE9e : ${sanitizedMsg}`,
       actionLogId: logId
     };
   }
@@ -94791,8 +94833,8 @@ ${list}`,
     const stepsArr = stepsRaw?.map((text2, i) => ({ id: `s${Date.now()}${i}`, text: text2, done: false })) ?? [];
     await pool.query(`
       INSERT INTO missions (id, org_id, title, description, category, priority, priority_score,
-        status, steps, due_date, assigned_to, source_type, created_at, updated_at, last_refreshed_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,'todo',$8,$9,$10,'ai',NOW(),NOW(),NOW())
+        status, steps, due_date, assigned_to, source_type, created_by, created_at, updated_at, last_refreshed_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,'todo',$8,$9,$10,'ai',$11,NOW(),NOW(),NOW())
     `, [
       id,
       orgId3,
@@ -94803,7 +94845,8 @@ ${list}`,
       pScore,
       JSON.stringify(stepsArr),
       args["dueDate"] ?? null,
-      args["assignedTo"] ?? null
+      args["assignedTo"] ?? null,
+      userId
     ]);
     const row = await pool.query(
       `SELECT * FROM missions WHERE id = $1 AND org_id = $2`,
@@ -96454,28 +96497,31 @@ ${lines.join("\n")}`,
         actionLogId: logId
       };
     }
-    const dupCheck = await pool.query(
-      `SELECT id, score, status FROM audits WHERE org_id=$1 AND url=$2 AND created_at > NOW() - INTERVAL '24 hours' ORDER BY created_at DESC LIMIT 1`,
-      [orgId3, url]
-    );
-    if (dupCheck.rows.length > 0) {
-      const ex = dupCheck.rows[0];
-      const exId = String(ex["id"]);
-      const exScore = Number(ex["score"] ?? 0);
-      const exStatus = String(ex["status"] ?? "");
-      if (exStatus === "processing") {
-        return await _awaitAuditCompletion(exId, orgId3, url, logId, name, ctx);
-      }
-      return {
-        toolCallId: logId,
-        toolName: name,
-        ok: true,
-        content: `Un audit r\xE9cent (< 24 h) est disponible pour ${url}.
+    const forceRerun = !!args["force"];
+    if (!forceRerun) {
+      const dupCheck = await pool.query(
+        `SELECT id, score, status FROM audits WHERE org_id=$1 AND url=$2 AND created_at > NOW() - INTERVAL '24 hours' ORDER BY created_at DESC LIMIT 1`,
+        [orgId3, url]
+      );
+      if (dupCheck.rows.length > 0) {
+        const ex = dupCheck.rows[0];
+        const exId = String(ex["id"]);
+        const exScore = Number(ex["score"] ?? 0);
+        const exStatus = String(ex["status"] ?? "");
+        if (exStatus === "processing") {
+          return await _awaitAuditCompletion(exId, orgId3, url, logId, name, ctx);
+        }
+        return {
+          toolCallId: logId,
+          toolName: name,
+          ok: true,
+          content: `Un audit r\xE9cent (< 24 h) est disponible pour ${url}.
 Score : ${exScore}/100 \u2014 Statut : ${fmtAuditStatus(exStatus, exScore)} \u2014 ID : ${exId}.
-Demandez-moi le r\xE9sum\xE9 d\xE9taill\xE9 de cet audit, ou preciser "rerun" pour forcer une nouvelle analyse.`,
-        data: { auditId: exId, url, status: exStatus, score: exScore },
-        actionLogId: logId
-      };
+Si l'utilisateur souhaite relancer un nouvel audit, utilisez force=true.`,
+          data: { auditId: exId, url, status: exStatus, score: exScore },
+          actionLogId: logId
+        };
+      }
     }
     const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     const auditId = `a${Date.now()}`;
@@ -96990,10 +97036,10 @@ M\xE9triques Web Vitals (mobile) :`);
         const cat = "SEO";
         const row = await mClient.query(
           `INSERT INTO missions (id, org_id, title, description, status, priority, category, due_date,
-                                 source_type, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,'todo',$5,$6,$7,'agent',NOW(),NOW())
+                                 source_type, created_by, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,'todo',$5,$6,$7,'agent',$8,NOW(),NOW())
            RETURNING id, title, description, status, priority, category, due_date, updated_at`,
-          [mId, orgId3, title, desc2, priority, cat, now]
+          [mId, orgId3, title, desc2, priority, cat, now, userId]
         );
         if (row.rows[0]) createdMissions.push(row.rows[0]);
       }
@@ -97249,7 +97295,10 @@ ${recLines.join("\n")}`,
     const _gl = supportedRecommendationLanguages.has(requestedCode) ? requestedCode : "fr";
     const _recoLog = { userLanguage: _gl, recommendationLanguage: _gl, aiPromptLanguage: _gl };
     logger.info(_recoLog, "[generate_recommendations] language chain");
-    const _rt = (fr, _en, _de, _es) => fr;
+    const _rt = (fr, en, de, es) => {
+      const t = { fr, en, de, es };
+      return t[_gl] ?? en;
+    };
     const [genAudits, genKw, genComp, genMon] = await Promise.allSettled([
       pool.query(`SELECT id, url, score, status, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 5`, [orgId3]),
       pool.query(`SELECT keyword, current_position, search_volume FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC LIMIT 10`, [orgId3]),
@@ -97837,10 +97886,10 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
         const meta = rec["metadata"] ?? {};
         const cat = String(meta["category"] ?? "SEO").toUpperCase();
         const row = await msClient.query(
-          `INSERT INTO missions (id, org_id, title, description, status, priority, category, due_date, source_type, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,'todo',$5,$6,$7,'agent',NOW(),NOW())
+          `INSERT INTO missions (id, org_id, title, description, status, priority, category, due_date, source_type, created_by, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,'todo',$5,$6,$7,'agent',$8,NOW(),NOW())
            RETURNING id, title, description, status, priority, category, due_date, updated_at`,
-          [mId, orgId3, `[Strat\xE9gie] ${rec["title"]}`, String(rec["description"] ?? "Mission issue de la strat\xE9gie SEO."), msPriority, cat, msToday]
+          [mId, orgId3, `[Strat\xE9gie] ${rec["title"]}`, String(rec["description"] ?? "Mission issue de la strat\xE9gie SEO."), msPriority, cat, msToday, userId]
         );
         if (row.rows[0]) msMissions.push(row.rows[0]);
       }
@@ -98364,9 +98413,9 @@ ${siSummary}`,
       if (!def) continue;
       const mId = `m_inc${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       await pool.query(
-        `INSERT INTO missions (id, org_id, title, description, status, priority, assigned_to, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,'pending',$5,$6,NOW(),NOW()) ON CONFLICT (id) DO NOTHING`,
-        [mId, orgId3, def.title, def.description, def.priority, cmiAssignee]
+        `INSERT INTO missions (id, org_id, title, description, status, priority, assigned_to, created_by, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,'pending',$5,$6,$7,NOW(),NOW()) ON CONFLICT (id) DO NOTHING`,
+        [mId, orgId3, def.title, def.description, def.priority, cmiAssignee, userId]
       );
       cmiMissions.push({ id: mId, type: mType, title: def.title, priority: def.priority });
     }
@@ -98483,6 +98532,15 @@ ${siSummary}`,
     const cfPhone = args["alert_phone"] ?? null;
     const cfCritical = args["is_critical"] ?? null;
     const cfEnabled = args["enabled"] ?? null;
+    if (!cfMonId && !cfEmail) {
+      return {
+        toolCallId: logId,
+        toolName: name2,
+        ok: false,
+        content: `Pour cr\xE9er un monitor, j'ai besoin d'une adresse email pour les alertes. Quelle adresse email souhaitez-vous utiliser pour recevoir les notifications de ce monitor ?`,
+        actionLogId: logId
+      };
+    }
     let cfSnap = null;
     if (cfMonId) {
       cfSnap = await snapMonitor(cfMonId, orgId3, pool);
@@ -98541,7 +98599,7 @@ ${siSummary}`,
         `INSERT INTO monitors (id, org_id, name, url, status, uptime, latency, frequency, enabled, is_critical, alert_email, alert_phone, created_at, updated_at)
          VALUES ($1,$2,$3,$4,'unknown',100,0,$5,true,$6,$7,$8,NOW(),NOW())
          RETURNING id`,
-        [cfResultId, orgId3, cfName ?? cfUrl, cfUrl, cfFreq ?? 300, cfCritical ?? false, cfEmail ?? null, cfPhone ?? null]
+        [cfResultId, orgId3, cfName ?? cfUrl, cfUrl, cfFreq ?? 300, cfCritical ?? false, cfEmail ?? "", cfPhone ?? ""]
       );
       if (!cfInsertResult.rows[0]?.id) {
         return {
@@ -99682,6 +99740,21 @@ var init_billing_context = __esm({
 });
 
 // src/services/billing-service.ts
+var billing_service_exports = {};
+__export(billing_service_exports, {
+  ADDON_CATALOG: () => ADDON_CATALOG,
+  PLAN_CONFIG: () => PLAN_CONFIG,
+  PLAN_FEATURES: () => PLAN_FEATURES,
+  checkQuota: () => checkQuota,
+  getInvoices: () => getInvoices,
+  getMRRData: () => getMRRData,
+  getSubscriptionAnalytics: () => getSubscriptionAnalytics,
+  getUsageSummary: () => getUsageSummary,
+  hasFeature: () => hasFeature,
+  startTrial: () => startTrial,
+  trackBillingEvent: () => trackBillingEvent,
+  validateCoupon: () => validateCoupon
+});
 async function getUsageSummary(orgId3 = "default") {
   const billingCtx = await loadBillingContext(orgId3).catch(async () => {
     const orgData = await loadOrgData(orgId3).catch(() => null);
@@ -100046,7 +100119,13 @@ async function getInvoices(limit2 = 20, stripeCustomerId) {
     return { invoices: [], error: "Failed to fetch invoices" };
   }
 }
-var _PLAN_PRESENTATION, PLAN_CONFIG, _ADDON_PRESENTATION, ADDON_CATALOG;
+function hasFeature(feature, plan4) {
+  const p = (plan4 || "standard").toLowerCase();
+  const features = PLAN_FEATURES[p] || PLAN_FEATURES.standard;
+  if (p === "ultra") return true;
+  return features.some((f) => f === feature || f.startsWith(feature + ":"));
+}
+var _PLAN_PRESENTATION, PLAN_CONFIG, _ADDON_PRESENTATION, ADDON_CATALOG, PLAN_FEATURES;
 var init_billing_service = __esm({
   "src/services/billing-service.ts"() {
     "use strict";
@@ -100157,9 +100236,55 @@ var init_billing_service = __esm({
         // therefore the canonical product lifecycle; GET /api/addons refines this
         // to "included" or "active" for an authenticated organisation.
         availability: getAddonAvailability(id),
-        status: getAddonAvailability(id)
+        status: getAddonAvailability(id),
+        // allowedPlans: derived from PLAN_ALLOWED_ADDONS (canonical per-plan purchasability matrix).
+        // coming_soon add-ons are not purchasable on any plan.
+        allowedPlans: getAddonAvailability(id) === "coming_soon" ? [] : ["standard", "pro", "ultra"].filter((p) => PLAN_ALLOWED_ADDONS[p]?.has(id))
       }];
     });
+    PLAN_FEATURES = {
+      standard: ["audits:30", "monitors:10", "reports:30", "exports:30", "team:1", "email-support", "export-csv"],
+      pro: [
+        "audits:300",
+        "monitors:50",
+        "reports:300",
+        "exports:300",
+        "team:5",
+        "ai-insights",
+        "white-label-reports",
+        "api-access",
+        "priority-support",
+        "retention:90",
+        "competitor-analytics",
+        "webhooks",
+        "2fa",
+        "audit-log",
+        "keyword-tracking",
+        "behavioral-ai",
+        "cro"
+      ],
+      ultra: [
+        "audits:1000",
+        "monitors:300",
+        "reports:1000",
+        "exports:1000",
+        "team:10",
+        "ai-strategist",
+        "white-label-portal",
+        "sso-enterprise",
+        "custom-domain",
+        "sla-999",
+        "retention:365",
+        "multi-workspace",
+        "agency-lab",
+        "client-billing",
+        "dedicated-onboarding",
+        "forecasting",
+        "revenue-leak",
+        "automation",
+        "market-intelligence"
+      ]
+    };
   }
 });
 
@@ -101611,10 +101736,11 @@ async function launchAudit(opts) {
   const auditId = `a${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
   const dateStr = (/* @__PURE__ */ new Date()).toISOString();
   const name = opts.name ?? "";
+  const createdBy = origin === "scheduled" ? null : opts.userId ?? null;
   await pool.query(
-    `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_at)
-     VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,NOW())`,
-    [auditId, url, name, dateStr, origin, orgId3]
+    `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_by, created_at)
+     VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,$7,NOW())`,
+    [auditId, url, name, dateStr, origin, orgId3, createdBy]
   );
   store.logActivity({
     type: "audit",
@@ -102674,9 +102800,24 @@ async function initDataTables() {
     await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';`);
     await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';`);
     await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS created_by TEXT;`);
     await run(client, `CREATE INDEX IF NOT EXISTS audits_url_idx ON audits(url);`);
     await run(client, `CREATE INDEX IF NOT EXISTS audits_created_at_idx ON audits(created_at);`);
     await run(client, `CREATE INDEX IF NOT EXISTS audits_org_id_idx ON audits(org_id);`);
+    await run(client, `
+      UPDATE audits a
+      SET created_by = al.user_id
+      FROM (
+        SELECT DISTINCT ON (target_id) target_id, user_id
+        FROM activity_logs
+        WHERE target_type = 'audit'
+          AND user_id IS NOT NULL AND user_id NOT IN ('system','')
+        ORDER BY target_id, created_at ASC
+      ) al
+      WHERE al.target_id = a.id
+        AND a.created_by IS NULL;
+    `).catch(() => {
+    });
     await run(client, `
       CREATE TABLE IF NOT EXISTS reports (
         id                 TEXT PRIMARY KEY,
@@ -102697,6 +102838,21 @@ async function initDataTables() {
       );
     `);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS created_by TEXT;`);
+    await run(client, `
+      UPDATE reports r
+      SET created_by = al.user_id
+      FROM (
+        SELECT DISTINCT ON (target_id) target_id, user_id
+        FROM activity_logs
+        WHERE target_type = 'report'
+          AND user_id IS NOT NULL AND user_id NOT IN ('system','')
+        ORDER BY target_id, created_at ASC
+      ) al
+      WHERE al.target_id = r.id
+        AND r.created_by IS NULL;
+    `).catch(() => {
+    });
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'PDF';`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS template_key TEXT NOT NULL DEFAULT 'seo';`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS pages INTEGER NOT NULL DEFAULT 0;`);
@@ -103108,6 +103264,21 @@ async function initDataTables() {
       );
     `);
     await run(client, `CREATE INDEX IF NOT EXISTS org_secrets_org_id_idx ON org_secrets(org_id);`);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS billing_events (
+        id               SERIAL PRIMARY KEY,
+        org_id           TEXT        NOT NULL DEFAULT '_system_',
+        type             TEXT        NOT NULL DEFAULT '',
+        stripe_event_id  TEXT        UNIQUE,
+        amount           INTEGER     NOT NULL DEFAULT 0,
+        currency         TEXT        NOT NULL DEFAULT 'eur',
+        metadata         JSONB,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS billing_events_org_id_idx        ON billing_events(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS billing_events_stripe_event_id_idx ON billing_events(stripe_event_id);`);
+    await run(client, `ALTER TABLE billing_events ADD COLUMN IF NOT EXISTS metadata JSONB;`);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS provider TEXT;`);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS cached_tokens INTEGER NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS real_cost_eur REAL NOT NULL DEFAULT 0;`);
@@ -105065,8 +105236,8 @@ async function initDataTables() {
       DELETE FROM user_activity_days uad
       WHERE uad.user_id = uad.org_id
         AND EXISTS (
-          SELECT 1 FROM org_members om
-          WHERE om.org_id = uad.org_id
+          SELECT 1 FROM team_members tm
+          WHERE tm.org_id = uad.org_id
         )
     `);
     await run(client, `
@@ -108887,20 +109058,22 @@ async function recordActivityDay(db15, orgId3, userId) {
     }
   }
 }
-async function computeStreakFromTable(db15, orgId3, tz) {
+async function computeStreakFromTable(db15, orgId3, tz, userId) {
+  const userFilter = userId ? "AND user_id=$3" : "";
+  const userParams = userId ? [orgId3, tz, userId] : [orgId3, tz];
   let actRes = await db15(
     `SELECT day::text AS d FROM user_activity_days
-     WHERE org_id=$1 AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
+     WHERE org_id=$1 ${userFilter} AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
      ORDER BY d DESC`,
-    [orgId3, tz]
+    userParams
   ).catch(() => ({ rows: [] }));
   if (actRes.rows.length === 0) {
     try {
       const poolRes = await pool.query(
         `SELECT day::text AS d FROM user_activity_days
-         WHERE org_id=$1 AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
+         WHERE org_id=$1 ${userFilter} AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
          ORDER BY d DESC`,
-        [orgId3, tz]
+        userParams
       );
       actRes = poolRes;
     } catch {
@@ -108951,7 +109124,8 @@ router6.get("/me/streak", async (req, res) => {
       storedStreak = typeof tzRow.rows[0]?.["streak"] === "number" ? tzRow.rows[0]["streak"] : 0;
     } catch {
     }
-    const streak = await computeStreakFromTable(orgDb(req), orgId3, tz);
+    const userId = req.orgContext?.userId ?? req.userId ?? void 0;
+    const streak = await computeStreakFromTable(orgDb(req), orgId3, tz, userId);
     const safeStreak = streak.rowCount === 0 && storedStreak > 0 ? storedStreak : streak.current;
     res.json({ current: safeStreak, best: Math.max(streak.best, safeStreak) });
   } catch {
@@ -108971,11 +109145,12 @@ router6.get("/me/prefs", async (req, res) => {
     if (settingsObj && typeof settingsObj["timezone"] === "string" && settingsObj["timezone"]) {
       tz = settingsObj["timezone"];
     }
+    const userId = req["orgContext"] && typeof req["orgContext"]["userId"] === "string" ? req["orgContext"]["userId"] : void 0;
     let finalStreak;
     let querySucceeded = false;
     let computedStreak = 0;
     try {
-      const { current } = await computeStreakFromTable(orgDb(req), orgId3, tz);
+      const { current } = await computeStreakFromTable(orgDb(req), orgId3, tz, userId);
       querySucceeded = true;
       computedStreak = current;
       finalStreak = current;
@@ -111063,6 +111238,22 @@ router10.post("/audits", reportRateLimit, canWrite, async (req, res) => {
         return;
       }
     }
+    try {
+      const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
+      const quota = await checkQuota2("audits", orgId3);
+      if (!quota.allowed) {
+        res.status(402).json({
+          error: `Limite mensuelle d'audits atteinte (${quota.used}/${quota.limit}). Upgradez votre plan ou achetez un pack d'audits suppl\xE9mentaires.`,
+          code: "QUOTA_EXCEEDED",
+          resource: "audits",
+          used: quota.used,
+          limit: quota.limit
+        });
+        return;
+      }
+    } catch (quotaErr) {
+      logger.warn({ err: quotaErr, orgId: orgId3 }, "[audits] quota check failed \u2014 allowing audit");
+    }
     const _aCtx = req.orgContext || {};
     const launched = await launchAudit({
       orgId: orgId3,
@@ -111622,6 +111813,7 @@ async function streamReportPdf(res, report, audit, meetingNotes, monitors = [], 
 init_store();
 init_rateLimiter();
 init_requireRole();
+init_logger();
 var router11 = (0, import_express11.Router)();
 var REPORT_TEMPLATES = {
   seo: { label: "Rapport SEO" },
@@ -111685,6 +111877,23 @@ router11.get("/reports/:id", async (req, res) => {
   }
 });
 router11.post("/reports", reportRateLimit, canWrite, async (req, res) => {
+  const _qOrgId = org(req);
+  try {
+    const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
+    const _quota = await checkQuota2("reports", _qOrgId);
+    if (!_quota.allowed) {
+      res.status(402).json({
+        error: `Limite mensuelle de rapports PDF atteinte (${_quota.used}/${_quota.limit}). Upgradez votre plan ou achetez un pack de rapports.`,
+        code: "QUOTA_EXCEEDED",
+        resource: "reports",
+        used: _quota.used,
+        limit: _quota.limit
+      });
+      return;
+    }
+  } catch (_qErr) {
+    logger.warn({ err: _qErr, orgId: _qOrgId }, "[reports] quota check failed \u2014 allowing report");
+  }
   const { name, auditId, format, templateKey, whiteLabel, meetingNotes, dateStart, dateEnd } = req.body;
   const reportName = typeof name === "string" ? name.trim().slice(0, 240) : "";
   if (!reportName) {
@@ -111699,8 +111908,8 @@ router11.post("/reports", reportRateLimit, canWrite, async (req, res) => {
   const id = `r_${randomBytes5(12).toString("hex")}`;
   try {
     await db2(req)(
-      `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end)
-       VALUES ($1,$2,$3,$4,$5,$6,0,false,$7,$8,true,$9,$10,$11)`,
+      `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,0,false,$7,$8,true,$9,$10,$11,$12)`,
       [
         id,
         org(req),
@@ -111712,7 +111921,8 @@ router11.post("/reports", reportRateLimit, canWrite, async (req, res) => {
         !!whiteLabel,
         JSON.stringify(sanitizeMeetingNotes(meetingNotes)),
         dateStart ?? "",
-        dateEnd ?? ""
+        dateEnd ?? "",
+        req.orgContext?.userId || req.orgContext?.email || null
       ]
     );
     const r = await db2(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [id, org(req)]);
@@ -111751,9 +111961,15 @@ router11.post("/reports/clients", canWrite, async (req, res) => {
   const id = `cl${Date.now()}`;
   try {
     await db2(req)(
-      `INSERT INTO reports (id, org_id, name, type, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end)
-       VALUES ($1,$2,$3,'client',$4,0,false,'',false,false,'[]','','')`,
-      [id, org(req), name, (/* @__PURE__ */ new Date()).toISOString()]
+      `INSERT INTO reports (id, org_id, name, type, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by)
+       VALUES ($1,$2,$3,'client',$4,0,false,'',false,false,'[]','','',$5)`,
+      [
+        id,
+        org(req),
+        name,
+        (/* @__PURE__ */ new Date()).toISOString(),
+        req.orgContext?.userId || req.orgContext?.email || null
+      ]
     );
     const r = await db2(req)(`SELECT * FROM reports WHERE id=$1`, [id]);
     res.status(201).json(r.rows[0] ?? { id, name });
@@ -113010,63 +113226,142 @@ router12.get("/team/contributions", async (req, res) => {
     return;
   }
   try {
-    const countsRes = await pool.query(
-      `WITH canonical_activity AS (
-         SELECT al.*, u.id::text AS canonical_user_id
-         FROM activity_logs al
-         JOIN users u
-           ON u.id::text = al.user_id
-           OR LOWER(u.email) = LOWER(al.user_id)
-         WHERE al.org_id = $1
-           AND (
-             EXISTS (
-               SELECT 1 FROM organization_members om
-               WHERE om.organization_id::text = $1
-                 AND om.user_id = u.id
-                 AND om.status = 'active'
-             )
-             OR EXISTS (
-               SELECT 1 FROM organizations o
-               WHERE o.id::text = $1
-                 AND (LOWER(o.owner_email) = LOWER(u.email)
-                      OR o.owner_user_id::text = u.id::text)
-             )
-           )
-       )
-       SELECT canonical_user_id AS user_id,
-              COUNT(*) FILTER (
-                WHERE type = 'audit' AND target_type = 'audit'
-              )::int AS audits,
-              COUNT(*) FILTER (
-                WHERE target_type = 'mission'
-                   OR action_key LIKE 'activity.mission.%'
-              )::int AS missions,
-              COUNT(*) FILTER (
-                WHERE type = 'report' AND target_type = 'report'
-              )::int AS reports,
-              COUNT(*) FILTER (
-                WHERE type = 'monitor' AND target_type = 'monitor'
-              )::int AS monitors
-       FROM canonical_activity
-       GROUP BY canonical_user_id`,
+    try {
+      const diagRes = await pool.query(
+        `WITH owner_info AS (
+           SELECT LOWER(o.owner_email) AS owner_email,
+                  o.owner_user_id::text AS owner_raw_uid,
+                  COALESCE(
+                    (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
+                    (SELECT u.id::text FROM users u WHERE u.id::text = o.owner_user_id::text LIMIT 1),
+                    o.owner_user_id::text
+                  ) AS canonical_uid
+           FROM organizations o WHERE o.id::text = $1 LIMIT 1
+         )
+         SELECT
+           oi.owner_email,
+           oi.owner_raw_uid,
+           oi.canonical_uid,
+           COUNT(al.id)::int                   AS al_count,
+           STRING_AGG(DISTINCT al.user_id, '|' ORDER BY al.user_id) FILTER (WHERE al.user_id IS NOT NULL) AS al_user_ids,
+           COUNT(DISTINCT DATE(al.created_at))::int AS days_of_activity
+         FROM owner_info oi
+         LEFT JOIN activity_logs al
+           ON (al.org_id = $1
+               OR LOWER(al.org_id) = oi.owner_email
+               OR al.org_id = oi.owner_raw_uid)
+         GROUP BY oi.owner_email, oi.owner_raw_uid, oi.canonical_uid`,
+        [orgId3]
+      );
+      const d = diagRes.rows[0];
+      const sessionCtx = req["orgContext"];
+      logger.info({
+        orgId: orgId3.slice(0, 8),
+        sessionUserId: String(sessionCtx?.userId ?? "").slice(0, 36),
+        sessionEmail: String(sessionCtx?.email ?? ""),
+        ownerEmail: d?.owner_email ?? null,
+        ownerRawUid: d?.owner_raw_uid ?? null,
+        canonicalUid: d?.canonical_uid ?? null,
+        activityLogCount: d?.al_count ?? 0,
+        activityUserIds: d?.al_user_ids ?? null,
+        daysOfActivity: d?.days_of_activity ?? 0
+      }, "[team/contributions] OWNER DIAG");
+    } catch (diagErr) {
+      logger.warn({ diagErr }, "[team/contributions] diag query failed (non-fatal)");
+    }
+    const principalRes = await pool.query(
+      `SELECT
+         COALESCE(
+           (SELECT u.id::text FROM users u WHERE u.id::text = tm.user_id LIMIT 1),
+           (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(tm.email) LIMIT 1),
+           tm.user_id
+         ) AS canonical_uid,
+         LOWER(tm.email) AS email
+       FROM team_members tm
+       WHERE tm.org_id = $1
+       UNION
+       SELECT
+         COALESCE(
+           o.owner_user_id::text,
+           (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1)
+         ) AS canonical_uid,
+         LOWER(o.owner_email) AS email
+       FROM organizations o WHERE o.id::text = $1`,
       [orgId3]
     );
+    const uidToCanonical = /* @__PURE__ */ new Map();
+    const emailToCanonical = /* @__PURE__ */ new Map();
+    for (const p of principalRes.rows) {
+      if (!p.canonical_uid) continue;
+      uidToCanonical.set(p.canonical_uid.toLowerCase(), p.canonical_uid);
+      if (p.email) emailToCanonical.set(p.email.toLowerCase(), p.canonical_uid);
+    }
+    const resolve4 = (cb) => {
+      if (!cb || cb === "system" || cb === "") return null;
+      const lower = cb.toLowerCase();
+      return uidToCanonical.get(lower) ?? emailToCanonical.get(lower) ?? null;
+    };
     const byUser = {};
-    for (const row of countsRes.rows) {
-      if (!row.user_id) continue;
-      byUser[row.user_id] = {
-        audits: Number(row.audits ?? 0),
-        missions: Number(row.missions ?? 0),
-        reports: Number(row.reports ?? 0),
-        monitors: Number(row.monitors ?? 0)
-      };
+    const ensure = (uid3) => {
+      if (!byUser[uid3]) byUser[uid3] = { audits: 0, missions: 0, reports: 0, monitors: 0 };
+    };
+    try {
+      const auditCounts = await pool.query(
+        `SELECT created_by, COUNT(*)::int AS cnt
+         FROM audits
+         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         GROUP BY created_by`,
+        [orgId3]
+      );
+      for (const row of auditCounts.rows) {
+        const uid3 = resolve4(row.created_by);
+        if (!uid3) continue;
+        ensure(uid3);
+        byUser[uid3].audits = Math.max(byUser[uid3].audits, Number(row.cnt ?? 0));
+      }
+    } catch (_e) {
     }
     try {
-      const memberSnap = Object.entries(byUser).map(([k, v]) => ({
-        key: k.length > 36 ? k.slice(0, 8) + "\u2026" : k,
+      const missionCounts = await pool.query(
+        `SELECT created_by, COUNT(*)::int AS cnt
+         FROM missions
+         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         GROUP BY created_by`,
+        [orgId3]
+      );
+      for (const row of missionCounts.rows) {
+        const uid3 = resolve4(row.created_by);
+        if (!uid3) continue;
+        ensure(uid3);
+        byUser[uid3].missions = Math.max(byUser[uid3].missions, Number(row.cnt ?? 0));
+      }
+    } catch (_e) {
+    }
+    try {
+      const reportCounts = await pool.query(
+        `SELECT created_by, COUNT(*)::int AS cnt
+         FROM reports
+         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         GROUP BY created_by`,
+        [orgId3]
+      );
+      for (const row of reportCounts.rows) {
+        const uid3 = resolve4(row.created_by);
+        if (!uid3) continue;
+        ensure(uid3);
+        byUser[uid3].reports = Math.max(byUser[uid3].reports, Number(row.cnt ?? 0));
+      }
+    } catch (_e) {
+    }
+    try {
+      const snap = Object.entries(byUser).map(([k, v]) => ({
+        uid: k.length > 36 ? k.slice(0, 8) + "\u2026" : k,
         ...v
       }));
-      logger.info({ orgId: orgId3.slice(0, 8), members: memberSnap }, "[team/contributions] resolved");
+      logger.info(
+        { orgId: orgId3.slice(0, 8), principals: principalRes.rows.length, members: snap },
+        "[team/contributions] real-table resolved"
+      );
     } catch (_) {
     }
     res.json({ ok: true, contributions: byUser });
@@ -113154,7 +113449,7 @@ router12.get("/team/streaks", async (req, res) => {
       try {
         const isCurrentOwner = uid3 === ownerUserId;
         const activityTable = isCurrentOwner ? "user_activity_days" : "member_activity_days";
-        const identityClause = isCurrentOwner ? "AND $2::text = $2::text" : "AND user_id=$2";
+        const identityClause = "AND user_id=$2";
         const actRes = await pool.query(
           `SELECT day::text AS d FROM ${activityTable}
            WHERE org_id=$1
@@ -113167,6 +113462,22 @@ router12.get("/team/streaks", async (req, res) => {
           { userId: uid3.slice(0, 8), email: member.email, activityRowsFound: actRes.rows.length },
           "[STREAK DEBUG]"
         );
+        if (actRes.rows.length === 0 && !isCurrentOwner) {
+          try {
+            const fallbackRes = await pool.query(
+              `SELECT day::text AS d FROM user_activity_days
+               WHERE org_id=$1 AND user_id=$2
+                 AND day >= (NOW() AT TIME ZONE $3)::date - INTERVAL '365 days'
+               ORDER BY d DESC`,
+              [orgId3, uid3, tz]
+            );
+            if (fallbackRes.rows.length > 0) {
+              actRes.rows.push(...fallbackRes.rows);
+              logger.info({ userId: uid3.slice(0, 8), fallbackRows: fallbackRes.rows.length }, "[STREAK] member_activity_days empty \u2014 used user_activity_days fallback");
+            }
+          } catch {
+          }
+        }
         if (actRes.rows.length === 0) {
           logger.info({ userId: uid3.slice(0, 8), email: member.email, calculatedCurrentStreak: 0, bestStreak: 0 }, "[STREAK DEBUG]");
           streaks.push({ ...base, current: 0, best: 0 });
@@ -116695,7 +117006,7 @@ OBLIGATION D'OUTIL \u2014 R\xC8GLE ABSOLUE (priorit\xE9 maximale)
 - INTERDIT : dire "Je vais cr\xE9er des missions", "La fen\xEAtre de confirmation va s'afficher", "Je proc\xE8de \xE0 la cr\xE9ation" sans avoir APPEL\xC9 l'outil create_mission / create_missions_from_strategy / ou autre outil d'action.
 - Si l'outil appelle une confirmation (preview / full), le serveur envoie automatiquement la carte de confirmation \u2014 TU N'AS PAS \xC0 L'ANNONCER DANS LE TEXTE.
 - Si tu ne peux pas appeler l'outil (permissions manquantes, donn\xE9es insuffisantes), DIS-LE clairement et demande ce qui manque \u2014 ne simule jamais l'action.
-- Cette r\xE8gle s'applique \xE0 tous les outils d'\xE9criture : create_mission, create_missions_from_strategy, create_audit, update_calendar_event, create_monitor, dismiss_recommendation, etc.
+- Cette r\xE8gle s'applique \xE0 tous les outils d'\xE9criture : create_mission, create_missions_from_strategy, run_audit, update_calendar_event, configure_monitor, dismiss_recommendation, etc.
 
 INT\xC9GRIT\xC9 DES R\xC9SULTATS D'OUTILS \u2014 R\xC8GLE ABSOLUE (priorit\xE9 maximale)
 - Si un outil retourne une erreur ou ok:false, tu DOIS informer l'utilisateur de l'\xE9chec EXACTEMENT, sans minimiser. Tu ne peux JAMAIS dire "cr\xE9\xE9", "ajout\xE9", "termin\xE9", "planifi\xE9", "supprim\xE9" ou toute formulation de succ\xE8s si l'outil n'a pas retourn\xE9 ok:true avec un identifiant r\xE9el.
@@ -117370,7 +117681,7 @@ function buildConfirmationPreview(toolName2, args, language = "fr") {
     add_competitor: { fr: "Ajouter un concurrent au suivi", en: "Add a competitor to tracking", es: "Agregar un competidor al seguimiento" },
     delete_competitor: { fr: "\u26A0 Supprimer d\xE9finitivement un concurrent", en: "\u26A0 Permanently delete a competitor", es: "\u26A0 Eliminar definitivamente un competidor" }
   };
-  const langKey = lang === "en" || lang === "es" ? lang : "fr";
+  const langKey = lang === "fr" ? "fr" : lang === "es" ? "es" : "en";
   if (lang === "en") {
     switch (toolName2) {
       case "create_mission":
@@ -117411,6 +117722,86 @@ function buildConfirmationPreview(toolName2, args, language = "fr") {
         return TOOL_LABELS[toolName2]?.es ?? `Ejecutar la acci\xF3n "${toolName2}"`;
     }
   }
+  if (lang === "de") {
+    switch (toolName2) {
+      case "create_mission":
+        return `Eine Mission erstellen: \u201E${args["title"] ?? "?"}"`;
+      case "update_mission":
+        return `Mission ID \u201E${args["id"] ?? "?"}" bearbeiten`;
+      case "complete_mission":
+        return `Mission ID \u201E${args["id"] ?? "?"}" als abgeschlossen markieren`;
+      case "delete_mission":
+        return `\u26A0 Mission ID \u201E${args["id"] ?? "?"}" dauerhaft l\xF6schen`;
+      case "run_audit":
+        return `Vollst\xE4ndiges SEO-Audit f\xFCr ${args["url"] ?? "Ihre Website"} starten \u2013 dauert 30\u201360 Sekunden`;
+      case "rerun_audit":
+        return `SEO-Audit erneut ausf\xFChren (ein neuer Eintrag wird erstellt)`;
+      case "configure_monitor":
+        return args["monitor_id"] ? `Monitor-Konfiguration aktualisieren${args["name"] ? ` \u201E${args["name"]}"` : ""}${args["url"] ? ` (${args["url"]})` : ""}` : `Neuen Monitor erstellen${args["url"] ? ` f\xFCr ${args["url"]}` : ""}${args["name"] ? ` namens \u201E${args["name"]}"` : ""}`;
+      default:
+        return TOOL_LABELS[toolName2]?.de ?? TOOL_LABELS[toolName2]?.en ?? `Aktion \u201E${toolName2}" ausf\xFChren`;
+    }
+  }
+  if (lang === "it") {
+    switch (toolName2) {
+      case "create_mission":
+        return `Creare una missione intitolata "${args["title"] ?? "?"}"`;
+      case "update_mission":
+        return `Modificare la missione ID "${args["id"] ?? "?"}"`;
+      case "complete_mission":
+        return `Contrassegnare la missione ID "${args["id"] ?? "?"}" come completata`;
+      case "delete_mission":
+        return `\u26A0 Eliminare definitivamente la missione ID "${args["id"] ?? "?"}"`;
+      case "run_audit":
+        return `Avviare un audit SEO completo di ${args["url"] ?? "il tuo sito"} \u2014 richiede 30-60 secondi`;
+      case "rerun_audit":
+        return `Rieseguire l'audit SEO (verr\xE0 creato un nuovo record)`;
+      case "configure_monitor":
+        return args["monitor_id"] ? `Aggiornare la configurazione del monitor${args["name"] ? ` "${args["name"]}"` : ""}${args["url"] ? ` (${args["url"]})` : ""}` : `Creare un nuovo monitor${args["url"] ? ` per ${args["url"]}` : ""}${args["name"] ? ` chiamato "${args["name"]}"` : ""}`;
+      default:
+        return TOOL_LABELS[toolName2]?.it ?? TOOL_LABELS[toolName2]?.en ?? `Eseguire l'azione "${toolName2}"`;
+    }
+  }
+  if (lang === "nl") {
+    switch (toolName2) {
+      case "create_mission":
+        return `Missie aanmaken: "${args["title"] ?? "?"}"`;
+      case "update_mission":
+        return `Missie ID "${args["id"] ?? "?"}" bewerken`;
+      case "complete_mission":
+        return `Missie ID "${args["id"] ?? "?"}" markeren als voltooid`;
+      case "delete_mission":
+        return `\u26A0 Missie ID "${args["id"] ?? "?"}" definitief verwijderen`;
+      case "run_audit":
+        return `Volledige SEO-audit starten voor ${args["url"] ?? "uw site"} \u2014 duurt 30-60 seconden`;
+      case "rerun_audit":
+        return `SEO-audit opnieuw uitvoeren (er wordt een nieuw item aangemaakt)`;
+      case "configure_monitor":
+        return args["monitor_id"] ? `Monitorconfiguratie bijwerken${args["name"] ? ` "${args["name"]}"` : ""}${args["url"] ? ` (${args["url"]})` : ""}` : `Nieuwe monitor aanmaken${args["url"] ? ` voor ${args["url"]}` : ""}${args["name"] ? ` genaamd "${args["name"]}"` : ""}`;
+      default:
+        return TOOL_LABELS[toolName2]?.nl ?? TOOL_LABELS[toolName2]?.en ?? `Actie "${toolName2}" uitvoeren`;
+    }
+  }
+  if (lang !== "fr") {
+    switch (toolName2) {
+      case "create_mission":
+        return `Create a mission titled "${args["title"] ?? "?"}"`;
+      case "update_mission":
+        return `Update mission ID "${args["id"] ?? "?"}"`;
+      case "complete_mission":
+        return `Mark mission ID "${args["id"] ?? "?"}" as completed`;
+      case "delete_mission":
+        return `\u26A0 Permanently delete mission ID "${args["id"] ?? "?"}"`;
+      case "run_audit":
+        return `Run a full SEO audit of ${args["url"] ?? "your site"} \u2014 takes 30-60 seconds`;
+      case "rerun_audit":
+        return `Re-run the SEO audit (a new entry will be created)`;
+      case "configure_monitor":
+        return args["monitor_id"] ? `Update the monitor settings${args["name"] ? ` for "${args["name"]}"` : ""}${args["url"] ? ` (${args["url"]})` : ""}` : `Create a new monitor${args["url"] ? ` for ${args["url"]}` : ""}${args["name"] ? ` named "${args["name"]}"` : ""}`;
+      default:
+        return TOOL_LABELS[toolName2]?.en ?? `Run the "${toolName2}" action`;
+    }
+  }
   switch (toolName2) {
     case "create_mission":
       return `Cr\xE9er une mission intitul\xE9e "${args["title"] ?? "?"}"${args["priority"] ? ` (priorit\xE9: ${args["priority"]})` : ""}${args["category"] ? ` dans la cat\xE9gorie "${args["category"]}"` : ""}`;
@@ -117427,7 +117818,7 @@ function buildConfirmationPreview(toolName2, args, language = "fr") {
     case "configure_monitor":
       return args["monitor_id"] ? `Modifier la configuration du monitor${args["name"] ? ` "${args["name"]}"` : ""}${args["url"] ? ` (${args["url"]})` : ""}` : `Cr\xE9er un nouveau monitor${args["url"] ? ` pour ${args["url"]}` : ""}${args["name"] ? ` nomm\xE9 "${args["name"]}"` : ""}`;
     default:
-      return TOOL_LABELS[toolName2]?.[langKey] ?? `Ex\xE9cuter l'action "${toolName2}"`;
+      return TOOL_LABELS[toolName2]?.fr ?? `Ex\xE9cuter l'action "${toolName2}"`;
   }
 }
 function sanitizeArgsForClient(args) {
@@ -118283,7 +118674,20 @@ router13.post("/ai/conversations/:id/confirm", async (req, res) => {
   const userId = req.userId ?? "anonymous";
   const convId = String(req.params["id"] ?? "");
   const { proposalId } = req.body;
-  const requestedLanguage = typeof req.body?.language === "string" ? req.body.language : "fr";
+  let requestedLanguage = typeof req.body?.language === "string" && req.body.language ? req.body.language : "";
+  if (!requestedLanguage || requestedLanguage === "fr") {
+    try {
+      const { rows: _lpRows } = await pool.query(
+        `SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`,
+        [orgId3]
+      );
+      const _lpSettings = _lpRows[0]?.["settings"];
+      const _storedLang = _lpSettings && typeof _lpSettings["language"] === "string" ? _lpSettings["language"] : "";
+      if (_storedLang && _storedLang !== "fr") requestedLanguage = _storedLang;
+    } catch {
+    }
+  }
+  if (!requestedLanguage) requestedLanguage = "fr";
   if (!/^[a-zA-Z0-9_-]{1,64}$/.test(convId)) {
     res.status(400).json({ ok: false, error: "conversationId invalide" });
     return;
@@ -118314,7 +118718,9 @@ router13.post("/ai/conversations/:id/confirm", async (req, res) => {
       } else if (new Date(check[0]["expires_at"]) < /* @__PURE__ */ new Date()) {
         res.status(410).json({ ok: false, error: "Cette proposition a expir\xE9" });
       } else {
-        res.status(409).json({ ok: false, error: `Cette action est d\xE9j\xE0 dans l'\xE9tat "${check[0]["status"]}"` });
+        const rawStatus = String(check[0]["status"] ?? "");
+        const friendlyMsg = rawStatus === "confirmed" ? "Cette action a d\xE9j\xE0 \xE9t\xE9 ex\xE9cut\xE9e avec succ\xE8s." : rawStatus === "claimed" ? "Une ex\xE9cution de cette action est d\xE9j\xE0 en cours. Attendez quelques instants." : "Cette proposition n'est plus disponible (expir\xE9e ou annul\xE9e).";
+        res.status(409).json({ ok: false, error: friendlyMsg });
       }
       return;
     }
@@ -119733,12 +120139,18 @@ function createBillingQuote(selection) {
   }
   for (const [key, rawQuantity] of Object.entries(selection.addons)) {
     if (!rawQuantity) continue;
+    if (REMOVED_ADDONS.has(key)) throw new Error("ADDON_REMOVED");
+    if (COMING_SOON_ADDONS.has(key)) throw new Error("ADDON_COMING_SOON");
     const definition = ADDON_DEFINITIONS[key];
     const priceId = ADDON_PRICE_IDS[key];
     if (!definition || !priceId) throw new Error("UNKNOWN_OR_UNBILLABLE_ADDON");
     const quantity = typeof rawQuantity === "number" ? rawQuantity : 1;
     if (!Number.isInteger(quantity) || quantity < 1) throw new Error("INVALID_ADDON_QUANTITY");
     const includedInPlan = included.has(key);
+    const gatingPlan = plan4 || (selection.inclusionPlan ?? "").trim().toLowerCase();
+    if (gatingPlan && !includedInPlan && !isPlanAllowedAddon(gatingPlan, key)) {
+      throw new Error("ADDON_NOT_ALLOWED_FOR_PLAN");
+    }
     const unitAmountMinor = Math.round(definition.priceEur * 100);
     const interval2 = definition.oneTime ? "one_time" : "month";
     const deferredByHostedTrial = mechanism === "checkout_session" && trialEligible && interval2 === "month";
@@ -122672,11 +123084,12 @@ router18.post("/missions/from-template", canWrite, async (req, res) => {
     const id = uid2();
     const pScore = Number({ critical: 90, high: 75, medium: 50, low: 25 }[priority] ?? 50);
     const stepsArr = Array.isArray(steps) ? steps.map((text2, i) => ({ id: `s${Date.now()}${i}`, text: text2, done: false, tag: `\xC9tape ${i + 1}` })) : [];
+    const tmplCreatedBy = req.orgContext?.userId || req.orgContext?.email || null;
     await db15(`
       INSERT INTO missions (
         id, org_id, title, category, priority, priority_score,
-        status, impact, effort, steps, source_type, created_at, updated_at, last_refreshed_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,'todo',$7,$8,$9,'template',NOW(),NOW(),NOW())
+        status, impact, effort, steps, source_type, created_by, created_at, updated_at, last_refreshed_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,'todo',$7,$8,$9,'template',$10,NOW(),NOW(),NOW())
     `, [
       id,
       org16,
@@ -122686,7 +123099,8 @@ router18.post("/missions/from-template", canWrite, async (req, res) => {
       pScore,
       impact || "Moyen",
       effort || "Moyen",
-      JSON.stringify(stepsArr)
+      JSON.stringify(stepsArr),
+      tmplCreatedBy
     ]);
     const row = await db15(`SELECT * FROM missions WHERE id = $1`, [id]);
     res.json(rowToMission(row.rows[0]));
@@ -122727,11 +123141,12 @@ router18.post("/missions/bulk-create", canWrite, async (req, res) => {
         done: false,
         tag: `\xC9tape ${i + 1}`
       })) : [];
+      const bulkCreatedBy = req.orgContext?.userId || req.orgContext?.email || null;
       await db15(`
         INSERT INTO missions (
           id, org_id, title, category, priority, priority_score,
-          status, impact, effort, steps, source_type, created_at, updated_at, last_refreshed_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW(),NOW())
+          status, impact, effort, steps, source_type, created_by, created_at, updated_at, last_refreshed_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW(),NOW())
       `, [
         id,
         org16,
@@ -122743,7 +123158,8 @@ router18.post("/missions/bulk-create", canWrite, async (req, res) => {
         m.impact || "Moyen",
         m.effort || "Moyen",
         JSON.stringify(stepsArr),
-        m.source || "manual"
+        m.source || "manual",
+        bulkCreatedBy
       ]);
       const row = await db15(`SELECT * FROM missions WHERE id = $1`, [id]);
       created.push(rowToMission(row.rows[0]));
@@ -122839,11 +123255,12 @@ router18.post("/missions", canWrite, async (req, res) => {
     }
     const id = uid2();
     const pScore = Number(priorityScore) || ({ critical: 90, high: 75, medium: 50, low: 25 }[priority] ?? 50);
+    const createdBy = req.orgContext?.userId || req.orgContext?.email || null;
     await db15(`
       INSERT INTO missions (
         id, org_id, title, description, category, type, priority, priority_score,
-        status, impact, effort, steps, due_date, assigned_to, source_type, created_at, updated_at, last_refreshed_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'manual',NOW(),NOW(),NOW())
+        status, impact, effort, steps, due_date, assigned_to, source_type, created_by, created_at, updated_at, last_refreshed_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'manual',$15,NOW(),NOW(),NOW())
     `, [
       id,
       org16,
@@ -122858,7 +123275,8 @@ router18.post("/missions", canWrite, async (req, res) => {
       effort,
       JSON.stringify(steps || []),
       dueDate || null,
-      assignedTo || null
+      assignedTo || null,
+      createdBy
     ]);
     const row = await db15(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org16]);
     if (!row.rows[0]) {
@@ -132076,10 +132494,10 @@ router43.post("/local-seo/rankings", canWrite, async (req, res) => {
         });
         return;
       }
-      const { getLocalPackRank: getLocalPackRank2 } = await Promise.resolve().then(() => (init_dataforseo_service(), dataforseo_service_exports));
       let rankings;
       try {
-        rankings = await getLocalPackRank2(keyword, location, orgId3);
+        const mapsResult = await getGoogleMapsResults(keyword, location, orgId3);
+        rankings = mapsResult.results;
       } catch (providerErr) {
         try {
           await releaseRankingSearch(orgId3, histId);
@@ -137168,6 +137586,23 @@ router53.patch("/location", async (req, res) => {
     if (dateFormat !== void 0) toSave.dateFormat = dateFormat;
     if (timeFormat !== void 0) toSave.timeFormat = timeFormat;
     await upsertOrgSettings(orgId3, toSave);
+    if (language !== void 0) {
+      try {
+        await req.orgDb(
+          `INSERT INTO user_prefs (org_id, settings)
+           VALUES ($1, jsonb_build_object('language', $2::text))
+           ON CONFLICT (org_id) DO UPDATE
+             SET settings = jsonb_set(
+               COALESCE(user_prefs.settings, '{}'::jsonb),
+               '{language}',
+               to_jsonb($2::text)
+             )`,
+          [orgId3, language]
+        );
+      } catch (syncErr) {
+        logger.warn({ err: syncErr, orgId: orgId3 }, "[location] user_prefs language sync failed \u2014 org_settings already updated");
+      }
+    }
     const updated = await loadOrgSettings(orgId3);
     res.json({
       ok: true,
@@ -137653,7 +138088,29 @@ router54.post("/public/payment-intent", publicCheckoutRateLimit, async (req, res
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
   const preRegisterToken = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
-  const _piReqOrgId = req.orgId;
+  let _piReqOrgId = req.orgId;
+  if (!plan4 && !preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
+    try {
+      const _authHeader = req.headers["authorization"];
+      const _cookieToken = req.cookies?.["fp_token"];
+      let _piSessionToken;
+      if (typeof _authHeader === "string" && _authHeader.startsWith("Bearer ")) {
+        _piSessionToken = _authHeader.slice(7).trim();
+      } else if (typeof _cookieToken === "string" && _cookieToken.trim()) {
+        _piSessionToken = _cookieToken.trim();
+      }
+      if (_piSessionToken) {
+        const { getSession: getSession2 } = await Promise.resolve().then(() => (init_sessions(), sessions_exports));
+        const _piSess = await getSession2(_piSessionToken);
+        if (_piSess?.orgId && _piSess.orgId !== "default") {
+          _piReqOrgId = _piSess.orgId;
+          logger.info({ orgId: _piReqOrgId }, "[PublicBilling] payment-intent: orgId resolved via manual session lookup");
+        }
+      }
+    } catch (_piAuthErr) {
+      logger.warn({ _piAuthErr }, "[PublicBilling] payment-intent: optional session resolution failed (non-fatal)");
+    }
+  }
   if (!plan4 && !preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
     const addonKeys = Object.keys(addons);
     if (addonKeys.length > 0) {
@@ -138996,16 +139453,33 @@ router56.get("/plans/catalog", (_req, res) => {
     locked: def.locked,
     includedAddons: [...PLAN_INCLUDED_ADDONS[def.id] ?? /* @__PURE__ */ new Set()]
   }));
-  const addons = Object.entries(ADDON_DEFINITIONS).map(([key, def]) => ({
-    key,
-    name: def.name,
-    category: def.category,
-    description: def.description,
-    priceEur: def.priceEur,
-    priceMinor: Math.round(def.priceEur * 100),
-    oneTime: def.oneTime,
-    quantity: def.quantity || QTY_ADDONS.has(key)
-  }));
+  const _addonAllowedPlans = {};
+  for (const [planId, allowed] of Object.entries(PLAN_ALLOWED_ADDONS)) {
+    if (!["standard", "pro", "ultra"].includes(planId)) continue;
+    for (const addonKey of allowed) {
+      if (!_addonAllowedPlans[addonKey]) _addonAllowedPlans[addonKey] = [];
+      _addonAllowedPlans[addonKey].push(planId);
+    }
+  }
+  const addons = Object.entries(ADDON_DEFINITIONS).map(([key, def]) => {
+    const availability = getAddonAvailability(key);
+    return {
+      key,
+      name: def.name,
+      category: def.category,
+      description: def.description,
+      priceEur: def.priceEur,
+      priceMinor: Math.round(def.priceEur * 100),
+      oneTime: def.oneTime,
+      quantity: def.quantity || QTY_ADDONS.has(key),
+      availability,
+      status: availability,
+      allowedPlans: availability === "coming_soon" ? [] : _addonAllowedPlans[key] ?? [],
+      includedByPlan: Object.fromEntries(
+        Object.entries(PLAN_INCLUDED_ADDONS).filter(([, set]) => set.has(key)).map(([planId]) => [planId, true])
+      )
+    };
+  });
   const includedByPlan = Object.fromEntries(
     Object.keys(PLAN_DEFINITIONS).map((planId) => [
       planId,
@@ -141004,6 +141478,22 @@ router67.get("/settings/data-export", async (req, res) => {
     res.status(403).json({ error: "Seul un propri\xE9taire ou administrateur connect\xE9 peut exporter les donn\xE9es." });
     return;
   }
+  try {
+    const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
+    const _quota = await checkQuota2("exports", orgId3);
+    if (!_quota.allowed) {
+      res.status(402).json({
+        error: `Limite mensuelle d'exports atteinte (${_quota.used}/${_quota.limit}). Upgradez votre plan ou achetez un pack d'exports suppl\xE9mentaires.`,
+        code: "QUOTA_EXCEEDED",
+        resource: "exports",
+        used: _quota.used,
+        limit: _quota.limit
+      });
+      return;
+    }
+  } catch (_qErr) {
+    logger.warn({ err: _qErr, orgId: orgId3 }, "[data-export] quota check failed \u2014 allowing export");
+  }
   const client = await pool.connect();
   try {
     const organizationRows = await querySection(client, "organizations", `
@@ -141940,6 +142430,7 @@ async function initMissionsTables() {
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS ai_summary                TEXT;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS history                   JSONB DEFAULT '[]';
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS last_refreshed_at         TIMESTAMP;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS created_by                TEXT;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS completed_at              TIMESTAMP;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS dismissed_at              TIMESTAMP;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS due_date                  TEXT;
