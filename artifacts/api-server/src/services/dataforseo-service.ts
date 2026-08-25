@@ -439,9 +439,17 @@ export async function getGoogleMapsResults(
       depth: 10,
     }], orgId);
 
-    const items = (data[0]?.result?.[0]?.items ?? [])
-      .filter(i => i.type === "maps_search")
+    const allItems = data[0]?.result?.[0]?.items ?? [];
+    // DFS returns "maps_search" for standard map pack results and sometimes
+    // "local_pack" for local pack entries — accept both.
+    const items = allItems
+      .filter(i => i.type === "maps_search" || i.type === "local_pack")
       .slice(0, 10);
+    if (items.length === 0 && allItems.length > 0) {
+      // Log all item types so we can diagnose unexpected type values.
+      logger.warn({ types: allItems.map(i => i.type).slice(0, 20), keyword, location },
+        "[dfs] getGoogleMapsResults: 0 items matched type filter but allItems non-empty");
+    }
 
     return { results: items.map(item => ({
       name:     item.title    ?? "",

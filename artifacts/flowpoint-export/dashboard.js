@@ -69244,9 +69244,15 @@ window.fpDeleteHistoryEntry = async function(entryId) {
 
     if (merged.length === 0) {
       _clearHistoryMarkers();
-      // No history markers to show — restore live/global markers so the map is not blank.
-      if (typeof window.fpShowLiveRankingMarkers === 'function') window.fpShowLiveRankingMarkers();
-      showToast('info', fpT('Les résultats sélectionnés ne contiennent aucune donnée cartographiable.'));
+      // Stay in HISTORY mode — global markers stay hidden.
+      // Center the map on the searched location(s) so the context is visible.
+      selectedEntries.forEach(function(e) {
+        var locStr = e.location || e.city || e.keyword || '';
+        if (locStr && map) _panMapToLocation(map, locStr);
+      });
+      // Show an actionable message: the entry exists but has no stored results.
+      var _kwLabel = selectedEntries.map(function(e) { return escHtml(e.keyword || '') + ' — ' + escHtml(e.location || ''); }).join(', ');
+      showToast('info', fpT('0 résultat enregistré pour : ') + _kwLabel + '. ' + fpT('Relancez la recherche pour actualiser les données.'));
       return;
     }
 
