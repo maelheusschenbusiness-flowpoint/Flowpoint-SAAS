@@ -77124,7 +77124,14 @@ async function getGoogleMapsResults(keyword, location, orgId3 = "default") {
       language_code: "fr",
       depth: 10
     }], orgId3);
-    const items = (data[0]?.result?.[0]?.items ?? []).filter((i) => i.type === "maps_search").slice(0, 10);
+    const allItems = data[0]?.result?.[0]?.items ?? [];
+    const items = allItems.filter((i) => i.type === "maps_search" || i.type === "local_pack").slice(0, 10);
+    if (items.length === 0 && allItems.length > 0) {
+      logger.warn(
+        { types: allItems.map((i) => i.type).slice(0, 20), keyword, location },
+        "[dfs] getGoogleMapsResults: 0 items matched type filter but allItems non-empty"
+      );
+    }
     return { results: items.map((item) => ({
       name: item.title ?? "",
       rating: item.rating?.value ?? 0,
