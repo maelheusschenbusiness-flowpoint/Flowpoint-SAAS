@@ -200,7 +200,18 @@ function parseAddonsFromSubscription(subscription: Record<string, unknown>): Rec
       }
     }
 
-    if (!addonKey) continue;
+    if (!addonKey) {
+      // ── P0 WARN: non-plan SubscriptionItem not recognised — would be silently skipped.
+      // This is the root cause when a Stripe item is charged but org_addons never updated.
+      // Log price ID + product so ops can add the mapping to ADDON_PRICE_IDS.
+      logger.warn(
+        { priceId: item.price?.id, productId: (item.price as { product?: string } | undefined)?.product,
+          metadata: item.metadata },
+        "[Webhook] parseAddonsFromSubscription: SubscriptionItem not recognised — no addon_key found. " +
+        "Add this price ID to ADDON_PRICE_IDS or set item.metadata.addonKey on the Stripe object."
+      );
+      continue;
+    }
 
     if (FLAG_ADDONS.has(addonKey) && addonKey !== "whiteLabel") {
       addons[addonKey] = true;

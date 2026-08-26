@@ -2165,4 +2165,135 @@ router.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (req:
   }
 });
 
+// ── /billing/reconcile-subscription ─────────────────────────────────────────
+// Authenticated POST: reads the org's LIVE Stripe subscription and reconciles
+// org_addons without requiring a new purchase.
+// This fixes the case where the webhook fired but orgId could not be resolved
+// (stripe_customer_id not yet in organizations table), leaving org_addons stale
+// while Stripe correctly charges for the add-on.
+//
+// Returns the table filled in below so the caller can audit the result.
+router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.orgId;
+  if (!orgId || orgId === "default") {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+
+  try {
+    const billingCtx = await loadBillingContext(orgId);
+    const stripeCustomerId = billingCtx.stripeCustomerId ?? null;
+    if (!stripeCustomerId) {
+      res.status(400).json({ error: "No Stripe customer ID on record for this organisation. Cannot reconcile." });
+      return;
+    }
+
+    const stripeKey = getStripeKey();
+    if (!stripeKey) {
+      res.status(503).json({ error: "Stripe not configured" });
+      return;
+    }
+    const stripe = await createStripeClient(stripeKey);
+    if (!stripe) {
+      res.status(503).json({ error: "Stripe client unavailable" });
+      return;
+    }
+
+    // Self-heal: ensure stripe_customer_id is stored in organizations
+    const { pool: pgPool } = await import("@workspace/db");
+    const healClient = await pgPool.connect();
+    try {
+      await healClient.query(
+        `UPDATE organizations SET stripe_customer_id = $1 WHERE id = $2 AND stripe_customer_id IS NULL`,
+        [stripeCustomerId, orgId],
+      );
+    } finally { healClient.release(); }
+
+    // Fetch all active/trialing subscriptions for this customer
+    const subs = await stripe.subscriptions.list({
+      customer: stripeCustomerId,
+      status: "all",
+      limit: 10,
+      expand: ["data.items.data.price"],
+    });
+
+    // Parse add-ons from all active subscriptions
+    const { getAddonForPriceId, FLAG_ADDONS: FA, QTY_ADDONS: QA } = await import("../lib/plans.js");
+    const { activateAddon, deactivateAddon } = await import("../services/addons-service.js");
+
+    const diagItems: Array<{
+      subscriptionId: string; status: string;
+      itemId: string; priceId: string; priceAmount: number | null;
+      quantity: number; metadata: Record<string, string>;
+      addonKey: string | null; action: string;
+    }> = [];
+
+    const activatedKeys = new Set<string>();
+
+    for (const sub of subs.data) {
+      if (sub.status === "canceled") continue;
+      for (const item of sub.items.data) {
+        const priceId = item.price?.id ?? "";
+        let addonKey = getAddonForPriceId(priceId);
+        if (!addonKey && item.metadata?.["addonKey"]) {
+          const metaKey = item.metadata["addonKey"];
+          if (FA.has(metaKey) || QA.has(metaKey)) addonKey = metaKey;
+        }
+        const qty = Number(item.quantity ?? 1);
+        let action = "skipped_plan_item";
+        if (addonKey) {
+          try {
+            await activateAddon(addonKey, orgId, qty);
+            activatedKeys.add(addonKey);
+            action = "activated";
+          } catch (e) {
+            action = `error: ${e instanceof Error ? e.message : String(e)}`;
+          }
+        } else {
+          action = "unrecognised_price_id";
+        }
+        diagItems.push({
+          subscriptionId: sub.id,
+          status: sub.status,
+          itemId: item.id,
+          priceId,
+          priceAmount: item.price?.unit_amount ?? null,
+          quantity: qty,
+          metadata: (item.metadata as Record<string, string>) ?? {},
+          addonKey,
+          action,
+        });
+      }
+    }
+
+    // Read org_addons after reconciliation
+    const dbClient = await pgPool.connect();
+    let addonRows: Array<{ addon_key: string; active: boolean; quantity: number | null; stripe_subscription_item_id: string | null }> = [];
+    try {
+      const r = await dbClient.query(
+        `SELECT addon_key, active, quantity, stripe_subscription_item_id
+         FROM org_addons WHERE org_id = $1 ORDER BY updated_at DESC`,
+        [orgId],
+      );
+      addonRows = r.rows as typeof addonRows;
+    } finally { dbClient.release(); }
+
+    logger.info({ orgId, stripeCustomerId, activatedKeys: Array.from(activatedKeys), diagItems },
+      "[Billing/ReconcileSubscription] Manual reconciliation completed");
+
+    res.json({
+      ok: true,
+      orgId,
+      stripeCustomerId,
+      subscriptionsChecked: subs.data.filter((s: { status: string }) => s.status !== "canceled").length,
+      activatedKeys: Array.from(activatedKeys),
+      subscriptionItems: diagItems,
+      org_addons: addonRows,
+    });
+  } catch (err) {
+    logger.error({ err, orgId }, "[Billing/ReconcileSubscription] Failed");
+    res.status(500).json({ error: "Reconciliation failed", detail: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 export default router;

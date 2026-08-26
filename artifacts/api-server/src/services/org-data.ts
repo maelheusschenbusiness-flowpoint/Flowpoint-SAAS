@@ -259,19 +259,74 @@ export async function findOrgByStripeCustomer(stripeCustomerId: string): Promise
 
   const client = await pool.connect();
   try {
-    // Lookup primaire : organizations
+    // Lookup 1: organizations.stripe_customer_id (canonical)
     const r = await client.query<{ id: string }>(
       `SELECT id FROM organizations WHERE stripe_customer_id = $1 LIMIT 1`,
       [stripeCustomerId],
     );
     if (r.rows.length > 0) return r.rows[0].id;
 
-    // Fallback : org_settings
+    // Lookup 2: org_settings.stripe_customer_id (legacy email-keyed orgs)
     const legacy = await client.query<{ org_id: string }>(
       `SELECT org_id FROM org_settings WHERE stripe_customer_id = $1 LIMIT 1`,
       [stripeCustomerId],
     );
-    return legacy.rows[0]?.org_id ?? null;
+    if (legacy.rows[0]?.org_id) return legacy.rows[0].org_id;
+
+    // Lookup 3: fetch customer from Stripe API, read customer.metadata.orgId.
+    // This handles orgs where stripe_customer_id was never written back to the DB
+    // (e.g. signup completed before the column existed, or a race condition at
+    // checkout time). When we find the orgId this way, we self-heal the DB so
+    // future lookups hit path 1.
+    try {
+      const { createStripeClient } = await import("../services/stripe-factory.js");
+      const stripe = createStripeClient();
+      if (stripe) {
+        const customer = await stripe.customers.retrieve(stripeCustomerId);
+        if (customer && !customer.deleted) {
+          const metaOrgId = (customer.metadata as Record<string, string>)?.["orgId"]
+            ?? (customer.metadata as Record<string, string>)?.["org_id"]
+            ?? null;
+          if (metaOrgId && metaOrgId !== "default") {
+            // Self-heal: write stripe_customer_id back to organizations so next
+            // webhook skips the Stripe API round-trip.
+            const healed = await client.query(
+              `UPDATE organizations SET stripe_customer_id = $1
+               WHERE id = $2 AND stripe_customer_id IS NULL
+               RETURNING id`,
+              [stripeCustomerId, metaOrgId],
+            ).catch(() => null);
+            if (healed?.rowCount && healed.rowCount > 0) {
+              const { logger: log } = await import("../lib/logger.js");
+              log.info({ stripeCustomerId, metaOrgId }, "[OrgData] findOrgByStripeCustomer: stripe_customer_id self-healed from Stripe metadata");
+            }
+            return metaOrgId;
+          }
+          // Also try by customer email
+          const custEmail = (customer as { email?: string | null }).email;
+          if (custEmail) {
+            const byEmail = await client.query<{ id: string }>(
+              `SELECT id FROM organizations WHERE lower(owner_email) = lower($1) ORDER BY created_at DESC LIMIT 1`,
+              [custEmail],
+            );
+            if (byEmail.rows[0]?.id) {
+              // Self-heal
+              await client.query(
+                `UPDATE organizations SET stripe_customer_id = $1
+                 WHERE id = $2 AND stripe_customer_id IS NULL`,
+                [stripeCustomerId, byEmail.rows[0].id],
+              ).catch(() => null);
+              return byEmail.rows[0].id;
+            }
+          }
+        }
+      }
+    } catch {
+      // Non-fatal: Stripe API unavailable or rate-limited — return null, webhook
+      // will log the unresolved orgId warning and Stripe will retry.
+    }
+
+    return null;
   } finally {
     client.release();
   }
