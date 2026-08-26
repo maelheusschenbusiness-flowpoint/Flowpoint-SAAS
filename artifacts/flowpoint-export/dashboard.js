@@ -10280,6 +10280,18 @@ function renderBilling() {
       else if (typeof apiActive === 'boolean') a.active = apiActive;
       else if (typeof apiActive?.active === 'boolean') a.active = apiActive.active;
       if (a.status === 'active') a.active = true;
+      // ── Qty-addon enrichment ──────────────────────────────────────────────
+      // QTY keys: monitorsPack10/50, extraSeats, gbpSlots10. me.addons[key] is
+      // the number of active packs when > 0, or true/false for functional addons.
+      const _meAddonVal = me.addons?.[a.key];
+      a.isQty   = typeof _meAddonVal === 'number' && _meAddonVal > 0;
+      a.packs   = a.isQty ? _meAddonVal : 0;
+      // Per-pack display label ("+10 monitors", "+5 sièges", …)
+      const _QTY_LABELS = {
+        monitorsPack10: '+10 monitors', monitorsPack50: '+50 monitors',
+        extraSeats: '+5 sièges', gbpSlots10: '+10 GBP',
+      };
+      a.packLabel = _QTY_LABELS[a.key] || '+1';
     });
 
     const currentPlan = ((STATE.billing && STATE.billing.plan) || me.plan || '').toLowerCase();
@@ -10617,7 +10629,16 @@ function renderBilling() {
                 : a.status === 'coming_soon'
                   ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:rgba(148,163,184,0.3);color:#94a3b8" title="${fpT('Bientôt disponible')}">🚧 ${fpT('Bientôt')}</button>`
                   : a.active
-                    ? `<div style="display:flex;gap:6px"><span class="fp-badge" style="font-size:10px;background:rgba(34,197,94,.14);color:#22c55e">✓ ${fpT('Activé')}</span>${a.targetNav?`<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigate('${escHtml(a.targetNav)}')">${fpT('Accéder →')}</button>`:''}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
+                    ? (a.isQty
+                        // ── Qty add-on: show pack count + "Ajouter +N" (no "Activé" dead-end) ──
+                        ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                            <span class="fp-badge" style="font-size:10px;background:rgba(245,158,11,.14);color:#f59e0b">${a.packs} pack${a.packs!==1?'s':''} actif${a.packs!==1?'s':''}</span>
+                            <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_addonIdx})">Ajouter ${escHtml(a.packLabel)}</button>
+                            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>
+                           </div>`
+                        // ── Functional add-on: "Activé ✓" + optional nav + Désactiver ──
+                        : `<div style="display:flex;gap:6px"><span class="fp-badge" style="font-size:10px;background:rgba(34,197,94,.14);color:#22c55e">✓ ${fpT('Activé')}</span>${a.targetNav?`<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigate('${escHtml(a.targetNav)}')">${fpT('Accéder →')}</button>`:''}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`)
+
                     : a.wizardFn && a.status !== 'coming_soon'
                       ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 Lancer →</button>`
                       : `<div style="display:flex;align-items:center;gap:5px">${a.status === 'beta' ? '<span class="fp-badge" style="background:rgba(139,92,246,.14);color:#8b5cf6">Bêta</span>' : ''}<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_addonIdx})">${fpT('Activer →')}</button></div>`
@@ -11160,16 +11181,37 @@ function renderBilling() {
             { label:'Coût mensuel',       val: isStd ? '29€' : isPro && !isUltra ? '79€' : '149€' },
             { label:'Sans engagement',    val: 'Mensuel — résiliation libre' },
             { label:'Add-ons actifs',     val: (()=>{
-                // Source of truth: /api/addons (FP_DATA.addons.active) — merged with the
-                // legacy STATE.billing.addons map so neither source under-counts.
-                const _merged = Object.assign({}, STATE.billing?.addons || {}, window.FP_DATA?.addons?.active || {});
+                // Source of truth priority: STATE.me.addons (always fresh after /api/me)
+                // → FP_DATA.addons.active (fresh after /api/addons SSE refresh)
+                // → STATE.billing.addons (legacy, may lag)
+                const _me2 = STATE.me || {};
+                const _meAddons  = _me2.addons || {};
+                const _apiAddons = window.FP_DATA?.addons?.active || {};
+                const _bilAddons = STATE.billing?.addons || {};
+                // Merge all sources — me first so post-SSE state is never overridden by stale billing
+                const _merged = Object.assign({}, _bilAddons, _apiAddons, _meAddons);
                 const _defs = window.FP_DATA?.addons?.definitions || {};
-                const _activeKeys = Object.keys(_merged).filter(k => !!_merged[k]);
-                // Included = active add-ons granted by the plan; paid = the rest.
-                const _incActive = _activeKeys.filter(k => _defs[k] && _defs[k].includedInPlan === true || (_defs[k] && Array.isArray(_defs[k].includedIn) && _defs[k].includedIn.includes(_planKey2))).length;
+                // Count unique active keys. qty addons count as 1 regardless of quantity.
+                const _activeKeys = Object.keys(_merged).filter(k => {
+                  const v = _merged[k];
+                  return v === true || (typeof v === 'number' && v > 0);
+                });
+                // Included = granted by plan (includedInPlan from /api/addons definitions
+                // or the isIncluded heuristic using _planKey2 level).
+                const _planLevel2 = _planKey2 === 'ultra' ? 2 : _planKey2 === 'pro' ? 1 : 0;
+                const _incActive = _activeKeys.filter(k => {
+                  const def = _defs[k];
+                  if (!def) return false;
+                  if (def.includedInPlan === true) return true;
+                  if (Array.isArray(def.includedIn) && def.includedIn.includes(_planKey2)) return true;
+                  // fallback: includedFrom heuristic
+                  if (def.includedFrom === 'standard') return true;
+                  if (def.includedFrom === 'pro'   && _planLevel2 >= 1) return true;
+                  if (def.includedFrom === 'ultra' && _planLevel2 >= 2) return true;
+                  return false;
+                }).length;
                 const _n = _activeKeys.length;
-                const _inc = _incActive;
-                return _n+' actif'+(_n!==1?'s':'')+' · '+_inc+' inclus (plan)';
+                return _n+' actif'+(_n!==1?'s':'')+' · '+_incActive+' inclus (plan)';
               })() },
             { label:'Prochaine facture',  val: STATE.billing?.nextDate || '—' },
           ].map(m => `<div style="padding:10px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">

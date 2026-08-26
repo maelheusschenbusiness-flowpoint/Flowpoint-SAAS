@@ -3327,29 +3327,44 @@ window.__fpPageLoadTs = Date.now();
       if (data.type === 'billing:plan_updated') {
         try { document.dispatchEvent(new CustomEvent('fp:billing:updated', { detail: data })); } catch(_) {}
       }
-      // ── Add-on activation / deactivation — re-fetch /api/me so limits update ──
-      if (data.type === 'addon:activated') {
-        try { document.dispatchEvent(new CustomEvent('fp:addon:activated', { detail: data })); } catch(_) {}
-        // Full /api/me refresh to update limits (e.g. monitors +10 after monitorsPack10)
-        if (typeof _fpCache !== 'undefined') { try { delete _fpCache['/api/me']; } catch(_) {} }
-        if (typeof _apiFetchCache !== 'undefined') { try { _apiFetchCache.delete('/api/me'); } catch(_) {} }
-        apiFetch('/api/me').then(function(freshMe) {
-          if (freshMe && window.STATE) {
-            window.STATE.me = freshMe;
-            if (typeof window.render === 'function') window.render();
+      // ── Add-on activation / deactivation — re-fetch /api/me + /api/addons so
+      //    limits AND FP_DATA.addons are both fresh (SSE formerly only updated me).
+      if (data.type === 'addon:activated' || data.type === 'addon:deactivated') {
+        var _evtKey = data.type === 'addon:activated' ? 'fp:addon:activated' : 'fp:addon:deactivated';
+        try { document.dispatchEvent(new CustomEvent(_evtKey, { detail: data })); } catch(_) {}
+        // Bust in-process caches so apiFetch always hits the network
+        if (typeof _fpCache !== 'undefined') {
+          try { delete _fpCache['/api/me']; } catch(_) {}
+          try { delete _fpCache['/api/addons']; } catch(_) {}
+        }
+        if (typeof _apiFetchCache !== 'undefined') {
+          try { _apiFetchCache.delete('/api/me'); } catch(_) {}
+          try { _apiFetchCache.delete('/api/addons'); } catch(_) {}
+        }
+        // Bust sessionStorage state cache so F5 returns fresh data
+        try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+        // Re-fetch both endpoints in parallel — me for limits, addons for FP_DATA.addons
+        Promise.all([
+          apiFetch('/api/me').catch(function() { return null; }),
+          apiFetch('/api/addons').catch(function() { return null; }),
+        ]).then(function(results) {
+          var freshMe = results[0];
+          var freshAddons = results[1];
+          if (freshMe && window.STATE) window.STATE.me = freshMe;
+          if (freshAddons && window.FP_DATA) {
+            // Normalise to the same shape as the initial load in fpLoadAddons()
+            window.FP_DATA.addons = window.FP_DATA.addons || {};
+            if (freshAddons.active)      window.FP_DATA.addons.active      = freshAddons.active;
+            if (freshAddons.definitions) window.FP_DATA.addons.definitions = freshAddons.definitions;
           }
-        }).catch(function() {});
-      }
-      if (data.type === 'addon:deactivated') {
-        try { document.dispatchEvent(new CustomEvent('fp:addon:deactivated', { detail: data })); } catch(_) {}
-        if (typeof _fpCache !== 'undefined') { try { delete _fpCache['/api/me']; } catch(_) {} }
-        if (typeof _apiFetchCache !== 'undefined') { try { _apiFetchCache.delete('/api/me'); } catch(_) {} }
-        apiFetch('/api/me').then(function(freshMe) {
-          if (freshMe && window.STATE) {
-            window.STATE.me = freshMe;
-            if (typeof window.render === 'function') window.render();
+          if (typeof window.render === 'function') window.render();
+          // Toast — show which add-on changed
+          var _addonLabel = data.addonKey || data.addon_key || '';
+          if (typeof window.showToast === 'function' && _addonLabel) {
+            var _verb = data.type === 'addon:activated' ? 'activé' : 'désactivé';
+            window.showToast('success', 'Add-on ' + _verb + ' : ' + _addonLabel);
           }
-        }).catch(function() {});
+        });
       }
       if (data.type === 'alert:update' || data.type === 'alert:new') {
         if (window.STATE && typeof window.apiFetch === 'function') {
