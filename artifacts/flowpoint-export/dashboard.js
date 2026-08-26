@@ -9186,7 +9186,10 @@ function renderLocalSEO() {
     <div class="fp-card fp-mb-20" style="padding:16px 18px">
       <div class="fp-ranking-history-header">
         <div>
-          <div class="fp-card-title" style="margin-bottom:2px">${fpT('Historique des recherches')}</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+            <span class="fp-card-title" style="margin-bottom:0">${fpT('Historique des recherches')}</span>
+            <span style="font-size:9px;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(139,92,246,.14);color:#8b5cf6;letter-spacing:.4px;text-transform:uppercase">Bêta</span>
+          </div>
           <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Cochez les recherches à afficher sur la carte')}</div>
         </div>
         <div class="fp-ranking-history-actions">
@@ -18457,7 +18460,7 @@ function bindGlobalEvents() {
         .forEach(function(k) { localStorage.removeItem(k); });
     } catch(_) {}
     try { await window.apiFetch('/api/auth/logout', { method: 'POST' }); } catch(_) {}
-    setTimeout(() => { window.location.replace('/login.html'); }, 1200);
+    setTimeout(() => { window.location.replace('/signin.html?signout=1'); }, 1200);
   });
 
   // Messages button
@@ -62302,7 +62305,11 @@ function renderTeamPerformance() {
       (_memberEmail  && STATE.teamStreaks[_memberEmail])
     );
     const ownCurrentUser = t.role === 'owner' && (String(_memberUserId) === String(STATE.me?.id || STATE.me?.userId || '') || _memberEmail === String(STATE.me?.email || '').toLowerCase());
-    const streakVal = _memberStreak ? Number(_memberStreak.current ?? 0) : (ownCurrentUser && STATE.streak != null ? Number(STATE.streak) : null);
+    // For the signed-in owner, STATE.streak (from /api/me) is always the
+    // canonical value — teamStreaks may carry 0 due to async lag.
+    const streakVal = (ownCurrentUser && STATE.streak != null)
+      ? Number(STATE.streak)
+      : (_memberStreak ? Number(_memberStreak.current ?? 0) : null);
     // Contributions are keyed by users.id. Some owner records only carry an
     // email, so resolve their canonical id from the signed-in user before
     // looking up counts. Never substitute organisation-wide totals here.

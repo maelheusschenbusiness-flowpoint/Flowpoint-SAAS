@@ -183,6 +183,20 @@
        This prevents stale/expired tokens from acting as a pass-through for
        unauthenticated visitors arriving via marketing CTAs.               */
     (function() {
+      // ── Explicit sign-out: ?signout=1 clears all auth state immediately ──────
+      // The logout button navigates here with ?signout=1 so the form is always
+      // shown even when a valid session cookie is still present.
+      var _urlParams = new URLSearchParams(window.location.search);
+      if (_urlParams.get('signout') === '1') {
+        try { sessionStorage.removeItem('fp_session_token'); sessionStorage.removeItem('fp_tab_uid'); sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+        try { ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_tab_uid','fp_had_session'].forEach(function(k){localStorage.removeItem(k);}); } catch(_) {}
+        // Strip the param from the URL so a refresh doesn't repeat the purge.
+        history.replaceState({}, '', '/signin.html');
+        document.body.style.visibility = 'visible';
+        // Skip _checkAndRedirect entirely — show form.
+        return;
+      }
+
       // Helper: call session-restore and redirect on success, reveal form on failure.
       // Only runs when there is evidence of a prior session — never for anonymous
       // visitors so they see the form immediately without a round-trip.
