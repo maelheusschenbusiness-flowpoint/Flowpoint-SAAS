@@ -2287,38 +2287,108 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
       }
     }
 
-    // ── PHASE 3 : deactivate stale addons (in DB but absent from Stripe) ────
-    // This ensures Stripe is the sole source of truth — test-cycle leftovers are
-    // cleared so the next purchase always starts from quantity=1.
-    // Plan-included addons are excluded: they are never on Stripe subscriptions.
+    // ── PHASE 3 : deactivate STALE PAID addons (in DB but absent from Stripe) ─
+    //
+    // Stripe is the source of truth ONLY for paid Stripe-managed addons.
+    // The following categories are NEVER touched by this phase:
+    //   A) Plan-included addons (PLAN_INCLUDED_ADDONS[plan]) — e.g. backlinkIntelligence,
+    //      behavioralAI, aiForecasting on Ultra — they are never SubscriptionItems.
+    //   B) BETA addons — belt-and-suspenders; they ship as included, never sold.
+    //   C) COMING_SOON addons — not purchasable, cannot be on a Stripe subscription.
+    //   D) Addons with no live Stripe price ID (ADDON_PRICE_IDS[key] empty/missing) —
+    //      not Stripe-managed; removing them via this path would be wrong.
+    //   E) Admin / legacy / manually-granted addons — identified by
+    //      org_addons.metadata->>'source' IN ('admin','legacy','grant','ops').
+    //
+    // Only addons that pass ALL guards are candidates for deactivation:
+    //   • active=true in DB
+    //   • absent from stripeAddonMap (the union of all live non-canceled subs)
+    //   • none of guards A-E above
+    //
+    // Idempotency: deactivateAddon writes active=false; quantity is NOT touched.
+    // A fresh purchase via activateAddon(qty=1) correctly sets quantity back to 1.
+
     const billingPlan = (await loadBillingContext(orgId)).plan?.toLowerCase() ?? "";
-    const planIncluded: Set<string> = PIA[billingPlan] ?? new Set();
+    // Guard A: plan-included
+    const planIncluded: Set<string> = (PIA[billingPlan] as Set<string> | undefined) ?? new Set<string>();
+    // Guard B+C: beta / coming_soon
+    const {
+      BETA_ADDONS: BETA,
+      COMING_SOON_ADDONS: COMING_SOON,
+      ADDON_PRICE_IDS: APIDS,
+    } = await import("../lib/plans.js") as unknown as {
+      BETA_ADDONS: Set<string>;
+      COMING_SOON_ADDONS: Set<string>;
+      ADDON_PRICE_IDS: Record<string, string>;
+    };
 
-    const currentDbAddons = await getOrgAddons(orgId);
+    // Query org_addons directly to get metadata (getOrgAddons() strips it)
+    const phase3Client = await pgPool.connect();
+    let rawOrgAddons: Array<{ addon_key: string; active: boolean; quantity: number | null; metadata: Record<string, string> | null }> = [];
+    try {
+      const rr = await phase3Client.query(
+        `SELECT addon_key, active, quantity, metadata
+         FROM org_addons WHERE org_id = $1`,
+        [orgId],
+      );
+      rawOrgAddons = rr.rows as typeof rawOrgAddons;
+    } finally { phase3Client.release(); }
+
     const deactivatedKeys: string[] = [];
-    for (const [dbKey, dbVal] of Object.entries(currentDbAddons)) {
-      // Skip if already reconciled from Stripe, or if it's plan-included, or inactive
+    for (const row of rawOrgAddons) {
+      const dbKey = row.addon_key;
+      // Must be currently active
+      if (!row.active) continue;
+      // Already reconciled from Stripe → activated in Phase 2, nothing to do
       if (stripeAddonMap.has(dbKey)) continue;
-      if (planIncluded.has(dbKey)) continue;
-      if (!dbVal) continue; // already false/0 in DB
 
+      // Guard A — plan-included
+      if (planIncluded.has(dbKey)) {
+        diagItems.push({ subscriptionId: "DB_ONLY", status: "exempt_plan_included",
+          itemId: "", priceId: "", priceAmount: null, quantity: row.quantity ?? 1,
+          metadata: {}, addonKey: dbKey, action: "kept_plan_included" });
+        continue;
+      }
+      // Guard B — beta addon (never a Stripe subscription item)
+      if (BETA.has(dbKey)) {
+        diagItems.push({ subscriptionId: "DB_ONLY", status: "exempt_beta",
+          itemId: "", priceId: "", priceAmount: null, quantity: row.quantity ?? 1,
+          metadata: {}, addonKey: dbKey, action: "kept_beta" });
+        continue;
+      }
+      // Guard C — coming-soon (not purchasable via Stripe)
+      if (COMING_SOON.has(dbKey)) {
+        diagItems.push({ subscriptionId: "DB_ONLY", status: "exempt_coming_soon",
+          itemId: "", priceId: "", priceAmount: null, quantity: row.quantity ?? 1,
+          metadata: {}, addonKey: dbKey, action: "kept_coming_soon" });
+        continue;
+      }
+      // Guard D — no live Stripe price ID
+      if (!APIDS[dbKey]) {
+        diagItems.push({ subscriptionId: "DB_ONLY", status: "exempt_no_price_id",
+          itemId: "", priceId: "", priceAmount: null, quantity: row.quantity ?? 1,
+          metadata: {}, addonKey: dbKey, action: "kept_no_price_id" });
+        continue;
+      }
+      // Guard E — admin / legacy / manual grant
+      const src = row.metadata?.["source"] ?? "";
+      if (["admin", "legacy", "grant", "ops"].includes(src)) {
+        diagItems.push({ subscriptionId: "DB_ONLY", status: "exempt_manual_grant",
+          itemId: "", priceId: "", priceAmount: null, quantity: row.quantity ?? 1,
+          metadata: { source: src }, addonKey: dbKey, action: "kept_manual_grant" });
+        continue;
+      }
+
+      // All guards passed → this is a stale paid addon absent from Stripe → deactivate
       try {
         const wasActive = await deactivateAddon(dbKey, orgId);
         if (wasActive) {
           deactivatedKeys.push(dbKey);
-          diagItems.push({
-            subscriptionId: "DB_ONLY",
-            status: "absent_from_stripe",
-            itemId: "",
-            priceId: "",
-            priceAmount: null,
-            quantity: 0,
-            metadata: {},
-            addonKey: dbKey,
-            action: "deactivated_stale",
-          });
+          diagItems.push({ subscriptionId: "DB_ONLY", status: "absent_from_stripe",
+            itemId: "", priceId: "", priceAmount: null, quantity: 0,
+            metadata: {}, addonKey: dbKey, action: "deactivated_stale" });
         }
-      } catch { /* non-fatal */ }
+      } catch { /* non-fatal — log but continue */ }
     }
 
     // ── PHASE 4 : read final org_addons state ────────────────────────────────
