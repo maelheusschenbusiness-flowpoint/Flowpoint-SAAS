@@ -412,6 +412,128 @@ router.post("/admin/test-session", async (req: Request, res: Response): Promise<
 
 
 
+// ── POST /api/admin/provision-qa-account ─────────────────────────────────────
+//
+// Creates (or refreshes) the permanent QA account used by Browser Use and
+// automated test pipelines.
+//
+// The account is:
+//   email:               qa@flowpoint.pro
+//   plan:                ultra   (no Stripe subscription — DB only)
+//   subscription_status: active
+//   role:                owner
+//   session TTL:         365 days (re-calling this endpoint issues a new token)
+//
+// Idempotent: users + organization + membership rows use ON CONFLICT DO NOTHING.
+// A fresh session token is issued on every call so Browser Use can reconnect
+// after its ephemeral environment is recycled.
+//
+// Safety guarantees:
+//   • No Stripe customer, subscription, or invoice is created.
+//   • No public auth endpoint or bypass is added.
+//   • qa@flowpoint.pro is permanently in PURGE_SYSTEM_EMAILS — cannot be wiped
+//     by purge-all-clients regardless of the caller's exempt_emails list.
+//   • purge-ghost-accounts skips it automatically because the users row exists.
+//   • purge-all-clients skips it because it is in PURGE_SYSTEM_EMAILS (hardcoded).
+//
+// Auth: x-admin-key required (same as all /api/admin/* routes).
+//
+// How Browser Use reconnects after a new session:
+//   1. Call POST /api/admin/provision-qa-account with x-admin-key.
+//   2. Store the returned `sessionToken` in sessionStorage under 'fp_session_token'.
+//   3. Navigate to /dashboard.html — the app bootstraps normally.
+
+// Fixed UUIDs for the QA user and org — stable across re-provisions so FK
+// references (audit_logs, ai_usage_logs, etc.) remain consistent.
+const QA_USER_UUID = "10000000-0000-4000-8000-000000000001";
+const QA_ORG_UUID  = "10000000-0000-4000-8000-000000000002";
+const QA_EMAIL     = "qa@flowpoint.pro";
+
+router.post("/admin/provision-qa-account", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // ── 1. users row ─────────────────────────────────────────────────────────
+    await client.query(
+      `INSERT INTO users (id, email, status, email_verified, auth_provider)
+       VALUES ($1::uuid, $2, 'active', true, 'magic_link')
+       ON CONFLICT (id) DO UPDATE
+         SET status = 'active', email_verified = true`,
+      [QA_USER_UUID, QA_EMAIL],
+    );
+
+    // ── 2. organizations row ──────────────────────────────────────────────────
+    // No stripe_customer_id / stripe_subscription_id — DB-only plan grant.
+    await client.query(
+      `INSERT INTO organizations
+         (id, name, slug, owner_user_id, owner_email, status, plan, subscription_status)
+       VALUES ($1::uuid, 'QA Organisation', 'qa-organisation', $2, $3, 'active', 'ultra', 'active')
+       ON CONFLICT (id) DO UPDATE
+         SET status = 'active', plan = 'ultra', subscription_status = 'active',
+             owner_user_id = $2, owner_email = $3`,
+      [QA_ORG_UUID, QA_USER_UUID, QA_EMAIL],
+    );
+
+    // ── 3. organization_members row ───────────────────────────────────────────
+    await client.query(
+      `INSERT INTO organization_members
+         (id, organization_id, user_id, role, status, joined_at)
+       VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'owner', 'active', NOW())
+       ON CONFLICT (organization_id, user_id) DO UPDATE
+         SET role = 'owner', status = 'active'`,
+      [QA_ORG_UUID, QA_USER_UUID],
+    );
+
+    // ── 4. Fresh 365-day session token ────────────────────────────────────────
+    // getSession() is a plain DB lookup (no HMAC verify on the token string),
+    // so inserting any random token directly into user_sessions is valid.
+    // We deliberately generate a new token on every call so Browser Use can
+    // refresh its session without any human interaction.
+    const { randomBytes } = await import("crypto");
+    const sessionToken = `fp_qa_${randomBytes(32).toString("hex")}`;
+    const expiresAt    = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days
+
+    await client.query(
+      `INSERT INTO user_sessions
+         (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2)
+       VALUES ($1, $2, $3, $4, 'owner', $5, NOW(), $2::uuid)
+       ON CONFLICT DO NOTHING`,
+      [sessionToken, QA_USER_UUID, QA_ORG_UUID, QA_EMAIL, expiresAt],
+    );
+
+    await client.query("COMMIT");
+
+    // Invalidate any cached session for this org so the new token is live immediately.
+    // (Sessions service uses an in-process cache; the INSERT above persists to DB.)
+
+    res.json({
+      ok:           true,
+      email:        QA_EMAIL,
+      orgId:        QA_ORG_UUID,
+      userId:       QA_USER_UUID,
+      plan:         "ultra",
+      sessionToken,
+      expiresAt:    expiresAt.toISOString(),
+      purgeExempt:  true,
+      note: [
+        "Store sessionToken in sessionStorage['fp_session_token'] in the browser.",
+        "Navigate to /dashboard.html — app bootstraps normally.",
+        "Re-call this endpoint to get a fresh token after Browser Use session recycling.",
+        "No Stripe customer or subscription was created.",
+      ],
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("[Admin] provision-qa-account failed:", err);
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
 // ── POST /api/admin/ai-usage-seed ─────────────────────────────────────────────
 // Forces an org's ai_monthly_usage row to a specific credits_used value.
 // Intended for automated tests only — lets tests ensure EXHAUSTED state before running.
@@ -908,7 +1030,9 @@ function checkPurgeRate(isDryRun: boolean): { allowed: boolean; retryAfterSec: n
 }
 
 // System emails ALWAYS exempt — caller cannot override this list.
-const PURGE_SYSTEM_EMAILS = ["support@flowpoint.pro"];
+// qa@flowpoint.pro is the permanent Browser Use / automated-test account.
+// It MUST survive every purge; never remove it from this list.
+const PURGE_SYSTEM_EMAILS = ["support@flowpoint.pro", "qa@flowpoint.pro"];
 
 type StripeCustomerPurgePlan = {
   configured: boolean;
