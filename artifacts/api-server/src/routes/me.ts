@@ -159,13 +159,20 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         : `fp_pub_${_pkHash}`;
 
       // Normalise subscription status — include trialConsumedAt for pending_billing detection
-      const normStatus = normalizeSubscriptionStatus({
+      const _normStatusBase = normalizeSubscriptionStatus({
         rawStatus:            rawSubStatus,
         stripeSubscriptionId: rawStripeSubId,
         stripeCustomerId:     rawStripeCustomerId,
         trialEndsAt:          rawTrialEndsAt,
         trialConsumedAt:      rawTrialConsumedAt,
       });
+
+      // Internal QA bypass — mirrors billing-context.ts guard exactly.
+      // Double-locked: orgId must match the fixed QA UUID AND is_internal_qa=true.
+      // Prevents any other org from ever receiving 'trialing' via this path.
+      const _QA_ORG_UUID = "10000000-0000-4000-8000-000000000002";
+      const _isQaOrg = orgId === _QA_ORG_UUID && billingData?.isInternalQa === true;
+      const normStatus = _isQaOrg ? "trialing" as const : _normStatusBase;
 
       // Read addons from org_addons table (single source of truth — Correction 8).
       // FAIL-CLOSED: these rows were loaded by loadMeEntitlement, which turns an
