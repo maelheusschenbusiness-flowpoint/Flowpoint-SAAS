@@ -414,49 +414,79 @@ router.post("/admin/test-session", async (req: Request, res: Response): Promise<
 
 // ── POST /api/admin/provision-qa-account ─────────────────────────────────────
 //
-// Creates (or refreshes) the permanent QA account used by Browser Use and
-// automated test pipelines.
+// Creates (or refreshes) the single permanent QA account used by Browser Use
+// and automated test pipelines.
 //
-// The account is:
-//   email:               qa@flowpoint.pro
-//   plan:                ultra   (no Stripe subscription — DB only)
-//   subscription_status: active
-//   role:                owner
-//   session TTL:         365 days (re-calling this endpoint issues a new token)
+// Security constraints (see user story 2026-08-26):
+//   • Protected by ADMIN_KEY (min 32 chars) — rejected with 503 if key absent.
+//   • Rate-limited: max 5 calls per IP per hour in-process (no external dep).
+//   • Session TTL: 8 h (not 365 d) — short enough to limit blast radius.
+//   • Token never logged; only returned once in the immediate HTTP response.
+//   • Audit line emitted on every call: timestamp, IP, UA — no token.
+//   • No parameters accepted — email, org UUID, plan are all hardcoded constants.
+//     The endpoint cannot create any account other than qa@flowpoint.pro.
+//   • Premium access comes from organizations.is_internal_qa=true + a fixed UUID
+//     guard in billing-context.ts — NOT from trialing/trial_ends_at tricks.
+//   • qa@flowpoint.pro is hardcoded in PURGE_SYSTEM_EMAILS; the org is purge-proof.
 //
-// Idempotent: users + organization + membership rows use ON CONFLICT DO NOTHING.
-// A fresh session token is issued on every call so Browser Use can reconnect
-// after its ephemeral environment is recycled.
-//
-// Safety guarantees:
-//   • No Stripe customer, subscription, or invoice is created.
-//   • No public auth endpoint or bypass is added.
-//   • qa@flowpoint.pro is permanently in PURGE_SYSTEM_EMAILS — cannot be wiped
-//     by purge-all-clients regardless of the caller's exempt_emails list.
-//   • purge-ghost-accounts skips it automatically because the users row exists.
-//   • purge-all-clients skips it because it is in PURGE_SYSTEM_EMAILS (hardcoded).
-//
-// Auth: x-admin-key required (same as all /api/admin/* routes).
-//
-// How Browser Use reconnects after a new session:
-//   1. Call POST /api/admin/provision-qa-account with x-admin-key.
-//   2. Store the returned `sessionToken` in sessionStorage under 'fp_session_token'.
-//   3. Navigate to /dashboard.html — the app bootstraps normally.
+// How Browser Use reconnects after environment recycling:
+//   1. POST /api/admin/provision-qa-account  (x-admin-key header).
+//   2. sessionStorage.setItem('fp_session_token', data.sessionToken)
+//   3. location.href = '/dashboard.html'
 
-// Fixed UUIDs for the QA user and org — stable across re-provisions so FK
-// references (audit_logs, ai_usage_logs, etc.) remain consistent.
+/** Fixed UUIDs — stable across re-provisions; referenced in FK indexes. */
 const QA_USER_UUID = "10000000-0000-4000-8000-000000000001";
 const QA_ORG_UUID  = "10000000-0000-4000-8000-000000000002";
 const QA_EMAIL     = "qa@flowpoint.pro";
 
+/** QA session TTL: 8 hours — short to limit blast radius on token leak. */
+const QA_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+
+/** Rate-limit state: maps IP → { count, windowStartMs } — in-process, no persistence. */
+const _qaProvisionRateLimit = new Map<string, { count: number; windowStart: number }>();
+const QA_RATE_MAX   = 5;     // maximum calls per window per IP
+const QA_RATE_WIN   = 60 * 60 * 1000; // 1-hour window
+
+function checkQaRateLimit(ip: string): { allowed: boolean; retryAfterSec: number } {
+  const now   = Date.now();
+  const entry = _qaProvisionRateLimit.get(ip);
+  if (!entry || now - entry.windowStart > QA_RATE_WIN) {
+    _qaProvisionRateLimit.set(ip, { count: 1, windowStart: now });
+    return { allowed: true, retryAfterSec: 0 };
+  }
+  if (entry.count >= QA_RATE_MAX) {
+    const retryAfterSec = Math.ceil((QA_RATE_WIN - (now - entry.windowStart)) / 1000);
+    return { allowed: false, retryAfterSec };
+  }
+  entry.count++;
+  return { allowed: true, retryAfterSec: 0 };
+}
+
 router.post("/admin/provision-qa-account", async (req: Request, res: Response): Promise<void> => {
+  // ── 0. ADMIN_KEY gate (returns 503 when key absent, 403 when wrong) ───────
   if (!requireAdminKey(req, res)) return;
+
+  // ── 1. Rate limit (5 / hour / IP) ────────────────────────────────────────
+  const callerIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+    ?? req.socket?.remoteAddress
+    ?? "unknown";
+  const rl = checkQaRateLimit(callerIp);
+  if (!rl.allowed) {
+    res.setHeader("Retry-After", String(rl.retryAfterSec));
+    res.status(429).json({
+      ok: false,
+      error: `Rate limit exceeded — max ${QA_RATE_MAX} calls/hour per IP. Retry in ${rl.retryAfterSec}s.`,
+    });
+    return;
+  }
+
+  const callerUa = (req.headers["user-agent"] as string | undefined) ?? "unknown";
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // ── 1. users row ─────────────────────────────────────────────────────────
+    // ── 2. users row (idempotent) ─────────────────────────────────────────────
     await client.query(
       `INSERT INTO users (id, email, status, email_verified, auth_provider)
        VALUES ($1::uuid, $2, 'active', true, 'magic_link')
@@ -465,32 +495,31 @@ router.post("/admin/provision-qa-account", async (req: Request, res: Response): 
       [QA_USER_UUID, QA_EMAIL],
     );
 
-    // ── 2. organizations row ──────────────────────────────────────────────────
-    // No stripe_customer_id / stripe_subscription_id — DB-only plan grant.
-    //
-    // subscription_status = 'trialing' + trial_ends_at far in the future
-    // + trial_consumed_at = NOW() is the only way to obtain hasPremiumAccess=true
-    // without a real Stripe subscription:
-    //   normalizeSubscriptionStatus({rawStatus:'trialing', trialActive:true, wasConsumed:true})
-    //   → returns 'trialing' → statusGrantsAccess('trialing') → true.
-    // 'active' without a stripeSubscriptionId is explicitly normalised to 'none'
-    // by subscription-state.ts line 91-96, so it must NOT be used here.
+    // ── 3. organizations row (idempotent) ─────────────────────────────────────
+    // Premium access is granted via is_internal_qa=true + the QA_ORG_UUID guard
+    // in billing-context.ts — NOT via trialing/trial_ends_at hacks.
+    // subscription_status stays 'none'; the billing-context short-circuit fires
+    // only when orgId === QA_ORG_UUID AND is_internal_qa=true simultaneously.
     await client.query(
       `INSERT INTO organizations
          (id, name, slug, owner_user_id, owner_email, status, plan,
-          subscription_status, trial_ends_at, trial_consumed_at)
-       VALUES ($1::uuid, 'QA Organisation', 'qa-organisation', $2, $3, 'active', 'ultra',
-               'trialing', '2099-01-01'::timestamptz, NOW())
+          subscription_status, is_internal_qa)
+       VALUES ($1::uuid, 'QA Organisation', 'qa-organisation', $2, $3,
+               'active', 'ultra', 'none', true)
        ON CONFLICT (id) DO UPDATE
-         SET status = 'active', plan = 'ultra',
-             subscription_status = 'trialing',
-             trial_ends_at = '2099-01-01'::timestamptz,
-             trial_consumed_at = COALESCE(organizations.trial_consumed_at, NOW()),
-             owner_user_id = $2, owner_email = $3`,
+         SET status          = 'active',
+             plan            = 'ultra',
+             is_internal_qa  = true,
+             owner_user_id   = $2,
+             owner_email     = $3,
+             -- Clear the legacy trialing/trial_ends_at debt from the initial provision
+             subscription_status = 'none',
+             trial_ends_at       = NULL,
+             trial_consumed_at   = NULL`,
       [QA_ORG_UUID, QA_USER_UUID, QA_EMAIL],
     );
 
-    // ── 3. organization_members row ───────────────────────────────────────────
+    // ── 4. organization_members row (idempotent) ──────────────────────────────
     await client.query(
       `INSERT INTO organization_members
          (id, organization_id, user_id, role, status, joined_at)
@@ -500,17 +529,15 @@ router.post("/admin/provision-qa-account", async (req: Request, res: Response): 
       [QA_ORG_UUID, QA_USER_UUID],
     );
 
-    // ── 4. Fresh 365-day session token ────────────────────────────────────────
-    // getSession() is a plain DB lookup (no HMAC verify on the token string),
-    // so inserting any random token directly into user_sessions is valid.
-    // We deliberately generate a new token on every call so Browser Use can
-    // refresh its session without any human interaction.
+    // ── 5. Fresh 8-hour session token ─────────────────────────────────────────
+    // New token issued on every call — Browser Use stores it after each provision.
+    // getSession() is a plain DB lookup (no HMAC on the token string itself).
+    // $2 = TEXT (user_id), $6 = separate UUID param for user_id_v2 to avoid
+    // pg type-inference conflict ("inconsistent types deduced for parameter").
     const { randomBytes } = await import("crypto");
     const sessionToken = `fp_qa_${randomBytes(32).toString("hex")}`;
-    const expiresAt    = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days
+    const expiresAt    = new Date(Date.now() + QA_SESSION_TTL_MS);
 
-    // $2 is TEXT (user_id), $6 is explicit UUID cast for user_id_v2 — cannot reuse $2::uuid
-    // because PostgreSQL cannot reconcile TEXT and UUID for the same bind parameter.
     await client.query(
       `INSERT INTO user_sessions
          (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2)
@@ -521,28 +548,36 @@ router.post("/admin/provision-qa-account", async (req: Request, res: Response): 
 
     await client.query("COMMIT");
 
-    // Invalidate any cached session for this org so the new token is live immediately.
-    // (Sessions service uses an in-process cache; the INSERT above persists to DB.)
+    // ── 6. Audit log — timestamp, IP, UA; token is intentionally absent ───────
+    console.log(JSON.stringify({
+      event:      "QA_PROVISION",
+      ts:         new Date().toISOString(),
+      ip:         callerIp,
+      ua:         callerUa,
+      orgId:      QA_ORG_UUID,
+      expiresAt:  expiresAt.toISOString(),
+      // sessionToken is deliberately NOT logged — it is equivalent to a credential.
+    }));
 
+    // ── 7. Response — token returned once, never cached server-side ───────────
     res.json({
-      ok:           true,
-      email:        QA_EMAIL,
-      orgId:        QA_ORG_UUID,
-      userId:       QA_USER_UUID,
-      plan:         "ultra",
-      sessionToken,
-      expiresAt:    expiresAt.toISOString(),
-      purgeExempt:  true,
-      note: [
-        "Store sessionToken in sessionStorage['fp_session_token'] in the browser.",
-        "Navigate to /dashboard.html — app bootstraps normally.",
-        "Re-call this endpoint to get a fresh token after Browser Use session recycling.",
-        "No Stripe customer or subscription was created.",
+      ok:          true,
+      email:       QA_EMAIL,
+      orgId:       QA_ORG_UUID,
+      userId:      QA_USER_UUID,
+      plan:        "ultra",
+      sessionToken,                          // only appearance of the token
+      expiresAt:   expiresAt.toISOString(),  // 8 h from now
+      purgeExempt: true,
+      reconnect: [
+        "sessionStorage.setItem('fp_session_token', data.sessionToken)",
+        "location.href = '/dashboard.html'",
       ],
     });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
-    console.error("[Admin] provision-qa-account failed:", err);
+    // Log error without leaking the token (token is in local scope but not in err)
+    console.error("[Admin] provision-qa-account failed:", safeErrMsg(err));
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   } finally {
     client.release();

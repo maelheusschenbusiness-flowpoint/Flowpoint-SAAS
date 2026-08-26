@@ -135,16 +135,28 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
   const trialEndsAt           = orgData.trialEndsAt ?? null;
   const trialConsumedAt       = orgData.trialConsumedAt ?? null;
 
-  // Normalisation — ne retourne jamais "active" sans stripeSubscriptionId
-  const normalised = normalizeSubscriptionStatus({
-    rawStatus:           rawSubscriptionStatus,
-    stripeSubscriptionId,
-    stripeCustomerId,
-    trialEndsAt,
-    trialConsumedAt,
-  });
+  // ── Internal QA bypass (single hardcoded org, double-locked) ─────────────
+  // The QA org has no Stripe subscription, so normalizeSubscriptionStatus
+  // would return 'none' → hasPremiumAccess=false → dashboard blocked.
+  // We grant 'trialing' access only when BOTH conditions are true:
+  //   1. The org UUID exactly matches the single fixed QA org UUID.
+  //   2. The organizations.is_internal_qa flag is explicitly true.
+  // This cannot be triggered for any real customer org.
+  const QA_ORG_UUID = "10000000-0000-4000-8000-000000000002";
+  const isQaOrg = orgId === QA_ORG_UUID && orgData.isInternalQa === true;
 
-  if (normalised !== rawSubscriptionStatus && rawSubscriptionStatus !== null) {
+  // Normalisation — ne retourne jamais "active" sans stripeSubscriptionId
+  const normalised = isQaOrg
+    ? "trialing" as const
+    : normalizeSubscriptionStatus({
+        rawStatus:           rawSubscriptionStatus,
+        stripeSubscriptionId,
+        stripeCustomerId,
+        trialEndsAt,
+        trialConsumedAt,
+      });
+
+  if (!isQaOrg && normalised !== rawSubscriptionStatus && rawSubscriptionStatus !== null) {
     logger.warn(
       { orgId, rawSubscriptionStatus, normalizedTo: normalised, stripeSubscriptionId, trialConsumedAt },
       "[BillingContext] Subscription state normalisé à la lecture",
@@ -152,7 +164,7 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
   }
 
   const hasPremiumAccess    = statusGrantsAccess(normalised);
-  const canStartTrial       = !trialConsumedAt && !stripeSubscriptionId;
+  const canStartTrial       = !isQaOrg && !trialConsumedAt && !stripeSubscriptionId;
   const mustCompleteBilling = !hasPremiumAccess;
 
   return {

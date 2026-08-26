@@ -1210,6 +1210,10 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    // Internal QA flag — grants premium access to the single hardcoded QA org without Stripe.
+    // Only billing-context.ts reads this flag, and only for the fixed QA_ORG_UUID.
+    // NEVER use this flag to bypass billing for any other org.
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS is_internal_qa BOOLEAN NOT NULL DEFAULT false;`);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_owner_idx ON organizations(owner_user_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_slug_idx  ON organizations(slug);`);
 

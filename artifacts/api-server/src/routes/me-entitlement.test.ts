@@ -41,6 +41,7 @@ const ULTRA_BILLING: OrgBillingData = {
   email: "owner@ultra.example",
   firstName: "Ada",
   orgName: "Ultra Corp",
+  isInternalQa: false,
 };
 
 function deps(over: Partial<MeEntitlementDeps> = {}): MeEntitlementDeps {
