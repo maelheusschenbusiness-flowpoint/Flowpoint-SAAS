@@ -202,42 +202,54 @@
       // visitors so they see the form immediately without a round-trip.
       function _checkAndRedirect(source) {
         var _st = null;
-        var _hadSession = false;
         try { _st = sessionStorage.getItem('fp_session_token'); } catch(_) {}
-        try { _hadSession = !!localStorage.getItem('fp_had_session'); } catch(_) {}
 
-        // No credentials and no prior-session marker → show form immediately.
-        if (!_st && !_hadSession) {
+        // ── RULE: only redirect if an active per-tab sessionStorage token exists.
+        // fp_had_session (localStorage) alone is NOT sufficient — a user who
+        // explicitly navigates to signin.html must see the form, even if their
+        // session cookie is still valid. The cookie-only path was the root cause
+        // of the "signin always redirects to dashboard" bug.
+        // BFCache re-validate (pageshow-persisted) is the one case where we do
+        // want to check even on back-navigation — but only if sessionStorage has
+        // a token (set when we originally redirected to dashboard from this tab).
+        if (!_st) {
+          // No sessionStorage token → show form, never call session-restore.
+          try {
+            console.log('[SIGNIN AUTH TRACE]', {
+              source: source, credential: 'none',
+              decision: 'STAY_SIGNIN', reason: 'no_sessionStorage_token',
+              timestamp: new Date().toISOString(),
+            });
+          } catch(_) {}
           document.body.style.visibility = 'visible';
           return;
         }
 
+        // sessionStorage token present → validate with backend before deciding.
         document.body.style.visibility = 'hidden';
-        var headers = { 'Content-Type': 'application/json' };
-        if (_st) headers['Authorization'] = 'Bearer ' + _st;
-
         var _traceTs = new Date().toISOString();
+
         fetch('/api/auth/session-restore', {
-          method: 'POST', credentials: 'include', headers: headers
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _st },
         }).then(function(r) {
-          if (r.ok) return r.json().catch(function() { return null; });
-          // Non-2xx → no session; ensure we know the status for the trace
-          return r.json().catch(function() { return null; }).then(function(d) {
-            return { _httpStatus: r.status, _noToken: true };
-          });
-        }).then(function(data) {
-          var hasToken = !!(data && data.token && !data._noToken);
-          // ── [AUTH REDIRECT TRACE] ─────────────────────────────────────────
+          var httpStatus = r.status;
+          if (r.ok) return r.json().catch(function() { return null; }).then(function(d) { return { data: d, httpStatus: httpStatus }; });
+          return r.json().catch(function() { return null; }).then(function(d) { return { data: null, httpStatus: httpStatus, _noToken: true }; });
+        }).then(function(res) {
+          var httpStatus = res.httpStatus;
+          var data = res.data;
+          var hasToken = !!(data && data.token && !res._noToken);
+          var decision = hasToken ? 'REDIRECT_DASHBOARD' : 'STAY_SIGNIN';
           try {
-            console.log('[AUTH REDIRECT TRACE]', {
-              file: 'signin.html',
-              fn: '_checkAndRedirect',
+            console.log('[SIGNIN AUTH TRACE]', {
               source: source,
-              url: window.location.href,
-              destination: hasToken ? '/dashboard.html' : '(stay — no redirect)',
-              sessionStorageToken: !!_st,
-              fp_had_session: _hadSession,
-              sessionRestoreResult: hasToken ? 'authenticated' : 'unauthenticated',
+              credential: 'sessionStorage_bearer',
+              endpoint: '/api/auth/session-restore',
+              httpStatus: httpStatus,
+              decision: decision,
+              reason: hasToken ? 'backend_confirmed_valid' : 'backend_rejected',
               referrer: document.referrer || '(direct)',
               timestamp: _traceTs,
             });
@@ -247,24 +259,22 @@
             try { localStorage.setItem('fp_had_session', '1'); } catch(_) {}
             window.location.replace('/dashboard.html');
           } else {
-            // Session-restore failed → purge ALL auth state including fp_had_session
-            // so subsequent visits don't re-trigger this check on a dead session.
+            // Session-restore failed → purge stale auth so we don't re-check on next visit.
             try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
             try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
             try { localStorage.removeItem('fp_had_session'); } catch(_) {}
             document.body.style.visibility = 'visible';
           }
-        }).catch(function() {
-          // Network error → fail-open, show form, do NOT redirect
+        }).catch(function(err) {
           try {
-            console.log('[AUTH REDIRECT TRACE]', {
-              file: 'signin.html', fn: '_checkAndRedirect',
-              source: source, url: window.location.href,
-              destination: '(stay — network error)',
-              sessionStorageToken: !!_st, fp_had_session: _hadSession,
-              sessionRestoreResult: 'network-error', timestamp: _traceTs,
+            console.log('[SIGNIN AUTH TRACE]', {
+              source: source, credential: 'sessionStorage_bearer',
+              endpoint: '/api/auth/session-restore',
+              decision: 'STAY_SIGNIN', reason: 'network_error',
+              error: String(err), timestamp: _traceTs,
             });
           } catch(_) {}
+          // Network error → fail-open, show form, do NOT redirect.
           document.body.style.visibility = 'visible';
         });
       }
