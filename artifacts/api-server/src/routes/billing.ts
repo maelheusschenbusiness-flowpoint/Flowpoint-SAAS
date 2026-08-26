@@ -2289,46 +2289,44 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
 
     // ── PHASE 3 : deactivate STALE PAID addons (in DB but absent from Stripe) ─
     //
-    // Stripe is the source of truth ONLY for paid Stripe-managed addons.
-    // The following categories are NEVER touched by this phase:
-    //   A) Plan-included addons (PLAN_INCLUDED_ADDONS[plan]) — e.g. backlinkIntelligence,
-    //      behavioralAI, aiForecasting on Ultra — they are never SubscriptionItems.
-    //   B) BETA addons — belt-and-suspenders; they ship as included, never sold.
-    //   C) COMING_SOON addons — not purchasable, cannot be on a Stripe subscription.
-    //   D) Addons with no live Stripe price ID (ADDON_PRICE_IDS[key] empty/missing) —
-    //      not Stripe-managed; removing them via this path would be wrong.
-    //   E) Admin / legacy / manually-granted addons — identified by
-    //      org_addons.metadata->>'source' IN ('admin','legacy','grant','ops').
+    // Stripe is the source of truth for paid Stripe-managed addons.
+    // Three categories are exempt from deactivation:
     //
-    // Only addons that pass ALL guards are candidates for deactivation:
-    //   • active=true in DB
-    //   • absent from stripeAddonMap (the union of all live non-canceled subs)
-    //   • none of guards A-E above
+    //   A) PLAN_INCLUDED_ADDONS[currentPlan] — entitlement comes from the plan,
+    //      never from a SubscriptionItem. Examples on Ultra: backlinkIntelligence,
+    //      behavioralAI, aiForecasting. Beta status is irrelevant here — what
+    //      matters is whether the plan includes the addon, not its maturity level.
     //
-    // Idempotency: deactivateAddon writes active=false; quantity is NOT touched.
-    // A fresh purchase via activateAddon(qty=1) correctly sets quantity back to 1.
+    //   B) No live Stripe price ID (ADDON_PRICE_IDS[key] empty/missing) — the
+    //      addon is not Stripe-managed; there can be no SubscriptionItem to match.
+    //
+    //   C) Explicit manual grant — org_addons.metadata->>'source' IN
+    //      ('admin','legacy','grant','ops'). Entitlement deliberately outside Stripe.
+    //
+    // Everything else: if active=true in DB and absent from the union of current
+    // non-canceled Stripe SubscriptionItems → deactivate (stale paid entitlement).
+    //
+    // NOTE: beta/coming_soon status is NOT a guard. aiGbpPosting is beta but
+    // purchasable; if it disappears from Stripe it must lose its entitlement.
+    // COMING_SOON rows in org_addons are unusual but treated by the same rule.
+    //
+    // Idempotency: deactivateAddon sets active=false without touching quantity.
+    // A re-purchase via activateAddon(key, orgId, 1) correctly restores qty=1.
 
     const billingPlan = (await loadBillingContext(orgId)).plan?.toLowerCase() ?? "";
-    // Guard A: plan-included
+    // Guard A: plan-included addons for this org's current plan
     const planIncluded: Set<string> = (PIA[billingPlan] as Set<string> | undefined) ?? new Set<string>();
-    // Guard B+C: beta / coming_soon
-    const {
-      BETA_ADDONS: BETA,
-      COMING_SOON_ADDONS: COMING_SOON,
-      ADDON_PRICE_IDS: APIDS,
-    } = await import("../lib/plans.js") as unknown as {
-      BETA_ADDONS: Set<string>;
-      COMING_SOON_ADDONS: Set<string>;
+    // Guard B: live price IDs (Stripe-managed check)
+    const { ADDON_PRICE_IDS: APIDS } = await import("../lib/plans.js") as unknown as {
       ADDON_PRICE_IDS: Record<string, string>;
     };
 
-    // Query org_addons directly to get metadata (getOrgAddons() strips it)
+    // Query org_addons with metadata (getOrgAddons() strips it)
     const phase3Client = await pgPool.connect();
     let rawOrgAddons: Array<{ addon_key: string; active: boolean; quantity: number | null; metadata: Record<string, string> | null }> = [];
     try {
       const rr = await phase3Client.query(
-        `SELECT addon_key, active, quantity, metadata
-         FROM org_addons WHERE org_id = $1`,
+        `SELECT addon_key, active, quantity, metadata FROM org_addons WHERE org_id = $1`,
         [orgId],
       );
       rawOrgAddons = rr.rows as typeof rawOrgAddons;
@@ -2337,41 +2335,30 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
     const deactivatedKeys: string[] = [];
     for (const row of rawOrgAddons) {
       const dbKey = row.addon_key;
+
       // Must be currently active
       if (!row.active) continue;
-      // Already reconciled from Stripe → activated in Phase 2, nothing to do
+      // Present in Stripe → Phase 2 already set it correctly
       if (stripeAddonMap.has(dbKey)) continue;
 
-      // Guard A — plan-included
+      // Guard A — plan-included: entitlement comes from plan, not Stripe
       if (planIncluded.has(dbKey)) {
         diagItems.push({ subscriptionId: "DB_ONLY", status: "exempt_plan_included",
           itemId: "", priceId: "", priceAmount: null, quantity: row.quantity ?? 1,
           metadata: {}, addonKey: dbKey, action: "kept_plan_included" });
         continue;
       }
-      // Guard B — beta addon (never a Stripe subscription item)
-      if (BETA.has(dbKey)) {
-        diagItems.push({ subscriptionId: "DB_ONLY", status: "exempt_beta",
-          itemId: "", priceId: "", priceAmount: null, quantity: row.quantity ?? 1,
-          metadata: {}, addonKey: dbKey, action: "kept_beta" });
-        continue;
-      }
-      // Guard C — coming-soon (not purchasable via Stripe)
-      if (COMING_SOON.has(dbKey)) {
-        diagItems.push({ subscriptionId: "DB_ONLY", status: "exempt_coming_soon",
-          itemId: "", priceId: "", priceAmount: null, quantity: row.quantity ?? 1,
-          metadata: {}, addonKey: dbKey, action: "kept_coming_soon" });
-        continue;
-      }
-      // Guard D — no live Stripe price ID
+
+      // Guard B — no Stripe price ID: not a billable Stripe-managed addon
       if (!APIDS[dbKey]) {
         diagItems.push({ subscriptionId: "DB_ONLY", status: "exempt_no_price_id",
           itemId: "", priceId: "", priceAmount: null, quantity: row.quantity ?? 1,
           metadata: {}, addonKey: dbKey, action: "kept_no_price_id" });
         continue;
       }
-      // Guard E — admin / legacy / manual grant
-      const src = row.metadata?.["source"] ?? "";
+
+      // Guard C — explicit manual/admin grant
+      const src = (row.metadata as Record<string, string> | null)?.["source"] ?? "";
       if (["admin", "legacy", "grant", "ops"].includes(src)) {
         diagItems.push({ subscriptionId: "DB_ONLY", status: "exempt_manual_grant",
           itemId: "", priceId: "", priceAmount: null, quantity: row.quantity ?? 1,
@@ -2379,7 +2366,7 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
         continue;
       }
 
-      // All guards passed → this is a stale paid addon absent from Stripe → deactivate
+      // All guards passed → stale paid addon absent from Stripe → deactivate
       try {
         const wasActive = await deactivateAddon(dbKey, orgId);
         if (wasActive) {
@@ -2388,7 +2375,7 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
             itemId: "", priceId: "", priceAmount: null, quantity: 0,
             metadata: {}, addonKey: dbKey, action: "deactivated_stale" });
         }
-      } catch { /* non-fatal — log but continue */ }
+      } catch { /* non-fatal */ }
     }
 
     // ── PHASE 4 : read final org_addons state ────────────────────────────────
