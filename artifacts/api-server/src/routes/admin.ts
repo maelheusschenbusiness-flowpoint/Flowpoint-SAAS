@@ -467,12 +467,25 @@ router.post("/admin/provision-qa-account", async (req: Request, res: Response): 
 
     // ── 2. organizations row ──────────────────────────────────────────────────
     // No stripe_customer_id / stripe_subscription_id — DB-only plan grant.
+    //
+    // subscription_status = 'trialing' + trial_ends_at far in the future
+    // + trial_consumed_at = NOW() is the only way to obtain hasPremiumAccess=true
+    // without a real Stripe subscription:
+    //   normalizeSubscriptionStatus({rawStatus:'trialing', trialActive:true, wasConsumed:true})
+    //   → returns 'trialing' → statusGrantsAccess('trialing') → true.
+    // 'active' without a stripeSubscriptionId is explicitly normalised to 'none'
+    // by subscription-state.ts line 91-96, so it must NOT be used here.
     await client.query(
       `INSERT INTO organizations
-         (id, name, slug, owner_user_id, owner_email, status, plan, subscription_status)
-       VALUES ($1::uuid, 'QA Organisation', 'qa-organisation', $2, $3, 'active', 'ultra', 'active')
+         (id, name, slug, owner_user_id, owner_email, status, plan,
+          subscription_status, trial_ends_at, trial_consumed_at)
+       VALUES ($1::uuid, 'QA Organisation', 'qa-organisation', $2, $3, 'active', 'ultra',
+               'trialing', '2099-01-01'::timestamptz, NOW())
        ON CONFLICT (id) DO UPDATE
-         SET status = 'active', plan = 'ultra', subscription_status = 'active',
+         SET status = 'active', plan = 'ultra',
+             subscription_status = 'trialing',
+             trial_ends_at = '2099-01-01'::timestamptz,
+             trial_consumed_at = COALESCE(organizations.trial_consumed_at, NOW()),
              owner_user_id = $2, owner_email = $3`,
       [QA_ORG_UUID, QA_USER_UUID, QA_EMAIL],
     );
