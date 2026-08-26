@@ -496,12 +496,14 @@ router.post("/admin/provision-qa-account", async (req: Request, res: Response): 
     const sessionToken = `fp_qa_${randomBytes(32).toString("hex")}`;
     const expiresAt    = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days
 
+    // $2 is TEXT (user_id), $6 is explicit UUID cast for user_id_v2 — cannot reuse $2::uuid
+    // because PostgreSQL cannot reconcile TEXT and UUID for the same bind parameter.
     await client.query(
       `INSERT INTO user_sessions
          (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2)
-       VALUES ($1, $2, $3, $4, 'owner', $5, NOW(), $2::uuid)
+       VALUES ($1, $2, $3, $4, 'owner', $5, NOW(), $6::uuid)
        ON CONFLICT DO NOTHING`,
-      [sessionToken, QA_USER_UUID, QA_ORG_UUID, QA_EMAIL, expiresAt],
+      [sessionToken, QA_USER_UUID, QA_ORG_UUID, QA_EMAIL, expiresAt, QA_USER_UUID],
     );
 
     await client.query("COMMIT");
