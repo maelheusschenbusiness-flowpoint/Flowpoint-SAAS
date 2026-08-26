@@ -182,77 +182,75 @@
       var _st = null;
       try { _st = sessionStorage.getItem('fp_session_token'); } catch(_) {}
 
-      // Only make a request when we have reason to believe a session might exist.
-      // Conditions: there is a sessionStorage token (definite), OR it is a BFCache
-      // restore (the user navigated back from dashboard while logged in), OR
-      // localStorage records that a session was started in this browser.
-      var _hadSession = false;
-      try { _hadSession = !!localStorage.getItem('fp_had_session'); } catch(_) {}
-      var _isBFCache = (source === 'pageshow-BFCache');
-
-      if (!_st && !_hadSession && !_isBFCache) {
-        // Definitely no credential — show form immediately without a round-trip.
+      // ── RULE (same as signin.html fix): only redirect when an active per-tab
+      // sessionStorage token exists. fp_had_session (localStorage) alone, a valid
+      // cookie alone, or a BFCache restore without a token are all INSUFFICIENT
+      // to trigger a redirect. The user explicitly navigating to /login.html must
+      // see the form regardless of any prior session state.
+      if (!_st) {
+        try {
+          console.log('[LOGIN AUTH TRACE]', {
+            source: source, credential: 'none',
+            decision: 'STAY_LOGIN', reason: 'no_sessionStorage_token',
+            timestamp: new Date().toISOString(),
+          });
+        } catch(_) {}
         document.body.style.visibility = 'visible';
         return;
       }
 
-      // We may have a live session — hide the form while we verify.
+      // sessionStorage token present → validate with backend before deciding.
       document.body.style.visibility = 'hidden';
-      var _headers = { 'Content-Type': 'application/json' };
-      if (_st) _headers['Authorization'] = 'Bearer ' + _st;
-
-      // Use session-restore (not /api/me) so the response tells us the canonical
-      // live token and lets the server clear stale cookies when neither token is valid.
       var _traceTs = new Date().toISOString();
       fetch('/api/auth/session-restore', {
-        method: 'POST', credentials: 'include', headers: _headers
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _st },
       })
         .then(function(r) {
-          if (r.ok) return r.json().catch(function() { return null; });
-          return null;
+          var httpStatus = r.status;
+          if (r.ok) return r.json().catch(function() { return null; }).then(function(d) { return { data: d, httpStatus: httpStatus }; });
+          return r.json().catch(function() { return null; }).then(function() { return { data: null, httpStatus: httpStatus }; });
         })
-        .then(function(data) {
+        .then(function(res) {
+          var httpStatus = res.httpStatus;
+          var data = res.data;
           var hasToken = !!(data && data.token);
-          // ── [AUTH REDIRECT TRACE] ─────────────────────────────────────────
+          var decision = hasToken ? 'REDIRECT_DASHBOARD' : 'STAY_LOGIN';
           try {
-            console.log('[AUTH REDIRECT TRACE]', {
-              file: 'login.html',
-              fn: '_loginCheckSession',
+            console.log('[LOGIN AUTH TRACE]', {
               source: source,
-              url: window.location.href,
-              destination: hasToken ? '/dashboard.html' : '(stay — no redirect)',
-              sessionStorageToken: !!_st,
-              fp_had_session: _hadSession,
-              isBFCache: _isBFCache,
-              sessionRestoreResult: hasToken ? 'authenticated' : 'unauthenticated',
+              credential: 'sessionStorage_bearer',
+              endpoint: '/api/auth/session-restore',
+              httpStatus: httpStatus,
+              decision: decision,
+              reason: hasToken ? 'backend_confirmed_valid' : 'backend_rejected',
               referrer: document.referrer || '(direct)',
               timestamp: _traceTs,
             });
           } catch(_) {}
           if (hasToken) {
-            // Backend confirmed valid session — update sessionStorage, redirect.
             try { sessionStorage.setItem('fp_session_token', data.token); } catch(_) {}
+            try { localStorage.setItem('fp_had_session', '1'); } catch(_) {}
             window.location.replace('/dashboard.html');
           } else {
-            // No live session — purge ALL auth state including fp_had_session so
-            // the NEXT visit to login.html doesn't re-fire this probe on a dead session.
+            // Session-restore failed → purge stale auth so next visit shows form directly.
             try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
             try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
             try { localStorage.removeItem('fp_had_session'); } catch(_) {}
             document.body.style.visibility = 'visible';
           }
         })
-        .catch(function() {
-          // Network error → fail-open: show the login form.
+        .catch(function(err) {
           try {
-            console.log('[AUTH REDIRECT TRACE]', {
-              file: 'login.html', fn: '_loginCheckSession',
-              source: source, url: window.location.href,
-              destination: '(stay — network error)',
-              sessionStorageToken: !!_st, fp_had_session: _hadSession,
-              sessionRestoreResult: 'network-error', timestamp: _traceTs,
+            console.log('[LOGIN AUTH TRACE]', {
+              source: source, credential: 'sessionStorage_bearer',
+              endpoint: '/api/auth/session-restore',
+              decision: 'STAY_LOGIN', reason: 'network_error',
+              error: String(err), timestamp: _traceTs,
             });
           } catch(_) {}
+          // Network error → fail-open: show the login form.
           document.body.style.visibility = 'visible';
         });
     }
@@ -260,11 +258,10 @@
     window.addEventListener('DOMContentLoaded', function() { _loginCheckSession('DOMContentLoaded'); });
 
     // ── BFCache protection (Safari / all browsers) ────────────────────────────
-    // When Safari restores from BFCache the page state is frozen — revalidate.
+    // When Safari restores from BFCache, sessionStorage survives — so if there is
+    // a token we revalidate it. If not, the early-exit above shows the form.
     window.addEventListener('pageshow', function(evt) {
       if (!evt.persisted) return;
-      // Always re-check on BFCache: the user might have logged out in another tab.
-      document.body.style.visibility = 'hidden';
       _loginCheckSession('pageshow-BFCache');
     });
   </script>
