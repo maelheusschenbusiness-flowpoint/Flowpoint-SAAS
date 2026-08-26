@@ -74864,7 +74864,48 @@ async function findOrgByStripeCustomer(stripeCustomerId) {
       `SELECT org_id FROM org_settings WHERE stripe_customer_id = $1 LIMIT 1`,
       [stripeCustomerId]
     );
-    return legacy.rows[0]?.org_id ?? null;
+    if (legacy.rows[0]?.org_id) return legacy.rows[0].org_id;
+    try {
+      const { createStripeClient: createStripeClient2, getStripeKey: getStripeKey2 } = await Promise.resolve().then(() => (init_stripe_factory(), stripe_factory_exports));
+      const _key = getStripeKey2();
+      const stripe = _key ? await createStripeClient2(_key) : null;
+      if (stripe) {
+        const customer = await stripe.customers.retrieve(stripeCustomerId);
+        if (customer && !customer.deleted) {
+          const metaOrgId = customer.metadata?.["orgId"] ?? customer.metadata?.["org_id"] ?? null;
+          if (metaOrgId && metaOrgId !== "default") {
+            const healed = await client.query(
+              `UPDATE organizations SET stripe_customer_id = $1
+               WHERE id = $2 AND stripe_customer_id IS NULL
+               RETURNING id`,
+              [stripeCustomerId, metaOrgId]
+            ).catch(() => null);
+            if (healed?.rowCount && healed.rowCount > 0) {
+              const { logger: log } = await Promise.resolve().then(() => (init_logger(), logger_exports));
+              log.info({ stripeCustomerId, metaOrgId }, "[OrgData] findOrgByStripeCustomer: stripe_customer_id self-healed from Stripe metadata");
+            }
+            return metaOrgId;
+          }
+          const custEmail = customer.email;
+          if (custEmail) {
+            const byEmail = await client.query(
+              `SELECT id FROM organizations WHERE lower(owner_email) = lower($1) ORDER BY created_at DESC LIMIT 1`,
+              [custEmail]
+            );
+            if (byEmail.rows[0]?.id) {
+              await client.query(
+                `UPDATE organizations SET stripe_customer_id = $1
+                 WHERE id = $2 AND stripe_customer_id IS NULL`,
+                [stripeCustomerId, byEmail.rows[0].id]
+              ).catch(() => null);
+              return byEmail.rows[0].id;
+            }
+          }
+        }
+      }
+    } catch {
+    }
+    return null;
   } finally {
     client.release();
   }
@@ -75213,7 +75254,17 @@ function parseAddonsFromSubscription(subscription) {
         addonKey = metaKey;
       }
     }
-    if (!addonKey) continue;
+    if (!addonKey) {
+      logger.warn(
+        {
+          priceId: item.price?.id,
+          productId: item.price?.product,
+          metadata: item.metadata
+        },
+        "[Webhook] parseAddonsFromSubscription: SubscriptionItem not recognised \u2014 no addon_key found. Add this price ID to ADDON_PRICE_IDS or set item.metadata.addonKey on the Stripe object."
+      );
+      continue;
+    }
     if (FLAG_ADDONS.has(addonKey) && addonKey !== "whiteLabel") {
       addons[addonKey] = true;
     } else if (QTY_ADDONS.has(addonKey)) {
@@ -121958,6 +122009,214 @@ router14.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (re
     });
   }
 });
+router14.post("/billing/reconcile-subscription", ownerOnly, async (req, res) => {
+  const orgId3 = req.orgId;
+  if (!orgId3 || orgId3 === "default") {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  try {
+    const billingCtx = await loadBillingContext(orgId3);
+    const stripeCustomerId = billingCtx.stripeCustomerId ?? null;
+    if (!stripeCustomerId) {
+      res.status(400).json({ error: "No Stripe customer ID on record for this organisation. Cannot reconcile." });
+      return;
+    }
+    const stripeKey = getStripeKey();
+    if (!stripeKey) {
+      res.status(503).json({ error: "Stripe not configured" });
+      return;
+    }
+    const stripe = await createStripeClient(stripeKey);
+    if (!stripe) {
+      res.status(503).json({ error: "Stripe client unavailable" });
+      return;
+    }
+    const { pool: pgPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+    const healClient = await pgPool.connect();
+    try {
+      await healClient.query(
+        `UPDATE organizations SET stripe_customer_id = $1 WHERE id = $2 AND stripe_customer_id IS NULL`,
+        [stripeCustomerId, orgId3]
+      );
+    } finally {
+      healClient.release();
+    }
+    const subs = await stripe.subscriptions.list({
+      customer: stripeCustomerId,
+      status: "all",
+      limit: 10,
+      expand: ["data.items.data.price"]
+    });
+    const _plansModule = await Promise.resolve().then(() => (init_plans(), plans_exports));
+    const getAddonForPriceId2 = _plansModule.getAddonForPriceId;
+    const FA = _plansModule.FLAG_ADDONS;
+    const QA = _plansModule.QTY_ADDONS;
+    const PIA = _plansModule.PLAN_INCLUDED_ADDONS;
+    const { activateAddon: activateAddon2, deactivateAddon: deactivateAddon2, getOrgAddons: getOrgAddons2 } = await Promise.resolve().then(() => (init_addons_service(), addons_service_exports));
+    const diagItems = [];
+    const stripeAddonMap = /* @__PURE__ */ new Map();
+    for (const sub of subs.data) {
+      if (sub.status === "canceled") continue;
+      for (const item of sub.items.data) {
+        const priceId = item.price?.id ?? "";
+        let addonKey = getAddonForPriceId2(priceId);
+        if (!addonKey && item.metadata?.["addonKey"]) {
+          const metaKey = item.metadata["addonKey"];
+          if (FA.has(metaKey) || QA.has(metaKey)) addonKey = metaKey;
+        }
+        const qty = Number(item.quantity ?? 1);
+        if (addonKey) {
+          stripeAddonMap.set(addonKey, (stripeAddonMap.get(addonKey) ?? 0) + qty);
+        }
+        diagItems.push({
+          subscriptionId: sub.id,
+          status: sub.status,
+          itemId: item.id,
+          priceId,
+          priceAmount: item.price?.unit_amount ?? null,
+          quantity: qty,
+          metadata: item.metadata ?? {},
+          addonKey,
+          action: "pending"
+          // filled in below
+        });
+      }
+    }
+    const activatedKeys = /* @__PURE__ */ new Set();
+    for (const [addonKey, qty] of stripeAddonMap.entries()) {
+      try {
+        await activateAddon2(addonKey, orgId3, qty);
+        activatedKeys.add(addonKey);
+        for (const d of diagItems) {
+          if (d.addonKey === addonKey) d.action = "activated";
+        }
+      } catch (e) {
+        const msg = `error: ${e instanceof Error ? e.message : String(e)}`;
+        for (const d of diagItems) {
+          if (d.addonKey === addonKey) d.action = msg;
+        }
+      }
+    }
+    for (const d of diagItems) {
+      if (d.action === "pending") {
+        d.action = d.addonKey === null ? "unrecognised_price_id" : "skipped";
+      }
+    }
+    const billingPlan = (await loadBillingContext(orgId3)).plan?.toLowerCase() ?? "";
+    const planIncluded = PIA[billingPlan] ?? /* @__PURE__ */ new Set();
+    const { ADDON_PRICE_IDS: APIDS } = await Promise.resolve().then(() => (init_plans(), plans_exports));
+    const phase3Client = await pgPool.connect();
+    let rawOrgAddons = [];
+    try {
+      const rr = await phase3Client.query(
+        `SELECT addon_key, active, quantity, metadata FROM org_addons WHERE org_id = $1`,
+        [orgId3]
+      );
+      rawOrgAddons = rr.rows;
+    } finally {
+      phase3Client.release();
+    }
+    const deactivatedKeys = [];
+    for (const row of rawOrgAddons) {
+      const dbKey = row.addon_key;
+      if (!row.active) continue;
+      if (stripeAddonMap.has(dbKey)) continue;
+      if (planIncluded.has(dbKey)) {
+        diagItems.push({
+          subscriptionId: "DB_ONLY",
+          status: "exempt_plan_included",
+          itemId: "",
+          priceId: "",
+          priceAmount: null,
+          quantity: row.quantity ?? 1,
+          metadata: {},
+          addonKey: dbKey,
+          action: "kept_plan_included"
+        });
+        continue;
+      }
+      if (!APIDS[dbKey]) {
+        diagItems.push({
+          subscriptionId: "DB_ONLY",
+          status: "exempt_no_price_id",
+          itemId: "",
+          priceId: "",
+          priceAmount: null,
+          quantity: row.quantity ?? 1,
+          metadata: {},
+          addonKey: dbKey,
+          action: "kept_no_price_id"
+        });
+        continue;
+      }
+      const src = row.metadata?.["source"] ?? "";
+      if (["admin", "legacy", "grant", "ops"].includes(src)) {
+        diagItems.push({
+          subscriptionId: "DB_ONLY",
+          status: "exempt_manual_grant",
+          itemId: "",
+          priceId: "",
+          priceAmount: null,
+          quantity: row.quantity ?? 1,
+          metadata: { source: src },
+          addonKey: dbKey,
+          action: "kept_manual_grant"
+        });
+        continue;
+      }
+      try {
+        const wasActive = await deactivateAddon2(dbKey, orgId3);
+        if (wasActive) {
+          deactivatedKeys.push(dbKey);
+          diagItems.push({
+            subscriptionId: "DB_ONLY",
+            status: "absent_from_stripe",
+            itemId: "",
+            priceId: "",
+            priceAmount: null,
+            quantity: 0,
+            metadata: {},
+            addonKey: dbKey,
+            action: "deactivated_stale"
+          });
+        }
+      } catch {
+      }
+    }
+    const dbClient = await pgPool.connect();
+    let addonRows = [];
+    try {
+      const r = await dbClient.query(
+        `SELECT addon_key, active, quantity
+         FROM org_addons WHERE org_id = $1 ORDER BY addon_key`,
+        [orgId3]
+      );
+      addonRows = r.rows;
+    } finally {
+      dbClient.release();
+    }
+    logger.info({
+      orgId: orgId3,
+      stripeCustomerId,
+      activatedKeys: Array.from(activatedKeys),
+      deactivatedKeys
+    }, "[Billing/ReconcileSubscription] Manual reconciliation completed");
+    res.json({
+      ok: true,
+      orgId: orgId3,
+      stripeCustomerId,
+      subscriptionsChecked: subs.data.filter((s) => s.status !== "canceled").length,
+      activatedKeys: Array.from(activatedKeys),
+      deactivatedKeys,
+      subscriptionItems: diagItems,
+      org_addons: addonRows
+    });
+  } catch (err) {
+    logger.error({ err, orgId: orgId3 }, "[Billing/ReconcileSubscription] Failed");
+    res.status(500).json({ error: "Reconciliation failed", detail: err instanceof Error ? err.message : String(err) });
+  }
+});
 var billing_default = router14;
 
 // src/routes/alert-rules.ts
@@ -136299,6 +136558,79 @@ router52.post("/admin/test-session", async (req, res) => {
     client.release();
   }
 });
+var QA_USER_UUID = "10000000-0000-4000-8000-000000000001";
+var QA_ORG_UUID = "10000000-0000-4000-8000-000000000002";
+var QA_EMAIL = "qa@flowpoint.pro";
+router52.post("/admin/provision-qa-account", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `INSERT INTO users (id, email, status, email_verified, auth_provider)
+       VALUES ($1::uuid, $2, 'active', true, 'magic_link')
+       ON CONFLICT (id) DO UPDATE
+         SET status = 'active', email_verified = true`,
+      [QA_USER_UUID, QA_EMAIL]
+    );
+    await client.query(
+      `INSERT INTO organizations
+         (id, name, slug, owner_user_id, owner_email, status, plan,
+          subscription_status, trial_ends_at, trial_consumed_at)
+       VALUES ($1::uuid, 'QA Organisation', 'qa-organisation', $2, $3, 'active', 'ultra',
+               'trialing', '2099-01-01'::timestamptz, NOW())
+       ON CONFLICT (id) DO UPDATE
+         SET status = 'active', plan = 'ultra',
+             subscription_status = 'trialing',
+             trial_ends_at = '2099-01-01'::timestamptz,
+             trial_consumed_at = COALESCE(organizations.trial_consumed_at, NOW()),
+             owner_user_id = $2, owner_email = $3`,
+      [QA_ORG_UUID, QA_USER_UUID, QA_EMAIL]
+    );
+    await client.query(
+      `INSERT INTO organization_members
+         (id, organization_id, user_id, role, status, joined_at)
+       VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'owner', 'active', NOW())
+       ON CONFLICT (organization_id, user_id) DO UPDATE
+         SET role = 'owner', status = 'active'`,
+      [QA_ORG_UUID, QA_USER_UUID]
+    );
+    const { randomBytes: randomBytes9 } = await import("crypto");
+    const sessionToken = `fp_qa_${randomBytes9(32).toString("hex")}`;
+    const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1e3);
+    await client.query(
+      `INSERT INTO user_sessions
+         (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2)
+       VALUES ($1, $2, $3, $4, 'owner', $5, NOW(), $6::uuid)
+       ON CONFLICT DO NOTHING`,
+      [sessionToken, QA_USER_UUID, QA_ORG_UUID, QA_EMAIL, expiresAt, QA_USER_UUID]
+    );
+    await client.query("COMMIT");
+    res.json({
+      ok: true,
+      email: QA_EMAIL,
+      orgId: QA_ORG_UUID,
+      userId: QA_USER_UUID,
+      plan: "ultra",
+      sessionToken,
+      expiresAt: expiresAt.toISOString(),
+      purgeExempt: true,
+      note: [
+        "Store sessionToken in sessionStorage['fp_session_token'] in the browser.",
+        "Navigate to /dashboard.html \u2014 app bootstraps normally.",
+        "Re-call this endpoint to get a fresh token after Browser Use session recycling.",
+        "No Stripe customer or subscription was created."
+      ]
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {
+    });
+    console.error("[Admin] provision-qa-account failed:", err);
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
 router52.post("/admin/ai-usage-seed", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
   const { orgId: orgId3, creditsUsed } = req.body;
@@ -136721,7 +137053,7 @@ function checkPurgeRate(isDryRun) {
     retryAfterSec: Math.ceil((windowMs - (now - existing.firstAt)) / 1e3)
   };
 }
-var PURGE_SYSTEM_EMAILS = ["support@flowpoint.pro"];
+var PURGE_SYSTEM_EMAILS = ["support@flowpoint.pro", "qa@flowpoint.pro"];
 function stripeErrorCode(err) {
   return err?.code ?? err?.raw?.code;
 }
