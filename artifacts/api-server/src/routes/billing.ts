@@ -2209,7 +2209,9 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
       );
     } finally { healClient.release(); }
 
-    // Fetch all active/trialing subscriptions for this customer
+    // ── PHASE 1 : fetch all non-canceled subscriptions for this customer ────────
+    // Source of truth = CURRENT Stripe SubscriptionItems only.
+    // Payment history is never consulted.
     const subs = await stripe.subscriptions.list({
       customer: stripeCustomerId,
       status: "all",
@@ -2217,9 +2219,12 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
       expand: ["data.items.data.price"],
     });
 
-    // Parse add-ons from all active subscriptions
-    const { getAddonForPriceId, FLAG_ADDONS: FA, QTY_ADDONS: QA } = await import("../lib/plans.js");
-    const { activateAddon, deactivateAddon } = await import("../services/addons-service.js");
+    const _plansModule = await import("../lib/plans.js");
+    const getAddonForPriceId = _plansModule.getAddonForPriceId as (id: string) => string | null;
+    const FA = _plansModule.FLAG_ADDONS as unknown as Set<string>;
+    const QA = _plansModule.QTY_ADDONS as unknown as Set<string>;
+    const PIA = _plansModule.PLAN_INCLUDED_ADDONS as unknown as Record<string, Set<string>>;
+    const { activateAddon, deactivateAddon, getOrgAddons } = await import("../services/addons-service.js");
 
     const diagItems: Array<{
       subscriptionId: string; status: string;
@@ -2228,30 +2233,26 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
       addonKey: string | null; action: string;
     }> = [];
 
-    const activatedKeys = new Set<string>();
+    // addonKey → quantity as seen in ALL live (non-canceled) Stripe subscriptions.
+    // QTY addons: sum quantities across subs. FLAG addons: presence = true.
+    const stripeAddonMap = new Map<string, number>(); // key → qty (1 for flag addons)
 
     for (const sub of subs.data) {
       if (sub.status === "canceled") continue;
       for (const item of sub.items.data) {
         const priceId = item.price?.id ?? "";
         let addonKey = getAddonForPriceId(priceId);
-        if (!addonKey && item.metadata?.["addonKey"]) {
-          const metaKey = item.metadata["addonKey"];
+        if (!addonKey && (item.metadata as Record<string, string>)?.["addonKey"]) {
+          const metaKey = (item.metadata as Record<string, string>)["addonKey"];
           if (FA.has(metaKey) || QA.has(metaKey)) addonKey = metaKey;
         }
         const qty = Number(item.quantity ?? 1);
-        let action = "skipped_plan_item";
+
         if (addonKey) {
-          try {
-            await activateAddon(addonKey, orgId, qty);
-            activatedKeys.add(addonKey);
-            action = "activated";
-          } catch (e) {
-            action = `error: ${e instanceof Error ? e.message : String(e)}`;
-          }
-        } else {
-          action = "unrecognised_price_id";
+          // Sum quantities across multiple subscriptions (rare but possible)
+          stripeAddonMap.set(addonKey, (stripeAddonMap.get(addonKey) ?? 0) + qty);
         }
+
         diagItems.push({
           subscriptionId: sub.id,
           status: sub.status,
@@ -2261,25 +2262,82 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
           quantity: qty,
           metadata: (item.metadata as Record<string, string>) ?? {},
           addonKey,
-          action,
+          action: "pending",   // filled in below
         });
       }
     }
 
-    // Read org_addons after reconciliation
+    // ── PHASE 2 : activate/update addons present in Stripe ───────────────────
+    const activatedKeys = new Set<string>();
+    for (const [addonKey, qty] of stripeAddonMap.entries()) {
+      try {
+        await activateAddon(addonKey, orgId, qty);
+        activatedKeys.add(addonKey);
+        // Back-fill action in diagItems
+        for (const d of diagItems) { if (d.addonKey === addonKey) d.action = "activated"; }
+      } catch (e) {
+        const msg = `error: ${e instanceof Error ? e.message : String(e)}`;
+        for (const d of diagItems) { if (d.addonKey === addonKey) d.action = msg; }
+      }
+    }
+    // Mark skipped (plan items or unrecognised)
+    for (const d of diagItems) {
+      if (d.action === "pending") {
+        d.action = d.addonKey === null ? "unrecognised_price_id" : "skipped";
+      }
+    }
+
+    // ── PHASE 3 : deactivate stale addons (in DB but absent from Stripe) ────
+    // This ensures Stripe is the sole source of truth — test-cycle leftovers are
+    // cleared so the next purchase always starts from quantity=1.
+    // Plan-included addons are excluded: they are never on Stripe subscriptions.
+    const billingPlan = (await loadBillingContext(orgId)).plan?.toLowerCase() ?? "";
+    const planIncluded: Set<string> = PIA[billingPlan] ?? new Set();
+
+    const currentDbAddons = await getOrgAddons(orgId);
+    const deactivatedKeys: string[] = [];
+    for (const [dbKey, dbVal] of Object.entries(currentDbAddons)) {
+      // Skip if already reconciled from Stripe, or if it's plan-included, or inactive
+      if (stripeAddonMap.has(dbKey)) continue;
+      if (planIncluded.has(dbKey)) continue;
+      if (!dbVal) continue; // already false/0 in DB
+
+      try {
+        const wasActive = await deactivateAddon(dbKey, orgId);
+        if (wasActive) {
+          deactivatedKeys.push(dbKey);
+          diagItems.push({
+            subscriptionId: "DB_ONLY",
+            status: "absent_from_stripe",
+            itemId: "",
+            priceId: "",
+            priceAmount: null,
+            quantity: 0,
+            metadata: {},
+            addonKey: dbKey,
+            action: "deactivated_stale",
+          });
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // ── PHASE 4 : read final org_addons state ────────────────────────────────
     const dbClient = await pgPool.connect();
-    let addonRows: Array<{ addon_key: string; active: boolean; quantity: number | null; stripe_subscription_item_id: string | null }> = [];
+    let addonRows: Array<{ addon_key: string; active: boolean; quantity: number | null }> = [];
     try {
       const r = await dbClient.query(
-        `SELECT addon_key, active, quantity, stripe_subscription_item_id
-         FROM org_addons WHERE org_id = $1 ORDER BY updated_at DESC`,
+        `SELECT addon_key, active, quantity
+         FROM org_addons WHERE org_id = $1 ORDER BY addon_key`,
         [orgId],
       );
       addonRows = r.rows as typeof addonRows;
     } finally { dbClient.release(); }
 
-    logger.info({ orgId, stripeCustomerId, activatedKeys: Array.from(activatedKeys), diagItems },
-      "[Billing/ReconcileSubscription] Manual reconciliation completed");
+    logger.info({
+      orgId, stripeCustomerId,
+      activatedKeys: Array.from(activatedKeys),
+      deactivatedKeys,
+    }, "[Billing/ReconcileSubscription] Manual reconciliation completed");
 
     res.json({
       ok: true,
@@ -2287,6 +2345,7 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
       stripeCustomerId,
       subscriptionsChecked: subs.data.filter((s: { status: string }) => s.status !== "canceled").length,
       activatedKeys: Array.from(activatedKeys),
+      deactivatedKeys,
       subscriptionItems: diagItems,
       org_addons: addonRows,
     });

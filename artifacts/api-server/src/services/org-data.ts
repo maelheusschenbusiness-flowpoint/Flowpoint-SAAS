@@ -279,10 +279,11 @@ export async function findOrgByStripeCustomer(stripeCustomerId: string): Promise
     // checkout time). When we find the orgId this way, we self-heal the DB so
     // future lookups hit path 1.
     try {
-      const { createStripeClient } = await import("../services/stripe-factory.js");
-      const stripe = createStripeClient();
+      const { createStripeClient, getStripeKey } = await import("../services/stripe-factory.js");
+      const _key = getStripeKey();
+      const stripe = _key ? await createStripeClient(_key) : null;
       if (stripe) {
-        const customer = await stripe.customers.retrieve(stripeCustomerId);
+        const customer = await (stripe as unknown as { customers: { retrieve(id: string): Promise<{ deleted?: boolean; metadata?: Record<string, string>; email?: string | null }> } }).customers.retrieve(stripeCustomerId);
         if (customer && !customer.deleted) {
           const metaOrgId = (customer.metadata as Record<string, string>)?.["orgId"]
             ?? (customer.metadata as Record<string, string>)?.["org_id"]
