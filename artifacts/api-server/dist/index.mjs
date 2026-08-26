@@ -74686,7 +74686,7 @@ async function loadOrgData(orgId3) {
         `SELECT plan, subscription_status, stripe_customer_id, stripe_subscription_id,
                 trial_ends_at, trial_consumed_at, trial_started_at,
                 addons, pending_plan, pending_plan_date,
-                owner_email, owner_first_name, name
+                owner_email, owner_first_name, name, is_internal_qa
          FROM organizations WHERE id = $1 LIMIT 1`,
         [orgId3]
       );
@@ -74705,7 +74705,8 @@ async function loadOrgData(orgId3) {
           pendingPlanDate: row.pending_plan_date ?? null,
           email: row.owner_email ?? null,
           firstName: row.owner_first_name ?? null,
-          orgName: row.name ?? null
+          orgName: row.name ?? null,
+          isInternalQa: row.is_internal_qa === true
         };
       }
     } finally {
@@ -74735,7 +74736,9 @@ async function loadOrgData(orgId3) {
       pendingPlanDate: legacy.pendingPlanDate ?? null,
       email: legacy.email ?? null,
       firstName: legacy.firstName ?? null,
-      orgName: legacy.orgName ?? null
+      orgName: legacy.orgName ?? null,
+      // Legacy org_settings path never sets is_internal_qa — QA org is UUID-only.
+      isInternalQa: false
     };
   } catch (legacyErr) {
     logger.error({ legacyErr, orgId: orgId3 }, "[OrgData] Both organizations and org_settings failed");
@@ -99727,21 +99730,23 @@ async function loadBillingContext(orgId3) {
   const stripeCustomerId = orgData.stripeCustomerId ?? null;
   const trialEndsAt = orgData.trialEndsAt ?? null;
   const trialConsumedAt = orgData.trialConsumedAt ?? null;
-  const normalised = normalizeSubscriptionStatus({
+  const QA_ORG_UUID2 = "10000000-0000-4000-8000-000000000002";
+  const isQaOrg = orgId3 === QA_ORG_UUID2 && orgData.isInternalQa === true;
+  const normalised = isQaOrg ? "trialing" : normalizeSubscriptionStatus({
     rawStatus: rawSubscriptionStatus,
     stripeSubscriptionId,
     stripeCustomerId,
     trialEndsAt,
     trialConsumedAt
   });
-  if (normalised !== rawSubscriptionStatus && rawSubscriptionStatus !== null) {
+  if (!isQaOrg && normalised !== rawSubscriptionStatus && rawSubscriptionStatus !== null) {
     logger.warn(
       { orgId: orgId3, rawSubscriptionStatus, normalizedTo: normalised, stripeSubscriptionId, trialConsumedAt },
       "[BillingContext] Subscription state normalis\xE9 \xE0 la lecture"
     );
   }
   const hasPremiumAccess = statusGrantsAccess(normalised);
-  const canStartTrial = !trialConsumedAt && !stripeSubscriptionId;
+  const canStartTrial = !isQaOrg && !trialConsumedAt && !stripeSubscriptionId;
   const mustCompleteBilling = !hasPremiumAccess;
   return {
     subscriptionStatus: normalised,
@@ -103714,6 +103719,7 @@ async function initDataTables() {
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS is_internal_qa BOOLEAN NOT NULL DEFAULT false;`);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_owner_idx ON organizations(owner_user_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_slug_idx  ON organizations(slug);`);
     await run(client, `
@@ -108779,13 +108785,16 @@ router6.get("/me", async (req, res) => {
       const prefsRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId3]).catch(() => ({ rows: [] }));
       const _storedPubKey = prefsRow.rows[0]?.settings;
       const _publicApiKey = typeof _storedPubKey?.publicApiKey === "string" && _storedPubKey.publicApiKey ? _storedPubKey.publicApiKey : `fp_pub_${_pkHash}`;
-      const normStatus = normalizeSubscriptionStatus({
+      const _normStatusBase = normalizeSubscriptionStatus({
         rawStatus: rawSubStatus,
         stripeSubscriptionId: rawStripeSubId,
         stripeCustomerId: rawStripeCustomerId,
         trialEndsAt: rawTrialEndsAt,
         trialConsumedAt: rawTrialConsumedAt
       });
+      const _QA_ORG_UUID = "10000000-0000-4000-8000-000000000002";
+      const _isQaOrg = orgId3 === _QA_ORG_UUID && billingData?.isInternalQa === true;
+      const normStatus = _isQaOrg ? "trialing" : _normStatusBase;
       const _addonsRows = { rows: _entitlementAddonRows };
       const _mergedAddons = {};
       for (const row of _addonsRows.rows) {
@@ -108809,7 +108818,7 @@ router6.get("/me", async (req, res) => {
           if (!(key in _mergedAddons)) _mergedAddons[key] = val;
         }
       }
-      const _canStartTrial = !rawTrialConsumedAt && !rawStripeSubId;
+      const _canStartTrial = !_isQaOrg && !rawTrialConsumedAt && !rawStripeSubId;
       logger.info({
         user: (req.orgContext?.email ?? "").slice(0, 30),
         org: (dbData?.orgName ?? "").slice(0, 30),
@@ -136561,8 +136570,37 @@ router52.post("/admin/test-session", async (req, res) => {
 var QA_USER_UUID = "10000000-0000-4000-8000-000000000001";
 var QA_ORG_UUID = "10000000-0000-4000-8000-000000000002";
 var QA_EMAIL = "qa@flowpoint.pro";
+var QA_SESSION_TTL_MS = 8 * 60 * 60 * 1e3;
+var _qaProvisionRateLimit = /* @__PURE__ */ new Map();
+var QA_RATE_MAX = 5;
+var QA_RATE_WIN = 60 * 60 * 1e3;
+function checkQaRateLimit(ip) {
+  const now = Date.now();
+  const entry = _qaProvisionRateLimit.get(ip);
+  if (!entry || now - entry.windowStart > QA_RATE_WIN) {
+    _qaProvisionRateLimit.set(ip, { count: 1, windowStart: now });
+    return { allowed: true, retryAfterSec: 0 };
+  }
+  if (entry.count >= QA_RATE_MAX) {
+    const retryAfterSec = Math.ceil((QA_RATE_WIN - (now - entry.windowStart)) / 1e3);
+    return { allowed: false, retryAfterSec };
+  }
+  entry.count++;
+  return { allowed: true, retryAfterSec: 0 };
+}
 router52.post("/admin/provision-qa-account", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
+  const callerIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "unknown";
+  const rl = checkQaRateLimit(callerIp);
+  if (!rl.allowed) {
+    res.setHeader("Retry-After", String(rl.retryAfterSec));
+    res.status(429).json({
+      ok: false,
+      error: `Rate limit exceeded \u2014 max ${QA_RATE_MAX} calls/hour per IP. Retry in ${rl.retryAfterSec}s.`
+    });
+    return;
+  }
+  const callerUa = req.headers["user-agent"] ?? "unknown";
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -136576,15 +136614,19 @@ router52.post("/admin/provision-qa-account", async (req, res) => {
     await client.query(
       `INSERT INTO organizations
          (id, name, slug, owner_user_id, owner_email, status, plan,
-          subscription_status, trial_ends_at, trial_consumed_at)
-       VALUES ($1::uuid, 'QA Organisation', 'qa-organisation', $2, $3, 'active', 'ultra',
-               'trialing', '2099-01-01'::timestamptz, NOW())
+          subscription_status, is_internal_qa)
+       VALUES ($1::uuid, 'QA Organisation', 'qa-organisation', $2, $3,
+               'active', 'ultra', 'none', true)
        ON CONFLICT (id) DO UPDATE
-         SET status = 'active', plan = 'ultra',
-             subscription_status = 'trialing',
-             trial_ends_at = '2099-01-01'::timestamptz,
-             trial_consumed_at = COALESCE(organizations.trial_consumed_at, NOW()),
-             owner_user_id = $2, owner_email = $3`,
+         SET status          = 'active',
+             plan            = 'ultra',
+             is_internal_qa  = true,
+             owner_user_id   = $2,
+             owner_email     = $3,
+             -- Clear the legacy trialing/trial_ends_at debt from the initial provision
+             subscription_status = 'none',
+             trial_ends_at       = NULL,
+             trial_consumed_at   = NULL`,
       [QA_ORG_UUID, QA_USER_UUID, QA_EMAIL]
     );
     await client.query(
@@ -136597,7 +136639,7 @@ router52.post("/admin/provision-qa-account", async (req, res) => {
     );
     const { randomBytes: randomBytes9 } = await import("crypto");
     const sessionToken = `fp_qa_${randomBytes9(32).toString("hex")}`;
-    const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1e3);
+    const expiresAt = new Date(Date.now() + QA_SESSION_TTL_MS);
     await client.query(
       `INSERT INTO user_sessions
          (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2)
@@ -136606,6 +136648,15 @@ router52.post("/admin/provision-qa-account", async (req, res) => {
       [sessionToken, QA_USER_UUID, QA_ORG_UUID, QA_EMAIL, expiresAt, QA_USER_UUID]
     );
     await client.query("COMMIT");
+    console.log(JSON.stringify({
+      event: "QA_PROVISION",
+      ts: (/* @__PURE__ */ new Date()).toISOString(),
+      ip: callerIp,
+      ua: callerUa,
+      orgId: QA_ORG_UUID,
+      expiresAt: expiresAt.toISOString()
+      // sessionToken is deliberately NOT logged — it is equivalent to a credential.
+    }));
     res.json({
       ok: true,
       email: QA_EMAIL,
@@ -136613,19 +136664,19 @@ router52.post("/admin/provision-qa-account", async (req, res) => {
       userId: QA_USER_UUID,
       plan: "ultra",
       sessionToken,
+      // only appearance of the token
       expiresAt: expiresAt.toISOString(),
+      // 8 h from now
       purgeExempt: true,
-      note: [
-        "Store sessionToken in sessionStorage['fp_session_token'] in the browser.",
-        "Navigate to /dashboard.html \u2014 app bootstraps normally.",
-        "Re-call this endpoint to get a fresh token after Browser Use session recycling.",
-        "No Stripe customer or subscription was created."
+      reconnect: [
+        "sessionStorage.setItem('fp_session_token', data.sessionToken)",
+        "location.href = '/dashboard.html'"
       ]
     });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {
     });
-    console.error("[Admin] provision-qa-account failed:", err);
+    console.error("[Admin] provision-qa-account failed:", safeErrMsg(err));
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   } finally {
     client.release();
