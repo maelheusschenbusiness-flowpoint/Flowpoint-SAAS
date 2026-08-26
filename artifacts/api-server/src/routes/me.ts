@@ -205,7 +205,8 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
           if (!(key in _mergedAddons)) _mergedAddons[key] = val as boolean | number;
         }
       }
-      const _canStartTrial = !rawTrialConsumedAt && !rawStripeSubId;
+      // QA org: never show "start trial" CTA — it's an internal account, not a real signup.
+      const _canStartTrial = !_isQaOrg && !rawTrialConsumedAt && !rawStripeSubId;
 
       logger.info({
         user:  (req.orgContext?.email ?? "").slice(0, 30),
