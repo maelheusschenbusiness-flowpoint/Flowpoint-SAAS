@@ -297,10 +297,14 @@ async function persistAddonsFromSubscription(
       const { default: Stripe } = await import("stripe");
       const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
 
+      // expand items.data.price so item.price is always an object with .id
+      // Without expand, Stripe may return price as a bare string in list responses,
+      // causing item.price?.id to be undefined and every addon to be wrongly deactivated.
       const allSubs = await stripe.subscriptions.list({
         customer: stripeCustomerId,
         status: "all",
         limit: 100,
+        expand: ["data.items.data.price"],
       });
 
       // Filter to live subscriptions only
@@ -311,7 +315,11 @@ async function persistAddonsFromSubscription(
       aggregateAddonKeys = new Set<string>();
       for (const sub of liveSubs) {
         for (const item of sub.items.data) {
-          const priceId = item.price?.id;
+          // Defensive: price may be an object OR a bare string depending on expand status
+          const rawPrice = item.price as unknown;
+          const priceId = typeof rawPrice === "string"
+            ? rawPrice
+            : (rawPrice as { id?: string } | null)?.id ?? "";
           // Primary: match by price ID in ADDON_PRICE_IDS
           let addonKey: string | null = null;
           if (priceId) {
