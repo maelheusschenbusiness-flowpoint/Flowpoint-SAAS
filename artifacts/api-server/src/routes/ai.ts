@@ -359,7 +359,7 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
     const warningAudits  = audits.filter(a => a.score >= 50 && a.score < 75);
 
     const e = extra ?? {};
-    const plan         = (e["plan"] as string)  ?? store.me.plan ?? "Pro";
+    const plan         = (e["plan"] as string)  ?? store.me.plan ?? "standard";
     const firstName    = (e["firstName"] as string) ?? "";
     const streak       = (e["streak"] as number) ?? 0;
     const localScore   = (e["localScore"] as number) ?? 0;
@@ -817,7 +817,7 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
 
     return lines.filter(l => l !== "").join("\n");
   } catch {
-    return `Platform: Flowpoint SaaS SEO Dashboard. Plan: ${store.me.plan ?? "Pro"}.`;
+    return `Platform: Flowpoint SaaS SEO Dashboard. Plan: ${store.me.plan ?? "standard"}.`;
   }
 }
 

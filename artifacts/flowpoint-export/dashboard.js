@@ -10188,6 +10188,11 @@ function renderBilling() {
           return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('⚫ Expiré · Fonctionnalités Premium désactivées')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpGoToPricing('${_resubPlan}')">${fpT('Reprendre un abonnement')}</button></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.</div>${_dangerZone}</div>`;
         }
 
+        // ── Compte interne / QA (trialing sans subscription Stripe) ─────────
+        if (_ss === 'trialing' && !_bs.subscriptionId) {
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #6366f1"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div class="fp-card-title" style="margin-bottom:0">⚙️ Gestion de l'abonnement</div></div><div style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Compte interne · Accès Ultra activé · Aucune subscription Stripe</div>${_dangerZone}</div>`;
+        }
+
         // ── États actifs ─────────────────────────────────────────────────────
         if (!(_ss === 'active' || _ss === 'trialing' || _cap)) return '';
         const _bc  = _cap ? '#ef4444' : _ss === 'trialing' ? '#f59e0b' : '#22c55e';
@@ -10448,7 +10453,19 @@ function renderBilling() {
     window._fpAddonQtyStep = function(key, delta) {
       const inp = document.getElementById('fp-addon-qty-' + key);
       if (!inp) return;
-      inp.value = Math.min(20, Math.max(1, (parseInt(inp.value, 10) || 1) + delta));
+      const newQty = Math.min(20, Math.max(1, (parseInt(inp.value, 10) || 1) + delta));
+      inp.value = newQty;
+      // P1-A: update displayed price = unitPrice × qty
+      const priceEl = document.getElementById('fp-addon-price-' + key);
+      const actBtn  = document.getElementById('fp-addon-act-' + key);
+      if (priceEl && priceEl.dataset.unitMinor) {
+        const unitMinor = parseInt(priceEl.dataset.unitMinor, 10) || 0;
+        const isOneTime = priceEl.dataset.oneTime === '1';
+        const v = (unitMinor * newQty) / 100;
+        const fmtPrice = (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '€' + (isOneTime ? '' : '/mois');
+        priceEl.textContent = fmtPrice;
+        if (actBtn) actBtn.textContent = 'Activer — ' + fmtPrice;
+      }
     };
     window.fpActivateAddon = async function(addonIdx) {
       const _a = window._fpAllAddons && window._fpAllAddons[addonIdx];
@@ -10536,7 +10553,7 @@ function renderBilling() {
           <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;padding-top:14px;border-top:1px solid var(--fp-border)">
             <div>
               <div style="font-size:10px;color:var(--fp-text-faint)">Prix</div>
-              <div style="font-size:18px;font-weight:900;color:${isInc ? '#22c55e' : 'var(--fp-text)'}">${isInc ? 'Inclus dans votre plan' : escHtml(a.price)}</div>
+              <div id="fp-addon-price-${escHtml(a.key)}" data-unit-minor="${a.priceMinor||0}" data-one-time="${a.oneTime?'1':'0'}" style="font-size:18px;font-weight:900;color:${isInc ? '#22c55e' : 'var(--fp-text)'}">${isInc ? (a.status==='beta'?'🧪 Bêta · Inclus dans votre plan':'Inclus dans votre plan') : escHtml(a.price)}</div>
             </div>
             ${isInc
               ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">${fpT('✓ Déjà inclus')}</button>`
@@ -10553,7 +10570,7 @@ function renderBilling() {
                         <input id="fp-addon-qty-${a.key}" type="number" value="1" min="1" max="20" readonly style="width:38px;text-align:center;border:1px solid var(--fp-border);border-radius:6px;padding:3px 4px;font-size:13px;background:transparent;color:var(--fp-text)">
                         <button onclick="window._fpAddonQtyStep('${a.key}',1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">+</button>
                       </div>
-                      <button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>
+                      <button id="fp-addon-act-${escHtml(a.key)}" class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>
                     </div>` : `<button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>`}`
             }
           </div>
@@ -10692,7 +10709,7 @@ function renderBilling() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Total payé 2026', displayStat(STATE.billing?.totalPaid != null ? STATE.billing.totalPaid + '€' : null, PREVIEW_MODE ? '286€' : '0€'), PREVIEW_MODE ? '5 factures · HT' : (STATE.billing?.totalPaid ? 'Total HT' : 'Aucune facture'), 'neutral')}
-        ${statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, PREVIEW_MODE ? '79€' : '79€'), PREVIEW_MODE ? '01/06/2026 — dans 23 jours' : 'Prochaine échéance', 'neutral')}
+        ${(STATE.billing?.subscriptionId || (typeof window.getBillingStatus==='function'?window.getBillingStatus():'')!=='trialing') ? statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, PREVIEW_MODE ? '79€' : '79€'), PREVIEW_MODE ? '01/06/2026 — dans 23 jours' : 'Prochaine échéance', 'neutral') : statCard('Accès plan', STATE.me?.plan||'Ultra', 'Compte interne · aucune facturation', 'up')}
         ${statCard('Méthodes de paiement', String(paymentMethods.length), paymentMethods.length > 0 ? 'actives — ' + (paymentMethods[0]?.brand || 'Carte') + ' par défaut' : 'Aucune carte enregistrée', 'up')}
         ${statCard('Paiements échoués', displayStat(STATE.billing?.failedPayments != null ? String(STATE.billing.failedPayments) : '0', '0'), PREVIEW_MODE ? 'aucun incident 2026' : (STATE.billing?.failedPayments ? STATE.billing.failedPayments + ' incident(s)' : 'Aucun incident'), 'up')}
       </div>
@@ -11154,7 +11171,7 @@ function renderBilling() {
       ${statCard('Plan actuel', plan, 'actif · ' + (plan === 'Standard' ? '29€' : (plan === 'Agency' || plan === 'Ultra') ? '149€' : '79€') + '/mois', 'up')}
       ${statCard('Usage Health', displayStat(healthScore!=null?healthScore+'/100':null,'78/100'), healthScore!=null?(healthScore > 70 ? 'Sain — sous contrôle' : 'Attention requise'):PREVIEW_MODE?'Sain — sous contrôle':'Calcul en cours', healthScore!=null?(healthScore > 70 ? 'up' : 'down'):'neutral')}
       ${statCard('Potentiel upgrade', displayStat(upgradeScore!=null&&upgradeScore>0?upgradeScore+'%':null,'62%'), isUltra ? 'Plan optimal atteint' : 'Score upgrade détecté', isUltra ? 'up' : 'neutral')}
-      ${statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '79€'), PREVIEW_MODE ? '01/06/2026 · dans 23j' : 'Prochaine échéance', 'neutral')}
+      ${(STATE.billing?.subscriptionId || (typeof window.getBillingStatus==='function'?window.getBillingStatus():'')!=='trialing') ? statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '79€'), PREVIEW_MODE ? '01/06/2026 · dans 23j' : 'Prochaine échéance', 'neutral') : statCard('Accès plan', STATE.me?.plan||'Ultra', 'Compte interne · aucune facturation', 'up')}
     </div>
 
     <!-- PLAN + GAUGES -->
@@ -13244,7 +13261,7 @@ function renderSettings() {
   const _wfAct=(STATE.workflows||[]).filter(w=>w.enabled!==false).length;
   const _intAct=Object.values((STATE.settings&&STATE.settings.integrations)||{}).filter(Boolean).length;
   const _monOkS=(STATE.monitors||[]).length>0&&(STATE.monitors||[]).filter(m=>m.status==='down').length===0;
-  const _billOkS=STATE.me?.subscriptionStatus==='active';
+  const _billOkS=STATE.me?.hasPremiumAccess===true;
   const _has2fa=STATE.settings?.twoFa||false;
   const _hasAudits=(STATE.audits||[]).length>0;
   const _hasReports=(STATE.reports||[]).length>0;
@@ -13429,7 +13446,7 @@ function renderAI() {
     const _wfActive    = (STATE.workflows||[]).filter(w=>w.enabled!==false).length;
     const _missTotal   = (STATE.missions||[]).length;
     const _missDone    = (STATE.missions||[]).filter(m=>m.status==='completed').length;
-    const _billOk      = STATE.me?.subscriptionStatus==='active';
+    const _billOk      = STATE.me?.hasPremiumAccess===true;
     const _compScore   = STATE.competitors&&STATE.competitors.length>0 ? Math.min(100,Math.round((STATE.competitors[0].domainRating||50)*1.2)) : null;
     const systems = [
       {name:'SEO & Audits', icon:'🔍', score:_mkSysScore(_auditScore), status:_mkSysStatus(_auditScore), color:_mkSysColor(_auditScore), route:'audits',
