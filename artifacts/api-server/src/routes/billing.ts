@@ -2278,16 +2278,19 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
       for (const [addonKey, qty] of stripeAddonMap.entries()) {
         try {
           const rowId = `oa_${orgId}_${addonKey}`;
-          // INSERT the row if it doesn't exist yet (idempotent)
+          // INSERT the row if it doesn't exist yet (idempotent).
+          // Only reference columns guaranteed to exist in all prod deployments.
+          // updated_at / created_at have DEFAULT NOW() so they are omitted here.
           await phase2Client.query(
-            `INSERT INTO org_addons (id, org_id, addon_key, active, quantity, activated_at, updated_at, created_at)
-             VALUES ($1, $2, $3, true, $4, NOW(), NOW(), NOW())
+            `INSERT INTO org_addons (id, org_id, addon_key, active, quantity, activated_at)
+             VALUES ($1, $2, $3, true, $4, NOW())
              ON CONFLICT (id) DO NOTHING`,
             [rowId, orgId, addonKey, qty],
           );
-          // Always UPDATE active+quantity so a previously-deactivated row is restored
+          // Always UPDATE active+quantity so a previously-deactivated row is restored.
+          // activated_at is optional — skip if column absent (safe to repeat if present).
           await phase2Client.query(
-            `UPDATE org_addons SET active = true, quantity = $3, activated_at = NOW(), updated_at = NOW()
+            `UPDATE org_addons SET active = true, quantity = $3
              WHERE org_id = $1 AND addon_key = $2`,
             [orgId, addonKey, qty],
           );
