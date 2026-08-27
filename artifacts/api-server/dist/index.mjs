@@ -75315,7 +75315,8 @@ async function persistAddonsFromSubscription(subscription, orgId3, stripeCustome
       const allSubs = await stripe.subscriptions.list({
         customer: stripeCustomerId,
         status: "all",
-        limit: 100
+        limit: 100,
+        expand: ["data.items.data.price"]
       });
       const liveSubs = allSubs.data.filter(
         (s) => s.status === "active" || s.status === "trialing" || s.status === "past_due"
@@ -75323,7 +75324,8 @@ async function persistAddonsFromSubscription(subscription, orgId3, stripeCustome
       aggregateAddonKeys = /* @__PURE__ */ new Set();
       for (const sub of liveSubs) {
         for (const item of sub.items.data) {
-          const priceId = item.price?.id;
+          const rawPrice = item.price;
+          const priceId = typeof rawPrice === "string" ? rawPrice : rawPrice?.id ?? "";
           let addonKey = null;
           if (priceId) {
             const { getAddonForPriceId: _gafp } = await Promise.resolve().then(() => (init_plans(), plans_exports));
@@ -102664,6 +102666,30 @@ var addon_stripe_sync_exports = {};
 __export(addon_stripe_sync_exports, {
   syncAddonWithStripe: () => syncAddonWithStripe
 });
+async function findOrCreateAddonSubscription(stripe, stripeCustomerId, orgId3, firstPriceId, firstQty) {
+  const existing = await stripe.subscriptions.list({
+    customer: stripeCustomerId,
+    status: "active",
+    limit: 10,
+    expand: ["data.items.data.price"]
+  });
+  const addonSub = existing.data.find(
+    (s) => s.metadata?.["addonSub"] === "true" && s.metadata?.["orgId"] === orgId3
+  );
+  if (addonSub) return addonSub;
+  const created = await stripe.subscriptions.create({
+    customer: stripeCustomerId,
+    items: [{ price: firstPriceId, quantity: firstQty }],
+    metadata: { addonSub: "true", orgId: orgId3 },
+    payment_behavior: "default_incomplete",
+    expand: ["items.data.price"]
+  });
+  logger.info(
+    { orgId: orgId3, subId: created.id, stripeCustomerId, firstPriceId, firstQty },
+    "[AddonSync] Created dedicated add-on subscription"
+  );
+  return created;
+}
 async function syncAddonWithStripe(orgId3, addonKey, action, quantity = 1) {
   const stripeKey = getStripeKey();
   if (!stripeKey) return { synced: false, reason: "no_stripe_key" };
@@ -102672,65 +102698,154 @@ async function syncAddonWithStripe(orgId3, addonKey, action, quantity = 1) {
   if (!priceId) return { synced: false, reason: "no_price_id" };
   try {
     const ctx = await loadBillingContext(orgId3);
-    const status = ctx.subscriptionStatus;
-    if (status !== "active" && status !== "trialing") {
+    if (ctx.subscriptionStatus !== "active" && ctx.subscriptionStatus !== "trialing") {
       if (!ctx.stripeCustomerId) return { synced: false, reason: "no_live_subscription" };
       const stripe2 = await createStripeClient(stripeKey);
-      const liveSubs = await stripe2.subscriptions.list({ customer: ctx.stripeCustomerId, status: "active", limit: 10, expand: ["data.items.data.price"] });
+      const liveSubs = await stripe2.subscriptions.list({
+        customer: ctx.stripeCustomerId,
+        status: "active",
+        limit: 10,
+        expand: ["data.items.data.price"]
+      });
       const isFlowPointPlanSub = (s) => {
-        if (s.metadata?.["addonOnly"]) return false;
+        if (s.metadata?.["addonSub"]) return false;
         const items = s.items?.data ?? [];
         return items.length > 0 && items.some((it) => getPlanForPriceId(it.price?.id ?? "") !== null);
       };
-      const planSub = liveSubs.data.find((s) => s.metadata?.["orgId"] === orgId3 && !s.metadata?.["addonOnly"] && (s.items?.data ?? []).length > 0) ?? liveSubs.data.find((s) => isFlowPointPlanSub(s)) ?? liveSubs.data.find((s) => !s.metadata?.["addonOnly"] && (s.items?.data ?? []).length > 0);
+      const planSub = liveSubs.data.find((s) => s.metadata?.["orgId"] === orgId3 && !s.metadata?.["addonSub"]) ?? liveSubs.data.find((s) => isFlowPointPlanSub(s)) ?? liveSubs.data.find((s) => !s.metadata?.["addonSub"] && (s.items?.data ?? []).length > 0);
       if (!planSub) return { synced: false, reason: "no_live_subscription" };
       const { persistOrgData: persistOrgData2 } = await Promise.resolve().then(() => (init_org_data(), org_data_exports));
-      persistOrgData2(orgId3, {
-        stripeSubscriptionId: planSub.id,
-        subscriptionStatus: "active"
-      }).catch(() => {
+      persistOrgData2(orgId3, { stripeSubscriptionId: planSub.id, subscriptionStatus: "active" }).catch(() => {
       });
       ctx.stripeSubscriptionId = planSub.id;
       ctx.subscriptionStatus = "active";
     }
-    if (!ctx.stripeSubscriptionId) return { synced: false, reason: "no_subscription_id" };
+    if (!ctx.stripeCustomerId) return { synced: false, reason: "no_subscription_id" };
     const included = PLAN_INCLUDED_ADDONS[ctx.plan.toLowerCase()] ?? /* @__PURE__ */ new Set();
     if (included.has(addonKey)) return { synced: false, reason: "included_in_plan" };
     const stripe = await createStripeClient(stripeKey);
-    const sub = await stripe.subscriptions.retrieve(ctx.stripeSubscriptionId, { expand: ["items.data.price"] });
-    const existing = sub.items.data.find((it) => it.price?.id === priceId);
     const qty = Math.max(1, Math.floor(Number(quantity) || 1));
+    let itemOnPlanSub;
+    let planSubId = null;
+    if (ctx.stripeSubscriptionId) {
+      try {
+        const planSub = await stripe.subscriptions.retrieve(ctx.stripeSubscriptionId, {
+          expand: ["items.data.price"]
+        });
+        itemOnPlanSub = planSub.items.data.find((it) => it.price?.id === priceId);
+        planSubId = planSub.id;
+      } catch (_e) {
+      }
+    }
+    let itemOnAddonSub;
+    let addonSubId = null;
+    {
+      const existingAddonSubs = await stripe.subscriptions.list({
+        customer: ctx.stripeCustomerId,
+        status: "active",
+        limit: 10,
+        expand: ["data.items.data.price"]
+      });
+      const addonSub = existingAddonSubs.data.find(
+        (s) => s.metadata?.["addonSub"] === "true" && s.metadata?.["orgId"] === orgId3
+      );
+      if (addonSub) {
+        addonSubId = addonSub.id;
+        itemOnAddonSub = (addonSub.items?.data ?? []).find((it) => it.price?.id === priceId);
+      }
+    }
     if (action === "activate") {
-      if (existing) {
-        const existingQty = existing.quantity ?? 1;
+      if (itemOnPlanSub && planSubId) {
+        const existingQty = itemOnPlanSub.quantity ?? 1;
         if (existingQty !== qty) {
-          await stripe.subscriptionItems.update(existing.id, {
+          await stripe.subscriptionItems.update(itemOnPlanSub.id, {
             quantity: qty,
             proration_behavior: "create_prorations"
           });
-          logger.info({ orgId: orgId3, addonKey, priceId, qty }, "[AddonSync] addon quantity updated on Stripe subscription");
+          logger.info(
+            { orgId: orgId3, addonKey, priceId, qty, subId: planSubId },
+            "[AddonSync] Qty updated on PLAN subscription (legacy placement \u2014 kept in place)"
+          );
           return { synced: true, reason: "quantity_updated" };
         }
         return { synced: true, reason: "already_on_subscription" };
       }
-      await stripe.subscriptionItems.create({
-        subscription: ctx.stripeSubscriptionId,
-        price: priceId,
-        quantity: qty,
-        proration_behavior: "create_prorations"
-      });
-      logger.info({ orgId: orgId3, addonKey, priceId, qty }, "[AddonSync] addon added to Stripe subscription");
+      if (itemOnAddonSub && addonSubId) {
+        const existingQty = itemOnAddonSub.quantity ?? 1;
+        if (existingQty !== qty) {
+          await stripe.subscriptionItems.update(itemOnAddonSub.id, {
+            quantity: qty,
+            proration_behavior: "none"
+          });
+          logger.info(
+            { orgId: orgId3, addonKey, priceId, qty, subId: addonSubId },
+            "[AddonSync] Qty updated on ADD-ON subscription"
+          );
+          return { synced: true, reason: "quantity_updated" };
+        }
+        return { synced: true, reason: "already_on_subscription" };
+      }
+      if (!ctx.stripeCustomerId) return { synced: false, reason: "no_subscription_id" };
+      const addonSub = await findOrCreateAddonSubscription(
+        stripe,
+        ctx.stripeCustomerId,
+        orgId3,
+        priceId,
+        qty
+      );
+      const itemAlreadyAdded = (addonSub.items.data ?? []).some((it) => it.price?.id === priceId);
+      if (!itemAlreadyAdded) {
+        await stripe.subscriptionItems.create({
+          subscription: addonSub.id,
+          price: priceId,
+          quantity: qty,
+          proration_behavior: "none"
+        });
+      }
+      logger.info(
+        { orgId: orgId3, addonKey, priceId, qty, subId: addonSub.id },
+        "[AddonSync] Addon added to dedicated ADD-ON subscription (independent billing cycle)"
+      );
       return { synced: true, reason: "item_added" };
     }
-    if (!existing) return { synced: true, reason: "not_on_subscription" };
-    await stripe.subscriptionItems.del(existing.id, { proration_behavior: "create_prorations" });
-    logger.info({ orgId: orgId3, addonKey, priceId }, "[AddonSync] addon removed from Stripe subscription");
+    const targetItem = itemOnPlanSub ?? itemOnAddonSub;
+    const targetSubId = itemOnPlanSub ? planSubId : addonSubId;
+    if (!targetItem || !targetSubId) {
+      return { synced: true, reason: "not_on_subscription" };
+    }
+    await stripe.subscriptionItems.del(targetItem.id, { proration_behavior: "create_prorations" });
+    logger.info(
+      { orgId: orgId3, addonKey, priceId, subId: targetSubId },
+      "[AddonSync] Addon item removed from subscription"
+    );
+    if (itemOnAddonSub && addonSubId) {
+      try {
+        const refreshed = await stripe.subscriptions.retrieve(addonSubId, {
+          expand: ["items.data.price"]
+        });
+        if (refreshed.items.data.length === 0) {
+          await stripe.subscriptions.cancel(addonSubId);
+          logger.info(
+            { orgId: orgId3, subId: addonSubId },
+            "[AddonSync] Add-on subscription cancelled (no remaining items)"
+          );
+        }
+      } catch (e) {
+        logger.warn(
+          { err: e, orgId: orgId3, addonSubId },
+          "[AddonSync] Could not check/cancel empty add-on subscription"
+        );
+      }
+    }
     return { synced: true, reason: "item_removed" };
   } catch (err) {
     const errMsg3 = String(err?.message ?? err ?? "");
     const isNoSuch = /No such subscription|resource_missing|does not exist/i.test(errMsg3);
     if (isNoSuch) {
-      logger.warn({ orgId: orgId3, addonKey, action, errMsg: errMsg3 }, "[AddonSync] subscription not found in current Stripe mode \u2014 treating as no_live_subscription");
+      logger.warn(
+        { orgId: orgId3, addonKey, action, errMsg: errMsg3 },
+        "[AddonSync] Subscription not found in current Stripe mode \u2014 treating as no_live_subscription"
+      );
       return { synced: false, reason: "no_live_subscription" };
     }
     logger.error({ err, orgId: orgId3, addonKey, action }, "[AddonSync] Stripe sync failed");
@@ -104963,6 +105078,9 @@ async function initDataTables() {
     logger.info("[init-data-tables] NO FORCE RLS applied to 19 raw-pool tenant tables");
     await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ`);
     await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
     await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS credits_used NUMERIC    NOT NULL DEFAULT 0`);
     await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS cost_eur     NUMERIC    NOT NULL DEFAULT 0`);
     await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS tokens_used  BIGINT     NOT NULL DEFAULT 0`);
@@ -118088,14 +118206,14 @@ async function chatHandler(req, res) {
   aiMeta.model = finalModel;
   const _t_context_start = Date.now();
   const skipHeavyContext = isSimpleGreeting || isHypothetical || isSimpleKnowledge;
-  const [fpContext, effectivePerms, orgPlanRaw] = await Promise.all([
-    skipHeavyContext ? Promise.resolve(`Platform: Flowpoint SaaS SEO Dashboard. Plan: ${store.me.plan ?? "standard"}.`) : buildFlowpointContext(context, orgId3, contextFactor),
-    resolveEffectivePermissions(userId, orgId3, req.orgContext?.role),
-    resolvePlanFromDB(req)
+  const orgPlanRaw = await resolvePlanFromDB(req);
+  const orgPlan = (orgPlanRaw ?? "standard").toLowerCase();
+  const [fpContext, effectivePerms] = await Promise.all([
+    skipHeavyContext ? Promise.resolve(`Platform: Flowpoint SaaS SEO Dashboard. Plan: ${orgPlan}.`) : buildFlowpointContext({ ...context, plan: orgPlanRaw ?? "standard" }, orgId3, contextFactor),
+    resolveEffectivePermissions(userId, orgId3, req.orgContext?.role)
   ]);
   const _t_context_ms = Date.now() - _t_context_start;
   logger.info({ orgId: orgId3, _t_context_ms, isSimpleGreeting, isSimpleKnowledge, isHypothetical, isExplicitAction, isLightRequest, finalModel, contextFactor }, "[AI] context built");
-  const orgPlan = (orgPlanRaw ?? "standard").toLowerCase();
   const allowedDestinations = filterDestinations(effectivePerms, orgPlan);
   const navPromptSection = buildNavPromptSection(allowedDestinations);
   let _langCode = typeof language === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(language.trim()) ? language.trim().toLowerCase() : "fr";
@@ -122103,19 +122221,36 @@ router14.post("/billing/reconcile-subscription", ownerOnly, async (req, res) => 
       }
     }
     const activatedKeys = /* @__PURE__ */ new Set();
-    for (const [addonKey, qty] of stripeAddonMap.entries()) {
-      try {
-        await activateAddon2(addonKey, orgId3, qty);
-        activatedKeys.add(addonKey);
-        for (const d of diagItems) {
-          if (d.addonKey === addonKey) d.action = "activated";
-        }
-      } catch (e) {
-        const msg = `error: ${e instanceof Error ? e.message : String(e)}`;
-        for (const d of diagItems) {
-          if (d.addonKey === addonKey) d.action = msg;
+    const phase2Client = await pgPool.connect();
+    try {
+      for (const [addonKey, qty] of stripeAddonMap.entries()) {
+        try {
+          const upd = await phase2Client.query(
+            `UPDATE org_addons SET active = true, quantity = $3
+             WHERE org_id = $1 AND addon_key = $2`,
+            [orgId3, addonKey, qty]
+          );
+          if ((upd.rowCount ?? 0) === 0) {
+            await phase2Client.query(
+              `INSERT INTO org_addons (id, org_id, addon_key, active, quantity, activated_at)
+               VALUES (gen_random_uuid(), $1, $2, true, $3, NOW())
+               ON CONFLICT DO NOTHING`,
+              [orgId3, addonKey, qty]
+            );
+          }
+          activatedKeys.add(addonKey);
+          for (const d of diagItems) {
+            if (d.addonKey === addonKey) d.action = "activated";
+          }
+        } catch (e) {
+          const msg = `error: ${e instanceof Error ? e.message : String(e)}`;
+          for (const d of diagItems) {
+            if (d.addonKey === addonKey) d.action = msg;
+          }
         }
       }
+    } finally {
+      phase2Client.release();
     }
     for (const d of diagItems) {
       if (d.action === "pending") {
