@@ -76,6 +76,8 @@ export default defineConfig({
       "src/routes/addon-entitlement.test.ts",
       // P0 — quantity add-on entitlement expansion + idempotency + deactivation race guard
       "src/routes/addon-entitlement-quantity.test.ts",
+      // P0-B — addon-stripe-sync independent subscription certification (21 cases + 5 invariants)
+      "src/services/addon-stripe-sync.test.ts",
       // P0 — addon lifecycle guards: coming_soon, removed, plan-restricted
       // P0/P1 — streak owner vs member isolation
       "src/routes/streak-owner-member.test.ts",
