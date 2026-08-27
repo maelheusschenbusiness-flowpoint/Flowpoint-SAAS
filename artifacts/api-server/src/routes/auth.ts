@@ -2244,6 +2244,21 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
     res.status(401).json({ error: "session_expired" });
     return;
   }
+  // If the valid token is not already in the fp_token cookie, set it now.
+  // This allows a Bearer-only session (e.g. QA provisioning) to gain the cookie
+  // required by the HTML middleware that protects /dashboard.html, using exactly
+  // the same cookie attributes as the normal login flow.
+  const isProd = isDeployedProd();
+  if (provided && provided !== cookieToken) {
+    res.cookie("fp_token", provided, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+      maxAge: SESSION_TTL_MS,
+      path: "/",
+    });
+  }
+
   // Return the canonical valid token so the client can (re)store it in sessionStorage.
   // If the Bearer was stale and the cookie was used, the client receives the cookie's
   // token and updates sessionStorage — recovering silently without a login redirect.
