@@ -2650,6 +2650,8 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ`);
     // org_addons.quantity — durable per-pack quantity for QTY_ADDONS (monitorsPack10/50, extraSeats…)
     await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`);
+    // org_addons.metadata — used by activateAddon (source tag) and reconcile Phase-3 Guard-C
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb`);
     // ai_monthly_usage extra columns (already in block above but repeat for safety)
     await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS credits_used NUMERIC    NOT NULL DEFAULT 0`);
     await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS cost_eur     NUMERIC    NOT NULL DEFAULT 0`);
