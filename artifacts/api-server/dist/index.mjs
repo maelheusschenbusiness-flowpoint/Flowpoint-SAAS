@@ -108315,17 +108315,27 @@ router5.post("/auth/session-restore", async (req, res) => {
     logger.warn({ ...restoreLogBase }, "[Auth/session-restore] No Bearer and no cookie \u2014 anonymous request");
   }
   if (!session || !provided) {
-    const isProd2 = isDeployedProd();
+    const isProd3 = isDeployedProd();
     if (cookieToken) {
       res.clearCookie("fp_token", {
         httpOnly: true,
-        secure: isProd2,
-        sameSite: isProd2 ? "none" : "lax",
+        secure: isProd3,
+        sameSite: isProd3 ? "none" : "lax",
         path: "/"
       });
     }
     res.status(401).json({ error: "session_expired" });
     return;
+  }
+  const isProd2 = isDeployedProd();
+  if (provided && provided !== cookieToken) {
+    res.cookie("fp_token", provided, {
+      httpOnly: true,
+      secure: isProd2,
+      sameSite: isProd2 ? "none" : "lax",
+      maxAge: SESSION_TTL_MS,
+      path: "/"
+    });
   }
   res.json({ token: provided, email: session.email, orgId: session.orgId });
 });
@@ -116663,7 +116673,7 @@ async function buildFlowpointContext(extra, orgId3, contextFactor = 1) {
     const criticalAudits = audits.filter((a) => a.score < 50);
     const warningAudits = audits.filter((a) => a.score >= 50 && a.score < 75);
     const e = extra ?? {};
-    const plan4 = e["plan"] ?? store.me.plan ?? "Pro";
+    const plan4 = e["plan"] ?? store.me.plan ?? "standard";
     const firstName = e["firstName"] ?? "";
     const streak = e["streak"] ?? 0;
     const localScore = e["localScore"] ?? 0;
@@ -117050,7 +117060,7 @@ ${topMissions.map(
     }
     return lines.filter((l) => l !== "").join("\n");
   } catch {
-    return `Platform: Flowpoint SaaS SEO Dashboard. Plan: ${store.me.plan ?? "Pro"}.`;
+    return `Platform: Flowpoint SaaS SEO Dashboard. Plan: ${store.me.plan ?? "standard"}.`;
   }
 }
 var STRICT_AI_RULE = `
