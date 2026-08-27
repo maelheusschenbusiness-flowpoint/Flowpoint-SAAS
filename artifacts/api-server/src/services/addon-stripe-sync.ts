@@ -112,11 +112,14 @@ async function findOrCreateAddonSubscription(
   );
   if (addonSub) return addonSub as { id: string; items: { data: StripeSubItem[] } };
 
-  // Create a fresh add-on subscription with a billing cycle starting today
+  // Create a fresh add-on subscription with a billing cycle starting today.
+  // billing_cycle_anchor:"now" is what gives each add-on its independent monthly
+  // cycle decoupled from the plan subscription's renewal date.
   const created = await stripe.subscriptions.create({
     customer: stripeCustomerId,
     items: [{ price: firstPriceId, quantity: firstQty }],
     metadata: { addonSub: "true", orgId },
+    billing_cycle_anchor: "now",
     payment_behavior: "default_incomplete",
     expand: ["items.data.price"],
   } as Parameters<typeof stripe.subscriptions.create>[0]);
