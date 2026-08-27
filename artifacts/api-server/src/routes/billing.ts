@@ -2268,18 +2268,38 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
     }
 
     // ── PHASE 2 : activate/update addons present in Stripe ───────────────────
+    // Use direct SQL (not activateAddon/Drizzle) so schema drift or ORM issues
+    // cannot silently swallow writes. activateAddon has an internal try/catch
+    // that returns false without throwing — the reconcile endpoint needs a
+    // reliable write that surfaces errors.
     const activatedKeys = new Set<string>();
-    for (const [addonKey, qty] of stripeAddonMap.entries()) {
-      try {
-        await activateAddon(addonKey, orgId, qty);
-        activatedKeys.add(addonKey);
-        // Back-fill action in diagItems
-        for (const d of diagItems) { if (d.addonKey === addonKey) d.action = "activated"; }
-      } catch (e) {
-        const msg = `error: ${e instanceof Error ? e.message : String(e)}`;
-        for (const d of diagItems) { if (d.addonKey === addonKey) d.action = msg; }
+    const phase2Client = await pgPool.connect();
+    try {
+      for (const [addonKey, qty] of stripeAddonMap.entries()) {
+        try {
+          const rowId = `oa_${orgId}_${addonKey}`;
+          // INSERT the row if it doesn't exist yet (idempotent)
+          await phase2Client.query(
+            `INSERT INTO org_addons (id, org_id, addon_key, active, quantity, activated_at, updated_at, created_at)
+             VALUES ($1, $2, $3, true, $4, NOW(), NOW(), NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [rowId, orgId, addonKey, qty],
+          );
+          // Always UPDATE active+quantity so a previously-deactivated row is restored
+          await phase2Client.query(
+            `UPDATE org_addons SET active = true, quantity = $3, activated_at = NOW(), updated_at = NOW()
+             WHERE org_id = $1 AND addon_key = $2`,
+            [orgId, addonKey, qty],
+          );
+          activatedKeys.add(addonKey);
+          // Back-fill action in diagItems
+          for (const d of diagItems) { if (d.addonKey === addonKey) d.action = "activated"; }
+        } catch (e) {
+          const msg = `error: ${e instanceof Error ? e.message : String(e)}`;
+          for (const d of diagItems) { if (d.addonKey === addonKey) d.action = msg; }
+        }
       }
-    }
+    } finally { phase2Client.release(); }
     // Mark skipped (plan items or unrecognised)
     for (const d of diagItems) {
       if (d.action === "pending") {
