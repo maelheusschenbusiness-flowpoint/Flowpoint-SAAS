@@ -9792,16 +9792,22 @@ function renderBilling() {
     return `
       ${_pendingBanner}
       ${aiBlock(
-        isPro
-          ? "Plan <strong>Pro</strong> actif. Si votre équipe dépasse 5 sièges ou si vos audits approchent la limite mensuelle, le plan Ultra devient pertinent — comparez les fonctionnalités ci-dessous."
-          : "Plan <strong>Standard</strong> actif. Le passage à Pro débloque davantage d\'audits, l\'IA avancée et les rapports client — comparez les plans ci-dessous.",
+        isUltra
+          ? "Plan <strong>Ultra</strong> actif. Vous bénéficiez de toutes les fonctionnalités — audits illimités, monitors avancés, IA complète et rétention 365 jours."
+          : (isPro && !isUltra)
+            ? "Plan <strong>Pro</strong> actif. Si votre équipe dépasse 5 sièges ou si vos audits approchent la limite mensuelle, le plan Ultra devient pertinent — comparez les fonctionnalités ci-dessous."
+            : "Plan <strong>Standard</strong> actif. Le passage à Pro débloque davantage d\'audits, l\'IA avancée et les rapports client — comparez les plans ci-dessous.",
         ['Voir les fonctionnalités', 'Comparer les plans']
       )}
 
       <div class="fp-stat-row fp-mb-20">
-    ${statCard('Plan actuel', plan, STATE.billing?.nextDate ? fpT('actif · renouvellement') + ' ' + STATE.billing.nextDate : fpT('actif · abonnement mensuel'), 'up')}
-        ${statCard('Coût mensuel', (_def?.priceEur ?? '') + '€', 'HT · abonnement mensuel', 'neutral')}
-        ${statCard(STATE.billing?.nextDateLabel || 'Prochaine facture', STATE.billing?.nextDate || '—', STATE.billing?.nextDate ? (STATE.billing?.nextDateLabel || 'prochaine échéance') : PREVIEW_MODE ? 'dans 23 jours' : '—', 'neutral')}
+    ${statCard('Plan actuel', plan, fpT('actif · abonnement mensuel'), 'up')}
+        ${STATE.billing?.subscriptionId
+          ? statCard('Coût mensuel', (_def?.priceEur ?? '') + '€', 'HT · abonnement mensuel', 'neutral')
+          : statCard('Accès plan', plan, 'Compte interne — aucune facturation Stripe', 'neutral')}
+        ${STATE.billing?.subscriptionId
+          ? statCard(STATE.billing?.nextDateLabel || 'Prochaine facture', STATE.billing?.nextDate || '—', STATE.billing?.nextDate ? (STATE.billing?.nextDateLabel || 'prochaine échéance') : '—', 'neutral')
+          : statCard('Facturation', '—', 'Aucune subscription Stripe', 'neutral')}
         ${statCard('Sans engagement', 'Mensuel', 'résiliation à tout moment', 'up')}
       </div>
 
@@ -10240,6 +10246,7 @@ function renderBilling() {
               <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,0.07);color:var(--fp-text-muted)">${escHtml(a.cat)}</span>
               <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${accentColor}18;color:${accentColor}">${escHtml(a.tag)}</span>
               ${inclBadge ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(34,197,94,0.12);color:#22c55e">✓ Inclus — ${inclBadge}</span>` : ''}
+              ${a.availability === 'beta' ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(245,158,11,0.12);color:#f59e0b">🧪 Bêta</span>` : ''}
             </div>
             <button onclick="closeFloatPanel&&closeFloatPanel()" style="width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--fp-text-muted);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0" title="${fpT('Fermer')}">×</button>
           </div>
@@ -10339,9 +10346,9 @@ function renderBilling() {
             <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(a.desc)}</div>
             <div style="font-size:10px;color:${cardAccent};font-weight:600;margin-bottom:10px">✦ ${escHtml(a.roi)}</div>
             <div style="display:flex;align-items:center;justify-content:space-between" onclick="event.stopPropagation()">
-              <span style="font-size:12px;font-weight:800;color:${(inc || a.active) ? cardAccent : 'var(--fp-text)'}">${inc ? 'Inclus ✓' : escHtml(a.price)}</span>
+              <span style="font-size:12px;font-weight:800;color:${(inc || a.active) ? cardAccent : 'var(--fp-text)'}">${inc && a.availability === 'beta' ? '🧪 Bêta — Inclus ✓' : inc ? 'Inclus ✓' : escHtml(a.price)}</span>
               ${inc
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">✓ Inclus</button>`
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">${a.availability === 'beta' ? '🧪 Bêta · Inclus' : '✓ Inclus'}</button>`
                 : a.active
                   ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`
                   : a.wizardFn
@@ -10397,7 +10404,9 @@ function renderBilling() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Total payé 2026', displayStat(STATE.billing?.totalPaid != null ? STATE.billing.totalPaid + '€' : null, PREVIEW_MODE ? '286€' : '0€'), PREVIEW_MODE ? '5 factures · HT' : (STATE.billing?.totalPaid ? 'Total HT' : 'Aucune facture'), 'neutral')}
-        ${statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, PREVIEW_MODE ? '79€' : '79€'), PREVIEW_MODE ? '01/06/2026 — dans 23 jours' : 'Prochaine échéance', 'neutral')}
+        ${STATE.billing?.subscriptionId
+          ? statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '—'), 'Prochaine échéance', 'neutral')
+          : statCard('Facturation', '—', 'Aucune subscription Stripe', 'neutral')}
         ${statCard('Méthodes de paiement', String(paymentMethods.length), paymentMethods.length > 0 ? 'actives — ' + (paymentMethods[0]?.brand || 'Carte') + ' par défaut' : 'Aucune carte enregistrée', 'up')}
         ${statCard('Paiements échoués', displayStat(STATE.billing?.failedPayments != null ? String(STATE.billing.failedPayments) : '0', '0'), PREVIEW_MODE ? 'aucun incident 2026' : (STATE.billing?.failedPayments ? STATE.billing.failedPayments + ' incident(s)' : 'Aucun incident'), 'up')}
       </div>
@@ -10861,7 +10870,9 @@ function renderBilling() {
       ${statCard('Plan actuel', plan, 'actif · ' + (plan === 'Standard' ? '29€' : (plan === 'Agency' || plan === 'Ultra') ? '149€' : '79€') + '/mois', 'up')}
       ${statCard('Usage Health', displayStat(healthScore!=null?healthScore+'/100':null,'78/100'), healthScore!=null?(healthScore > 70 ? 'Sain — sous contrôle' : 'Attention requise'):PREVIEW_MODE?'Sain — sous contrôle':'Calcul en cours', healthScore!=null?(healthScore > 70 ? 'up' : 'down'):'neutral')}
       ${statCard('Potentiel upgrade', displayStat(upgradeScore!=null&&upgradeScore>0?upgradeScore+'%':null,'62%'), isUltra ? 'Plan optimal atteint' : 'Score upgrade détecté', isUltra ? 'up' : 'neutral')}
-      ${statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '79€'), PREVIEW_MODE ? '01/06/2026 · dans 23j' : 'Prochaine échéance', 'neutral')}
+      ${STATE.billing?.subscriptionId
+          ? statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '—'), 'Prochaine échéance', 'neutral')
+          : statCard('Facturation', '—', 'Aucune subscription Stripe', 'neutral')}
     </div>
 
     <!-- PLAN + GAUGES -->
@@ -10879,13 +10890,13 @@ function renderBilling() {
             <div style="font-size:22px;font-weight:900;color:var(--fp-text);font-family:var(--fp-font-head)">Plan ${plan}</div>
             <div style="font-size:12px;color:#22c55e;display:flex;align-items:center;gap:5px;margin-top:2px">
               ${svgIcon('check').replace('stroke="currentColor"','stroke="#22c55e"').replace('width="14"','width="12"').replace('height="14"','height="12"')}
-              Actif · Renouvellement ${STATE.billing?.nextDate || '—'}
+              ${STATE.billing?.subscriptionId ? 'Actif · Renouvellement ' + (STATE.billing?.nextDate || '—') : 'Actif'}
             </div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
           ${[
-            { label:'Coût mensuel',       val: isStd ? '29€' : isPro && !isUltra ? '79€' : '149€' },
+            { label:'Coût mensuel',       val: STATE.billing?.subscriptionId ? (isStd ? '29€' : isPro && !isUltra ? '79€' : '149€') : '—' },
             { label:'Sans engagement',    val: 'Mensuel — résiliation libre' },
             { label:'Add-ons actifs',     val: (()=>{
                 // Source of truth: /api/addons (FP_DATA.addons.active) — merged with the
@@ -10899,7 +10910,7 @@ function renderBilling() {
                 const _inc = _incActive;
                 return _n+' actif'+(_n!==1?'s':'')+' · '+_inc+' inclus (plan)';
               })() },
-            { label:'Prochaine facture',  val: STATE.billing?.nextDate || '—' },
+            { label:'Prochaine facture',  val: STATE.billing?.subscriptionId ? (STATE.billing?.nextDate || '—') : 'Aucune facturation Stripe' },
           ].map(m => `<div style="padding:10px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">
             <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:3px">${escHtml(m.label)}</div>
             <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${m.val}</div>

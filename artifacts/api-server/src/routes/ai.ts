@@ -2215,17 +2215,20 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
   // CR-5: Skip heavy DB context for simple greetings; CR-4: skip for hypothetical queries.
   // CR-11: Also skip for SIMPLE_KNOWLEDGE (pure concept questions need no org data).
   const skipHeavyContext = isSimpleGreeting || isHypothetical || isSimpleKnowledge;
-  const [fpContext, effectivePerms, orgPlanRaw] = await Promise.all([
+  // Resolve plan from DB first so both the context builder and the route use the
+  // same authoritative value — never the stale store.me singleton.
+  const orgPlanRaw = await resolvePlanFromDB(req);
+  const orgPlan = (orgPlanRaw ?? "standard").toLowerCase();
+
+  const [fpContext, effectivePerms] = await Promise.all([
     skipHeavyContext
-      ? Promise.resolve(`Platform: Flowpoint SaaS SEO Dashboard. Plan: ${store.me.plan ?? "standard"}.`)
-      : buildFlowpointContext(context, orgId, contextFactor),
+      ? Promise.resolve(`Platform: Flowpoint SaaS SEO Dashboard. Plan: ${orgPlan}.`)
+      : buildFlowpointContext({ ...context, plan: orgPlanRaw ?? "standard" }, orgId, contextFactor),
     resolveEffectivePermissions(userId, orgId, req.orgContext?.role),
-    resolvePlanFromDB(req),
   ]);
 
   const _t_context_ms = Date.now() - _t_context_start;
   logger.info({ orgId, _t_context_ms, isSimpleGreeting, isSimpleKnowledge, isHypothetical, isExplicitAction, isLightRequest, finalModel, contextFactor }, "[AI] context built");
-  const orgPlan = (orgPlanRaw ?? "standard").toLowerCase();
   const allowedDestinations = filterDestinations(effectivePerms, orgPlan);
   const navPromptSection = buildNavPromptSection(allowedDestinations);
 
