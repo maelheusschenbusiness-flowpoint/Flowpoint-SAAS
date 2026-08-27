@@ -2652,6 +2652,9 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`);
     // org_addons.metadata — used by activateAddon (source tag) and reconcile Phase-3 Guard-C
     await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    // org_addons.updated_at / created_at — Drizzle schema expects these; missing in some prod deployments
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
     // ai_monthly_usage extra columns (already in block above but repeat for safety)
     await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS credits_used NUMERIC    NOT NULL DEFAULT 0`);
     await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS cost_eur     NUMERIC    NOT NULL DEFAULT 0`);
