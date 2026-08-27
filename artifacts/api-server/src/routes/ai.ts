@@ -1291,10 +1291,12 @@ export function classifyIntent(message: string): {
 // (confirmation_request) ou terminé (réponse finale après tool calls).
 
 const MAX_TOOL_ROUNDS = 6;
-// Round 0 (intent + tool selection) is fast: 35 s is enough.
-// Synthesis rounds (round > 0 after tool results) receive more context and need longer.
-// These are two distinct phases — increasing the synthesis timeout is not a blanket change.
-const ROUND_TIMEOUT_MS          = 35_000;  // round 0 — LLM decides which tools to call
+// Round 0 (intent + tool selection) timeout.
+// GPT-5 family models include internal reasoning before producing tool-call JSON,
+// which can add 30–40 s to the round — use a longer budget for them.
+// Synthesis rounds (round > 0 after tool results) receive more context and also need longer.
+const ROUND_TIMEOUT_MS          = 35_000;  // round 0 — non-reasoning models (gpt-4o, claude, gemini)
+const ROUND_TIMEOUT_MS_GPT5     = 70_000;  // round 0 — gpt-5 family (internal reasoning step)
 const ROUND_TIMEOUT_SYNTHESIS_MS = 60_000; // round N>0 — LLM synthesises tool results
 const TOOL_TIMEOUT_MS   = 95_000;  // max wait for a single tool call (≥ PSI 58 s)
 const LOOP_DEADLINE_MS  = 180_000; // hard cap for the entire tool-calling session
@@ -1523,9 +1525,11 @@ async function runToolCallingLoop(opts: {
     }
 
     // Use the longer synthesis timeout after the first round (tool results add context).
+    // GPT-5 family uses a longer round-0 budget because internal reasoning adds latency.
+    const _isGpt5Round0 = round === 0 && /^gpt-5/.test(model);
     const thisRoundTimeout = (round > 0 && toolsCalledTotal > 0)
       ? ROUND_TIMEOUT_SYNTHESIS_MS
-      : ROUND_TIMEOUT_MS;
+      : _isGpt5Round0 ? ROUND_TIMEOUT_MS_GPT5 : ROUND_TIMEOUT_MS;
 
     // ── SSE progress heartbeat ─────────────────────────────────────────────────
     // Emitted BEFORE each blocking LLM call to reset the Render proxy idle-timeout
