@@ -2277,23 +2277,22 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
     try {
       for (const [addonKey, qty] of stripeAddonMap.entries()) {
         try {
-          const rowId = `oa_${orgId}_${addonKey}`;
-          // INSERT the row if it doesn't exist yet (idempotent).
-          // Only reference columns guaranteed to exist in all prod deployments.
-          // updated_at / created_at have DEFAULT NOW() so they are omitted here.
-          await phase2Client.query(
-            `INSERT INTO org_addons (id, org_id, addon_key, active, quantity, activated_at)
-             VALUES ($1, $2, $3, true, $4, NOW())
-             ON CONFLICT (id) DO NOTHING`,
-            [rowId, orgId, addonKey, qty],
-          );
-          // Always UPDATE active+quantity so a previously-deactivated row is restored.
-          // activated_at is optional — skip if column absent (safe to repeat if present).
-          await phase2Client.query(
+          // Step 1: UPDATE existing row (idempotent)
+          const upd = await phase2Client.query(
             `UPDATE org_addons SET active = true, quantity = $3
              WHERE org_id = $1 AND addon_key = $2`,
             [orgId, addonKey, qty],
           );
+          // Step 2: INSERT if no row existed — id is gen_random_uuid() to handle
+          // both TEXT and UUID id column types in prod (never pass a custom string id)
+          if ((upd.rowCount ?? 0) === 0) {
+            await phase2Client.query(
+              `INSERT INTO org_addons (id, org_id, addon_key, active, quantity, activated_at)
+               VALUES (gen_random_uuid(), $1, $2, true, $3, NOW())
+               ON CONFLICT DO NOTHING`,
+              [orgId, addonKey, qty],
+            );
+          }
           activatedKeys.add(addonKey);
           // Back-fill action in diagItems
           for (const d of diagItems) { if (d.addonKey === addonKey) d.action = "activated"; }
