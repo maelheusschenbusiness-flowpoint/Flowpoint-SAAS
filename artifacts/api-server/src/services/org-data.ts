@@ -219,11 +219,23 @@ export async function persistOrgData(orgId: string, fields: PersistOrgFields): P
     try {
       const client = await pool.connect();
       try {
-        await client.query(
-          `INSERT INTO organizations (id) VALUES ($1)
-           ON CONFLICT (id) DO UPDATE SET ${sets.join(", ")}`,
+        // Prefer UPDATE over INSERT ON CONFLICT: the org always exists when this
+        // function is called from billing/webhook paths, and a plain UPDATE avoids
+        // spurious failures caused by NOT NULL defaults on the INSERT path (e.g.
+        // RLS deny-all on a fresh INSERT attempt with only the id column filled).
+        const updateRes = await client.query(
+          `UPDATE organizations SET ${sets.join(", ")} WHERE id = $1::uuid`,
           [orgId, ...vals],
         );
+        if ((updateRes.rowCount ?? 0) === 0) {
+          // Org row doesn't exist yet (rare: new-account webhook race).
+          // Fall back to INSERT ON CONFLICT to create it safely.
+          await client.query(
+            `INSERT INTO organizations (id) VALUES ($1::uuid)
+             ON CONFLICT (id) DO UPDATE SET ${sets.join(", ")}`,
+            [orgId, ...vals],
+          );
+        }
         logger.debug({ orgId, keys: Object.keys(fields) }, "[OrgData] organizations mis à jour");
       } finally {
         client.release();
