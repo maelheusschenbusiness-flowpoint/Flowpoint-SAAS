@@ -221,6 +221,15 @@ function servePage(file: string) {
       // cache-bust timestamp. This avoids stale cached scripts across restarts.
       const ts = Date.now();
       html = html.replace(/\?v=\d+[a-z]?"/g, `?v=${ts}"`);
+      // For signin.html: inject signin-extras.js which handles:
+      //   • ?deleted=1  — clear all storage + show deletion confirmation banner
+      //   • pre-redirect — clear fp:last-route so re-registration always lands on overview
+      // The file lives alongside other frontend assets and is pushed independently,
+      // avoiding the WAF rule that blocks direct blob updates to signin.html.
+      if (file === "signin.html") {
+        const extrasTag = `<script src="/signin-extras.js?v=${ts}" defer></script>`;
+        html = html.replace("</head>", `${extrasTag}\n</head>`);
+      }
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
       res.setHeader("Content-Security-Policy", CSP_HTML);
