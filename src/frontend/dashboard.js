@@ -48125,7 +48125,7 @@ async function init() {
           try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(e) {}
           try { localStorage.clear(); sessionStorage.clear(); } catch(e) {}
           showToast('success', fpT('Compte supprimé. Redirection…'));
-          setTimeout(() => { window.location.href = '/signin.html'; }, 1800);
+          setTimeout(() => { window.location.href = '/signin.html?deleted=1'; }, 1800);
         } else { showToast('error', (r && r.error) || 'Erreur lors de la suppression du compte'); }
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible')); }
     }, 'Supprimer définitivement');
@@ -63021,6 +63021,18 @@ function renderGA4Conversion() {
   const sub = STATE.subRoute;
   if (sub && ['funnel','ux-lab','cta','revenue-leak','cro'].includes(sub)) {
     return renderConversion();
+  }
+
+  // Paywall guard — show upgrade card instead of loading errors when billing expired.
+  const _cvPremium = STATE.me?.hasPremiumAccess ?? STATE.me?.canAccessPremium ?? true;
+  if (_cvPremium === false) {
+    return `<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1><div class="fp-section-sub">Événements de conversion, revenus et landing pages</div></div></div>
+    <div style="text-align:center;padding:56px 24px;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
+      <div style="font-size:48px;margin-bottom:16px">🔒</div>
+      <div style="font-size:17px;font-weight:700;color:var(--fp-text);margin-bottom:8px">${fpT('Fonctionnalité Premium')}</div>
+      <div style="font-size:13px;color:var(--fp-text-muted);max-width:420px;margin:0 auto 20px">${fpT('La Conversion GA4 est réservée aux abonnés actifs. Reprenez un abonnement pour accéder à vos données.')}</div>
+      <button class="fp-btn fp-btn-primary" onclick="fpGoToPricing('standard')" style="min-width:180px">${fpT('Reprendre un abonnement')}</button>
+    </div>`;
   }
 
   const cvS = window._fpConversionState || {};
