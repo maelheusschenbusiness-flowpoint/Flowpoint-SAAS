@@ -2068,11 +2068,17 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, ownerOnly, asyn
     if (billingCtx.stripeCustomerId) {
       addonCustomerId = billingCtx.stripeCustomerId;
     } else {
-      // Ensure a customer exists so all future webhooks can resolve orgId
-      try {
-        addonCustomerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey);
-      } catch (custErr) {
-        logger.warn({ custErr, orgId }, "[Billing] addon-checkout: ensureStripeCustomer failed — proceeding without customer");
+      // Ensure a customer exists so all future webhooks can resolve orgId.
+      // If ensureStripeCustomer throws, abort rather than proceeding without a
+      // customer — a customerless session creates an orphan Stripe customer that
+      // the webhook can't map back to this org, causing "add-on non activé".
+      addonCustomerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey).catch((custErr) => {
+        logger.error({ custErr, orgId }, "[Billing] addon-checkout: ensureStripeCustomer failed — aborting checkout to prevent orphan customer");
+        return null;
+      }) ?? undefined;
+      if (!addonCustomerId) {
+        res.status(503).json({ error: "Impossible de créer le profil de facturation. Réessayez dans quelques instants." });
+        return;
       }
     }
 
