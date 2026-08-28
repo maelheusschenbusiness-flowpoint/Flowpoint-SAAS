@@ -54,8 +54,10 @@ async function reserveRankingSearch(
 ): Promise<{ reserved: boolean; used: number; limit: number }> {
   const { limit } = getQuotaUsage(orgId);
   const client = await pool.connect();
+  let txActive = false;
   try {
     await client.query("BEGIN");
+    txActive = true;
     await client.query(
       `SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`,
       [`local-seo-rankings:${orgId}`],
@@ -69,6 +71,7 @@ async function reserveRankingSearch(
     const usedBefore = Number(count.rows[0]?.n ?? 0);
     if (usedBefore >= limit) {
       await client.query("ROLLBACK");
+      txActive = false;
       return { reserved: false, used: usedBefore, limit };
     }
     await client.query(
@@ -77,9 +80,11 @@ async function reserveRankingSearch(
       [id, orgId, keyword, location, JSON.stringify({ _status: "pending" })],
     );
     await client.query("COMMIT");
+    txActive = false;
     return { reserved: true, used: usedBefore + 1, limit };
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
+    // Only ROLLBACK if the transaction is still open — prevents 25P01 in Supabase logs
+    if (txActive) { await client.query("ROLLBACK").catch(() => {}); }
     throw err;
   } finally {
     client.release();

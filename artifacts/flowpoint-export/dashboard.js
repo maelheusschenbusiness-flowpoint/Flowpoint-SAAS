@@ -48244,6 +48244,26 @@ async function init() {
   // Load data
   await loadData();
 
+  // ── Org-change detection: reset stale route after account deletion/re-registration ──
+  // When account A is deleted and the user re-registers with the same email, a new UUID
+  // org is created. The fp:last-route from account A is still in localStorage, so it
+  // would restore the old page ("local-seo", etc.) instead of "overview".
+  // Solution: persist the current orgId in fp:last-org-id and compare on every load.
+  // If the org changed (deletion → re-registration), wipe stale nav state.
+  try {
+    const _curOrgId = STATE.me && (STATE.me.orgId || STATE.me.id);
+    const _storedOrgId = localStorage.getItem('fp:last-org-id');
+    if (_curOrgId) {
+      if (_storedOrgId && _storedOrgId !== _curOrgId) {
+        localStorage.removeItem('fp:last-route');
+        localStorage.removeItem('fp:last-sub');
+        STATE.route = 'overview';
+        STATE.subRoute = null;
+      }
+      localStorage.setItem('fp:last-org-id', _curOrgId);
+    }
+  } catch(_) {}
+
   // ── addon_success: delayed re-fetch to handle Stripe webhook processing lag ──
   // The Stripe webhook that activates the add-on may arrive AFTER the user
   // returns from checkout. A second fetch 4 seconds later catches the window.

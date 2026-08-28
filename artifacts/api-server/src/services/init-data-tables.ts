@@ -753,6 +753,18 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS billing_events_org_id_idx        ON billing_events(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS billing_events_stripe_event_id_idx ON billing_events(stripe_event_id);`);
     await run(client, `ALTER TABLE billing_events ADD COLUMN IF NOT EXISTS metadata JSONB;`);
+    // ── Security: billing_events must not be publicly readable without RLS ─────
+    // Supabase security advisor flags any table in public schema with RLS disabled.
+    // billing_events is written by Stripe webhooks via pool (superuser — bypasses RLS)
+    // and read by billing-service.ts also via pool.  ENABLE RLS + deny-all is correct:
+    // user sessions see nothing, service connections see everything.
+    await run(client, `ALTER TABLE billing_events ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE billing_events FORCE ROW LEVEL SECURITY`);
+    // A SELECT policy lets org-scoped dashboard billing history work for authed sessions:
+    await run(client, `DROP POLICY IF EXISTS "be_select" ON billing_events`);
+    await run(client, `CREATE POLICY "be_select" ON billing_events FOR SELECT USING (org_id = current_setting('app.current_org_id', true))`);
+    await run(client, `DROP POLICY IF EXISTS "be_insert" ON billing_events`);
+    await run(client, `DROP POLICY IF EXISTS "be_update" ON billing_events`);
 
     // ── ai_usage_logs — extended cost logging columns ────────────────────────
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS provider TEXT;`);
