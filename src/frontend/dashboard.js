@@ -18087,6 +18087,9 @@ function bindGlobalEvents() {
   // Logout — révocation session côté serveur avant redirection
   $('#fp-logout-btn')?.addEventListener('click', async () => {
     try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+    // Clear last-route so the next session (or a re-registration) always starts
+    // at the overview, not at whatever page this account was last visiting.
+    try { localStorage.removeItem('fp:last-route'); localStorage.removeItem('fp:last-sub'); } catch(_) {}
     showToast('info', fpT('Déconnexion…'));
     try { await window.apiFetch('/api/auth/logout', { method: 'POST' }); } catch(_) {}
     setTimeout(() => { window.location.replace('/login.html'); }, 1200);
@@ -47567,6 +47570,23 @@ async function init() {
   // Load data
   await loadData();
 
+  // ── addon_success: delayed re-fetch to handle Stripe webhook processing lag ──
+  // The Stripe webhook that activates the add-on in org_addons may arrive AFTER
+  // the user returns from the checkout page. The first loadData() above fetches
+  // fresh /api/me data, but if the webhook hasn't processed yet, the add-on will
+  // appear as inactive. A second fetch 4 seconds later catches the webhook window.
+  if (window.location.search.includes('addon_success') || window.__fpAddonSuccessRetry) {
+    window.__fpAddonSuccessRetry = false;
+    setTimeout(async () => {
+      try {
+        try { _apiFetchCache && _apiFetchCache.delete('/api/me'); } catch(_) {}
+        try { _apiFetchCache && _apiFetchCache.delete('/api/addons'); } catch(_) {}
+        await loadData();
+        render(STATE.currentSection || STATE.route);
+      } catch(_) {}
+    }, 4000);
+  }
+
   // Missions rotation automatique toutes les 3 jours
   (() => {
     const lastKey = 'fp-mission-rotate-date';
@@ -48014,7 +48034,8 @@ async function init() {
         headers: { 'Content-Type': 'application/json' },
       }));
     } catch (_) { /* non-fatal — still clear local state */ }
-    ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid']
+    ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid',
+     'fp:last-route', 'fp:last-sub']
       .forEach(function(k) { localStorage.removeItem(k); });
     sessionStorage.clear(); // also clears fp_session_token + fp_tab_uid
     showToast('success', fpT('Toutes les sessions fermées'));
