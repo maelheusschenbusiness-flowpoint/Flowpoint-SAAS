@@ -197,6 +197,22 @@
         return;
       }
 
+      // ── Account deleted: ?deleted=1 — show a confirmation banner ────────
+      if (_urlParams.get('deleted') === '1') {
+        try { sessionStorage.clear(); localStorage.clear(); } catch(_) {}
+        history.replaceState({}, '', '/signin.html');
+        document.body.style.visibility = 'visible';
+        // Show a green info banner once the DOM is ready.
+        document.addEventListener('DOMContentLoaded', function() {
+          var banner = document.createElement('div');
+          banner.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;background:#166534;color:#dcfce7;padding:14px 24px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:420px;text-align:center';
+          banner.textContent = '✅ Votre compte a été supprimé définitivement. Toutes vos données ont été effacées.';
+          document.body.appendChild(banner);
+          setTimeout(function() { if (banner.parentNode) banner.parentNode.removeChild(banner); }, 6000);
+        });
+        return;
+      }
+
       // Helper: call session-restore and redirect on success, reveal form on failure.
       // Only runs when there is evidence of a prior session — never for anonymous
       // visitors so they see the form immediately without a round-trip.

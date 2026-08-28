@@ -75460,6 +75460,23 @@ async function activateNewSignup(opts) {
       locationSource: "manual"
     });
     logger.info({ orgId: orgId3 }, "[Webhook/activate] org_settings profile row created");
+    if (orgUUID !== orgId3 && (signupRow["address"] || signupRow["city"])) {
+      await upsertOrgSettings2(orgUUID, {
+        email,
+        orgName: signupRow["company_name"] ?? "",
+        firstName,
+        lastName: signupRow["last_name"] ?? "",
+        country: signupRow["country"] ?? null,
+        city: signupRow["city"] ?? null,
+        address: signupRow["address"] ?? null,
+        postalCode: signupRow["postal_code"] ?? null,
+        phone: signupRow["phone"] ?? null,
+        vat: signupRow["vat"] ?? null,
+        locationConfigured: !!(signupRow["city"] || signupRow["address"]),
+        locationSource: "manual"
+      }).catch((e) => logger.warn({ e, orgUUID }, "[Webhook/activate] UUID org_settings mirror failed (non-fatal)"));
+      logger.info({ orgId: orgId3, orgUUID }, "[Webhook/activate] org_settings address mirrored to UUID key");
+    }
   } else if ((signupRow["address"] || signupRow["city"]) && !_existing.address && !_existing.city) {
     await upsertOrgSettings2(orgId3, {
       country: _existing.country ?? signupRow["country"] ?? null,
@@ -122073,10 +122090,13 @@ router14.post("/billing/addon-checkout", billingCheckoutRateLimit, ownerOnly, as
     if (billingCtx.stripeCustomerId) {
       addonCustomerId = billingCtx.stripeCustomerId;
     } else {
-      try {
-        addonCustomerId = await ensureStripeCustomer(orgId3, billingCtx, stripeKey);
-      } catch (custErr) {
-        logger.warn({ custErr, orgId: orgId3 }, "[Billing] addon-checkout: ensureStripeCustomer failed \u2014 proceeding without customer");
+      addonCustomerId = await ensureStripeCustomer(orgId3, billingCtx, stripeKey).catch((custErr) => {
+        logger.error({ custErr, orgId: orgId3 }, "[Billing] addon-checkout: ensureStripeCustomer failed \u2014 aborting checkout to prevent orphan customer");
+        return null;
+      }) ?? void 0;
+      if (!addonCustomerId) {
+        res.status(503).json({ error: "Impossible de cr\xE9er le profil de facturation. R\xE9essayez dans quelques instants." });
+        return;
       }
     }
     const isAiCreditPack = AI_CREDIT_PACK_KEYS.has(addonKey);
@@ -122821,12 +122841,15 @@ function getOrg(req) {
 }
 router17.get("/calendar-events", async (req, res) => {
   try {
+    const org16 = getOrg(req);
     const r = await req.orgDb(
       `SELECT id, title, site, type, date, start_time, duration, notes, client_name,
               priority, color, reminder, linked_mission_id, updated_at, created_at
        FROM calendar_events
+       WHERE org_id = $1
        ORDER BY date ASC, start_time ASC
-       LIMIT 500`
+       LIMIT 500`,
+      [org16]
     );
     const events = r.rows.map((row) => ({
       id: row.id,
@@ -122850,11 +122873,12 @@ router17.get("/calendar-events", async (req, res) => {
 });
 router17.get("/calendar-events/:id", async (req, res) => {
   try {
+    const org16 = getOrg(req);
     const r = await req.orgDb(
       `SELECT id, title, site, type, date, start_time, duration, notes, client_name,
               priority, color, reminder, linked_mission_id, updated_at, created_at
-       FROM calendar_events WHERE id=$1 LIMIT 1`,
-      [req.params.id]
+       FROM calendar_events WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      [req.params.id, org16]
     );
     if (!r.rows[0]) {
       res.status(404).json({ error: "Event not found" });
@@ -122959,13 +122983,14 @@ router17.patch("/calendar-events/:id", canWrite, async (req, res) => {
     reminder,
     linkedMissionId
   } = req.body;
+  const org16 = getOrg(req);
   try {
     const r = await req.orgDb(
       `UPDATE calendar_events
        SET title=$1, site=$2, type=$3, date=$4, start_time=$5, duration=$6, notes=$7,
            client_name=$8, priority=$9, color=$10, reminder=$11, linked_mission_id=$12,
            updated_at=NOW()
-       WHERE id=$13 RETURNING *`,
+       WHERE id=$13 AND org_id=$14 RETURNING *`,
       [
         title,
         site || "",
@@ -122979,7 +123004,8 @@ router17.patch("/calendar-events/:id", canWrite, async (req, res) => {
         color || "",
         reminder ?? 0,
         linkedMissionId || null,
-        id
+        id,
+        org16
       ]
     );
     if (!r.rows[0]) {
@@ -123007,10 +123033,11 @@ router17.patch("/calendar-events/:id", canWrite, async (req, res) => {
   }
 });
 router17.delete("/calendar-events/:id", canDelete, async (req, res) => {
+  const org16 = getOrg(req);
   try {
     const r = await req.orgDb(
-      `DELETE FROM calendar_events WHERE id=$1 RETURNING id`,
-      [req.params.id]
+      `DELETE FROM calendar_events WHERE id=$1 AND org_id=$2 RETURNING id`,
+      [req.params.id, org16]
     );
     if (!r.rows[0]) {
       res.status(404).json({ error: "Event not found" });
