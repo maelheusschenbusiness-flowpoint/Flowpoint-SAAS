@@ -18523,6 +18523,9 @@ function bindGlobalEvents() {
     try {
       ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_tab_uid','fp_had_session']
         .forEach(function(k) { localStorage.removeItem(k); });
+      // Clear last-route so a re-registered account never lands on the
+      // previous session's last page.
+      try { localStorage.removeItem('fp:last-route'); localStorage.removeItem('fp:last-sub'); } catch(_) {}
     } catch(_) {}
     try { await window.apiFetch('/api/auth/logout', { method: 'POST' }); } catch(_) {}
     setTimeout(() => { window.location.replace('/signin.html?signout=1'); }, 1200);
@@ -48241,6 +48244,20 @@ async function init() {
   // Load data
   await loadData();
 
+  // ── addon_success: delayed re-fetch to handle Stripe webhook processing lag ──
+  // The Stripe webhook that activates the add-on may arrive AFTER the user
+  // returns from checkout. A second fetch 4 seconds later catches the window.
+  if (window.location.search.includes('addon_success') || window._fpWasCheckoutReturn) {
+    setTimeout(async () => {
+      try {
+        try { _apiFetchCache && _apiFetchCache.delete('/api/me'); } catch(_) {}
+        try { _apiFetchCache && _apiFetchCache.delete('/api/addons'); } catch(_) {}
+        await loadData();
+        render(STATE.currentSection || STATE.route);
+      } catch(_) {}
+    }, 4000);
+  }
+
   // Missions rotation automatique toutes les 3 jours
   (() => {
     const lastKey = 'fp-mission-rotate-date';
@@ -48734,7 +48751,8 @@ async function init() {
         headers: { 'Content-Type': 'application/json' },
       }));
     } catch (_) { /* non-fatal — still clear local state */ }
-    ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid', 'fp_had_session']
+    ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid', 'fp_had_session',
+     'fp:last-route', 'fp:last-sub']
       .forEach(function(k) { localStorage.removeItem(k); });
     sessionStorage.clear(); // also clears fp_session_token + fp_tab_uid
     showToast('success', fpT('Toutes les sessions fermées'));
