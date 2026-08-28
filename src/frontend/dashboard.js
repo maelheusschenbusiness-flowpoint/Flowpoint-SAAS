@@ -9847,9 +9847,9 @@ function renderBilling() {
 
       <!-- COMPARISON TABLE -->
       <div class="fp-card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px">
           <div class="fp-card-title" style="margin-bottom:0">${fpT('📊 Comparaison détaillée des plans')}</div>
-          <div style="display:flex;gap:6px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
             ${PLANS.map(p => `<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:${p.id==='ultra'?'rgba(37,99,235,0.15)':p.color+'18'};color:${p.id==='ultra'?'#2563EB':p.color};border:1px solid ${p.id==='ultra'?'rgba(37,99,235,0.3)':p.color+'33'}">${p.name} — ${p.price}€/mois</span>`).join('')}
           </div>
         </div>
@@ -15424,6 +15424,9 @@ function navigate(route, subRoute) {
   } catch(e) { /* sandboxed iframe */ }
   try { localStorage.setItem('fp:last-route', STATE.route); if (STATE.subRoute) localStorage.setItem('fp:last-sub', STATE.subRoute); else localStorage.removeItem('fp:last-sub'); } catch(e) {}
   document.querySelectorAll('.fp-chart-tooltip').forEach(t => t.remove());
+  // Clear shared hover tooltip (prevents calendar RDV tooltip sticking on iOS
+  // when user navigates to another tab before the touchend fires hideTip).
+  if (typeof hideTip === 'function') hideTip();
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
   _doRender();
   const _p = document.getElementById('fp-page'); if (_p) _p.scrollTo({ top: 0, behavior: 'instant' });
@@ -17817,7 +17820,9 @@ function initChartTooltips() {
     rdv.addEventListener('mouseleave', hideTip);
     // Touch support: show tip on tap, hide when touch ends
     rdv.addEventListener('touchstart', e => { moveTip(e.touches[0] || e); showTip && tip && (tip.style.opacity='1',tip.style.visibility='visible'); }, { passive: true });
-    rdv.addEventListener('touchend', () => setTimeout(hideTip, 1200), { passive: true });
+    // Hide immediately on touchend — a 1200ms delay leaves the tooltip
+    // visible when the user navigates away (e.g. taps another tab on iOS).
+    rdv.addEventListener('touchend', () => hideTip(), { passive: true });
   });
 }
 
