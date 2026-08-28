@@ -462,6 +462,10 @@ export async function activateNewSignup(opts: {
   const orgUUID = _existingOrgUUID ?? _wbRandUUID();
 
   // ── 2. Upsert org_settings for profile data only ────────────────────────
+  // IMPORTANT: org_settings is keyed by org_id. New-user signups have an email-shaped
+  // orgId in session.metadata.orgId (no UUID yet), but me.ts reads org_settings by the
+  // session UUID. We write TWICE — once under the email key (legacy compat) and once
+  // under orgUUID — so the address is found regardless of which key is used.
   const { upsertOrgSettings, loadOrgSettings: _loadSettings } = await import("../services/org-settings.js");
   const _existing = await _loadSettings(orgId).catch(() => null);
   if (!_existing) {
@@ -480,6 +484,26 @@ export async function activateNewSignup(opts: {
       locationSource:     "manual",
     });
     logger.info({ orgId }, "[Webhook/activate] org_settings profile row created");
+    // Mirror address under the UUID key so me.ts (which reads by UUID session orgId)
+    // can find the location data. The write above uses the email-shaped orgId from
+    // session.metadata; after org creation the session will carry the UUID instead.
+    if (orgUUID !== orgId && (signupRow["address"] || signupRow["city"])) {
+      await upsertOrgSettings(orgUUID, {
+        email,
+        orgName:            (signupRow["company_name"] as string | undefined) ?? "",
+        firstName,
+        lastName:           (signupRow["last_name"] as string | undefined)    ?? "",
+        country:            (signupRow["country"] as string | undefined)      ?? null,
+        city:               (signupRow["city"] as string | undefined)         ?? null,
+        address:            (signupRow["address"] as string | undefined)      ?? null,
+        postalCode:         (signupRow["postal_code"] as string | undefined)  ?? null,
+        phone:              (signupRow["phone"] as string | undefined)        ?? null,
+        vat:                (signupRow["vat"] as string | undefined)          ?? null,
+        locationConfigured: !!(signupRow["city"] || signupRow["address"]),
+        locationSource:     "manual",
+      }).catch((e) => logger.warn({ e, orgUUID }, "[Webhook/activate] UUID org_settings mirror failed (non-fatal)"));
+      logger.info({ orgId, orgUUID }, "[Webhook/activate] org_settings address mirrored to UUID key");
+    }
   } else if ((signupRow["address"] || signupRow["city"]) && !_existing.address && !_existing.city) {
     // Existing profile row without any address (e.g. created by an earlier
     // contact-only upsert) — fill the missing fields from the signup form so
