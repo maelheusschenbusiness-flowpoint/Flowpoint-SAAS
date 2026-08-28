@@ -273,6 +273,9 @@
           if (hasToken) {
             try { sessionStorage.setItem('fp_session_token', data.token); } catch(_) {}
             try { localStorage.setItem('fp_had_session', '1'); } catch(_) {}
+            // Clear last-route so a fresh session (or re-registration) always starts
+            // at the overview rather than the previous account's last page.
+            try { localStorage.removeItem('fp:last-route'); localStorage.removeItem('fp:last-sub'); } catch(_) {}
             window.location.replace('/dashboard.html');
           } else {
             // Session-restore failed → purge stale auth so we don't re-check on next visit.
