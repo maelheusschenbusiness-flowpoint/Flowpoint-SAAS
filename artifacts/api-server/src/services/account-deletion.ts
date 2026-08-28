@@ -543,6 +543,28 @@ export async function deleteAccount(target: DeletionTarget): Promise<DeletionRep
       tableRecords.push({ table, predicate, rowsBefore, rowsDeleted, rowsAfter });
     }
 
+    // ── 2c-bis. Explicit user_sessions deletion ───────────────────────────
+    // user_sessions is keyed by org_id (UUID) AND user_id (legacy email) AND
+    // user_id_v2 (UUID). Dynamic discovery may miss rows that use only the
+    // legacy user_id column. Delete explicitly using all three identifiers so
+    // a deleted account can never replay an old session token.
+    {
+      const _sessExists = await client.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='user_sessions'`,
+      );
+      if (_sessExists.rows.length > 0) {
+        const _sessIds: string[] = [orgId, ...(target.userId ? [String(target.userId)] : [])].filter(Boolean);
+        const _sessDel = (await client.query(
+          `DELETE FROM user_sessions
+            WHERE org_id::text = $1
+              OR user_id_v2::text = ANY($2::text[])
+              ${email ? "OR lower(user_id::text) = lower($3)" : ""}`,
+          email ? [orgId, _sessIds, email] : [orgId, _sessIds],
+        )) as unknown as { rowCount: number };
+        logger.info({ orgId, deleted: _sessDel.rowCount }, "[AccountDeletion] user_sessions explicitly cleared");
+      }
+    }
+
     // ── 2d. Email-keyed auth tables ───────────────────────────────────────
     if (email) {
       for (const table of EMAIL_KEYED_TABLES) {
