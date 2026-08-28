@@ -233,13 +233,24 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing" && normStatus !== "past_due",
         usage:              await (async () => {
           try {
-            const [auditR, monR, repR, expR, kwR] = await Promise.all([
+            const now = new Date();
+            const monthStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+            const [auditR, monR, repR, kwR, pdfR, exportR] = await Promise.all([
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
-              orgDb(req)(`SELECT COUNT(*)::int AS n FROM report_exports WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
               // keyword tracking count — persists in DB, survives F5
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`, [orgId]).catch(() => ({rows:[]})),
+              // PDF exports — counted via usage_events (kind='pdf_export'), current month only
+              orgDb(req)(
+                `SELECT COUNT(*)::int AS n FROM usage_events WHERE org_id=$1 AND kind='pdf_export' AND created_at >= $2`,
+                [orgId, monthStart],
+              ).catch(() => ({rows:[]})),
+              // Data exports — counted via usage_events (kind='export' or 'health_export'), current month only
+              orgDb(req)(
+                `SELECT COUNT(*)::int AS n FROM usage_events WHERE org_id=$1 AND kind IN ('export','health_export') AND created_at >= $2`,
+                [orgId, monthStart],
+              ).catch(() => ({rows:[]})),
             ]);
             const stored = (dbData?.usage ?? {}) as Record<string, unknown>;
             return {
@@ -247,8 +258,8 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
               audit:    { used: (auditR.rows[0] as Record<string,number>|undefined)?.n ?? 0, limit: limits.audits },
               monitor:  { used: (monR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.monitors },
               reports:  { used: (repR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
-              exports:  { used: (expR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.exports ?? limits.reports },
-              pdf:      { used: (expR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
+              exports:  { used: (exportR.rows[0] as Record<string,number>|undefined)?.n ?? 0, limit: limits.exports ?? limits.reports },
+              pdf:      { used: (pdfR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
               keywords: { used: (kwR.rows[0]    as Record<string,number>|undefined)?.n ?? 0, limit: limits.keywords ?? 500 },
             };
           } catch { return dbData?.usage ?? {}; }
