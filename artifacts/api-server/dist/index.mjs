@@ -102681,6 +102681,7 @@ async function findOrCreateAddonSubscription(stripe, stripeCustomerId, orgId3, f
     customer: stripeCustomerId,
     items: [{ price: firstPriceId, quantity: firstQty }],
     metadata: { addonSub: "true", orgId: orgId3 },
+    billing_cycle_anchor: "now",
     payment_behavior: "default_incomplete",
     expand: ["items.data.price"]
   });
@@ -117529,6 +117530,7 @@ function selectToolsForIntent(intent, message) {
 }
 var MAX_TOOL_ROUNDS = 6;
 var ROUND_TIMEOUT_MS = 35e3;
+var ROUND_TIMEOUT_MS_GPT5 = 7e4;
 var ROUND_TIMEOUT_SYNTHESIS_MS = 6e4;
 var TOOL_TIMEOUT_MS2 = 95e3;
 var LOOP_DEADLINE_MS = 18e4;
@@ -117645,7 +117647,8 @@ async function runToolCallingLoop(opts) {
 `);
       return { suspended: false, finalTextEmitted: true, undoTokens, messages };
     }
-    const thisRoundTimeout = round > 0 && toolsCalledTotal > 0 ? ROUND_TIMEOUT_SYNTHESIS_MS : ROUND_TIMEOUT_MS;
+    const _isGpt5Round0 = round === 0 && /^gpt-5/.test(model);
+    const thisRoundTimeout = round > 0 && toolsCalledTotal > 0 ? ROUND_TIMEOUT_SYNTHESIS_MS : _isGpt5Round0 ? ROUND_TIMEOUT_MS_GPT5 : ROUND_TIMEOUT_MS;
     const _progressMsg = round === 0 ? language.startsWith("fr") ? "Identification des informations pertinentes\u2026" : language.startsWith("es") ? "Identificando informaci\xF3n relevante\u2026" : "Identifying relevant information\u2026" : language.startsWith("fr") ? "Synth\xE8se des r\xE9sultats\u2026" : language.startsWith("es") ? "Sintetizando resultados\u2026" : "Synthesizing results\u2026";
     opts.sseWrite(`data: ${JSON.stringify({ progress: _progressMsg })}
 
