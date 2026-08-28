@@ -543,6 +543,31 @@ export async function deleteAccount(target: DeletionTarget): Promise<DeletionRep
       tableRecords.push({ table, predicate, rowsBefore, rowsDeleted, rowsAfter });
     }
 
+    // ── 2c-bis-pre. Explicit user_prefs deletion ─────────────────────────
+    // user_prefs is keyed by org_id (UUID). Dynamic discovery covers it via
+    // the org_id column, but it is explicitly included here as a safety net
+    // because it stores profile data (timezone, settings, streak, pinned items)
+    // that must never survive account deletion and re-registration.
+    {
+      const _upExists = await client.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='user_prefs'`,
+      );
+      if (_upExists.rows.length > 0) {
+        const _upDel = (await client.query(
+          `DELETE FROM user_prefs WHERE org_id::text = $1`,
+          [orgId],
+        )) as unknown as { rowCount: number };
+        logger.info({ orgId, deleted: _upDel.rowCount }, "[AccountDeletion] user_prefs explicitly cleared");
+        tableRecords.push({
+          table: "user_prefs",
+          predicate: "org_id::text = $1",
+          rowsBefore: _upDel.rowCount ?? 0,
+          rowsDeleted: _upDel.rowCount ?? 0,
+          rowsAfter: 0,
+        });
+      }
+    }
+
     // ── 2c-bis. Explicit user_sessions deletion ───────────────────────────
     // user_sessions is keyed by org_id (UUID) AND user_id (legacy email) AND
     // user_id_v2 (UUID). Dynamic discovery may miss rows that use only the
