@@ -74819,11 +74819,17 @@ async function persistOrgData(orgId3, fields) {
     try {
       const client = await pool.connect();
       try {
-        await client.query(
-          `INSERT INTO organizations (id) VALUES ($1)
-           ON CONFLICT (id) DO UPDATE SET ${sets.join(", ")}`,
+        const updateRes = await client.query(
+          `UPDATE organizations SET ${sets.join(", ")} WHERE id = $1::uuid`,
           [orgId3, ...vals]
         );
+        if ((updateRes.rowCount ?? 0) === 0) {
+          await client.query(
+            `INSERT INTO organizations (id) VALUES ($1::uuid)
+             ON CONFLICT (id) DO UPDATE SET ${sets.join(", ")}`,
+            [orgId3, ...vals]
+          );
+        }
         logger.debug({ orgId: orgId3, keys: Object.keys(fields) }, "[OrgData] organizations mis \xE0 jour");
       } finally {
         client.release();
@@ -102404,6 +102410,22 @@ async function deleteAccount(target) {
       const rowsAfter = afterRes.rows[0].n;
       tableRecords.push({ table, predicate, rowsBefore, rowsDeleted: rowsDeleted2, rowsAfter });
     }
+    {
+      const _sessExists = await client.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='user_sessions'`
+      );
+      if (_sessExists.rows.length > 0) {
+        const _sessIds = [orgId3, ...target.userId ? [String(target.userId)] : []].filter(Boolean);
+        const _sessDel = await client.query(
+          `DELETE FROM user_sessions
+            WHERE org_id::text = $1
+              OR user_id_v2::text = ANY($2::text[])
+              ${email ? "OR lower(user_id::text) = lower($3)" : ""}`,
+          email ? [orgId3, _sessIds, email] : [orgId3, _sessIds]
+        );
+        logger.info({ orgId: orgId3, deleted: _sessDel.rowCount }, "[AccountDeletion] user_sessions explicitly cleared");
+      }
+    }
     if (email) {
       for (const table of EMAIL_KEYED_TABLES) {
         const exists2 = await client.query(
@@ -108990,13 +109012,24 @@ router6.get("/me", async (req, res) => {
         mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing" && normStatus !== "past_due",
         usage: await (async () => {
           try {
-            const [auditR, monR, repR, expR, kwR] = await Promise.all([
+            const now = /* @__PURE__ */ new Date();
+            const monthStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+            const [auditR, monR, repR, kwR, pdfR, exportR] = await Promise.all([
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1`, [orgId3]).catch(() => ({ rows: [] })),
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`, [orgId3]).catch(() => ({ rows: [] })),
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1`, [orgId3]).catch(() => ({ rows: [] })),
-              orgDb(req)(`SELECT COUNT(*)::int AS n FROM report_exports WHERE org_id=$1`, [orgId3]).catch(() => ({ rows: [] })),
               // keyword tracking count — persists in DB, survives F5
-              orgDb(req)(`SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`, [orgId3]).catch(() => ({ rows: [] }))
+              orgDb(req)(`SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`, [orgId3]).catch(() => ({ rows: [] })),
+              // PDF exports — counted via usage_events (kind='pdf_export'), current month only
+              orgDb(req)(
+                `SELECT COUNT(*)::int AS n FROM usage_events WHERE org_id=$1 AND kind='pdf_export' AND created_at >= $2`,
+                [orgId3, monthStart]
+              ).catch(() => ({ rows: [] })),
+              // Data exports — counted via usage_events (kind='export' or 'health_export'), current month only
+              orgDb(req)(
+                `SELECT COUNT(*)::int AS n FROM usage_events WHERE org_id=$1 AND kind IN ('export','health_export') AND created_at >= $2`,
+                [orgId3, monthStart]
+              ).catch(() => ({ rows: [] }))
             ]);
             const stored = dbData?.usage ?? {};
             return {
@@ -109004,8 +109037,8 @@ router6.get("/me", async (req, res) => {
               audit: { used: auditR.rows[0]?.n ?? 0, limit: limits.audits },
               monitor: { used: monR.rows[0]?.n ?? 0, limit: limits.monitors },
               reports: { used: repR.rows[0]?.n ?? 0, limit: limits.reports },
-              exports: { used: expR.rows[0]?.n ?? 0, limit: limits.exports ?? limits.reports },
-              pdf: { used: expR.rows[0]?.n ?? 0, limit: limits.reports },
+              exports: { used: exportR.rows[0]?.n ?? 0, limit: limits.exports ?? limits.reports },
+              pdf: { used: pdfR.rows[0]?.n ?? 0, limit: limits.reports },
               keywords: { used: kwR.rows[0]?.n ?? 0, limit: limits.keywords ?? 500 }
             };
           } catch {
