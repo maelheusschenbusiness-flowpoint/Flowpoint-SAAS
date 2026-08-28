@@ -102411,6 +102411,25 @@ async function deleteAccount(target) {
       tableRecords.push({ table, predicate, rowsBefore, rowsDeleted: rowsDeleted2, rowsAfter });
     }
     {
+      const _upExists = await client.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='user_prefs'`
+      );
+      if (_upExists.rows.length > 0) {
+        const _upDel = await client.query(
+          `DELETE FROM user_prefs WHERE org_id::text = $1`,
+          [orgId3]
+        );
+        logger.info({ orgId: orgId3, deleted: _upDel.rowCount }, "[AccountDeletion] user_prefs explicitly cleared");
+        tableRecords.push({
+          table: "user_prefs",
+          predicate: "org_id::text = $1",
+          rowsBefore: _upDel.rowCount ?? 0,
+          rowsDeleted: _upDel.rowCount ?? 0,
+          rowsAfter: 0
+        });
+      }
+    }
+    {
       const _sessExists = await client.query(
         `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='user_sessions'`
       );
@@ -103517,6 +103536,12 @@ async function initDataTables() {
     await run(client, `CREATE INDEX IF NOT EXISTS billing_events_org_id_idx        ON billing_events(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS billing_events_stripe_event_id_idx ON billing_events(stripe_event_id);`);
     await run(client, `ALTER TABLE billing_events ADD COLUMN IF NOT EXISTS metadata JSONB;`);
+    await run(client, `ALTER TABLE billing_events ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE billing_events FORCE ROW LEVEL SECURITY`);
+    await run(client, `DROP POLICY IF EXISTS "be_select" ON billing_events`);
+    await run(client, `CREATE POLICY "be_select" ON billing_events FOR SELECT USING (org_id = current_setting('app.current_org_id', true))`);
+    await run(client, `DROP POLICY IF EXISTS "be_insert" ON billing_events`);
+    await run(client, `DROP POLICY IF EXISTS "be_update" ON billing_events`);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS provider TEXT;`);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS cached_tokens INTEGER NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS real_cost_eur REAL NOT NULL DEFAULT 0;`);
@@ -132662,8 +132687,10 @@ async function getRankingUsage(orgId3) {
 async function reserveRankingSearch(orgId3, id, keyword, location) {
   const { limit: limit2 } = getQuotaUsage(orgId3);
   const client = await pool.connect();
+  let txActive = false;
   try {
     await client.query("BEGIN");
+    txActive = true;
     await client.query(
       `SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`,
       [`local-seo-rankings:${orgId3}`]
@@ -132677,6 +132704,7 @@ async function reserveRankingSearch(orgId3, id, keyword, location) {
     const usedBefore = Number(count.rows[0]?.n ?? 0);
     if (usedBefore >= limit2) {
       await client.query("ROLLBACK");
+      txActive = false;
       return { reserved: false, used: usedBefore, limit: limit2 };
     }
     await client.query(
@@ -132685,10 +132713,13 @@ async function reserveRankingSearch(orgId3, id, keyword, location) {
       [id, orgId3, keyword, location, JSON.stringify({ _status: "pending" })]
     );
     await client.query("COMMIT");
+    txActive = false;
     return { reserved: true, used: usedBefore + 1, limit: limit2 };
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {
-    });
+    if (txActive) {
+      await client.query("ROLLBACK").catch(() => {
+      });
+    }
     throw err;
   } finally {
     client.release();
@@ -142780,6 +142811,11 @@ function servePage(file) {
       let html = fs5.readFileSync(htmlPath, "utf8");
       const ts = Date.now();
       html = html.replace(/\?v=\d+[a-z]?"/g, `?v=${ts}"`);
+      if (file === "signin.html") {
+        const extrasTag = `<script src="/signin-extras.js?v=${ts}" defer></script>`;
+        html = html.replace("</head>", `${extrasTag}
+</head>`);
+      }
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
       res.setHeader("Content-Security-Policy", CSP_HTML);
