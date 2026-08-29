@@ -261,6 +261,7 @@ export async function persistOrgData(orgId: string, fields: PersistOrgFields): P
     if (fields.pendingPlanDate !== undefined)       legacy["pendingPlanDate"]     = fields.pendingPlanDate;
     if (fields.ownerEmail !== undefined)            legacy["email"]               = fields.ownerEmail;
     if (fields.orgName !== undefined)               legacy["orgName"]             = fields.orgName;
+    if (fields.website !== undefined)               legacy["website"]             = fields.website;
     if (Object.keys(legacy).length > 0) {
       await upsertOrgSettings(orgId, legacy as Parameters<typeof upsertOrgSettings>[1]);
     }
