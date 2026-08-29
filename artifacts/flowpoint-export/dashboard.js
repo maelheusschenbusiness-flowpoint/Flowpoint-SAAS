@@ -10079,6 +10079,10 @@ function renderBilling() {
       return (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '€';
     };
     const _fpCat = STATE.billingCatalog || null;
+    // ── Single canonical enrichment loop — prices, inclusion, and availability
+    //    all come from STATE.billingCatalog (fed by GET /api/plans/catalog which
+    //    reads lib/plans.ts ADDON_DEFINITIONS + COMING_SOON_ADDONS + BETA_ADDONS).
+    //    No hardcoded availability sets anywhere in the frontend. ──
     allAddons.forEach(a => {
       const d = _fpCat ? _fpCat.addonsByKey[a.key] : null;
       a.catalogMissing = !d;
@@ -10086,22 +10090,9 @@ function renderBilling() {
       a.oneTime        = d ? !!d.oneTime : false;
       a.price          = d ? _fpEurMinor(d.priceMinor) + (d.oneTime ? '' : '/mois') : '—';
       a.includedFrom   = (_fpCat && _fpCat.includedFromByKey[a.key]) || null;
-    });
-    // ── Availability classification — must mirror backend COMING_SOON_ADDONS / BETA_ADDONS ──
-    // Any key listed here blocks "Activer →" and shows the correct status badge instead.
-    // Keep in sync with artifacts/api-server/src/lib/plans.ts when those sets change.
-    const _COMING_SOON_KEYS = new Set(['slaMonitoring','globalMonitoring','aiContentStrategist',
-      'abTestingAI','agencyPacks','aiExecutiveReport','aiWorkflows','crmIntegration',
-      'ssoEnterprise','aiWorkspaceLaunch']);
-    const _BETA_KEYS = new Set(['behavioralAI','revenueLeak','aiCro','aiForecasting',
-      'marketIntelligence','reviewIntelligence','aiGbpPosting','zapierIntegration',
-      'backlinkIntelligence']);
-    allAddons.forEach(a => {
-      if (!a.availability) {
-        a.availability = _COMING_SOON_KEYS.has(a.key) ? 'coming_soon'
-                       : _BETA_KEYS.has(a.key) ? 'beta'
-                       : 'live';
-      }
+      // availability from server catalog — 'coming_soon' | 'beta' | 'available' | 'live'
+      // Fallback 'live' applies only when catalog hasn't loaded yet (d===null).
+      a.availability   = (d && (d.status || d.availability)) || 'live';
     });
 
     const currentPlan = ((STATE.billing && STATE.billing.plan) || me.plan || '').toLowerCase();
