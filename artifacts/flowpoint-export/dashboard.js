@@ -161,6 +161,39 @@ function _fpApplyRoleNav() {
 }());
 
 // ─────────────────────────────────────────────────────────────────
+// TENANT NAMESPACE HELPERS — must come BEFORE STATE
+// Each org's localStorage data lives under fp:{orgId}:key so that
+// switching accounts never leaks settings/history from one org to another.
+// ─────────────────────────────────────────────────────────────────
+var _FP_ORG_NS = (function() {
+  try { return localStorage.getItem('fp:last-org-id') || ''; } catch(_) { return ''; }
+})();
+function fpTenantKey(k) {
+  // Returns namespaced key fp:{orgId}:suffix, or bare key when namespace unknown.
+  var bare = k.replace(/^fp:/, '');
+  return _FP_ORG_NS ? 'fp:' + _FP_ORG_NS + ':' + bare : k;
+}
+function fpTenantRead(k, def) {
+  try {
+    var v = localStorage.getItem(fpTenantKey(k));
+    // No fallback to bare key — always use namespace or defaults.
+    // Cross-org data must never bleed through a bare-key fallback.
+    return v !== null ? v : (def !== undefined ? String(def) : null);
+  } catch(_) { return def !== undefined ? String(def) : null; }
+}
+function fpTenantWrite(k, v) {
+  try {
+    localStorage.setItem(fpTenantKey(k), typeof v === 'string' ? v : JSON.stringify(v));
+  } catch(_) {}
+}
+function fpTenantRemove(k) {
+  try { localStorage.removeItem(fpTenantKey(k)); } catch(_) {}
+}
+function fpUpdateTenantNs(orgId) {
+  _FP_ORG_NS = orgId || '';
+}
+
+// ─────────────────────────────────────────────────────────────────
 // UTILITY HELPERS
 // ─────────────────────────────────────────────────────────────────
 // M13-fix: all console.log gated — never fires in production (app.flowpoint.pro)
@@ -196,7 +229,7 @@ const STATE = {
   checklistExtra: {},
   ctxMenu: null,
   floatPanel: null,
-  pinned: JSON.parse(localStorage.getItem('fp:pinned') || '{}'),
+  pinned: JSON.parse(fpTenantRead('fp:pinned', '{}') || '{}'),
   missionView: 'list',
   missionFilter: 'all',
   missionSearch: '',
@@ -219,13 +252,13 @@ const STATE = {
   fabOpen: false,
   gPressed: false,
   gTimer: null,
-  searchHistory: JSON.parse(localStorage.getItem('fp:search-hist') || '[]'),
+  searchHistory: JSON.parse(fpTenantRead('fp:search-hist', '[]') || '[]'),
   teamChatHistory: [],
   teamFiles: [],
-  settings: JSON.parse(localStorage.getItem('fp:settings') || '{"themeAuto":true,"liveStatus":true,"hoverNotifs":true,"streaks":true,"aiTips":true,"newTab":false,"bgDashboard":false,"recentActivity":true,"confirmActions":true,"statusPageUrl":"","webhookUrl":"","smsPhone":""}'),
+  settings: JSON.parse(fpTenantRead('fp:settings', '{"themeAuto":true,"liveStatus":true,"hoverNotifs":true,"streaks":true,"aiTips":true,"newTab":false,"bgDashboard":false,"recentActivity":true,"confirmActions":true,"statusPageUrl":"","webhookUrl":"","smsPhone":""}') || '{}'),
   checklist: null,
-  overviewRange: localStorage.getItem('fp:overview-range') || '7d',
-  freeModules: JSON.parse(localStorage.getItem('fp:free-modules') || '{"compactMode":false,"dailyAI":true,"soundAlerts":false,"focusMode":false}'),
+  overviewRange: fpTenantRead('fp:overview-range', '7d') || '7d',
+  freeModules: JSON.parse(fpTenantRead('fp:free-modules', '{"compactMode":false,"dailyAI":true,"soundAlerts":false,"focusMode":false}') || '{}'),
   sidebarCollapsed: localStorage.getItem('fp:sidebar-collapsed') === '1',
   calendarYear: new Date().getFullYear(),
   calendarMonth: new Date().getMonth(),
@@ -2879,8 +2912,8 @@ window._fpSlaViewPage = function() {
     if (clearBtn) clearBtn.addEventListener('click', async function() {
       STATE.settings = STATE.settings || {};
       STATE.settings.statusPageUrl = '';
-      // Canonical key — same as used at init and in save handler.
-      localStorage.setItem('fp:settings', JSON.stringify(STATE.settings));
+      // Write to namespaced key — same as used at init and in save handler.
+      fpTenantWrite('fp:settings', JSON.stringify(STATE.settings));
       // statusPageUrl top-level only; server strips nested field before JSONB merge.
       try { await apiAction('PATCH', '/api/me/prefs', { statusPageUrl: '' }); } catch(_) {}
       showToast('success', fpT('Page statut supprim\u00e9e'));
@@ -2934,7 +2967,7 @@ function logActivityEvent(type, label, metadata = {}) {
 }
 function saveCalendarEvents() { /* calendar events persisted via API only */ }
 function saveSettings() {
-  localStorage.setItem('fp:settings', JSON.stringify(STATE.settings));
+  fpTenantWrite('fp:settings', JSON.stringify(STATE.settings));
   apiAction('PATCH', '/api/me/prefs', { settings: STATE.settings }).catch(() => {});
 }
 function saveChecklist() {
@@ -9987,6 +10020,7 @@ function renderBilling() {
   }
   if (typeof window._fpDoUpgrade !== 'function') {
     window._fpDoUpgrade = async function(plan) {
+      window._fpPlanUpgradeInProgress = true;
       showToast('info', fpT('Mise à jour du plan en cours…'));
       try {
         const r = await apiAction('POST', '/api/billing/upgrade', { plan });
@@ -15852,15 +15886,18 @@ window.fpGoToBillingPlans = function() {
   setTimeout(function() { navigateSub('plans'); }, 0);
 };
 
-// Upgrade CTA : abonnés actifs/en essai → upgrade direct via /api/billing/upgrade
-// (plan mis à jour immédiatement, sans passer par pricing) ; sinon onglet Plans.
-window.fpUpgradeCta = function(plan) {
-  var st = (STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || '';
-  if ((st === 'active' || st === 'trialing') && typeof window.fpUpgradeOrCheckout === 'function') {
-    window.fpUpgradeOrCheckout(plan);
-    return;
+// Upgrade CTA : TOUJOURS naviguer vers l'onglet Plans de Facturation.
+// Ces boutons sont des surfaces de découverte — ils ne déclenchent jamais
+// un upgrade immédiat. L'utilisateur voit le récapitulatif des plans avant
+// de confirmer. Si le compte n'a pas d'abonnement actif, fpGoToBillingPlans
+// redirige vers le bon écran de toute façon.
+window.fpUpgradeCta = function(/*plan unused — navigation only*/) {
+  if (typeof window.fpGoToBillingPlans === 'function') {
+    window.fpGoToBillingPlans();
+  } else {
+    navigate('billing');
+    setTimeout(function() { navigateSub('plans'); }, 80);
   }
-  window.fpGoToBillingPlans();
 };
 
 function renderSubNav(items) {
@@ -48463,7 +48500,10 @@ async function init() {
               const newPlan = msg.plan;
               if (STATE.me)      STATE.me.plan = newPlan;
               if (STATE.billing) STATE.billing.plan = newPlan.toLowerCase();
-              if (prev.toLowerCase() !== newPlan.toLowerCase()) {
+              // Suppress the SSE toast when the dashboard already showed one via
+              // _fpDoUpgrade() — window._fpPlanUpgradeInProgress is set there.
+              // This prevents the double "Plan mis à jour" notification.
+              if (prev.toLowerCase() !== newPlan.toLowerCase() && !window._fpPlanUpgradeInProgress) {
                 showToast('success', `Plan mis à jour : ${newPlan} ✓`);
               }
               // Immediately update me.limits from local plan definitions so the
