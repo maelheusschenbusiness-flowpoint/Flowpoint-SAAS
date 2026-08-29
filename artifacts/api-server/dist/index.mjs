@@ -76329,15 +76329,30 @@ async function handleStripeWebhook(req, res) {
         })();
         const recipientName = orgData.firstName || orgData.email.split("@")[0] || "Utilisateur";
         if (billingReason === "subscription_update") {
-          const isBillingTrial = amountCents === 0;
-          mailer.sendPlanChanged({
-            to: orgData.email,
-            name: recipientName,
-            plan: orgData.plan,
-            amountEur: amountCents > 0 ? Math.round(amountCents / 100) : void 0,
-            periodEnd,
-            isTrial: isBillingTrial
-          }).catch((err) => logger.warn({ err, orgId: orgId3 }, "[Webhook] sendPlanChanged email failed"));
+          const _subDetails = obj["subscription_details"];
+          const _subMeta = _subDetails?.["metadata"] ?? {};
+          const _isAddonSub = _subMeta["addonSub"] === "true";
+          if (_isAddonSub) {
+            logger.info({ orgId: orgId3, billingReason }, "[Webhook] invoice.payment_succeeded: subscription_update on addonSub \u2014 routing to sendPaymentSucceeded(isAddon)");
+            mailer.sendPaymentSucceeded({
+              to: orgData.email,
+              name: recipientName,
+              plan: orgData.plan,
+              amountEur: amountCents > 0 ? Math.round(amountCents / 100) : void 0,
+              periodEnd,
+              isAddon: true
+            }).catch((err) => logger.warn({ err, orgId: orgId3 }, "[Webhook] sendPaymentSucceeded(addon) email failed"));
+          } else {
+            const isBillingTrial = amountCents === 0;
+            mailer.sendPlanChanged({
+              to: orgData.email,
+              name: recipientName,
+              plan: orgData.plan,
+              amountEur: amountCents > 0 ? Math.round(amountCents / 100) : void 0,
+              periodEnd,
+              isTrial: isBillingTrial
+            }).catch((err) => logger.warn({ err, orgId: orgId3 }, "[Webhook] sendPlanChanged email failed"));
+          }
         } else {
           mailer.sendPaymentSucceeded({
             to: orgData.email,
@@ -122222,6 +122237,19 @@ router14.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (re
     logger.error({ err, orgId: orgId3 }, "[Billing/DeleteAccount] Failed");
     const msg = err instanceof Error ? err.message : "";
     const isStripeErr = msg.includes("Stripe") || msg.includes("stripe");
+    if (!isStripeErr) {
+      try {
+        await persistOrgData(orgId3, { subscriptionStatus: "canceled" });
+        logger.info({ orgId: orgId3 }, "[Billing/DeleteAccount] Subscription status force-set to canceled after partial failure");
+      } catch (persistErr) {
+        logger.warn({ persistErr, orgId: orgId3 }, "[Billing/DeleteAccount] Could not persist canceled status (non-fatal)");
+      }
+      res.clearCookie("fp_token", { path: "/", httpOnly: true, sameSite: "lax", secure: true });
+      return res.status(500).json({
+        error: "Certaines donn\xE9es n'ont pas pu \xEAtre supprim\xE9es. Votre abonnement Stripe a bien \xE9t\xE9 r\xE9sili\xE9. Contactez le support pour compl\xE9ter la suppression.",
+        stripeCleared: true
+      });
+    }
     res.status(500).json({
       error: isStripeErr ? "\xC9chec de la r\xE9siliation Stripe. Aucune donn\xE9e n'a \xE9t\xE9 supprim\xE9e. R\xE9essayez ou contactez le support." : "Erreur lors de la suppression du compte. Aucune donn\xE9e n'a \xE9t\xE9 supprim\xE9e."
     });
