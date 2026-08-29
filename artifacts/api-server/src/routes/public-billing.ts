@@ -1906,10 +1906,10 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             // see their signup address in Workspace/Settings/Localisation.
             try {
               const { upsertOrgSettings: _fcUpsertOs, loadOrgSettings: _fcLoadOs } = await import("../services/org-settings.js");
-              const _fcOsExisting = await _fcLoadOs(_fcAEmail).catch(() => null);
+              const _fcOsExisting = await _fcLoadOs(_fcAOrgId).catch(() => null);
               const _fcHasAddr = !!(_fcSignup["address"] || _fcSignup["city"] || _fcSignup["country"] || _fcSignup["phone"]);
               if (!_fcOsExisting) {
-                await _fcUpsertOs(_fcAEmail, {
+                await _fcUpsertOs(_fcAOrgId, {
                   email:              _fcAEmail,
                   orgName:            _fcSignup["company_name"] ?? "",
                   firstName:          _fcSignup["first_name"]   ?? "",
@@ -1923,11 +1923,11 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                   locationConfigured: !!(_fcSignup["city"] || _fcSignup["address"]),
                   locationSource:     "manual",
                 });
-                logger.info({ step: "FC-4f", orgId: _fcAEmail }, "[FC] step-4f: org_settings profile row created from signup data");
+                logger.info({ step: "FC-4f", orgId: _fcAOrgId }, "[FC] step-4f: org_settings profile row created from signup data");
               } else if (_fcHasAddr && !_fcOsExisting.address && !_fcOsExisting.city) {
                 // Existing profile row without any address — fill the missing
                 // contact fields from the signup form (never overwrite values).
-                await _fcUpsertOs(_fcAEmail, {
+                await _fcUpsertOs(_fcAOrgId, {
                   country:            _fcOsExisting.country    ?? _fcSignup["country"]     ?? null,
                   city:               _fcSignup["city"]        ?? null,
                   address:            _fcSignup["address"]     ?? null,
@@ -1936,7 +1936,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                   locationConfigured: !!(_fcSignup["city"] || _fcSignup["address"]),
                   locationSource:     "manual",
                 });
-                logger.info({ step: "FC-4f", orgId: _fcAEmail }, "[FC] step-4f: org_settings address self-healed from signup data");
+                logger.info({ step: "FC-4f", orgId: _fcAOrgId }, "[FC] step-4f: org_settings address self-healed from signup data");
               }
             } catch (_fcOsErr) {
               logger.warn({ step: "FC-4f", err: (_fcOsErr as Error).message }, "[FC] step-4f: org_settings propagation failed (non-fatal)");

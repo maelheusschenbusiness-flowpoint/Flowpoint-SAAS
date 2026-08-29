@@ -11378,7 +11378,7 @@ function renderSettings() {
   // fall back to localStorage for offline/legacy compatibility.
   const wlBranding = (STATE.settings && STATE.settings.wlBranding && typeof STATE.settings.wlBranding === 'object')
     ? STATE.settings.wlBranding
-    : JSON.parse(localStorage.getItem('fp:wl-branding') || '{}');
+    : JSON.parse(fpTenantRead('fp:wl-branding', '{}'));
 
   // ── Shared Toggle helper ──────────────────────────────────
   const Toggle = (key, label, desc, locked) => {
@@ -15268,7 +15268,7 @@ function setupNewReportPanel() {
         // Pass white-label branding data so reports are generated with the correct agency identity
         const _wlbData = (STATE.settings && STATE.settings.wlBranding && typeof STATE.settings.wlBranding === 'object')
           ? STATE.settings.wlBranding
-          : JSON.parse(localStorage.getItem('fp:wl-branding') || '{}');
+          : JSON.parse(fpTenantRead('fp:wl-branding', '{}'));
         const branding = whiteLabel ? {
           agencyName:     _wlbData.agencyName     || (STATE.me && STATE.me.org && STATE.me.org.name) || 'Mon Agence',
           logoUrl:        _wlbData.logoUrl        || '',
@@ -17223,7 +17223,7 @@ function bindSectionEvents() {
       const report = STATE.reports.find(r => r.id === reportId);
       const _wlbShare = (STATE.settings && STATE.settings.wlBranding && typeof STATE.settings.wlBranding === 'object')
         ? STATE.settings.wlBranding
-        : JSON.parse(localStorage.getItem('fp:wl-branding') || '{}');
+        : JSON.parse(fpTenantRead('fp:wl-branding', '{}'));
       const brandingPayload = {
         agencyName:     _wlbShare.agencyName    || (STATE.me && STATE.me.org && STATE.me.org.name) || 'Mon Agence',
         logoUrl:        _wlbShare.logoUrl       || '',
@@ -17277,7 +17277,7 @@ function bindSectionEvents() {
         showCtxMenu(e, [
           { key:'dl',    icon:'download', label:'Télécharger', action:()=>{ downloadReportPdf(report.id, report.name||'rapport'); showToast('success', fpT('Téléchargement PDF…')); } },
           { key:'share', icon:'copy',     label:'Copier le lien', action: async ()=>{
-            const wlb = JSON.parse(localStorage.getItem('fp:wl-branding') || '{}');
+            const wlb = JSON.parse(fpTenantRead('fp:wl-branding', '{}'));
             const bp = { agencyName: wlb.agencyName || STATE.me?.org?.name || 'Mon Agence', logoUrl: wlb.logoUrl || '', primaryColor: wlb.primaryColor || '#2563EB', secondaryColor: wlb.secondaryColor || '#1d4ed8', footerMsg: wlb.footerMsg || '' };
             const base = location.pathname.endsWith('dashboard.html') ? location.pathname.replace('dashboard.html','report-view.html') : location.pathname.replace(/\/?$/,'/report-view.html');
             try {
@@ -17658,7 +17658,7 @@ function bindSectionEvents() {
       };
       // BUG-1 FIX: persist wlBranding to DB via user_prefs.settings (server-side)
       // in addition to localStorage (for fast local reads).
-      localStorage.setItem('fp:wl-branding', JSON.stringify(branding));
+      fpTenantWrite('fp:wl-branding', JSON.stringify(branding));
       if (STATE.settings) STATE.settings.wlBranding = branding;
       apiAction('PATCH', '/api/me/prefs', { settings: { wlBranding: branding } })
         .then(() => showToast('success', fpT('Branding White Label sauvegardé !')))
@@ -48039,7 +48039,7 @@ async function init() {
                   // 3. If current route is now forbidden, redirect to overview
                   if (!_fpCanAccess(STATE.route)) {
                     STATE.route = 'overview';
-                    try { localStorage.setItem('fp:last-route', 'overview'); } catch(_) {}
+                    try { fpTenantWrite('fp:last-route', 'overview'); } catch(_) {}
                   }
                   // 4. Bust caches and re-fetch /api/me for full server-authoritative sync
                   try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
@@ -61817,15 +61817,15 @@ function renderSettingsLocation() {
       <div class="fp-grid-2" style="gap:14px;margin-bottom:14px">
         <div class="fp-form-group">
           <label class="fp-form-label">Adresse complète</label>
-          <input class="fp-input" id="fp-loc-address" type="text" placeholder="12 rue de la Paix" value="${escHtml(loc.address||'')}"/>
+          <input class="fp-input" id="fp-loc-address" type="text" placeholder="Ex : 10 allée des Acacias" value="${escHtml(loc.address||'')}"/>
         </div>
         <div class="fp-form-group">
           <label class="fp-form-label">Ville *</label>
-          <input class="fp-input" id="fp-loc-city" type="text" placeholder="Paris" value="${escHtml(loc.city||'')}"/>
+          <input class="fp-input" id="fp-loc-city" type="text" placeholder="Ex : Lyon" value="${escHtml(loc.city||'')}"/>
         </div>
         <div class="fp-form-group">
           <label class="fp-form-label">Code postal</label>
-          <input class="fp-input" id="fp-loc-postal" type="text" placeholder="75001" value="${escHtml(loc.postalCode||'')}"/>
+          <input class="fp-input" id="fp-loc-postal" type="text" placeholder="Ex : 69001" value="${escHtml(loc.postalCode||'')}"/>
         </div>
         <div class="fp-form-group">
           <label class="fp-form-label">Pays</label>
@@ -64729,7 +64729,7 @@ window._reloadKeywords = async function() {
 // with White-Label branding when configured, FlowPoint fallback otherwise.
 function fpGetExportBranding() {
   let wl = (STATE.settings && STATE.settings.wlBranding) || null;
-  if (!wl) { try { wl = JSON.parse(localStorage.getItem('fp:wl-branding') || 'null'); } catch(_) { wl = null; } }
+  if (!wl) { try { wl = JSON.parse(fpTenantRead('fp:wl-branding', 'null')); } catch(_) { wl = null; } }
   wl = wl || {};
   const name = String(wl.agencyName || '').trim();
   const hex = v => /^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? v : null;
@@ -72001,7 +72001,7 @@ function renderGA4ClientMode() {
   if (sub === 'agency') {
     // Agency Lab — audits table + shared reports + white-label status; no duplicated KPI/availability blocks
     const wlBranding = (STATE.settings && STATE.settings.wlBranding && typeof STATE.settings.wlBranding === 'object')
-      ? STATE.settings.wlBranding : (typeof localStorage !== 'undefined' ? (function(){try{return JSON.parse(localStorage.getItem('fp:wl-branding')||'{}');}catch(_){return {};}})() : {});
+      ? STATE.settings.wlBranding : (typeof localStorage !== 'undefined' ? (function(){try{return JSON.parse(fpTenantRead('fp:wl-branding', '{}'));}catch(_){return {};}})() : {});
     const wlEnabled = !!(wlBranding.logoUrl || wlBranding.agencyName || wlBranding.primaryColor);
     const wlBlock = `
       <div class="fp-card fp-mb-20" style="margin-top:20px">
