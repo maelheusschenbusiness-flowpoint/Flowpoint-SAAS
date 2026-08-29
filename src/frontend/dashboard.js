@@ -157,7 +157,13 @@ function _fpApplyRoleNav() {
 // switching accounts never leaks settings/history from one org to another.
 // ─────────────────────────────────────────────────────────────────
 var _FP_ORG_NS = (function() {
-  try { return localStorage.getItem('fp:last-org-id') || ''; } catch(_) { return ''; }
+  try { return localStorage.getItem('fp:last-org-id') || ''; }
+  catch(_storageErr) {
+    // CRITICAL: localStorage unavailable — tenant isolation is disabled; all
+    // fpTenantKey() calls will use bare keys, risking cross-org data leaks.
+    console.error('[FP] CRITICAL: localStorage unavailable — tenant isolation disabled.', _storageErr);
+    return '';
+  }
 })();
 function fpTenantKey(k) {
   // Returns namespaced key fp:{orgId}:suffix, or bare key when namespace unknown.
@@ -1653,7 +1659,17 @@ async function loadData(options = {}) {
     const _sc = sessionStorage.getItem('fp-state-cache');
     if (_sc) {
       const _cp = JSON.parse(_sc);
-      if (Date.now() - (_cp._ts || 0) < 300000) {
+      // TENANT GUARD: reject cache if it was written for a different org.
+      // fp:last-org-id holds the last confirmed canonical orgId.
+      // If the stored _orgId doesn't match, this cache belongs to another account.
+      const _cachedOrgId  = _cp._orgId || null;
+      const _knownOrgId   = (() => { try { return localStorage.getItem('fp:last-org-id'); } catch(_) { return null; } })();
+      const _cacheOrgMismatch = _cachedOrgId && _knownOrgId && _cachedOrgId !== _knownOrgId;
+      if (_cacheOrgMismatch) {
+        console.warn('[FP] fp-state-cache rejected: cached org', _cachedOrgId, '≠ last known org', _knownOrgId, '— discarding stale cross-org cache');
+        try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+      }
+      if (!_cacheOrgMismatch && Date.now() - (_cp._ts || 0) < 300000) {
         if (_cp.me)            STATE.me            = _cp.me;
         if (_cp.overview)      STATE.overview      = _cp.overview;
         if (_cp.audits)        STATE.audits        = _cp.audits;
@@ -2281,7 +2297,10 @@ async function loadData(options = {}) {
   // ── Persist STATE to sessionStorage cache (stale-while-revalidate) ─────────
   try {
     sessionStorage.setItem('fp-state-cache', JSON.stringify({
-      _ts: Date.now(), me: STATE.me, overview: STATE.overview,
+      _ts: Date.now(),
+      // _orgId: tenant tag — cache is rejected on load if org has changed
+      _orgId: (STATE.me && (STATE.me.orgId || STATE.me.id)) || null,
+      me: STATE.me, overview: STATE.overview,
       audits: STATE.audits.slice(0,50), monitors: STATE.monitors.slice(0,50),
       reports: STATE.reports.slice(0,20), team: STATE.team,
       seatUsage: STATE.seatUsage || null, pendingInvitations: STATE.pendingInvitations || [],
@@ -2370,6 +2389,7 @@ async function loadData(options = {}) {
   try {
     sessionStorage.setItem('fp-state-cache', JSON.stringify({
       _ts: Date.now(),
+      _orgId: (STATE.me && (STATE.me.orgId || STATE.me.id)) || null,
       me: STATE.me, overview: STATE.overview,
       audits: STATE.audits, monitors: STATE.monitors,
       reports: STATE.reports, team: STATE.team,
@@ -9771,7 +9791,9 @@ function renderBilling() {
   }
   if (typeof window._fpDoUpgrade !== 'function') {
     window._fpDoUpgrade = async function(plan) {
-      window._fpPlanUpgradeInProgress = true;
+      // Set suppression record: plan name + timestamp, valid 30 seconds.
+      // The SSE handler (billing:plan_updated) checks this to avoid double toast.
+      window._fpPlanUpgradeRecord = { plan: plan, ts: Date.now() };
       showToast('info', fpT('Mise à jour du plan en cours…'));
       try {
         const r = await apiAction('POST', '/api/billing/upgrade', { plan });
@@ -9789,7 +9811,7 @@ function renderBilling() {
           const _planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
           const _msg = r.noSubDowngrade ? 'Plan changé vers ' + _planLabel + ' ✓' : 'Plan mis à jour → ' + _planLabel + ' ✓';
           showToast('success', _msg);
-          window._fpPlanUpgradeInProgress = false;
+          // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
           if (STATE.me) STATE.me.plan = _planLabel;
           if (STATE.billing) STATE.billing.plan = plan.toLowerCase();
           render();
@@ -9801,11 +9823,11 @@ function renderBilling() {
         if (r && r.reactivation && r.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
         if (r && r.noSubscription) { showToast('info', fpT('Abonnement introuvable — redirection vers les plans…')); navigate('billing'); setTimeout(function(){ navigateSub('plans'); }, 100); return; }
         if (r && r.error === 'plan_already_active') { showToast('info', fpT('Vous êtes déjà sur ce plan.')); return; }
-        window._fpPlanUpgradeInProgress = false;
+        // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
         showToast('error', (r && (r.message || r.error)) || 'Le changement de plan a échoué. Réessayez.');
         window._fpResyncBillingState();
       } catch(e) {
-        window._fpPlanUpgradeInProgress = false;
+        // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
         const _rawMsg = (e && e.message) || '';
         const _isToken = /^[a-z0-9_]+$/.test(_rawMsg);
         if (e && e.code === 'plan_already_active') { showToast('info', (!_isToken && _rawMsg) || 'Vous êtes déjà sur ce plan.'); return; }
@@ -10130,7 +10152,7 @@ function renderBilling() {
             ? 'Plan changé vers ' + _planLabel + ' ✓'
             : 'Plan mis à jour → ' + _planLabel + ' ✓';
           showToast('success', _msg);
-          window._fpPlanUpgradeInProgress = false;
+          // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
           // ── Immediate optimistic STATE update (before loadData completes) ──
           // Both keys MUST stay in lockstep: STATE.me.plan (Title Case, read by the
           // AI Credits header, sidebar Facturation card, profile) and
@@ -47656,7 +47678,15 @@ async function init() {
       }
       localStorage.setItem('fp:last-org-id', _curOrgId);
     }
-  } catch(_) {}
+  } catch(_orgChangeErr) {
+    // CRITICAL: org-change reinitialization failure must NEVER silently leave
+    // stale cross-org data in memory. If we cannot safely reinitialize, force
+    // a clean reload which will re-fetch everything from the server.
+    console.error('[FP] CRITICAL: org-change namespace reinitialization failed:', _orgChangeErr);
+    try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+    try { localStorage.removeItem('fp:last-org-id'); } catch(_) {}
+    window.location.reload();
+  }
 
   // ── addon_success: delayed re-fetch to handle Stripe webhook processing lag ──
   // The Stripe webhook that activates the add-on in org_addons may arrive AFTER
@@ -47665,14 +47695,28 @@ async function init() {
   // appear as inactive. A second fetch 4 seconds later catches the webhook window.
   if (window.location.search.includes('addon_success') || window.__fpAddonSuccessRetry) {
     window.__fpAddonSuccessRetry = false;
-    setTimeout(async () => {
+    // Stripe webhook for a separate add-on subscription can take 5–30 seconds.
+    // We retry at 8s and again at 20s to catch late webhook processing.
+    const _addonRetry = async (label) => {
       try {
         try { _apiFetchCache && _apiFetchCache.delete('/api/me'); } catch(_) {}
         try { _apiFetchCache && _apiFetchCache.delete('/api/addons'); } catch(_) {}
+        const _freshMe = await apiFetch('/api/me').catch(() => null);
+        if (_freshMe && _freshMe.addons) {
+          // Check if any addon is now active that wasn't before
+          const _prevAddons = STATE.me?.addons || {};
+          const _newAddons  = _freshMe.addons || {};
+          const _newlyActive = Object.keys(_newAddons).filter(k => _newAddons[k] && !_prevAddons[k]);
+          if (_newlyActive.length > 0) {
+            console.info('[FP] addon_success retry', label, ': newly active addons:', _newlyActive);
+          }
+        }
         await loadData();
         render(STATE.currentSection || STATE.route);
       } catch(_) {}
-    }, 4000);
+    };
+    setTimeout(() => _addonRetry('8s'),  8000);
+    setTimeout(() => _addonRetry('20s'), 20000);
   }
 
   // Missions rotation automatique toutes les 3 jours
@@ -47832,7 +47876,14 @@ async function init() {
               // Suppress the SSE toast when the dashboard already showed one via
               // _fpDoUpgrade() — window._fpPlanUpgradeInProgress is set there.
               // This prevents the double "Plan mis à jour" notification.
-              if (prev.toLowerCase() !== newPlan.toLowerCase() && !window._fpPlanUpgradeInProgress) {
+              // Deduplicate: skip SSE toast if this session just triggered the upgrade
+              // (within the last 30 seconds for the same plan). This is deterministic:
+              // it compares plan identity + a 30-second time window, never a fragile boolean.
+              const _rec = window._fpPlanUpgradeRecord;
+              const _sseToastSuppressed = _rec &&
+                _rec.plan && _rec.plan.toLowerCase() === newPlan.toLowerCase() &&
+                (Date.now() - (_rec.ts || 0)) < 30000;
+              if (prev.toLowerCase() !== newPlan.toLowerCase() && !_sseToastSuppressed) {
                 showToast('success', `Plan mis à jour : ${newPlan} ✓`);
               }
               // Immediately update me.limits from local plan definitions so the
