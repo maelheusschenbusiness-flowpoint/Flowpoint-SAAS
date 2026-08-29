@@ -1547,15 +1547,36 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       if (billingReason === "subscription_update") {
         // Plan changed → send plan-change specific email, not generic "payment confirmed".
         // If amount_paid = 0 the user is on a trial — adjust message accordingly.
-        const isBillingTrial = amountCents === 0;
-        mailer.sendPlanChanged({
-          to:        orgData.email,
-          name:      recipientName,
-          plan:      orgData.plan,
-          amountEur: amountCents > 0 ? Math.round(amountCents / 100) : undefined,
-          periodEnd,
-          isTrial:   isBillingTrial,
-        }).catch(err => logger.warn({ err, orgId }, "[Webhook] sendPlanChanged email failed"));
+        //
+        // GUARD: add-on subscriptions (metadata.addonSub="true") also fire
+        // subscription_update invoices. Do NOT send a plan-change email for those —
+        // they are not a plan change. Route them to the addon/renewal email instead.
+        const _subDetails = obj["subscription_details"] as Record<string, unknown> | undefined;
+        const _subMeta = (_subDetails?.["metadata"] as Record<string, string>) ?? {};
+        const _isAddonSub = _subMeta["addonSub"] === "true";
+
+        if (_isAddonSub) {
+          // Add-on subscription update — treat as an add-on confirmation email.
+          logger.info({ orgId, billingReason }, "[Webhook] invoice.payment_succeeded: subscription_update on addonSub — routing to sendPaymentSucceeded(isAddon)");
+          mailer.sendPaymentSucceeded({
+            to:        orgData.email,
+            name:      recipientName,
+            plan:      orgData.plan,
+            amountEur: amountCents > 0 ? Math.round(amountCents / 100) : undefined,
+            periodEnd,
+            isAddon:   true,
+          }).catch(err => logger.warn({ err, orgId }, "[Webhook] sendPaymentSucceeded(addon) email failed"));
+        } else {
+          const isBillingTrial = amountCents === 0;
+          mailer.sendPlanChanged({
+            to:        orgData.email,
+            name:      recipientName,
+            plan:      orgData.plan,
+            amountEur: amountCents > 0 ? Math.round(amountCents / 100) : undefined,
+            periodEnd,
+            isTrial:   isBillingTrial,
+          }).catch(err => logger.warn({ err, orgId }, "[Webhook] sendPlanChanged email failed"));
+        }
       } else {
         // subscription_cycle (renewal) or manual (add-on) → standard payment confirmed
         mailer.sendPaymentSucceeded({

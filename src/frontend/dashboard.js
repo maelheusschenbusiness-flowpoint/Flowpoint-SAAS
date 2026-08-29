@@ -9713,8 +9713,10 @@ function renderBilling() {
           showToast('info', fpT('Essai déjà terminé — statut mis à jour'));
           setTimeout(()=>navigateSub('plans'), 700);
         } else {
-          showToast('success', fpT('Essai annulé'));
-          setTimeout(()=>window.location.reload(), 1200);
+          showToast('success', fpT('Essai annulé — redirection…'));
+          // Trial is fully cancelled: user loses access → send to sign-in
+          try { sessionStorage.clear(); } catch(_) {}
+          setTimeout(()=>{ window.location.href = '/signin.html?trialEnded=1'; }, 1400);
         }
       } else if (r && r.transitioned) {
         // Trial already converted to active paid subscription — route to regular cancel
@@ -15433,6 +15435,8 @@ function navigate(route, subRoute) {
 }
 
 function navigateSub(sub) {
+  // Dismiss floating chart tooltip when switching sub-pages (mobile touch leaves it visible)
+  try { document.getElementById('fp-chart-tip')?.classList.remove('visible'); } catch(_) {}
   // "Passer Pro/Ultra" buttons across the app target the Billing → Plans tab.
   // If called from another section (Settings, etc.), route to Billing first.
   if (sub === 'plans' && STATE.route !== 'billing') {
@@ -47570,20 +47574,43 @@ async function init() {
   // Load data
   await loadData();
 
-  // ── Org-change detection: reset stale route after account deletion/re-registration ──
-  // When account A is deleted and the user re-registers with the same email, a new UUID
-  // org is created. The fp:last-route from account A is still in localStorage, so it
-  // would restore the old page ("local-seo", etc.) instead of "overview".
-  // Solution: persist the current orgId in fp:last-org-id and compare on every load.
-  // If the org changed (deletion → re-registration), wipe stale nav state.
+  // ── Org-change detection + tenant namespace sync ─────────────────────────
+  // BOOTSTRAP SEQUENCE (addresses point 3 of the P0 audit):
+  //
+  //  Step 1 — Page load: _FP_ORG_NS = localStorage('fp:last-org-id')
+  //            This is the PREVIOUS session's org. Could be a different user.
+  //  Step 2 — STATE initialized via fpTenantRead() with that provisional namespace.
+  //            The reads target the previous org's namespaced keys.
+  //  Step 3 — loadData() → GET /api/me — server is authoritative.
+  //  Step 4 — HERE (after loadData): commit the confirmed canonical orgId.
+  //            If it differs from the provisional namespace (_orgChanged = true),
+  //            REINITIALIZE all tenant STATE fields from the new namespace.
+  //            For a brand-new user those keys don't exist → clean defaults apply.
+  //
+  // Critical: render() is only called after this block, so the stale data from
+  // step 2 is never displayed. The STATE re-init here is the guarantee.
   try {
     const _curOrgId = STATE.me && (STATE.me.orgId || STATE.me.id);
     const _storedOrgId = localStorage.getItem('fp:last-org-id');
     if (_curOrgId) {
-      if (_storedOrgId && _storedOrgId !== _curOrgId) {
+      const _orgChanged = _storedOrgId && _storedOrgId !== _curOrgId;
+      fpUpdateTenantNs(_curOrgId); // commit canonical namespace
+      if (_orgChanged) {
+        // Re-read tenant STATE fields from the new org's namespace.
+        // Ensures zero cross-org data survives in memory after a user switch.
+        const _defSettings = '{"themeAuto":true,"liveStatus":true,"hoverNotifs":true,"streaks":true,"aiTips":true,"newTab":false,"bgDashboard":false,"recentActivity":true,"confirmActions":true,"statusPageUrl":"","webhookUrl":"","smsPhone":""}';
+        const _defModules  = '{"compactMode":false,"dailyAI":true,"soundAlerts":false,"focusMode":false}';
+        STATE.pinned           = JSON.parse(fpTenantRead('fp:pinned',           '{}') || '{}');
+        STATE.settings         = JSON.parse(fpTenantRead('fp:settings',         _defSettings) || '{}');
+        STATE.overviewRange    = fpTenantRead('fp:overview-range', '7d') || '7d';
+        STATE.freeModules      = JSON.parse(fpTenantRead('fp:free-modules',     _defModules) || '{}');
+        STATE.streak           = parseInt(fpTenantRead('fp:streak',         '0') || '0', 10);
+        STATE.activityLastSeen = parseInt(fpTenantRead('fp:activity-last-seen','0') || '0', 10);
+        STATE.pushNotifEnabled = fpTenantRead('fp:push-notif', '') === '1';
+        STATE.searchHistory    = JSON.parse(fpTenantRead('fp:search-hist',      '[]') || '[]');
         localStorage.removeItem('fp:last-route');
         localStorage.removeItem('fp:last-sub');
-        STATE.route = 'overview';
+        STATE.route    = 'overview';
         STATE.subRoute = null;
       }
       localStorage.setItem('fp:last-org-id', _curOrgId);
@@ -48166,7 +48193,17 @@ async function init() {
           try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(e) {}
           try { localStorage.clear(); sessionStorage.clear(); } catch(e) {}
           showToast('success', fpT('Compte supprimé. Redirection…'));
-          setTimeout(() => { window.location.href = '/signin.html?deleted=1'; }, 1800);
+          if (document.visibilityState === 'visible' && performance.now() > 2000) {
+            setTimeout(() => { window.location.href = '/signin.html'; }, 400);
+          } else {
+            setTimeout(() => { window.location.href = '/signin.html'; }, 1800);
+          }
+        } else if (r && r.stripeCleared) {
+          // Stripe subscription was cancelled but DB deletion partially failed.
+          try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(e) {}
+          try { localStorage.clear(); sessionStorage.clear(); } catch(e) {}
+          showToast('info', fpT('Abonnement résilié. Contactez le support pour finaliser la suppression.'));
+          setTimeout(() => { window.location.href = '/signin.html?deleted=1'; }, 2500);
         } else { showToast('error', (r && r.error) || 'Erreur lors de la suppression du compte'); }
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible')); }
     }, 'Supprimer définitivement');

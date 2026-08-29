@@ -2163,6 +2163,25 @@ router.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (req:
     logger.error({ err, orgId }, "[Billing/DeleteAccount] Failed");
     const msg = err instanceof Error ? err.message : "";
     const isStripeErr = msg.includes("Stripe") || msg.includes("stripe");
+
+    // If Stripe succeeded but DB failed, the subscription is already canceled in Stripe.
+    // Update the DB subscription status to "canceled" so the UI at least reflects reality,
+    // then return a partial-success response so the frontend can redirect.
+    if (!isStripeErr) {
+      try {
+        await persistOrgData(orgId, { subscriptionStatus: "canceled" });
+        logger.info({ orgId }, "[Billing/DeleteAccount] Subscription status force-set to canceled after partial failure");
+      } catch (persistErr) {
+        logger.warn({ persistErr, orgId }, "[Billing/DeleteAccount] Could not persist canceled status (non-fatal)");
+      }
+      // Clear session so the client must re-authenticate
+      res.clearCookie("fp_token", { path: "/", httpOnly: true, sameSite: "lax", secure: true });
+      return res.status(500).json({
+        error: "Certaines données n'ont pas pu être supprimées. Votre abonnement Stripe a bien été résilié. Contactez le support pour compléter la suppression.",
+        stripeCleared: true,
+      });
+    }
+
     res.status(500).json({
       error: isStripeErr
         ? "Échec de la résiliation Stripe. Aucune donnée n'a été supprimée. Réessayez ou contactez le support."
