@@ -15,6 +15,7 @@ import {
 import { mailer } from "../services/mailer.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 import { provisionPlanAddons } from "../services/addons-service.js";
+import { getSession, invalidateAllSessions } from "../services/sessions.js";
 
 /* PLAN_INCLUDED_ADDONS imported from plans.ts — do NOT duplicate here */
 
@@ -809,7 +810,26 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
           to: email, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
         }).catch(() => {});
       }
-      logger.info({ orgId, subId: sub.id }, "[Billing] Trial cancelled immediately");
+      // Revoke the current session so F5 / back-button cannot restore premium access.
+      // ALL sessions for this user are invalidated — covers both cookie and Bearer tokens.
+      // The Stripe customer and all workspace data are deliberately preserved for reactivation.
+      try {
+        const cookieToken  = (req as any).cookies?.fp_token ?? "";
+        const authHeader   = req.headers["authorization"] ?? "";
+        const bearerToken  = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+          ? authHeader.slice(7).trim() : "";
+        const primaryToken = bearerToken || cookieToken;
+        if (primaryToken) {
+          const sess = await getSession(primaryToken);
+          if (sess?.userId) await invalidateAllSessions(sess.userId);
+          else await getSession(primaryToken); // token already invalid — no-op
+        }
+      } catch (sessErr) {
+        logger.warn({ sessErr }, "[Billing] cancel-trial: session revocation failed (non-fatal)");
+      }
+      const _isProd = process.env["NODE_ENV"] === "production" || !!process.env["RENDER"];
+      res.clearCookie("fp_token", { httpOnly: true, secure: _isProd, sameSite: _isProd ? "none" : "lax", path: "/" });
+      logger.info({ orgId, subId: sub.id }, "[Billing] Trial cancelled immediately — session revoked");
       res.json({ ok: true, cancelAtPeriodEnd: false });
     }
   } catch (err) {

@@ -9767,8 +9767,10 @@ function renderBilling() {
           setTimeout(()=>navigateSub('plans'), 700);
         } else {
           showToast('success', fpT('Essai annulé — redirection…'));
-          // Trial is fully cancelled: user loses access → send to sign-in
+          // Trial is fully cancelled: user loses access → purge ALL local auth state → sign-in
           try { sessionStorage.clear(); } catch(_) {}
+          try { localStorage.removeItem('fp_session_token'); } catch(_) {}
+          try { localStorage.removeItem('fp:last-org-id'); } catch(_) {}
           setTimeout(()=>{ window.location.href = '/signin.html?trialEnded=1'; }, 1400);
         }
       } else if (r && r.transitioned) {
