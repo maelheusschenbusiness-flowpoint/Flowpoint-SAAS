@@ -10094,6 +10094,22 @@ function renderBilling() {
       // Fallback 'live' applies only when catalog hasn't loaded yet (d===null).
       a.availability   = (d && (d.status || d.availability)) || 'live';
     });
+    // ── Availability classification — must mirror backend COMING_SOON_ADDONS / BETA_ADDONS ──
+    // Any key listed here blocks "Activer →" and shows the correct status badge instead.
+    // Keep in sync with artifacts/api-server/src/lib/plans.ts when those sets change.
+    const _COMING_SOON_KEYS = new Set(['slaMonitoring','globalMonitoring','aiContentStrategist',
+      'abTestingAI','agencyPacks','aiExecutiveReport','aiWorkflows','crmIntegration',
+      'ssoEnterprise','aiWorkspaceLaunch']);
+    const _BETA_KEYS = new Set(['behavioralAI','revenueLeak','aiCro','aiForecasting',
+      'marketIntelligence','reviewIntelligence','aiGbpPosting','zapierIntegration',
+      'backlinkIntelligence']);
+    allAddons.forEach(a => {
+      if (!a.availability) {
+        a.availability = _COMING_SOON_KEYS.has(a.key) ? 'coming_soon'
+                       : _BETA_KEYS.has(a.key) ? 'beta'
+                       : 'live';
+      }
+    });
 
     const currentPlan = ((STATE.billing && STATE.billing.plan) || me.plan || '').toLowerCase();
     const planLevel = currentPlan === 'ultra' ? 2 : currentPlan === 'pro' ? 1 : 0;
@@ -11568,9 +11584,9 @@ function renderSettings() {
             <div style="padding:14px;border-radius:12px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.15);margin-bottom:14px">
               <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">${fpT('Aperçu branding client')}</div>
               <div style="display:flex;align-items:center;gap:10px">
-                <div style="width:32px;height:32px;border-radius:8px;background:${wlBranding.primaryColor || '#2563EB'};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff">${(wlBranding.agencyName || me?.org?.name || 'A').charAt(0).toUpperCase()}</div>
+                <div style="width:32px;height:32px;border-radius:8px;background:${wlBranding.primaryColor || '#2563EB'};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:${wlBranding.agencyName ? '#fff' : 'rgba(255,255,255,0.35)'}">${(wlBranding.agencyName || 'A').charAt(0).toUpperCase()}</div>
                 <div>
-                  <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(wlBranding.agencyName || me?.org?.name || 'Mon Agence')}</div>
+                  <div style="font-size:12px;font-weight:600;color:${wlBranding.agencyName ? 'var(--fp-text)' : 'var(--fp-text-faint)'}">${escHtml(wlBranding.agencyName || 'Mon Agence SEO')}</div>
                   <div style="font-size:10px;color:var(--fp-text-muted)">Rapport confidentiel · ${CUR_MONTH}</div>
                 </div>
               </div>
@@ -48323,7 +48339,7 @@ async function init() {
         </p>
         <div style="font-size:12px;color:var(--fp-text);font-weight:600;margin-bottom:6px">Tapez <code style="background:rgba(239,68,68,0.1);padding:2px 6px;border-radius:4px;color:#ef4444">SUPPRIMER</code>pour confirmer :</div>
         <input id="fp-del-data-inp" type="text" placeholder="SUPPRIMER" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid rgba(239,68,68,0.4);border-radius:8px;background:var(--fp-bg,#0a1020);color:var(--fp-text);font-size:13px;margin-bottom:12px;outline:none"/>
-        <button id="fp-del-data-btn" class="fp-btn fp-btn-primary" style="width:100%;background:#ef4444;border-color:#ef4444;opacity:0.4;cursor:not-allowed" disabled onclick="(async()=>{const btn=document.getElementById('fp-del-data-btn');btn.disabled=true;btn.textContent='Suppression…';try{const r=await apiAction('DELETE','/api/settings/data');if(r&&r.ok){closeFloatPanel();showToast('success','Données supprimées ('+r.deleted+' éléments)');render(STATE.currentSection);}else{showToast('error',r?.error||'Erreur suppression');btn.disabled=false;btn.textContent='Supprimer définitivement';}}catch(e){showToast('error', fpT('Erreur réseau'));btn.disabled=false;btn.textContent='Supprimer définitivement';}})()">Supprimer définitivement</button>
+        <button id="fp-del-data-btn" class="fp-btn fp-btn-primary" style="width:100%;background:#ef4444;border-color:#ef4444;opacity:0.4;cursor:not-allowed" disabled onclick="(async()=>{const btn=document.getElementById('fp-del-data-btn');btn.disabled=true;btn.textContent='Suppression…';try{const r=await apiAction('DELETE','/api/settings/data');if(r&&r.ok){closeFloatPanel();['audits','monitors','reports','missions','competitors','keywords','calendar','notifications','activityLog','teamMessages','gbp','localSeo','gbpProfiles','aiUsage'].forEach(k=>{if(k in STATE)STATE[k]=null;});try{sessionStorage.removeItem('fp-state-cache');}catch(_){}showToast('success','Données supprimées ('+r.deleted+' éléments)');try{await loadData();}catch(_){}render(STATE.currentSection);}else{showToast('error',r?.error||'Erreur suppression');btn.disabled=false;btn.textContent='Supprimer définitivement';}}catch(e){showToast('error', fpT('Erreur réseau'));btn.disabled=false;btn.textContent='Supprimer définitivement';}})()">Supprimer définitivement</button>
         <button class="fp-btn fp-btn-ghost" style="width:100%;margin-top:8px" onclick="closeFloatPanel()">Annuler</button>
       </div>
     `);

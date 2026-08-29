@@ -1055,47 +1055,66 @@ router.delete("/settings/data", ownerOnly, async (req: Request, res: Response): 
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   const tables = [
+    // Core SEO & audit data
     "audits", "audit_schedules", "reports", "report_exports",
+    // Monitoring
     "monitors", "monitor_checks", "monitor_incidents",
     "alert_rules", "alert_events",
+    // Keywords, calendar, team
     "tracked_keywords", "calendar_events",
     "team_messages", "team_files",
+    // Automations & workflows
     "automation_integrations", "automation_workflows", "automation_runs",
     "automation_logs", "workflow_runs", "incoming_webhooks",
+    // AI & missions
     "missions", "mission_history", "mission_ai_logs",
+    "ai_usage_logs", "ai_monthly_usage",
+    // Analytics & SEO tools
     "psi_cache", "seo_forecasts", "funnels", "funnel_steps",
     "gsc_keyword_data", "gsc_page_data", "gsc_sync_logs",
     "behavior_events", "behavior_sessions",
     "traffic_sources", "traffic_losses",
     "cro_scores", "cro_experiments", "revenue_leaks",
-    "local_pack_history", "org_checklist",
+    // Competitors & Local SEO
+    "competitors", "competitor_analysis", "competitor_map_results",
+    "gbp_profiles", "local_pack_history",
+    // Notifications, activity, misc
+    "notifications",
+    "org_checklist",
     "overview_insights_cache", "overview_insights_rl",
     "activity_log", "share_tokens", "growth_objectives",
   ];
+  const { pool: pgPool } = await import("@workspace/db");
+  const client = await pgPool.connect();
+  let deleted = 0;
   try {
-    const { pool: pgPool } = await import("@workspace/db");
-    const client = await pgPool.connect();
-    let deleted = 0;
+    const existCheck = await client.query<{ tablename: string }>(
+      `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
+      [tables]
+    );
+    const existing = new Set(existCheck.rows.map(r => r.tablename));
+    await client.query("BEGIN");
     try {
-      const existCheck = await client.query<{ tablename: string }>(
-        `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
-        [tables]
-      );
-      const existing = new Set(existCheck.rows.map(r => r.tablename));
-      await client.query("BEGIN");
       for (const t of tables.filter(t => existing.has(t))) {
-        const r = await client.query(`DELETE FROM ${t} WHERE org_id = $1`, [orgId]);
+        const r = await client.query(
+          // ai_usage_logs.org_id is UUID; explicit cast handles all column types safely
+          `DELETE FROM ${t} WHERE org_id::text = $1`,
+          [orgId]
+        );
         deleted += r.rowCount ?? 0;
       }
       await client.query("COMMIT");
-    } finally {
-      client.release();
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
     }
     logger.info({ orgId, deleted }, "[settings/data] User data purged");
     res.json({ ok: true, deleted });
   } catch (err) {
     logger.error({ err }, "[settings/data] purge failed");
     res.status(500).json({ error: "Erreur lors de la suppression" });
+  } finally {
+    client.release();
   }
 });
 
