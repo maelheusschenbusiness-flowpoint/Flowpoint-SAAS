@@ -216,6 +216,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         orgId: orgId?.slice(0, 8),
       }, "[ME CONTEXT DEBUG]");
       res.json({
+        orgId:               orgId,
         firstName,
         lastName:            dbData?.lastName ?? "",
         email:               req.orgContext?.email ?? "",

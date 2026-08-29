@@ -9804,7 +9804,7 @@ function renderBilling() {
           if (STATE.billing) { STATE.billing.pendingPlan = plan; STATE.billing.pendingPlanDate = _date; }
           try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
           _apiFetchCache.clear(); _apiFetchInFlight.clear();
-          loadData().then(function(){ navigate('billing'); navigateSub('plans'); }).catch(function(){ navigate('billing'); navigateSub('plans'); });
+          loadData().then(function(){ navigate('billing'); navigateSub('plans'); try { renderSidebarStatus(); } catch(_) {} }).catch(function(){ navigate('billing'); navigateSub('plans'); });
           return;
         }
         if (r && r.upgraded) {
@@ -9817,7 +9817,7 @@ function renderBilling() {
           render();
           try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
           _apiFetchCache.clear(); _apiFetchInFlight.clear();
-          loadData().then(function(){ navigate('billing'); navigateSub('plans'); }).catch(function(){ navigate('billing'); navigateSub('plans'); });
+          loadData().then(function(){ navigate('billing'); navigateSub('plans'); try { renderSidebarStatus(); } catch(_) {} }).catch(function(){ navigate('billing'); navigateSub('plans'); });
           return;
         }
         if (r && r.reactivation && r.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
@@ -10087,6 +10087,22 @@ function renderBilling() {
       a.price          = d ? _fpEurMinor(d.priceMinor) + (d.oneTime ? '' : '/mois') : '—';
       a.includedFrom   = (_fpCat && _fpCat.includedFromByKey[a.key]) || null;
     });
+    // ── Availability classification — must mirror backend COMING_SOON_ADDONS / BETA_ADDONS ──
+    // Any key listed here blocks "Activer →" and shows the correct status badge instead.
+    // Keep in sync with artifacts/api-server/src/lib/plans.ts when those sets change.
+    const _COMING_SOON_KEYS = new Set(['slaMonitoring','globalMonitoring','aiContentStrategist',
+      'abTestingAI','agencyPacks','aiExecutiveReport','aiWorkflows','crmIntegration',
+      'ssoEnterprise','aiWorkspaceLaunch']);
+    const _BETA_KEYS = new Set(['behavioralAI','revenueLeak','aiCro','aiForecasting',
+      'marketIntelligence','reviewIntelligence','aiGbpPosting','zapierIntegration',
+      'backlinkIntelligence']);
+    allAddons.forEach(a => {
+      if (!a.availability) {
+        a.availability = _COMING_SOON_KEYS.has(a.key) ? 'coming_soon'
+                       : _BETA_KEYS.has(a.key) ? 'beta'
+                       : 'live';
+      }
+    });
 
     const currentPlan = ((STATE.billing && STATE.billing.plan) || me.plan || '').toLowerCase();
     const planLevel = currentPlan === 'ultra' ? 2 : currentPlan === 'pro' ? 1 : 0;
@@ -10332,6 +10348,8 @@ function renderBilling() {
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`
                 : a.wizardFn
                   ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 Lancer →</button>`
+                  : a.availability === 'coming_soon'
+                    ? `<button class="fp-btn fp-btn-ghost" disabled style="opacity:0.6;cursor:not-allowed">⏳ Bientôt disponible</button>`
                   : `${_FP_QTY_ADDON_KEYS[a.key] ? `
                     <div style="display:flex;align-items:center;gap:10px">
                       <div style="display:flex;align-items:center;gap:4px" title="Nombre de packs">
@@ -10415,7 +10433,9 @@ function renderBilling() {
                   ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`
                   : a.wizardFn
                     ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 Lancer →</button>`
-                    : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">${fpT('Activer →')}</button>`
+                    : a.availability === 'coming_soon'
+                      ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed">⏳ Bientôt</button>`
+                      : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">${fpT('Activer →')}</button>`
               }
             </div>
           </div>`;
@@ -11530,7 +11550,7 @@ function renderSettings() {
             </div>
             <div class="fp-form-group">
               <label class="fp-form-label">Nom de l\'agence</label>
-              <input class="fp-input" id="wl-agency-name" type="text" placeholder="Mon Agence SEO" value="${escHtml(wlBranding.agencyName || me?.org?.name || '')}" style="width:100%"/>
+              <input class="fp-input" id="wl-agency-name" type="text" placeholder="${escHtml(me?.org?.name || 'Mon Agence SEO')}" value="${escHtml(wlBranding.agencyName || '')}" style="width:100%"/>
             </div>
             <div class="fp-form-group">
               <label class="fp-form-label">Pied de page</label>
