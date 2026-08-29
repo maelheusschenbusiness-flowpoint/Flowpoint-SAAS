@@ -48288,21 +48288,36 @@ async function init() {
   // billing page had not been rendered yet in that session.
   window.fpDeleteAccountModal = function() {
     if (document.getElementById('fp-delete-account-modal')) return;
+    // Close any open float panel so it cannot intercept clicks behind the modal.
+    try { if (typeof closeFloatPanel === 'function') closeFloatPanel(); } catch(_) {}
     const _m = document.createElement('div');
     _m.id = 'fp-delete-account-modal';
-    _m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
-    _m.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:32px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);border:1px solid var(--fp-border)"><div style="font-size:36px;margin-bottom:12px;text-align:center">🗑️</div><div style="font-size:18px;font-weight:800;color:#ef4444;margin-bottom:8px;text-align:center">Supprimer définitivement mon compte</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:16px;text-align:center;line-height:1.6">Cette action est<strong style="color:#ef4444">irréversible</strong>. Les éléments suivants seront supprimés :</div><ul style="font-size:12px;color:var(--fp-text-muted);margin:0 0 16px 0;padding-left:20px;line-height:2"><li>Tous vos projets, audits et rapports</li><li>Tous vos monitors, alertes et concurrents</li><li>Toutes vos données SEO et analytics</li><li>Tous les membres de l'équipe</li><li>Toutes les clés API et intégrations</li><li>Votre abonnement Stripe (résilié immédiatement)</li></ul><div style="font-size:12px;color:var(--fp-text);margin-bottom:8px;font-weight:600">Tapez <code style="background:rgba(239,68,68,0.1);padding:2px 6px;border-radius:4px;color:#ef4444">SUPPRIMER</code>pour confirmer :</div><input id="fp-delete-confirm-input" type="text" placeholder="SUPPRIMER" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid rgba(239,68,68,0.4);border-radius:8px;background:var(--fp-bg,#0a1020);color:var(--fp-text);font-size:13px;margin-bottom:16px;outline:none"><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-delete-account-modal').remove()">Annuler</button><button class="fp-btn fp-btn-primary" id="fp-delete-confirm-btn" style="flex:1;background:#ef4444;border-color:#ef4444;opacity:0.4;cursor:not-allowed" disabled onclick="fpConfirmDeleteAccount()">Supprimer définitivement</button></div></div>`;
+    // pointer-events:all is explicit so Safari cannot pass clicks to elements below.
+    _m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;pointer-events:all';
+    _m.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:32px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);border:1px solid var(--fp-border)" onclick="event.stopPropagation()"><div style="font-size:36px;margin-bottom:12px;text-align:center">🗑️</div><div style="font-size:18px;font-weight:800;color:#ef4444;margin-bottom:8px;text-align:center">Supprimer définitivement mon compte</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:16px;text-align:center;line-height:1.6">Cette action est<strong style="color:#ef4444">irréversible</strong>. Les éléments suivants seront supprimés :</div><ul style="font-size:12px;color:var(--fp-text-muted);margin:0 0 16px 0;padding-left:20px;line-height:2"><li>Tous vos projets, audits et rapports</li><li>Tous vos monitors, alertes et concurrents</li><li>Toutes vos données SEO et analytics</li><li>Tous les membres de l'équipe</li><li>Toutes les clés API et intégrations</li><li>Votre abonnement Stripe (résilié immédiatement)</li></ul><div style="font-size:12px;color:var(--fp-text);margin-bottom:8px;font-weight:600">Tapez <code style="background:rgba(239,68,68,0.1);padding:2px 6px;border-radius:4px;color:#ef4444">SUPPRIMER</code> pour confirmer :</div><input id="fp-delete-confirm-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="SUPPRIMER" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid rgba(239,68,68,0.4);border-radius:8px;background:var(--fp-bg,#0a1020);color:var(--fp-text);font-size:13px;margin-bottom:4px;outline:none"><div id="fp-delete-confirm-hint" style="font-size:11px;color:#ef4444;margin-bottom:12px;min-height:16px"></div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-delete-account-modal').remove()">Annuler</button><button class="fp-btn fp-btn-primary" id="fp-delete-confirm-btn" style="flex:1;background:#ef4444;border-color:#ef4444;opacity:0.4;cursor:not-allowed" disabled onclick="fpConfirmDeleteAccount()">Supprimer définitivement</button></div></div>`;
     document.body.appendChild(_m);
+    // Prevent overlay backdrop clicks from reaching elements beneath the modal.
+    _m.addEventListener('click', function(e) { e.stopPropagation(); });
     const _inp = document.getElementById('fp-delete-confirm-input');
     const _btn = document.getElementById('fp-delete-confirm-btn');
     if (_inp && _btn) _inp.addEventListener('input', function() {
-      const ok = (_inp.value === 'SUPPRIMER');
+      // Compare against trimmed value so trailing spaces don't cause silent failures.
+      const ok = (_inp.value.trim() === 'SUPPRIMER');
       _btn.disabled = !ok; _btn.style.opacity = ok ? '1' : '0.4'; _btn.style.cursor = ok ? 'pointer' : 'not-allowed';
     });
+    // Focus the input immediately so the user can start typing without an extra click.
+    setTimeout(function() { try { _inp && _inp.focus(); } catch(_) {} }, 80);
   };
   window.fpConfirmDeleteAccount = async function() {
     const _inp = document.getElementById('fp-delete-confirm-input');
-    if (!_inp || _inp.value !== 'SUPPRIMER') return;
+    // Use trimmed comparison — silent return was the original bug vector.
+    // Show an explicit hint instead of silently no-op'ing.
+    if (!_inp || _inp.value.trim() !== 'SUPPRIMER') {
+      const _hint = document.getElementById('fp-delete-confirm-hint');
+      if (_hint) { _hint.textContent = 'Tapez SUPPRIMER en majuscules pour confirmer.'; }
+      if (_inp)  { _inp.style.borderColor = '#ef4444'; _inp.focus(); }
+      return;
+    }
     document.getElementById('fp-delete-account-modal')?.remove();
     showToast('info', fpT('Suppression du compte en cours…'));
       try {
