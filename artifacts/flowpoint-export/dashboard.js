@@ -8872,15 +8872,20 @@ function renderLocalSEO() {
       ${statCard('Menaces actives', String(STATE.competitors && STATE.competitors.length > 0 ? STATE.competitors.length : PREVIEW_MODE ? 3 : 0), STATE.competitors && STATE.competitors.length > 0 ? 'concurrents configurés' : PREVIEW_MODE ? 'concurrents en hausse' : 'Aucun concurrent', STATE.competitors && STATE.competitors.length > 0 ? 'down' : 'neutral')}
     </div>
 
-    <!-- DATAFORSEO LIVE INTELLIGENCE PANEL -->
-    <div class="fp-card fp-mb-20" style="padding:0;overflow:hidden;border:1px solid rgba(37,99,235,0.2)">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 18px;border-bottom:1px solid var(--fp-border);background:linear-gradient(90deg,rgba(37,99,235,0.06),transparent)">
+    <!-- DATAFORSEO LIVE INTELLIGENCE PANEL — bientôt disponible -->
+    <div class="fp-card fp-mb-20" style="padding:0;overflow:hidden;border:1px solid rgba(100,116,139,0.25);position:relative;opacity:0.55;pointer-events:none;user-select:none">
+      <!-- Coming-soon overlay -->
+      <div style="position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(10,14,27,0.55);backdrop-filter:blur(3px);border-radius:inherit">
+        <div style="background:var(--fp-card-bg,#0d1525);border:1px solid var(--fp-border);border-radius:12px;padding:10px 20px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,0.4)">
+          <span style="font-size:16px">🚧</span>
+          <span style="font-size:13px;font-weight:700;color:var(--fp-text)">Bientôt disponible</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 18px;border-bottom:1px solid var(--fp-border);background:linear-gradient(90deg,rgba(100,116,139,0.05),transparent)">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:16px">🔍</span>
           <span class="fp-card-title" style="margin-bottom:0">${fpT('Intelligence de visibilité locale')}</span>
-          ${STATE.dfsStatus?.configured
-            ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#22c55e">● API LIVE</span>`
-            : `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b">${fpT('● DONNÉES INDISPONIBLES')}</span>`}
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(100,116,139,0.12);border:1px solid rgba(100,116,139,0.3);color:#64748b">Bientôt disponible</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           ${STATE.dfsStatus ? `<span style="font-size:10px;color:#64748b">${STATE.dfsStatus.quota?.used||0}/${STATE.dfsStatus.quota?.limit||STATE.me?.dfsQuota?.limit||1000} req aujourd\'hui</span>` : ''}
@@ -61164,7 +61169,7 @@ function renderLocalSEOMap() {
       <!-- MAP CONTAINER -->
       <div class="fp-card" style="padding:0;overflow:hidden;position:relative;min-height:520px">
         <!-- Loading skeleton -->
-        <div id="fp-gmap-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px;border-radius:var(--fp-radius-lg)">
+        <div id="fp-gmap-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px">
           <div style="position:absolute;inset:0;pointer-events:none"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div><div style="width:220px;height:12px;border-radius:6px;background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>
           <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Chargement de la carte…</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Google Maps · Places · Heatmap</div>
