@@ -810,22 +810,27 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
           to: email, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
         }).catch(() => {});
       }
-      // Revoke the current session so F5 / back-button cannot restore premium access.
-      // ALL sessions for this user are invalidated — covers both cookie and Bearer tokens.
-      // The Stripe customer and all workspace data are deliberately preserved for reactivation.
-      try {
-        const cookieToken  = (req as any).cookies?.fp_token ?? "";
-        const authHeader   = req.headers["authorization"] ?? "";
-        const bearerToken  = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
-          ? authHeader.slice(7).trim() : "";
-        const primaryToken = bearerToken || cookieToken;
-        if (primaryToken) {
-          const sess = await getSession(primaryToken);
-          if (sess?.userId) await invalidateAllSessions(sess.userId);
-          else await getSession(primaryToken); // token already invalid — no-op
+      // Revoke ALL active sessions for this user so that any open browser/device
+      // immediately receives 401 on the next request (not just a billing gate).
+      // This is FATAL — if revocation fails we return 500 rather than ok:true,
+      // because a stale session on device B could still read data via non-gated
+      // GET endpoints (audits, monitors, missions) even though hasPremiumAccess=false.
+      // The Stripe cancel is idempotent: a frontend retry will self-heal (subscription
+      // already gone → DB status corrected) and attempt revocation again.
+      // Stripe customer and all workspace data are deliberately preserved for reactivation.
+      const _aCookieToken  = (req as any).cookies?.fp_token ?? "";
+      const _aAuthHeader   = req.headers["authorization"] ?? "";
+      const _aBearerToken  = typeof _aAuthHeader === "string" && _aAuthHeader.startsWith("Bearer ")
+        ? _aAuthHeader.slice(7).trim() : "";
+      const _aPrimaryToken = _aBearerToken || _aCookieToken;
+      if (_aPrimaryToken) {
+        const _aSess = await getSession(_aPrimaryToken);
+        if (_aSess?.userId) {
+          await invalidateAllSessions(_aSess.userId);
+          logger.info({ orgId, subId: sub.id, userIdPrefix: _aSess.userId.slice(0, 8) },
+            "[Billing] cancel-trial: all sessions revoked");
         }
-      } catch (sessErr) {
-        logger.warn({ sessErr }, "[Billing] cancel-trial: session revocation failed (non-fatal)");
+        // If session is already invalid (e.g. duplicate request), continue — idempotent
       }
       const _isProd = process.env["NODE_ENV"] === "production" || !!process.env["RENDER"];
       res.clearCookie("fp_token", { httpOnly: true, secure: _isProd, sameSite: _isProd ? "none" : "lax", path: "/" });
