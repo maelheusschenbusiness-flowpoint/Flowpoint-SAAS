@@ -521,6 +521,9 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
     "advancedSeoLab",
     // BETA + included: status=beta, commercial mode=included. Renders as "🧪 Bêta — Inclus".
     "backlinkIntelligence",
+    // Granular RBAC (custom roles, workspace permissions, SSO compat). Live price ID.
+    // Pro-purchasable already (_PRO_EXCLUSIVE); no Ultra-only backend guard.
+    "enterprisePermissions",
   ]),
   ultra: new Set<string>([
     "whiteLabel",
