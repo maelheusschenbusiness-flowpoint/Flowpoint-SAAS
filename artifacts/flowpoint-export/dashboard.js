@@ -70,15 +70,13 @@ const isDemoMode = () => !!(STATE && (STATE.demoMode || STATE.demo));
 const _FP_ROLE_PERMS = {
   // Source de vérité RBAC — ne pas modifier sans validation product :
   // Owner   : tout
-  // Manager : Audits + Monitors + Rapports + Équipe + Paramètres
+  // Manager : Audits + Monitors + Rapports + Équipe
   // Editor  : Audits + Rapports (PAS Monitors)
   // Viewer  : aucun des 6 modules
-  owner:   { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
-  admin:   { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:false },
-  manager: { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:true  },
-  member:  { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
-  editor:  { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
-  viewer:  { audits:false, monitors:false, reports:false, billing:false, team:false,  settings:false },
+  owner:  { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
+  admin:  { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:false },
+  member: { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
+  viewer: { audits:false, monitors:false, reports:false, billing:false, team:false,  settings:false },
 };
 // Routes that require a specific permission key (absent = open to all roles)
 const _FP_ROUTE_PERM = {
@@ -89,7 +87,7 @@ const _FP_ROUTE_PERM = {
   traffic:'reports', funnels:'reports', audience:'reports', campaigns:'reports',
   live:'reports', conversion:'reports', 'data-explorer':'reports',
   competitor:'reports', crm:'reports', 'market-intelligence':'reports',
-  team:'team',
+  team:'team', 'client-mode':'team',
   billing:'billing',
   settings:'settings', permissions:'settings', automations:'settings',
   'github-integration':'settings', 'code-analysis':'settings',
@@ -118,24 +116,17 @@ function _fpApplyRoleNav() {
       btn.style.display = '';
     }
   });
-  // Hide section group labels when ALL items under them are hidden
-  document.querySelectorAll('.fp-nav-group, .fp-nav-section').forEach(function(grp) {
-    var items = grp.querySelectorAll('.fp-nav-item[data-route]');
-    if (!items.length) return;
-    var allHidden = Array.from(items).every(function(el){ return el.style.display === 'none'; });
-    grp.style.display = allHidden ? 'none' : '';
-  });
-  // Also hide standalone group label elements (divs with class fp-nav-group-label / fp-sidebar-section-title)
-  // by scanning siblings of hidden nav items
-  document.querySelectorAll('.fp-nav-section-label, .fp-sidebar-label, .fp-nav-label').forEach(function(label) {
-    var next = label.nextElementSibling;
-    var hasVisible = false;
-    while (next && !next.classList.contains('fp-nav-section-label') && !next.classList.contains('fp-sidebar-label') && !next.classList.contains('fp-nav-label')) {
-      if (next.style.display !== 'none' && next.querySelector && next.querySelector('.fp-nav-item[data-route]')) hasVisible = true;
-      else if (next.classList && next.classList.contains('fp-nav-item') && next.style.display !== 'none') hasVisible = true;
-      next = next.nextElementSibling;
+  // Hide section labels when ALL nav items in that section are hidden
+  document.querySelectorAll('.fp-nav-section-label').forEach(function(label) {
+    var sibling = label.nextElementSibling;
+    var anyVisible = false;
+    while (sibling && !sibling.classList.contains('fp-nav-section-label')) {
+      if (sibling.classList.contains('fp-nav-item') && sibling.style.display !== 'none') {
+        anyVisible = true; break;
+      }
+      sibling = sibling.nextElementSibling;
     }
-    label.style.display = hasVisible ? '' : 'none';
+    label.style.display = anyVisible ? '' : 'none';
   });
 }
 
@@ -168,6 +159,8 @@ function _fpApplyRoleNav() {
 var _FP_ORG_NS = (function() {
   try { return localStorage.getItem('fp:last-org-id') || ''; }
   catch(_storageErr) {
+    // CRITICAL: localStorage unavailable — tenant isolation is disabled; all
+    // fpTenantKey() calls will use bare keys, risking cross-org data leaks.
     console.error('[FP] CRITICAL: localStorage unavailable — tenant isolation disabled.', _storageErr);
     return '';
   }
@@ -298,162 +291,7 @@ const STATE = {
   cmpB: null,
   backlinks: null,
   llmVisibility: null,
-  aiRecommendations: null,
 };
-
-function fpRankingSelectionStorageKey() {
-  const me = STATE.me || {};
-  const org = me.org || me.organization || {};
-  const orgId = (typeof org === 'string' ? org : (org.id || org._id))
-    || me.orgId || me.organizationId || me.organization_id
-    || ('user-' + String(me.id || me.userId || me.email || 'anonymous'));
-  return 'fp:local-seo:selected-history:' + String(orgId);
-}
-
-function fpPersistRankingHistorySelection() {
-  try {
-    const ids = STATE.localSeo?._selectedHistoryIds instanceof Set
-      ? Array.from(STATE.localSeo._selectedHistoryIds, String)
-      : [];
-    localStorage.setItem(fpRankingSelectionStorageKey(), JSON.stringify(ids));
-  } catch (_) {}
-}
-
-function fpSetRankingHistory(history, selectId) {
-  if (!STATE.localSeo) STATE.localSeo = {};
-  const rows = Array.isArray(history) ? history : [];
-  const validIds = new Set(rows.filter(h => h && h.id != null).map(h => String(h.id)));
-  let saved = [];
-  try { saved = JSON.parse(localStorage.getItem(fpRankingSelectionStorageKey()) || '[]'); } catch (_) {}
-  const current = STATE.localSeo._selectedHistoryIds instanceof Set
-    ? Array.from(STATE.localSeo._selectedHistoryIds)
-    : saved;
-  const selected = new Set(current.map(String).filter(id => validIds.has(id)));
-  if (selectId != null && validIds.has(String(selectId))) selected.add(String(selectId));
-  STATE.localSeo.rankingHistory = rows;
-  STATE.localSeo._selectedHistoryIds = selected;
-  fpPersistRankingHistorySelection();
-  if (typeof window.renderSelectedRankingHistoryOnMap === 'function') {
-    window.renderSelectedRankingHistoryOnMap();
-  }
-}
-
-window.fpToggleHistorySelection = function(historyId, checked) {
-  if (historyId == null) return;
-  if (!STATE.localSeo) STATE.localSeo = {};
-  if (!(STATE.localSeo._selectedHistoryIds instanceof Set)) STATE.localSeo._selectedHistoryIds = new Set();
-  const id = String(historyId);
-  const shouldSelect = typeof checked === 'boolean'
-    ? checked
-    : !STATE.localSeo._selectedHistoryIds.has(id);
-  if (shouldSelect) STATE.localSeo._selectedHistoryIds.add(id);
-  else STATE.localSeo._selectedHistoryIds.delete(id);
-  fpPersistRankingHistorySelection();
-  document.querySelectorAll('[data-history-id]').forEach(function(row) {
-    if (row.dataset.historyId !== id) return;
-    row.style.background = shouldSelect ? 'rgba(37,99,235,0.08)' : 'transparent';
-    const cb = row.querySelector('.fp-hist-cb');
-    if (cb) cb.checked = shouldSelect;
-  });
-  if (typeof window.renderSelectedRankingHistoryOnMap === 'function') {
-    window.renderSelectedRankingHistoryOnMap();
-  }
-};
-
-function fpRankingHistoryRows(history) {
-  const selected = STATE.localSeo?._selectedHistoryIds instanceof Set
-    ? STATE.localSeo._selectedHistoryIds
-    : new Set();
-  if (!Array.isArray(history)) return '<div style="text-align:center;padding:10px;color:#64748b;font-size:11px">Chargement…</div>';
-  if (!history.length) return '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">' + fpT("Aucun historique — effectuez votre première recherche.") + '</div>';
-  return history.map(function(h) {
-    if (!h || h.id == null) return '';
-    const id = String(h.id);
-    const date = h.searched_at ? new Date(h.searched_at).toLocaleDateString(getLocale(), { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—';
-    const count = h.total_results != null ? Number(h.total_results) : (Array.isArray(h.results) ? h.results.length : 0);
-    const isSelected = selected.has(id);
-    const idJson = JSON.stringify(id);
-    return '<div data-history-id="' + escHtml(id) + '" style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,0.04);border-radius:6px;cursor:pointer;background:' + (isSelected ? 'rgba(37,99,235,0.08)' : 'transparent') + '" onclick="window.fpToggleHistorySelection(' + idJson.replace(/"/g, '&quot;') + ')">'
-      + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation();window.fpToggleHistorySelection(' + idJson.replace(/"/g, '&quot;') + ',this.checked)">'
-      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:70px">' + escHtml(date) + '</div>'
-      + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(h.keyword || '') + ' — ' + escHtml(h.location || '') + '</div>'
-      + '<span style="font-size:10px;font-weight:700;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px">' + (Number.isFinite(count) ? count : 0) + ' rés.</span>'
-      + '<button onclick="event.stopPropagation();window.fpDeleteHistoryEntry(' + idJson.replace(/"/g, '&quot;') + ')" title="Supprimer" style="flex-shrink:0;background:transparent;border:none;color:#64748b;font-size:13px;cursor:pointer;padding:0 2px;line-height:1">✕</button>'
-      + '</div>';
-  }).join('');
-}
-
-function fpEnsureRankingHistory() {
-  if (!STATE.localSeo) STATE.localSeo = {};
-  if (Array.isArray(STATE.localSeo.rankingHistory) || STATE.localSeo._historyLoading) return;
-  STATE.localSeo._historyLoading = true;
-  apiFetch('/api/local-seo/rankings/history', { force:true }).then(function(data) {
-    fpSetRankingHistory(Array.isArray(data?.history) ? data.history : []);
-    STATE.localSeo._historyLoading = false;
-    STATE.localSeo._historyError = null;
-    if (data?.usage) {
-      if (!STATE.dfsStatus) STATE.dfsStatus = {};
-      STATE.dfsStatus.quota = {
-        used: Number(data.usage.used || 0),
-        limit: Number(data.usage.limit || 0),
-        remaining: Math.max(0, Number(data.usage.limit || 0) - Number(data.usage.used || 0)),
-      };
-    }
-    const widget = document.getElementById('fp-persisted-rank-history');
-    if (widget) widget.innerHTML = fpRankingHistoryRows(STATE.localSeo.rankingHistory);
-    const quota = document.getElementById('fp-ranking-history-quota');
-    if (quota && STATE.dfsStatus?.quota) quota.textContent = STATE.dfsStatus.quota.used + '/' + STATE.dfsStatus.quota.limit + ' req aujourd’hui';
-  }).catch(function(err) {
-    STATE.localSeo._historyLoading = false;
-    STATE.localSeo._historyError = err?.message || 'Historique indisponible';
-    const widget = document.getElementById('fp-persisted-rank-history');
-    if (widget) widget.innerHTML = '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">' + fpT("Impossible de charger l'historique. Réessayez.") + '</div>';
-  });
-}
-
-function fpActiveLanguage() {
-  return String(STATE.settings?.language || localStorage.getItem('fp:language') || document.documentElement.lang || 'fr');
-}
-
-window.fpLoadAiRecommendations = function(force) {
-  const language = fpActiveLanguage();
-  if (!force && (STATE._aiRecommendationsLoading || STATE._aiRecommendationsLanguage === language)) {
-    return Promise.resolve(STATE.aiRecommendations);
-  }
-  STATE._aiRecommendationsLoading = true;
-  return apiFetch('/api/ai/recommendations?language=' + encodeURIComponent(language), force ? { force:true } : {}).then(function(data) {
-    const recommendations = Array.isArray(data) ? data : (Array.isArray(data?.recommendations) ? data.recommendations : []);
-    STATE.aiRecommendations = recommendations;
-    STATE._aiRecommendationsLanguage = language;
-    STATE._aiRecommendationsLoading = false;
-    if (STATE.route === 'ai') render();
-    return recommendations;
-  }).catch(function() {
-    STATE.aiRecommendations = [];
-    STATE._aiRecommendationsLanguage = language;
-    STATE._aiRecommendationsLoading = false;
-    if (STATE.route === 'ai') render();
-    return [];
-  });
-};
-
-function fpRenderPersistedAiRecommendations() {
-  const recommendations = STATE.aiRecommendations;
-  if (!Array.isArray(recommendations)) {
-    return '<div class="fp-card fp-card-sm fp-mb-16" style="color:var(--fp-text-faint);font-size:12px">Chargement des recommandations…</div>';
-  }
-  if (!recommendations.length) {
-    return '<div class="fp-card fp-card-sm fp-mb-16" style="color:var(--fp-text-faint);font-size:12px;text-align:center">Aucune recommandation disponible pour le moment.</div>';
-  }
-  return '<div class="fp-card fp-card-sm fp-mb-16"><div class="fp-card-title">Recommandations IA</div><div style="display:grid;gap:8px">'
-    + recommendations.map(function(rec) {
-      return '<div style="padding:10px 12px;border:1px solid var(--fp-border);border-radius:10px;background:var(--fp-inner-card)">'
-        + '<div style="font-size:12px;font-weight:700;color:var(--fp-text)">' + escHtml(rec?.title || '') + '</div>'
-        + '<div style="font-size:11px;line-height:1.5;color:var(--fp-text-muted);margin-top:3px">' + escHtml(rec?.description || '') + '</div>'
-        + '</div>';
-    }).join('')
-    + '</div></div>';
-}
 
 // Default checklist
 if (!STATE.checklist) {
@@ -751,16 +589,6 @@ var _401ConfirmTimer    = null;
 var _loadDataInProgress = false;
 
 function _confirmSessionExpired() {
-  // ── Guard 0: early-boot window (< 5s) — session-restore may not be settled yet. ─
-  // On F5 or BFCache restore, background 401s can arrive before /api/me has confirmed
-  // the session. Defer instead of flashing sign-in.
-  if (performance.now() < 8000 && !window.__fpSessionConfirmed) {
-    console.warn('[FP-AUTH]', new Date().toISOString(), 'Guard 0: early-boot, deferring redirect.');
-    if (!_401ConfirmTimer) {
-      _401ConfirmTimer = setTimeout(function() { _401ConfirmTimer = null; _confirmSessionExpired(); }, Math.ceil(8000 - performance.now()) + 200);
-    }
-    return;
-  }
   // ── Guard 1: another redirect is already in flight — do nothing. ─────────────
   if (window.__fpRedirecting) {
     _401BackgroundCount = 0;
@@ -773,22 +601,6 @@ function _confirmSessionExpired() {
     if (!_401ConfirmTimer) {
       _401ConfirmTimer = setTimeout(function() { _401ConfirmTimer = null; _confirmSessionExpired(); }, 6000);
     }
-    return;
-  }
-  // ── Guard 2b: auth state machine is still RESTORING — wait for resolution. ───
-  // Redirecting while __fpAuthState === 'restoring' causes Flash Sign-In on F5:
-  // the session-restore promise hasn't settled yet, so STATE.me is not populated.
-  // Defer until the state machine resolves to 'authenticated' or 'unknown'.
-  if (window.__fpAuthState === 'restoring') {
-    console.warn('[FP-AUTH]', new Date().toISOString(), 'Auth state RESTORING — deferring confirmation until session-restore settles.');
-    var _restoringDefer = window.__fpSessionReady || Promise.resolve(false);
-    Promise.resolve(_restoringDefer).then(function() {
-      // After session-restore, only proceed if still not authenticated
-      if (window.__fpAuthState !== 'authenticated') {
-        _401ConfirmTimer = null;
-        _confirmSessionExpired();
-      }
-    });
     return;
   }
   // ── Guard 3: if STATE.me is already populated the session is confirmed valid. ──
@@ -816,7 +628,7 @@ function _confirmSessionExpired() {
         // Clear auth artefacts. sessionStorage is tab-isolated so removing
         // fp_session_token here does NOT affect sibling tabs — each tab has its
         // own independent sessionStorage context.
-        ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_had_session'].forEach(function(k) {
+        ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(function(k) {
           try { localStorage.removeItem(k); } catch(_) {}
         });
         try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
@@ -986,7 +798,7 @@ async function apiFetch(path, opts = {}) {
       if (_401ConfirmTimer) { clearTimeout(_401ConfirmTimer); _401ConfirmTimer = null; }
       if (!window.__fpRedirecting) {
         window.__fpRedirecting = true;
-        ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_had_session'].forEach(k => localStorage.removeItem(k));
+        ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
         // sessionStorage is tab-isolated — removing fp_session_token here only
         // affects THIS tab; sibling tabs each have their own sessionStorage context.
         try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
@@ -1847,6 +1659,9 @@ async function loadData(options = {}) {
     const _sc = sessionStorage.getItem('fp-state-cache');
     if (_sc) {
       const _cp = JSON.parse(_sc);
+      // TENANT GUARD: reject cache if it was written for a different org.
+      // fp:last-org-id holds the last confirmed canonical orgId.
+      // If the stored _orgId doesn't match, this cache belongs to another account.
       const _cachedOrgId  = _cp._orgId || null;
       const _knownOrgId   = (() => { try { return localStorage.getItem('fp:last-org-id'); } catch(_) { return null; } })();
       const _cacheOrgMismatch = _cachedOrgId && _knownOrgId && _cachedOrgId !== _knownOrgId;
@@ -1858,9 +1673,6 @@ async function loadData(options = {}) {
         if (_cp.me)            STATE.me            = _cp.me;
         if (_cp.overview)      STATE.overview      = _cp.overview;
         if (_cp.audits)        STATE.audits        = _cp.audits;
-        if (_cp.missions && Array.isArray(_cp.missions) && _cp.missions.length > 0) {
-          STATE.missions = _cp.missions; STATE._missionsLoaded = true;
-        }
         if (_cp.monitors)      STATE.monitors      = _cp.monitors;
         if (_cp.reports)       STATE.reports       = _cp.reports;
         if (_cp.team)          STATE.team          = _cp.team;
@@ -2131,7 +1943,7 @@ async function loadData(options = {}) {
       ? (_criticalErrors.whiteLabelTemplates.message || String(_criticalErrors.whiteLabelTemplates))
       : null;
   }
-  if ('missions'    in _preloaded) { STATE.missions = _preloaded.missions ?? (PREVIEW_MODE ? MOCK_MISSIONS : []); STATE._missionsLoaded = true; STATE._missionsLoading = false; console.log('[MISSIONS] Phase2 loaded | count:', STATE.missions.length); }
+  if ('missions'    in _preloaded) STATE.missions = _preloaded.missions ?? (PREVIEW_MODE ? MOCK_MISSIONS : []);
   if ('keywords'    in _preloaded && _preloaded.keywords)    STATE.keywords    = _preloaded.keywords;
   if ('competitors' in _preloaded && _preloaded.competitors) STATE.competitors = _preloaded.competitors;
 
@@ -2161,18 +1973,11 @@ async function loadData(options = {}) {
     // Per-member streaks from member_activity_days table
     if (_streaksRes && _streaksRes.status === 'fulfilled' && _streaksRes.value && Array.isArray(_streaksRes.value.streaks)) {
       STATE.teamStreaks = {};
-      (_streaksRes.value.streaks).forEach(function(s) {
-        if (s.userId) STATE.teamStreaks[s.userId] = s;
-        // Also index by email so email-keyed lookups (invited members) work.
-        if (s.email) STATE.teamStreaks[String(s.email).toLowerCase()] = s;
-      });
+      (_streaksRes.value.streaks).forEach(function(s) { if (s.userId) STATE.teamStreaks[s.userId] = s; });
     }
     // Per-user real contribution counts from DB (audits, missions, reports)
     if (_contribRes && _contribRes.status === 'fulfilled' && _contribRes.value && _contribRes.value.contributions) {
       STATE.teamContributions = _contribRes.value.contributions;
-    } else {
-      // A failed refresh must not retain another organisation's old values.
-      STATE.teamContributions = null;
     }
     const _aud = normArr(audits,   'audits');   STATE.audits   = (_aud  && _aud.length  > 0) ? _aud  : (PREVIEW_MODE ? MOCK_AUDITS   : []);
     const _mon = normArr(monitors, 'monitors'); STATE.monitors = (_mon  && _mon.length  > 0) ? _mon  : (PREVIEW_MODE ? MOCK_MONITORS : []);
@@ -2248,10 +2053,7 @@ async function loadData(options = {}) {
       time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}) : '',
       createdAt: m.createdAt || null,
       senderId: m.senderId || null,
-      read: true,
-      // Recompute self flag from current identity (survives role changes)
-      self: !!m.self || (m.senderId && [STATE.me?.userId, STATE.me?.id, STATE.me?.email].filter(Boolean).map(String).indexOf(String(m.senderId)) >= 0),
-      attachmentUrl: m.attachmentUrl||null, attachmentName: m.attachmentName||null,
+      read: true, self: !!m.self, attachmentUrl: m.attachmentUrl||null, attachmentName: m.attachmentName||null,
     });
     // Build channel map: include known channels + any extras from server response
     const _knownChs = ['general','seo','rapports','support'];
@@ -2377,8 +2179,8 @@ async function loadData(options = {}) {
     'missions' in _preloaded
       ? Promise.resolve()
       : (window.FP_MISSIONS_API
-        ? window.FP_MISSIONS_API.load().then(r => { if (r !== null) STATE.missions = r; else if (!(STATE.missions && STATE.missions.length)) STATE.missions = PREVIEW_MODE ? MOCK_MISSIONS : []; STATE._missionsLoaded = true; STATE._missionsLoading = false; })
-        : Promise.resolve().then(() => { if (!(STATE.missions && STATE.missions.length)) STATE.missions = PREVIEW_MODE ? MOCK_MISSIONS : []; STATE._missionsLoaded = true; STATE._missionsLoading = false; })),
+        ? window.FP_MISSIONS_API.load().then(r => { if (r !== null) STATE.missions = r; else if (!(STATE.missions && STATE.missions.length)) STATE.missions = PREVIEW_MODE ? MOCK_MISSIONS : []; })
+        : Promise.resolve().then(() => { if (!(STATE.missions && STATE.missions.length)) STATE.missions = PREVIEW_MODE ? MOCK_MISSIONS : []; })),
     'keywords' in _preloaded
       ? Promise.resolve()
       : (window.FP_KEYWORDS_API
@@ -2496,6 +2298,7 @@ async function loadData(options = {}) {
   try {
     sessionStorage.setItem('fp-state-cache', JSON.stringify({
       _ts: Date.now(),
+      // _orgId: tenant tag — cache is rejected on load if org has changed
       _orgId: (STATE.me && (STATE.me.orgId || STATE.me.id)) || null,
       me: STATE.me, overview: STATE.overview,
       audits: STATE.audits.slice(0,50), monitors: STATE.monitors.slice(0,50),
@@ -2902,8 +2705,8 @@ window._fpSlaViewPage = function() {
       STATE.settings.statusPage = Object.assign({}, STATE.settings.statusPage || {}, {
         title: newTitle, description: newDesc, monitorIds: checkedMids
       });
-      // 'fp:settings' — canonical key used at initialization (STATE.settings load).
-      localStorage.setItem('fp:settings', JSON.stringify(STATE.settings));
+      // Write to namespaced key — same as used at init and in save handler.
+      fpTenantWrite('fp:settings', JSON.stringify(STATE.settings));
       try {
         // statusPageUrl only at top-level — server strips it from settings{} before JSONB merge
         // and validates protocol before accepting. settings{} contains only statusPage metadata.
@@ -2970,8 +2773,7 @@ window._fpMQ = async function(title, category, priority, navAfter) {
     }
   } catch(e) {}
   saveMissions();
-  const _cleanTitle = title.replace(/[#@*_`~\[\]]/g,'').trim();
-  showToast('success', fpT('Mission créée') + ' · ' + _cleanTitle.slice(0, 40));
+  showToast('success', 'Mission créée · ' + title.slice(0, 40));
   addLocalNotification('mission', fpT('🚀 Mission créée'), title.slice(0, 55));
   logActivityEvent('success', 'Mission créée : ' + title.slice(0, 60));
   if (navAfter) setTimeout(function() { navigate('missions'); }, 600);
@@ -3618,15 +3420,15 @@ const CMD_ITEMS = [
   { cat:'Équipe & Admin', label:'Mode client',                 icon:'users',        route:'client-mode',        shortcut:'' },
   { cat:'Équipe & Admin', label:'Permissions',                 icon:'shield',       route:'permissions',        shortcut:'' },
   { cat:'Équipe & Admin', label:'Paramètres › Sécurité',       icon:'shield',       route:'settings',           shortcut:'',
-    fn: () => { navigate('settings', 'security'); } },
+    fn: () => { navigate('settings'); setTimeout(() => { STATE.subRoute='security'; render(); }, 150); } },
   { cat:'Équipe & Admin', label:'Paramètres › Intégrations',   icon:'activity',     route:'settings',           shortcut:'',
-    fn: () => { navigate('settings', 'integrations'); } },
+    fn: () => { navigate('settings'); setTimeout(() => { STATE.subRoute='integrations'; render(); }, 150); } },
   { cat:'Équipe & Admin', label:'Paramètres › Canaux d\'alerte',icon:'alert',      route:'settings',           shortcut:'',
-    fn: () => { navigate('settings', 'alerts'); } },
+    fn: () => { navigate('settings'); setTimeout(() => { STATE.subRoute='alerts'; render(); }, 150); } },
   { cat:'Équipe & Admin', label:'SSO SAML',             icon:'shield',       route:'settings',           shortcut:'',
-    fn: () => { window._ssoTab = 'providers'; navigate('settings', 'security'); } },
+    fn: () => { navigate('settings'); setTimeout(() => { window._ssoTab='providers'; render(STATE.currentSection); }, 150); } },
   { cat:'Équipe & Admin', label:'Authentification SSO',       icon:'shield',       route:'settings',           shortcut:'',
-    fn: () => { window._ssoTab = 'providers'; navigate('settings', 'security'); } },
+    fn: () => { navigate('settings'); setTimeout(() => { window._ssoTab='providers'; render(STATE.currentSection); }, 150); } },
   // ── Actions rapides ───────────────────────────────────────────────
   { cat:'Actions', label:'Nouvel audit',                       icon:'zap',          route:'audits',             shortcut:'' },
   { cat:'Actions', label:'Nouveau monitor',                    icon:'activity',     route:'monitors',           shortcut:'' },
@@ -4316,48 +4118,16 @@ const ACTIVITY_TYPE_CONFIG = {
 };
 // i18n keys for structured activity labels — action_key → fpT() mapping
 const ACTIVITY_I18N_KEYS = {
-  // Missions
-  'activity.mission.created':         (p) => fpT('Mission créée :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
-  'activity.mission.done':            (p) => fpT('Mission accomplie :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
-  'activity.mission.deleted':         (p) => fpT('Mission supprimée :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
-  // Audits
-  'activity.audit.started':           (p) => fpT('Audit lancé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
-  'activity.audit.launched':          (p) => fpT('Audit lancé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
-  'activity.audit.done':              (p) => fpT('Audit terminé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
-  'activity.audit.completed':         (p) => fpT('Audit terminé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : '') + (p&&p.score ? ' — Score ' + p.score + '/100' : ''),
-  'activity.audit.scheduled.started': (p) => fpT('Audit planifié lancé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
-  'activity.audit.scheduled':         (p) => fpT('Audit planifié lancé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
-  // Keywords
-  'activity.keyword.added':           (p) => fpT('Keyword ajouté :') + ' ' + (p&&p.keyword ? escHtml(String(p.keyword)) : ''),
-  'activity.keyword.removed':         (p) => fpT('Keyword retiré :') + ' ' + (p&&p.keyword ? escHtml(String(p.keyword)) : ''),
-  // Monitors
-  'activity.monitor.created':         (p) => fpT('Monitor créé :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
-  'activity.monitor.deleted':         (p) => fpT('Monitor supprimé :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
-  'activity.monitor.pinged':          (p) => fpT('Monitor') + ' ' + (p&&p.name ? escHtml(String(p.name)) : '') + ' — ' + (p&&p.status ? escHtml(String(p.status).toUpperCase()) : '') + (p&&p.latencyMs ? ' (' + p.latencyMs + 'ms)' : ''),
-  'activity.monitor.state':           (p) => fpT('Monitor ') + (p&&p.name ? escHtml(String(p.name)) : '') + ' — ' + (p&&p.state ? escHtml(String(p.state)) : ''),
-  // Connectors
-  'activity.connector.connected':     (p) => fpT('Connecteur connecté :') + ' ' + (p&&p.provider ? escHtml(String(p.provider)) : ''),
-  'activity.connector.disconnected':  (p) => fpT('Connecteur déconnecté :') + ' ' + (p&&p.provider ? escHtml(String(p.provider)) : ''),
-  // Settings
-  'activity.settings.updated':        (p) => fpT('Paramètres mis à jour') + (p&&p.keys ? ' : ' + escHtml(String(p.keys)) : ''),
-  'activity.settings.apikey':         () => fpT('Clé API régénérée'),
-  // Reports
-  'activity.report.created':          (p) => fpT('Rapport généré :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
-  'activity.report.shared':           (p) => fpT('Rapport partagé :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
-  // Google / GBP
-  'activity.google.connected':        () => fpT('Google connecté'),
-  'activity.google.disconnected':     () => fpT('Google déconnecté'),
-  'activity.gbp.post':                (p) => fpT('Post GBP publié :') + ' ' + (p&&p.text ? escHtml(String(p.text).slice(0,60)) : ''),
-  'activity.gbp.reply':               (p) => fpT('Réponse GBP publiée — avis') + ' ' + (p&&p.reviewId ? escHtml(String(p.reviewId)) : ''),
-  // Billing / Add-ons
-  'activity.addon.activated':         (p) => fpT('Add-on activé :') + ' ' + (p&&p.key ? escHtml(String(p.key).replace('Pack','Pack +').replace(/([A-Z])/g,' $1').trim()) : ''),
-  'activity.addon.deactivated':       (p) => fpT('Add-on désactivé :') + ' ' + (p&&p.key ? escHtml(String(p.key)) : ''),
-  // Competitors
-  'activity.competitor.added':        (p) => fpT('Concurrent ajouté :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
-  'activity.competitor.analyzed':     (p) => fpT('Analyse IA lancée :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
-  // Automation
-  'activity.workflow.created':        (p) => fpT('Workflow créé :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
-  'activity.workflow.run':            (p) => fpT('Workflow exécuté :') + ' ' + (p&&p.id ? escHtml(String(p.id)) : ''),
+  'activity.mission.created': (p) => fpT('Mission créée :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
+  'activity.mission.done':    (p) => fpT('Mission accomplie :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
+  'activity.mission.deleted': (p) => fpT('Mission supprimée :') + ' ' + (p&&p.title ? escHtml(String(p.title)) : ''),
+  'activity.audit.started':   (p) => fpT('Audit lancé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
+  'activity.audit.done':      (p) => fpT('Audit terminé :') + ' ' + (p&&p.url ? escHtml(String(p.url)) : ''),
+  'activity.keyword.added':   (p) => fpT('Keyword ajouté :') + ' ' + (p&&p.keyword ? escHtml(String(p.keyword)) : ''),
+  'activity.keyword.removed': (p) => fpT('Keyword retiré :') + ' ' + (p&&p.keyword ? escHtml(String(p.keyword)) : ''),
+  'activity.monitor.created': (p) => fpT('Monitor créé :') + ' ' + (p&&p.name ? escHtml(String(p.name)) : ''),
+  'activity.connector.connected':    (p) => fpT('Connecteur connecté :') + ' ' + (p&&p.provider ? escHtml(String(p.provider)) : ''),
+  'activity.connector.disconnected': (p) => fpT('Connecteur déconnecté :') + ' ' + (p&&p.provider ? escHtml(String(p.provider)) : ''),
 };
 function translateActivityLabel(e) {
   if (e.actionKey && ACTIVITY_I18N_KEYS[e.actionKey]) {
@@ -4365,88 +4135,6 @@ function translateActivityLabel(e) {
   }
   return escHtml(e.label || '');
 }
-
-// ── Activity label prefix translation (Option A) ─────────────────────────────
-// Server stores labels in French. This function replaces known structural
-// prefixes so the timeline and notifications respect the user's language.
-(function() {
-  var _ACT_PREFIXES = [
-    // [french_prefix, {en, de, it, pt, es, nl, pl, sv, ro, cs}]
-    ['Mission créée : ',        {en:'Mission created: ',de:'Mission erstellt: ',it:'Missione creata: ',pt:'Missão criada: ',es:'Misión creada: ',nl:'Missie aangemaakt: ',pl:'Misja utworzona: ',sv:'Uppdrag skapat: ',ro:'Misiune creată: ',cs:'Mise vytvořena: '}],
-    ['Mission modifiée : ',     {en:'Mission updated: ',de:'Mission aktualisiert: ',it:'Missione aggiornata: ',pt:'Missão atualizada: ',es:'Misión actualizada: ',nl:'Missie bijgewerkt: ',pl:'Misja zaktualizowana: ',sv:'Uppdrag uppdaterat: ',ro:'Misiune actualizată: ',cs:'Mise aktualizována: '}],
-    ['Mission terminée : ',     {en:'Mission completed: ',de:'Mission abgeschlossen: ',it:'Missione completata: ',pt:'Missão concluída: ',es:'Misión completada: ',nl:'Missie voltooid: ',pl:'Misja ukończona: ',sv:'Uppdrag slutfört: ',ro:'Misiune finalizată: ',cs:'Mise dokončena: '}],
-    ['Mission supprimée : ',    {en:'Mission deleted: ',de:'Mission gelöscht: ',it:'Missione eliminata: ',pt:'Missão excluída: ',es:'Misión eliminada: ',nl:'Missie verwijderd: ',pl:'Misja usunięta: ',sv:'Uppdrag raderat: ',ro:'Misiune ștearsă: ',cs:'Mise smazána: '}],
-    ['[IA] Mission créée : ',   {en:'[AI] Mission created: ',de:'[KI] Mission erstellt: ',it:'[IA] Missione creata: ',pt:'[IA] Missão criada: ',es:'[IA] Misión creada: ',nl:'[AI] Missie aangemaakt: ',pl:'[AI] Misja utworzona: ',sv:'[AI] Uppdrag skapat: ',ro:'[AI] Misiune creată: ',cs:'[AI] Mise vytvořena: '}],
-    ['[IA] Mission modifiée : ',{en:'[AI] Mission updated: ',de:'[KI] Mission aktualisiert: ',it:'[IA] Missione aggiornata: ',pt:'[IA] Missão atualizada: ',es:'[IA] Misión actualizada: ',nl:'[AI] Missie bijgewerkt: ',pl:'[AI] Misja zaktualizowana: ',sv:'[AI] Uppdrag uppdaterat: ',ro:'[AI] Misiune actualizată: ',cs:'[AI] Mise aktualizována: '}],
-    ['[IA] Mission supprimée : ',{en:'[AI] Mission deleted: ',de:'[KI] Mission gelöscht: ',it:'[IA] Missione eliminata: ',pt:'[IA] Missão excluída: ',es:'[IA] Misión eliminada: ',nl:'[AI] Missie verwijderd: ',pl:'[AI] Misja usunięta: ',sv:'[AI] Uppdrag raderat: ',ro:'[AI] Misiune ștearsă: ',cs:'[AI] Mise smazána: '}],
-    ['[IA] Événement créé : ',  {en:'[AI] Event created: ',de:'[KI] Ereignis erstellt: ',it:'[IA] Evento creato: ',pt:'[IA] Evento criado: ',es:'[IA] Evento creado: ',nl:'[AI] Evenement aangemaakt: ',pl:'[AI] Zdarzenie utworzone: ',sv:'[AI] Händelse skapad: ',ro:'[AI] Eveniment creat: ',cs:'[AI] Událost vytvořena: '}],
-    ['Audit lancé : ',          {en:'Audit started: ',de:'Audit gestartet: ',it:'Audit avviato: ',pt:'Auditoria iniciada: ',es:'Auditoría iniciada: ',nl:'Audit gestart: ',pl:'Audyt uruchomiony: ',sv:'Granskning startad: ',ro:'Audit pornit: ',cs:'Audit spuštěn: '}],
-    ['Audit terminé : ',        {en:'Audit completed: ',de:'Audit abgeschlossen: ',it:'Audit completato: ',pt:'Auditoria concluída: ',es:'Auditoría completada: ',nl:'Audit voltooid: ',pl:'Audyt ukończony: ',sv:'Granskning slutförd: ',ro:'Audit finalizat: ',cs:'Audit dokončen: '}],
-    ['Audit automatique: ',     {en:'Automatic audit: ',de:'Automatischer Audit: ',it:'Audit automatico: ',pt:'Auditoria automática: ',es:'Auditoría automática: ',nl:'Automatische audit: ',pl:'Automatyczny audyt: ',sv:'Automatisk granskning: ',ro:'Audit automat: ',cs:'Automatický audit: '}],
-    ['Analyse IA lancée sur le concurrent : ',{en:'AI analysis launched on competitor: ',de:'KI-Analyse des Konkurrenten gestartet: ',it:'Analisi IA avviata sul concorrente: ',pt:'Análise IA iniciada no concorrente: ',es:'Análisis IA iniciado sobre competidor: ',nl:'AI-analyse concurrent gestart: ',pl:'Analiza AI uruchomiona dla konkurenta: ',sv:'AI-analys startad för konkurrent: ',ro:'Analiză AI lansată pe competitor: ',cs:'AI analýza spuštěna pro konkurenta: '}],
-    ['Concurrent ajouté : ',    {en:'Competitor added: ',de:'Mitbewerber hinzugefügt: ',it:'Concorrente aggiunto: ',pt:'Concorrente adicionado: ',es:'Competidor añadido: ',nl:'Concurrent toegevoegd: ',pl:'Konkurent dodany: ',sv:'Konkurrent tillagd: ',ro:'Concurent adăugat: ',cs:'Konkurent přidán: '}],
-    ['Monitor créé : ',         {en:'Monitor created: ',de:'Monitor erstellt: ',it:'Monitor creato: ',pt:'Monitor criado: ',es:'Monitor creado: ',nl:'Monitor aangemaakt: ',pl:'Monitor utworzony: ',sv:'Övervakare skapad: ',ro:'Monitor creat: ',cs:'Monitor vytvořen: '}],
-    ['Monitor supprimé : ',     {en:'Monitor deleted: ',de:'Monitor gelöscht: ',it:'Monitor eliminato: ',pt:'Monitor excluído: ',es:'Monitor eliminado: ',nl:'Monitor verwijderd: ',pl:'Monitor usunięty: ',sv:'Övervakare raderad: ',ro:'Monitor șters: ',cs:'Monitor smazán: '}],
-    ['Keyword ajouté : ',       {en:'Keyword added: ',de:'Keyword hinzugefügt: ',it:'Keyword aggiunto: ',pt:'Palavra-chave adicionada: ',es:'Palabra clave añadida: ',nl:'Zoekwoord toegevoegd: ',pl:'Słowo kluczowe dodane: ',sv:'Nyckelord tillagt: ',ro:'Cuvânt cheie adăugat: ',cs:'Klíčové slovo přidáno: '}],
-    ['Keyword retiré : ',       {en:'Keyword removed: ',de:'Keyword entfernt: ',it:'Keyword rimosso: ',pt:'Palavra-chave removida: ',es:'Palabra clave eliminada: ',nl:'Zoekwoord verwijderd: ',pl:'Słowo kluczowe usunięte: ',sv:'Nyckelord borttaget: ',ro:'Cuvânt cheie eliminat: ',cs:'Klíčové slovo odebráno: '}],
-    ['Rapport généré : ',       {en:'Report generated: ',de:'Bericht erstellt: ',it:'Report generato: ',pt:'Relatório gerado: ',es:'Informe generado: ',nl:'Rapport gegenereerd: ',pl:'Raport wygenerowany: ',sv:'Rapport genererad: ',ro:'Raport generat: ',cs:'Zpráva vygenerována: '}],
-    ['Rapport partagé : ',      {en:'Report shared: ',de:'Bericht geteilt: ',it:'Report condiviso: ',pt:'Relatório compartilhado: ',es:'Informe compartido: ',nl:'Rapport gedeeld: ',pl:'Raport udostępniony: ',sv:'Rapport delad: ',ro:'Raport partajat: ',cs:'Zpráva sdílena: '}],
-    ['Add-on activé : ',        {en:'Add-on activated: ',de:'Add-on aktiviert: ',it:'Add-on attivato: ',pt:'Add-on ativado: ',es:'Complemento activado: ',nl:'Add-on geactiveerd: ',pl:'Dodatek aktywowany: ',sv:'Tillägg aktiverat: ',ro:'Add-on activat: ',cs:'Doplněk aktivován: '}],
-    ['Add-on désactivé : ',     {en:'Add-on deactivated: ',de:'Add-on deaktiviert: ',it:'Add-on disattivato: ',pt:'Add-on desativado: ',es:'Complemento desactivado: ',nl:'Add-on gedeactiveerd: ',pl:'Dodatek dezaktywowany: ',sv:'Tillägg inaktiverat: ',ro:'Add-on dezactivat: ',cs:'Doplněk deaktivován: '}],
-    ['Workflow créé : ',        {en:'Workflow created: ',de:'Workflow erstellt: ',it:'Workflow creato: ',pt:'Fluxo criado: ',es:'Flujo de trabajo creado: ',nl:'Workflow aangemaakt: ',pl:'Przepływ pracy utworzony: ',sv:'Arbetsflöde skapat: ',ro:'Flux de lucru creat: ',cs:'Pracovní postup vytvořen: '}],
-    ['Workflow exécuté : ',     {en:'Workflow executed: ',de:'Workflow ausgeführt: ',it:'Workflow eseguito: ',pt:'Fluxo executado: ',es:'Flujo de trabajo ejecutado: ',nl:'Workflow uitgevoerd: ',pl:'Przepływ pracy wykonany: ',sv:'Arbetsflöde kört: ',ro:'Flux de lucru executat: ',cs:'Pracovní postup spuštěn: '}],
-    ['Paramètres mis à jour : ',{en:'Settings updated: ',de:'Einstellungen aktualisiert: ',it:'Impostazioni aggiornate: ',pt:'Configurações atualizadas: ',es:'Configuración actualizada: ',nl:'Instellingen bijgewerkt: ',pl:'Ustawienia zaktualizowane: ',sv:'Inställningar uppdaterade: ',ro:'Setări actualizate: ',cs:'Nastavení aktualizována: '}],
-    ['Clé API secrète régénérée',{en:'Secret API key regenerated',de:'Geheimer API-Schlüssel neu generiert',it:'Chiave API segreta rigenerata',pt:'Chave API secreta regenerada',es:'Clave API secreta regenerada',nl:'Geheime API-sleutel opnieuw gegenereerd',pl:'Tajny klucz API wygenerowany ponownie',sv:'Hemlig API-nyckel återskapad',ro:'Cheie API secretă regenerată',cs:'Tajný API klíč znovu vygenerován'}],
-    ['Clé API publique régénérée',{en:'Public API key regenerated',de:'Öffentlicher API-Schlüssel neu generiert',it:'Chiave API pubblica rigenerata',pt:'Chave API pública regenerada',es:'Clave API pública regenerada',nl:'Publieke API-sleutel opnieuw gegenereerd',pl:'Publiczny klucz API wygenerowany ponownie',sv:'Publik API-nyckel återskapad',ro:'Cheie API publică regenerată',cs:'Veřejný API klíč znovu vygenerován'}],
-    ['Post GBP publié : ',      {en:'GBP post published: ',de:'GBP-Beitrag veröffentlicht: ',it:'Post GBP pubblicato: ',pt:'Post GBP publicado: ',es:'Post GBP publicado: ',nl:'GBP-bericht gepubliceerd: ',pl:'Post GBP opublikowany: ',sv:'GBP-inlägg publicerat: ',ro:'Post GBP publicat: ',cs:'Příspěvek GBP zveřejněn: '}],
-    ['Post GBP : ',             {en:'GBP post: ',de:'GBP-Beitrag: ',it:'Post GBP: ',pt:'Post GBP: ',es:'Post GBP: ',nl:'GBP-bericht: ',pl:'Post GBP: ',sv:'GBP-inlägg: ',ro:'Post GBP: ',cs:'Příspěvek GBP: '}],
-    ['Réponse GBP publiée — avis ',{en:'GBP response published — review ',de:'GBP-Antwort veröffentlicht — Bewertung ',it:'Risposta GBP pubblicata — recensione ',pt:'Resposta GBP publicada — avaliação ',es:'Respuesta GBP publicada — reseña ',nl:'GBP-antwoord gepubliceerd — beoordeling ',pl:'Odpowiedź GBP opublikowana — recenzja ',sv:'GBP-svar publicerat — recension ',ro:'Răspuns GBP publicat — recenzie ',cs:'Odpověď GBP zveřejněna — recenze '}],
-    ['Recommandations générées: ',{en:'Recommendations generated: ',de:'Empfehlungen generiert: ',it:'Raccomandazioni generate: ',pt:'Recomendações geradas: ',es:'Recomendaciones generadas: ',nl:'Aanbevelingen gegenereerd: ',pl:'Rekomendacje wygenerowane: ',sv:'Rekommendationer genererade: ',ro:'Recomandări generate: ',cs:'Doporučení vygenerována: '}],
-    ['Incident automatique créé',{en:'Automatic incident created',de:'Automatischer Vorfall erstellt',it:'Incidente automatico creato',pt:'Incidente automático criado',es:'Incidente automático creado',nl:'Automatisch incident aangemaakt',pl:'Automatyczny incydent utworzony',sv:'Automatisk incident skapad',ro:'Incident automat creat',cs:'Automatický incident vytvořen'}],
-    ['Google déconnecté',       {en:'Google disconnected',de:'Google getrennt',it:'Google disconnesso',pt:'Google desconectado',es:'Google desconectado',nl:'Google ontkoppeld',pl:'Google odłączony',sv:'Google frånkopplad',ro:'Google deconectat',cs:'Google odpojen'}],
-    ['Connecteur ',             {en:'Connector ',de:'Connector ',it:'Connettore ',pt:'Conector ',es:'Conector ',nl:'Connector ',pl:'Złącze ',sv:'Koppling ',ro:'Conector ',cs:'Konektor '}],
-  ];
-  // Suffix map for "Connecteur X connecté/déconnecté"
-  var _ACT_SUFFIXES = [
-    [' connecté',   {en:' connected',de:' verbunden',it:' connesso',pt:' conectado',es:' conectado',nl:' verbonden',pl:' połączony',sv:' ansluten',ro:' conectat',cs:' připojen'}],
-    [' déconnecté', {en:' disconnected',de:' getrennt',it:' disconnesso',pt:' desconectado',es:' desconectado',nl:' ontkoppeld',pl:' odłączony',sv:' frånkopplad',ro:' deconectat',cs:' odpojen'}],
-  ];
-
-  window.fpTranslateActivityLabel = function(label) {
-    if (!label || typeof label !== 'string') return label || '';
-    var lang = (STATE && STATE.prefs && STATE.prefs.language) || 'fr';
-    if (lang === 'fr') return label;
-    var langKey = lang.toLowerCase().slice(0, 2);
-    for (var i = 0; i < _ACT_PREFIXES.length; i++) {
-      var pair = _ACT_PREFIXES[i];
-      var fr = pair[0];
-      var trMap = pair[1];
-      if (label.startsWith(fr)) {
-        var tr = trMap[langKey] || trMap['en'] || fr;
-        var rest = label.slice(fr.length);
-        // For "Connecteur X connecté/déconnecté", also translate the suffix
-        if (fr === 'Connecteur ') {
-          for (var j = 0; j < _ACT_SUFFIXES.length; j++) {
-            var sp = _ACT_SUFFIXES[j];
-            if (rest.endsWith(sp[0])) {
-              rest = rest.slice(0, rest.length - sp[0].length) + (sp[1][langKey] || sp[1]['en'] || sp[0]);
-              break;
-            }
-          }
-        }
-        return tr + rest;
-      }
-      // Exact match (no trailing ": ")
-      if (label === fr.replace(/\s*:\s*$/, '').replace(/\s*—\s*$/, '')) {
-        var tr2 = (trMap[langKey] || trMap['en'] || fr).replace(/\s*:\s*$/, '');
-        return tr2;
-      }
-    }
-    return label;
-  };
-})();
-// ── End activity label translation ────────────────────────────────────────────
-
 const AVATAR_COLORS = ['#2563EB','#22c55e','#f59e0b','#8b5cf6','#ef4444','#06b6d4'];
 
 function getAvatarColor(name) {
@@ -4464,18 +4152,9 @@ function formatActivityDetails(metadata) {
   if (!metadata || typeof metadata !== 'object') return '';
   const entries = Object.entries(metadata).filter(([, value]) => value !== null && value !== undefined && value !== '');
   if (!entries.length) return '';
-  const _metaKeyLabels = {
-    title: fpT('Titre'), url: fpT('URL'), score: fpT('Score'), category: fpT('Catégorie'),
-    impact: fpT('Impact'), priority: fpT('Priorité'), status: fpT('Statut'),
-    key: fpT('Clé'), addonKey: fpT('Add-on'), plan: fpT('Plan'),
-    email: fpT('Email'), role: fpT('Rôle'), name: fpT('Nom'),
-    message: fpT('Message'), type: fpT('Type'), value: fpT('Valeur'),
-    from: fpT('De'), to: fpT('À'), duration: fpT('Durée'),
-  };
   const rows = entries.map(([key, value]) => {
-    const label = _metaKeyLabels[key] || fpT(key.replace(/([A-Z])/g, ' $1').toLowerCase().replace(/^./, s => s.toUpperCase()));
     const display = Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value) : String(value);
-    return `<div><strong>${escHtml(label)}</strong> : ${escHtml(display)}</div>`;
+    return `<div><strong>${escHtml(key.replace(/([A-Z])/g, ' $1'))}</strong> : ${escHtml(display)}</div>`;
   }).join('');
   return `<div class="fp-activity-details" hidden>${rows}</div><button type="button" class="fp-activity-expand" aria-expanded="false">${fpT('Voir plus')}</button>`;
 }
@@ -4859,10 +4538,7 @@ function handleFABAction(action) {
   if (action === 'new-report')  { openFloatPanel(fpT('Générer un rapport PDF'), renderNewReportPanel()); setupNewReportPanel(); }
   if (action === 'export-data') { openFloatPanel(fpT('Exporter les données'), renderExportPanel()); setupExportPanel(); }
   if (action === 'new-geo')     { navigate('local-seo'); setTimeout(()=>{ window._mapsTab='grid'; render(STATE.currentSection); window._showCreateHeatmapModal?.(); }, 300); }
-  if (action === 'open-chat') {
-    if (typeof window.fpOpenAIChat === 'function') window.fpOpenAIChat();
-    else navigate('ai');
-  }
+  if (action === 'open-chat') { navigate('ai'); }
   if (action === 'layout-edit') { toggleLayoutEditMode(); }
 }
 
@@ -5255,20 +4931,12 @@ function initLocalSEOMap() {
       });
       STATE._gmap = map;
       STATE._gmapDark = darkStyles;
-      // Flush any pending history marker update that was queued before map loaded
-      if (window._fpPendingHistoryMarkerUpdate && typeof window.renderSelectedRankingHistoryOnMap === 'function') {
-        setTimeout(function() { window.renderSelectedRankingHistoryOnMap(); }, 200);
-      }
       // Business marker — center is always a valid {lat,lng} here
-      // Track in STATE._staticMapMarkers so fpHideLiveRankingMarkers can hide them
-      // when a ranking history is selected (prevents persistent "ghost" markers).
-      STATE._staticMapMarkers = [];
       const _bizAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
       const bm = new google.maps.Marker({
         position:center, map, zIndex:10, title:'Votre établissement',
         icon:{ path:google.maps.SymbolPath.CIRCLE, scale:13, fillColor:'#2563EB', fillOpacity:1, strokeColor:'#fff', strokeWeight:3 }
       });
-      STATE._staticMapMarkers.push(bm);
       // InfoWindow colors use CSS variables so they follow theme switches live.
       // Hardcoded hex values (#475569, #94a3b8, #0f172a, #e2e8f0) were frozen at
       // init time and never updated when the user toggled the theme.
@@ -5300,8 +4968,6 @@ function initLocalSEOMap() {
         });
         const iw = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:190px"><strong style="font-size:13px">${c.name}</strong><div style="display:flex;gap:16px;margin-top:8px"><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.score}</div><div style="font-size:10px;color:var(--fp-text-muted,#94a3b8)">${fpT('Score SEO')}</div></div><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.reviews}</div><div style="font-size:10px;color:var(--fp-text-muted,#94a3b8)">Avis Google</div></div></div><div style="margin-top:8px;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block;background:${c.color}22;color:${c.color}">Menace: ${c.threat}</div></div>` });
         mk.addListener('click', () => iw.open(map, mk));
-        // Track competitor markers so they can be hidden when history is selected
-        STATE._staticMapMarkers.push(mk);
       });
       // Geolocation marker — only from stored coordinates (no browser permission prompt).
       // Users set their location via Settings > Localisation or the Workspace address fields.
@@ -5435,27 +5101,12 @@ function _fpUnreadChatNotifs() {
 
 function getMsgUnreadTotal() {
   if (!STATE.channelMessages) STATE.channelMessages = PREVIEW_MODE ? JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT)) : {general:[],seo:[],rapports:[],support:[]};
-  // Two sources:
-  // 1. In-memory channelMessages: SSE-delivered messages (live session).
-  // 2. Persisted notification rows (type='chat'): offline fallback only.
-  // We count in-memory unread first, then add notification rows that have
-  // no corresponding in-memory entry (to avoid double-counting).
-  const chMsgUnreadIds = new Set();
-  let chTotal = 0;
-  if (STATE.channelMessages && typeof STATE.channelMessages === 'object') {
-    Object.values(STATE.channelMessages).flat().forEach(function(m) {
-      if (m && !m.read && !m.self) {
-        chTotal++;
-        if (m.id) chMsgUnreadIds.add(String(m.id));
-      }
-    });
-  }
-  // Notification rows that have no in-memory counterpart (offline messages)
-  const notifExtra = _fpUnreadChatNotifs().filter(function(n) {
-    const match = /^ntf_chat_(.+)_\d+$/.exec(String(n.id || ''));
-    return !(match && chMsgUnreadIds.has(match[1]));
-  }).length;
-  return chTotal + notifExtra;
+  // Use persisted notification read-state as the sole source of truth for the
+  // badge count.  channelMessages.read is in-memory only and resets on every
+  // page load, which caused the badge to reappear after refresh even though
+  // the user had already seen the messages.  Notification rows (type='chat')
+  // survive reloads because their read flag is persisted to the DB.
+  return _fpUnreadChatNotifs().length;
 }
 
 // ── Global chat notification helpers (called from fp-backend.js SSE handler) ──
@@ -5519,10 +5170,9 @@ function renderMsgDropdown() {
         return `<div class="fp-msg-item${m.read?'':' unread'}${m.self?' self':''}" style="${m.self?'flex-direction:row-reverse':''};display:flex;align-items:flex-end;gap:7px">
           <div class="fp-msg-avatar" style="background:${bg};color:${col};flex-shrink:0">${escHtml(m.from[0])}</div>
           <div class="fp-msg-body" style="${m.self?'align-items:flex-end':''};display:flex;flex-direction:column">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;${m.self?'flex-direction:row-reverse':''}">
+            <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:2px;${m.self?'flex-direction:row-reverse':''}">
               <div class="fp-msg-from" style="${m.self?'color:#2563EB':''}">${m.self?'Vous':escHtml(m.from)}</div>
               <div class="fp-msg-time">${escHtml(m.time)}</div>
-              ${!m.read&&!m.self?`<span style="width:7px;height:7px;border-radius:50%;background:var(--fp-accent,#6366f1);flex-shrink:0;display:inline-block" title="Non lu"></span>`:''}
             </div>
             <div class="fp-msg-text" style="border-radius:${m.self?'12px 4px 12px 12px':'4px 12px 12px 12px'};background:${m.self?'rgba(37,99,235,0.15)':'var(--fp-inner-card, rgba(255,255,255,0.07))'};border-color:${m.self?'rgba(37,99,235,0.25)':'rgba(255,255,255,0.06)'};color:${m.self?'#c7d9ff':''}">
               ${m.text ? escHtml(m.text) : ''}
@@ -6256,7 +5906,7 @@ function renderOverview() {
     if (missionsCompleted > 0) items.push({ type: 'success', msg: missionsCompleted + ' mission' + (missionsCompleted > 1 ? 's' : '') + ' complétée' + (missionsCompleted > 1 ? 's' : '') + ' dans votre portefeuille' });
     if (missionsActive > 0) items.push({ type: 'info',    msg: missionsActive + ' mission' + (missionsActive > 1 ? 's' : '') + ' active' + (missionsActive > 1 ? 's' : '') + ' en cours — continuez !' });
     if (STATE.activityEvents && STATE.activityEvents.length > 0 && STATE.activityEvents[0].label) {
-      items.push({ type: 'info', msg: fpTranslateActivityLabel(STATE.activityEvents[0].label) });
+      items.push({ type: 'info', msg: STATE.activityEvents[0].label });
     }
     if (items.length === 0) items.push({ type: 'info', msg: 'Connectez vos premiers sites pour voir les insights IA ici.' });
     return items;
@@ -6718,7 +6368,7 @@ function renderOverview() {
                 const _ts4 = e.createdAt || e.created_at;
                 const _mins = _ts4 ? Math.round((Date.now() - new Date(_ts4).getTime()) / 60000) : 0;
                 const _t = _mins < 1 ? 'À l\'instant' : _mins < 60 ? _mins + ' min' : _mins < 1440 ? Math.round(_mins/60) + 'h' : Math.round(_mins/1440) + 'j';
-                return { type: tMap[e.type] || 'info', icon: iMap[e.type] || 'activity', title: fpTranslateActivityLabel(e.label) || 'Événement', desc: (e.metadata && (e.metadata.url || e.metadata.message)) || '', time: _t };
+                return { type: tMap[e.type] || 'info', icon: iMap[e.type] || 'activity', title: e.label || 'Événement', desc: (e.metadata && (e.metadata.url || e.metadata.message)) || '', time: _t };
               })
             : (PREVIEW_MODE ? ACTIVITY_FEED : [])
           ).slice(0,6).map(item => {
@@ -7080,7 +6730,6 @@ function renderMonitors() {
           </span>
         </h1>
         <div class="fp-section-sub">${fpT('Protection enterprise 24/7')} · ${monitors.length} ${fpT('sites surveillés')} · ${fpT('Alertes instantanées')}</div>
-        ${(function(){const _me2=STATE.me||{};const _mPacks=['monitorsPack10','monitorsPack50','globalMonitoring','slaMonitoring'];const _active=_mPacks.filter(k=>_me2.addons&&_me2.addons[k]);if(!_active.length)return '';const _labels={'monitorsPack10':'+10 Monitors','monitorsPack50':'+50 Monitors','globalMonitoring':'Global Monitoring 15 régions','slaMonitoring':'SLA Monitoring Avancé'};return `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">${_active.map(k=>`<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700;color:#f59e0b">📡 ${escHtml(_labels[k]||k)} — ${fpT('Actif')}${k==='monitorsPack10'&&_me2.addons[k]>0?` (×${_me2.addons[k]} = +${_me2.addons[k]*10} monitors)`:''}${k==='monitorsPack50'&&_me2.addons[k]>0?` (×${_me2.addons[k]} = +${_me2.addons[k]*50} monitors)`:''}</span>`).join('')}</div>`;})()} 
       </div>
       <div class="fp-section-actions">
         ${btn('Vérifier tout', 'fp-btn fp-btn-ghost fp-btn-sm', 'refresh', 'id="monitor-check-all"')}
@@ -7450,7 +7099,6 @@ function _missionCatIcon(cat) {
 }
 
 function renderMissions() {
-  console.log('[MISSIONS] render start | loaded:', STATE._missionsLoaded, '| loading:', STATE._missionsLoading, '| count:', Array.isArray(STATE.missions) ? STATE.missions.length : 0, '| STATE.loading:', STATE.loading);
   if (STATE.loading) {
     return renderPageSkeleton({ stats: 0, rows: 5, rowH: 80, cards: 0 });
   }
@@ -7663,17 +7311,13 @@ function renderMissions() {
             </div>
           </div>`;
         }).join('')}
-        ${filtered.length===0?(STATE._missionsLoading||!STATE._missionsLoaded?`
-          <div style="padding:48px 20px;text-align:center;color:var(--fp-text-muted);font-size:13px">
-            <div style="margin-bottom:10px;opacity:.6">⏳</div>${fpT('Chargement des missions…')}
-          </div>
-        `:`
+        ${filtered.length===0?`
           <div class="fp-empty-state" style="padding:48px 20px;text-align:center">
             <div style="font-size:40px;margin-bottom:12px;opacity:.5">🤖</div>
             <h3 style="font-size:15px;font-weight:700;color:var(--fp-text);margin:0 0 6px">${fpT('Aucune mission trouvée')}</h3>
             <p style="font-size:12px;color:var(--fp-text-muted);margin:0 0 14px">${fpT('Lancez le scanner IA pour générer des missions automatiquement depuis vos données SEO.')}</p>
             <button class="fp-btn fp-btn-primary fp-btn-sm" id="mission-ai-scan-empty" style="gap:6px">${svgIcon('zap')} Scanner maintenant</button>
-          </div>`):''}
+          </div>`:''}
       </div>
     ` : STATE.missionView === 'kanban' ? `
       <div class="fp-kanban">
@@ -8329,15 +7973,15 @@ function renderReports() {
       : null;
     const _recs_live = (() => {
       const r = [];
-      if (numericAuditScores.some(a => a.score < 50)) r.push({ icon:'🎯', title:fpT('Sites critiques à corriger'), body:fpT('Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.'), gain:fpT('À prioriser'), color:'#ef4444' });
-      if (STATE.monitors && STATE.monitors.some(m => m.status === 'down')) r.push({ icon:'🚨', title:fpT('Monitors DOWN'), body:fpT('Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.'), gain:fpT('SLA protégé'), color:'#ef4444' });
-      if (STATE.gbp && Number(STATE.gbp.completionScore) < 90) r.push({ icon:'📍', title:fpT('Optimiser Google Business Profile'), body:fpT('Votre fiche GBP incomplète. Complétez photos, horaires et description, puis mesurez l\'évolution de la visibilité locale.'), gain:fpT('À mesurer'), color:'#22c55e' });
+      if (numericAuditScores.some(a => a.score < 50)) r.push({ icon:'🎯', title:'Sites critiques à corriger', body:'Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.', gain:'À prioriser', color:'#ef4444' });
+      if (STATE.monitors && STATE.monitors.some(m => m.status === 'down')) r.push({ icon:'🚨', title:'Monitors DOWN', body:'Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.', gain:'SLA protégé', color:'#ef4444' });
+      if (STATE.gbp && Number(STATE.gbp.completionScore) < 90) r.push({ icon:'📍', title:'Optimiser Google Business Profile', body:'Votre fiche GBP n\'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.', gain:'À mesurer', color:'#22c55e' });
       return r;
     })();
     const recs = _recs_live.length > 0 ? _recs_live : (PREVIEW_MODE ? [
-      { icon: '🎯', title: fpT('Priorité absolue : conversion mobile'),  body: fpT('Le taux de conversion mobile est 2.8x inférieur au desktop. Simplifier le formulaire de contact pourrait générer +12 clients/mois.'),         gain: fpT('+12 clients/mois'), color: '#ef4444' },
-      { icon: '📍', title: fpT('Accélérer le Local SEO Maps'),            body: fpT('Renforcez la fiche GBP et les avis, puis comparez la visibilité locale mesurée avant et après optimisation.'),    gain: fpT('À mesurer'), color: '#22c55e' },
-      { icon: '🔗', title: fpT('Reconquérir le trafic référent'),         body: fpT('Les référents ont baissé de -4% avec un taux de rebond de 58%. Revoir les partenariats et créer du contenu co-marque ciblé.'),                  gain: fpT('+400 sessions/mois'), color: '#f59e0b' },
+      { icon: '🎯', title: 'Priorité absolue : conversion mobile',  body: 'Le taux de conversion mobile est 2.8x inférieur au desktop. Simplifier le formulaire de contact pourrait générer +12 clients/mois.',         gain: '+12 clients/mois', color: '#ef4444' },
+      { icon: '📍', title: 'Accélérer le Local SEO Maps',            body: 'Renforcez la fiche GBP et les avis, puis comparez la visibilité locale mesurée avant et après optimisation.',    gain: 'À mesurer', color: '#22c55e' },
+      { icon: '🔗', title: 'Reconquérir le trafic référent',         body: 'Les référents ont baissé de -4% avec un taux de rebond de 58%. Revoir les partenariats et créer du contenu co-marque ciblé.',                  gain: '+400 sessions/mois', color: '#f59e0b' },
     ] : []);
     const _execAvg = _execCurAvg;
     return `
@@ -8939,7 +8583,7 @@ function renderReports() {
                 ? `<div style="display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;border-radius:5px;background:${f.val};flex-shrink:0"></div><span style="font-size:12px;font-weight:600;color:var(--fp-text-soft)">${f.val}</span></div>`
                 : `<div style="font-size:12px;color:var(--fp-text-soft);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(f.val)}</div>`
               }
-              ${!f.locked ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%;margin-top:8px" onclick="navigate('settings','workspace')">${fpT('Modifier')}</button>` : ''}
+              ${!f.locked ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%;margin-top:8px" onclick="navigate('settings');setTimeout(function(){navigateSub('workspace');},60)">${fpT('Modifier')}</button>` : ''}
             </div>
           `).join('')}
         </div>
@@ -9146,7 +8790,6 @@ function renderLocalSEO() {
   const isStd  = plan === 'Standard';
   const isPro  = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
-  setTimeout(fpEnsureRankingHistory, 0);
 
   const _lseo = STATE.localSeo || {};
   const domScore = _lseo.domScore ?? (PREVIEW_MODE ? 72 : null);
@@ -9229,25 +8872,142 @@ function renderLocalSEO() {
       ${statCard('Menaces actives', String(STATE.competitors && STATE.competitors.length > 0 ? STATE.competitors.length : PREVIEW_MODE ? 3 : 0), STATE.competitors && STATE.competitors.length > 0 ? 'concurrents configurés' : PREVIEW_MODE ? 'concurrents en hausse' : 'Aucun concurrent', STATE.competitors && STATE.competitors.length > 0 ? 'down' : 'neutral')}
     </div>
 
-    <!-- PERSISTED RANKING HISTORY -->
-    <div class="fp-card fp-mb-20" style="padding:16px 18px">
-      <div class="fp-ranking-history-header">
-        <div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
-            <span class="fp-card-title" style="margin-bottom:0">${fpT('Historique des recherches')}</span>
-            <span style="font-size:9px;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(139,92,246,.14);color:#8b5cf6;letter-spacing:.4px;text-transform:uppercase">Bêta</span>
+    <!-- DATAFORSEO LIVE INTELLIGENCE PANEL -->
+    <div class="fp-card fp-mb-20" style="padding:0;overflow:hidden;border:1px solid rgba(37,99,235,0.2)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 18px;border-bottom:1px solid var(--fp-border);background:linear-gradient(90deg,rgba(37,99,235,0.06),transparent)">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:16px">🔍</span>
+          <span class="fp-card-title" style="margin-bottom:0">${fpT('Intelligence de visibilité locale')}</span>
+          ${STATE.dfsStatus?.configured
+            ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#22c55e">● API LIVE</span>`
+            : `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b">${fpT('● DONNÉES INDISPONIBLES')}</span>`}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          ${STATE.dfsStatus ? `<span style="font-size:10px;color:#64748b">${STATE.dfsStatus.quota?.used||0}/${STATE.dfsStatus.quota?.limit||STATE.me?.dfsQuota?.limit||1000} req aujourd\'hui</span>` : ''}
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="window._showLoadRankingsModal()">🔎 Charger rankings</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="window._generateLocalMissions()">⚡ Auto-missions</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+        <div style="padding:16px 18px;border-right:1px solid var(--fp-border)">
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Local Pack Rankings</div>
+          <div id="dfs-local-rank-widget">
+            ${(STATE.localSeo?.rankings && STATE.localSeo.rankings.length > 0) ? `
+              ${STATE.localSeo.rankings.map((r, i) => {
+                const _sel = (STATE.localSeo._selectedRankings||new Set()).has(i);
+                const _rankColors = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
+                return `<div data-rank-row="${i}" style="display:flex;align-items:flex-start;gap:8px;padding:7px 6px;border-radius:7px;cursor:pointer;transition:background 0.12s;${i > 0 ? 'border-top:1px solid var(--fp-border)' : ''};background:${_sel?'rgba(37,99,235,0.08)':'transparent'}"
+                  onclick="(function(el,idx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();var sel=STATE.localSeo._selectedRankings.has(idx);if(sel){STATE.localSeo._selectedRankings.delete(idx);el.style.background='transparent';}else{STATE.localSeo._selectedRankings.add(idx);el.style.background='rgba(37,99,235,0.08)';}var cb=el.querySelector('.fp-rank-cb');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkers==='function')window.fpUpdateRankingMarkers();})(this,${i})">
+                  <input type="checkbox" class="fp-rank-cb" data-rank-idx="${i}" style="width:14px;height:14px;accent-color:#2563EB;cursor:pointer;flex-shrink:0;margin-top:3px" ${_sel?'checked':''} onclick="event.stopPropagation();(function(cb,idx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedRankings)STATE.localSeo._selectedRankings=new Set();var row=cb.closest('[data-rank-row]');if(cb.checked){STATE.localSeo._selectedRankings.add(idx);if(row)row.style.background='rgba(37,99,235,0.08)';}else{STATE.localSeo._selectedRankings.delete(idx);if(row)row.style.background='transparent';}if(typeof window.fpUpdateRankingMarkers==='function')window.fpUpdateRankingMarkers();})(this,${i})"
+                  <div style="font-size:15px;font-weight:800;color:${_rankColors[i%_rankColors.length]};min-width:22px;text-align:center">#${r.rank}</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:12px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.title)}</div>
+                    ${r.rating > 0 ? `<div style="font-size:10px;color:#f59e0b">★ ${r.rating} (${r.reviews} avis)</div>` : ''}
+                    ${r.address ? `<div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.address)}</div>` : ''}
+                  </div>
+                </div>`;
+              }).join('')}
+              <div style="margin-top:8px;font-size:10px;color:#64748b;font-style:italic">${fpT('Classement pour')} « ${escHtml(STATE.localSeo.rankingKeyword||'')} » — ${escHtml(STATE.localSeo.rankingCity||'')}</div>` : `
+            <div style="text-align:center;padding:16px;color:#64748b;font-size:12px">
+              Cliquez <strong>${fpT('Charger rankings')}</strong> pour voir vos positions locales Google en direct
+            </div>`}
           </div>
-          <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Cochez les recherches à afficher sur la carte')}</div>
+          ${(()=>{
+            // Load history from DB on first render of this section (non-blocking)
+            const _hist = STATE.localSeo?.rankingHistory;
+            if (!Array.isArray(_hist) && !STATE.localSeo?._historyLoading) {
+              if (!STATE.localSeo) STATE.localSeo = {};
+              STATE.localSeo._historyLoading = true;
+              apiFetch('/api/local-seo/rankings/history').then(h => {
+                if (!STATE.localSeo) STATE.localSeo = {};
+                STATE.localSeo.rankingHistory = Array.isArray(h?.history) ? h.history : [];
+                STATE.localSeo._historyLoading = false;
+                STATE.localSeo._historyError = null;
+                if (h?.usage) {
+                  if (!STATE.dfsStatus) STATE.dfsStatus = {};
+                  STATE.dfsStatus.quota = {
+                    used: Number(h.usage.used || 0),
+                    limit: Number(h.usage.limit || 0),
+                    remaining: Math.max(0, Number(h.usage.limit || 0) - Number(h.usage.used || 0)),
+                  };
+                }
+                const widget = document.getElementById('dfs-rank-history');
+                if (widget) {
+                  const items = STATE.localSeo.rankingHistory;
+                  widget.innerHTML = items.length === 0
+                    ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique.</div>'
+                    : items.map((h2, hIdx2) => {
+                        const date = h2.searched_at ? new Date(h2.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+                        const resultCount = (h2.total_results != null && h2.total_results > 0)
+                          ? h2.total_results
+                          : (Array.isArray(h2.results) ? h2.results.length : 0);
+                        const _selH2 = (STATE.localSeo?._selectedHistoryIds||new Set()).has(h2.id!=null?h2.id:hIdx2);
+                        return '<div data-hist-row="'+hIdx2+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,0.04);border-radius:6px;cursor:pointer;background:'+(_selH2?'rgba(37,99,235,0.08)':'transparent')+'"'
+                          + ' onclick="(function(el,hid,hIdx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid!=null?hid:hIdx);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid!=null?hid:hIdx);}else{STATE.localSeo._selectedHistoryIds.add(hid!=null?hid:hIdx);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+JSON.stringify(h2.id!=null?h2.id:hIdx2)+','+hIdx2+'">'
+                          + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH2?'checked':'')+' onclick="event.stopPropagation()">'
+                          + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px">'+escHtml(date)+'</div>'
+                          + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
+                          + (resultCount > 0 ? '<span style="font-size:10px;font-weight:700;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px">'+resultCount+' rés.</span>' : '<span style="font-size:10px;color:#64748b;flex-shrink:0">—</span>')
+                          + '</div>';
+                      }).join('');
+                }
+              }).catch((err) => {
+                if (STATE.localSeo) {
+                  STATE.localSeo._historyLoading = false;
+                  STATE.localSeo._historyError = err?.message || 'Historique indisponible';
+                }
+                const widget = document.getElementById('dfs-rank-history');
+                if (widget) widget.innerHTML = '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">'+fpT("Impossible de charger l'historique. Réessayez.")+'</div>';
+              });
+            }
+            const histItems = Array.isArray(_hist) ? _hist : [];
+            const histHtml = STATE.localSeo?._historyError
+              ? '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">'+fpT("Impossible de charger l'historique. Réessayez.")+'</div>'
+              : !Array.isArray(_hist)
+              ? '<div style="text-align:center;padding:10px;color:#64748b;font-size:11px">Chargement…</div>'
+              : histItems.length === 0
+                ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">'+fpT("Aucun historique — effectuez votre première recherche.")+'</div>'
+                : histItems.map((h, hIdx) => {
+                    const date = h.searched_at ? new Date(h.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+                    const resultCount = (h.total_results != null && h.total_results > 0)
+                      ? h.total_results
+                      : (Array.isArray(h.results) ? h.results.length : 0);
+                    const _selH = (STATE.localSeo?._selectedHistoryIds||new Set()).has(h.id||hIdx);
+                    return '<div data-hist-row="'+hIdx+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,0.04);border-radius:6px;cursor:pointer;background:'+(_selH?'rgba(37,99,235,0.08)':'transparent')+'"'
+                      + ' onclick="(function(el,hid,hIdx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid!=null?hid:hIdx);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid!=null?hid:hIdx);}else{STATE.localSeo._selectedHistoryIds.add(hid!=null?hid:hIdx);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+JSON.stringify(h.id!=null?h.id:hIdx)+','+hIdx+'">'
+                      + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH?'checked':'')+' onclick="event.stopPropagation()">'
+                      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px">'+escHtml(date)+'</div>'
+                      + '<div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h.keyword)+' — '+escHtml(h.location)+'</div>'
+                      + (resultCount > 0
+                          ? '<span style="font-size:10px;font-weight:700;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px">'+resultCount+' rés.</span>'
+                          : '<span style="font-size:10px;color:#64748b;flex-shrink:0">—</span>')
+                      + '</div>';
+                  }).join('');
+            return `<div style="margin-top:12px;border-top:1px solid var(--fp-border);padding-top:10px">
+              <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Historique des recherches <span style="font-size:9px;font-weight:400;color:#475569">(cochez pour afficher sur la carte)</span></div>
+              <div id="dfs-rank-history" style="overflow-y:auto;overflow-x:hidden;padding-right:2px;max-height:220px">${histHtml}</div>
+            </div>`;
+          })()}
         </div>
-        <div class="fp-ranking-history-actions">
-          <span id="fp-ranking-history-quota" style="font-size:10px;color:var(--fp-text-faint)">${STATE.dfsStatus?.quota ? STATE.dfsStatus.quota.used + '/' + STATE.dfsStatus.quota.limit + ' req aujourd’hui' : ''}</span>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showLoadRankingsModal()">🔎 ${fpT('Charger rankings')}</button>
+        <div style="padding:16px 18px">
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">${fpT('Quota & Fonctionnalités')}</div>
+          ${[
+            {icon:'📈', label:'Keyword Strategist',  desc:'Suggestions + difficulty + intent'},
+            {icon:'🥇', label:'SERP Intelligence',    desc:'Top 10 Google + AI Overviews'},
+            {icon:'🔗', label:'Backlink Intelligence', desc:'DR, toxiques, nouveaux/perdus'},
+            {icon:'⚔️', label:'Competitor Engine',    desc:'Gaps mots-clés + traffic'},
+            {icon:'🤖', label:'AI Visibility',         desc:'ChatGPT + Gemini mentions'},
+            {icon:'📝', label:'Content Optimizer',     desc:'Score contenu + recommandations'},
+          ].map(f => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+            <span style="font-size:13px">${f.icon}</span>
+            <div>
+              <div style="font-size:11px;font-weight:600;color:#e2e8f0">${f.label}</div>
+              <div style="font-size:10px;color:#64748b">${f.desc}</div>
+            </div>
+          </div>`).join('')}
+          ${!STATE.dfsStatus?.configured ? `<div style="margin-top:12px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-size:11px;color:#f59e0b">${fpT('Les données de classement sont temporairement indisponibles.')}</div>` : ''}
         </div>
       </div>
-      <div id="fp-persisted-rank-history" style="overflow-y:auto;max-height:240px">
-        ${STATE.localSeo?._historyError ? '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">'+fpT("Impossible de charger l'historique. Réessayez.")+'</div>' : fpRankingHistoryRows(STATE.localSeo?.rankingHistory)}
-      </div>
-      <div id="dfs-history-results-widget" style="display:none;margin-top:8px;border-top:1px solid rgba(37,99,235,0.15);padding-top:8px"></div>
     </div>
 
     <!-- GOOGLE MAPS LIVE -->
@@ -9590,13 +9350,10 @@ function renderTeam() {
   try {
   const _teamErrBanner = _sectionErrorBanner('team');
   const me = STATE.me;
-  const roleColors = { owner:'#f59e0b', admin:'#2563EB', manager:'#2563EB', editor:'#8b5cf6', member:'#8b5cf6', viewer:'#94a3b8', guest:'#94a3b8' };
-  // Translate raw DB role to the same friendly labels used in the invite dropdown.
-  // DB: 'admin' was stored when invited as "Manager"; 'member' when invited as "Editor".
-  const ROLE_DISPLAY = { owner:'Propriétaire', admin:'Manager', manager:'Manager', editor:'Éditeur', member:'Éditeur', viewer:'Lecteur', guest:'Invité' };
+  const roleColors = { owner:'#f59e0b', manager:'#2563EB', editor:'#8b5cf6', viewer:'#94a3b8' };
   const rolePerms = {
     owner:   { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
-    manager: { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:false },
+    manager: { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:true  },
     editor:  { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
     viewer:  { audits:false, monitors:false, reports:false, billing:false, team:false,  settings:false },
   };
@@ -9647,7 +9404,7 @@ function renderTeam() {
                 <div style="font-size:11px;color:var(--fp-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.email)}</div>
               </div>
               <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
-                ${badge(ROLE_DISPLAY[t.role]||t.role, roleColors[t.role]||'#94a3b8')}
+                ${badge(t.role, roleColors[t.role]||'#94a3b8')}
                 <div style="width:7px;height:7px;border-radius:50%;background:${t.status==='active'?'#22c55e':'#94a3b8'};flex-shrink:0" title="${t.status==='active'?'En ligne':'Hors ligne'}"></div>
               </div>
               ${t.role!=='owner'?`<button class="fp-hover-toolbar-btn" title="${fpT('Retirer')}" data-remove-member="${t.id}" style="flex-shrink:0">${svgIcon('x')}</button>`:''}
@@ -9724,7 +9481,7 @@ function renderTeam() {
           </div>
           <div style="display:flex;gap:6px;border-top:1px solid var(--fp-border);padding-top:10px">
             <input type="file" id="team-chat-attach" style="display:none" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip" onchange="handleChatAttach(this)"/>
-            <label for="team-chat-attach" title="${fpT('Joindre un fichier')}" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:var(--fp-radius-md);width:38px;height:38px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="16"').replace('height="14"','height="16"')}</label>
+            <label for="team-chat-attach" title="${fpT('Joindre un fichier')}" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;width:32px;height:32px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="13"').replace('height="14"','height="13"')}</label>
             <input id="team-chat-input" class="fp-input" placeholder="Écrire un message… (@mention)" style="flex:1"/>
             <button id="team-chat-send" class="fp-btn fp-btn-primary fp-btn-sm">${svgIcon('send').replace('width="14"','width="14"')}</button>
           </div>
@@ -9744,7 +9501,7 @@ function renderTeam() {
               <tbody>
                 ${Object.entries(rolePerms).map(([role, perms]) => `
                   <tr>
-                    <td style="padding:5px 8px 5px 0">${badge(ROLE_DISPLAY[role]||role, roleColors[role]||'#94a3b8')}</td>
+                    <td style="padding:5px 8px 5px 0">${badge(role, roleColors[role]||'#94a3b8')}</td>
                     ${permKeys.map(k => `<td style="text-align:center;padding:4px">
                       ${perms[k]
                         ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`
@@ -9765,7 +9522,7 @@ function renderTeam() {
         <div class="fp-card-title" style="margin-bottom:0">${fpT("Activité récente de l'équipe")}</div>
         <button class="fp-link-btn" onclick="navigateSub('activity')">${fpT('Voir tout →')}</button>
       </div>
-      <div class="fp-team-activity-grid" style="display:grid;grid-template-columns:1fr;gap:8px">
+      <div class="fp-team-activity-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
         ${(STATE.activityEvents && STATE.activityEvents.length > 0)
           ? STATE.activityEvents.slice(0,6).map(e => {
               const tMap = { audit:'success', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'purple', misc:'info' };
@@ -9773,7 +9530,7 @@ function renderTeam() {
               const _ts = e.createdAt || e.created_at;
               const _m = _ts ? Math.round((Date.now() - new Date(_ts).getTime()) / 60000) : 0;
               const _t = _m < 1 ? 'l\'instant' : _m < 60 ? _m + ' min' : _m < 1440 ? Math.round(_m/60) + 'h' : Math.round(_m/1440) + 'j';
-              const it = { type: tMap[e.type]||'info', icon: iMap[e.type]||'activity', title: fpTranslateActivityLabel(e.label)||'Événement', desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'', time: _t };
+              const it = { type: tMap[e.type]||'info', icon: iMap[e.type]||'activity', title: e.label||'Événement', desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'', time: _t };
               const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
               const c = colors[it.type] || '#2563EB';
               return `<div class="fp-activity-item" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:8px 12px">
@@ -10034,6 +9791,8 @@ function renderBilling() {
   }
   if (typeof window._fpDoUpgrade !== 'function') {
     window._fpDoUpgrade = async function(plan) {
+      // Set suppression record: plan name + timestamp, valid 30 seconds.
+      // The SSE handler (billing:plan_updated) checks this to avoid double toast.
       window._fpPlanUpgradeRecord = { plan: plan, ts: Date.now() };
       showToast('info', fpT('Mise à jour du plan en cours…'));
       try {
@@ -10052,6 +9811,7 @@ function renderBilling() {
           const _planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
           const _msg = r.noSubDowngrade ? 'Plan changé vers ' + _planLabel + ' ✓' : 'Plan mis à jour → ' + _planLabel + ' ✓';
           showToast('success', _msg);
+          // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
           if (STATE.me) STATE.me.plan = _planLabel;
           if (STATE.billing) STATE.billing.plan = plan.toLowerCase();
           render();
@@ -10063,9 +9823,11 @@ function renderBilling() {
         if (r && r.reactivation && r.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
         if (r && r.noSubscription) { showToast('info', fpT('Abonnement introuvable — redirection vers les plans…')); navigate('billing'); setTimeout(function(){ navigateSub('plans'); }, 100); return; }
         if (r && r.error === 'plan_already_active') { showToast('info', fpT('Vous êtes déjà sur ce plan.')); return; }
+        // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
         showToast('error', (r && (r.message || r.error)) || 'Le changement de plan a échoué. Réessayez.');
         window._fpResyncBillingState();
       } catch(e) {
+        // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
         const _rawMsg = (e && e.message) || '';
         const _isToken = /^[a-z0-9_]+$/.test(_rawMsg);
         if (e && e.code === 'plan_already_active') { showToast('info', (!_isToken && _rawMsg) || 'Vous êtes déjà sur ce plan.'); return; }
@@ -10146,9 +9908,9 @@ function renderBilling() {
 
       <!-- COMPARISON TABLE -->
       <div class="fp-card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px">
           <div class="fp-card-title" style="margin-bottom:0">${fpT('📊 Comparaison détaillée des plans')}</div>
-          <div style="display:flex;gap:6px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
             ${PLANS.map(p => `<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:${p.id==='ultra'?'rgba(37,99,235,0.15)':p.color+'18'};color:${p.id==='ultra'?'#2563EB':p.color};border:1px solid ${p.id==='ultra'?'rgba(37,99,235,0.3)':p.color+'33'}">${p.name} — ${p.price}€/mois</span>`).join('')}
           </div>
         </div>
@@ -10244,11 +10006,6 @@ function renderBilling() {
           return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('⚫ Expiré · Fonctionnalités Premium désactivées')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpGoToPricing('${_resubPlan}')">${fpT('Reprendre un abonnement')}</button></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.</div>${_dangerZone}</div>`;
         }
 
-        // ── Compte interne / QA (trialing sans subscription Stripe) ─────────
-        if (_ss === 'trialing' && !_bs.subscriptionId) {
-          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #6366f1"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div class="fp-card-title" style="margin-bottom:0">⚙️ Gestion de l'abonnement</div></div><div style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Compte interne · Accès Ultra activé · Aucune subscription Stripe</div>${_dangerZone}</div>`;
-        }
-
         // ── États actifs ─────────────────────────────────────────────────────
         if (!(_ss === 'active' || _ss === 'trialing' || _cap)) return '';
         const _bc  = _cap ? '#ef4444' : _ss === 'trialing' ? '#f59e0b' : '#22c55e';
@@ -10271,47 +10028,47 @@ function renderBilling() {
     // includedFrom: 'pro' = included in Pro & Ultra | 'ultra' = Ultra only | null = always paid
     const allAddons = [
       // ── Monitoring ──
-      { key:'monitorsPack10', cat:'Monitoring', name:'+10 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack10), targetNav:'monitors',  tag:'Starter',         roi:'10 sites couverts',    desc:'Étendez votre surveillance uptime avec 10 monitors supplémentaires. Cumulable sans limite.', features:['10 monitors simultanés','Vérification toutes les minutes','Alertes email instantanées','Historique uptime complet','Cumulable avec les autres packs'] },
-      { key:'monitorsPack50', cat:'Monitoring', name:'+50 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50), targetNav:'monitors',  tag:'Best value',      roi:'50 sites couverts',    desc:'Pack monitoring massif pour agences. Alertes avancées, SLA, et rapport disponibilité.', features:['50 monitors simultanés','Alertes SMS — bientôt disponible','Tableau de bord SLA automatique','Rapport PDF disponibilité mensuel','Escalade automatique par équipe'] },
-      { key:'globalMonitoring', cat:'Monitoring', name:'Global Monitoring', icon:'🌍', color:'#f59e0b', active:!!(me.addons?.globalMonitoring), targetNav:'monitors', tag:'Ultra',      roi:'Monitoring 15 régions',    desc:'Surveillez depuis 15 régions mondiales. Latence, CDN, et géo-disponibilité.', features:['15 régions de monitoring (EU, US, APAC…)','Latence par région en temps réel','Détection CDN et cache edge','Alertes géo-localisées','Rapport géo-disponibilité PDF'], comingSoon: true },
-      { key:'slaMonitoring', cat:'Monitoring', name:'SLA Monitoring Avancé', icon:'🛡️', color:'#f59e0b', active:!!(me.addons?.slaMonitoring), targetNav:'monitors', tag:'Pro',             roi:'SLA 99.9% garanti',    desc:'Rapports SLA automatiques, incidents, et analytics disponibilité avancés.', features:['SLA tracking automatique par client','Rapport incidents horodaté','Score disponibilité mensuel','Alertes seuils SLA personnalisables','Export PDF pour vos clients'] },
+      { key:'monitorsPack10', cat:'Monitoring', name:'+10 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack10),  tag:'Starter',         roi:'10 sites couverts',    desc:'Étendez votre surveillance uptime avec 10 monitors supplémentaires. Cumulable sans limite.', features:['10 monitors simultanés','Vérification toutes les minutes','Alertes email instantanées','Historique uptime complet','Cumulable avec les autres packs'] },
+      { key:'monitorsPack50', cat:'Monitoring', name:'+50 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50),  tag:'Best value',      roi:'50 sites couverts',    desc:'Pack monitoring massif pour agences. Alertes avancées, SLA, et rapport disponibilité.', features:['50 monitors simultanés','Alertes SMS — bientôt disponible','Tableau de bord SLA automatique','Rapport PDF disponibilité mensuel','Escalade automatique par équipe'] },
+      { key:'globalMonitoring', cat:'Monitoring', name:'Global Monitoring', icon:'🌍', color:'#f59e0b', active:!!(me.addons?.globalMonitoring), tag:'Ultra',      roi:'Monitoring 15 régions',    desc:'Surveillez depuis 15 régions mondiales. Latence, CDN, et géo-disponibilité.', features:['15 régions de monitoring (EU, US, APAC…)','Latence par région en temps réel','Détection CDN et cache edge','Alertes géo-localisées','Rapport géo-disponibilité PDF'] },
+      { key:'slaMonitoring', cat:'Monitoring', name:'SLA Monitoring Avancé', icon:'🛡️', color:'#f59e0b', active:!!(me.addons?.slaMonitoring), tag:'Pro',             roi:'SLA 99.9% garanti',    desc:'Rapports SLA automatiques, incidents, et analytics disponibilité avancés.', features:['SLA tracking automatique par client','Rapport incidents horodaté','Score disponibilité mensuel','Alertes seuils SLA personnalisables','Export PDF pour vos clients'] },
       // ── SEO ──
-      { key:'advancedSeoLab', cat:'SEO',        name:'Advanced SEO Lab', icon:'🔬', color:'#2563EB', active:!!(me.addons?.advancedSeoLab), targetNav:'seo', tag:'Pro inclus',      roi:'+40% couverture sémantique',    desc:'Lab SEO IA complet : analyse sémantique, gap analysis, et topical authority.', features:['Analyse sémantique IA par page','Gap analysis vs top 10 SERP','Score topical authority automatique','Suggestions de silos thématiques','Rapport couverture sémantique mensuel'] },
-      { key:'keywordDomination', cat:'SEO',        name:'Keyword Domination Engine', icon:'🚀', color:'#2563EB', active:!!(me.addons?.keywordDomination), targetNav:'seo', tag:'Ultra',           roi:'10× volume keywords trackés', desc:'Trackez 10 000+ mots-clés. IA de clustering, SERP features, et cannibalization.', features:['10 000 mots-clés trackés (vs 500 standard)','Clustering sémantique automatique','Détection cannibalisation IA','SERP Features tracker (PAA, featured snippets)','Alertes volatilité algo Google'] },
-      { key:'backlinkIntelligence', cat:'SEO',        name:'Backlink Intelligence', icon:'🔗', color:'#2563EB', active:!!(me.addons?.backlinkIntelligence), targetNav:'seo', tag:'Pro inclus',      roi:'Analyse profil de liens',    desc:'Analysez les backlinks de vos concurrents. Opportunités, toxiques, et outreach IA.', features:['Analyse backlinks concurrents en temps réel','Détection liens toxiques automatique','Opportunités d\'outreach IA','Score DA/DR de chaque domaine référent','Alertes nouveaux liens concurrents'], comingSoon: true },
-      { key:'aiContentStrategist', cat:'SEO',        name:'AI Content Strategist', icon:'✍️', color:'#2563EB', active:!!(me.addons?.aiContentStrategist), targetNav:'seo', tag:'IA',              roi:'+65% efficacité contenu',    desc:'Stratégie de contenu IA. Briefs automatiques, SERP gap, et calendrier éditorial.', features:['Briefs SEO générés automatiquement par IA','Calendrier éditorial IA sur 3 mois','SERP gap par article ciblé','Score de pertinence avant publication','Intégration WordPress / Webflow'], comingSoon: true },
+      { key:'advancedSeoLab', cat:'SEO',        name:'Advanced SEO Lab', icon:'🔬', color:'#2563EB', active:!!(me.addons?.advancedSeoLab), tag:'Pro inclus',      roi:'+40% couverture sémantique',    desc:'Lab SEO IA complet : analyse sémantique, gap analysis, et topical authority.', features:['Analyse sémantique IA par page','Gap analysis vs top 10 SERP','Score topical authority automatique','Suggestions de silos thématiques','Rapport couverture sémantique mensuel'] },
+      { key:'keywordDomination', cat:'SEO',        name:'Keyword Domination Engine', icon:'🚀', color:'#2563EB', active:!!(me.addons?.keywordDomination), tag:'Ultra',           roi:'10× volume keywords trackés', desc:'Trackez 10 000+ mots-clés. IA de clustering, SERP features, et cannibalization.', features:['10 000 mots-clés trackés (vs 500 standard)','Clustering sémantique automatique','Détection cannibalisation IA','SERP Features tracker (PAA, featured snippets)','Alertes volatilité algo Google'] },
+      { key:'backlinkIntelligence', cat:'SEO',        name:'Backlink Intelligence', icon:'🔗', color:'#2563EB', active:!!(me.addons?.backlinkIntelligence), tag:'Pro inclus',      roi:'Analyse profil de liens',    desc:'Analysez les backlinks de vos concurrents. Opportunités, toxiques, et outreach IA.', features:['Analyse backlinks concurrents en temps réel','Détection liens toxiques automatique','Opportunités d\'outreach IA','Score DA/DR de chaque domaine référent','Alertes nouveaux liens concurrents'] },
+      { key:'aiContentStrategist', cat:'SEO',        name:'AI Content Strategist', icon:'✍️', color:'#2563EB', active:!!(me.addons?.aiContentStrategist), tag:'IA',              roi:'+65% efficacité contenu',    desc:'Stratégie de contenu IA. Briefs automatiques, SERP gap, et calendrier éditorial.', features:['Briefs SEO générés automatiquement par IA','Calendrier éditorial IA sur 3 mois','SERP gap par article ciblé','Score de pertinence avant publication','Intégration WordPress / Webflow'] },
       // ── Local SEO ──
-      { key:'gbpSlots10', cat:'Local SEO',  name:'+10 Emplacements GBP', icon:'📍', color:'#22c55e', active:!!(me.addons?.gbpSlots10), targetNav:'local-seo', tag:'Local',           roi:'10 fiches GBP optimisées',    desc:'Gérez 10 fiches Google Business Profile supplémentaires avec automatisation IA.', features:['10 fiches GBP gérées depuis FlowPoint','Publication de posts GBP automatisée','Synchronisation horaires et infos NAP','Alertes avis non répondus','Score complétude fiche en temps réel'] },
+      { key:'gbpSlots10', cat:'Local SEO',  name:'+10 Emplacements GBP', icon:'📍', color:'#22c55e', active:!!(me.addons?.gbpSlots10), tag:'Local',           roi:'10 fiches GBP optimisées',    desc:'Gérez 10 fiches Google Business Profile supplémentaires avec automatisation IA.', features:['10 fiches GBP gérées depuis FlowPoint','Publication de posts GBP automatisée','Synchronisation horaires et infos NAP','Alertes avis non répondus','Score complétude fiche en temps réel'] },
       { key:'aiGbpPosting', cat:'Local SEO',  name:'AI GBP Posting', icon:'🤖', color:'#22c55e', active:!!(me.addons?.aiGbpPosting), tag:'IA Auto',         roi:'+42% engagement GBP',    desc:'Posts GBP générés automatiquement par IA. Photos optimisées, horaires, et offres.', features:['Posts GBP rédigés et publiés par IA','Calendrier de publication automatique','Adaptation saisonnière et événements','Sélection automatique des meilleures photos','Rapport engagement mensuel'] },
       { key:'reviewIntelligence', cat:'Local SEO',  name:'Review Intelligence', icon:'⭐', color:'#22c55e', active:!!(me.addons?.reviewIntelligence), tag:'Sentiment IA',    roi:'+38% note moyenne',    desc:'IA de sentiment sur vos avis Google. Réponses automatiques et alertes critiques.', features:['Analyse sentiment de chaque avis','Réponses IA personnalisées en 1 clic','Alertes avis négatifs en temps réel','Rapport tendance note mensuel','Score réputation par établissement'] },
-      { key:'localDominationMaps', cat:'Local SEO',  name:'Local Domination Maps', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localDominationMaps), targetNav:'local-seo', tag:'Heatmap',         roi:'Visibilité Maps 360°',    desc:'Heatmaps de visibilité locale. Analysez votre présence dans le Local Pack par zone.', features:['Heatmap de visibilité Maps par zone','Analyse du Local Pack position par position','Comparaison vs concurrents sur la carte','Alertes perte de position Maps','Rapport visibilité locale hebdomadaire'] },
+      { key:'localDominationMaps', cat:'Local SEO',  name:'Local Domination Maps', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localDominationMaps), tag:'Heatmap',         roi:'Visibilité Maps 360°',    desc:'Heatmaps de visibilité locale. Analysez votre présence dans le Local Pack par zone.', features:['Heatmap de visibilité Maps par zone','Analyse du Local Pack position par position','Comparaison vs concurrents sur la carte','Alertes perte de position Maps','Rapport visibilité locale hebdomadaire'] },
       // ── Conversion ──
-      { key:'aiCro', cat:'Conversion', name:'AI CRO Strategist', icon:'📈', color:'#f97316', active:!!(me.addons?.aiCro), targetNav:'ai', tag:'IA',              roi:'+28% taux conversion',    desc:'Stratégiste CRO IA. Recommandations de tests A/B, friction analysis, et UX scoring.', features:['Score UX friction par page automatique','Hypothèses A/B générées par IA','Plan d\'action conversion priorisé','Analyse parcours utilisateur IA','Rapport ROI conversion mensuel'] },
-      { key:'behavioralAI', cat:'Conversion', name:'Behavioral AI', icon:'🧠', color:'#f97316', active:!!(me.addons?.behavioralAI), targetNav:'ai', tag:'Ultra',           roi:'Analyse comportement IA', desc:'Heatmaps IA, session replay, et analyse comportementale prédictive en temps réel.', features:['Heatmaps clics/scroll en temps réel','Session replay anonymisé','Analyse comportementale prédictive IA','Segments d\'utilisateurs automatiques','Alertes friction critique instantanées'] },
-      { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:!!(me.addons?.revenueLeak), targetNav:'ai', tag:'ROI',             roi:'Détecte fuites de revenus',    desc:'IA de détection des pertes de conversion. Prioritise les quick wins revenue.', features:['Détection automatique des fuites de revenus','Quick wins classés par impact €','Analyse abandons de panier / formulaire','Alertes dégradation conversion','ROI estimé par correction'] },
-      { key:'abTestingAI', cat:'Conversion', name:'AB Testing IA', icon:'🔀', color:'#f97316', active:!!(me.addons?.abTestingAI), targetNav:'ai', tag:'Expérimentation', roi:'+22% conversion moyenne',    desc:'Tests A/B automatisés par IA. Hypothèses générées, variantes créées, et gagnant sélectionné automatiquement.', features:['Hypothèses A/B générées par IA','Création automatique des variantes','Sélection du gagnant statistiquement validée','Calcul de significativité en temps réel','Rapport impact par test'], comingSoon: true },
+      { key:'aiCro', cat:'Conversion', name:'AI CRO Strategist', icon:'📈', color:'#f97316', active:!!(me.addons?.aiCro), tag:'IA',              roi:'+28% taux conversion',    desc:'Stratégiste CRO IA. Recommandations de tests A/B, friction analysis, et UX scoring.', features:['Score UX friction par page automatique','Hypothèses A/B générées par IA','Plan d\'action conversion priorisé','Analyse parcours utilisateur IA','Rapport ROI conversion mensuel'] },
+      { key:'behavioralAI', cat:'Conversion', name:'Behavioral AI', icon:'🧠', color:'#f97316', active:!!(me.addons?.behavioralAI), tag:'Ultra',           roi:'Analyse comportement IA', desc:'Heatmaps IA, session replay, et analyse comportementale prédictive en temps réel.', features:['Heatmaps clics/scroll en temps réel','Session replay anonymisé','Analyse comportementale prédictive IA','Segments d\'utilisateurs automatiques','Alertes friction critique instantanées'] },
+      { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:!!(me.addons?.revenueLeak), tag:'ROI',             roi:'Détecte fuites de revenus',    desc:'IA de détection des pertes de conversion. Prioritise les quick wins revenue.', features:['Détection automatique des fuites de revenus','Quick wins classés par impact €','Analyse abandons de panier / formulaire','Alertes dégradation conversion','ROI estimé par correction'] },
+      { key:'abTestingAI', cat:'Conversion', name:'AB Testing IA', icon:'🔀', color:'#f97316', active:!!(me.addons?.abTestingAI), tag:'Expérimentation', roi:'+22% conversion moyenne',    desc:'Tests A/B automatisés par IA. Hypothèses générées, variantes créées, et gagnant sélectionné automatiquement.', features:['Hypothèses A/B générées par IA','Création automatique des variantes','Sélection du gagnant statistiquement validée','Calcul de significativité en temps réel','Rapport impact par test'] },
       // ── Reporting ──
-      { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, targetNav:'reports', tag:'Pro inclus', roi:'Rapports à votre marque', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
-      { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), targetNav:'reports', tag:'Agence',          roi:'12 templates pro inclus',    desc:'Bibliothèque de 12 templates agence premium. Rapports Executive, KPI, et Local SEO.', features:['12 templates premium (Executive, Local, SEO…)','Personnalisation par client','Envoi automatique PDF mensuel','Rapports multi-sites consolidés','Tableau de bord client dédié'], comingSoon: true },
-      { key:'aiExecutiveReport', cat:'Reporting',  name:'AI Executive Reporting', icon:'📊', color:'#eab308', active:!!(me.addons?.aiExecutiveReport), targetNav:'reports', tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'], comingSoon: true },
+      { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Rapports à votre marque', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
+      { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), tag:'Agence',          roi:'12 templates pro inclus',    desc:'Bibliothèque de 12 templates agence premium. Rapports Executive, KPI, et Local SEO.', features:['12 templates premium (Executive, Local, SEO…)','Personnalisation par client','Envoi automatique PDF mensuel','Rapports multi-sites consolidés','Tableau de bord client dédié'] },
+      { key:'aiExecutiveReport', cat:'Reporting',  name:'AI Executive Reporting', icon:'📊', color:'#eab308', active:!!(me.addons?.aiExecutiveReport), tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'] },
       // ── IA ──
-      { key:'aiForecasting', cat:'IA',         name:'AI Forecasting Engine', icon:'🔮', color:'#8b5cf6', active:!!(me.addons?.aiForecasting), targetNav:'ai', tag:'Prédictif',       roi:'Prévisions 6 mois', desc:'Modèle prédictif IA. Prévisions de trafic, rankings, et croissance sur 6 mois.', features:['Prévisions trafic 6 mois (précision ±8%)','Prévisions rankings par mot-clé','Modèle ML entraîné sur vos données','Alertes risques de baisse anticipés','Rapport prévisionnel PDF mensuel'] },
-      { key:'marketIntelligence', cat:'IA',         name:'AI Market Intelligence', icon:'🌐', color:'#8b5cf6', active:!!(me.addons?.marketIntelligence), targetNav:'ai', tag:'Intelligence',    roi:'Veille marché automatique',    desc:'Veille concurrentielle IA. Tendances marché, opportunités, et alertes sectorielles.', features:['Veille concurrentielle IA 24/7','Détection de tendances sectorielles','Alertes nouveaux entrants concurrents','Opportunités de marché automatiques','Newsletter IA hebdomadaire secteur'] },
-      { key:'aiWorkflows', cat:'IA',         name:'AI Automation Workflows', icon:'⚡', color:'#8b5cf6', active:!!(me.addons?.aiWorkflows), targetNav:'automations', tag:'Automation',      roi:'Économise 6h/semaine',    desc:'Workflows d\'automatisation IA. Audits, rapports, et alertes entièrement automatisés.', features:['Workflows no-code drag-and-drop','Audits automatiques planifiés','Rapports envoyés sans intervention','Alertes conditionnelles avancées','Économie estimée 6h/semaine par agence'], comingSoon: true },
+      { key:'aiForecasting', cat:'IA',         name:'AI Forecasting Engine', icon:'🔮', color:'#8b5cf6', active:!!(me.addons?.aiForecasting), tag:'Prédictif',       roi:'Prévisions 6 mois', desc:'Modèle prédictif IA. Prévisions de trafic, rankings, et croissance sur 6 mois.', features:['Prévisions trafic 6 mois (précision ±8%)','Prévisions rankings par mot-clé','Modèle ML entraîné sur vos données','Alertes risques de baisse anticipés','Rapport prévisionnel PDF mensuel'] },
+      { key:'marketIntelligence', cat:'IA',         name:'AI Market Intelligence', icon:'🌐', color:'#8b5cf6', active:!!(me.addons?.marketIntelligence), tag:'Intelligence',    roi:'Veille marché automatique',    desc:'Veille concurrentielle IA. Tendances marché, opportunités, et alertes sectorielles.', features:['Veille concurrentielle IA 24/7','Détection de tendances sectorielles','Alertes nouveaux entrants concurrents','Opportunités de marché automatiques','Newsletter IA hebdomadaire secteur'] },
+      { key:'aiWorkflows', cat:'IA',         name:'AI Automation Workflows', icon:'⚡', color:'#8b5cf6', active:!!(me.addons?.aiWorkflows), tag:'Automation',      roi:'Économise 6h/semaine',    desc:'Workflows d\'automatisation IA. Audits, rapports, et alertes entièrement automatisés.', features:['Workflows no-code drag-and-drop','Audits automatiques planifiés','Rapports envoyés sans intervention','Alertes conditionnelles avancées','Économie estimée 6h/semaine par agence'] },
       // ── Team ──
-      { key:'extraSeats', cat:'Équipe',     name:'+5 Sièges', icon:'👥', color:'#06b6d4', active:me.addons?.extraSeats > 0, targetNav:'team', tag:'Collaboration', roi:'5 utilisateurs suppl.', desc:'Ajoutez 5 membres d\'équipe avec rôles et permissions granulaires.', features:['5 sièges supplémentaires immédiats','Rôles Admin / Editor / Viewer','Invitations par email en 1 clic','Permissions granulaires par workspace','Historique d\'activité par membre'] },
-      { key:'enterprisePermissions', cat:'Équipe',     name:'Permissions Avancées', icon:'🔐', color:'#06b6d4', active:!!(me.addons?.enterprisePermissions), targetNav:'team', tag:'Sécurité',        roi:'RBAC complet',    desc:'Contrôle d\'accès granulaire. Rôles custom, audit log, et permissions par workspace.', features:['Rôles personnalisés créés sur mesure','Audit log complet des actions','Permissions par section et par client','SSO compatible (Google Workspace)','Rapport accès mensuel pour conformité'] },
+      { key:'extraSeats', cat:'Équipe',     name:'+5 Sièges', icon:'👥', color:'#06b6d4', active:me.addons?.extraSeats > 0, tag:'Collaboration', roi:'5 utilisateurs suppl.', desc:'Ajoutez 5 membres d\'équipe avec rôles et permissions granulaires.', features:['5 sièges supplémentaires immédiats','Rôles Admin / Editor / Viewer','Invitations par email en 1 clic','Permissions granulaires par workspace','Historique d\'activité par membre'] },
+      { key:'enterprisePermissions', cat:'Équipe',     name:'Permissions Avancées', icon:'🔐', color:'#06b6d4', active:!!(me.addons?.enterprisePermissions), tag:'Sécurité',        roi:'RBAC complet',    desc:'Contrôle d\'accès granulaire. Rôles custom, audit log, et permissions par workspace.', features:['Rôles personnalisés créés sur mesure','Audit log complet des actions','Permissions par section et par client','SSO compatible (Google Workspace)','Rapport accès mensuel pour conformité'] },
       // ── Storage ──
-      { key:'retention90d', cat:'Storage',    name:'Rétention 90 jours',  icon:'🗄️', color:'#ef4444', active:!!(me.addons?.retention90d), targetNav:'reports', tag:'Pro inclus',      roi:'3 mois d\'historique',    desc:'Conservez 90 jours d\'historique pour tous vos audits, monitors, et rapports.', features:['90 jours d\'historique audits','Historique monitors et alertes','Export CSV de toutes les données','Comparaisons temporelles dans le dashboard','Aucune perte de données garantie'] },
-      { key:'retention365d', cat:'Storage',    name:'Rétention 365 jours', icon:'🗄️', color:'#ef4444', active:!!(me.addons?.retention365d), targetNav:'reports', tag:'Ultra inclus',    roi:'1 an d\'historique complet',    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
+      { key:'retention90d', cat:'Storage',    name:'Rétention 90 jours',  icon:'🗄️', color:'#ef4444', active:!!(me.addons?.retention90d), tag:'Pro inclus',      roi:'3 mois d\'historique',    desc:'Conservez 90 jours d\'historique pour tous vos audits, monitors, et rapports.', features:['90 jours d\'historique audits','Historique monitors et alertes','Export CSV de toutes les données','Comparaisons temporelles dans le dashboard','Aucune perte de données garantie'] },
+      { key:'retention365d', cat:'Storage',    name:'Rétention 365 jours', icon:'🗄️', color:'#ef4444', active:!!(me.addons?.retention365d), tag:'Ultra inclus',    roi:'1 an d\'historique complet',    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
       // ── API ──
-      { key:'advancedWebhooks', cat:'API',        name:'Webhooks Avancés', icon:'🔔', color:'#14b8a6', active:!!(me.addons?.advancedWebhooks), targetNav:'settings', tag:'Pro inclus',      roi:'Alertes temps réel',    desc:'Webhooks personnalisables pour Slack, Discord, et systèmes tiers. Templates inclus.', features:['Webhooks illimités vers n\'importe quel endpoint','Templates Slack, Discord, Teams','Retry automatique en cas d\'échec','Logs de delivery en temps réel','Signatures HMAC pour la sécurité'] },
-      { key:'zapierIntegration', cat:'API',        name:'Zapier/Make Integration', icon:'⚙️', color:'#14b8a6', active:!!(me.addons?.zapierIntegration), targetNav:'automations', tag:'No-code',         roi:'1000+ intégrations',    desc:'Connectez FlowPoint à 1000+ applications. CRM, Slack, Notion, HubSpot, et plus.', features:['1000+ apps disponibles (Zapier + Make)','Triggers sur audits, alertes, rapports','Actions : créer tâche, envoyer email, notifier','Templates de zaps prêts à l\'emploi','Support no-code dédié'] },
-      { key:'crmIntegration', cat:'API',        name:'CRM Intégrations', icon:'🏢', color:'#14b8a6', active:!!(me.addons?.crmIntegration), tag:'Ultra',      roi:'HubSpot, Salesforce, Pipedrive',    desc:'Synchronisez vos données SEO avec votre CRM. Leads, opportunités, et reporting.', features:['Sync HubSpot, Salesforce, Pipedrive','Création de deals depuis les opportunités SEO','Enrichissement contacts avec data SEO','Mapping de champs personnalisable','Synchronisation bi-directionnelle en temps réel'], comingSoon: true },
+      { key:'advancedWebhooks', cat:'API',        name:'Webhooks Avancés', icon:'🔔', color:'#14b8a6', active:!!(me.addons?.advancedWebhooks), tag:'Pro inclus',      roi:'Alertes temps réel',    desc:'Webhooks personnalisables pour Slack, Discord, et systèmes tiers. Templates inclus.', features:['Webhooks illimités vers n\'importe quel endpoint','Templates Slack, Discord, Teams','Retry automatique en cas d\'échec','Logs de delivery en temps réel','Signatures HMAC pour la sécurité'] },
+      { key:'zapierIntegration', cat:'API',        name:'Zapier/Make Integration', icon:'⚙️', color:'#14b8a6', active:!!(me.addons?.zapierIntegration), tag:'No-code',         roi:'1000+ intégrations',    desc:'Connectez FlowPoint à 1000+ applications. CRM, Slack, Notion, HubSpot, et plus.', features:['1000+ apps disponibles (Zapier + Make)','Triggers sur audits, alertes, rapports','Actions : créer tâche, envoyer email, notifier','Templates de zaps prêts à l\'emploi','Support no-code dédié'] },
+      { key:'crmIntegration', cat:'API',        name:'CRM Intégrations', icon:'🏢', color:'#14b8a6', active:!!(me.addons?.crmIntegration), tag:'Ultra',      roi:'HubSpot, Salesforce, Pipedrive',    desc:'Synchronisez vos données SEO avec votre CRM. Leads, opportunités, et reporting.', features:['Sync HubSpot, Salesforce, Pipedrive','Création de deals depuis les opportunités SEO','Enrichissement contacts avec data SEO','Mapping de champs personnalisable','Synchronisation bi-directionnelle en temps réel'] },
       // ── Enterprise ──
-      { key:'customDomain', cat:'Ultra', name:'Custom Domain',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, targetNav:'settings', tag:'Ultra inclus', roi:'portal.votreagence.fr', desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
-      { key:'ssoEnterprise', cat:'Ultra', name:'SSO SAML', icon:'🔑', color:'#6366f1', active:!!(me.addons?.ssoEnterprise), targetNav:'settings', tag:'Enterprise',     roi:'SAML 2.0 / OIDC', desc:'Single Sign-On enterprise. Compatible SAML 2.0, OIDC, Azure AD, et Okta.', features:['SSO SAML 2.0 et OIDC natif','Compatible Azure AD, Okta, Google Workspace','Provisioning/déprovisioning automatique (SCIM)','Logs de connexion centralisés','Support dédié configuration SSO'], comingSoon: true },
-      { key:'aiWorkspaceLaunch', cat:'Ultra', name:'AI Workspace Launch', icon:'🤖', color:'#6366f1', active:!!(me.addons?.aiWorkspaceLaunch), targetNav:'ai', tag:'IA Setup',        roi:'Workspace auto en 2 min',    desc:'L\'IA configure automatiquement votre workspace FlowPoint : dashboards, KPIs, alertes, missions et stratégie business.', features:['Configuration complète workspace en 2 min','KPIs et alertes adaptés à votre secteur','Missions et stratégie SEO pré-configurées','Dashboards personnalisés par votre métier','Accompagnement IA en continu'], wizardFn:'openAIWorkspaceLaunch', comingSoon:true },
+      { key:'customDomain', cat:'Ultra', name:'Custom Domain',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Ultra inclus', roi:'portal.votreagence.fr', desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
+      { key:'ssoEnterprise', cat:'Ultra', name:'SSO SAML', icon:'🔑', color:'#6366f1', active:!!(me.addons?.ssoEnterprise), tag:'Enterprise',     roi:'SAML 2.0 / OIDC', desc:'Single Sign-On enterprise. Compatible SAML 2.0, OIDC, Azure AD, et Okta.', features:['SSO SAML 2.0 et OIDC natif','Compatible Azure AD, Okta, Google Workspace','Provisioning/déprovisioning automatique (SCIM)','Logs de connexion centralisés','Support dédié configuration SSO'] },
+      { key:'aiWorkspaceLaunch', cat:'Ultra', name:'AI Workspace Launch', icon:'🤖', color:'#6366f1', active:!!(me.addons?.aiWorkspaceLaunch), tag:'IA Setup',        roi:'Workspace auto en 2 min',    desc:'L\'IA configure automatiquement votre workspace FlowPoint : dashboards, KPIs, alertes, missions et stratégie business.', features:['Configuration complète workspace en 2 min','KPIs et alertes adaptés à votre secteur','Missions et stratégie SEO pré-configurées','Dashboards personnalisés par votre métier','Accompagnement IA en continu'], wizardFn:'openAIWorkspaceLaunch' },
     ];
 
     // ── Money and bundling are injected from the server catalogue; this file
@@ -10324,42 +10081,16 @@ function renderBilling() {
     const _fpCat = STATE.billingCatalog || null;
     allAddons.forEach(a => {
       const d = _fpCat ? _fpCat.addonsByKey[a.key] : null;
-      const apiDef = window.FP_DATA?.addons?.definitions?.[a.key]
-        || (typeof window.FP_DATA?.addons?.active?.[a.key] === 'object' ? window.FP_DATA.addons.active[a.key] : null);
-      const apiActive = window.FP_DATA?.addons?.active?.[a.key];
       a.catalogMissing = !d;
       a.priceMinor     = d ? d.priceMinor : null;
       a.oneTime        = d ? !!d.oneTime : false;
       a.price          = d ? _fpEurMinor(d.priceMinor) + (d.oneTime ? '' : '/mois') : '—';
       a.includedFrom   = (_fpCat && _fpCat.includedFromByKey[a.key]) || null;
-      // The API owns lifecycle status. `comingSoon` is only a conservative
-      // presentation fallback while the asynchronous catalogue is loading.
-      a.status         = apiDef?.status ?? apiDef?.availability ?? (a.comingSoon ? 'coming_soon' : null);
-      a.availability   = apiDef?.availability ?? null;
-      a.includedInPlan = typeof apiDef?.includedInPlan === 'boolean' ? apiDef.includedInPlan : null;
-      if (typeof apiDef?.active === 'boolean') a.active = apiDef.active;
-      else if (typeof apiActive === 'boolean') a.active = apiActive;
-      else if (typeof apiActive?.active === 'boolean') a.active = apiActive.active;
-      if (a.status === 'active') a.active = true;
-      // ── Qty-addon enrichment ──────────────────────────────────────────────
-      // QTY keys: monitorsPack10/50, extraSeats, gbpSlots10. me.addons[key] is
-      // the number of active packs when > 0, or true/false for functional addons.
-      const _meAddonVal = me.addons?.[a.key];
-      a.isQty   = typeof _meAddonVal === 'number' && _meAddonVal > 0;
-      a.packs   = a.isQty ? _meAddonVal : 0;
-      // Per-pack display label ("+10 monitors", "+5 sièges", …)
-      const _QTY_LABELS = {
-        monitorsPack10: '+10 monitors', monitorsPack50: '+50 monitors',
-        extraSeats: '+5 sièges', gbpSlots10: '+10 GBP',
-      };
-      a.packLabel = _QTY_LABELS[a.key] || '+1';
     });
 
     const currentPlan = ((STATE.billing && STATE.billing.plan) || me.plan || '').toLowerCase();
     const planLevel = currentPlan === 'ultra' ? 2 : currentPlan === 'pro' ? 1 : 0;
     const isIncluded = a => {
-      if (a.status === 'included') return true;
-      if (typeof a.includedInPlan === 'boolean') return a.includedInPlan;
       if (a.includedFrom === 'standard') return true;
       // retention90d is superseded by retention365d on Ultra — hide it to avoid confusion
       if (a.key === 'retention90d' && planLevel >= 2) return false;
@@ -10421,6 +10152,7 @@ function renderBilling() {
             ? 'Plan changé vers ' + _planLabel + ' ✓'
             : 'Plan mis à jour → ' + _planLabel + ' ✓';
           showToast('success', _msg);
+          // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
           // ── Immediate optimistic STATE update (before loadData completes) ──
           // Both keys MUST stay in lockstep: STATE.me.plan (Title Case, read by the
           // AI Credits header, sidebar Facturation card, profile) and
@@ -10509,19 +10241,7 @@ function renderBilling() {
     window._fpAddonQtyStep = function(key, delta) {
       const inp = document.getElementById('fp-addon-qty-' + key);
       if (!inp) return;
-      const newQty = Math.min(20, Math.max(1, (parseInt(inp.value, 10) || 1) + delta));
-      inp.value = newQty;
-      // P1-A: update displayed price = unitPrice × qty
-      const priceEl = document.getElementById('fp-addon-price-' + key);
-      const actBtn  = document.getElementById('fp-addon-act-' + key);
-      if (priceEl && priceEl.dataset.unitMinor) {
-        const unitMinor = parseInt(priceEl.dataset.unitMinor, 10) || 0;
-        const isOneTime = priceEl.dataset.oneTime === '1';
-        const v = (unitMinor * newQty) / 100;
-        const fmtPrice = (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '€' + (isOneTime ? '' : '/mois');
-        priceEl.textContent = fmtPrice;
-        if (actBtn) actBtn.textContent = 'Activer — ' + fmtPrice;
-      }
+      inp.value = Math.min(20, Math.max(1, (parseInt(inp.value, 10) || 1) + delta));
     };
     window.fpActivateAddon = async function(addonIdx) {
       const _a = window._fpAllAddons && window._fpAllAddons[addonIdx];
@@ -10579,9 +10299,7 @@ function renderBilling() {
           <span style="font-size:12px;color:var(--fp-text-soft);line-height:1.5">${escHtml(f)}</span>
         </div>`
       ).join('');
-      const inclBadge = isInc
-        ? (a.includedFrom === 'standard' ? 'Tous les plans' : a.includedFrom === 'pro' ? 'Plan Pro & Ultra' : a.includedFrom === 'ultra' ? 'Plan Ultra' : 'Votre plan')
-        : null;
+      const inclBadge = a.includedFrom === 'standard' ? 'Tous les plans' : a.includedFrom === 'pro' ? 'Plan Pro & Ultra' : a.includedFrom === 'ultra' ? 'Plan Ultra' : null;
       openFloatPanel(
         `${a.icon} ${a.name}`,
         `<div style="padding:20px;display:flex;flex-direction:column;gap:16px">
@@ -10590,10 +10308,7 @@ function renderBilling() {
               <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,0.07);color:var(--fp-text-muted)">${escHtml(a.cat)}</span>
               <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${accentColor}18;color:${accentColor}">${escHtml(a.tag)}</span>
               ${inclBadge ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(34,197,94,0.12);color:#22c55e">✓ Inclus — ${inclBadge}</span>` : ''}
-               ${inclBadge && a.status === 'beta' ? '<span class="fp-badge" style="background:rgba(139,92,246,.14);color:#8b5cf6">🧪 Bêta</span>' : ''}
-               ${!isInc && a.active && a.status !== 'coming_soon' ? '<span class="fp-badge" style="background:rgba(34,197,94,.12);color:#22c55e">Activé</span>' : ''}
-               ${!isInc && !a.active && a.status === 'beta' ? '<span class="fp-badge" style="background:rgba(139,92,246,.14);color:#8b5cf6">Bêta</span>' : ''}
-               ${!isInc && !a.active && a.status === 'coming_soon' ? '<span class="fp-badge" style="background:rgba(148,163,184,.12);color:#94a3b8">Bientôt</span>' : ''}
+              ${a.availability === 'beta' ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(245,158,11,0.12);color:#f59e0b">🧪 Bêta</span>` : ''}
             </div>
             <button onclick="closeFloatPanel&&closeFloatPanel()" style="width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--fp-text-muted);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0" title="${fpT('Fermer')}">×</button>
           </div>
@@ -10609,24 +10324,22 @@ function renderBilling() {
           <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;padding-top:14px;border-top:1px solid var(--fp-border)">
             <div>
               <div style="font-size:10px;color:var(--fp-text-faint)">Prix</div>
-              <div id="fp-addon-price-${escHtml(a.key)}" data-unit-minor="${a.priceMinor||0}" data-one-time="${a.oneTime?'1':'0'}" style="font-size:18px;font-weight:900;color:${isInc ? '#22c55e' : 'var(--fp-text)'}">${isInc ? (a.status==='beta'?'🧪 Bêta · Inclus dans votre plan':'Inclus dans votre plan') : escHtml(a.price)}</div>
+              <div style="font-size:18px;font-weight:900;color:${isInc ? '#22c55e' : 'var(--fp-text)'}">${isInc ? 'Inclus dans votre plan' : escHtml(a.price)}</div>
             </div>
             ${isInc
               ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">${fpT('✓ Déjà inclus')}</button>`
-              : a.status === 'coming_soon'
-                ? `<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;background:rgba(148,163,184,0.1);border:1px solid rgba(148,163,184,0.25)"><span style="font-size:18px">🚧</span><div><div style="font-size:12px;font-weight:700;color:var(--fp-text)">${fpT('Bientôt disponible')}</div><div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Cet add-on sera lancé prochainement.')}</div></div></div>`
-                : a.active
-                  ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="fp-badge" style="background:rgba(34,197,94,.14);color:#22c55e">✓ ${fpT('Activé')}</span>${a.targetNav ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="closeFloatPanel&&closeFloatPanel();navigate('${escHtml(a.targetNav)}')">${fpT('Accéder →')}</button>` : ''}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
-                   : a.wizardFn
+              : a.active
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`
+                : a.wizardFn
                   ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 Lancer →</button>`
-                   : `${a.status === 'beta' ? '<span class="fp-badge" style="margin-right:8px;background:rgba(139,92,246,.14);color:#8b5cf6">Bêta</span>' : ''}${_FP_QTY_ADDON_KEYS[a.key] ? `
+                  : `${_FP_QTY_ADDON_KEYS[a.key] ? `
                     <div style="display:flex;align-items:center;gap:10px">
                       <div style="display:flex;align-items:center;gap:4px" title="Nombre de packs">
                         <button onclick="window._fpAddonQtyStep('${a.key}',-1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">−</button>
                         <input id="fp-addon-qty-${a.key}" type="number" value="1" min="1" max="20" readonly style="width:38px;text-align:center;border:1px solid var(--fp-border);border-radius:6px;padding:3px 4px;font-size:13px;background:transparent;color:var(--fp-text)">
                         <button onclick="window._fpAddonQtyStep('${a.key}',1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">+</button>
                       </div>
-                      <button id="fp-addon-act-${escHtml(a.key)}" class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>
+                      <button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>
                     </div>` : `<button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>`}`
             }
           </div>
@@ -10672,16 +10385,15 @@ function renderBilling() {
         if (!_visibleAddons.length) return `<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">${fpT('Aucun add-on dans cette catégorie.')}</div>`;
         return `<div class="fp-addon-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
         ${_visibleAddons.map((a, _i) => {
-          const _addonIdx = allAddons.indexOf(a);
           const _rc = ['#f59e0b','#2563EB','#22c55e','#ef4444'][Math.floor(_i / 4) % 4];
           const inc = isIncluded(a);
           const cardAccent = _rc;
           const _addonDark = document.documentElement.getAttribute('data-theme') !== 'light';
-          const borderColor = (inc || (a.active && a.status !== 'coming_soon')) ? cardAccent + '88' : _addonDark ? cardAccent + '33' : cardAccent + '44';
+          const borderColor = (inc || a.active) ? cardAccent + '88' : _addonDark ? cardAccent + '33' : cardAccent + '44';
           const bgColor     = _addonDark ? 'rgba(8,13,27,0.92)' : cardAccent + '08';
           return `
-          <div onclick="window.fpShowAddonDetail(${_addonIdx})" style="border-radius:14px;border:1px solid ${borderColor};background:${bgColor};padding:16px;position:relative;overflow:hidden;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s" onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.18)'" onmouseleave="this.style.transform='';this.style.boxShadow=''">
-            ${(inc || (a.active && a.status !== 'coming_soon')) ? `<div style="position:absolute;top:0;right:0;width:3px;height:100%;background:linear-gradient(to bottom,${cardAccent},${cardAccent}44)"></div>` : ''}
+          <div onclick="window.fpShowAddonDetail(${_i})" style="border-radius:14px;border:1px solid ${borderColor};background:${bgColor};padding:16px;position:relative;overflow:hidden;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s" onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.18)'" onmouseleave="this.style.transform='';this.style.boxShadow=''">
+            ${(inc || a.active) ? `<div style="position:absolute;top:0;right:0;width:3px;height:100%;background:linear-gradient(to bottom,${cardAccent},${cardAccent}44)"></div>` : ''}
             <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
               <div style="font-size:20px;flex-shrink:0">${a.icon}</div>
               <div style="flex:1;min-width:0">
@@ -10691,30 +10403,19 @@ function renderBilling() {
                   ${badge(a.tag, cardAccent)}
                 </div>
               </div>
-              ${(inc || (a.active && a.status !== 'coming_soon')) ? `<div style="width:8px;height:8px;border-radius:50%;background:${cardAccent};flex-shrink:0;margin-top:4px;box-shadow:0 0 8px ${cardAccent}88"></div>` : ''}
+              ${(inc || a.active) ? `<div style="width:8px;height:8px;border-radius:50%;background:${cardAccent};flex-shrink:0;margin-top:4px;box-shadow:0 0 8px ${cardAccent}88"></div>` : ''}
             </div>
             <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(a.desc)}</div>
             <div style="font-size:10px;color:${cardAccent};font-weight:600;margin-bottom:10px">✦ ${escHtml(a.roi)}</div>
             <div style="display:flex;align-items:center;justify-content:space-between" onclick="event.stopPropagation()">
-              <span style="font-size:12px;font-weight:800;color:${(inc || (a.active && a.status !== 'coming_soon')) ? cardAccent : 'var(--fp-text)'}">${inc ? ((a.status === 'beta' || a.availability === 'beta') ? '🧪 Bêta — Inclus ✓' : 'Inclus ✓') : a.status === 'coming_soon' ? fpT('Bientôt') : a.active ? 'Activé' : a.status === 'beta' ? 'Bêta' : escHtml(a.price)}</span>
+              <span style="font-size:12px;font-weight:800;color:${(inc || a.active) ? cardAccent : 'var(--fp-text)'}">${inc && a.availability === 'beta' ? '🧪 Bêta — Inclus ✓' : inc ? 'Inclus ✓' : escHtml(a.price)}</span>
               ${inc
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">${(a.status === 'beta' || a.availability === 'beta') ? '🧪 Bêta · Inclus' : '✓ Inclus'}</button>`
-                : a.status === 'coming_soon'
-                  ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:rgba(148,163,184,0.3);color:#94a3b8" title="${fpT('Bientôt disponible')}">🚧 ${fpT('Bientôt')}</button>`
-                  : a.active
-                    ? (a.isQty
-                        // ── Qty add-on: show pack count + "Ajouter +N" (no "Activé" dead-end) ──
-                        ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                            <span class="fp-badge" style="font-size:10px;background:rgba(245,158,11,.14);color:#f59e0b">${a.packs} pack${a.packs!==1?'s':''} actif${a.packs!==1?'s':''}</span>
-                            <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_addonIdx})">Ajouter ${escHtml(a.packLabel)}</button>
-                            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>
-                           </div>`
-                        // ── Functional add-on: "Activé ✓" + optional nav + Désactiver ──
-                        : `<div style="display:flex;gap:6px"><span class="fp-badge" style="font-size:10px;background:rgba(34,197,94,.14);color:#22c55e">✓ ${fpT('Activé')}</span>${a.targetNav?`<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigate('${escHtml(a.targetNav)}')">${fpT('Accéder →')}</button>`:''}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`)
-
-                    : a.wizardFn && a.status !== 'coming_soon'
-                      ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 Lancer →</button>`
-                      : `<div style="display:flex;align-items:center;gap:5px">${a.status === 'beta' ? '<span class="fp-badge" style="background:rgba(139,92,246,.14);color:#8b5cf6">Bêta</span>' : ''}<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_addonIdx})">${fpT('Activer →')}</button></div>`
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">${a.availability === 'beta' ? '🧪 Bêta · Inclus' : '✓ Inclus'}</button>`
+                : a.active
+                  ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`
+                  : a.wizardFn
+                    ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 Lancer →</button>`
+                    : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">${fpT('Activer →')}</button>`
               }
             </div>
           </div>`;
@@ -10765,7 +10466,9 @@ function renderBilling() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Total payé 2026', displayStat(STATE.billing?.totalPaid != null ? STATE.billing.totalPaid + '€' : null, PREVIEW_MODE ? '286€' : '0€'), PREVIEW_MODE ? '5 factures · HT' : (STATE.billing?.totalPaid ? 'Total HT' : 'Aucune facture'), 'neutral')}
-        ${STATE.billing?.subscriptionId ? statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '—'), 'Prochaine échéance', 'neutral') : statCard('Accès plan', plan || STATE.me?.plan || 'Ultra', 'Compte interne — aucune facturation Stripe', 'up')}
+        ${STATE.billing?.subscriptionId
+          ? statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '—'), 'Prochaine échéance', 'neutral')
+          : statCard('Facturation', '—', 'Aucune subscription Stripe', 'neutral')}
         ${statCard('Méthodes de paiement', String(paymentMethods.length), paymentMethods.length > 0 ? 'actives — ' + (paymentMethods[0]?.brand || 'Carte') + ' par défaut' : 'Aucune carte enregistrée', 'up')}
         ${statCard('Paiements échoués', displayStat(STATE.billing?.failedPayments != null ? String(STATE.billing.failedPayments) : '0', '0'), PREVIEW_MODE ? 'aucun incident 2026' : (STATE.billing?.failedPayments ? STATE.billing.failedPayments + ' incident(s)' : 'Aucun incident'), 'up')}
       </div>
@@ -10982,7 +10685,7 @@ function renderBilling() {
     const strategies = PREVIEW_MODE ? [
       {
         title:'Passage Ultra recommandé dans 6 semaines',
-        body:fpT('Au rythme actuel, vos audits dépasseront 250/mois le 22 juin. Le passage Ultra (') + fpPlanPriceLabel('ultra') + ') coûte +' + fpPlanDeltaEur('pro','ultra') + '€ mais génère 4h/semaine d\'économie d\'automatisation = 200€ de valeur temps. ROI positif en 1 mois.',
+        body:'Au rythme actuel, vos audits dépasseront 250/mois le 22 juin. Le passage Ultra (' + fpPlanPriceLabel('ultra') + ') coûte +' + fpPlanDeltaEur('pro','ultra') + '€ mais génère 4h/semaine d\'économie d\'automatisation = 200€ de valeur temps. ROI positif en 1 mois.',
         priority:'Haute', color:'#f59e0b', action:'Simuler Ultra',
         metrics:['Audits 76% de capacité', 'Seuil prévu J+8', 'ROI : +200€/mois'],
       },
@@ -11000,7 +10703,7 @@ function renderBilling() {
       },
       {
         title:'White-Label — Activer le portail client',
-        body:fpT('Votre portail White-Label est inclus mais pas encore configuré. Ajoutez votre logo et vos couleurs pour offrir une expérience premium à vos clients. Temps de setup : moins de 10 minutes.'),
+        body:'Votre portail White-Label est inclus mais pas encore configuré. Ajoutez votre logo et vos couleurs pour offrir une expérience premium à vos clients. Temps de setup : moins de 10 minutes.',
         priority:'Faible', color:'#22c55e', action:'Configurer White-Label',
         metrics:['Logo & couleurs personnalisés', 'Pied de page custom', 'Domaine portail inclus'],
       },
@@ -11015,7 +10718,7 @@ function renderBilling() {
       });
       arr.push({
         title:'White-Label — Personnaliser le portail client',
-        body:fpT('Personnalisez le portail client avec votre logo et vos couleurs. Temps de setup : moins de 10 minutes.'),
+        body:'Personnalisez le portail client avec votre logo et vos couleurs pour offrir une expérience premium à vos clients. Temps de setup : moins de 10 minutes.',
         priority:'Faible', color:'#22c55e', action:'Configurer White-Label',
         metrics:['Logo & couleurs personnalisés', 'Pied de page custom', 'Domaine portail inclus'],
       });
@@ -11097,14 +10800,14 @@ function renderBilling() {
           { name:'Client Plombier',    clients:1, seats:1, plan:'Shared', mrr:'—',   status:'Géré',  color:'#22c55e' },
         ] : [{ name: STATE.me?.orgName || 'Espace principal', clients: (STATE.clients||[]).length || 0, seats: (STATE.team||[]).length || 1, plan: STATE.me?.plan || 'Pro', mrr: '—', status: 'Actif', color: '#2563EB' }]);
     const features = [
-      { name:'White-Label Rapports',  active:true, desc:'Rapports PDF 100% à votre marque — logo, couleurs, pied de page personnalisés',    icon:'🎨', color:'#f59e0b', sub:'workspace' },
-      { name:'Multi-workspace',       active:true, desc:'Gérez plusieurs workspaces clients séparés dans une seule interface unifiée',       icon:'🏢', color:'#2563EB', sub:'workspace' },
-      { name:'Audit Log Complet',     active:true, desc:'Historique exhaustif de toutes les actions de l\'équipe — conformité RGPD native',  icon:'📋', color:'#22c55e', sub:'security' },
-      { name:'2FA / MFA',             active:true, desc:'Authentification à deux facteurs obligatoire pour sécuriser chaque connexion',     icon:'🔐', color:'#ef4444', sub:'security' },
-      { name:'Analytics Temps Réel',  active:true, desc:'Tableaux de bord live, graphiques instantanés et alertes en temps réel',          icon:'📊', color:'#2563EB', sub:'integrations' },
-      { name:'RGPD Compliance',       active:true, desc:'Droit à l\'oubli, exports de données, consentements et DPA disponibles',          icon:'🛡️', color:'#22c55e', sub:'data' },
-      { name:(function(){var _el=STATE.me?.limits?.exports;var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=_el||_map[_pl]||30;var _fmt=function(n){return n>=1000?(Math.round(n/1000))+'k':String(n);};return 'Exports '+(_q>=1000?_fmt(_q):_q)+'/mois';}()), active:true, desc:(function(){var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=STATE.me?.limits?.exports||_map[_pl]||30;return 'Exportez vos données en CSV, PDF ou JSON — quota: '+_q+' exports/mois selon votre plan';}()), icon:'📤', color:'#8b5cf6', sub:'data' },
-      { name:'API GraphQL',           active:true, desc:'Accès complet à l\'API GraphQL pour intégrer FlowPoint dans vos outils métier',   icon:'⚡', color:'#06b6d4', sub:'api' },
+      { name:'White-Label Rapports',  active:true, desc:'Rapports PDF 100% à votre marque — logo, couleurs, pied de page personnalisés',    icon:'🎨', color:'#f59e0b' },
+      { name:'Multi-workspace',       active:true, desc:'Gérez plusieurs workspaces clients séparés dans une seule interface unifiée',       icon:'🏢', color:'#2563EB' },
+      { name:'Audit Log Complet',     active:true, desc:'Historique exhaustif de toutes les actions de l\'équipe — conformité RGPD native',  icon:'📋', color:'#22c55e' },
+      { name:'2FA / MFA',             active:true, desc:'Authentification à deux facteurs obligatoire pour sécuriser chaque connexion',     icon:'🔐', color:'#ef4444' },
+      { name:'Analytics Temps Réel',  active:true, desc:'Tableaux de bord live, graphiques instantanés et alertes en temps réel',          icon:'📊', color:'#2563EB' },
+      { name:'RGPD Compliance',       active:true, desc:'Droit à l\'oubli, exports de données, consentements et DPA disponibles',          icon:'🛡️', color:'#22c55e' },
+      { name:(function(){var _el=STATE.me?.limits?.exports;var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=_el||_map[_pl]||30;var _fmt=function(n){return n>=1000?(Math.round(n/1000))+'k':String(n);};return 'Exports '+(_q>=1000?_fmt(_q):_q)+'/mois';}()), active:true, desc:(function(){var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=STATE.me?.limits?.exports||_map[_pl]||30;return 'Exportez vos données en CSV, PDF ou JSON — quota: '+_q+' exports/mois selon votre plan';}()), icon:'📤', color:'#8b5cf6' },
+      { name:'API GraphQL',           active:true, desc:'Accès complet à l\'API GraphQL pour intégrer FlowPoint dans vos outils métier',   icon:'⚡', color:'#06b6d4' },
     ];
     return `
       ${isUltra
@@ -11117,7 +10820,8 @@ function renderBilling() {
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings','workspace')">${fpT('Modifier mon workspace')}</button>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),60)">${fpT('Configurer portail client')}</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),60)">${fpT('Ajouter un workspace')}</button>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('reports');setTimeout(()=>{openFloatPanel(fpT('Nouveau rapport'),renderNewReportPanel());setupNewReportPanel();},120)">${fpT('Générer rapport agence')}</button>
             </div>
           </div>`
@@ -11162,6 +10866,7 @@ function renderBilling() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${ws.mrr}</div>
                 ${badge(ws.status, ws.status === 'Actif' ? '#22c55e' : '#2563EB')}
               </div>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings')">${fpT('Gérer')}</button>
             </div>
           `).join('')}
         </div>
@@ -11179,7 +10884,7 @@ function renderBilling() {
                 <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${f.active ? '#22c55e' : 'rgba(255,255,255,0.12)'};${f.active ? 'box-shadow:0 0 6px rgba(34,197,94,0.4)' : ''}"></div>
               </div>
               <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.4;margin-bottom:8px">${escHtml(f.desc)}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="${f.locked ? `navigateSub('plans')` : f.active ? `(function(){var _ts='${f.sub||'workspace'}';console.log('[Agency Lab nav]',{clickedFeature:'${escHtml(f.name).replace(/'/g,"\\'")}',targetSub:_ts,firstRenderedSub:_ts});navigate('settings',_ts);})()` : `navigateSub('addons')`}">
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="${f.locked ? `navigateSub('plans')` : f.active ? `navigate('settings')` : `navigateSub('addons')`}">
                 ${f.locked ? '🔒 Ultra requis' : f.active ? '✓ Configurer' : 'Activer →'}
               </button>
             </div>
@@ -11227,7 +10932,9 @@ function renderBilling() {
       ${statCard('Plan actuel', plan, 'actif · ' + (plan === 'Standard' ? '29€' : (plan === 'Agency' || plan === 'Ultra') ? '149€' : '79€') + '/mois', 'up')}
       ${statCard('Usage Health', displayStat(healthScore!=null?healthScore+'/100':null,'78/100'), healthScore!=null?(healthScore > 70 ? 'Sain — sous contrôle' : 'Attention requise'):PREVIEW_MODE?'Sain — sous contrôle':'Calcul en cours', healthScore!=null?(healthScore > 70 ? 'up' : 'down'):'neutral')}
       ${statCard('Potentiel upgrade', displayStat(upgradeScore!=null&&upgradeScore>0?upgradeScore+'%':null,'62%'), isUltra ? 'Plan optimal atteint' : 'Score upgrade détecté', isUltra ? 'up' : 'neutral')}
-      ${STATE.billing?.subscriptionId ? statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '—'), 'Prochaine échéance', 'neutral') : statCard('Accès plan', plan || STATE.me?.plan || 'Ultra', 'Compte interne — aucune facturation Stripe', 'up')}
+      ${STATE.billing?.subscriptionId
+          ? statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '—'), 'Prochaine échéance', 'neutral')
+          : statCard('Facturation', '—', 'Aucune subscription Stripe', 'neutral')}
     </div>
 
     <!-- PLAN + GAUGES -->
@@ -11254,37 +10961,16 @@ function renderBilling() {
             { label:'Coût mensuel',       val: STATE.billing?.subscriptionId ? (isStd ? '29€' : isPro && !isUltra ? '79€' : '149€') : '—' },
             { label:'Sans engagement',    val: 'Mensuel — résiliation libre' },
             { label:'Add-ons actifs',     val: (()=>{
-                // Source of truth priority: STATE.me.addons (always fresh after /api/me)
-                // → FP_DATA.addons.active (fresh after /api/addons SSE refresh)
-                // → STATE.billing.addons (legacy, may lag)
-                const _me2 = STATE.me || {};
-                const _meAddons  = _me2.addons || {};
-                const _apiAddons = window.FP_DATA?.addons?.active || {};
-                const _bilAddons = STATE.billing?.addons || {};
-                // Merge all sources — me first so post-SSE state is never overridden by stale billing
-                const _merged = Object.assign({}, _bilAddons, _apiAddons, _meAddons);
+                // Source of truth: /api/addons (FP_DATA.addons.active) — merged with the
+                // legacy STATE.billing.addons map so neither source under-counts.
+                const _merged = Object.assign({}, STATE.billing?.addons || {}, window.FP_DATA?.addons?.active || {});
                 const _defs = window.FP_DATA?.addons?.definitions || {};
-                // Count unique active keys. qty addons count as 1 regardless of quantity.
-                const _activeKeys = Object.keys(_merged).filter(k => {
-                  const v = _merged[k];
-                  return v === true || (typeof v === 'number' && v > 0);
-                });
-                // Included = granted by plan (includedInPlan from /api/addons definitions
-                // or the isIncluded heuristic using _planKey2 level).
-                const _planLevel2 = _planKey2 === 'ultra' ? 2 : _planKey2 === 'pro' ? 1 : 0;
-                const _incActive = _activeKeys.filter(k => {
-                  const def = _defs[k];
-                  if (!def) return false;
-                  if (def.includedInPlan === true) return true;
-                  if (Array.isArray(def.includedIn) && def.includedIn.includes(_planKey2)) return true;
-                  // fallback: includedFrom heuristic
-                  if (def.includedFrom === 'standard') return true;
-                  if (def.includedFrom === 'pro'   && _planLevel2 >= 1) return true;
-                  if (def.includedFrom === 'ultra' && _planLevel2 >= 2) return true;
-                  return false;
-                }).length;
+                const _activeKeys = Object.keys(_merged).filter(k => !!_merged[k]);
+                // Included = active add-ons granted by the plan; paid = the rest.
+                const _incActive = _activeKeys.filter(k => _defs[k] && _defs[k].includedInPlan === true || (_defs[k] && Array.isArray(_defs[k].includedIn) && _defs[k].includedIn.includes(_planKey2))).length;
                 const _n = _activeKeys.length;
-                return _n+' actif'+(_n!==1?'s':'')+' · '+_incActive+' inclus (plan)';
+                const _inc = _incActive;
+                return _n+' actif'+(_n!==1?'s':'')+' · '+_inc+' inclus (plan)';
               })() },
             { label:'Prochaine facture',  val: STATE.billing?.subscriptionId ? (STATE.billing?.nextDate || '—') : 'Aucune facturation Stripe' },
           ].map(m => `<div style="padding:10px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">
@@ -11382,7 +11068,7 @@ function renderBilling() {
             <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
               <span style="font-size:16px">${n.icon}</span>
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(fpTranslateActivityLabel(n.label))}</div>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(n.label)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(n.desc)}</div>
               </div>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--fp-text-faint)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
@@ -11745,11 +11431,11 @@ function renderSettings() {
             {l:'Organisation', id:'prof-org',     v:me.org.name,                                                                                t:'text'},
             {l:'Site web',     id:'prof-website', v:me.org?.website||'',                                                                        t:'url'},
             {l:'Fuseau horaire',id:'prof-tz',     v:(STATE.settings&&STATE.settings.timezone)||'', t:'text',ph:'Ex: Europe/Paris'},
-            {l:'Adresse',      id:'prof-addr',   v:me.location?.address||'',                t:'text', ph:'12 rue de la Paix'},
-            {l:'Ville',        id:'prof-city',   v:me.location?.city||'',                   t:'text', ph:'Paris'},
-            {l:'Code postal',  id:'prof-postal', v:me.location?.postalCode||'',             t:'text', ph:'75001'},
-            {l:'Pays',         id:'prof-country',v:me.location?.country||'',                t:'text', ph:'France'},
-            {l:'Téléphone',    id:'prof-phone',  v:me.location?.phone||'',                  t:'tel',  ph:'+33 6 12 34 56 78'},
+            {l:'Adresse',      id:'prof-addr',   v:me.location?.address||'',                t:'text', ph:'Ex : 10 allée des Acacias'},
+            {l:'Ville',        id:'prof-city',   v:me.location?.city||'',                   t:'text', ph:'Ex : Lyon'},
+            {l:'Code postal',  id:'prof-postal', v:me.location?.postalCode||'',             t:'text', ph:'Ex : 69001'},
+            {l:'Pays',         id:'prof-country',v:me.location?.country||'',                t:'text', ph:'Ex : France'},
+            {l:'Téléphone',    id:'prof-phone',  v:me.location?.phone||'',                  t:'tel',  ph:'Ex : +33 6 XX XX XX XX'},
           ].map(f => `<div class="fp-form-group">
             <label class="fp-form-label">${escHtml(f.l)}</label>
             <input class="fp-input" id="${f.id}" type="${f.t}" value="${escHtml(f.v)}"${f.ph ? ` placeholder="${escHtml(f.ph)}"` : ''}${f.ro ? ' readonly style="opacity:0.6;cursor:not-allowed"' : ''}/>
@@ -11813,7 +11499,7 @@ function renderSettings() {
                   ${svgIcon(item.icon).replace('stroke="currentColor"', `stroke="${on ? '#2563EB' : 'var(--fp-text-faint)'}"`)}
                 </div>
                 <div style="flex:1;min-width:0">
-                  <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(fpTranslateActivityLabel(item.label))}</div>
+                  <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(item.label)}</div>
                   <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(item.desc)}</div>
                 </div>
                 <button class="fp-check-btn${on ? ' on' : ''}" data-pref-check="${escHtml(item.key)}" aria-pressed="${on}" title="${on ? 'Désactiver' : 'Activer'}" onclick="(function(k){STATE.settings[k]=!STATE.settings[k];saveSettings();render();}('${item.key}'))" style="width:26px;height:26px;border-radius:7px;border:2px solid ${on ? '#2563EB' : 'var(--fp-border)'};background:${on ? '#2563EB' : 'transparent'};display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all 0.15s">
@@ -11954,7 +11640,7 @@ function renderSettings() {
     const permMatrix = {
       // Colonnes : Audits | Monitors | Rapports | Facturation | Équipe | Paramètres
       Owner:   [true,  true,  true,  true,  true,  true ],
-      Manager: [true,  true,  true,  false, true,  true ],
+      Manager: [true,  true,  true,  false, true,  false],
       Editor:  [true,  false, true,  false, false, false],
       Viewer:  [false, false, false, false, false, false],
     };
@@ -12144,7 +11830,7 @@ function renderSettings() {
                 </svg>
               </div>
               <div style="flex:1">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(fpTranslateActivityLabel(item.label))}</div>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(item.label)}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(item.desc)} · +${item.weight} pts</div>
               </div>
               ${!item.done
@@ -12153,7 +11839,7 @@ function renderSettings() {
                     : item.label === 'CSP absente'
                       ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="showToast('warning', fpT('Ajoutez Content-Security-Policy dans vos en-têtes HTTP. Exemple : default-src \'self\''))">${fpT('Voir guide →')}</button>`
                       : item.label === 'CORS wildcard potentiel'
-                        ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings','api')">Restreindre →</button>`
+                        ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings');setTimeout(()=>navigateSub('api'),50)">Restreindre →</button>`
                         : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;opacity:0.6" onclick="showToast('info', fpT('Disponible prochainement'))">${fpT('Bientôt →')}</button>`)
                 : `<span style="font-size:10px;color:#22c55e;font-weight:700;flex-shrink:0">✓ OK</span>`}
             </div>
@@ -13317,7 +13003,7 @@ function renderSettings() {
   const _wfAct=(STATE.workflows||[]).filter(w=>w.enabled!==false).length;
   const _intAct=Object.values((STATE.settings&&STATE.settings.integrations)||{}).filter(Boolean).length;
   const _monOkS=(STATE.monitors||[]).length>0&&(STATE.monitors||[]).filter(m=>m.status==='down').length===0;
-  const _billOkS=STATE.me?.hasPremiumAccess===true;
+  const _billOkS=STATE.me?.subscriptionStatus==='active';
   const _has2fa=STATE.settings?.twoFa||false;
   const _hasAudits=(STATE.audits||[]).length>0;
   const _hasReports=(STATE.reports||[]).length>0;
@@ -13430,7 +13116,7 @@ function renderSettings() {
           <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="${n.isRoute ? `navigate('${n.sub}')` : `navigateSub('${n.sub}')`}">
             <span style="font-size:16px;flex-shrink:0">${n.icon}</span>
             <div style="flex:1;min-width:0">
-              <div style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(fpTranslateActivityLabel(n.label))}</div>
+              <div style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(n.label)}</div>
               <div style="font-size:10px;color:var(--fp-text-faint);line-height:1.4">${escHtml(n.desc)}</div>
               <div style="font-size:9px;font-weight:700;color:${n.sc};margin-top:3px">${n.status}</div>
             </div>
@@ -13456,9 +13142,6 @@ function renderAI() {
   const isStd   = plan === 'Standard';
   const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
-  if (!STATE._aiRecommendationsLoading && STATE._aiRecommendationsLanguage !== fpActiveLanguage()) {
-    setTimeout(function() { window.fpLoadAiRecommendations(false); }, 0);
-  }
 
   // ── Action chip helper ─────────────────────────────────────
   const chip = (label, route, sub_) => {
@@ -13502,7 +13185,7 @@ function renderAI() {
     const _wfActive    = (STATE.workflows||[]).filter(w=>w.enabled!==false).length;
     const _missTotal   = (STATE.missions||[]).length;
     const _missDone    = (STATE.missions||[]).filter(m=>m.status==='completed').length;
-    const _billOk      = STATE.me?.hasPremiumAccess===true;
+    const _billOk      = STATE.me?.subscriptionStatus==='active';
     const _compScore   = STATE.competitors&&STATE.competitors.length>0 ? Math.min(100,Math.round((STATE.competitors[0].domainRating||50)*1.2)) : null;
     const systems = [
       {name:'SEO & Audits', icon:'🔍', score:_mkSysScore(_auditScore), status:_mkSysStatus(_auditScore), color:_mkSysColor(_auditScore), route:'audits',
@@ -13608,7 +13291,6 @@ function renderAI() {
   // SUB: INSIGHTS & RECOMMANDATIONS
   // ══════════════════════════════════════════════════════════
   if (sub === 'insights') {
-    const persistedRecommendations = fpRenderPersistedAiRecommendations();
     const _hasMonDown        = !!(STATE.monitors && STATE.monitors.some(m=>m.status==='down'));
     const _hasAudits         = !!(STATE.audits && STATE.audits.length > 0);
     const _hasLowSpd         = _hasAudits && STATE.audits.some(a=>(a.speed||100)<60);
@@ -13638,31 +13320,31 @@ function renderAI() {
       _hasLowSpd ? {
         icon:'🟡', color:'#eab308', priority:'Cette semaine',
         title:'Friction mobile sur ' + ((STATE.audits.reduce((b,a)=>(a.speed||a.score||0)<(b.speed||b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')||'votre site'),
-        body:fpT('Score mobile faible détecté. Analysez le LCP, le CLS et le FID pour identifier les points de friction.'),
+        body:'Score mobile faible détecté. Analysez le LCP, le CLS et le FID pour identifier les points de friction.',
         chips:[chip('Analyse UX','conversion','ux-lab'), chip('Revenue Leak','conversion','revenue-leak')],
       } : null,
       _hasGbpUnanswered ? {
         icon:'🟡', color:'#eab308', priority:'Cette semaine',
         title:STATE.gbp.unansweredReviews + ' avis Google sans réponse',
-        body:fpT('Impact négatif sur le score GBP et le trust signal local. Répondre sous 24h.'),
+        body:'Impact négatif sur le score GBP et le trust signal local. Recommandation\u00a0: répondre sous 24h.',
         chips:[chip('Gérer le GBP','local-seo','gbp'), chip('Dashboard local','local-seo',null)],
       } : null,
       _hasLowScore ? {
         icon:'🟢', color:'#22c55e', priority:'Opportunité',
         title:'Quick wins SEO — ' + STATE.audits.filter(a=>(a.score||100)<70).length + ' site(s) sous 70/100',
-        body:fpT('Améliorez les balises title manquantes et les Core Web Vitals pour progresser rapidement.'),
+        body:'Améliorez les balises title manquantes et les Core Web Vitals pour progresser rapidement.',
         chips:[chip('Quick Wins','overview','quick-wins'), chip('Lancer les audits','audits',null)],
       } : null,
       _hasLocalOpp ? {
         icon:'🟢', color:'#22c55e', priority:'Opportunité',
         title:'Opportunités Local SEO disponibles',
-        body:fpT('Des zones géographiques à fort potentiel ont été identifiées dans votre heatmap locale.'),
+        body:'Des zones géographiques à fort potentiel ont été identifiées dans votre heatmap locale.',
         chips:[chip('Voir les opportunités','local-seo','opportunities'), chip('Analyser les zones','local-seo','zones')],
       } : null,
       _hasReports ? {
         icon:'🔵', color:'#2563EB', priority:'Pro tip',
         title:STATE.reports.length + ' rapport(s) prêt(s) à partager',
-        body:fpT('Activez le Mode Client pour notifier vos clients et suivre les consultations de vos rapports PDF.'),
+        body:'Activez le Mode Client pour notifier vos clients et suivre les consultations de vos rapports PDF.',
         chips:[chip('Voir les rapports','reports',null), chip('Mode Client','client-mode',null)],
       } : null,
     ].filter(Boolean);
@@ -13679,7 +13361,6 @@ function renderAI() {
           ${statCard('Opportunités', '0', 'connectez vos sources', 'neutral')}
           ${statCard('Score global', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,null); })(), 'score moyen portfolio', 'neutral')}
         </div>
-        ${persistedRecommendations}
         <div style="padding:40px 20px;text-align:center;color:var(--fp-text-faint)">
           <div style="font-size:32px;margin-bottom:12px">💡</div>
           <div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">${fpT('Aucun insight disponible pour le moment.')}</div>
@@ -13701,7 +13382,6 @@ function renderAI() {
         ${statCard('Opportunités', String(insights.filter(i => i.priority === 'Opportunité').length), 'quick wins détectés', 'up')}
         ${statCard('Score global', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,null); })(), 'score moyen portfolio', 'neutral')}
       </div>
-      ${persistedRecommendations}
       ${['Critique','Urgent','Cette semaine','Opportunité','Pro tip'].map(prio => {
         const group = insights.filter(i => i.priority === prio);
         if (!group.length) return '';
@@ -13744,9 +13424,9 @@ function renderAI() {
         actions:[
           {label:'Voir les incidents actifs',   icon:'🚨', onclick:"navigate('alerts-center')",                              desc:(STATE.monitors&&STATE.monitors.filter(m=>m.status==='down').length>0?STATE.monitors.filter(m=>m.status==='down').length+' monitor'+(STATE.monitors.filter(m=>m.status==='down').length>1?'s':'')+' DOWN':'Incidents actifs')},
           {label:'Status monitors',             icon:'📊', onclick:"navigate('monitors')",                                  desc:(STATE.monitors&&STATE.monitors.length>0?STATE.monitors.length+' monitor'+(STATE.monitors.length>1?'s':'')+' configuré'+(STATE.monitors.length>1?'s':''):'Uptime et disponibilité')},
-          {label:'Créer une règle d\'alerte',   icon:'🔔', onclick:"navigate('settings','automations')", desc:'Automatisations et workflows'},
-          {label:'Rapport SLA',                 icon:'📄', onclick:"navigate('monitors','sla')", desc:'Uptime et disponibilité'},
-          {label:'Configurer les monitors',     icon:'⚙️', onclick:"navigate('settings','monitors-config')", desc:'Seuils, fréquences et canaux'},
+          {label:'Créer une règle d\'alerte',   icon:'🔔', onclick:"navigate('settings');setTimeout(()=>navigateSub('automations'),50)", desc:'Automatisations et workflows'},
+          {label:'Rapport SLA',                 icon:'📄', onclick:"navigate('monitors');setTimeout(()=>navigateSub('sla'),50)", desc:'Uptime et disponibilité'},
+          {label:'Configurer les monitors',     icon:'⚙️', onclick:"navigate('settings');setTimeout(()=>navigateSub('monitors-config'),50)", desc:'Seuils, fréquences et canaux'},
         ],
       },
       {
@@ -13816,28 +13496,28 @@ function renderAI() {
       {
         n:1, color:'#ef4444',
         title:'Domination Local SEO — 60 jours',
-        body:fpT('Votre score local stagne à 68%. Plan : optimiser les fiches GBP des 3 sites principaux, couvrir 2 nouvelles zones.'),
+        body:'Votre score local stagne à 68% pendant que vos concurrents gagnent du terrain. Plan d\'action : optimiser les fiches GBP des 3 sites principaux, couvrir 2 nouvelles zones, générer 20 posts locaux IA.',
         metrics:[{l:'Impact estimé',v:'+18 pts local'},{l:'Leads potentiels',v:'+40%'},{l:'Durée',v:'60 jours'}],
         chips:[chip('Lancer le plan Local SEO','local-seo',null), chip('Analyser les zones','local-seo','zones')],
       },
       {
         n:2, color:'#f59e0b',
         title:'Recovery SEO — 3 sites critiques',
-        body:fpT('Plombier Paris (38/100), Restaurant Le Soleil (61/100) et 1 autre site sont sous le seuil SEO.'),
+        body:'Plombier Paris (38/100), Restaurant Le Soleil (61/100) et 1 autre site sont sous le seuil de rentabilité SEO.',
         metrics:[{l:'ROI estimé',v:'+35% leads'},{l:'Corrections',v:'47 issues'},{l:'Durée',v:'45 jours'}],
         chips:[chip('Voir les audits','audits',null), chip('Quick Wins','overview','quick-wins')],
       },
       {
         n:3, color:'#8b5cf6',
         title:'Conversion Intelligence — Mobile First',
-        body:fpT('Votre taux de conversion mobile est 3x inférieur au benchmark. Plan : CWV mobile, CTA optimization, A/B testing IA.'),
+        body:'Votre taux de conversion mobile est 3x inférieur au benchmark sectoriel. Plan : CWV mobile, CTA optimization, A/B testing IA.',
         metrics:[{l:'Conversion actuelle',v:'1.2%'},{l:'Objectif',v:'3.5%'},{l:'Impact',v:'Voir rapport'}],
         chips:[chip('Analyse conversion','conversion','cro'), chip('UX & Friction','conversion','ux-lab')],
       },
       {
         n:4, color:'#22c55e',
         title:'Scale Agency — 5 nouveaux clients',
-        body:fpT('Votre infrastructure est prête pour 5 clients supplémentaires sans surcoût. Add-ons actifs, Mode Client opérationnel.'),
+        body:'Votre infrastructure est prête pour 5 clients supplémentaires sans surcoût. Add-ons actifs, Mode Client opérationnel, rapports white-label configurés. Seul manque : la prospection ciblée.',
         metrics:[{l:'Capacité disponible',v:'5 clients'},{l:'MRR potentiel',v:'+2 000€'},{l:'Setup',v:'2 jours'}],
         chips:[chip('Mode Client','client-mode','agency'), chip('Facturation','billing','enterprise')],
       },
@@ -14184,9 +13864,9 @@ function renderAI() {
       <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">Suggestions rapides</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px">
         <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Que faire en priorité ?" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${fpT('🚨 Que faire en priorité ?')}</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Plan d'action 30 jours" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${fpT('📅 Plan d\'action 30 jours')}</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Analyse les baisses de positions et indique les actions prioritaires." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${fpT('📉 Analyser mes positions')}</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Compare mes derniers audits et résume les progrès à réaliser." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${fpT('🔎 Comparer mes audits')}</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Plan d'action 30 jours" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">📅 Plan d'action 30 jours</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Analyse les baisses de positions et indique les actions prioritaires." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">📉 Analyser mes positions</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Compare mes derniers audits et résume les progrès à réaliser." style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">🔎 Comparer mes audits</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
         ${[
@@ -14194,7 +13874,7 @@ function renderAI() {
           {icon:'🔴', label:'Analyser les monitors DOWN',    prompt:'Analyse mes monitors DOWN et indique les causes probables et les actions à faire.'},
           {icon:'📄', label:'Créer un rapport mensuel',      prompt:'Crée un rapport mensuel résumant mes performances SEO, monitors et missions.'},
           {icon:'📍', label:'Opportunités Local SEO',        prompt:'Quelles sont mes meilleures opportunités Local SEO en ce moment ?'},
-        ].map(p =>`<button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="${escHtml(p.prompt)}" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${p.icon} ${fpT(p.label)}</button>`).join('')}
+        ].map(p =>`<button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="${escHtml(p.prompt)}" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">${p.icon} ${p.label}</button>`).join('')}
       </div>
     </div>
 
@@ -14204,31 +13884,23 @@ function renderAI() {
         ${renderAIMessages()}
       </div>
       <style>
-        /* AI input textarea — grows to max-height then scrolls */
-        #ai-input, #ai-panel-input {
-          max-height: 120px;
-          overflow-y: auto;       /* always auto — scrollbar appears automatically when content > max-height */
-          scrollbar-width: thin;  /* Firefox */
-          scrollbar-color: rgba(148,163,184,0.45) transparent;
-          -webkit-overflow-scrolling: touch;   /* smooth scroll on iOS Safari */
-        }
-        /* -webkit-appearance:none forces scrollbar visible on macOS Safari (hidden by default). */
-        #ai-input::-webkit-scrollbar, #ai-panel-input::-webkit-scrollbar { width:5px; -webkit-appearance:none; }
-        #ai-input::-webkit-scrollbar-track, #ai-panel-input::-webkit-scrollbar-track { background:transparent; border-radius:4px; }
-        #ai-input::-webkit-scrollbar-thumb, #ai-panel-input::-webkit-scrollbar-thumb { background:rgba(148,163,184,0.45); border-radius:4px; min-height:28px; }
-        #ai-input::-webkit-scrollbar-thumb:hover, #ai-panel-input::-webkit-scrollbar-thumb:hover { background:rgba(100,116,139,0.75); }
-        html[data-theme="dark"] #ai-input::-webkit-scrollbar-thumb,
-        html[data-theme="dark"] #ai-panel-input::-webkit-scrollbar-thumb { background:rgba(100,116,139,0.5); }
+        /* AI input textarea — scrollbar only visible when text exceeds max-height */
+        #ai-input::-webkit-scrollbar { width:0; }
+        #ai-input.fp-ai-scrolling::-webkit-scrollbar { width:5px; }
+        #ai-input.fp-ai-scrolling::-webkit-scrollbar-track { background:transparent; border-radius:4px; }
+        #ai-input.fp-ai-scrolling::-webkit-scrollbar-thumb { background:rgba(148,163,184,0.45); border-radius:4px; min-height:28px; }
+        #ai-input.fp-ai-scrolling::-webkit-scrollbar-thumb:hover { background:rgba(100,116,139,0.75); }
+        html[data-theme="dark"] #ai-input.fp-ai-scrolling::-webkit-scrollbar-thumb { background:rgba(100,116,139,0.5); }
         /* Progress step text shown while waiting for first AI token */
         .fp-ai-progress-hint { font-size:11px; color:var(--fp-text-faint); font-style:italic; padding:2px 0 0; display:block; min-height:14px; }
       </style>
       <div style="border-top:1px solid rgba(255,255,255,0.06);padding:10px 12px">
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
-          <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted);align-self:flex-end" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
-          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;line-height:1.5;min-height:38px;height:38px;padding-right:8px;flex:1 1 auto;min-width:0"></textarea>
-          <button class="fp-ai-send" id="ai-send" style="flex:0 0 auto;width:38px;height:38px;align-self:flex-end;display:flex;align-items:center;justify-content:center;border-radius:var(--fp-radius-md);background:var(--fp-accent,#2563EB);color:#fff;border:none;cursor:pointer;transition:background 0.15s">${svgIcon('send').replace('width="14"','width="18"').replace('height="14"','height="18"')}</button>
-          <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:38px;height:38px;align-self:flex-end;border-radius:var(--fp-radius-md);background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
+          <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
+          <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:hidden;line-height:1.5;height:38px;max-height:120px;padding-right:8px;flex:1 1 auto;min-width:0"></textarea>
+          <button class="fp-ai-send" id="ai-send" style="flex:0 0 auto;width:36px;height:36px;align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="18"').replace('height="14"','height="18"')}</button>
+          <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
         </div>
         <!-- Progress hint: shows server-side step name (e.g. "Identification des informations…")
              while waiting for the first AI token. Hidden when real text arrives. -->
@@ -14338,7 +14010,7 @@ function renderAIMessages() {
   // AI Agents Phase 2 : carte de confirmation pour les actions en attente
   const renderConfirmCard = (cr) => {
     if (!cr || !cr.proposalId) return '';
-    const isDestructive = cr.confirmationLevel === 'full' && cr.toolName && /^delete_/.test(String(cr.toolName || ''));
+    const isDestructive = cr.confirmationLevel === 'full';
     const preview = escHtml(cr.preview || fpT('Confirmer cette action ?'));
     const pid = escHtml(cr.proposalId);
     // The conversationId travels with the card (data-cid) so Confirmer works even
@@ -14346,7 +14018,7 @@ function renderAIMessages() {
     // fixes the « Session perdue » dead-end.
     const cid = escHtml(cr.conversationId || '');
     return `<div style="margin-top:8px;padding:10px 12px;border-radius:8px;background:${isDestructive ? 'rgba(239,68,68,0.07)' : 'rgba(37,99,235,0.07)'};border:1px solid ${isDestructive ? 'rgba(239,68,68,0.25)' : 'rgba(37,99,235,0.2)'};font-size:11px;color:var(--fp-text-soft)">
-      <div style="font-weight:600;margin-bottom:8px;color:var(--fp-text);line-height:1.4">${isDestructive ? '⚠️ ' : '✅ '}${preview}</div>
+      <div style="font-weight:600;margin-bottom:8px;color:var(--fp-text);line-height:1.4">${isDestructive ? '⚠️ ' : ''}${preview}</div>
       <div style="display:flex;gap:6px">
         <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5${isDestructive ? ';background:#ef4444;border-color:#ef4444' : ''}" data-pid="${pid}" data-cid="${cid}" onclick="window.fpAiConfirmAction(this.dataset.pid, this)">${escHtml(fpT('Confirmer'))}</button>
         <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5" data-pid="${pid}" onclick="window.fpAiDismissConfirm(this.dataset.pid, this)">${escHtml(fpT('Ignorer'))}</button>
@@ -14384,7 +14056,7 @@ function renderAIMessages() {
     const dedupedChips = allChips.filter((c, i, arr) => arr.findIndex(x => x.route === c.route) === i);
 
     const _aiAvatar = isAI
-      ? svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="20"').replace('height="14"','height="20"')
+      ? svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="18"').replace('height="14"','height="18"')
       : svgIcon('user').replace('stroke="currentColor"','stroke="#60a5fa"').replace('width="14"','width="12"').replace('height="14"','height="12"');
     return `<div class="fp-ai-message ${m.from}" style="margin-bottom:10px;display:flex;align-items:flex-end;gap:8px;flex-direction:${isAI ? 'row' : 'row-reverse'}">
       <div style="width:26px;height:26px;border-radius:8px;background:${isAI ? 'transparent' : 'rgba(37,99,235,0.22)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -14403,7 +14075,7 @@ function renderAIMessages() {
 
   const typing = STATE.aiLoading && !STATE.aiMessages.some(m => m.streaming) ? `<div class="fp-ai-message ai" style="margin-bottom:10px;display:flex;align-items:flex-start;gap:8px">
     <div style="width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-      ${svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="20"').replace('height="14"','height="20"')}
+      ${svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="18"').replace('height="14"','height="18"')}
     </div>
     <div style="padding:9px 12px;border-radius:4px 12px 12px 12px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.07)">
       <div class="fp-ai-typing"><div class="fp-ai-typing-dot"></div><div class="fp-ai-typing-dot"></div><div class="fp-ai-typing-dot"></div></div>
@@ -14477,8 +14149,8 @@ window.fpClearAiChat = function() {
       <p><strong>Bonjour !</strong> Je suis votre assistant SEO FlowPoint.<br>${fpT('Posez-moi des questions sur vos sites, performances, opportunités ou demandez-moi de générer un rapport.')}</p>
       <div class="fp-ai-chat-chips" id="fp-ai-chat-chips">
         <button class="fp-ai-quick-chip" data-msg="Quel est le score SEO moyen de mes sites ?">${fpT('Score SEO moyen')}</button>
-        <button class="fp-ai-quick-chip" data-msg="Quelles sont les 3 actions prioritaires à faire cette semaine ?">${fpT('Actions prioritaires')}</button>
-        <button class="fp-ai-quick-chip" data-msg="Analyse mes Core Web Vitals et donne-moi des recommandations.">${fpT('Core Web Vitals')}</button>
+        <button class="fp-ai-quick-chip" data-msg="Quelles sont les 3 actions prioritaires à faire cette semaine ?">Actions prioritaires</button>
+        <button class="fp-ai-quick-chip" data-msg="Analyse mes Core Web Vitals et donne-moi des recommandations.">Core Web Vitals</button>
         <button class="fp-ai-quick-chip" data-msg="Génère un résumé exécutif de la situation SEO.">${fpT('Résumé exécutif')}</button>
       </div>
     </div>`;
@@ -14585,23 +14257,6 @@ async function sendAIMessage(text) {
   // Declared outside try so the catch can preserve partial content received before the error.
   let fullText = '';
 
-  // Phase status messages — show user progress before first SSE token
-  const _phaseSteps = [
-    fpT('Analyse de vos données…'),
-    fpT('Recherche des informations pertinentes…'),
-    fpT('Préparation de la réponse…'),
-  ];
-  let _phaseIdx = 0;
-  STATE.aiMessages[streamIdx] = { from:'ai', text: _phaseSteps[0], streaming: true };
-  updateAIUI();
-  const _phaseTimer = setInterval(function() {
-    _phaseIdx = Math.min(_phaseIdx + 1, _phaseSteps.length - 1);
-    if (STATE.aiMessages[streamIdx] && STATE.aiMessages[streamIdx].streaming && !STATE.aiMessages[streamIdx]._hasContent) {
-      STATE.aiMessages[streamIdx].text = _phaseSteps[_phaseIdx];
-      updateAIUI();
-    }
-  }, 1800);
-
   try {
     const resp = await fetch('/api/ai/chat', _fpSessionFetchOptions({
       method: 'POST',
@@ -14635,7 +14290,6 @@ async function sendAIMessage(text) {
         : resp.status >= 500
         ? `⚠ Erreur serveur (${resp.status}) — réessayez dans quelques instants.`
         : (err.error || '⚠ Le service IA est temporairement indisponible.');
-      clearInterval(_phaseTimer);
       STATE.aiMessages[streamIdx] = { from:'ai', text: msg, streaming: false };
       STATE.aiLoading = false;
       saveAIHistory();
@@ -14674,9 +14328,7 @@ async function sendAIMessage(text) {
             // Clear progress hint on first real content
             if (!fullText) { const _ph = document.getElementById('fp-ai-progress-hint'); if (_ph) _ph.textContent = ''; }
             fullText += parsed.delta;
-            if (fullText.length > 0) STATE.aiMessages[streamIdx]._hasContent = true;
-            if (fullText.length > 0) clearInterval(_phaseTimer);
-            STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: true, proposal: _proposal, _hasContent: true };
+            STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: true, proposal: _proposal };
             // Guard: updateAIUI() may access detached DOM when user navigated away — never let it kill the stream.
             try { updateAIUI(); } catch(_) {}
           } else if (parsed.action_proposal) {
@@ -14687,8 +14339,7 @@ async function sendAIMessage(text) {
             // Le serveur envoie le conversationId AVEC la carte — le mémoriser
             // immédiatement pour que Confirmer fonctionne toujours (fix « Session perdue »).
             if (_confirmReq.conversationId) STATE._aiConversationId = _confirmReq.conversationId;
-            clearInterval(_phaseTimer);
-      STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: false, proposal: _proposal, confirmRequest: _confirmReq };
+            STATE.aiMessages[streamIdx] = { from:'ai', text: fullText, streaming: false, proposal: _proposal, confirmRequest: _confirmReq };
             STATE.aiLoading = false;
             saveAIHistory();
             try { updateAIUI(); } catch(_) {}
@@ -14813,36 +14464,13 @@ function updateAIUI() {
 
 /** Load (or reload) missions from the server and update STATE. Called after AI write actions. */
 window.loadMissions = async function loadMissions() {
-  console.log('[MISSIONS] API start (loadMissions)');
-  var _lm_t0 = Date.now();
-  STATE._missionsLoading = true;
   try {
-    var r = await apiFetch('/api/missions');
-    console.log('[MISSIONS] API end', Date.now() - _lm_t0, 'ms | rows:', Array.isArray(r) ? r.length : typeof r);
-    if (Array.isArray(r)) {
-      // Merge: keep locally-created missions not yet committed to DB (within 30s window)
-      var _now = Date.now();
-      var _serverIds = new Set(r.map(function(m){ return m.id; }));
-      var _localOnly = Array.isArray(STATE.missions)
-        ? STATE.missions.filter(function(m){
-            return m && m.id && !_serverIds.has(m.id)
-              && m._localTs && (_now - m._localTs < 30000);
-          })
-        : [];
-      STATE.missions = _localOnly.concat(r);
-      STATE._missionsLoaded = true;
-      STATE._missionsLoading = false;
+    const r = await apiFetch('/api/missions');
+    if (r && Array.isArray(r.missions)) {
+      STATE.missions = r.missions;
       if (STATE.currentSection === 'missions') render();
-    } else {
-      // API returned unexpected shape — still mark as loaded so spinner stops
-      STATE._missionsLoaded = true;
-      STATE._missionsLoading = false;
     }
-  } catch(e) {
-    STATE._missionsLoaded = true; // stop spinner even on error
-    STATE._missionsLoading = false;
-    console.warn('[MISSIONS] loadMissions failed:', e && e.message);
-  }
+  } catch(e) { console.warn('[AI] loadMissions failed:', e && e.message); }
 };
 
 /** Stop the in-flight AI generation — calls the server cancel endpoint then aborts the SSE. */
@@ -15259,9 +14887,7 @@ function setupNewMissionPanel() {
         const saved = await apiAction('POST', '/api/missions', payload);
         if (saved && (saved.id || saved.title)) {
           const m = saved.id ? saved : { id: 'ms'+Date.now(), ...payload };
-          m._localTs = Date.now();
           STATE.missions.unshift(m);
-          STATE._missionsLoaded = true;
           saveMissions();
           showToast('success', fpT('Mission créée !'));
           closeFloatPanel();
@@ -15495,7 +15121,7 @@ function renderNewReportPanel() {
   return `
     <div style="padding:8px 12px;background:rgba(${_rtInfo.col},0.08);border:1px solid rgba(${_rtInfo.col},0.22);border-radius:8px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
       <span style="font-size:18px">${_rtInfo.icon}</span>
-      <div style="flex:1"><div style="font-size:11px;font-weight:700;color:rgba(${_rtInfo.col},1)">Préréglage : ${_rtInfo.lbl}</div><div style="font-size:10px;color:var(--fp-text-faint)">${_rtInfo.desc} · <span style="cursor:pointer;text-decoration:underline" onclick="navigate('settings','workspace');closeFloatPanel()">${fpT('Modifier')}</span></div></div>
+      <div style="flex:1"><div style="font-size:11px;font-weight:700;color:rgba(${_rtInfo.col},1)">Préréglage : ${_rtInfo.lbl}</div><div style="font-size:10px;color:var(--fp-text-faint)">${_rtInfo.desc} · <span style="cursor:pointer;text-decoration:underline" onclick="navigate('settings');setTimeout(function(){navigateSub('workspace');},50);closeFloatPanel()">${fpT('Modifier')}</span></div></div>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">${fpT('Nom du rapport')}</label>
@@ -15707,15 +15333,15 @@ function renderAIPanelContent() {
       </div>
     </div>
     <div class="fp-ai-quick-prompts" style="margin-bottom:10px">
-      ${[['Que faire en priorité ?','Que faire en priorité ?'],['Monitors DOWN','Monitors DOWN'],['Score SEO moyen','Score SEO moyen'],['Rapport mensuel','Rapport mensuel']].map(([p,l]) =>`<button class="fp-ai-quick" data-ai-prompt="${p}" style="font-size:10px;padding:4px 9px">${fpT(l)}</button>`).join('')}
+      ${['Que faire en priorité ?','Monitors DOWN','Score SEO moyen','Rapport mensuel'].map(p =>`<button class="fp-ai-quick" data-ai-prompt="${p}" style="font-size:10px;padding:4px 9px">${p}</button>`).join('')}
     </div>
     <div id="ai-panel-messages" style="display:flex;flex-direction:column;max-height:280px;overflow-y:auto;margin-bottom:10px">
       ${renderAIMessages()}
     </div>
     <div class="fp-ai-input-row">
-      <textarea class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" rows="1" style="font-size:11px;resize:none;min-height:34px;height:34px;line-height:1.4;flex:1 1 auto;min-width:0"></textarea>
-      <button class="fp-ai-send" id="ai-panel-send" style="flex:0 0 auto;width:34px;height:34px;border-radius:var(--fp-radius-md);align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="16"').replace('height="14"','height="16"')}</button>
-      <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;align-self:flex-end;border-radius:var(--fp-radius-md);background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:14px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
+      <textarea class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" rows="1" style="font-size:11px;resize:none;min-height:34px;height:34px;max-height:120px;overflow-y:hidden;line-height:1.4;flex:1 1 auto;min-width:0"></textarea>
+      <button class="fp-ai-send" id="ai-panel-send" style="flex:0 0 auto;width:34px;height:34px;align-self:flex-end;display:flex;align-items:center;justify-content:center">${svgIcon('send')}</button>
+      <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
     </div>
   `;
 }
@@ -15840,8 +15466,6 @@ async function fpGoToPricing(targetPlan) {
 function navigate(route, subRoute) {
   const _n = normalizeRoute(route, subRoute || null);
   if (_n.route === STATE.route && subRoute == null && _n.subRoute == null && STATE.subRoute) _n.subRoute = STATE.subRoute;
-  // Settings default sub-route: 'workspace' so the page is never blank for any role
-  // Settings default sub-route: null → Command Center (same behaviour as all other sections)
   const _prevRoute    = STATE.route;
   const _prevSubRoute = STATE.subRoute;
   STATE.route    = _n.route;
@@ -15860,12 +15484,11 @@ function navigate(route, subRoute) {
       history.replaceState({ route: STATE.route, subRoute: STATE.subRoute }, '', _newHash);
     }
   } catch(e) { /* sandboxed iframe */ }
-  try { localStorage.setItem('fp:last-route', STATE.route); if (STATE.subRoute) localStorage.setItem('fp:last-sub', STATE.subRoute); else localStorage.removeItem('fp:last-sub'); } catch(e) {}
+  try { fpTenantWrite('fp:last-route', STATE.route); if (STATE.subRoute) fpTenantWrite('fp:last-sub', STATE.subRoute); else fpTenantRemove('fp:last-sub'); } catch(e) {}
   document.querySelectorAll('.fp-chart-tooltip').forEach(t => t.remove());
-  // Dismiss calendar daily-agenda panel when navigating away from calendar
-  if (_n.route !== 'missions' && STATE.calendarSelectedDate) {
-    STATE.calendarSelectedDate = null;
-  }
+  // Clear shared hover tooltip (prevents calendar RDV tooltip sticking on iOS
+  // when user navigates to another tab before the touchend fires hideTip).
+  if (typeof hideTip === 'function') hideTip();
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
   _doRender();
   const _p = document.getElementById('fp-page'); if (_p) _p.scrollTo({ top: 0, behavior: 'instant' });
@@ -15880,7 +15503,7 @@ function navigateSub(sub) {
     try { navigate('billing'); } catch(e) { STATE.route = 'billing'; }
   }
   STATE.subRoute = sub;
-  try { localStorage.setItem('fp:last-sub', sub || ''); } catch(e) {}
+  try { fpTenantWrite('fp:last-sub', sub || ''); } catch(e) {}
   try {
     const _base = STATE.route || '';
     if (_base && sub) {
@@ -16594,7 +16217,7 @@ function bindSectionEvents() {
             const _t = _mins < 1 ? 'À l\'instant' : _mins < 60 ? _mins + ' min' : _mins < 1440 ? Math.round(_mins/60) + 'h' : Math.round(_mins/1440) + 'j';
             const tMap = { audit:'success', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'purple', misc:'info' };
             const iMap = { audit:'check', monitor:'wifi', alert:'alert', report:'file', team:'users', misc:'activity' };
-            return { type: tMap[e.type]||'info', icon: iMap[e.type]||'activity', title: fpTranslateActivityLabel(e.label)||'Événement', desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'', time: _t };
+            return { type: tMap[e.type]||'info', icon: iMap[e.type]||'activity', title: e.label||'Événement', desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'', time: _t };
           })
         : (PREVIEW_MODE ? ACTIVITY_FEED : []);
       if (_liveItems.length === 0) {
@@ -18048,35 +17671,8 @@ function bindSectionEvents() {
     $$('.fp-ai-quick').forEach(btn => btn.addEventListener('click', () => sendAIMessage(btn.dataset.aiPrompt)));
     const aiInput = $('#ai-input');
     const aiSend = $('#ai-send');
-    function _resetAiInput() {
-      if (!aiInput) return;
-      aiInput.value = '';
-      // Reset height only — CSS handles overflow-y (max-height:120px; overflow-y:auto in stylesheet)
-      aiInput.style.height = '38px';
-      try { sessionStorage.removeItem('fp:ai-draft'); } catch(_) {}
-      const _ph = document.getElementById('fp-ai-progress-hint');
-      if (_ph) _ph.textContent = '';
-    }
-    function _resizeAiInput() {
-      if (!aiInput) return;
-      // height='auto' before reading scrollHeight — Safari-safe.
-      // A fixed-pixel reset causes Safari to clamp scrollHeight to the set height,
-      // giving a wrong measurement and preventing growth beyond the reset value.
-      aiInput.style.height = 'auto';
-      var sh = aiInput.scrollHeight;
-      var capped = Math.min(sh, 120);
-      aiInput.style.height = capped + 'px';
-      // NEVER set overflow-y inline — CSS (overflow-y:auto; max-height:120px) handles it.
-      console.debug('[AI TEXTAREA DEBUG]', {
-        element: '#ai-input',
-        overflowY: window.getComputedStyle(aiInput).overflowY,
-        height: aiInput.style.height,
-        maxHeight: '120px',
-        scrollHeight: sh,
-        clientHeight: aiInput.clientHeight,
-        capped: sh > 120,
-      });
-    }
+    function _resetAiInput() { if(!aiInput) return; aiInput.value=''; aiInput.style.height='38px'; aiInput.style.overflowY='hidden'; aiInput.style.removeProperty('overflow-y'); aiInput.style.setProperty('overflow-y','hidden','important'); aiInput.classList.remove('fp-ai-scrolling'); try { sessionStorage.removeItem('fp:ai-draft'); } catch(_) {} const _ph=document.getElementById('fp-ai-progress-hint'); if(_ph) _ph.textContent=''; }
+    function _resizeAiInput() { if(!aiInput) return; aiInput.style.overflowY='hidden'; aiInput.style.height='38px'; var sh=aiInput.scrollHeight; var newH=Math.min(sh,120); aiInput.style.height=newH+'px'; if(sh>120){ aiInput.style.removeProperty('overflow-y'); aiInput.style.overflowY='scroll'; aiInput.classList.add('fp-ai-scrolling'); } else { aiInput.style.overflowY='hidden'; aiInput.classList.remove('fp-ai-scrolling'); } }
     aiInput?.addEventListener('input', () => {
       _resizeAiInput();
       // Draft persistence: keep the unsent text across remounts (hard refresh,
@@ -18291,7 +17887,9 @@ function initChartTooltips() {
     rdv.addEventListener('mouseleave', hideTip);
     // Touch support: show tip on tap, hide when touch ends
     rdv.addEventListener('touchstart', e => { moveTip(e.touches[0] || e); showTip && tip && (tip.style.opacity='1',tip.style.visibility='visible'); }, { passive: true });
-    rdv.addEventListener('touchend', () => setTimeout(hideTip, 1200), { passive: true });
+    // Hide immediately on touchend — a 1200ms delay leaves the tooltip
+    // visible when the user navigates away (e.g. taps another tab on iOS).
+    rdv.addEventListener('touchend', () => hideTip(), { passive: true });
   });
 }
 
@@ -18522,24 +18120,16 @@ function bindGlobalEvents() {
       // content exceeds the max, reset to min height after send.
       function _panelResize() {
         if (!panelInput) return;
-        // height='auto' before reading scrollHeight — Safari-safe.
-        panelInput.style.height = 'auto';
+        panelInput.style.height = '34px';
         var sh = panelInput.scrollHeight;
         panelInput.style.height = Math.min(sh, 120) + 'px';
-        // NEVER set overflow-y inline — CSS handles it.
-        console.debug('[AI TEXTAREA DEBUG]', {
-          element: '#ai-panel-input',
-          overflowY: window.getComputedStyle(panelInput).overflowY,
-          height: panelInput.style.height,
-          maxHeight: '120px',
-          scrollHeight: sh,
-          clientHeight: panelInput.clientHeight,
-        });
+        panelInput.style.overflowY = sh > 120 ? 'auto' : 'hidden';
       }
       function _panelReset() {
         if (!panelInput) return;
         panelInput.value = '';
         panelInput.style.height = '34px';
+        panelInput.style.overflowY = 'hidden';
       }
       panelInput?.addEventListener('input', _panelResize);
       panelInput?.addEventListener('paste', () => setTimeout(_panelResize, 0));
@@ -18562,28 +18152,14 @@ function bindGlobalEvents() {
   }
 
   // Logout — révocation session côté serveur avant redirection
-  // SECURITY: always clear ALL client-side auth state before redirecting, even
-  // if the server call fails (prevents stale Bearer from re-authenticating the
-  // user on login.html after a failed logout).
   $('#fp-logout-btn')?.addEventListener('click', async () => {
+    try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+    // Clear last-route so the next session (or a re-registration) always starts
+    // at the overview, not at whatever page this account was last visiting.
+    // Route keys are tenant-namespaced — next login reads the correct org's last route.
     showToast('info', fpT('Déconnexion…'));
-    // Clear ALL per-tab and cross-tab auth state immediately — before the API
-    // call — so that even if the network request fails, login.html will not find
-    // a sessionStorage token and will not redirect back to dashboard.
-    try {
-      sessionStorage.removeItem('fp_session_token');
-      sessionStorage.removeItem('fp_tab_uid');
-      sessionStorage.removeItem('fp-state-cache');
-    } catch(_) {}
-    try {
-      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_tab_uid','fp_had_session']
-        .forEach(function(k) { localStorage.removeItem(k); });
-      // Clear last-route so a re-registered account never lands on the
-      // previous session's last page.
-      try { localStorage.removeItem('fp:last-route'); localStorage.removeItem('fp:last-sub'); } catch(_) {}
-    } catch(_) {}
     try { await window.apiFetch('/api/auth/logout', { method: 'POST' }); } catch(_) {}
-    setTimeout(() => { window.location.replace('/signin.html?signout=1'); }, 1200);
+    setTimeout(() => { window.location.replace('/login.html'); }, 1200);
   });
 
   // Messages button
@@ -19837,9 +19413,6 @@ function bindGlobalEvents() {
     "Audit planifié désactivé": "Scheduled Audit disabled",
     "Audit supprimé": "Audit deleted",
     "Audit terminé :": "Audit completed:",
-    "Monitor créé :": "Monitor created:",
-    "📡 Monitor créé": "📡 Monitor created",
-    "Accéder →": "Access →",
     "Audit terminé — aucun rapport disponible": "Audit completed — no report available",
     "Audits terminés": "Audits completed",
     "Authentification Google Workspace (Pro) et SAML/Okta/Azure (Ultra).": "Google Workspace (Pro) and SAML/Okta/Azure (Ultra) authentication.",
@@ -21099,12 +20672,6 @@ function bindGlobalEvents() {
     "📄 Rapports partagés": "📄 Shared reports",
     "📅 Calendrier d'opportunités saisonnières": "📅 Seasonal opportunities calendar",
     "📅 Plan d'action 30 jours": "📅 30-day action plan",
-    "📉 Analyser mes positions": "📉 Analyze my rankings",
-    "🔎 Comparer mes audits": "🔎 Compare my audits",
-    "Améliorer mon score SEO moyen": "Improve my average SEO score",
-    "Analyser les monitors DOWN": "Analyze DOWN monitors",
-    "Créer un rapport mensuel": "Create a monthly report",
-    "Opportunités Local SEO": "Local SEO opportunities",
     "📅 Projection mois par mois": "📅 Month-by-month projection",
     "📅 Timeline SEO — Actions récentes": "📅 SEO timeline — recent actions",
     "📈 Clics & Impressions — évolution quotidienne": "📈 Clicks & Impressions — daily trend",
@@ -21775,9 +21342,6 @@ function bindGlobalEvents() {
     "Audit sécurité": "Auditoría de seguridad",
     "Audit terminé": "Auditoría completada",
     "Audit terminé :": "Auditoría completada:",
-    "Monitor créé :": "Monitor creado:",
-    "📡 Monitor créé": "📡 Monitor creado",
-    "Accéder →": "Acceder →",
     "Audit terminé — aucun rapport disponible": "Auditoría completada - no hay informe disponible.",
     "Audits": "Auditorías",
     "Audits / mois": "Auditorías / mes",
@@ -24732,9 +24296,6 @@ function bindGlobalEvents() {
     "Audit sécurité": "Sicherheitsaudit",
     "Audit terminé": "Audit abgeschlossen",
     "Audit terminé :": "Audit abgeschlossen:",
-    "Monitor créé :": "Monitor erstellt:",
-    "📡 Monitor créé": "📡 Monitor erstellt",
-    "Accéder →": "Zugreifen →",
     "Audit terminé — aucun rapport disponible": "Audit abgeschlossen - kein Bericht verfügbar.",
     "Audits": "Audits",
     "Audits / mois": "Audits / Monat",
@@ -27384,53 +26945,6 @@ function bindGlobalEvents() {
     "Priorité locale": "Lokale Priorität",
     "Désactivée": "Deaktiviert",
     "Agressive": "Aggressiv",
-    "Paramètres mis à jour": "Parameter aktualisiert",
-    "Clé API régénérée": "API-Schlüssel erneuert",
-    "Rapport généré :": "Bericht erstellt:",
-    "Mission créée :": "Mission erstellt:",
-    "Mission accomplie :": "Mission abgeschlossen:",
-    "Rapport partagé :": "Bericht geteilt:",
-    "Audit lancé :": "Audit gestartet:",
-    "Monitor passé": "Monitor wiederhergestellt",
-    "RÉGLAGES": "EINSTELLUNGEN",
-    "RAPPORT": "BERICHT",
-    "MISSION": "MISSION",
-    "Profil & Organisation": "Profil & Organisation",
-    "Configurer le domaine": "Domain konfigurieren",
-    "Optimiser le branding": "Branding optimieren",
-    "IA : Sauvegarder": "KI: Speichern",
-    "Modifier mon workspace": "Meinen Workspace bearbeiten",
-    "Ajouter un workspace": "Workspace hinzufügen",
-    "Voir plus": "Mehr anzeigen",
-    "Gérer": "Verwalten",
-    "Configurer": "Konfigurieren",
-    "Sauvegarder": "Speichern",
-    "Annuler": "Abbrechen",
-    "Retirer": "Entfernen",
-    "Mode Client": "Kundenmodus",
-    "Équipe": "Team",
-    "Facturation": "Abrechnung",
-    "Paramètres": "Einstellungen",
-    "Workspace": "Workspace",
-    "Équipe & Permissions": "Team & Berechtigungen",
-    "Centre Sécurité": "Sicherheitszentrum",
-    "Automatisations": "Automatisierungen",
-    "Intégrations": "Integrationen",
-    "API & Dev": "API & Entwicklung",
-    "Données": "Daten",
-    "Command Center": "Befehlszentrum",
-    "Tous les systèmes OK": "Alle Systeme OK",
-    "Rechercher...": "Suchen...",
-    "Rechercher": "Suchen",
-    "Chargement...": "Wird geladen...",
-    "Aucun résultat": "Keine Ergebnisse",
-    "Confirmer": "Bestätigen",
-    "Fermer": "Schließen",
-    "Posez votre question…": "Stellen Sie Ihre Frage…",
-    "Arrêter la génération": "Generierung stoppen",
-    "Inviter un membre": "Mitglied einladen",
-    "Exporter activité": "Aktivität exportieren"
-
     },
     it: {
     "Sites critiques à corriger": "Siti critici da correggere",
@@ -27718,9 +27232,6 @@ function bindGlobalEvents() {
     "Audit sécurité": "Audit di sicurezza",
     "Audit terminé": "Audit completato",
     "Audit terminé :": "Audit completato:",
-    "Monitor créé :": "Monitor creato:",
-    "📡 Monitor créé": "📡 Monitor creato",
-    "Accéder →": "Accedi →",
     "Audit terminé — aucun rapport disponible": "Audit completato - nessun rapporto disponibile.",
     "Audits": "Audit",
     "Audits / mois": "Audit / mese",
@@ -30389,95 +29900,6 @@ function bindGlobalEvents() {
     "Priorité locale": "Priorità locale",
     "Désactivée": "Disattivata",
     "Agressive": "Aggressiva",
-    "Score mobile faible détecté. Analysez le LCP, le CLS et le FID pour identifier les points de friction.": "Velocità mobile bassa. Analizza LCP, CLS e FID per identificare i punti di attrito.",
-    "Impact négatif sur le score GBP et le trust signal local. Répondre sous 24h.": "Impatto negativo sul punteggio GBP. Rispondi entro 24h.",
-    "Améliorez les balises title manquantes et les Core Web Vitals pour progresser rapidement.": "Migliora i tag title mancanti e i Core Web Vitals per avanzare rapidamente.",
-    "Des zones géographiques à fort potentiel ont été identifiées dans votre heatmap locale.": "Zone geografiche ad alto potenziale identificate nella heatmap locale.",
-    "Activez le Mode Client pour notifier vos clients et suivre les consultations de vos rapports PDF.": "Attiva la Modalità Cliente per notificare i clienti e monitorare le consultazioni dei PDF.",
-    "Votre portail White-Label est inclus mais pas encore configuré. Ajoutez votre logo et vos couleurs pour offrir une expérience premium.": "Il tuo portale White-Label è incluso ma non ancora configurato. Aggiungi logo e colori per un'esperienza premium.",
-    "Personnalisez le portail client avec votre logo et vos couleurs pour offrir une expérience premium. Temps de setup : 15 min.": "Personalizza il portale con logo e colori per un'esperienza premium. Tempo di setup: 15 min.",
-    "Votre fiche GBP incomplète. Complétez photos, horaires et description, puis mesurez l'évolution de la visibilité locale.": "La tua scheda GBP è incompleta. Completa foto, orari e descrizione, poi misura l'evoluzione della visibilità locale.",
-    "Sites critiques à corriger": "Siti critici da correggere",
-    "Priorité absolue : conversion mobile": "Priorità assoluta: conversione mobile",
-    "Accélérer le Local SEO Maps": "Accelera il Local SEO Maps",
-    "Reconquérir le trafic référent": "Riconquista il traffico referral",
-    "+12 clients/mois": "+12 clienti/mese",
-    "+400 sessions/mois": "+400 sessioni/mese",
-    "Optimiser Google Business Profile": "Ottimizza Google Business Profile",
-    "Créer une mission": "Crea una missione",
-    "Planifiez vos actions SEO et suivez leur avancement": "Pianifica le azioni SEO e monitora l'avanzamento",
-    "3. Créer une mission": "3. Creare una missione",
-    "Paramètres mis à jour": "Parametri aggiornati",
-    "Clé API régénérée": "Chiave API rigenerata",
-    "Rapport généré :": "Rapporto generato:",
-    "Mission créée :": "Missione creata:",
-    "Mission accomplie :": "Missione completata:",
-    "Rapport partagé :": "Rapporto condiviso:",
-    "Audit lancé :": "Audit avviato:",
-    "Monitor passé": "Monitor passato",
-    "RÉGLAGES": "IMPOSTAZIONI",
-    "RAPPORT": "RAPPORTO",
-    "MISSION": "MISSIONE",
-    "AUDIT": "AUDIT",
-    "MONITOR": "MONITOR",
-    "Profil & Organisation": "Profilo & Organizzazione",
-    "Configurer le domaine": "Configura dominio",
-    "Optimiser le branding": "Ottimizza branding",
-    "IA : Sauvegarder": "IA: Salva",
-    "Modifier mon workspace": "Modifica il mio workspace",
-    "Ajouter un workspace": "Aggiungi un workspace",
-    "Voir plus": "Mostra altro",
-    "Gérer": "Gestisci",
-    "Configurer": "Configura",
-    "Actif": "Attivo",
-    "Profil & Paramètres": "Profilo & Impostazioni",
-    "Apparence & Langue": "Aspetto & Lingua",
-    "Nom": "Nome",
-    "Email": "Email",
-    "Prénom": "Nome",
-    "Sauvegarder": "Salva",
-    "Annuler": "Annulla",
-    "Retirer": "Rimuovi",
-    "Inviter un membre": "Invita un membro",
-    "Exporter activité": "Esporta attività",
-    "Mode Client": "Modalità Cliente",
-    "Équipe": "Team",
-    "Facturation": "Fatturazione",
-    "Paramètres": "Impostazioni",
-    "Assistant IA": "Assistente IA",
-    "Tous UP": "Tutti UP",
-    "Posez votre question…": "Fai la tua domanda…",
-    "Arrêter la génération": "Interrompi generazione",
-    "Envoyer": "Invia",
-    "Nouveau rapport": "Nuovo rapporto",
-    "Workspace": "Workspace",
-    "Équipe & Permissions": "Team & Permessi",
-    "Centre Sécurité": "Centro Sicurezza",
-    "Notifications": "Notifiche",
-    "Automatisations": "Automazioni",
-    "Intégrations": "Integrazioni",
-    "API & Dev": "API e Dev",
-    "Données": "Dati",
-    "Command Center": "Centro di Comando",
-    "Tous les systèmes OK": "Tutti i sistemi OK",
-    "Ajouter": "Aggiungi",
-    "Supprimer": "Elimina",
-    "Modifier": "Modifica",
-    "Filtrer": "Filtra",
-    "Rechercher...": "Cerca...",
-    "Rechercher": "Cerca",
-    "Chargement...": "Caricamento...",
-    "Aucun résultat": "Nessun risultato",
-    "Erreur": "Errore",
-    "Succès": "Successo",
-    "Confirmer": "Conferma",
-    "Fermer": "Chiudi",
-    "Créer": "Crea",
-    "Archiver": "Archivia",
-    "Exporter": "Esporta",
-    "Partager": "Condividi",
-    "Voir les détails": "Vedi i dettagli"
-
     },
     pt: {
     "Sites critiques à corriger": "Sites críticos a corrigir",
@@ -30765,9 +30187,6 @@ function bindGlobalEvents() {
     "Audit sécurité": "Auditoria de segurança",
     "Audit terminé": "Auditoria concluída",
     "Audit terminé :": "Auditoria concluída:",
-    "Monitor créé :": "Monitor criado:",
-    "📡 Monitor créé": "📡 Monitor criado",
-    "Accéder →": "Aceder →",
     "Audit terminé — aucun rapport disponible": "Auditoria concluída - nenhum relatório disponível.",
     "Audits": "Auditorias",
     "Audits / mois": "Auditorias / mês",
@@ -33417,69 +32836,6 @@ function bindGlobalEvents() {
     "Priorité locale": "Prioridade local",
     "Désactivée": "Desativada",
     "Agressive": "Agressiva",
-    "Score mobile faible détecté. Analysez le LCP, le CLS et le FID pour identifier les points de friction.": "Velocidade mobile baixa. Analise LCP, CLS e FID para identificar pontos de atrito.",
-    "Impact négatif sur le score GBP et le trust signal local. Répondre sous 24h.": "Impacto negativo na pontuação GBP. Responda em 24h.",
-    "Améliorez les balises title manquantes et les Core Web Vitals pour progresser rapidement.": "Melhore as tags title em falta e os Core Web Vitals para avançar rapidamente.",
-    "Des zones géographiques à fort potentiel ont été identifiées dans votre heatmap locale.": "Zonas geográficas de alto potencial identificadas no heatmap local.",
-    "Activez le Mode Client pour notifier vos clients et suivre les consultations de vos rapports PDF.": "Ative o Modo Cliente para notificar clientes e acompanhar consultas de PDFs.",
-    "Votre portail White-Label est inclus mais pas encore configuré. Ajoutez votre logo et vos couleurs pour offrir une expérience premium.": "O seu portal White-Label está incluído mas não configurado. Adicione logo e cores para uma experiência premium.",
-    "Personnalisez le portail client avec votre logo et vos couleurs pour offrir une expérience premium. Temps de setup : 15 min.": "Personalize o portal com logo e cores para uma experiência premium. Tempo de configuração: 15 min.",
-    "Votre fiche GBP incomplète. Complétez photos, horaires et description, puis mesurez l'évolution de la visibilité locale.": "A sua ficha GBP está incompleta. Complete fotos, horários e descrição, e meça a evolução da visibilidade local.",
-    "Créer une mission": "Criar uma missão",
-    "Planifiez vos actions SEO et suivez leur avancement": "Planeie as suas ações SEO e acompanhe o progresso",
-    "3. Créer une mission": "3. Criar uma missão",
-    "Optimiser Google Business Profile": "Otimizar Google Business Profile",
-    "Sites critiques à corriger": "Sites críticos a corrigir",
-    "Priorité absolue : conversion mobile": "Prioridade absoluta: conversão mobile",
-    "+12 clients/mois": "+12 clientes/mês",
-    "+400 sessions/mois": "+400 sessões/mês",
-    "Paramètres mis à jour": "Parâmetros atualizados",
-    "Clé API régénérée": "Chave API regenerada",
-    "Rapport généré :": "Relatório gerado:",
-    "Mission créée :": "Missão criada:",
-    "Mission accomplie :": "Missão concluída:",
-    "Rapport partagé :": "Relatório partilhado:",
-    "Audit lancé :": "Auditoria iniciada:",
-    "Monitor passé": "Monitor recuperado",
-    "RÉGLAGES": "CONFIGURAÇÕES",
-    "RAPPORT": "RELATÓRIO",
-    "MISSION": "MISSÃO",
-    "Profil & Organisation": "Perfil & Organização",
-    "Configurer le domaine": "Configurar domínio",
-    "Optimiser le branding": "Otimizar branding",
-    "IA : Sauvegarder": "IA: Guardar",
-    "Modifier mon workspace": "Modificar o meu workspace",
-    "Ajouter un workspace": "Adicionar um workspace",
-    "Voir plus": "Ver mais",
-    "Gérer": "Gerir",
-    "Configurer": "Configurar",
-    "Sauvegarder": "Guardar",
-    "Annuler": "Cancelar",
-    "Retirer": "Remover",
-    "Mode Client": "Modo Cliente",
-    "Équipe": "Equipa",
-    "Facturation": "Faturação",
-    "Paramètres": "Definições",
-    "Workspace": "Workspace",
-    "Équipe & Permissions": "Equipa & Permissões",
-    "Centre Sécurité": "Centro de Segurança",
-    "Automatisations": "Automatizações",
-    "Intégrations": "Integrações",
-    "API & Dev": "API e Dev",
-    "Données": "Dados",
-    "Command Center": "Centro de Comando",
-    "Tous les systèmes OK": "Todos os sistemas OK",
-    "Rechercher...": "Pesquisar...",
-    "Rechercher": "Pesquisar",
-    "Chargement...": "A carregar...",
-    "Aucun résultat": "Sem resultados",
-    "Confirmer": "Confirmar",
-    "Fermer": "Fechar",
-    "Posez votre question…": "Faça a sua pergunta…",
-    "Arrêter la génération": "Parar geração",
-    "Inviter un membre": "Convidar membro",
-    "Exporter activité": "Exportar atividade"
-
     },
     nl: {
     "Sites critiques à corriger": "Kritieke sites om te herstellen",
@@ -33767,9 +33123,6 @@ function bindGlobalEvents() {
     "Audit sécurité": "Beveiligingsaudit",
     "Audit terminé": "Audit voltooid",
     "Audit terminé :": "Audit voltooid:",
-    "Monitor créé :": "Monitor aangemaakt:",
-    "📡 Monitor créé": "📡 Monitor aangemaakt",
-    "Accéder →": "Toegang →",
     "Audit terminé — aucun rapport disponible": "Audit voltooid - geen rapport beschikbaar.",
     "Audits": "Audits",
     "Audits / mois": "Audits / maand",
@@ -39642,9 +38995,6 @@ function bindGlobalEvents() {
     "Audit sécurité": "Säkerhetsrevision",
     "Audit terminé": "Revision slutförd",
     "Audit terminé :": "Revision slutförd:",
-    "Monitor créé :": "Monitor skapad:",
-    "📡 Monitor créé": "📡 Monitor skapad",
-    "Accéder →": "Åtkomst →",
     "Audit terminé — aucun rapport disponible": "Revision slutförd - ingen rapport tillgänglig.",
     "Audits": "Revisioner",
     "Audits / mois": "Revisioner / månad",
@@ -42581,9 +41931,6 @@ function bindGlobalEvents() {
     "Audit sécurité": "Audit de securitate",
     "Audit terminé": "Audit finalizat",
     "Audit terminé :": "Audit finalizat:",
-    "Monitor créé :": "Monitor creat:",
-    "📡 Monitor créé": "📡 Monitor creat",
-    "Accéder →": "Accesare →",
     "Audit terminé — aucun rapport disponible": "Audit finalizat - nici un raport disponibil.",
     "Audits": "Audituri",
     "Audits / mois": "Audite / lună",
@@ -45520,9 +44867,6 @@ function bindGlobalEvents() {
     "Audit sécurité": "Audity bezpečnosti",
     "Audit terminé": "Audit dokončen",
     "Audit terminé :": "Audit dokončen:",
-    "Monitor créé :": "Monitor vytvořen:",
-    "📡 Monitor créé": "📡 Monitor vytvořen",
-    "Accéder →": "Přístup →",
     "Audit terminé — aucun rapport disponible": "Audit dokončen - žádná zpráva není k dispozici.",
     "Audits": "Audity",
     "Audits / mois": "Audity / měsíc",
@@ -48230,10 +47574,8 @@ function bindGlobalEvents() {
     document.documentElement.lang = langCode;
     if (STATE.settings) STATE.settings.language = val;
     localStorage.setItem('fp:language', val);
-    STATE.aiRecommendations = null;
-    STATE._aiRecommendationsLanguage = null;
+    // Re-render applies the chosen locale catalog without mutating user content.
     render();
-    window.fpLoadAiRecommendations(true);
   };
 
 // ─────────────────────────────────────────────────────────────────
@@ -48257,8 +47599,8 @@ async function init() {
   // metrics, not plan-selection UI.
   window.__fpSessionConfirmed = false; // cleared after first live /api/me completes
   try {
-    const savedRoute = localStorage.getItem('fp:last-route');
-    const savedSub   = localStorage.getItem('fp:last-sub');
+    const savedRoute = fpTenantRead('fp:last-route', '');
+    const savedSub   = fpTenantRead('fp:last-sub', '');
     if (savedRoute) STATE.route = savedRoute;
     // Drop 'plans' sub-tab on restore — will be re-applied after session confirmed
     if (savedSub && !(savedRoute === 'billing' && savedSub === 'plans')) {
@@ -48287,10 +47629,6 @@ async function init() {
       // plan_changed: also purge in-memory API caches so /api/me and
       // /api/billing/subscription are re-fetched with the NEW plan.
       try { _apiFetchCache.clear(); _apiFetchInFlight.clear(); } catch(_) {}
-      // Remember we came from a checkout so we can trigger a delayed quota refresh below.
-      if (_href.includes('checkout=success') || _href.includes('plan_activated') || _href.includes('addon_success')) {
-        window._fpWasCheckoutReturn = true;
-      }
       // Clean the URL so a page refresh does not repeat the cache-bust
       window.history.replaceState({}, '', window.location.pathname + (window.location.hash || ''));
     }
@@ -48300,14 +47638,29 @@ async function init() {
   await loadData();
 
   // ── Org-change detection + tenant namespace sync ─────────────────────────
-  // See src/frontend/dashboard.js for full bootstrap sequence documentation.
+  // BOOTSTRAP SEQUENCE (addresses point 3 of the P0 audit):
+  //
+  //  Step 1 — Page load: _FP_ORG_NS = localStorage('fp:last-org-id')
+  //            This is the PREVIOUS session's org. Could be a different user.
+  //  Step 2 — STATE initialized via fpTenantRead() with that provisional namespace.
+  //            The reads target the previous org's namespaced keys.
+  //  Step 3 — loadData() → GET /api/me — server is authoritative.
+  //  Step 4 — HERE (after loadData): commit the confirmed canonical orgId.
+  //            If it differs from the provisional namespace (_orgChanged = true),
+  //            REINITIALIZE all tenant STATE fields from the new namespace.
+  //            For a brand-new user those keys don't exist → clean defaults apply.
+  //
+  // Critical: render() is only called after this block, so the stale data from
+  // step 2 is never displayed. The STATE re-init here is the guarantee.
   try {
     const _curOrgId = STATE.me && (STATE.me.orgId || STATE.me.id);
     const _storedOrgId = localStorage.getItem('fp:last-org-id');
     if (_curOrgId) {
       const _orgChanged = _storedOrgId && _storedOrgId !== _curOrgId;
-      fpUpdateTenantNs(_curOrgId);
+      fpUpdateTenantNs(_curOrgId); // commit canonical namespace
       if (_orgChanged) {
+        // Re-read tenant STATE fields from the new org's namespace.
+        // Ensures zero cross-org data survives in memory after a user switch.
         const _defSettings = '{"themeAuto":true,"liveStatus":true,"hoverNotifs":true,"streaks":true,"aiTips":true,"newTab":false,"bgDashboard":false,"recentActivity":true,"confirmActions":true,"statusPageUrl":"","webhookUrl":"","smsPhone":""}';
         const _defModules  = '{"compactMode":false,"dailyAI":true,"soundAlerts":false,"focusMode":false}';
         STATE.pinned           = JSON.parse(fpTenantRead('fp:pinned',           '{}') || '{}');
@@ -48318,14 +47671,15 @@ async function init() {
         STATE.activityLastSeen = parseInt(fpTenantRead('fp:activity-last-seen','0') || '0', 10);
         STATE.pushNotifEnabled = fpTenantRead('fp:push-notif', '') === '1';
         STATE.searchHistory    = JSON.parse(fpTenantRead('fp:search-hist',      '[]') || '[]');
-        localStorage.removeItem('fp:last-route');
-        localStorage.removeItem('fp:last-sub');
         STATE.route    = 'overview';
         STATE.subRoute = null;
       }
       localStorage.setItem('fp:last-org-id', _curOrgId);
     }
   } catch(_orgChangeErr) {
+    // CRITICAL: org-change reinitialization failure must NEVER silently leave
+    // stale cross-org data in memory. If we cannot safely reinitialize, force
+    // a clean reload which will re-fetch everything from the server.
     console.error('[FP] CRITICAL: org-change namespace reinitialization failed:', _orgChangeErr);
     try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
     try { localStorage.removeItem('fp:last-org-id'); } catch(_) {}
@@ -48333,20 +47687,27 @@ async function init() {
   }
 
   // ── addon_success: delayed re-fetch to handle Stripe webhook processing lag ──
-  // The Stripe webhook that activates the add-on may arrive AFTER the user
-  // returns from checkout. A second fetch 4 seconds later catches the window.
-  if (window.location.search.includes('addon_success') || window._fpWasCheckoutReturn || window.__fpAddonSuccessRetry) {
+  // The Stripe webhook that activates the add-on in org_addons may arrive AFTER
+  // the user returns from the checkout page. The first loadData() above fetches
+  // fresh /api/me data, but if the webhook hasn't processed yet, the add-on will
+  // appear as inactive. A second fetch 4 seconds later catches the webhook window.
+  if (window.location.search.includes('addon_success') || window.location.search.includes('plan_activated') || window.location.search.includes('checkout=success') || window.__fpAddonSuccessRetry) {
     window.__fpAddonSuccessRetry = false;
+    // Stripe webhook for a separate add-on subscription can take 5–30 seconds.
+    // We retry at 8s and again at 20s to catch late webhook processing.
     const _addonRetry = async (label) => {
       try {
         try { _apiFetchCache && _apiFetchCache.delete('/api/me'); } catch(_) {}
         try { _apiFetchCache && _apiFetchCache.delete('/api/addons'); } catch(_) {}
         const _freshMe = await apiFetch('/api/me').catch(() => null);
         if (_freshMe && _freshMe.addons) {
+          // Check if any addon is now active that wasn't before
           const _prevAddons = STATE.me?.addons || {};
           const _newAddons  = _freshMe.addons || {};
           const _newlyActive = Object.keys(_newAddons).filter(k => _newAddons[k] && !_prevAddons[k]);
-          if (_newlyActive.length > 0) console.info('[FP] addon_success retry', label, ': newly active:', _newlyActive);
+          if (_newlyActive.length > 0) {
+            console.info('[FP] addon_success retry', label, ': newly active addons:', _newlyActive);
+          }
         }
         await loadData();
         render(STATE.currentSection || STATE.route);
@@ -48377,25 +47738,6 @@ async function init() {
   // Update sidebar
   renderSidebarStatus();
   renderNotifications();
-
-  // ── Post-checkout delayed quota refresh ────────────────────────────────────
-  // After an add-on or plan checkout, the DB activation may not be reflected
-  // immediately in the first loadData() pass. A 2-second delayed re-fetch of
-  // usage-details ensures sidebar quota bars show the new limits.
-  if (window._fpWasCheckoutReturn) {
-    window._fpWasCheckoutReturn = false;
-    setTimeout(async function() {
-      try {
-        _apiFetchCache && _apiFetchCache.delete('/api/billing/usage-details');
-        _apiFetchInFlight && _apiFetchInFlight.delete('/api/billing/usage-details');
-        const _freshUd = await apiFetch('/api/billing/usage-details');
-        if (_freshUd && typeof _freshUd === 'object') {
-          STATE.usageDetails = _freshUd;
-          renderSidebarStatus();
-        }
-      } catch(_) {}
-    }, 2000);
-  }
 
   // Init messages badge (uses channels system)
   { if (!STATE.channelMessages) STATE.channelMessages = PREVIEW_MODE ? JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT)) : {general:[],seo:[],rapports:[],support:[]};
@@ -48532,6 +47874,9 @@ async function init() {
               // Suppress the SSE toast when the dashboard already showed one via
               // _fpDoUpgrade() — window._fpPlanUpgradeInProgress is set there.
               // This prevents the double "Plan mis à jour" notification.
+              // Deduplicate: skip SSE toast if this session just triggered the upgrade
+              // (within the last 30 seconds for the same plan). This is deterministic:
+              // it compares plan identity + a 30-second time window, never a fragile boolean.
               const _rec = window._fpPlanUpgradeRecord;
               const _sseToastSuppressed = _rec &&
                 _rec.plan && _rec.plan.toLowerCase() === newPlan.toLowerCase() &&
@@ -48593,35 +47938,8 @@ async function init() {
               }
               showToast('success', fpT('Add-on activé ✓'));
               try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-              // Clear API cache including /api/me so quotas/limits are re-fetched
-              if (_apiFetchCache) { _apiFetchCache.clear(); }
-              if (_apiFetchInFlight) { try { Object.keys(_apiFetchInFlight).forEach(k => delete _apiFetchInFlight[k]); } catch(_) {} }
-              // Re-fetch /api/me immediately to update quotas + addon state
-              apiFetch('/api/me', { _skipCache: true }).then(me => {
-                if (me && me.email) { STATE.me = me; render(); }
-              }).catch(() => {});
-              // Also re-fetch usage-details so sidebar quota bars reflect new limits
-              loadData().then(() => {
-                try {
-                  apiFetch('/api/billing/usage-details', { force: true }).then(ud => {
-                    if (ud && typeof ud === 'object') { STATE.usageDetails = ud; }
-                    try { renderSidebarStatus(); } catch(_) {}
-                  }).catch(() => { try { renderSidebarStatus(); } catch(_) {} });
-                } catch(_) {}
-              }).catch(() => {});
-            // ── billing:addons_updated (from Stripe webhook after PaymentIntent) ──────
-            } else if (msg.type === 'billing:addons_updated') {
-              try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-              if (_apiFetchCache) { _apiFetchCache.clear(); }
-              if (_apiFetchInFlight) { try { Object.keys(_apiFetchInFlight).forEach(k => delete _apiFetchInFlight[k]); } catch(_) {} }
-              // Re-fetch /api/me to update all entitlements (monitor quotas, addon state)
-              apiFetch('/api/me', { _skipCache: true }).then(me => {
-                if (me && me.email) { STATE.me = me; render(); }
-              }).catch(() => {});
-              apiFetch('/api/billing/usage-details', { force: true }).then(ud => {
-                if (ud && typeof ud === 'object') { STATE.usageDetails = ud; }
-                try { renderSidebarStatus(); } catch(_) {}
-              }).catch(() => {});
+              _apiFetchCache && _apiFetchCache.clear();
+              loadData().catch(() => {});
             // ── Add-on deactivated ─────────────────────────────────────────────────
             } else if (msg.type === 'addon:deactivated' || msg.type === 'fp:addon:deactivated') {
               const addonKey = msg.addonKey || msg.addon_key || '';
@@ -48856,7 +48174,7 @@ async function init() {
         headers: { 'Content-Type': 'application/json' },
       }));
     } catch (_) { /* non-fatal — still clear local state */ }
-    ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid', 'fp_had_session',
+    ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid',
      'fp:last-route', 'fp:last-sub']
       .forEach(function(k) { localStorage.removeItem(k); });
     sessionStorage.clear(); // also clears fp_session_token + fp_tab_uid
@@ -48953,12 +48271,11 @@ async function init() {
       _btn.disabled = !ok; _btn.style.opacity = ok ? '1' : '0.4'; _btn.style.cursor = ok ? 'pointer' : 'not-allowed';
     });
   };
-  window.fpConfirmDeleteAccount = function() {
+  window.fpConfirmDeleteAccount = async function() {
     const _inp = document.getElementById('fp-delete-confirm-input');
     if (!_inp || _inp.value !== 'SUPPRIMER') return;
     document.getElementById('fp-delete-account-modal')?.remove();
-    window.fpDarkConfirm('Dernière confirmation — cette action est irréversible et définitive. Continuer ?', async () => {
-      showToast('info', fpT('Suppression du compte en cours…'));
+    showToast('info', fpT('Suppression du compte en cours…'));
       try {
         const r = await apiAction('DELETE', '/api/billing/account');
         if (r && r.ok) {
@@ -48968,7 +48285,6 @@ async function init() {
           try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(e) {}
           try { localStorage.clear(); sessionStorage.clear(); } catch(e) {}
           showToast('success', fpT('Compte supprimé. Redirection…'));
-          // Only redirect if the page has been visible for >2s (prevents BFCache flash)
           if (document.visibilityState === 'visible' && performance.now() > 2000) {
             setTimeout(() => { window.location.href = '/signin.html'; }, 400);
           } else {
@@ -48976,14 +48292,12 @@ async function init() {
           }
         } else if (r && r.stripeCleared) {
           // Stripe subscription was cancelled but DB deletion partially failed.
-          // Clear local auth state and redirect — user must re-subscribe from scratch.
           try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(e) {}
           try { localStorage.clear(); sessionStorage.clear(); } catch(e) {}
           showToast('info', fpT('Abonnement résilié. Contactez le support pour finaliser la suppression.'));
           setTimeout(() => { window.location.href = '/signin.html?deleted=1'; }, 2500);
         } else { showToast('error', (r && r.error) || 'Erreur lors de la suppression du compte'); }
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible')); }
-    }, 'Supprimer définitivement');
   };
 
   window.openDataDeletionPanel = function(kind) {
@@ -49113,131 +48427,6 @@ async function init() {
       } else showToast('error', r?.error || 'Erreur lors de la création');
     } catch(e) { showToast('error', 'Erreur : ' + String(e)); }
   };
-  // ── Review detail modal — full view with editable AI reply ─────────────────
-  window._fpReviewsData = window._fpReviewsData || [];
-
-  window._openReviewDetail = function(idx) {
-    const r = (window._fpReviewsData || [])[idx];
-    if (!r) return;
-    const emoji = r.rating >= 4 ? '😊' : r.rating >= 3 ? '😐' : r.rating >= 2 ? '🙁' : '😞';
-    const stars = '⭐'.repeat(Math.min(r.rating || 0, 5));
-    const sentCol = r.sentiment === 'positive' ? '#22c55e' : r.sentiment === 'negative' ? '#ef4444' : '#94a3b8';
-    const rid = escHtml(String(r.id || ''));
-    const existingId = 'fp-rv-detail-modal';
-    let modal = document.getElementById(existingId);
-    if (modal) modal.remove();
-    const overlay = document.createElement('div');
-    overlay.id = existingId;
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px';
-    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
-    // google_review_id is the real GBP review name (accounts/.../reviews/...) set by the GBP sync.
-    // Manually-submitted reviews (analyze modal) have no google_review_id → r.id is a local DB id.
-    const googleReviewId = escHtml(String(r.google_review_id || r.review_id || ''));
-    const hasGbpId = !!(r.google_review_id || r.review_id);
-    const publishBtnLabel = hasGbpId ? '✅ Publier la réponse via GBP' : '🌐 Ouvrir Google Business';
-    const publishBtnOnclick = hasGbpId
-      ? `(function(btn){
-          var ta=document.getElementById('fp-rv-reply-text');
-          var reply=ta?ta.value.trim():'';
-          if(!reply){showToast('error',fpT('Écrivez ou générez une réponse d\\'abord'));return;}
-          btn.disabled=true;btn.textContent='Publication…';
-          (window.FP_GBP_API?window.FP_GBP_API.replyToReview('${googleReviewId}',reply):Promise.reject('GBP API indisponible')).then(function(r){
-            if(r&&r.ok){
-              showToast('success',fpT('Réponse publiée sur Google Business'));
-              document.getElementById('fp-rv-detail-modal')?.remove();
-            } else {
-              btn.disabled=false;btn.textContent='${publishBtnLabel}';
-              showToast('error',fpT(r&&r.error||'Échec — vérifiez la connexion Google Business'));
-            }
-          }).catch(function(e){
-            btn.disabled=false;btn.textContent='${publishBtnLabel}';
-            showToast('error',fpT('Erreur API GBP : ')+String(e));
-          });
-        })(this)`
-      : `(function(){
-          var ta=document.getElementById('fp-rv-reply-text');
-          var reply=ta?ta.value.trim():'';
-          if(reply&&navigator.clipboard)navigator.clipboard.writeText(reply).catch(()=>{});
-          showToast('info',fpT('Avis sans ID Google — copiez la réponse et répondez sur Google Business'));
-          window.open('https://business.google.com/reviews','_blank');
-        })()`;
-
-    overlay.dataset.googleReviewId = googleReviewId;
-    overlay.innerHTML = `
-      <div style="background:var(--fp-bg-sidebar);border:1px solid var(--fp-border);border-radius:16px;width:560px;max-width:95vw;max-height:90vh;overflow-y:auto;padding:24px">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px">
-          <div>
-            <div style="font-size:20px;margin-bottom:4px">${emoji}</div>
-            <div style="font-size:16px;font-weight:700">${escHtml(r.author_name || r.author || r.reviewer_name || 'Anonyme')}</div>
-            <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
-              <span style="color:#f59e0b;font-size:13px">${stars}</span>
-              ${r.rating ? `<span style="font-size:12px;color:var(--fp-text-muted)">${r.rating}/5</span>` : ''}
-              ${r.sentiment ? `<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${sentCol}22;color:${sentCol}">${escHtml(r.sentiment)}</span>` : ''}
-              ${hasGbpId ? '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:#22c55e22;color:#22c55e">🔗 Lié GBP</span>' : '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:#94a3b822;color:#94a3b8">Avis manuel</span>'}
-            </div>
-          </div>
-          <button style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--fp-text-muted);padding:4px" onclick="document.getElementById('fp-rv-detail-modal')?.remove()">✕</button>
-        </div>
-        <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6;padding:12px;background:var(--fp-inner-card);border-radius:10px;margin-bottom:16px;min-height:60px">
-          ${escHtml(r.review_text || r.text || r.body || r.comment || '— Texte non disponible —')}
-        </div>
-        <div style="margin-bottom:12px">
-          <div style="font-size:11px;font-weight:700;color:var(--fp-accent);margin-bottom:8px">🤖 Réponse IA</div>
-          <textarea id="fp-rv-reply-text" style="width:100%;min-height:100px;padding:10px;border-radius:8px;border:1px solid var(--fp-border);background:var(--fp-inner-card);color:var(--fp-text);font-size:12px;line-height:1.5;resize:vertical;box-sizing:border-box">${escHtml(r.ai_reply || '')}</textarea>
-        </div>
-        ${!hasGbpId ? '<div style="font-size:11px;color:#f59e0b;padding:8px 12px;border-radius:8px;background:#f59e0b15;border:1px solid #f59e0b30;margin-bottom:12px">⚠ Cet avis a été soumis manuellement — il n\'est pas lié à votre fiche Google Business Profile. Pour publier directement depuis FlowPoint, synchronisez vos avis GBP via la connexion Google.</div>' : ''}
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;color:#ef4444;border-color:rgba(239,68,68,0.3)" data-rv-del-id="${rid}"
-            onclick="(function(btn){
-              var id=btn.dataset.rvDelId;
-              if(!id)return;
-              if(!confirm(fpT('Supprimer cet avis ?')))return;
-              apiFetch('/api/google/reviews/'+encodeURIComponent(id),{method:'DELETE'}).then(function(r){
-                if(r&&r.ok){
-                  showToast('success',fpT('Avis supprimé'));
-                  document.getElementById('fp-rv-detail-modal')?.remove();
-                  // Remove from local state
-                  if(window.FP_DATA?.reviewIntel?.reviews){
-                    window.FP_DATA.reviewIntel.reviews=window.FP_DATA.reviewIntel.reviews.filter(function(rv){return rv.id!==id&&rv.reviewId!==id&&rv.review_id!==id;});
-                  }
-                  if(STATE.gbp?.reviews){
-                    STATE.gbp.reviews=STATE.gbp.reviews.filter(function(rv){return rv.id!==id&&rv.reviewId!==id&&rv.review_id!==id;});
-                  }
-                  render(STATE.currentSection);
-                } else {
-                  showToast('error',r?.error||fpT('Erreur de suppression'));
-                }
-              }).catch(function(){showToast('error',fpT('Erreur réseau'));});
-            })(this)">🗑 Supprimer</button>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" id="fp-rv-gen-btn" data-rv-id="${rid}"
-            onclick="(function(btn){
-              btn.disabled=true;btn.textContent='Génération…';
-              var id=btn.dataset.rvId;
-              var lang=(STATE.settings&&STATE.settings.language)||localStorage.getItem('fp:language')||'fr';
-              window.FP_REVIEW_INTEL_API&&window.FP_REVIEW_INTEL_API.generateReply(id,'professional',lang).then(function(res){
-                var reply=res&&res.reply||res&&res.ai_reply||'';
-                var ta=document.getElementById('fp-rv-reply-text');
-                if(ta)ta.value=reply;
-                btn.disabled=false;btn.textContent='↺ Régénérer';
-                showToast('success',fpT('Réponse générée !'));
-              }).catch(function(){btn.disabled=false;btn.textContent='↺ Régénérer';showToast('error',fpT('Erreur de génération'));});
-            })(this)">
-            ${r.ai_reply ? '↺ Régénérer' : '🤖 Générer la réponse'}
-          </button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px"
-            onclick="(function(){var t=document.getElementById('fp-rv-reply-text');if(t&&t.value&&navigator.clipboard){navigator.clipboard.writeText(t.value).then(function(){showToast('success',fpT('Réponse copiée !'));});}})()">
-            📋 Copier
-          </button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;color:#22c55e" id="fp-rv-publish-btn"
-            onclick="${publishBtnOnclick}">
-            ${publishBtnLabel}
-          </button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;margin-left:auto" onclick="document.getElementById('fp-rv-detail-modal')?.remove()">Fermer</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-  };
-
   // Review analyze modal — extracted from innerHTML <script>
   window._showAnalyzeReviewModal = function() {
     const m = document.getElementById('fp-review-modal');
@@ -49249,6 +48438,13 @@ async function init() {
     const text = document.getElementById('rv-text')?.value.trim() || '';
     const lang = document.getElementById('rv-lang')?.value || 'fr';
     if (!text) { showToast('error', fpT('Texte de l\'avis requis')); return; }
+    // Dedup check: prevent adding the same review twice
+    const _existingReviews = window.FP_DATA?.reviewIntel?.reviews || [];
+    const _isDuplicate = _existingReviews.some(rv =>
+      (rv.review_text || '').trim().toLowerCase() === text.toLowerCase() &&
+      (rv.author_name || '').trim().toLowerCase() === (author || '').toLowerCase()
+    );
+    if (_isDuplicate) { showToast('warning', fpT('Cet avis a déjà été analysé')); return; }
     showToast('info', fpT('Analyse IA en cours…'));
     const modal = document.getElementById('fp-review-modal');
     if (modal) modal.style.display = 'none';
@@ -49275,12 +48471,6 @@ async function init() {
               ai_reply: a.suggestedReply || null, created_at: new Date().toISOString(),
             };
             window.FP_DATA.reviewIntel.reviews.unshift(_newRev);
-            // Persist to DB so review survives F5 and shows in stats
-            apiAction('POST', '/api/google/reviews', {
-              author_name: _newRev.author_name, rating: _newRev.rating,
-              text: _newRev.review_text, sentiment: _newRev.sentiment,
-              ai_reply: _newRev.ai_reply, analyzed_at: _newRev.created_at, source: 'manual'
-            }).catch(() => {});
             const _rvs = window.FP_DATA.reviewIntel.reviews;
             const _st  = window.FP_DATA.reviewIntel.stats || {};
             _st.totalReviews = _rvs.length;
@@ -49708,7 +48898,9 @@ async function init() {
     try {
       const r = await apiAction('POST', '/api/local-seo/rankings', { keyword: kw, location: city });
       if (r?.ok || r?.rankings) {
+        if (r.rankings) {
           if (!STATE.localSeo) STATE.localSeo = {};
+          STATE.localSeo.rankings = r.rankings;
           // Use only the durable usage returned by the ranking transaction.
           if (!STATE.dfsStatus) STATE.dfsStatus = {};
           if (r.usage) {
@@ -49718,17 +48910,14 @@ async function init() {
               remaining: Math.max(0, Number(r.usage.limit || 0) - Number(r.usage.used || 0)),
             };
           }
+          STATE.localSeo.rankingKeyword = kw;
+          STATE.localSeo.rankingCity = city;
           // Load full ranking history from DB for the scrollable history section
-          STATE.localSeo.rankingHistory = null;
-          STATE.localSeo._historyLoading = true;
-          apiFetch('/api/local-seo/rankings/history', { force:true }).then(h => {
+          // Reset the guard so the history widget re-fetches fresh data on next render
+          if (STATE.localSeo) { STATE.localSeo.rankingHistory = null; STATE.localSeo._historyLoading = false; }
+          apiFetch('/api/local-seo/rankings/history').then(h => {
             if (!STATE.localSeo) STATE.localSeo = {};
-            // Auto-select: prefer the historyId returned by POST; fall back to the
-            // newest entry in the history so the map always updates after a load.
-            var _rows = Array.isArray(h?.history) ? h.history : [];
-            var _autoId = r.historyId != null ? r.historyId
-              : (_rows.length > 0 ? _rows[0].id : null);
-            fpSetRankingHistory(_rows, _autoId);
+            STATE.localSeo.rankingHistory = Array.isArray(h?.history) ? h.history : [];
             STATE.localSeo._historyLoading = false;
             STATE.localSeo._historyError = null;
             if (h?.usage) {
@@ -49739,19 +48928,32 @@ async function init() {
                 remaining: Math.max(0, Number(h.usage.limit || 0) - Number(h.usage.used || 0)),
               };
             }
-            const persistedWidget = document.getElementById('fp-persisted-rank-history');
-            if (persistedWidget) persistedWidget.innerHTML = fpRankingHistoryRows(STATE.localSeo.rankingHistory);
-            const quota = document.getElementById('fp-ranking-history-quota');
-            if (quota && STATE.dfsStatus?.quota) quota.textContent = STATE.dfsStatus.quota.used + '/' + STATE.dfsStatus.quota.limit + ' req aujourd’hui';
+            const widget = document.getElementById('dfs-rank-history');
+            if (widget) {
+              const items = STATE.localSeo.rankingHistory;
+              widget.innerHTML = items.length === 0
+                ? '<div style="text-align:center;padding:12px;color:#64748b;font-size:11px">Aucun historique.</div>'
+                : items.map((h2, hIdx2) => {
+                    const date = h2.searched_at ? new Date(h2.searched_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}) : '—';
+                    const resultCount2 = (h2.total_results!=null&&h2.total_results>0)?h2.total_results:(Array.isArray(h2.results)?h2.results.length:0);
+                    const _selH2 = (STATE.localSeo?._selectedHistoryIds||new Set()).has(h2.id!=null?h2.id:hIdx2);
+                    return '<div data-hist-row="'+hIdx2+'" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-top:1px solid var(--fp-border);border-radius:6px;cursor:pointer;background:'+(_selH2?'rgba(37,99,235,0.08)':'transparent')+'"'
+                      + ' onclick="(function(el,hid,hIdx){if(!STATE.localSeo)STATE.localSeo={};if(!STATE.localSeo._selectedHistoryIds)STATE.localSeo._selectedHistoryIds=new Set();var sel=STATE.localSeo._selectedHistoryIds.has(hid!=null?hid:hIdx);if(sel){STATE.localSeo._selectedHistoryIds.delete(hid!=null?hid:hIdx);}else{STATE.localSeo._selectedHistoryIds.add(hid!=null?hid:hIdx);}el.style.background=sel?\'transparent\':\'rgba(37,99,235,0.08)\';var cb=el.querySelector(\'.fp-hist-cb\');if(cb)cb.checked=!sel;if(typeof window.fpUpdateRankingMarkersFromHistory===\'function\')window.fpUpdateRankingMarkersFromHistory();})(this,'+JSON.stringify(h2.id!=null?h2.id:hIdx2)+','+hIdx2+'">'
+                      + '<input type="checkbox" class="fp-hist-cb" style="width:13px;height:13px;accent-color:#2563EB;cursor:pointer;flex-shrink:0" '+(_selH2?'checked':'')+' onclick="event.stopPropagation()">'
+                      + '<div style="font-size:10px;color:#64748b;flex-shrink:0;min-width:34px">'+escHtml(date)+'</div>'
+                      + '<div style="flex:1;min-width:0;font-size:11px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(h2.keyword)+' — '+escHtml(h2.location)+'</div>'
+                      + (resultCount2 > 0 ? '<span style="font-size:10px;color:#2563EB;flex-shrink:0;background:rgba(37,99,235,0.1);padding:1px 6px;border-radius:6px;font-weight:700">'+resultCount2+' rés.</span>' : '<span style="font-size:10px;color:#64748b;flex-shrink:0">—</span>')
+                      + '</div>';
+                  }).join('');
+            }
           }).catch((err) => {
             if (STATE.localSeo) {
               STATE.localSeo._historyLoading = false;
               STATE.localSeo._historyError = err?.message || 'Historique indisponible';
             }
-            const persistedWidget = document.getElementById('fp-persisted-rank-history');
-            if (persistedWidget) persistedWidget.innerHTML = '<div style="text-align:center;padding:12px;color:#ef4444;font-size:11px">' + fpT("Impossible de charger l'historique. Réessayez.") + '</div>';
             showToast('error', 'Le classement est enregistré, mais l’historique n’a pas pu être rechargé.');
           });
+        }
         showToast('success', fpT('Rankings chargés !'));
         render(STATE.currentSection);
       } else if (r?.reason === 'not_configured' || r?.configured === false) {
@@ -49893,12 +49095,7 @@ async function init() {
     STATE._competitorAnalysisLoading[id] = true;
     render(); // show spinner
     try {
-      // AI analysis can take up to 60s — override the default 15s apiFetch timeout.
-      const r = await apiFetch('/api/competitors/' + id + '/analyze', {
-        method: 'POST',
-        body: JSON.stringify({}),
-        timeout: 60000,
-      });
+      const r = await apiFetch('/api/competitors/' + id + '/analyze', { method: 'POST', body: JSON.stringify({}) });
       if (r && r.ok && r.analysis) {
         STATE.competitorAnalyses[id] = r.analysis;
         showToast('success', fpT('Analyse IA terminée — ') + escHtml(name || ''));
@@ -49906,17 +49103,9 @@ async function init() {
           showToast('info', '🔄 ' + r.analysis.changes_detected.length + ' changement(s) détecté(s) depuis la dernière analyse');
         }
       } else {
-        showToast('error', (r && r.error) ? r.error : fpT('Erreur lors de l\'analyse IA'));
+        showToast('error', (r && r.error) ? r.error : fpT('Erreur analyse IA'));
       }
-    } catch(e) {
-      // Never expose raw "Fetch is aborted" to the user
-      const errMsg = (e && e.name === 'AbortError') || /abort|timeout/i.test(e?.message || '')
-        ? fpT('L\'analyse a dépassé le délai — le concurrent est peut-être trop volumineux. Réessayez dans un instant.')
-        : /network|failed to fetch/i.test(e?.message || '')
-        ? fpT('Connexion impossible — vérifiez votre réseau et réessayez.')
-        : fpT('Erreur lors de l\'analyse IA. Réessayez dans un instant.');
-      showToast('error', errMsg);
-    }
+    } catch(e) { showToast('error', e?.message || fpT('Erreur réseau')); }
     finally {
       STATE._competitorAnalysisLoading[id] = false;
       render();
@@ -49954,7 +49143,9 @@ async function init() {
   window.fpCreateMissionFromOpportunity = async function(title, desc) {
     if (!title) return;
     try {
-      const r = await apiAction('POST', '/api/missions', {
+      const r = await apiFetch('/api/missions', {
+        method: 'POST',
+        body: JSON.stringify({
           title: title,
           description: desc || '',
           category: 'seo',
@@ -49963,14 +49154,9 @@ async function init() {
           status: 'todo',
           impact: 'high',
           effort: 'medium',
-        });
+        }),
+      });
       if (r && r.id) {
-        // Optimistic STATE update — tag with _localTs so loadMissions merge keeps it
-        // DO NOT bust /api/missions cache: avoids race where re-fetch returns before DB commit
-        if (!Array.isArray(STATE.missions)) STATE.missions = [];
-        r._localTs = Date.now();
-        STATE.missions.unshift(r);
-        STATE._missionsLoaded = true; // prevent "Aucune mission" flash on navigate
         showToast('success', fpT('Mission créée : ') + escHtml(title));
       } else {
         showToast('error', (r && r.error) ? r.error : fpT('Erreur lors de la création de la mission'));
@@ -51977,7 +51163,7 @@ function renderAuditsOpportunites() {
       <div style="display:flex;flex-direction:column;gap:8px">
         ${(()=>{
           const rankBadge = n => `<div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#1d4ed8);display:flex;align-items:center;justify-content:center;font-size:${n>9?'12':'14'}px;font-weight:800;color:#fff;font-family:var(--fp-font-head);box-shadow:0 2px 10px rgba(37,99,235,0.45);flex-shrink:0;letter-spacing:-0.5px">${n}</div>`;
-          const missionBtn = (idx) => `<button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0;width:110px;justify-content:center" data-kw-idx="${idx}" onclick="(function(btn){var idx=+btn.dataset.kwIdx;var o=window._fpKwOpps[idx];if(!o)return;var m={id:'m_'+Date.now(),title:o.title,desc:o.desc,site:o.site,status:'todo',priority:'high',createdAt:new Date().toISOString()};if(!STATE.missions)STATE.missions=[];m._localTs=Date.now();STATE.missions.unshift(m);STATE._missionsLoaded=true;showToast('success','Mission créée · '+o.site);openFloatPanel('✅ Mission créée — '+o.site,'<div style=\\'padding:16px\\'><div style=\\'font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:6px\\'>'+o.title+'</div><div style=\\'font-size:11px;color:var(--fp-text-muted);line-height:1.6;margin-bottom:14px\\'>'+o.desc+'</div><div style=\\'display:flex;gap:8px\\'><button class=\\'fp-btn fp-btn-primary fp-btn-sm\\' onclick=\\'navigate(\\'missions\\');closeFloatPanel&&closeFloatPanel()\\'>Voir les missions</button><button class=\\'fp-btn fp-btn-ghost fp-btn-sm\\' onclick=\\'closeFloatPanel&&closeFloatPanel()\\'>Fermer</button></div></div>');})(this)">+ Mission</button>`;
+          const missionBtn = (idx) => `<button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0;width:110px;justify-content:center" data-kw-idx="${idx}" onclick="(function(btn){var idx=+btn.dataset.kwIdx;var o=window._fpKwOpps[idx];if(!o)return;var m={id:'m_'+Date.now(),title:o.title,desc:o.desc,site:o.site,status:'todo',priority:'high',createdAt:new Date().toISOString()};if(!STATE.missions)STATE.missions=[];STATE.missions.unshift(m);showToast('success','Mission créée · '+o.site);openFloatPanel('✅ Mission créée — '+o.site,'<div style=\\'padding:16px\\'><div style=\\'font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:6px\\'>'+o.title+'</div><div style=\\'font-size:11px;color:var(--fp-text-muted);line-height:1.6;margin-bottom:14px\\'>'+o.desc+'</div><div style=\\'display:flex;gap:8px\\'><button class=\\'fp-btn fp-btn-primary fp-btn-sm\\' onclick=\\'navigate(\\'missions\\');closeFloatPanel&&closeFloatPanel()\\'>Voir les missions</button><button class=\\'fp-btn fp-btn-ghost fp-btn-sm\\' onclick=\\'closeFloatPanel&&closeFloatPanel()\\'>Fermer</button></div></div>');})(this)">+ Mission</button>`;
           const cardHtml = (kw, i, globalIdx) => `
             <div class="fp-opp-card" style="gap:14px;align-items:center">
               ${rankBadge(globalIdx+1)}
@@ -52151,13 +51337,13 @@ function renderMonitorsPerformance() {
         <span style="font-size:13px;font-weight:700;color:#2563EB">IA Performance Intelligence</span>
         ${isUltra ? '' : '<span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.12);padding:1px 7px;border-radius:4px;font-weight:600">Ultra</span>'}
       </div>
-      <div style="display:flex;gap:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;scrollbar-width:none">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
         ${[
           { icon: '📱', title: 'Mobile Europe', msg: 'La latence mobile augmente en Europe (+18% cette semaine)' + (STATE.monitors&&STATE.monitors.length>0?' — site le plus lent : ' + (STATE.monitors.reduce((b,m)=>(m.latency||0)>(b.latency||0)?m:b,STATE.monitors[0]).url||STATE.monitors[0].name||'').replace(/^https?:\/\//,''):'') + '.', color: '#f59e0b' },
           { icon: '⚡', title: 'Pics serveur', msg: 'Les temps de réponse serveur spikent 08h–09h et 19h–20h. Pattern de charge cyclique — cache à activer.', color: '#ef4444' },
           { icon: '🔮', title: 'Prévision', msg: 'Dégradation probable vendredi 18h' + (STATE.monitors&&STATE.monitors.length>0?' sur '+((STATE.monitors[0].url||STATE.monitors[0].name||'').replace(/^https?:\/\//,'')):'') + ' — basée sur l\'historique de monitoring.', color: '#2563EB' },
         ].map(ins => `
-          <div style="flex-shrink:0;width:160px;padding:10px;background:var(--fp-inner-card);border-radius:8px;border-left:2px solid ${ins.color}">
+          <div style="padding:10px;background:var(--fp-inner-card);border-radius:8px;border-left:2px solid ${ins.color}">
             <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:4px">${ins.icon} ${ins.title}</div>
             <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5">${isUltra ? ins.msg : ins.msg.slice(0, 40) + '… <span style=\"color:#8b5cf6;font-weight:600\">Ultra requis</span>'}</div>
           </div>
@@ -53337,7 +52523,6 @@ function renderReportsTemplates() {
 function renderTeamChat() {
   const ch = STATE.msgChannel || 'general';
   const msgs = (STATE.channelMessages && STATE.channelMessages[ch]) || STATE.teamChatHistory || [];
-  console.debug('[CHAT RENDER]', { channel: ch, messageCount: msgs.length });
   const myName = STATE.me?.name || STATE.me?.email?.split('@')[0] || 'Vous';
   return `
     <div class="fp-card" style="display:flex;flex-direction:column;height:460px">
@@ -53375,7 +52560,7 @@ function renderTeamChat() {
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <input type="file" id="team-chat-attach-main" style="display:none" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip" onchange="handleChatAttach(this)"/>
-          <label for="team-chat-attach-main" title="Joindre un fichier" style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:var(--fp-radius-md);width:38px;height:38px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="16"').replace('height="14"','height="16"')}</label>
+          <label for="team-chat-attach-main" title="Joindre un fichier" style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:8px;width:34px;height:34px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="14"').replace('height="14"','height="14"')}</label>
           <input id="team-chat-input" class="fp-input" placeholder="Écrire un message… (@mention)" style="flex:1;height:34px;font-size:12px"/>
           <button id="team-chat-send" class="fp-btn fp-btn-primary fp-btn-sm" style="height:34px;padding:0 14px;flex-shrink:0;display:flex;align-items:center;gap:5px">${svgIcon('send').replace('width="14"','width="12"').replace('height="14"','height="12"')} Envoyer</button>
         </div>
@@ -54861,16 +54046,6 @@ function renderCompetitor() {
       if (typeof window.fpLoadCompetitorAnalysis === 'function') {
         window.fpLoadCompetitorAnalysis(c.id);
       }
-      // Auto-trigger DFS data refresh for competitors without metrics — once per session
-      window._fpRefreshAttempted = window._fpRefreshAttempted || new Set();
-      if (c.dataStatus !== 'available' && !window._fpRefreshAttempted.has(c.id)) {
-        window._fpRefreshAttempted.add(c.id); // persist across re-renders/navigation
-        setTimeout(() => {
-          if (typeof window.fpRefreshCompetitor === 'function') {
-            window.fpRefreshCompetitor(c.id).catch(() => {});
-          }
-        }, 800 + Math.random() * 400); // slight jitter to avoid bursting
-      }
     });
     return `
       <div class="fp-section-header">
@@ -54928,13 +54103,7 @@ function renderCompetitor() {
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-left:auto;font-size:11px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}',true)">↺ Actualiser l'analyse</button>
             </div>
           </div>
-          ${!analysis ? `<div class="fp-card" style="text-align:center;padding:28px;margin-top:16px"><div style="font-size:13px;color:var(--fp-text-muted)">Cliquez <strong>Analyser</strong> sur ce concurrent pour lancer l'analyse IA.</div><button class="fp-btn fp-btn-primary" style="margin-top:14px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}')">🔬 Analyser ${escHtml(selComp.name||'')}</button></div>` : `
-          <div style="padding:8px 12px;border-radius:8px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);font-size:10px;color:var(--fp-text-muted);margin-top:20px;margin-bottom:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-weight:700;color:var(--fp-accent)">📡 Provenance des données</span>
-            <span style="padding:2px 7px;background:rgba(37,99,235,0.1);border-radius:8px">Métriques SEO → <strong>DataForSEO Labs</strong> (Authority, Mots-clés, Trafic)</span>
-            <span style="padding:2px 7px;background:rgba(139,92,246,0.1);border-radius:8px">Analyse comparative → <strong>IA</strong> (Forces, Opportunités, Matrice)</span>
-            <span style="padding:2px 7px;background:rgba(100,116,139,0.08);border-radius:8px">Interprétation → estimations, non faits vérifiés</span>
-          </div>
+          ${!analysis ? `<div class="fp-card" style="text-align:center;padding:28px"><div style="font-size:13px;color:var(--fp-text-muted)">Cliquez <strong>Analyser</strong> sur ce concurrent pour lancer l'analyse IA.</div><button class="fp-btn fp-btn-primary" style="margin-top:14px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}')">🔬 Analyser ${escHtml(selComp.name||'')}</button></div>` : `
           <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px">
             <div class="fp-card" style="border-left:3px solid #22c55e">
               <div class="fp-card-title" style="margin-bottom:10px;color:#22c55e">✅ Ce que vous faites mieux</div>
@@ -54951,93 +54120,61 @@ function renderCompetitor() {
           </div>
           ${(analysis.opportunities||[]).length>0 ? `
           <div class="fp-card fp-mb-16">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-              <div class="fp-card-title" style="margin-bottom:0">💡 Opportunités recommandées</div>
-              <span style="font-size:10px;color:var(--fp-text-faint);padding:2px 7px;background:rgba(139,92,246,0.08);border-radius:10px">Analyse IA</span>
-            </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">
-              ${(analysis.opportunities).map((op,i)=>{
-                const _opTitle = String(op.missionTitle||op.title||'');
-                const _opDesc = String(op.missionDesc||op.description||'');
-                const _opDescShort = _opDesc.length > 120 ? _opDesc.slice(0,117)+'…' : _opDesc;
-                return `<div style="padding:14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border);display:flex;flex-direction:column;gap:8px">
-                  <div style="display:flex;align-items:flex-start;gap:8px">
-                    <span style="font-size:16px;flex-shrink:0;margin-top:1px">${['🎯','💼','📈','🔑','⚡'][i%5]}</span>
-                    <div style="font-weight:600;font-size:12px;line-height:1.35">${escHtml(String(op.title||''))}</div>
+            <div class="fp-card-title" style="margin-bottom:12px">💡 Opportunités recommandées</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              ${(analysis.opportunities).map((op,i)=>`
+                <div style="padding:12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
+                  <div style="display:flex;align-items:flex-start;gap:10px">
+                    <span style="font-size:14px;flex-shrink:0">${['🎯','💼','📈','🔑','⚡'][i%5]}</span>
+                    <div style="flex:1">
+                      <div style="font-weight:600;font-size:12px;margin-bottom:4px">${escHtml(String(op.title||''))}</div>
+                      <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:8px">${escHtml(String(op.description||''))}</div>
+                      <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px"
+                        onclick="window.fpCreateMissionFromOpportunity('${escHtml(String(op.missionTitle||op.title||''))}','${escHtml(String(op.missionDesc||op.description||''))}')">
+                        ✚ Créer une mission
+                      </button>
+                    </div>
                   </div>
-                  <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.45">${escHtml(_opDescShort)}</div>
-                  <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;margin-top:auto;align-self:flex-start"
-                    data-comp-op-title="${escHtml(_opTitle)}" data-comp-op-desc="${escHtml(_opDesc)}"
-                    onclick="(function(b){window.fpCreateMissionFromOpportunity(b.dataset.compOpTitle,b.dataset.compOpDesc);})(this)">
-                    ✚ ${fpT('Créer une mission')}
-                  </button>
-                </div>`;
-              }).join('')}
+                </div>`).join('')}
             </div>
           </div>` : ''}
-          ${(analysis.feature_matrix||[]).length>0 ? (()=>{
-            const _fm = analysis.feature_matrix;
-            const _fmLimit = 10;
-            const _fmId = 'fm_' + selId.replace(/[^a-z0-9]/gi,'_');
-            const cellColor = v => String(v||'')==='✓'||String(v||'').toLowerCase().includes('oui')?'#22c55e':String(v||'')==='—'||!v?'var(--fp-text-faint)':'var(--fp-text)';
-            return `
-            <div class="fp-card fp-mb-16">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-                <div class="fp-card-title" style="margin-bottom:0">📊 Matrice fonctionnalités <span style="font-size:10px;font-weight:400;color:var(--fp-text-faint)">(${_fm.length})</span></div>
-                <span style="font-size:10px;color:var(--fp-text-faint);padding:2px 7px;background:rgba(139,92,246,0.08);border-radius:10px">Analyse IA</span>
-              </div>
-              <div style="overflow-x:auto" id="${_fmId}">
-                <table class="fp-table" style="width:100%;table-layout:fixed">
-                  <colgroup><col style="width:55%"><col style="width:22.5%"><col style="width:22.5%"></colgroup>
-                  <thead><tr>
-                    <th style="font-size:11px">Fonctionnalité</th>
-                    <th style="font-size:11px;text-align:center">Vous</th>
-                    <th style="font-size:11px;text-align:center">${escHtml(selComp.name||'Concurrent')}</th>
-                  </tr></thead>
-                  <tbody>${_fm.map((row,ri)=>`<tr${ri>=_fmLimit?` class="fp-fm-extra" style="display:none"`:''}><td style="font-size:11px">${escHtml(String(row.feature||''))}</td><td style="font-size:12px;text-align:center;color:${cellColor(row.you)}">${escHtml(String(row.you||'—'))}</td><td style="font-size:12px;text-align:center;color:${cellColor(row.competitor)}">${escHtml(String(row.competitor||'—'))}</td></tr>`).join('')}</tbody>
-                </table>
-              </div>
-              ${_fm.length>_fmLimit ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:8px;font-size:11px" onclick="(function(btn){document.querySelectorAll('#${_fmId} .fp-fm-extra').forEach(r=>r.style.display='');btn.style.display='none';})(this)">Voir tout — ${_fm.length} fonctionnalités ↓</button>` : ''}
-            </div>`;
-          })() : ''}
-          <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px">
-            <div class="fp-card" style="border-top:2px solid #22c55e">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-                <div class="fp-card-title" style="margin-bottom:0">💪 Forces</div>
-                <span style="font-size:10px;color:var(--fp-text-faint);padding:2px 7px;background:rgba(34,197,94,0.08);border-radius:10px">${(analysis.strengths||[]).length} détectées</span>
-              </div>
-              ${(analysis.strengths||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">Non déterminé</div>`:`<div style="display:flex;flex-wrap:wrap;gap:6px">${(analysis.strengths).map(s=>`<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);border-radius:20px;font-size:11px;color:#16a34a;font-weight:500">✓ ${escHtml(String(s))}</span>`).join('')}</div>`}
+          ${(analysis.feature_matrix||[]).length>0 ? `
+          <div class="fp-card fp-mb-16">
+            <div class="fp-card-title" style="margin-bottom:12px">📊 Matrice fonctionnalités</div>
+            <div style="overflow-x:auto">
+              <table class="fp-table" style="width:100%">
+                <thead><tr><th>Fonctionnalité</th><th>Vous</th><th>${escHtml(selComp.name||'Concurrent')}</th></tr></thead>
+                <tbody>${(analysis.feature_matrix).map(row=>`<tr>
+                  <td style="font-size:12px">${escHtml(String(row.feature||''))}</td>
+                  <td style="font-size:12px;color:${String(row.you||'')==='✓'||String(row.you||'').toLowerCase().includes('oui')?'#22c55e':String(row.you||'')==='—'?'var(--fp-text-faint)':'var(--fp-text)'}">${escHtml(String(row.you||'—'))}</td>
+                  <td style="font-size:12px;color:${String(row.competitor||'')==='✓'||String(row.competitor||'').toLowerCase().includes('oui')?'#22c55e':String(row.competitor||'')==='—'?'var(--fp-text-faint)':'var(--fp-text)'}">${escHtml(String(row.competitor||'—'))}</td>
+                </tr>`).join('')}</tbody>
+              </table>
             </div>
-            <div class="fp-card" style="border-top:2px solid #f59e0b">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-                <div class="fp-card-title" style="margin-bottom:0">⚠️ Faiblesses</div>
-                <span style="font-size:10px;color:var(--fp-text-faint);padding:2px 7px;background:rgba(245,158,11,0.08);border-radius:10px">${(analysis.weaknesses||[]).length} détectées</span>
-              </div>
-              ${(analysis.weaknesses||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">Non déterminé</div>`:`<div style="display:flex;flex-wrap:wrap;gap:6px">${(analysis.weaknesses).map(s=>`<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:20px;font-size:11px;color:#d97706;font-weight:500">⚠ ${escHtml(String(s))}</span>`).join('')}</div>`}
+          </div>` : ''}
+          <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px">
+            <div class="fp-card">
+              <div class="fp-card-title" style="margin-bottom:8px">💪 Forces détectées</div>
+              ${(analysis.strengths||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.strengths).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
+            </div>
+            <div class="fp-card">
+              <div class="fp-card-title" style="margin-bottom:8px">⚠️ Faiblesses détectées</div>
+              ${(analysis.weaknesses||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.weaknesses).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
             </div>
           </div>
           <div class="fp-card fp-mb-16">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-              <div class="fp-card-title" style="margin-bottom:0">📋 Positionnement — ${escHtml(selComp.name||'')}</div>
-              <span style="font-size:10px;color:var(--fp-text-faint);padding:2px 7px;background:rgba(139,92,246,0.08);border-radius:10px">Analyse IA</span>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="fp-card-title" style="margin-bottom:8px">📋 Positionnement — ${escHtml(selComp.name||'')}</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:10px">
               ${[
-                {label:'Proposition de valeur', val:analysis.value_prop, icon:'💡', full:true},
-                {label:'Cible', val:analysis.target_audience, icon:'🎯'},
-                {label:'Produits / Services', val:analysis.products, icon:'📦'},
-                {label:'Tarification', val:analysis.pricing, icon:'💰'},
-                {label:'Essai gratuit / Démo', val:analysis.trial, icon:'🆓'},
-              ].map((item,i)=>{
-                const nd = !item.val || item.val==='Non déterminé';
-                return `<div style="padding:12px;background:var(--fp-inner-card);border-radius:10px;border:1px solid var(--fp-border)${i===0?';grid-column:1/-1':''}">
-                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-                    <span style="font-size:13px">${item.icon}</span>
-                    <span style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.05em">${escHtml(item.label)}</span>
-                  </div>
-                  <div style="font-size:12px;color:${nd?'var(--fp-text-faint)':'var(--fp-text)'};font-style:${nd?'italic':'normal'};line-height:1.45">${nd?'Non déterminé':escHtml(String(item.val))}</div>
-                </div>`;
-              }).join('')}
+                {label:'Proposition de valeur',val:analysis.value_prop},
+                {label:'Cible',val:analysis.target_audience},
+                {label:'Produits / Services',val:analysis.products},
+                {label:'Tarification',val:analysis.pricing},
+                {label:'Essai gratuit / Démo',val:analysis.trial},
+              ].map(item=>`<div style="padding:10px;background:var(--fp-inner-card);border-radius:8px;border:1px solid var(--fp-border)">
+                <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${escHtml(item.label)}</div>
+                <div style="font-size:12px;color:${String(item.val||'')!=='Non déterminé'?'var(--fp-text)':'var(--fp-text-faint)'};font-style:${String(item.val||'')==='Non déterminé'?'italic':'normal'}">${escHtml(String(item.val||'Non déterminé'))}</div>
+              </div>`).join('')}
             </div>
           </div>
           ${(analysis.sources||[]).length>0 ? `
@@ -55088,7 +54225,7 @@ function renderCompetitor() {
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
         </div>
       ` : ''}
-      <div class="fp-card fp-mb-20" style="padding:10px 16px;margin-top:16px">
+      <div class="fp-card fp-mb-20" style="padding:14px 16px">
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
           <span class="fp-badge fp-badge--ghost">${escHtml(knownPlan.charAt(0).toUpperCase() + knownPlan.slice(1))}</span>
           <span style="font-size:12px;color:var(--fp-text-muted)">${competitors.length} / ${competitorLimit} ${fpT('concurrents utilisés')}</span>
@@ -55118,7 +54255,7 @@ function renderCompetitor() {
                 const _analysisError = STATE._competitorAnalysisErrors && STATE._competitorAnalysisErrors[c.id];
                 return `<tr>
                   <td><div style="font-weight:700">${escHtml(c.name || fpT('Concurrent sans nom'))}</div><div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(String(c.url || '—').replace(/^https?:\/\//, ''))}</div></td>
-                  <td><span class="fp-badge ${available ? 'fp-badge--success' : 'fp-badge--ghost'}">${statusLabel(c.dataStatus)}</span>${(!available && c.dataError) ? `<div style="font-size:10px;color:var(--fp-text-muted);max-width:240px;margin-top:4px;padding:3px 7px;background:rgba(100,116,139,0.08);border-radius:5px;line-height:1.4" title="${escHtml(String(c.dataError))}">ℹ ${escHtml(String(c.dataError).replace(/\. Réessayez.*/,'').replace(/ — DataForSEO.*/,''))}</div>` : ''}</td>
+                  <td><span class="fp-badge ${available ? 'fp-badge--success' : 'fp-badge--ghost'}">${statusLabel(c.dataStatus)}</span>${(!available && c.dataError) ? `<div style="font-size:10px;color:#ef4444;max-width:220px;margin-top:4px" title="${escHtml(String(c.dataError))}">⚠ ${escHtml(fpT('Erreur fournisseur') + ' : ' + String(c.dataError))}</div>` : ''}</td>
                   <td>${available ? displayMetric(c.domainRating) : '—'}</td>
                   <td>${available ? displayMetric(c.keywords) : '—'}</td>
                   <td>${available ? displayMetric(c.traffic) : '—'}</td>
@@ -55126,7 +54263,7 @@ function renderCompetitor() {
                     <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px" onclick="window.fpAnalyzeCompetitor('${escHtml(c.id)}','${escHtml(c.name||'')}'${_persistedA?',true':''})">
                       ${_isLoading ? fpT('Analyse…') : (_persistedA ? '↺ ' + fpT('Actualiser') : '🔬 ' + fpT('Analyser'))}
                     </button>
-                    ${!available ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRefreshCompetitor('${escHtml(c.id)}')" style="margin-left:4px" title="${escHtml(fpT('Relancer la récupération des métriques SEO via DataForSEO'))}">${fpT('Réessayer métriques')}</button>` : ''}
+                    ${!available ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRefreshCompetitor('${escHtml(c.id)}')" style="margin-left:4px" title="${escHtml(fpT('Relancer la récupération des métriques fournisseur'))}">${fpT('Réessayer métriques')}</button>` : ''}
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;margin-left:4px" onclick="window.fpDeleteCompetitor('${escHtml(c.id)}','${escHtml(c.name || '')}')">${fpT('Supprimer')}</button>
                     ${_analysisError ? `<div style="font-size:10px;color:#ef4444;margin-top:5px">${fpT('Analyse enregistrée indisponible')} — <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpRetryLoadCompetitorAnalysis('${escHtml(c.id)}')" style="font-size:9px">${fpT('Réessayer')}</button></div>` : ''}
                   </td>
@@ -55146,7 +54283,7 @@ function renderCompetitor() {
                         ${_a.trial&&_a.trial!==_nd?`<div style="font-size:11px;padding:4px 8px;background:rgba(34,197,94,0.1);border-radius:6px;color:#22c55e;display:inline-block;margin-bottom:8px">✓ ${escHtml(_a.trial)}</div>`:''}
                       </div>
                       <div style="flex:3;min-width:280px">
-                        ${(_a.features||[]).length>0?`<div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;margin-bottom:4px">Fonctionnalités détectées</div><div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;padding:8px 10px;background:var(--fp-inner-card);border-radius:8px;border:1px solid var(--fp-border)">${(_a.features).slice(0,8).map(f=>`<span style="font-size:11px;padding:3px 10px;background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.2);border-radius:20px;color:var(--fp-accent);font-weight:500">${escHtml(String(f))}</span>`).join('')}</div>`:''}
+                        ${(_a.features||[]).length>0?`<div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;margin-bottom:4px">Fonctionnalités détectées</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">${(_a.features).slice(0,8).map(f=>`<span style="font-size:10px;padding:2px 7px;background:rgba(37,99,235,0.08);border-radius:10px;color:var(--fp-accent)">${escHtml(String(f))}</span>`).join('')}</div>`:''}
                         ${(_a.strengths||[]).length>0?`<div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;margin-bottom:4px">Forces</div><div style="font-size:11px;margin-bottom:8px">${(_a.strengths).slice(0,3).map(s=>`• ${escHtml(String(s))}`).join(' &nbsp;')}</div>`:''}
                         ${(_a.changes_detected||[]).length>0?`<div style="font-size:10px;padding:6px 10px;background:rgba(245,158,11,0.1);border-radius:6px;color:#f59e0b;margin-bottom:6px">🔄 ${_a.changes_detected.length} changement(s) depuis la dernière analyse</div>`:''}
                       </div>
@@ -56784,7 +55921,7 @@ function renderConversion() {
             <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Aucune fuite de revenus détectée</div>
             <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 16px">${escHtml(_rlEmptyReason)}</div>
             <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-              ${!(window.fpIsConnected ? window.fpIsConnected('ga4') : !!(window.FP_DATA?.ga4?.connected || (STATE.ga4Status && STATE.ga4Status.connected))) ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button>` : ''}
+              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_REVENUE_LEAK_API.detect(window.FP_DATA?.activeSite)">Lancer la détection</button>
             </div>
            </div>`
@@ -58083,7 +57220,7 @@ function renderAlertsCenter() {
       </div>
       <div class="fp-section-actions">
         ${btn('Tout marquer lu', 'fp-btn fp-btn-ghost fp-btn-sm', 'check', "onclick=\"apiAction('PATCH','/api/alert-rules/mark-all-read').then(()=>{if(Array.isArray(STATE.notifications))STATE.notifications.forEach(n=>{n.read=true;});STATE.alertUnread=0;showToast('success', fpT('Alertes marquées lues'));render(STATE.currentSection);}).catch(()=>showToast('error', fpT('Erreur')))\"" )}
-        ${btn('Config alertes',  'fp-btn fp-btn-ghost fp-btn-sm', 'settings', "onclick=\"navigate('settings','alerts')\"" )}
+        ${btn('Config alertes',  'fp-btn fp-btn-ghost fp-btn-sm', 'settings', "onclick=\"navigate('settings');setTimeout(()=>navigateSub('alerts'),50)\"" )}
       </div>
     </div>
 
@@ -58113,7 +57250,7 @@ function renderAlertsCenter() {
           ${svgIcon('bell').replace('stroke="currentColor"','stroke="#ef4444"')}
           ${fpT("Règles d'alerte —")} ${(STATE.alertRules||[]).length} ${fpT(pluralizeFr((STATE.alertRules||[]).length,'règle'))} ${fpT((STATE.alertRules||[]).length > 1 ? 'configurées' : 'configurée')}
         </div>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings','alerts')">+ Nouvelle règle</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('alerts'),50)">+ Nouvelle règle</button>
       </div>
       ${(STATE.alertRules||[]).length === 0
         ? '<div style="text-align:center;padding:24px;color:var(--fp-text-faint);font-size:12px">Aucune règle configurée.</div>'
@@ -58216,7 +57353,7 @@ function renderAlertsCenter() {
             return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
               <span style="font-size:16px">${n.icon}</span>
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(fpTranslateActivityLabel(n.label))}</div>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(n.label)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(n.desc)}</div>
               </div>
               <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
@@ -58296,49 +57433,27 @@ function renderActivityFeed() {
     const _mColors = ['#2563EB','#8b5cf6','#22c55e','#f59e0b','#06b6d4'];
     const members = (STATE.team && STATE.team.length > 0 ? STATE.team : []).map((t, i) => {
       const nm = t.name || t.email || 'Membre';
-      // Preserve the canonical userId separately from the synthetic 'owner' id.
-      const userId = t.userId || t.user_id || '';
-      const id = String(userId || t.id || '');
-      const rawId = String(t.id || '');
+      const id = String(t.id || t.userId || t.user_id || '');
       const email = String(t.email || '').toLowerCase();
-      const isOwner = t.role === 'owner' || (!STATE.team.some(m => m.role === 'owner') && (t.id === STATE.me?.id || email === String(STATE.me?.email||'').toLowerCase()));
-      // When the API loaded successfully (STATE.teamContributions !== null), a member
-      // absent from the map has 0 contributions — show 0, not "—".
-      // Only show "—" when the API itself failed (STATE.teamContributions === null).
-      const _zeroContrib = { audits: 0, missions: 0, reports: 0, monitors: 0 };
-      // Try UUID first, then email — owner may be keyed by email if owner_user_id was empty
-      const _contribKeys = [String(userId), email].filter(Boolean);
-      const contrib = STATE.teamContributions != null
-        ? (_contribKeys.reduce((acc, k) => acc || STATE.teamContributions[k] || null, null) || _zeroContrib)
-        : null;
-      const audits   = contrib !== null ? Number(contrib.audits   ?? 0) : null;
-      const missions = contrib !== null ? Number(contrib.missions ?? 0) : null;
-      const reports  = contrib !== null ? Number(contrib.reports  ?? 0) : null;
-      // Streak: UUID first (correct user id), then email fallback.
-      // Guard on STATE.teamStreaks — independent from contributions loading state.
-      const streakEntry = STATE.teamStreaks ? (
-        (userId && STATE.teamStreaks[userId]) ||
-        (email && (STATE.teamStreaks[email] || STATE.teamStreaks[String(t.email||'').toLowerCase()]))
-      ) : null;
-      const ownCurrentUser = isOwner && (String(userId) === String(STATE.me?.id || STATE.me?.userId || '') || email === String(STATE.me?.email || '').toLowerCase());
-      // Canonical rule: for the signed-in owner, STATE.streak (from /api/me) is
-      // the single source of truth — same value the sidebar uses.
-      // teamStreaks may lag or return 0 if the webhook fires before /api/me reloads.
-      const streakDays = (ownCurrentUser && STATE.streak != null)
-        ? Number(STATE.streak)
-        : (streakEntry ? Number(streakEntry.current ?? 0) : null);
-      const _totalActs = contrib ? audits + missions + reports : null;
+      const contrib = (STATE.teamContributions && (
+        (id && STATE.teamContributions[id]) ||
+        (email && (STATE.teamContributions[email] || STATE.teamContributions[t.email]))
+      )) || null;
+      const audits = contrib ? Number(contrib.audits || 0) : null;
+      const missions = contrib ? Number(contrib.missions || 0) : null;
+      const reports = contrib ? Number(contrib.reports || 0) : null;
       return {
-        id, userId, email, rawId,
+        id, email,
         name: nm, role: t.role || 'member',
         avatar: nm.slice(0,2).toUpperCase(),
         color: _mColors[i % _mColors.length],
-        actions: _totalActs,
-        score: null,
-        trend: '—',
+        actions: contrib ? audits + missions + reports : null,
+        score: null, trend: '—',
         contribs: contrib ? { audits, missions, reports } : null,
-        streak: streakEntry,
-        streakDays,
+        streak: (STATE.teamStreaks && (
+          (id && STATE.teamStreaks[id]) ||
+          (email && (STATE.teamStreaks[email] || STATE.teamStreaks[t.email]))
+        )) || null,
       };
     });
     const teamActs = liveFeed.filter(a => a.cat === 'team');
@@ -58369,9 +57484,7 @@ function renderActivityFeed() {
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${members.map(m => {
-            // m.contribs is always set in the members.map() above (with owner fallback).
-            // A second lookup here is not needed and could overwrite correct data with
-            // a stale/null match. Keep only for the streak supplement.
+            const pct = m.score ?? 0;
             return `<div style="padding:16px;border-radius:12px;border:1px solid ${m.color}28;background:${m.color}07">
               <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
                 <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,${m.color},${m.color}88);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;flex-shrink:0">${m.avatar}</div>
@@ -58380,11 +57493,11 @@ function renderActivityFeed() {
                   <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(m.role)}</div>
                 </div>
                 <div style="text-align:right">
-                   <div style="font-size:14px;font-weight:600;color:var(--fp-text)">${m.streakDays != null ? m.streakDays + 'j' : '—'}</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint)">Streak 🔥</div>
+                  <div style="font-size:14px;font-weight:600;color:var(--fp-text-faint)">—</div>
+                  <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('N/D')}</div>
                 </div>
               </div>
-              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px"><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#2563EB">${m.contribs?.audits ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Audits</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#22c55e">${m.contribs?.missions ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Missions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#8b5cf6">${m.contribs?.reports ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Rapports</div></div></div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px"><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#2563EB">${m.actions ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Actions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#22c55e">${m.contribs ? m.contribs.missions : '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Missions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#8b5cf6">${m.streak?.current ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Streak 🔥</div></div></div>
             </div>`;
           }).join('')}
         </div>
@@ -58691,7 +57804,7 @@ function renderActivityFeed() {
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${automations.length === 0
-            ? `<div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint);font-size:12px;line-height:1.6"><div style="font-size:24px;margin-bottom:8px">⚙️</div><div style="font-weight:600;margin-bottom:4px">Aucune automatisation configurée</div><div>Les données apparaîtront avec votre activité réelle</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:10px" onclick="navigate('settings','automations')">Configurer →</button></div>`
+            ? `<div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint);font-size:12px;line-height:1.6"><div style="font-size:24px;margin-bottom:8px">⚙️</div><div style="font-weight:600;margin-bottom:4px">Aucune automatisation configurée</div><div>Les données apparaîtront avec votre activité réelle</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:10px" onclick="navigate('settings');setTimeout(()=>navigateSub('automations'),50)">Configurer →</button></div>`
             : automations.map(a => {
               const ac = a.status === 'actif' ? '#22c55e' : '#f59e0b';
               return `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid ${ac}22">
@@ -60846,7 +59959,7 @@ function renderClientMode() {
             <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
               <span style="font-size:16px">${n.icon}</span>
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(fpTranslateActivityLabel(n.label))}</div>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(n.label)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(n.desc)}</div>
               </div>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--fp-text-faint)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
@@ -62260,7 +61373,7 @@ function renderCompetitorsMap() {
         </h1>
         <div class="fp-section-sub">Analyse de menace concurrentielle — Intelligence géographique locale</div>
       </div>
-      <div class="fp-section-actions" style="flex-wrap:wrap;row-gap:8px">
+      <div class="fp-section-actions">
         <select id="fp-comp-radius" onchange="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.setRadius('fp-competitors-map',parseInt(this.value))"
           style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:6px 10px">
           <option value="2000">2 km</option>
@@ -62269,7 +61382,7 @@ function renderCompetitorsMap() {
           <option value="20000">20 km</option>
         </select>
         <input id="fp-comp-keyword" type="text" placeholder="Secteur d\'activité" value="${escHtml(defKeyword)}"
-          style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text);font-size:12px;padding:6px 10px;min-width:0;flex:1"
+          style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text);font-size:12px;padding:6px 10px;width:160px"
           onkeydown="if(event.key==='Enter')typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-competitors-map',this.value)">
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-competitors-map',document.getElementById('fp-comp-keyword').value)">🔍 Analyser</button>
       </div>
@@ -62487,47 +61600,23 @@ function renderConversionHeatmap() {
 }
 
 function renderTeamPerformance() {
-  const _roleColors = { owner:'#f59e0b', admin:'#2563EB', manager:'#2563EB', editor:'#8b5cf6', viewer:'#64748b', member:'#8b5cf6', guest:'#94a3b8' };
-  // Keep this local: ROLE_DISPLAY in renderTeam() is function-scoped.
-  const _roleDisplay = { owner:'Propriétaire', admin:'Manager', manager:'Manager', editor:'Éditeur', member:'Éditeur', viewer:'Lecteur', guest:'Invité' };
+  const _roleColors = { owner:'#f59e0b', admin:'#f59e0b', manager:'#2563EB', editor:'#8b5cf6', viewer:'#64748b', member:'#64748b' };
   const teamData = STATE.team && STATE.team.length > 0 ? STATE.team : [];
   const metrics = teamData.map((t, i) => {
-    // UUID lookup: t.userId (user.id) is the correct key; t.id is team_members.id (row id, ≠ user id)
-    const _memberUserId = t.userId || t.user_id || '';
-    const _memberEmail  = String(t.email || '').toLowerCase();
-    const _memberStreak = STATE.teamStreaks && (
-      (_memberUserId && STATE.teamStreaks[_memberUserId]) ||
-      (_memberEmail  && STATE.teamStreaks[_memberEmail])
-    );
-    const ownCurrentUser = t.role === 'owner' && (String(_memberUserId) === String(STATE.me?.id || STATE.me?.userId || '') || _memberEmail === String(STATE.me?.email || '').toLowerCase());
-    // For the signed-in owner, STATE.streak (from /api/me) is always the
-    // canonical value — teamStreaks may carry 0 due to async lag.
-    const streakVal = (ownCurrentUser && STATE.streak != null)
-      ? Number(STATE.streak)
-      : (_memberStreak ? Number(_memberStreak.current ?? 0) : null);
-    // Contributions are keyed by users.id. Some owner records only carry an
-    // email, so resolve their canonical id from the signed-in user before
-    // looking up counts. Never substitute organisation-wide totals here.
-    const _ownUserId = ownCurrentUser ? (STATE.me?.id || STATE.me?.userId || '') : '';
-    // When the API loaded (STATE.teamContributions !== null), a missing entry = 0, not "—".
-    const _zeroContrib2 = { audits: 0, missions: 0, reports: 0 };
-    const _contrib = STATE.teamContributions != null
-      ? ([_memberUserId, _ownUserId, _memberEmail]
-          .filter(Boolean)
-          .map(key => STATE.teamContributions[String(key)] || null)
-          .find(Boolean) || _zeroContrib2)
-      : null;
-    const auditCnt   = _contrib !== null ? Number(_contrib.audits   ?? 0) : null;
-    const missionCnt = _contrib !== null ? Number(_contrib.missions ?? 0) : null;
-    const reportCnt  = _contrib !== null ? Number(_contrib.reports  ?? 0) : null;
+    const isOwner = t.role === 'owner' || (!teamData.some(m => m.role === 'owner') && (t.id === STATE.me?.id || t.email === STATE.me?.email));
+    const memberId = t.id || t.userId || '';
+    const memberStreak = STATE.teamStreaks && STATE.teamStreaks[memberId];
+    const streakVal = memberStreak ? memberStreak.current : (isOwner ? (STATE.streak || 0) : '—');
+    const _uid = t.id || t.userId || t.email || '';
+    const _contrib = (STATE.teamContributions && _uid && STATE.teamContributions[_uid]) ? STATE.teamContributions[_uid] : null;
     return {
       name: t.name || t.email || 'Membre',
       role: t.role || 'member',
       roleColor: _roleColors[t.role] || '#64748b',
-      audits:   auditCnt,
-      missions: missionCnt,
-      reports:  reportCnt,
-      score: null,
+      audits:   _contrib != null ? _contrib.audits   : (isOwner ? (STATE.audits ? STATE.audits.length : 0) : '—'),
+      missions: _contrib != null ? _contrib.missions : (isOwner ? ((STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length) : '—'),
+      reports:  _contrib != null ? _contrib.reports  : (isOwner ? (STATE.reports ? STATE.reports.length : 0) : '—'),
+      score: isOwner ? (STATE.userScore || (STATE.overview && (STATE.overview.seoScore||STATE.overview.avgScore)) || 0) : '—',
       streak: streakVal,
     };
   });
@@ -62562,18 +61651,18 @@ function renderTeamPerformance() {
             <div style="width:46px;height:46px;border-radius:14px;background:${m.roleColor}20;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:${m.roleColor};flex-shrink:0">${(m.name||'?').charAt(0).toUpperCase()}</div>
             <div style="flex:1">
               <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${escHtml(m.name)}</div>
-              <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${(_roleDisplay[m.role]||m.role)} · Streak : <span style="color:#f97316">🔥 ${m.streak != null ? m.streak + ' j' : '—'}</span></div>
+              <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${m.role} · Streak : <span style="color:#f97316">🔥 ${typeof m.streak === 'number' ? m.streak + ' j' : m.streak}</span></div>
             </div>
             <div style="text-align:right">
-               <div style="font-size:24px;font-weight:800;color:${m.roleColor};font-family:var(--fp-font-head)">${(m.audits != null && m.missions != null && m.reports != null) ? (Number(m.audits)+Number(m.missions)+Number(m.reports)) : '—'}</div>
-               <div style="font-size:10px;color:var(--fp-text-faint)">actions</div>
+              <div style="font-size:24px;font-weight:800;color:${m.roleColor};font-family:var(--fp-font-head)">${m.score ?? '—'}</div>
+              <div style="font-size:10px;color:var(--fp-text-faint)">score activité</div>
             </div>
           </div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
             ${[
-              {l:'Audits',v:m.audits??'—',c:'#2563EB'},
-              {l:'Missions',v:m.missions??'—',c:'#22c55e'},
-              {l:'Rapports',v:m.reports??'—',c:'#8b5cf6'},
+              {l:'Audits',v:m.audits,c:'#2563EB'},
+              {l:'Missions',v:m.missions,c:'#22c55e'},
+              {l:'Rapports',v:m.reports,c:'#8b5cf6'},
             ].map(s=>`
               <div style="background:var(--fp-inner-card);border-radius:8px;padding:10px;text-align:center">
                 <div style="font-size:20px;font-weight:800;color:${s.c};font-family:var(--fp-font-head)">${s.v}</div>
@@ -64103,6 +63192,18 @@ function renderGA4Conversion() {
     return renderConversion();
   }
 
+  // Paywall guard — show upgrade card instead of loading errors when billing expired.
+  const _cvPremium = STATE.me?.hasPremiumAccess ?? STATE.me?.canAccessPremium ?? true;
+  if (_cvPremium === false) {
+    return `<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1><div class="fp-section-sub">Événements de conversion, revenus et landing pages</div></div></div>
+    <div style="text-align:center;padding:56px 24px;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
+      <div style="font-size:48px;margin-bottom:16px">🔒</div>
+      <div style="font-size:17px;font-weight:700;color:var(--fp-text);margin-bottom:8px">${fpT('Fonctionnalité Premium')}</div>
+      <div style="font-size:13px;color:var(--fp-text-muted);max-width:420px;margin:0 auto 20px">${fpT('La Conversion GA4 est réservée aux abonnés actifs. Reprenez un abonnement pour accéder à vos données.')}</div>
+      <button class="fp-btn fp-btn-primary" onclick="fpGoToPricing('standard')" style="min-width:180px">${fpT('Reprendre un abonnement')}</button>
+    </div>`;
+  }
+
   const cvS = window._fpConversionState || {};
   if (!cvS.loaded && !cvS.loading) setTimeout(() => window._fpConversionAPI.loadAll(), 60);
   if (cvS.loading && !cvS.data) return _fpConvLoadingSkeleton();
@@ -64765,7 +63866,7 @@ window._fpFunnelSave = async function() {
     // Provide a guided error when the site URL is not yet registered in FlowPoint
     if (_errMsg.toLowerCase().includes('site not found') || _errMsg.toLowerCase().includes('site introuvable') || _errMsg.includes('SITE_NOT_FOUND')) {
       const _listSec = document.getElementById('fp-funnels-list-section');
-      if (_listSec) _listSec.innerHTML = `<div style="text-align:center;padding:40px;max-width:480px;margin:0 auto;margin-top:16px">
+      if (_listSec) _listSec.innerHTML = `<div style="text-align:center;padding:40px;max-width:480px;margin:0 auto">
         <div style="font-size:36px;margin-bottom:12px">⚙️</div>
         <div style="font-size:14px;font-weight:700;margin-bottom:8px">${fpT('Site non configuré dans FlowPoint')}</div>
         <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:20px;line-height:1.6">
@@ -64773,7 +63874,7 @@ window._fpFunnelSave = async function() {
           <strong>Paramètres → Tracking</strong>
           ${fpT('puis réessayez de créer ce funnel.')}
         </div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings','tracking')">${fpT('Configurer le tracking →')}</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('tracking'),60)">${fpT('Configurer le tracking →')}</button>
       </div>`;
     } else {
       showToast?.('error', _errMsg);
@@ -64894,8 +63995,8 @@ window._fpFunnelRun = async function(btn) {
       resSec.style.display = 'block';
       resSec.innerHTML = _isGA4Miss
         ? `<div class="fp-card" style="padding:18px;border-left:3px solid #f59e0b">
-            <div style="font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:6px;margin-top:12px">⚠️ Propriété GA4 non configurée</div>
-            <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Connectez votre compte Google et sélectionnez une propriété GA4 pour exécuter vos funnels.</div>
+            <div style="font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:6px">⚠️ Propriété GA4 non configurée</div>
+            <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Sélectionnez une propriété GA4 dans vos paramètres Analytics pour exécuter vos funnels.</div>
             <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('analytics')">⚙ Configurer GA4 →</button>
           </div>`
         : `<div class="fp-card" style="padding:16px;color:#ef4444;font-size:13px">❌ ${_fpFunnelEsc(_errMsg)}</div>`;
@@ -65933,54 +65034,11 @@ window.fpAiConfirmAction = async function(proposalId, btnEl) {
       return;
     }
     // When ok:false, prefer r.content (executor rejection reason) then r.error, then fallback.
-    var resultText;
-    if (r.ok) {
-      // ── Faux positif guard ─────────────────────────────────────────────────
-      // If the tool returned ok:true but created 0 missions, surface a warning
-      // instead of the misleading ✅ success.
-      var _rMissions = (r.data && Array.isArray(r.data.missions)) ? r.data.missions : null;
-      var _rCount    = _rMissions !== null ? _rMissions.length : null;
-      if (_rCount !== null && _rCount === 0) {
-        resultText = '⚠ ' + fpT('Confirmation reçue mais aucune mission n\'a été créée.') +
-          ' ' + (r.content || '');
-        _applyResult(false, resultText, null);
-      } else {
-        // ── Success with navigation hint ───────────────────────────────────
-        var _navLink = (_rCount !== null && _rCount > 0)
-          ? ' <a href="#" onclick="navigate(\'missions\');return false;" style="color:var(--fp-accent);font-weight:600">' + fpT('Voir les missions') + ' →</a>'
-          : '';
-        resultText = '✅ ' + (r.content || fpT('Action effectuée.')) + _navLink;
-        _applyResult(r.ok, resultText, r.undoToken);
-
-        // Reload missions — show explicit error if reload fails (prevents false-positive
-        // where ✅ appears but the missions page still shows the old list).
-        STATE.missions = null;
-        if (typeof loadMissions === 'function') {
-          loadMissions().then(function() {
-            render(); // ensure mission count in sidebar badge updates
-          }).catch(function(loadErr) {
-            var _loadErrMsgIdx = STATE.aiMessages.findIndex(function(m2) {
-              return m2.undoToken || (m2.text && m2.text.indexOf('✅') === 0);
-            });
-            // Append reload-failure notice to the most recent ✅ message
-            var _targetIdx = _loadErrMsgIdx !== -1 ? _loadErrMsgIdx : (STATE.aiMessages.length - 1);
-            if (_targetIdx >= 0 && STATE.aiMessages[_targetIdx]) {
-              STATE.aiMessages[_targetIdx] = Object.assign({}, STATE.aiMessages[_targetIdx], {
-                text: (STATE.aiMessages[_targetIdx].text || '') +
-                  '\n\n⚠ ' + fpT('Rechargement de la liste de missions échoué — rafraîchissez la page (F5) pour les voir.') +
-                  (loadErr && loadErr.message ? ' (' + loadErr.message + ')' : ''),
-              });
-              saveAIHistory();
-              updateAIUI();
-            }
-            console.warn('[AI Chat] loadMissions reload failed after confirm:', loadErr);
-          });
-        }
-      }
-    } else {
-      resultText = '⚠ ' + (r.content || r.error || fpT('Échec de l\'exécution.'));
-      _applyResult(false, resultText, null);
-    }
+    var resultText = r.ok
+      ? '✅ ' + (r.content || fpT('Action effectuée.'))
+      : '⚠ ' + (r.content || r.error || fpT('Échec de l\'exécution.'));
+    _applyResult(r.ok, resultText, r.undoToken);
+    if (r.ok) { STATE.missions = null; loadMissions && loadMissions().catch(function(){}); }
   } catch(e) {
     // Erreur visible dans le fil — ne jamais restaurer silencieusement le bouton.
     var status = e && e.status;
@@ -66072,64 +65130,37 @@ window.fpAiPanelConfirm = async function(proposalId, convId, confirmBtn, card, m
     if (card) card.innerHTML = '<span style="font-size:11px;color:#ef4444">⚠ ' + fpT('Session expirée — renvoyez votre demande') + '</span>';
     return;
   }
-  // Atomically lock — never re-enable on any failure path.
-  // Tracks confirmed proposalIds so re-renders don't show the button again.
-  window._fpConfirmedProposals = window._fpConfirmedProposals || new Set();
-  if (window._fpConfirmedProposals.has(proposalId)) {
-    if (card) card.innerHTML = '<span style="font-size:11px;color:var(--fp-text-soft)">✅ ' + fpT('Action déjà exécutée.') + '</span>';
-    return;
-  }
   confirmBtn.disabled = true;
   confirmBtn.textContent = fpT('En cours…');
-
-  /** Replace card content and mark proposalId as done in STATE so re-renders never show the button again. */
-  function _settle(ok, text, undoToken) {
-    window._fpConfirmedProposals.add(proposalId);
-    // Invalidate any cached data that this action may have affected so the
-    // next render fetches fresh state (competitors, missions, monitors, etc.)
-    if (window.STATE) {
-      window.STATE.competitors = null;
-      window.STATE._competitorsLoaded = false;
-      if (window.FP_DATA) window.FP_DATA.missions = null;
-    }
+  try {
+    var _confirmPromise = window.FP_AI_CHAT_API ? window.FP_AI_CHAT_API.confirmAction(convId, proposalId) : Promise.reject(new Error('API non dispo'));
+    var _confirmTimeout = new Promise(function(_, rej) { setTimeout(function(){ rej(new Error('Délai dépassé (15s) — réessayez')); }, 15000); });
+    var r = await Promise.race([_confirmPromise, _confirmTimeout]);
     if (card) {
-      card.innerHTML = '<span style="font-size:11px;color:var(--fp-text-soft)">' + (ok ? '✅ ' : '⚠ ') + escHtml(text) + '</span>';
-      if (ok && undoToken && undoToken.actionLogId) {
-        var logId = undoToken.actionLogId;
-        var exp = new Date(Date.now() + (undoToken.ttlMinutes || 30) * 60000).toISOString();
+      // When ok:false, prefer r.content (executor rejection reason) then r.error, then fallback.
+      var resultText = r.ok ? '✅ ' + (r.content || fpT('Action effectuée.')) : '⚠ ' + (r.content || r.error || fpT('Échec de l\'exécution.'));
+      card.innerHTML = '<span style="font-size:11px;color:var(--fp-text-soft)">' + resultText + '</span>';
+      if (r.ok && r.undoToken && r.undoToken.actionLogId) {
+        var logId = r.undoToken.actionLogId;
+        var exp = new Date(Date.now() + (r.undoToken.ttlMinutes || 30) * 60000).toISOString();
         var undoBtn = document.createElement('button');
         undoBtn.className = 'fp-btn fp-btn-ghost fp-btn-sm';
         undoBtn.style.cssText = 'margin-top:6px;font-size:11px;padding:3px 10px;border-radius:20px;height:auto;line-height:1.5;color:#6b7280;border-color:rgba(107,114,128,0.3)';
         undoBtn.textContent = '↩ ' + fpT('Annuler l\'action');
         undoBtn.onclick = function() { window.fpAiPanelUndo(logId, exp, undoBtn, card); };
         card.appendChild(undoBtn);
+        if (r.ok) { window.FP_DATA && window.FP_DATA.missions && (window.FP_DATA.missions = null); }
       }
     }
-  }
-
-  try {
-    var _confirmPromise = window.FP_AI_CHAT_API ? window.FP_AI_CHAT_API.confirmAction(convId, proposalId) : Promise.reject(new Error('API non dispo'));
-    var _confirmTimeout = new Promise(function(_, rej) { setTimeout(function(){ rej(new Error(fpT('Délai dépassé — réessayez dans un instant'))); }, 18000); });
-    var r = await Promise.race([_confirmPromise, _confirmTimeout]);
-    var resultText = r.ok
-      ? (r.content || fpT('Action effectuée.'))
-      : (r.content || r.error || fpT('Échec de l\'exécution.'));
-    _settle(r.ok, resultText, r.ok ? r.undoToken : null);
   } catch(e) {
+    // Erreur visible dans la carte — jamais de retour silencieux au bouton Confirmer.
     console.error('[AI Panel] confirmAction failed:', e && e.message);
-    // Build a user-friendly message — never expose raw Postgres or internal errors.
-    var errMsg = e && e.message || '';
-    var friendlyErr = /expiré|expired|410/i.test(errMsg)
-      ? fpT('Cette proposition a expiré — renvoyez votre demande.')
-      : /déjà été exécutée|already.*confirm|409/i.test(errMsg)
-      ? fpT('Cette action a déjà été exécutée.')
-      : /introuvable|not found|404/i.test(errMsg)
-      ? fpT('Proposition introuvable — renvoyez votre demande.')
-      : /délai|timeout|abort/i.test(errMsg)
-      ? fpT('Délai dépassé — réessayez dans un instant.')
-      : fpT('Échec de l\'exécution. Réessayez ou renvoyez votre demande.');
-    // Never re-enable the button — show error in card instead.
-    _settle(false, friendlyErr, null);
+    if (card) {
+      card.innerHTML = '<span style="font-size:11px;color:#ef4444">⚠ ' + escHtml((e && e.message) || fpT('Échec de l\'exécution.')) + '</span>';
+    } else if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = fpT('Confirmer');
+    }
   }
 };
 
@@ -67737,36 +66768,26 @@ setTimeout(function() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function initAIChatPanel() {
-  // Autosize textarea between min (42px) and max (120px).
-  // CSS (dashboard.css) owns overflow-y:auto permanently — JS never touches overflow-y.
-  // Using height='auto' before reading scrollHeight is required on Safari: a fixed
-  // pixel reset causes Safari to return the clamped (not true content) scrollHeight.
+  // Autosize textarea to content between the min (42px) and max (120px) heights.
+  // Below max: no scrollbar (overflow-y hidden). At/above max: overflow-y auto so
+  // the discreet ~5px scrollbar (styled in dashboard.css) appears. Mirrors the
+  // full-page #ai-input behavior so both AI textareas share identical UX.
   var _FP_CHAT_MIN_H = 42;
   var _FP_CHAT_MAX_H = 120;
   function _fpChatResize(el) {
     if (!el) return;
-    el.style.height = 'auto';                      // Safari-safe: let browser measure true content height
+    el.style.height = _FP_CHAT_MIN_H + 'px';
     var sh = el.scrollHeight;
-    var capped = Math.min(sh, _FP_CHAT_MAX_H);
-    el.style.height = capped + 'px';
-    // NEVER set overflowY here — dashboard.css overflow-y:auto handles scrollbar display
-    console.debug('[AI TEXTAREA DEBUG]', {
-      element: el.id || el.className,
-      overflowY: window.getComputedStyle(el).overflowY,
-      height: el.style.height,
-      maxHeight: _FP_CHAT_MAX_H + 'px',
-      scrollHeight: sh,
-      clientHeight: el.clientHeight,
-      capped: sh > _FP_CHAT_MAX_H,
-    });
+    el.style.height = Math.min(sh, _FP_CHAT_MAX_H) + 'px';
+    el.style.overflowY = sh > _FP_CHAT_MAX_H ? 'auto' : 'hidden';
   }
-  // After send: clear content and return to min height.
-  // CSS remains overflow-y:auto — no overflowY reset here.
+  // After send: clear content and return to min height with no scrollbar.
+  // Shared by both send paths (click + Enter) via sendMessage().
   function _fpChatReset(el) {
     if (!el) return;
     el.value = '';
     el.style.height = _FP_CHAT_MIN_H + 'px';
-    // Do NOT set el.style.overflowY — CSS owns this property
+    el.style.overflowY = 'hidden';
   }
 
   function openPanel() {
@@ -67842,10 +66863,10 @@ setTimeout(function() {
       </div>
       <p><strong>Bonjour !</strong> Je suis votre assistant SEO FlowPoint.<br>Posez-moi des questions sur vos sites, performances, opportunités ou demandez-moi de générer un rapport.</p>
       <div class="fp-ai-chat-chips" id="fp-ai-chat-chips">
-        <button class="fp-ai-quick-chip" data-msg="Quel est le score SEO moyen de mes sites ?">${fpT('Score SEO moyen')}</button>
-        <button class="fp-ai-quick-chip" data-msg="Quelles sont les 3 actions prioritaires à faire cette semaine ?">${fpT('Actions prioritaires')}</button>
-        <button class="fp-ai-quick-chip" data-msg="Analyse mes Core Web Vitals et donne-moi des recommandations.">${fpT('Core Web Vitals')}</button>
-        <button class="fp-ai-quick-chip" data-msg="Génère un résumé exécutif de la situation SEO.">${fpT('Résumé exécutif')}</button>
+        <button class="fp-ai-quick-chip" data-msg="Quel est le score SEO moyen de mes sites ?">Score SEO moyen</button>
+        <button class="fp-ai-quick-chip" data-msg="Quelles sont les 3 actions prioritaires à faire cette semaine ?">Actions prioritaires</button>
+        <button class="fp-ai-quick-chip" data-msg="Analyse mes Core Web Vitals et donne-moi des recommandations.">Core Web Vitals</button>
+        <button class="fp-ai-quick-chip" data-msg="Génère un résumé exécutif de la situation SEO.">Résumé exécutif</button>
       </div>
     </div>`;
     if (window.FP_AI_CHAT_API) window.FP_AI_CHAT_API.history = [];
@@ -67944,12 +66965,11 @@ setTimeout(function() {
             var convId = cr.conversationId || (window.FP_AI_CHAT_API && window.FP_AI_CHAT_API._convId) || '';
             if (cr.conversationId && window.FP_AI_CHAT_API) window.FP_AI_CHAT_API._convId = cr.conversationId;
             var isD = cr.confirmationLevel === 'full';
-            var isDangerous = isD && cr.toolName && /^delete_/.test(String(cr.toolName || ''));
             var card = document.createElement('div');
-            card.style.cssText = 'margin-top:8px;padding:10px 12px;border-radius:8px;background:' + (isDangerous ? 'rgba(239,68,68,0.07)' : 'rgba(37,99,235,0.07)') + ';border:1px solid ' + (isDangerous ? 'rgba(239,68,68,0.25)' : 'rgba(37,99,235,0.2)') + ';font-size:11px';
-            card.innerHTML = '<div style="font-weight:600;margin-bottom:6px;color:var(--fp-text);line-height:1.4">' + (isDangerous ? '⚠️ ' : '✅ ') + (cr.preview || fpT('Confirmer cette action ?')) + '</div>'
+            card.style.cssText = 'margin-top:8px;padding:10px 12px;border-radius:8px;background:' + (isD ? 'rgba(239,68,68,0.07)' : 'rgba(37,99,235,0.07)') + ';border:1px solid ' + (isD ? 'rgba(239,68,68,0.25)' : 'rgba(37,99,235,0.2)') + ';font-size:11px';
+            card.innerHTML = '<div style="font-weight:600;margin-bottom:6px;color:var(--fp-text);line-height:1.4">' + (isD ? '⚠️ ' : '') + (cr.preview || fpT('Confirmer cette action ?')) + '</div>'
               + '<div style="display:flex;gap:6px">'
-              + '<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5' + (isDangerous ? ';background:#ef4444;border-color:#ef4444' : '') + '">' + escHtml(fpT('Confirmer')) + '</button>'
+              + '<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5' + (isD ? ';background:#ef4444;border-color:#ef4444' : '') + '">' + escHtml(fpT('Confirmer')) + '</button>'
               + '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px;padding:4px 12px;border-radius:20px;height:auto;line-height:1.5">' + escHtml(fpT('Ignorer')) + '</button>'
               + '</div>';
             var btns = card.querySelectorAll('button');
@@ -67999,6 +67019,10 @@ setTimeout(function() {
   }
 
   function bindPanel() {
+    // Open panel — topbar AI button
+    const topbarAI = document.getElementById('topbar-ai');
+    if (topbarAI) topbarAI.addEventListener('click', openPanel);
+
     // Close
     const closeBtn = document.getElementById('fp-ai-chat-close');
     if (closeBtn) closeBtn.addEventListener('click', closePanel);
@@ -69105,12 +68129,9 @@ window.FP_GBP_API = {
 
   openReplyModal(reviewId, author, stars) {
     // Find the full review data from STATE
-    const allReviews = [
-      ...(STATE.gbp?.reviews || []),
-      ...(window.FP_DATA?.reviewIntel?.reviews || []),
-    ];
-    const review = allReviews.find(rv => rv.reviewId === reviewId || rv.id === reviewId || rv.review_id === reviewId) || { reviewId, author, stars, review_text: '' };
-    const fullText = review.text || review.review_text || review.comment || review.body || '';
+    const allReviews = STATE.gbp?.reviews || [];
+    const review = allReviews.find(rv => rv.reviewId === reviewId || rv.id === reviewId || rv.review_id === reviewId) || { reviewId, author, stars, text: '' };
+    const fullText = review.text || review.review_text || review.comment || '';
     const existingReply = review.reply || review.ai_reply || '';
     const panelId = 'fp-gbp-reply-panel';
     const starsHtml = '⭐'.repeat(Math.min(Number(stars) || 0, 5));
@@ -69146,8 +68167,7 @@ window.FP_GBP_API = {
               var ta=document.getElementById('fp-gbp-reply-ta');
               var tone=(document.querySelector('.fp-reply-tone.active')||{}).dataset?.tone||'professional';
               if(btn)btn.textContent='⏳ Génération…';
-              var _gbpLang2=(STATE?.me?.language||STATE?.settings?.language||navigator.language||'fr').slice(0,2);
-              apiFetch('/api/google/reviews/'+encodeURIComponent('${escHtml(reviewId)}')+'/generate-reply',{method:'POST',body:JSON.stringify({tone:tone,lang:_gbpLang2})}).then(function(r){
+              apiFetch('/api/google/reviews/'+encodeURIComponent('${escHtml(reviewId)}')+'/generate-reply',{method:'POST',body:JSON.stringify({tone:tone,lang:'fr'})}).then(function(r){
                 if(r?.reply&&ta)ta.value=r.reply;
                 else if(ta)ta.value='Merci pour votre avis ! Nous sommes ravis de votre satisfaction et espérons vous revoir bientôt.';
                 if(btn)btn.textContent='🤖 Re-générer';
@@ -69197,322 +68217,87 @@ window.FP_GBP_API = {
 // RANKINGS MAP MARKERS — updates Google Map markers when checkboxes change
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── Delete a Local SEO history entry (backend + STATE) ───────────────────────
-window.fpDeleteHistoryEntry = async function(entryId) {
-  if (!entryId) return;
-  try {
-    const r = await apiAction('DELETE', '/api/local-seo/rankings/history/' + encodeURIComponent(entryId));
-    if (r && r.ok) {
-      // Remove from STATE immediately — no refresh needed
-      if (STATE.localSeo && Array.isArray(STATE.localSeo.rankingHistory)) {
-        STATE.localSeo.rankingHistory = STATE.localSeo.rankingHistory.filter(function(h) {
-          return String(h.id) !== String(entryId);
-        });
-      }
-      // Deselect if it was selected
-      if (STATE.localSeo && STATE.localSeo._selectedHistoryIds instanceof Set) {
-        STATE.localSeo._selectedHistoryIds.delete(String(entryId));
-        fpPersistRankingHistorySelection();
-      }
-      render(STATE.currentSection);
-      // Update map markers
-      if (typeof window.renderSelectedRankingHistoryOnMap === 'function') {
-        window.renderSelectedRankingHistoryOnMap();
-      }
-      showToast('success', fpT('Entrée supprimée'));
-    } else {
-      showToast('error', (r && r.error) || fpT('Erreur suppression'));
-    }
-  } catch(e) {
-    showToast('error', fpT('Erreur réseau'));
-  }
-};
-
 // ── History-selection → map markers ──────────────────────────────────────────
 // When the user checks history items, their results are merged and shown on map.
-// ── History-specific marker registry — completely isolated from live rankings ──
-// fpUpdateRankingMarkers manages _markers[] for live searches.
-// History markers live here so the two registries never interfere.
-(function() {
-  var _hm = [];   // {marker, infoWindow}[] — current history markers on the map
-  var _geocodePending = {};
-  // Generation counter: incremented on every clear so stale geocode callbacks can
-  // detect that a newer clear has happened and skip placing their marker.
-  var _generation = 0;
+window.fpUpdateRankingMarkersFromHistory = function() {
+  var map = STATE._gmap;
+  if (!map || typeof google === 'undefined' || !google.maps) return;
+  var history = (STATE.localSeo && STATE.localSeo.rankingHistory) || [];
+  var selectedIds = (STATE.localSeo && STATE.localSeo._selectedHistoryIds) || new Set();
+  if (selectedIds.size === 0) return;
+  // Collect all results from selected history entries
+  var merged = [];
+  var textSearchEntries = [];
+  history.forEach(function(h, hIdx) {
+    var hid = h.id != null ? h.id : hIdx;
+    if (!selectedIds.has(hid)) return;
+    if (Array.isArray(h.results) && h.results.length > 0) {
+      h.results.forEach(function(r) { merged.push(r); });
+    } else if (h.keyword && h.location) {
+      // DB stores no result coords — trigger a live Places textSearch
+      textSearchEntries.push({ keyword: h.keyword, location: h.location, rank: h.rank });
+    }
+  });
 
-  function _clearHistoryMarkers() {
-    _generation++;
-    _hm.forEach(function(x) { try { x.marker.setMap(null); x.iw.close(); } catch(_e){} });
-    _hm = [];
-    _geocodePending = {};
+  // If we have pre-stored results, draw them immediately
+  if (merged.length > 0) {
+    var prevRankings = STATE.localSeo.rankings;
+    var prevSelected = STATE.localSeo._selectedRankings;
+    STATE.localSeo.rankings = merged;
+    STATE.localSeo._selectedRankings = new Set(merged.map(function(_, i){ return i; }));
+    if (typeof window.fpUpdateRankingMarkers === 'function') window.fpUpdateRankingMarkers();
+    STATE.localSeo.rankings = prevRankings;
+    STATE.localSeo._selectedRankings = prevSelected;
   }
 
-  function _updateHistoryResultsWidget(merged) {
-    var w = document.getElementById('dfs-history-results-widget');
-    if (!w) return;
-    if (!merged || merged.length === 0) {
-      w.style.display = 'none';
-      w.innerHTML = '';
-      return;
-    }
-    var _cols = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
-    w.style.display = 'block';
-    w.innerHTML = '<div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">'
-      + fpT('Résultats de l\'historique sélectionné')
-      + ' <span style="font-weight:400;color:#475569;font-size:9px">(' + merged.length + ' ' + fpT('établissement' + (merged.length > 1 ? 's' : '')) + ')</span></div>'
-      + merged.map(function(r, i) {
-        var col = _cols[i % _cols.length];
-        var title = escHtml(r.title || r.name || r.business_name || '');
-        var addr  = r.address ? ('<div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(r.address) + '</div>') : '';
-        var rating = (r.rating > 0) ? ('<div style="font-size:10px;color:#f59e0b">★ ' + r.rating + ' (' + (r.reviews || r.reviews_count || 0) + ' avis)</div>') : '';
-        var rank = r.rank || (i + 1);
-        return '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 4px;' + (i > 0 ? 'border-top:1px solid var(--fp-border);' : '') + '">'
-          + '<div style="font-size:13px;font-weight:800;color:' + col + ';min-width:20px;text-align:center">#' + rank + '</div>'
-          + '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:600;color:var(--fp-text)">' + title + '</div>' + rating + addr + '</div></div>';
-      }).join('');
-  }
-
-  function _placeHistoryMarkers(map, merged) {
-    _clearHistoryMarkers();
-    if (!merged.length) return;
-
-    var _cols = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
-    var bounds = new google.maps.LatLngBounds();
-    var hasCoord = false;
-    var geocoder = (google.maps.Geocoder) ? new google.maps.Geocoder() : null;
-    var pendingGeo = 0;
-    var markersPlaced = 0;
-
-    function _addMarker(lat, lng, r, i) {
-      var col = _cols[i % _cols.length];
-      var rank = r.rank || (i + 1);
-      var marker = new google.maps.Marker({
-        position: { lat: lat, lng: lng }, map: map,
-        title: r.title || r.name || '',
-        label: { text: '#' + rank, color: '#fff', fontWeight: '800', fontSize: '10px' },
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 16, fillColor: col, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
-        zIndex: 200 + i,
+  // For entries without stored coords, run a Places textSearch and show results
+  if (textSearchEntries.length > 0 && google.maps.places && map) {
+    var service = new google.maps.places.PlacesService(map);
+    var allPlaces = [];
+    var pending = textSearchEntries.length;
+    textSearchEntries.forEach(function(entry) {
+      service.textSearch({ query: entry.keyword + ' ' + entry.location }, function(results, status) {
+        if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+          results.slice(0, 10).forEach(function(place, i) {
+            if (place.geometry && place.geometry.location) {
+              allPlaces.push({
+                title: place.name || entry.keyword,
+                address: place.formatted_address || entry.location,
+                lat: place.geometry.location.lat(),
+                lng: place.geometry.location.lng(),
+                rating: place.rating || 0,
+                reviews: (place.user_ratings_total || 0),
+                rank: entry.rank || (i + 1),
+              });
+            }
+          });
+        }
+        pending--;
+        if (pending === 0 && allPlaces.length > 0) {
+          var prevRankings2 = STATE.localSeo.rankings;
+          var prevSelected2 = STATE.localSeo._selectedRankings;
+          STATE.localSeo.rankings = (STATE.localSeo.rankings || []).concat(allPlaces);
+          STATE.localSeo._selectedRankings = new Set(STATE.localSeo.rankings.map(function(_, i){ return i; }));
+          if (typeof window.fpUpdateRankingMarkers === 'function') window.fpUpdateRankingMarkers();
+          STATE.localSeo.rankings = prevRankings2;
+          STATE.localSeo._selectedRankings = prevSelected2;
+        }
       });
-      var ratingLine = r.rating > 0 ? '<br><span style="color:#f59e0b">★ ' + r.rating + '</span>' : '';
-      var addrLine = r.address ? '<br><span style="color:#94a3b8;font-size:11px">' + escHtml(r.address) + '</span>' : '';
-      var iw = new google.maps.InfoWindow({
-        content: '<div style="min-width:150px;padding:4px 6px"><b style="color:' + col + '">#' + rank + '</b> '
-          + escHtml(r.title || r.name || '') + ratingLine + addrLine + '</div>',
-      });
-      marker.addListener('click', function() { iw.open(map, marker); });
-      _hm.push({ marker: marker, iw: iw });
-      bounds.extend({ lat: lat, lng: lng });
-      hasCoord = true;
-      markersPlaced++;
-      if (pendingGeo <= 0 && hasCoord) { map.fitBounds(bounds, 60); if (map.getZoom() > 15) map.setZoom(15); }
-    }
-
-    merged.forEach(function(r, i) {
-      var rLat = r.lat != null ? parseFloat(r.lat) : (r.latitude  != null ? parseFloat(r.latitude)  : null);
-      var rLng = r.lng != null ? parseFloat(r.lng) : (r.longitude != null ? parseFloat(r.longitude) : null);
-      if (Number.isFinite(rLat) && Number.isFinite(rLng)) {
-        _addMarker(rLat, rLng, r, i);
-      } else if (r.address && geocoder && !_geocodePending[r.address + '_' + i]) {
-        _geocodePending[r.address + '_' + i] = true;
-        pendingGeo++;
-        // Capture generation at time of geocode request so stale callbacks
-        // can detect that _clearHistoryMarkers() ran while they were in flight.
-        var _genAtRequest = _generation;
-        geocoder.geocode({ address: r.address }, function(results, status) {
-          pendingGeo--;
-          // If generation changed, a clear happened — discard stale result.
-          if (_genAtRequest !== _generation) return;
-          if (status === 'OK' && results && results[0]) {
-            var loc = results[0].geometry.location;
-            r.lat = loc.lat(); r.lng = loc.lng();
-            _addMarker(loc.lat(), loc.lng(), r, i);
-          }
-          if (pendingGeo <= 0 && hasCoord) { map.fitBounds(bounds, 60); if (map.getZoom() > 15) map.setZoom(15); }
-        });
-      }
-    });
-
-    console.log('[LocalSEO history checkbox]', { historyId: 'done', rankingsLoaded: merged.length, markersDisplayed: _hm.length });
-  }
-
-  // ── Keyword+location badge overlay on the map ────────────────────────────
-  function _updateMapKeywordBadge(entries) {
-    var mapEl = document.getElementById('fp-gmap');
-    if (!mapEl) return;
-    var badge = document.getElementById('fp-ranking-map-badge');
-    if (!entries || !entries.length) {
-      if (badge) badge.style.display = 'none';
-      return;
-    }
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.id = 'fp-ranking-map-badge';
-      badge.style.cssText = [
-        'position:absolute', 'top:10px', 'left:50%', 'transform:translateX(-50%)',
-        'z-index:20', 'background:rgba(37,99,235,0.93)', 'color:#fff',
-        'font-size:11px', 'font-weight:700', 'padding:5px 14px',
-        'border-radius:20px', 'white-space:nowrap',
-        'box-shadow:0 2px 8px rgba(0,0,0,0.35)', 'pointer-events:none',
-        'letter-spacing:0.02em', 'max-width:80%', 'overflow:hidden',
-        'text-overflow:ellipsis',
-      ].join(';');
-      if (getComputedStyle(mapEl).position === 'static') mapEl.style.position = 'relative';
-      mapEl.appendChild(badge);
-    }
-    var label = entries.map(function(e) {
-      return (e.keyword || '') + (e.location ? ' — ' + e.location : '');
-    }).filter(Boolean).join(' · ');
-    badge.textContent = '🔍 ' + label;
-    badge.style.display = 'block';
-  }
-
-  // ── Geocode location string and pan+zoom map to that city ────────────────
-  function _panMapToLocation(map, locationStr) {
-    if (!locationStr || !google.maps.Geocoder) return;
-    var geocoder = new google.maps.Geocoder();
-    geocoder.geocode({ address: locationStr }, function(results, status) {
-      if (status === 'OK' && results && results[0]) {
-        map.panTo(results[0].geometry.location);
-        var z = map.getZoom();
-        // Zoom to city level (12-14) without overriding a close zoom already set
-        if (z < 11) map.setZoom(13);
-        else if (z > 15) map.setZoom(14);
-      }
     });
   }
-
-  window.renderSelectedRankingHistoryOnMap = function() {
-    var map = STATE._gmap;
-    if (!map || typeof google === 'undefined' || !google.maps) {
-      window._fpPendingHistoryMarkerUpdate = true;
-      return;
-    }
-    window._fpPendingHistoryMarkerUpdate = false;
-
-    var history     = (STATE.localSeo && STATE.localSeo.rankingHistory) || [];
-    var selectedIds = (STATE.localSeo && STATE.localSeo._selectedHistoryIds) || new Set();
-
-    // Parse JSON-string results stored in DB as a string
-    history.forEach(function(h) {
-      if (h && typeof h.results === 'string') {
-        try { h.results = JSON.parse(h.results); } catch(_e) { h.results = []; }
-      }
-    });
-
-    if (selectedIds.size === 0) {
-      _clearHistoryMarkers();
-      _updateHistoryResultsWidget([]);
-      _updateMapKeywordBadge([]);
-      if (typeof window.fpShowLiveRankingMarkers === 'function') window.fpShowLiveRankingMarkers();
-      return;
-    }
-
-    // Hide live ranking markers — only history layer is shown when a ranking is selected
-    if (typeof window.fpHideLiveRankingMarkers === 'function') window.fpHideLiveRankingMarkers();
-
-    // Collect selected history entries + merge their results (deduplicated)
-    var selectedEntries = [];
-    var seen = new Set();
-    var merged = [];
-    history.forEach(function(h) {
-      var hid = h && h.id != null ? String(h.id) : '';
-      if (!selectedIds.has(hid)) return;
-      selectedEntries.push(h);
-      console.log('[LocalSEO history checkbox]', {
-        historyId: hid, keyword: h.keyword, location: h.location,
-        rankingsLoaded: Array.isArray(h.results) ? h.results.length : 0,
-      });
-      if (!Array.isArray(h.results)) return;
-      h.results.forEach(function(r) {
-        var norm = Object.assign({}, r);
-        if (!norm.address) norm.address = r.formatted_address || r.full_address || (r.address_info && r.address_info.address) || null;
-        if (!norm.title)   norm.title   = r.name || r.business_name || r.title || '';
-        var key = (norm.title + '|' + (norm.address || '')).toLowerCase();
-        if (!seen.has(key)) { seen.add(key); merged.push(norm); }
-      });
-    });
-
-    // Show keyword + location badge on the map
-    _updateMapKeywordBadge(selectedEntries);
-
-    // Center the map on the searched location of the primary (first) selected entry
-    if (selectedEntries.length > 0) {
-      var locStr = selectedEntries[0].location || selectedEntries[0].city || '';
-      if (locStr) _panMapToLocation(map, locStr);
-    }
-
-    // Update results widget
-    _updateHistoryResultsWidget(merged);
-
-    if (merged.length === 0) {
-      _clearHistoryMarkers();
-      // Stay in HISTORY mode — global markers stay hidden.
-      // Center the map on the searched location(s) so the context is visible.
-      selectedEntries.forEach(function(e) {
-        var locStr = e.location || e.city || e.keyword || '';
-        if (locStr && map) _panMapToLocation(map, locStr);
-      });
-      // Show an actionable message: the entry exists but has no stored results.
-      var _kwLabel = selectedEntries.map(function(e) { return escHtml(e.keyword || '') + ' — ' + escHtml(e.location || ''); }).join(', ');
-      showToast('info', fpT('0 résultat enregistré pour : ') + _kwLabel + '. ' + fpT('Relancez la recherche pour actualiser les données.'));
-      return;
-    }
-
-    // Place history markers (isolated layer — does NOT touch STATE.localSeo.rankings)
-    _placeHistoryMarkers(map, merged);
-    console.log('[LOCAL SEO HISTORY MAP DEBUG]', {
-      selectedCount: selectedIds.size,
-      entriesFound: selectedEntries.length,
-      markersPlaced: merged.length,
-      centeredOn: selectedEntries[0] ? (selectedEntries[0].location || '') : '',
-    });
-  };
-
-  // Expose clear method so live-search reload can wipe history overlay
-  window.fpClearHistoryMarkers = function() {
-    _clearHistoryMarkers();
-    _updateHistoryResultsWidget([]);
-    if (STATE.localSeo) STATE.localSeo._selectedHistoryIds = new Set();
-    fpPersistRankingHistorySelection();
-    // Uncheck all checkboxes visually
-    document.querySelectorAll('.fp-hist-cb').forEach(function(cb) { cb.checked = false; });
-    document.querySelectorAll('[data-history-id]').forEach(function(el) { el.style.background = 'transparent'; });
-    // Clearing history means no selection is active — restore global/live markers.
-    if (typeof window.fpShowLiveRankingMarkers === 'function') window.fpShowLiveRankingMarkers();
-  };
-})();
+};
 
 window.fpUpdateRankingMarkers = (function() {
   var _markers = [];
   var _infoWindows = [];
   var _geocodePending = {};
 
-  // ── Live marker visibility control (called by history checkbox logic) ──────
-  // Hiding live markers when history is checked creates a clean layer separation:
-  // only history results appear on the map. Showing restores the live layer.
-  window.fpHideLiveRankingMarkers = function() {
-    _markers.forEach(function(m) { try { m.setMap(null); } catch(_e){} });
-    // Also hide the static init markers (business marker + competitors) so they
-    // don't persist as "ghost" markers when a ranking history entry is selected.
-    if (Array.isArray(STATE._staticMapMarkers)) {
-      STATE._staticMapMarkers.forEach(function(m) { try { m.setMap(null); } catch(_e){} });
-    }
-  };
-  window.fpShowLiveRankingMarkers = function() {
-    var _liveMap = STATE._gmap;
-    _markers.forEach(function(m) { try { m.setMap(_liveMap); } catch(_e){} });
-    // Restore static init markers when no history is selected.
-    if (Array.isArray(STATE._staticMapMarkers)) {
-      STATE._staticMapMarkers.forEach(function(m) { try { m.setMap(_liveMap); } catch(_e){} });
-    }
-  };
-
   return function() {
     var map = STATE._gmap;
     if (!map || typeof google === 'undefined' || !google.maps) return;
 
     var rankings = (STATE.localSeo && STATE.localSeo.rankings) || [];
-    var selected = new Set();
+    var selected = (STATE.localSeo && STATE.localSeo._selectedRankings) || new Set();
     var rankColors = ['#22c55e','#2563EB','#f59e0b','#ef4444','#8b5cf6'];
 
     // Clear existing ranking markers
@@ -69520,7 +68305,6 @@ window.fpUpdateRankingMarkers = (function() {
     _infoWindows.forEach(function(iw) { iw.close(); });
     _markers = [];
     _infoWindows = [];
-    if (typeof window.renderSelectedRankingHistoryOnMap === 'function') window.renderSelectedRankingHistoryOnMap();
 
     if (selected.size === 0) return;
 
@@ -69843,10 +68627,7 @@ window.FP_GSC_API = {
 window.FP_MISSIONS_API = {
   async load() {
     try {
-      console.log('[MISSIONS] API start (FP_MISSIONS_API.load)');
-      const _t0 = Date.now();
       const missions = await apiFetch('/api/missions?limit=200').catch(() => null);
-      console.log('[MISSIONS] API end', Date.now() - _t0, 'ms | rows:', Array.isArray(missions) ? missions.length : '?');
       return Array.isArray(missions) ? missions : null;
     } catch(e) { console.warn('[FP_MISSIONS_API] load error:', e); return null; }
   },
@@ -69872,8 +68653,7 @@ window.FP_MISSIONS_API = {
   async generate() {
     // Let HTTP errors propagate so _doAiScan can inspect err.status / err.code
     // (402 = quota, 503 = AI unavailable, 403 = module disabled)
-    var _missionLang = (window.STATE?.settings?.language || localStorage.getItem('fp:language') || 'fr');
-    return await apiFetch('/api/missions/generate', { method: 'POST', body: JSON.stringify({ language: _missionLang }) });
+    return await apiFetch('/api/missions/generate', { method: 'POST', body: '{}' });
   },
 
   async create(mission) {
@@ -70369,14 +69149,10 @@ window.FP_ADDONS_API = {
       const data = await apiFetch('/api/addons').catch(() => null);
       if (!data) return;
       window.FP_DATA = window.FP_DATA || {};
-      const rawDefinitions = data.definitions || {};
-      const definitions = Array.isArray(rawDefinitions)
-        ? Object.fromEntries(rawDefinitions.filter(d => d && d.key).map(d => [d.key, d]))
-        : rawDefinitions;
       window.FP_DATA.addons = {
         active:      data.addons      || {},
         orgAddons:   data.orgAddons   || [],
-        definitions: definitions,
+        definitions: data.definitions || {},
         quotas:      data.quotas      || {},
         plan:        data.plan        || 'pro',
       };
@@ -70598,8 +69374,7 @@ window.FP_MARKET_INTEL_API = {
     } catch(e) { console.warn('[FP_MARKET_INTEL_API]', e); }
   },
   async generateReport() {
-    const _repLang = (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr';
-    return await apiFetch('/api/market-intelligence/report/generate', { method:'POST', body: JSON.stringify({ language: _repLang }) });
+    return await apiFetch('/api/market-intelligence/report/generate', { method:'POST', body: JSON.stringify({}) });
   },
 };
 
@@ -71911,9 +70686,23 @@ document.addEventListener('click', (event) => {
 function renderLocalSEOReviews() {
   const reviewData = window.FP_DATA?.reviewIntel || {};
   const reviews = reviewData.reviews || [];
-  // Store reviews globally so _openReviewDetail can access them by index
-  window._fpReviewsData = reviews;
-  const stats = reviewData.stats || {};
+  // Compute stats from reviews if missing or stale (API may not pre-compute them)
+  let stats = reviewData.stats || {};
+  if (reviews.length > 0 && (!stats.totalReviews || stats.totalReviews === 0)) {
+    const _pos = reviews.filter(rv => /posit/i.test(rv.sentiment || '')).length;
+    const _neg = reviews.filter(rv => /n[eé]gat/i.test(rv.sentiment || '')).length;
+    const _avg = Math.round((reviews.reduce((s, rv) => s + (rv.rating || 0), 0) / reviews.length) * 10) / 10;
+    stats = {
+      totalReviews: reviews.length,
+      avgRating: _avg,
+      sentimentDist: { positive: _pos, negative: _neg, neutral: reviews.length - _pos - _neg },
+      reputationScore: Math.min(100, Math.round((_avg / 5) * 70 + (_pos / reviews.length) * 30)),
+      pendingReplies: reviews.filter(rv => !rv.ai_reply).length,
+      criticalAlerts: (reviewData.alerts || []).filter(a => a.severity === 'critical').length,
+    };
+  }
+  stats.pendingReplies = stats.pendingReplies ?? reviews.filter(rv => !rv.ai_reply).length;
+  stats.criticalAlerts = stats.criticalAlerts ?? (reviewData.alerts || []).filter(a => a.severity === 'critical').length;
   const alerts = reviewData.alerts || [];
   const plan = STATE.me?.plan || 'Pro';
   const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
@@ -71983,7 +70772,7 @@ function renderLocalSEOReviews() {
             // HTML-escape r.id for use in data-attributes; the browser unescapes it into dataset.
             const _safeApiId = escHtml(String(r.id || ''));
             return `
-            <div id="${_rId}" style="padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card);cursor:pointer;transition:border-color 0.15s" onclick="window._openReviewDetail(${_ri})">
+            <div id="${_rId}" style="padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card);cursor:pointer;transition:border-color 0.15s" onclick="(function(el){el.classList.toggle('fp-rv-expanded');el.querySelector('.fp-rv-body').style.display=el.classList.contains('fp-rv-expanded')?'block':'none';})(document.getElementById('${_rId}'))">
               <div style="display:flex;align-items:flex-start;gap:10px">
                 <span style="font-size:18px">${ratingEmoji(r.rating || 0)}</span>
                 <div style="flex:1;min-width:0">
@@ -73226,9 +72015,9 @@ function renderGA4ClientMode() {
                   <div style="font-size:11px;color:var(--fp-text-muted)">${wlBranding.primaryColor || '#2563EB'} · White-label actif</div>
                 </div>
               </div>
-              <div style="display:flex;gap:6px">${badge('White-label actif','#22c55e')}<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings','workspace')">Modifier →</button></div>`
+              <div style="display:flex;gap:6px">${badge('White-label actif','#22c55e')}<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),50)">Modifier →</button></div>`
             : `<div style="flex:1;color:var(--fp-text-muted);font-size:12px">Aucun branding configuré. Personnalisez logo, couleurs et nom d'agence dans les Paramètres → Workspace.</div>
-               <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings','workspace')">Configurer →</button>`}
+               <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('workspace'),50)">Configurer →</button>`}
         </div>
       </div>`;
     return header + permsBanner + auditsHtml + reportsHtml + wlBlock;

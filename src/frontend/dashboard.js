@@ -11431,11 +11431,11 @@ function renderSettings() {
             {l:'Organisation', id:'prof-org',     v:me.org.name,                                                                                t:'text'},
             {l:'Site web',     id:'prof-website', v:me.org?.website||'',                                                                        t:'url'},
             {l:'Fuseau horaire',id:'prof-tz',     v:(STATE.settings&&STATE.settings.timezone)||'', t:'text',ph:'Ex: Europe/Paris'},
-            {l:'Adresse',      id:'prof-addr',   v:me.location?.address||'',                t:'text', ph:'12 rue de la Paix'},
-            {l:'Ville',        id:'prof-city',   v:me.location?.city||'',                   t:'text', ph:'Paris'},
-            {l:'Code postal',  id:'prof-postal', v:me.location?.postalCode||'',             t:'text', ph:'75001'},
-            {l:'Pays',         id:'prof-country',v:me.location?.country||'',                t:'text', ph:'France'},
-            {l:'Téléphone',    id:'prof-phone',  v:me.location?.phone||'',                  t:'tel',  ph:'+33 6 12 34 56 78'},
+            {l:'Adresse',      id:'prof-addr',   v:me.location?.address||'',                t:'text', ph:'Ex : 10 allée des Acacias'},
+            {l:'Ville',        id:'prof-city',   v:me.location?.city||'',                   t:'text', ph:'Ex : Lyon'},
+            {l:'Code postal',  id:'prof-postal', v:me.location?.postalCode||'',             t:'text', ph:'Ex : 69001'},
+            {l:'Pays',         id:'prof-country',v:me.location?.country||'',                t:'text', ph:'Ex : France'},
+            {l:'Téléphone',    id:'prof-phone',  v:me.location?.phone||'',                  t:'tel',  ph:'Ex : +33 6 XX XX XX XX'},
           ].map(f => `<div class="fp-form-group">
             <label class="fp-form-label">${escHtml(f.l)}</label>
             <input class="fp-input" id="${f.id}" type="${f.t}" value="${escHtml(f.v)}"${f.ph ? ` placeholder="${escHtml(f.ph)}"` : ''}${f.ro ? ' readonly style="opacity:0.6;cursor:not-allowed"' : ''}/>
@@ -15484,7 +15484,7 @@ function navigate(route, subRoute) {
       history.replaceState({ route: STATE.route, subRoute: STATE.subRoute }, '', _newHash);
     }
   } catch(e) { /* sandboxed iframe */ }
-  try { localStorage.setItem('fp:last-route', STATE.route); if (STATE.subRoute) localStorage.setItem('fp:last-sub', STATE.subRoute); else localStorage.removeItem('fp:last-sub'); } catch(e) {}
+  try { fpTenantWrite('fp:last-route', STATE.route); if (STATE.subRoute) fpTenantWrite('fp:last-sub', STATE.subRoute); else fpTenantRemove('fp:last-sub'); } catch(e) {}
   document.querySelectorAll('.fp-chart-tooltip').forEach(t => t.remove());
   // Clear shared hover tooltip (prevents calendar RDV tooltip sticking on iOS
   // when user navigates to another tab before the touchend fires hideTip).
@@ -15503,7 +15503,7 @@ function navigateSub(sub) {
     try { navigate('billing'); } catch(e) { STATE.route = 'billing'; }
   }
   STATE.subRoute = sub;
-  try { localStorage.setItem('fp:last-sub', sub || ''); } catch(e) {}
+  try { fpTenantWrite('fp:last-sub', sub || ''); } catch(e) {}
   try {
     const _base = STATE.route || '';
     if (_base && sub) {
@@ -18156,7 +18156,7 @@ function bindGlobalEvents() {
     try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
     // Clear last-route so the next session (or a re-registration) always starts
     // at the overview, not at whatever page this account was last visiting.
-    try { localStorage.removeItem('fp:last-route'); localStorage.removeItem('fp:last-sub'); } catch(_) {}
+    // Route keys are tenant-namespaced — next login reads the correct org's last route.
     showToast('info', fpT('Déconnexion…'));
     try { await window.apiFetch('/api/auth/logout', { method: 'POST' }); } catch(_) {}
     setTimeout(() => { window.location.replace('/login.html'); }, 1200);
@@ -47599,8 +47599,8 @@ async function init() {
   // metrics, not plan-selection UI.
   window.__fpSessionConfirmed = false; // cleared after first live /api/me completes
   try {
-    const savedRoute = localStorage.getItem('fp:last-route');
-    const savedSub   = localStorage.getItem('fp:last-sub');
+    const savedRoute = fpTenantRead('fp:last-route', '');
+    const savedSub   = fpTenantRead('fp:last-sub', '');
     if (savedRoute) STATE.route = savedRoute;
     // Drop 'plans' sub-tab on restore — will be re-applied after session confirmed
     if (savedSub && !(savedRoute === 'billing' && savedSub === 'plans')) {
@@ -47671,8 +47671,6 @@ async function init() {
         STATE.activityLastSeen = parseInt(fpTenantRead('fp:activity-last-seen','0') || '0', 10);
         STATE.pushNotifEnabled = fpTenantRead('fp:push-notif', '') === '1';
         STATE.searchHistory    = JSON.parse(fpTenantRead('fp:search-hist',      '[]') || '[]');
-        localStorage.removeItem('fp:last-route');
-        localStorage.removeItem('fp:last-sub');
         STATE.route    = 'overview';
         STATE.subRoute = null;
       }
@@ -47693,7 +47691,7 @@ async function init() {
   // the user returns from the checkout page. The first loadData() above fetches
   // fresh /api/me data, but if the webhook hasn't processed yet, the add-on will
   // appear as inactive. A second fetch 4 seconds later catches the webhook window.
-  if (window.location.search.includes('addon_success') || window.__fpAddonSuccessRetry) {
+  if (window.location.search.includes('addon_success') || window.location.search.includes('plan_activated') || window.location.search.includes('checkout=success') || window.__fpAddonSuccessRetry) {
     window.__fpAddonSuccessRetry = false;
     // Stripe webhook for a separate add-on subscription can take 5–30 seconds.
     // We retry at 8s and again at 20s to catch late webhook processing.
@@ -48273,12 +48271,11 @@ async function init() {
       _btn.disabled = !ok; _btn.style.opacity = ok ? '1' : '0.4'; _btn.style.cursor = ok ? 'pointer' : 'not-allowed';
     });
   };
-  window.fpConfirmDeleteAccount = function() {
+  window.fpConfirmDeleteAccount = async function() {
     const _inp = document.getElementById('fp-delete-confirm-input');
     if (!_inp || _inp.value !== 'SUPPRIMER') return;
     document.getElementById('fp-delete-account-modal')?.remove();
-    window.fpDarkConfirm('Dernière confirmation — cette action est irréversible et définitive. Continuer ?', async () => {
-      showToast('info', fpT('Suppression du compte en cours…'));
+    showToast('info', fpT('Suppression du compte en cours…'));
       try {
         const r = await apiAction('DELETE', '/api/billing/account');
         if (r && r.ok) {
@@ -48301,7 +48298,6 @@ async function init() {
           setTimeout(() => { window.location.href = '/signin.html?deleted=1'; }, 2500);
         } else { showToast('error', (r && r.error) || 'Erreur lors de la suppression du compte'); }
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible')); }
-    }, 'Supprimer définitivement');
   };
 
   window.openDataDeletionPanel = function(kind) {
