@@ -1591,6 +1591,72 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
   }
 });
 
+// ── POST /api/admin/reconcile-org-addons ─────────────────────────────────────
+// Idempotent: replays a past Stripe subscription → org_addons for an org.
+// Use after a checkout.session.completed webhook fired before the addonKey fix.
+// Body: { orgId: string }
+// Returns: { ok, activated: string[], skipped: string[], errors: string[] }
+router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId } = req.body as { orgId?: string };
+  if (!orgId) { res.status(400).json({ ok: false, error: "orgId required" }); return; }
+  try {
+    const { createStripeClient } = await import("../services/stripe-client.js");
+    const { activateAddon } = await import("../services/addons-service.js");
+    const { getAddonForPriceId } = await import("../lib/plans.js");
+    const stripe = createStripeClient();
+
+    // Resolve stripe customer id for this org
+    const custRes = await pool.query(
+      `SELECT stripe_customer_id FROM org_settings WHERE org_id = $1
+       UNION ALL
+       SELECT stripe_customer_id FROM organizations WHERE id::text = $1 LIMIT 1`,
+      [orgId]
+    );
+    const customerId = String(custRes.rows[0]?.stripe_customer_id ?? "").trim();
+    if (!customerId) { res.status(404).json({ ok: false, error: "No Stripe customer for this org" }); return; }
+
+    // Fetch all active/trialing subscriptions
+    const subs = await stripe.subscriptions.list({
+      customer: customerId,
+      status: "all",
+      limit: 20,
+      expand: ["data.items.data.price"],
+    });
+
+    const activated: string[] = [];
+    const skipped: string[] = [];
+    const errors: string[] = [];
+
+    for (const sub of subs.data) {
+      if (!["active","trialing","past_due"].includes(sub.status)) continue;
+      for (const item of sub.items.data) {
+        const priceId = item.price?.id ?? "";
+        const qty     = item.quantity ?? 1;
+        // Try price → addon mapping first
+        const addonKey = getAddonForPriceId(priceId);
+        // Also check subscription metadata for addonKey (direct addon-checkout path)
+        const metaKey  = String(sub.metadata?.["addonKey"] ?? "").trim();
+        const metaQty  = Math.max(1, parseInt(String(sub.metadata?.["quantity"] ?? "1"), 10));
+        const key      = addonKey || metaKey;
+        if (!key) { skipped.push(`price:${priceId}`); continue; }
+        const effectiveQty = addonKey ? qty : metaQty;
+        try {
+          const ok = await activateAddon(key, orgId, effectiveQty);
+          if (ok) activated.push(`${key}×${effectiveQty}`);
+          else skipped.push(`${key} (already active or unknown)`);
+        } catch (e) {
+          errors.push(`${key}: ${safeErrMsg(e)}`);
+        }
+      }
+    }
+
+    res.json({ ok: true, customerId, activated, skipped, errors });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 // ── POST /api/admin/run-trial-cron — trigger trial-ending check immediately ──
 router.post("/admin/run-trial-cron", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;

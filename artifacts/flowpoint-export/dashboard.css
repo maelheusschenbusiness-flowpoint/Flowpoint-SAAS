@@ -1462,12 +1462,16 @@ html:not([data-theme="light"]) .fp-toast {
 }
 .fp-ai-input:focus { border-color: rgba(37,99,235,0.5); }
 .fp-ai-send {
+  -webkit-appearance: none;
+  appearance: none;
   background: linear-gradient(135deg, var(--fp-accent), var(--fp-accent-dark));
   border: none;
   border-radius: var(--fp-radius-md);
   padding: 0;
   width: 38px;
   height: 38px;
+  min-width: 38px;
+  min-height: 38px;
   flex-shrink: 0;
   box-sizing: border-box;
   color: #fff;

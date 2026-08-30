@@ -138017,6 +138017,66 @@ router52.post("/admin/purge-all-clients", async (req, res) => {
     client.release();
   }
 });
+router52.post("/admin/reconcile-org-addons", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: orgId3 } = req.body;
+  if (!orgId3) {
+    res.status(400).json({ ok: false, error: "orgId required" });
+    return;
+  }
+  try {
+    const { createStripeClient: createStripeClient2 } = await import("../services/stripe-client.js");
+    const { activateAddon: activateAddon2 } = await Promise.resolve().then(() => (init_addons_service(), addons_service_exports));
+    const { getAddonForPriceId: getAddonForPriceId2 } = await Promise.resolve().then(() => (init_plans(), plans_exports));
+    const stripe = createStripeClient2();
+    const custRes = await pool.query(
+      `SELECT stripe_customer_id FROM org_settings WHERE org_id = $1
+       UNION ALL
+       SELECT stripe_customer_id FROM organizations WHERE id::text = $1 LIMIT 1`,
+      [orgId3]
+    );
+    const customerId = String(custRes.rows[0]?.stripe_customer_id ?? "").trim();
+    if (!customerId) {
+      res.status(404).json({ ok: false, error: "No Stripe customer for this org" });
+      return;
+    }
+    const subs = await stripe.subscriptions.list({
+      customer: customerId,
+      status: "all",
+      limit: 20,
+      expand: ["data.items.data.price"]
+    });
+    const activated = [];
+    const skipped = [];
+    const errors = [];
+    for (const sub of subs.data) {
+      if (!["active", "trialing", "past_due"].includes(sub.status)) continue;
+      for (const item of sub.items.data) {
+        const priceId = item.price?.id ?? "";
+        const qty = item.quantity ?? 1;
+        const addonKey = getAddonForPriceId2(priceId);
+        const metaKey = String(sub.metadata?.["addonKey"] ?? "").trim();
+        const metaQty = Math.max(1, parseInt(String(sub.metadata?.["quantity"] ?? "1"), 10));
+        const key = addonKey || metaKey;
+        if (!key) {
+          skipped.push(`price:${priceId}`);
+          continue;
+        }
+        const effectiveQty = addonKey ? qty : metaQty;
+        try {
+          const ok = await activateAddon2(key, orgId3, effectiveQty);
+          if (ok) activated.push(`${key}\xD7${effectiveQty}`);
+          else skipped.push(`${key} (already active or unknown)`);
+        } catch (e) {
+          errors.push(`${key}: ${safeErrMsg(e)}`);
+        }
+      }
+    }
+    res.json({ ok: true, customerId, activated, skipped, errors });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
 router52.post("/admin/run-trial-cron", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
   try {
