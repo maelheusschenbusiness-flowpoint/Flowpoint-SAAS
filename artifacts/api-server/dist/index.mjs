@@ -75130,6 +75130,228 @@ var init_addons_service = __esm({
   }
 });
 
+// src/lib/subscription-state.ts
+var subscription_state_exports = {};
+__export(subscription_state_exports, {
+  NORMALIZE_ACTIVE_WITHOUT_SUBSCRIPTION_SQL: () => NORMALIZE_ACTIVE_WITHOUT_SUBSCRIPTION_SQL,
+  NORMALIZE_IMPOSSIBLE_STATES_SQL: () => NORMALIZE_IMPOSSIBLE_STATES_SQL,
+  impossibleStateReport: () => impossibleStateReport,
+  normalizeSubscriptionStatus: () => normalizeSubscriptionStatus,
+  statusGrantsAccess: () => statusGrantsAccess
+});
+function normalizeSubscriptionStatus(input) {
+  const { rawStatus, stripeSubscriptionId, stripeCustomerId, trialEndsAt, trialConsumedAt } = input;
+  const hasSubscription = !!(stripeSubscriptionId && stripeSubscriptionId.trim());
+  const hasCustomer = !!(stripeCustomerId && stripeCustomerId.trim());
+  const trialActive = !!(trialEndsAt && new Date(trialEndsAt) > /* @__PURE__ */ new Date());
+  const wasConsumed = !!trialConsumedAt;
+  if (rawStatus === "pending_billing") {
+    if (hasSubscription) {
+      if (trialActive) return "trialing";
+      return "active";
+    }
+    return "pending_billing";
+  }
+  const requiresSubscription = /* @__PURE__ */ new Set(["active", "past_due", "unpaid", "paused"]);
+  if (rawStatus && requiresSubscription.has(rawStatus)) {
+    if (!hasSubscription) {
+      if (trialActive && wasConsumed) return "trialing";
+      if (trialActive) return "pending_billing";
+      if (hasCustomer) return "incomplete";
+      return "none";
+    }
+    return rawStatus;
+  }
+  if (rawStatus === "canceled") {
+    return "canceled";
+  }
+  if (rawStatus === "trialing") {
+    if (hasSubscription) {
+      if (trialActive) return "trialing";
+      return "active";
+    }
+    if (!wasConsumed) {
+      return "pending_billing";
+    }
+    if (trialActive) return "trialing";
+    if (hasCustomer) return "incomplete";
+    return "none";
+  }
+  if (rawStatus === "incomplete") {
+    return hasCustomer ? "incomplete" : "none";
+  }
+  if (hasCustomer) return "incomplete";
+  return "none";
+}
+function statusGrantsAccess(status) {
+  return status === "active" || status === "trialing";
+}
+function impossibleStateReport(input, resolved) {
+  return {
+    rawStatus: input.rawStatus,
+    stripeSubscriptionId: input.stripeSubscriptionId,
+    stripeCustomerId: input.stripeCustomerId,
+    trialEndsAt: input.trialEndsAt,
+    trialConsumedAt: input.trialConsumedAt,
+    normalizedTo: resolved,
+    wasImpossible: resolved !== input.rawStatus
+  };
+}
+var NORMALIZE_IMPOSSIBLE_STATES_SQL, NORMALIZE_ACTIVE_WITHOUT_SUBSCRIPTION_SQL;
+var init_subscription_state = __esm({
+  "src/lib/subscription-state.ts"() {
+    "use strict";
+    NORMALIZE_IMPOSSIBLE_STATES_SQL = `
+-- Fix 1: active without subscription
+UPDATE org_settings
+SET    subscription_status =
+         CASE
+           WHEN trial_ends_at IS NOT NULL
+                AND trial_ends_at > NOW()
+                AND trial_consumed_at IS NOT NULL  THEN 'trialing'
+           WHEN stripe_customer_id IS NOT NULL
+                AND stripe_customer_id <> ''        THEN 'incomplete'
+           ELSE                                          'none'
+         END,
+       updated_at = NOW()
+WHERE  subscription_status = 'active'
+  AND  (stripe_subscription_id IS NULL OR stripe_subscription_id = '');
+
+-- Fix 2: trialing without subscription AND without trial_consumed_at = fake DB trial
+UPDATE org_settings
+SET    subscription_status = 'pending_billing',
+       updated_at = NOW()
+WHERE  subscription_status = 'trialing'
+  AND  (stripe_subscription_id IS NULL OR stripe_subscription_id = '')
+  AND  trial_consumed_at IS NULL;
+`;
+    NORMALIZE_ACTIVE_WITHOUT_SUBSCRIPTION_SQL = NORMALIZE_IMPOSSIBLE_STATES_SQL;
+  }
+});
+
+// src/services/billing-context.ts
+var billing_context_exports = {};
+__export(billing_context_exports, {
+  BillingContextUnavailableError: () => BillingContextUnavailableError,
+  loadBillingContext: () => loadBillingContext,
+  resolveBillingAccess: () => resolveBillingAccess
+});
+async function loadBillingContext(orgId3) {
+  const [orgData, addonsResult] = await Promise.all([
+    loadOrgData(orgId3),
+    (async () => {
+      const client = await pool.connect();
+      try {
+        return await client.query(
+          `SELECT addon_key, active, quantity FROM org_addons WHERE org_id = $1`,
+          [orgId3]
+        );
+      } finally {
+        client.release();
+      }
+    })()
+  ]);
+  if (!orgData) {
+    throw new BillingContextUnavailableError(
+      `No authoritative billing row for org '${orgId3}'`
+    );
+  }
+  const addons = {};
+  for (const row of addonsResult.rows) {
+    const qty = Number(row.quantity ?? 1);
+    addons[row.addon_key] = row.active && QTY_ADDONS.has(row.addon_key) ? Math.max(1, qty) : row.active;
+  }
+  if (orgData.addons && typeof orgData.addons === "object") {
+    for (const [key, val] of Object.entries(orgData.addons)) {
+      if (!(key in addons)) {
+        addons[key] = val;
+      }
+    }
+  }
+  const planName = orgData.plan.toLowerCase();
+  const planIncluded = PLAN_INCLUDED_ADDONS[planName] ?? /* @__PURE__ */ new Set();
+  for (const key of planIncluded) {
+    if (!(key in addons)) {
+      addons[key] = true;
+    }
+  }
+  const rawSubscriptionStatus = orgData.subscriptionStatus ?? null;
+  const stripeSubscriptionId = orgData.stripeSubscriptionId ?? null;
+  const stripeCustomerId = orgData.stripeCustomerId ?? null;
+  const trialEndsAt = orgData.trialEndsAt ?? null;
+  const trialConsumedAt = orgData.trialConsumedAt ?? null;
+  const QA_ORG_UUID2 = "10000000-0000-4000-8000-000000000002";
+  const isQaOrg = orgId3 === QA_ORG_UUID2 && orgData.isInternalQa === true;
+  const normalised = isQaOrg ? "trialing" : normalizeSubscriptionStatus({
+    rawStatus: rawSubscriptionStatus,
+    stripeSubscriptionId,
+    stripeCustomerId,
+    trialEndsAt,
+    trialConsumedAt
+  });
+  if (!isQaOrg && normalised !== rawSubscriptionStatus && rawSubscriptionStatus !== null) {
+    logger.warn(
+      { orgId: orgId3, rawSubscriptionStatus, normalizedTo: normalised, stripeSubscriptionId, trialConsumedAt },
+      "[BillingContext] Subscription state normalis\xE9 \xE0 la lecture"
+    );
+  }
+  const hasPremiumAccess = statusGrantsAccess(normalised);
+  const canStartTrial = !isQaOrg && !trialConsumedAt && !stripeSubscriptionId;
+  const mustCompleteBilling = !hasPremiumAccess;
+  return {
+    subscriptionStatus: normalised,
+    rawSubscriptionStatus,
+    plan: orgData?.plan ?? "standard",
+    stripeCustomerId,
+    stripeSubscriptionId,
+    trialEndsAt,
+    trialConsumedAt,
+    email: orgData?.email ?? null,
+    firstName: orgData?.firstName ?? null,
+    orgName: orgData?.orgName ?? null,
+    addons,
+    pendingPlan: orgData?.pendingPlan ?? null,
+    pendingPlanDate: orgData?.pendingPlanDate ?? null,
+    hasPremiumAccess,
+    canStartTrial,
+    mustCompleteBilling
+  };
+}
+async function resolveBillingAccess(orgId3) {
+  const ctx = await loadBillingContext(orgId3);
+  return {
+    status: ctx.subscriptionStatus ?? "pending_billing",
+    hasDashboardAccess: true,
+    hasPremiumAccess: ctx.hasPremiumAccess,
+    mustCompleteBilling: ctx.mustCompleteBilling,
+    canStartTrial: ctx.canStartTrial,
+    currentPlan: ctx.plan,
+    trialEndsAt: ctx.trialEndsAt,
+    currentPeriodEnd: null
+  };
+}
+var BillingContextUnavailableError;
+var init_billing_context = __esm({
+  "src/services/billing-context.ts"() {
+    "use strict";
+    init_src();
+    init_plans();
+    init_org_data();
+    init_subscription_state();
+    init_logger();
+    BillingContextUnavailableError = class extends Error {
+      constructor(message, cause) {
+        super(message);
+        this.cause = cause;
+        this.name = "BillingContextUnavailableError";
+      }
+      cause;
+      code = "BILLING_CONTEXT_UNAVAILABLE";
+      retryable = true;
+    };
+  }
+});
+
 // src/routes/stripe-webhook.ts
 var stripe_webhook_exports = {};
 __export(stripe_webhook_exports, {
@@ -75879,7 +76101,24 @@ async function handleStripeWebhook(req, res) {
           break;
         }
         const customerId = obj["customer"] ? String(obj["customer"]) : void 0;
+        let _customerMismatch = false;
         if (customerId && orgId3 && UUID_RE_WH.test(orgId3)) {
+          try {
+            const { loadBillingContext: _wlbc } = await Promise.resolve().then(() => (init_billing_context(), billing_context_exports));
+            const _wcCtx = await _wlbc(orgId3);
+            const _canonical = _wcCtx?.stripeCustomerId;
+            if (_canonical && _canonical !== customerId) {
+              logger.error(
+                { orgId: orgId3, storedCustomer: _canonical, webhookCustomer: customerId, eventType: event.type },
+                "[Webhook] STRIPE_CUSTOMER_BINDING_MISMATCH \u2014 incoming customer differs from canonical stored customer. Customer ID writes skipped."
+              );
+              _customerMismatch = true;
+            }
+          } catch (_mismatchErr) {
+            logger.warn({ _mismatchErr, orgId: orgId3 }, "[Webhook] Mismatch check failed (non-fatal) \u2014 proceeding with write");
+          }
+        }
+        if (customerId && orgId3 && UUID_RE_WH.test(orgId3) && !_customerMismatch) {
           persistOrgData(orgId3, { stripeCustomerId: customerId }).catch(
             (e) => logger.warn({ e, orgId: orgId3, customerId }, "[Webhook] Safety stripe_customer_id link failed (non-blocking)")
           );
@@ -75963,7 +76202,7 @@ async function handleStripeWebhook(req, res) {
         const persistPayload = {
           orgId: orgId3,
           subscriptionStatus: "active",
-          stripeCustomerId: customerId
+          ...!_customerMismatch ? { stripeCustomerId: customerId } : {}
         };
         if (["standard", "pro", "ultra"].includes(planNorm)) {
           persistPayload.plan = planNorm;
@@ -76838,105 +77077,6 @@ var init_requireRole = __esm({
     canAdmin = requireRole(["owner", "admin"]);
     ownerOnly = requireRole(["owner"]);
     canDelete = requireRole(["owner", "admin"]);
-  }
-});
-
-// src/lib/subscription-state.ts
-var subscription_state_exports = {};
-__export(subscription_state_exports, {
-  NORMALIZE_ACTIVE_WITHOUT_SUBSCRIPTION_SQL: () => NORMALIZE_ACTIVE_WITHOUT_SUBSCRIPTION_SQL,
-  NORMALIZE_IMPOSSIBLE_STATES_SQL: () => NORMALIZE_IMPOSSIBLE_STATES_SQL,
-  impossibleStateReport: () => impossibleStateReport,
-  normalizeSubscriptionStatus: () => normalizeSubscriptionStatus,
-  statusGrantsAccess: () => statusGrantsAccess
-});
-function normalizeSubscriptionStatus(input) {
-  const { rawStatus, stripeSubscriptionId, stripeCustomerId, trialEndsAt, trialConsumedAt } = input;
-  const hasSubscription = !!(stripeSubscriptionId && stripeSubscriptionId.trim());
-  const hasCustomer = !!(stripeCustomerId && stripeCustomerId.trim());
-  const trialActive = !!(trialEndsAt && new Date(trialEndsAt) > /* @__PURE__ */ new Date());
-  const wasConsumed = !!trialConsumedAt;
-  if (rawStatus === "pending_billing") {
-    if (hasSubscription) {
-      if (trialActive) return "trialing";
-      return "active";
-    }
-    return "pending_billing";
-  }
-  const requiresSubscription = /* @__PURE__ */ new Set(["active", "past_due", "unpaid", "paused"]);
-  if (rawStatus && requiresSubscription.has(rawStatus)) {
-    if (!hasSubscription) {
-      if (trialActive && wasConsumed) return "trialing";
-      if (trialActive) return "pending_billing";
-      if (hasCustomer) return "incomplete";
-      return "none";
-    }
-    return rawStatus;
-  }
-  if (rawStatus === "canceled") {
-    return "canceled";
-  }
-  if (rawStatus === "trialing") {
-    if (hasSubscription) {
-      if (trialActive) return "trialing";
-      return "active";
-    }
-    if (!wasConsumed) {
-      return "pending_billing";
-    }
-    if (trialActive) return "trialing";
-    if (hasCustomer) return "incomplete";
-    return "none";
-  }
-  if (rawStatus === "incomplete") {
-    return hasCustomer ? "incomplete" : "none";
-  }
-  if (hasCustomer) return "incomplete";
-  return "none";
-}
-function statusGrantsAccess(status) {
-  return status === "active" || status === "trialing";
-}
-function impossibleStateReport(input, resolved) {
-  return {
-    rawStatus: input.rawStatus,
-    stripeSubscriptionId: input.stripeSubscriptionId,
-    stripeCustomerId: input.stripeCustomerId,
-    trialEndsAt: input.trialEndsAt,
-    trialConsumedAt: input.trialConsumedAt,
-    normalizedTo: resolved,
-    wasImpossible: resolved !== input.rawStatus
-  };
-}
-var NORMALIZE_IMPOSSIBLE_STATES_SQL, NORMALIZE_ACTIVE_WITHOUT_SUBSCRIPTION_SQL;
-var init_subscription_state = __esm({
-  "src/lib/subscription-state.ts"() {
-    "use strict";
-    NORMALIZE_IMPOSSIBLE_STATES_SQL = `
--- Fix 1: active without subscription
-UPDATE org_settings
-SET    subscription_status =
-         CASE
-           WHEN trial_ends_at IS NOT NULL
-                AND trial_ends_at > NOW()
-                AND trial_consumed_at IS NOT NULL  THEN 'trialing'
-           WHEN stripe_customer_id IS NOT NULL
-                AND stripe_customer_id <> ''        THEN 'incomplete'
-           ELSE                                          'none'
-         END,
-       updated_at = NOW()
-WHERE  subscription_status = 'active'
-  AND  (stripe_subscription_id IS NULL OR stripe_subscription_id = '');
-
--- Fix 2: trialing without subscription AND without trial_consumed_at = fake DB trial
-UPDATE org_settings
-SET    subscription_status = 'pending_billing',
-       updated_at = NOW()
-WHERE  subscription_status = 'trialing'
-  AND  (stripe_subscription_id IS NULL OR stripe_subscription_id = '')
-  AND  trial_consumed_at IS NULL;
-`;
-    NORMALIZE_ACTIVE_WITHOUT_SUBSCRIPTION_SQL = NORMALIZE_IMPOSSIBLE_STATES_SQL;
   }
 });
 
@@ -99757,129 +99897,6 @@ var init_qa_fixtures = __esm({
         res.status(code).send("Service Unavailable");
       }
     });
-  }
-});
-
-// src/services/billing-context.ts
-var billing_context_exports = {};
-__export(billing_context_exports, {
-  BillingContextUnavailableError: () => BillingContextUnavailableError,
-  loadBillingContext: () => loadBillingContext,
-  resolveBillingAccess: () => resolveBillingAccess
-});
-async function loadBillingContext(orgId3) {
-  const [orgData, addonsResult] = await Promise.all([
-    loadOrgData(orgId3),
-    (async () => {
-      const client = await pool.connect();
-      try {
-        return await client.query(
-          `SELECT addon_key, active, quantity FROM org_addons WHERE org_id = $1`,
-          [orgId3]
-        );
-      } finally {
-        client.release();
-      }
-    })()
-  ]);
-  if (!orgData) {
-    throw new BillingContextUnavailableError(
-      `No authoritative billing row for org '${orgId3}'`
-    );
-  }
-  const addons = {};
-  for (const row of addonsResult.rows) {
-    const qty = Number(row.quantity ?? 1);
-    addons[row.addon_key] = row.active && QTY_ADDONS.has(row.addon_key) ? Math.max(1, qty) : row.active;
-  }
-  if (orgData.addons && typeof orgData.addons === "object") {
-    for (const [key, val] of Object.entries(orgData.addons)) {
-      if (!(key in addons)) {
-        addons[key] = val;
-      }
-    }
-  }
-  const planName = orgData.plan.toLowerCase();
-  const planIncluded = PLAN_INCLUDED_ADDONS[planName] ?? /* @__PURE__ */ new Set();
-  for (const key of planIncluded) {
-    if (!(key in addons)) {
-      addons[key] = true;
-    }
-  }
-  const rawSubscriptionStatus = orgData.subscriptionStatus ?? null;
-  const stripeSubscriptionId = orgData.stripeSubscriptionId ?? null;
-  const stripeCustomerId = orgData.stripeCustomerId ?? null;
-  const trialEndsAt = orgData.trialEndsAt ?? null;
-  const trialConsumedAt = orgData.trialConsumedAt ?? null;
-  const QA_ORG_UUID2 = "10000000-0000-4000-8000-000000000002";
-  const isQaOrg = orgId3 === QA_ORG_UUID2 && orgData.isInternalQa === true;
-  const normalised = isQaOrg ? "trialing" : normalizeSubscriptionStatus({
-    rawStatus: rawSubscriptionStatus,
-    stripeSubscriptionId,
-    stripeCustomerId,
-    trialEndsAt,
-    trialConsumedAt
-  });
-  if (!isQaOrg && normalised !== rawSubscriptionStatus && rawSubscriptionStatus !== null) {
-    logger.warn(
-      { orgId: orgId3, rawSubscriptionStatus, normalizedTo: normalised, stripeSubscriptionId, trialConsumedAt },
-      "[BillingContext] Subscription state normalis\xE9 \xE0 la lecture"
-    );
-  }
-  const hasPremiumAccess = statusGrantsAccess(normalised);
-  const canStartTrial = !isQaOrg && !trialConsumedAt && !stripeSubscriptionId;
-  const mustCompleteBilling = !hasPremiumAccess;
-  return {
-    subscriptionStatus: normalised,
-    rawSubscriptionStatus,
-    plan: orgData?.plan ?? "standard",
-    stripeCustomerId,
-    stripeSubscriptionId,
-    trialEndsAt,
-    trialConsumedAt,
-    email: orgData?.email ?? null,
-    firstName: orgData?.firstName ?? null,
-    orgName: orgData?.orgName ?? null,
-    addons,
-    pendingPlan: orgData?.pendingPlan ?? null,
-    pendingPlanDate: orgData?.pendingPlanDate ?? null,
-    hasPremiumAccess,
-    canStartTrial,
-    mustCompleteBilling
-  };
-}
-async function resolveBillingAccess(orgId3) {
-  const ctx = await loadBillingContext(orgId3);
-  return {
-    status: ctx.subscriptionStatus ?? "pending_billing",
-    hasDashboardAccess: true,
-    hasPremiumAccess: ctx.hasPremiumAccess,
-    mustCompleteBilling: ctx.mustCompleteBilling,
-    canStartTrial: ctx.canStartTrial,
-    currentPlan: ctx.plan,
-    trialEndsAt: ctx.trialEndsAt,
-    currentPeriodEnd: null
-  };
-}
-var BillingContextUnavailableError;
-var init_billing_context = __esm({
-  "src/services/billing-context.ts"() {
-    "use strict";
-    init_src();
-    init_plans();
-    init_org_data();
-    init_subscription_state();
-    init_logger();
-    BillingContextUnavailableError = class extends Error {
-      constructor(message, cause) {
-        super(message);
-        this.cause = cause;
-        this.name = "BillingContextUnavailableError";
-      }
-      cause;
-      code = "BILLING_CONTEXT_UNAVAILABLE";
-      retryable = true;
-    };
   }
 });
 
@@ -138878,25 +138895,40 @@ router54.post("/public/checkout-session", publicCheckoutRateLimit, async (req, r
             try {
               const { loadBillingContext: _csLbc } = await Promise.resolve().then(() => (init_billing_context(), billing_context_exports));
               const _authCtx = await _csLbc(_sess.orgId);
-              if (_authCtx.stripeCustomerId) {
-                stripeCustomerId = _authCtx.stripeCustomerId;
-                logger.info(
-                  { customerId: stripeCustomerId, orgId: _sess.orgId },
-                  "[PublicBilling] checkout-session: Stripe Customer resolved from authenticated session token"
-                );
+              const { ensureStripeCustomer: _escFn } = await Promise.resolve().then(() => (init_ensure_stripe_customer(), ensure_stripe_customer_exports));
+              const _escHint = {
+                stripeCustomerId: _authCtx.stripeCustomerId,
+                email: _authCtx.email,
+                firstName: _authCtx.firstName,
+                orgName: _authCtx.orgName
+              };
+              const _resolvedCustomerId = await _escFn(_sess.orgId, _escHint, stripeKey);
+              stripeCustomerId = _resolvedCustomerId;
+              if (!_authCtx.stripeCustomerId || _authCtx.stripeCustomerId !== _resolvedCustomerId) {
+                const { persistOrgData: _escPod } = await Promise.resolve().then(() => (init_org_data(), org_data_exports));
+                await _escPod(_sess.orgId, { stripeCustomerId: _resolvedCustomerId });
               }
-            } catch (_ctxErr) {
-              logger.warn(
-                { _ctxErr, orgId: _sess.orgId },
-                "[PublicBilling] checkout-session: billing-context load failed \u2014 customer not pre-linked"
+              logger.info(
+                { customerId: stripeCustomerId, orgId: _sess.orgId, wasNew: !_authCtx.stripeCustomerId },
+                "[PublicBilling] checkout-session: Stripe Customer guaranteed and persisted before checkout"
               );
+            } catch (_escErr) {
+              logger.error(
+                { _escErr, orgId: _sess.orgId },
+                "[PublicBilling] checkout-session: ensureStripeCustomer failed \u2014 aborting to prevent orphan customer"
+              );
+              res.status(503).json({
+                error: "Impossible d'initialiser votre compte de paiement. R\xE9essayez dans quelques instants.",
+                code: "STRIPE_CUSTOMER_INIT_FAILED"
+              });
+              return;
             }
           }
         }
       } catch (_optAuthErr) {
         logger.warn(
           { _optAuthErr },
-          "[PublicBilling] checkout-session: optional session resolution failed (non-fatal)"
+          "[PublicBilling] checkout-session: session resolution failed (non-fatal for anonymous flow)"
         );
       }
     }

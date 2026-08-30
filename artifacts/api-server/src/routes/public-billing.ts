@@ -409,9 +409,23 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
     // For authenticated users (cookie/Bearer session, no preRegisterToken):
     // The /public/ router has no requireAuth middleware, so req.orgId is never set here.
-    // We resolve the session manually from the Bearer token or fp_token cookie so that:
-    //   (a) orgId is included in session metadata → webhook resolves the org deterministically
-    //   (b) existing Stripe customer is reused → no duplicate customer created
+    // We resolve the session manually from the Bearer token or fp_token cookie.
+    //
+    // ── ARCHITECTURAL INVARIANT ──────────────────────────────────────────────────
+    // Before stripe.checkout.sessions.create() is called for any authenticated user:
+    //   org UUID ↔ canonical Stripe customer cus_...
+    // must already be resolved, created if absent, and persisted in DB.
+    // The webhook must never be the first writer of this binding.
+    //
+    // Implementation: ensureStripeCustomer (v4, two-layer deduplication):
+    //   Layer 1 — _inflight Map: concurrent requests in the same process share one Promise
+    //   Layer 2 — pg_advisory_xact_lock: cross-process/cross-instance DB-level serialisation
+    //   Steps: DB read → Stripe retrieve → metadata search (orphan recovery) → create →
+    //          persist with strict confirmation (throws on failure) → organisations mirror
+    //
+    // If ensureStripeCustomer throws (Stripe or DB unreachable): abort with 503.
+    // Do NOT create a Checkout Session without a confirmed org↔customer binding —
+    // this would produce an orphan Stripe customer with no DB link.
     if (!preRegisterToken) {
       try {
         const _authHeader  = req.headers["authorization"];
@@ -429,22 +443,51 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
           if (_sess?.orgId && _sess.orgId !== "default") {
             signupOrgId = _sess.orgId; // included in session metadata.orgId below
             try {
+              // Load billing context for the hint (avoids a duplicate DB read inside ESC).
               const { loadBillingContext: _csLbc } = await import("../services/billing-context.js");
               const _authCtx = await _csLbc(_sess.orgId);
-              if (_authCtx.stripeCustomerId) {
-                stripeCustomerId = _authCtx.stripeCustomerId;
-                logger.info({ customerId: stripeCustomerId, orgId: _sess.orgId },
-                  "[PublicBilling] checkout-session: Stripe Customer resolved from authenticated session token");
+
+              // ensureStripeCustomer guarantees exactly one canonical customer per org.
+              // It passes the billing context as a hint so ESC skips a redundant DB read
+              // when the customer already exists.
+              const { ensureStripeCustomer: _escFn } = await import("../services/ensure-stripe-customer.js");
+              const _escHint = {
+                stripeCustomerId: _authCtx.stripeCustomerId,
+                email:            _authCtx.email,
+                firstName:        _authCtx.firstName,
+                orgName:          _authCtx.orgName,
+              };
+              const _resolvedCustomerId = await _escFn(_sess.orgId, _escHint, stripeKey);
+              stripeCustomerId = _resolvedCustomerId;
+
+              // ESC writes to org_settings (primary) + fire-and-forget organisations mirror.
+              // We await persistOrgData explicitly so organisations.stripe_customer_id is
+              // committed before sessions.create — makes loadBillingContext deterministic
+              // on the next request, regardless of the fire-and-forget timing in ESC.
+              if (!_authCtx.stripeCustomerId || _authCtx.stripeCustomerId !== _resolvedCustomerId) {
+                const { persistOrgData: _escPod } = await import("../services/org-data.js");
+                await _escPod(_sess.orgId, { stripeCustomerId: _resolvedCustomerId });
               }
-            } catch (_ctxErr) {
-              logger.warn({ _ctxErr, orgId: _sess.orgId },
-                "[PublicBilling] checkout-session: billing-context load failed — customer not pre-linked");
+
+              logger.info(
+                { customerId: stripeCustomerId, orgId: _sess.orgId, wasNew: !_authCtx.stripeCustomerId },
+                "[PublicBilling] checkout-session: Stripe Customer guaranteed and persisted before checkout"
+              );
+            } catch (_escErr) {
+              // Hard failure: do NOT proceed to sessions.create without a confirmed binding.
+              logger.error({ _escErr, orgId: _sess.orgId },
+                "[PublicBilling] checkout-session: ensureStripeCustomer failed — aborting to prevent orphan customer");
+              res.status(503).json({
+                error: "Impossible d'initialiser votre compte de paiement. Réessayez dans quelques instants.",
+                code: "STRIPE_CUSTOMER_INIT_FAILED",
+              });
+              return;
             }
           }
         }
       } catch (_optAuthErr) {
         logger.warn({ _optAuthErr },
-          "[PublicBilling] checkout-session: optional session resolution failed (non-fatal)");
+          "[PublicBilling] checkout-session: session resolution failed (non-fatal for anonymous flow)");
       }
     }
 

@@ -984,10 +984,39 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
       const customerId = obj["customer"] ? String(obj["customer"]) : undefined;
 
-      // ── Safety net: eagerly link stripe_customer_id so findOrgByStripeCustomer ──
-      // works on subsequent webhook events even if this handler errors later.
-      // Fire-and-forget; never blocks the main flow.
+      // ── Canonical customer mismatch guard ─────────────────────────────────
+      // After the architectural fix, the org↔customer binding is established
+      // before checkout, so the webhook customer should always match what's
+      // stored in organisations.stripe_customer_id.
+      //
+      // If the incoming customer DIFFERS from the stored canonical:
+      //   → log STRIPE_CUSTOMER_BINDING_MISMATCH
+      //   → skip all customer ID writes (don't silently overwrite canonical)
+      //
+      // If no canonical exists yet (first purchase, pre-fix legacy orgs):
+      //   → write normally (safety-net path)
+      let _customerMismatch = false;
       if (customerId && orgId && UUID_RE_WH.test(orgId)) {
+        try {
+          const { loadBillingContext: _wlbc } = await import("../services/billing-context.js");
+          const _wcCtx = await _wlbc(orgId);
+          const _canonical = _wcCtx?.stripeCustomerId;
+          if (_canonical && _canonical !== customerId) {
+            logger.error(
+              { orgId, storedCustomer: _canonical, webhookCustomer: customerId, eventType: event.type },
+              "[Webhook] STRIPE_CUSTOMER_BINDING_MISMATCH — incoming customer differs from canonical stored customer. Customer ID writes skipped."
+            );
+            _customerMismatch = true;
+          }
+        } catch (_mismatchErr) {
+          logger.warn({ _mismatchErr, orgId }, "[Webhook] Mismatch check failed (non-fatal) — proceeding with write");
+        }
+      }
+
+      // ── Safety net: link stripe_customer_id (role: verify/repair, not first writer) ──
+      // After the architectural fix, the binding already exists before this fires.
+      // This catches pre-fix legacy orgs or edge-case failures in ensureStripeCustomer.
+      if (customerId && orgId && UUID_RE_WH.test(orgId) && !_customerMismatch) {
         persistOrgData(orgId, { stripeCustomerId: customerId }).catch(e =>
           logger.warn({ e, orgId, customerId }, "[Webhook] Safety stripe_customer_id link failed (non-blocking)")
         );
@@ -1090,10 +1119,11 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // P0-1: pass explicit orgId — never defaults to "default"
       // Bug-1 fix: persist plan immediately from session.metadata.plan when valid,
       // rather than waiting for the subscription.created/updated webhook.
+      // _customerMismatch guard: don't overwrite canonical customer ID on mismatch.
       const persistPayload: Parameters<typeof persistSubscriptionMeta>[0] = {
         orgId,
         subscriptionStatus: "active",
-        stripeCustomerId: customerId,
+        ...(!_customerMismatch ? { stripeCustomerId: customerId } : {}),
       };
       if (["standard","pro","ultra"].includes(planNorm)) {
         persistPayload.plan = planNorm;
