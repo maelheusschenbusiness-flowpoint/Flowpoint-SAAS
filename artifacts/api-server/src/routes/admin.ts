@@ -1740,10 +1740,147 @@ router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): 
   }
 });
 
-// ── POST /api/admin/activate-addon-direct ────────────────────────────────────
-// DB-only addon activation — NO Stripe billing. Use only to reconcile a
-// payment already collected (e.g. via PaymentIntent) but never persisted to
-// org_addons due to the pre-fix webhook FK failure.
+// ── POST /api/admin/adopt-canonical-stripe-customer ──────────────────────────
+// Atomically re-point a canonical org UUID to the correct historical Stripe
+// customer (e.g. when migration created a duplicate).
+//
+// Body: {
+//   orgId:              string   // canonical UUID org (will receive the customer)
+//   canonicalCustomerId: string  // cus_xxx to adopt
+//   legacyOrgId?:       string   // email/legacy orgId whose org_settings also gets updated
+//   updateStripeMeta?:  boolean  // if true, patch customer.metadata.orgId to UUID (default true)
+// }
+// Returns: { ok, orgId, canonicalCustomerId, previousCustomerId, legacyUpdated, stripeMetaUpdated }
+router.post("/admin/adopt-canonical-stripe-customer", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const {
+    orgId: rawOrgId,
+    canonicalCustomerId,
+    legacyOrgId,
+    updateStripeMeta = true,
+  } = req.body as {
+    orgId?: string;
+    canonicalCustomerId?: string;
+    legacyOrgId?: string;
+    updateStripeMeta?: boolean;
+  };
+  if (!rawOrgId || !canonicalCustomerId) {
+    res.status(400).json({ ok: false, error: "orgId and canonicalCustomerId required" });
+    return;
+  }
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawOrgId);
+  if (!isUuid) {
+    res.status(400).json({ ok: false, error: "orgId must be a UUID" });
+    return;
+  }
+  try {
+    // 1 — Verify org exists in organizations
+    const orgRow = await pool.query<{ id: string; stripe_customer_id: string | null }>(
+      `SELECT id::text, stripe_customer_id FROM organizations WHERE id = $1::uuid LIMIT 1`,
+      [rawOrgId]
+    );
+    if (!orgRow.rows[0]) {
+      res.status(404).json({ ok: false, error: `Org ${rawOrgId} not found in organizations` });
+      return;
+    }
+    const previousCustomerId = orgRow.rows[0].stripe_customer_id ?? null;
+
+    // 2 — Verify customer exists in Stripe (read-only probe)
+    const stripeKey = process.env.STRIPE_LIVE_API_KEY ?? process.env.STRIPE_SECRET_KEY ?? "";
+    if (!stripeKey) { res.status(500).json({ ok: false, error: "No Stripe key configured" }); return; }
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const customer = await stripe.customers.retrieve(canonicalCustomerId).catch((e: Error) => ({ _err: e.message }));
+    if ("_err" in customer) {
+      res.status(400).json({ ok: false, error: `Stripe retrieve failed: ${customer._err}` });
+      return;
+    }
+    if ((customer as { deleted?: boolean }).deleted) {
+      res.status(400).json({ ok: false, error: `Customer ${canonicalCustomerId} is deleted in Stripe` });
+      return;
+    }
+
+    // 3 — Atomic DB writes: organizations + org_settings (UUID key + legacy key)
+    const client = await pool.connect();
+    let legacyUpdated = false;
+    try {
+      await client.query("BEGIN");
+      // 3a — Update organizations.stripe_customer_id
+      await client.query(
+        `UPDATE organizations SET stripe_customer_id = $1 WHERE id = $2::uuid`,
+        [canonicalCustomerId, rawOrgId]
+      );
+      // 3b — Upsert org_settings for the UUID key (creates or updates)
+      await client.query(
+        `INSERT INTO org_settings (org_id, stripe_customer_id) VALUES ($1, $2)
+         ON CONFLICT (org_id) DO UPDATE SET stripe_customer_id = $2, updated_at = NOW()`,
+        [rawOrgId, canonicalCustomerId]
+      );
+      // 3c — Update legacy org_settings row if provided
+      if (legacyOrgId) {
+        const legRes = await client.query(
+          `UPDATE org_settings SET stripe_customer_id = $1, updated_at = NOW() WHERE org_id = $2`,
+          [canonicalCustomerId, legacyOrgId]
+        );
+        legacyUpdated = (legRes.rowCount ?? 0) > 0;
+        if (!legacyUpdated) {
+          // No existing row — insert
+          await client.query(
+            `INSERT INTO org_settings (org_id, stripe_customer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [legacyOrgId, canonicalCustomerId]
+          );
+          legacyUpdated = true;
+        }
+      }
+      await client.query("COMMIT");
+    } catch (dbErr) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw dbErr;
+    } finally {
+      client.release();
+    }
+
+    // 4 — Update Stripe customer metadata.orgId to UUID (fire-and-forget, non-fatal)
+    let stripeMetaUpdated = false;
+    if (updateStripeMeta) {
+      try {
+        const existingMeta = (customer as { metadata?: Record<string, string> }).metadata ?? {};
+        if (existingMeta["orgId"] !== rawOrgId || existingMeta["flowpointOrgId"] !== rawOrgId) {
+          await stripe.customers.update(canonicalCustomerId, {
+            metadata: {
+              ...existingMeta,
+              orgId: rawOrgId,
+              flowpointOrgId: rawOrgId,
+              org_id: rawOrgId,
+              _adoptedFrom: existingMeta["orgId"] ?? "unknown",
+              _adoptedAt: new Date().toISOString(),
+            },
+          });
+          stripeMetaUpdated = true;
+        }
+      } catch (metaErr) {
+        console.error(`[Admin] adopt-canonical: Stripe metadata update failed (non-fatal):`, metaErr);
+      }
+    }
+
+    console.log(`[Admin] adopt-canonical: org=${rawOrgId} customer=${canonicalCustomerId} prev=${previousCustomerId} legacy=${legacyOrgId||'none'} meta=${stripeMetaUpdated}`);
+    res.json({
+      ok: true,
+      orgId: rawOrgId,
+      canonicalCustomerId,
+      previousCustomerId,
+      legacyUpdated,
+      stripeMetaUpdated,
+    });
+  } catch (err) {
+    const msg = (err as Error)?.message ?? String(err ?? "unknown");
+    res.status(500).json({ ok: false, error: msg });
+  }
+});
+
+// ── POST /api/admin/activate-addon-direct ─────────────────────────────────────
+// Direct DB-only addon activation — NO Stripe billing. Use only to reconcile a
+// payment that was already collected (e.g. via PaymentIntent) but never persisted.
 // Body: { orgId: string, addonKey: string, quantity?: number, piId?: string }
 router.post("/admin/activate-addon-direct", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
@@ -1756,6 +1893,7 @@ router.post("/admin/activate-addon-direct", async (req: Request, res: Response):
   }
   const qty = Math.max(1, Math.floor(Number(quantity) || 1));
   try {
+    // Verify canonical org exists
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawOrgId);
     let canonicalOrgId = rawOrgId;
     if (isUuid) {

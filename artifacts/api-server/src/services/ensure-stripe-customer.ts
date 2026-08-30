@@ -169,6 +169,13 @@ async function _runWithLock(
     // email. If the candidate is still null here, try fetching the legacy
     // org_settings row keyed by owner_email — prevents creating a duplicate
     // Stripe customer when the original was stored under the email key.
+    //
+    // IMPORTANT: when the legacy customer is found and confirmed alive (Step 2),
+    // _persistStrict MUST be called to anchor orgId→customer in org_settings[UUID]
+    // AND mirror it to organizations.stripe_customer_id via persistOrgData.
+    // Without this, every future call re-runs the fallback and, if org_settings
+    // [email] is ever cleared, recreates the customer.
+    let _fromLegacyFallback = false;
     if (!rawId?.trim()) {
       try {
         const orgEmailRow = await client.query(
@@ -181,9 +188,10 @@ async function _runWithLock(
           const legacyId = emailSettings?.stripeCustomerId;
           if (legacyId && legacyId.trim()) {
             rawId = legacyId.trim();
+            _fromLegacyFallback = true;
             logger.info(
               { orgId, ownerEmail, legacyId },
-              "[ESC] UUID→email fallback: found customer in legacy org_settings — reusing to avoid duplicate",
+              "[ESC] UUID→email fallback: found customer in legacy org_settings — will persist to UUID key to prevent future duplicates",
             );
           }
         }
@@ -225,6 +233,26 @@ async function _runWithLock(
             }).catch((updErr: unknown) => {
               logger.warn({ orgId, customerId: candidateId, err: updErr instanceof Error ? updErr.message : String(updErr) }, "[ESC] company backfill failed (non-fatal)");
             });
+          }
+          // ── Legacy fallback persistence (critical — prevents future duplicates) ──
+          // When the UUID→email fallback found this customer, org_settings[UUID] does
+          // not yet have a stripe_customer_id row.  Persist now inside this transaction
+          // so the next call reads it from Step 1 (no fallback, no risk of re-creation).
+          // The dual-write inside _persistStrict also updates organizations.stripe_customer_id.
+          if (_fromLegacyFallback) {
+            try {
+              await _persistStrict(orgId, candidateId, client, t0);
+              logger.info(
+                { orgId, customerId: candidateId },
+                "[ESC] UUID→email fallback: persisted legacy customer to UUID org key — future calls skip fallback",
+              );
+            } catch (persistErr) {
+              // Non-fatal: we can still return the correct customer. Log prominently.
+              logger.error(
+                { persistErr, orgId, customerId: candidateId },
+                "[ESC] UUID→email fallback: persistence failed (non-fatal, customer still valid but may duplicate on next call)",
+              );
+            }
           }
           return candidateId;
         }
@@ -280,6 +308,30 @@ async function _runWithLock(
       // _persistStrict errors propagate correctly (not inside the search try-catch)
       await _persistStrict(orgId, orphan.id, client, t0);
       return orphan.id;
+    }
+
+    // ── QA / synthetic org guard (Phase 4) ───────────────────────────────
+    // If the Stripe key is LIVE, block customer creation for internal QA orgs.
+    // These orgs should never receive a live Stripe customer; they must use
+    // test-mode keys or mocked billing.  Checked here (after all DB reads are
+    // done inside the lock) so the advisory lock is already held — no TOCTOU.
+    if (key.startsWith("sk_live_")) {
+      try {
+        const qaRow = await client.query<{ is_qa: boolean }>(
+          `SELECT COALESCE(is_internal_qa, false) AS is_qa FROM organizations WHERE id::text = $1 LIMIT 1`,
+          [orgId],
+        );
+        if (qaRow.rows[0]?.is_qa === true) {
+          throw new Error(
+            `[ESC] BLOCKED: org ${orgId} has is_internal_qa=true — live Stripe customer creation is prohibited for QA orgs. ` +
+            `Call ensureStripeCustomer with STRIPE_TEST_KEY instead.`,
+          );
+        }
+      } catch (qaErr) {
+        // Re-throw if it's our own guard; suppress DB errors (missing column etc.) so existing orgs are unaffected.
+        if (qaErr instanceof Error && qaErr.message.startsWith("[ESC] BLOCKED")) throw qaErr;
+        logger.warn({ qaErr, orgId }, "[ESC] QA guard check failed (non-fatal, proceeding to create)");
+      }
     }
 
     // ── Step 4: Create exactly one customer ───────────────────────────────
