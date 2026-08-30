@@ -1256,11 +1256,24 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         try {
           /* Ensure _authenticatedOrgId is a UUID — legacy email-keyed sessions must be
              resolved to their canonical organizations.id before DB writes that have a UUID FK. */
+          const _aoOrigOrgId = _authenticatedOrgId; // snapshot BEFORE resolve (for diagnostics)
           try {
             const { resolveCanonicalOrgUuid: _aoResolve } = await import("../services/ai-engine.js");
             const _resolved = await _aoResolve(_authenticatedOrgId!);
             if (_resolved) _authenticatedOrgId = _resolved;
           } catch (_resolveErr) { /* non-fatal: proceed with original orgId */ }
+          // Diagnostic log — no behavior change; helps trace UUID vs email orgId mismatch
+          const _uuidFmt = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          logger.info({
+            FINALIZE_ADDON_CONTEXT:       true,
+            authenticatedOrgId_original:  _aoOrigOrgId        ? String(_aoOrigOrgId).slice(0, 8)        + "…" : null,
+            resolvedOrgId:                _authenticatedOrgId ? String(_authenticatedOrgId).slice(0, 8) + "…" : null,
+            resolutionSucceeded:          _authenticatedOrgId !== _aoOrigOrgId,
+            isUuidOriginal:               _uuidFmt.test(_aoOrigOrgId        ?? ""),
+            isUuidResolved:               _uuidFmt.test(_authenticatedOrgId ?? ""),
+            addonKeys:                    _aoRecurring,
+            paymentIntentId:              intentId ? String(intentId).slice(0, 20) + "…" : null,
+          }, "[PublicBilling] finalize: FINALIZE_ADDON_CONTEXT");
 
           /* Resolve the subscriber's Stripe customer (recovers deleted customers). */
           const { loadBillingContext: _aoLbc } = await import("../services/billing-context.js");

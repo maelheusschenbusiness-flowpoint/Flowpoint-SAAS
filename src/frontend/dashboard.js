@@ -5205,9 +5205,13 @@ function bindMsgPanel(dd, { markAsRead = false } = {}) {
     const b = $('#fp-msg-badge');
     if (b) { u > 0 ? (b.removeAttribute('hidden'), b.textContent = u) : b.setAttribute('hidden',''); }
   };
-  // BUG A fix: only mark messages as read when the user explicitly opens the panel.
-  // SSE re-renders call bindMsgPanel(dd) with no arguments (markAsRead=false by default)
-  // so an incoming message never zeroes the badge on its own.
+  // Mark all messages in the current channel as read — ONLY when the panel is
+  // explicitly opened or the user switches channel. When called from the SSE
+  // re-render path (markAsRead = false), we skip this block so that an incoming
+  // message is not silently marked read just because the dropdown happens to be
+  // visible. This was the root cause of the "1 out of 2" badge intermittency:
+  //   SSE → push(read:false) → _fpRefreshMsgBadge → badge=1
+  //   → bindMsgPanel (SSE re-render) → mark-read → badge=0   ✗
   if (markAsRead) {
     const curCh = STATE.msgChannel || 'general';
     if (STATE.channelMessages && STATE.channelMessages[curCh]) {
@@ -5229,7 +5233,8 @@ function bindMsgPanel(dd, { markAsRead = false } = {}) {
   setTimeout(() => { const ml = dd.querySelector('#fp-msg-list'); if (ml) ml.scrollTop = ml.scrollHeight; }, 50);
 
   dd.querySelectorAll('.fp-msg-channel-btn').forEach(btn => {
-    btn.addEventListener('click', e => { e.stopPropagation(); STATE.msgChannel = btn.dataset.channel; dd.innerHTML = renderMsgDropdown(); bindMsgPanel(dd); });
+    // Switching channel = user explicitly reading that channel → markAsRead: true
+    btn.addEventListener('click', e => { e.stopPropagation(); STATE.msgChannel = btn.dataset.channel; dd.innerHTML = renderMsgDropdown(); bindMsgPanel(dd, { markAsRead: true }); });
   });
 
   dd.querySelector('#fp-msg-mark-all')?.addEventListener('click', e => {
@@ -10362,7 +10367,10 @@ function renderBilling() {
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.6;cursor:not-allowed">⏳ Bientôt disponible</button>`
                 : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">${fpT('✓ Déjà inclus')}</button>`
               : a.active
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`
+                ? (_FP_QTY_ADDON_KEYS[a.key]
+                    // Quantity/cumulative add-on already active → qty selector + "Ajouter" + "Désactiver"
+                    ? `<div style="display:flex;align-items:center;gap:8px"><div style="display:flex;align-items:center;gap:4px" title="Packs supplémentaires"><button onclick="window._fpAddonQtyStep('${a.key}',-1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">−</button><input id="fp-addon-qty-${a.key}" type="number" value="1" min="1" max="20" readonly style="width:38px;text-align:center;border:1px solid var(--fp-border);border-radius:6px;padding:3px 4px;font-size:13px;background:transparent;color:var(--fp-text)"><button onclick="window._fpAddonQtyStep('${a.key}',1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">+</button></div><button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Ajouter — ${escHtml(a.price)}</button><button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
+                    : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`)
                 : a.wizardFn
                   ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 Lancer →</button>`
                   : a.availability === 'coming_soon'
@@ -10449,7 +10457,10 @@ function renderBilling() {
                   ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed">⏳ Bientôt</button>`
                   : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">${a.availability === 'beta' ? '🧪 Bêta · Inclus' : '✓ Inclus'}</button>`
                 : a.active
-                  ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`
+                  ? (_FP_QTY_ADDON_KEYS[a.key]
+                      // Quantity/cumulative add-on already active → offer "Ajouter +1" AND "Désactiver"
+                      ? `<div style="display:flex;gap:4px;align-items:center"><button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">${fpT('Ajouter +1')}</button><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
+                      : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`)
                   : a.wizardFn
                     ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 Lancer →</button>`
                     : a.availability === 'coming_soon'
@@ -18211,7 +18222,7 @@ function bindGlobalEvents() {
     if (isHidden) {
       dd.removeAttribute('hidden');
       dd.innerHTML = renderMsgDropdown();
-      bindMsgPanel(dd);
+      bindMsgPanel(dd, { markAsRead: true }); // user explicitly opening panel → mark read
     } else { dd.setAttribute('hidden',''); }
   });
 
@@ -47979,22 +47990,6 @@ async function init() {
               try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
               _apiFetchCache && _apiFetchCache.clear();
               loadData().catch(() => {});
-            // ── Billing addons updated (webhook path) ──────────────────────────────
-            } else if (msg.type === 'billing:addons_updated') {
-              try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-              _apiFetchCache && _apiFetchCache.clear();
-              // Guard: never call loadData() while one is already in progress (boot race).
-              // If the SSE fires during initial boot, loadData() will naturally pick up
-              // the fresh addon data; just show the toast for immediate feedback.
-              if (_loadDataInProgress || window.__fpLoadDataInProgress) {
-                showToast('success', fpT('Add-on activé ✓'));
-              } else {
-                (async function() {
-                  try { await loadData(); } catch(_) {}
-                  showToast('success', fpT('Add-on activé ✓'));
-                  render();
-                })();
-              }
             // ── Add-on deactivated ─────────────────────────────────────────────────
             } else if (msg.type === 'addon:deactivated' || msg.type === 'fp:addon:deactivated') {
               const addonKey = msg.addonKey || msg.addon_key || '';
@@ -48005,6 +48000,17 @@ async function init() {
               try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
               _apiFetchCache && _apiFetchCache.clear();
               loadData().catch(() => {});
+            // ── Add-ons batch activated (webhook reconciliation) ─────────────────────
+            // Fired when the webhook successfully activates recurring add-ons.
+            // DB/API is the source of truth — reload and re-render from server.
+            } else if (msg.type === 'billing:addons_updated') {
+              try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+              _apiFetchCache && _apiFetchCache.clear();
+              (async function() {
+                try { await loadData(); } catch(_) {}
+                showToast('success', fpT('Add-on activé ✓'));
+                render();
+              })();
             // ── Payment succeeded (invoice renewal) ────────────────────────────────
             } else if (msg.type === 'payment_succeeded') {
               try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
@@ -48052,6 +48058,35 @@ async function init() {
                 // Sync teamChatHistory for current channel
                 if ((_ch) === (STATE.msgChannel || 'general')) {
                   STATE.teamChatHistory = (STATE.channelMessages[_ch] || []).map(m => ({...m}));
+                }
+                // Inject synthetic chat notification so getMsgUnreadTotal() sees it
+                // immediately — without waiting up to 60s for the /notifications poll.
+                // Dedup key: stable message id from the server (never just a timestamp).
+                // The 60s poll merge keeps synthetics younger than 90s that have no
+                // matching real DB row yet, then discards them once the DB row lands.
+                if (!_alreadyMine) {
+                  const _synthMsgId = _cm.id || null;
+                  // Guard: don't inject if an identical synthetic already exists for this msgId
+                  const _synthDedupKey = 'synth_' + (_synthMsgId || (_ch + '_' + String(_cm.senderId || '') + '_' + Date.now()));
+                  const _alreadySynth = (STATE.notifications || []).some(n =>
+                    (_synthMsgId && n._msgId === _synthMsgId) || n.id === _synthDedupKey
+                  );
+                  if (!_alreadySynth) {
+                    if (!Array.isArray(STATE.notifications)) STATE.notifications = [];
+                    STATE.notifications.unshift({
+                      id:        _synthDedupKey,
+                      _msgId:    _synthMsgId,           // correlation key for poll merge
+                      _synthAt:  Date.now(),            // TTL for poll merge cleanup
+                      type:      'chat',
+                      read:      false,
+                      title:     _cm.senderName || fpT('Équipe'),
+                      body:      (_cm.content || _cm.text || '').slice(0, 100),
+                      // link carries senderId so _isOwnChatNotif() can filter sender-side
+                      link:      JSON.stringify({ senderId: _cm.senderId || null, channel: _ch }),
+                      createdAt: new Date().toISOString(),
+                    });
+                    if (STATE.notifications.length > 60) STATE.notifications.pop();
+                  }
                 }
                 // Update badge and play sound
                 try { window._fpRefreshMsgBadge?.(); } catch(_) {}
@@ -48162,10 +48197,34 @@ async function init() {
           const arr = Array.isArray(raw) ? raw : (Array.isArray(raw?.notifications) ? raw.notifications : []);
           if (arr.length > 0) {
             const hadUnread = STATE.notifications.filter(n => !n.read).length;
-            STATE.notifications = arr;
-            const nowUnread = arr.filter(n => !n.read).length;
+            // Smart merge: preserve unread synthetic chat notifs (injected by SSE) that
+            // have not yet landed as a real DB row, and apply any local read-state to
+            // DB rows the user already dismissed in this session.
+            //   - Synthetic = id starts with 'synth_' + has _synthAt timestamp
+            //   - Keep synthetic if it is < 90s old (1.5× poll interval) AND the DB
+            //     response does not yet contain a row for the same message (_msgId match)
+            //   - Discard synthetics ≥ 90s old unconditionally (DB write must have settled)
+            //   - Preserve local read-state: if the user marked a DB row read in-session,
+            //     that stays read even if the server hasn't persisted yet.
+            const _now90 = Date.now() - 90000;
+            const _dbIds = new Set(arr.map(n => n.id));
+            const _dbMsgIds = new Set(arr.map(n => n._msgId).filter(Boolean));
+            const _localReadIds = new Set(
+              (STATE.notifications || []).filter(n => n.read).map(n => n.id)
+            );
+            const _synthsToKeep = (STATE.notifications || []).filter(n =>
+              n.id && n.id.startsWith('synth_') &&
+              (n._synthAt || 0) > _now90 &&          // not expired
+              !_dbIds.has(n.id) &&                   // real row not yet in DB response by id
+              !(n._msgId && _dbMsgIds.has(n._msgId)) // real row not yet in DB response by msgId
+            );
+            const _mergedArr = arr.map(n => ({ ...n, read: n.read || _localReadIds.has(n.id) }));
+            STATE.notifications = [..._synthsToKeep, ..._mergedArr].slice(0, 60);
+            const nowUnread = STATE.notifications.filter(n => !n.read).length;
             // Refresh the bell badge when new unread notifications arrive
             if (nowUnread !== hadUnread) { try { renderNotifications(); } catch(_) {} }
+            // Also refresh msg badge in case poll delivered new chat notifs
+            try { window._fpRefreshMsgBadge?.(); } catch(_) {}
           }
         }
       } catch(e) {}
