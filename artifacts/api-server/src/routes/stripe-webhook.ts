@@ -1650,16 +1650,47 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         // Plan changed → send plan-change specific email, not generic "payment confirmed".
         // If amount_paid = 0 the user is on a trial — adjust message accordingly.
         //
-        // GUARD: add-on subscriptions (metadata.addonSub="true") also fire
-        // subscription_update invoices. Do NOT send a plan-change email for those —
-        // they are not a plan change. Route them to the addon/renewal email instead.
+        // GUARD 1: dedicated add-on subscriptions (metadata.addonSub="true") also fire
+        // subscription_update invoices — route them to the addon email, not plan-change.
+        //
+        // GUARD 2: subscriptionItems.create on the PLAN subscription (to add a paid
+        // add-on pack such as monitorsPack10) also fires billing_reason="subscription_update"
+        // on the plan sub — which does NOT have addonSub metadata.  We detect this by
+        // checking whether any invoice line item's price ID matches a known plan-tier
+        // price (Standard / Pro / Ultra).  If NONE match → add-on-only mutation →
+        // send addon confirmation, never sendPlanChanged.
         const _subDetails = obj["subscription_details"] as Record<string, unknown> | undefined;
         const _subMeta = (_subDetails?.["metadata"] as Record<string, string>) ?? {};
         const _isAddonSub = _subMeta["addonSub"] === "true";
 
-        if (_isAddonSub) {
+        let _isAddonOnlyInvoice = false;
+        if (!_isAddonSub) {
+          try {
+            const { PLAN_PRICE_IDS } = await import("../lib/plans.js");
+            // Build a flat Set of all live plan price IDs
+            const _planPriceIdSet = new Set(Object.values(PLAN_PRICE_IDS));
+            const _lineData = ((obj["lines"] as Record<string, unknown>)?.["data"] as Array<Record<string, unknown>>) ?? [];
+            const _hasPlanLine = _lineData.some(l => {
+              const priceId = (l["price"] as Record<string, unknown> | null)?.["id"];
+              return priceId && _planPriceIdSet.has(String(priceId));
+            });
+            // Add-on-only if there are lines but none is a plan price
+            _isAddonOnlyInvoice = _lineData.length > 0 && !_hasPlanLine;
+            if (_isAddonOnlyInvoice) {
+              logger.info({ orgId, billingReason, lineCount: _lineData.length },
+                "[Webhook] invoice.payment_succeeded: subscription_update — no plan price in lines, routing to sendPaymentSucceeded(isAddon)");
+            }
+          } catch (_planCheckErr) {
+            // Fail-open: if we can't load plan prices, assume it IS a plan change
+            // (safer than suppressing a real plan-upgrade email)
+            logger.warn({ err: _planCheckErr }, "[Webhook] Failed to check plan prices — treating subscription_update as plan change");
+          }
+        }
+
+        if (_isAddonSub || _isAddonOnlyInvoice) {
           // Add-on subscription update — treat as an add-on confirmation email.
-          logger.info({ orgId, billingReason }, "[Webhook] invoice.payment_succeeded: subscription_update on addonSub — routing to sendPaymentSucceeded(isAddon)");
+          logger.info({ orgId, billingReason, _isAddonSub, _isAddonOnlyInvoice },
+            "[Webhook] invoice.payment_succeeded: subscription_update on addon — routing to sendPaymentSucceeded(isAddon)");
           mailer.sendPaymentSucceeded({
             to:        orgData.email,
             name:      recipientName,
@@ -1670,6 +1701,8 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
           }).catch(err => logger.warn({ err, orgId }, "[Webhook] sendPaymentSucceeded(addon) email failed"));
         } else {
           const isBillingTrial = amountCents === 0;
+          logger.info({ orgId, billingReason, isBillingTrial },
+            "[Webhook] invoice.payment_succeeded: subscription_update with plan price line — sending sendPlanChanged");
           mailer.sendPlanChanged({
             to:        orgData.email,
             name:      recipientName,

@@ -1943,6 +1943,44 @@ router.post("/admin/activate-addon-direct", async (req: Request, res: Response):
   }
 });
 
+// ── POST /api/admin/deactivate-addon-direct ───────────────────────────────────
+// Direct DB-only addon deactivation — NO Stripe mutation. Use to restore state
+// after a test activation or a refunded payment whose webhook didn't deactivate.
+// Body: { orgId: string, addonKey: string }
+router.post("/admin/deactivate-addon-direct", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: rawOrgId, addonKey } = req.body as { orgId?: string; addonKey?: string };
+  if (!rawOrgId || !addonKey) {
+    res.status(400).json({ ok: false, error: "orgId and addonKey required" });
+    return;
+  }
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawOrgId);
+  if (!isUuid) { res.status(400).json({ ok: false, error: "orgId must be a valid UUID" }); return; }
+  try {
+    const orgCheck = await pool.query(`SELECT id::text FROM organizations WHERE id = $1::uuid LIMIT 1`, [rawOrgId]);
+    if (!orgCheck.rows[0]) {
+      res.status(404).json({ ok: false, error: `Org ${rawOrgId} not found in organizations` });
+      return;
+    }
+    const canonicalOrgId = orgCheck.rows[0].id as string;
+    const client = await pool.connect();
+    let rowCount = 0;
+    try {
+      const result = await client.query(
+        `UPDATE org_addons SET active = false, updated_at = NOW()
+          WHERE org_id = $1::uuid AND addon_key = $2`,
+        [canonicalOrgId, addonKey]
+      );
+      rowCount = result.rowCount ?? 0;
+    } finally { client.release(); }
+    console.log(`[Admin] deactivate-addon-direct: org=${canonicalOrgId} addon=${addonKey} rowCount=${rowCount}`);
+    res.json({ ok: true, orgId: canonicalOrgId, addonKey, rowCount });
+  } catch (err) {
+    const msg = (err as Error)?.message ?? String(err ?? "unknown");
+    res.status(500).json({ ok: false, error: msg });
+  }
+});
+
 // ── POST /api/admin/run-trial-cron — trigger trial-ending check immediately ──
 router.post("/admin/run-trial-cron", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
