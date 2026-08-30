@@ -67187,7 +67187,11 @@ var init_plans = __esm({
       // but NO requireAddon("aiWorkspaceLaunch",...) gate — the addon key is not enforced.
       // Route uses DEFAULT_ROADMAP / DEFAULT_MISSIONS hardcoded fallbacks as primary content.
       // Not commercially released.
-      "aiWorkspaceLaunch"
+      "aiWorkspaceLaunch",
+      // customDomain: route exists but feature is not commercially available yet for
+      // Standard/Pro. Included in Ultra but still "coming soon" functionally.
+      // getAddonStatus returns "included" first for Ultra users so this is safe.
+      "customDomain"
     ]);
     BETA_ADDONS = /* @__PURE__ */ new Set([
       // Beta describes feature maturity, NOT commercial mode.

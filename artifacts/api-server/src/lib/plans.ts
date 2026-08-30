@@ -375,6 +375,11 @@ export const COMING_SOON_ADDONS = new Set<string>([
   // Route uses DEFAULT_ROADMAP / DEFAULT_MISSIONS hardcoded fallbacks as primary content.
   // Not commercially released.
   "aiWorkspaceLaunch",
+
+  // customDomain: route exists but feature is not commercially available yet for
+  // Standard/Pro. Included in Ultra but still "coming soon" functionally.
+  // getAddonStatus returns "included" first for Ultra users so this is safe.
+  "customDomain",
 ]);
 
 /**
