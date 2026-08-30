@@ -10111,11 +10111,10 @@ function renderBilling() {
       'marketIntelligence','reviewIntelligence','aiGbpPosting','zapierIntegration',
       'backlinkIntelligence']);
     allAddons.forEach(a => {
-      if (!a.availability) {
-        a.availability = _COMING_SOON_KEYS.has(a.key) ? 'coming_soon'
-                       : _BETA_KEYS.has(a.key) ? 'beta'
-                       : 'live';
-      }
+      // Local classification always wins — guarantees coming_soon/beta status
+      // even when the server catalog hasn't loaded or returns a stale value.
+      if (_COMING_SOON_KEYS.has(a.key)) a.availability = 'coming_soon';
+      else if (_BETA_KEYS.has(a.key) && a.availability !== 'coming_soon') a.availability = a.availability || 'beta';
     });
 
     const currentPlan = ((STATE.billing && STATE.billing.plan) || me.plan || '').toLowerCase();
@@ -10338,7 +10337,7 @@ function renderBilling() {
               <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,0.07);color:var(--fp-text-muted)">${escHtml(a.cat)}</span>
               <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${accentColor}18;color:${accentColor}">${escHtml(a.tag)}</span>
               ${inclBadge ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(34,197,94,0.12);color:#22c55e">✓ Inclus — ${inclBadge}</span>` : ''}
-              ${a.availability === 'beta' ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(245,158,11,0.12);color:#f59e0b">🧪 Bêta</span>` : ''}
+              ${a.availability === 'coming_soon' ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(245,158,11,0.12);color:#f59e0b">⏳ Bientôt disponible</span>` : a.availability === 'beta' ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(245,158,11,0.12);color:#f59e0b">🧪 Bêta</span>` : ''}
             </div>
             <button onclick="closeFloatPanel&&closeFloatPanel()" style="width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--fp-text-muted);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0" title="${fpT('Fermer')}">×</button>
           </div>
@@ -10357,7 +10356,9 @@ function renderBilling() {
               <div style="font-size:18px;font-weight:900;color:${isInc ? '#22c55e' : 'var(--fp-text)'}">${isInc ? 'Inclus dans votre plan' : escHtml(a.price)}</div>
             </div>
             ${isInc
-              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">${fpT('✓ Déjà inclus')}</button>`
+              ? a.availability === 'coming_soon'
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.6;cursor:not-allowed">⏳ Bientôt disponible</button>`
+                : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">${fpT('✓ Déjà inclus')}</button>`
               : a.active
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`
                 : a.wizardFn
@@ -10440,9 +10441,11 @@ function renderBilling() {
             <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(a.desc)}</div>
             <div style="font-size:10px;color:${cardAccent};font-weight:600;margin-bottom:10px">✦ ${escHtml(a.roi)}</div>
             <div style="display:flex;align-items:center;justify-content:space-between" onclick="event.stopPropagation()">
-              <span style="font-size:12px;font-weight:800;color:${(inc || a.active) ? cardAccent : 'var(--fp-text)'}">${inc && a.availability === 'beta' ? '🧪 Bêta — Inclus ✓' : inc ? 'Inclus ✓' : escHtml(a.price)}</span>
+              <span style="font-size:12px;font-weight:800;color:${(inc || a.active) ? cardAccent : 'var(--fp-text)'}">${inc && a.availability === 'coming_soon' ? 'Inclus ✓ · ⏳' : inc && a.availability === 'beta' ? '🧪 Bêta — Inclus ✓' : inc ? 'Inclus ✓' : escHtml(a.price)}</span>
               ${inc
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">${a.availability === 'beta' ? '🧪 Bêta · Inclus' : '✓ Inclus'}</button>`
+                ? a.availability === 'coming_soon'
+                  ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed">⏳ Bientôt</button>`
+                  : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">${a.availability === 'beta' ? '🧪 Bêta · Inclus' : '✓ Inclus'}</button>`
                 : a.active
                   ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`
                   : a.wizardFn
