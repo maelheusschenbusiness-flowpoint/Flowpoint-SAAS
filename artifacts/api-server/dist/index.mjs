@@ -138019,7 +138019,7 @@ router52.post("/admin/purge-all-clients", async (req, res) => {
 });
 router52.post("/admin/reconcile-org-addons", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
-  const { orgId: rawOrgId } = req.body;
+  const { orgId: rawOrgId, stripeCustomerId: customerIdOverride } = req.body;
   if (!rawOrgId) {
     res.status(400).json({ ok: false, error: "orgId required" });
     return;
@@ -138039,9 +138039,12 @@ router52.post("/admin/reconcile-org-addons", async (req, res) => {
         steps.push("email\u2192uuid:not_found(using_email_as_key)");
       }
     }
-    let customerId = "";
+    let customerId = String(customerIdOverride ?? "").trim();
+    if (customerId) {
+      steps.push(`customer_id_override:${customerId}`);
+    }
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedOrgId);
-    if (isUuid) {
+    if (!customerId && isUuid) {
       const r = await pool.query(
         `SELECT COALESCE(stripe_customer_id, '') AS cid FROM organizations WHERE id = $1::uuid LIMIT 1`,
         [resolvedOrgId]
@@ -138067,12 +138070,18 @@ router52.post("/admin/reconcile-org-addons", async (req, res) => {
       steps.push(`org_settings_lookup:${customerId || "empty"}`);
     }
     if (!customerId) {
-      res.status(404).json({ ok: false, error: "No Stripe customer found for this org", resolvedOrgId, rawOrgId, steps });
+      res.status(404).json({
+        ok: false,
+        error: "No Stripe customer found for this org. Tip: pass stripeCustomerId in the request body to override.",
+        hint: "Find the customer ID in the Stripe Dashboard and re-call with: { orgId, stripeCustomerId: 'cus_xxx' }",
+        resolvedOrgId,
+        rawOrgId,
+        steps
+      });
       return;
     }
-    const { createStripeClient: createStripeClient2 } = await import("../services/stripe-client.js");
-    const { activateAddon: activateAddon2 } = await Promise.resolve().then(() => (init_addons_service(), addons_service_exports));
     const { ADDON_PRICE_IDS: ADDON_PRICE_IDS2, ADDON_PRICE_IDS_TEST: ADDON_PRICE_IDS_TEST2 } = await Promise.resolve().then(() => (init_plans(), plans_exports));
+    const { activateAddon: activateAddon2 } = await Promise.resolve().then(() => (init_addons_service(), addons_service_exports));
     steps.push("imports_ok");
     const combinedPriceMap = {};
     for (const [addon, id] of Object.entries(ADDON_PRICE_IDS2)) {
@@ -138082,7 +138091,9 @@ router52.post("/admin/reconcile-org-addons", async (req, res) => {
       if (id) combinedPriceMap[id] = addon;
     }
     steps.push(`price_map:${Object.keys(combinedPriceMap).length}`);
-    const stripe = createStripeClient2();
+    const { getStripeKey: getStripeKey2, createStripeClient: mkStripe } = await Promise.resolve().then(() => (init_stripe_factory(), stripe_factory_exports));
+    const stripeKey = getStripeKey2();
+    const stripe = await mkStripe(stripeKey);
     let subs;
     try {
       subs = await stripe.subscriptions.list({

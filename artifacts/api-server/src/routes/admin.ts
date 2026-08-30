@@ -1598,7 +1598,7 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
 // Returns: { ok, activated: string[], skipped: string[], errors: string[] }
 router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
-  const { orgId: rawOrgId } = req.body as { orgId?: string };
+  const { orgId: rawOrgId, stripeCustomerId: customerIdOverride } = req.body as { orgId?: string; stripeCustomerId?: string };
   if (!rawOrgId) { res.status(400).json({ ok: false, error: "orgId required" }); return; }
 
   // ── Step 0: resolve orgId (email → UUID or keep as-is) ──────────────────────
@@ -1621,11 +1621,15 @@ router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): 
 
     // ── Step 1: resolve Stripe customer id ────────────────────────────────────
     // Query each source separately (avoids UNION column-type conflicts).
-    let customerId = "";
+    // An explicit stripeCustomerId override in the body skips DB lookup entirely.
+    let customerId = String(customerIdOverride ?? "").trim();
+    if (customerId) {
+      steps.push(`customer_id_override:${customerId}`);
+    }
 
     // 1a. organizations table (UUID key)
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedOrgId);
-    if (isUuid) {
+    if (!customerId && isUuid) {
       const r = await pool.query(
         `SELECT COALESCE(stripe_customer_id, '') AS cid FROM organizations WHERE id = $1::uuid LIMIT 1`,
         [resolvedOrgId]
@@ -1634,7 +1638,7 @@ router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): 
       steps.push(`orgs_lookup:${customerId || "empty"}`);
     }
 
-    // 1b. org_settings table (text org_id key — try both exact and email)
+    // 1b. org_settings table (text org_id key — try both UUID and raw/email)
     if (!customerId) {
       const r = await pool.query(
         `SELECT COALESCE(stripe_customer_id, '') AS cid FROM org_settings
@@ -1648,17 +1652,19 @@ router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): 
     }
 
     if (!customerId) {
-      res.status(404).json({ ok: false, error: "No Stripe customer found for this org", resolvedOrgId, rawOrgId, steps });
+      res.status(404).json({
+        ok: false,
+        error: "No Stripe customer found for this org. Tip: pass stripeCustomerId in the request body to override.",
+        hint: "Find the customer ID in the Stripe Dashboard and re-call with: { orgId, stripeCustomerId: 'cus_xxx' }",
+        resolvedOrgId, rawOrgId, steps,
+      });
       return;
     }
 
-    // ── Step 2: import helpers ────────────────────────────────────────────────
-    const { createStripeClient } = await import("../services/stripe-client.js");
-    const { activateAddon }      = await import("../services/addons-service.js");
+    // ── Step 2: build live+test price→addon map ──────────────────────────────
     const { ADDON_PRICE_IDS, ADDON_PRICE_IDS_TEST } = await import("../lib/plans.js");
+    const { activateAddon } = await import("../services/addons-service.js");
     steps.push("imports_ok");
-
-    // ── Step 3: build live+test price→addon map ───────────────────────────────
     const combinedPriceMap: Record<string, string> = {};
     for (const [addon, id] of Object.entries(ADDON_PRICE_IDS as Record<string, string>)) {
       if (id) combinedPriceMap[id] = addon;
@@ -1669,7 +1675,9 @@ router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): 
     steps.push(`price_map:${Object.keys(combinedPriceMap).length}`);
 
     // ── Step 4: fetch Stripe subscriptions ───────────────────────────────────
-    const stripe = createStripeClient();
+    const { getStripeKey, createStripeClient: mkStripe } = await import("../services/stripe-factory.js");
+    const stripeKey = getStripeKey();
+    const stripe = await mkStripe(stripeKey);
     let subs: { data: Array<{
       status: string;
       metadata: Record<string, string | null | undefined>;
