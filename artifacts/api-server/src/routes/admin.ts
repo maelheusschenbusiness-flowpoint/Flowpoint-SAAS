@@ -1,3 +1,883 @@
+/**
+ * FlowPoint — Admin API routes
+ *
+ * All routes are protected by the ADMIN_KEY environment variable.
+ * Clients must supply:  x-admin-key: <value of ADMIN_KEY>
+ *
+ * These routes are intentionally NOT gated by user session auth so that
+ * they can be called from ops scripts / CI pipelines.
+ */
+
+import { Router, type Request, type Response } from "express";
+import { safeErrMsg } from "../lib/safe-error.js";
+import { pool, withOrgDb } from "@workspace/db";
+
+const router = Router();
+
+// Minimum key length: a short key (e.g. a dev placeholder like "secret" or "admin")
+// is rejected to prevent accidental use of development keys in production.
+const ADMIN_KEY_MIN_LEN = 32;
+
+function requireAdminKey(req: Request, res: Response): boolean {
+  const key = process.env["ADMIN_KEY"];
+  if (!key) {
+    res.status(503).json({ ok: false, error: "ADMIN_KEY is not configured on this server" });
+    return false;
+  }
+  if (key.length < ADMIN_KEY_MIN_LEN) {
+    res.status(503).json({
+      ok: false,
+      error: `ADMIN_KEY is too short (${key.length} chars) — minimum ${ADMIN_KEY_MIN_LEN} required. ` +
+             `A short key is rejected to prevent accidental use of development keys in production.`,
+    });
+    return false;
+  }
+  const provided = req.headers["x-admin-key"];
+  if (typeof provided !== "string" || provided !== key) {
+    res.status(403).json({ ok: false, error: "Invalid or missing x-admin-key header" });
+    return false;
+  }
+  return true;
+}
+
+// ── GET /api/admin/stats ──────────────────────────────────────────────────────
+router.get("/admin/stats", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const safe = (sql: string) =>
+    pool.query(sql).catch(() => ({ rows: [{ count: 0 }] }));
+  try {
+    const [usersR, sessionsR, auditsR, monitorsR, kwardsR] = await Promise.all([
+      safe("SELECT COUNT(*)::int AS count FROM team_members"),
+      safe("SELECT COUNT(*)::int AS count FROM user_sessions WHERE expires_at > now()"),
+      safe("SELECT COUNT(*)::int AS count FROM audits"),
+      safe("SELECT COUNT(*)::int AS count FROM monitors"),
+      safe("SELECT COUNT(*)::int AS count FROM tracked_keywords"),
+    ]);
+    res.json({
+      ok: true,
+      stats: {
+        totalUsers:      usersR.rows[0].count,
+        activeSessions:  sessionsR.rows[0].count,
+        totalAudits:     auditsR.rows[0].count,
+        totalMonitors:   monitorsR.rows[0].count,
+        totalKeywords:   kwardsR.rows[0].count,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── GET /api/admin/users ──────────────────────────────────────────────────────
+router.get("/admin/users", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(`
+      SELECT
+        tm.id,
+        tm.name,
+        tm.email,
+        tm.role,
+        tm.joined,
+        tm.created_at,
+        COUNT(s.token) FILTER (WHERE s.expires_at > now())::int AS active_sessions,
+        MAX(s.expires_at)                                       AS last_seen_at,
+        (COUNT(s.token) FILTER (WHERE s.expires_at > now()) > 0) AS is_active
+      FROM team_members tm
+      LEFT JOIN user_sessions s ON s.email = tm.email
+      GROUP BY tm.id, tm.name, tm.email, tm.role, tm.joined, tm.created_at
+      ORDER BY tm.created_at DESC
+    `);
+    res.json({ ok: true, users: rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
+// ── POST /api/admin/user/block ────────────────────────────────────────────────
+// Revokes ALL active sessions for a given email (effectively blocks the user).
+router.post("/admin/user/block", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const { email } = req.body as { email?: string };
+  if (!email || typeof email !== "string") {
+    res.status(400).json({ ok: false, error: "email is required" });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    const { rowCount } = await client.query(
+      "DELETE FROM user_sessions WHERE email = $1",
+      [email.toLowerCase().trim()]
+    );
+    res.json({ ok: true, email, sessionsRevoked: rowCount ?? 0 });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
+// ── POST /api/admin/user/reset-usage ─────────────────────────────────────────
+// Resets usage counters for a given orgId (defaults to "default").
+router.post("/admin/user/reset-usage", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const { orgId = "default" } = req.body as { orgId?: string };
+
+  const defaultUsage = {
+    audit:   { used: 0, limit: 30 },
+    pdf:     { used: 0, limit: 30 },
+    exports: { used: 0, limit: 30 },
+    monitor: { used: 0, limit: 3  },
+  };
+
+  const client = await pool.connect();
+  try {
+    const { rowCount } = await client.query(
+      "UPDATE org_settings SET usage = $1::jsonb, updated_at = now() WHERE org_id = $2",
+      [JSON.stringify(defaultUsage), orgId]
+    );
+    if ((rowCount ?? 0) === 0) {
+      res.status(404).json({ ok: false, error: `No org_settings row found for orgId=${orgId}` });
+      return;
+    }
+    res.json({ ok: true, orgId, usage: defaultUsage });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
+// ── POST /api/admin/user/set-plan ─────────────────────────────────────────────
+// Force-updates the plan for a given orgId.
+router.post("/admin/user/set-plan", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const { orgId = "default", plan } = req.body as { orgId?: string; plan?: string };
+  if (!plan || !["standard", "pro", "ultra"].includes(plan)) {
+    res.status(400).json({ ok: false, error: "plan must be one of: standard, pro, ultra" });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query(
+      "UPDATE org_settings SET plan = $1, updated_at = now() WHERE org_id = $2",
+      [plan, orgId]
+    );
+    res.json({ ok: true, orgId, plan });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
+// ── POST /api/admin/demo-seed ─────────────────────────────────────────────────
+// Inserts a realistic demo dataset for sales demonstrations.
+// Strictly manual — never runs automatically. Never pollutes real client data.
+// Always call with the correct ADMIN_KEY header.
+router.post("/admin/demo-seed", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const { orgId = "default", clear = false } = req.body as { orgId?: string; clear?: boolean };
+
+  const client = await pool.connect();
+  try {
+    // Optionally clear existing demo data first
+    if (clear) {
+      await Promise.allSettled([
+        pool.query("DELETE FROM audits WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
+        pool.query("DELETE FROM monitors WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
+        pool.query("DELETE FROM missions WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
+        pool.query("DELETE FROM competitors WHERE id LIKE 'demo_%'"),
+        pool.query("DELETE FROM tracked_keywords WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
+      ]);
+    }
+
+    const now = new Date().toISOString();
+    const inserted: Record<string, number> = {};
+
+    // Audits — 4 realistic French local business sites
+    const auditRows = [
+      { id: "demo_a1", url: "https://boulangerie-martin.fr", score: 82, status: "ok",    speed: 88, issues: 3,  origin: "manual" },
+      { id: "demo_a2", url: "https://restaurant-lesoleil.com", score: 61, status: "warn", speed: 64, issues: 11, origin: "manual" },
+      { id: "demo_a3", url: "https://coiffeur-lyon.com",      score: 75, status: "ok",    speed: 91, issues: 5,  origin: "scheduled" },
+      { id: "demo_a4", url: "https://pharmacie-centre.fr",    score: 55, status: "warn",  speed: 58, issues: 14, origin: "manual" },
+    ];
+    for (const a of auditRows) {
+      try {
+        await client.query(
+          `INSERT INTO audits (id, url, score, status, speed, date, issues, origin, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW()) ON CONFLICT (id) DO NOTHING`,
+          [a.id, a.url, a.score, a.status, a.speed, now, a.issues, a.origin]
+        );
+      } catch { /* skip if already exists */ }
+    }
+    inserted.audits = auditRows.length;
+
+    // Monitors — 3 monitors with realistic latency
+    const monitorRows = [
+      { id: "demo_m1", name: "Boulangerie Martin",   url: "https://boulangerie-martin.fr",   status: "up",   uptime: 99.8, latency: 142 },
+      { id: "demo_m2", name: "Restaurant Le Soleil", url: "https://restaurant-lesoleil.com", status: "down", uptime: 97.2, latency: 0   },
+      { id: "demo_m3", name: "Coiffeur Lyon",        url: "https://coiffeur-lyon.com",        status: "up",   uptime: 99.5, latency: 98  },
+    ];
+    for (const m of monitorRows) {
+      try {
+        await client.query(
+          `INSERT INTO monitors (id, name, url, status, uptime, latency, last_check, org_id, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW()) ON CONFLICT (id) DO NOTHING`,
+          [m.id, m.name, m.url, m.status, m.uptime, m.latency, new Date().toISOString(), orgId]
+        );
+      } catch { /* skip */ }
+    }
+    inserted.monitors = monitorRows.length;
+
+    // Competitors — 3 local competitors
+    const compRows = [
+      { id: "demo_c1", name: "Boulangerie Dupont",  url: "https://boulangerie-dupont.fr",   domain_rating: 42, keywords: 38, traffic: 1200, threat_level: "high"   },
+      { id: "demo_c2", name: "Boulangerie Bio Lyon", url: "https://boulangerie-bio-lyon.fr", domain_rating: 35, keywords: 22, traffic: 780,  threat_level: "medium" },
+      { id: "demo_c3", name: "Boulangerie Centrale", url: "https://boulangerie-centrale.fr", domain_rating: 28, keywords: 14, traffic: 450,  threat_level: "low"    },
+    ];
+    for (const c of compRows) {
+      try {
+        await client.query(
+          `INSERT INTO competitors (id, name, url, domain_rating, keywords, traffic, threat_level, delta, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,0,NOW()) ON CONFLICT (id) DO NOTHING`,
+          [c.id, c.name, c.url, c.domain_rating, c.keywords, c.traffic, c.threat_level]
+        );
+      } catch { /* skip */ }
+    }
+    inserted.competitors = compRows.length;
+
+    // Keywords — 5 tracked keywords
+    const kwRows = [
+      { id: "demo_kw1", keyword: "boulangerie artisanale paris", position: 3,  prev_position: 5,  volume: 1900, difficulty: 45, trend: "up",   tag: "Local" },
+      { id: "demo_kw2", keyword: "pain au levain livraison",     position: 7,  prev_position: 6,  volume: 890,  difficulty: 38, trend: "down", tag: "Local SEO" },
+      { id: "demo_kw3", keyword: "boulangerie bio quartier",     position: 12, prev_position: 15, volume: 590,  difficulty: 32, trend: "up",   tag: "Local" },
+      { id: "demo_kw4", keyword: "viennoiserie maison paris",    position: 4,  prev_position: 4,  volume: 1100, difficulty: 29, trend: "stable", tag: "Produits" },
+      { id: "demo_kw5", keyword: "meilleure boulangerie 15e",    position: 1,  prev_position: 2,  volume: 320,  difficulty: 22, trend: "up",   tag: "Local Pack" },
+    ];
+    for (const k of kwRows) {
+      try {
+        await client.query(
+          `INSERT INTO tracked_keywords (id, keyword, current_position, prev_position, search_volume, difficulty, trend, tag, org_id, active, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,NOW()) ON CONFLICT (id) DO NOTHING`,
+          [k.id, k.keyword, k.position, k.prev_position, k.volume, k.difficulty, k.trend, k.tag, orgId]
+        );
+      } catch { /* skip */ }
+    }
+    inserted.keywords = kwRows.length;
+
+    // Missions — 3 demo missions
+    const missionRows = [
+      { id: "demo_ms1", title: "Optimiser les balises title — site prioritaire", category: "SEO", priority: "high",   status: "todo",       source_type: "ai" },
+      { id: "demo_ms2", title: "Répondre aux avis Google en attente (3 avis)",   category: "GBP", priority: "high",   status: "inprogress", source_type: "ai" },
+      { id: "demo_ms3", title: "Créer une page locale pour le 15e arrondissement", category: "Local SEO", priority: "medium", status: "todo", source_type: "ai" },
+    ];
+    for (const m of missionRows) {
+      try {
+        await client.query(
+          `INSERT INTO missions (id, title, category, priority, status, source_type, org_id, steps, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'[]'::jsonb,NOW(),NOW()) ON CONFLICT (id) DO NOTHING`,
+          [m.id, m.title, m.category, m.priority, m.status, m.source_type, orgId]
+        );
+      } catch { /* skip */ }
+    }
+    inserted.missions = missionRows.length;
+
+    res.json({
+      ok: true,
+      message: `Demo data seeded for orgId="${orgId}". Tables: ${JSON.stringify(inserted)}. Use clear=true to wipe first.`,
+      inserted,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
+// ── DELETE /api/admin/sessions ────────────────────────────────────────────────
+// Purge all expired sessions (maintenance).
+router.delete("/admin/sessions/expired", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const client = await pool.connect();
+  try {
+    const { rowCount } = await client.query("DELETE FROM user_sessions WHERE expires_at <= now()");
+    res.json({ ok: true, deletedCount: rowCount ?? 0 });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
+// ── GET /api/admin/db-check ───────────────────────────────────────────────────
+// Returns DB host fingerprint, app_user existence, and RLS policy count.
+// Safe read-only diagnostic — never exposes credentials.
+router.get("/admin/db-check", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  try {
+    const [dbR, roleR, rlsR, tableR] = await Promise.all([
+      pool.query(`SELECT current_database() AS db, version() AS pg_version,
+                         inet_server_addr()::text AS host, inet_server_port() AS port`),
+      pool.query(`SELECT rolname, rolsuper, rolbypassrls
+                  FROM pg_roles WHERE rolname = 'app_user'`),
+      pool.query(`SELECT COUNT(*)::int AS policy_count FROM pg_policies WHERE schemaname='public'`),
+      pool.query(`SELECT COUNT(*)::int AS rls_tables
+                  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                  WHERE n.nspname='public' AND c.relkind='r' AND c.relrowsecurity=true`),
+    ]);
+    const db = dbR.rows[0];
+    const appUser = roleR.rows[0] ?? null;
+    res.json({
+      ok: true,
+      database: {
+        name:      db.db,
+        host:      db.host ?? "(unix socket)",
+        port:      db.port,
+        pg_version: db.pg_version?.split(" ")[0] + " " + db.pg_version?.split(" ")[1],
+      },
+      rls: {
+        app_user_exists:   !!appUser,
+        app_user_superuser: appUser?.rolsuper ?? null,
+        app_user_bypassrls: appUser?.rolbypassrls ?? null,
+        rls_enabled_tables: tableR.rows[0].rls_tables,
+        total_policies:     rlsR.rows[0].policy_count,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── POST /api/admin/test-session ──────────────────────────────────────────────
+// Creates a short-lived (1h) test session for org "default" (admin role).
+// Returns the token so automated tests can authenticate against production.
+// Token is revoked automatically when it expires.
+router.post("/admin/test-session", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const { orgId = "default", ttlMinutes = 60, role: rawRole = "admin" } = req.body as { orgId?: string; ttlMinutes?: number; role?: string };
+  const VALID_ROLES = ["owner", "admin", "member", "viewer"];
+  const role = VALID_ROLES.includes(rawRole) ? rawRole : "admin";
+
+  const client = await pool.connect();
+  try {
+    // Test convenience: when the orgId is a UUID, ensure a matching organizations
+    // row exists — AI usage tables (ai_usage_logs / ai_monthly_usage) have an FK
+    // to organizations(id), so a session on a non-existent org could never track usage.
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId)) {
+      await client.query(
+        `INSERT INTO organizations (id, name, slug, owner_user_id, status, plan)
+         VALUES ($1::uuid, 'Test Org', 'test-org-' || left($1::text, 8), 'test-admin', 'active', 'pro')
+         ON CONFLICT (id) DO NOTHING`,
+        [orgId]
+      );
+    }
+    const token = `fp_prodtest_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+    await client.query(
+      `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at)
+       VALUES ($1, 'test-admin', $2, 'test@flowpoint.pro', $4, $3, NOW())
+       ON CONFLICT DO NOTHING`,
+      [token, orgId, expiresAt, role]
+    );
+    res.json({
+      ok: true,
+      token,
+      orgId,
+      expiresAt: expiresAt.toISOString(),
+      note: "Short-lived test token — expires in " + ttlMinutes + " min. Do not store in code.",
+    });
+  } catch (err) {
+    console.error("[Admin] test-session failed:", err);
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
+
+
+
+// ── POST /api/admin/provision-qa-account ─────────────────────────────────────
+//
+// Creates (or refreshes) the single permanent QA account used by Browser Use
+// and automated test pipelines.
+//
+// Security constraints (see user story 2026-08-26):
+//   • Protected by ADMIN_KEY (min 32 chars) — rejected with 503 if key absent.
+//   • Rate-limited: max 5 calls per IP per hour in-process (no external dep).
+//   • Session TTL: 8 h (not 365 d) — short enough to limit blast radius.
+//   • Token never logged; only returned once in the immediate HTTP response.
+//   • Audit line emitted on every call: timestamp, IP, UA — no token.
+//   • No parameters accepted — email, org UUID, plan are all hardcoded constants.
+//     The endpoint cannot create any account other than qa@flowpoint.pro.
+//   • Premium access comes from organizations.is_internal_qa=true + a fixed UUID
+//     guard in billing-context.ts — NOT from trialing/trial_ends_at tricks.
+//   • qa@flowpoint.pro is hardcoded in PURGE_SYSTEM_EMAILS; the org is purge-proof.
+//
+// How Browser Use reconnects after environment recycling:
+//   1. POST /api/admin/provision-qa-account  (x-admin-key header).
+//   2. sessionStorage.setItem('fp_session_token', data.sessionToken)
+//   3. location.href = '/dashboard.html'
+
+/** Fixed UUIDs — stable across re-provisions; referenced in FK indexes. */
+const QA_USER_UUID = "10000000-0000-4000-8000-000000000001";
+const QA_ORG_UUID  = "10000000-0000-4000-8000-000000000002";
+const QA_EMAIL     = "qa@flowpoint.pro";
+
+/** QA session TTL: 8 hours — short to limit blast radius on token leak. */
+const QA_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+
+/** Rate-limit state: maps IP → { count, windowStartMs } — in-process, no persistence. */
+const _qaProvisionRateLimit = new Map<string, { count: number; windowStart: number }>();
+const QA_RATE_MAX   = 5;     // maximum calls per window per IP
+const QA_RATE_WIN   = 60 * 60 * 1000; // 1-hour window
+
+function checkQaRateLimit(ip: string): { allowed: boolean; retryAfterSec: number } {
+  const now   = Date.now();
+  const entry = _qaProvisionRateLimit.get(ip);
+  if (!entry || now - entry.windowStart > QA_RATE_WIN) {
+    _qaProvisionRateLimit.set(ip, { count: 1, windowStart: now });
+    return { allowed: true, retryAfterSec: 0 };
+  }
+  if (entry.count >= QA_RATE_MAX) {
+    const retryAfterSec = Math.ceil((QA_RATE_WIN - (now - entry.windowStart)) / 1000);
+    return { allowed: false, retryAfterSec };
+  }
+  entry.count++;
+  return { allowed: true, retryAfterSec: 0 };
+}
+
+router.post("/admin/provision-qa-account", async (req: Request, res: Response): Promise<void> => {
+  // ── 0. ADMIN_KEY gate (returns 503 when key absent, 403 when wrong) ───────
+  if (!requireAdminKey(req, res)) return;
+
+  // ── 1. Rate limit (5 / hour / IP) ────────────────────────────────────────
+  const callerIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+    ?? req.socket?.remoteAddress
+    ?? "unknown";
+  const rl = checkQaRateLimit(callerIp);
+  if (!rl.allowed) {
+    res.setHeader("Retry-After", String(rl.retryAfterSec));
+    res.status(429).json({
+      ok: false,
+      error: `Rate limit exceeded — max ${QA_RATE_MAX} calls/hour per IP. Retry in ${rl.retryAfterSec}s.`,
+    });
+    return;
+  }
+
+  const callerUa = (req.headers["user-agent"] as string | undefined) ?? "unknown";
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // ── 2. users row (idempotent) ─────────────────────────────────────────────
+    await client.query(
+      `INSERT INTO users (id, email, status, email_verified, auth_provider)
+       VALUES ($1::uuid, $2, 'active', true, 'magic_link')
+       ON CONFLICT (id) DO UPDATE
+         SET status = 'active', email_verified = true`,
+      [QA_USER_UUID, QA_EMAIL],
+    );
+
+    // ── 3. organizations row (idempotent) ─────────────────────────────────────
+    // Premium access is granted via is_internal_qa=true + the QA_ORG_UUID guard
+    // in billing-context.ts — NOT via trialing/trial_ends_at hacks.
+    // subscription_status stays 'none'; the billing-context short-circuit fires
+    // only when orgId === QA_ORG_UUID AND is_internal_qa=true simultaneously.
+    await client.query(
+      `INSERT INTO organizations
+         (id, name, slug, owner_user_id, owner_email, status, plan,
+          subscription_status, is_internal_qa)
+       VALUES ($1::uuid, 'QA Organisation', 'qa-organisation', $2, $3,
+               'active', 'ultra', 'none', true)
+       ON CONFLICT (id) DO UPDATE
+         SET status          = 'active',
+             plan            = 'ultra',
+             is_internal_qa  = true,
+             owner_user_id   = $2,
+             owner_email     = $3,
+             -- Clear the legacy trialing/trial_ends_at debt from the initial provision
+             subscription_status = 'none',
+             trial_ends_at       = NULL,
+             trial_consumed_at   = NULL`,
+      [QA_ORG_UUID, QA_USER_UUID, QA_EMAIL],
+    );
+
+    // ── 4. organization_members row (idempotent) ──────────────────────────────
+    await client.query(
+      `INSERT INTO organization_members
+         (id, organization_id, user_id, role, status, joined_at)
+       VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'owner', 'active', NOW())
+       ON CONFLICT (organization_id, user_id) DO UPDATE
+         SET role = 'owner', status = 'active'`,
+      [QA_ORG_UUID, QA_USER_UUID],
+    );
+
+    // ── 5. Fresh 8-hour session token ─────────────────────────────────────────
+    // New token issued on every call — Browser Use stores it after each provision.
+    // getSession() is a plain DB lookup (no HMAC on the token string itself).
+    // $2 = TEXT (user_id), $6 = separate UUID param for user_id_v2 to avoid
+    // pg type-inference conflict ("inconsistent types deduced for parameter").
+    const { randomBytes } = await import("crypto");
+    const sessionToken = `fp_qa_${randomBytes(32).toString("hex")}`;
+    const expiresAt    = new Date(Date.now() + QA_SESSION_TTL_MS);
+
+    await client.query(
+      `INSERT INTO user_sessions
+         (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2)
+       VALUES ($1, $2, $3, $4, 'owner', $5, NOW(), $6::uuid)
+       ON CONFLICT DO NOTHING`,
+      [sessionToken, QA_USER_UUID, QA_ORG_UUID, QA_EMAIL, expiresAt, QA_USER_UUID],
+    );
+
+    await client.query("COMMIT");
+
+    // ── 6. Audit log — timestamp, IP, UA; token is intentionally absent ───────
+    console.log(JSON.stringify({
+      event:      "QA_PROVISION",
+      ts:         new Date().toISOString(),
+      ip:         callerIp,
+      ua:         callerUa,
+      orgId:      QA_ORG_UUID,
+      expiresAt:  expiresAt.toISOString(),
+      // sessionToken is deliberately NOT logged — it is equivalent to a credential.
+    }));
+
+    // ── 7. Response — token returned once, never cached server-side ───────────
+    res.json({
+      ok:          true,
+      email:       QA_EMAIL,
+      orgId:       QA_ORG_UUID,
+      userId:      QA_USER_UUID,
+      plan:        "ultra",
+      sessionToken,                          // only appearance of the token
+      expiresAt:   expiresAt.toISOString(),  // 8 h from now
+      purgeExempt: true,
+      reconnect: [
+        "sessionStorage.setItem('fp_session_token', data.sessionToken)",
+        "location.href = '/dashboard.html'",
+      ],
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    // Log error without leaking the token (token is in local scope but not in err)
+    console.error("[Admin] provision-qa-account failed:", safeErrMsg(err));
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
+// ── POST /api/admin/ai-usage-seed ─────────────────────────────────────────────
+// Forces an org's ai_monthly_usage row to a specific credits_used value.
+// Intended for automated tests only — lets tests ensure EXHAUSTED state before running.
+router.post("/admin/ai-usage-seed", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const { orgId, creditsUsed } = req.body as { orgId?: string; creditsUsed?: number };
+  if (!orgId || creditsUsed == null || typeof creditsUsed !== "number") {
+    res.status(400).json({ ok: false, error: "orgId (string) and creditsUsed (number) required" });
+    return;
+  }
+
+  const month = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+  const resetAt = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString();
+  const id = `amu_${orgId}_${month}`;
+
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId)) {
+    res.status(400).json({ ok: false, error: "orgId must be a UUID (ai_monthly_usage.org_id is UUID with FK to organizations)" });
+    return;
+  }
+
+  try {
+    await pool.query(
+      `INSERT INTO organizations (id, name, slug, owner_user_id, status, plan)
+       VALUES ($1::uuid, 'Test Org', 'test-org-' || left($1::text, 8), 'test-admin', 'active', 'pro')
+       ON CONFLICT (id) DO NOTHING`,
+      [orgId]
+    );
+    await pool.query(
+      `INSERT INTO ai_monthly_usage (id, org_id, month, credits_used, cost_eur, request_count, tokens_used, reset_at, updated_at)
+       VALUES ($1, $2, $3, $4, 0, 0, 0, $5, NOW())
+       ON CONFLICT (org_id, month) DO UPDATE SET credits_used = EXCLUDED.credits_used, updated_at = NOW()`,
+      [id, orgId, month, creditsUsed, resetAt]
+    );
+    res.json({ ok: true, orgId, month, creditsUsed });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── GET /api/admin/rls — RLS coverage audit ───────────────────────────────────
+router.get("/admin/rls", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  try {
+    const [coverage, unprotected, policies] = await Promise.all([
+      pool.query(`
+        SELECT 
+          (SELECT COUNT(*)::int FROM pg_tables WHERE schemaname='public') AS total_tables,
+          (SELECT COUNT(*)::int FROM pg_tables WHERE schemaname='public' AND rowsecurity=true) AS rls_tables,
+          (SELECT COUNT(*)::int FROM pg_policies WHERE schemaname='public') AS total_policies,
+          (SELECT COUNT(*)::int FROM information_schema.columns WHERE table_schema='public' AND column_name='org_id') AS org_id_columns
+      `),
+      pool.query(`
+        SELECT tablename FROM pg_tables 
+        WHERE schemaname='public' AND rowsecurity=false 
+        ORDER BY tablename
+      `),
+      pool.query(`
+        SELECT tablename, COUNT(*)::int AS policy_count 
+        FROM pg_policies WHERE schemaname='public' 
+        GROUP BY tablename ORDER BY tablename LIMIT 30
+      `),
+    ]);
+    const c = coverage.rows[0] as Record<string, number>;
+    res.json({
+      ok: true,
+      summary: {
+        totalTables: c.total_tables,
+        rlsEnabled: c.rls_tables,
+        rlsMissing: c.total_tables - c.rls_tables,
+        coveragePct: Math.round(c.rls_tables / Math.max(1, c.total_tables) * 100),
+        totalPolicies: c.total_policies,
+        orgIdColumns: c.org_id_columns,
+      },
+      unprotectedTables: unprotected.rows.map((r: Record<string, unknown>) => r.tablename),
+      samplePolicies: policies.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── GET /api/admin/team-schema-check ─────────────────────────────────────────
+// Diagnostic: schema definition + dual INSERT test (pool vs withOrgDb).
+// Query param: orgId (required) — e.g. ?orgId=alice@example.com
+// Returns pgCode / constraint / column for each path.
+// DELETE after root-cause is identified.
+router.get("/admin/team-schema-check", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const orgId = (req.query["orgId"] as string | undefined)?.trim();
+  if (!orgId) {
+    res.status(400).json({ ok: false, error: "orgId query param required" });
+    return;
+  }
+
+  try {
+    // ── 1. Schema queries ─────────────────────────────────────────────────
+    const [columnsR, constraintsR, indexesR] = await Promise.all([
+      pool.query<Record<string, unknown>>(`
+        SELECT column_name, is_nullable, column_default, data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'team_members'
+        ORDER BY ordinal_position
+      `),
+      pool.query<Record<string, unknown>>(`
+        SELECT conname, contype, pg_get_constraintdef(oid) AS definition
+        FROM pg_constraint
+        WHERE conrelid = 'public.team_members'::regclass
+      `),
+      pool.query<Record<string, unknown>>(`
+        SELECT indexname, indexdef
+        FROM pg_indexes
+        WHERE schemaname = 'public' AND tablename = 'team_members'
+      `),
+    ]);
+
+    // ── 2. Dual INSERT probe ──────────────────────────────────────────────
+    const testId      = `diag_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+    const testEmail   = `diag-probe-${testId}@diag.internal`;
+    const testName    = testEmail.split("@")[0] ?? "diag";
+    const testExpires = new Date(Date.now() + 7 * 864e5).toISOString();
+    const testHash    = "0000000000000000000000000000000000000000000000000000000000000000";
+    const testJoined  = new Date().toISOString().slice(0, 10);
+
+    const PROBE_SQL = `
+      INSERT INTO team_members
+        (id, org_id, email, name, role, joined, status,
+         invited_by, invitation_token_hash, invited_at, expires_at,
+         email_status, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,NOW(),$9,'pending',NOW(),NOW())
+    `;
+    const PROBE_PARAMS = [
+      testId, orgId, testEmail, testName, "viewer",
+      testJoined, orgId, testHash, testExpires,
+    ];
+
+    type ProbeResult = {
+      ok: boolean;
+      pgCode?:     string | null;
+      constraint?: string | null;
+      table?:      string | null;
+      column?:     string | null;
+      routine?:    string | null;
+      errSummary?: string;
+    };
+
+    // 2a. pool.query — postgres role, no RLS (ROLLBACK after)
+    let poolProbe: ProbeResult = { ok: false };
+    const pc = await pool.connect();
+    try {
+      await pc.query("BEGIN");
+      await pc.query(PROBE_SQL, PROBE_PARAMS);
+      await pc.query("ROLLBACK");
+      poolProbe = { ok: true };
+    } catch (e: unknown) {
+      await pc.query("ROLLBACK").catch(() => {});
+      const pg = e as { code?: string; constraint?: string; table?: string; column?: string; routine?: string };
+      poolProbe = {
+        ok:         false,
+        pgCode:     pg.code        ?? null,
+        constraint: pg.constraint  ?? null,
+        table:      pg.table       ?? null,
+        column:     pg.column      ?? null,
+        routine:    pg.routine     ?? null,
+        errSummary: (e as Error).message?.slice(0, 160),
+      };
+    } finally {
+      pc.release();
+    }
+
+    // 2b. withOrgDb — app_user role, RLS enforced (INSERT then DELETE inside tx)
+    let orgDbProbe: ProbeResult = { ok: false };
+    try {
+      await withOrgDb(orgId, async (client) => {
+        await client.query(PROBE_SQL, PROBE_PARAMS);
+        await client.query("DELETE FROM team_members WHERE id = $1", [testId]);
+      });
+      orgDbProbe = { ok: true };
+    } catch (e: unknown) {
+      const pg = e as { code?: string; constraint?: string; table?: string; column?: string; routine?: string };
+      orgDbProbe = {
+        ok:         false,
+        pgCode:     pg.code        ?? null,
+        constraint: pg.constraint  ?? null,
+        table:      pg.table       ?? null,
+        column:     pg.column      ?? null,
+        routine:    pg.routine     ?? null,
+        errSummary: (e as Error).message?.slice(0, 160),
+      };
+    }
+
+    // ── 3. Interpretation ─────────────────────────────────────────────────
+    let interpretation: string;
+    if (poolProbe.ok && !orgDbProbe.ok) {
+      interpretation = "RLS / withOrgDb / app_user / GUC issue — pool succeeds but orgDb fails";
+    } else if (!poolProbe.ok && !orgDbProbe.ok) {
+      interpretation = "SQL / constraint / trigger / value issue — both roles fail";
+    } else if (poolProbe.ok && orgDbProbe.ok) {
+      interpretation = "Both paths succeed — INSERT is structurally OK; check other code paths";
+    } else {
+      interpretation = "Unexpected: orgDb succeeded but pool failed";
+    }
+
+    res.json({
+      ok: true,
+      schema: {
+        columns:     columnsR.rows,
+        constraints: constraintsR.rows,
+        indexes:     indexesR.rows,
+      },
+      insertTest: {
+        pool:           poolProbe,
+        orgDb:          orgDbProbe,
+        interpretation,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── DELETE /api/admin/purge-account ──────────────────────────────────────────
+// Emergency ops endpoint — force-deletes ALL data for an account identified by
+// email when the normal DELETE /billing/account is blocked (e.g. Stripe customer
+// already deleted externally so subscriptions.list() throws resource_missing).
+// Auth: x-admin-key header required.
+router.delete("/admin/purge-account", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const { email } = req.body as { email?: string };
+  if (!email || typeof email !== "string" || !email.includes("@")) {
+    res.status(400).json({ ok: false, error: "email (string) required in body" });
+    return;
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const client = await pool.connect();
+  try {
+    // ── Resolve all org IDs for this email ────────────────────────────────────
+    // 1. Legacy: org_settings keyed by email directly
+    const legacyOrg = await client.query<{ org_id: string }>(
+      `SELECT org_id FROM org_settings WHERE lower(org_id) = $1`, [normalizedEmail]
+    );
+    // 2. New: organizations keyed by owner_email, or via users+organization_members
+    const uuidOrgs = await client.query<{ id: string }>(
+      `SELECT DISTINCT o.id::text
+       FROM organizations o
+       LEFT JOIN users u ON lower(u.email) = $1
+       LEFT JOIN organization_members om ON om.user_id = u.id
+       WHERE lower(o.owner_email) = $1
+          OR o.id::text = om.organization_id`,
+      [normalizedEmail]
+    );
+
+    const orgIds: string[] = [
+      ...legacyOrg.rows.map(r => r.org_id),
+      ...uuidOrgs.rows.map(r => r.id),
+    ].filter(Boolean);
+
+    const orgTables = [
+      "audits","audit_schedules","reports","report_exports",
+      "monitors","monitor_checks","monitor_incidents",
+      "alert_rules","alert_events","tracked_keywords","calendar_events",
+      "team_members","team_invitations","team_messages","team_files",
+      "user_sessions","google_oauth_states",
+      "automation_integrations","automation_workflows","automation_runs",
+      "automation_logs","workflow_runs","incoming_webhooks",
+      "missions","mission_history","mission_ai_logs",
+      "psi_cache","seo_forecasts","funnels","funnel_steps",
+      "ga4_accounts","gsc_keyword_data","gsc_page_data","gsc_sync_logs",
+      "google_tokens","github_connections",
+      "behavior_events","behavior_sessions",
+      "traffic_sources","traffic_losses","cro_scores","cro_experiments","revenue_leaks",
+      "local_pack_history",
+      "org_addons","org_checklist","org_monitor_quota","org_secrets",
+      "org_quota_usage","checkout_post_tokens",
+      "overview_insights_cache","overview_insights_rl",
+      "activity_log","share_tokens","growth_objectives",
+      "ai_usage_logs","ai_monthly_usage","ai_credit_purchases",
+      "ai_recommendations","onboarding_sessions","ai_workspace_profiles",
+      "ai_generated_missions","ai_setup_logs",
+    ];
+
+    // Verify which tables actually exist (avoids aborting tx on missing tables)
+    const existCheck = await client.query<{ tablename: string }>(
+      `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
+      [orgTables]
+    );
+    const existingSet = new Set(existCheck.rows.map(r => r.tablename));
+
+    await client.query("BEGIN");
+
+    const deleted: Record<string, number> = {};
 
     for (const orgId of orgIds) {
       for (const table of orgTables) {
@@ -860,9 +1740,10 @@ router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): 
   }
 });
 
-// ── POST /api/admin/activate-addon-direct ─────────────────────────────────────
-// Direct DB-only addon activation — NO Stripe billing. Use only to reconcile a
-// payment that was already collected (e.g. via PaymentIntent) but never persisted.
+// ── POST /api/admin/activate-addon-direct ────────────────────────────────────
+// DB-only addon activation — NO Stripe billing. Use only to reconcile a
+// payment already collected (e.g. via PaymentIntent) but never persisted to
+// org_addons due to the pre-fix webhook FK failure.
 // Body: { orgId: string, addonKey: string, quantity?: number, piId?: string }
 router.post("/admin/activate-addon-direct", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
@@ -875,7 +1756,6 @@ router.post("/admin/activate-addon-direct", async (req: Request, res: Response):
   }
   const qty = Math.max(1, Math.floor(Number(quantity) || 1));
   try {
-    // Verify canonical org exists
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawOrgId);
     let canonicalOrgId = rawOrgId;
     if (isUuid) {
