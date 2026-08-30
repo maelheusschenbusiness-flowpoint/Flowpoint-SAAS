@@ -504,12 +504,12 @@
       </div>
     </div>
 
-    <div class="fp-addon-card" style="border-color:rgba(245,158,11,0.4);background:rgba(245,158,11,0.04)">
+    <div class="fp-addon-card">
       <div class="fp-addon-top"><span class="fp-addon-icon">🔗</span><div class="fp-addon-name">Backlink Intelligence</div></div>
       <div class="fp-addon-desc">Analysez votre profil de backlinks, détectez les liens toxiques, suivez les nouveaux liens et explorez les opportunités de netlinking.</div>
       <div class="fp-addon-bottom">
-        <div class="fp-addon-price" style="color:#22c55e;font-weight:800">Inclus Pro <span style="font-size:11px;font-weight:600;color:#f59e0b">🧪 Bêta</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" disabled style="opacity:0.55;cursor:not-allowed;background:rgba(245,158,11,0.12);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">🧪 Bêta · Inclus</button></div>
+        <div class="fp-addon-price">24€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'backlinkIntelligence',false)">Activer →</button></div>
       </div>
     </div>
 
@@ -1229,31 +1229,112 @@
     });
   }
 
+  /* ── Apply comingSoon / beta states from the canonical catalogue ─────────────
+     Called once after catalogue fetch. Reads each button's addToCart key,
+     looks it up in the catalogue, then:
+       • comingSoon → disables button, replaces text, inserts 🚧 badge above bottom
+       • beta        → inserts 🧪 badge above bottom
+     Badges are given class names so updateIncludedAddons can clear + re-insert
+     them after toggling plan tabs.                                              */
+  function _fpApplyCatalogStates(cat) {
+    var stateMap = {};
+    cat.addons.forEach(function (a) { stateMap[a.key] = a; });
+    window._FP_ADDON_CATALOG_STATES = stateMap;
+
+    var btns = document.querySelectorAll('button.fp-addon-btn[onclick*="addToCart"]');
+    Array.prototype.forEach.call(btns, function (btn) {
+      var m = (btn.getAttribute('onclick') || '').match(/addToCart\(this,'([A-Za-z0-9]+)'/);
+      if (!m) return;
+      var key = m[1];
+      var def = stateMap[key];
+      if (!def) return;
+      var card = btn.closest('.fp-addon-card');
+      if (!card) return;
+      var bottom = btn.closest('.fp-addon-bottom');
+      if (!bottom) return;
+
+      // Clear any previously-injected state badges for this card
+      Array.prototype.forEach.call(
+        card.querySelectorAll('.fp-cs-badge,.fp-beta-badge'),
+        function (b) { b.remove(); }
+      );
+
+      if (def.comingSoon) {
+        btn.disabled = true;
+        btn.textContent = '🚧 Bientôt disponible';
+        btn.style.cssText = 'opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)';
+        var csB = document.createElement('span');
+        csB.className = 'fp-cs-badge';
+        csB.style.cssText = 'display:block;font-size:11px;font-weight:600;color:#94a3b8;margin-bottom:4px';
+        csB.textContent = '🚧 Bientôt disponible';
+        bottom.parentNode.insertBefore(csB, bottom);
+      }
+      if (def.beta) {
+        var betaB = document.createElement('span');
+        betaB.className = 'fp-beta-badge';
+        betaB.style.cssText = 'display:block;font-size:11px;font-weight:600;color:#f59e0b;margin-bottom:4px';
+        betaB.textContent = '🧪 Bêta';
+        bottom.parentNode.insertBefore(betaB, bottom);
+      }
+    });
+  }
+
+  /* Helper: re-inject state badges for one key after restoring default bottom.
+     Used by updateIncludedAddons when switching from Inclus → not-included.   */
+  function _fpReapplyStateBadge(key, bottom) {
+    var def = (window._FP_ADDON_CATALOG_STATES || {})[key];
+    if (!def || !bottom) return;
+    var card = bottom.closest('.fp-addon-card');
+    if (!card) return;
+    Array.prototype.forEach.call(card.querySelectorAll('.fp-cs-badge,.fp-beta-badge'), function(b){b.remove();});
+    if (def.comingSoon) {
+      var csB = document.createElement('span'); csB.className = 'fp-cs-badge';
+      csB.style.cssText = 'display:block;font-size:11px;font-weight:600;color:#94a3b8;margin-bottom:4px';
+      csB.textContent = '🚧 Bientôt disponible';
+      bottom.parentNode.insertBefore(csB, bottom);
+      var btn = bottom.querySelector('.fp-addon-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '🚧 Bientôt disponible'; btn.style.cssText = 'opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)'; }
+    }
+    if (def.beta) {
+      var betaB = document.createElement('span'); betaB.className = 'fp-beta-badge';
+      betaB.style.cssText = 'display:block;font-size:11px;font-weight:600;color:#f59e0b;margin-bottom:4px';
+      betaB.textContent = '🧪 Bêta'; bottom.parentNode.insertBefore(betaB, bottom);
+    }
+  }
+
   function _fpApplyCatalogInclusions(cat) {
     Object.keys(PLAN_INCLUDED).forEach(function (planId) {
       PLAN_INCLUDED[planId] = (cat.includedByPlan && cat.includedByPlan[planId]) || [];
     });
+    _fpApplyCatalogStates(cat);
   }
 
   /* Updates ALL plan-included addon bottom sections.
      Finds each addon button by its onclick key and replaces the fp-addon-bottom
-     with an 'Inclus dans [Plan]' badge (included) or restores 'Activer' (not included). */
+     with an 'Inclus [Plan]' badge (included) or restores 'Activer' (not included).
+     When a key is both included AND has comingSoon/beta, both are shown together.  */
   function updateIncludedAddons(plan) {
     var included = PLAN_INCLUDED[plan] || [];
     var planLabel = plan === 'standard' ? 'Standard' : plan === 'pro' ? 'Pro' : plan === 'ultra' ? 'Ultra' : '';
-    var inclHtml = planLabel ? '<div class="fp-addon-price-incl">\u2713 Inclus dans ' + planLabel + '</div>' : null;
+    var states = window._FP_ADDON_CATALOG_STATES || {};
     var allKeys = Object.keys(ADDON_DEFAULT_BOTTOM);
     allKeys.forEach(function(key) {
       var isIncluded = included.indexOf(key) !== -1;
       var btn = document.querySelector('button.fp-addon-btn[onclick*="\'' + key + '\'"]');
       if (!btn) return;
-      var bottom = btn.parentElement && btn.parentElement.classList.contains('fp-addon-actions')
-                   ? btn.closest('.fp-addon-bottom') : null;
+      var bottom = btn.closest('.fp-addon-bottom');
       if (!bottom) return;
-      if (isIncluded && inclHtml) {
-        bottom.innerHTML = inclHtml;
+      if (isIncluded && planLabel) {
+        // Build combined badge: Inclus Plan [· 🧪 Bêta] [· 🚧 Bientôt disponible]
+        var def = states[key] || {};
+        var parts = ['\u2713 Inclus ' + planLabel];
+        if (def.beta) parts.push('\uD83E\uDDEA B\u00eata');
+        if (def.comingSoon) parts.push('\uD83D\uDEA7 Bient\u00f4t disponible');
+        bottom.innerHTML = '<div class="fp-addon-price-incl">' + parts.join(' \u00b7 ') + '</div>';
       } else if (!isIncluded && bottom.querySelector('.fp-addon-price-incl')) {
         bottom.innerHTML = ADDON_DEFAULT_BOTTOM[key];
+        // Re-inject comingSoon/beta state badges that were cleared by the above reset
+        _fpReapplyStateBadge(key, bottom);
       }
     });
   }

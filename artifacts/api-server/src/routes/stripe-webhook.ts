@@ -984,6 +984,15 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
       const customerId = obj["customer"] ? String(obj["customer"]) : undefined;
 
+      // ── Safety net: eagerly link stripe_customer_id so findOrgByStripeCustomer ──
+      // works on subsequent webhook events even if this handler errors later.
+      // Fire-and-forget; never blocks the main flow.
+      if (customerId && orgId && UUID_RE_WH.test(orgId)) {
+        persistOrgData(orgId, { stripeCustomerId: customerId }).catch(e =>
+          logger.warn({ e, orgId, customerId }, "[Webhook] Safety stripe_customer_id link failed (non-blocking)")
+        );
+      }
+
       // ── New signup flow: activate account + send magic link after Stripe validates ──
       const preRegToken  = meta["pre_register_token"] ?? "";
       const selectedPlan = meta["selected_plan"] || planNorm || "standard";

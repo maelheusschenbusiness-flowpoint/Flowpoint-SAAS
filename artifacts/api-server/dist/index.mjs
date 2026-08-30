@@ -75875,6 +75875,11 @@ async function handleStripeWebhook(req, res) {
           break;
         }
         const customerId = obj["customer"] ? String(obj["customer"]) : void 0;
+        if (customerId && orgId3 && UUID_RE_WH.test(orgId3)) {
+          persistOrgData(orgId3, { stripeCustomerId: customerId }).catch(
+            (e) => logger.warn({ e, orgId: orgId3, customerId }, "[Webhook] Safety stripe_customer_id link failed (non-blocking)")
+          );
+        }
         const preRegToken = meta["pre_register_token"] ?? "";
         const selectedPlan = meta["selected_plan"] || planNorm || "standard";
         const isTrial = meta["trial_plan"] === "true";

@@ -5087,14 +5087,12 @@ function getChMsgs() {
 // notification row is the offline fallback — never count the same message twice).
 function _fpUnreadChatNotifs() {
   const notifs = Array.isArray(STATE.notifications) ? STATE.notifications : [];
-  const unreadMsgIds = new Set();
-  if (STATE.channelMessages && typeof STATE.channelMessages === 'object') {
-    Object.values(STATE.channelMessages).flat().forEach(m => { if (m && m.id && !m.read && !m.self) unreadMsgIds.add(String(m.id)); });
-  }
+  // No dedup against channelMessages: getMsgUnreadTotal is the sole badge source,
+  // so filtering notifications that are "also in channelMessages" causes the badge
+  // to show 0 after the 60s poll replaces the synthetic SSE notification with the
+  // persisted DB row. Count all unread chat notifications (incl. synthetic ones).
   return notifs.filter(n => {
     if (!n || n.type !== 'chat' || n.read || _isOwnChatNotif(n)) return false;
-    const m = /^ntf_chat_(.+)_\d+$/.exec(String(n.id || ''));
-    if (m && unreadMsgIds.has(m[1])) return false;
     return true;
   });
 }
