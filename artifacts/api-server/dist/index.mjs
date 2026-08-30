@@ -75992,6 +75992,34 @@ async function handleStripeWebhook(req, res) {
             );
           }
         }
+        {
+          const directAddonKey = String(meta["addonKey"] ?? "").trim();
+          const directAddonQty = Math.max(1, parseInt(String(meta["quantity"] ?? "1"), 10));
+          const sessionComplete = String(obj["status"] ?? "") === "complete" || String(obj["status"] ?? "") === "";
+          const paymentOk = String(obj["payment_status"] ?? "") === "paid" || String(obj["payment_status"] ?? "") === "no_payment_required";
+          if (directAddonKey && (FLAG_ADDONS.has(directAddonKey) || QTY_ADDONS.has(directAddonKey)) && sessionComplete && paymentOk) {
+            try {
+              const { activateAddon: activateAddon2 } = await Promise.resolve().then(() => (init_addons_service(), addons_service_exports));
+              const activated = await activateAddon2(directAddonKey, orgId3, directAddonQty);
+              if (!activated) {
+                logger.warn(
+                  { directAddonKey, orgId: orgId3, directAddonQty },
+                  "[Webhook] Direct addon-checkout activation returned false \u2014 addon may already be active or unknown"
+                );
+              } else {
+                logger.info(
+                  { directAddonKey, orgId: orgId3, directAddonQty },
+                  "[Webhook] Direct addon-checkout: add-on activated from checkout.session.completed"
+                );
+              }
+            } catch (dErr) {
+              logger.error(
+                { dErr, directAddonKey, orgId: orgId3 },
+                "[Webhook] Direct addon-checkout activation threw \u2014 add-on activation will be retried by subscription.created"
+              );
+            }
+          }
+        }
         logger.info({ plan: planNorm, orgId: orgId3 }, "[Webhook] Checkout session completed");
         break;
       }

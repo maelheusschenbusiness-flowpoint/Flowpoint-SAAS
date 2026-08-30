@@ -1139,6 +1139,38 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         }
       }
 
+      // ── Direct /billing/addon-checkout path ──────────────────────────────────
+      // These sessions store addonKey + quantity in session-level metadata (not
+      // in immediate_addons) and always use mode=subscription.  The
+      // customer.subscription.created event also activates via
+      // persistAddonsFromSubscription, but only if getAddonForPriceId() can map
+      // the price ID.  Activate here too (idempotent upsert) so a missing
+      // env-var price mapping never silently drops a paid add-on.
+      {
+        const directAddonKey  = String(meta["addonKey"]  ?? "").trim();
+        const directAddonQty  = Math.max(1, parseInt(String(meta["quantity"] ?? "1"), 10));
+        const sessionComplete = (String(obj["status"] ?? "") === "complete" || String(obj["status"] ?? "") === "");
+        const paymentOk       = (String(obj["payment_status"] ?? "") === "paid" ||
+                                 String(obj["payment_status"] ?? "") === "no_payment_required");
+        if (directAddonKey && (FLAG_ADDONS.has(directAddonKey) || QTY_ADDONS.has(directAddonKey))
+            && sessionComplete && paymentOk) {
+          try {
+            const { activateAddon } = await import("../services/addons-service.js");
+            const activated = await activateAddon(directAddonKey, orgId, directAddonQty);
+            if (!activated) {
+              logger.warn({ directAddonKey, orgId, directAddonQty },
+                "[Webhook] Direct addon-checkout activation returned false — addon may already be active or unknown");
+            } else {
+              logger.info({ directAddonKey, orgId, directAddonQty },
+                "[Webhook] Direct addon-checkout: add-on activated from checkout.session.completed");
+            }
+          } catch (dErr) {
+            logger.error({ dErr, directAddonKey, orgId },
+              "[Webhook] Direct addon-checkout activation threw — add-on activation will be retried by subscription.created");
+          }
+        }
+      }
+
       logger.info({ plan: planNorm, orgId }, "[Webhook] Checkout session completed");
       break;
     }

@@ -988,6 +988,28 @@ window.__fpPageLoadTs = Date.now();
       });
       // Teammate message: refresh the header badge, play the chat sound.
       if (!isSelf) {
+        // Inject a synthetic notification row so _fpRefreshMsgBadge() sees this
+        // unread message immediately — without waiting for the 30s notification poll.
+        // The real server-side notification row (created asynchronously on POST) will
+        // overwrite this on the next poll. Keyed on message id to avoid duplicates.
+        try {
+          if (!Array.isArray(window.STATE.notifications)) window.STATE.notifications = [];
+          var syntheticId = 'ntf_chat_' + (serverId || ('sse_' + Date.now()));
+          var alreadyPresent = window.STATE.notifications.some(function(n) {
+            return n && (n.id === syntheticId || (n.id && String(n.id).indexOf('ntf_chat_' + serverId) === 0));
+          });
+          if (!alreadyPresent) {
+            window.STATE.notifications.unshift({
+              id: syntheticId,
+              type: 'chat',
+              title: 'Nouveau message dans #' + ch,
+              message: normalizedMessage.text || '',
+              read: false,
+              _synthetic: true,
+              created_at: normalizedMessage.createdAt || new Date().toISOString(),
+            });
+          }
+        } catch(_) {}
         if (typeof window._fpRefreshMsgBadge === 'function') { try { window._fpRefreshMsgBadge(); } catch(_) {} }
         if (typeof window._fpPlayChatSound === 'function') { try { window._fpPlayChatSound(); } catch(_) {} }
       }

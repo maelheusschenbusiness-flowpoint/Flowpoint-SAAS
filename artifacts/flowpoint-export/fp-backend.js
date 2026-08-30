@@ -79,7 +79,6 @@ window.__fpPageLoadTs = Date.now();
             if (!sessionStorage.getItem('fp_tab_uid')) {
               sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
             }
-            try { localStorage.setItem('fp_had_session', '1'); } catch(_) {}
             return true;
           }
         }
@@ -99,18 +98,7 @@ window.__fpPageLoadTs = Date.now();
     return restore;
   }
   window.__fpRestoreSession = _restoreSession;
-  // ── Auth state machine ──────────────────────────────────────────────────────
-  // States: 'restoring' → 'authenticated' | 'unknown'
-  // Sign-In must NEVER render while 'restoring' — only after 'unknown' is confirmed.
-  window.__fpAuthState = 'restoring';
   var _sessionReady = _restoreSession();
-  _sessionReady.then(function(ok) {
-    window.__fpAuthState = ok ? 'authenticated' : 'unknown';
-    console.log('[FP-AUTH-STATE]', new Date().toISOString(), 'authState →', window.__fpAuthState);
-  }).catch(function() {
-    window.__fpAuthState = 'unknown';
-    console.log('[FP-AUTH-STATE]', new Date().toISOString(), 'authState → unknown (restore error)');
-  });
 
   function _authHeaders() {
     try {
@@ -150,20 +138,6 @@ window.__fpPageLoadTs = Date.now();
   // ── Own pageshow handler — fp-backend.js ────────────────────────────────────
   // dashboard.js's pageshow calls window.__fpResetAuth401() but that requires
   // fp-backend.js to already be loaded. Add a direct handler here as a backstop.
-  // ── BFCache suppression window ───────────────────────────────────────────────
-  // Set for 3s after BFCache restore to prevent background 401s from firing a
-  // redirect while session-restore is still in flight.
-  var _fpBFCacheRestoring = false;
-  var _fpBFCacheRestoreTimer = null;
-  function _startBFCacheSuppress() {
-    _fpBFCacheRestoring = true;
-    if (_fpBFCacheRestoreTimer) clearTimeout(_fpBFCacheRestoreTimer);
-    _fpBFCacheRestoreTimer = setTimeout(function() {
-      _fpBFCacheRestoring = false;
-      _fpBFCacheRestoreTimer = null;
-    }, 3000);
-  }
-
   window.addEventListener('pageshow', function(evt) {
     if (!evt.persisted) return;
     if (_fp401ConfirmTimer) { clearTimeout(_fp401ConfirmTimer); _fp401ConfirmTimer = null; }
@@ -171,8 +145,6 @@ window.__fpPageLoadTs = Date.now();
     // Reset the redirect mutex — a BFCache-restored page must be able to redirect
     // if the session is truly expired after revalidation.
     window.__fpRedirecting = false;
-    // Suppress redirect attempts for 3s while session-restore settles.
-    _startBFCacheSuppress();
     // Kick off a fresh session-restore so background timers that fire immediately
     // after BFCache restore pick up a verified token, not a stale sessionStorage one.
     if (typeof window.__fpRestoreSession === 'function') {
@@ -184,22 +156,6 @@ window.__fpPageLoadTs = Date.now();
     // ── Guard 1: another redirect is already in flight — do nothing. ─────────────
     if (window.__fpRedirecting) {
       _fp401BackgroundCount = 0;
-      return;
-    }
-    // ── Guard BFCache: BFCache restore just fired — wait for session-restore. ────
-    if (_fpBFCacheRestoring) {
-      console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'BFCache restore in progress — suppressing redirect.');
-      _fp401BackgroundCount = 0;
-      return;
-    }
-    // ── Guard 0: early-boot window (< 8s) — session-restore may not have settled. ──
-    // Mirrors dashboard.js _confirmSessionExpired Guard 0 so neither code path
-    // can flash the sign-in screen while the page is still bootstrapping.
-    if (performance.now() < 8000 && !window.__fpSessionConfirmed) {
-      console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Guard 0: early-boot, deferring redirect.');
-      if (!_fp401ConfirmTimer) {
-        _fp401ConfirmTimer = setTimeout(function() { _fp401ConfirmTimer = null; _confirmSessionExpiredBackend(); }, Math.ceil(8000 - performance.now()) + 200);
-      }
       return;
     }
     // ── Guard 2: loadData() is still running — STATE.me may not be set yet. ──────
@@ -255,7 +211,7 @@ window.__fpPageLoadTs = Date.now();
 
   function _clearAuth() {
     try {
-      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_had_session'].forEach(function(k) {
+      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(function(k) {
         localStorage.removeItem(k);
       });
       sessionStorage.removeItem('fp_session_token');
@@ -349,24 +305,21 @@ window.__fpPageLoadTs = Date.now();
                         console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), '/api/me returned 401 but STATE.me is present — suppressed (BFCache/back-fwd false positive).');
                         var _err4 = new Error('Unauthorized'); _err4.status = 401; throw _err4;
                       }
-                      // Auth state machine: redirect only after session restore has confirmed 'unknown'.
-                      // 'authenticated' → restore succeeded; this 401 is transient — throw, do NOT redirect.
-                      // 'restoring'    → await restore result before deciding.
-                      // 'unknown'      → restore confirmed no valid session — redirect immediately.
+                      // Bootstrap grace period: within 5 s of page load, session-restore
+                      // may still be settling (race condition causes a false 401).
+                      // Delay the redirect to prevent the Sign-In flash on F5 refresh.
                       if (!window.__fpRedirecting) {
-                        if (window.__fpAuthState === 'authenticated') {
-                          console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'State=authenticated; /api/me 401 is transient — suppressed.');
-                          var _e1 = new Error('Transient 401 — session active'); _e1.status = 401; throw _e1;
-                        }
-                        if (window.__fpAuthState === 'restoring') {
-                          return Promise.resolve(_sessionReady).then(function(ok) {
-                            if (!ok && !window.__fpRedirecting && !_fpBFCacheRestoring && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+                        var _pageAge1 = Date.now() - (window.__fpPageLoadTs || Date.now());
+                        if (_pageAge1 < 8000 && !window.__fpBootstrapRedirectScheduled) {
+                          window.__fpBootstrapRedirectScheduled = true;
+                          console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Bootstrap grace period active — deferring login redirect by', Math.ceil(5000-_pageAge1), 'ms');
+                          setTimeout(function() {
+                            if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
                               window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
                             }
-                            return null;
-                          });
+                          }, 8000 - _pageAge1 + 500);
+                          return null;
                         }
-                        if (_fpBFCacheRestoring) { return null; }
                         window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
                       }
                       return null;
@@ -382,26 +335,18 @@ window.__fpPageLoadTs = Date.now();
               console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed on secondary endpoint', path, '— throwing (no global logout).');
               var _err2 = new Error('Unauthorized'); _err2.status = 401; throw _err2;
             }
-            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed on session-critical endpoint — state machine redirect.');
+            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed on session-critical endpoint — redirecting to login.');
             if (!window.__fpRedirecting) {
-              if (window.__fpAuthState === 'authenticated') {
-                console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'State=authenticated; session-restore failure on /api/me is transient — suppressed.');
-                var _e2 = new Error('Transient 401 — session active'); _e2.status = 401; throw _e2;
-              }
-              if (window.__fpAuthState === 'restoring') {
-                return Promise.resolve(_sessionReady).then(function(ok) {
-                  if (!ok && !window.__fpRedirecting && !_fpBFCacheRestoring && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+              var _pageAge2 = Date.now() - (window.__fpPageLoadTs || Date.now());
+              if (_pageAge2 < 8000 && !window.__fpBootstrapRedirectScheduled) {
+                window.__fpBootstrapRedirectScheduled = true;
+                setTimeout(function() {
+                  if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
                     window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
                   }
-                  return null;
-                });
-              }
-              // Guard 0: if page just loaded and session not yet confirmed, suppress flash redirect
-              if (performance.now() < 6000 && !window.__fpSessionConfirmed) {
-                console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Guard 0: early-boot, suppressing redirect.');
+                }, 8000 - _pageAge2 + 500);
                 return null;
               }
-              if (_fpBFCacheRestoring) { return null; }
               window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
             }
             return null;
@@ -412,21 +357,18 @@ window.__fpPageLoadTs = Date.now();
               console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on secondary endpoint', path, '— throwing (no global logout).');
               var _err3 = new Error('Unauthorized'); _err3.status = 401; throw _err3;
             }
-            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on session-critical endpoint — state machine redirect.');
+            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on session-critical endpoint — redirecting to login.');
             if (!window.__fpRedirecting) {
-              if (window.__fpAuthState === 'authenticated') {
-                console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'State=authenticated; network error is transient — suppressed.');
-                var _e3 = new Error('Transient 401 — session active'); _e3.status = 401; throw _e3;
-              }
-              if (window.__fpAuthState === 'restoring') {
-                return Promise.resolve(_sessionReady).then(function(ok) {
-                  if (!ok && !window.__fpRedirecting && !_fpBFCacheRestoring && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+              var _pageAge3 = Date.now() - (window.__fpPageLoadTs || Date.now());
+              if (_pageAge3 < 8000 && !window.__fpBootstrapRedirectScheduled) {
+                window.__fpBootstrapRedirectScheduled = true;
+                setTimeout(function() {
+                  if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
                     window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
                   }
-                  return null;
-                });
+                }, 8000 - _pageAge3 + 500);
+                return null;
               }
-              if (_fpBFCacheRestoring) { return null; }
               window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
             }
             return null;
@@ -1012,15 +954,6 @@ window.__fpPageLoadTs = Date.now();
       var msgData = data.message || data;
       if (!window.STATE.channelMessages) window.STATE.channelMessages = {};
       if (!window.STATE.channelMessages[ch]) window.STATE.channelMessages[ch] = [];
-      console.log('[CHAT FLOW DEBUG]', {
-        sender: msgData.senderId || msgData.from || '?',
-        receiverOrg: (window.STATE.me && (window.STATE.me.orgId || window.STATE.me.email)) || '?',
-        channel: ch,
-        messageId: msgData.id || '?',
-        sseReceived: true,
-        bucketBefore: window.STATE.channelMessages[ch].length,
-        currentRoute: window.STATE.route || '?',
-      });
       // Recipient-side "self" computation: the SSE broadcast reaches every
       // client of the org, so the server can't decide per-recipient. Compare
       // the stable senderId against every identity exposed by /api/me. UUID is
@@ -1050,11 +983,33 @@ window.__fpPageLoadTs = Date.now();
         setTimeout(function() { var c = document.getElementById('team-chat-msgs'); if (c) c.scrollTop = c.scrollHeight; }, 50);
         return;
       }
-      window.STATE.channelMessages[ch].push({
+      window.STATE.channelMessages[ch].unshift({
         ...normalizedMessage,
       });
       // Teammate message: refresh the header badge, play the chat sound.
       if (!isSelf) {
+        // Inject a synthetic notification row so _fpRefreshMsgBadge() sees this
+        // unread message immediately — without waiting for the 30s notification poll.
+        // The real server-side notification row (created asynchronously on POST) will
+        // overwrite this on the next poll. Keyed on message id to avoid duplicates.
+        try {
+          if (!Array.isArray(window.STATE.notifications)) window.STATE.notifications = [];
+          var syntheticId = 'ntf_chat_' + (serverId || ('sse_' + Date.now()));
+          var alreadyPresent = window.STATE.notifications.some(function(n) {
+            return n && (n.id === syntheticId || (n.id && String(n.id).indexOf('ntf_chat_' + serverId) === 0));
+          });
+          if (!alreadyPresent) {
+            window.STATE.notifications.unshift({
+              id: syntheticId,
+              type: 'chat',
+              title: 'Nouveau message dans #' + ch,
+              message: normalizedMessage.text || '',
+              read: false,
+              _synthetic: true,
+              created_at: normalizedMessage.createdAt || new Date().toISOString(),
+            });
+          }
+        } catch(_) {}
         if (typeof window._fpRefreshMsgBadge === 'function') { try { window._fpRefreshMsgBadge(); } catch(_) {} }
         if (typeof window._fpPlayChatSound === 'function') { try { window._fpPlayChatSound(); } catch(_) {} }
       }
@@ -1073,32 +1028,6 @@ window.__fpPageLoadTs = Date.now();
     document.addEventListener('fp:chat:message', function (e) {
       _fpHandleChatMessage(e.detail);
     });
-
-    // ── Chat polling fallback (SSE drop recovery) ────────────────────────────
-    // If SSE drops, new messages won't arrive. Poll every 15s as a fallback so
-    // users always see recent messages even without a live SSE connection.
-    var _chatPollInterval = null;
-    var _chatLastPollTs = Date.now();
-    function _startChatPoll() {
-      if (_chatPollInterval) return;
-      _chatPollInterval = setInterval(async function() {
-        if (!window.STATE || !window.STATE.me) return;
-        try {
-          var ch = (window.STATE.msgChannel || 'general');
-          var since = _chatLastPollTs;
-          _chatLastPollTs = Date.now();
-          var data = await apiFetch('/api/team/messages?channel=' + encodeURIComponent(ch) + '&since=' + since);
-          if (!Array.isArray(data)) return;
-          data.forEach(function(msg) { _fpHandleChatMessage({ message: msg, channel: ch }); });
-        } catch(_) {}
-      }, 15000);
-    }
-    // Start polling once session is ready
-    if (window.__fpSessionReady) {
-      Promise.resolve(window.__fpSessionReady).then(function(ok) { if (ok) _startChatPoll(); });
-    } else {
-      _startChatPoll();
-    }
 
     // ── Audit terminé ──
     document.addEventListener('fp:audit:complete', function (e) {
@@ -2962,8 +2891,7 @@ window.__fpPageLoadTs = Date.now();
 
     seo: async function(url, data) {
       try {
-        var _lang = localStorage.getItem('fp:language') || (window.STATE && window.STATE.settings && window.STATE.settings.language) || 'fr';
-        return await window._fpFetch('/api/ai/seo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url, ...data, language: _lang }) });
+        return await window._fpFetch('/api/ai/seo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url, ...data }) });
       } catch(e) { return null; }
     },
 
@@ -3312,11 +3240,7 @@ window.__fpPageLoadTs = Date.now();
       if (data.type === 'notification'   && data.notification) handleNotificationUpdate(data.notification);
       // ── Team chat — dispatch CustomEvent so fp-backend chat handler picks it up ──
       if (data.type === 'chat:message') {
-        try {
-          var _chatMsg = data.message || {};
-          console.log('[CHAT EVENT RECEIVED]', { messageId: _chatMsg.id, orgId: data.orgId || '(server-scoped)', senderId: _chatMsg.senderId, channel: data.channel || _chatMsg.channel });
-          document.dispatchEvent(new CustomEvent('fp:chat:message', { detail: data }));
-        } catch(_) {}
+        try { document.dispatchEvent(new CustomEvent('fp:chat:message', { detail: data })); } catch(_) {}
       }
       // Legacy format support
       if (data.type === 'team:message' || data.type === 'chat') {
@@ -3327,44 +3251,29 @@ window.__fpPageLoadTs = Date.now();
       if (data.type === 'billing:plan_updated') {
         try { document.dispatchEvent(new CustomEvent('fp:billing:updated', { detail: data })); } catch(_) {}
       }
-      // ── Add-on activation / deactivation — re-fetch /api/me + /api/addons so
-      //    limits AND FP_DATA.addons are both fresh (SSE formerly only updated me).
-      if (data.type === 'addon:activated' || data.type === 'addon:deactivated') {
-        var _evtKey = data.type === 'addon:activated' ? 'fp:addon:activated' : 'fp:addon:deactivated';
-        try { document.dispatchEvent(new CustomEvent(_evtKey, { detail: data })); } catch(_) {}
-        // Bust in-process caches so apiFetch always hits the network
-        if (typeof _fpCache !== 'undefined') {
-          try { delete _fpCache['/api/me']; } catch(_) {}
-          try { delete _fpCache['/api/addons']; } catch(_) {}
-        }
-        if (typeof _apiFetchCache !== 'undefined') {
-          try { _apiFetchCache.delete('/api/me'); } catch(_) {}
-          try { _apiFetchCache.delete('/api/addons'); } catch(_) {}
-        }
-        // Bust sessionStorage state cache so F5 returns fresh data
-        try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-        // Re-fetch both endpoints in parallel — me for limits, addons for FP_DATA.addons
-        Promise.all([
-          apiFetch('/api/me').catch(function() { return null; }),
-          apiFetch('/api/addons').catch(function() { return null; }),
-        ]).then(function(results) {
-          var freshMe = results[0];
-          var freshAddons = results[1];
-          if (freshMe && window.STATE) window.STATE.me = freshMe;
-          if (freshAddons && window.FP_DATA) {
-            // Normalise to the same shape as the initial load in fpLoadAddons()
-            window.FP_DATA.addons = window.FP_DATA.addons || {};
-            if (freshAddons.active)      window.FP_DATA.addons.active      = freshAddons.active;
-            if (freshAddons.definitions) window.FP_DATA.addons.definitions = freshAddons.definitions;
+      // ── Add-on activation / deactivation — re-fetch /api/me so limits update ──
+      if (data.type === 'addon:activated') {
+        try { document.dispatchEvent(new CustomEvent('fp:addon:activated', { detail: data })); } catch(_) {}
+        // Full /api/me refresh to update limits (e.g. monitors +10 after monitorsPack10)
+        if (typeof _fpCache !== 'undefined') { try { delete _fpCache['/api/me']; } catch(_) {} }
+        if (typeof _apiFetchCache !== 'undefined') { try { _apiFetchCache.delete('/api/me'); } catch(_) {} }
+        apiFetch('/api/me').then(function(freshMe) {
+          if (freshMe && window.STATE) {
+            window.STATE.me = freshMe;
+            if (typeof window.render === 'function') window.render();
           }
-          if (typeof window.render === 'function') window.render();
-          // Toast — show which add-on changed
-          var _addonLabel = data.addonKey || data.addon_key || '';
-          if (typeof window.showToast === 'function' && _addonLabel) {
-            var _verb = data.type === 'addon:activated' ? 'activé' : 'désactivé';
-            window.showToast('success', 'Add-on ' + _verb + ' : ' + _addonLabel);
+        }).catch(function() {});
+      }
+      if (data.type === 'addon:deactivated') {
+        try { document.dispatchEvent(new CustomEvent('fp:addon:deactivated', { detail: data })); } catch(_) {}
+        if (typeof _fpCache !== 'undefined') { try { delete _fpCache['/api/me']; } catch(_) {} }
+        if (typeof _apiFetchCache !== 'undefined') { try { _apiFetchCache.delete('/api/me'); } catch(_) {} }
+        apiFetch('/api/me').then(function(freshMe) {
+          if (freshMe && window.STATE) {
+            window.STATE.me = freshMe;
+            if (typeof window.render === 'function') window.render();
           }
-        });
+        }).catch(function() {});
       }
       if (data.type === 'alert:update' || data.type === 'alert:new') {
         if (window.STATE && typeof window.apiFetch === 'function') {
@@ -3425,10 +3334,12 @@ window.__fpPageLoadTs = Date.now();
       if (b) b.remove();
     }
 
-    // Start SSE only after session restore completes so the token is ready.
-    // This section lives outside the bootstrap IIFE, so only the exported
-    // promise is in scope here.
-    Promise.resolve(window.__fpSessionReady).then(function() { connect(); }).catch(function() { connect(); });
+    // Start SSE after page loads (give backend 2s to settle)
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() { setTimeout(connect, 2000); });
+    } else {
+      setTimeout(connect, 2000);
+    }
   })();
 
   // ─── REAL-TIME DATA REFRESH ───────────────────────────────────────────────
@@ -3702,7 +3613,25 @@ window.__fpPageLoadTs = Date.now();
 
   (function fpV8dInit() {
 
-    // ── 1. PATCH render() IMMÉDIAT en DOMContentLoaded ────────────────────
+    // ── 1. FERMER & DÉSACTIVER l'AI panel ─────────────────────────────────
+    // CSS le cache déjà. On s'assure aussi via JS qu'il ne s'ouvre jamais.
+    function killAIPanel() {
+      var panel   = document.getElementById('fp-ai-chat-panel');
+      var overlay = document.getElementById('fp-ai-chat-overlay');
+      var btn     = document.getElementById('topbar-ai');
+      if (panel)   { panel.hidden = true;   panel.setAttribute('aria-hidden','true'); }
+      if (overlay) { overlay.hidden = true; }
+      if (btn)     { btn.style.display = 'none'; btn.disabled = true; }
+      document.body.classList.remove('fp-ai-open');
+
+      // Bloquer le clic sur le bouton IA (belt+suspenders)
+      if (btn && !btn._fpAiBlocked) {
+        btn._fpAiBlocked = true;
+        btn.addEventListener('click', function(e){ e.stopImmediatePropagation(); e.preventDefault(); }, true);
+      }
+    }
+
+    // ── 2. PATCH render() IMMÉDIAT en DOMContentLoaded ────────────────────
     // À ce moment tous les scripts ont tourné → window.render est défini.
     // On enveloppe render() dans un try/catch AVANT le premier appel async.
     function patchRenderNow() {
@@ -3730,7 +3659,7 @@ window.__fpPageLoadTs = Date.now();
       console.log('[FP v8d] render() patché au DOMContentLoaded');
     }
 
-    // ── 2. POLLING — appelle render() dès que STATE.me est prêt ──────────
+    // ── 3. POLLING — appelle render() dès que STATE.me est prêt ──────────
     // Tire toutes les 300ms; s'arrête quand du vrai contenu est visible
     // ou après 20s (évite toute fuite mémoire).
     function startRenderPoller() {
@@ -3797,14 +3726,20 @@ window.__fpPageLoadTs = Date.now();
     // ── Boot ──────────────────────────────────────────────────────────────
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', function() {
+        killAIPanel();
         patchRenderNow();
         startRenderPoller();
       });
     } else {
+      killAIPanel();
       patchRenderNow();
       startRenderPoller();
     }
 
-    console.log('[FP] v8d — render garanti');
+    // Reforcer killAIPanel à 500ms au cas où dashboard.js ouvrirait le panel
+    setTimeout(killAIPanel, 500);
+    setTimeout(killAIPanel, 1500);
+
+    console.log('[FP] v8d — render garanti + AI panel désactivé');
   })();
 
