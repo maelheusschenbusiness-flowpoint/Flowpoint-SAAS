@@ -1598,32 +1598,57 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
 // Returns: { ok, activated: string[], skipped: string[], errors: string[] }
 router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
-  const { orgId } = req.body as { orgId?: string };
-  if (!orgId) { res.status(400).json({ ok: false, error: "orgId required" }); return; }
+  const { orgId: rawOrgId } = req.body as { orgId?: string };
+  if (!rawOrgId) { res.status(400).json({ ok: false, error: "orgId required" }); return; }
   try {
     const { createStripeClient } = await import("../services/stripe-client.js");
     const { activateAddon } = await import("../services/addons-service.js");
-    const { getAddonForPriceId } = await import("../lib/plans.js");
-    const stripe = createStripeClient();
 
-    // Resolve stripe customer id for this org — UNION ALL with LIMIT applied
-    // to the whole result set (not just the second branch).
+    // Resolve orgId: accept UUID, email (owner_email lookup), or legacy email key.
+    // Returns { resolvedId, customerId } where resolvedId is what's used in org_addons.
+    let resolvedOrgId = rawOrgId;
+    const isEmail = rawOrgId.includes("@");
+    if (isEmail) {
+      // Resolve email → organizations.id (UUID)
+      const uuidRes = await pool.query(
+        `SELECT id::text AS org_uuid FROM organizations WHERE lower(owner_email) = lower($1) LIMIT 1`,
+        [rawOrgId]
+      );
+      if (uuidRes.rows[0]?.org_uuid) {
+        resolvedOrgId = uuidRes.rows[0].org_uuid as string;
+      }
+      // If no UUID found, fall through and use email as orgId (legacy org_settings path)
+    }
+
+    // Resolve Stripe customer id — search both tables; LIMIT on the full union result.
     const custRes = await pool.query(
       `SELECT stripe_customer_id
          FROM (
+           SELECT stripe_customer_id FROM organizations
+            WHERE id::text = $1
+              AND stripe_customer_id IS NOT NULL AND stripe_customer_id <> ''
+           UNION ALL
            SELECT stripe_customer_id FROM org_settings
             WHERE org_id = $1
               AND stripe_customer_id IS NOT NULL AND stripe_customer_id <> ''
            UNION ALL
-           SELECT stripe_customer_id FROM organizations
-            WHERE id::text = $1
+           -- also try email key in org_settings when rawOrgId is email
+           SELECT stripe_customer_id FROM org_settings
+            WHERE lower(org_id) = lower($2)
               AND stripe_customer_id IS NOT NULL AND stripe_customer_id <> ''
          ) _t
         LIMIT 1`,
-      [orgId]
+      [resolvedOrgId, rawOrgId]
     );
     const customerId = String(custRes.rows[0]?.stripe_customer_id ?? "").trim();
-    if (!customerId) { res.status(404).json({ ok: false, error: "No Stripe customer for this org" }); return; }
+    if (!customerId) {
+      res.status(404).json({
+        ok: false,
+        error: `No Stripe customer found for orgId=${rawOrgId} (resolved=${resolvedOrgId})`,
+        resolvedOrgId,
+      });
+      return;
+    }
 
     // Build a merged priceId → addonKey map covering both live and test prices
     // so reconciliation works regardless of the Stripe mode used at checkout.
@@ -1637,13 +1662,34 @@ router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): 
     }
     const lookupAddon = (priceId: string): string | null => combinedPriceMap[priceId] ?? null;
 
-    // Fetch all subscriptions (will filter by status below)
-    const subs = await stripe.subscriptions.list({
-      customer: customerId,
-      status: "all",
-      limit: 20,
-      expand: ["data.items.data.price"],
-    });
+    const stripe = createStripeClient();
+
+    // Fetch all subscriptions (will filter by status below).
+    // Catch Stripe resource_missing (customer from test mode not found in live, etc.)
+    let subs: Awaited<ReturnType<typeof stripe.subscriptions.list>>;
+    try {
+      subs = await stripe.subscriptions.list({
+        customer: customerId,
+        status: "all",
+        limit: 20,
+        expand: ["data.items.data.price"],
+      });
+    } catch (stripeErr: unknown) {
+      const code = (stripeErr as { code?: string })?.code ?? "";
+      const msg  = safeErrMsg(stripeErr);
+      if (code === "resource_missing") {
+        res.status(404).json({
+          ok: false,
+          error: `Stripe customer ${customerId} not found in the current mode (${msg}). ` +
+                 `This usually means the purchase was made in test mode but the server runs in live mode. ` +
+                 `Use the Stripe Dashboard to find the correct customer and re-run, or resend the webhook event.`,
+          resolvedOrgId,
+          customerId,
+        });
+        return;
+      }
+      throw stripeErr;
+    }
 
     const activated: string[] = [];
     const skipped: string[] = [];
@@ -1663,7 +1709,8 @@ router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): 
         if (!key) { skipped.push(`price:${priceId}`); continue; }
         const effectiveQty = addonKey ? qty : metaQty;
         try {
-          const ok = await activateAddon(key, orgId, effectiveQty);
+          // Use resolvedOrgId (UUID) so org_addons is keyed consistently
+          const ok = await activateAddon(key, resolvedOrgId, effectiveQty);
           if (ok) activated.push(`${key}×${effectiveQty}`);
           else skipped.push(`${key} (already active or unknown key)`);
         } catch (e) {
@@ -1672,7 +1719,7 @@ router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): 
       }
     }
 
-    res.json({ ok: true, customerId, activated, skipped, errors });
+    res.json({ ok: true, customerId, resolvedOrgId, rawOrgId, activated, skipped, errors });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   }
