@@ -16,11 +16,13 @@ function getOrg(req: Request): string {
 }
 
 // Identities under which the requester can be a notification recipient.
-// recipient_id may hold a userId or an email depending on how the member row
-// was created, so both are matched.
+// recipient_id may hold a UUID (userUuid / user_id_v2) when the owner path
+// is taken in team-messages.ts (COALESCE(u.id::text, owner_email)), or an
+// email when the member was added via team_members with user_id=email.
+// Include ALL three identity forms so either storage form matches.
 function recipientIds(req: Request): string[] {
   const ctx = (req as OrgReq).orgContext;
-  return [ctx?.userId, ctx?.email].filter((v): v is string => !!v);
+  return [ctx?.userUuid, ctx?.userId, ctx?.email].filter((v): v is string => !!v);
 }
 
 function getOrganizationUuid(orgId: string): string | null {

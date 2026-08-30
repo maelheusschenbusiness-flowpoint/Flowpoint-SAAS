@@ -125744,7 +125744,7 @@ function getOrg3(req) {
 }
 function recipientIds(req) {
   const ctx = req.orgContext;
-  return [ctx?.userId, ctx?.email].filter((v) => !!v);
+  return [ctx?.userUuid, ctx?.userId, ctx?.email].filter((v) => !!v);
 }
 function getOrganizationUuid(orgId3) {
   return isUUIDFormat(orgId3) ? orgId3 : null;
