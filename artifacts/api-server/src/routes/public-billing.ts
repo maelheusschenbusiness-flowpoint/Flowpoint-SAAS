@@ -1384,23 +1384,46 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             "[PublicBilling] finalize: Stripe addon sub step failed after payment — attempting local activation fallback");
           // Payment was already received. Attempt direct DB entitlement so the user
           // gets access immediately; the Stripe webhook will reconcile the subscription.
+          // FK-aware: if the session org_id has no organizations row (FK 23503), retry
+          // with the orgId embedded in the PaymentIntent metadata (set at PI creation time).
+          const _piMetaOrgId: string | null = (intentMeta["org_id"] || intentMeta["orgId"]) ?? null;
+          const _uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          // Candidate org IDs to try in order (deduplicated, UUIDs only)
+          const _fallbackCandidates: string[] = [];
+          if (_authenticatedOrgId) _fallbackCandidates.push(_authenticatedOrgId);
+          if (_piMetaOrgId && _uuidRe.test(_piMetaOrgId) && _piMetaOrgId !== _authenticatedOrgId) {
+            _fallbackCandidates.push(_piMetaOrgId);
+          }
           try {
             const { activateAddon: _aoFallback } = await import("../services/addons-service.js");
-            const _aoFallbackResults = await Promise.all(_aoRecurring.map(async k => {
-              const qty = typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1;
-              const ok = await _aoFallback(k, _authenticatedOrgId!, qty).catch(() => false);
-              if (ok) {
-                try { store.broadcast({ type: "fp:addon:activated", addonKey: k }, _authenticatedOrgId!); } catch (_) { /* non-fatal */ }
+            let _fallbackSucceeded = false;
+            let _usedOrgId: string | null = null;
+            for (const _candidateOrgId of _fallbackCandidates) {
+              const _candidateResults = await Promise.all(_aoRecurring.map(async k => {
+                const qty = typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1;
+                return _aoFallback(k, _candidateOrgId, qty).catch(() => false as boolean | false);
+              }));
+              if (_candidateResults.every(Boolean)) {
+                _fallbackSucceeded = true;
+                _usedOrgId = _candidateOrgId;
+                // Broadcast to the org that actually received the entitlement
+                for (const k of _aoRecurring) {
+                  try { store.broadcast({ type: "fp:addon:activated", addonKey: k }, _candidateOrgId); } catch (_) { /* non-fatal */ }
+                }
+                break;
               }
-              return ok;
-            }));
-            if (_aoFallbackResults.every(Boolean)) {
-              logger.info({ orgId: _authenticatedOrgId, addons: _aoRecurring },
+              logger.warn({ candidateOrgId: _candidateOrgId ? String(_candidateOrgId).slice(0,8)+"…" : null, addons: _aoRecurring },
+                "[PublicBilling] finalize: fallback candidate failed — trying next");
+            }
+            if (_fallbackSucceeded) {
+              logger.info({ orgId: _usedOrgId ? String(_usedOrgId).slice(0,8)+"…" : null, addons: _aoRecurring },
                 "[PublicBilling] finalize: local addon activation succeeded as fallback (webhook will reconcile Stripe)");
+              // Update _authenticatedOrgId to the one that worked for the success response
+              if (_usedOrgId && _usedOrgId !== _authenticatedOrgId) _authenticatedOrgId = _usedOrgId;
               // Fall through to the res.json success below
             } else {
-              logger.error({ orgId: _authenticatedOrgId, addons: _aoRecurring, results: _aoFallbackResults },
-                "[PublicBilling] finalize: local addon activation also failed");
+              logger.error({ addons: _aoRecurring, candidates: _fallbackCandidates.map(c => c.slice(0,8)+"…") },
+                "[PublicBilling] finalize: local addon activation failed for all candidates");
               res.status(500).json({ error: "Paiement reçu mais add-on non activé. Contactez le support.", addonProvisioningFailed: true });
               return;
             }

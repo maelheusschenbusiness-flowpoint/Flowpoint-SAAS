@@ -1,5 +1,5 @@
 import { db, orgAddonsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
 import { ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, FLAG_ADDONS, QTY_ADDONS, PLAN_DEFINITIONS, computeQtyAddonExtras } from "../lib/plans.js";
@@ -20,38 +20,68 @@ export async function activateAddon(addonKey: string, orgId = "default", quantit
     return false;
   }
   const qty = Math.max(1, Math.floor(Number(quantity) || 1));
+
+  /* Acquire one connection for both INSERT and UPDATE to avoid two round-trips
+     and stay in the same transaction context.                                   */
+  const { pool: _adPool } = await import("@workspace/db");
+  const _adClient = await _adPool.connect();
   try {
     const id = `oa_${orgId}_${addonKey}`;
-    await db.insert(orgAddonsTable).values({
-      id,
-      orgId,
-      addonKey,
-      active: true,
-      quantity: qty,
-      activatedAt: new Date(),
-      metadata: { source: "manual" },
-    }).onConflictDoNothing();
 
-    const client = await (await import("@workspace/db")).pool.connect();
-    try {
-      await client.query(
-        `UPDATE org_addons SET active = true, quantity = $3, activated_at = NOW(), updated_at = NOW() WHERE org_id = $1 AND addon_key = $2`,
-        [orgId, addonKey, qty]
-      );
-    } finally {
-      client.release();
-    }
+    /* Raw SQL INSERT — bypasses the Drizzle type-OID mismatch that occurs when
+       the production org_addons.org_id column is UUID (ALTER'd in init-data-tables)
+       but the Drizzle schema still declares it as text.  $2 is sent untyped;
+       Postgres casts the UUID string automatically.
+       ON CONFLICT (id) DO NOTHING = idempotent on the primary key.              */
+    await _adClient.query(
+      `INSERT INTO org_addons
+         (id, org_id, addon_key, active, quantity, activated_at, metadata, updated_at, created_at)
+       VALUES ($1, $2, $3, true, $4, NOW(), '{}'::jsonb, NOW(), NOW())
+       ON CONFLICT (id) DO NOTHING`,
+      [id, orgId, addonKey, qty]
+    );
+
+    /* UPDATE ensures the row is active even if the INSERT was a no-op (row
+       already existed from a previous activation or webhook).                   */
+    await _adClient.query(
+      `UPDATE org_addons
+          SET active = true, quantity = $3, activated_at = NOW(), updated_at = NOW()
+        WHERE org_id = $1 AND addon_key = $2`,
+      [orgId, addonKey, qty]
+    );
 
     applyAddonToStore(addonKey, true);
     store.broadcast({ type: "addon:activated", addonKey }, orgId);
-    store.logActivity({ type: "team", label: `Add-on activé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`, metadata: { addonKey }, orgId,
-      userId: "system", userName: "Stripe Webhook" }).catch(err => logger.warn({ err: err?.message }, "logActivity failed"));
+    store.logActivity({
+      type: "team",
+      label: `Add-on activé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`,
+      metadata: { addonKey },
+      orgId,
+      userId: "system",
+      userName: "Stripe Webhook",
+    }).catch(err => logger.warn({ err: err?.message }, "logActivity failed"));
 
-    logger.info({ addonKey, orgId }, "[Addons] Addon activated");
+    logger.info({ addonKey, orgId, qty }, "[Addons] Addon activated");
     return true;
-  } catch (err) {
-    logger.error({ err, addonKey, orgId }, "[Addons] Failed to activate addon — rethrowing for caller");
+  } catch (err: unknown) {
+    /* Expose the Postgres error code + constraint + detail so Render / BetterStack
+       logs reveal the exact failure without needing a stack trace.
+         pgCode 23503 = FK violation (org_id not in organizations)
+         pgCode 42703 = column does not exist (schema drift)
+         pgCode 23505 = unique_violation (should not happen with ON CONFLICT)    */
+    const pgErr = err as { code?: string; constraint?: string; detail?: string; message?: string };
+    logger.error({
+      err,
+      addonKey,
+      orgId:        orgId ? String(orgId).slice(0, 8) + "…" : orgId,
+      pgCode:       pgErr?.code,
+      pgConstraint: pgErr?.constraint,
+      pgDetail:     pgErr?.detail?.slice(0, 300),
+      pgMsg:        pgErr?.message?.slice(0, 300),
+    }, "[Addons] activateAddon: DB write failed — rethrowing for caller");
     throw err;
+  } finally {
+    _adClient.release();
   }
 }
 
@@ -80,8 +110,14 @@ export async function deactivateAddon(addonKey: string, orgId = "default"): Prom
     }
     applyAddonToStore(addonKey, false);
     store.broadcast({ type: "addon:deactivated", addonKey }, orgId);
-    store.logActivity({ type: "team", label: `Add-on désactivé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`, metadata: { addonKey }, orgId,
-      userId: "system", userName: "Stripe Webhook" }).catch(err => logger.warn({ err: err?.message }, "logActivity failed"));
+    store.logActivity({
+      type: "team",
+      label: `Add-on désactivé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`,
+      metadata: { addonKey },
+      orgId,
+      userId: "system",
+      userName: "Stripe Webhook",
+    }).catch(err => logger.warn({ err: err?.message }, "logActivity failed"));
     logger.info({ addonKey, orgId }, "[Addons] Addon deactivated");
     return true;
   } catch (err) {
@@ -161,11 +197,11 @@ export function getQuotaLimits(plan: string, addons: Record<string, boolean | nu
   // Canonical per-pack expansion — QTY_ADDON_GRANTS is the single source of truth.
   const extras = computeQtyAddonExtras(addons);
   const limits = {
-    audits:  definition.limits.audits      + (extras["audits"]      ?? 0),
-    monitors: definition.limits.monitors   + (extras["monitors"]    ?? 0),
-    reports: definition.limits.reports     + (extras["reports"]     ?? 0),
-    exports: definition.limits.exports     + (extras["exports"]     ?? 0),
-    seats:   definition.limits.teamMembers + (extras["teamMembers"] ?? 0),
+    audits:   definition.limits.audits      + (extras["audits"]      ?? 0),
+    monitors: definition.limits.monitors    + (extras["monitors"]    ?? 0),
+    reports:  definition.limits.reports     + (extras["reports"]     ?? 0),
+    exports:  definition.limits.exports     + (extras["exports"]     ?? 0),
+    seats:    definition.limits.teamMembers + (extras["teamMembers"] ?? 0),
     retention: definition.limits.retention,
   };
 
