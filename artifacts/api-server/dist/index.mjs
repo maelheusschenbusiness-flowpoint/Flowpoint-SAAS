@@ -67241,7 +67241,10 @@ var init_plans = __esm({
         "retention90d",
         "advancedSeoLab",
         // BETA + included: status=beta, commercial mode=included. Renders as "🧪 Bêta — Inclus".
-        "backlinkIntelligence"
+        "backlinkIntelligence",
+        // Granular RBAC (custom roles, workspace permissions, SSO compat). Live price ID.
+        // Pro-purchasable already (_PRO_EXCLUSIVE); no Ultra-only backend guard.
+        "enterprisePermissions"
       ]),
       ultra: /* @__PURE__ */ new Set([
         "whiteLabel",
@@ -74853,6 +74856,7 @@ async function persistOrgData(orgId3, fields) {
     if (fields.pendingPlanDate !== void 0) legacy["pendingPlanDate"] = fields.pendingPlanDate;
     if (fields.ownerEmail !== void 0) legacy["email"] = fields.ownerEmail;
     if (fields.orgName !== void 0) legacy["orgName"] = fields.orgName;
+    if (fields.website !== void 0) legacy["website"] = fields.website;
     if (Object.keys(legacy).length > 0) {
       await upsertOrgSettings2(orgId3, legacy);
     }
@@ -109035,6 +109039,7 @@ router6.get("/me", async (req, res) => {
         orgId: orgId3?.slice(0, 8)
       }, "[ME CONTEXT DEBUG]");
       res.json({
+        orgId: orgId3,
         firstName,
         lastName: dbData?.lastName ?? "",
         email: req.orgContext?.email ?? "",
@@ -109743,28 +109748,36 @@ router6.delete("/settings/data", ownerOnly, async (req, res) => {
   const orgId3 = requireOrgId(req, res);
   if (!orgId3) return;
   const tables = [
+    // Core SEO & audit data
     "audits",
     "audit_schedules",
     "reports",
     "report_exports",
+    // Monitoring
     "monitors",
     "monitor_checks",
     "monitor_incidents",
     "alert_rules",
     "alert_events",
+    // Keywords, calendar, team
     "tracked_keywords",
     "calendar_events",
     "team_messages",
     "team_files",
+    // Automations & workflows
     "automation_integrations",
     "automation_workflows",
     "automation_runs",
     "automation_logs",
     "workflow_runs",
     "incoming_webhooks",
+    // AI & missions
     "missions",
     "mission_history",
     "mission_ai_logs",
+    "ai_usage_logs",
+    "ai_monthly_usage",
+    // Analytics & SEO tools
     "psi_cache",
     "seo_forecasts",
     "funnels",
@@ -109779,7 +109792,14 @@ router6.delete("/settings/data", ownerOnly, async (req, res) => {
     "cro_scores",
     "cro_experiments",
     "revenue_leaks",
+    // Competitors & Local SEO
+    "competitors",
+    "competitor_analysis",
+    "competitor_map_results",
+    "gbp_profiles",
     "local_pack_history",
+    // Notifications, activity, misc
+    "notifications",
     "org_checklist",
     "overview_insights_cache",
     "overview_insights_rl",
@@ -109787,30 +109807,37 @@ router6.delete("/settings/data", ownerOnly, async (req, res) => {
     "share_tokens",
     "growth_objectives"
   ];
+  const { pool: pgPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+  const client = await pgPool.connect();
+  let deleted = 0;
   try {
-    const { pool: pgPool } = await Promise.resolve().then(() => (init_src(), src_exports));
-    const client = await pgPool.connect();
-    let deleted = 0;
+    const existCheck = await client.query(
+      `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
+      [tables]
+    );
+    const existing = new Set(existCheck.rows.map((r) => r.tablename));
+    await client.query("BEGIN");
     try {
-      const existCheck = await client.query(
-        `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
-        [tables]
-      );
-      const existing = new Set(existCheck.rows.map((r) => r.tablename));
-      await client.query("BEGIN");
       for (const t of tables.filter((t2) => existing.has(t2))) {
-        const r = await client.query(`DELETE FROM ${t} WHERE org_id = $1`, [orgId3]);
+        const r = await client.query(
+          // ai_usage_logs.org_id is UUID; explicit cast handles all column types safely
+          `DELETE FROM ${t} WHERE org_id::text = $1`,
+          [orgId3]
+        );
         deleted += r.rowCount ?? 0;
       }
       await client.query("COMMIT");
-    } finally {
-      client.release();
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
     }
     logger.info({ orgId: orgId3, deleted }, "[settings/data] User data purged");
     res.json({ ok: true, deleted });
   } catch (err) {
     logger.error({ err }, "[settings/data] purge failed");
     res.status(500).json({ error: "Erreur lors de la suppression" });
+  } finally {
+    client.release();
   }
 });
 router6.post("/settings/api-keys/regenerate", ownerOnly, async (req, res) => {
@@ -120504,6 +120531,7 @@ function createBillingQuote(selection) {
 init_billing_service();
 init_mailer();
 init_rateLimiter();
+init_sessions();
 var billingPortalRateLimit = createRateLimit("billingPortalPerMinute");
 var billingCheckoutRateLimit = createRateLimit("billingCheckoutPerMinute");
 var billingDeleteRateLimit = createRateLimit("billingDeletePerMinute");
@@ -121156,7 +121184,23 @@ router14.post("/billing/cancel-trial", ownerOnly, async (req, res) => {
         }).catch(() => {
         });
       }
-      logger.info({ orgId: orgId3, subId: sub.id }, "[Billing] Trial cancelled immediately");
+      const _aCookieToken = req.cookies?.fp_token ?? "";
+      const _aAuthHeader = req.headers["authorization"] ?? "";
+      const _aBearerToken = typeof _aAuthHeader === "string" && _aAuthHeader.startsWith("Bearer ") ? _aAuthHeader.slice(7).trim() : "";
+      const _aPrimaryToken = _aBearerToken || _aCookieToken;
+      if (_aPrimaryToken) {
+        const _aSess = await getSession(_aPrimaryToken);
+        if (_aSess?.userId) {
+          await invalidateAllSessions(_aSess.userId);
+          logger.info(
+            { orgId: orgId3, subId: sub.id, userIdPrefix: _aSess.userId.slice(0, 8) },
+            "[Billing] cancel-trial: all sessions revoked"
+          );
+        }
+      }
+      const _isProd = process.env["NODE_ENV"] === "production" || !!process.env["RENDER"];
+      res.clearCookie("fp_token", { httpOnly: true, secure: _isProd, sameSite: _isProd ? "none" : "lax", path: "/" });
+      logger.info({ orgId: orgId3, subId: sub.id }, "[Billing] Trial cancelled immediately \u2014 session revoked");
       res.json({ ok: true, cancelAtPeriodEnd: false });
     }
   } catch (err) {
@@ -139850,10 +139894,10 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
           logger.info({ step: "FC-4-COMMITTED", orgId: _fcAOrgId, userId: _fcUserId, plan: planKey }, "[FC] TRANSACTION COMMITTED \u2014 user + org activated");
           try {
             const { upsertOrgSettings: _fcUpsertOs, loadOrgSettings: _fcLoadOs } = await Promise.resolve().then(() => (init_org_settings(), org_settings_exports));
-            const _fcOsExisting = await _fcLoadOs(_fcAEmail).catch(() => null);
+            const _fcOsExisting = await _fcLoadOs(_fcAOrgId).catch(() => null);
             const _fcHasAddr = !!(_fcSignup["address"] || _fcSignup["city"] || _fcSignup["country"] || _fcSignup["phone"]);
             if (!_fcOsExisting) {
-              await _fcUpsertOs(_fcAEmail, {
+              await _fcUpsertOs(_fcAOrgId, {
                 email: _fcAEmail,
                 orgName: _fcSignup["company_name"] ?? "",
                 firstName: _fcSignup["first_name"] ?? "",
@@ -139867,9 +139911,9 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
                 locationConfigured: !!(_fcSignup["city"] || _fcSignup["address"]),
                 locationSource: "manual"
               });
-              logger.info({ step: "FC-4f", orgId: _fcAEmail }, "[FC] step-4f: org_settings profile row created from signup data");
+              logger.info({ step: "FC-4f", orgId: _fcAOrgId }, "[FC] step-4f: org_settings profile row created from signup data");
             } else if (_fcHasAddr && !_fcOsExisting.address && !_fcOsExisting.city) {
-              await _fcUpsertOs(_fcAEmail, {
+              await _fcUpsertOs(_fcAOrgId, {
                 country: _fcOsExisting.country ?? _fcSignup["country"] ?? null,
                 city: _fcSignup["city"] ?? null,
                 address: _fcSignup["address"] ?? null,
@@ -139878,7 +139922,7 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
                 locationConfigured: !!(_fcSignup["city"] || _fcSignup["address"]),
                 locationSource: "manual"
               });
-              logger.info({ step: "FC-4f", orgId: _fcAEmail }, "[FC] step-4f: org_settings address self-healed from signup data");
+              logger.info({ step: "FC-4f", orgId: _fcAOrgId }, "[FC] step-4f: org_settings address self-healed from signup data");
             }
           } catch (_fcOsErr) {
             logger.warn({ step: "FC-4f", err: _fcOsErr.message }, "[FC] step-4f: org_settings propagation failed (non-fatal)");

@@ -1,27 +1,27 @@
 {
-  "certifiedAt": "2026-08-19T14:17:56.197Z",
-  "orgId": "8d5a12d0-2e42-45fa-9e02-4a8214d12b1c",
+  "certifiedAt": "2026-08-29T14:22:40.052Z",
+  "orgId": "89422b2a-5f5a-4e16-b95f-7731c2d9f713",
   "users": {
-    "owner": "cert-owner-1787149073649@deletion-cert.local",
-    "ownerId": "dd0e044d-5c94-430f-9263-66833d1fe093",
-    "memberId": "941893d2-c37c-4656-a039-b815ffb2a858"
+    "owner": "cert-owner-1788013356519@deletion-cert.local",
+    "ownerId": "dca6e2b2-7817-45f2-a548-e0a4968a786c",
+    "memberId": "432d242d-9946-446a-a82d-a0f217b93ea5"
   },
   "endpoint": "DELETE /api/billing/account",
   "httpStatus": 200,
   "httpBody": {
     "ok": true,
     "deleted": {
-      "rows": 164,
-      "tablesWithData": 161,
-      "tablesScanned": 171,
+      "rows": 170,
+      "tablesWithData": 167,
+      "tablesScanned": 177,
       "usersDeleted": 2,
       "stripeCustomer": false,
       "subscriptionsCanceled": 0
     }
   },
-  "durationMs": 334,
-  "tablesWithOwnershipColumn": 165,
-  "tablesSeeded": 157,
+  "durationMs": 413,
+  "tablesWithOwnershipColumn": 170,
+  "tablesSeeded": 163,
   "tablesNotSeedable": [
     {
       "table": "workflow_runs",
@@ -34,10 +34,6 @@
     {
       "table": "funnel_steps",
       "reason": "new row for relation \"funnel_steps\" violates check constraint \"funnel_steps_position_check\""
-    },
-    {
-      "table": "geo_tracking_snapshots",
-      "reason": "insert or update on table \"geo_tracking_snapshots\" violates foreign key constraint \"geo_tracking_snapshots_hea"
     },
     {
       "table": "keyword_rankings",
@@ -56,7 +52,7 @@
       "reason": "new row for relation \"org_member_permissions\" violates check constraint \"org_member_permissions_mode_check\""
     }
   ],
-  "rowsBefore": 164,
+  "rowsBefore": 170,
   "rowsAfter": 0,
   "matrix": [
     {
@@ -75,22 +71,22 @@
       "rowsAfter": 0
     },
     {
-      "table": "traffic_losses",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "ai_action_proposals",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
       "table": "ai_action_logs",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
+      "table": "traffic_losses",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
       "table": "worker_failures",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_action_proposals",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -135,6 +131,56 @@
       "rowsAfter": 0
     },
     {
+      "table": "revenue_leaks",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "permission_logs",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "roles",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "local_heatmaps",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "login_audits",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "custom_dashboards",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "competitor_analysis",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "local_seo_ranking_history",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "member_activity_days",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "ai_rate_limit_windows",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
       "table": "ai_autopilot_grants",
       "rowsBefore": 1,
       "rowsAfter": 0
@@ -145,17 +191,17 @@
       "rowsAfter": 0
     },
     {
+      "table": "usage_events",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
       "table": "ai_chat_history",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
       "table": "ai_alerts",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "usage_events",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -185,17 +231,17 @@
       "rowsAfter": 0
     },
     {
-      "table": "audits",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
       "table": "activity_logs",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
       "table": "ai_workspace_profiles",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "audits",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -350,12 +396,12 @@
       "rowsAfter": 0
     },
     {
-      "table": "cron_history",
+      "table": "custom_domains",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "custom_domains",
+      "table": "cron_history",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -420,6 +466,16 @@
       "rowsAfter": 0
     },
     {
+      "table": "geo_tracking_snapshots",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "billing_events",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
       "table": "competitor_map_results",
       "rowsBefore": 1,
       "rowsAfter": 0
@@ -461,11 +517,6 @@
     },
     {
       "table": "behavior_site_tokens",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "billing_events",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -550,11 +601,6 @@
       "rowsAfter": 0
     },
     {
-      "table": "local_heatmaps",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
       "table": "local_opportunities",
       "rowsBefore": 1,
       "rowsAfter": 0
@@ -571,11 +617,6 @@
     },
     {
       "table": "market_insights",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "login_audits",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -610,17 +651,17 @@
       "rowsAfter": 0
     },
     {
-      "table": "missions",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
       "table": "monitor_incidents",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
       "table": "monitors",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
+      "table": "missions",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -685,11 +726,6 @@
       "rowsAfter": 0
     },
     {
-      "table": "permission_logs",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
       "table": "ranking_alerts",
       "rowsBefore": 1,
       "rowsAfter": 0
@@ -700,17 +736,12 @@
       "rowsAfter": 0
     },
     {
-      "table": "reports",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
       "table": "reputation_scores",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
     {
-      "table": "revenue_leaks",
+      "table": "reports",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -731,11 +762,6 @@
     },
     {
       "table": "seo_backlinks",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "roles",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -790,7 +816,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "team_members",
+      "table": "team_invitations",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -800,7 +826,7 @@
       "rowsAfter": 0
     },
     {
-      "table": "team_invitations",
+      "table": "team_members",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
@@ -835,6 +861,11 @@
       "rowsAfter": 0
     },
     {
+      "table": "funnels",
+      "rowsBefore": 1,
+      "rowsAfter": 0
+    },
+    {
       "table": "report_templates",
       "rowsBefore": 1,
       "rowsAfter": 0
@@ -846,11 +877,6 @@
     },
     {
       "table": "user_activity_days",
-      "rowsBefore": 1,
-      "rowsAfter": 0
-    },
-    {
-      "table": "funnels",
       "rowsBefore": 1,
       "rowsAfter": 0
     },
