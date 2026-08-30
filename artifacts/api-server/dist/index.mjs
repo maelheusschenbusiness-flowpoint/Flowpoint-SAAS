@@ -126042,17 +126042,37 @@ router22.post("/team/messages", canWrite, async (req, res) => {
     console.log("[CHAT SSE BROADCAST]", { messageId: id, orgId: org3(req), channel, senderId, recipients: "all-org-sse-clients" });
     (async () => {
       const senderEmail = req.orgContext?.email ?? "";
-      const members = await db4(req)(
-        `SELECT COALESCE(NULLIF(user_id, ''), email) AS rid, email, user_id
-           FROM team_members
-          WHERE org_id = $1 AND status = 'active'`,
-        [org3(req)]
-      );
+      const [membersRes, ownerRes] = await Promise.all([
+        db4(req)(
+          `SELECT COALESCE(NULLIF(user_id, ''), email) AS rid, email, user_id
+             FROM team_members
+            WHERE org_id = $1 AND status = 'active'`,
+          [org3(req)]
+        ),
+        // The org owner often has NO team_members row — include them explicitly
+        // so they always receive chat notifications regardless of membership table state.
+        db4(req)(
+          `SELECT COALESCE(NULLIF(u.id::text, ''), o.owner_email) AS rid,
+                  o.owner_email AS email,
+                  u.id::text AS user_id
+             FROM organizations o
+             LEFT JOIN users u ON LOWER(u.email) = LOWER(o.owner_email)
+            WHERE o.id::text = $1`,
+          [org3(req)]
+        )
+      ]);
+      const memberRidSet = new Set(membersRes.rows.map((r2) => String(r2["rid"] ?? "")));
+      const ownerRow = ownerRes.rows[0];
+      const ownerRid = String(ownerRow?.["rid"] ?? "");
+      const allRecipientRows = [...membersRes.rows];
+      if (ownerRid && !memberRidSet.has(ownerRid)) {
+        allRecipientRows.push(ownerRow);
+      }
       const title = `Nouveau message de ${senderName} dans #${channel}`;
       const body = (text2 ?? attachmentName ?? "Pi\xE8ce jointe").slice(0, 300);
       const link = JSON.stringify({ route: "team", sub: "chat", channel, senderId });
       let n = 0;
-      for (const m of members.rows) {
+      for (const m of allRecipientRows) {
         const rid = String(m["rid"] ?? "");
         if (!rid) continue;
         if (rid === senderId || String(m["email"] ?? "") === senderId || String(m["user_id"] ?? "") === senderId || senderEmail && (rid === senderEmail || String(m["email"] ?? "") === senderEmail)) continue;

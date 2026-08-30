@@ -244,17 +244,38 @@ router.post("/team/messages", canWrite, async (req, res) => {
     // can never clear another member's chat alert. Fire-and-forget.
     (async () => {
       const senderEmail = (req as OrgReq).orgContext?.email ?? "";
-      const members = await db(req)(
-        `SELECT COALESCE(NULLIF(user_id, ''), email) AS rid, email, user_id
-           FROM team_members
-          WHERE org_id = $1 AND status = 'active'`,
-        [org(req)]
-      );
+      const [membersRes, ownerRes] = await Promise.all([
+        db(req)(
+          `SELECT COALESCE(NULLIF(user_id, ''), email) AS rid, email, user_id
+             FROM team_members
+            WHERE org_id = $1 AND status = 'active'`,
+          [org(req)]
+        ),
+        // The org owner often has NO team_members row — include them explicitly
+        // so they always receive chat notifications regardless of membership table state.
+        db(req)(
+          `SELECT COALESCE(NULLIF(u.id::text, ''), o.owner_email) AS rid,
+                  o.owner_email AS email,
+                  u.id::text AS user_id
+             FROM organizations o
+             LEFT JOIN users u ON LOWER(u.email) = LOWER(o.owner_email)
+            WHERE o.id::text = $1`,
+          [org(req)]
+        ),
+      ]);
+      // Merge: add owner if not already covered by a team_members row
+      const memberRidSet = new Set(membersRes.rows.map((r: Record<string, unknown>) => String(r["rid"] ?? "")));
+      const ownerRow = ownerRes.rows[0] as Record<string, unknown> | undefined;
+      const ownerRid = String(ownerRow?.["rid"] ?? "");
+      const allRecipientRows: Record<string, unknown>[] = [...membersRes.rows];
+      if (ownerRid && !memberRidSet.has(ownerRid)) {
+        allRecipientRows.push(ownerRow as Record<string, unknown>);
+      }
       const title = `Nouveau message de ${senderName} dans #${channel}`;
       const body  = (text ?? attachmentName ?? "Pièce jointe").slice(0, 300);
       const link  = JSON.stringify({ route: "team", sub: "chat", channel, senderId });
       let n = 0;
-      for (const m of members.rows) {
+      for (const m of allRecipientRows) {
         const rid = String(m["rid"] ?? "");
         if (!rid) continue;
         // Exclude the sender under any of their identities (userId or email)
