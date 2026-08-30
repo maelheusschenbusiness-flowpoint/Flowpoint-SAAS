@@ -1906,18 +1906,24 @@ router.post("/admin/activate-addon-direct", async (req: Request, res: Response):
     // Upsert via raw SQL — bypasses Drizzle ORM type-binding differences between
     // local pg and production Supabase pooler. Fully idempotent: second call with
     // same piId leaves the quota unchanged.
-    const textId = `oa_${canonicalOrgId}_${addonKey}`;
+    //
+    // NOTE: org_addons.id is UUID in production (TEXT in local dev). We generate
+    // a deterministic SHA-1–derived UUID so the id is stable across replays.
+    const { createHash } = await import("crypto");
+    const rawHash = createHash("sha1").update(`${canonicalOrgId}:${addonKey}`).digest("hex");
+    const deterministicId = `${rawHash.slice(0,8)}-${rawHash.slice(8,12)}-5${rawHash.slice(13,16)}-${rawHash.slice(16,20)}-${rawHash.slice(20,32)}`;
     const metaJson = JSON.stringify({ source: "admin_reconcile", piId: piId || null });
     const client = await pool.connect();
     try {
-      // Step A: INSERT the row only when it doesn't already exist
+      // Step A: INSERT the row only when it doesn't already exist (ON CONFLICT DO NOTHING on PK)
       await client.query(
         `INSERT INTO org_addons (id, org_id, addon_key, active, quantity, activated_at, metadata)
-         VALUES ($1, $2::uuid, $3, true, $4, NOW(), $5::jsonb)
+         VALUES ($1::uuid, $2::uuid, $3, true, $4, NOW(), $5::jsonb)
          ON CONFLICT DO NOTHING`,
-        [textId, canonicalOrgId, addonKey, qty, metaJson]
+        [deterministicId, canonicalOrgId, addonKey, qty, metaJson]
       );
       // Step B: ensure the row is active with the correct quantity regardless of previous state
+      // (catches both: first-time INSERT succeeded, and pre-existing row from an earlier activation)
       await client.query(
         `UPDATE org_addons
             SET active       = true,
