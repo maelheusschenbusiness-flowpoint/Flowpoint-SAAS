@@ -1606,17 +1606,38 @@ router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): 
     const { getAddonForPriceId } = await import("../lib/plans.js");
     const stripe = createStripeClient();
 
-    // Resolve stripe customer id for this org
+    // Resolve stripe customer id for this org — UNION ALL with LIMIT applied
+    // to the whole result set (not just the second branch).
     const custRes = await pool.query(
-      `SELECT stripe_customer_id FROM org_settings WHERE org_id = $1
-       UNION ALL
-       SELECT stripe_customer_id FROM organizations WHERE id::text = $1 LIMIT 1`,
+      `SELECT stripe_customer_id
+         FROM (
+           SELECT stripe_customer_id FROM org_settings
+            WHERE org_id = $1
+              AND stripe_customer_id IS NOT NULL AND stripe_customer_id <> ''
+           UNION ALL
+           SELECT stripe_customer_id FROM organizations
+            WHERE id::text = $1
+              AND stripe_customer_id IS NOT NULL AND stripe_customer_id <> ''
+         ) _t
+        LIMIT 1`,
       [orgId]
     );
     const customerId = String(custRes.rows[0]?.stripe_customer_id ?? "").trim();
     if (!customerId) { res.status(404).json({ ok: false, error: "No Stripe customer for this org" }); return; }
 
-    // Fetch all active/trialing subscriptions
+    // Build a merged priceId → addonKey map covering both live and test prices
+    // so reconciliation works regardless of the Stripe mode used at checkout.
+    const { ADDON_PRICE_IDS, ADDON_PRICE_IDS_TEST } = await import("../lib/plans.js");
+    const combinedPriceMap: Record<string, string> = {};
+    for (const [addon, id] of Object.entries(ADDON_PRICE_IDS as Record<string, string>)) {
+      if (id) combinedPriceMap[id] = addon;
+    }
+    for (const [addon, id] of Object.entries((ADDON_PRICE_IDS_TEST ?? {}) as Record<string, string>)) {
+      if (id) combinedPriceMap[id] = addon;
+    }
+    const lookupAddon = (priceId: string): string | null => combinedPriceMap[priceId] ?? null;
+
+    // Fetch all subscriptions (will filter by status below)
     const subs = await stripe.subscriptions.list({
       customer: customerId,
       status: "all",
@@ -1633,8 +1654,8 @@ router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): 
       for (const item of sub.items.data) {
         const priceId = item.price?.id ?? "";
         const qty     = item.quantity ?? 1;
-        // Try price → addon mapping first
-        const addonKey = getAddonForPriceId(priceId);
+        // Try price → addon mapping (live + test prices) first
+        const addonKey = lookupAddon(priceId);
         // Also check subscription metadata for addonKey (direct addon-checkout path)
         const metaKey  = String(sub.metadata?.["addonKey"] ?? "").trim();
         const metaQty  = Math.max(1, parseInt(String(sub.metadata?.["quantity"] ?? "1"), 10));
@@ -1644,7 +1665,7 @@ router.post("/admin/reconcile-org-addons", async (req: Request, res: Response): 
         try {
           const ok = await activateAddon(key, orgId, effectiveQty);
           if (ok) activated.push(`${key}×${effectiveQty}`);
-          else skipped.push(`${key} (already active or unknown)`);
+          else skipped.push(`${key} (already active or unknown key)`);
         } catch (e) {
           errors.push(`${key}: ${safeErrMsg(e)}`);
         }

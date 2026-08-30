@@ -138030,9 +138030,17 @@ router52.post("/admin/reconcile-org-addons", async (req, res) => {
     const { getAddonForPriceId: getAddonForPriceId2 } = await Promise.resolve().then(() => (init_plans(), plans_exports));
     const stripe = createStripeClient2();
     const custRes = await pool.query(
-      `SELECT stripe_customer_id FROM org_settings WHERE org_id = $1
-       UNION ALL
-       SELECT stripe_customer_id FROM organizations WHERE id::text = $1 LIMIT 1`,
+      `SELECT stripe_customer_id
+         FROM (
+           SELECT stripe_customer_id FROM org_settings
+            WHERE org_id = $1
+              AND stripe_customer_id IS NOT NULL AND stripe_customer_id <> ''
+           UNION ALL
+           SELECT stripe_customer_id FROM organizations
+            WHERE id::text = $1
+              AND stripe_customer_id IS NOT NULL AND stripe_customer_id <> ''
+         ) _t
+        LIMIT 1`,
       [orgId3]
     );
     const customerId = String(custRes.rows[0]?.stripe_customer_id ?? "").trim();
@@ -138040,6 +138048,15 @@ router52.post("/admin/reconcile-org-addons", async (req, res) => {
       res.status(404).json({ ok: false, error: "No Stripe customer for this org" });
       return;
     }
+    const { ADDON_PRICE_IDS: ADDON_PRICE_IDS2, ADDON_PRICE_IDS_TEST: ADDON_PRICE_IDS_TEST2 } = await Promise.resolve().then(() => (init_plans(), plans_exports));
+    const combinedPriceMap = {};
+    for (const [addon, id] of Object.entries(ADDON_PRICE_IDS2)) {
+      if (id) combinedPriceMap[id] = addon;
+    }
+    for (const [addon, id] of Object.entries(ADDON_PRICE_IDS_TEST2 ?? {})) {
+      if (id) combinedPriceMap[id] = addon;
+    }
+    const lookupAddon = (priceId) => combinedPriceMap[priceId] ?? null;
     const subs = await stripe.subscriptions.list({
       customer: customerId,
       status: "all",
@@ -138054,7 +138071,7 @@ router52.post("/admin/reconcile-org-addons", async (req, res) => {
       for (const item of sub.items.data) {
         const priceId = item.price?.id ?? "";
         const qty = item.quantity ?? 1;
-        const addonKey = getAddonForPriceId2(priceId);
+        const addonKey = lookupAddon(priceId);
         const metaKey = String(sub.metadata?.["addonKey"] ?? "").trim();
         const metaQty = Math.max(1, parseInt(String(sub.metadata?.["quantity"] ?? "1"), 10));
         const key = addonKey || metaKey;
@@ -138066,7 +138083,7 @@ router52.post("/admin/reconcile-org-addons", async (req, res) => {
         try {
           const ok = await activateAddon2(key, orgId3, effectiveQty);
           if (ok) activated.push(`${key}\xD7${effectiveQty}`);
-          else skipped.push(`${key} (already active or unknown)`);
+          else skipped.push(`${key} (already active or unknown key)`);
         } catch (e) {
           errors.push(`${key}: ${safeErrMsg(e)}`);
         }
