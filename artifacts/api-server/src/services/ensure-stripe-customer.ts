@@ -317,11 +317,12 @@ async function _runWithLock(
     // done inside the lock) so the advisory lock is already held — no TOCTOU.
     if (key.startsWith("sk_live_")) {
       try {
-        const qaRow = await client.query<{ is_qa: boolean }>(
+        const qaRow = await client.query(
           `SELECT COALESCE(is_internal_qa, false) AS is_qa FROM organizations WHERE id::text = $1 LIMIT 1`,
           [orgId],
         );
-        if (qaRow.rows[0]?.is_qa === true) {
+        const _isQaOrg = qaRow.rows[0]?.is_qa === true;
+        if (_isQaOrg) {
           throw new Error(
             `[ESC] BLOCKED: org ${orgId} has is_internal_qa=true — live Stripe customer creation is prohibited for QA orgs. ` +
             `Call ensureStripeCustomer with STRIPE_TEST_KEY instead.`,
