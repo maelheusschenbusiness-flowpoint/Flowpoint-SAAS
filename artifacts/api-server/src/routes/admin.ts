@@ -1893,19 +1893,42 @@ router.post("/admin/activate-addon-direct", async (req: Request, res: Response):
   }
   const qty = Math.max(1, Math.floor(Number(quantity) || 1));
   try {
-    // Verify canonical org exists
+    // Verify org exists and is a valid UUID
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawOrgId);
-    let canonicalOrgId = rawOrgId;
-    if (isUuid) {
-      const r = await pool.query(`SELECT id::text FROM organizations WHERE id = $1::uuid LIMIT 1`, [rawOrgId]);
-      if (!r.rows[0]) {
-        res.status(404).json({ ok: false, error: `Org ${rawOrgId} not found in organizations` });
-        return;
-      }
-      canonicalOrgId = r.rows[0].id;
+    if (!isUuid) { res.status(400).json({ ok: false, error: "orgId must be a valid UUID" }); return; }
+    const orgCheck = await pool.query(`SELECT id::text FROM organizations WHERE id = $1::uuid LIMIT 1`, [rawOrgId]);
+    if (!orgCheck.rows[0]) {
+      res.status(404).json({ ok: false, error: `Org ${rawOrgId} not found in organizations` });
+      return;
     }
-    const { activateAddon } = await import("../services/addons-service.js");
-    await activateAddon(addonKey, canonicalOrgId, qty);
+    const canonicalOrgId = orgCheck.rows[0].id as string;
+
+    // Upsert via raw SQL — bypasses Drizzle ORM type-binding differences between
+    // local pg and production Supabase pooler. Fully idempotent: second call with
+    // same piId leaves the quota unchanged.
+    const textId = `oa_${canonicalOrgId}_${addonKey}`;
+    const metaJson = JSON.stringify({ source: "admin_reconcile", piId: piId || null });
+    const client = await pool.connect();
+    try {
+      // Step A: INSERT the row only when it doesn't already exist
+      await client.query(
+        `INSERT INTO org_addons (id, org_id, addon_key, active, quantity, activated_at, metadata)
+         VALUES ($1, $2::uuid, $3, true, $4, NOW(), $5::jsonb)
+         ON CONFLICT DO NOTHING`,
+        [textId, canonicalOrgId, addonKey, qty, metaJson]
+      );
+      // Step B: ensure the row is active with the correct quantity regardless of previous state
+      await client.query(
+        `UPDATE org_addons
+            SET active       = true,
+                quantity     = $3,
+                activated_at = COALESCE(activated_at, NOW()),
+                updated_at   = NOW()
+          WHERE org_id = $1::uuid AND addon_key = $2`,
+        [canonicalOrgId, addonKey, qty]
+      );
+    } finally { client.release(); }
+
     console.log(`[Admin] activate-addon-direct: org=${canonicalOrgId} addon=${addonKey} qty=${qty} pi=${piId}`);
     res.json({ ok: true, orgId: canonicalOrgId, addonKey, quantity: qty, piId });
   } catch (err) {
