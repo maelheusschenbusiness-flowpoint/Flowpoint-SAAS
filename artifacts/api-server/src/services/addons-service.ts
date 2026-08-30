@@ -50,8 +50,8 @@ export async function activateAddon(addonKey: string, orgId = "default", quantit
     logger.info({ addonKey, orgId }, "[Addons] Addon activated");
     return true;
   } catch (err) {
-    logger.error({ err, addonKey }, "[Addons] Failed to activate addon");
-    return false;
+    logger.error({ err, addonKey, orgId }, "[Addons] Failed to activate addon — rethrowing for caller");
+    throw err;
   }
 }
 
