@@ -9355,7 +9355,7 @@ function renderTeam() {
   try {
   const _teamErrBanner = _sectionErrorBanner('team');
   const me = STATE.me;
-  const roleColors = { owner:'#f59e0b', manager:'#2563EB', editor:'#8b5cf6', viewer:'#94a3b8' };
+  const roleColors = { owner:'#f59e0b', admin:'#2563EB', manager:'#2563EB', editor:'#8b5cf6', viewer:'#94a3b8', member:'#94a3b8' };
   const rolePerms = {
     owner:   { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
     manager: { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:true  },
@@ -9409,7 +9409,7 @@ function renderTeam() {
                 <div style="font-size:11px;color:var(--fp-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.email)}</div>
               </div>
               <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
-                ${badge(t.role, roleColors[t.role]||'#94a3b8')}
+                ${badge(({owner:'Propriétaire',admin:'Manager',manager:'Manager',member:'Éditeur',editor:'Éditeur',viewer:'Lecteur'}[t.role]||t.role), roleColors[t.role]||'#94a3b8')}
                 <div style="width:7px;height:7px;border-radius:50%;background:${t.status==='active'?'#22c55e':'#94a3b8'};flex-shrink:0" title="${t.status==='active'?'En ligne':'Hors ligne'}"></div>
               </div>
               ${t.role!=='owner'?`<button class="fp-hover-toolbar-btn" title="${fpT('Retirer')}" data-remove-member="${t.id}" style="flex-shrink:0">${svgIcon('x')}</button>`:''}
@@ -9486,9 +9486,9 @@ function renderTeam() {
           </div>
           <div style="display:flex;gap:6px;border-top:1px solid var(--fp-border);padding-top:10px">
             <input type="file" id="team-chat-attach" style="display:none" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip" onchange="handleChatAttach(this)"/>
-            <label for="team-chat-attach" title="${fpT('Joindre un fichier')}" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;width:32px;height:32px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="13"').replace('height="14"','height="13"')}</label>
-            <input id="team-chat-input" class="fp-input" placeholder="Écrire un message… (@mention)" style="flex:1"/>
-            <button id="team-chat-send" class="fp-btn fp-btn-primary fp-btn-sm">${svgIcon('send').replace('width="14"','width="14"')}</button>
+            <label for="team-chat-attach" title="${fpT('Joindre un fichier')}" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;width:34px;height:34px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="15"').replace('height="14"','height="15"')}</label>
+            <input id="team-chat-input" class="fp-input" placeholder="Écrire un message… (@mention)" style="flex:1;height:34px;font-size:12px"/>
+            <button id="team-chat-send" class="fp-btn fp-btn-primary fp-btn-sm" style="height:34px;width:40px;padding:0;flex-shrink:0;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="18"').replace('height="14"','height="18"')}</button>
           </div>
         </div>
 
@@ -10106,7 +10106,7 @@ function renderBilling() {
     // Keep in sync with artifacts/api-server/src/lib/plans.ts when those sets change.
     const _COMING_SOON_KEYS = new Set(['slaMonitoring','globalMonitoring','aiContentStrategist',
       'abTestingAI','agencyPacks','aiExecutiveReport','aiWorkflows','crmIntegration',
-      'ssoEnterprise','aiWorkspaceLaunch']);
+      'ssoEnterprise','aiWorkspaceLaunch','customDomain']);
     const _BETA_KEYS = new Set(['behavioralAI','revenueLeak','aiCro','aiForecasting',
       'marketIntelligence','reviewIntelligence','aiGbpPosting','zapierIntegration',
       'backlinkIntelligence']);
@@ -52609,9 +52609,9 @@ function renderTeamChat() {
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <input type="file" id="team-chat-attach-main" style="display:none" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip" onchange="handleChatAttach(this)"/>
-          <label for="team-chat-attach-main" title="Joindre un fichier" style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:8px;width:34px;height:34px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted)">${svgIcon('paperclip').replace('width="14"','width="14"').replace('height="14"','height="14"')}</label>
-          <input id="team-chat-input" class="fp-input" placeholder="Écrire un message… (@mention)" style="flex:1;height:34px;font-size:12px"/>
-          <button id="team-chat-send" class="fp-btn fp-btn-primary fp-btn-sm" style="height:34px;padding:0 14px;flex-shrink:0;display:flex;align-items:center;gap:5px">${svgIcon('send').replace('width="14"','width="12"').replace('height="14"','height="12"')} Envoyer</button>
+          <label for="team-chat-attach-main" title="Joindre un fichier" style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:8px;width:34px;height:34px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--fp-text-muted);align-self:flex-end">${svgIcon('paperclip').replace('width="14"','width="15"').replace('height="14"','height="15"')}</label>
+          <input id="team-chat-input" class="fp-input" placeholder="Écrire un message… (@mention)" style="flex:1;height:34px;font-size:12px;align-self:flex-end"/>
+          <button id="team-chat-send" class="fp-btn fp-btn-primary fp-btn-sm" style="height:34px;width:40px;padding:0;flex-shrink:0;display:flex;align-items:center;justify-content:center;align-self:flex-end">${svgIcon('send').replace('width="14"','width="18"').replace('height="14"','height="18"')}</button>
         </div>
         <div id="fp-team-chat-attach-chips-main" style="display:${(STATE.teamChatPendingFiles&&STATE.teamChatPendingFiles.length>0)?'flex':'none'};flex-wrap:wrap;gap:5px;padding-top:6px">
         </div>
@@ -61169,7 +61169,7 @@ function renderLocalSEOMap() {
       <!-- MAP CONTAINER -->
       <div class="fp-card" style="padding:0;overflow:hidden;position:relative;min-height:520px">
         <!-- Loading skeleton -->
-        <div id="fp-gmap-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px">
+        <div id="fp-gmap-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px;border-radius:var(--fp-radius-lg)">
           <div style="position:absolute;inset:0;pointer-events:none"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div><div style="width:220px;height:12px;border-radius:6px;background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>
           <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Chargement de la carte…</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Google Maps · Places · Heatmap</div>
@@ -62024,6 +62024,15 @@ function bindNewRouteEvents() {
         if (!msg) { navigateSub('chat'); setTimeout(() => { const msgs = $('#team-chat-msgs'); if(msgs) msgs.scrollTop = msgs.scrollHeight; }, 50); return; }
       }
       if (!msg) return;
+      // Optimistic render — show message immediately without waiting for server
+      const _optId = 'optimistic_' + Date.now();
+      if (!STATE.teamChatHistory) STATE.teamChatHistory = [];
+      if (!STATE.channelMessages) STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
+      if (!STATE.channelMessages[ch]) STATE.channelMessages[ch] = [];
+      STATE.channelMessages[ch].push({ id: _optId, from, msg, text: msg, time, read: true, self: true, createdAt: null, attachmentUrl: null, attachmentName: null });
+      STATE.teamChatHistory = STATE.channelMessages[ch].map(m => ({ id: m.id||null, from: m.from, msg: m.text||m.msg||'', time: m.time, createdAt: m.createdAt||null, attachmentUrl: m.attachmentUrl||null, attachmentName: m.attachmentName||null }));
+      navigateSub('chat');
+      setTimeout(() => { const msgs = $('#team-chat-msgs'); if(msgs) msgs.scrollTop = msgs.scrollHeight; }, 50);
        try {
          const serverMsg = await apiAction('POST', '/api/team/messages', { channel: ch, text: msg });
          const entry = {
@@ -62036,10 +62045,8 @@ function bindNewRouteEvents() {
            attachmentUrl: serverMsg?.attachmentUrl || null,
            attachmentName: serverMsg?.attachmentName || null,
          };
-         if (!STATE.teamChatHistory) STATE.teamChatHistory = [];
-         if (!STATE.channelMessages) STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
-         if (!STATE.channelMessages[ch]) STATE.channelMessages[ch] = [];
-         const existing = STATE.channelMessages[ch].findIndex(m => m.id === entry.id ||
+         // Replace optimistic entry with server-confirmed entry
+         const existing = STATE.channelMessages[ch].findIndex(m => m.id === _optId || m.id === entry.id ||
            (m.id && String(m.id).indexOf('optimistic_') === 0 && m.text === entry.text));
          if (existing >= 0) {
            STATE.channelMessages[ch][existing] = {...STATE.channelMessages[ch][existing], ...entry, self: true, read: true};
@@ -62051,8 +62058,6 @@ function bindNewRouteEvents() {
            time: m.time, createdAt: m.createdAt || null,
            attachmentUrl: m.attachmentUrl || null, attachmentName: m.attachmentName || null,
          }));
-         navigateSub('chat');
-         setTimeout(() => { const msgs = $('#team-chat-msgs'); if(msgs) msgs.scrollTop = msgs.scrollHeight; }, 50);
        } catch(_) {
          showToast('error', fpT('Échec de l\'envoi du message'));
        }
@@ -70374,7 +70379,7 @@ function renderLocalDominationMaps() {
         </div>
       </div>
       <div style="position:relative">
-        <div id="fp-gmap-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px">
+        <div id="fp-gmap-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px;border-radius:var(--fp-radius-lg)">
           <div style="position:absolute;inset:0;pointer-events:none"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div><div style="width:220px;height:12px;border-radius:6px;background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>
           <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Chargement de la carte…</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Google Maps · Places · Heatmap</div>
