@@ -140381,6 +140381,8 @@ router56.get("/plans/catalog", (_req, res) => {
       quantity: def.quantity || QTY_ADDONS.has(key),
       availability,
       status: availability,
+      comingSoon: availability === "coming_soon",
+      beta: availability === "beta",
       allowedPlans: availability === "coming_soon" ? [] : _addonAllowedPlans[key] ?? [],
       includedByPlan: Object.fromEntries(
         Object.entries(PLAN_INCLUDED_ADDONS).filter(([, set]) => set.has(key)).map(([planId]) => [planId, true])

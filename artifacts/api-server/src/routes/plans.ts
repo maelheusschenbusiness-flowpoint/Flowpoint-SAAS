@@ -78,6 +78,8 @@ router.get("/plans/catalog", (_req: Request, res: Response): void => {
       quantity:      def.quantity || QTY_ADDONS.has(key),
       availability,
       status:        availability,
+      comingSoon:    availability === "coming_soon",
+      beta:          availability === "beta",
       allowedPlans:  availability === "coming_soon" ? [] : (_addonAllowedPlans[key] ?? []),
       includedByPlan: Object.fromEntries(
         Object.entries(PLAN_INCLUDED_ADDONS)
