@@ -208,13 +208,43 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
       // QA org: never show "start trial" CTA — it's an internal account, not a real signup.
       const _canStartTrial = !_isQaOrg && !rawTrialConsumedAt && !rawStripeSubId;
 
+      // ── P0 ISOLATION LOGGING — temporary, identifies cross-user leaks ──────────
+      // Logs every /api/me response with full identity context so USER A / USER B
+      // test scenarios can trace exactly which session/user/plan is being served.
+      // Remove once ACTUAL_ROOT_CAUSE is confirmed from browser tests.
+      const _sessionBearer = String((req as Request & { headers: Record<string, unknown> }).headers["authorization"] ?? "").slice(7, 23) || "cookie-auth";
       logger.info({
-        user:  (req.orgContext?.email ?? "").slice(0, 30),
-        org:   (dbData?.orgName ?? "").slice(0, 30),
-        plan:  normPlan(rawPlan),
-        role:  req.orgContext?.role ?? "member",
-        orgId: orgId?.slice(0, 8),
-      }, "[ME CONTEXT DEBUG]");
+        // ─ Identity
+        session_id:             _sessionBearer,
+        user_id:                req.orgContext?.userId ?? null,
+        user_uuid:              req.orgContext?.userUuid ?? null,
+        email:                  req.orgContext?.email ?? null,
+        org_id:                 orgId,
+        // ─ Stripe
+        stripe_customer_id:     rawStripeCustomerId ? rawStripeCustomerId.slice(-8) : null,
+        stripe_subscription_id: rawStripeSubId      ? rawStripeSubId.slice(-8)      : null,
+        // ─ Plan resolution chain
+        plan_from_db:           (billingData?.plan ?? dbData?.plan ?? "MISSING").toLowerCase(),
+        plan_source:            billingData?.plan ? "organizations" : dbData?.plan ? "org_settings" : "NONE",
+        plan_final:             normPlan(rawPlan),
+        // ─ Addons & quotas
+        addon_source:           "org_addons+plan_included",
+        addon_count:            Object.keys(_mergedAddons).length,
+        retention90d_active:    !!_mergedAddons["retention90d"],
+        retention365d_active:   !!_mergedAddons["retention365d"],
+        // ─ Subscription
+        sub_status:             normStatus,
+        role:                   req.orgContext?.role ?? "member",
+        org_name:               (dbData?.orgName ?? "").slice(0, 30),
+      }, "[P0-ISOLATION][ME]");
+      // ── P1 RETENTION90D SUPPRESSION — fix Ultra double-count ─────────────────
+      // On Ultra, retention90d is superseded by retention365d.  If both are active
+      // (legacy Pro provisioning survived upgrade), remove retention90d from the
+      // merged addons so /api/me does not report 11 active addons for an Ultra org.
+      if (plan === "ultra" && _mergedAddons["retention365d"] && _mergedAddons["retention90d"]) {
+        delete _mergedAddons["retention90d"];
+        logger.info({ orgId, plan }, "[P1][ME] retention90d suppressed (superseded by retention365d on Ultra)");
+      }
       res.json({
         orgId:               orgId,
         firstName,
