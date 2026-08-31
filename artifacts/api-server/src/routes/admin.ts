@@ -2294,6 +2294,10 @@ router.post("/admin/delete-qa-org", async (req: Request, res: Response): Promise
       res.status(403).json({ ok: false, error: "Not a QA org — only orgs with @flowpoint-test.internal email can be deleted via this endpoint" });
       return;
     }
+    // Read owner_user_id BEFORE deleting the org row
+    const ownerRes = await pool.query(`SELECT owner_user_id FROM organizations WHERE id=$1::uuid LIMIT 1`, [orgId]);
+    const ownerUserId = ownerRes.rows[0]?.owner_user_id ?? null;
+
     // Delete all data associated with this org
     const tables = ["monitors","audits","reports","org_addons","org_settings","notifications",
       "team_members","team_invitations","usage_events","org_checklist","billing_events",
@@ -2305,9 +2309,14 @@ router.post("/admin/delete-qa-org", async (req: Request, res: Response): Promise
         totalDeleted += r.rowCount ?? 0;
       } catch { /* table may not exist — skip */ }
     }
-    // Delete organization + user
+    // Delete organization + owner user (if QA user)
     await pool.query(`DELETE FROM organizations WHERE id=$1::uuid`, [orgId]);
-    await pool.query(`DELETE FROM users WHERE email LIKE '%@flowpoint-test.internal' AND id IN (SELECT owner_user_id FROM organizations WHERE id=$1::uuid)`, [orgId]).catch(() => {});
+    if (ownerUserId) {
+      await pool.query(
+        `DELETE FROM users WHERE id=$1 AND (email LIKE '%@flowpoint-test.internal' OR email IS NULL)`,
+        [ownerUserId]
+      ).catch(() => {});
+    }
     console.log(`[Admin] delete-qa-org: ${orgId} — ${totalDeleted} rows deleted`);
     res.json({ ok: true, orgId, totalDeleted });
   } catch (err) {
@@ -2334,11 +2343,13 @@ router.post("/admin/create-audit-api", async (req: Request, res: Response): Prom
         res.status(402).json({ ok: false, error: "QUOTA_EXCEEDED", used: quota.used, limit: quota.limit });
         return;
       }
-      // Insert a minimal audit row (no PSI — admin cert only)
+      // Insert a minimal audit row (no PSI — admin cert only).
+      // Columns: no updated_at (not in schema). date is TEXT. score/speed/issues/name/notes
+      // all have NOT NULL DEFAULT so they can be omitted.
       const auditId = `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       await pool.query(
-        `INSERT INTO audits (id, org_id, url, status, score, date, created_at, updated_at)
-         VALUES ($1,$2,$3,'completed',50,NOW(),NOW(),NOW())`,
+        `INSERT INTO audits (id, org_id, url, status, score, speed, issues, name, date, origin, created_at)
+         VALUES ($1,$2,$3,'completed',50,0,0,'QA Cert Audit',to_char(NOW(),'YYYY-MM-DD'),'admin',NOW())`,
         [auditId, orgId, url]
       );
       res.status(201).json({ ok: true, auditId, orgId, url, used: quota.used + 1, limit: quota.limit });
