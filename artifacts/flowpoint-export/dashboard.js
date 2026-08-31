@@ -15536,6 +15536,13 @@ function navigate(route, subRoute) {
   } catch(e) { /* sandboxed iframe */ }
   try { fpTenantWrite('fp:last-route', STATE.route); if (STATE.subRoute) fpTenantWrite('fp:last-sub', STATE.subRoute); else fpTenantRemove('fp:last-sub'); } catch(e) {}
   document.querySelectorAll('.fp-chart-tooltip').forEach(t => t.remove());
+  // Remove outside-tap handler that was registered by initChartTooltips().
+  // Must be cleared before the tip node is gone so there's no dangling listener.
+  if (window._fpCalTipOutsideHandler) {
+    document.removeEventListener('touchstart', window._fpCalTipOutsideHandler, true);
+    document.removeEventListener('mousedown', window._fpCalTipOutsideHandler, true);
+    window._fpCalTipOutsideHandler = null;
+  }
   // Clear shared hover tooltip (prevents calendar RDV tooltip sticking on iOS
   // when user navigates to another tab before the touchend fires hideTip).
   if (typeof hideTip === 'function') hideTip();
@@ -17775,6 +17782,27 @@ function initChartTooltips() {
     moveTip(e);
   };
   const hideTip = () => tip.classList.remove('visible');
+
+  // ── Outside-tap / outside-click handler ──────────────────────────────────
+  // On iOS Safari, touchend sometimes does not fire (browser classifies the
+  // gesture as a scroll). The tooltip then stays visible until the user
+  // navigates away. This handler detects any touch or mousedown that lands
+  // outside both the rdv elements and the tooltip itself, and hides it.
+  // Registered once per initChartTooltips() call; cleaned up by navigate().
+  if (window._fpCalTipOutsideHandler) {
+    document.removeEventListener('touchstart', window._fpCalTipOutsideHandler, true);
+    document.removeEventListener('mousedown',  window._fpCalTipOutsideHandler, true);
+    window._fpCalTipOutsideHandler = null;
+  }
+  window._fpCalTipOutsideHandler = function(ev) {
+    if (!tip.classList.contains('visible')) return;
+    const t = ev.target;
+    // Keep tooltip open if touching the tooltip or any rdv element.
+    if (t && (t === tip || tip.contains(t) || t.closest('.fp-cal-rdv'))) return;
+    hideTip();
+  };
+  document.addEventListener('touchstart', window._fpCalTipOutsideHandler, { capture: true, passive: true });
+  document.addEventListener('mousedown',  window._fpCalTipOutsideHandler, { capture: true, passive: true });
   const moveTip = (e) => {
     const offX = 14, offY = -10;
     // On touch events clientX/clientY may be 0 — derive from element position instead
@@ -69366,12 +69394,15 @@ window.FP_ADDONS_API = {
       const r = await apiFetch(`/api/addons/${encodeURIComponent(addonKey)}/deactivate`, { method: 'POST' });
       if (r?.ok) {
         if (window.FP_DATA?.addons?.active) window.FP_DATA.addons.active[addonKey] = false;
-        // Use loadData() (not just this.load()) so STATE.me.limits and STATE.me.addons
-        // are refreshed before render() — sidebar quota and active-count read STATE.me,
-        // not the FP_ADDONS_API internal cache. this.load() alone leaves limits stale.
+        // Refresh STATE.me (limits, addons) AND window.FP_DATA.addons.active (catalog cache).
+        // Both are independent data sources read by different parts of the billing UI:
+        //   - STATE.me.limits/addons  → sidebar quota, addons tab active flags
+        //   - window.FP_DATA.addons.active → Billing Command Center merged count
+        // Without this.load() the Command Center reads stale FP_DATA after deactivation.
         try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
         _apiFetchCache && _apiFetchCache.clear();
         await loadData().catch(() => {});
+        await this.load().catch(() => {});
         render();
         showToast('success', `Add-on ${addonKey} désactivé`);
       } else {
