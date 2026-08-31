@@ -126,15 +126,22 @@ async function resolveOrCreateLegacyOrg({
     // not exclusively a team member of someone else's org.  A guest who lands
     // here (no organization_members row) MUST NOT reach Step C (org creation).
     // Check team_members: if found, return that org instead of creating one.
-    const guestMember = await client.query<{ org_id: string; role: string }>(
-      `SELECT org_id, COALESCE(role, 'member') AS role
-       FROM team_members
-       WHERE (LOWER(email) = LOWER($1) OR (user_id IS NOT NULL AND user_id = $2))
-         AND status = 'active'
-       ORDER BY created_at ASC
-       LIMIT 1`,
-      [email, resolvedUserUuid ?? ""],
-    );
+    // IMPORTANT: wrap in try/catch — if team_members table is absent in prod,
+    // skip the check (non-fatal) rather than aborting the whole login flow.
+    let guestMember: { rows: { org_id: string; role: string }[] } = { rows: [] };
+    try {
+      guestMember = await client.query<{ org_id: string; role: string }>(
+        `SELECT org_id, COALESCE(role, 'member') AS role
+         FROM team_members
+         WHERE (LOWER(email) = LOWER($1) OR (user_id IS NOT NULL AND user_id = $2))
+           AND status = 'active'
+         ORDER BY created_at ASC
+         LIMIT 1`,
+        [email, resolvedUserUuid ?? ""],
+      );
+    } catch (teamMembersErr) {
+      logger.warn({ err: teamMembersErr }, "[Auth] resolveOrCreateLegacyOrg — team_members query failed (table may not exist in prod), continuing");
+    }
     if (guestMember.rows.length > 0) {
       const guestOrgId = guestMember.rows[0].org_id;
       const guestRole  = guestMember.rows[0].role;
@@ -2046,7 +2053,11 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      // SameSite=Lax: compatible with iOS Safari ITP while still allowing
+      // same-site API requests. SameSite=None caused intermittent rejection
+      // of cookies set during cross-site (Google→ours) redirect responses
+      // on iOS Safari 16.4+ with Intelligent Tracking Prevention active.
+      sameSite: "lax",
       maxAge: SESSION_TTL_MS,
       path: "/",
     });
