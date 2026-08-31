@@ -44,6 +44,17 @@ export async function activateAddon(addonKey: string, orgId = "default", quantit
       [id, orgId, addonKey, qty]
     );
 
+    /* Check previous active state BEFORE updating so we only broadcast SSE and
+       write an activity log entry on genuine inactive→active transitions.
+       Webhook reconciliation and provisionPlanAddons call activateAddon() on
+       already-active addons (idempotent re-confirmation), which must NOT produce
+       "Add-on activé" toasts or activity feed entries for the user.            */
+    const _prevRow = await _adClient.query<{ active: boolean }>(
+      `SELECT active FROM org_addons WHERE org_id = $1 AND addon_key = $2`,
+      [orgId, addonKey]
+    );
+    const _wasAlreadyActive = _prevRow.rows[0]?.active === true;
+
     /* UPDATE ensures the row is active even if the INSERT was a no-op (row
        already existed from a previous activation or webhook).                   */
     await _adClient.query(
@@ -54,15 +65,21 @@ export async function activateAddon(addonKey: string, orgId = "default", quantit
     );
 
     applyAddonToStore(addonKey, true);
-    store.broadcast({ type: "addon:activated", addonKey }, orgId);
-    store.logActivity({
-      type: "team",
-      label: `Add-on activé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`,
-      metadata: { addonKey },
-      orgId,
-      userId: "system",
-      userName: "Stripe Webhook",
-    }).catch(err => logger.warn({ err: err?.message }, "logActivity failed"));
+
+    // Only broadcast + log activity on a genuine state transition (inactive → active).
+    // Idempotent re-confirmations from webhook reconciliation or provisionPlanAddons
+    // must not generate user-visible "Add-on activé" toasts or activity entries.
+    if (!_wasAlreadyActive) {
+      store.broadcast({ type: "addon:activated", addonKey }, orgId);
+      store.logActivity({
+        type: "team",
+        label: `Add-on activé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`,
+        metadata: { addonKey },
+        orgId,
+        userId: "system",
+        userName: "Stripe Webhook",
+      }).catch(err => logger.warn({ err: err?.message }, "logActivity failed"));
+    }
 
     logger.info({ addonKey, orgId, qty }, "[Addons] Addon activated");
     return true;
