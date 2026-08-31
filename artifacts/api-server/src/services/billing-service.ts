@@ -353,8 +353,17 @@ export async function checkQuota(
             break;
           }
           case "exports": {
+            // Count all export events this month from usage_events
+            // (CSV client-side, PDF, Health-Score all report via POST /billing/usage-events)
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM usage_events
+                WHERE org_id=$1
+                  AND event_type IN ('export','pdf_export','health_export')
+                  AND created_at > date_trunc('month', now())`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
             limit = limits.exports + extraExports;
-            usedCount = 0; // exports tracked separately — not blocked here
             break;
           }
         }

@@ -88,10 +88,19 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
       }
     }
 
-    // ── Server-side quota enforcement ───────────────────────────────────────
-    // Enforce the billing plan's monthly audit limit before accepting the request.
-    // Clients that call the API directly (bypassing the dashboard) are blocked here.
+    // ── Atomic quota enforcement + INSERT under pg_advisory_lock ────────────
+    // pg_advisory_lock (session-level) blocks concurrent requests on the same
+    // (org + resource) key. launchAudit() uses its own connection internally,
+    // but both the re-count and the INSERT happen while this session holds the
+    // lock, preventing concurrent requests from both passing the count check.
+    let _auLockClient: import("pg").PoolClient | null = null;
+    const _auLockKey = `${orgId}:audits`;
     try {
+      const { pool: _auPool } = await import("@workspace/db");
+      _auLockClient = await _auPool.connect();
+      await _auLockClient.query(
+        `SELECT pg_advisory_lock(hashtext($1)::bigint)`, [_auLockKey]
+      );
       const { checkQuota } = await import("../services/billing-service.js");
       const quota = await checkQuota("audits", orgId);
       if (!quota.allowed) {
@@ -104,24 +113,34 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
         });
         return;
       }
-    } catch (quotaErr) {
-      // Non-fatal: if quota check fails (e.g. billing-service unavailable),
-      // allow the audit rather than blocking legitimate users.
-      logger.warn({ err: quotaErr, orgId }, "[audits] quota check failed — allowing audit");
+      // launchAudit does the INSERT — still within the advisory-locked window.
+      const _aCtx = (req as any).orgContext || {};
+      const launched = await launchAudit({
+        orgId, url: normalizedUrl, origin,
+        name: ((req.body as Record<string,unknown>)["name"] as string) || "",
+        userId: _aCtx.userId || _aCtx.email || "system",
+        userName: _aCtx.name || _aCtx.email || "Système",
+      });
+      res.status(201).json({ ...launched, type: type ?? "SEO complet" });
+    } catch (err) {
+      logger.error({ err }, "[audits] POST failed");
+      if (!res.headersSent) {
+        res.status(500).json({ error: "La création de l'audit a échoué. Réessayez dans un instant.", code: "AUDIT_CREATE_FAILED" });
+      }
+    } finally {
+      if (_auLockClient) {
+        await _auLockClient.query(
+          `SELECT pg_advisory_unlock(hashtext($1)::bigint)`, [_auLockKey]
+        ).catch(() => {});
+        _auLockClient.release();
+      }
     }
-    // Shared runner (#437): identical path for manual and scheduled audits —
-    // insert, async PSI, alert rules, broadcast, activity, usage accounting.
-    const _aCtx = (req as any).orgContext || {};
-    const launched = await launchAudit({
-      orgId, url: normalizedUrl, origin,
-      name: ((req.body as Record<string,unknown>)["name"] as string) || "",
-      userId: _aCtx.userId || _aCtx.email || "system",
-      userName: _aCtx.name || _aCtx.email || "Système",
-    });
-    res.status(201).json({ ...launched, type: type ?? "SEO complet" });
-  } catch (err) {
-    logger.error({ err }, "[audits] POST failed");
-    res.status(500).json({ error: "La création de l’audit a échoué. Réessayez dans un instant.", code: "AUDIT_CREATE_FAILED" });
+  } catch (outerErr) {
+    // Outer try covers the duplicate guard (lines above the advisory lock block).
+    logger.error({ err: outerErr }, "[audits] POST outer error");
+    if (!res.headersSent) {
+      res.status(500).json({ error: "La création de l'audit a échoué. Réessayez dans un instant.", code: "AUDIT_CREATE_FAILED" });
+    }
   }
 });
 

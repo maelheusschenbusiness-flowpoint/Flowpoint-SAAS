@@ -1469,6 +1469,40 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         } catch { /* non-fatal */ }
         logger.info({ eventId: _eventId_ps, subscriptionId: _subId_ps, customerId: _custId_ps, oldPlan: _dbPlanBefore, newPlan, stripeStatus: status, orgId, dbPlanAfter: _dbPlanAfter, synced: _dbPlanAfter === newPlan },
           "[Webhook][plan-sync] customer.subscription.updated DB state after persist");
+
+        // ── OVER_LIMIT state: if Stripe forces a downgrade and usage exceeds new limits,
+        //    set organizations.status='over_limit' so the UI can warn the user.
+        //    Existing data is never deleted — only new creations are blocked by checkQuota.
+        if (_dbPlanBefore && _dbPlanBefore !== newPlan && _UUID_RE_PA.test(orgId)) {
+          try {
+            const { checkQuota } = await import("../services/billing-service.js");
+            const { PLAN_LIMITS } = await import("../lib/plans.js");
+            const newLimits = PLAN_LIMITS[newPlan] ?? PLAN_LIMITS["standard"];
+            const [_auQ, _moQ, _reQ, _seQ] = await Promise.all([
+              checkQuota("audits",   orgId),
+              checkQuota("monitors", orgId),
+              checkQuota("reports",  orgId),
+              checkQuota("seats",    orgId),
+            ]);
+            const _overLimit = (
+              _auQ.used > newLimits.audits ||
+              _moQ.used > newLimits.monitors ||
+              _reQ.used > newLimits.reports ||
+              _seQ.used > newLimits.teamMembers
+            );
+            if (_overLimit) {
+              const { pool: _olPool } = await import("@workspace/db");
+              await _olPool.query(
+                `UPDATE organizations SET status='over_limit', updated_at=NOW() WHERE id=$1`,
+                [orgId]
+              );
+              logger.warn({ orgId, oldPlan: _dbPlanBefore, newPlan, audits: _auQ.used, monitors: _moQ.used, reports: _reQ.used, seats: _seQ.used },
+                "[Webhook][over-limit] org set to over_limit after forced downgrade");
+            }
+          } catch (_olErr) {
+            logger.warn({ err: _olErr, orgId }, "[Webhook][over-limit] check failed — non-fatal");
+          }
+        }
       }
 
       // The Stripe subscription event is the single authoritative point for

@@ -82,25 +82,7 @@ router.get("/reports/:id", async (req, res) => {
 
 // ── POST /reports ─────────────────────────────────────────────────────────────
 router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
-  // ── Server-side quota enforcement ─────────────────────────────────────────
   const _qOrgId = org(req);
-  try {
-    const { checkQuota } = await import("../services/billing-service.js");
-    const _quota = await checkQuota("reports", _qOrgId);
-    if (!_quota.allowed) {
-      res.status(402).json({
-        error: `Limite mensuelle de rapports PDF atteinte (${_quota.used}/${_quota.limit}). Upgradez votre plan ou achetez un pack de rapports.`,
-        code: "QUOTA_EXCEEDED",
-        resource: "reports",
-        used: _quota.used,
-        limit: _quota.limit,
-      });
-      return;
-    }
-  } catch (_qErr) {
-    logger.warn({ err: _qErr, orgId: _qOrgId }, "[reports] quota check failed — allowing report");
-  }
-
   const { name, auditId, format, templateKey, whiteLabel, meetingNotes, dateStart, dateEnd } = req.body as {
     name?: string; auditId?: string; format?: string; whiteLabel?: boolean;
     templateKey?: string;
@@ -114,17 +96,50 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
     res.status(400).json({ error: "Unknown report template" });
     return;
   }
+
   const id = `r_${randomBytes(12).toString("hex")}`;
+
+  // ── Atomic quota enforcement + INSERT under pg_advisory_xact_lock ─────────
+  // Blocks concurrent POST /reports for the same org from both passing the count
+  // check. pg_advisory_xact_lock is transaction-level — auto-released at commit.
+  const { pool: _repPool } = await import("@workspace/db");
+  const _repCl = await _repPool.connect();
   try {
-    await db(req)(
+    await _repCl.query("BEGIN");
+    await _repCl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${_qOrgId}:reports`]);
+
+    const { checkQuota } = await import("../services/billing-service.js");
+    const _quota = await checkQuota("reports", _qOrgId);
+    if (!_quota.allowed) {
+      await _repCl.query("ROLLBACK");
+      res.status(402).json({
+        error: `Limite mensuelle de rapports PDF atteinte (${_quota.used}/${_quota.limit}). Upgradez votre plan ou achetez un pack de rapports.`,
+        code: "QUOTA_EXCEEDED",
+        resource: "reports",
+        used: _quota.used,
+        limit: _quota.limit,
+      });
+      return;
+    }
+
+    await _repCl.query(
       `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,0,false,$7,$8,true,$9,$10,$11,$12)`,
-      [id, org(req), reportName, format ?? "PDF", resolvedTemplate, new Date().toISOString(),
+      [id, _qOrgId, reportName, format ?? "PDF", resolvedTemplate, new Date().toISOString(),
        auditId ?? "", !!whiteLabel,
        JSON.stringify(sanitizeMeetingNotes(meetingNotes)),
        dateStart ?? "", dateEnd ?? "",
        (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
     );
+    await _repCl.query("COMMIT");
+  } catch (_repErr) {
+    await _repCl.query("ROLLBACK").catch(() => {});
+    logger.warn({ err: _repErr, orgId: _qOrgId }, "[reports] quota/lock/insert failed — allowing report");
+  } finally {
+    _repCl.release();
+  }
+
+  try {
     const r = await db(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [id, org(req)]);
     const report = r.rows[0] ?? { id, name };
     store.logActivity({ type: "report", label: `Rapport généré : ${reportName}`, targetId: id, targetType: "report", metadata: { name: reportName, format, templateKey: resolvedTemplate }, orgId: org(req), userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch(err => console.warn("[logActivity]", err?.message));

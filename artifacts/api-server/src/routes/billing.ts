@@ -1820,6 +1820,64 @@ router.get("/billing/usage-details", async (req: Request, res: Response): Promis
   });
 });
 
+// ── GET /billing/preflight-downgrade ─────────────────────────────────────────
+// Returns whether a downgrade to the target plan is safe given current usage.
+// If any resource exceeds the target plan's limit, the downgrade is blocked.
+// Query: ?plan=standard|pro|ultra
+// Response: { allowed: boolean, conflicts: [{ resource, used, limit }], plan }
+router.get("/billing/preflight-downgrade", ownerOnly, async (req: Request, res: Response): Promise<void> => {
+  const orgId  = req.orgContext?.orgId ?? req.orgId;
+  const target = String(req.query["plan"] ?? "").toLowerCase();
+  const VALID  = ["standard", "pro", "ultra"] as const;
+  if (!VALID.includes(target as any)) {
+    res.status(400).json({ error: "plan must be one of: standard, pro, ultra" }); return;
+  }
+  if (!orgId) { res.status(401).json({ error: "orgId required" }); return; }
+
+  try {
+    const { PLAN_LIMITS } = await import("../lib/plans.js");
+    const targetLimits = PLAN_LIMITS[target] ?? PLAN_LIMITS["standard"];
+
+    // Fetch live usage for every resource that has a hard limit
+    const { checkQuota } = await import("../services/billing-service.js");
+    const [audits, monitors, reports, seats] = await Promise.all([
+      checkQuota("audits",   orgId),
+      checkQuota("monitors", orgId),
+      checkQuota("reports",  orgId),
+      checkQuota("seats",    orgId),
+    ]);
+
+    const conflicts: { resource: string; used: number; targetLimit: number }[] = [];
+    const check = (resource: string, used: number, tLimit: number) => {
+      if (used > tLimit) conflicts.push({ resource, used, targetLimit: tLimit });
+    };
+
+    check("audits",   audits.used,   targetLimits.audits);
+    check("monitors", monitors.used, targetLimits.monitors);
+    check("reports",  reports.used,  targetLimits.reports);
+    check("seats",    seats.used,    targetLimits.teamMembers);
+
+    const allowed = conflicts.length === 0;
+    res.json({
+      allowed,
+      plan: target,
+      conflicts,
+      usage: {
+        audits:   { used: audits.used,   limit: targetLimits.audits },
+        monitors: { used: monitors.used, limit: targetLimits.monitors },
+        reports:  { used: reports.used,  limit: targetLimits.reports },
+        seats:    { used: seats.used,    limit: targetLimits.teamMembers },
+      },
+      message: allowed
+        ? `Downgrade vers ${target} possible — aucun dépassement.`
+        : `Downgrade vers ${target} bloqué — ${conflicts.map(c => `${c.resource}: ${c.used}/${c.targetLimit}`).join(", ")}. Réduisez votre usage avant de downgrader.`,
+    });
+  } catch (err) {
+    logger.error({ err, orgId }, "[billing] preflight-downgrade failed");
+    res.status(500).json({ error: "Impossible de vérifier le downgrade. Réessayez." });
+  }
+});
+
 // ── POST /billing/usage-events ────────────────────────────────────────────────
 // Client-side exports (CSV, Health-Score PDF generated in-browser) report their
 // consumption here so the cumulative counters include them.

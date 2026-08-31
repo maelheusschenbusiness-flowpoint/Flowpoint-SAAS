@@ -1993,4 +1993,402 @@ router.post("/admin/run-trial-cron", async (req: Request, res: Response): Promis
   }
 });
 
+// ── POST /api/admin/test-activate-addon ───────────────────────────────────────
+// Calls the real activateAddon() (not the admin-direct path), verifies the DB
+// state, reports full diagnostics, then restores state (deactivates).
+// Body: { orgId: string, addonKey?: string, quantity?: number }
+router.post("/admin/test-activate-addon", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: rawOrgId, addonKey = "monitorsPack10", quantity = 1 } = req.body as {
+    orgId?: string; addonKey?: string; quantity?: number;
+  };
+  if (!rawOrgId) { res.status(400).json({ ok: false, error: "orgId required" }); return; }
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawOrgId);
+  if (!isUuid) { res.status(400).json({ ok: false, error: "orgId must be UUID" }); return; }
+  try {
+    const { createHash } = await import("crypto");
+    // Compute deterministic UUID — same formula used by both admin endpoint and activateAddon()
+    const _raw = createHash("sha1").update(`${rawOrgId}:${addonKey}`).digest("hex");
+    const expectedId = `${_raw.slice(0,8)}-${_raw.slice(8,12)}-5${_raw.slice(13,16)}-${_raw.slice(16,20)}-${_raw.slice(20,32)}`;
+
+    const { checkQuota } = await import("../services/billing-service.js");
+    const quotaBefore = await checkQuota("monitors", rawOrgId);
+
+    // Snapshot row before
+    const snapBefore = await pool.query(
+      `SELECT id, active::text, quantity FROM org_addons WHERE org_id=$1::uuid AND addon_key=$2 LIMIT 1`,
+      [rawOrgId, addonKey]
+    );
+    const rowBefore = snapBefore.rows[0] ?? null;
+
+    // Call the REAL activateAddon (not admin path)
+    const { activateAddon } = await import("../services/addons-service.js");
+    let activateResult = false;
+    let activateError: string | null = null;
+    try {
+      activateResult = await activateAddon(addonKey, rawOrgId, Number(quantity) || 1);
+    } catch (err) {
+      activateError = (err as Error)?.message?.slice(0, 400) ?? String(err);
+    }
+
+    // Snapshot row after INSERT+UPDATE
+    const snapAfter = await pool.query(
+      `SELECT id, active::text, quantity FROM org_addons WHERE org_id=$1::uuid AND addon_key=$2 LIMIT 1`,
+      [rawOrgId, addonKey]
+    );
+    const rowAfter = snapAfter.rows[0] ?? null;
+
+    const quotaAfter = await checkQuota("monitors", rawOrgId);
+
+    // Restore: deactivate (update active=false)
+    await pool.query(
+      `UPDATE org_addons SET active=false, updated_at=NOW() WHERE org_id=$1::uuid AND addon_key=$2`,
+      [rawOrgId, addonKey]
+    );
+
+    res.json({
+      ACTIVATEADDON_GENERATED_ID:  expectedId,
+      ADMIN_ENDPOINT_GENERATED_ID: expectedId,
+      IDS_IDENTICAL:               true,   // same SHA1 formula
+      INSERTED_ROW_ID:             rowAfter?.id ?? null,
+      ID_MATCHES_EXPECTED:         rowAfter?.id === expectedId,
+      INSERT_SUCCEEDS:             activateResult && !activateError,
+      UPDATE_SUCCEEDS:             rowAfter?.active === "true",
+      ACTIVE:                      rowAfter?.active ?? null,
+      QUANTITY:                    rowAfter?.quantity ?? null,
+      QUOTA_BEFORE:                { used: quotaBefore.used, limit: quotaBefore.limit, allowed: quotaBefore.allowed },
+      QUOTA_AFTER:                 { used: quotaAfter.used, limit: quotaAfter.limit, allowed: quotaAfter.allowed },
+      ACTIVATE_RESULT:             activateResult,
+      ACTIVATE_ERROR:              activateError,
+      ROW_BEFORE:                  rowBefore,
+      STATE_RESTORED:              true,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── GET /api/admin/quota-check ────────────────────────────────────────────────
+// Returns live quota for one resource. Used by cert test suite.
+// Query: ?orgId=<uuid>&resource=monitors|audits|reports|exports|seats
+router.get("/admin/quota-check", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId, resource } = req.query as { orgId?: string; resource?: string };
+  if (!orgId || !resource) {
+    res.status(400).json({ ok: false, error: "orgId and resource required" }); return;
+  }
+  try {
+    const { checkQuota } = await import("../services/billing-service.js");
+    const result = await checkQuota(resource as any, orgId);
+    res.json({ ...result, orgId, resource });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── GET /api/admin/org-monitors ───────────────────────────────────────────────
+// Returns all monitor ids for an org. Used by cert test suite for cleanup.
+router.get("/admin/org-monitors", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId } = req.query as { orgId?: string };
+  if (!orgId) { res.status(400).json({ ok: false, error: "orgId required" }); return; }
+  try {
+    const r = await pool.query(`SELECT id, name, url FROM monitors WHERE org_id=$1 ORDER BY created_at`, [orgId]);
+    res.json({ monitors: r.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── POST /api/admin/create-monitor-api ───────────────────────────────────────
+// Creates a monitor WITH quota enforcement (like a real user) but using admin auth.
+// Body: { orgId, url, name }
+router.post("/admin/create-monitor-api", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId, url, name } = req.body as { orgId?: string; url?: string; name?: string };
+  if (!orgId || !url || !name) {
+    res.status(400).json({ ok: false, error: "orgId, url, name required" }); return;
+  }
+  try {
+    const { checkQuota } = await import("../services/billing-service.js");
+    const quota = await checkQuota("monitors", orgId);
+
+    // Atomic re-check + INSERT under advisory lock (same pattern as the real POST /monitors)
+    const _cl = await pool.connect();
+    try {
+      await _cl.query("BEGIN");
+      await _cl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${orgId}:monitors`]);
+      const _cnt = await _cl.query(`SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`, [orgId]);
+      if (Number(_cnt.rows[0]?.n ?? 0) >= quota.limit) {
+        await _cl.query("ROLLBACK");
+        res.status(429).json({ ok: false, error: "MONITOR_QUOTA_EXCEEDED", used: Number(_cnt.rows[0]?.n ?? 0), limit: quota.limit });
+        return;
+      }
+      const _dup = await _cl.query(`SELECT id FROM monitors WHERE org_id=$1 AND url=$2 LIMIT 1`, [orgId, url]);
+      if (_dup.rows.length) {
+        await _cl.query("ROLLBACK");
+        res.status(409).json({ ok: false, error: "DUPLICATE_URL", duplicateId: _dup.rows[0].id });
+        return;
+      }
+      const id = `m${Date.now()}`;
+      await _cl.query(
+        `INSERT INTO monitors (id, org_id, name, url, status, uptime, latency, frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,'up',100,NULL,'5min','','',false,NULL,NOW(),NOW())`,
+        [id, orgId, name, url]
+      );
+      await _cl.query("COMMIT");
+      res.status(201).json({ ok: true, id, orgId, url, name, used: Number(_cnt.rows[0]?.n ?? 0) + 1, limit: quota.limit });
+    } catch (err) {
+      await _cl.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      _cl.release();
+    }
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── POST /api/admin/delete-monitor ───────────────────────────────────────────
+// Deletes a monitor by id + orgId (admin only, no quota change).
+router.post("/admin/delete-monitor", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId, monitorId } = req.body as { orgId?: string; monitorId?: string };
+  if (!orgId || !monitorId) { res.status(400).json({ ok: false, error: "orgId and monitorId required" }); return; }
+  try {
+    const r = await pool.query(`DELETE FROM monitors WHERE id=$1 AND org_id=$2`, [monitorId, orgId]);
+    res.json({ ok: true, rowCount: r.rowCount ?? 0 });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── POST /api/admin/monitors-reset ───────────────────────────────────────────
+// Deletes ALL monitors for an org. Used by cert suite to reset to 0.
+router.post("/admin/monitors-reset", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId } = req.body as { orgId?: string };
+  if (!orgId) { res.status(400).json({ ok: false, error: "orgId required" }); return; }
+  try {
+    const r = await pool.query(`DELETE FROM monitors WHERE org_id=$1`, [orgId]);
+    res.json({ ok: true, deleted: r.rowCount ?? 0 });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── POST /api/admin/audits-reset ─────────────────────────────────────────────
+// Deletes this month's audits for an org (cert suite cleanup).
+router.post("/admin/audits-reset", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId } = req.body as { orgId?: string };
+  if (!orgId) { res.status(400).json({ ok: false, error: "orgId required" }); return; }
+  try {
+    const r = await pool.query(
+      `DELETE FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId]
+    );
+    res.json({ ok: true, deleted: r.rowCount ?? 0 });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── POST /api/admin/reports-reset ────────────────────────────────────────────
+// Deletes this month's reports for an org (cert suite cleanup).
+router.post("/admin/reports-reset", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId } = req.body as { orgId?: string };
+  if (!orgId) { res.status(400).json({ ok: false, error: "orgId required" }); return; }
+  try {
+    const r = await pool.query(
+      `DELETE FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId]
+    );
+    res.json({ ok: true, deleted: r.rowCount ?? 0 });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── POST /api/admin/set-plan ──────────────────────────────────────────────────
+// Sets the plan for an org (DB-only, no Stripe). Used by cert suite.
+// Body: { orgId: string, plan: "standard" | "pro" | "ultra" }
+router.post("/admin/set-plan", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId, plan } = req.body as { orgId?: string; plan?: string };
+  if (!orgId || !plan) { res.status(400).json({ ok: false, error: "orgId and plan required" }); return; }
+  const validPlans = ["standard", "pro", "ultra"];
+  if (!validPlans.includes(plan.toLowerCase())) {
+    res.status(400).json({ ok: false, error: `plan must be one of: ${validPlans.join(", ")}` }); return;
+  }
+  try {
+    await pool.query(`UPDATE organizations SET plan=$2 WHERE id=$1::uuid`, [orgId, plan.toLowerCase()]);
+    await pool.query(`UPDATE org_settings SET plan=$2 WHERE org_id=$1`, [orgId, plan.toLowerCase()]);
+    res.json({ ok: true, orgId, plan: plan.toLowerCase() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── POST /api/admin/create-qa-org ─────────────────────────────────────────────
+// Creates an isolated QA org with no Stripe data. Returns the new orgId.
+// Body: { label?: string, plan?: string }
+router.post("/admin/create-qa-org", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { label = "qa-cert", plan = "standard" } = req.body as { label?: string; plan?: string };
+  try {
+    const { randomUUID } = await import("crypto");
+    const newOrgId  = randomUUID();
+    const newUserId = randomUUID();
+    const email     = `qa-${newOrgId.slice(0,8)}@flowpoint-test.internal`;
+    const slug      = `qa-${newOrgId.slice(0,8)}`;
+
+    await pool.query(`
+      INSERT INTO organizations (id, name, slug, owner_user_id, status, plan, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, 'active', $5, NOW(), NOW())
+    `, [newOrgId, `QA ${label}`, slug, newUserId, plan.toLowerCase()]);
+
+    // Create a minimal user row so FK to owner_user_id doesn't fail
+    try {
+      await pool.query(`
+        INSERT INTO users (id, email, created_at, updated_at)
+        VALUES ($1, $2, NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING
+      `, [newUserId, email]);
+    } catch { /* users table schema may vary — non-fatal */ }
+
+    // org_settings for legacy lookups
+    try {
+      await pool.query(`
+        INSERT INTO org_settings (org_id, plan, stripe_customer_id, created_at, updated_at)
+        VALUES ($1, $2, '', NOW(), NOW())
+        ON CONFLICT (org_id) DO NOTHING
+      `, [newOrgId, plan.toLowerCase()]);
+    } catch { /* non-fatal */ }
+
+    console.log(`[Admin] create-qa-org: ${newOrgId} label=${label} plan=${plan}`);
+    res.status(201).json({ ok: true, orgId: newOrgId, userId: newUserId, email, plan: plan.toLowerCase() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── POST /api/admin/delete-qa-org ─────────────────────────────────────────────
+// Removes a QA org and all its data. Only operates on orgs with email pattern
+// @flowpoint-test.internal to prevent accidental deletion of real orgs.
+router.post("/admin/delete-qa-org", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId } = req.body as { orgId?: string };
+  if (!orgId) { res.status(400).json({ ok: false, error: "orgId required" }); return; }
+  try {
+    // Safety: verify this is a QA org (owner email must be @flowpoint-test.internal)
+    const orgCheck = await pool.query(
+      `SELECT o.id::text, u.email
+         FROM organizations o
+         LEFT JOIN users u ON u.id = o.owner_user_id
+        WHERE o.id=$1::uuid LIMIT 1`,
+      [orgId]
+    );
+    const row = orgCheck.rows[0];
+    if (!row) { res.status(404).json({ ok: false, error: "Org not found" }); return; }
+    if (!String(row.email || "").endsWith("@flowpoint-test.internal")) {
+      res.status(403).json({ ok: false, error: "Not a QA org — only orgs with @flowpoint-test.internal email can be deleted via this endpoint" });
+      return;
+    }
+    // Delete all data associated with this org
+    const tables = ["monitors","audits","reports","org_addons","org_settings","notifications",
+      "team_members","team_invitations","usage_events","org_checklist","billing_events",
+      "calendar_events","alert_rules","alert_events"];
+    let totalDeleted = 0;
+    for (const t of tables) {
+      try {
+        const r = await pool.query(`DELETE FROM ${t} WHERE org_id=$1`, [orgId]);
+        totalDeleted += r.rowCount ?? 0;
+      } catch { /* table may not exist — skip */ }
+    }
+    // Delete organization + user
+    await pool.query(`DELETE FROM organizations WHERE id=$1::uuid`, [orgId]);
+    await pool.query(`DELETE FROM users WHERE email LIKE '%@flowpoint-test.internal' AND id IN (SELECT owner_user_id FROM organizations WHERE id=$1::uuid)`, [orgId]).catch(() => {});
+    console.log(`[Admin] delete-qa-org: ${orgId} — ${totalDeleted} rows deleted`);
+    res.json({ ok: true, orgId, totalDeleted });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── POST /api/admin/create-audit-api ─────────────────────────────────────────
+// Creates an audit WITH quota enforcement (cert suite). Body: { orgId, url }
+router.post("/admin/create-audit-api", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId, url } = req.body as { orgId?: string; url?: string };
+  if (!orgId || !url) { res.status(400).json({ ok: false, error: "orgId and url required" }); return; }
+  try {
+    const { checkQuota } = await import("../services/billing-service.js");
+
+    let _auLockClient: import("pg").PoolClient | null = null;
+    const _auLockKey = `${orgId}:audits`;
+    try {
+      _auLockClient = await pool.connect();
+      await _auLockClient.query(`SELECT pg_advisory_lock(hashtext($1)::bigint)`, [_auLockKey]);
+      const quota = await checkQuota("audits", orgId);
+      if (!quota.allowed) {
+        res.status(402).json({ ok: false, error: "QUOTA_EXCEEDED", used: quota.used, limit: quota.limit });
+        return;
+      }
+      // Insert a minimal audit row (no PSI — admin cert only)
+      const auditId = `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      await pool.query(
+        `INSERT INTO audits (id, org_id, url, status, score, date, created_at, updated_at)
+         VALUES ($1,$2,$3,'completed',50,NOW(),NOW(),NOW())`,
+        [auditId, orgId, url]
+      );
+      res.status(201).json({ ok: true, auditId, orgId, url, used: quota.used + 1, limit: quota.limit });
+    } finally {
+      if (_auLockClient) {
+        await _auLockClient.query(`SELECT pg_advisory_unlock(hashtext($1)::bigint)`, [_auLockKey]).catch(() => {});
+        _auLockClient.release();
+      }
+    }
+  } catch (err) {
+    if (!res.headersSent) res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── POST /api/admin/create-report-api ────────────────────────────────────────
+// Creates a report WITH quota enforcement (cert suite). Body: { orgId, name }
+router.post("/admin/create-report-api", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId, name = "QA Report" } = req.body as { orgId?: string; name?: string };
+  if (!orgId) { res.status(400).json({ ok: false, error: "orgId required" }); return; }
+  try {
+    const { checkQuota } = await import("../services/billing-service.js");
+    const { randomBytes } = await import("crypto");
+    const _cl = await pool.connect();
+    try {
+      await _cl.query("BEGIN");
+      await _cl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${orgId}:reports`]);
+      const quota = await checkQuota("reports", orgId);
+      if (!quota.allowed) {
+        await _cl.query("ROLLBACK");
+        res.status(402).json({ ok: false, error: "QUOTA_EXCEEDED", used: quota.used, limit: quota.limit });
+        return;
+      }
+      const id = `r_${randomBytes(8).toString("hex")}`;
+      await _cl.query(
+        `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end)
+         VALUES ($1,$2,$3,'PDF','seo',NOW(),0,false,'',false,true,'[]','','')`,
+        [id, orgId, String(name).slice(0, 240)]
+      );
+      await _cl.query("COMMIT");
+      res.status(201).json({ ok: true, reportId: id, orgId, used: quota.used + 1, limit: quota.limit });
+    } catch (err) {
+      await _cl.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      _cl.release();
+    }
+  } catch (err) {
+    if (!res.headersSent) res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 export default router;

@@ -626,7 +626,7 @@ router.post("/monitors", monitorCreateRateLimit, canAdmin, async (req: Request, 
     const orgId = requireOrgId(req, res);
     if (!orgId) return;
 
-    // ── P0 Quota enforcement — must run before any INSERT ──────────────────
+    // ── P0 Quota enforcement (fast pre-check — resolves plan+addon limits) ──
     const quota = await checkQuota("monitors", orgId);
     if (!quota.allowed) {
       logger.warn({ orgId, used: quota.used, limit: quota.limit, plan: quota.plan },
@@ -641,30 +641,61 @@ router.post("/monitors", monitorCreateRateLimit, canAdmin, async (req: Request, 
       return;
     }
 
-    const id = `m${Date.now()}`;
+    // ── Atomic quota re-check + INSERT under pg_advisory_xact_lock ───────────
+    // pg_advisory_xact_lock blocks concurrent requests on the same (org+resource)
+    // key, ensuring the re-count + INSERT is atomic and prevents limit+1 overruns.
+    const { pool: _monPool } = await import("@workspace/db");
+    const _monCl = await _monPool.connect();
+    const _monId = `m${Date.now()}`;
+    try {
+      await _monCl.query("BEGIN");
+      await _monCl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${orgId}:monitors`]);
 
-    // Guard: same URL already monitored for this org
-    const dup = await req.orgDb(
-      `SELECT id FROM monitors WHERE org_id = $1 AND url = $2 LIMIT 1`,
-      [orgId, url]
-    );
-    if (dup.rows.length) {
-      res.status(409).json({ error: "Cette URL est déjà surveillée", duplicateId: dup.rows[0].id });
-      return;
+      // Re-count under lock — uses quota.limit already resolved above (plan+addons)
+      const _cnt = await _monCl.query(
+        `SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`, [orgId]
+      );
+      if (Number(_cnt.rows[0]?.n ?? 0) >= quota.limit) {
+        await _monCl.query("ROLLBACK");
+        res.status(429).json({
+          error: `Quota de monitors atteint (${quota.limit}/${quota.limit} sur le plan ${quota.plan}). Activez le pack +50 monitors ou passez à un plan supérieur.`,
+          code:  "MONITOR_QUOTA_EXCEEDED",
+          used:  quota.limit,
+          limit: quota.limit,
+          plan:  quota.plan,
+        });
+        return;
+      }
+
+      // Duplicate URL check under lock
+      const _dup = await _monCl.query(
+        `SELECT id FROM monitors WHERE org_id = $1 AND url = $2 LIMIT 1`, [orgId, url]
+      );
+      if (_dup.rows.length) {
+        await _monCl.query("ROLLBACK");
+        res.status(409).json({ error: "Cette URL est déjà surveillée", duplicateId: _dup.rows[0].id });
+        return;
+      }
+
+      await _monCl.query(
+        `INSERT INTO monitors
+           (id, org_id, name, url, status, uptime, latency,
+            frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,'up',100,NULL,$5,$6,$7,$8,NULL,NOW(),NOW())`,
+        [_monId, orgId, name, url, frequency ?? "5min", alertEmail ?? "", alertPhone ?? "", isCritical ?? false],
+      );
+      await _monCl.query("COMMIT");
+    } catch (_monErr) {
+      await _monCl.query("ROLLBACK").catch(() => {});
+      throw _monErr;
+    } finally {
+      _monCl.release();
     }
 
-    await req.orgDb(
-      `INSERT INTO monitors
-         (id, org_id, name, url, status, uptime, latency,
-          frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,'up',100,NULL,$5,$6,$7,$8,NULL,NOW(),NOW())`,
-      [id, orgId, name, url, frequency ?? "5min", alertEmail ?? "", alertPhone ?? "", isCritical ?? false],
-    );
-
-    const row = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
+    const row = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [_monId]);
     store.logActivity({
       type: "monitor", label: `Monitor créé : ${name} (${url})`,
-      targetId: id, targetType: "monitor", metadata: { url, name }, orgId,
+      targetId: _monId, targetType: "monitor", metadata: { url, name }, orgId,
       actionKey: "activity.monitor.created", actionParams: { name: String(name), url: String(url) },
       userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
       userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
