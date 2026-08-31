@@ -23,6 +23,14 @@ router.get("/addons", async (req: Request, res: Response) => {
     for (const key of planIncluded) {
       if (!(key in liveAddons)) liveAddons[key] = true;
     }
+    // P1 — retention90d is superseded by retention365d on Ultra.
+    // A Pro→Ultra upgrade leaves retention90d active in org_addons (provisionPlanAddons
+    // only adds keys, never deactivates old-tier ones). Remove it here so it is not
+    // counted as an extra paid add-on when the higher-tier superseder is present.
+    if (plan === "ultra" && liveAddons["retention365d"] && liveAddons["retention90d"]) {
+      liveAddons["retention90d"] = false;
+      logger.info({ orgId, plan }, "[P1][addons] retention90d suppressed (superseded by retention365d on Ultra)");
+    }
     const quotas = getQuotaLimits(plan, liveAddons);
     const catalog = Object.fromEntries(Object.entries(CANONICAL_ADDON_DEFINITIONS).filter(([key]) => !REMOVED_ADDONS.has(key)).map(([key, definition]) => {
       const active = liveAddons[key] ?? false;
