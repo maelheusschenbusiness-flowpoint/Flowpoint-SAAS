@@ -17759,14 +17759,15 @@ function bindSectionEvents() {
 // CHART TOOLTIPS
 // ─────────────────────────────────────────────────────────────────
 function initChartTooltips() {
-  // Ensure a single shared tooltip element exists
-  let tip = document.getElementById('fp-chart-tip');
-  if (!tip) {
-    tip = document.createElement('div');
-    tip.id = 'fp-chart-tip';
-    tip.className = 'fp-chart-tooltip';
-    document.body.appendChild(tip);
-  }
+  // Always remove the existing node and create a fresh one.
+  // Re-using via getElementById risks inheriting stale .visible state when
+  // a touchend didn't fire (iOS scroll gesture) before the next navigateSub/render.
+  const _old = document.getElementById('fp-chart-tip');
+  if (_old) _old.remove();
+  const tip = document.createElement('div');
+  tip.id = 'fp-chart-tip';
+  tip.className = 'fp-chart-tooltip';
+  document.body.appendChild(tip);
 
   const showTip = (html, e) => {
     tip.innerHTML = html;
@@ -17948,14 +17949,13 @@ function initChartTooltips() {
     // previous code called moveTip but never populated tip.innerHTML, so the
     // tooltip appeared as an empty/invisible bubble on mobile).
     rdv.addEventListener('touchstart', e => {
-      const touch = e.touches[0] || e;
       const _tid = rdv.dataset.calEventId;
       const _tev = (STATE.calendarEvents||[]).find(ce => ce.id === _tid);
       if (!_tev) return;
       const _tRange = (_tev.startTime && _tev.duration) ? formatTimeRange(_tev.startTime, _tev.duration) : '';
       const _tSafe = escHtml(_tRange);
       const _tDur = _tev.duration ? (_tev.duration >= 60 ? Math.floor(_tev.duration/60)+'h'+(_tev.duration%60?_tev.duration%60+'min':'') : _tev.duration+'min') : '';
-      showTip(`
+      const html = `
         <div class="fp-chart-tooltip-label" style="max-width:180px">${escHtml(_tev.title)}</div>
         ${_tSafe ? `<div style="font-size:11px;color:var(--fp-accent);margin-top:3px;font-weight:600">🕐 ${_tSafe}</div>` : ''}
         ${_tev.type ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:2px">${escHtml(_tev.type)}</div>` : ''}
@@ -17963,7 +17963,22 @@ function initChartTooltips() {
         ${!_tRange && _tDur ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:3px">⏱ ${_tDur}</div>` : ''}
         ${_tev.notes ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:4px;border-top:1px solid rgba(255,255,255,0.06);padding-top:4px;max-width:180px;white-space:pre-wrap;word-break:break-word">📝 ${escHtml(_tev.notes.length>80?_tev.notes.slice(0,80)+'…':_tev.notes)}</div>` : ''}
         <div style="font-size:9px;color:var(--fp-text-faint);margin-top:4px;border-top:1px solid rgba(255,255,255,0.06);padding-top:4px">${fpT('Appuyer pour modifier')}</div>
-      `, touch);
+      `;
+      // Position from the element's bounding rect — more reliable than touch clientX/clientY
+      // on iOS Safari (clientX can be 0 for elements near left edge, causing top-left drift).
+      // getBoundingClientRect() gives correct viewport coords for position:fixed tooltips.
+      tip.innerHTML = html;
+      tip.classList.add('visible');
+      const tipW = 220;
+      const _r = rdv.getBoundingClientRect();
+      // Prefer placing tooltip below the element; flip above if too close to bottom edge.
+      let _tx = _r.left + _r.width / 2 - tipW / 2;
+      let _ty = _r.bottom + 8;
+      if (_ty + 130 > window.innerHeight - 8) _ty = _r.top - 138;
+      if (_tx + tipW > window.innerWidth - 8) _tx = window.innerWidth - tipW - 8;
+      if (_tx < 8) _tx = 8;
+      tip.style.left = _tx + 'px';
+      tip.style.top  = _ty + 'px';
     }, { passive: true });
     // Hide immediately on touchend — clear inline styles too (set by old touchstart handler),
     // so navigateSub classList.remove('visible') is not overridden by inline opacity/visibility.
@@ -69351,7 +69366,12 @@ window.FP_ADDONS_API = {
       const r = await apiFetch(`/api/addons/${encodeURIComponent(addonKey)}/deactivate`, { method: 'POST' });
       if (r?.ok) {
         if (window.FP_DATA?.addons?.active) window.FP_DATA.addons.active[addonKey] = false;
-        await this.load().catch(() => {});
+        // Use loadData() (not just this.load()) so STATE.me.limits and STATE.me.addons
+        // are refreshed before render() — sidebar quota and active-count read STATE.me,
+        // not the FP_ADDONS_API internal cache. this.load() alone leaves limits stale.
+        try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+        _apiFetchCache && _apiFetchCache.clear();
+        await loadData().catch(() => {});
         render();
         showToast('success', `Add-on ${addonKey} désactivé`);
       } else {
