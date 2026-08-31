@@ -26,17 +26,20 @@ export async function activateAddon(addonKey: string, orgId = "default", quantit
   const { pool: _adPool } = await import("@workspace/db");
   const _adClient = await _adPool.connect();
   try {
-    const id = `oa_${orgId}_${addonKey}`;
+    /* Generate a deterministic UUID-format id from (orgId + addonKey) so the row
+       is stable across replays and matches what activate-addon-direct produces.
+       CRITICAL: org_addons.id is UUID type in production (TEXT in Drizzle schema).
+       A non-UUID text like 'oa_<orgId>_<addonKey>' causes pgCode 22P02 on INSERT. */
+    const { createHash: _adHash } = await import("crypto");
+    const _raw = _adHash("sha1").update(`${orgId}:${addonKey}`).digest("hex");
+    const id = `${_raw.slice(0,8)}-${_raw.slice(8,12)}-5${_raw.slice(13,16)}-${_raw.slice(16,20)}-${_raw.slice(20,32)}`;
 
-    /* Raw SQL INSERT — bypasses the Drizzle type-OID mismatch that occurs when
-       the production org_addons.org_id column is UUID (ALTER'd in init-data-tables)
-       but the Drizzle schema still declares it as text.  $2 is sent untyped;
-       Postgres casts the UUID string automatically.
-       ON CONFLICT (id) DO NOTHING = idempotent on the primary key.              */
+    /* Raw SQL INSERT — bypasses the Drizzle type-OID mismatch; id and org_id are
+       both UUID type in production.  ON CONFLICT (id) DO NOTHING = idempotent.    */
     await _adClient.query(
       `INSERT INTO org_addons
          (id, org_id, addon_key, active, quantity, activated_at, metadata, updated_at, created_at)
-       VALUES ($1, $2, $3, true, $4, NOW(), '{}'::jsonb, NOW(), NOW())
+       VALUES ($1::uuid, $2::uuid, $3, true, $4, NOW(), '{}'::jsonb, NOW(), NOW())
        ON CONFLICT (id) DO NOTHING`,
       [id, orgId, addonKey, qty]
     );
