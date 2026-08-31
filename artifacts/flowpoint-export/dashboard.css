@@ -8364,6 +8364,27 @@ code {
   .fp-addon-grid > div {
     padding: 12px !important;
   }
+  /* Addon card footer row: price + buttons.
+     On narrow screens (≤640px) the price label and the button group
+     can't sit side-by-side without overflow. Stack them vertically so
+     neither "Ajouter +1" nor "Désactiver" is cut off. */
+  .fp-addon-grid > div > div:last-child {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    row-gap: 8px !important;
+  }
+  /* Button group inside active quantity add-on card */
+  .fp-addon-grid > div > div:last-child > div[style*="display:flex"] {
+    width: 100% !important;
+    justify-content: flex-start !important;
+  }
+  .fp-addon-grid > div > div:last-child .fp-btn {
+    flex: 1 1 auto;
+    max-width: 100% !important;
+    white-space: nowrap;
+    min-height: 32px;
+    touch-action: manipulation;
+  }
 
   /* ── 3. Insights IA cards — action button moves inside content on mobile ── */
   .fp-insight-row-btn-desk { display: none !important; }
