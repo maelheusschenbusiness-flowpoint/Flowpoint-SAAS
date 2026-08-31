@@ -97,6 +97,7 @@
 - [Stripe webhook HMAC signing](stripe-webhook-hmac.md) — use raw whsec_... string directly as HMAC key (no strip, no base64 decode); whsec_ prefix is part of the key material; confirmed 2026-08-15
 - [checkout-return.html AI credits](checkout-return-ai-credits.md) — billing/verify returns checkoutType; ai_credits_only shows "tokens added" UI, redirects to dashboard.html#billing
 - [Stripe E2E cert tooling](stripe-e2e-cert-tooling.md) — tools/e2e-billing-cert.mjs; STRIPE_TEST_KEY secret; Content-Type must be application/json; secret order must match server
+- [Audits concurrency PgBouncer fix](audit-concurrency-pgbouncer.md) — pg_advisory_lock (session) broken in PgBouncer; use pg_advisory_xact_lock+BEGIN/COMMIT; launchAudit accepts preInsertedId to skip double INSERT
 - [Checkout deleted-Stripe-customer fix](checkout-deleted-stripe-customer.md) — payment-intent endpoint must call ensureStripeCustomer, not use raw stripeCustomerId; fpGoToPricing guard blocks canceled-user re-subscription
 - [Stripe test-mode cert pattern](stripe-test-mode-pattern.md) — getStripeKey() uses sk_test_ prefix guard (NOT NODE_ENV); webhook fallback same; monitorsPack10 missing from ADDON_DEFINITIONS was root cause of addon failure
 - [Canceled sub 4 states](canceled-sub-4-states.md) — canceled block must query Stripe live before routing: cancel_at_period_end→fall-through, terminated+downgrade→DB-only, terminated+upgrade→reactivation checkout, orphaned→cleanup

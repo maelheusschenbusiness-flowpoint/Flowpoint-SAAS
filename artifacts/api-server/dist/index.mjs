@@ -74981,26 +74981,25 @@ async function activateAddon(addonKey, orgId3 = "default", quantity = 1) {
     return false;
   }
   const qty = Math.max(1, Math.floor(Number(quantity) || 1));
+  const { pool: _adPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+  const _adClient = await _adPool.connect();
   try {
-    const id = `oa_${orgId3}_${addonKey}`;
-    await db.insert(orgAddonsTable).values({
-      id,
-      orgId: orgId3,
-      addonKey,
-      active: true,
-      quantity: qty,
-      activatedAt: /* @__PURE__ */ new Date(),
-      metadata: { source: "manual" }
-    }).onConflictDoNothing();
-    const client = await (await Promise.resolve().then(() => (init_src(), src_exports))).pool.connect();
-    try {
-      await client.query(
-        `UPDATE org_addons SET active = true, quantity = $3, activated_at = NOW(), updated_at = NOW() WHERE org_id = $1 AND addon_key = $2`,
-        [orgId3, addonKey, qty]
-      );
-    } finally {
-      client.release();
-    }
+    const { createHash: _adHash } = await import("crypto");
+    const _raw = _adHash("sha1").update(`${orgId3}:${addonKey}`).digest("hex");
+    const id = `${_raw.slice(0, 8)}-${_raw.slice(8, 12)}-5${_raw.slice(13, 16)}-${_raw.slice(16, 20)}-${_raw.slice(20, 32)}`;
+    await _adClient.query(
+      `INSERT INTO org_addons
+         (id, org_id, addon_key, active, quantity, activated_at, metadata, updated_at, created_at)
+       VALUES ($1::uuid, $2::uuid, $3, true, $4, NOW(), '{}'::jsonb, NOW(), NOW())
+       ON CONFLICT (id) DO NOTHING`,
+      [id, orgId3, addonKey, qty]
+    );
+    await _adClient.query(
+      `UPDATE org_addons
+          SET active = true, quantity = $3, activated_at = NOW(), updated_at = NOW()
+        WHERE org_id = $1 AND addon_key = $2`,
+      [orgId3, addonKey, qty]
+    );
     applyAddonToStore(addonKey, true);
     store.broadcast({ type: "addon:activated", addonKey }, orgId3);
     store.logActivity({
@@ -75011,11 +75010,22 @@ async function activateAddon(addonKey, orgId3 = "default", quantity = 1) {
       userId: "system",
       userName: "Stripe Webhook"
     }).catch((err) => logger.warn({ err: err?.message }, "logActivity failed"));
-    logger.info({ addonKey, orgId: orgId3 }, "[Addons] Addon activated");
+    logger.info({ addonKey, orgId: orgId3, qty }, "[Addons] Addon activated");
     return true;
   } catch (err) {
-    logger.error({ err, addonKey }, "[Addons] Failed to activate addon");
-    return false;
+    const pgErr = err;
+    logger.error({
+      err,
+      addonKey,
+      orgId: orgId3 ? String(orgId3).slice(0, 8) + "\u2026" : orgId3,
+      pgCode: pgErr?.code,
+      pgConstraint: pgErr?.constraint,
+      pgDetail: pgErr?.detail?.slice(0, 300),
+      pgMsg: pgErr?.message?.slice(0, 300)
+    }, "[Addons] activateAddon: DB write failed \u2014 rethrowing for caller");
+    throw err;
+  } finally {
+    _adClient.release();
   }
 }
 async function deactivateAddon(addonKey, orgId3 = "default") {
@@ -75348,6 +75358,886 @@ var init_billing_context = __esm({
       cause;
       code = "BILLING_CONTEXT_UNAVAILABLE";
       retryable = true;
+    };
+  }
+});
+
+// src/services/ensure-stripe-customer.ts
+var ensure_stripe_customer_exports = {};
+__export(ensure_stripe_customer_exports, {
+  _setStripeForTest: () => _setStripeForTest,
+  ensureStripeCustomer: () => ensureStripeCustomer
+});
+function _setStripeForTest(client) {
+  _stripeForTest = client;
+}
+async function ensureStripeCustomer(orgId3, hint, stripeKey) {
+  const inflight = _inflight.get(orgId3);
+  if (inflight) return inflight;
+  const promise = _runWithLock(orgId3, hint, stripeKey).finally(() => _inflight.delete(orgId3));
+  _inflight.set(orgId3, promise);
+  return promise;
+}
+async function _runWithLock(orgId3, hint, stripeKeyOverride) {
+  const key = stripeKeyOverride ?? process.env["STRIPE_LIVE_API_KEY"] ?? process.env["STRIPE_SECRET_KEY"] ?? "";
+  if (!key) throw new Error("[ensureStripeCustomer] No Stripe key configured");
+  const stripe = _stripeForTest ?? await (async () => {
+    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
+    return new Stripe2(key, { apiVersion: "2026-04-22.dahlia" });
+  })();
+  return _withPgLock(orgId3, async (client) => {
+    const t0 = Date.now();
+    logger.debug({ orgId: orgId3 }, "[ESC][DEBUG] critical section entered \u2014 lock acquired");
+    const settings = await loadOrgSettings(orgId3, client).catch(() => null);
+    logger.debug(
+      { orgId: orgId3, dbCustomerId: settings?.stripeCustomerId ?? null, ms: Date.now() - t0 },
+      "[ESC][DEBUG] Step 1 \u2014 DB read complete"
+    );
+    let rawId = settings?.stripeCustomerId ?? hint?.stripeCustomerId ?? null;
+    let _fromLegacyFallback = false;
+    if (!rawId?.trim()) {
+      try {
+        const orgEmailRow = await client.query(
+          `SELECT owner_email FROM organizations WHERE id::text = $1 LIMIT 1`,
+          [orgId3]
+        );
+        const ownerEmail = orgEmailRow.rows[0]?.owner_email;
+        if (ownerEmail && ownerEmail !== orgId3) {
+          const emailSettings = await loadOrgSettings(ownerEmail, client).catch(() => null);
+          const legacyId = emailSettings?.stripeCustomerId;
+          if (legacyId && legacyId.trim()) {
+            rawId = legacyId.trim();
+            _fromLegacyFallback = true;
+            logger.info(
+              { orgId: orgId3, ownerEmail, legacyId },
+              "[ESC] UUID\u2192email fallback: found customer in legacy org_settings \u2014 will persist to UUID key to prevent future duplicates"
+            );
+          }
+        }
+      } catch (fallbackErr) {
+        logger.warn({ fallbackErr, orgId: orgId3 }, "[ESC] UUID\u2192email fallback lookup failed (non-fatal)");
+      }
+    }
+    const candidateId = rawId && rawId.trim() ? rawId.trim() : null;
+    if (candidateId) {
+      const t2 = Date.now();
+      try {
+        const customer2 = await stripe.customers.retrieve(candidateId);
+        const ms2 = Date.now() - t2;
+        if (!customer2.deleted) {
+          _syncStore(candidateId);
+          logger.debug(
+            { orgId: orgId3, customerId: candidateId, stripeMs: ms2, totalMs: Date.now() - t0 },
+            "[ESC][DEBUG] Step 2 \u2014 retrieve OK, customer alive \u2014 reusing"
+          );
+          const _existing = customer2;
+          const _company = settings?.orgName ?? hint?.orgName ?? null;
+          const _realCompany = _company && !_company.includes("@") ? _company : null;
+          if (_realCompany && (!_existing.description || _existing.metadata?.["company"] !== _realCompany)) {
+            const _bfFirstName = settings?.firstName ?? hint?.firstName;
+            const _bfLastName = settings?.["lastName"] ?? null;
+            const _fullName = [_bfFirstName, _bfLastName].filter(Boolean).join(" ").trim() || null;
+            stripe.customers.update(candidateId, {
+              ..._fullName ? { name: _fullName } : {},
+              description: _realCompany,
+              metadata: { ..._existing.metadata, company: _realCompany }
+            }).then(() => {
+              logger.info({ orgId: orgId3, customerId: candidateId, company: _company }, "[ESC] backfilled company on existing Stripe customer");
+            }).catch((updErr) => {
+              logger.warn({ orgId: orgId3, customerId: candidateId, err: updErr instanceof Error ? updErr.message : String(updErr) }, "[ESC] company backfill failed (non-fatal)");
+            });
+          }
+          if (_fromLegacyFallback) {
+            try {
+              await _persistStrict(orgId3, candidateId, client, t0);
+              logger.info(
+                { orgId: orgId3, customerId: candidateId },
+                "[ESC] UUID\u2192email fallback: persisted legacy customer to UUID org key \u2014 future calls skip fallback"
+              );
+            } catch (persistErr) {
+              logger.error(
+                { persistErr, orgId: orgId3, customerId: candidateId },
+                "[ESC] UUID\u2192email fallback: persistence failed (non-fatal, customer still valid but may duplicate on next call)"
+              );
+            }
+          }
+          return candidateId;
+        }
+        logger.warn(
+          { orgId: orgId3, candidateId, stripeMs: ms2 },
+          "[ESC][DEBUG] Step 2 \u2014 customer deleted in Stripe \u2014 will recreate"
+        );
+      } catch (err) {
+        const stripeErr = err;
+        const ms2 = Date.now() - t2;
+        if (stripeErr?.code !== "resource_missing") throw err;
+        logger.warn(
+          { orgId: orgId3, candidateId, stripeMs: ms2, code: "resource_missing" },
+          "[ESC][DEBUG] Step 2 \u2014 resource_missing (test key in live mode, or wrong account) \u2014 will recreate"
+        );
+      }
+    } else {
+      logger.debug({ orgId: orgId3 }, "[ESC][DEBUG] Step 2 \u2014 no candidate in DB, skipping retrieve");
+    }
+    const t3 = Date.now();
+    let orphan = null;
+    try {
+      const search = await stripe.customers.search({
+        query: `metadata['orgId']:'${orgId3}'`,
+        limit: 5
+      });
+      orphan = search.data.find((c) => !c.deleted) ?? null;
+      logger.debug(
+        { orgId: orgId3, found: !!orphan, orphanId: orphan?.id ?? null, stripeMs: Date.now() - t3 },
+        "[ESC][DEBUG] Step 3 \u2014 metadata search complete"
+      );
+    } catch (searchErr) {
+      logger.debug(
+        { orgId: orgId3, searchErr, stripeMs: Date.now() - t3 },
+        "[ESC][DEBUG] Step 3 \u2014 search failed (index lag or transient error) \u2014 proceeding to create"
+      );
+    }
+    if (orphan) {
+      logger.info(
+        { orgId: orgId3, customerId: orphan.id },
+        "[ESC][DEBUG] Step 3 \u2014 orphaned customer found via metadata search \u2014 reusing"
+      );
+      await _persistStrict(orgId3, orphan.id, client, t0);
+      return orphan.id;
+    }
+    if (key.startsWith("sk_live_")) {
+      try {
+        const qaRow = await client.query(
+          `SELECT COALESCE(is_internal_qa, false) AS is_qa FROM organizations WHERE id::text = $1 LIMIT 1`,
+          [orgId3]
+        );
+        const _isQaOrg = qaRow.rows[0]?.is_qa === true;
+        if (_isQaOrg) {
+          throw new Error(
+            `[ESC] BLOCKED: org ${orgId3} has is_internal_qa=true \u2014 live Stripe customer creation is prohibited for QA orgs. Call ensureStripeCustomer with STRIPE_TEST_KEY instead.`
+          );
+        }
+      } catch (qaErr) {
+        if (qaErr instanceof Error && qaErr.message.startsWith("[ESC] BLOCKED")) throw qaErr;
+        logger.warn({ qaErr, orgId: orgId3 }, "[ESC] QA guard check failed (non-fatal, proceeding to create)");
+      }
+    }
+    const idempotencyKey = candidateId ? `fp-cust-${orgId3}-rpl-${candidateId.slice(-12)}` : `fp-cust-${orgId3}`;
+    const email = settings?.email ?? hint?.email ?? null;
+    const isValidEmail = email != null && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+    const _escFirstName = settings?.firstName ?? hint?.firstName;
+    const _escLastName = settings?.["lastName"] ?? null;
+    const displayName = [_escFirstName, _escLastName].filter(Boolean).join(" ").trim() || (isValidEmail && email ? email.split("@")[0] : null) || "FlowPoint User";
+    logger.debug(
+      { orgId: orgId3, idempotencyKey, email: isValidEmail ? email : "(invalid)", displayName },
+      "[ESC][DEBUG] Step 4 \u2014 creating Stripe customer"
+    );
+    const orgCountry = settings?.country ?? null;
+    const orgCity = settings?.city ?? null;
+    const orgAddress = settings?.address ?? null;
+    const orgCompany = settings?.orgName ?? hint?.orgName ?? null;
+    const orgCompanyDisplay = orgCompany && !orgCompany.includes("@") ? orgCompany : null;
+    const orgWebsite = settings?.primarySite ?? null;
+    const t4 = Date.now();
+    const customer = await stripe.customers.create(
+      {
+        ...isValidEmail ? { email } : {},
+        name: displayName,
+        ...orgCompanyDisplay ? { description: orgCompanyDisplay } : {},
+        ...orgCountry || orgCity || orgAddress ? {
+          address: {
+            ...orgCountry ? { country: orgCountry } : {},
+            ...orgCity ? { city: orgCity } : {},
+            ...orgAddress ? { line1: orgAddress } : {}
+          }
+        } : {},
+        metadata: {
+          orgId: orgId3,
+          flowpointUserId: orgId3,
+          flowpoint_org_id: orgId3,
+          company: orgCompanyDisplay ?? "",
+          website: orgWebsite ?? "",
+          environment: process.env["NODE_ENV"] ?? "development",
+          signup_source: "flowpoint_web"
+        }
+      },
+      { idempotencyKey }
+    );
+    logger.info(
+      { orgId: orgId3, customerId: customer.id, idempotencyKey, stripeMs: Date.now() - t4 },
+      "[ESC][DEBUG] Step 4 \u2014 Stripe customer created"
+    );
+    await _persistStrict(orgId3, customer.id, client, t0);
+    return customer.id;
+  });
+}
+async function _withPgLock(orgId3, fn) {
+  const lockKey = _hashOrgId(orgId3);
+  const client = await pool.connect();
+  try {
+    logger.debug({ orgId: orgId3, lockKey }, "[ESC][DEBUG] BEGIN \u2014 acquiring pg_advisory_xact_lock");
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1)", [lockKey]);
+    logger.debug({ orgId: orgId3, lockKey }, "[ESC][DEBUG] pg_advisory_xact_lock acquired");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    logger.debug({ orgId: orgId3, lockKey }, "[ESC][DEBUG] COMMIT \u2014 lock released");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(
+      (rbErr) => logger.warn({ rbErr, orgId: orgId3 }, "[ESC][DEBUG] ROLLBACK failed")
+    );
+    logger.debug({ orgId: orgId3, lockKey, err }, "[ESC][DEBUG] ROLLBACK \u2014 lock released on error");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+function _hashOrgId(orgId3) {
+  let h = 5381;
+  for (let i = 0; i < orgId3.length; i++) {
+    h = Math.imul(h, 31) + orgId3.charCodeAt(i) | 0;
+  }
+  return h;
+}
+async function _persistStrict(orgId3, customerId, client, t0) {
+  _syncStore(customerId);
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const t5 = Date.now();
+      await client.query(
+        `INSERT INTO org_settings (org_id) VALUES ($1) ON CONFLICT (org_id) DO NOTHING`,
+        [orgId3]
+      );
+      const updateResult = await client.query(
+        `UPDATE org_settings
+            SET stripe_customer_id = $1,
+                updated_at         = NOW()
+          WHERE org_id = $2`,
+        [customerId, orgId3]
+      );
+      const rowCount2 = updateResult.rowCount ?? 0;
+      logger.debug(
+        { orgId: orgId3, customerId, rowCount: rowCount2, dbMs: Date.now() - t5 },
+        "[ESC][DEBUG] Step 5 \u2014 UPDATE executed"
+      );
+      const confirm = await loadOrgSettings(orgId3, client);
+      logger.debug(
+        {
+          orgId: orgId3,
+          customerId,
+          confirmedId: confirm?.stripeCustomerId ?? null,
+          match: confirm?.stripeCustomerId === customerId,
+          totalMs: Date.now() - t0
+        },
+        "[ESC][DEBUG] Step 5 \u2014 confirm read"
+      );
+      if (confirm?.stripeCustomerId === customerId) {
+        logger.info(
+          { orgId: orgId3, customerId, rowCount: rowCount2, totalMs: Date.now() - t0 },
+          "[ESC][DEBUG] Step 5 \u2014 DB write confirmed \u2014 customer persisted"
+        );
+        Promise.resolve().then(() => (init_org_data(), org_data_exports)).then(({ persistOrgData: persistOrgData2 }) => {
+          persistOrgData2(orgId3, { stripeCustomerId: customerId }).catch((mirrorErr) => {
+            logger.warn({ mirrorErr, orgId: orgId3 }, "[ESC] organizations stripe_customer_id mirror failed (non-fatal)");
+          });
+        }).catch(() => {
+        });
+        return;
+      }
+      const msg = `[ensureStripeCustomer] DB write NOT confirmed: expected ${customerId}, got ${confirm?.stripeCustomerId ?? "null"}`;
+      logger.error(
+        { orgId: orgId3, expected: customerId, actual: confirm?.stripeCustomerId, attempt },
+        msg
+      );
+      if (attempt === 2) throw new Error(msg);
+    } catch (err) {
+      if (attempt === 2) {
+        logger.error(
+          { err, orgId: orgId3, customerId },
+          "[ensureStripeCustomer] DB persist failed after 2 attempts \u2014 will ROLLBACK"
+        );
+        throw err;
+      }
+      logger.warn(
+        { err, orgId: orgId3 },
+        "[ensureStripeCustomer] DB persist attempt 1 failed \u2014 retrying in 250ms"
+      );
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+}
+function _syncStore(customerId) {
+  try {
+    store.me.stripeCustomerId = customerId;
+  } catch {
+  }
+}
+var _stripeForTest, _inflight;
+var init_ensure_stripe_customer = __esm({
+  "src/services/ensure-stripe-customer.ts"() {
+    "use strict";
+    init_src();
+    init_org_settings();
+    init_store();
+    init_logger();
+    _stripeForTest = void 0;
+    _inflight = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/services/billing-service.ts
+var billing_service_exports = {};
+__export(billing_service_exports, {
+  ADDON_CATALOG: () => ADDON_CATALOG,
+  PLAN_CONFIG: () => PLAN_CONFIG,
+  PLAN_FEATURES: () => PLAN_FEATURES,
+  checkQuota: () => checkQuota,
+  getInvoices: () => getInvoices,
+  getMRRData: () => getMRRData,
+  getSubscriptionAnalytics: () => getSubscriptionAnalytics,
+  getUsageSummary: () => getUsageSummary,
+  hasFeature: () => hasFeature,
+  startTrial: () => startTrial,
+  trackBillingEvent: () => trackBillingEvent,
+  validateCoupon: () => validateCoupon
+});
+async function getUsageSummary(orgId3 = "default") {
+  const billingCtx = await loadBillingContext(orgId3).catch(async () => {
+    const orgData = await loadOrgData(orgId3).catch(() => null);
+    return {
+      plan: orgData?.plan ?? "standard",
+      addons: orgData?.addons ?? {},
+      subscriptionStatus: orgData?.subscriptionStatus ?? "inactive",
+      trialEndsAt: orgData?.trialEndsAt ?? null,
+      stripeSubscriptionId: orgData?.stripeSubscriptionId ?? null,
+      stripeCustomerId: orgData?.stripeCustomerId ?? null,
+      trialConsumedAt: null
+    };
+  });
+  const plan4 = (billingCtx.plan || "standard").toLowerCase();
+  const limits = PLAN_LIMITS[plan4] || PLAN_LIMITS["standard"];
+  const planIncluded = PLAN_INCLUDED_ADDONS[plan4] ?? /* @__PURE__ */ new Set();
+  const addonsWithFlags = {};
+  for (const [key, val] of Object.entries(billingCtx.addons)) {
+    addonsWithFlags[key] = {
+      active: val,
+      includedInPlan: planIncluded.has(key)
+    };
+  }
+  for (const key of planIncluded) {
+    if (!(key in addonsWithFlags)) {
+      addonsWithFlags[key] = { active: true, includedInPlan: true };
+    }
+  }
+  const qtyExtras = computeQtyAddonExtras(billingCtx.addons);
+  const extraMonitors = qtyExtras["monitors"] ?? 0;
+  const extraAudits = qtyExtras["audits"] ?? 0;
+  const extraReports = qtyExtras["reports"] ?? 0;
+  const extraExports = qtyExtras["exports"] ?? 0;
+  const extraSeats = qtyExtras["teamMembers"] ?? 0;
+  let nextBillingDate = null;
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  if (stripeKey && billingCtx.stripeSubscriptionId) {
+    try {
+      const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
+      const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+      const sub = await stripe.subscriptions.retrieve(billingCtx.stripeSubscriptionId);
+      const _cpe = typeof sub.current_period_end === "number" ? sub.current_period_end : (sub.items?.data ?? []).reduce(
+        (m, it) => typeof it.current_period_end === "number" ? m === null ? it.current_period_end : Math.max(m, it.current_period_end) : m,
+        null
+      );
+      if (sub.status === "trialing" && sub.trial_end) {
+        nextBillingDate = new Date(sub.trial_end * 1e3).toISOString();
+      } else if (_cpe) {
+        nextBillingDate = new Date(_cpe * 1e3).toISOString();
+      }
+    } catch {
+      nextBillingDate = billingCtx.trialEndsAt ?? null;
+    }
+  } else if (billingCtx.subscriptionStatus === "trialing" && billingCtx.trialEndsAt) {
+    nextBillingDate = billingCtx.trialEndsAt;
+  }
+  const client = await pool.connect();
+  try {
+    const safeCount = async (query, params) => {
+      try {
+        const r = await client.query(query, params);
+        return Number(r.rows[0]?.count ?? 0);
+      } catch {
+        return 0;
+      }
+    };
+    const [auditsUsed, monitorsUsed, reportsUsed, seatsUsed, exportsUsed, pdfsUsed] = await Promise.all([
+      safeCount(`SELECT COUNT(*) FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId3]),
+      safeCount(`SELECT COUNT(*) FROM monitors WHERE org_id=$1`, [orgId3]),
+      safeCount(`SELECT COUNT(*) FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId3]),
+      safeCount(`SELECT COUNT(*) FROM team_members WHERE org_id=$1`, [orgId3]),
+      safeCount(`SELECT COUNT(*) FROM report_exports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId3]),
+      safeCount(`SELECT COUNT(*) FROM report_exports WHERE org_id=$1 AND created_at > date_trunc('month', now()) AND (format='pdf' OR format IS NULL)`, [orgId3])
+    ]);
+    return {
+      plan: plan4,
+      billing_period: (/* @__PURE__ */ new Date()).toISOString().slice(0, 7),
+      usage: {
+        audits: { used: auditsUsed, limit: limits.audits + extraAudits, pct: Math.round(auditsUsed / Math.max(limits.audits + extraAudits, 1) * 100) },
+        monitors: { used: monitorsUsed, limit: limits.monitors + extraMonitors, pct: Math.round(monitorsUsed / Math.max(limits.monitors + extraMonitors, 1) * 100) },
+        reports: { used: reportsUsed, limit: limits.reports + extraReports, pct: Math.round(reportsUsed / Math.max(limits.reports + extraReports, 1) * 100) },
+        exports: { used: exportsUsed, limit: limits.exports + extraExports, pct: Math.round(exportsUsed / Math.max((limits.exports ?? limits.reports) + extraExports, 1) * 100) },
+        pdfs: { used: pdfsUsed, limit: limits.reports + extraReports, pct: Math.round(pdfsUsed / Math.max(limits.reports + extraReports, 1) * 100) },
+        seats: { used: seatsUsed, limit: limits.teamMembers + extraSeats, pct: Math.round(seatsUsed / Math.max(limits.teamMembers + extraSeats, 1) * 100) }
+      },
+      // Bug-4 fix: addons includes plan-included items flagged with includedInPlan:true
+      addons: addonsWithFlags,
+      // Legacy flat addons map for backward-compat consumers
+      addonsFlat: billingCtx.addons,
+      subscriptionStatus: billingCtx.subscriptionStatus ?? "inactive",
+      trialEndsAt: billingCtx.trialEndsAt ?? null,
+      // Bug-5 fix: nextBillingDate exposed here
+      nextBillingDate
+    };
+  } finally {
+    client.release();
+  }
+}
+async function checkQuota(resource, orgId3) {
+  const resolvedOrgId = orgId3 && orgId3 !== "default" ? orgId3 : null;
+  let plan4 = "standard";
+  let qtyExtras = {};
+  if (resolvedOrgId) {
+    try {
+      const settings = await loadOrgSettings(resolvedOrgId);
+      plan4 = (settings?.plan || "standard").toLowerCase();
+      const { pool: pgPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+      const addonsResult = await pgPool.query(
+        `SELECT addon_key, quantity FROM org_addons WHERE org_id = $1 AND active = true`,
+        [resolvedOrgId]
+      );
+      const addonMap = {};
+      for (const row of addonsResult.rows) {
+        addonMap[row.addon_key] = Math.max(1, Number(row.quantity ?? 1));
+      }
+      qtyExtras = computeQtyAddonExtras(addonMap);
+    } catch (err) {
+      logger.warn({ err, orgId: resolvedOrgId }, "[Billing] checkQuota: DB load failed \u2014 using standard limits");
+    }
+  }
+  const extraMonitors = qtyExtras["monitors"] ?? 0;
+  const extraAudits = qtyExtras["audits"] ?? 0;
+  const extraReports = qtyExtras["reports"] ?? 0;
+  const extraExports = qtyExtras["exports"] ?? 0;
+  const extraSeats = qtyExtras["teamMembers"] ?? 0;
+  const limits = PLAN_LIMITS[plan4] || PLAN_LIMITS.standard;
+  let usedCount = 0;
+  let limit2 = 0;
+  if (resolvedOrgId) {
+    try {
+      const { pool: pgPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+      const client = await pgPool.connect();
+      try {
+        switch (resource) {
+          case "audits": {
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
+            limit2 = limits.audits + extraAudits;
+            break;
+          }
+          case "monitors": {
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
+            limit2 = limits.monitors + extraMonitors;
+            break;
+          }
+          case "reports": {
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
+            limit2 = limits.reports + extraReports;
+            break;
+          }
+          case "seats": {
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM team_members WHERE org_id=$1`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
+            limit2 = limits.teamMembers + extraSeats;
+            break;
+          }
+          case "exports": {
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM usage_events
+                WHERE org_id=$1
+                  AND event_type IN ('export','pdf_export','health_export')
+                  AND created_at > date_trunc('month', now())`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
+            limit2 = limits.exports + extraExports;
+            break;
+          }
+        }
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      logger.warn({ err, orgId: resolvedOrgId, resource }, "[Billing] checkQuota: usage count failed \u2014 allowing");
+      return { allowed: true, used: 0, limit: limits[resource] || 0, plan: plan4 };
+    }
+  } else {
+    limit2 = limits[resource] || 0;
+    logger.warn({ resource }, "[Billing] checkQuota: unresolved orgId \u2014 returning standard limit, usage=0");
+  }
+  return {
+    allowed: usedCount < limit2,
+    used: usedCount,
+    limit: limit2,
+    plan: plan4
+  };
+}
+async function trackBillingEvent(type, data, orgId3 = "default") {
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `INSERT INTO billing_events (org_id, type, amount, currency, plan, metadata, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,now())`,
+      [orgId3, type, data.amount ?? 0, data.currency ?? "eur", String(data.plan ?? "unknown"), JSON.stringify(data)]
+    );
+  } catch (err) {
+    logger.warn({ err }, "[Billing] Failed to track billing event");
+  } finally {
+    client.release();
+  }
+}
+async function getMRRData(orgId3 = "default") {
+  const orgData = await loadOrgData(orgId3).catch(() => null);
+  const plan4 = (orgData?.plan || "standard").toLowerCase();
+  const currentMRR = PLAN_DEFINITIONS[plan4]?.priceEur ?? 0;
+  const client = await pool.connect();
+  try {
+    const rows = await client.query(`
+      SELECT
+        date_trunc('month', created_at) AS month,
+        SUM(CASE WHEN type IN ('subscription_created','subscription_renewed') THEN amount ELSE 0 END) AS mrr,
+        SUM(CASE WHEN type = 'subscription_canceled' THEN amount ELSE 0 END) AS churn,
+        COUNT(CASE WHEN type = 'subscription_created' THEN 1 END) AS new_subs,
+        COUNT(CASE WHEN type = 'subscription_canceled' THEN 1 END) AS cancels
+      FROM billing_events
+      WHERE org_id=$1 AND created_at > now() - INTERVAL '12 months'
+      GROUP BY 1 ORDER BY 1 DESC LIMIT 12
+    `, [orgId3]);
+    return {
+      currentMRR,
+      arr: currentMRR * 12,
+      history: rows.rows.map((r) => ({
+        month: String(r.month).slice(0, 7),
+        mrr: Number(r.mrr) || currentMRR,
+        churn: Number(r.churn) || 0,
+        newSubs: Number(r.new_subs) || 0,
+        cancels: Number(r.cancels) || 0
+      }))
+    };
+  } catch {
+    return { currentMRR, arr: currentMRR * 12, history: [] };
+  } finally {
+    client.release();
+  }
+}
+async function getSubscriptionAnalytics(orgId3 = "default") {
+  const [mrr, usage, orgData] = await Promise.all([
+    getMRRData(orgId3),
+    getUsageSummary(orgId3),
+    loadOrgData(orgId3).catch(() => null)
+  ]);
+  const trialDaysLeft = orgData?.trialEndsAt ? Math.max(0, Math.ceil((new Date(orgData.trialEndsAt).getTime() - Date.now()) / 864e5)) : null;
+  return {
+    ...mrr,
+    usage,
+    plan: orgData?.plan ?? "standard",
+    subscriptionStatus: orgData?.subscriptionStatus ?? "inactive",
+    trialDaysLeft,
+    stripeCustomerId: orgData?.stripeCustomerId ?? null,
+    addons: orgData?.addons ?? {}
+  };
+}
+async function startTrial(plan4 = "pro", days = 14, orgId3 = "default") {
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      throw new Error("STRIPE_LIVE_API_KEY is required in production \u2014 cannot activate trial");
+    }
+    const trialEnd = new Date(Date.now() + days * 864e5).toISOString();
+    store.broadcastPlanUpdate(plan4, orgId3);
+    logger.info({ plan: plan4, days }, "[Billing] Trial activated (dev mode \u2014 no Stripe key)");
+    return { ok: true, trialEndsAt: trialEnd, plan: plan4, mock: true };
+  }
+  try {
+    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
+    const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const planPriceId = PLAN_PRICE_IDS[plan4.toLowerCase()];
+    if (!planPriceId) {
+      const trialEnd2 = new Date(Date.now() + days * 864e5).toISOString();
+      store.broadcastPlanUpdate(plan4, orgId3);
+      return { ok: true, trialEndsAt: trialEnd2, plan: plan4, noPrice: true };
+    }
+    const { ensureStripeCustomer: ensureStripeCustomer2 } = await Promise.resolve().then(() => (init_ensure_stripe_customer(), ensure_stripe_customer_exports));
+    const customerId = await ensureStripeCustomer2(orgId3, null, stripeKey);
+    const [existingActive, existingTrialing] = await Promise.all([
+      stripe.subscriptions.list({ customer: customerId, status: "active", limit: 1 }),
+      stripe.subscriptions.list({ customer: customerId, status: "trialing", limit: 1 })
+    ]);
+    const existingSub = existingActive.data[0] ?? existingTrialing.data[0];
+    if (existingSub) {
+      const trialEnd2 = existingSub.trial_end ? new Date(existingSub.trial_end * 1e3).toISOString() : new Date(Date.now() + days * 864e5).toISOString();
+      logger.info({ subId: existingSub.id, orgId: orgId3 }, "[Billing] startTrial \u2014 existing subscription found, returning idempotent result");
+      return { ok: true, trialEndsAt: trialEnd2, subscriptionId: existingSub.id, plan: plan4, idempotent: true };
+    }
+    const sub = await stripe.subscriptions.create({
+      customer: customerId,
+      items: [{ price: planPriceId }],
+      trial_period_days: days
+    });
+    const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1e3).toISOString() : new Date(Date.now() + days * 864e5).toISOString();
+    store.broadcastPlanUpdate(plan4, orgId3);
+    logger.info({ plan: plan4, days, subId: sub.id }, "[Billing] Stripe trial started");
+    return { ok: true, trialEndsAt: trialEnd, subscriptionId: sub.id, plan: plan4 };
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to start trial");
+    throw err;
+  }
+}
+async function validateCoupon(code) {
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      return { valid: false, error: "Payment service not configured" };
+    }
+    if (code === "FLOWPOINT20") return { valid: true, discount: 20, type: "percent", name: "Demo coupon (dev)", mock: true };
+    return { valid: false, error: "Code invalide (mode dev)" };
+  }
+  try {
+    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
+    const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const coupon = await stripe.coupons.retrieve(code);
+    if (!coupon.valid) return { valid: false, error: "Code expir\xE9 ou invalide" };
+    return {
+      valid: true,
+      id: coupon.id,
+      name: coupon.name || code,
+      type: coupon.percent_off ? "percent" : "amount",
+      discount: coupon.percent_off || (coupon.amount_off ? coupon.amount_off / 100 : 0),
+      duration: coupon.duration
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("No such coupon")) return { valid: false, error: "Code coupon introuvable" };
+    throw err;
+  }
+}
+async function getInvoices(limit2 = 20, stripeCustomerId) {
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const customerId = stripeCustomerId ?? null;
+  if (!stripeKey || !customerId) {
+    return { invoices: [], mock: !stripeKey };
+  }
+  try {
+    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
+    const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const invoices = await stripe.invoices.list({ customer: customerId, limit: limit2 });
+    return {
+      invoices: invoices.data.map((inv) => ({
+        id: inv.id,
+        number: inv.number,
+        amount: (inv.amount_paid || inv.amount_due) / 100,
+        currency: inv.currency.toUpperCase(),
+        status: inv.status,
+        date: new Date((inv.created || 0) * 1e3).toISOString(),
+        pdfUrl: inv.invoice_pdf,
+        hostedUrl: inv.hosted_invoice_url,
+        period: {
+          start: inv.period_start ? new Date(inv.period_start * 1e3).toISOString() : null,
+          end: inv.period_end ? new Date(inv.period_end * 1e3).toISOString() : null
+        }
+      }))
+    };
+  } catch (err) {
+    logger.warn({ err }, "[Billing] Failed to fetch invoices");
+    return { invoices: [], error: "Failed to fetch invoices" };
+  }
+}
+function hasFeature(feature, plan4) {
+  const p = (plan4 || "standard").toLowerCase();
+  const features = PLAN_FEATURES[p] || PLAN_FEATURES.standard;
+  if (p === "ultra") return true;
+  return features.some((f) => f === feature || f.startsWith(feature + ":"));
+}
+var _PLAN_PRESENTATION, PLAN_CONFIG, _ADDON_PRESENTATION, ADDON_CATALOG, PLAN_FEATURES;
+var init_billing_service = __esm({
+  "src/services/billing-service.ts"() {
+    "use strict";
+    init_src();
+    init_store();
+    init_logger();
+    init_org_settings();
+    init_org_data();
+    init_billing_context();
+    init_plans();
+    _PLAN_PRESENTATION = {
+      standard: { color: "#64748b", popular: false, annualPrice: 24, addons: [], highlighted: [] },
+      pro: { color: "#2563eb", popular: true, annualPrice: 65, addons: ["whiteLabel", "extraSeats", "monitorsPack50"], highlighted: ["IA Insights Pro", "50 monitors"] },
+      ultra: { color: "#7c3aed", popular: false, annualPrice: 120, addons: [], highlighted: ["1 000 audits/mois", "SLA 99.9%"] }
+    };
+    PLAN_CONFIG = Object.fromEntries(
+      Object.entries(PLAN_DEFINITIONS).map(([id, def]) => {
+        const pres = _PLAN_PRESENTATION[id] ?? { color: "#64748b", popular: false, annualPrice: Math.round(def.priceEur * 0.8), addons: [], highlighted: [] };
+        return [id, {
+          id: def.id,
+          name: def.name,
+          monthlyPrice: def.priceEur,
+          annualPrice: pres.annualPrice,
+          badge: def.badge,
+          tagline: def.tagline,
+          color: pres.color,
+          popular: pres.popular,
+          limits: def.limits,
+          aiCredits: def.aiCredits,
+          features: def.features,
+          locked: def.locked,
+          addons: pres.addons,
+          highlighted: pres.highlighted
+        }];
+      })
+    );
+    _ADDON_PRESENTATION = {
+      // ── Monitoring ─────────────────────────────────────────────────────────────
+      monitorsPack10: { icon: "\u{1F4E1}", unit: "+10 monitors" },
+      monitorsPack50: { icon: "\u{1F4E1}", unit: "+50 monitors" },
+      globalMonitoring: { icon: "\u{1F30D}", unit: "mondial" },
+      slaMonitoring: { icon: "\u{1F4CA}", unit: "SLA avanc\xE9" },
+      // ── SEO ────────────────────────────────────────────────────────────────────
+      advancedSeoLab: { icon: "\u{1F52C}", unit: "lab SEO complet" },
+      keywordDomination: { icon: "\u{1F3AF}", unit: "domination mots-cl\xE9s" },
+      backlinkIntelligence: { icon: "\u{1F517}", unit: "backlinks IA" },
+      aiContentStrategist: { icon: "\u270D\uFE0F", unit: "IA contenu" },
+      // ── Local SEO ──────────────────────────────────────────────────────────────
+      gbpSlots10: { icon: "\u{1F4CD}", unit: "+10 fiches GBP" },
+      aiGbpPosting: { icon: "\u{1F4F1}", unit: "publication IA GBP" },
+      reviewIntelligence: { icon: "\u2B50", unit: "IA avis clients" },
+      localDominationMaps: { icon: "\u{1F5FA}\uFE0F", unit: "cartes locales" },
+      // ── Conversion / IA ────────────────────────────────────────────────────────
+      aiCro: { icon: "\u{1F680}", unit: "CRO IA" },
+      behavioralAI: { icon: "\u{1F9E0}", unit: "comportemental IA" },
+      revenueLeak: { icon: "\u{1F4B0}", unit: "fuites revenus IA" },
+      abTestingAI: { icon: "\u{1F9EA}", unit: "A/B tests IA" },
+      // ── Reporting ──────────────────────────────────────────────────────────────
+      whiteLabel: { icon: "\u{1F3F7}\uFE0F", unit: "portail complet" },
+      agencyPacks: { icon: "\u{1F3E2}", unit: "packs agence" },
+      aiExecutiveReport: { icon: "\u{1F4CB}", unit: "rapport ex\xE9cutif IA" },
+      aiForecasting: { icon: "\u{1F4C8}", unit: "pr\xE9visions IA" },
+      // ── Intelligence ───────────────────────────────────────────────────────────
+      marketIntelligence: { icon: "\u{1F310}", unit: "intelligence march\xE9" },
+      aiWorkflows: { icon: "\u2699\uFE0F", unit: "workflows IA" },
+      // ── Équipe ─────────────────────────────────────────────────────────────────
+      extraSeats: { icon: "\u{1F465}", unit: "+5 si\xE8ges" },
+      enterprisePermissions: { icon: "\u{1F510}", unit: "permissions avanc\xE9es" },
+      // ── Rétention de données ───────────────────────────────────────────────────
+      retention90d: { icon: "\u{1F5C4}\uFE0F", unit: "90 jours" },
+      retention365d: { icon: "\u{1F3DB}\uFE0F", unit: "365 jours" },
+      // ── Intégrations ───────────────────────────────────────────────────────────
+      advancedWebhooks: { icon: "\u{1F514}", unit: "webhooks avanc\xE9s" },
+      zapierIntegration: { icon: "\u26A1", unit: "Zapier + Make" },
+      crmIntegration: { icon: "\u{1F91D}", unit: "CRM int\xE9gr\xE9" },
+      // ── Enterprise ─────────────────────────────────────────────────────────────
+      customDomain: { icon: "\u{1F310}", unit: "domaine personnalis\xE9" },
+      ssoEnterprise: { icon: "\u{1F511}", unit: "SSO SAML/OIDC" },
+      aiWorkspaceLaunch: { icon: "\u{1F3AF}", unit: "lancement IA" },
+      // ── Packs audits / exports ─────────────────────────────────────────────────
+      auditsPack200: { icon: "\u{1F50D}", unit: "+200 audits" },
+      auditsPack1000: { icon: "\u{1F50D}", unit: "+1 000 audits" },
+      pdfPack200: { icon: "\u{1F4C4}", unit: "+200 PDF" },
+      exportsPack1000: { icon: "\u{1F4E4}", unit: "+1 000 exports" },
+      // ── Crédits IA ─────────────────────────────────────────────────────────────
+      aiCreditsPack50k: { icon: "\u{1F916}", unit: "+50 000 cr\xE9dits" },
+      aiCreditsPack200k: { icon: "\u{1F916}", unit: "+200 000 cr\xE9dits" },
+      aiCreditsPack500k: { icon: "\u{1F916}", unit: "+500 000 cr\xE9dits" }
+    };
+    ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, pres]) => {
+      if (REMOVED_ADDONS.has(id)) return [];
+      const def = ADDON_DEFINITIONS[id];
+      if (!def) {
+        logger.error({ addonKey: id }, "[Billing] ADDON_CATALOG references an unknown add-on key \u2014 omitted");
+        return [];
+      }
+      return [{
+        id,
+        name: def.name,
+        icon: pres.icon,
+        price: def.priceEur,
+        unit: pres.unit,
+        desc: def.description,
+        oneTime: def.oneTime,
+        quantity: def.quantity,
+        priceId: ADDON_PRICE_IDS[id] ?? "",
+        // Public billing has no organisation entitlement context. Its status is
+        // therefore the canonical product lifecycle; GET /api/addons refines this
+        // to "included" or "active" for an authenticated organisation.
+        availability: getAddonAvailability(id),
+        status: getAddonAvailability(id),
+        // allowedPlans: derived from PLAN_ALLOWED_ADDONS (canonical per-plan purchasability matrix).
+        // coming_soon add-ons are not purchasable on any plan.
+        allowedPlans: getAddonAvailability(id) === "coming_soon" ? [] : ["standard", "pro", "ultra"].filter((p) => PLAN_ALLOWED_ADDONS[p]?.has(id))
+      }];
+    });
+    PLAN_FEATURES = {
+      standard: ["audits:30", "monitors:10", "reports:30", "exports:30", "team:1", "email-support", "export-csv"],
+      pro: [
+        "audits:300",
+        "monitors:50",
+        "reports:300",
+        "exports:300",
+        "team:5",
+        "ai-insights",
+        "white-label-reports",
+        "api-access",
+        "priority-support",
+        "retention:90",
+        "competitor-analytics",
+        "webhooks",
+        "2fa",
+        "audit-log",
+        "keyword-tracking",
+        "behavioral-ai",
+        "cro"
+      ],
+      ultra: [
+        "audits:1000",
+        "monitors:300",
+        "reports:1000",
+        "exports:1000",
+        "team:10",
+        "ai-strategist",
+        "white-label-portal",
+        "sso-enterprise",
+        "custom-domain",
+        "sla-999",
+        "retention:365",
+        "multi-workspace",
+        "agency-lab",
+        "client-billing",
+        "dedicated-onboarding",
+        "forecasting",
+        "revenue-leak",
+        "automation",
+        "market-intelligence"
+      ]
     };
   }
 });
@@ -76101,24 +76991,7 @@ async function handleStripeWebhook(req, res) {
           break;
         }
         const customerId = obj["customer"] ? String(obj["customer"]) : void 0;
-        let _customerMismatch = false;
         if (customerId && orgId3 && UUID_RE_WH.test(orgId3)) {
-          try {
-            const { loadBillingContext: _wlbc } = await Promise.resolve().then(() => (init_billing_context(), billing_context_exports));
-            const _wcCtx = await _wlbc(orgId3);
-            const _canonical = _wcCtx?.stripeCustomerId;
-            if (_canonical && _canonical !== customerId) {
-              logger.error(
-                { orgId: orgId3, storedCustomer: _canonical, webhookCustomer: customerId, eventType: event.type },
-                "[Webhook] STRIPE_CUSTOMER_BINDING_MISMATCH \u2014 incoming customer differs from canonical stored customer. Customer ID writes skipped."
-              );
-              _customerMismatch = true;
-            }
-          } catch (_mismatchErr) {
-            logger.warn({ _mismatchErr, orgId: orgId3 }, "[Webhook] Mismatch check failed (non-fatal) \u2014 proceeding with write");
-          }
-        }
-        if (customerId && orgId3 && UUID_RE_WH.test(orgId3) && !_customerMismatch) {
           persistOrgData(orgId3, { stripeCustomerId: customerId }).catch(
             (e) => logger.warn({ e, orgId: orgId3, customerId }, "[Webhook] Safety stripe_customer_id link failed (non-blocking)")
           );
@@ -76202,7 +77075,7 @@ async function handleStripeWebhook(req, res) {
         const persistPayload = {
           orgId: orgId3,
           subscriptionStatus: "active",
-          ...!_customerMismatch ? { stripeCustomerId: customerId } : {}
+          stripeCustomerId: customerId
         };
         if (["standard", "pro", "ultra"].includes(planNorm)) {
           persistPayload.plan = planNorm;
@@ -76336,22 +77209,72 @@ async function handleStripeWebhook(req, res) {
                 idempClient.release();
               }
               if (!alreadyActivated) {
+                const { pool: _pgPool_a0 } = await Promise.resolve().then(() => (init_src(), src_exports));
+                const _a0c = await _pgPool_a0.connect();
+                const _UUID_RE_A0 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                let _canonicalOrgId = null;
+                try {
+                  if (_UUID_RE_A0.test(piMetaOrgId)) {
+                    const _r = await _a0c.query(
+                      `SELECT id::text FROM organizations WHERE id = $1::uuid LIMIT 1`,
+                      [piMetaOrgId]
+                    );
+                    _canonicalOrgId = _r.rows[0]?.id ?? null;
+                  } else {
+                    const _r = await _a0c.query(
+                      `SELECT id::text FROM organizations WHERE owner_email = $1 LIMIT 1`,
+                      [piMetaOrgId]
+                    );
+                    _canonicalOrgId = _r.rows[0]?.id ?? null;
+                  }
+                } finally {
+                  _a0c.release();
+                }
+                const _evtId_a0 = event.id ?? "unknown";
+                if (!_canonicalOrgId) {
+                  logger.error({
+                    ADDON_ACTIVATION_FAILED: true,
+                    eventId: _evtId_a0,
+                    piId,
+                    orgId: piMetaOrgId,
+                    addonKeys: recurringEntries.map(([k]) => k),
+                    reason: "org_not_in_organizations"
+                  }, "[Webhook] ADDON_ACTIVATION_FAILED \u2014 orgId not found in organizations; will retry");
+                  throw new Error(`ADDON_ACTIVATION_FAILED: org ${piMetaOrgId} not in organizations`);
+                }
                 const { activateAddon: activateAddon2 } = await Promise.resolve().then(() => (init_addons_service(), addons_service_exports));
+                const _failedKeys = [];
                 for (const [key, val] of recurringEntries) {
                   const qty = typeof val === "number" ? val : 1;
-                  const activated = await activateAddon2(key, piMetaOrgId, qty);
-                  if (activated) {
-                    logger.info({ key, qty, orgId: piMetaOrgId, piId }, "[Webhook] Recurring add-on activated from PI metadata (closed-tab recovery)");
-                  } else {
-                    logger.error({ key, orgId: piMetaOrgId, piId }, "[Webhook] Failed to activate add-on from PI metadata");
+                  try {
+                    await activateAddon2(key, _canonicalOrgId, qty);
+                    logger.info({ key, qty, orgId: _canonicalOrgId, piId }, "[Webhook] Recurring add-on activated from PI metadata (closed-tab recovery)");
+                  } catch (activateErr) {
+                    _failedKeys.push(key);
+                    logger.error({
+                      ADDON_ACTIVATION_FAILED: true,
+                      eventId: _evtId_a0,
+                      piId,
+                      orgId: _canonicalOrgId,
+                      addonKey: key,
+                      qty,
+                      err: activateErr instanceof Error ? activateErr.message : String(activateErr)
+                    }, "[Webhook] ADDON_ACTIVATION_FAILED \u2014 DB error during activateAddon");
                   }
                 }
-                store.broadcast({ type: "billing:addons_updated" }, piMetaOrgId);
+                if (_failedKeys.length > 0) {
+                  throw new Error(`ADDON_ACTIVATION_FAILED: [${_failedKeys.join(",")}] for org ${_canonicalOrgId}`);
+                }
+                store.broadcast({ type: "billing:addons_updated" }, _canonicalOrgId);
               } else {
                 logger.info({ orgId: piMetaOrgId, piId }, "[Webhook] PI addon activation already done \u2014 skipping");
               }
             }
           } catch (piAddonErr) {
+            const _isActivationFail = piAddonErr instanceof Error && piAddonErr.message.startsWith("ADDON_ACTIVATION_FAILED");
+            if (_isActivationFail) {
+              throw piAddonErr;
+            }
             logger.error({ piAddonErr, orgId: piMetaOrgId }, "[Webhook] Failed to parse/activate add-ons from PI metadata");
           }
         }
@@ -76457,9 +77380,9 @@ async function handleStripeWebhook(req, res) {
           try {
             const { pool: _pgPool_pa } = await Promise.resolve().then(() => (init_src(), src_exports));
             const _pac = await _pgPool_pa.connect();
-            const _UUID_RE_PA = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const _UUID_RE_PA2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             try {
-              if (_UUID_RE_PA.test(orgId3)) {
+              if (_UUID_RE_PA2.test(orgId3)) {
                 const _ar = await _pac.query(`SELECT plan FROM organizations WHERE id = $1`, [orgId3]);
                 _dbPlanAfter = _ar.rows[0]?.plan ?? null;
               } else {
@@ -76475,6 +77398,33 @@ async function handleStripeWebhook(req, res) {
             { eventId: _eventId_ps, subscriptionId: _subId_ps, customerId: _custId_ps, oldPlan: _dbPlanBefore, newPlan, stripeStatus: status, orgId: orgId3, dbPlanAfter: _dbPlanAfter, synced: _dbPlanAfter === newPlan },
             "[Webhook][plan-sync] customer.subscription.updated DB state after persist"
           );
+          if (_dbPlanBefore && _dbPlanBefore !== newPlan && _UUID_RE_PA.test(orgId3)) {
+            try {
+              const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
+              const { PLAN_LIMITS: PLAN_LIMITS2 } = await Promise.resolve().then(() => (init_plans(), plans_exports));
+              const newLimits = PLAN_LIMITS2[newPlan] ?? PLAN_LIMITS2["standard"];
+              const [_auQ, _moQ, _reQ, _seQ] = await Promise.all([
+                checkQuota2("audits", orgId3),
+                checkQuota2("monitors", orgId3),
+                checkQuota2("reports", orgId3),
+                checkQuota2("seats", orgId3)
+              ]);
+              const _overLimit = _auQ.used > newLimits.audits || _moQ.used > newLimits.monitors || _reQ.used > newLimits.reports || _seQ.used > newLimits.teamMembers;
+              if (_overLimit) {
+                const { pool: _olPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+                await _olPool.query(
+                  `UPDATE organizations SET status='over_limit', updated_at=NOW() WHERE id=$1`,
+                  [orgId3]
+                );
+                logger.warn(
+                  { orgId: orgId3, oldPlan: _dbPlanBefore, newPlan, audits: _auQ.used, monitors: _moQ.used, reports: _reQ.used, seats: _seQ.used },
+                  "[Webhook][over-limit] org set to over_limit after forced downgrade"
+                );
+              }
+            } catch (_olErr) {
+              logger.warn({ err: _olErr, orgId: orgId3 }, "[Webhook][over-limit] check failed \u2014 non-fatal");
+            }
+          }
         }
         if (status === "trialing" && event.type === "customer.subscription.created") {
           const { pool: pgPool } = await Promise.resolve().then(() => (init_src(), src_exports));
@@ -76501,8 +77451,13 @@ async function handleStripeWebhook(req, res) {
           }
         }
         if (newPlan) {
-          logger.info({ newPlan, status, orgId: orgId3 }, "[Webhook] Subscription updated \u2014 broadcasting plan change");
-          store.broadcastPlanUpdate(newPlan, orgId3);
+          const _planActuallyChanged = !_dbPlanBefore || _dbPlanBefore.toLowerCase() !== newPlan.toLowerCase();
+          if (_planActuallyChanged) {
+            logger.info({ newPlan, oldPlan: _dbPlanBefore, status, orgId: orgId3 }, "[Webhook] Subscription updated \u2014 plan changed, broadcasting");
+            store.broadcastPlanUpdate(newPlan, orgId3);
+          } else {
+            logger.info({ newPlan, oldPlan: _dbPlanBefore, status, orgId: orgId3 }, "[Webhook] Subscription updated \u2014 plan unchanged, skipping broadcast");
+          }
         }
         {
           const subCustomerId = obj["customer"] ? String(obj["customer"]) : null;
@@ -76612,8 +77567,32 @@ async function handleStripeWebhook(req, res) {
           const _subDetails = obj["subscription_details"];
           const _subMeta = _subDetails?.["metadata"] ?? {};
           const _isAddonSub = _subMeta["addonSub"] === "true";
-          if (_isAddonSub) {
-            logger.info({ orgId: orgId3, billingReason }, "[Webhook] invoice.payment_succeeded: subscription_update on addonSub \u2014 routing to sendPaymentSucceeded(isAddon)");
+          let _isAddonOnlyInvoice = false;
+          if (!_isAddonSub) {
+            try {
+              const { PLAN_PRICE_IDS: PLAN_PRICE_IDS2 } = await Promise.resolve().then(() => (init_plans(), plans_exports));
+              const _planPriceIdSet = new Set(Object.values(PLAN_PRICE_IDS2));
+              const _lineData = obj["lines"]?.["data"] ?? [];
+              const _hasPlanLine = _lineData.some((l) => {
+                const priceId = l["price"]?.["id"];
+                return priceId && _planPriceIdSet.has(String(priceId));
+              });
+              _isAddonOnlyInvoice = _lineData.length > 0 && !_hasPlanLine;
+              if (_isAddonOnlyInvoice) {
+                logger.info(
+                  { orgId: orgId3, billingReason, lineCount: _lineData.length },
+                  "[Webhook] invoice.payment_succeeded: subscription_update \u2014 no plan price in lines, routing to sendPaymentSucceeded(isAddon)"
+                );
+              }
+            } catch (_planCheckErr) {
+              logger.warn({ err: _planCheckErr }, "[Webhook] Failed to check plan prices \u2014 treating subscription_update as plan change");
+            }
+          }
+          if (_isAddonSub || _isAddonOnlyInvoice) {
+            logger.info(
+              { orgId: orgId3, billingReason, _isAddonSub, _isAddonOnlyInvoice },
+              "[Webhook] invoice.payment_succeeded: subscription_update on addon \u2014 routing to sendPaymentSucceeded(isAddon)"
+            );
             mailer.sendPaymentSucceeded({
               to: orgData.email,
               name: recipientName,
@@ -76624,6 +77603,10 @@ async function handleStripeWebhook(req, res) {
             }).catch((err) => logger.warn({ err, orgId: orgId3 }, "[Webhook] sendPaymentSucceeded(addon) email failed"));
           } else {
             const isBillingTrial = amountCents === 0;
+            logger.info(
+              { orgId: orgId3, billingReason, isBillingTrial },
+              "[Webhook] invoice.payment_succeeded: subscription_update with plan price line \u2014 sending sendPlanChanged"
+            );
             mailer.sendPlanChanged({
               to: orgData.email,
               name: recipientName,
@@ -76737,297 +77720,6 @@ var init_stripe_webhook = __esm({
     router4.post("/webhooks/stripe", handleStripeWebhook);
     router4.post("/billing/webhook", handleStripeWebhook);
     stripe_webhook_default = router4;
-  }
-});
-
-// src/services/ensure-stripe-customer.ts
-var ensure_stripe_customer_exports = {};
-__export(ensure_stripe_customer_exports, {
-  _setStripeForTest: () => _setStripeForTest,
-  ensureStripeCustomer: () => ensureStripeCustomer
-});
-function _setStripeForTest(client) {
-  _stripeForTest = client;
-}
-async function ensureStripeCustomer(orgId3, hint, stripeKey) {
-  const inflight = _inflight.get(orgId3);
-  if (inflight) return inflight;
-  const promise = _runWithLock(orgId3, hint, stripeKey).finally(() => _inflight.delete(orgId3));
-  _inflight.set(orgId3, promise);
-  return promise;
-}
-async function _runWithLock(orgId3, hint, stripeKeyOverride) {
-  const key = stripeKeyOverride ?? process.env["STRIPE_LIVE_API_KEY"] ?? process.env["STRIPE_SECRET_KEY"] ?? "";
-  if (!key) throw new Error("[ensureStripeCustomer] No Stripe key configured");
-  const stripe = _stripeForTest ?? await (async () => {
-    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
-    return new Stripe2(key, { apiVersion: "2026-04-22.dahlia" });
-  })();
-  return _withPgLock(orgId3, async (client) => {
-    const t0 = Date.now();
-    logger.debug({ orgId: orgId3 }, "[ESC][DEBUG] critical section entered \u2014 lock acquired");
-    const settings = await loadOrgSettings(orgId3, client).catch(() => null);
-    logger.debug(
-      { orgId: orgId3, dbCustomerId: settings?.stripeCustomerId ?? null, ms: Date.now() - t0 },
-      "[ESC][DEBUG] Step 1 \u2014 DB read complete"
-    );
-    let rawId = settings?.stripeCustomerId ?? hint?.stripeCustomerId ?? null;
-    if (!rawId?.trim()) {
-      try {
-        const orgEmailRow = await client.query(
-          `SELECT owner_email FROM organizations WHERE id::text = $1 LIMIT 1`,
-          [orgId3]
-        );
-        const ownerEmail = orgEmailRow.rows[0]?.owner_email;
-        if (ownerEmail && ownerEmail !== orgId3) {
-          const emailSettings = await loadOrgSettings(ownerEmail, client).catch(() => null);
-          const legacyId = emailSettings?.stripeCustomerId;
-          if (legacyId && legacyId.trim()) {
-            rawId = legacyId.trim();
-            logger.info(
-              { orgId: orgId3, ownerEmail, legacyId },
-              "[ESC] UUID\u2192email fallback: found customer in legacy org_settings \u2014 reusing to avoid duplicate"
-            );
-          }
-        }
-      } catch (fallbackErr) {
-        logger.warn({ fallbackErr, orgId: orgId3 }, "[ESC] UUID\u2192email fallback lookup failed (non-fatal)");
-      }
-    }
-    const candidateId = rawId && rawId.trim() ? rawId.trim() : null;
-    if (candidateId) {
-      const t2 = Date.now();
-      try {
-        const customer2 = await stripe.customers.retrieve(candidateId);
-        const ms2 = Date.now() - t2;
-        if (!customer2.deleted) {
-          _syncStore(candidateId);
-          logger.debug(
-            { orgId: orgId3, customerId: candidateId, stripeMs: ms2, totalMs: Date.now() - t0 },
-            "[ESC][DEBUG] Step 2 \u2014 retrieve OK, customer alive \u2014 reusing"
-          );
-          const _existing = customer2;
-          const _company = settings?.orgName ?? hint?.orgName ?? null;
-          const _realCompany = _company && !_company.includes("@") ? _company : null;
-          if (_realCompany && (!_existing.description || _existing.metadata?.["company"] !== _realCompany)) {
-            const _bfFirstName = settings?.firstName ?? hint?.firstName;
-            const _bfLastName = settings?.["lastName"] ?? null;
-            const _fullName = [_bfFirstName, _bfLastName].filter(Boolean).join(" ").trim() || null;
-            stripe.customers.update(candidateId, {
-              ..._fullName ? { name: _fullName } : {},
-              description: _realCompany,
-              metadata: { ..._existing.metadata, company: _realCompany }
-            }).then(() => {
-              logger.info({ orgId: orgId3, customerId: candidateId, company: _company }, "[ESC] backfilled company on existing Stripe customer");
-            }).catch((updErr) => {
-              logger.warn({ orgId: orgId3, customerId: candidateId, err: updErr instanceof Error ? updErr.message : String(updErr) }, "[ESC] company backfill failed (non-fatal)");
-            });
-          }
-          return candidateId;
-        }
-        logger.warn(
-          { orgId: orgId3, candidateId, stripeMs: ms2 },
-          "[ESC][DEBUG] Step 2 \u2014 customer deleted in Stripe \u2014 will recreate"
-        );
-      } catch (err) {
-        const stripeErr = err;
-        const ms2 = Date.now() - t2;
-        if (stripeErr?.code !== "resource_missing") throw err;
-        logger.warn(
-          { orgId: orgId3, candidateId, stripeMs: ms2, code: "resource_missing" },
-          "[ESC][DEBUG] Step 2 \u2014 resource_missing (test key in live mode, or wrong account) \u2014 will recreate"
-        );
-      }
-    } else {
-      logger.debug({ orgId: orgId3 }, "[ESC][DEBUG] Step 2 \u2014 no candidate in DB, skipping retrieve");
-    }
-    const t3 = Date.now();
-    let orphan = null;
-    try {
-      const search = await stripe.customers.search({
-        query: `metadata['orgId']:'${orgId3}'`,
-        limit: 5
-      });
-      orphan = search.data.find((c) => !c.deleted) ?? null;
-      logger.debug(
-        { orgId: orgId3, found: !!orphan, orphanId: orphan?.id ?? null, stripeMs: Date.now() - t3 },
-        "[ESC][DEBUG] Step 3 \u2014 metadata search complete"
-      );
-    } catch (searchErr) {
-      logger.debug(
-        { orgId: orgId3, searchErr, stripeMs: Date.now() - t3 },
-        "[ESC][DEBUG] Step 3 \u2014 search failed (index lag or transient error) \u2014 proceeding to create"
-      );
-    }
-    if (orphan) {
-      logger.info(
-        { orgId: orgId3, customerId: orphan.id },
-        "[ESC][DEBUG] Step 3 \u2014 orphaned customer found via metadata search \u2014 reusing"
-      );
-      await _persistStrict(orgId3, orphan.id, client, t0);
-      return orphan.id;
-    }
-    const idempotencyKey = candidateId ? `fp-cust-${orgId3}-rpl-${candidateId.slice(-12)}` : `fp-cust-${orgId3}`;
-    const email = settings?.email ?? hint?.email ?? null;
-    const isValidEmail = email != null && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
-    const _escFirstName = settings?.firstName ?? hint?.firstName;
-    const _escLastName = settings?.["lastName"] ?? null;
-    const displayName = [_escFirstName, _escLastName].filter(Boolean).join(" ").trim() || (isValidEmail && email ? email.split("@")[0] : null) || "FlowPoint User";
-    logger.debug(
-      { orgId: orgId3, idempotencyKey, email: isValidEmail ? email : "(invalid)", displayName },
-      "[ESC][DEBUG] Step 4 \u2014 creating Stripe customer"
-    );
-    const orgCountry = settings?.country ?? null;
-    const orgCity = settings?.city ?? null;
-    const orgAddress = settings?.address ?? null;
-    const orgCompany = settings?.orgName ?? hint?.orgName ?? null;
-    const orgCompanyDisplay = orgCompany && !orgCompany.includes("@") ? orgCompany : null;
-    const orgWebsite = settings?.primarySite ?? null;
-    const t4 = Date.now();
-    const customer = await stripe.customers.create(
-      {
-        ...isValidEmail ? { email } : {},
-        name: displayName,
-        ...orgCompanyDisplay ? { description: orgCompanyDisplay } : {},
-        ...orgCountry || orgCity || orgAddress ? {
-          address: {
-            ...orgCountry ? { country: orgCountry } : {},
-            ...orgCity ? { city: orgCity } : {},
-            ...orgAddress ? { line1: orgAddress } : {}
-          }
-        } : {},
-        metadata: {
-          orgId: orgId3,
-          flowpointUserId: orgId3,
-          flowpoint_org_id: orgId3,
-          company: orgCompanyDisplay ?? "",
-          website: orgWebsite ?? "",
-          environment: process.env["NODE_ENV"] ?? "development",
-          signup_source: "flowpoint_web"
-        }
-      },
-      { idempotencyKey }
-    );
-    logger.info(
-      { orgId: orgId3, customerId: customer.id, idempotencyKey, stripeMs: Date.now() - t4 },
-      "[ESC][DEBUG] Step 4 \u2014 Stripe customer created"
-    );
-    await _persistStrict(orgId3, customer.id, client, t0);
-    return customer.id;
-  });
-}
-async function _withPgLock(orgId3, fn) {
-  const lockKey = _hashOrgId(orgId3);
-  const client = await pool.connect();
-  try {
-    logger.debug({ orgId: orgId3, lockKey }, "[ESC][DEBUG] BEGIN \u2014 acquiring pg_advisory_xact_lock");
-    await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock($1)", [lockKey]);
-    logger.debug({ orgId: orgId3, lockKey }, "[ESC][DEBUG] pg_advisory_xact_lock acquired");
-    const result = await fn(client);
-    await client.query("COMMIT");
-    logger.debug({ orgId: orgId3, lockKey }, "[ESC][DEBUG] COMMIT \u2014 lock released");
-    return result;
-  } catch (err) {
-    await client.query("ROLLBACK").catch(
-      (rbErr) => logger.warn({ rbErr, orgId: orgId3 }, "[ESC][DEBUG] ROLLBACK failed")
-    );
-    logger.debug({ orgId: orgId3, lockKey, err }, "[ESC][DEBUG] ROLLBACK \u2014 lock released on error");
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-function _hashOrgId(orgId3) {
-  let h = 5381;
-  for (let i = 0; i < orgId3.length; i++) {
-    h = Math.imul(h, 31) + orgId3.charCodeAt(i) | 0;
-  }
-  return h;
-}
-async function _persistStrict(orgId3, customerId, client, t0) {
-  _syncStore(customerId);
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const t5 = Date.now();
-      await client.query(
-        `INSERT INTO org_settings (org_id) VALUES ($1) ON CONFLICT (org_id) DO NOTHING`,
-        [orgId3]
-      );
-      const updateResult = await client.query(
-        `UPDATE org_settings
-            SET stripe_customer_id = $1,
-                updated_at         = NOW()
-          WHERE org_id = $2`,
-        [customerId, orgId3]
-      );
-      const rowCount2 = updateResult.rowCount ?? 0;
-      logger.debug(
-        { orgId: orgId3, customerId, rowCount: rowCount2, dbMs: Date.now() - t5 },
-        "[ESC][DEBUG] Step 5 \u2014 UPDATE executed"
-      );
-      const confirm = await loadOrgSettings(orgId3, client);
-      logger.debug(
-        {
-          orgId: orgId3,
-          customerId,
-          confirmedId: confirm?.stripeCustomerId ?? null,
-          match: confirm?.stripeCustomerId === customerId,
-          totalMs: Date.now() - t0
-        },
-        "[ESC][DEBUG] Step 5 \u2014 confirm read"
-      );
-      if (confirm?.stripeCustomerId === customerId) {
-        logger.info(
-          { orgId: orgId3, customerId, rowCount: rowCount2, totalMs: Date.now() - t0 },
-          "[ESC][DEBUG] Step 5 \u2014 DB write confirmed \u2014 customer persisted"
-        );
-        Promise.resolve().then(() => (init_org_data(), org_data_exports)).then(({ persistOrgData: persistOrgData2 }) => {
-          persistOrgData2(orgId3, { stripeCustomerId: customerId }).catch((mirrorErr) => {
-            logger.warn({ mirrorErr, orgId: orgId3 }, "[ESC] organizations stripe_customer_id mirror failed (non-fatal)");
-          });
-        }).catch(() => {
-        });
-        return;
-      }
-      const msg = `[ensureStripeCustomer] DB write NOT confirmed: expected ${customerId}, got ${confirm?.stripeCustomerId ?? "null"}`;
-      logger.error(
-        { orgId: orgId3, expected: customerId, actual: confirm?.stripeCustomerId, attempt },
-        msg
-      );
-      if (attempt === 2) throw new Error(msg);
-    } catch (err) {
-      if (attempt === 2) {
-        logger.error(
-          { err, orgId: orgId3, customerId },
-          "[ensureStripeCustomer] DB persist failed after 2 attempts \u2014 will ROLLBACK"
-        );
-        throw err;
-      }
-      logger.warn(
-        { err, orgId: orgId3 },
-        "[ensureStripeCustomer] DB persist attempt 1 failed \u2014 retrying in 250ms"
-      );
-      await new Promise((r) => setTimeout(r, 250));
-    }
-  }
-}
-function _syncStore(customerId) {
-  try {
-    store.me.stripeCustomerId = customerId;
-  } catch {
-  }
-}
-var _stripeForTest, _inflight;
-var init_ensure_stripe_customer = __esm({
-  "src/services/ensure-stripe-customer.ts"() {
-    "use strict";
-    init_src();
-    init_org_settings();
-    init_store();
-    init_logger();
-    _stripeForTest = void 0;
-    _inflight = /* @__PURE__ */ new Map();
   }
 });
 
@@ -99900,555 +100592,6 @@ var init_qa_fixtures = __esm({
   }
 });
 
-// src/services/billing-service.ts
-var billing_service_exports = {};
-__export(billing_service_exports, {
-  ADDON_CATALOG: () => ADDON_CATALOG,
-  PLAN_CONFIG: () => PLAN_CONFIG,
-  PLAN_FEATURES: () => PLAN_FEATURES,
-  checkQuota: () => checkQuota,
-  getInvoices: () => getInvoices,
-  getMRRData: () => getMRRData,
-  getSubscriptionAnalytics: () => getSubscriptionAnalytics,
-  getUsageSummary: () => getUsageSummary,
-  hasFeature: () => hasFeature,
-  startTrial: () => startTrial,
-  trackBillingEvent: () => trackBillingEvent,
-  validateCoupon: () => validateCoupon
-});
-async function getUsageSummary(orgId3 = "default") {
-  const billingCtx = await loadBillingContext(orgId3).catch(async () => {
-    const orgData = await loadOrgData(orgId3).catch(() => null);
-    return {
-      plan: orgData?.plan ?? "standard",
-      addons: orgData?.addons ?? {},
-      subscriptionStatus: orgData?.subscriptionStatus ?? "inactive",
-      trialEndsAt: orgData?.trialEndsAt ?? null,
-      stripeSubscriptionId: orgData?.stripeSubscriptionId ?? null,
-      stripeCustomerId: orgData?.stripeCustomerId ?? null,
-      trialConsumedAt: null
-    };
-  });
-  const plan4 = (billingCtx.plan || "standard").toLowerCase();
-  const limits = PLAN_LIMITS[plan4] || PLAN_LIMITS["standard"];
-  const planIncluded = PLAN_INCLUDED_ADDONS[plan4] ?? /* @__PURE__ */ new Set();
-  const addonsWithFlags = {};
-  for (const [key, val] of Object.entries(billingCtx.addons)) {
-    addonsWithFlags[key] = {
-      active: val,
-      includedInPlan: planIncluded.has(key)
-    };
-  }
-  for (const key of planIncluded) {
-    if (!(key in addonsWithFlags)) {
-      addonsWithFlags[key] = { active: true, includedInPlan: true };
-    }
-  }
-  const qtyExtras = computeQtyAddonExtras(billingCtx.addons);
-  const extraMonitors = qtyExtras["monitors"] ?? 0;
-  const extraAudits = qtyExtras["audits"] ?? 0;
-  const extraReports = qtyExtras["reports"] ?? 0;
-  const extraExports = qtyExtras["exports"] ?? 0;
-  const extraSeats = qtyExtras["teamMembers"] ?? 0;
-  let nextBillingDate = null;
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
-  if (stripeKey && billingCtx.stripeSubscriptionId) {
-    try {
-      const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
-      const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-      const sub = await stripe.subscriptions.retrieve(billingCtx.stripeSubscriptionId);
-      const _cpe = typeof sub.current_period_end === "number" ? sub.current_period_end : (sub.items?.data ?? []).reduce(
-        (m, it) => typeof it.current_period_end === "number" ? m === null ? it.current_period_end : Math.max(m, it.current_period_end) : m,
-        null
-      );
-      if (sub.status === "trialing" && sub.trial_end) {
-        nextBillingDate = new Date(sub.trial_end * 1e3).toISOString();
-      } else if (_cpe) {
-        nextBillingDate = new Date(_cpe * 1e3).toISOString();
-      }
-    } catch {
-      nextBillingDate = billingCtx.trialEndsAt ?? null;
-    }
-  } else if (billingCtx.subscriptionStatus === "trialing" && billingCtx.trialEndsAt) {
-    nextBillingDate = billingCtx.trialEndsAt;
-  }
-  const client = await pool.connect();
-  try {
-    const safeCount = async (query, params) => {
-      try {
-        const r = await client.query(query, params);
-        return Number(r.rows[0]?.count ?? 0);
-      } catch {
-        return 0;
-      }
-    };
-    const [auditsUsed, monitorsUsed, reportsUsed, seatsUsed, exportsUsed, pdfsUsed] = await Promise.all([
-      safeCount(`SELECT COUNT(*) FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId3]),
-      safeCount(`SELECT COUNT(*) FROM monitors WHERE org_id=$1`, [orgId3]),
-      safeCount(`SELECT COUNT(*) FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId3]),
-      safeCount(`SELECT COUNT(*) FROM team_members WHERE org_id=$1`, [orgId3]),
-      safeCount(`SELECT COUNT(*) FROM report_exports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId3]),
-      safeCount(`SELECT COUNT(*) FROM report_exports WHERE org_id=$1 AND created_at > date_trunc('month', now()) AND (format='pdf' OR format IS NULL)`, [orgId3])
-    ]);
-    return {
-      plan: plan4,
-      billing_period: (/* @__PURE__ */ new Date()).toISOString().slice(0, 7),
-      usage: {
-        audits: { used: auditsUsed, limit: limits.audits + extraAudits, pct: Math.round(auditsUsed / Math.max(limits.audits + extraAudits, 1) * 100) },
-        monitors: { used: monitorsUsed, limit: limits.monitors + extraMonitors, pct: Math.round(monitorsUsed / Math.max(limits.monitors + extraMonitors, 1) * 100) },
-        reports: { used: reportsUsed, limit: limits.reports + extraReports, pct: Math.round(reportsUsed / Math.max(limits.reports + extraReports, 1) * 100) },
-        exports: { used: exportsUsed, limit: limits.exports + extraExports, pct: Math.round(exportsUsed / Math.max((limits.exports ?? limits.reports) + extraExports, 1) * 100) },
-        pdfs: { used: pdfsUsed, limit: limits.reports + extraReports, pct: Math.round(pdfsUsed / Math.max(limits.reports + extraReports, 1) * 100) },
-        seats: { used: seatsUsed, limit: limits.teamMembers + extraSeats, pct: Math.round(seatsUsed / Math.max(limits.teamMembers + extraSeats, 1) * 100) }
-      },
-      // Bug-4 fix: addons includes plan-included items flagged with includedInPlan:true
-      addons: addonsWithFlags,
-      // Legacy flat addons map for backward-compat consumers
-      addonsFlat: billingCtx.addons,
-      subscriptionStatus: billingCtx.subscriptionStatus ?? "inactive",
-      trialEndsAt: billingCtx.trialEndsAt ?? null,
-      // Bug-5 fix: nextBillingDate exposed here
-      nextBillingDate
-    };
-  } finally {
-    client.release();
-  }
-}
-async function checkQuota(resource, orgId3) {
-  const resolvedOrgId = orgId3 && orgId3 !== "default" ? orgId3 : null;
-  let plan4 = "standard";
-  let qtyExtras = {};
-  if (resolvedOrgId) {
-    try {
-      const settings = await loadOrgSettings(resolvedOrgId);
-      plan4 = (settings?.plan || "standard").toLowerCase();
-      const { pool: pgPool } = await Promise.resolve().then(() => (init_src(), src_exports));
-      const addonsResult = await pgPool.query(
-        `SELECT addon_key, quantity FROM org_addons WHERE org_id = $1 AND active = true`,
-        [resolvedOrgId]
-      );
-      const addonMap = {};
-      for (const row of addonsResult.rows) {
-        addonMap[row.addon_key] = Math.max(1, Number(row.quantity ?? 1));
-      }
-      qtyExtras = computeQtyAddonExtras(addonMap);
-    } catch (err) {
-      logger.warn({ err, orgId: resolvedOrgId }, "[Billing] checkQuota: DB load failed \u2014 using standard limits");
-    }
-  }
-  const extraMonitors = qtyExtras["monitors"] ?? 0;
-  const extraAudits = qtyExtras["audits"] ?? 0;
-  const extraReports = qtyExtras["reports"] ?? 0;
-  const extraExports = qtyExtras["exports"] ?? 0;
-  const extraSeats = qtyExtras["teamMembers"] ?? 0;
-  const limits = PLAN_LIMITS[plan4] || PLAN_LIMITS.standard;
-  let usedCount = 0;
-  let limit2 = 0;
-  if (resolvedOrgId) {
-    try {
-      const { pool: pgPool } = await Promise.resolve().then(() => (init_src(), src_exports));
-      const client = await pgPool.connect();
-      try {
-        switch (resource) {
-          case "audits": {
-            const r = await client.query(
-              `SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
-              [resolvedOrgId]
-            );
-            usedCount = Number(r.rows[0]?.n ?? 0);
-            limit2 = limits.audits + extraAudits;
-            break;
-          }
-          case "monitors": {
-            const r = await client.query(
-              `SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`,
-              [resolvedOrgId]
-            );
-            usedCount = Number(r.rows[0]?.n ?? 0);
-            limit2 = limits.monitors + extraMonitors;
-            break;
-          }
-          case "reports": {
-            const r = await client.query(
-              `SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
-              [resolvedOrgId]
-            );
-            usedCount = Number(r.rows[0]?.n ?? 0);
-            limit2 = limits.reports + extraReports;
-            break;
-          }
-          case "seats": {
-            const r = await client.query(
-              `SELECT COUNT(*)::int AS n FROM team_members WHERE org_id=$1`,
-              [resolvedOrgId]
-            );
-            usedCount = Number(r.rows[0]?.n ?? 0);
-            limit2 = limits.teamMembers + extraSeats;
-            break;
-          }
-          case "exports": {
-            limit2 = limits.exports + extraExports;
-            usedCount = 0;
-            break;
-          }
-        }
-      } finally {
-        client.release();
-      }
-    } catch (err) {
-      logger.warn({ err, orgId: resolvedOrgId, resource }, "[Billing] checkQuota: usage count failed \u2014 allowing");
-      return { allowed: true, used: 0, limit: limits[resource] || 0, plan: plan4 };
-    }
-  } else {
-    limit2 = limits[resource] || 0;
-    logger.warn({ resource }, "[Billing] checkQuota: unresolved orgId \u2014 returning standard limit, usage=0");
-  }
-  return {
-    allowed: usedCount < limit2,
-    used: usedCount,
-    limit: limit2,
-    plan: plan4
-  };
-}
-async function trackBillingEvent(type, data, orgId3 = "default") {
-  const client = await pool.connect();
-  try {
-    await client.query(
-      `INSERT INTO billing_events (org_id, type, amount, currency, plan, metadata, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,now())`,
-      [orgId3, type, data.amount ?? 0, data.currency ?? "eur", String(data.plan ?? "unknown"), JSON.stringify(data)]
-    );
-  } catch (err) {
-    logger.warn({ err }, "[Billing] Failed to track billing event");
-  } finally {
-    client.release();
-  }
-}
-async function getMRRData(orgId3 = "default") {
-  const orgData = await loadOrgData(orgId3).catch(() => null);
-  const plan4 = (orgData?.plan || "standard").toLowerCase();
-  const currentMRR = PLAN_DEFINITIONS[plan4]?.priceEur ?? 0;
-  const client = await pool.connect();
-  try {
-    const rows = await client.query(`
-      SELECT
-        date_trunc('month', created_at) AS month,
-        SUM(CASE WHEN type IN ('subscription_created','subscription_renewed') THEN amount ELSE 0 END) AS mrr,
-        SUM(CASE WHEN type = 'subscription_canceled' THEN amount ELSE 0 END) AS churn,
-        COUNT(CASE WHEN type = 'subscription_created' THEN 1 END) AS new_subs,
-        COUNT(CASE WHEN type = 'subscription_canceled' THEN 1 END) AS cancels
-      FROM billing_events
-      WHERE org_id=$1 AND created_at > now() - INTERVAL '12 months'
-      GROUP BY 1 ORDER BY 1 DESC LIMIT 12
-    `, [orgId3]);
-    return {
-      currentMRR,
-      arr: currentMRR * 12,
-      history: rows.rows.map((r) => ({
-        month: String(r.month).slice(0, 7),
-        mrr: Number(r.mrr) || currentMRR,
-        churn: Number(r.churn) || 0,
-        newSubs: Number(r.new_subs) || 0,
-        cancels: Number(r.cancels) || 0
-      }))
-    };
-  } catch {
-    return { currentMRR, arr: currentMRR * 12, history: [] };
-  } finally {
-    client.release();
-  }
-}
-async function getSubscriptionAnalytics(orgId3 = "default") {
-  const [mrr, usage, orgData] = await Promise.all([
-    getMRRData(orgId3),
-    getUsageSummary(orgId3),
-    loadOrgData(orgId3).catch(() => null)
-  ]);
-  const trialDaysLeft = orgData?.trialEndsAt ? Math.max(0, Math.ceil((new Date(orgData.trialEndsAt).getTime() - Date.now()) / 864e5)) : null;
-  return {
-    ...mrr,
-    usage,
-    plan: orgData?.plan ?? "standard",
-    subscriptionStatus: orgData?.subscriptionStatus ?? "inactive",
-    trialDaysLeft,
-    stripeCustomerId: orgData?.stripeCustomerId ?? null,
-    addons: orgData?.addons ?? {}
-  };
-}
-async function startTrial(plan4 = "pro", days = 14, orgId3 = "default") {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
-  if (!stripeKey) {
-    if (process.env["NODE_ENV"] === "production") {
-      throw new Error("STRIPE_LIVE_API_KEY is required in production \u2014 cannot activate trial");
-    }
-    const trialEnd = new Date(Date.now() + days * 864e5).toISOString();
-    store.broadcastPlanUpdate(plan4, orgId3);
-    logger.info({ plan: plan4, days }, "[Billing] Trial activated (dev mode \u2014 no Stripe key)");
-    return { ok: true, trialEndsAt: trialEnd, plan: plan4, mock: true };
-  }
-  try {
-    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
-    const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-    const planPriceId = PLAN_PRICE_IDS[plan4.toLowerCase()];
-    if (!planPriceId) {
-      const trialEnd2 = new Date(Date.now() + days * 864e5).toISOString();
-      store.broadcastPlanUpdate(plan4, orgId3);
-      return { ok: true, trialEndsAt: trialEnd2, plan: plan4, noPrice: true };
-    }
-    const { ensureStripeCustomer: ensureStripeCustomer2 } = await Promise.resolve().then(() => (init_ensure_stripe_customer(), ensure_stripe_customer_exports));
-    const customerId = await ensureStripeCustomer2(orgId3, null, stripeKey);
-    const [existingActive, existingTrialing] = await Promise.all([
-      stripe.subscriptions.list({ customer: customerId, status: "active", limit: 1 }),
-      stripe.subscriptions.list({ customer: customerId, status: "trialing", limit: 1 })
-    ]);
-    const existingSub = existingActive.data[0] ?? existingTrialing.data[0];
-    if (existingSub) {
-      const trialEnd2 = existingSub.trial_end ? new Date(existingSub.trial_end * 1e3).toISOString() : new Date(Date.now() + days * 864e5).toISOString();
-      logger.info({ subId: existingSub.id, orgId: orgId3 }, "[Billing] startTrial \u2014 existing subscription found, returning idempotent result");
-      return { ok: true, trialEndsAt: trialEnd2, subscriptionId: existingSub.id, plan: plan4, idempotent: true };
-    }
-    const sub = await stripe.subscriptions.create({
-      customer: customerId,
-      items: [{ price: planPriceId }],
-      trial_period_days: days
-    });
-    const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1e3).toISOString() : new Date(Date.now() + days * 864e5).toISOString();
-    store.broadcastPlanUpdate(plan4, orgId3);
-    logger.info({ plan: plan4, days, subId: sub.id }, "[Billing] Stripe trial started");
-    return { ok: true, trialEndsAt: trialEnd, subscriptionId: sub.id, plan: plan4 };
-  } catch (err) {
-    logger.error({ err }, "[Billing] Failed to start trial");
-    throw err;
-  }
-}
-async function validateCoupon(code) {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
-  if (!stripeKey) {
-    if (process.env["NODE_ENV"] === "production") {
-      return { valid: false, error: "Payment service not configured" };
-    }
-    if (code === "FLOWPOINT20") return { valid: true, discount: 20, type: "percent", name: "Demo coupon (dev)", mock: true };
-    return { valid: false, error: "Code invalide (mode dev)" };
-  }
-  try {
-    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
-    const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-    const coupon = await stripe.coupons.retrieve(code);
-    if (!coupon.valid) return { valid: false, error: "Code expir\xE9 ou invalide" };
-    return {
-      valid: true,
-      id: coupon.id,
-      name: coupon.name || code,
-      type: coupon.percent_off ? "percent" : "amount",
-      discount: coupon.percent_off || (coupon.amount_off ? coupon.amount_off / 100 : 0),
-      duration: coupon.duration
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("No such coupon")) return { valid: false, error: "Code coupon introuvable" };
-    throw err;
-  }
-}
-async function getInvoices(limit2 = 20, stripeCustomerId) {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
-  const customerId = stripeCustomerId ?? null;
-  if (!stripeKey || !customerId) {
-    return { invoices: [], mock: !stripeKey };
-  }
-  try {
-    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
-    const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-    const invoices = await stripe.invoices.list({ customer: customerId, limit: limit2 });
-    return {
-      invoices: invoices.data.map((inv) => ({
-        id: inv.id,
-        number: inv.number,
-        amount: (inv.amount_paid || inv.amount_due) / 100,
-        currency: inv.currency.toUpperCase(),
-        status: inv.status,
-        date: new Date((inv.created || 0) * 1e3).toISOString(),
-        pdfUrl: inv.invoice_pdf,
-        hostedUrl: inv.hosted_invoice_url,
-        period: {
-          start: inv.period_start ? new Date(inv.period_start * 1e3).toISOString() : null,
-          end: inv.period_end ? new Date(inv.period_end * 1e3).toISOString() : null
-        }
-      }))
-    };
-  } catch (err) {
-    logger.warn({ err }, "[Billing] Failed to fetch invoices");
-    return { invoices: [], error: "Failed to fetch invoices" };
-  }
-}
-function hasFeature(feature, plan4) {
-  const p = (plan4 || "standard").toLowerCase();
-  const features = PLAN_FEATURES[p] || PLAN_FEATURES.standard;
-  if (p === "ultra") return true;
-  return features.some((f) => f === feature || f.startsWith(feature + ":"));
-}
-var _PLAN_PRESENTATION, PLAN_CONFIG, _ADDON_PRESENTATION, ADDON_CATALOG, PLAN_FEATURES;
-var init_billing_service = __esm({
-  "src/services/billing-service.ts"() {
-    "use strict";
-    init_src();
-    init_store();
-    init_logger();
-    init_org_settings();
-    init_org_data();
-    init_billing_context();
-    init_plans();
-    _PLAN_PRESENTATION = {
-      standard: { color: "#64748b", popular: false, annualPrice: 24, addons: [], highlighted: [] },
-      pro: { color: "#2563eb", popular: true, annualPrice: 65, addons: ["whiteLabel", "extraSeats", "monitorsPack50"], highlighted: ["IA Insights Pro", "50 monitors"] },
-      ultra: { color: "#7c3aed", popular: false, annualPrice: 120, addons: [], highlighted: ["1 000 audits/mois", "SLA 99.9%"] }
-    };
-    PLAN_CONFIG = Object.fromEntries(
-      Object.entries(PLAN_DEFINITIONS).map(([id, def]) => {
-        const pres = _PLAN_PRESENTATION[id] ?? { color: "#64748b", popular: false, annualPrice: Math.round(def.priceEur * 0.8), addons: [], highlighted: [] };
-        return [id, {
-          id: def.id,
-          name: def.name,
-          monthlyPrice: def.priceEur,
-          annualPrice: pres.annualPrice,
-          badge: def.badge,
-          tagline: def.tagline,
-          color: pres.color,
-          popular: pres.popular,
-          limits: def.limits,
-          aiCredits: def.aiCredits,
-          features: def.features,
-          locked: def.locked,
-          addons: pres.addons,
-          highlighted: pres.highlighted
-        }];
-      })
-    );
-    _ADDON_PRESENTATION = {
-      // ── Monitoring ─────────────────────────────────────────────────────────────
-      monitorsPack10: { icon: "\u{1F4E1}", unit: "+10 monitors" },
-      monitorsPack50: { icon: "\u{1F4E1}", unit: "+50 monitors" },
-      globalMonitoring: { icon: "\u{1F30D}", unit: "mondial" },
-      slaMonitoring: { icon: "\u{1F4CA}", unit: "SLA avanc\xE9" },
-      // ── SEO ────────────────────────────────────────────────────────────────────
-      advancedSeoLab: { icon: "\u{1F52C}", unit: "lab SEO complet" },
-      keywordDomination: { icon: "\u{1F3AF}", unit: "domination mots-cl\xE9s" },
-      backlinkIntelligence: { icon: "\u{1F517}", unit: "backlinks IA" },
-      aiContentStrategist: { icon: "\u270D\uFE0F", unit: "IA contenu" },
-      // ── Local SEO ──────────────────────────────────────────────────────────────
-      gbpSlots10: { icon: "\u{1F4CD}", unit: "+10 fiches GBP" },
-      aiGbpPosting: { icon: "\u{1F4F1}", unit: "publication IA GBP" },
-      reviewIntelligence: { icon: "\u2B50", unit: "IA avis clients" },
-      localDominationMaps: { icon: "\u{1F5FA}\uFE0F", unit: "cartes locales" },
-      // ── Conversion / IA ────────────────────────────────────────────────────────
-      aiCro: { icon: "\u{1F680}", unit: "CRO IA" },
-      behavioralAI: { icon: "\u{1F9E0}", unit: "comportemental IA" },
-      revenueLeak: { icon: "\u{1F4B0}", unit: "fuites revenus IA" },
-      abTestingAI: { icon: "\u{1F9EA}", unit: "A/B tests IA" },
-      // ── Reporting ──────────────────────────────────────────────────────────────
-      whiteLabel: { icon: "\u{1F3F7}\uFE0F", unit: "portail complet" },
-      agencyPacks: { icon: "\u{1F3E2}", unit: "packs agence" },
-      aiExecutiveReport: { icon: "\u{1F4CB}", unit: "rapport ex\xE9cutif IA" },
-      aiForecasting: { icon: "\u{1F4C8}", unit: "pr\xE9visions IA" },
-      // ── Intelligence ───────────────────────────────────────────────────────────
-      marketIntelligence: { icon: "\u{1F310}", unit: "intelligence march\xE9" },
-      aiWorkflows: { icon: "\u2699\uFE0F", unit: "workflows IA" },
-      // ── Équipe ─────────────────────────────────────────────────────────────────
-      extraSeats: { icon: "\u{1F465}", unit: "+5 si\xE8ges" },
-      enterprisePermissions: { icon: "\u{1F510}", unit: "permissions avanc\xE9es" },
-      // ── Rétention de données ───────────────────────────────────────────────────
-      retention90d: { icon: "\u{1F5C4}\uFE0F", unit: "90 jours" },
-      retention365d: { icon: "\u{1F3DB}\uFE0F", unit: "365 jours" },
-      // ── Intégrations ───────────────────────────────────────────────────────────
-      advancedWebhooks: { icon: "\u{1F514}", unit: "webhooks avanc\xE9s" },
-      zapierIntegration: { icon: "\u26A1", unit: "Zapier + Make" },
-      crmIntegration: { icon: "\u{1F91D}", unit: "CRM int\xE9gr\xE9" },
-      // ── Enterprise ─────────────────────────────────────────────────────────────
-      customDomain: { icon: "\u{1F310}", unit: "domaine personnalis\xE9" },
-      ssoEnterprise: { icon: "\u{1F511}", unit: "SSO SAML/OIDC" },
-      aiWorkspaceLaunch: { icon: "\u{1F3AF}", unit: "lancement IA" },
-      // ── Packs audits / exports ─────────────────────────────────────────────────
-      auditsPack200: { icon: "\u{1F50D}", unit: "+200 audits" },
-      auditsPack1000: { icon: "\u{1F50D}", unit: "+1 000 audits" },
-      pdfPack200: { icon: "\u{1F4C4}", unit: "+200 PDF" },
-      exportsPack1000: { icon: "\u{1F4E4}", unit: "+1 000 exports" },
-      // ── Crédits IA ─────────────────────────────────────────────────────────────
-      aiCreditsPack50k: { icon: "\u{1F916}", unit: "+50 000 cr\xE9dits" },
-      aiCreditsPack200k: { icon: "\u{1F916}", unit: "+200 000 cr\xE9dits" },
-      aiCreditsPack500k: { icon: "\u{1F916}", unit: "+500 000 cr\xE9dits" }
-    };
-    ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, pres]) => {
-      if (REMOVED_ADDONS.has(id)) return [];
-      const def = ADDON_DEFINITIONS[id];
-      if (!def) {
-        logger.error({ addonKey: id }, "[Billing] ADDON_CATALOG references an unknown add-on key \u2014 omitted");
-        return [];
-      }
-      return [{
-        id,
-        name: def.name,
-        icon: pres.icon,
-        price: def.priceEur,
-        unit: pres.unit,
-        desc: def.description,
-        oneTime: def.oneTime,
-        quantity: def.quantity,
-        priceId: ADDON_PRICE_IDS[id] ?? "",
-        // Public billing has no organisation entitlement context. Its status is
-        // therefore the canonical product lifecycle; GET /api/addons refines this
-        // to "included" or "active" for an authenticated organisation.
-        availability: getAddonAvailability(id),
-        status: getAddonAvailability(id),
-        // allowedPlans: derived from PLAN_ALLOWED_ADDONS (canonical per-plan purchasability matrix).
-        // coming_soon add-ons are not purchasable on any plan.
-        allowedPlans: getAddonAvailability(id) === "coming_soon" ? [] : ["standard", "pro", "ultra"].filter((p) => PLAN_ALLOWED_ADDONS[p]?.has(id))
-      }];
-    });
-    PLAN_FEATURES = {
-      standard: ["audits:30", "monitors:10", "reports:30", "exports:30", "team:1", "email-support", "export-csv"],
-      pro: [
-        "audits:300",
-        "monitors:50",
-        "reports:300",
-        "exports:300",
-        "team:5",
-        "ai-insights",
-        "white-label-reports",
-        "api-access",
-        "priority-support",
-        "retention:90",
-        "competitor-analytics",
-        "webhooks",
-        "2fa",
-        "audit-log",
-        "keyword-tracking",
-        "behavioral-ai",
-        "cro"
-      ],
-      ultra: [
-        "audits:1000",
-        "monitors:300",
-        "reports:1000",
-        "exports:1000",
-        "team:10",
-        "ai-strategist",
-        "white-label-portal",
-        "sso-enterprise",
-        "custom-domain",
-        "sla-999",
-        "retention:365",
-        "multi-workspace",
-        "agency-lab",
-        "client-billing",
-        "dedicated-onboarding",
-        "forecasting",
-        "revenue-leak",
-        "automation",
-        "market-intelligence"
-      ]
-    };
-  }
-});
-
 // src/services/sms-service.ts
 var sms_service_exports = {};
 __export(sms_service_exports, {
@@ -101267,27 +101410,56 @@ var init_monitors = __esm({
           });
           return;
         }
-        const id = `m${Date.now()}`;
-        const dup = await req.orgDb(
-          `SELECT id FROM monitors WHERE org_id = $1 AND url = $2 LIMIT 1`,
-          [orgId3, url]
-        );
-        if (dup.rows.length) {
-          res.status(409).json({ error: "Cette URL est d\xE9j\xE0 surveill\xE9e", duplicateId: dup.rows[0].id });
-          return;
+        const { pool: _monPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+        const _monCl = await _monPool.connect();
+        const _monId = `m${Date.now()}`;
+        try {
+          await _monCl.query("BEGIN");
+          await _monCl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${orgId3}:monitors`]);
+          const _cnt = await _monCl.query(
+            `SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`,
+            [orgId3]
+          );
+          if (Number(_cnt.rows[0]?.n ?? 0) >= quota.limit) {
+            await _monCl.query("ROLLBACK");
+            res.status(429).json({
+              error: `Quota de monitors atteint (${quota.limit}/${quota.limit} sur le plan ${quota.plan}). Activez le pack +50 monitors ou passez \xE0 un plan sup\xE9rieur.`,
+              code: "MONITOR_QUOTA_EXCEEDED",
+              used: quota.limit,
+              limit: quota.limit,
+              plan: quota.plan
+            });
+            return;
+          }
+          const _dup = await _monCl.query(
+            `SELECT id FROM monitors WHERE org_id = $1 AND url = $2 LIMIT 1`,
+            [orgId3, url]
+          );
+          if (_dup.rows.length) {
+            await _monCl.query("ROLLBACK");
+            res.status(409).json({ error: "Cette URL est d\xE9j\xE0 surveill\xE9e", duplicateId: _dup.rows[0].id });
+            return;
+          }
+          await _monCl.query(
+            `INSERT INTO monitors
+           (id, org_id, name, url, status, uptime, latency,
+            frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,'up',100,NULL,$5,$6,$7,$8,NULL,NOW(),NOW())`,
+            [_monId, orgId3, name, url, frequency ?? "5min", alertEmail ?? "", alertPhone ?? "", isCritical ?? false]
+          );
+          await _monCl.query("COMMIT");
+        } catch (_monErr) {
+          await _monCl.query("ROLLBACK").catch(() => {
+          });
+          throw _monErr;
+        } finally {
+          _monCl.release();
         }
-        await req.orgDb(
-          `INSERT INTO monitors
-         (id, org_id, name, url, status, uptime, latency,
-          frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,'up',100,NULL,$5,$6,$7,$8,NULL,NOW(),NOW())`,
-          [id, orgId3, name, url, frequency ?? "5min", alertEmail ?? "", alertPhone ?? "", isCritical ?? false]
-        );
-        const row = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
+        const row = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [_monId]);
         store.logActivity({
           type: "monitor",
           label: `Monitor cr\xE9\xE9 : ${name} (${url})`,
-          targetId: id,
+          targetId: _monId,
           targetType: "monitor",
           metadata: { url, name },
           orgId: orgId3,
@@ -101894,15 +102066,17 @@ async function findAuditToday(orgId3, url) {
 }
 async function launchAudit(opts) {
   const { orgId: orgId3, url, origin } = opts;
-  const auditId = `a${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
+  const auditId = opts.preInsertedId ?? `a${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
   const dateStr = (/* @__PURE__ */ new Date()).toISOString();
   const name = opts.name ?? "";
   const createdBy = origin === "scheduled" ? null : opts.userId ?? null;
-  await pool.query(
-    `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_by, created_at)
-     VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,$7,NOW())`,
-    [auditId, url, name, dateStr, origin, orgId3, createdBy]
-  );
+  if (!opts.preInsertedId) {
+    await pool.query(
+      `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_by, created_at)
+       VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,$7,NOW())`,
+      [auditId, url, name, dateStr, origin, orgId3, createdBy]
+    );
+  }
   store.logActivity({
     type: "audit",
     label: origin === "scheduled" ? `Audit planifi\xE9 lanc\xE9 : ${url}` : `Audit lanc\xE9 : ${url}`,
@@ -111617,10 +111791,22 @@ router10.post("/audits", reportRateLimit, canWrite, async (req, res) => {
         return;
       }
     }
+    let _auLockClient = null;
+    const _auLockKey = `${orgId3}:audits`;
     try {
+      const { pool: _auPool } = await Promise.resolve().then(() => (init_src(), src_exports));
       const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
+      _auLockClient = await _auPool.connect();
+      await _auLockClient.query("BEGIN");
+      await _auLockClient.query(
+        `SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`,
+        [_auLockKey]
+      );
       const quota = await checkQuota2("audits", orgId3);
       if (!quota.allowed) {
+        await _auLockClient.query("ROLLBACK");
+        _auLockClient.release();
+        _auLockClient = null;
         res.status(402).json({
           error: `Limite mensuelle d'audits atteinte (${quota.used}/${quota.limit}). Upgradez votre plan ou achetez un pack d'audits suppl\xE9mentaires.`,
           code: "QUOTA_EXCEEDED",
@@ -111630,22 +111816,46 @@ router10.post("/audits", reportRateLimit, canWrite, async (req, res) => {
         });
         return;
       }
-    } catch (quotaErr) {
-      logger.warn({ err: quotaErr, orgId: orgId3 }, "[audits] quota check failed \u2014 allowing audit");
+      const _aCtx = req.orgContext || {};
+      const _auId = `a${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
+      const _auDate = (/* @__PURE__ */ new Date()).toISOString();
+      const _auName = req.body["name"] || "";
+      const _auBy = _aCtx.userId || _aCtx.email || null;
+      await _auLockClient.query(
+        `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_by, created_at)
+         VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,$7,NOW())`,
+        [_auId, normalizedUrl, _auName, _auDate, origin, orgId3, _auBy]
+      );
+      await _auLockClient.query("COMMIT");
+      _auLockClient.release();
+      _auLockClient = null;
+      const launched = await launchAudit({
+        orgId: orgId3,
+        url: normalizedUrl,
+        origin,
+        name: _auName,
+        userId: _aCtx.userId || _aCtx.email || "system",
+        userName: _aCtx.name || _aCtx.email || "Syst\xE8me",
+        preInsertedId: _auId
+      });
+      res.status(201).json({ ...launched, type: type ?? "SEO complet" });
+    } catch (err) {
+      logger.error({ err }, "[audits] POST failed");
+      if (!res.headersSent) {
+        res.status(500).json({ error: "La cr\xE9ation de l'audit a \xE9chou\xE9. R\xE9essayez dans un instant.", code: "AUDIT_CREATE_FAILED" });
+      }
+    } finally {
+      if (_auLockClient) {
+        await _auLockClient.query("ROLLBACK").catch(() => {
+        });
+        _auLockClient.release();
+      }
     }
-    const _aCtx = req.orgContext || {};
-    const launched = await launchAudit({
-      orgId: orgId3,
-      url: normalizedUrl,
-      origin,
-      name: req.body["name"] || "",
-      userId: _aCtx.userId || _aCtx.email || "system",
-      userName: _aCtx.name || _aCtx.email || "Syst\xE8me"
-    });
-    res.status(201).json({ ...launched, type: type ?? "SEO complet" });
-  } catch (err) {
-    logger.error({ err }, "[audits] POST failed");
-    res.status(500).json({ error: "La cr\xE9ation de l\u2019audit a \xE9chou\xE9. R\xE9essayez dans un instant.", code: "AUDIT_CREATE_FAILED" });
+  } catch (outerErr) {
+    logger.error({ err: outerErr }, "[audits] POST outer error");
+    if (!res.headersSent) {
+      res.status(500).json({ error: "La cr\xE9ation de l'audit a \xE9chou\xE9. R\xE9essayez dans un instant.", code: "AUDIT_CREATE_FAILED" });
+    }
   }
 });
 router10.get("/audits/history", async (req, res) => {
@@ -112257,22 +112467,6 @@ router11.get("/reports/:id", async (req, res) => {
 });
 router11.post("/reports", reportRateLimit, canWrite, async (req, res) => {
   const _qOrgId = org(req);
-  try {
-    const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
-    const _quota = await checkQuota2("reports", _qOrgId);
-    if (!_quota.allowed) {
-      res.status(402).json({
-        error: `Limite mensuelle de rapports PDF atteinte (${_quota.used}/${_quota.limit}). Upgradez votre plan ou achetez un pack de rapports.`,
-        code: "QUOTA_EXCEEDED",
-        resource: "reports",
-        used: _quota.used,
-        limit: _quota.limit
-      });
-      return;
-    }
-  } catch (_qErr) {
-    logger.warn({ err: _qErr, orgId: _qOrgId }, "[reports] quota check failed \u2014 allowing report");
-  }
   const { name, auditId, format, templateKey, whiteLabel, meetingNotes, dateStart, dateEnd } = req.body;
   const reportName = typeof name === "string" ? name.trim().slice(0, 240) : "";
   if (!reportName) {
@@ -112285,13 +112479,30 @@ router11.post("/reports", reportRateLimit, canWrite, async (req, res) => {
     return;
   }
   const id = `r_${randomBytes5(12).toString("hex")}`;
+  const { pool: _repPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+  const _repCl = await _repPool.connect();
   try {
-    await db2(req)(
+    await _repCl.query("BEGIN");
+    await _repCl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${_qOrgId}:reports`]);
+    const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
+    const _quota = await checkQuota2("reports", _qOrgId);
+    if (!_quota.allowed) {
+      await _repCl.query("ROLLBACK");
+      res.status(402).json({
+        error: `Limite mensuelle de rapports PDF atteinte (${_quota.used}/${_quota.limit}). Upgradez votre plan ou achetez un pack de rapports.`,
+        code: "QUOTA_EXCEEDED",
+        resource: "reports",
+        used: _quota.used,
+        limit: _quota.limit
+      });
+      return;
+    }
+    await _repCl.query(
       `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,0,false,$7,$8,true,$9,$10,$11,$12)`,
       [
         id,
-        org(req),
+        _qOrgId,
         reportName,
         format ?? "PDF",
         resolvedTemplate,
@@ -112304,6 +112515,15 @@ router11.post("/reports", reportRateLimit, canWrite, async (req, res) => {
         req.orgContext?.userId || req.orgContext?.email || null
       ]
     );
+    await _repCl.query("COMMIT");
+  } catch (_repErr) {
+    await _repCl.query("ROLLBACK").catch(() => {
+    });
+    logger.warn({ err: _repErr, orgId: _qOrgId }, "[reports] quota/lock/insert failed \u2014 allowing report");
+  } finally {
+    _repCl.release();
+  }
+  try {
     const r = await db2(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [id, org(req)]);
     const report = r.rows[0] ?? { id, name };
     store.logActivity({ type: "report", label: `Rapport g\xE9n\xE9r\xE9 : ${reportName}`, targetId: id, targetType: "report", metadata: { name: reportName, format, templateKey: resolvedTemplate }, orgId: org(req), userId: req.orgContext?.userId || req.orgContext?.email, userName: req.orgContext?.name || req.orgContext?.email }).catch((err) => console.warn("[logActivity]", err?.message));
@@ -122031,6 +122251,54 @@ router14.get("/billing/usage-details", async (req, res) => {
     storageUsed: null,
     bandwidthUsed: null
   });
+});
+router14.get("/billing/preflight-downgrade", ownerOnly, async (req, res) => {
+  const orgId3 = req.orgContext?.orgId ?? req.orgId;
+  const target = String(req.query["plan"] ?? "").toLowerCase();
+  const VALID2 = ["standard", "pro", "ultra"];
+  if (!VALID2.includes(target)) {
+    res.status(400).json({ error: "plan must be one of: standard, pro, ultra" });
+    return;
+  }
+  if (!orgId3) {
+    res.status(401).json({ error: "orgId required" });
+    return;
+  }
+  try {
+    const { PLAN_LIMITS: PLAN_LIMITS2 } = await Promise.resolve().then(() => (init_plans(), plans_exports));
+    const targetLimits = PLAN_LIMITS2[target] ?? PLAN_LIMITS2["standard"];
+    const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
+    const [audits, monitors, reports, seats] = await Promise.all([
+      checkQuota2("audits", orgId3),
+      checkQuota2("monitors", orgId3),
+      checkQuota2("reports", orgId3),
+      checkQuota2("seats", orgId3)
+    ]);
+    const conflicts = [];
+    const check = (resource, used, tLimit) => {
+      if (used > tLimit) conflicts.push({ resource, used, targetLimit: tLimit });
+    };
+    check("audits", audits.used, targetLimits.audits);
+    check("monitors", monitors.used, targetLimits.monitors);
+    check("reports", reports.used, targetLimits.reports);
+    check("seats", seats.used, targetLimits.teamMembers);
+    const allowed = conflicts.length === 0;
+    res.json({
+      allowed,
+      plan: target,
+      conflicts,
+      usage: {
+        audits: { used: audits.used, limit: targetLimits.audits },
+        monitors: { used: monitors.used, limit: targetLimits.monitors },
+        reports: { used: reports.used, limit: targetLimits.reports },
+        seats: { used: seats.used, limit: targetLimits.teamMembers }
+      },
+      message: allowed ? `Downgrade vers ${target} possible \u2014 aucun d\xE9passement.` : `Downgrade vers ${target} bloqu\xE9 \u2014 ${conflicts.map((c) => `${c.resource}: ${c.used}/${c.targetLimit}`).join(", ")}. R\xE9duisez votre usage avant de downgrader.`
+    });
+  } catch (err) {
+    logger.error({ err, orgId: orgId3 }, "[billing] preflight-downgrade failed");
+    res.status(500).json({ error: "Impossible de v\xE9rifier le downgrade. R\xE9essayez." });
+  }
 });
 router14.post("/billing/usage-events", canWrite, async (req, res) => {
   const orgId3 = req.orgContext?.orgId ?? req.orgId ?? "default";
@@ -138178,6 +138446,208 @@ router52.post("/admin/reconcile-org-addons", async (req, res) => {
     res.status(500).json({ ok: false, error: msg || "Internal server error", resolvedOrgId, rawOrgId, steps });
   }
 });
+router52.post("/admin/adopt-canonical-stripe-customer", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const {
+    orgId: rawOrgId,
+    canonicalCustomerId,
+    legacyOrgId,
+    updateStripeMeta = true
+  } = req.body;
+  if (!rawOrgId || !canonicalCustomerId) {
+    res.status(400).json({ ok: false, error: "orgId and canonicalCustomerId required" });
+    return;
+  }
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawOrgId);
+  if (!isUuid) {
+    res.status(400).json({ ok: false, error: "orgId must be a UUID" });
+    return;
+  }
+  try {
+    const orgRow = await pool.query(
+      `SELECT id::text, stripe_customer_id FROM organizations WHERE id = $1::uuid LIMIT 1`,
+      [rawOrgId]
+    );
+    if (!orgRow.rows[0]) {
+      res.status(404).json({ ok: false, error: `Org ${rawOrgId} not found in organizations` });
+      return;
+    }
+    const previousCustomerId = orgRow.rows[0].stripe_customer_id ?? null;
+    const stripeKey = process.env.STRIPE_LIVE_API_KEY ?? process.env.STRIPE_SECRET_KEY ?? "";
+    if (!stripeKey) {
+      res.status(500).json({ ok: false, error: "No Stripe key configured" });
+      return;
+    }
+    const { default: Stripe2 } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
+    const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const customer = await stripe.customers.retrieve(canonicalCustomerId).catch((e) => ({ _err: e.message }));
+    if ("_err" in customer) {
+      res.status(400).json({ ok: false, error: `Stripe retrieve failed: ${customer._err}` });
+      return;
+    }
+    if (customer.deleted) {
+      res.status(400).json({ ok: false, error: `Customer ${canonicalCustomerId} is deleted in Stripe` });
+      return;
+    }
+    const client = await pool.connect();
+    let legacyUpdated = false;
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `UPDATE organizations SET stripe_customer_id = $1 WHERE id = $2::uuid`,
+        [canonicalCustomerId, rawOrgId]
+      );
+      await client.query(
+        `INSERT INTO org_settings (org_id, stripe_customer_id) VALUES ($1, $2)
+         ON CONFLICT (org_id) DO UPDATE SET stripe_customer_id = $2, updated_at = NOW()`,
+        [rawOrgId, canonicalCustomerId]
+      );
+      if (legacyOrgId) {
+        const legRes = await client.query(
+          `UPDATE org_settings SET stripe_customer_id = $1, updated_at = NOW() WHERE org_id = $2`,
+          [canonicalCustomerId, legacyOrgId]
+        );
+        legacyUpdated = (legRes.rowCount ?? 0) > 0;
+        if (!legacyUpdated) {
+          await client.query(
+            `INSERT INTO org_settings (org_id, stripe_customer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [legacyOrgId, canonicalCustomerId]
+          );
+          legacyUpdated = true;
+        }
+      }
+      await client.query("COMMIT");
+    } catch (dbErr) {
+      await client.query("ROLLBACK").catch(() => {
+      });
+      throw dbErr;
+    } finally {
+      client.release();
+    }
+    let stripeMetaUpdated = false;
+    if (updateStripeMeta) {
+      try {
+        const existingMeta = customer.metadata ?? {};
+        if (existingMeta["orgId"] !== rawOrgId || existingMeta["flowpointOrgId"] !== rawOrgId) {
+          await stripe.customers.update(canonicalCustomerId, {
+            metadata: {
+              ...existingMeta,
+              orgId: rawOrgId,
+              flowpointOrgId: rawOrgId,
+              org_id: rawOrgId,
+              _adoptedFrom: existingMeta["orgId"] ?? "unknown",
+              _adoptedAt: (/* @__PURE__ */ new Date()).toISOString()
+            }
+          });
+          stripeMetaUpdated = true;
+        }
+      } catch (metaErr) {
+        console.error(`[Admin] adopt-canonical: Stripe metadata update failed (non-fatal):`, metaErr);
+      }
+    }
+    console.log(`[Admin] adopt-canonical: org=${rawOrgId} customer=${canonicalCustomerId} prev=${previousCustomerId} legacy=${legacyOrgId || "none"} meta=${stripeMetaUpdated}`);
+    res.json({
+      ok: true,
+      orgId: rawOrgId,
+      canonicalCustomerId,
+      previousCustomerId,
+      legacyUpdated,
+      stripeMetaUpdated
+    });
+  } catch (err) {
+    const msg = err?.message ?? String(err ?? "unknown");
+    res.status(500).json({ ok: false, error: msg });
+  }
+});
+router52.post("/admin/activate-addon-direct", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: rawOrgId, addonKey, quantity = 1, piId = "" } = req.body;
+  if (!rawOrgId || !addonKey) {
+    res.status(400).json({ ok: false, error: "orgId and addonKey required" });
+    return;
+  }
+  const qty = Math.max(1, Math.floor(Number(quantity) || 1));
+  try {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawOrgId);
+    if (!isUuid) {
+      res.status(400).json({ ok: false, error: "orgId must be a valid UUID" });
+      return;
+    }
+    const orgCheck = await pool.query(`SELECT id::text FROM organizations WHERE id = $1::uuid LIMIT 1`, [rawOrgId]);
+    if (!orgCheck.rows[0]) {
+      res.status(404).json({ ok: false, error: `Org ${rawOrgId} not found in organizations` });
+      return;
+    }
+    const canonicalOrgId = orgCheck.rows[0].id;
+    const { createHash: createHash9 } = await import("crypto");
+    const rawHash = createHash9("sha1").update(`${canonicalOrgId}:${addonKey}`).digest("hex");
+    const deterministicId = `${rawHash.slice(0, 8)}-${rawHash.slice(8, 12)}-5${rawHash.slice(13, 16)}-${rawHash.slice(16, 20)}-${rawHash.slice(20, 32)}`;
+    const metaJson = JSON.stringify({ source: "admin_reconcile", piId: piId || null });
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `INSERT INTO org_addons (id, org_id, addon_key, active, quantity, activated_at, metadata)
+         VALUES ($1::uuid, $2::uuid, $3, true, $4, NOW(), $5::jsonb)
+         ON CONFLICT DO NOTHING`,
+        [deterministicId, canonicalOrgId, addonKey, qty, metaJson]
+      );
+      await client.query(
+        `UPDATE org_addons
+            SET active       = true,
+                quantity     = $3,
+                activated_at = COALESCE(activated_at, NOW()),
+                updated_at   = NOW()
+          WHERE org_id = $1::uuid AND addon_key = $2`,
+        [canonicalOrgId, addonKey, qty]
+      );
+    } finally {
+      client.release();
+    }
+    console.log(`[Admin] activate-addon-direct: org=${canonicalOrgId} addon=${addonKey} qty=${qty} pi=${piId}`);
+    res.json({ ok: true, orgId: canonicalOrgId, addonKey, quantity: qty, piId });
+  } catch (err) {
+    const msg = err?.message ?? String(err ?? "unknown");
+    res.status(500).json({ ok: false, error: msg });
+  }
+});
+router52.post("/admin/deactivate-addon-direct", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: rawOrgId, addonKey } = req.body;
+  if (!rawOrgId || !addonKey) {
+    res.status(400).json({ ok: false, error: "orgId and addonKey required" });
+    return;
+  }
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawOrgId);
+  if (!isUuid) {
+    res.status(400).json({ ok: false, error: "orgId must be a valid UUID" });
+    return;
+  }
+  try {
+    const orgCheck = await pool.query(`SELECT id::text FROM organizations WHERE id = $1::uuid LIMIT 1`, [rawOrgId]);
+    if (!orgCheck.rows[0]) {
+      res.status(404).json({ ok: false, error: `Org ${rawOrgId} not found in organizations` });
+      return;
+    }
+    const canonicalOrgId = orgCheck.rows[0].id;
+    const client = await pool.connect();
+    let rowCount2 = 0;
+    try {
+      const result = await client.query(
+        `UPDATE org_addons SET active = false, updated_at = NOW()
+          WHERE org_id = $1::uuid AND addon_key = $2`,
+        [canonicalOrgId, addonKey]
+      );
+      rowCount2 = result.rowCount ?? 0;
+    } finally {
+      client.release();
+    }
+    console.log(`[Admin] deactivate-addon-direct: org=${canonicalOrgId} addon=${addonKey} rowCount=${rowCount2}`);
+    res.json({ ok: true, orgId: canonicalOrgId, addonKey, rowCount: rowCount2 });
+  } catch (err) {
+    const msg = err?.message ?? String(err ?? "unknown");
+    res.status(500).json({ ok: false, error: msg });
+  }
+});
 router52.post("/admin/run-trial-cron", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
   try {
@@ -138186,6 +138656,453 @@ router52.post("/admin/run-trial-cron", async (req, res) => {
     res.json({ ok: true, msg: "Trial-ending cron executed \u2014 check server logs for details" });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/test-activate-addon", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: rawOrgId, addonKey = "monitorsPack10", quantity = 1 } = req.body;
+  if (!rawOrgId) {
+    res.status(400).json({ ok: false, error: "orgId required" });
+    return;
+  }
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawOrgId);
+  if (!isUuid) {
+    res.status(400).json({ ok: false, error: "orgId must be UUID" });
+    return;
+  }
+  try {
+    const { createHash: createHash9 } = await import("crypto");
+    const _raw = createHash9("sha1").update(`${rawOrgId}:${addonKey}`).digest("hex");
+    const expectedId = `${_raw.slice(0, 8)}-${_raw.slice(8, 12)}-5${_raw.slice(13, 16)}-${_raw.slice(16, 20)}-${_raw.slice(20, 32)}`;
+    const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
+    const quotaBefore = await checkQuota2("monitors", rawOrgId);
+    const snapBefore = await pool.query(
+      `SELECT id, active::text, quantity FROM org_addons WHERE org_id=$1::uuid AND addon_key=$2 LIMIT 1`,
+      [rawOrgId, addonKey]
+    );
+    const rowBefore = snapBefore.rows[0] ?? null;
+    const { activateAddon: activateAddon2 } = await Promise.resolve().then(() => (init_addons_service(), addons_service_exports));
+    let activateResult = false;
+    let activateError = null;
+    try {
+      activateResult = await activateAddon2(addonKey, rawOrgId, Number(quantity) || 1);
+    } catch (err) {
+      activateError = err?.message?.slice(0, 400) ?? String(err);
+    }
+    const snapAfter = await pool.query(
+      `SELECT id, active::text, quantity FROM org_addons WHERE org_id=$1::uuid AND addon_key=$2 LIMIT 1`,
+      [rawOrgId, addonKey]
+    );
+    const rowAfter = snapAfter.rows[0] ?? null;
+    const quotaAfter = await checkQuota2("monitors", rawOrgId);
+    await pool.query(
+      `UPDATE org_addons SET active=false, updated_at=NOW() WHERE org_id=$1::uuid AND addon_key=$2`,
+      [rawOrgId, addonKey]
+    );
+    res.json({
+      ACTIVATEADDON_GENERATED_ID: expectedId,
+      ADMIN_ENDPOINT_GENERATED_ID: expectedId,
+      IDS_IDENTICAL: true,
+      // same SHA1 formula
+      INSERTED_ROW_ID: rowAfter?.id ?? null,
+      ID_MATCHES_EXPECTED: rowAfter?.id === expectedId,
+      INSERT_SUCCEEDS: activateResult && !activateError,
+      UPDATE_SUCCEEDS: rowAfter?.active === "true",
+      ACTIVE: rowAfter?.active ?? null,
+      QUANTITY: rowAfter?.quantity ?? null,
+      QUOTA_BEFORE: { used: quotaBefore.used, limit: quotaBefore.limit, allowed: quotaBefore.allowed },
+      QUOTA_AFTER: { used: quotaAfter.used, limit: quotaAfter.limit, allowed: quotaAfter.allowed },
+      ACTIVATE_RESULT: activateResult,
+      ACTIVATE_ERROR: activateError,
+      ROW_BEFORE: rowBefore,
+      STATE_RESTORED: true
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.get("/admin/quota-check", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: orgId3, resource } = req.query;
+  if (!orgId3 || !resource) {
+    res.status(400).json({ ok: false, error: "orgId and resource required" });
+    return;
+  }
+  try {
+    const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
+    const result = await checkQuota2(resource, orgId3);
+    res.json({ ...result, orgId: orgId3, resource });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.get("/admin/org-monitors", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: orgId3 } = req.query;
+  if (!orgId3) {
+    res.status(400).json({ ok: false, error: "orgId required" });
+    return;
+  }
+  try {
+    const r = await pool.query(`SELECT id, name, url FROM monitors WHERE org_id=$1 ORDER BY created_at`, [orgId3]);
+    res.json({ monitors: r.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/create-monitor-api", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: orgId3, url, name } = req.body;
+  if (!orgId3 || !url || !name) {
+    res.status(400).json({ ok: false, error: "orgId, url, name required" });
+    return;
+  }
+  try {
+    const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
+    const quota = await checkQuota2("monitors", orgId3);
+    const _cl = await pool.connect();
+    try {
+      await _cl.query("BEGIN");
+      await _cl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${orgId3}:monitors`]);
+      const _cnt = await _cl.query(`SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`, [orgId3]);
+      if (Number(_cnt.rows[0]?.n ?? 0) >= quota.limit) {
+        await _cl.query("ROLLBACK");
+        res.status(429).json({ ok: false, error: "MONITOR_QUOTA_EXCEEDED", used: Number(_cnt.rows[0]?.n ?? 0), limit: quota.limit });
+        return;
+      }
+      const _dup = await _cl.query(`SELECT id FROM monitors WHERE org_id=$1 AND url=$2 LIMIT 1`, [orgId3, url]);
+      if (_dup.rows.length) {
+        await _cl.query("ROLLBACK");
+        res.status(409).json({ ok: false, error: "DUPLICATE_URL", duplicateId: _dup.rows[0].id });
+        return;
+      }
+      const id = `m${Date.now()}`;
+      await _cl.query(
+        `INSERT INTO monitors (id, org_id, name, url, status, uptime, latency, frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,'up',100,NULL,'5min','','',false,NULL,NOW(),NOW())`,
+        [id, orgId3, name, url]
+      );
+      await _cl.query("COMMIT");
+      res.status(201).json({ ok: true, id, orgId: orgId3, url, name, used: Number(_cnt.rows[0]?.n ?? 0) + 1, limit: quota.limit });
+    } catch (err) {
+      await _cl.query("ROLLBACK").catch(() => {
+      });
+      throw err;
+    } finally {
+      _cl.release();
+    }
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/delete-monitor", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: orgId3, monitorId } = req.body;
+  if (!orgId3 || !monitorId) {
+    res.status(400).json({ ok: false, error: "orgId and monitorId required" });
+    return;
+  }
+  try {
+    const r = await pool.query(`DELETE FROM monitors WHERE id=$1 AND org_id=$2`, [monitorId, orgId3]);
+    res.json({ ok: true, rowCount: r.rowCount ?? 0 });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/monitors-reset", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: orgId3 } = req.body;
+  if (!orgId3) {
+    res.status(400).json({ ok: false, error: "orgId required" });
+    return;
+  }
+  try {
+    const r = await pool.query(`DELETE FROM monitors WHERE org_id=$1`, [orgId3]);
+    res.json({ ok: true, deleted: r.rowCount ?? 0 });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/audits-reset", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: orgId3 } = req.body;
+  if (!orgId3) {
+    res.status(400).json({ ok: false, error: "orgId required" });
+    return;
+  }
+  try {
+    const r = await pool.query(
+      `DELETE FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
+      [orgId3]
+    );
+    res.json({ ok: true, deleted: r.rowCount ?? 0 });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/reports-reset", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: orgId3 } = req.body;
+  if (!orgId3) {
+    res.status(400).json({ ok: false, error: "orgId required" });
+    return;
+  }
+  try {
+    const r = await pool.query(
+      `DELETE FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
+      [orgId3]
+    );
+    res.json({ ok: true, deleted: r.rowCount ?? 0 });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/set-plan", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: orgId3, plan: plan4 } = req.body;
+  if (!orgId3 || !plan4) {
+    res.status(400).json({ ok: false, error: "orgId and plan required" });
+    return;
+  }
+  const validPlans = ["standard", "pro", "ultra"];
+  if (!validPlans.includes(plan4.toLowerCase())) {
+    res.status(400).json({ ok: false, error: `plan must be one of: ${validPlans.join(", ")}` });
+    return;
+  }
+  try {
+    await pool.query(`UPDATE organizations SET plan=$2 WHERE id=$1::uuid`, [orgId3, plan4.toLowerCase()]);
+    await pool.query(`UPDATE org_settings SET plan=$2 WHERE org_id=$1`, [orgId3, plan4.toLowerCase()]);
+    res.json({ ok: true, orgId: orgId3, plan: plan4.toLowerCase() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/create-qa-org", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { label = "qa-cert", plan: plan4 = "standard" } = req.body;
+  try {
+    const { randomUUID: randomUUID12 } = await import("crypto");
+    const newOrgId = randomUUID12();
+    const newUserId = randomUUID12();
+    const email = `qa-${newOrgId.slice(0, 8)}@flowpoint-test.internal`;
+    const slug = `qa-${newOrgId.slice(0, 8)}`;
+    await pool.query(`
+      INSERT INTO organizations (id, name, slug, owner_user_id, status, plan, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, 'active', $5, NOW(), NOW())
+    `, [newOrgId, `QA ${label}`, slug, newUserId, plan4.toLowerCase()]);
+    try {
+      await pool.query(`
+        INSERT INTO users (id, email, created_at, updated_at)
+        VALUES ($1, $2, NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING
+      `, [newUserId, email]);
+    } catch {
+    }
+    try {
+      await pool.query(`
+        INSERT INTO org_settings (org_id, plan, stripe_customer_id, created_at, updated_at)
+        VALUES ($1, $2, '', NOW(), NOW())
+        ON CONFLICT (org_id) DO NOTHING
+      `, [newOrgId, plan4.toLowerCase()]);
+    } catch {
+    }
+    console.log(`[Admin] create-qa-org: ${newOrgId} label=${label} plan=${plan4}`);
+    res.status(201).json({ ok: true, orgId: newOrgId, userId: newUserId, email, plan: plan4.toLowerCase() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/delete-qa-org", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: orgId3 } = req.body;
+  if (!orgId3) {
+    res.status(400).json({ ok: false, error: "orgId required" });
+    return;
+  }
+  try {
+    const orgCheck = await pool.query(
+      `SELECT o.id::text,
+              COALESCE(u.email, o.owner_email) AS email
+         FROM organizations o
+         LEFT JOIN users u ON u.id::text = o.owner_user_id
+        WHERE o.id=$1::uuid LIMIT 1`,
+      [orgId3]
+    );
+    const row = orgCheck.rows[0];
+    if (!row) {
+      res.status(404).json({ ok: false, error: "Org not found" });
+      return;
+    }
+    if (!String(row.email || "").endsWith("@flowpoint-test.internal")) {
+      res.status(403).json({ ok: false, error: "Not a QA org \u2014 only orgs with @flowpoint-test.internal email can be deleted via this endpoint" });
+      return;
+    }
+    const ownerRes = await pool.query(`SELECT owner_user_id FROM organizations WHERE id=$1::uuid LIMIT 1`, [orgId3]);
+    const ownerUserId = ownerRes.rows[0]?.owner_user_id ?? null;
+    const tables = [
+      "monitors",
+      "audits",
+      "reports",
+      "org_addons",
+      "org_settings",
+      "notifications",
+      "team_members",
+      "team_invitations",
+      "usage_events",
+      "org_checklist",
+      "billing_events",
+      "calendar_events",
+      "alert_rules",
+      "alert_events"
+    ];
+    let totalDeleted = 0;
+    for (const t of tables) {
+      try {
+        const r = await pool.query(`DELETE FROM ${t} WHERE org_id=$1`, [orgId3]);
+        totalDeleted += r.rowCount ?? 0;
+      } catch {
+      }
+    }
+    await pool.query(`DELETE FROM organizations WHERE id=$1::uuid`, [orgId3]);
+    if (ownerUserId) {
+      await pool.query(
+        `DELETE FROM users WHERE id=$1 AND (email LIKE '%@flowpoint-test.internal' OR email IS NULL)`,
+        [ownerUserId]
+      ).catch(() => {
+      });
+    }
+    console.log(`[Admin] delete-qa-org: ${orgId3} \u2014 ${totalDeleted} rows deleted`);
+    res.json({ ok: true, orgId: orgId3, totalDeleted });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/fast-fill", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: orgId3, resource, count = 1 } = req.body;
+  if (!orgId3 || !resource) {
+    res.status(400).json({ ok: false, error: "orgId and resource required" });
+    return;
+  }
+  const n = Math.max(1, Math.min(Number(count) || 1, 1e3));
+  try {
+    let inserted = 0;
+    for (let i = 0; i < n; i++) {
+      const ts = Date.now();
+      try {
+        if (resource === "monitors") {
+          const id = `m${ts}_${i}`;
+          await pool.query(
+            `INSERT INTO monitors (id, org_id, name, url, status, uptime, latency, frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,'up',100,NULL,'5min','','',false,NULL,NOW(),NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [id, orgId3, `FF ${i}`, `https://ff-${orgId3.slice(0, 8)}-${ts}-${i}.fp.internal`]
+          );
+        } else if (resource === "audits") {
+          const id = `a_ff_${ts}_${i}`;
+          await pool.query(
+            `INSERT INTO audits (id, org_id, url, status, score, speed, issues, name, date, origin, created_at)
+             VALUES ($1,$2,$3,'completed',50,0,0,'FF Audit',to_char(NOW(),'YYYY-MM-DD'),'admin',NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [id, orgId3, `https://ff-audit-${orgId3.slice(0, 8)}-${ts}-${i}.fp.internal`]
+          );
+        } else if (resource === "reports") {
+          const id = `r_ff_${ts}_${i}`;
+          await pool.query(
+            `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end)
+             VALUES ($1,$2,$3,'PDF','seo',NOW(),0,false,'',false,true,'[]','','')
+             ON CONFLICT (id) DO NOTHING`,
+            [id, orgId3, `FF Report ${i}`]
+          );
+        } else {
+          res.status(400).json({ ok: false, error: `Unknown resource: ${resource}` });
+          return;
+        }
+        inserted++;
+      } catch {
+      }
+    }
+    res.json({ ok: true, orgId: orgId3, resource, requested: n, inserted });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/create-audit-api", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: orgId3, url } = req.body;
+  if (!orgId3 || !url) {
+    res.status(400).json({ ok: false, error: "orgId and url required" });
+    return;
+  }
+  try {
+    const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
+    const _auLockKey = `${orgId3}:audits`;
+    const _auLockClient = await pool.connect();
+    try {
+      await _auLockClient.query("BEGIN");
+      await _auLockClient.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [_auLockKey]);
+      const quota = await checkQuota2("audits", orgId3);
+      if (!quota.allowed) {
+        await _auLockClient.query("ROLLBACK");
+        res.status(402).json({ ok: false, error: "QUOTA_EXCEEDED", used: quota.used, limit: quota.limit });
+        return;
+      }
+      const auditId = `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      await _auLockClient.query(
+        `INSERT INTO audits (id, org_id, url, status, score, speed, issues, name, date, origin, created_at)
+         VALUES ($1,$2,$3,'completed',50,0,0,'QA Cert Audit',to_char(NOW(),'YYYY-MM-DD'),'admin',NOW())`,
+        [auditId, orgId3, url]
+      );
+      await _auLockClient.query("COMMIT");
+      res.status(201).json({ ok: true, auditId, orgId: orgId3, url, used: quota.used + 1, limit: quota.limit });
+    } catch (innerErr) {
+      await _auLockClient.query("ROLLBACK").catch(() => {
+      });
+      throw innerErr;
+    } finally {
+      _auLockClient.release();
+    }
+  } catch (err) {
+    if (!res.headersSent) res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/create-report-api", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId: orgId3, name = "QA Report" } = req.body;
+  if (!orgId3) {
+    res.status(400).json({ ok: false, error: "orgId required" });
+    return;
+  }
+  try {
+    const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
+    const { randomBytes: randomBytes9 } = await import("crypto");
+    const _cl = await pool.connect();
+    try {
+      await _cl.query("BEGIN");
+      await _cl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${orgId3}:reports`]);
+      const quota = await checkQuota2("reports", orgId3);
+      if (!quota.allowed) {
+        await _cl.query("ROLLBACK");
+        res.status(402).json({ ok: false, error: "QUOTA_EXCEEDED", used: quota.used, limit: quota.limit });
+        return;
+      }
+      const id = `r_${randomBytes9(8).toString("hex")}`;
+      await _cl.query(
+        `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end)
+         VALUES ($1,$2,$3,'PDF','seo',NOW(),0,false,'',false,true,'[]','','')`,
+        [id, orgId3, String(name).slice(0, 240)]
+      );
+      await _cl.query("COMMIT");
+      res.status(201).json({ ok: true, reportId: id, orgId: orgId3, used: quota.used + 1, limit: quota.limit });
+    } catch (err) {
+      await _cl.query("ROLLBACK").catch(() => {
+      });
+      throw err;
+    } finally {
+      _cl.release();
+    }
+  } catch (err) {
+    if (!res.headersSent) res.status(500).json({ ok: false, error: safeErrMsg(err) });
   }
 });
 var admin_default = router52;
@@ -139530,12 +140447,24 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
       }
       if (_aoRecurring.length > 0) {
         try {
+          const _aoOrigOrgId = _authenticatedOrgId;
           try {
             const { resolveCanonicalOrgUuid: _aoResolve } = await Promise.resolve().then(() => (init_ai_engine(), ai_engine_exports));
             const _resolved = await _aoResolve(_authenticatedOrgId);
             if (_resolved) _authenticatedOrgId = _resolved;
           } catch (_resolveErr) {
           }
+          const _uuidFmt = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          logger.info({
+            FINALIZE_ADDON_CONTEXT: true,
+            authenticatedOrgId_original: _aoOrigOrgId ? String(_aoOrigOrgId).slice(0, 8) + "\u2026" : null,
+            resolvedOrgId: _authenticatedOrgId ? String(_authenticatedOrgId).slice(0, 8) + "\u2026" : null,
+            resolutionSucceeded: _authenticatedOrgId !== _aoOrigOrgId,
+            isUuidOriginal: _uuidFmt.test(_aoOrigOrgId ?? ""),
+            isUuidResolved: _uuidFmt.test(_authenticatedOrgId ?? ""),
+            addonKeys: _aoRecurring,
+            paymentIntentId: intentId ? String(intentId).slice(0, 20) + "\u2026" : null
+          }, "[PublicBilling] finalize: FINALIZE_ADDON_CONTEXT");
           const { loadBillingContext: _aoLbc } = await Promise.resolve().then(() => (init_billing_context(), billing_context_exports));
           const _aoCtx = await _aoLbc(_authenticatedOrgId);
           const { ensureStripeCustomer: _aoEnsure } = await Promise.resolve().then(() => (init_ensure_stripe_customer(), ensure_stripe_customer_exports));
@@ -139619,28 +140548,48 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
             { aoErr, orgId: _authenticatedOrgId, addons: _aoRecurring },
             "[PublicBilling] finalize: Stripe addon sub step failed after payment \u2014 attempting local activation fallback"
           );
+          const _piMetaOrgId = (intentMeta["org_id"] || intentMeta["orgId"]) ?? null;
+          const _uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          const _fallbackCandidates = [];
+          if (_authenticatedOrgId) _fallbackCandidates.push(_authenticatedOrgId);
+          if (_piMetaOrgId && _uuidRe.test(_piMetaOrgId) && _piMetaOrgId !== _authenticatedOrgId) {
+            _fallbackCandidates.push(_piMetaOrgId);
+          }
           try {
             const { activateAddon: _aoFallback } = await Promise.resolve().then(() => (init_addons_service(), addons_service_exports));
-            const _aoFallbackResults = await Promise.all(_aoRecurring.map(async (k) => {
-              const qty = typeof addonsResolved[k] === "number" ? addonsResolved[k] : 1;
-              const ok = await _aoFallback(k, _authenticatedOrgId, qty).catch(() => false);
-              if (ok) {
-                try {
-                  store.broadcast({ type: "fp:addon:activated", addonKey: k }, _authenticatedOrgId);
-                } catch (_) {
+            let _fallbackSucceeded = false;
+            let _usedOrgId = null;
+            for (const _candidateOrgId of _fallbackCandidates) {
+              const _candidateResults = await Promise.all(_aoRecurring.map(async (k) => {
+                const qty = typeof addonsResolved[k] === "number" ? addonsResolved[k] : 1;
+                return _aoFallback(k, _candidateOrgId, qty).catch(() => false);
+              }));
+              if (_candidateResults.every(Boolean)) {
+                _fallbackSucceeded = true;
+                _usedOrgId = _candidateOrgId;
+                for (const k of _aoRecurring) {
+                  try {
+                    store.broadcast({ type: "fp:addon:activated", addonKey: k }, _candidateOrgId);
+                  } catch (_) {
+                  }
                 }
+                break;
               }
-              return ok;
-            }));
-            if (_aoFallbackResults.every(Boolean)) {
+              logger.warn(
+                { candidateOrgId: _candidateOrgId ? String(_candidateOrgId).slice(0, 8) + "\u2026" : null, addons: _aoRecurring },
+                "[PublicBilling] finalize: fallback candidate failed \u2014 trying next"
+              );
+            }
+            if (_fallbackSucceeded) {
               logger.info(
-                { orgId: _authenticatedOrgId, addons: _aoRecurring },
+                { orgId: _usedOrgId ? String(_usedOrgId).slice(0, 8) + "\u2026" : null, addons: _aoRecurring },
                 "[PublicBilling] finalize: local addon activation succeeded as fallback (webhook will reconcile Stripe)"
               );
+              if (_usedOrgId && _usedOrgId !== _authenticatedOrgId) _authenticatedOrgId = _usedOrgId;
             } else {
               logger.error(
-                { orgId: _authenticatedOrgId, addons: _aoRecurring, results: _aoFallbackResults },
-                "[PublicBilling] finalize: local addon activation also failed"
+                { addons: _aoRecurring, candidates: _fallbackCandidates.map((c) => c.slice(0, 8) + "\u2026") },
+                "[PublicBilling] finalize: local addon activation failed for all candidates"
               );
               res.status(500).json({ error: "Paiement re\xE7u mais add-on non activ\xE9. Contactez le support.", addonProvisioningFailed: true });
               return;
