@@ -2280,11 +2280,14 @@ router.post("/admin/delete-qa-org", async (req: Request, res: Response): Promise
   const { orgId } = req.body as { orgId?: string };
   if (!orgId) { res.status(400).json({ ok: false, error: "orgId required" }); return; }
   try {
-    // Safety: verify this is a QA org (owner email must be @flowpoint-test.internal)
+    // Safety: verify this is a QA org (owner email must be @flowpoint-test.internal).
+    // Cast: users.id may be UUID while organizations.owner_user_id is TEXT; use ::text cast.
+    // Fallback: also check organizations.owner_email directly in case the users row is absent.
     const orgCheck = await pool.query(
-      `SELECT o.id::text, u.email
+      `SELECT o.id::text,
+              COALESCE(u.email, o.owner_email) AS email
          FROM organizations o
-         LEFT JOIN users u ON u.id = o.owner_user_id
+         LEFT JOIN users u ON u.id::text = o.owner_user_id
         WHERE o.id=$1::uuid LIMIT 1`,
       [orgId]
     );
@@ -2385,31 +2388,35 @@ router.post("/admin/create-audit-api", async (req: Request, res: Response): Prom
   try {
     const { checkQuota } = await import("../services/billing-service.js");
 
-    let _auLockClient: import("pg").PoolClient | null = null;
+    // Use pg_advisory_xact_lock (transaction-level) — works with Supabase PgBouncer.
+    // Session-level pg_advisory_lock does NOT work in PgBouncer transaction pooling
+    // because consecutive queries on the same PoolClient can be routed to different
+    // backend sessions, making the lock invisible to the next query.
     const _auLockKey = `${orgId}:audits`;
+    const _auLockClient = await pool.connect();
     try {
-      _auLockClient = await pool.connect();
-      await _auLockClient.query(`SELECT pg_advisory_lock(hashtext($1)::bigint)`, [_auLockKey]);
+      await _auLockClient.query("BEGIN");
+      await _auLockClient.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [_auLockKey]);
       const quota = await checkQuota("audits", orgId);
       if (!quota.allowed) {
+        await _auLockClient.query("ROLLBACK");
         res.status(402).json({ ok: false, error: "QUOTA_EXCEEDED", used: quota.used, limit: quota.limit });
         return;
       }
-      // Insert a minimal audit row (no PSI — admin cert only).
-      // Columns: no updated_at (not in schema). date is TEXT. score/speed/issues/name/notes
-      // all have NOT NULL DEFAULT so they can be omitted.
+      // INSERT inside the transaction so slot is claimed atomically.
       const auditId = `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      await pool.query(
+      await _auLockClient.query(
         `INSERT INTO audits (id, org_id, url, status, score, speed, issues, name, date, origin, created_at)
          VALUES ($1,$2,$3,'completed',50,0,0,'QA Cert Audit',to_char(NOW(),'YYYY-MM-DD'),'admin',NOW())`,
         [auditId, orgId, url]
       );
+      await _auLockClient.query("COMMIT");
       res.status(201).json({ ok: true, auditId, orgId, url, used: quota.used + 1, limit: quota.limit });
+    } catch (innerErr) {
+      await _auLockClient.query("ROLLBACK").catch(() => {});
+      throw innerErr;
     } finally {
-      if (_auLockClient) {
-        await _auLockClient.query(`SELECT pg_advisory_unlock(hashtext($1)::bigint)`, [_auLockKey]).catch(() => {});
-        _auLockClient.release();
-      }
+      _auLockClient.release();
     }
   } catch (err) {
     if (!res.headersSent) res.status(500).json({ ok: false, error: safeErrMsg(err) });

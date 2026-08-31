@@ -49,18 +49,24 @@ export interface LaunchedAudit {
  * Insert the processing audit row and kick off the async PSI analysis.
  * `url` must already be normalized via normalizeAuditUrl.
  */
-export async function launchAudit(opts: { orgId: string; url: string; origin: string; name?: string; userId?: string; userName?: string }): Promise<LaunchedAudit> {
+export async function launchAudit(opts: {
+  orgId: string; url: string; origin: string; name?: string; userId?: string; userName?: string;
+  /** When set, the audit row is already committed to the DB — skip the INSERT. */
+  preInsertedId?: string;
+}): Promise<LaunchedAudit> {
   const { orgId, url, origin } = opts;
-  const auditId = `a${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
+  const auditId = opts.preInsertedId ?? `a${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
   const dateStr = new Date().toISOString();
   const name = opts.name ?? "";
 
   const createdBy = origin === "scheduled" ? null : (opts.userId ?? null);
-  await pool.query(
-    `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_by, created_at)
-     VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,$7,NOW())`,
-    [auditId, url, name, dateStr, origin, orgId, createdBy],
-  );
+  if (!opts.preInsertedId) {
+    await pool.query(
+      `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_by, created_at)
+       VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,$7,NOW())`,
+      [auditId, url, name, dateStr, origin, orgId, createdBy],
+    );
+  }
 
   store.logActivity({
     type: "audit",

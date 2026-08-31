@@ -88,38 +88,62 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
       }
     }
 
-    // ── Atomic quota enforcement + INSERT under pg_advisory_lock ────────────
-    // pg_advisory_lock (session-level) blocks concurrent requests on the same
-    // (org + resource) key. launchAudit() uses its own connection internally,
-    // but both the re-count and the INSERT happen while this session holds the
-    // lock, preventing concurrent requests from both passing the count check.
+    // ── Atomic quota enforcement + INSERT under pg_advisory_xact_lock ───────
+    // pg_advisory_xact_lock (transaction-level) works correctly with Supabase
+    // PgBouncer — the lock is held for the duration of the transaction and
+    // automatically released on COMMIT/ROLLBACK. Session-level advisory locks
+    // do NOT work with PgBouncer transaction pooling because consecutive queries
+    // on the same client can be routed to different backend sessions.
+    //
+    // Pattern: BEGIN → xact_lock → COUNT → (ok) INSERT → COMMIT
+    //          Lock is released at COMMIT; INSERT is already visible to others.
+    //          Then call launchAudit(preInsertedId=…) to do PSI/notifications.
     let _auLockClient: import("pg").PoolClient | null = null;
     const _auLockKey = `${orgId}:audits`;
     try {
       const { pool: _auPool } = await import("@workspace/db");
-      _auLockClient = await _auPool.connect();
-      await _auLockClient.query(
-        `SELECT pg_advisory_lock(hashtext($1)::bigint)`, [_auLockKey]
-      );
       const { checkQuota } = await import("../services/billing-service.js");
+
+      _auLockClient = await _auPool.connect();
+      await _auLockClient.query("BEGIN");
+      await _auLockClient.query(
+        `SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [_auLockKey]
+      );
+
+      // Re-count within the lock (xact_lock ensures serialization)
       const quota = await checkQuota("audits", orgId);
       if (!quota.allowed) {
+        await _auLockClient.query("ROLLBACK");
+        _auLockClient.release(); _auLockClient = null;
         res.status(402).json({
           error: `Limite mensuelle d'audits atteinte (${quota.used}/${quota.limit}). Upgradez votre plan ou achetez un pack d'audits supplémentaires.`,
-          code: "QUOTA_EXCEEDED",
-          resource: "audits",
-          used: quota.used,
-          limit: quota.limit,
+          code: "QUOTA_EXCEEDED", resource: "audits", used: quota.used, limit: quota.limit,
         });
         return;
       }
-      // launchAudit does the INSERT — still within the advisory-locked window.
-      const _aCtx = (req as any).orgContext || {};
+
+      // INSERT the audit row inside the transaction (claims the slot atomically)
+      const _aCtx   = (req as any).orgContext || {};
+      const _auId   = `a${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
+      const _auDate = new Date().toISOString();
+      const _auName = ((req.body as Record<string,unknown>)["name"] as string) || "";
+      const _auBy   = _aCtx.userId || _aCtx.email || null;
+      await _auLockClient.query(
+        `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_by, created_at)
+         VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,$7,NOW())`,
+        [_auId, normalizedUrl, _auName, _auDate, origin, orgId, _auBy]
+      );
+      await _auLockClient.query("COMMIT");
+      // Lock released at COMMIT; slot is now committed and visible to other requests.
+      _auLockClient.release(); _auLockClient = null;
+
+      // Now trigger PSI analysis + notifications outside the transaction.
+      // preInsertedId tells launchAudit to skip the INSERT (already done above).
       const launched = await launchAudit({
-        orgId, url: normalizedUrl, origin,
-        name: ((req.body as Record<string,unknown>)["name"] as string) || "",
+        orgId, url: normalizedUrl, origin, name: _auName,
         userId: _aCtx.userId || _aCtx.email || "system",
         userName: _aCtx.name || _aCtx.email || "Système",
+        preInsertedId: _auId,
       });
       res.status(201).json({ ...launched, type: type ?? "SEO complet" });
     } catch (err) {
@@ -129,9 +153,7 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
       }
     } finally {
       if (_auLockClient) {
-        await _auLockClient.query(
-          `SELECT pg_advisory_unlock(hashtext($1)::bigint)`, [_auLockKey]
-        ).catch(() => {});
+        await _auLockClient.query("ROLLBACK").catch(() => {});
         _auLockClient.release();
       }
     }
