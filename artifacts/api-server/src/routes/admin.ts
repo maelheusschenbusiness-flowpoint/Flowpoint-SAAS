@@ -2324,6 +2324,58 @@ router.post("/admin/delete-qa-org", async (req: Request, res: Response): Promise
   }
 });
 
+// ── POST /api/admin/fast-fill ─────────────────────────────────────────────────
+// Directly INSERTs N rows of a resource WITHOUT quota check — used by cert suite
+// to quickly fill an org to limit-1 before the boundary test.
+// Body: { orgId, resource: "monitors"|"audits"|"reports", count }
+router.post("/admin/fast-fill", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { orgId, resource, count = 1 } = req.body as {
+    orgId?: string; resource?: string; count?: number;
+  };
+  if (!orgId || !resource) { res.status(400).json({ ok: false, error: "orgId and resource required" }); return; }
+  const n = Math.max(1, Math.min(Number(count) || 1, 1000));
+  try {
+    let inserted = 0;
+    for (let i = 0; i < n; i++) {
+      const ts = Date.now();
+      try {
+        if (resource === "monitors") {
+          const id = `m${ts}_${i}`;
+          await pool.query(
+            `INSERT INTO monitors (id, org_id, name, url, status, uptime, latency, frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,'up',100,NULL,'5min','','',false,NULL,NOW(),NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [id, orgId, `FF ${i}`, `https://ff-${orgId.slice(0,8)}-${ts}-${i}.fp.internal`]
+          );
+        } else if (resource === "audits") {
+          const id = `a_ff_${ts}_${i}`;
+          await pool.query(
+            `INSERT INTO audits (id, org_id, url, status, score, speed, issues, name, date, origin, created_at)
+             VALUES ($1,$2,$3,'completed',50,0,0,'FF Audit',to_char(NOW(),'YYYY-MM-DD'),'admin',NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [id, orgId, `https://ff-audit-${orgId.slice(0,8)}-${ts}-${i}.fp.internal`]
+          );
+        } else if (resource === "reports") {
+          const id = `r_ff_${ts}_${i}`;
+          await pool.query(
+            `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end)
+             VALUES ($1,$2,$3,'PDF','seo',NOW(),0,false,'',false,true,'[]','','')
+             ON CONFLICT (id) DO NOTHING`,
+            [id, orgId, `FF Report ${i}`]
+          );
+        } else {
+          res.status(400).json({ ok: false, error: `Unknown resource: ${resource}` }); return;
+        }
+        inserted++;
+      } catch { /* skip duplicates */ }
+    }
+    res.json({ ok: true, orgId, resource, requested: n, inserted });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 // ── POST /api/admin/create-audit-api ─────────────────────────────────────────
 // Creates an audit WITH quota enforcement (cert suite). Body: { orgId, url }
 router.post("/admin/create-audit-api", async (req: Request, res: Response): Promise<void> => {
