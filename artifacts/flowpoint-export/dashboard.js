@@ -15545,8 +15545,17 @@ function navigate(route, subRoute) {
 }
 
 function navigateSub(sub) {
-  // Dismiss floating chart tooltip when switching sub-pages (mobile touch leaves it visible)
-  try { document.getElementById('fp-chart-tip')?.classList.remove('visible'); } catch(_) {}
+  // Dismiss floating chart tooltip when switching sub-pages (mobile touch leaves it visible).
+  // Also clear inline opacity/visibility — old touchstart handler set these directly,
+  // bypassing classList so classList.remove('visible') alone was insufficient.
+  try {
+    const _tipEl = document.getElementById('fp-chart-tip');
+    if (_tipEl) {
+      _tipEl.classList.remove('visible');
+      _tipEl.style.opacity = '';
+      _tipEl.style.visibility = '';
+    }
+  } catch(_) {}
   // "Passer Pro/Ultra" buttons across the app target the Billing → Plans tab.
   // If called from another section (Settings, etc.), route to Billing first.
   if (sub === 'plans' && STATE.route !== 'billing') {
@@ -17935,11 +17944,34 @@ function initChartTooltips() {
     });
     rdv.addEventListener('mousemove', moveTip);
     rdv.addEventListener('mouseleave', hideTip);
-    // Touch support: show tip on tap, hide when touch ends
-    rdv.addEventListener('touchstart', e => { moveTip(e.touches[0] || e); showTip && tip && (tip.style.opacity='1',tip.style.visibility='visible'); }, { passive: true });
-    // Hide immediately on touchend — a 1200ms delay leaves the tooltip
-    // visible when the user navigates away (e.g. taps another tab on iOS).
-    rdv.addEventListener('touchend', () => hideTip(), { passive: true });
+    // Touch support: tap shows tooltip with full event content (was broken —
+    // previous code called moveTip but never populated tip.innerHTML, so the
+    // tooltip appeared as an empty/invisible bubble on mobile).
+    rdv.addEventListener('touchstart', e => {
+      const touch = e.touches[0] || e;
+      const _tid = rdv.dataset.calEventId;
+      const _tev = (STATE.calendarEvents||[]).find(ce => ce.id === _tid);
+      if (!_tev) return;
+      const _tRange = (_tev.startTime && _tev.duration) ? formatTimeRange(_tev.startTime, _tev.duration) : '';
+      const _tSafe = escHtml(_tRange);
+      const _tDur = _tev.duration ? (_tev.duration >= 60 ? Math.floor(_tev.duration/60)+'h'+(_tev.duration%60?_tev.duration%60+'min':'') : _tev.duration+'min') : '';
+      showTip(`
+        <div class="fp-chart-tooltip-label" style="max-width:180px">${escHtml(_tev.title)}</div>
+        ${_tSafe ? `<div style="font-size:11px;color:var(--fp-accent);margin-top:3px;font-weight:600">🕐 ${_tSafe}</div>` : ''}
+        ${_tev.type ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:2px">${escHtml(_tev.type)}</div>` : ''}
+        ${_tev.site ? `<div style="font-size:10px;color:var(--fp-text-faint);margin-top:1px">${escHtml(_tev.site.replace(/^https?:\/\//,''))}</div>` : ''}
+        ${!_tRange && _tDur ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:3px">⏱ ${_tDur}</div>` : ''}
+        ${_tev.notes ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:4px;border-top:1px solid rgba(255,255,255,0.06);padding-top:4px;max-width:180px;white-space:pre-wrap;word-break:break-word">📝 ${escHtml(_tev.notes.length>80?_tev.notes.slice(0,80)+'…':_tev.notes)}</div>` : ''}
+        <div style="font-size:9px;color:var(--fp-text-faint);margin-top:4px;border-top:1px solid rgba(255,255,255,0.06);padding-top:4px">${fpT('Appuyer pour modifier')}</div>
+      `, touch);
+    }, { passive: true });
+    // Hide immediately on touchend — clear inline styles too (set by old touchstart handler),
+    // so navigateSub classList.remove('visible') is not overridden by inline opacity/visibility.
+    rdv.addEventListener('touchend', () => {
+      tip.style.opacity = '';
+      tip.style.visibility = '';
+      hideTip();
+    }, { passive: true });
   });
 }
 
