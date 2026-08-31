@@ -217,6 +217,11 @@ window.__fpPageLoadTs = Date.now();
       sessionStorage.removeItem('fp_session_token');
       sessionStorage.removeItem('fp_tab_uid');
     } catch (_) {}
+    // P0 — Clear the GET response cache so a new user who logs in within the
+    // 30-second TTL window does not receive the previous user's /api/me response.
+    // _fpCache is a page-scoped var and normally resets on page reload, but SPA
+    // navigations and BFCache restores can keep it alive across user switches.
+    try { _fpCache = {}; _fpInFlight = {}; } catch (_) {}
   }
 
   function apiFetchNow(path, opts) {

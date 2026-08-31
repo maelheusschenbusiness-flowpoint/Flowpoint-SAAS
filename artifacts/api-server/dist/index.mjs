@@ -74111,8 +74111,10 @@ async function sendPaymentSucceeded(opts) {
   const isAddon = !!opts.isAddon;
   const eyebrow = isAddon ? "Add-on activ\xE9" : "Renouvellement confirm\xE9";
   const title = isAddon ? "Ton option est active" : "Ton abonnement est renouvel\xE9";
-  const body = isAddon ? `<p style="margin:0 0 16px;">Merci ${opts.name} ! Ton option FlowPoint${amount ? ` (${amount})` : ""} a bien \xE9t\xE9 ajout\xE9e \xE0 ton compte.</p>
-       <p style="margin:0;">Tu peux retrouver tous tes add-ons actifs depuis la section Facturation de ton dashboard.</p>` : `<p style="margin:0 0 16px;">Merci ${opts.name} ! Ton abonnement <strong>FlowPoint ${planLabel}</strong>${amount ? ` (${amount})` : ""} a \xE9t\xE9 renouvel\xE9 avec succ\xE8s.</p>
+  const body = isAddon ? `<p style="margin:0 0 16px;">Merci ${opts.name} ! Ton option FlowPoint${amount ? ` (${amount})` : ""} a bien \xE9t\xE9 ajout\xE9e \xE0 ton compte et est maintenant active.</p>
+       <p style="margin:0 0 16px;">Tu peux l'utiliser imm\xE9diatement depuis ton espace FlowPoint. Les limites ou fonctionnalit\xE9s associ\xE9es \xE0 cette option sont automatiquement prises en compte dans ton abonnement.</p>
+       <p style="margin:0 0 16px;">Tu peux retrouver \xE0 tout moment tes add-ons actifs, leurs quantit\xE9s et leurs d\xE9tails depuis la section Facturation de ton dashboard.</p>
+       <p style="margin:0;">Si tu modifies ou d\xE9sactives une option, les changements seront \xE9galement visibles depuis cette section.</p>` : `<p style="margin:0 0 16px;">Merci ${opts.name} ! Ton abonnement <strong>FlowPoint ${planLabel}</strong>${amount ? ` (${amount})` : ""} a \xE9t\xE9 renouvel\xE9 avec succ\xE8s.</p>
        ${period ? `<p style="margin:0 0 16px;">Prochaine facturation : <strong>${period}</strong>.</p>` : ""}
        <p style="margin:0;">Tu peux g\xE9rer ta facturation (factures, changement de moyen de paiement, annulation) depuis le portail client.</p>`;
   return send({
@@ -74994,6 +74996,11 @@ async function activateAddon(addonKey, orgId3 = "default", quantity = 1) {
        ON CONFLICT (id) DO NOTHING`,
       [id, orgId3, addonKey, qty]
     );
+    const _prevRow = await _adClient.query(
+      `SELECT active FROM org_addons WHERE org_id = $1 AND addon_key = $2`,
+      [orgId3, addonKey]
+    );
+    const _wasAlreadyActive = _prevRow.rows[0]?.active === true;
     await _adClient.query(
       `UPDATE org_addons
           SET active = true, quantity = $3, activated_at = NOW(), updated_at = NOW()
@@ -75001,15 +75008,17 @@ async function activateAddon(addonKey, orgId3 = "default", quantity = 1) {
       [orgId3, addonKey, qty]
     );
     applyAddonToStore(addonKey, true);
-    store.broadcast({ type: "addon:activated", addonKey }, orgId3);
-    store.logActivity({
-      type: "team",
-      label: `Add-on activ\xE9 : ${ADDON_DEFINITIONS2[addonKey]?.name ?? addonKey}`,
-      metadata: { addonKey },
-      orgId: orgId3,
-      userId: "system",
-      userName: "Stripe Webhook"
-    }).catch((err) => logger.warn({ err: err?.message }, "logActivity failed"));
+    if (!_wasAlreadyActive) {
+      store.broadcast({ type: "addon:activated", addonKey }, orgId3);
+      store.logActivity({
+        type: "team",
+        label: `Add-on activ\xE9 : ${ADDON_DEFINITIONS2[addonKey]?.name ?? addonKey}`,
+        metadata: { addonKey },
+        orgId: orgId3,
+        userId: "system",
+        userName: "Stripe Webhook"
+      }).catch((err) => logger.warn({ err: err?.message }, "logActivity failed"));
+    }
     logger.info({ addonKey, orgId: orgId3, qty }, "[Addons] Addon activated");
     return true;
   } catch (err) {
@@ -107108,15 +107117,20 @@ async function resolveOrCreateLegacyOrg({
         resolvedUserUuid = freshUuid;
       }
     }
-    const guestMember = await client.query(
-      `SELECT org_id, COALESCE(role, 'member') AS role
-       FROM team_members
-       WHERE (LOWER(email) = LOWER($1) OR (user_id IS NOT NULL AND user_id = $2))
-         AND status = 'active'
-       ORDER BY created_at ASC
-       LIMIT 1`,
-      [email, resolvedUserUuid ?? ""]
-    );
+    let guestMember = { rows: [] };
+    try {
+      guestMember = await client.query(
+        `SELECT org_id, COALESCE(role, 'member') AS role
+         FROM team_members
+         WHERE (LOWER(email) = LOWER($1) OR (user_id IS NOT NULL AND user_id = $2))
+           AND status = 'active'
+         ORDER BY created_at ASC
+         LIMIT 1`,
+        [email, resolvedUserUuid ?? ""]
+      );
+    } catch (teamMembersErr) {
+      logger.warn({ err: teamMembersErr }, "[Auth] resolveOrCreateLegacyOrg \u2014 team_members query failed (table may not exist in prod), continuing");
+    }
     if (guestMember.rows.length > 0) {
       const guestOrgId = guestMember.rows[0].org_id;
       const guestRole = guestMember.rows[0].role;
@@ -108600,7 +108614,11 @@ router5.get("/auth/google/callback", async (req, res) => {
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
       secure: isProd2,
-      sameSite: isProd2 ? "none" : "lax",
+      // SameSite=Lax: compatible with iOS Safari ITP while still allowing
+      // same-site API requests. SameSite=None caused intermittent rejection
+      // of cookies set during cross-site (Google→ours) redirect responses
+      // on iOS Safari 16.4+ with Intelligent Tracking Prevention active.
+      sameSite: "lax",
       maxAge: SESSION_TTL_MS,
       path: "/"
     });
@@ -109259,13 +109277,35 @@ router6.get("/me", async (req, res) => {
         }
       }
       const _canStartTrial = !_isQaOrg && !rawTrialConsumedAt && !rawStripeSubId;
+      const _sessionBearer = String(req.headers["authorization"] ?? "").slice(7, 23) || "cookie-auth";
       logger.info({
-        user: (req.orgContext?.email ?? "").slice(0, 30),
-        org: (dbData?.orgName ?? "").slice(0, 30),
-        plan: normPlan(rawPlan),
+        // ─ Identity
+        session_id: _sessionBearer,
+        user_id: req.orgContext?.userId ?? null,
+        user_uuid: req.orgContext?.userUuid ?? null,
+        email: req.orgContext?.email ?? null,
+        org_id: orgId3,
+        // ─ Stripe
+        stripe_customer_id: rawStripeCustomerId ? rawStripeCustomerId.slice(-8) : null,
+        stripe_subscription_id: rawStripeSubId ? rawStripeSubId.slice(-8) : null,
+        // ─ Plan resolution chain
+        plan_from_db: (billingData?.plan ?? dbData?.plan ?? "MISSING").toLowerCase(),
+        plan_source: billingData?.plan ? "organizations" : dbData?.plan ? "org_settings" : "NONE",
+        plan_final: normPlan(rawPlan),
+        // ─ Addons & quotas
+        addon_source: "org_addons+plan_included",
+        addon_count: Object.keys(_mergedAddons).length,
+        retention90d_active: !!_mergedAddons["retention90d"],
+        retention365d_active: !!_mergedAddons["retention365d"],
+        // ─ Subscription
+        sub_status: normStatus,
         role: req.orgContext?.role ?? "member",
-        orgId: orgId3?.slice(0, 8)
-      }, "[ME CONTEXT DEBUG]");
+        org_name: (dbData?.orgName ?? "").slice(0, 30)
+      }, "[P0-ISOLATION][ME]");
+      if (plan4 === "ultra" && _mergedAddons["retention365d"] && _mergedAddons["retention90d"]) {
+        delete _mergedAddons["retention90d"];
+        logger.info({ orgId: orgId3, plan: plan4 }, "[P1][ME] retention90d suppressed (superseded by retention365d on Ultra)");
+      }
       res.json({
         orgId: orgId3,
         firstName,
@@ -126864,6 +126904,10 @@ router25.get("/addons", async (req, res) => {
     const planIncluded = PLAN_INCLUDED_ADDONS[plan4] ?? /* @__PURE__ */ new Set();
     for (const key of planIncluded) {
       if (!(key in liveAddons)) liveAddons[key] = true;
+    }
+    if (plan4 === "ultra" && liveAddons["retention365d"] && liveAddons["retention90d"]) {
+      liveAddons["retention90d"] = false;
+      logger.info({ orgId: orgId3, plan: plan4 }, "[P1][addons] retention90d suppressed (superseded by retention365d on Ultra)");
     }
     const quotas = getQuotaLimits(plan4, liveAddons);
     const catalog = Object.fromEntries(Object.entries(ADDON_DEFINITIONS).filter(([key]) => !REMOVED_ADDONS.has(key)).map(([key, definition]) => {

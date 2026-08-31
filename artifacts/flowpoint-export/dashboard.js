@@ -631,6 +631,8 @@ function _confirmSessionExpired() {
         ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(function(k) {
           try { localStorage.removeItem(k); } catch(_) {}
         });
+        // P0 — clear userId cache key so next user's fp-state-cache is not rejected
+        try { localStorage.removeItem('fp:last-user-id'); } catch(_) {}
         try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
         try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
         if (!window.__fpRedirecting) {
@@ -799,6 +801,8 @@ async function apiFetch(path, opts = {}) {
       if (!window.__fpRedirecting) {
         window.__fpRedirecting = true;
         ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
+        // P0 — clear userId cache key so next user's fp-state-cache is not rejected
+        try { localStorage.removeItem('fp:last-user-id'); } catch(_) {}
         // sessionStorage is tab-isolated — removing fp_session_token here only
         // affects THIS tab; sibling tabs each have their own sessionStorage context.
         try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
@@ -1659,17 +1663,20 @@ async function loadData(options = {}) {
     const _sc = sessionStorage.getItem('fp-state-cache');
     if (_sc) {
       const _cp = JSON.parse(_sc);
-      // TENANT GUARD: reject cache if it was written for a different org.
-      // fp:last-org-id holds the last confirmed canonical orgId.
-      // If the stored _orgId doesn't match, this cache belongs to another account.
-      const _cachedOrgId  = _cp._orgId || null;
-      const _knownOrgId   = (() => { try { return localStorage.getItem('fp:last-org-id'); } catch(_) { return null; } })();
-      const _cacheOrgMismatch = _cachedOrgId && _knownOrgId && _cachedOrgId !== _knownOrgId;
-      if (_cacheOrgMismatch) {
-        console.warn('[FP] fp-state-cache rejected: cached org', _cachedOrgId, '≠ last known org', _knownOrgId, '— discarding stale cross-org cache');
-        try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-      }
-      if (!_cacheOrgMismatch && Date.now() - (_cp._ts || 0) < 300000) {
+      // TENANT GUARD: reject cache if it was written for a different org OR user.
+      // Checks both orgId and userId to prevent two users in the same org from
+      // sharing cached STATE (e.g. team members with different plans/roles).
+      const _cachedOrgId  = _cp._orgId  || null;
+      const _cachedUserId = _cp._userId || null;
+      const _knownOrgId   = (() => { try { return localStorage.getItem('fp:last-org-id');  } catch(_) { return null; } })();
+      const _knownUserId  = (() => { try { return localStorage.getItem('fp:last-user-id'); } catch(_) { return null; } })();
+      const _cacheOrgMismatch  = _cachedOrgId  && _knownOrgId  && _cachedOrgId  !== _knownOrgId;
+      const _cacheUserMismatch = _cachedUserId && _knownUserId && _cachedUserId !== _knownUserId;
+      const _cacheMismatch = _cacheOrgMismatch || _cacheUserMismatch;
+      if (_cacheOrgMismatch)  console.warn('[P0] fp-state-cache rejected: cached org',  _cachedOrgId,  '≠ last known org',  _knownOrgId);
+      if (_cacheUserMismatch) console.warn('[P0] fp-state-cache rejected: cached user', _cachedUserId, '≠ last known user', _knownUserId);
+      if (_cacheMismatch) { try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {} }
+      if (!_cacheMismatch && Date.now() - (_cp._ts || 0) < 300000) {
         if (_cp.me)            STATE.me            = _cp.me;
         if (_cp.overview)      STATE.overview      = _cp.overview;
         if (_cp.audits)        STATE.audits        = _cp.audits;
@@ -2298,8 +2305,9 @@ async function loadData(options = {}) {
   try {
     sessionStorage.setItem('fp-state-cache', JSON.stringify({
       _ts: Date.now(),
-      // _orgId: tenant tag — cache is rejected on load if org has changed
-      _orgId: (STATE.me && (STATE.me.orgId || STATE.me.id)) || null,
+      // _orgId/_userId: tenant+user tags — cache rejected on load if either changed.
+      _orgId:  (STATE.me && (STATE.me.orgId || STATE.me.id)) || null,
+      _userId: (STATE.me && (STATE.me.userId || STATE.me.userUuid || STATE.me.email)) || null,
       me: STATE.me, overview: STATE.overview,
       audits: STATE.audits.slice(0,50), monitors: STATE.monitors.slice(0,50),
       reports: STATE.reports.slice(0,20), team: STATE.team,
@@ -2389,7 +2397,8 @@ async function loadData(options = {}) {
   try {
     sessionStorage.setItem('fp-state-cache', JSON.stringify({
       _ts: Date.now(),
-      _orgId: (STATE.me && (STATE.me.orgId || STATE.me.id)) || null,
+      _orgId:  (STATE.me && (STATE.me.orgId || STATE.me.id)) || null,
+      _userId: (STATE.me && (STATE.me.userId || STATE.me.userUuid || STATE.me.email)) || null,
       me: STATE.me, overview: STATE.overview,
       audits: STATE.audits, monitors: STATE.monitors,
       reports: STATE.reports, team: STATE.team,
@@ -47751,6 +47760,14 @@ async function init() {
         _href.includes('plan_changed')     || _href.includes('checkout=success') ||
         _href.includes('plan_activated')   || _href.includes('addon_success')) {
       sessionStorage.removeItem('fp-state-cache');
+      // P0 — Google/GitHub OAuth returns: purge userId + billing catalog so a
+      // different user logging in via OAuth doesn't inherit the previous user's
+      // fp:last-user-id, fp-billing-catalog, or fp-plan-defs from localStorage.
+      // (magic-link goes through login-verify.js which calls purgeUserCache() —
+      //  OAuth returns come here directly, so we must do equivalent cleanup.)
+      try { localStorage.removeItem('fp:last-user-id'); } catch(_) {}
+      try { sessionStorage.removeItem('fp-billing-catalog'); } catch(_) {}
+      try { sessionStorage.removeItem('fp-plan-defs'); } catch(_) {}
       // plan_changed: also purge in-memory API caches so /api/me and
       // /api/billing/subscription are re-fetched with the NEW plan.
       try { _apiFetchCache.clear(); _apiFetchInFlight.clear(); } catch(_) {}
@@ -47800,6 +47817,22 @@ async function init() {
         STATE.subRoute = null;
       }
       localStorage.setItem('fp:last-org-id', _curOrgId);
+      // P0 — also persist userId so the fp-state-cache guard can validate user identity
+      // (not only org identity). Guards against two users in the same org sharing cache.
+      const _curUserId = STATE.me && (STATE.me.userId || STATE.me.userUuid || STATE.me.email);
+      if (_curUserId) {
+        try { localStorage.setItem('fp:last-user-id', String(_curUserId)); } catch(_) {}
+      }
+      // P0 ISOLATION LOG — printed to browser console for USER A / USER B test
+      console.log('[P0-ISOLATION][loadData]', {
+        session:   'BFCache=' + (window._fpLastPagesShow === 'persisted' ? 'YES' : 'NO'),
+        user_id:   STATE.me && (STATE.me.userId || STATE.me.userUuid),
+        email:     STATE.me && STATE.me.email,
+        org_id:    _curOrgId,
+        plan:      STATE.me && STATE.me.plan,
+        sub_status:STATE.me && STATE.me.subscriptionStatus,
+        cache_hit: STATE._cacheRestored ? 'YES' : 'NO',
+      });
     }
   } catch(_orgChangeErr) {
     // CRITICAL: org-change reinitialization failure must NEVER silently leave
@@ -47808,6 +47841,7 @@ async function init() {
     console.error('[FP] CRITICAL: org-change namespace reinitialization failed:', _orgChangeErr);
     try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
     try { localStorage.removeItem('fp:last-org-id'); } catch(_) {}
+    try { localStorage.removeItem('fp:last-user-id'); } catch(_) {}
     window.location.reload();
   }
 
@@ -47932,7 +47966,10 @@ async function init() {
   // no HTTP session-restore runs, the stale sessionStorage Bearer goes straight
   // to /api/me → 401 → redirect even though the HttpOnly cookie is still valid.
   window.addEventListener('pageshow', function(evt) {
+    // P0 — mark BFCache restore so the console.log in loadData can report it
+    window._fpLastPagesShow = evt.persisted ? 'persisted' : 'navigate';
     if (evt.persisted) {
+      console.log('[P0-ISOLATION][pageshow] BFCache restore detected — forcing fresh loadData');
       // Cancel any stale 401-confirmation timers frozen into BFCache.
       if (_401ConfirmTimer) { clearTimeout(_401ConfirmTimer); _401ConfirmTimer = null; }
       _401BackgroundCount = 0;
