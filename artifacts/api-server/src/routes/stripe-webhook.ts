@@ -1700,13 +1700,14 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         let _isAddonOnlyInvoice = false;
         if (!_isAddonSub) {
           try {
-            const { PLAN_PRICE_IDS } = await import("../lib/plans.js");
-            // Build a flat Set of all live plan price IDs
-            const _planPriceIdSet = new Set(Object.values(PLAN_PRICE_IDS));
             const _lineData = ((obj["lines"] as Record<string, unknown>)?.["data"] as Array<Record<string, unknown>>) ?? [];
+            // Use getPlanForPriceId() (already imported) so both live AND test-mode
+            // plan price IDs are recognised — GUARD 2 previously used PLAN_PRICE_IDS
+            // (live only) which caused test-mode plan changes to be misclassified as
+            // addon-only and trigger the wrong email.
             const _hasPlanLine = _lineData.some(l => {
               const priceId = (l["price"] as Record<string, unknown> | null)?.["id"];
-              return priceId && _planPriceIdSet.has(String(priceId));
+              return priceId && getPlanForPriceId(String(priceId)) !== null;
             });
             // Add-on-only if there are lines but none is a plan price
             _isAddonOnlyInvoice = _lineData.length > 0 && !_hasPlanLine;
