@@ -14,6 +14,7 @@ export default defineConfig({
     include: [
       "src/lib/startup-retry.test.ts",
       "src/startup-bootstrap.test.ts",
+      "src/tests/pdf_white_label.test.ts",
       "src/services/ai-economy.test.ts",
       "src/services/ai-engine.credit-calc.test.ts",
       "src/services/ai-economy-db.test.ts",
