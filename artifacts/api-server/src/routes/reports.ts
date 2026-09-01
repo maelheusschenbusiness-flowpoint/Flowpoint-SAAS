@@ -237,14 +237,33 @@ router.get("/reports/:id/download", async (req: Request, res: Response) => {
     missions = misr.rows.map((r: Record<string, unknown>) => ({ title: r.title as string, status: r.status as string, priority: r.priority as string, dueDate: r.due_date as string }));
   } catch {}
 
-  // White-label branding (agency name, colors, footer) from user_prefs.settings.wlBranding.
-  // #437: applied systematically to every export when configured (not only when the
-  // white_label flag is set); the PDF service falls back to FlowPoint branding otherwise.
+  // White-label branding — canonical source is report_templates (is_default=true, then
+  // oldest row as fallback). Legacy user_prefs.settings.wlBranding is no longer read here.
   let wlBranding: import("../services/pdf.js").WlBranding | null = null;
   try {
-    const pr = await db(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
-    const wl = (pr.rows[0]?.settings as Record<string, unknown> | undefined)?.wlBranding;
-    if (wl && typeof wl === "object") wlBranding = wl as import("../services/pdf.js").WlBranding;
+    // Select the default template for this org; if none is marked default, take the
+    // most-recently-created one. Both queries are strictly scoped to the authenticated org.
+    const tr = await db(req)(
+      `SELECT header_text, name, logo_url, primary_color, secondary_color, footer_text, hide_flowpoint_branding
+       FROM report_templates
+       WHERE org_id=$1
+       ORDER BY is_default DESC, created_at DESC
+       LIMIT 1`,
+      [orgId]
+    );
+    const t = tr.rows[0];
+    if (t) {
+      wlBranding = {
+        // header_text is the agency/brand name shown in the PDF header;
+        // fall back to the template's internal name when header_text is blank.
+        agencyName:            (t.header_text as string | null)?.trim() || (t.name as string | null)?.trim() || undefined,
+        logoUrl:               (t.logo_url as string | null) ?? undefined,
+        primaryColor:          (t.primary_color as string | null) ?? undefined,
+        secondaryColor:        (t.secondary_color as string | null) ?? undefined,
+        footerMsg:             (t.footer_text as string | null) ?? undefined,
+        hideFlowpointBranding: !!(t.hide_flowpoint_branding as boolean | null),
+      };
+    }
   } catch {}
 
   // Cumulative usage accounting — PDF export counted at download time
