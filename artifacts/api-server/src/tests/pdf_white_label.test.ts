@@ -1,273 +1,235 @@
 /**
  * White-label PDF branding tests
- * Covers report_templates → streamReportPdf() mapping (A–J spec)
+ * Canonical source: user_prefs.settings.wlBranding (written by PATCH /api/me/prefs)
+ * Tests reflect the real product workflow: UI → user_prefs → streamReportPdf()
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import type { WlBranding } from "../services/pdf.js";
 
-// ── Minimal streamReportPdf surface we need to inspect ────────────────────────
-// We don't render full PDFs in unit tests — we verify the branding object that
-// reaches the generator and the field-mapping logic extracted from reports.ts.
-
-/** Mirrors the mapping logic in GET /reports/:id/download */
-function mapTemplateRowToWlBranding(
-  row: {
-    header_text: string | null;
-    name: string | null;
-    logo_url: string | null;
-    primary_color: string | null;
-    secondary_color: string | null;
-    footer_text: string | null;
-    hide_flowpoint_branding: boolean | null;
-  } | null
+// ── Mirrors the mapping logic in GET /reports/:id/download ────────────────────
+// Reads user_prefs.settings.wlBranding and maps it to WlBranding.
+function mapUserPrefsToWlBranding(
+  settings: Record<string, unknown> | null | undefined
 ): WlBranding | null {
-  if (!row) return null;
+  const wl = settings?.wlBranding;
+  if (!wl || typeof wl !== "object") return null;
+  const w = wl as Record<string, unknown>;
   return {
-    agencyName:            row.header_text?.trim() || row.name?.trim() || undefined,
-    logoUrl:               row.logo_url ?? undefined,
-    primaryColor:          row.primary_color ?? undefined,
-    secondaryColor:        row.secondary_color ?? undefined,
-    footerMsg:             row.footer_text ?? undefined,
-    hideFlowpointBranding: !!(row.hide_flowpoint_branding),
+    agencyName:            typeof w.agencyName     === "string" ? w.agencyName     : undefined,
+    logoUrl:               typeof w.logoUrl        === "string" ? w.logoUrl        : undefined,
+    primaryColor:          typeof w.primaryColor   === "string" ? w.primaryColor   : undefined,
+    secondaryColor:        typeof w.secondaryColor === "string" ? w.secondaryColor : undefined,
+    footerMsg:             typeof w.footerMsg      === "string" ? w.footerMsg      : undefined,
+    hideFlowpointBranding: typeof w.hideFlowpointBranding === "boolean" ? w.hideFlowpointBranding : false,
   };
 }
 
-/** Mirrors the brand-resolution logic in streamReportPdf() */
+// ── Mirrors brand-resolution logic in streamReportPdf() ──────────────────────
 function resolveBrandName(branding: WlBranding | null): string {
   const wl = branding && (branding.agencyName || branding.hideFlowpointBranding) ? branding : null;
   return (wl?.agencyName || "").trim() || (wl?.hideFlowpointBranding ? "" : "FlowPoint");
 }
-
-function resolveSecondaryColor(branding: WlBranding | null, primaryColor: string): string {
-  const wl = branding && (branding.agencyName || branding.hideFlowpointBranding) ? branding : null;
-  return (wl?.secondaryColor && /^#[0-9a-fA-F]{6}$/.test(wl.secondaryColor))
-    ? wl.secondaryColor
-    : primaryColor;
-}
-
 function resolvePrimaryColor(branding: WlBranding | null): string {
   const wl = branding && (branding.agencyName || branding.hideFlowpointBranding) ? branding : null;
-  return (wl?.primaryColor && /^#[0-9a-fA-F]{6}$/.test(wl.primaryColor))
-    ? wl.primaryColor
-    : "#2563EB";
+  return (wl?.primaryColor && /^#[0-9a-fA-F]{6}$/.test(wl.primaryColor)) ? wl.primaryColor : "#2563EB";
+}
+function resolveSecondaryColor(branding: WlBranding | null, primary: string): string {
+  const wl = branding && (branding.agencyName || branding.hideFlowpointBranding) ? branding : null;
+  return (wl?.secondaryColor && /^#[0-9a-fA-F]{6}$/.test(wl.secondaryColor)) ? wl.secondaryColor : primary;
 }
 
-// ── TEST A — no white-label template → FlowPoint defaults ─────────────────────
-describe("TEST A — no white-label config", () => {
-  it("returns null branding when no template row exists", () => {
-    expect(mapTemplateRowToWlBranding(null)).toBeNull();
+// ── Real user_prefs.settings payloads (as the UI writes them) ─────────────────
+const USER_PREFS_A = {
+  wlBranding: {
+    agencyName:    "Agence Alpha",
+    logoUrl:       "https://alpha.example.com/logo.png",
+    primaryColor:  "#FF5500",
+    secondaryColor:"#00AAFF",
+    footerMsg:     "Alpha — Confidentiel",
+  },
+};
+const USER_PREFS_B = {
+  wlBranding: {
+    agencyName:    "Agence Beta",
+    logoUrl:       "https://beta.example.com/logo.png",
+    primaryColor:  "#009900",
+    secondaryColor:"#FFCC00",
+    footerMsg:     "Beta — Privé",
+  },
+};
+
+// ── TEST: WL source is user_prefs (not report_templates) ─────────────────────
+describe("TEST_WL_SOURCE_USER_PREFS — mapping from user_prefs.settings.wlBranding", () => {
+  it("maps wlBranding object from settings", () => {
+    const wl = mapUserPrefsToWlBranding(USER_PREFS_A);
+    expect(wl).not.toBeNull();
+    expect(wl!.agencyName).toBe("Agence Alpha");
   });
-  it("brandName falls back to FlowPoint", () => {
+  it("null settings → null branding", () => {
+    expect(mapUserPrefsToWlBranding(null)).toBeNull();
+  });
+  it("settings without wlBranding → null", () => {
+    expect(mapUserPrefsToWlBranding({ someOtherKey: "value" })).toBeNull();
+  });
+  it("settings.wlBranding not an object → null", () => {
+    expect(mapUserPrefsToWlBranding({ wlBranding: "invalid" } as any)).toBeNull();
+  });
+});
+
+// ── TEST_NO_WL_FALLBACK ───────────────────────────────────────────────────────
+describe("TEST_NO_WL_FALLBACK — no user_prefs → FlowPoint defaults", () => {
+  it("null wlBranding → brandName = FlowPoint", () => {
     expect(resolveBrandName(null)).toBe("FlowPoint");
   });
-  it("primaryColor falls back to #2563EB", () => {
+  it("null wlBranding → primaryColor = #2563EB", () => {
     expect(resolvePrimaryColor(null)).toBe("#2563EB");
   });
-});
-
-// ── TEST B — org A template applied ───────────────────────────────────────────
-describe("TEST B — org A white-label template", () => {
-  const rowA = {
-    header_text: "Agence Alpha",
-    name: "Template Alpha",
-    logo_url: "https://alpha.example.com/logo.png",
-    primary_color: "#FF5500",
-    secondary_color: "#00AAFF",
-    footer_text: "Alpha — Confidentiel",
-    hide_flowpoint_branding: true,
-  };
-  const wl = mapTemplateRowToWlBranding(rowA)!;
-
-  it("agencyName from header_text", () => expect(wl.agencyName).toBe("Agence Alpha"));
-  it("logoUrl mapped", () => expect(wl.logoUrl).toBe("https://alpha.example.com/logo.png"));
-  it("primaryColor mapped", () => expect(wl.primaryColor).toBe("#FF5500"));
-  it("secondaryColor mapped", () => expect(wl.secondaryColor).toBe("#00AAFF"));
-  it("footerMsg mapped", () => expect(wl.footerMsg).toBe("Alpha — Confidentiel"));
-  it("hideFlowpointBranding mapped", () => expect(wl.hideFlowpointBranding).toBe(true));
-  it("brandName = agencyName", () => expect(resolveBrandName(wl)).toBe("Agence Alpha"));
-});
-
-// ── TEST C — org B isolation (different template) ─────────────────────────────
-describe("TEST C — org B gets its own branding, not org A's", () => {
-  const rowB = {
-    header_text: "Agence Beta",
-    name: "Template Beta",
-    logo_url: "https://beta.example.com/logo.png",
-    primary_color: "#009900",
-    secondary_color: "#FFCC00",
-    footer_text: "Beta — Privé",
-    hide_flowpoint_branding: false,
-  };
-  const wl = mapTemplateRowToWlBranding(rowB)!;
-
-  it("agencyName is Beta, not Alpha", () => expect(wl.agencyName).toBe("Agence Beta"));
-  it("logoUrl is Beta's logo", () => expect(wl.logoUrl).toBe("https://beta.example.com/logo.png"));
-  it("primaryColor is Beta's color", () => expect(wl.primaryColor).toBe("#009900"));
-  it("brandName resolves to Beta", () => expect(resolveBrandName(wl)).toBe("Agence Beta"));
-});
-
-// ── TEST D — primaryColor applied ─────────────────────────────────────────────
-describe("TEST D — primaryColor", () => {
-  it("valid hex primaryColor is used", () => {
-    const wl = mapTemplateRowToWlBranding({
-      header_text: "X", name: "T", logo_url: null,
-      primary_color: "#AB1234", secondary_color: null,
-      footer_text: null, hide_flowpoint_branding: false,
-    })!;
-    expect(resolvePrimaryColor(wl)).toBe("#AB1234");
-  });
-  it("invalid hex primaryColor falls back to default", () => {
-    const wl = mapTemplateRowToWlBranding({
-      header_text: "X", name: "T", logo_url: null,
-      primary_color: "not-a-color", secondary_color: null,
-      footer_text: null, hide_flowpoint_branding: false,
-    })!;
-    expect(resolvePrimaryColor(wl)).toBe("#2563EB");
+  it("empty user_prefs settings → null branding → FlowPoint", () => {
+    const wl = mapUserPrefsToWlBranding({});
+    expect(wl).toBeNull();
+    expect(resolveBrandName(wl)).toBe("FlowPoint");
   });
 });
 
-// ── TEST E — secondaryColor applied to correct element ────────────────────────
-describe("TEST E — secondaryColor", () => {
-  it("valid secondaryColor is returned for section accent", () => {
-    const wl = mapTemplateRowToWlBranding({
-      header_text: "X", name: "T", logo_url: null,
-      primary_color: "#FF0000", secondary_color: "#00FF00",
-      footer_text: null, hide_flowpoint_branding: false,
-    })!;
-    const primary = resolvePrimaryColor(wl);
-    expect(resolveSecondaryColor(wl, primary)).toBe("#00FF00");
+// ── TEST_AGENCY_NAME ──────────────────────────────────────────────────────────
+describe("TEST_AGENCY_NAME — agencyName from user_prefs.wlBranding", () => {
+  it("agencyName mapped correctly", () => {
+    const wl = mapUserPrefsToWlBranding(USER_PREFS_A)!;
+    expect(wl.agencyName).toBe("Agence Alpha");
+    expect(resolveBrandName(wl)).toBe("Agence Alpha");
   });
-  it("null secondaryColor falls back to primary", () => {
-    const wl = mapTemplateRowToWlBranding({
-      header_text: "X", name: "T", logo_url: null,
-      primary_color: "#FF0000", secondary_color: null,
-      footer_text: null, hide_flowpoint_branding: false,
-    })!;
-    const primary = resolvePrimaryColor(wl);
-    expect(resolveSecondaryColor(wl, primary)).toBe("#FF0000");
-  });
-  it("invalid secondaryColor falls back to primary", () => {
-    const wl = mapTemplateRowToWlBranding({
-      header_text: "X", name: "T", logo_url: null,
-      primary_color: "#FF0000", secondary_color: "blue",
-      footer_text: null, hide_flowpoint_branding: false,
-    })!;
-    const primary = resolvePrimaryColor(wl);
-    expect(resolveSecondaryColor(wl, primary)).toBe("#FF0000");
+  it("non-string agencyName ignored", () => {
+    const wl = mapUserPrefsToWlBranding({ wlBranding: { agencyName: 42 } } as any)!;
+    expect(wl.agencyName).toBeUndefined();
   });
 });
 
-// ── TEST F — logo_url transmitted ─────────────────────────────────────────────
-describe("TEST F — logo_url", () => {
-  it("logo_url is passed through to branding.logoUrl", () => {
-    const wl = mapTemplateRowToWlBranding({
-      header_text: "X", name: "T",
-      logo_url: "https://cdn.example.com/logo.svg",
-      primary_color: null, secondary_color: null,
-      footer_text: null, hide_flowpoint_branding: false,
-    })!;
-    expect(wl.logoUrl).toBe("https://cdn.example.com/logo.svg");
+// ── TEST_LOGO ─────────────────────────────────────────────────────────────────
+describe("TEST_LOGO — logoUrl from user_prefs.wlBranding", () => {
+  it("logoUrl mapped correctly", () => {
+    const wl = mapUserPrefsToWlBranding(USER_PREFS_A)!;
+    expect(wl.logoUrl).toBe("https://alpha.example.com/logo.png");
   });
-  it("null logo_url gives undefined in WlBranding", () => {
-    const wl = mapTemplateRowToWlBranding({
-      header_text: "X", name: "T", logo_url: null,
-      primary_color: null, secondary_color: null,
-      footer_text: null, hide_flowpoint_branding: false,
-    })!;
+  it("missing logoUrl → undefined", () => {
+    const wl = mapUserPrefsToWlBranding({ wlBranding: { agencyName: "X" } })!;
     expect(wl.logoUrl).toBeUndefined();
   });
 });
 
-// ── TEST G — footer_text transmitted ──────────────────────────────────────────
-describe("TEST G — footer_text", () => {
-  it("footer_text mapped to footerMsg", () => {
-    const wl = mapTemplateRowToWlBranding({
-      header_text: "X", name: "T", logo_url: null,
-      primary_color: null, secondary_color: null,
-      footer_text: "Mon agence — Strictement confidentiel",
-      hide_flowpoint_branding: false,
-    })!;
-    expect(wl.footerMsg).toBe("Mon agence — Strictement confidentiel");
+// ── TEST_PRIMARY_COLOR ────────────────────────────────────────────────────────
+describe("TEST_PRIMARY_COLOR — primaryColor from user_prefs.wlBranding", () => {
+  it("valid primaryColor applied", () => {
+    const wl = mapUserPrefsToWlBranding(USER_PREFS_A)!;
+    expect(resolvePrimaryColor(wl)).toBe("#FF5500");
+  });
+  it("invalid hex → fallback #2563EB", () => {
+    const wl = mapUserPrefsToWlBranding({ wlBranding: { agencyName: "X", primaryColor: "notahex" } })!;
+    expect(resolvePrimaryColor(wl)).toBe("#2563EB");
   });
 });
 
-// ── TEST H — hide_flowpoint_branding semantics ────────────────────────────────
-describe("TEST H — hide_flowpoint_branding", () => {
-  it("false → FlowPoint name shown when no agencyName", () => {
-    const wl: WlBranding = { hideFlowpointBranding: false };
-    expect(resolveBrandName(wl)).toBe("FlowPoint");
+// ── TEST_SECONDARY_COLOR ──────────────────────────────────────────────────────
+describe("TEST_SECONDARY_COLOR — secondaryColor applied to section accent bars", () => {
+  it("valid secondaryColor used for section headings", () => {
+    const wl = mapUserPrefsToWlBranding(USER_PREFS_A)!;
+    const primary = resolvePrimaryColor(wl);
+    expect(resolveSecondaryColor(wl, primary)).toBe("#00AAFF");
   });
-  it("true + no agencyName → empty brand name (no FlowPoint)", () => {
+  it("missing secondaryColor falls back to primary", () => {
+    const wl = mapUserPrefsToWlBranding({ wlBranding: { agencyName: "X", primaryColor: "#FF0000" } })!;
+    const primary = resolvePrimaryColor(wl);
+    expect(resolveSecondaryColor(wl, primary)).toBe("#FF0000");
+  });
+  it("invalid secondaryColor falls back to primary", () => {
+    const wl = mapUserPrefsToWlBranding({ wlBranding: { agencyName: "X", primaryColor: "#FF0000", secondaryColor: "blue" } })!;
+    const primary = resolvePrimaryColor(wl);
+    expect(resolveSecondaryColor(wl, primary)).toBe("#FF0000");
+  });
+});
+
+// ── TEST_FOOTER ───────────────────────────────────────────────────────────────
+describe("TEST_FOOTER — footerMsg from user_prefs.wlBranding", () => {
+  it("footerMsg mapped correctly", () => {
+    const wl = mapUserPrefsToWlBranding(USER_PREFS_A)!;
+    expect(wl.footerMsg).toBe("Alpha — Confidentiel");
+  });
+  it("missing footerMsg → undefined", () => {
+    const wl = mapUserPrefsToWlBranding({ wlBranding: { agencyName: "X" } })!;
+    expect(wl.footerMsg).toBeUndefined();
+  });
+});
+
+// ── TEST_HIDE_FLOWPOINT ───────────────────────────────────────────────────────
+describe("TEST_HIDE_FLOWPOINT — hideFlowpointBranding handling", () => {
+  it("hideFlowpointBranding=true suppresses FlowPoint when no agencyName", () => {
     const wl: WlBranding = { hideFlowpointBranding: true };
     expect(resolveBrandName(wl)).toBe("");
   });
-  it("true + agencyName → agencyName shown", () => {
-    const wl: WlBranding = { agencyName: "Agence X", hideFlowpointBranding: true };
-    expect(resolveBrandName(wl)).toBe("Agence X");
+  it("hideFlowpointBranding=false → FlowPoint when no agencyName", () => {
+    const wl: WlBranding = { hideFlowpointBranding: false };
+    expect(resolveBrandName(wl)).toBe("FlowPoint");
   });
-  it("false + agencyName → agencyName shown (not FlowPoint)", () => {
-    const wl: WlBranding = { agencyName: "Agence X", hideFlowpointBranding: false };
-    expect(resolveBrandName(wl)).toBe("Agence X");
-  });
-});
-
-// ── TEST I — no is_default template → fallback to first row ───────────────────
-describe("TEST I — template fallback when no is_default", () => {
-  // The SQL ORDER BY is_default DESC, created_at DESC LIMIT 1
-  // means: first non-default row returned is the most recent one.
-  // If that row has no agencyName but has hideFlowpointBranding=false → FlowPoint default.
-  it("template without header_text falls back to template name as agencyName", () => {
-    const wl = mapTemplateRowToWlBranding({
-      header_text: null, name: "Mon Template",
-      logo_url: null, primary_color: null, secondary_color: null,
-      footer_text: null, hide_flowpoint_branding: false,
-    })!;
-    expect(wl.agencyName).toBe("Mon Template");
-    expect(resolveBrandName(wl)).toBe("Mon Template");
-  });
-  it("template with blank header_text falls back to name", () => {
-    const wl = mapTemplateRowToWlBranding({
-      header_text: "   ", name: "Fallback Name",
-      logo_url: null, primary_color: null, secondary_color: null,
-      footer_text: null, hide_flowpoint_branding: false,
-    })!;
-    expect(wl.agencyName).toBe("Fallback Name");
+  it("UI-written wlBranding without hideFlowpointBranding → defaults false", () => {
+    const wl = mapUserPrefsToWlBranding(USER_PREFS_A)!;
+    expect(wl.hideFlowpointBranding).toBe(false);
   });
 });
 
-// ── TEST J — hostile cross-org isolation ──────────────────────────────────────
-describe("TEST J — hostile cross-org isolation", () => {
-  const rowA = {
-    header_text: "Agence A",
-    name: "T-A",
-    logo_url: "https://a.example.com/logo.png",
-    primary_color: "#AA0000",
-    secondary_color: "#AA00AA",
-    footer_text: "A footer",
-    hide_flowpoint_branding: true,
-  };
-  const rowB = {
-    header_text: "Agence B",
-    name: "T-B",
-    logo_url: "https://b.example.com/logo.png",
-    primary_color: "#0000BB",
-    secondary_color: "#00BBBB",
-    footer_text: "B footer",
-    hide_flowpoint_branding: false,
-  };
-  const wlA = mapTemplateRowToWlBranding(rowA)!;
-  const wlB = mapTemplateRowToWlBranding(rowB)!;
+// ── TEST_ORG_A ────────────────────────────────────────────────────────────────
+describe("TEST_ORG_A — full branding pipeline for org A", () => {
+  const wl = mapUserPrefsToWlBranding(USER_PREFS_A)!;
+  it("agencyName A resolved", () => expect(resolveBrandName(wl)).toBe("Agence Alpha"));
+  it("primaryColor A resolved", () => expect(resolvePrimaryColor(wl)).toBe("#FF5500"));
+  it("secondaryColor A resolved", () => expect(resolveSecondaryColor(wl, resolvePrimaryColor(wl))).toBe("#00AAFF"));
+  it("logoUrl A resolved", () => expect(wl.logoUrl).toBe("https://alpha.example.com/logo.png"));
+  it("footerMsg A resolved", () => expect(wl.footerMsg).toBe("Alpha — Confidentiel"));
+});
 
-  it("org A branding never contains org B data", () => {
-    expect(wlA.agencyName).not.toBe(wlB.agencyName);
-    expect(wlA.primaryColor).not.toBe(wlB.primaryColor);
+// ── TEST_ORG_B ────────────────────────────────────────────────────────────────
+describe("TEST_ORG_B — full branding pipeline for org B", () => {
+  const wl = mapUserPrefsToWlBranding(USER_PREFS_B)!;
+  it("agencyName B resolved", () => expect(resolveBrandName(wl)).toBe("Agence Beta"));
+  it("primaryColor B resolved", () => expect(resolvePrimaryColor(wl)).toBe("#009900"));
+  it("secondaryColor B resolved", () => expect(resolveSecondaryColor(wl, resolvePrimaryColor(wl))).toBe("#FFCC00"));
+  it("logoUrl B resolved", () => expect(wl.logoUrl).toBe("https://beta.example.com/logo.png"));
+});
+
+// ── TEST_CROSS_ORG_ISOLATION ──────────────────────────────────────────────────
+describe("TEST_CROSS_ORG_ISOLATION — A and B branding never mix", () => {
+  const wlA = mapUserPrefsToWlBranding(USER_PREFS_A)!;
+  const wlB = mapUserPrefsToWlBranding(USER_PREFS_B)!;
+
+  it("org A brand name ≠ org B brand name", () => {
+    expect(resolveBrandName(wlA)).not.toBe(resolveBrandName(wlB));
+  });
+  it("org A primaryColor ≠ org B primaryColor", () => {
+    expect(resolvePrimaryColor(wlA)).not.toBe(resolvePrimaryColor(wlB));
+  });
+  it("org A logoUrl ≠ org B logoUrl", () => {
     expect(wlA.logoUrl).not.toBe(wlB.logoUrl);
-    expect(wlA.footerMsg).not.toBe(wlB.footerMsg);
   });
-  it("org B branding never contains org A data", () => {
-    expect(wlB.agencyName).not.toBe(wlA.agencyName);
-    expect(wlB.primaryColor).not.toBe(wlA.primaryColor);
+  it("org A branding resolves exclusively to A", () => {
+    expect(resolveBrandName(wlA)).toBe("Agence Alpha");
+    expect(resolveBrandName(wlB)).toBe("Agence Beta");
   });
-  it("brandName A resolves correctly", () => expect(resolveBrandName(wlA)).toBe("Agence A"));
-  it("brandName B resolves correctly", () => expect(resolveBrandName(wlB)).toBe("Agence B"));
+  it("org with no wlBranding → FlowPoint (no leak from A or B)", () => {
+    const wlC = mapUserPrefsToWlBranding({ someOtherField: true });
+    expect(resolveBrandName(wlC)).toBe("FlowPoint");
+  });
+});
+
+// ── All 6 report types use the same pipeline ──────────────────────────────────
+describe("ALL_REPORT_TYPES_SHARE_FIXED_PIPELINE", () => {
+  // All types (seo, executive, monitoring, conversion, local, ai) call
+  // GET /reports/:id/download → same wlBranding load → streamReportPdf().
+  // The branding object itself is type-agnostic; we just verify mapping is consistent.
+  const types = ["seo", "executive", "monitoring", "conversion", "local", "ai"];
+  for (const type of types) {
+    it(`${type} report receives correct branding from user_prefs`, () => {
+      const wl = mapUserPrefsToWlBranding(USER_PREFS_A);
+      // Same branding regardless of report type
+      expect(resolveBrandName(wl)).toBe("Agence Alpha");
+      expect(resolvePrimaryColor(wl)).toBe("#FF5500");
+    });
+  }
 });

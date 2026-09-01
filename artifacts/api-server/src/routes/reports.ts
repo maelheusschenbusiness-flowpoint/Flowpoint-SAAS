@@ -237,31 +237,23 @@ router.get("/reports/:id/download", async (req: Request, res: Response) => {
     missions = misr.rows.map((r: Record<string, unknown>) => ({ title: r.title as string, status: r.status as string, priority: r.priority as string, dueDate: r.due_date as string }));
   } catch {}
 
-  // White-label branding — canonical source is report_templates (is_default=true, then
-  // oldest row as fallback). Legacy user_prefs.settings.wlBranding is no longer read here.
+  // White-label branding — canonical source is user_prefs.settings.wlBranding,
+  // which is exactly what the Settings → White Label UI writes via PATCH /api/me/prefs.
+  // Strictly scoped to the authenticated org — never reads another org's prefs.
   let wlBranding: import("../services/pdf.js").WlBranding | null = null;
   try {
-    // Select the default template for this org; if none is marked default, take the
-    // most-recently-created one. Both queries are strictly scoped to the authenticated org.
-    const tr = await db(req)(
-      `SELECT header_text, name, logo_url, primary_color, secondary_color, footer_text, hide_flowpoint_branding
-       FROM report_templates
-       WHERE org_id=$1
-       ORDER BY is_default DESC, created_at DESC
-       LIMIT 1`,
-      [orgId]
-    );
-    const t = tr.rows[0];
-    if (t) {
+    const pr = await db(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    const wl = (pr.rows[0]?.settings as Record<string, unknown> | undefined)?.wlBranding;
+    if (wl && typeof wl === "object") {
+      const w = wl as Record<string, unknown>;
       wlBranding = {
-        // header_text is the agency/brand name shown in the PDF header;
-        // fall back to the template's internal name when header_text is blank.
-        agencyName:            (t.header_text as string | null)?.trim() || (t.name as string | null)?.trim() || undefined,
-        logoUrl:               (t.logo_url as string | null) ?? undefined,
-        primaryColor:          (t.primary_color as string | null) ?? undefined,
-        secondaryColor:        (t.secondary_color as string | null) ?? undefined,
-        footerMsg:             (t.footer_text as string | null) ?? undefined,
-        hideFlowpointBranding: !!(t.hide_flowpoint_branding as boolean | null),
+        agencyName:    typeof w.agencyName    === "string" ? w.agencyName    : undefined,
+        logoUrl:       typeof w.logoUrl       === "string" ? w.logoUrl       : undefined,
+        primaryColor:  typeof w.primaryColor  === "string" ? w.primaryColor  : undefined,
+        secondaryColor:typeof w.secondaryColor === "string" ? w.secondaryColor : undefined,
+        footerMsg:     typeof w.footerMsg     === "string" ? w.footerMsg     : undefined,
+        // hideFlowpointBranding is not currently written by the UI; default false
+        hideFlowpointBranding: typeof w.hideFlowpointBranding === "boolean" ? w.hideFlowpointBranding : false,
       };
     }
   } catch {}

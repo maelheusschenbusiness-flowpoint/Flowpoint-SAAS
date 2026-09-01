@@ -71993,6 +71993,17 @@ function renderGA4ClientMode() {
         </div>`}
     </div>`;
 
+  // ── Shared helpers available to all sub-routes ───────────────────
+  // Defined here (common scope) so dashboards, analytics, and any future
+  // sub-route can call _emptyState without a ReferenceError.
+  const _emptyState = (icon, title, desc) => `
+      <div style="text-align:center;padding:40px 20px;background:var(--fp-inner-card);border-radius:var(--fp-radius-lg);border:1px dashed var(--fp-border)">
+        <div style="font-size:32px;margin-bottom:10px">${icon}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:6px">${title}</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);max-width:320px;margin:0 auto 14px">${desc}</div>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings')">Connecter →</button>
+      </div>`;
+
   // ── Sub-route routing for Mode Client tabs ────────────────────────
   if (sub === 'reporting') {
     return header + permsBanner + reportsHtml;
@@ -72102,13 +72113,7 @@ function renderGA4ClientMode() {
     const gsc = STATE.gsc || {};
     const ga4Connected = window.fpIsConnected ? window.fpIsConnected('ga4') : !!ga4.connected;
     const gscConnected = window.fpIsConnected ? window.fpIsConnected('gsc') : !!gsc.connected;
-    const _emptyState = (icon, title, desc) => `
-      <div style="text-align:center;padding:40px 20px;background:var(--fp-inner-card);border-radius:var(--fp-radius-lg);border:1px dashed var(--fp-border)">
-        <div style="font-size:32px;margin-bottom:10px">${icon}</div>
-        <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:6px">${title}</div>
-        <div style="font-size:12px;color:var(--fp-text-muted);max-width:320px;margin:0 auto 14px">${desc}</div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings')">Connecter →</button>
-      </div>`;
+    // _emptyState is defined at renderGA4ClientMode() scope above
     const ga4Block = ga4Connected ? `
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">📊 Google Analytics 4</div>
