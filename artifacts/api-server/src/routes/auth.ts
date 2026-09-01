@@ -2194,13 +2194,12 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
     typeof authHeader === "string" && authHeader.startsWith("Bearer ")
       ? authHeader.slice(7).trim()
       : undefined;
-  // Resolution order:
-  //   1. Bearer token (per-tab sessionStorage) — validate it first.
-  //   2. Cookie (fp_token) — fallback when Bearer is absent or stale.
-  //      This is the critical recovery path: a hard refresh may still have
-  //      a valid cookie even when the Bearer in sessionStorage has gone stale
-  //      (e.g. after re-login from another tab invalidated the old session).
-  //      Without this fallback the client gets an immediate 401 and bounces to login.
+  // Resolution order (strict — Bearer is authoritative):
+  //   1. Bearer present → validate Bearer ONLY. If invalid/stale → 401.
+  //      Never fall back to cookie when Bearer is explicitly provided.
+  //      This prevents cross-user contamination when a browser holds a cookie
+  //      from user B while user A's Bearer is momentarily stale.
+  //   2. No Bearer → cookie-only path (hard refresh, new tab from bookmark).
   let session = null;
   let provided: string | undefined;
 
@@ -2213,21 +2212,13 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
   logger.debug(restoreLogBase, "[Auth/session-restore] Attempting session lookup");
 
   if (bearerToken) {
+    // Bearer is explicit and authoritative — no cookie fallback.
     session = await getSession(bearerToken);
     if (session) {
       provided = bearerToken;
       logger.debug({ ...restoreLogBase, via: "bearer", orgId: session.orgId?.slice(0, 8) }, "[Auth/session-restore] Resolved via Bearer");
-    } else if (cookieToken && cookieToken !== bearerToken) {
-      // Bearer stale — try cookie as fallback
-      session = await getSession(cookieToken);
-      if (session) {
-        provided = cookieToken;
-        logger.info({ ...restoreLogBase, via: "cookie-fallback", orgId: session.orgId?.slice(0, 8) }, "[Auth/session-restore] Bearer stale — recovered via cookie");
-      } else {
-        logger.warn({ ...restoreLogBase, via: "none" }, "[Auth/session-restore] Both Bearer and cookie invalid — getSession returned null for both");
-      }
     } else {
-      logger.warn({ ...restoreLogBase, via: "bearer-only", sameToken: cookieToken === bearerToken }, "[Auth/session-restore] Bearer invalid and no separate cookie to try");
+      logger.warn({ ...restoreLogBase, via: "bearer-invalid" }, "[Auth/session-restore] Bearer invalid/stale — returning 401 (no cookie fallback)");
     }
   } else if (cookieToken) {
     session = await getSession(cookieToken);
