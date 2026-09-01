@@ -2,7 +2,7 @@ import type { Response } from "express";
 import PDFDocument from "pdfkit";
 
 interface ReportRow { id: string; name: string; type: string; template_key?: string | null; date: string; auditId?: string | null; whiteLabel?: boolean | null; dateStart?: string | null; dateEnd?: string | null; }
-export interface WlBranding { agencyName?: string; primaryColor?: string; secondaryColor?: string; footerMsg?: string; logoUrl?: string; }
+export interface WlBranding { agencyName?: string; primaryColor?: string; secondaryColor?: string; footerMsg?: string; logoUrl?: string; hideFlowpointBranding?: boolean; }
 interface AuditRow  { url: string; score: number; status: string; speed?: number | null; issues?: number | null; }
 interface MeetingNote { title: string; date: string; notes: string; site?: string; }
 interface MonitorRow { name: string; url?: string; status?: string; uptime?: number | null; }
@@ -88,18 +88,21 @@ export async function streamReportPdf(
     res.on("finish", resolve);
 
     // ── Brand colors ──────────────────────────────────────────────────────────
-    // Always use branding when available (even without white_label flag for visual consistency)
-    const wl = branding && branding.agencyName ? branding : null;
+    // wl is active when agencyName is set OR when hideFlowpointBranding is requested
+    const wl = branding && (branding.agencyName || branding.hideFlowpointBranding) ? branding : null;
     const BRAND   = (wl?.primaryColor && /^#[0-9a-fA-F]{6}$/.test(wl.primaryColor)) ? wl.primaryColor : "#2563EB";
     const BRAND_L = lighten(BRAND, 0.88);
+    // secondaryColor: applied to section-heading accent bars; falls back to BRAND
+    const SECONDARY = (wl?.secondaryColor && /^#[0-9a-fA-F]{6}$/.test(wl.secondaryColor)) ? wl.secondaryColor : BRAND;
     const GREEN   = "#22c55e";
     const AMBER   = "#f59e0b";
     const RED     = "#ef4444";
     const GRAY    = "#6b7280";
     const DARK    = "#111827";
     const WHITE   = "#ffffff";
-    const brandName = (wl?.agencyName || "").trim() || "FlowPoint";
-    const footerMsg = (wl?.footerMsg || "").trim() || `${brandName} — Rapport confidentiel`;
+    // When hideFlowpointBranding=true and no agencyName, suppress the FlowPoint name
+    const brandName = (wl?.agencyName || "").trim() || (wl?.hideFlowpointBranding ? "" : "FlowPoint");
+    const footerMsg = (wl?.footerMsg || "").trim() || (brandName ? `${brandName} — Rapport confidentiel` : "Rapport confidentiel");
 
     const MARGIN  = 45;
     const PAGE_W  = doc.page.width;
@@ -154,7 +157,7 @@ export async function streamReportPdf(
         doc.y = HEADER_H + 20;
       }
       const sY = doc.y;
-      doc.rect(MARGIN, sY, 4, 18).fill(BRAND);
+      doc.rect(MARGIN, sY, 4, 18).fill(SECONDARY);
       doc.fillColor(DARK).fontSize(13).font("Helvetica-Bold")
         .text(title, MARGIN + 10, sY + 1, { width: CONTENT_W - 10 });
       doc.moveDown(0.6);
