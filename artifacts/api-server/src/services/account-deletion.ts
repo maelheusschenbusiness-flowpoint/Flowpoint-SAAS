@@ -405,6 +405,65 @@ async function cleanupStorage(orgId: string, userIds: string[]): Promise<Deletio
   };
 }
 
+// ── Phase 0: Early session revocation ───────────────────────────────────────
+
+/**
+ * Immediately revoke all sessions belonging to the org/user in a SEPARATE,
+ * auto-commit connection — BEFORE Stripe cleanup, table discovery, or any
+ * other slow operation.
+ *
+ * Invariant: once this function returns, any subsequent /api/auth/session-restore
+ * call with the old token must return 401, even if the rest of the deletion
+ * pipeline takes another 20+ seconds or is aborted by the client.
+ *
+ * The in-transaction user_sessions deletion (step 2c-ter) is retained as a
+ * defence-in-depth second sweep for sessions that might have been created
+ * between this point and the long transaction's COMMIT.
+ *
+ * FAILURE BEHAVIOUR: throws on DB error so the caller aborts the deletion
+ * rather than proceeding with unrevoked sessions.  This is intentional: a
+ * partial deletion that leaves the session alive is worse than no deletion.
+ *
+ * POST-FAILURE SAFETY: if this function succeeds but a later step fails
+ * (Stripe or DB purge), the session is already gone.  The account data may
+ * still exist in the DB but the user is fully locked out.  We do NOT recreate
+ * the session in any error path.
+ */
+export async function preKillSessions(opts: {
+  orgId: string;
+  userId: string | null | undefined;
+  email: string | null | undefined;
+}): Promise<number> {
+  const { orgId, userId, email } = opts;
+  const { pool } = await import("@workspace/db");
+  const client = await pool.connect();
+  try {
+    // Run without BEGIN/COMMIT — every statement auto-commits individually,
+    // so the DELETE is visible to all other connections the instant it finishes.
+    //
+    // Coverage:
+    //   org_id::text   — UUID sessions for this org (covers all members)
+    //   user_id_v2     — UUID session owned by the authenticated user
+    //   user_id        — legacy email-keyed sessions (pre-migration rows)
+    const result = (await client.query(
+      `DELETE FROM user_sessions
+        WHERE org_id::text = $1
+          OR ($2::text IS NOT NULL AND user_id_v2::text = $2)
+          OR ($3::text IS NOT NULL AND lower(user_id::text) = lower($3))`,
+      [orgId, userId ?? null, email ?? null],
+    )) as unknown as { rowCount: number };
+    const deleted = result.rowCount ?? 0;
+    logger.info(
+      { orgId, userId, deleted },
+      "[AccountDeletion] preKillSessions: sessions revoked before Stripe/purge",
+    );
+    return deleted;
+  } finally {
+    client.release();
+  }
+  // DB errors propagate — caller aborts the deletion.
+}
+
 // ── Main pipeline ───────────────────────────────────────────────────────────
 
 /**
@@ -420,6 +479,15 @@ export async function deleteAccount(target: DeletionTarget): Promise<DeletionRep
   let email = target.email ?? null;
 
   logger.info({ orgId, email }, "[AccountDeletion] Starting");
+
+  // ── Phase 0: Early session revocation ────────────────────────────────────
+  // Sessions are killed BEFORE any slow operation (Stripe API, table discovery,
+  // multi-table purge transaction).  This guarantees that if the browser
+  // abandons the fetch mid-operation (e.g. at the 15 s mark), a subsequent
+  // /api/auth/session-restore with the old token returns 401 immediately.
+  // NOTE: on failure this throws and the pipeline aborts — intentional, see
+  // preKillSessions() docblock.
+  await preKillSessions({ orgId, userId: target.userId, email });
 
   // ── Phase 1: Stripe (external, irreversible, must precede the DB work) ────
   const stripeReport = await cleanupStripe(target.stripeCustomerId, orgId);

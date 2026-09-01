@@ -58,6 +58,8 @@ export default defineConfig({
       "src/routes/team-seat-gate.test.ts",
       "src/routes/team-list-owner.test.ts",
        "src/routes/team-member-removal-security.test.ts",
+      // Account deletion — early session revocation (preKillSessions) patch
+      "src/services/account-deletion-session-kill.test.ts",
       "src/tests/cross_tenant_rbac_sso.test.ts",
       // Phase 7 — analyze_url SSRF IPv6 + IPv4 classification
       "src/services/url-fetcher-ipv6.test.ts",

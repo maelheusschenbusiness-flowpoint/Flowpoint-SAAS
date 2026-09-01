@@ -77579,12 +77579,10 @@ async function handleStripeWebhook(req, res) {
           let _isAddonOnlyInvoice = false;
           if (!_isAddonSub) {
             try {
-              const { PLAN_PRICE_IDS: PLAN_PRICE_IDS2 } = await Promise.resolve().then(() => (init_plans(), plans_exports));
-              const _planPriceIdSet = new Set(Object.values(PLAN_PRICE_IDS2));
               const _lineData = obj["lines"]?.["data"] ?? [];
               const _hasPlanLine = _lineData.some((l) => {
                 const priceId = l["price"]?.["id"];
-                return priceId && _planPriceIdSet.has(String(priceId));
+                return priceId && getPlanForPriceId(String(priceId)) !== null;
               });
               _isAddonOnlyInvoice = _lineData.length > 0 && !_hasPlanLine;
               if (_isAddonOnlyInvoice) {
@@ -102384,7 +102382,8 @@ var init_pdf_parser = __esm({
 var account_deletion_exports = {};
 __export(account_deletion_exports, {
   auditOrphans: () => auditOrphans,
-  deleteAccount: () => deleteAccount
+  deleteAccount: () => deleteAccount,
+  preKillSessions: () => preKillSessions
 });
 async function discoverOwnedTables(client, orgId3, deletableUserIds) {
   const res = await client.query(
@@ -102571,11 +102570,34 @@ async function cleanupStorage(orgId3, userIds) {
     note: `Removed ${deleted} object(s) from bucket "${bucket}".`
   };
 }
+async function preKillSessions(opts) {
+  const { orgId: orgId3, userId, email } = opts;
+  const { pool: pool2 } = await Promise.resolve().then(() => (init_src(), src_exports));
+  const client = await pool2.connect();
+  try {
+    const result = await client.query(
+      `DELETE FROM user_sessions
+        WHERE org_id::text = $1
+          OR ($2::text IS NOT NULL AND user_id_v2::text = $2)
+          OR ($3::text IS NOT NULL AND lower(user_id::text) = lower($3))`,
+      [orgId3, userId ?? null, email ?? null]
+    );
+    const deleted = result.rowCount ?? 0;
+    logger.info(
+      { orgId: orgId3, userId, deleted },
+      "[AccountDeletion] preKillSessions: sessions revoked before Stripe/purge"
+    );
+    return deleted;
+  } finally {
+    client.release();
+  }
+}
 async function deleteAccount(target) {
   const startedAt = /* @__PURE__ */ new Date();
   const { orgId: orgId3 } = target;
   let email = target.email ?? null;
   logger.info({ orgId: orgId3, email }, "[AccountDeletion] Starting");
+  await preKillSessions({ orgId: orgId3, userId: target.userId, email });
   const stripeReport = await cleanupStripe(target.stripeCustomerId, orgId3);
   const { pool: pool2 } = await Promise.resolve().then(() => (init_src(), src_exports));
   const client = await pool2.connect();
