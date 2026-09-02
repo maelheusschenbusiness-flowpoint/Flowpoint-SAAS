@@ -10017,7 +10017,7 @@ function renderBilling() {
         // ── Expiré (canceled / none — ancien abonné) ─────────────────────────
         if (_ss === 'canceled' || (_ss === 'none' && _bs.hadSubscription)) {
           const _resubPlan = (_bs.plan || (STATE.me && STATE.me.plan) || 'standard').toLowerCase();
-          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('⚫ Expiré · Fonctionnalités Premium désactivées')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpGoToPricing('${_resubPlan}')">${fpT('Reprendre un abonnement')}</button></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.</div>${_dangerZone}</div>`;
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('⚫ Expiré · Fonctionnalités Premium désactivées')}</div></div></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.</div>${_dangerZone}</div>`;
         }
 
         // ── États actifs ─────────────────────────────────────────────────────
@@ -48426,7 +48426,18 @@ async function init() {
           showToast('info', fpT('Abonnement résilié. Contactez le support pour finaliser la suppression.'));
           setTimeout(() => { window.location.href = '/signin.html?deleted=1'; }, 2500);
         } else { showToast('error', (r && r.error) || 'Erreur lors de la suppression du compte'); }
-      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible')); }
+      } catch(e) {
+        if (e && e.name === 'AbortError') {
+          // preKillSessions fired and killed the session ~3s into the 60s DELETE.
+          // The browser aborted the in-flight fetch on redirect — treat as success.
+          try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(_) {}
+          try { localStorage.clear(); sessionStorage.clear(); } catch(_) {}
+          showToast('success', fpT('Compte supprimé. Redirection…'));
+          setTimeout(() => { window.location.href = '/signin.html'; }, 400);
+        } else {
+          showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible'));
+        }
+      }
   };
 
   window.openDataDeletionPanel = function(kind) {
@@ -71947,7 +71958,7 @@ function renderGA4ClientMode() {
             <th style="text-align:center">Date</th>
           </tr></thead>
           <tbody>
-            ${audits.map(a => {
+            ${audits.filter(a => a != null && typeof a === 'object').map(a => {
               const sc = Number(a.score) || 0;
               const color = sc >= 80 ? '#22c55e' : sc >= 60 ? '#f59e0b' : '#ef4444';
               return `<tr>
@@ -71980,7 +71991,7 @@ function renderGA4ClientMode() {
               <th style="text-align:center">Télécharger</th>
             </tr></thead>
             <tbody>
-              ${reports.map(r => `<tr>
+              ${reports.filter(r => r != null && typeof r === 'object').map(r => `<tr>
                 <td style="font-weight:600;font-size:11px">${escHtml(String(r.name||'—'))}</td>
                 <td style="text-align:center">${badge(String(r.type||'PDF').toUpperCase(), '#2563EB')}</td>
                 <td style="text-align:center;color:var(--fp-text-faint);font-size:11px">${escHtml(String(r.date||'—'))}</td>

@@ -1786,6 +1786,64 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     }
   })();
 
+  // Fire-and-forget: auto-reactivate canceled subscription on login
+  // Idempotent — if the subscription is already active in Stripe, we just sync DB.
+  // Does NOT grant a new trial (canStartTrial remains false).
+  (async () => {
+    try {
+      const orgRow = await pool.query<{ subscription_status: string; stripe_customer_id: string | null }>(
+        `SELECT subscription_status, stripe_customer_id FROM organizations WHERE id = $1`,
+        [sessionOrgId]
+      );
+      const org = orgRow.rows[0];
+      if (!org || org.subscription_status !== "canceled") return;
+      const customerId = org.stripe_customer_id;
+      if (!customerId) return;
+
+      const stripeKey = process.env["STRIPE_LIVE_API_KEY"] ?? process.env["STRIPE_SECRET_KEY"] ?? "";
+      if (!stripeKey) {
+        // Mock / dev mode: restore to trialing so dashboard isn't permanently locked
+        await pool.query(`UPDATE organizations SET subscription_status = 'trialing' WHERE id = $1`, [sessionOrgId]);
+        logger.info({ orgId: sessionOrgId }, "[Auth/Reactivate] Mock mode: restored to trialing on login");
+        return;
+      }
+
+      const { createStripeClient: _createStripe } = await import("../services/stripe-factory.js");
+      const stripe = await _createStripe(stripeKey);
+
+      // Idempotency check: if an active/trialing sub already exists, just sync DB
+      const [activeSubs, trialSubs] = await Promise.all([
+        stripe.subscriptions.list({ customer: customerId, status: "active",   limit: 1 }),
+        stripe.subscriptions.list({ customer: customerId, status: "trialing", limit: 1 }),
+      ]);
+      if (activeSubs.data.length > 0) {
+        await pool.query(`UPDATE organizations SET subscription_status = 'active' WHERE id = $1`, [sessionOrgId]);
+        logger.info({ orgId: sessionOrgId }, "[Auth/Reactivate] Active sub found in Stripe — DB synced");
+        return;
+      }
+      if (trialSubs.data.length > 0) {
+        await pool.query(`UPDATE organizations SET subscription_status = 'trialing' WHERE id = $1`, [sessionOrgId]);
+        logger.info({ orgId: sessionOrgId }, "[Auth/Reactivate] Trialing sub found in Stripe — DB synced");
+        return;
+      }
+
+      // Look for cancel_at_period_end subscriptions to reverse
+      const allSubs = await stripe.subscriptions.list({ customer: customerId, limit: 10 });
+      const cancelSub = allSubs.data.find(
+        (s: { cancel_at_period_end: boolean; status: string }) => s.cancel_at_period_end && (s.status === "active" || s.status === "trialing")
+      );
+      if (cancelSub) {
+        await stripe.subscriptions.update(cancelSub.id, { cancel_at_period_end: false });
+        const newStatus = cancelSub.status === "trialing" ? "trialing" : "active";
+        await pool.query(`UPDATE organizations SET subscription_status = $1 WHERE id = $2`, [newStatus, sessionOrgId]);
+        logger.info({ orgId: sessionOrgId, subId: cancelSub.id, newStatus }, "[Auth/Reactivate] Reversed cancel_at_period_end on login");
+      }
+      // No reactivatable Stripe sub found: leave as canceled — dashboard shows upgrade CTA
+    } catch (reactivateErr) {
+      logger.warn({ err: reactivateErr instanceof Error ? reactivateErr.message : String(reactivateErr) }, "login-verify: auto-reactivation failed (non-fatal)");
+    }
+  })();
+
   // NOTE: Address backfill from pending_signups was removed.
   // A safe implementation requires a durable org_id column on the consumed
   // pending_signups row so the query can be scoped to the correct organisation.
