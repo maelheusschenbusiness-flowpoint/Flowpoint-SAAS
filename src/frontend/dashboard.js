@@ -10017,7 +10017,7 @@ function renderBilling() {
         // ── Expiré (canceled / none — ancien abonné) ─────────────────────────
         if (_ss === 'canceled' || (_ss === 'none' && _bs.hadSubscription)) {
           const _resubPlan = (_bs.plan || (STATE.me && STATE.me.plan) || 'standard').toLowerCase();
-          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('⚫ Expiré · Fonctionnalités Premium désactivées')}</div></div></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.</div>${_dangerZone}</div>`;
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('⚫ Expiré · Fonctionnalités Premium désactivées')}</div></div></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">${fpT('Ton abonnement a expiré. Tes données sont conservées.')}</div>${_dangerZone}</div>`;
         }
 
         // ── États actifs ─────────────────────────────────────────────────────
@@ -63345,7 +63345,7 @@ function renderGA4Conversion() {
       <div style="font-size:48px;margin-bottom:16px">🔒</div>
       <div style="font-size:17px;font-weight:700;color:var(--fp-text);margin-bottom:8px">${fpT('Fonctionnalité Premium')}</div>
       <div style="font-size:13px;color:var(--fp-text-muted);max-width:420px;margin:0 auto 20px">${fpT('La Conversion GA4 est réservée aux abonnés actifs. Reprenez un abonnement pour accéder à vos données.')}</div>
-      <button class="fp-btn fp-btn-primary" onclick="fpGoToPricing('standard')" style="min-width:180px">${fpT('Reprendre un abonnement')}</button>
+      <button class="fp-btn fp-btn-primary" onclick="fpGoToPricing('standard')" style="min-width:180px">${fpT('Choisir un abonnement')}</button>
     </div>`;
   }
 
@@ -71902,11 +71902,11 @@ function renderGA4ClientMode() {
       </div>`;
   }
 
-  const kpis = cmSt.kpis || {};
-  const reports = cmSt.reports || [];
-  const audits = cmSt.audits || [];
-  const status = cmSt.status || {};
-  const perms = status.permissions || {};
+  const kpis = (cmSt.kpis != null && typeof cmSt.kpis === 'object' && !Array.isArray(cmSt.kpis)) ? cmSt.kpis : {};
+  const reports = Array.isArray(cmSt.reports) ? cmSt.reports : [];
+  const audits = Array.isArray(cmSt.audits) ? cmSt.audits : [];
+  const status = (cmSt.status != null && typeof cmSt.status === 'object') ? cmSt.status : {};
+  const perms = (status.permissions != null && typeof status.permissions === 'object') ? status.permissions : {};
 
   const permsBanner = `
     <div style="padding:12px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">

@@ -95,6 +95,8 @@ export default defineConfig({
       // Task #628 — Agency Lab / client-mode backend reliability: SQL/schema
       // failures surface (no silent empty arrays), genuine empty states preserved.
       "src/services/client-mode-service.test.ts",
+      // Reactivation service: 14 cases covering Stripe idempotency, plan prices, concurrency
+      "src/tests/reactivate-subscription.test.ts",
     ],
     environment: "node",
     globals:     false,
