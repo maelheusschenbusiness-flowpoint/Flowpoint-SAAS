@@ -1549,6 +1549,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     // A trial checkout may create the Stripe customer before the activation
     // webhook creates the UUID organization; persistOrgData mirrors safely for
     // pre-registration IDs and writes organizations for authenticated accounts.
+    const _UUID_RE_FC = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     try {
       const { persistOrgData: persistCheckoutCustomer } = await import("../services/org-data.js");
       await persistCheckoutCustomer(_authenticatedOrgId, { stripeCustomerId: customerId! });
@@ -1558,6 +1559,32 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       // persistence/webhook remains a recovery path, but make the gap visible.
       logger.error({ customerPersistErr, orgId: _authenticatedOrgId, customerId },
         "[PublicBilling] finalize: could not link Stripe customer to organization");
+    }
+
+    // P0 UUID anchor: when _authenticatedOrgId is email-keyed (pre-register flow),
+    // the persist above writes to org_settings[email] only. Also anchor the customer ID
+    // to the UUID org so ESC finds it on re-subscription without creating a duplicate.
+    let _fcResolvedUuidEarly: string | null = null;
+    if (!_UUID_RE_FC.test(_authenticatedOrgId) && customerId) {
+      try {
+        const { pool: _fcUuidEarlyPool } = await import("@workspace/db");
+        const _fcUuidEarlyC = await _fcUuidEarlyPool.connect();
+        try {
+          const _fcUuidEarlyR = await _fcUuidEarlyC.query<{ id: string }>(
+            `SELECT id::text FROM organizations WHERE lower(owner_email) = lower($1) LIMIT 1`,
+            [_authenticatedOrgId]
+          );
+          _fcResolvedUuidEarly = _fcUuidEarlyR.rows[0]?.id ?? null;
+        } finally { _fcUuidEarlyC.release(); }
+
+        if (_fcResolvedUuidEarly) {
+          const { persistOrgData: _fcPodUuidEarly } = await import("../services/org-data.js");
+          await _fcPodUuidEarly(_fcResolvedUuidEarly, { stripeCustomerId: customerId! });
+          logger.info({ orgId: _fcResolvedUuidEarly, customerId }, "[PublicBilling] finalize: Stripe customer anchored to UUID org (pre-register path)");
+        }
+      } catch (_fcUuidEarlyErr) {
+        logger.warn({ _fcUuidEarlyErr, orgId: _authenticatedOrgId }, "[PublicBilling] finalize: UUID org early anchor failed (non-fatal)");
+      }
     }
 
     /* ── Enrich Customer: merge Stripe Address Element data + pending_signups ──
@@ -1761,6 +1788,56 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       logger.info({ orgId: _authenticatedOrgId, planKey }, "[PublicBilling] finalize: subscription persisted to DB");
     } catch (_fcPodErr) {
       logger.warn({ _fcPodErr }, "[PublicBilling] finalize: persistOrgData non-fatal (webhook will sync)");
+    }
+
+    // P0 UUID anchor (full billing state): for pre-register flow (_authenticatedOrgId = email)
+    // all persists above went to org_settings[email]. Look up the UUID org (created by
+    // activateNewSignup from the PI.succeeded webhook) and anchor the full billing state so
+    // subsequent ESC calls find the canonical customer without creating a duplicate.
+    if (!_UUID_RE_FC.test(_authenticatedOrgId) && customerId) {
+      try {
+        const _fcAnchorUuid = _fcResolvedUuidEarly ?? await (async () => {
+          const { pool: _fcUuidFinalPool } = await import("@workspace/db");
+          const _fcUuidFinalC = await _fcUuidFinalPool.connect();
+          try {
+            const _r = await _fcUuidFinalC.query<{ id: string }>(
+              `SELECT id::text FROM organizations WHERE lower(owner_email) = lower($1) LIMIT 1`,
+              [_authenticatedOrgId]
+            );
+            return _r.rows[0]?.id ?? null;
+          } finally { _fcUuidFinalC.release(); }
+        })();
+
+        if (_fcAnchorUuid) {
+          const { persistOrgData: _fcPodFull } = await import("../services/org-data.js");
+          await _fcPodFull(_fcAnchorUuid, {
+            stripeCustomerId:     customerId!,
+            stripeSubscriptionId: planSubscription.id,
+            subscriptionStatus:   grantTrial ? "trialing" : "active",
+            plan:                 planKey,
+            trialConsumedAt:      new Date().toISOString(),
+            ...(trialEndUnix !== undefined ? { trialEndsAt: new Date(trialEndUnix * 1000).toISOString() } : {}),
+          });
+          logger.info({ orgId: _fcAnchorUuid, customerId, planKey }, "[PublicBilling] finalize: full billing state anchored to UUID org");
+        }
+      } catch (_fcAnchorErr) {
+        logger.warn({ _fcAnchorErr, orgId: _authenticatedOrgId }, "[PublicBilling] finalize: UUID org full anchor failed (non-fatal)");
+      }
+    }
+
+    // Normalize Stripe customer metadata to canonical orgId (UUID when known, email otherwise).
+    // This ensures ESC Step 3 (stripe.customers.search by metadata.orgId) finds the customer
+    // on re-subscription when the org UUID is already in place.
+    try {
+      const _metaNormOrgId = _UUID_RE_FC.test(_authenticatedOrgId)
+        ? _authenticatedOrgId
+        : (_fcResolvedUuidEarly ?? _authenticatedOrgId);
+      await stripe.customers.update(customerId!, {
+        metadata: { orgId: _metaNormOrgId, org_id: _metaNormOrgId, flowpointOrgId: _metaNormOrgId },
+      });
+      logger.info({ customerId, orgId: _metaNormOrgId }, "[PublicBilling] finalize: Stripe customer metadata normalized");
+    } catch (_metaNormErr) {
+      logger.warn({ _metaNormErr, customerId }, "[PublicBilling] finalize: metadata normalization non-fatal");
     }
 
     // ── Pre-registration: activate new user account and deliver magic link ────

@@ -99,6 +99,8 @@ export default defineConfig({
       "src/tests/reactivate-subscription.test.ts",
       // P0 billing legacy mapping: A-G (legacy customer reuse, trial gate, webhook sub ID)
       "src/tests/billing-legacy-customer.test.ts",
+      // P0 pre-register customer reuse + trial anchor: Tests A-F
+      "src/tests/billing-preregister-customer.test.ts",
     ],
     environment: "node",
     globals:     false,

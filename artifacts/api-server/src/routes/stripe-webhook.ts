@@ -596,6 +596,26 @@ export async function activateNewSignup(opts: {
     activateClient.release();
   }
 
+  // ── 3b. Normalize Stripe customer metadata to UUID (fire-and-forget) ──────
+  // The pre-register flow stamps metadata.orgId = email at customer creation time
+  // (before the UUID org exists). Now that we have orgUUID, update the metadata so
+  // ESC Step 3 (metadata['orgId']:UUID search) can find this customer on re-subscription.
+  if (customerId && orgUUID && orgUUID !== orgId) {
+    const _stripeKeyForMeta = getStripeKey();
+    if (_stripeKeyForMeta) {
+      import("stripe").then(({ default: _StripeClass }) => {
+        const _stripeMeta = new _StripeClass(_stripeKeyForMeta, { apiVersion: "2026-04-22.dahlia" });
+        return _stripeMeta.customers.update(customerId!, {
+          metadata: { orgId: orgUUID, org_id: orgUUID, flowpointOrgId: orgUUID },
+        });
+      }).then(() => {
+        logger.info({ customerId, orgUUID }, "[Webhook/activate] Stripe customer metadata normalized to UUID");
+      }).catch((_metaErr: unknown) => {
+        logger.warn({ _metaErr, customerId, orgUUID }, "[Webhook/activate] Stripe customer metadata normalization failed (non-fatal)");
+      });
+    }
+  }
+
   // ── 4. Generate magic link token (24h TTL) ───────────────────────────────
   const magicToken = randomBytes(32).toString("hex");
   const tokenClient = await pgPool.connect();
@@ -1376,18 +1396,31 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // For setup_intent (0€ plan-only) always trial; for payment_intent also trial (add-ons don't count)
       const piSelectedPlan = piPlan || "standard";
 
-      // The Stripe customer may not exist yet (created by finalize-checkout).
-      // Pass undefined so organizations.stripe_customer_id is left NULL until
-      // the customer.subscription.created webhook links it.
+      // Pass the actual Stripe customer ID so activateNewSignup can anchor it to
+      // organizations.stripe_customer_id immediately. Previously this was undefined,
+      // which left the column NULL and forced ESC to create a duplicate customer on
+      // re-subscription (P0 pre-register customer reuse bug).
+      const _piCustomerId = obj["customer"] ? String(obj["customer"]) : undefined;
       activateNewSignup({
         preRegToken:  piPreRegToken,
         orgId:        piOrgId,
-        customerId:   undefined,
+        customerId:   _piCustomerId,
         selectedPlan: piSelectedPlan,
         isTrial:      true,  // all new signups start with a trial
       }).catch(e => logger.error({ e, orgId: piOrgId, type: event.type }, "[Webhook] new-signup activation via intent failed"));
 
-      logger.info({ type: event.type, orgId: piOrgId, plan: piSelectedPlan }, "[Webhook] New-signup activation queued from intent");
+      // Safety net: also persist stripe_customer_id to org_settings[email] so ESC
+      // legacy fallback (Step 2) finds it even if finalize-checkout was never called
+      // (e.g. user abandoned checkout after payment authorisation).
+      if (_piCustomerId && piOrgId) {
+        import("../services/org-data.js").then(({ persistOrgData: _piPod }) =>
+          _piPod(piOrgId, { stripeCustomerId: _piCustomerId })
+        ).catch(_piPodErr =>
+          logger.warn({ _piPodErr, piOrgId }, "[Webhook] PI.succeeded: persistOrgData safety net failed (non-fatal)")
+        );
+      }
+
+      logger.info({ type: event.type, orgId: piOrgId, customerId: _piCustomerId, plan: piSelectedPlan }, "[Webhook] New-signup activation queued from intent");
       break;
     }
 
@@ -1459,10 +1492,10 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // ── Verify DB plan after persist ─────────────────────────────────────
       if (newPlan) {
         let _dbPlanAfter: string | null = null;
+        const _UUID_RE_PA = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         try {
           const { pool: _pgPool_pa } = await import("@workspace/db");
           const _pac = await _pgPool_pa.connect();
-          const _UUID_RE_PA = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           try {
             if (_UUID_RE_PA.test(orgId)) {
               const _ar = await _pac.query<{ plan: string }>(`SELECT plan FROM organizations WHERE id = $1`, [orgId]);
