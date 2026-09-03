@@ -7,7 +7,7 @@ function sha256hex(s: string): string {
 }
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
-import { reactivateSubscriptionAfterLogin } from "../services/reactivate-subscription.js";
+
 import { createSession, deleteSession, getSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
 import { authRateLimit } from "../middlewares/rateLimiter.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
@@ -1787,12 +1787,10 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     }
   })();
 
-  // Await reactivation BEFORE sending the redirect so the user arrives at the
-  // dashboard with the correct subscription status already resolved in Stripe.
-  // The service catches all its own errors and never throws; a Stripe failure
-  // leaves subscription_status = 'canceled' in the DB and the dashboard shows
-  // the upgrade CTA — never a false premium state.
-  await reactivateSubscriptionAfterLogin(sessionOrgId, "magic-link");
+  // Reactivation on login has been intentionally removed.
+  // A canceled account is left as-is; the user is presented with a clear
+  // re-subscription flow in the dashboard (Billing → Plans → Stripe Checkout)
+  // so reactivation is always an explicit, consent-driven action.
 
   // NOTE: Address backfill from pending_signups was removed.
   // A safe implementation requires a durable org_id column on the consumed
@@ -2058,8 +2056,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
 
-    // Same as magic-link: await so the user arrives with correct billing state.
-    await reactivateSubscriptionAfterLogin(googleIdentity.orgId, "google-oauth");
+    // Reactivation on login intentionally removed — see magic-link comment above.
 
     const isProd = isDeployedProd();
     res.cookie("fp_token", sessionToken, {

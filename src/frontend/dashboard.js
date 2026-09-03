@@ -10016,8 +10016,7 @@ function renderBilling() {
 
         // ── Expiré (canceled / none — ancien abonné) ─────────────────────────
         if (_ss === 'canceled' || (_ss === 'none' && _bs.hadSubscription)) {
-          const _resubPlan = (_bs.plan || (STATE.me && STATE.me.plan) || 'standard').toLowerCase();
-          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('⚫ Expiré · Fonctionnalités Premium désactivées')}</div></div></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">${fpT('Ton abonnement a expiré. Tes données sont conservées.')}</div>${_dangerZone}</div>`;
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('⚫ Expiré · Fonctionnalités Premium désactivées')}</div></div></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">${fpT('Ton abonnement a expiré. Tes données sont conservées.')}<br><br>${fpT('Choisis un plan ci-dessous pour reprendre ton accès Premium — tes projets, audits et données restent intacts.')}</div><button class="fp-btn fp-btn-primary" style="width:100%;margin-bottom:8px" onclick="navigateSub('plans')">${fpT('Choisir un plan et reprendre →')}</button>${_dangerZone}</div>`;
         }
 
         // ── États actifs ─────────────────────────────────────────────────────
@@ -15854,6 +15853,35 @@ function _doRender() {
     closeCtxMenu();
     updatePlanSwitcher();
     if (window.fpSyncAiBadge) window.fpSyncAiBadge();
+    window.fpHideNavSpinner();
+    return;
+  }
+
+  // ── Canceled-account gate: only billing / settings allowed ──────────────────
+  // A canceled subscription locks ALL premium routes. The user must explicitly
+  // go through Billing → Plans → Stripe Checkout to regain access.
+  // No automatic reactivation occurs at login.
+  const _fpGateStatus = (function() {
+    const b = STATE.billing || {};
+    const m = STATE.me || {};
+    return (b.subscriptionStatus || b.status || m.subscriptionStatus || '').toLowerCase();
+  })();
+  const _FP_CANCELED_OPEN = new Set(['billing', 'settings', 'addons', 'automations', 'integrations', 'account', 'security']);
+  if (_fpGateStatus === 'canceled' && !_FP_CANCELED_OPEN.has(STATE.route)) {
+    const page = $('#fp-page');
+    if (page) page.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center;padding:40px 24px">
+      <div style="font-size:52px">⛔</div>
+      <div style="font-size:20px;font-weight:700;color:var(--fp-text)">${fpT('Abonnement expiré')}</div>
+      <div style="font-size:13px;color:var(--fp-text-muted);max-width:440px;line-height:1.6">
+        ${fpT('Votre abonnement a expiré. Vos données sont conservées — projets, audits et paramètres restent intacts.')}
+        <br><br>
+        ${fpT('Choisissez un plan pour retrouver un accès complet à toutes les fonctionnalités.')}
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:8px">
+        <button class="fp-btn fp-btn-primary" style="min-width:220px" onclick="navigate('billing');setTimeout(function(){navigateSub('plans')},80)">${fpT('Choisir un plan →')}</button>
+        <button class="fp-btn fp-btn-ghost" onclick="navigate('billing')">${fpT('Voir ma facturation')}</button>
+      </div>
+    </div>`;
     window.fpHideNavSpinner();
     return;
   }
