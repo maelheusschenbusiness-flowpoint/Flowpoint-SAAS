@@ -1787,10 +1787,12 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     }
   })();
 
-  // Fire-and-forget: auto-reactivate canceled subscription on login.
-  // Canonical service handles all Stripe cases including creating a new sub
-  // when all previous subscriptions are truly canceled.
-  reactivateSubscriptionAfterLogin(sessionOrgId, "magic-link");
+  // Await reactivation BEFORE sending the redirect so the user arrives at the
+  // dashboard with the correct subscription status already resolved in Stripe.
+  // The service catches all its own errors and never throws; a Stripe failure
+  // leaves subscription_status = 'canceled' in the DB and the dashboard shows
+  // the upgrade CTA — never a false premium state.
+  await reactivateSubscriptionAfterLogin(sessionOrgId, "magic-link");
 
   // NOTE: Address backfill from pending_signups was removed.
   // A safe implementation requires a durable org_id column on the consumed
@@ -2056,8 +2058,8 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
 
-    // Fire-and-forget: same reactivation service as magic-link path.
-    reactivateSubscriptionAfterLogin(googleIdentity.orgId, "google-oauth");
+    // Same as magic-link: await so the user arrives with correct billing state.
+    await reactivateSubscriptionAfterLogin(googleIdentity.orgId, "google-oauth");
 
     const isProd = isDeployedProd();
     res.cookie("fp_token", sessionToken, {

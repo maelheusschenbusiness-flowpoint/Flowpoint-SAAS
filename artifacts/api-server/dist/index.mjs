@@ -107085,9 +107085,162 @@ init_stripe_webhook();
 var import_express5 = __toESM(require_express2(), 1);
 init_store();
 init_logger();
+import { randomBytes as randomBytes2, randomUUID as randomUUID2, createHash as createHash2, createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify } from "crypto";
+
+// src/services/reactivate-subscription.ts
+init_src();
+init_logger();
+init_stripe_factory();
+init_plans();
+function stripeStatusToFP(stripeStatus) {
+  if (stripeStatus === "active") return "active";
+  if (stripeStatus === "trialing") return "trialing";
+  return null;
+}
+async function reactivateSubscriptionAfterLogin(orgId3, caller) {
+  if (!orgId3) return;
+  try {
+    const orgRow = await pool.query(
+      `SELECT subscription_status, stripe_customer_id, plan
+         FROM organizations WHERE id = $1`,
+      [orgId3]
+    );
+    const org16 = orgRow.rows[0];
+    if (!org16) {
+      logger.warn({ orgId: orgId3, caller }, "[Reactivate] org not found \u2014 skip");
+      return;
+    }
+    if (org16.subscription_status !== "canceled") {
+      return;
+    }
+    const customerId = org16.stripe_customer_id;
+    if (!customerId) {
+      logger.info(
+        { orgId: orgId3, caller },
+        "[Reactivate] no stripe_customer_id \u2014 leaving canceled"
+      );
+      return;
+    }
+    const stripeKey = getStripeKey();
+    if (!stripeKey) {
+      logger.warn({ orgId: orgId3, caller }, "[Reactivate] no Stripe key configured \u2014 skip");
+      return;
+    }
+    const stripe = await createStripeClient(stripeKey);
+    const isTestMode = stripeKey.startsWith("sk_test_");
+    const [activeSubs, trialSubs] = await Promise.all([
+      stripe.subscriptions.list({ customer: customerId, status: "active", limit: 1 }),
+      stripe.subscriptions.list({ customer: customerId, status: "trialing", limit: 1 })
+    ]);
+    if (activeSubs.data.length > 0) {
+      await pool.query(
+        `UPDATE organizations SET subscription_status = 'active' WHERE id = $1`,
+        [orgId3]
+      );
+      logger.info(
+        { orgId: orgId3, caller, subId: activeSubs.data[0].id },
+        "[Reactivate] Active sub found in Stripe \u2014 synced DB to active"
+      );
+      return;
+    }
+    if (trialSubs.data.length > 0) {
+      await pool.query(
+        `UPDATE organizations SET subscription_status = 'trialing' WHERE id = $1`,
+        [orgId3]
+      );
+      logger.info(
+        { orgId: orgId3, caller, subId: trialSubs.data[0].id },
+        "[Reactivate] Trialing sub found in Stripe \u2014 synced DB to trialing"
+      );
+      return;
+    }
+    const allSubs = await stripe.subscriptions.list({
+      customer: customerId,
+      limit: 10,
+      expand: ["data.items"]
+    });
+    const cancelPendingSub = allSubs.data.find(
+      (s) => s.cancel_at_period_end && (s.status === "active" || s.status === "trialing")
+    );
+    if (cancelPendingSub) {
+      await stripe.subscriptions.update(cancelPendingSub.id, {
+        cancel_at_period_end: false
+      });
+      const fpStatus2 = cancelPendingSub.status === "trialing" ? "trialing" : "active";
+      await pool.query(
+        `UPDATE organizations SET subscription_status = $1 WHERE id = $2`,
+        [fpStatus2, orgId3]
+      );
+      logger.info(
+        { orgId: orgId3, caller, subId: cancelPendingSub.id, fpStatus: fpStatus2 },
+        "[Reactivate] Reversed cancel_at_period_end \u2014 synced DB"
+      );
+      return;
+    }
+    const canceledSubs = allSubs.data.filter((s) => s.status === "canceled").sort(
+      (a, b) => (b.canceled_at ?? 0) - (a.canceled_at ?? 0)
+    );
+    const latestCanceledSub = canceledSubs[0];
+    if (!latestCanceledSub) {
+      logger.info(
+        { orgId: orgId3, caller, customerId },
+        "[Reactivate] No Stripe subscription history \u2014 leaving canceled"
+      );
+      return;
+    }
+    const idempotencyKey = `reactivate:${orgId3}:${latestCanceledSub.id}`;
+    const planName = (org16.plan || "standard").toLowerCase();
+    const priceIds = isTestMode ? PLAN_PRICE_IDS_TEST : PLAN_PRICE_IDS;
+    const priceId = priceIds[planName] || priceIds["standard"];
+    if (!priceId) {
+      logger.warn(
+        { orgId: orgId3, caller, planName, isTestMode },
+        "[Reactivate] No price ID found for plan \u2014 leaving canceled"
+      );
+      return;
+    }
+    logger.info(
+      { orgId: orgId3, caller, customerId, planName, priceId, idempotencyKey },
+      "[Reactivate] Creating new Stripe subscription for formerly-canceled account"
+    );
+    const newSub = await stripe.subscriptions.create(
+      {
+        customer: customerId,
+        items: [{ price: priceId }],
+        metadata: { org_id: orgId3, plan: planName, reactivated_by: caller }
+        // payment_behavior: 'default_incomplete' would allow no-payment-method.
+        // We intentionally omit it so Stripe uses the customer's default method.
+        // If no method is available, Stripe returns status=incomplete — handled below.
+      },
+      { idempotencyKey }
+    );
+    const fpStatus = stripeStatusToFP(newSub.status);
+    if (fpStatus) {
+      await pool.query(
+        `UPDATE organizations SET subscription_status = $1 WHERE id = $2`,
+        [fpStatus, orgId3]
+      );
+      logger.info(
+        { orgId: orgId3, caller, subId: newSub.id, stripeStatus: newSub.status, fpStatus },
+        "[Reactivate] New subscription created \u2014 DB synced"
+      );
+    } else {
+      logger.warn(
+        { orgId: orgId3, caller, subId: newSub.id, stripeStatus: newSub.status },
+        "[Reactivate] New sub created but status not promotable \u2014 DB stays canceled"
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      { orgId: orgId3, caller, err: err instanceof Error ? err.message : String(err) },
+      "[Reactivate] reactivateSubscriptionAfterLogin failed (non-fatal)"
+    );
+  }
+}
+
+// src/routes/auth.ts
 init_sessions();
 init_rateLimiter();
-import { randomBytes as randomBytes2, randomUUID as randomUUID2, createHash as createHash2, createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify } from "crypto";
 init_dist();
 init_src();
 init_org_settings();
@@ -108440,6 +108593,7 @@ async function handleLoginVerify(tokenRaw, req, res) {
       logger.warn({ err: stripeErr instanceof Error ? stripeErr.message : String(stripeErr) }, "login-verify: ensureStripeCustomer failed (non-fatal)");
     }
   })();
+  await reactivateSubscriptionAfterLogin(sessionOrgId, "magic-link");
 }
 router5.get("/auth/login-verify", (req, res) => {
   return handleLoginVerify(req.query["token"], req, res);
@@ -108632,6 +108786,7 @@ router5.get("/auth/google/callback", async (req, res) => {
       ipAddress: req.ip ?? void 0,
       userAgent: req.headers["user-agent"] ?? void 0
     });
+    await reactivateSubscriptionAfterLogin(googleIdentity.orgId, "google-oauth");
     const isProd2 = isDeployedProd();
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
@@ -108762,16 +108917,8 @@ router5.post("/auth/session-restore", async (req, res) => {
     if (session) {
       provided = bearerToken;
       logger.debug({ ...restoreLogBase, via: "bearer", orgId: session.orgId?.slice(0, 8) }, "[Auth/session-restore] Resolved via Bearer");
-    } else if (cookieToken && cookieToken !== bearerToken) {
-      session = await getSession(cookieToken);
-      if (session) {
-        provided = cookieToken;
-        logger.info({ ...restoreLogBase, via: "cookie-fallback", orgId: session.orgId?.slice(0, 8) }, "[Auth/session-restore] Bearer stale \u2014 recovered via cookie");
-      } else {
-        logger.warn({ ...restoreLogBase, via: "none" }, "[Auth/session-restore] Both Bearer and cookie invalid \u2014 getSession returned null for both");
-      }
     } else {
-      logger.warn({ ...restoreLogBase, via: "bearer-only", sameToken: cookieToken === bearerToken }, "[Auth/session-restore] Bearer invalid and no separate cookie to try");
+      logger.warn({ ...restoreLogBase, via: "bearer-invalid" }, "[Auth/session-restore] Bearer invalid/stale \u2014 returning 401 (no cookie fallback)");
     }
   } else if (cookieToken) {
     session = await getSession(cookieToken);
@@ -112222,17 +112369,18 @@ async function streamReportPdf(res, report, audit, meetingNotes, monitors = [], 
     doc.pipe(res);
     doc.on("error", reject);
     res.on("finish", resolve4);
-    const wl = branding && branding.agencyName ? branding : null;
+    const wl = branding && (branding.agencyName || branding.hideFlowpointBranding) ? branding : null;
     const BRAND2 = wl?.primaryColor && /^#[0-9a-fA-F]{6}$/.test(wl.primaryColor) ? wl.primaryColor : "#2563EB";
     const BRAND_L = lighten(BRAND2, 0.88);
+    const SECONDARY = wl?.secondaryColor && /^#[0-9a-fA-F]{6}$/.test(wl.secondaryColor) ? wl.secondaryColor : BRAND2;
     const GREEN = "#22c55e";
     const AMBER = "#f59e0b";
     const RED = "#ef4444";
     const GRAY = "#6b7280";
     const DARK = "#111827";
     const WHITE = "#ffffff";
-    const brandName = (wl?.agencyName || "").trim() || "FlowPoint";
-    const footerMsg = (wl?.footerMsg || "").trim() || `${brandName} \u2014 Rapport confidentiel`;
+    const brandName = (wl?.agencyName || "").trim() || (wl?.hideFlowpointBranding ? "" : "FlowPoint");
+    const footerMsg = (wl?.footerMsg || "").trim() || (brandName ? `${brandName} \u2014 Rapport confidentiel` : "Rapport confidentiel");
     const MARGIN = 45;
     const PAGE_W = doc.page.width;
     const PAGE_H = doc.page.height;
@@ -112266,7 +112414,7 @@ async function streamReportPdf(res, report, audit, meetingNotes, monitors = [], 
         doc.y = HEADER_H + 20;
       }
       const sY = doc.y;
-      doc.rect(MARGIN, sY, 4, 18).fill(BRAND2);
+      doc.rect(MARGIN, sY, 4, 18).fill(SECONDARY);
       doc.fillColor(DARK).fontSize(13).font("Helvetica-Bold").text(title, MARGIN + 10, sY + 1, { width: CONTENT_W - 10 });
       doc.moveDown(0.6);
     }
@@ -112686,7 +112834,18 @@ router11.get("/reports/:id/download", async (req, res) => {
   try {
     const pr = await db2(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId3]);
     const wl = pr.rows[0]?.settings?.wlBranding;
-    if (wl && typeof wl === "object") wlBranding = wl;
+    if (wl && typeof wl === "object") {
+      const w = wl;
+      wlBranding = {
+        agencyName: typeof w.agencyName === "string" ? w.agencyName : void 0,
+        logoUrl: typeof w.logoUrl === "string" ? w.logoUrl : void 0,
+        primaryColor: typeof w.primaryColor === "string" ? w.primaryColor : void 0,
+        secondaryColor: typeof w.secondaryColor === "string" ? w.secondaryColor : void 0,
+        footerMsg: typeof w.footerMsg === "string" ? w.footerMsg : void 0,
+        // hideFlowpointBranding is not currently written by the UI; default false
+        hideFlowpointBranding: typeof w.hideFlowpointBranding === "boolean" ? w.hideFlowpointBranding : false
+      };
+    }
   } catch {
   }
   Promise.resolve().then(() => (init_usage_events(), usage_events_exports)).then((m) => m.recordUsageEvent(orgId3, "pdf_export")).catch(() => {

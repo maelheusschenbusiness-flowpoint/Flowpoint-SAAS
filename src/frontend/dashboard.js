@@ -20222,7 +20222,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Fill in all fields",
     "Renseignez au moins la ville ou l'adresse": "Enter at least the city or address",
     "Reporting avancé — Pro requis": "Advanced Reporting — Pro required",
-    "Reprendre un abonnement": "Resume a subscription",
     "Retirer ce membre de l'équipe ?": "Remove this team member?",
     "Retirer ce mot-clé du suivi ?": "Remove this Keyword from tracking?",
     "Retrouvez vos factures dans le portail Stripe": "Find your invoices in the Stripe portal",
@@ -20343,7 +20342,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Status page title",
     "Titre de la tâche…": "Task title…",
     "Titre du RDV": "Meeting title",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Your subscription has expired. Your data is kept. Resubscribe at any time to regain full access.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Your subscription will be canceled at the end of the current period. You retain access until that date.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Your free trial will be canceled immediately. You will lose access to paid features.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Your payment failed. Update your payment method to restore access to Premium features. Your data is kept.",
@@ -23110,7 +23108,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Complete todos los campos",
     "Renseignez au moins la ville ou l'adresse": "Introduce al menos la ciudad o la dirección",
     "Reporting avancé — Pro requis": "Informe avanzado — Pro requerido",
-    "Reprendre un abonnement": "Reanudar una suscripción",
     "Retirer ce membre de l'équipe ?": "¿Eliminar a este miembro del equipo?",
     "Retirer ce mot-clé du suivi ?": "¿Eliminar esta palabra clave del seguimiento?",
     "Retrouvez vos factures dans le portail Stripe": "Encuentra tus facturas en el portal de Stripe",
@@ -23250,7 +23247,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Título de la página de estado",
     "Titre de la tâche…": "Título de la tarea…",
     "Titre du RDV": "Título de la reunión",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Tu suscripción ha expirado. Tus datos se mantienen. Vuelve a suscribirte en cualquier momento para recuperar el acceso completo.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Tu suscripción será cancelada al final del período actual. Mantienes el acceso hasta esa fecha.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Tu prueba gratuita será cancelada de inmediato. Perderás el acceso a las funciones de pago.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Tu pago ha fallado. Actualiza tu método de pago para restaurar el acceso a las funciones Premium. Tus datos se mantienen.",
@@ -26037,7 +26033,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Füllen Sie alle Felder aus",
     "Renseignez au moins la ville ou l'adresse": "Geben Sie mindestens die Stadt oder die Adresse ein",
     "Reporting avancé — Pro requis": "Erweiterte Berichterstattung — Pro erforderlich",
-    "Reprendre un abonnement": "Ein Abonnement fortsetzen",
     "Retirer ce membre de l'équipe ?": "Dieses Teammitglied entfernen?",
     "Retirer ce mot-clé du suivi ?": "Dieses Schlüsselwort aus der Verfolgung entfernen?",
     "Retrouvez vos factures dans le portail Stripe": "Finden Sie Ihre Rechnungen im Stripe-Portal",
@@ -26177,7 +26172,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Statusseiten-Titel",
     "Titre de la tâche…": "Aufgabentitel…",
     "Titre du RDV": "Besprechungstitel",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Ihr Abonnement ist abgelaufen. Ihre Daten werden aufbewahrt. Abonnieren Sie jederzeit erneut, um den vollständigen Zugriff wiederherzustellen.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Ihr Abonnement wird am Ende des aktuellen Zeitraums gekündigt. Sie behalten bis zu diesem Datum den Zugriff.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Ihre kostenlose Testversion wird sofort gekündigt. Sie verlieren den Zugriff auf kostenpflichtige Funktionen.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Ihre Zahlung ist fehlgeschlagen. Aktualisieren Sie Ihre Zahlungsmethode, um den Zugriff auf Premium-Funktionen wiederherzustellen. Ihre Daten werden aufbewahrt.",
@@ -28992,7 +28986,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Compila tutti i campi",
     "Renseignez au moins la ville ou l'adresse": "Inserisci almeno la città o l'indirizzo",
     "Reporting avancé — Pro requis": "Reporting avanzato — Pro richiesto",
-    "Reprendre un abonnement": "Riprendere un abbonamento",
     "Retirer ce membre de l'équipe ?": "Rimuovere questo membro del team?",
     "Retirer ce mot-clé du suivi ?": "Rimuovere questa parola chiave dal monitoraggio?",
     "Retrouvez vos factures dans le portail Stripe": "Trova le tue fatture nel portale Stripe",
@@ -29132,7 +29125,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Titolo della pagina di stato",
     "Titre de la tâche…": "Titolo del compito…",
     "Titre du RDV": "Titolo della riunione",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Il tuo abbonamento è scaduto. I tuoi dati sono conservati. Riabbonati in qualsiasi momento per riottenere l'accesso completo.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Il tuo abbonamento sarà annullato alla fine del periodo attuale. Mantieni l'accesso fino a quella data.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "La tua prova gratuita sarà annullata immediatamente. Perderai l'accesso alle funzionalità a pagamento.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Il tuo pagamento è fallito. Aggiorna il tuo metodo di pagamento per ripristinare l'accesso alle funzionalità Premium. I tuoi dati sono conservati.",
@@ -31928,7 +31920,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Preencha todos os campos",
     "Renseignez au moins la ville ou l'adresse": "Insira pelo menos a cidade ou o endereço",
     "Reporting avancé — Pro requis": "Relatório avançado — Pro necessário",
-    "Reprendre un abonnement": "Retomar uma assinatura",
     "Retirer ce membre de l'équipe ?": "Remover este membro da equipe?",
     "Retirer ce mot-clé du suivi ?": "Remover esta palavra-chave do rastreamento?",
     "Retrouvez vos factures dans le portail Stripe": "Encontre suas faturas no portal Stripe",
@@ -32068,7 +32059,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Título da página de status",
     "Titre de la tâche…": "Título da tarefa…",
     "Titre du RDV": "Título da reunião",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Sua assinatura expirou. Seus dados são mantidos. Reassine a qualquer momento para recuperar o acesso completo.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Sua assinatura será cancelada no final do período atual. Você mantém o acesso até essa data.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Seu teste gratuito será cancelado imediatamente. Você perderá o acesso às funcionalidades pagas.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Seu pagamento falhou. Atualize seu método de pagamento para restaurar o acesso às funcionalidades Premium. Seus dados são mantidos.",
@@ -34864,7 +34854,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Vul alle velden in",
     "Renseignez au moins la ville ou l'adresse": "Voer ten minste de stad of het adres in",
     "Reporting avancé — Pro requis": "Geavanceerde rapportage — Pro vereist",
-    "Reprendre un abonnement": "Een abonnement hervatten",
     "Retirer ce membre de l'équipe ?": "Dit teamlid verwijderen?",
     "Retirer ce mot-clé du suivi ?": "Dit trefwoord uit de tracking verwijderen?",
     "Retrouvez vos factures dans le portail Stripe": "Vind uw facturen in het Stripe-portaal",
@@ -35004,7 +34993,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Statuspagina titel",
     "Titre de la tâche…": "Taak titel…",
     "Titre du RDV": "Vergadering titel",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Je abonnement is verlopen. Je gegevens worden bewaard. Heractiveer op elk moment je abonnement om weer volledige toegang te krijgen.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Je abonnement wordt aan het einde van de huidige periode geannuleerd. Je behoudt toegang tot die datum.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Je gratis proefperiode wordt onmiddellijk geannuleerd. Je verliest toegang tot betaalde functies.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Je betaling is mislukt. Werk je betaalmethode bij om de toegang tot Premium-functies te herstellen. Je gegevens worden bewaard.",
@@ -37800,7 +37788,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Wypełnij wszystkie pola",
     "Renseignez au moins la ville ou l'adresse": "Wprowadź przynajmniej miasto lub adres",
     "Reporting avancé — Pro requis": "Zaawansowane raportowanie — Wymagany Pro",
-    "Reprendre un abonnement": "Wznów subskrypcję",
     "Retirer ce membre de l'équipe ?": "Usunąć tego członka zespołu?",
     "Retirer ce mot-clé du suivi ?": "Usunąć ten słowo kluczowe z monitorowania?",
     "Retrouvez vos factures dans le portail Stripe": "Znajdź swoje faktury w portalu Stripe",
@@ -37940,7 +37927,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Tytuł strony statusu",
     "Titre de la tâche…": "Tytuł zadania…",
     "Titre du RDV": "Tytuł spotkania",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Twoje subskrypcja wygasła. Twoje dane są przechowywane. Wznowisz subskrypcję w dowolnym momencie, aby odzyskać pełny dostęp.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Twoje subskrypcja zostanie anulowana na koniec bieżącego okresu. Zachowujesz dostęp do tej daty.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Twoja bezpłatna wersja próbna zostanie natychmiast anulowana. Stracisz dostęp do płatnych funkcji.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Twoja płatność nie powiodła się. Zaktualizuj swoją metodę płatności, aby przywrócić dostęp do funkcji Premium. Twoje dane są przechowywane.",
@@ -40736,7 +40722,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Fyll i alla fält",
     "Renseignez au moins la ville ou l'adresse": "Ange minst en stad eller adress",
     "Reporting avancé — Pro requis": "Avancerad rapportering — Pro krävs",
-    "Reprendre un abonnement": "Återuppta en prenumeration",
     "Retirer ce membre de l'équipe ?": "Ta bort denna teammedlem?",
     "Retirer ce mot-clé du suivi ?": "Ta bort detta nyckelord från spårning?",
     "Retrouvez vos factures dans le portail Stripe": "Hitta dina fakturor i Stripe-portalen",
@@ -40876,7 +40861,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Status sidtitel",
     "Titre de la tâche…": "Uppgiftstitel…",
     "Titre du RDV": "Mötestitel",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Ditt abonnemang har löpt ut. Dina data sparas. Återprenumerera när som helst för att återfå full tillgång.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Ditt abonnemang kommer att avbrytas i slutet av den aktuella perioden. Du behåller åtkomst fram till det datumet.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Din gratis provperiod kommer att avbrytas omedelbart. Du kommer att förlora tillgången till betalda funktioner.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Din betalning misslyckades. Uppdatera din betalningsmetod för att återfå tillgång till Premium-funktioner. Dina data sparas.",
@@ -43672,7 +43656,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Completați toate câmpurile",
     "Renseignez au moins la ville ou l'adresse": "Introduceți cel puțin orașul sau adresa",
     "Reporting avancé — Pro requis": "Raportare avansată — Pro necesar",
-    "Reprendre un abonnement": "Reactivare abonament",
     "Retirer ce membre de l'équipe ?": "Îndepărtați acest membru din echipă?",
     "Retirer ce mot-clé du suivi ?": "Îndepărtați acest cuvânt cheie din urmărire?",
     "Retrouvez vos factures dans le portail Stripe": "Găsiți facturile dvs. în portalul Stripe",
@@ -43812,7 +43795,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Titlul paginii de stare",
     "Titre de la tâche…": "Titlul sarcinii…",
     "Titre du RDV": "Titlul întâlnirii",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Abonamentul tău a expirat. Datele tale sunt păstrate. Reabonează-te în orice moment pentru a recâștiga accesul complet.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Abonamentul tău va fi anulat la sfârșitul perioadei curente. Păstrezi accesul până la acea dată.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Proba ta gratuită va fi anulată imediat. Vei pierde accesul la funcțiile plătite.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Plata ta a eșuat. Actualizează-ți metoda de plată pentru a restabili accesul la funcțiile Premium. Datele tale sunt păstrate.",
@@ -46608,7 +46590,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Vyplňte všechna pole",
     "Renseignez au moins la ville ou l'adresse": "Zadejte alespoň město nebo adresu",
     "Reporting avancé — Pro requis": "Pokročilé reportování — Pro vyžadováno",
-    "Reprendre un abonnement": "Obnovit předplatné",
     "Retirer ce membre de l'équipe ?": "Odebrat tohoto člena týmu?",
     "Retirer ce mot-clé du suivi ?": "Odebrat toto klíčové slovo z sledování?",
     "Retrouvez vos factures dans le portail Stripe": "Najděte své faktury v portálu Stripe",
@@ -46748,7 +46729,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Název stránky stavu",
     "Titre de la tâche…": "Název úkolu…",
     "Titre du RDV": "Název schůzky",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Vaše předplatné vypršelo. Vaše data jsou uchována. Znovu se přihlaste kdykoli, abyste získali plný přístup.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Vaše předplatné bude zrušeno na konci aktuálního období. Přístup si zachováte až do tohoto data.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Vaše bezplatná zkušební verze bude okamžitě zrušena. Ztratíte přístup k placeným funkcím.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Vaše platba selhala. Aktualizujte svou platební metodu, abyste obnovili přístup k funkcím Premium. Vaše data jsou uchována.",
@@ -48427,13 +48407,29 @@ async function init() {
           setTimeout(() => { window.location.href = '/signin.html?deleted=1'; }, 2500);
         } else { showToast('error', (r && r.error) || 'Erreur lors de la suppression du compte'); }
       } catch(e) {
-        if (e && e.name === 'AbortError') {
-          // preKillSessions fired and killed the session ~3s into the 60s DELETE.
-          // The browser aborted the in-flight fetch on redirect — treat as success.
-          try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(_) {}
-          try { localStorage.clear(); sessionStorage.clear(); } catch(_) {}
-          showToast('success', fpT('Compte supprimé. Redirection…'));
-          setTimeout(() => { window.location.href = '/signin.html'; }, 400);
+        // AbortError = standard browsers. TypeError with "aborted" = Safari (ITP/BFCache).
+        // Both signals mean the fetch was cancelled because preKillSessions already
+        // invalidated the session and redirected. Confirm via a lightweight session probe
+        // before treating as success, so a genuine network error is never silenced.
+        const _isAbort = (e && e.name === 'AbortError') ||
+          (e && e.name === 'TypeError' && typeof e.message === 'string' && /aborted|abort/i.test(e.message));
+        if (_isAbort) {
+          // Probe session: if 401 the account is gone → success flow.
+          // If still 200 something went wrong → show real error.
+          let _sessionOk = false;
+          try {
+            const _probe = await fetch('/api/auth/session-restore', { method: 'GET', credentials: 'include' });
+            _sessionOk = _probe.ok;
+          } catch(_) { _sessionOk = false; }
+          if (!_sessionOk) {
+            // Account deleted & session gone — purge local state and redirect.
+            try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(_) {}
+            try { localStorage.clear(); sessionStorage.clear(); } catch(_) {}
+            showToast('success', fpT('Compte supprimé. Redirection…'));
+            setTimeout(() => { window.location.replace('/signin.html'); }, 400);
+          } else {
+            showToast('error', 'Erreur : suppression incomplète — réessayez.');
+          }
         } else {
           showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible'));
         }

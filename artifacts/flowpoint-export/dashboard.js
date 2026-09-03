@@ -631,8 +631,6 @@ function _confirmSessionExpired() {
         ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(function(k) {
           try { localStorage.removeItem(k); } catch(_) {}
         });
-        // P0 — clear userId cache key so next user's fp-state-cache is not rejected
-        try { localStorage.removeItem('fp:last-user-id'); } catch(_) {}
         try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
         try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
         if (!window.__fpRedirecting) {
@@ -801,8 +799,6 @@ async function apiFetch(path, opts = {}) {
       if (!window.__fpRedirecting) {
         window.__fpRedirecting = true;
         ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
-        // P0 — clear userId cache key so next user's fp-state-cache is not rejected
-        try { localStorage.removeItem('fp:last-user-id'); } catch(_) {}
         // sessionStorage is tab-isolated — removing fp_session_token here only
         // affects THIS tab; sibling tabs each have their own sessionStorage context.
         try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
@@ -1663,20 +1659,17 @@ async function loadData(options = {}) {
     const _sc = sessionStorage.getItem('fp-state-cache');
     if (_sc) {
       const _cp = JSON.parse(_sc);
-      // TENANT GUARD: reject cache if it was written for a different org OR user.
-      // Checks both orgId and userId to prevent two users in the same org from
-      // sharing cached STATE (e.g. team members with different plans/roles).
-      const _cachedOrgId  = _cp._orgId  || null;
-      const _cachedUserId = _cp._userId || null;
-      const _knownOrgId   = (() => { try { return localStorage.getItem('fp:last-org-id');  } catch(_) { return null; } })();
-      const _knownUserId  = (() => { try { return localStorage.getItem('fp:last-user-id'); } catch(_) { return null; } })();
-      const _cacheOrgMismatch  = _cachedOrgId  && _knownOrgId  && _cachedOrgId  !== _knownOrgId;
-      const _cacheUserMismatch = _cachedUserId && _knownUserId && _cachedUserId !== _knownUserId;
-      const _cacheMismatch = _cacheOrgMismatch || _cacheUserMismatch;
-      if (_cacheOrgMismatch)  console.warn('[P0] fp-state-cache rejected: cached org',  _cachedOrgId,  '≠ last known org',  _knownOrgId);
-      if (_cacheUserMismatch) console.warn('[P0] fp-state-cache rejected: cached user', _cachedUserId, '≠ last known user', _knownUserId);
-      if (_cacheMismatch) { try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {} }
-      if (!_cacheMismatch && Date.now() - (_cp._ts || 0) < 300000) {
+      // TENANT GUARD: reject cache if it was written for a different org.
+      // fp:last-org-id holds the last confirmed canonical orgId.
+      // If the stored _orgId doesn't match, this cache belongs to another account.
+      const _cachedOrgId  = _cp._orgId || null;
+      const _knownOrgId   = (() => { try { return localStorage.getItem('fp:last-org-id'); } catch(_) { return null; } })();
+      const _cacheOrgMismatch = _cachedOrgId && _knownOrgId && _cachedOrgId !== _knownOrgId;
+      if (_cacheOrgMismatch) {
+        console.warn('[FP] fp-state-cache rejected: cached org', _cachedOrgId, '≠ last known org', _knownOrgId, '— discarding stale cross-org cache');
+        try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+      }
+      if (!_cacheOrgMismatch && Date.now() - (_cp._ts || 0) < 300000) {
         if (_cp.me)            STATE.me            = _cp.me;
         if (_cp.overview)      STATE.overview      = _cp.overview;
         if (_cp.audits)        STATE.audits        = _cp.audits;
@@ -2305,9 +2298,8 @@ async function loadData(options = {}) {
   try {
     sessionStorage.setItem('fp-state-cache', JSON.stringify({
       _ts: Date.now(),
-      // _orgId/_userId: tenant+user tags — cache rejected on load if either changed.
-      _orgId:  (STATE.me && (STATE.me.orgId || STATE.me.id)) || null,
-      _userId: (STATE.me && (STATE.me.userId || STATE.me.userUuid || STATE.me.email)) || null,
+      // _orgId: tenant tag — cache is rejected on load if org has changed
+      _orgId: (STATE.me && (STATE.me.orgId || STATE.me.id)) || null,
       me: STATE.me, overview: STATE.overview,
       audits: STATE.audits.slice(0,50), monitors: STATE.monitors.slice(0,50),
       reports: STATE.reports.slice(0,20), team: STATE.team,
@@ -2397,8 +2389,7 @@ async function loadData(options = {}) {
   try {
     sessionStorage.setItem('fp-state-cache', JSON.stringify({
       _ts: Date.now(),
-      _orgId:  (STATE.me && (STATE.me.orgId || STATE.me.id)) || null,
-      _userId: (STATE.me && (STATE.me.userId || STATE.me.userUuid || STATE.me.email)) || null,
+      _orgId: (STATE.me && (STATE.me.orgId || STATE.me.id)) || null,
       me: STATE.me, overview: STATE.overview,
       audits: STATE.audits, monitors: STATE.monitors,
       reports: STATE.reports, team: STATE.team,
@@ -10026,7 +10017,7 @@ function renderBilling() {
         // ── Expiré (canceled / none — ancien abonné) ─────────────────────────
         if (_ss === 'canceled' || (_ss === 'none' && _bs.hadSubscription)) {
           const _resubPlan = (_bs.plan || (STATE.me && STATE.me.plan) || 'standard').toLowerCase();
-          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('⚫ Expiré · Fonctionnalités Premium désactivées')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpGoToPricing('${_resubPlan}')">${fpT('Reprendre un abonnement')}</button></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.</div>${_dangerZone}</div>`;
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('⚫ Expiré · Fonctionnalités Premium désactivées')}</div></div></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted)">${fpT('Ton abonnement a expiré. Tes données sont conservées.')}</div>${_dangerZone}</div>`;
         }
 
         // ── États actifs ─────────────────────────────────────────────────────
@@ -15545,13 +15536,6 @@ function navigate(route, subRoute) {
   } catch(e) { /* sandboxed iframe */ }
   try { fpTenantWrite('fp:last-route', STATE.route); if (STATE.subRoute) fpTenantWrite('fp:last-sub', STATE.subRoute); else fpTenantRemove('fp:last-sub'); } catch(e) {}
   document.querySelectorAll('.fp-chart-tooltip').forEach(t => t.remove());
-  // Remove outside-tap handler that was registered by initChartTooltips().
-  // Must be cleared before the tip node is gone so there's no dangling listener.
-  if (window._fpCalTipOutsideHandler) {
-    document.removeEventListener('touchstart', window._fpCalTipOutsideHandler, true);
-    document.removeEventListener('mousedown', window._fpCalTipOutsideHandler, true);
-    window._fpCalTipOutsideHandler = null;
-  }
   // Clear shared hover tooltip (prevents calendar RDV tooltip sticking on iOS
   // when user navigates to another tab before the touchend fires hideTip).
   if (typeof hideTip === 'function') hideTip();
@@ -15561,17 +15545,8 @@ function navigate(route, subRoute) {
 }
 
 function navigateSub(sub) {
-  // Dismiss floating chart tooltip when switching sub-pages (mobile touch leaves it visible).
-  // Also clear inline opacity/visibility — old touchstart handler set these directly,
-  // bypassing classList so classList.remove('visible') alone was insufficient.
-  try {
-    const _tipEl = document.getElementById('fp-chart-tip');
-    if (_tipEl) {
-      _tipEl.classList.remove('visible');
-      _tipEl.style.opacity = '';
-      _tipEl.style.visibility = '';
-    }
-  } catch(_) {}
+  // Dismiss floating chart tooltip when switching sub-pages (mobile touch leaves it visible)
+  try { document.getElementById('fp-chart-tip')?.classList.remove('visible'); } catch(_) {}
   // "Passer Pro/Ultra" buttons across the app target the Billing → Plans tab.
   // If called from another section (Settings, etc.), route to Billing first.
   if (sub === 'plans' && STATE.route !== 'billing') {
@@ -17775,15 +17750,14 @@ function bindSectionEvents() {
 // CHART TOOLTIPS
 // ─────────────────────────────────────────────────────────────────
 function initChartTooltips() {
-  // Always remove the existing node and create a fresh one.
-  // Re-using via getElementById risks inheriting stale .visible state when
-  // a touchend didn't fire (iOS scroll gesture) before the next navigateSub/render.
-  const _old = document.getElementById('fp-chart-tip');
-  if (_old) _old.remove();
-  const tip = document.createElement('div');
-  tip.id = 'fp-chart-tip';
-  tip.className = 'fp-chart-tooltip';
-  document.body.appendChild(tip);
+  // Ensure a single shared tooltip element exists
+  let tip = document.getElementById('fp-chart-tip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'fp-chart-tip';
+    tip.className = 'fp-chart-tooltip';
+    document.body.appendChild(tip);
+  }
 
   const showTip = (html, e) => {
     tip.innerHTML = html;
@@ -17791,27 +17765,6 @@ function initChartTooltips() {
     moveTip(e);
   };
   const hideTip = () => tip.classList.remove('visible');
-
-  // ── Outside-tap / outside-click handler ──────────────────────────────────
-  // On iOS Safari, touchend sometimes does not fire (browser classifies the
-  // gesture as a scroll). The tooltip then stays visible until the user
-  // navigates away. This handler detects any touch or mousedown that lands
-  // outside both the rdv elements and the tooltip itself, and hides it.
-  // Registered once per initChartTooltips() call; cleaned up by navigate().
-  if (window._fpCalTipOutsideHandler) {
-    document.removeEventListener('touchstart', window._fpCalTipOutsideHandler, true);
-    document.removeEventListener('mousedown',  window._fpCalTipOutsideHandler, true);
-    window._fpCalTipOutsideHandler = null;
-  }
-  window._fpCalTipOutsideHandler = function(ev) {
-    if (!tip.classList.contains('visible')) return;
-    const t = ev.target;
-    // Keep tooltip open if touching the tooltip or any rdv element.
-    if (t && (t === tip || tip.contains(t) || t.closest('.fp-cal-rdv'))) return;
-    hideTip();
-  };
-  document.addEventListener('touchstart', window._fpCalTipOutsideHandler, { capture: true, passive: true });
-  document.addEventListener('mousedown',  window._fpCalTipOutsideHandler, { capture: true, passive: true });
   const moveTip = (e) => {
     const offX = 14, offY = -10;
     // On touch events clientX/clientY may be 0 — derive from element position instead
@@ -17982,48 +17935,11 @@ function initChartTooltips() {
     });
     rdv.addEventListener('mousemove', moveTip);
     rdv.addEventListener('mouseleave', hideTip);
-    // Touch support: tap shows tooltip with full event content (was broken —
-    // previous code called moveTip but never populated tip.innerHTML, so the
-    // tooltip appeared as an empty/invisible bubble on mobile).
-    rdv.addEventListener('touchstart', e => {
-      const _tid = rdv.dataset.calEventId;
-      const _tev = (STATE.calendarEvents||[]).find(ce => ce.id === _tid);
-      if (!_tev) return;
-      const _tRange = (_tev.startTime && _tev.duration) ? formatTimeRange(_tev.startTime, _tev.duration) : '';
-      const _tSafe = escHtml(_tRange);
-      const _tDur = _tev.duration ? (_tev.duration >= 60 ? Math.floor(_tev.duration/60)+'h'+(_tev.duration%60?_tev.duration%60+'min':'') : _tev.duration+'min') : '';
-      const html = `
-        <div class="fp-chart-tooltip-label" style="max-width:180px">${escHtml(_tev.title)}</div>
-        ${_tSafe ? `<div style="font-size:11px;color:var(--fp-accent);margin-top:3px;font-weight:600">🕐 ${_tSafe}</div>` : ''}
-        ${_tev.type ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:2px">${escHtml(_tev.type)}</div>` : ''}
-        ${_tev.site ? `<div style="font-size:10px;color:var(--fp-text-faint);margin-top:1px">${escHtml(_tev.site.replace(/^https?:\/\//,''))}</div>` : ''}
-        ${!_tRange && _tDur ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:3px">⏱ ${_tDur}</div>` : ''}
-        ${_tev.notes ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:4px;border-top:1px solid rgba(255,255,255,0.06);padding-top:4px;max-width:180px;white-space:pre-wrap;word-break:break-word">📝 ${escHtml(_tev.notes.length>80?_tev.notes.slice(0,80)+'…':_tev.notes)}</div>` : ''}
-        <div style="font-size:9px;color:var(--fp-text-faint);margin-top:4px;border-top:1px solid rgba(255,255,255,0.06);padding-top:4px">${fpT('Appuyer pour modifier')}</div>
-      `;
-      // Position from the element's bounding rect — more reliable than touch clientX/clientY
-      // on iOS Safari (clientX can be 0 for elements near left edge, causing top-left drift).
-      // getBoundingClientRect() gives correct viewport coords for position:fixed tooltips.
-      tip.innerHTML = html;
-      tip.classList.add('visible');
-      const tipW = 220;
-      const _r = rdv.getBoundingClientRect();
-      // Prefer placing tooltip below the element; flip above if too close to bottom edge.
-      let _tx = _r.left + _r.width / 2 - tipW / 2;
-      let _ty = _r.bottom + 8;
-      if (_ty + 130 > window.innerHeight - 8) _ty = _r.top - 138;
-      if (_tx + tipW > window.innerWidth - 8) _tx = window.innerWidth - tipW - 8;
-      if (_tx < 8) _tx = 8;
-      tip.style.left = _tx + 'px';
-      tip.style.top  = _ty + 'px';
-    }, { passive: true });
-    // Hide immediately on touchend — clear inline styles too (set by old touchstart handler),
-    // so navigateSub classList.remove('visible') is not overridden by inline opacity/visibility.
-    rdv.addEventListener('touchend', () => {
-      tip.style.opacity = '';
-      tip.style.visibility = '';
-      hideTip();
-    }, { passive: true });
+    // Touch support: show tip on tap, hide when touch ends
+    rdv.addEventListener('touchstart', e => { moveTip(e.touches[0] || e); showTip && tip && (tip.style.opacity='1',tip.style.visibility='visible'); }, { passive: true });
+    // Hide immediately on touchend — a 1200ms delay leaves the tooltip
+    // visible when the user navigates away (e.g. taps another tab on iOS).
+    rdv.addEventListener('touchend', () => hideTip(), { passive: true });
   });
 }
 
@@ -20306,7 +20222,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Fill in all fields",
     "Renseignez au moins la ville ou l'adresse": "Enter at least the city or address",
     "Reporting avancé — Pro requis": "Advanced Reporting — Pro required",
-    "Reprendre un abonnement": "Resume a subscription",
     "Retirer ce membre de l'équipe ?": "Remove this team member?",
     "Retirer ce mot-clé du suivi ?": "Remove this Keyword from tracking?",
     "Retrouvez vos factures dans le portail Stripe": "Find your invoices in the Stripe portal",
@@ -20427,7 +20342,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Status page title",
     "Titre de la tâche…": "Task title…",
     "Titre du RDV": "Meeting title",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Your subscription has expired. Your data is kept. Resubscribe at any time to regain full access.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Your subscription will be canceled at the end of the current period. You retain access until that date.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Your free trial will be canceled immediately. You will lose access to paid features.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Your payment failed. Update your payment method to restore access to Premium features. Your data is kept.",
@@ -23194,7 +23108,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Complete todos los campos",
     "Renseignez au moins la ville ou l'adresse": "Introduce al menos la ciudad o la dirección",
     "Reporting avancé — Pro requis": "Informe avanzado — Pro requerido",
-    "Reprendre un abonnement": "Reanudar una suscripción",
     "Retirer ce membre de l'équipe ?": "¿Eliminar a este miembro del equipo?",
     "Retirer ce mot-clé du suivi ?": "¿Eliminar esta palabra clave del seguimiento?",
     "Retrouvez vos factures dans le portail Stripe": "Encuentra tus facturas en el portal de Stripe",
@@ -23334,7 +23247,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Título de la página de estado",
     "Titre de la tâche…": "Título de la tarea…",
     "Titre du RDV": "Título de la reunión",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Tu suscripción ha expirado. Tus datos se mantienen. Vuelve a suscribirte en cualquier momento para recuperar el acceso completo.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Tu suscripción será cancelada al final del período actual. Mantienes el acceso hasta esa fecha.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Tu prueba gratuita será cancelada de inmediato. Perderás el acceso a las funciones de pago.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Tu pago ha fallado. Actualiza tu método de pago para restaurar el acceso a las funciones Premium. Tus datos se mantienen.",
@@ -26121,7 +26033,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Füllen Sie alle Felder aus",
     "Renseignez au moins la ville ou l'adresse": "Geben Sie mindestens die Stadt oder die Adresse ein",
     "Reporting avancé — Pro requis": "Erweiterte Berichterstattung — Pro erforderlich",
-    "Reprendre un abonnement": "Ein Abonnement fortsetzen",
     "Retirer ce membre de l'équipe ?": "Dieses Teammitglied entfernen?",
     "Retirer ce mot-clé du suivi ?": "Dieses Schlüsselwort aus der Verfolgung entfernen?",
     "Retrouvez vos factures dans le portail Stripe": "Finden Sie Ihre Rechnungen im Stripe-Portal",
@@ -26261,7 +26172,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Statusseiten-Titel",
     "Titre de la tâche…": "Aufgabentitel…",
     "Titre du RDV": "Besprechungstitel",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Ihr Abonnement ist abgelaufen. Ihre Daten werden aufbewahrt. Abonnieren Sie jederzeit erneut, um den vollständigen Zugriff wiederherzustellen.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Ihr Abonnement wird am Ende des aktuellen Zeitraums gekündigt. Sie behalten bis zu diesem Datum den Zugriff.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Ihre kostenlose Testversion wird sofort gekündigt. Sie verlieren den Zugriff auf kostenpflichtige Funktionen.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Ihre Zahlung ist fehlgeschlagen. Aktualisieren Sie Ihre Zahlungsmethode, um den Zugriff auf Premium-Funktionen wiederherzustellen. Ihre Daten werden aufbewahrt.",
@@ -29076,7 +28986,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Compila tutti i campi",
     "Renseignez au moins la ville ou l'adresse": "Inserisci almeno la città o l'indirizzo",
     "Reporting avancé — Pro requis": "Reporting avanzato — Pro richiesto",
-    "Reprendre un abonnement": "Riprendere un abbonamento",
     "Retirer ce membre de l'équipe ?": "Rimuovere questo membro del team?",
     "Retirer ce mot-clé du suivi ?": "Rimuovere questa parola chiave dal monitoraggio?",
     "Retrouvez vos factures dans le portail Stripe": "Trova le tue fatture nel portale Stripe",
@@ -29216,7 +29125,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Titolo della pagina di stato",
     "Titre de la tâche…": "Titolo del compito…",
     "Titre du RDV": "Titolo della riunione",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Il tuo abbonamento è scaduto. I tuoi dati sono conservati. Riabbonati in qualsiasi momento per riottenere l'accesso completo.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Il tuo abbonamento sarà annullato alla fine del periodo attuale. Mantieni l'accesso fino a quella data.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "La tua prova gratuita sarà annullata immediatamente. Perderai l'accesso alle funzionalità a pagamento.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Il tuo pagamento è fallito. Aggiorna il tuo metodo di pagamento per ripristinare l'accesso alle funzionalità Premium. I tuoi dati sono conservati.",
@@ -32012,7 +31920,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Preencha todos os campos",
     "Renseignez au moins la ville ou l'adresse": "Insira pelo menos a cidade ou o endereço",
     "Reporting avancé — Pro requis": "Relatório avançado — Pro necessário",
-    "Reprendre un abonnement": "Retomar uma assinatura",
     "Retirer ce membre de l'équipe ?": "Remover este membro da equipe?",
     "Retirer ce mot-clé du suivi ?": "Remover esta palavra-chave do rastreamento?",
     "Retrouvez vos factures dans le portail Stripe": "Encontre suas faturas no portal Stripe",
@@ -32152,7 +32059,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Título da página de status",
     "Titre de la tâche…": "Título da tarefa…",
     "Titre du RDV": "Título da reunião",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Sua assinatura expirou. Seus dados são mantidos. Reassine a qualquer momento para recuperar o acesso completo.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Sua assinatura será cancelada no final do período atual. Você mantém o acesso até essa data.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Seu teste gratuito será cancelado imediatamente. Você perderá o acesso às funcionalidades pagas.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Seu pagamento falhou. Atualize seu método de pagamento para restaurar o acesso às funcionalidades Premium. Seus dados são mantidos.",
@@ -34948,7 +34854,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Vul alle velden in",
     "Renseignez au moins la ville ou l'adresse": "Voer ten minste de stad of het adres in",
     "Reporting avancé — Pro requis": "Geavanceerde rapportage — Pro vereist",
-    "Reprendre un abonnement": "Een abonnement hervatten",
     "Retirer ce membre de l'équipe ?": "Dit teamlid verwijderen?",
     "Retirer ce mot-clé du suivi ?": "Dit trefwoord uit de tracking verwijderen?",
     "Retrouvez vos factures dans le portail Stripe": "Vind uw facturen in het Stripe-portaal",
@@ -35088,7 +34993,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Statuspagina titel",
     "Titre de la tâche…": "Taak titel…",
     "Titre du RDV": "Vergadering titel",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Je abonnement is verlopen. Je gegevens worden bewaard. Heractiveer op elk moment je abonnement om weer volledige toegang te krijgen.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Je abonnement wordt aan het einde van de huidige periode geannuleerd. Je behoudt toegang tot die datum.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Je gratis proefperiode wordt onmiddellijk geannuleerd. Je verliest toegang tot betaalde functies.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Je betaling is mislukt. Werk je betaalmethode bij om de toegang tot Premium-functies te herstellen. Je gegevens worden bewaard.",
@@ -37884,7 +37788,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Wypełnij wszystkie pola",
     "Renseignez au moins la ville ou l'adresse": "Wprowadź przynajmniej miasto lub adres",
     "Reporting avancé — Pro requis": "Zaawansowane raportowanie — Wymagany Pro",
-    "Reprendre un abonnement": "Wznów subskrypcję",
     "Retirer ce membre de l'équipe ?": "Usunąć tego członka zespołu?",
     "Retirer ce mot-clé du suivi ?": "Usunąć ten słowo kluczowe z monitorowania?",
     "Retrouvez vos factures dans le portail Stripe": "Znajdź swoje faktury w portalu Stripe",
@@ -38024,7 +37927,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Tytuł strony statusu",
     "Titre de la tâche…": "Tytuł zadania…",
     "Titre du RDV": "Tytuł spotkania",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Twoje subskrypcja wygasła. Twoje dane są przechowywane. Wznowisz subskrypcję w dowolnym momencie, aby odzyskać pełny dostęp.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Twoje subskrypcja zostanie anulowana na koniec bieżącego okresu. Zachowujesz dostęp do tej daty.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Twoja bezpłatna wersja próbna zostanie natychmiast anulowana. Stracisz dostęp do płatnych funkcji.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Twoja płatność nie powiodła się. Zaktualizuj swoją metodę płatności, aby przywrócić dostęp do funkcji Premium. Twoje dane są przechowywane.",
@@ -40820,7 +40722,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Fyll i alla fält",
     "Renseignez au moins la ville ou l'adresse": "Ange minst en stad eller adress",
     "Reporting avancé — Pro requis": "Avancerad rapportering — Pro krävs",
-    "Reprendre un abonnement": "Återuppta en prenumeration",
     "Retirer ce membre de l'équipe ?": "Ta bort denna teammedlem?",
     "Retirer ce mot-clé du suivi ?": "Ta bort detta nyckelord från spårning?",
     "Retrouvez vos factures dans le portail Stripe": "Hitta dina fakturor i Stripe-portalen",
@@ -40960,7 +40861,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Status sidtitel",
     "Titre de la tâche…": "Uppgiftstitel…",
     "Titre du RDV": "Mötestitel",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Ditt abonnemang har löpt ut. Dina data sparas. Återprenumerera när som helst för att återfå full tillgång.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Ditt abonnemang kommer att avbrytas i slutet av den aktuella perioden. Du behåller åtkomst fram till det datumet.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Din gratis provperiod kommer att avbrytas omedelbart. Du kommer att förlora tillgången till betalda funktioner.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Din betalning misslyckades. Uppdatera din betalningsmetod för att återfå tillgång till Premium-funktioner. Dina data sparas.",
@@ -43756,7 +43656,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Completați toate câmpurile",
     "Renseignez au moins la ville ou l'adresse": "Introduceți cel puțin orașul sau adresa",
     "Reporting avancé — Pro requis": "Raportare avansată — Pro necesar",
-    "Reprendre un abonnement": "Reactivare abonament",
     "Retirer ce membre de l'équipe ?": "Îndepărtați acest membru din echipă?",
     "Retirer ce mot-clé du suivi ?": "Îndepărtați acest cuvânt cheie din urmărire?",
     "Retrouvez vos factures dans le portail Stripe": "Găsiți facturile dvs. în portalul Stripe",
@@ -43896,7 +43795,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Titlul paginii de stare",
     "Titre de la tâche…": "Titlul sarcinii…",
     "Titre du RDV": "Titlul întâlnirii",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Abonamentul tău a expirat. Datele tale sunt păstrate. Reabonează-te în orice moment pentru a recâștiga accesul complet.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Abonamentul tău va fi anulat la sfârșitul perioadei curente. Păstrezi accesul până la acea dată.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Proba ta gratuită va fi anulată imediat. Vei pierde accesul la funcțiile plătite.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Plata ta a eșuat. Actualizează-ți metoda de plată pentru a restabili accesul la funcțiile Premium. Datele tale sunt păstrate.",
@@ -46692,7 +46590,6 @@ function bindGlobalEvents() {
     "Remplissez tous les champs": "Vyplňte všechna pole",
     "Renseignez au moins la ville ou l'adresse": "Zadejte alespoň město nebo adresu",
     "Reporting avancé — Pro requis": "Pokročilé reportování — Pro vyžadováno",
-    "Reprendre un abonnement": "Obnovit předplatné",
     "Retirer ce membre de l'équipe ?": "Odebrat tohoto člena týmu?",
     "Retirer ce mot-clé du suivi ?": "Odebrat toto klíčové slovo z sledování?",
     "Retrouvez vos factures dans le portail Stripe": "Najděte své faktury v portálu Stripe",
@@ -46832,7 +46729,6 @@ function bindGlobalEvents() {
     "Titre de la page statut": "Název stránky stavu",
     "Titre de la tâche…": "Název úkolu…",
     "Titre du RDV": "Název schůzky",
-    "Ton abonnement a expiré. Tes données sont conservées. Reprends un abonnement à tout moment pour retrouver l'accès complet.": "Vaše předplatné vypršelo. Vaše data jsou uchována. Znovu se přihlaste kdykoli, abyste získali plný přístup.",
     "Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.": "Vaše předplatné bude zrušeno na konci aktuálního období. Přístup si zachováte až do tohoto data.",
     "Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.": "Vaše bezplatná zkušební verze bude okamžitě zrušena. Ztratíte přístup k placeným funkcím.",
     "Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.": "Vaše platba selhala. Aktualizujte svou platební metodu, abyste obnovili přístup k funkcím Premium. Vaše data jsou uchována.",
@@ -47760,14 +47656,6 @@ async function init() {
         _href.includes('plan_changed')     || _href.includes('checkout=success') ||
         _href.includes('plan_activated')   || _href.includes('addon_success')) {
       sessionStorage.removeItem('fp-state-cache');
-      // P0 — Google/GitHub OAuth returns: purge userId + billing catalog so a
-      // different user logging in via OAuth doesn't inherit the previous user's
-      // fp:last-user-id, fp-billing-catalog, or fp-plan-defs from localStorage.
-      // (magic-link goes through login-verify.js which calls purgeUserCache() —
-      //  OAuth returns come here directly, so we must do equivalent cleanup.)
-      try { localStorage.removeItem('fp:last-user-id'); } catch(_) {}
-      try { sessionStorage.removeItem('fp-billing-catalog'); } catch(_) {}
-      try { sessionStorage.removeItem('fp-plan-defs'); } catch(_) {}
       // plan_changed: also purge in-memory API caches so /api/me and
       // /api/billing/subscription are re-fetched with the NEW plan.
       try { _apiFetchCache.clear(); _apiFetchInFlight.clear(); } catch(_) {}
@@ -47817,22 +47705,6 @@ async function init() {
         STATE.subRoute = null;
       }
       localStorage.setItem('fp:last-org-id', _curOrgId);
-      // P0 — also persist userId so the fp-state-cache guard can validate user identity
-      // (not only org identity). Guards against two users in the same org sharing cache.
-      const _curUserId = STATE.me && (STATE.me.userId || STATE.me.userUuid || STATE.me.email);
-      if (_curUserId) {
-        try { localStorage.setItem('fp:last-user-id', String(_curUserId)); } catch(_) {}
-      }
-      // P0 ISOLATION LOG — printed to browser console for USER A / USER B test
-      console.log('[P0-ISOLATION][loadData]', {
-        session:   'BFCache=' + (window._fpLastPagesShow === 'persisted' ? 'YES' : 'NO'),
-        user_id:   STATE.me && (STATE.me.userId || STATE.me.userUuid),
-        email:     STATE.me && STATE.me.email,
-        org_id:    _curOrgId,
-        plan:      STATE.me && STATE.me.plan,
-        sub_status:STATE.me && STATE.me.subscriptionStatus,
-        cache_hit: STATE._cacheRestored ? 'YES' : 'NO',
-      });
     }
   } catch(_orgChangeErr) {
     // CRITICAL: org-change reinitialization failure must NEVER silently leave
@@ -47841,7 +47713,6 @@ async function init() {
     console.error('[FP] CRITICAL: org-change namespace reinitialization failed:', _orgChangeErr);
     try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
     try { localStorage.removeItem('fp:last-org-id'); } catch(_) {}
-    try { localStorage.removeItem('fp:last-user-id'); } catch(_) {}
     window.location.reload();
   }
 
@@ -47966,10 +47837,7 @@ async function init() {
   // no HTTP session-restore runs, the stale sessionStorage Bearer goes straight
   // to /api/me → 401 → redirect even though the HttpOnly cookie is still valid.
   window.addEventListener('pageshow', function(evt) {
-    // P0 — mark BFCache restore so the console.log in loadData can report it
-    window._fpLastPagesShow = evt.persisted ? 'persisted' : 'navigate';
     if (evt.persisted) {
-      console.log('[P0-ISOLATION][pageshow] BFCache restore detected — forcing fresh loadData');
       // Cancel any stale 401-confirmation timers frozen into BFCache.
       if (_401ConfirmTimer) { clearTimeout(_401ConfirmTimer); _401ConfirmTimer = null; }
       _401BackgroundCount = 0;
@@ -48538,7 +48406,34 @@ async function init() {
           showToast('info', fpT('Abonnement résilié. Contactez le support pour finaliser la suppression.'));
           setTimeout(() => { window.location.href = '/signin.html?deleted=1'; }, 2500);
         } else { showToast('error', (r && r.error) || 'Erreur lors de la suppression du compte'); }
-      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible')); }
+      } catch(e) {
+        // AbortError = standard browsers. TypeError with "aborted" = Safari (ITP/BFCache).
+        // Both signals mean the fetch was cancelled because preKillSessions already
+        // invalidated the session and redirected. Confirm via a lightweight session probe
+        // before treating as success, so a genuine network error is never silenced.
+        const _isAbort = (e && e.name === 'AbortError') ||
+          (e && e.name === 'TypeError' && typeof e.message === 'string' && /aborted|abort/i.test(e.message));
+        if (_isAbort) {
+          // Probe session: if 401 the account is gone → success flow.
+          // If still 200 something went wrong → show real error.
+          let _sessionOk = false;
+          try {
+            const _probe = await fetch('/api/auth/session-restore', { method: 'GET', credentials: 'include' });
+            _sessionOk = _probe.ok;
+          } catch(_) { _sessionOk = false; }
+          if (!_sessionOk) {
+            // Account deleted & session gone — purge local state and redirect.
+            try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(_) {}
+            try { localStorage.clear(); sessionStorage.clear(); } catch(_) {}
+            showToast('success', fpT('Compte supprimé. Redirection…'));
+            setTimeout(() => { window.location.replace('/signin.html'); }, 400);
+          } else {
+            showToast('error', 'Erreur : suppression incomplète — réessayez.');
+          }
+        } else {
+          showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible'));
+        }
+      }
   };
 
   window.openDataDeletionPanel = function(kind) {
@@ -63446,7 +63341,7 @@ function renderGA4Conversion() {
       <div style="font-size:48px;margin-bottom:16px">🔒</div>
       <div style="font-size:17px;font-weight:700;color:var(--fp-text);margin-bottom:8px">${fpT('Fonctionnalité Premium')}</div>
       <div style="font-size:13px;color:var(--fp-text-muted);max-width:420px;margin:0 auto 20px">${fpT('La Conversion GA4 est réservée aux abonnés actifs. Reprenez un abonnement pour accéder à vos données.')}</div>
-      <button class="fp-btn fp-btn-primary" onclick="fpGoToPricing('standard')" style="min-width:180px">${fpT('Reprendre un abonnement')}</button>
+      <button class="fp-btn fp-btn-primary" onclick="fpGoToPricing('standard')" style="min-width:180px">${fpT('Choisir un abonnement')}</button>
     </div>`;
   }
 
@@ -69431,14 +69326,6 @@ window.FP_ADDONS_API = {
       const r = await apiFetch(`/api/addons/${encodeURIComponent(addonKey)}/deactivate`, { method: 'POST' });
       if (r?.ok) {
         if (window.FP_DATA?.addons?.active) window.FP_DATA.addons.active[addonKey] = false;
-        // Refresh STATE.me (limits, addons) AND window.FP_DATA.addons.active (catalog cache).
-        // Both are independent data sources read by different parts of the billing UI:
-        //   - STATE.me.limits/addons  → sidebar quota, addons tab active flags
-        //   - window.FP_DATA.addons.active → Billing Command Center merged count
-        // Without this.load() the Command Center reads stale FP_DATA after deactivation.
-        try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-        _apiFetchCache && _apiFetchCache.clear();
-        await loadData().catch(() => {});
         await this.load().catch(() => {});
         render();
         showToast('success', `Add-on ${addonKey} désactivé`);
@@ -72011,11 +71898,11 @@ function renderGA4ClientMode() {
       </div>`;
   }
 
-  const kpis = cmSt.kpis || {};
-  const reports = cmSt.reports || [];
-  const audits = cmSt.audits || [];
-  const status = cmSt.status || {};
-  const perms = status.permissions || {};
+  const kpis = (cmSt.kpis != null && typeof cmSt.kpis === 'object' && !Array.isArray(cmSt.kpis)) ? cmSt.kpis : {};
+  const reports = Array.isArray(cmSt.reports) ? cmSt.reports : [];
+  const audits = Array.isArray(cmSt.audits) ? cmSt.audits : [];
+  const status = (cmSt.status != null && typeof cmSt.status === 'object') ? cmSt.status : {};
+  const perms = (status.permissions != null && typeof status.permissions === 'object') ? status.permissions : {};
 
   const permsBanner = `
     <div style="padding:12px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
@@ -72067,7 +71954,7 @@ function renderGA4ClientMode() {
             <th style="text-align:center">Date</th>
           </tr></thead>
           <tbody>
-            ${audits.map(a => {
+            ${audits.filter(a => a != null && typeof a === 'object').map(a => {
               const sc = Number(a.score) || 0;
               const color = sc >= 80 ? '#22c55e' : sc >= 60 ? '#f59e0b' : '#ef4444';
               return `<tr>
@@ -72100,7 +71987,7 @@ function renderGA4ClientMode() {
               <th style="text-align:center">Télécharger</th>
             </tr></thead>
             <tbody>
-              ${reports.map(r => `<tr>
+              ${reports.filter(r => r != null && typeof r === 'object').map(r => `<tr>
                 <td style="font-weight:600;font-size:11px">${escHtml(String(r.name||'—'))}</td>
                 <td style="text-align:center">${badge(String(r.type||'PDF').toUpperCase(), '#2563EB')}</td>
                 <td style="text-align:center;color:var(--fp-text-faint);font-size:11px">${escHtml(String(r.date||'—'))}</td>
@@ -72112,6 +71999,17 @@ function renderGA4ClientMode() {
           </table>
         </div>`}
     </div>`;
+
+  // ── Shared helpers available to all sub-routes ───────────────────
+  // Defined here (common scope) so dashboards, analytics, and any future
+  // sub-route can call _emptyState without a ReferenceError.
+  const _emptyState = (icon, title, desc) => `
+      <div style="text-align:center;padding:40px 20px;background:var(--fp-inner-card);border-radius:var(--fp-radius-lg);border:1px dashed var(--fp-border)">
+        <div style="font-size:32px;margin-bottom:10px">${icon}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:6px">${title}</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);max-width:320px;margin:0 auto 14px">${desc}</div>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings')">Connecter →</button>
+      </div>`;
 
   // ── Sub-route routing for Mode Client tabs ────────────────────────
   if (sub === 'reporting') {
@@ -72222,13 +72120,7 @@ function renderGA4ClientMode() {
     const gsc = STATE.gsc || {};
     const ga4Connected = window.fpIsConnected ? window.fpIsConnected('ga4') : !!ga4.connected;
     const gscConnected = window.fpIsConnected ? window.fpIsConnected('gsc') : !!gsc.connected;
-    const _emptyState = (icon, title, desc) => `
-      <div style="text-align:center;padding:40px 20px;background:var(--fp-inner-card);border-radius:var(--fp-radius-lg);border:1px dashed var(--fp-border)">
-        <div style="font-size:32px;margin-bottom:10px">${icon}</div>
-        <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:6px">${title}</div>
-        <div style="font-size:12px;color:var(--fp-text-muted);max-width:320px;margin:0 auto 14px">${desc}</div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('settings')">Connecter →</button>
-      </div>`;
+    // _emptyState is defined at renderGA4ClientMode() scope above
     const ga4Block = ga4Connected ? `
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">📊 Google Analytics 4</div>
