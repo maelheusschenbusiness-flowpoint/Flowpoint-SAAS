@@ -9889,7 +9889,12 @@ function renderBilling() {
       <!-- PLAN CARDS -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:20px">
         ${PLANS.map(p => {
-          const isCurrent = p.id === plan.toLowerCase() || (p.id === 'ultra' && isUltra);
+          // isCurrent must be false when subscription is canceled/expired — the
+          // historical plan stays in the DB but no active subscription is running.
+          // cancel_at_period_end (status still 'active') must NOT be treated as canceled.
+          const _subStatForCard = String(STATE.billing?.subscriptionStatus || STATE.billing?.status || STATE.me?.subscriptionStatus || '').toLowerCase();
+          const _hasActiveSub = _subStatForCard === 'active' || _subStatForCard === 'trialing';
+          const isCurrent = _hasActiveSub && (p.id === plan.toLowerCase() || (p.id === 'ultra' && isUltra));
           const _planDark = document.documentElement.getAttribute('data-theme') !== 'light';
           const _planBg = isCurrent ? p.color + '0d' : (_planDark ? 'rgba(8,14,30,0.92)' : '#eef2ff');
           return `<div style="border-radius:16px;border:2px solid ${isCurrent ? p.color : 'var(--fp-border)'};background:${_planBg};padding:22px;position:relative;overflow:hidden;transition:border-color 0.2s;display:flex;flex-direction:column">
