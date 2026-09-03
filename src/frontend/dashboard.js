@@ -9698,7 +9698,9 @@ function renderBilling() {
   window.fpUpgradeOrCheckout = window.fpUpgradeOrCheckout || function(plan) {
     const _target = (plan || 'pro').toLowerCase();
     const _current = ((STATE.billing && STATE.billing.plan) || (STATE.me && STATE.me.plan) || '').toLowerCase();
-    if (_current === _target) {
+    const _st0 = String(STATE.billing?.subscriptionStatus || STATE.billing?.status || STATE.me?.subscriptionStatus || '').toLowerCase();
+    const _activeSub0 = _st0 === 'active' || _st0 === 'trialing';
+    if (_activeSub0 && _current === _target) {
       showToast('info', fpT('Vous êtes déjà sur ce plan.'));
       return;
     }
@@ -10151,7 +10153,12 @@ function renderBilling() {
     window.fpUpgradeOrCheckout = async function(plan) {
       const _targetPlan = (plan || 'pro').toLowerCase();
       const _curPlan = ((STATE.billing && STATE.billing.plan) || (STATE.me && STATE.me.plan) || '').toLowerCase();
-      if (_curPlan && _curPlan === _targetPlan) {
+      // Block "already on this plan" ONLY when the subscription is genuinely active —
+      // a canceled account with the same historical plan MUST proceed to Checkout.
+      // cancel_at_period_end (status still 'active') is correctly caught here too.
+      const _subStatUp = String(STATE.billing?.subscriptionStatus || STATE.billing?.status || STATE.me?.subscriptionStatus || '').toLowerCase();
+      const _hasActiveSubUp = _subStatUp === 'active' || _subStatUp === 'trialing';
+      if (_hasActiveSubUp && _curPlan && _curPlan === _targetPlan) {
         showToast('info', 'Vous êtes déjà sur le plan ' + _targetPlan.charAt(0).toUpperCase() + _targetPlan.slice(1) + '.');
         return;
       }
