@@ -1090,10 +1090,16 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // P0-1: pass explicit orgId — never defaults to "default"
       // Bug-1 fix: persist plan immediately from session.metadata.plan when valid,
       // rather than waiting for the subscription.created/updated webhook.
+      // ── P0-8: write all four coherent fields — customer, subscription, status, plan ──
+      // stripeSubscriptionId MUST be persisted here (from session.subscription) so
+      // organizations never holds an old canceled sub ID after a new checkout completes.
+      // Without this, a delayed subscription.created webhook for an older sub could
+      // overwrite the correct subscription ID before the new one arrives.
       const persistPayload: Parameters<typeof persistSubscriptionMeta>[0] = {
         orgId,
         subscriptionStatus: "active",
         stripeCustomerId: customerId,
+        ...(_newSubId ? { stripeSubscriptionId: _newSubId } : {}),
       };
       if (["standard","pro","ultra"].includes(planNorm)) {
         persistPayload.plan = planNorm;

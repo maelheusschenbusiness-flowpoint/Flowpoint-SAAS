@@ -201,14 +201,19 @@ router.post("/billing/checkout", billingCheckoutRateLimit, ownerOnly, async (req
       }
     }
 
-    // Only grant 14-day trial for confirmed first-time subscribers
-    const hasHadTrial = !!billingCtx.trialEndsAt;
+    // ── Trial eligibility — canonical org-level gate ──────────────────────────
+    // The canonical source is billingCtx.trialConsumedAt (organizations table,
+    // normalized from legacy org_settings by loadOrgData if needed).
+    // A new Stripe Customer must NEVER reset the trial — only the org's own
+    // trialConsumedAt determines eligibility.  hasStripeSubHistory is kept as a
+    // secondary Stripe-side guard to block edge cases where trialConsumedAt
+    // hasn't been normalized yet (e.g., first request after DB gap).
     let hasStripeSubHistory = false;
     if (customerId) {
       const allSubs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 });
       hasStripeSubHistory = allSubs.data.length > 0;
     }
-    const grantTrial = !hasHadTrial && !hasStripeSubHistory;
+    const grantTrial = !billingCtx.trialConsumedAt && !hasStripeSubHistory;
 
     /* Canonical quote — the single place line items, plan inclusions and trial
        length are derived. This route used to build its own Stripe items and
@@ -253,7 +258,7 @@ router.post("/billing/checkout", billingCheckoutRateLimit, ownerOnly, async (req
       subscriptionData["trial_period_days"] = quote.trialDays;
       logger.info({ plan, orgId, trialDays: quote.trialDays }, "[Billing] Granting trial — confirmed first-time subscriber");
     } else {
-      logger.info({ plan, hasHadTrial, hasStripeSubHistory, orgId }, "[Billing] Skipping trial — prior subscription history");
+      logger.info({ plan, trialConsumedAt: billingCtx.trialConsumedAt, hasStripeSubHistory, orgId }, "[Billing] Skipping trial — prior subscription history");
     }
 
     logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");

@@ -117,14 +117,65 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
 
       if (r.rows.length > 0) {
         const row = r.rows[0];
+
+        // ── Legacy trial normalization (lazy migration) ──────────────────────
+        // For accounts originally created via the legacy email-keyed flow:
+        // organizations.trial_consumed_at / trial_ends_at may be NULL because
+        // the old webhooks wrote trial data to org_settings[email] instead of
+        // organizations[UUID].  When we detect this gap, normalize the data
+        // from the legacy record so grantTrial never incorrectly grants a second
+        // trial.  The persist is fire-and-forget; we also return the legacy
+        // value immediately so the current request gets the correct answer
+        // without waiting for the DB write to complete.
+        let _legacyTrialConsumedAt: string | null = null;
+        let _legacyTrialEndsAt: string | null = null;
+        let _legacyTrialStartedAt: string | null = null;
+        const _needsLegacyMigration =
+          (!row.trial_consumed_at) &&
+          row.owner_email &&
+          row.owner_email !== orgId;
+
+        if (_needsLegacyMigration) {
+          try {
+            const { loadOrgSettings } = await import("./org-settings.js");
+            const legacySettings = await loadOrgSettings(row.owner_email as string);
+            if (legacySettings?.trialConsumedAt) {
+              _legacyTrialConsumedAt = legacySettings.trialConsumedAt;
+              _legacyTrialEndsAt     = legacySettings.trialEndsAt     ?? null;
+              _legacyTrialStartedAt  = legacySettings.trialStartedAt  ?? null;
+              // Persist to organizations so future reads don't need this fallback.
+              const normalizeFields: PersistOrgFields = {
+                trialConsumedAt: _legacyTrialConsumedAt,
+              };
+              if (_legacyTrialEndsAt)    normalizeFields.trialEndsAt    = _legacyTrialEndsAt;
+              if (_legacyTrialStartedAt) normalizeFields.trialStartedAt = _legacyTrialStartedAt;
+              persistOrgData(orgId, normalizeFields).catch((normErr: unknown) =>
+                logger.warn({ normErr, orgId }, "[OrgData] Legacy trial normalization persist failed (non-fatal)"),
+              );
+              logger.info(
+                { orgId, ownerEmail: row.owner_email, trialConsumedAt: _legacyTrialConsumedAt },
+                "[OrgData] Legacy trial_consumed_at normalized from org_settings[email] into organizations[UUID]",
+              );
+            }
+          } catch (legMigErr) {
+            logger.warn({ legMigErr, orgId }, "[OrgData] Legacy trial migration lookup failed (non-fatal)");
+          }
+        }
+
         return {
           plan:                 (row.plan || "standard").toLowerCase(),
           subscriptionStatus:   row.subscription_status ?? null,
           stripeCustomerId:     row.stripe_customer_id || null,
           stripeSubscriptionId: row.stripe_subscription_id || null,
-          trialEndsAt:          row.trial_ends_at ? new Date(row.trial_ends_at).toISOString() : null,
-          trialConsumedAt:      row.trial_consumed_at ? new Date(row.trial_consumed_at).toISOString() : null,
-          trialStartedAt:       row.trial_started_at ? new Date(row.trial_started_at).toISOString() : null,
+          trialEndsAt:          row.trial_ends_at
+                                  ? new Date(row.trial_ends_at).toISOString()
+                                  : _legacyTrialEndsAt,
+          trialConsumedAt:      row.trial_consumed_at
+                                  ? new Date(row.trial_consumed_at).toISOString()
+                                  : _legacyTrialConsumedAt,
+          trialStartedAt:       row.trial_started_at
+                                  ? new Date(row.trial_started_at).toISOString()
+                                  : _legacyTrialStartedAt,
           addons:               (row.addons && typeof row.addons === "object") ? row.addons as Record<string, unknown> : {},
           pendingPlan:          row.pending_plan ?? null,
           pendingPlanDate:      row.pending_plan_date ?? null,

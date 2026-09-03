@@ -97,6 +97,8 @@ export default defineConfig({
       "src/services/client-mode-service.test.ts",
       // Reactivation service: 14 cases covering Stripe idempotency, plan prices, concurrency
       "src/tests/reactivate-subscription.test.ts",
+      // P0 billing legacy mapping: A-G (legacy customer reuse, trial gate, webhook sub ID)
+      "src/tests/billing-legacy-customer.test.ts",
     ],
     environment: "node",
     globals:     false,
