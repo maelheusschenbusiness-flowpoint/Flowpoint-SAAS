@@ -969,6 +969,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     firstName, lastName, email, companyName,
     country, address, city, postalCode,
     phone, vat,
+    seller_code: _rawSellerCode,
   } = req.body as Record<string, string | undefined>;
 
   // Honeypot — bots fill hidden fields, humans don't
@@ -1121,15 +1122,31 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       ).catch((e: unknown) => logger.warn({ e }, "[Auth/PreRegister] stale org_settings cleanup failed (non-fatal)"));
     }
 
+    // Seller attribution (beta): validate seller_code server-side — never trust raw code from caller.
+    let _preRegSellerId: string | null = null;
+    if (_rawSellerCode) {
+      try {
+        const { validateSellerCode: _vsCode } = await import("../services/seller-attribution.js");
+        const _seller = await _vsCode(_rawSellerCode);
+        _preRegSellerId = _seller?.id ?? null;
+        if (!_preRegSellerId) {
+          logger.info({ code: _rawSellerCode }, "[Auth/PreRegister] seller_code invalid or inactive — stored NULL");
+        }
+      } catch (_se) {
+        logger.warn({ _se }, "[Auth/PreRegister] seller_code lookup failed (non-fatal)");
+      }
+    }
+
     await client.query(
       `INSERT INTO pending_signups
-         (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, created_at, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW() + INTERVAL '2 hours')`,
+         (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, created_at, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW() + INTERVAL '2 hours')`,
       [
         preToken, normalizedEmail, fn, ln, company,
         countryVal, addressVal, cityVal, postalVal,
         String(phone || "").trim() || null,
         String(vat   || "").trim() || null,
+        _preRegSellerId,
       ]
     );
 

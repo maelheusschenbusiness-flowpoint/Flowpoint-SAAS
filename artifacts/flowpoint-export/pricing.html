@@ -28,6 +28,9 @@
       } catch(e){}
     })();
   </script>
+  <script>/* Seller Attribution — capture ?ref=SELLER-XXXX and persist in localStorage */
+  (function(){try{var _u=new URLSearchParams(window.location.search);var _r=_u.get('ref')||'';if(_r&&/^SELLER-[A-Z0-9]{1,20}$/i.test(_r)){localStorage.setItem('fp_seller_ref',_r.toUpperCase());}var _stored=localStorage.getItem('fp_seller_ref');if(_stored){var _links=document.querySelectorAll('a[href*="signin.html"],a[href="/"],a[href*="signup"]');_links.forEach(function(_l){if(_l.href&&_l.href.indexOf('fp_ref')===-1){_l.href=_l.href+((_l.href.indexOf('?')>-1)?'&':'?')+'fp_ref='+encodeURIComponent(_stored);}});};}catch(e){}})();
+  </script>
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

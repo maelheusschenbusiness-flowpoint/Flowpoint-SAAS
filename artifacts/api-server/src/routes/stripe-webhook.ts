@@ -401,7 +401,7 @@ export async function activateNewSignup(opts: {
   let signupRow: Record<string, string | null> | null = null;
   try {
     const r = await dbClient.query(
-      `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat
+      `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id
        FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
       [preRegToken]
     );
@@ -546,16 +546,21 @@ export async function activateNewSignup(opts: {
     // orgUUID is a proper UUID — either the existing org's UUID or a freshly generated one.
     // Email (orgId) is stored only in owner_email; never used as the primary key.
     const newOrgSlug = (signupRow["company_name"] ?? email).replace(/[^a-z0-9]/gi, "-").toLowerCase().slice(0, 60);
+    // Seller attribution: propagate seller_id from pending_signup → organization.
+    // Pure data propagation — does not affect plan, trial, customer, or billing logic.
+    const _wbSellerId = (signupRow["seller_id"] as string | null) ?? null;
+
     const orgInsert = await activateClient.query<{ id: string }>(
       `INSERT INTO organizations
          (id, name, slug, owner_user_id, status, plan, subscription_status,
-          owner_email, stripe_customer_id, trial_ends_at)
-       VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9)
+          owner_email, stripe_customer_id, trial_ends_at, seller_id)
+       VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10)
        ON CONFLICT (id) DO UPDATE
          SET status              = 'active',
              plan                = EXCLUDED.plan,
              subscription_status = EXCLUDED.subscription_status,
              stripe_customer_id  = COALESCE(EXCLUDED.stripe_customer_id, organizations.stripe_customer_id),
+             seller_id           = COALESCE(organizations.seller_id, EXCLUDED.seller_id),
              updated_at          = NOW()
        RETURNING id`,
       [
@@ -568,6 +573,7 @@ export async function activateNewSignup(opts: {
         email,
         customerId ?? null,
         isTrial ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() : null,
+        _wbSellerId,
       ]
     );
     newOrgId = orgInsert.rows[0]?.id ?? orgUUID;
@@ -588,6 +594,31 @@ export async function activateNewSignup(opts: {
 
     await activateClient.query("COMMIT");
     logger.info({ orgId: newOrgId, userId, email }, "[Webhook/activate] User + org + membership activated");
+
+    // Seller attribution (beta): record one-time commission fire-and-forget.
+    // Idempotent — ON CONFLICT DO NOTHING prevents double-commission.
+    // DOES NOT affect billing, trial, or plan logic.
+    if (_wbSellerId) {
+      (async () => {
+        try {
+          const { recordCommission: _rc } = await import("../services/seller-attribution.js");
+          await _rc({
+            sellerId:              _wbSellerId,
+            orgId:                 newOrgId,
+            customerEmail:         email,
+            stripeCustomerId:      customerId ?? null,
+            stripeSubscriptionId:  null, // enriched by webhook if needed
+            stripeCheckoutSessionId: null,
+            plan:                  selectedPlan,
+            eligibleAmountCents:   0,   // enriched from invoice webhook; placeholder for now
+            currency:              "eur",
+            attributionMethod:     "ref_link",
+          });
+        } catch (_rcErr) {
+          logger.warn({ _rcErr, orgId: newOrgId, _wbSellerId }, "[Webhook/activate] Commission recording failed (non-fatal)");
+        }
+      })().catch(() => {});
+    }
   } catch (activateErr) {
     await activateClient.query("ROLLBACK").catch(() => {});
     logger.error({ activateErr, orgId, email }, "[Webhook/activate] Transaction rolled back");

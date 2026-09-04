@@ -3209,6 +3209,47 @@ export async function initDataTables(): Promise<void> {
         AND (settings->>'timezone') != ''
     `);
 
+    // ── Seller Attribution (beta) ─────────────────────────────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS sellers (
+        id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+        seller_code TEXT UNIQUE NOT NULL,
+        name        TEXT,
+        email       TEXT,
+        status      TEXT NOT NULL DEFAULT 'active',
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS seller_commissions (
+        id                          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+        seller_id                   TEXT NOT NULL REFERENCES sellers(id),
+        org_id                      TEXT NOT NULL,
+        customer_email              TEXT NOT NULL,
+        stripe_customer_id          TEXT,
+        stripe_subscription_id      TEXT,
+        stripe_checkout_session_id  TEXT,
+        stripe_invoice_id           TEXT,
+        stripe_payment_intent_id    TEXT,
+        plan                        TEXT NOT NULL,
+        eligible_amount_cents       INTEGER NOT NULL DEFAULT 0,
+        commission_rate_bps         INTEGER NOT NULL DEFAULT 3500,
+        commission_amount_cents     INTEGER NOT NULL DEFAULT 0,
+        currency                    TEXT NOT NULL DEFAULT 'eur',
+        status                      TEXT NOT NULL DEFAULT 'pending',
+        attribution_method          TEXT NOT NULL DEFAULT 'ref_link',
+        attributed_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        earned_at                   TIMESTAMPTZ,
+        paid_at                     TIMESTAMPTZ,
+        created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_seller_commissions_org UNIQUE (org_id)
+      )
+    `);
+    // Self-heal: add seller_id columns to existing tables
+    await run(client, `ALTER TABLE pending_signups    ADD COLUMN IF NOT EXISTS seller_id TEXT`);
+    await run(client, `ALTER TABLE organizations      ADD COLUMN IF NOT EXISTS seller_id TEXT`);
+
     logger.info("[init-data-tables] all tables, schema_migrations, missing-production-tables, P0-5 ALTERs, P1-2 type fixes done");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");

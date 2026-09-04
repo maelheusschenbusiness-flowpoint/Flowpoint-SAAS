@@ -2490,4 +2490,95 @@ router.post("/admin/create-report-api", async (req: Request, res: Response): Pro
   }
 });
 
+// ── POST /admin/seller-attributions — manual fallback attribution ─────────────
+router.post("/admin/seller-attributions", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { org_id, seller_id: sellerCode, reason } = req.body as Record<string, string | undefined>;
+  if (!org_id || !sellerCode || !reason) {
+    res.status(400).json({ ok: false, error: "org_id, seller_id (seller_code), and reason are required" });
+    return;
+  }
+  try {
+    // Verify org exists
+    const orgR = await pool.query(
+      `SELECT id, owner_email, plan FROM organizations WHERE id = $1 LIMIT 1`, [org_id]
+    );
+    if (!orgR.rows[0]) { res.status(404).json({ ok: false, error: "Organization not found" }); return; }
+    const org = orgR.rows[0] as { id: string; owner_email: string; plan: string };
+
+    // Verify seller exists and is active
+    const sellerR = await pool.query(
+      `SELECT id, seller_code, name, status FROM sellers WHERE seller_code = $1 AND status = 'active' LIMIT 1`,
+      [String(sellerCode).trim().toUpperCase()]
+    );
+    if (!sellerR.rows[0]) { res.status(404).json({ ok: false, error: "Seller not found or inactive" }); return; }
+    const seller = sellerR.rows[0] as { id: string; seller_code: string; name: string };
+
+    // Guard: never silently overwrite a paid commission
+    const existingComm = await pool.query(
+      `SELECT id, status, attribution_method FROM seller_commissions WHERE org_id = $1 LIMIT 1`, [org_id]
+    );
+    if (existingComm.rows[0]) {
+      const ec = existingComm.rows[0] as { id: string; status: string; attribution_method: string };
+      if (ec.status === "paid") {
+        res.status(409).json({ ok: false, error: "A paid commission already exists for this org — cannot overwrite" });
+        return;
+      }
+      // Non-paid duplicate: return existing without creating a second one
+      res.json({ ok: true, action: "already_attributed", commission: ec, seller });
+      return;
+    }
+
+    // Update organizations.seller_id
+    await pool.query(
+      `UPDATE organizations SET seller_id = $1 WHERE id = $2`, [seller.id, org_id]
+    );
+
+    // Record commission
+    const { recordCommission: _rcManual } = await import("../services/seller-attribution.js");
+    await _rcManual({
+      sellerId:             seller.id,
+      orgId:                org_id,
+      customerEmail:        org.owner_email,
+      plan:                 org.plan,
+      eligibleAmountCents:  0,
+      currency:             "eur",
+      attributionMethod:    "manual",
+    });
+
+    res.json({ ok: true, action: "attributed", orgId: org_id, seller, reason });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── GET /admin/sellers/:code/report — read all orgs + commissions for a seller ─
+router.get("/admin/sellers/:code/report", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const code = String(req.params["code"] ?? "").trim().toUpperCase();
+  try {
+    const sellerR = await pool.query(
+      `SELECT id, seller_code, name, email, status, created_at FROM sellers WHERE seller_code = $1 LIMIT 1`, [code]
+    );
+    if (!sellerR.rows[0]) { res.status(404).json({ ok: false, error: "Seller not found" }); return; }
+    const seller = sellerR.rows[0];
+
+    const orgs = await pool.query(
+      `SELECT o.id, o.owner_email, o.plan, o.subscription_status, o.created_at
+       FROM organizations o WHERE o.seller_id = $1 ORDER BY o.created_at DESC`, [seller.id]
+    );
+
+    const comms = await pool.query(
+      `SELECT sc.id, sc.org_id, sc.customer_email, sc.plan,
+              sc.eligible_amount_cents, sc.commission_rate_bps, sc.commission_amount_cents,
+              sc.currency, sc.status, sc.attribution_method, sc.attributed_at, sc.earned_at, sc.paid_at
+       FROM seller_commissions sc WHERE sc.seller_id = $1 ORDER BY sc.attributed_at DESC`, [seller.id]
+    );
+
+    res.json({ ok: true, seller, organizations: orgs.rows, commissions: comms.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 export default router;

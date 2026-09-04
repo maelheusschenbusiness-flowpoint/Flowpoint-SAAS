@@ -668,7 +668,8 @@
       body: JSON.stringify({ _hp: hp, firstName: firstName, lastName: lastName,
         email: email, companyName: companyName, country: country,
         address: address, city: city, postalCode: postalCode,
-        phone: phone || undefined, vat: vat || undefined })
+        phone: phone || undefined, vat: vat || undefined,
+        seller_code: (function(){try{var _ref=new URLSearchParams(window.location.search).get('fp_ref')||localStorage.getItem('fp_seller_ref')||'';return _ref||undefined;}catch(e){return undefined;}})() })
     })
     .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
     .then(function(res) {

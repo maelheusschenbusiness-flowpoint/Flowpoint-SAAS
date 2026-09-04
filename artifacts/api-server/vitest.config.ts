@@ -104,6 +104,7 @@ export default defineConfig({
       // P0 admin purge — SAVEPOINT fix + 7 regression tests
       "src/tests/admin-purge-all-clients.test.ts",
       "src/tests/billing-checkout-session-dedup.test.ts",
+      "src/tests/seller-attribution.test.ts",
     ],
     environment: "node",
     globals:     false,

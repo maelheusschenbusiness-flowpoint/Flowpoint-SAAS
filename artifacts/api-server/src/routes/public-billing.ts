@@ -584,6 +584,28 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       ...(preRegisterToken  ? { pre_register_token: preRegisterToken }    : {}),
     };
 
+    // Seller attribution (beta): read seller_id from pending_signup — never from frontend.
+    // Additive only — does NOT modify pricing, trial, customer, or line_items.
+    let _csSellerCode: string | null = null;
+    if (signupRow) {
+      try {
+        const { resolveSellerIdFromToken: _rsit } = await import("../services/seller-attribution.js");
+        const _sid = await _rsit(preRegisterToken!);
+        if (_sid) {
+          const _sr = await pool.query<{ seller_code: string }>(
+            `SELECT seller_code FROM sellers WHERE id = $1 AND status = 'active' LIMIT 1`, [_sid]
+          );
+          _csSellerCode = _sr.rows[0]?.seller_code ?? null;
+          if (_csSellerCode) {
+            metadata["seller_id"]           = _csSellerCode;
+            metadata["seller_attribution"]  = "ref_link";
+          }
+        }
+      } catch (_sce) {
+        logger.warn({ _sce }, "[PublicBilling] checkout-session seller lookup failed (non-fatal)");
+      }
+    }
+
     /* ── Helper: build embedded vs redirect params, optionally pre-attach customer ── */
     const returnUrl  = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`;
     const successUrl = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`;
@@ -811,6 +833,30 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     ...(piOrgId            ? { orgId:                 piOrgId                     } : {}),
     ...(trialDaysRemaining ? { trial_days_remaining:  String(trialDaysRemaining)  } : {}),
   };
+
+  // Seller attribution (beta): read seller_id from pending_signup — additive metadata only.
+  // MUST NOT influence amount, customer resolution, trial, or line_items.
+  if (preRegisterToken) {
+    (async () => {
+      try {
+        const { resolveSellerIdFromToken: _rsit2 } = await import("../services/seller-attribution.js");
+        const _sid2 = await _rsit2(preRegisterToken);
+        if (_sid2) {
+          const _piPool = await import("@workspace/db");
+          const _sc2 = await _piPool.pool.query<{ seller_code: string }>(
+            `SELECT seller_code FROM sellers WHERE id = $1 AND status = 'active' LIMIT 1`, [_sid2]
+          );
+          const _piSC = _sc2.rows[0]?.seller_code ?? null;
+          if (_piSC) {
+            metadata["seller_id"]          = _piSC;
+            metadata["seller_attribution"] = "ref_link";
+          }
+        }
+      } catch (_pe) {
+        logger.warn({ _pe }, "[PublicBilling] payment-intent seller lookup failed (non-fatal)");
+      }
+    })().catch(() => {});
+  }
 
   // ── Closed-tab recovery: tag AI-credits-only PaymentIntents ───────────────
   // If the user closes the browser before checkout-return.html calls
