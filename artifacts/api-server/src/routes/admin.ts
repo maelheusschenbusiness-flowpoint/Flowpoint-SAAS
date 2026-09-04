@@ -2614,9 +2614,11 @@ router.post("/admin/seller-commissions/:id/mark-paid", async (req: Request, res:
 // ── POST /admin/seller-attributions — manual fallback attribution ─────────────
 router.post("/admin/seller-attributions", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
-  const { org_id, seller_id: sellerCode, reason } = req.body as Record<string, string | undefined>;
+  const body = req.body as Record<string, string | undefined>;
+  const sellerCode = body["seller_code"] ?? body["seller_id"]; // accept both field names
+  const { org_id, reason } = body;
   if (!org_id || !sellerCode || !reason) {
-    res.status(400).json({ ok: false, error: "org_id, seller_id (seller_code), and reason are required" });
+    res.status(400).json({ ok: false, error: "org_id, seller_code (or seller_id), and reason are required" });
     return;
   }
   try {
