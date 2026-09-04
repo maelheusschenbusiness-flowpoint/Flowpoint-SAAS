@@ -354,7 +354,72 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
             stripeCustomerId = signupRow.stripe_customer_id;
             logger.info({ customerId: stripeCustomerId }, "[PublicBilling] checkout-session: reusing Stripe Customer from pending_signups");
           }
-        } catch { /* deleted or unreachable — fall through to create */ }
+        } catch { /* deleted or unreachable — fall through to cross-token search */ }
+      }
+
+      // ── Cross-token dedup: a sibling pending_signup for the same email may already
+      // have a Stripe Customer from a payment-intent or a previous checkout-session
+      // attempt.  This is the primary guard against "Token A creates Customer C1, then
+      // Token B creates Customer C2 for the same email" — the root cause of duplicate
+      // Stripe customers during pre-registration.
+      if (!stripeCustomerId) {
+        const { pool: _csCrossPool } = await import("@workspace/db");
+        const _csCrossC = await _csCrossPool.connect();
+        try {
+          const _csCrossR = await _csCrossC.query<{ stripe_customer_id: string }>(
+            `SELECT stripe_customer_id FROM pending_signups
+             WHERE lower(email) = lower($1)
+               AND consumed_at IS NULL
+               AND expires_at > NOW()
+               AND stripe_customer_id IS NOT NULL
+               AND token != $2
+             ORDER BY created_at DESC LIMIT 1`,
+            [signupRow.email, preRegisterToken]
+          );
+          if (_csCrossR.rows.length > 0) {
+            const _csCrossId = _csCrossR.rows[0]!.stripe_customer_id;
+            try {
+              const _csCrossEc = await stripe.customers.retrieve(_csCrossId);
+              if (!(_csCrossEc as { deleted?: boolean }).deleted) {
+                stripeCustomerId = _csCrossId;
+                // Propagate to current token so future retries are idempotent
+                await _csCrossC.query(
+                  `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
+                  [stripeCustomerId, preRegisterToken]
+                );
+                logger.info(
+                  { customerId: stripeCustomerId, email: signupRow.email },
+                  "[PublicBilling] checkout-session: reusing Stripe Customer from sibling pending_signup (cross-token dedup)"
+                );
+              }
+            } catch { /* deleted or unreachable — fall through to Stripe email search */ }
+          }
+        } finally { _csCrossC.release(); }
+      }
+
+      // ── Stripe email search fallback: catches customers created via payment-intent
+      // before this checkout-session was opened, or when the DB sibling lookup above
+      // found nothing (e.g. all sibling tokens already consumed or expired).
+      if (!stripeCustomerId) {
+        const _csEmailList = await stripe.customers.list({ email: signupRow.email, limit: 5 });
+        for (const _csEmailEc of _csEmailList.data) {
+          if ((_csEmailEc as { deleted?: boolean }).deleted) continue;
+          stripeCustomerId = _csEmailEc.id;
+          // Propagate to current token for future idempotency
+          const { pool: _csFbPool } = await import("@workspace/db");
+          const _csFbC = await _csFbPool.connect();
+          try {
+            await _csFbC.query(
+              `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
+              [stripeCustomerId, preRegisterToken]
+            );
+          } finally { _csFbC.release(); }
+          logger.info(
+            { customerId: stripeCustomerId, email: signupRow.email },
+            "[PublicBilling] checkout-session: found existing Stripe Customer by email (cross-token fallback)"
+          );
+          break;
+        }
       }
 
       if (!stripeCustomerId) {

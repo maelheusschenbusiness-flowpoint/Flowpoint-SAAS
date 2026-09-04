@@ -183,7 +183,7 @@ router.post("/white-label/domains/:id/verify", async (req: Request, res: Respons
     }
 
     if (!verified) {
-      await db(req)(`UPDATE custom_domains SET status='pending_dns', updated_at=now() WHERE id=$1`, [id]);
+      await db(req)(`UPDATE custom_domains SET status='pending_dns', updated_at=now() WHERE id=$1 AND org_id=$2`, [id, org(req)]);
       res.status(422).json({
         ok: false, status: "pending_dns", verified: false, dnsError,
         message: `Enregistrement DNS TXT introuvable. Ajoutez _flowpoint-verify.${domain} → ${verification_token ?? ""} et réessayez dans quelques minutes.`,
@@ -191,7 +191,7 @@ router.post("/white-label/domains/:id/verify", async (req: Request, res: Respons
       }); return;
     }
 
-    await db(req)(`UPDATE custom_domains SET status='dns_verified', ssl_active=false, verified_at=now(), updated_at=now() WHERE id=$1`, [id]);
+    await db(req)(`UPDATE custom_domains SET status='dns_verified', ssl_active=false, verified_at=now(), updated_at=now() WHERE id=$1 AND org_id=$2`, [id, org(req)]);
     res.json({
       ok: true, status: "dns_verified", sslActive: false,
       message: "DNS vérifié avec succès. SSL doit être configuré manuellement via votre hébergeur ou proxy (Cloudflare, Caddy, Nginx + Let's Encrypt).",
@@ -224,7 +224,7 @@ router.post("/white-label/domains/:id/ssl-check", async (req: Request, res: Resp
     });
 
     const newStatus = sslOk ? "ssl_active" : "ssl_pending";
-    await db(req)(`UPDATE custom_domains SET status=$1, ssl_active=$2, updated_at=now() WHERE id=$3`, [newStatus, sslOk, id]);
+    await db(req)(`UPDATE custom_domains SET status=$1, ssl_active=$2, updated_at=now() WHERE id=$3 AND org_id=$4`, [newStatus, sslOk, id, org(req)]);
     res.json({
       ok: true, status: newStatus, sslActive: sslOk,
       message: sslOk

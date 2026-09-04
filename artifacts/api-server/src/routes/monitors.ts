@@ -504,9 +504,11 @@ router.get("/monitors", async (req: Request, res: Response) => {
 
 router.get("/monitors/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
+  // Defense-in-depth: explicit org_id even though orgDb enforces RLS.
+  const _getOrgId = (req as unknown as { orgId?: string }).orgId ?? "default";
   try {
     const result = await req.orgDb(
-      `SELECT * FROM monitors WHERE id = $1 LIMIT 1`, [id],
+      `SELECT * FROM monitors WHERE id = $1 AND org_id::text = $2 LIMIT 1`, [id, _getOrgId],
     );
     if (!result.rows[0]) { res.status(404).json({ error: "Monitor not found" }); return; }
     res.json(toPublic(result.rows[0]));
@@ -520,7 +522,12 @@ router.get("/monitors/:id", async (req: Request, res: Response) => {
 
 router.get("/monitors/:id/checks-summary", async (req: Request, res: Response) => {
   const { id } = req.params;
+  const _cSumOrgId = (req as unknown as { orgId?: string }).orgId ?? "default";
   try {
+    // Verify monitor belongs to caller's org before returning check data.
+    const _cSumOwn = await req.orgDb(`SELECT id FROM monitors WHERE id = $1 AND org_id::text = $2 LIMIT 1`, [id, _cSumOrgId]);
+    if (!_cSumOwn.rows[0]) { res.status(404).json({ error: "Monitor not found" }); return; }
+
     const now   = Date.now();
     const since = now - 30 * 24 * 60 * 60 * 1000;
 
@@ -555,7 +562,10 @@ router.get("/monitors/:id/checks-summary", async (req: Request, res: Response) =
 router.get("/monitors/:id/checks", async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const orgId = req.orgId ?? "default";
+    const orgId = (req as unknown as { orgId?: string }).orgId ?? req.orgId ?? "default";
+    // Defense-in-depth: verify monitor ownership before returning check history.
+    const _cOwn = await req.orgDb(`SELECT id FROM monitors WHERE id = $1 AND org_id::text = $2 LIMIT 1`, [id, orgId]);
+    if (!_cOwn.rows[0]) { res.status(404).json({ error: "Monitor not found" }); return; }
     // retention365d add-on: extend monitor check history beyond 90 days
     let maxDays = 90;
     try {
@@ -591,7 +601,11 @@ router.get("/monitors/:id/checks", async (req: Request, res: Response) => {
 
 router.get("/monitors/:id/incidents", async (req: Request, res: Response) => {
   const { id } = req.params;
+  const _incOrgId = (req as unknown as { orgId?: string }).orgId ?? "default";
   try {
+    // Defense-in-depth: verify monitor ownership before returning incidents.
+    const _incOwn = await req.orgDb(`SELECT id FROM monitors WHERE id = $1 AND org_id::text = $2 LIMIT 1`, [id, _incOrgId]);
+    if (!_incOwn.rows[0]) { res.status(404).json({ error: "Monitor not found" }); return; }
     const result = await req.orgDb(
       `SELECT * FROM monitor_incidents WHERE monitor_id = $1 ORDER BY started_at DESC LIMIT 50`,
       [id],
@@ -760,10 +774,12 @@ router.patch("/monitors/:id", canAdmin, async (req: Request, res: Response) => {
   }
   setClauses.push("updated_at = NOW()");
 
+  // Defense-in-depth: explicit org_id in WHERE even though orgDb enforces RLS.
+  const _patchOrgId = (req as unknown as { orgId?: string }).orgId ?? "default";
   try {
     const result = await req.orgDb(
-      `UPDATE monitors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
-      [id, ...values],
+      `UPDATE monitors SET ${setClauses.join(", ")} WHERE id = $1 AND org_id::text = $${values.length + 2} RETURNING *`,
+      [id, ...values, _patchOrgId],
     );
     if (result.rowCount === 0) { res.status(404).json({ error: "not found" }); return; }
     res.json(toPublic(result.rows[0]));
@@ -961,9 +977,11 @@ router.delete("/monitors/:id", canAdmin, async (req: Request, res: Response) => 
     if (existing.rowCount === 0) { res.status(404).json({ error: "Monitor not found" }); return; }
     const m = existing.rows[0] as Record<string, unknown>;
 
+    // Defense-in-depth: explicit org_id in WHERE even though orgDb enforces RLS.
+    const _delOrgId = String(m["org_id"] ?? (req as unknown as { orgId?: string }).orgId ?? "default");
     await req.orgDb(`DELETE FROM monitor_checks    WHERE monitor_id = $1`, [id]);
     await req.orgDb(`DELETE FROM monitor_incidents WHERE monitor_id = $1`, [id]);
-    await req.orgDb(`DELETE FROM monitors          WHERE id = $1`,         [id]);
+    await req.orgDb(`DELETE FROM monitors          WHERE id = $1 AND org_id::text = $2`, [id, _delOrgId]);
 
     store.logActivity({
       type: "monitor",

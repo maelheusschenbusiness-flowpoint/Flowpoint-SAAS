@@ -101343,10 +101343,11 @@ var init_monitors = __esm({
     });
     router9.get("/monitors/:id", async (req, res) => {
       const { id } = req.params;
+      const _getOrgId = req.orgId ?? "default";
       try {
         const result = await req.orgDb(
-          `SELECT * FROM monitors WHERE id = $1 LIMIT 1`,
-          [id]
+          `SELECT * FROM monitors WHERE id = $1 AND org_id::text = $2 LIMIT 1`,
+          [id, _getOrgId]
         );
         if (!result.rows[0]) {
           res.status(404).json({ error: "Monitor not found" });
@@ -101360,7 +101361,13 @@ var init_monitors = __esm({
     });
     router9.get("/monitors/:id/checks-summary", async (req, res) => {
       const { id } = req.params;
+      const _cSumOrgId = req.orgId ?? "default";
       try {
+        const _cSumOwn = await req.orgDb(`SELECT id FROM monitors WHERE id = $1 AND org_id::text = $2 LIMIT 1`, [id, _cSumOrgId]);
+        if (!_cSumOwn.rows[0]) {
+          res.status(404).json({ error: "Monitor not found" });
+          return;
+        }
         const now = Date.now();
         const since = now - 30 * 24 * 60 * 60 * 1e3;
         const result = await req.orgDb(
@@ -101389,7 +101396,12 @@ var init_monitors = __esm({
     router9.get("/monitors/:id/checks", async (req, res) => {
       const { id } = req.params;
       try {
-        const orgId3 = req.orgId ?? "default";
+        const orgId3 = req.orgId ?? req.orgId ?? "default";
+        const _cOwn = await req.orgDb(`SELECT id FROM monitors WHERE id = $1 AND org_id::text = $2 LIMIT 1`, [id, orgId3]);
+        if (!_cOwn.rows[0]) {
+          res.status(404).json({ error: "Monitor not found" });
+          return;
+        }
         let maxDays = 90;
         try {
           const { loadBillingContext: loadBillingContext2 } = await Promise.resolve().then(() => (init_billing_context(), billing_context_exports));
@@ -101421,7 +101433,13 @@ var init_monitors = __esm({
     });
     router9.get("/monitors/:id/incidents", async (req, res) => {
       const { id } = req.params;
+      const _incOrgId = req.orgId ?? "default";
       try {
+        const _incOwn = await req.orgDb(`SELECT id FROM monitors WHERE id = $1 AND org_id::text = $2 LIMIT 1`, [id, _incOrgId]);
+        if (!_incOwn.rows[0]) {
+          res.status(404).json({ error: "Monitor not found" });
+          return;
+        }
         const result = await req.orgDb(
           `SELECT * FROM monitor_incidents WHERE monitor_id = $1 ORDER BY started_at DESC LIMIT 50`,
           [id]
@@ -101582,10 +101600,11 @@ var init_monitors = __esm({
         return;
       }
       setClauses.push("updated_at = NOW()");
+      const _patchOrgId = req.orgId ?? "default";
       try {
         const result = await req.orgDb(
-          `UPDATE monitors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
-          [id, ...values]
+          `UPDATE monitors SET ${setClauses.join(", ")} WHERE id = $1 AND org_id::text = $${values.length + 2} RETURNING *`,
+          [id, ...values, _patchOrgId]
         );
         if (result.rowCount === 0) {
           res.status(404).json({ error: "not found" });
@@ -101626,9 +101645,10 @@ var init_monitors = __esm({
           return;
         }
         const m = existing.rows[0];
+        const _delOrgId = String(m["org_id"] ?? req.orgId ?? "default");
         await req.orgDb(`DELETE FROM monitor_checks    WHERE monitor_id = $1`, [id]);
         await req.orgDb(`DELETE FROM monitor_incidents WHERE monitor_id = $1`, [id]);
-        await req.orgDb(`DELETE FROM monitors          WHERE id = $1`, [id]);
+        await req.orgDb(`DELETE FROM monitors          WHERE id = $1 AND org_id::text = $2`, [id, _delOrgId]);
         store.logActivity({
           type: "monitor",
           label: `Monitor supprim\xE9 : ${String(m["name"])} (${String(m["url"])})`,
@@ -112019,10 +112039,13 @@ router10.get("/audits/quick-scan", async (req, res) => {
 router10.get("/audits/schedule", listSchedules);
 router10.get("/audits/upcoming", upcomingSchedules);
 router10.get("/audits/:id", async (req, res) => {
+  const orgId3 = requireOrgId(req, res);
+  if (!orgId3) return;
   try {
     const result = await req.orgDb(
-      `SELECT * FROM audits WHERE id = $1 LIMIT 1`,
-      [req.params.id]
+      // Defense-in-depth: explicit org_id even though orgDb enforces RLS.
+      `SELECT * FROM audits WHERE id = $1 AND org_id = $2 LIMIT 1`,
+      [req.params.id, orgId3]
     );
     if (!result.rows[0]) {
       res.status(404).json({ error: "Audit not found" });
@@ -132226,7 +132249,7 @@ router40.post("/white-label/domains/:id/verify", async (req, res) => {
       logger.info({ domain, dnsError }, "[WhiteLabel] DNS TXT lookup failed");
     }
     if (!verified) {
-      await db14(req)(`UPDATE custom_domains SET status='pending_dns', updated_at=now() WHERE id=$1`, [id]);
+      await db14(req)(`UPDATE custom_domains SET status='pending_dns', updated_at=now() WHERE id=$1 AND org_id=$2`, [id, org13(req)]);
       res.status(422).json({
         ok: false,
         status: "pending_dns",
@@ -132237,7 +132260,7 @@ router40.post("/white-label/domains/:id/verify", async (req, res) => {
       });
       return;
     }
-    await db14(req)(`UPDATE custom_domains SET status='dns_verified', ssl_active=false, verified_at=now(), updated_at=now() WHERE id=$1`, [id]);
+    await db14(req)(`UPDATE custom_domains SET status='dns_verified', ssl_active=false, verified_at=now(), updated_at=now() WHERE id=$1 AND org_id=$2`, [id, org13(req)]);
     res.json({
       ok: true,
       status: "dns_verified",
@@ -132276,7 +132299,7 @@ router40.post("/white-label/domains/:id/ssl-check", async (req, res) => {
       req2.end();
     });
     const newStatus = sslOk ? "ssl_active" : "ssl_pending";
-    await db14(req)(`UPDATE custom_domains SET status=$1, ssl_active=$2, updated_at=now() WHERE id=$3`, [newStatus, sslOk, id]);
+    await db14(req)(`UPDATE custom_domains SET status=$1, ssl_active=$2, updated_at=now() WHERE id=$3 AND org_id=$4`, [newStatus, sslOk, id, org13(req)]);
     res.json({
       ok: true,
       status: newStatus,
@@ -139890,6 +139913,64 @@ router54.post("/public/checkout-session", publicCheckoutRateLimit, async (req, r
             logger.info({ customerId: stripeCustomerId }, "[PublicBilling] checkout-session: reusing Stripe Customer from pending_signups");
           }
         } catch {
+        }
+      }
+      if (!stripeCustomerId) {
+        const { pool: _csCrossPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+        const _csCrossC = await _csCrossPool.connect();
+        try {
+          const _csCrossR = await _csCrossC.query(
+            `SELECT stripe_customer_id FROM pending_signups
+             WHERE lower(email) = lower($1)
+               AND consumed_at IS NULL
+               AND expires_at > NOW()
+               AND stripe_customer_id IS NOT NULL
+               AND token != $2
+             ORDER BY created_at DESC LIMIT 1`,
+            [signupRow.email, preRegisterToken]
+          );
+          if (_csCrossR.rows.length > 0) {
+            const _csCrossId = _csCrossR.rows[0].stripe_customer_id;
+            try {
+              const _csCrossEc = await stripe.customers.retrieve(_csCrossId);
+              if (!_csCrossEc.deleted) {
+                stripeCustomerId = _csCrossId;
+                await _csCrossC.query(
+                  `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
+                  [stripeCustomerId, preRegisterToken]
+                );
+                logger.info(
+                  { customerId: stripeCustomerId, email: signupRow.email },
+                  "[PublicBilling] checkout-session: reusing Stripe Customer from sibling pending_signup (cross-token dedup)"
+                );
+              }
+            } catch {
+            }
+          }
+        } finally {
+          _csCrossC.release();
+        }
+      }
+      if (!stripeCustomerId) {
+        const _csEmailList = await stripe.customers.list({ email: signupRow.email, limit: 5 });
+        for (const _csEmailEc of _csEmailList.data) {
+          if (_csEmailEc.deleted) continue;
+          stripeCustomerId = _csEmailEc.id;
+          const { pool: _csFbPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+          const _csFbC = await _csFbPool.connect();
+          try {
+            await _csFbC.query(
+              `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
+              [stripeCustomerId, preRegisterToken]
+            );
+          } finally {
+            _csFbC.release();
+          }
+          logger.info(
+            { customerId: stripeCustomerId, email: signupRow.email },
+            "[PublicBilling] checkout-session: found existing Stripe Customer by email (cross-token fallback)"
+          );
+          break;
         }
       }
       if (!stripeCustomerId) {

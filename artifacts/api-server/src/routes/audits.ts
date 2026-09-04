@@ -234,10 +234,13 @@ router.get("/audits/upcoming",  upcomingSchedules);
 // ── GET /audits/:id ───────────────────────────────────────────────────────────
 
 router.get("/audits/:id", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   try {
     const result = await req.orgDb(
-      `SELECT * FROM audits WHERE id = $1 LIMIT 1`,
-      [req.params.id],
+      // Defense-in-depth: explicit org_id even though orgDb enforces RLS.
+      `SELECT * FROM audits WHERE id = $1 AND org_id = $2 LIMIT 1`,
+      [req.params.id, orgId],
     );
     if (!result.rows[0]) { res.status(404).json({ error: "Audit not found" }); return; }
     res.json(auditToPublic(result.rows[0]));
