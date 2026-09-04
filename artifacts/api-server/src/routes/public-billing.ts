@@ -317,31 +317,43 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
     /* ── New signup flow: load pending_signups + create/find Stripe Customer ── */
     let stripeCustomerId: string | undefined;
     let signupOrgId: string | undefined; // = email, used as orgId in FlowPoint
+    // Hoisted so seller-attribution block below can reference it outside the token guard.
+    let signupRow: {
+      email: string; first_name: string; last_name: string; company_name: string;
+      country: string | null; address: string | null; city: string | null;
+      postal_code: string | null; phone: string | null; vat: string | null;
+      stripe_customer_id: string | null;
+    } | null = null;
 
     if (preRegisterToken) {
       const { pool: pgPool } = await import("@workspace/db");
+      // Use a single client held open for the entire customer-resolution section.
+      // BEGIN + FOR UPDATE serialises concurrent payment-intent / checkout-session
+      // calls that share the same pre_register_token, preventing the race condition
+      // that caused one email to produce two Stripe Customers.
       const dbClient = await pgPool.connect();
-      let signupRow: {
-        email: string; first_name: string; last_name: string; company_name: string;
-        country: string | null; address: string | null; city: string | null;
-        postal_code: string | null; phone: string | null; vat: string | null;
-        stripe_customer_id: string | null;
-      } | null = null;
+      let _csLockTxOpen = false;
 
       try {
+        await dbClient.query("BEGIN");
+        _csLockTxOpen = true;
         const r = await dbClient.query(
           `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, stripe_customer_id
-           FROM pending_signups WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL LIMIT 1`,
+           FROM pending_signups WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL LIMIT 1 FOR UPDATE`,
           [preRegisterToken]
         );
         if (r.rows.length > 0) signupRow = r.rows[0];
-      } finally {
+        if (!signupRow) {
+          await dbClient.query("ROLLBACK");
+          _csLockTxOpen = false;
+          dbClient.release();
+          res.status(400).json({ error: "Session d'inscription expirée ou invalide. Veuillez recommencer." });
+          return;
+        }
+      } catch (_csLockErr) {
+        if (_csLockTxOpen) { await dbClient.query("ROLLBACK").catch(() => {}); }
         dbClient.release();
-      }
-
-      if (!signupRow) {
-        res.status(400).json({ error: "Session d'inscription expirée ou invalide. Veuillez recommencer." });
-        return;
+        throw _csLockErr;
       }
 
       signupOrgId = signupRow.email; // orgId = email in FlowPoint
@@ -357,11 +369,11 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         } catch { /* deleted or unreachable — fall through to cross-token search */ }
       }
 
-      // ── Cross-token dedup: a sibling pending_signup for the same email may already
-      // have a Stripe Customer from a payment-intent or a previous checkout-session
-      // attempt.  This is the primary guard against "Token A creates Customer C1, then
-      // Token B creates Customer C2 for the same email" — the root cause of duplicate
-      // Stripe customers during pre-registration.
+      // ── All customer resolution runs inside the FOR UPDATE lock on dbClient ──
+      // Cross-token dedup: a sibling pending_signup for the same email may already
+      // have a Stripe Customer from a payment-intent or a previous checkout-session.
+      // These lookups use a *separate* read-only connection — they query different rows
+      // (not the locked one) so they don't require the same transaction client.
       if (!stripeCustomerId) {
         const { pool: _csCrossPool } = await import("@workspace/db");
         const _csCrossC = await _csCrossPool.connect();
@@ -382,11 +394,6 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
               const _csCrossEc = await stripe.customers.retrieve(_csCrossId);
               if (!(_csCrossEc as { deleted?: boolean }).deleted) {
                 stripeCustomerId = _csCrossId;
-                // Propagate to current token so future retries are idempotent
-                await _csCrossC.query(
-                  `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
-                  [stripeCustomerId, preRegisterToken]
-                );
                 logger.info(
                   { customerId: stripeCustomerId, email: signupRow.email },
                   "[PublicBilling] checkout-session: reusing Stripe Customer from sibling pending_signup (cross-token dedup)"
@@ -399,21 +406,13 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
       // ── Stripe email search fallback: catches customers created via payment-intent
       // before this checkout-session was opened, or when the DB sibling lookup above
-      // found nothing (e.g. all sibling tokens already consumed or expired).
+      // found nothing. The FOR UPDATE lock on our token row ensures that if payment-intent
+      // is mid-creation on the same token, we wait for it to commit before reaching here.
       if (!stripeCustomerId) {
         const _csEmailList = await stripe.customers.list({ email: signupRow.email, limit: 5 });
         for (const _csEmailEc of _csEmailList.data) {
           if ((_csEmailEc as { deleted?: boolean }).deleted) continue;
           stripeCustomerId = _csEmailEc.id;
-          // Propagate to current token for future idempotency
-          const { pool: _csFbPool } = await import("@workspace/db");
-          const _csFbC = await _csFbPool.connect();
-          try {
-            await _csFbC.query(
-              `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
-              [stripeCustomerId, preRegisterToken]
-            );
-          } finally { _csFbC.release(); }
           logger.info(
             { customerId: stripeCustomerId, email: signupRow.email },
             "[PublicBilling] checkout-session: found existing Stripe Customer by email (cross-token fallback)"
@@ -456,19 +455,25 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
         const stripeCustomer = await stripe.customers.create(customerData);
         stripeCustomerId = stripeCustomer.id;
-
-        // Store for idempotent reuse: prevents duplicate Stripe customers on page-back / retry
-        const { pool: _csStorePool } = await import("@workspace/db");
-        const _csStoreC = await _csStorePool.connect();
-        try {
-          await _csStoreC.query(
-            `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
-            [stripeCustomerId, preRegisterToken]
-          );
-        } finally { _csStoreC.release(); }
-
         logger.info({ customerId: stripeCustomerId, orgId: signupOrgId },
           "[PublicBilling] Stripe Customer created and stored in pending_signups");
+      }
+
+      // Persist inside the FOR UPDATE transaction — atomic write-back ensures any
+      // concurrent call that hits the lock after us reads the persisted customer.
+      try {
+        await dbClient.query(
+          `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
+          [stripeCustomerId, preRegisterToken]
+        );
+        await dbClient.query("COMMIT");
+        _csLockTxOpen = false;
+      } catch (_csCommitErr) {
+        await dbClient.query("ROLLBACK").catch(() => {});
+        _csLockTxOpen = false;
+        throw _csCommitErr;
+      } finally {
+        dbClient.release();
       }
     }
 
@@ -512,26 +517,79 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
               const { loadBillingContext: _csLbc } = await import("../services/billing-context.js");
               const _authCtx = await _csLbc(_sess.orgId);
 
-              // ensureStripeCustomer guarantees exactly one canonical customer per org.
-              // It passes the billing context as a hint so ESC skips a redundant DB read
-              // when the customer already exists.
-              const { ensureStripeCustomer: _escFn } = await import("../services/ensure-stripe-customer.js");
-              const _escHint = {
-                stripeCustomerId: _authCtx.stripeCustomerId,
-                email:            _authCtx.email,
-                firstName:        _authCtx.firstName,
-                orgName:          _authCtx.orgName,
-              };
-              const _resolvedCustomerId = await _escFn(_sess.orgId, _escHint, stripeKey);
-              stripeCustomerId = _resolvedCustomerId;
+              // ── Pre-register bridge (email → UUID transition) ─────────────────────
+              // When a new org is activated from a pre-register flow, the pre-register
+              // Customer (keyed by email) may not yet be persisted to the org's DB row.
+              // If we call ensureStripeCustomer without this bridge, it finds no customer
+              // and creates a second one — violating the ONE_CUSTOMER_INVARIANT.
+              // Fix: before ESC, look up pending_signups for this email and reuse any
+              // Customer already anchored to that signup, normalising its metadata to UUID.
+              if (!_authCtx.stripeCustomerId && _authCtx.email) {
+                try {
+                  const { pool: _csBridgePool } = await import("@workspace/db");
+                  const _csBridgeC = await _csBridgePool.connect();
+                  let _csBridgeCid: string | null = null;
+                  try {
+                    const _csBridgeR = await _csBridgeC.query<{ stripe_customer_id: string }>(
+                      `SELECT stripe_customer_id FROM pending_signups
+                       WHERE lower(email) = lower($1)
+                         AND stripe_customer_id IS NOT NULL
+                         AND expires_at > NOW()
+                         AND consumed_at IS NULL
+                       ORDER BY created_at DESC LIMIT 1`,
+                      [_authCtx.email]
+                    );
+                    _csBridgeCid = _csBridgeR.rows[0]?.stripe_customer_id ?? null;
+                  } finally { _csBridgeC.release(); }
 
-              // ESC writes to org_settings (primary) + fire-and-forget organisations mirror.
-              // We await persistOrgData explicitly so organisations.stripe_customer_id is
-              // committed before sessions.create — makes loadBillingContext deterministic
-              // on the next request, regardless of the fire-and-forget timing in ESC.
-              if (!_authCtx.stripeCustomerId || _authCtx.stripeCustomerId !== _resolvedCustomerId) {
-                const { persistOrgData: _escPod } = await import("../services/org-data.js");
-                await _escPod(_sess.orgId, { stripeCustomerId: _resolvedCustomerId });
+                  if (_csBridgeCid) {
+                    const _csBridgeEc = await stripe.customers.retrieve(_csBridgeCid);
+                    if (!(_csBridgeEc as { deleted?: boolean }).deleted) {
+                      // Normalise metadata from email-keyed orgId to UUID orgId
+                      await stripe.customers.update(_csBridgeCid, {
+                        metadata: {
+                          flowpointOrgId: _sess.orgId,
+                          orgId:          _sess.orgId,
+                          org_id:         _sess.orgId,
+                        },
+                      }).catch(() => {});
+                      stripeCustomerId = _csBridgeCid;
+                      // Persist immediately so ESC and future calls find it in DB
+                      const { persistOrgData: _csBridgePod } = await import("../services/org-data.js");
+                      await _csBridgePod(_sess.orgId, { stripeCustomerId: _csBridgeCid });
+                      logger.info(
+                        { customerId: _csBridgeCid, orgId: _sess.orgId, email: _authCtx.email },
+                        "[PublicBilling] checkout-session: pre-register Customer reused for UUID org — metadata normalised to UUID (email→UUID bridge)"
+                      );
+                    }
+                  }
+                } catch (_csBridgeErr) {
+                  logger.warn({ _csBridgeErr, orgId: _sess.orgId },
+                    "[PublicBilling] checkout-session: pre-register bridge lookup failed (non-fatal — falling through to ensureStripeCustomer)");
+                }
+              }
+
+              // ensureStripeCustomer guarantees exactly one canonical customer per org.
+              // Only called when the bridge above did not resolve a pre-register customer.
+              if (!stripeCustomerId) {
+                const { ensureStripeCustomer: _escFn } = await import("../services/ensure-stripe-customer.js");
+                const _escHint = {
+                  stripeCustomerId: _authCtx.stripeCustomerId,
+                  email:            _authCtx.email,
+                  firstName:        _authCtx.firstName,
+                  orgName:          _authCtx.orgName,
+                };
+                const _resolvedCustomerId = await _escFn(_sess.orgId, _escHint, stripeKey);
+                stripeCustomerId = _resolvedCustomerId;
+
+                // ESC writes to org_settings (primary) + fire-and-forget organisations mirror.
+                // We await persistOrgData explicitly so organisations.stripe_customer_id is
+                // committed before sessions.create — makes loadBillingContext deterministic
+                // on the next request, regardless of the fire-and-forget timing in ESC.
+                if (!_authCtx.stripeCustomerId || _authCtx.stripeCustomerId !== _resolvedCustomerId) {
+                  const { persistOrgData: _escPod } = await import("../services/org-data.js");
+                  await _escPod(_sess.orgId, { stripeCustomerId: _resolvedCustomerId });
+                }
               }
 
               logger.info(
@@ -592,7 +650,8 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         const { resolveSellerIdFromToken: _rsit } = await import("../services/seller-attribution.js");
         const _sid = await _rsit(preRegisterToken!);
         if (_sid) {
-          const _sr = await pool.query<{ seller_code: string }>(
+          const { pool: _csSelPool } = await import("@workspace/db");
+          const _sr = await _csSelPool.query<{ seller_code: string }>(
             `SELECT seller_code FROM sellers WHERE id = $1 AND status = 'active' LIMIT 1`, [_sid]
           );
           _csSellerCode = _sr.rows[0]?.seller_code ?? null;
@@ -886,19 +945,33 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     if (preRegisterToken) {
       try {
         const { pool: _piPool } = await import("@workspace/db");
+        // Hold a single client open for the entire customer-resolution section.
+        // BEGIN + FOR UPDATE serialises concurrent payment-intent / checkout-session
+        // calls for the same pre_register_token, preventing the race that produced
+        // two Stripe Customers from a single signup.
         const _piC = await _piPool.connect();
         let _piRow: { email: string; first_name: string; last_name: string; company_name: string; address: string | null; city: string | null; postal_code: string | null; country: string | null; stripe_customer_id: string | null } | null = null;
+        let _piTxOpen = false;
         try {
+          await _piC.query("BEGIN");
+          _piTxOpen = true;
           const _piR = await _piC.query(
             `SELECT email, first_name, last_name, company_name,
                     address, city, postal_code, country, stripe_customer_id
-             FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
+             FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1 FOR UPDATE`,
             [preRegisterToken]
           );
           _piRow = _piR.rows[0] ?? null;
-        } finally { _piC.release(); }
+        } catch (_piLockErr) {
+          if (_piTxOpen) { await _piC.query("ROLLBACK").catch(() => {}); }
+          _piC.release();
+          throw _piLockErr;
+        }
 
-        if (_piRow) {
+        if (!_piRow) {
+          await _piC.query("ROLLBACK").catch(() => {});
+          _piC.release();
+        } else {
           const _piEmail = _piRow.email;
           metadata["orgId"]  = _piEmail;
           metadata["org_id"] = _piEmail;
@@ -991,12 +1064,18 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
             logger.info({ customerId: preRegCustomerId }, "[PublicBilling] payment-intent: created Stripe Customer");
           }
 
-          // Always write back so next attempt finds it immediately
-          const { pool: _piStorePool } = await import("@workspace/db");
-          const _piSc = await _piStorePool.connect();
+          // Persist inside the FOR UPDATE transaction — atomic write-back ensures any
+          // concurrent checkout-session that hits the lock after us reads the persisted customer.
           try {
-            await _piSc.query(`UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`, [preRegCustomerId, preRegisterToken]);
-          } finally { _piSc.release(); }
+            await _piC.query(`UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`, [preRegCustomerId, preRegisterToken]);
+            await _piC.query("COMMIT");
+            _piTxOpen = false;
+          } catch (_piWriteErr) {
+            if (_piTxOpen) { await _piC.query("ROLLBACK").catch(() => {}); _piTxOpen = false; }
+            throw _piWriteErr;
+          } finally {
+            _piC.release();
+          }
         }
       } catch (_piLookupErr) {
         logger.warn({ _piLookupErr }, "[PublicBilling] payment-intent: customer lookup failed (non-fatal — proceeding without customer)");
