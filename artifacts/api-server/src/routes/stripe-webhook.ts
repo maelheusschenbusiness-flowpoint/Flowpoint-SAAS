@@ -595,27 +595,34 @@ export async function activateNewSignup(opts: {
     await activateClient.query("COMMIT");
     logger.info({ orgId: newOrgId, userId, email }, "[Webhook/activate] User + org + membership activated");
 
-    // Seller attribution (beta): record one-time commission fire-and-forget.
-    // Idempotent — ON CONFLICT DO NOTHING prevents double-commission.
-    // DOES NOT affect billing, trial, or plan logic.
-    if (_wbSellerId) {
+    // Seller attribution (beta): propagate seller metadata to Stripe Customer + Subscription.
+    // Commission is NOT created here — it is deferred to invoice.payment_succeeded so that
+    // the real first-payment amount can be used (prevents €0 commission on trial signups).
+    if (_wbSellerId && customerId) {
       (async () => {
         try {
-          const { recordCommission: _rc } = await import("../services/seller-attribution.js");
-          await _rc({
-            sellerId:              _wbSellerId,
-            orgId:                 newOrgId,
-            customerEmail:         email,
-            stripeCustomerId:      customerId ?? null,
-            stripeSubscriptionId:  null, // enriched by webhook if needed
-            stripeCheckoutSessionId: null,
-            plan:                  selectedPlan,
-            eligibleAmountCents:   0,   // enriched from invoice webhook; placeholder for now
-            currency:              "eur",
-            attributionMethod:     "ref_link",
-          });
-        } catch (_rcErr) {
-          logger.warn({ _rcErr, orgId: newOrgId, _wbSellerId }, "[Webhook/activate] Commission recording failed (non-fatal)");
+          // Resolve seller_code for Stripe metadata
+          const _sellerRow = await pgPool.query<{ seller_code: string }>(
+            `SELECT seller_code FROM sellers WHERE id = $1 AND status = 'active' LIMIT 1`, [_wbSellerId]
+          );
+          const _sellerCode = _sellerRow.rows[0]?.seller_code;
+          if (!_sellerCode) return;
+          const _stripeKey = getStripeKey();
+          if (!_stripeKey) return;
+          const { default: _StripeC } = await import("stripe");
+          const _stripeS = new _StripeC(_stripeKey, { apiVersion: "2026-04-22.dahlia" });
+          const _smeta = { seller_id: _sellerCode, seller_attribution: "ref_link" };
+          // Update customer metadata
+          await _stripeS.customers.update(customerId!, { metadata: _smeta });
+          // Update subscription metadata (if any subscription exists on this customer)
+          const _activeSubs = await _stripeS.subscriptions.list({ customer: customerId!, status: "all", limit: 5 });
+          for (const _sub of _activeSubs.data) {
+            if (!(_sub.metadata as Record<string,string>)["addonSub"]) {
+              await _stripeS.subscriptions.update(_sub.id, { metadata: _smeta });
+            }
+          }
+        } catch (_smErr) {
+          logger.warn({ _smErr, orgId: newOrgId, _wbSellerId }, "[Webhook/activate] Stripe seller metadata update failed (non-fatal)");
         }
       })().catch(() => {});
     }
@@ -1719,6 +1726,69 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       if (obj["lines"]) {
         const invCustomerId = obj["customer"] ? String(obj["customer"]) : null;
         await persistAddonsFromSubscription(obj, orgId, invCustomerId, /* reconcileDeactivations */ false).catch(() => {});
+      }
+
+      // ── Seller attribution: commission on first real subscription payment ────
+      // Rules:
+      //   • Only for plan subscriptions (not addonSub, not ai_credits)
+      //   • Only if amount_paid > 0 (skip trial/free periods)
+      //   • Only if organizations.seller_id is set
+      //   • Only once per org (ON CONFLICT DO NOTHING)
+      //   • Triggers on billing_reason=subscription_create (direct paid) OR
+      //     subscription_cycle (first payment after trial end)
+      const _invAmountPaid  = Number(obj["amount_paid"] || 0);
+      const _invBillingReason = String(obj["billing_reason"] || "");
+      const _isFirstPaymentTrigger =
+        (_invBillingReason === "subscription_create" || _invBillingReason === "subscription_cycle")
+        && _invAmountPaid > 0;
+
+      if (_isFirstPaymentTrigger) {
+        (async () => {
+          try {
+            // Check if this is an addon subscription (skip — no commission on addons)
+            const _subDetails = obj["subscription_details"] as Record<string, unknown> | undefined;
+            const _subMeta    = (_subDetails?.["metadata"] as Record<string, string>) ?? {};
+            if (_subMeta["addonSub"] === "true") return;
+
+            const { pool: _commPool } = await import("@workspace/db");
+
+            // Load seller_id from organizations
+            const _orgSellerR = await _commPool.query<{ seller_id: string | null; owner_email: string; plan: string }>(
+              `SELECT seller_id, owner_email, plan FROM organizations WHERE id = $1 LIMIT 1`, [orgId]
+            );
+            const _orgRow     = _orgSellerR.rows[0];
+            const _sellerUUID = _orgRow?.seller_id ?? null;
+            if (!_sellerUUID) return; // no seller attributed to this org
+
+            // Guard: commission already exists for this org?
+            const _existComm = await _commPool.query(
+              `SELECT id FROM seller_commissions WHERE org_id = $1 LIMIT 1`, [orgId]
+            );
+            if (_existComm.rows[0]) return; // idempotent — already recorded
+
+            const _invId       = obj["id"]           ? String(obj["id"])           : null;
+            const _invSubId    = obj["subscription"]  ? String(obj["subscription"]) : null;
+            const _invCurrency = obj["currency"]      ? String(obj["currency"])     : "eur";
+
+            const { recordCommission: _rcInv } = await import("../services/seller-attribution.js");
+            await _rcInv({
+              sellerId:             _sellerUUID,
+              orgId:                orgId!,
+              customerEmail:        _orgRow?.owner_email ?? "",
+              stripeCustomerId:     obj["customer"]     ? String(obj["customer"])     : null,
+              stripeSubscriptionId: _invSubId,
+              stripeInvoiceId:      _invId,
+              plan:                 _orgRow?.plan ?? "standard",
+              eligibleAmountCents:  _invAmountPaid,
+              currency:             _invCurrency,
+              attributionMethod:    "ref_link",
+            });
+            logger.info({ orgId, sellerId: _sellerUUID, amountCents: _invAmountPaid },
+              "[Webhook/seller] Commission recorded from first subscription payment");
+          } catch (_rcInvErr) {
+            logger.warn({ _rcInvErr, orgId }, "[Webhook/seller] Commission recording failed (non-fatal)");
+          }
+        })().catch(() => {});
       }
 
       // ── Email routing based on billing_reason ─────────────────────────────
