@@ -74701,14 +74701,43 @@ async function loadOrgData(orgId3) {
       );
       if (r.rows.length > 0) {
         const row = r.rows[0];
+        let _legacyTrialConsumedAt = null;
+        let _legacyTrialEndsAt = null;
+        let _legacyTrialStartedAt = null;
+        const _needsLegacyMigration = !row.trial_consumed_at && row.owner_email && row.owner_email !== orgId3;
+        if (_needsLegacyMigration) {
+          try {
+            const { loadOrgSettings: loadOrgSettings2 } = await Promise.resolve().then(() => (init_org_settings(), org_settings_exports));
+            const legacySettings = await loadOrgSettings2(row.owner_email);
+            if (legacySettings?.trialConsumedAt) {
+              _legacyTrialConsumedAt = legacySettings.trialConsumedAt;
+              _legacyTrialEndsAt = legacySettings.trialEndsAt ?? null;
+              _legacyTrialStartedAt = legacySettings.trialStartedAt ?? null;
+              const normalizeFields = {
+                trialConsumedAt: _legacyTrialConsumedAt
+              };
+              if (_legacyTrialEndsAt) normalizeFields.trialEndsAt = _legacyTrialEndsAt;
+              if (_legacyTrialStartedAt) normalizeFields.trialStartedAt = _legacyTrialStartedAt;
+              persistOrgData(orgId3, normalizeFields).catch(
+                (normErr) => logger.warn({ normErr, orgId: orgId3 }, "[OrgData] Legacy trial normalization persist failed (non-fatal)")
+              );
+              logger.info(
+                { orgId: orgId3, ownerEmail: row.owner_email, trialConsumedAt: _legacyTrialConsumedAt },
+                "[OrgData] Legacy trial_consumed_at normalized from org_settings[email] into organizations[UUID]"
+              );
+            }
+          } catch (legMigErr) {
+            logger.warn({ legMigErr, orgId: orgId3 }, "[OrgData] Legacy trial migration lookup failed (non-fatal)");
+          }
+        }
         return {
           plan: (row.plan || "standard").toLowerCase(),
           subscriptionStatus: row.subscription_status ?? null,
           stripeCustomerId: row.stripe_customer_id || null,
           stripeSubscriptionId: row.stripe_subscription_id || null,
-          trialEndsAt: row.trial_ends_at ? new Date(row.trial_ends_at).toISOString() : null,
-          trialConsumedAt: row.trial_consumed_at ? new Date(row.trial_consumed_at).toISOString() : null,
-          trialStartedAt: row.trial_started_at ? new Date(row.trial_started_at).toISOString() : null,
+          trialEndsAt: row.trial_ends_at ? new Date(row.trial_ends_at).toISOString() : _legacyTrialEndsAt,
+          trialConsumedAt: row.trial_consumed_at ? new Date(row.trial_consumed_at).toISOString() : _legacyTrialConsumedAt,
+          trialStartedAt: row.trial_started_at ? new Date(row.trial_started_at).toISOString() : _legacyTrialStartedAt,
           addons: row.addons && typeof row.addons === "object" ? row.addons : {},
           pendingPlan: row.pending_plan ?? null,
           pendingPlanDate: row.pending_plan_date ?? null,
@@ -76691,6 +76720,21 @@ async function activateNewSignup(opts) {
   } finally {
     activateClient.release();
   }
+  if (customerId && orgUUID && orgUUID !== orgId3) {
+    const _stripeKeyForMeta = getStripeKey();
+    if (_stripeKeyForMeta) {
+      Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports)).then(({ default: _StripeClass }) => {
+        const _stripeMeta = new _StripeClass(_stripeKeyForMeta, { apiVersion: "2026-04-22.dahlia" });
+        return _stripeMeta.customers.update(customerId, {
+          metadata: { orgId: orgUUID, org_id: orgUUID, flowpointOrgId: orgUUID }
+        });
+      }).then(() => {
+        logger.info({ customerId, orgUUID }, "[Webhook/activate] Stripe customer metadata normalized to UUID");
+      }).catch((_metaErr) => {
+        logger.warn({ _metaErr, customerId, orgUUID }, "[Webhook/activate] Stripe customer metadata normalization failed (non-fatal)");
+      });
+    }
+  }
   const magicToken = randomBytes9(32).toString("hex");
   const tokenClient = await pgPool.connect();
   try {
@@ -77084,7 +77128,8 @@ async function handleStripeWebhook(req, res) {
         const persistPayload = {
           orgId: orgId3,
           subscriptionStatus: "active",
-          stripeCustomerId: customerId
+          stripeCustomerId: customerId,
+          ..._newSubId ? { stripeSubscriptionId: _newSubId } : {}
         };
         if (["standard", "pro", "ultra"].includes(planNorm)) {
           persistPayload.plan = planNorm;
@@ -77316,15 +77361,23 @@ async function handleStripeWebhook(req, res) {
         const piPlan = piMeta["plan"] ?? "standard";
         const piIsTrial = !piMeta["addons"] || piMeta["addons"] === "{}" || piMeta["addons"] === "null";
         const piSelectedPlan = piPlan || "standard";
+        const _piCustomerId = obj["customer"] ? String(obj["customer"]) : void 0;
         activateNewSignup({
           preRegToken: piPreRegToken,
           orgId: piOrgId,
-          customerId: void 0,
+          customerId: _piCustomerId,
           selectedPlan: piSelectedPlan,
           isTrial: true
           // all new signups start with a trial
         }).catch((e) => logger.error({ e, orgId: piOrgId, type: event.type }, "[Webhook] new-signup activation via intent failed"));
-        logger.info({ type: event.type, orgId: piOrgId, plan: piSelectedPlan }, "[Webhook] New-signup activation queued from intent");
+        if (_piCustomerId && piOrgId) {
+          Promise.resolve().then(() => (init_org_data(), org_data_exports)).then(
+            ({ persistOrgData: _piPod }) => _piPod(piOrgId, { stripeCustomerId: _piCustomerId })
+          ).catch(
+            (_piPodErr) => logger.warn({ _piPodErr, piOrgId }, "[Webhook] PI.succeeded: persistOrgData safety net failed (non-fatal)")
+          );
+        }
+        logger.info({ type: event.type, orgId: piOrgId, customerId: _piCustomerId, plan: piSelectedPlan }, "[Webhook] New-signup activation queued from intent");
         break;
       }
       case "customer.subscription.created":
@@ -77386,12 +77439,12 @@ async function handleStripeWebhook(req, res) {
         await persistSubscriptionMeta(updatePayload);
         if (newPlan) {
           let _dbPlanAfter = null;
+          const _UUID_RE_PA = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           try {
             const { pool: _pgPool_pa } = await Promise.resolve().then(() => (init_src(), src_exports));
             const _pac = await _pgPool_pa.connect();
-            const _UUID_RE_PA2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             try {
-              if (_UUID_RE_PA2.test(orgId3)) {
+              if (_UUID_RE_PA.test(orgId3)) {
                 const _ar = await _pac.query(`SELECT plan FROM organizations WHERE id = $1`, [orgId3]);
                 _dbPlanAfter = _ar.rows[0]?.plan ?? null;
               } else {
@@ -121013,13 +121066,12 @@ router14.post("/billing/checkout", billingCheckoutRateLimit, ownerOnly, async (r
         return;
       }
     }
-    const hasHadTrial = !!billingCtx.trialEndsAt;
     let hasStripeSubHistory = false;
     if (customerId) {
       const allSubs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 });
       hasStripeSubHistory = allSubs.data.length > 0;
     }
-    const grantTrial = !hasHadTrial && !hasStripeSubHistory;
+    const grantTrial = !billingCtx.trialConsumedAt && !hasStripeSubHistory;
     let quote;
     try {
       quote = createBillingQuote({
@@ -121051,7 +121103,7 @@ router14.post("/billing/checkout", billingCheckoutRateLimit, ownerOnly, async (r
       subscriptionData["trial_period_days"] = quote.trialDays;
       logger.info({ plan: plan4, orgId: orgId3, trialDays: quote.trialDays }, "[Billing] Granting trial \u2014 confirmed first-time subscriber");
     } else {
-      logger.info({ plan: plan4, hasHadTrial, hasStripeSubHistory, orgId: orgId3 }, "[Billing] Skipping trial \u2014 prior subscription history");
+      logger.info({ plan: plan4, trialConsumedAt: billingCtx.trialConsumedAt, hasStripeSubHistory, orgId: orgId3 }, "[Billing] Skipping trial \u2014 prior subscription history");
     }
     logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
     const session = await stripe.checkout.sessions.create({
@@ -138208,6 +138260,23 @@ router52.post("/admin/purge-all-clients", async (req, res) => {
         const r = await client.query(`DELETE FROM ${table} WHERE ${col}::text = ANY($1)`, [vals]);
         deleted[table] = r.rowCount ?? 0;
       };
+      const safeDeleteUUIDSP = async (table, col, vals) => {
+        if (!vals.length) {
+          deleted[table] = 0;
+          return;
+        }
+        const sp = `sp_${table}`;
+        await client.query(`SAVEPOINT ${sp}`);
+        try {
+          const r = await client.query(`DELETE FROM ${table} WHERE ${col}::text = ANY($1)`, [vals]);
+          deleted[table] = r.rowCount ?? 0;
+          await client.query(`RELEASE SAVEPOINT ${sp}`);
+        } catch {
+          await client.query(`ROLLBACK TO SAVEPOINT ${sp}`).catch(() => {
+          });
+          deleted[table] = 0;
+        }
+      };
       await safeDelete("user_sessions", "lower(email)", emailsToDelete);
       await safeDelete("magic_link_tokens", "lower(email)", emailsToDelete);
       await safeDelete("pending_signups", "lower(email)", emailsToDelete);
@@ -138331,15 +138400,22 @@ router52.post("/admin/purge-all-clients", async (req, res) => {
         // Legacy org settings
         "org_settings"
       ]) {
-        await safeDeleteUUID(tbl, "org_id", orgIdsToDelete).catch(() => {
-        });
+        await safeDeleteUUIDSP(tbl, "org_id", orgIdsToDelete);
       }
       if (orgIdsToDelete.length > 0) {
-        const omR = await client.query(
-          `DELETE FROM organization_members WHERE organization_id::text = ANY($1)`,
-          [orgIdsToDelete]
-        ).catch(() => ({ rowCount: 0 }));
-        deleted["organization_members"] = omR.rowCount ?? 0;
+        await client.query(`SAVEPOINT sp_organization_members`);
+        try {
+          const omR = await client.query(
+            `DELETE FROM organization_members WHERE organization_id::text = ANY($1)`,
+            [orgIdsToDelete]
+          );
+          deleted["organization_members"] = omR.rowCount ?? 0;
+          await client.query(`RELEASE SAVEPOINT sp_organization_members`);
+        } catch {
+          await client.query(`ROLLBACK TO SAVEPOINT sp_organization_members`).catch(() => {
+          });
+          deleted["organization_members"] = 0;
+        }
       }
       await safeDeleteUUID("organizations", "id", orgIdsToDelete);
       await safeDelete("users", "lower(email)", emailsToDelete);
@@ -140771,6 +140847,7 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
     } else {
       logger.info({ paymentMethodId, customerId }, "[PublicBilling] finalize: PM already on customer \u2014 skipping attach (idempotent)");
     }
+    const _UUID_RE_FC = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     try {
       const { persistOrgData: persistCheckoutCustomer } = await Promise.resolve().then(() => (init_org_data(), org_data_exports));
       await persistCheckoutCustomer(_authenticatedOrgId, { stripeCustomerId: customerId });
@@ -140780,6 +140857,29 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
         { customerPersistErr, orgId: _authenticatedOrgId, customerId },
         "[PublicBilling] finalize: could not link Stripe customer to organization"
       );
+    }
+    let _fcResolvedUuidEarly = null;
+    if (!_UUID_RE_FC.test(_authenticatedOrgId) && customerId) {
+      try {
+        const { pool: _fcUuidEarlyPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+        const _fcUuidEarlyC = await _fcUuidEarlyPool.connect();
+        try {
+          const _fcUuidEarlyR = await _fcUuidEarlyC.query(
+            `SELECT id::text FROM organizations WHERE lower(owner_email) = lower($1) LIMIT 1`,
+            [_authenticatedOrgId]
+          );
+          _fcResolvedUuidEarly = _fcUuidEarlyR.rows[0]?.id ?? null;
+        } finally {
+          _fcUuidEarlyC.release();
+        }
+        if (_fcResolvedUuidEarly) {
+          const { persistOrgData: _fcPodUuidEarly } = await Promise.resolve().then(() => (init_org_data(), org_data_exports));
+          await _fcPodUuidEarly(_fcResolvedUuidEarly, { stripeCustomerId: customerId });
+          logger.info({ orgId: _fcResolvedUuidEarly, customerId }, "[PublicBilling] finalize: Stripe customer anchored to UUID org (pre-register path)");
+        }
+      } catch (_fcUuidEarlyErr) {
+        logger.warn({ _fcUuidEarlyErr, orgId: _authenticatedOrgId }, "[PublicBilling] finalize: UUID org early anchor failed (non-fatal)");
+      }
     }
     try {
       const _fcPmFull = await stripe.paymentMethods.retrieve(paymentMethodId).catch(() => null);
@@ -140942,6 +141042,46 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
       logger.info({ orgId: _authenticatedOrgId, planKey }, "[PublicBilling] finalize: subscription persisted to DB");
     } catch (_fcPodErr) {
       logger.warn({ _fcPodErr }, "[PublicBilling] finalize: persistOrgData non-fatal (webhook will sync)");
+    }
+    if (!_UUID_RE_FC.test(_authenticatedOrgId) && customerId) {
+      try {
+        const _fcAnchorUuid = _fcResolvedUuidEarly ?? await (async () => {
+          const { pool: _fcUuidFinalPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+          const _fcUuidFinalC = await _fcUuidFinalPool.connect();
+          try {
+            const _r = await _fcUuidFinalC.query(
+              `SELECT id::text FROM organizations WHERE lower(owner_email) = lower($1) LIMIT 1`,
+              [_authenticatedOrgId]
+            );
+            return _r.rows[0]?.id ?? null;
+          } finally {
+            _fcUuidFinalC.release();
+          }
+        })();
+        if (_fcAnchorUuid) {
+          const { persistOrgData: _fcPodFull } = await Promise.resolve().then(() => (init_org_data(), org_data_exports));
+          await _fcPodFull(_fcAnchorUuid, {
+            stripeCustomerId: customerId,
+            stripeSubscriptionId: planSubscription.id,
+            subscriptionStatus: grantTrial ? "trialing" : "active",
+            plan: planKey,
+            trialConsumedAt: (/* @__PURE__ */ new Date()).toISOString(),
+            ...trialEndUnix !== void 0 ? { trialEndsAt: new Date(trialEndUnix * 1e3).toISOString() } : {}
+          });
+          logger.info({ orgId: _fcAnchorUuid, customerId, planKey }, "[PublicBilling] finalize: full billing state anchored to UUID org");
+        }
+      } catch (_fcAnchorErr) {
+        logger.warn({ _fcAnchorErr, orgId: _authenticatedOrgId }, "[PublicBilling] finalize: UUID org full anchor failed (non-fatal)");
+      }
+    }
+    try {
+      const _metaNormOrgId = _UUID_RE_FC.test(_authenticatedOrgId) ? _authenticatedOrgId : _fcResolvedUuidEarly ?? _authenticatedOrgId;
+      await stripe.customers.update(customerId, {
+        metadata: { orgId: _metaNormOrgId, org_id: _metaNormOrgId, flowpointOrgId: _metaNormOrgId }
+      });
+      logger.info({ customerId, orgId: _metaNormOrgId }, "[PublicBilling] finalize: Stripe customer metadata normalized");
+    } catch (_metaNormErr) {
+      logger.warn({ _metaNormErr, customerId }, "[PublicBilling] finalize: metadata normalization non-fatal");
     }
     const _fcActToken = preRegisterToken || intentMeta["pre_register_token"] || "";
     logger.info({
