@@ -972,16 +972,24 @@ router.post("/monitors/:id/test-sms", canAdmin, async (req: Request, res: Respon
 
 router.delete("/monitors/:id", canAdmin, async (req: Request, res: Response) => {
   const id = req.params["id"] as string;
+  // Canonical org — never fall back to "default" for a tenant-scoped route.
+  const _delOrgId = requireOrgId(req, res);
+  if (!_delOrgId) return;
   try {
-    const existing = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
-    if (existing.rowCount === 0) { res.status(404).json({ error: "Monitor not found" }); return; }
-    const m = existing.rows[0] as Record<string, unknown>;
+    // Ownership guard FIRST — confirm the monitor belongs to the caller's org.
+    // No child data is touched until this passes.
+    const existing = await req.orgDb(
+      `SELECT id FROM monitors WHERE id = $1 AND org_id::text = $2`, [id, _delOrgId]
+    );
+    if (!existing.rows[0]) { res.status(404).json({ error: "Monitor not found" }); return; }
 
-    // Defense-in-depth: explicit org_id in WHERE even though orgDb enforces RLS.
-    const _delOrgId = String(m["org_id"] ?? (req as unknown as { orgId?: string }).orgId ?? "default");
+    // Ownership confirmed — now safe to cascade-delete children.
     await req.orgDb(`DELETE FROM monitor_checks    WHERE monitor_id = $1`, [id]);
     await req.orgDb(`DELETE FROM monitor_incidents WHERE monitor_id = $1`, [id]);
-    await req.orgDb(`DELETE FROM monitors          WHERE id = $1 AND org_id::text = $2`, [id, _delOrgId]);
+    const del = await req.orgDb(
+      `DELETE FROM monitors WHERE id = $1 AND org_id::text = $2 RETURNING id`, [id, _delOrgId]
+    );
+    if ((del.rowCount ?? 0) === 0) { res.status(404).json({ error: "Monitor not found" }); return; }
 
     store.logActivity({
       type: "monitor",

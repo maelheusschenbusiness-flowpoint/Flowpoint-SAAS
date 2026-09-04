@@ -481,7 +481,7 @@ var init_parseUtil = __esm({
         };
       }
       let errorMessage = "";
-      const maps = errorMaps.filter((m) => !!m).slice().reverse();
+      const maps = errorMaps.filter((m2) => !!m2).slice().reverse();
       for (const map of maps) {
         errorMessage = map(fullIssue, { data, defaultError: errorMessage }).message;
       }
@@ -9266,14 +9266,14 @@ var init_RequestSender = __esm({
           if (this._stripe._prevRequestMetrics.length > this._maxBufferedRequestMetric) {
             emitWarning("Request metrics buffer is full, dropping telemetry message.");
           } else {
-            const m = {
+            const m2 = {
               request_id: requestId2,
               request_duration_ms: requestDurationMs
             };
             if (usage && usage.length > 0) {
-              m.usage = usage;
+              m2.usage = usage;
             }
-            this._stripe._prevRequestMetrics.push(m);
+            this._stripe._prevRequestMetrics.push(m2);
           }
         }
       }
@@ -27049,8 +27049,8 @@ var init_stripe_factory = __esm({
 var require_ms = __commonJS({
   "../../node_modules/.pnpm/ms@2.1.3/node_modules/ms/index.js"(exports, module) {
     var s = 1e3;
-    var m = s * 60;
-    var h = m * 60;
+    var m2 = s * 60;
+    var h = m2 * 60;
     var d = h * 24;
     var w = d * 7;
     var y = d * 365.25;
@@ -27105,7 +27105,7 @@ var require_ms = __commonJS({
         case "mins":
         case "min":
         case "m":
-          return n * m;
+          return n * m2;
         case "seconds":
         case "second":
         case "secs":
@@ -27130,8 +27130,8 @@ var require_ms = __commonJS({
       if (msAbs >= h) {
         return Math.round(ms / h) + "h";
       }
-      if (msAbs >= m) {
-        return Math.round(ms / m) + "m";
+      if (msAbs >= m2) {
+        return Math.round(ms / m2) + "m";
       }
       if (msAbs >= s) {
         return Math.round(ms / s) + "s";
@@ -27146,8 +27146,8 @@ var require_ms = __commonJS({
       if (msAbs >= h) {
         return plural(ms, msAbs, h, "hour");
       }
-      if (msAbs >= m) {
-        return plural(ms, msAbs, m, "minute");
+      if (msAbs >= m2) {
+        return plural(ms, msAbs, m2, "minute");
       }
       if (msAbs >= s) {
         return plural(ms, msAbs, s, "second");
@@ -27440,11 +27440,11 @@ var require_browser = __commonJS({
       if (typeof navigator !== "undefined" && navigator.userAgent && navigator.userAgent.toLowerCase().match(/(edge|trident)\/(\d+)/)) {
         return false;
       }
-      let m;
+      let m2;
       return typeof document !== "undefined" && document.documentElement && document.documentElement.style && document.documentElement.style.WebkitAppearance || // Is firebug? http://stackoverflow.com/a/398120/376773
       typeof window !== "undefined" && window.console && (window.console.firebug || window.console.exception && window.console.table) || // Is firefox >= v31?
       // https://developer.mozilla.org/en-US/docs/Tools/Web_Console#Styling_messages
-      typeof navigator !== "undefined" && navigator.userAgent && (m = navigator.userAgent.toLowerCase().match(/firefox\/(\d+)/)) && parseInt(m[1], 10) >= 31 || // Double check webkit in userAgent just in case we are in a worker
+      typeof navigator !== "undefined" && navigator.userAgent && (m2 = navigator.userAgent.toLowerCase().match(/firefox\/(\d+)/)) && parseInt(m2[1], 10) >= 31 || // Double check webkit in userAgent just in case we are in a worker
       typeof navigator !== "undefined" && navigator.userAgent && navigator.userAgent.toLowerCase().match(/applewebkit\/(\d+)/);
     }
     function formatArgs(args) {
@@ -30182,7 +30182,7 @@ var require_dbcs_codec = __commonJS({
             } else if (code > 4080 && code <= 4095) {
               var len = 4095 - code + 2;
               var seq = [];
-              for (var m = 0; m < len; m++) {
+              for (var m2 = 0; m2 < len; m2++) {
                 seq.push(part.charCodeAt(l++));
               }
               writeTable[curAddr++] = SEQ_START - this.decodeTableSeq.length;
@@ -43082,9 +43082,9 @@ var require_object_inspect = __commonJS({
       if (f.name) {
         return f.name;
       }
-      var m = $match.call(functionToString.call(f), /^function\s*([\w$]+)/);
-      if (m) {
-        return m[1];
+      var m2 = $match.call(functionToString.call(f), /^function\s*([\w$]+)/);
+      if (m2) {
+        return m2[1];
       }
       return null;
     }
@@ -43150,7 +43150,7 @@ var require_object_inspect = __commonJS({
         setSize.call(x);
         try {
           mapSize.call(x);
-        } catch (m) {
+        } catch (m2) {
           return true;
         }
         return x instanceof Set;
@@ -44480,9 +44480,9 @@ var require_utils2 = __commonJS({
         if (isOverflow(source)) {
           var sourceKeys = Object.keys(source);
           var result = options && options.plainObjects ? { __proto__: null, 0: target } : { 0: target };
-          for (var m = 0; m < sourceKeys.length; m++) {
-            var oldKey = parseInt(sourceKeys[m], 10);
-            result[oldKey + 1] = source[sourceKeys[m]];
+          for (var m2 = 0; m2 < sourceKeys.length; m2++) {
+            var oldKey = parseInt(sourceKeys[m2], 10);
+            result[oldKey + 1] = source[sourceKeys[m2]];
           }
           return markOverflow(result, getMaxIndex(source) + 1);
         }
@@ -47077,17 +47077,17 @@ var require_dist = __commonJS({
         return (value) => value.split(delimiter2).map(decode);
       });
       return function match2(input) {
-        const m = regexp.exec(input);
-        if (!m)
+        const m2 = regexp.exec(input);
+        if (!m2)
           return false;
-        const path9 = m[0];
+        const path9 = m2[0];
         const params = /* @__PURE__ */ Object.create(null);
-        for (let i = 1; i < m.length; i++) {
-          if (m[i] === void 0)
+        for (let i = 1; i < m2.length; i++) {
+          if (m2[i] === void 0)
             continue;
           const key = keys[i - 1];
           const decoder = decoders[i - 1];
-          params[key.name] = decoder(m[i]);
+          params[key.name] = decoder(m2[i]);
         }
         return { path: path9, params };
       };
@@ -47293,11 +47293,11 @@ var require_layer = __commonJS({
         if (_path instanceof RegExp) {
           const keys = [];
           let name = 0;
-          let m;
-          while (m = MATCHING_GROUP_REGEXP.exec(_path.source)) {
+          let m2;
+          while (m2 = MATCHING_GROUP_REGEXP.exec(_path.source)) {
             keys.push({
-              name: m[1] || name++,
-              offset: m.index
+              name: m2[1] || name++,
+              offset: m2.index
             });
           }
           return function regexpMatcher(p) {
@@ -51490,8 +51490,8 @@ var require_compressible = __commonJS({
 var require_ms2 = __commonJS({
   "../../node_modules/.pnpm/ms@2.0.0/node_modules/ms/index.js"(exports, module) {
     var s = 1e3;
-    var m = s * 60;
-    var h = m * 60;
+    var m2 = s * 60;
+    var h = m2 * 60;
     var d = h * 24;
     var y = d * 365.25;
     module.exports = function(val, options) {
@@ -51541,7 +51541,7 @@ var require_ms2 = __commonJS({
         case "mins":
         case "min":
         case "m":
-          return n * m;
+          return n * m2;
         case "seconds":
         case "second":
         case "secs":
@@ -51565,8 +51565,8 @@ var require_ms2 = __commonJS({
       if (ms >= h) {
         return Math.round(ms / h) + "h";
       }
-      if (ms >= m) {
-        return Math.round(ms / m) + "m";
+      if (ms >= m2) {
+        return Math.round(ms / m2) + "m";
       }
       if (ms >= s) {
         return Math.round(ms / s) + "s";
@@ -51574,7 +51574,7 @@ var require_ms2 = __commonJS({
       return ms + "ms";
     }
     function fmtLong(ms) {
-      return plural(ms, d, "day") || plural(ms, h, "hour") || plural(ms, m, "minute") || plural(ms, s, "second") || ms + " ms";
+      return plural(ms, d, "day") || plural(ms, h, "hour") || plural(ms, m2, "minute") || plural(ms, s, "second") || ms + " ms";
     }
     function plural(ms, n, name) {
       if (ms < n) {
@@ -68172,7 +68172,7 @@ function decodeWords(str) {
       }
     ).replace(/(\?=)?__\x00JOIN\x00__(=\?([^?]+)\?[QqBb]\?)?/g, "").replace(/(=\?[^?]+\?[QqBb]\?[^?]*\?=)\s+(?==\?[^?]+\?[QqBb]\?[^?]*\?=)/g, "$1").replace(
       /=\?([\w_\-*]+)\?([QqBb])\?([^?]*)\?=/g,
-      (m, charset, encoding, text2) => decodeWord(charset, encoding, text2)
+      (m2, charset, encoding, text2) => decodeWord(charset, encoding, text2)
     );
     if (joinString && result.indexOf("\uFFFD") >= 0) {
       joinString = false;
@@ -74279,14 +74279,14 @@ async function sendInvitationAccepted(opts) {
   });
 }
 async function sendNewMissions(opts) {
-  const missionRows = opts.missions.slice(0, 5).map((m) => {
-    const priorityColor = m.priority === "critical" ? "#dc2626" : m.priority === "high" ? "#ea580c" : m.priority === "medium" ? "#ca8a04" : "#6b7280";
+  const missionRows = opts.missions.slice(0, 5).map((m2) => {
+    const priorityColor = m2.priority === "critical" ? "#dc2626" : m2.priority === "high" ? "#ea580c" : m2.priority === "medium" ? "#ca8a04" : "#6b7280";
     const priorityLabel = { critical: "Critique", high: "Haute", medium: "Moyenne", low: "Faible" };
     return `<div style="padding:10px 0;border-bottom:1px solid #eaedf5;">
-        <div style="font-size:13px;font-weight:700;color:#0d0f1a;">${m.title}</div>
+        <div style="font-size:13px;font-weight:700;color:#0d0f1a;">${m2.title}</div>
         <div style="font-size:11px;margin-top:3px;">
-          <span style="color:${priorityColor};font-weight:600;">${priorityLabel[m.priority] || m.priority}</span>
-          <span style="color:#8891b8;margin-left:8px;">Impact : ${m.impact}</span>
+          <span style="color:${priorityColor};font-weight:600;">${priorityLabel[m2.priority] || m2.priority}</span>
+          <span style="color:#8891b8;margin-left:8px;">Impact : ${m2.impact}</span>
         </div>
       </div>`;
   }).join("");
@@ -75866,7 +75866,7 @@ async function getUsageSummary(orgId3 = "default") {
       const stripe = new Stripe2(stripeKey, { apiVersion: "2026-04-22.dahlia" });
       const sub = await stripe.subscriptions.retrieve(billingCtx.stripeSubscriptionId);
       const _cpe = typeof sub.current_period_end === "number" ? sub.current_period_end : (sub.items?.data ?? []).reduce(
-        (m, it) => typeof it.current_period_end === "number" ? m === null ? it.current_period_end : Math.max(m, it.current_period_end) : m,
+        (m2, it) => typeof it.current_period_end === "number" ? m2 === null ? it.current_period_end : Math.max(m2, it.current_period_end) : m2,
         null
       );
       if (sub.status === "trialing" && sub.trial_end) {
@@ -78778,8 +78778,8 @@ var init_openai_provider = __esm({
         ];
         const resp = await this.client.chat.completions.create({
           model,
-          messages: messages.map((m) => {
-            const { role, content } = m;
+          messages: messages.map((m2) => {
+            const { role, content } = m2;
             if (isMultimodalContent(content)) {
               return { role: "user", content: toOpenAIContentParts(content) };
             }
@@ -78812,8 +78812,8 @@ var init_openai_provider = __esm({
         ];
         const stream = await this.client.chat.completions.create({
           model,
-          messages: messages.map((m) => {
-            const { role, content } = m;
+          messages: messages.map((m2) => {
+            const { role, content } = m2;
             if (isMultimodalContent(content)) {
               return { role: "user", content: toOpenAIContentParts(content) };
             }
@@ -79799,7 +79799,7 @@ function redactSensitive(body) {
   }
   return null;
 }
-async function checkCredentialsFileSafety(path8, onWarn = (m) => console.warn(`anthropic-sdk: ${m}`)) {
+async function checkCredentialsFileSafety(path8, onWarn = (m2) => console.warn(`anthropic-sdk: ${m2}`)) {
   if (typeof process === "undefined" || process.platform === "win32")
     return;
   const fs6 = await import("node:fs");
@@ -84104,7 +84104,7 @@ function betaGlobTool(ctx) {
       if (matches.length === 0)
         return "no matches";
       matches.sort((a, b) => b.mtime - a.mtime);
-      return matches.slice(0, GLOB_RESULT_LIMIT).map((m) => m.path).join("\n");
+      return matches.slice(0, GLOB_RESULT_LIMIT).map((m2) => m2.path).join("\n");
     }
   });
 }
@@ -84363,8 +84363,8 @@ var init_node = __esm({
           throw new AnthropicError("bash session terminated");
         }
         const tail = __classPrivateFieldGet(this, _BashSession_buf, "f").slice(idx + sentinel2.length);
-        const m = tail.match(/^(-?\d+)/);
-        const exitCode = m ? parseInt(m[1], 10) : -1;
+        const m2 = tail.match(/^(-?\d+)/);
+        const exitCode = m2 ? parseInt(m2[1], 10) : -1;
         let out = __classPrivateFieldGet(this, _BashSession_buf, "f").slice(0, idx).replace(ANSI_RE, "").replace(/\n+$/, "");
         if (__classPrivateFieldGet(this, _BashSession_truncated, "f")) {
           out = `[output truncated]
@@ -90281,8 +90281,8 @@ var init_anthropic_provider = __esm({
       }
       buildMessages(opts) {
         if (opts.messages) {
-          return opts.messages.map((m) => {
-            const { content } = m;
+          return opts.messages.map((m2) => {
+            const { content } = m2;
             if (typeof content !== "string") {
               return {
                 role: "user",
@@ -90290,7 +90290,7 @@ var init_anthropic_provider = __esm({
               };
             }
             return {
-              role: m.role === "assistant" ? "assistant" : "user",
+              role: m2.role === "assistant" ? "assistant" : "user",
               content
             };
           });
@@ -90611,17 +90611,17 @@ var init_gemini_provider = __esm({
       buildContents(opts) {
         if (opts.messages) {
           let systemInstruction;
-          const conversationMsgs = opts.messages.filter((m) => {
-            if (m.role === "system") {
-              systemInstruction = typeof m.content === "string" ? m.content : systemInstruction;
+          const conversationMsgs = opts.messages.filter((m2) => {
+            if (m2.role === "system") {
+              systemInstruction = typeof m2.content === "string" ? m2.content : systemInstruction;
               return false;
             }
             return true;
           });
           const merged = [];
-          for (const m of conversationMsgs) {
-            const role = m.role === "assistant" ? "model" : "user";
-            const parts = typeof m.content !== "string" ? toGeminiParts(m.content) : [{ text: m.content }];
+          for (const m2 of conversationMsgs) {
+            const role = m2.role === "assistant" ? "model" : "user";
+            const parts = typeof m2.content !== "string" ? toGeminiParts(m2.content) : [{ text: m2.content }];
             const last = merged[merged.length - 1];
             if (last && last.role === role) {
               last.parts.push(...parts);
@@ -91890,19 +91890,19 @@ async function analyzePSI(url, strategy, _orgId, _force, locale) {
   };
   const criticalIssues = Object.entries(audits ?? {}).filter(([, a]) => a.score !== null && a.score < 0.5).slice(0, 10).map(([id, a]) => ({ id, title: a.title, description: a.description, score: Math.round((a.score ?? 0) * 100) }));
   const opportunities = Object.entries(audits ?? {}).filter(([, a]) => a.score !== null && a.score < 0.9 && a.numericValue !== void 0).slice(0, 5).map(([id, a]) => ({ id, title: a.title, savings: Math.round((a.numericValue ?? 0) / 1e3) }));
-  const m = audits ?? {};
+  const m2 = audits ?? {};
   const result = {
     url,
     strategy,
     scores,
     metrics: {
-      fcp: m["first-contentful-paint"]?.numericValue ?? 0,
-      lcp: m["largest-contentful-paint"]?.numericValue ?? 0,
-      tbt: m["total-blocking-time"]?.numericValue ?? 0,
-      cls: m["cumulative-layout-shift"]?.numericValue ?? 0,
-      tti: m["interactive"]?.numericValue ?? 0,
-      si: m["speed-index"]?.numericValue ?? 0,
-      fid: m["max-potential-fid"]?.numericValue ?? 0
+      fcp: m2["first-contentful-paint"]?.numericValue ?? 0,
+      lcp: m2["largest-contentful-paint"]?.numericValue ?? 0,
+      tbt: m2["total-blocking-time"]?.numericValue ?? 0,
+      cls: m2["cumulative-layout-shift"]?.numericValue ?? 0,
+      tti: m2["interactive"]?.numericValue ?? 0,
+      si: m2["speed-index"]?.numericValue ?? 0,
+      fid: m2["max-potential-fid"]?.numericValue ?? 0
     },
     criticalIssues,
     opportunities,
@@ -92168,8 +92168,8 @@ function isPrivateHost(hostname) {
   return PRIVATE_IP_PATTERNS.some((p) => p.test(h));
 }
 function extractEmbeddedIpv4(addr) {
-  const m = addr.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
-  return m ? m[1] : null;
+  const m2 = addr.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
+  return m2 ? m2[1] : null;
 }
 async function checkDnsResolution(hostname) {
   let addresses;
@@ -93109,8 +93109,8 @@ function computeRecurrenceDates(startDate, rrule, count) {
 async function detectCalendarConflicts(opts) {
   if (!opts.startTime) return [];
   try {
-    const [h, m] = opts.startTime.split(":").map(Number);
-    const startMin = (h ?? 0) * 60 + (m ?? 0);
+    const [h, m2] = opts.startTime.split(":").map(Number);
+    const startMin = (h ?? 0) * 60 + (m2 ?? 0);
     const dur = opts.duration ?? 60;
     const endMin = startMin + dur;
     let sql2 = `
@@ -95132,9 +95132,9 @@ function extractInternalLinks(html, baseUrl) {
   const out = [];
   const NON_HTML_EXT = /\.(?:pdf|jpe?g|png|gif|webp|svg|ico|css|js|mjs|json|xml|zip|gz|rar|mp[34]|webm|avi|mov|woff2?|ttf|eot|docx?|xlsx?|pptx?|csv)(?:[?#]|$)/i;
   const hrefRe = /<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
-  let m;
-  while ((m = hrefRe.exec(html)) !== null && out.length < 40) {
-    const raw = (m[1] ?? m[2] ?? "").trim();
+  let m2;
+  while ((m2 = hrefRe.exec(html)) !== null && out.length < 40) {
+    const raw = (m2[1] ?? m2[2] ?? "").trim();
     if (!raw || raw.startsWith("#")) continue;
     if (/^(?:mailto:|tel:|javascript:|data:|ftp:)/i.test(raw)) continue;
     let resolved;
@@ -95230,10 +95230,10 @@ function parseRobotsRules(robotsTxt) {
       if (userAgents.length > 0) flushGroup();
       continue;
     }
-    const m = line2.match(/^([A-Za-z-]+)\s*:\s*(.*)$/);
-    if (!m) continue;
-    const field = m[1].toLowerCase();
-    const value = (m[2] ?? "").trim();
+    const m2 = line2.match(/^([A-Za-z-]+)\s*:\s*(.*)$/);
+    if (!m2) continue;
+    const field = m2[1].toLowerCase();
+    const value = (m2[2] ?? "").trim();
     if (field === "user-agent") {
       if (groupHasDirectives) flushGroup();
       userAgents.push(value.toLowerCase());
@@ -95872,7 +95872,7 @@ async function dispatchTool(name, args, ctx, logId, t0) {
       };
     }
     const list = missions.map(
-      (m) => `- ID: ${m.id} | Titre: ${m.title} | Statut: ${m.status} | Priorit\xE9: ${m.priority} | Cat\xE9gorie: ${m.category}`
+      (m2) => `- ID: ${m2.id} | Titre: ${m2.title} | Statut: ${m2.status} | Priorit\xE9: ${m2.priority} | Cat\xE9gorie: ${m2.category}`
     ).join("\n");
     const filterDesc = [status && `statut=${status}`, category && `cat\xE9gorie=${category}`, priority && `priorit\xE9=${priority}`].filter(Boolean).join(", ");
     return {
@@ -95943,7 +95943,7 @@ ${list}`,
       };
     }
     const list = missions.map(
-      (m) => `- ID: ${m.id} | Titre: ${m.title} | Statut: ${m.status} | Priorit\xE9: ${m.priority} | Cat\xE9gorie: ${m.category}`
+      (m2) => `- ID: ${m2.id} | Titre: ${m2.title} | Statut: ${m2.status} | Priorit\xE9: ${m2.priority} | Cat\xE9gorie: ${m2.category}`
     ).join("\n");
     const label = q ? `"${q}"` : `tous les filtres`;
     return {
@@ -96824,9 +96824,9 @@ ${list}`,
           month: "2-digit",
           day: "2-digit"
         });
-        const m = todayStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-        if (m) {
-          const localBase = /* @__PURE__ */ new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00Z`);
+        const m2 = todayStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (m2) {
+          const localBase = /* @__PURE__ */ new Date(`${m2[3]}-${m2[2]}-${m2[1]}T00:00:00Z`);
           return new Date(localBase.getTime() + daysOffset * 864e5).toISOString().slice(0, 10);
         }
       } catch {
@@ -96874,8 +96874,8 @@ ${list}`,
         [orgId3, d]
       );
       const busy = r.rows.map((row) => {
-        const [h, m] = String(row["start_time"] ?? "00:00").split(":").map(Number);
-        const s = (h ?? 0) * 60 + (m ?? 0);
+        const [h, m2] = String(row["start_time"] ?? "00:00").split(":").map(Number);
+        const s = (h ?? 0) * 60 + (m2 ?? 0);
         return { start: s, end: s + (Number(row["duration"]) || 60) };
       });
       let cursor = dayStart;
@@ -98046,10 +98046,10 @@ Opportunit\xE9s d'optimisation :`);
       opps.slice(0, 5).forEach((o) => lines.push(`  \u2022 ${o["id"]} : \xE9conomie ~${o["savings"]}s`));
     }
     if (psi?.["metrics"]) {
-      const m = psi["metrics"];
+      const m2 = psi["metrics"];
       lines.push(`
 M\xE9triques Web Vitals (mobile) :`);
-      lines.push(`  LCP=${m["lcp"] ?? "?"}s  CLS=${m["cls"] ?? "?"}  FCP=${m["fcp"] ?? "?"}s  TBT=${m["tbt"] ?? "?"}ms`);
+      lines.push(`  LCP=${m2["lcp"] ?? "?"}s  CLS=${m2["cls"] ?? "?"}  FCP=${m2["fcp"] ?? "?"}s  TBT=${m2["tbt"] ?? "?"}ms`);
     }
     await logActionLog({
       id: logId,
@@ -98231,7 +98231,7 @@ M\xE9triques Web Vitals (mobile) :`);
       toolName: name,
       ok: true,
       content: `${createdMissions.length} mission(s) cr\xE9\xE9e(s) depuis l'audit de ${audit["url"]} :
-` + createdMissions.map((m) => `\u2022 [${m["id"]}] ${m["title"]}`).join("\n"),
+` + createdMissions.map((m2) => `\u2022 [${m2["id"]}] ${m2["title"]}`).join("\n"),
       data: { missions: createdMissions, auditId },
       snapshot: batchSnap,
       actionLogId: logId,
@@ -98557,7 +98557,7 @@ ${recLines.join("\n")}`,
         });
       }
     }
-    const downMonitors = genMonRows.filter((m) => m["status"] === "down");
+    const downMonitors = genMonRows.filter((m2) => m2["status"] === "down");
     if ((!genFocus || genFocus === "performance") && downMonitors.length > 0) {
       candidates.push({
         title: _rt(
@@ -98725,8 +98725,8 @@ ${recLines.join("\n")}`,
       prioLines.push(`
 ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
       items.forEach((x) => {
-        const m = x["metadata"] ?? {};
-        prioLines.push(`  \u2022 [${x["id"]}] ${String(m["category"] ?? "SEO")} \u2014 ${x["title"]} (score: ${x["priority"]}/100)`);
+        const m2 = x["metadata"] ?? {};
+        prioLines.push(`  \u2022 [${x["id"]}] ${String(m2["category"] ?? "SEO")} \u2014 ${x["title"]} (score: ${x["priority"]}/100)`);
       });
     }
     return {
@@ -99018,7 +99018,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
         { title: `Obtenir des backlinks qualifi\xE9s`, desc: `Identifier 10 sites partenaires potentiels du secteur et leur proposer des \xE9changes de liens contextuels. Objectif : +5 backlinks en 30 jours.`, cat: "NETLINKING" }
       ];
       const fbMissionsRaw = fbTemplates.slice(0, msMaxMiss).map((t, i) => ({ title: t.title, description: t.desc, cat: t.cat, index: i }));
-      msSourceRecs = fbMissionsRaw.map((m) => ({ id: `fb_${m.index}`, title: m.title, description: m.description, metadata: { category: m.cat } }));
+      msSourceRecs = fbMissionsRaw.map((m2) => ({ id: `fb_${m2.index}`, title: m2.title, description: m2.description, metadata: { category: m2.cat } }));
       logger.info({ orgId: orgId3, count: msSourceRecs.length }, "[create_missions_from_strategy] using fallback SEO template missions");
     }
     const msToday = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -99081,7 +99081,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
       toolName: name2,
       ok: true,
       content: `${msMissions.length} mission(s) cr\xE9\xE9e(s) depuis la strat\xE9gie SEO :
-` + msMissions.map((m) => `\u2022 [${m["id"]}] ${m["title"]}`).join("\n"),
+` + msMissions.map((m2) => `\u2022 [${m2["id"]}] ${m2["title"]}`).join("\n"),
       data: { missions: msMissions, strategyId: msStratId ?? null },
       snapshot: msBatchSnap,
       actionLogId: logId,
@@ -99234,7 +99234,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
       actionLogId: logId
     };
     const smSummary = smRows.map(
-      (m) => `[${m["id"]}] ${m["name"]} (${m["url"]}) \u2014 ${fmtMonitorStatus(m["status"])}${m["enabled"] === false ? " \u23F8\uFE0F" : ""} | Uptime: ${fmtUptimePct(m["uptime"])} | Latence: ${m["latency"] ?? "?"}ms | Critique: ${m["is_critical"] ? "Oui" : "Non"}`
+      (m2) => `[${m2["id"]}] ${m2["name"]} (${m2["url"]}) \u2014 ${fmtMonitorStatus(m2["status"])}${m2["enabled"] === false ? " \u23F8\uFE0F" : ""} | Uptime: ${fmtUptimePct(m2["uptime"])} | Latence: ${m2["latency"] ?? "?"}ms | Critique: ${m2["is_critical"] ? "Oui" : "Non"}`
     ).join("\n");
     return {
       toolCallId: logId,
@@ -99597,7 +99597,7 @@ ${siSummary}`,
       ok: true,
       content: [
         `${cmiMissions.length} mission(s) cr\xE9\xE9e(s) depuis l'incident [${cmiId}] sur ${cmiSite} :`,
-        ...cmiMissions.map((m, i) => `${i + 1}. [${m["id"]}] ${m["title"]} (priorit\xE9: ${m["priority"]})`),
+        ...cmiMissions.map((m2, i) => `${i + 1}. [${m2["id"]}] ${m2["title"]} (priorit\xE9: ${m2["priority"]})`),
         ``,
         `Utilisez POST /api/ai/actions/${logId}/undo pour annuler toutes ces missions.`
       ].join("\n"),
@@ -99619,8 +99619,8 @@ ${siSummary}`,
     const omIncMap = new Map(omIncs.map((i) => [i["monitor_id"], i]));
     const omLines = [`=== OPTIMISATION MONITORS ===`, `Analyse de ${omMons.length} monitor(s) \u2500 Axe : ${omFocus}`, ""];
     if ((omFocus === "frequency" || omFocus === "all") && omMons.length) {
-      const highFreq = omMons.filter((m) => Number(m["frequency"] ?? 60) < 120 && m["enabled"]);
-      const lowFreq = omMons.filter((m) => Number(m["frequency"] ?? 60) >= 600 && !m["is_critical"] && m["enabled"]);
+      const highFreq = omMons.filter((m2) => Number(m2["frequency"] ?? 60) < 120 && m2["enabled"]);
+      const lowFreq = omMons.filter((m2) => Number(m2["frequency"] ?? 60) >= 600 && !m2["is_critical"] && m2["enabled"]);
       omLines.push("FR\xC9QUENCE :");
       if (highFreq.length) omLines.push(`  \u26A1 ${highFreq.length} monitor(s) ultra-fr\xE9quents (<2min) \u2014 envisager 5min pour les non-critiques`);
       if (lowFreq.length) omLines.push(`  \u{1F40C} ${lowFreq.length} monitor(s) \xE0 tr\xE8s faible fr\xE9quence (\u226510min) \u2014 envisager 5min max`);
@@ -99629,13 +99629,13 @@ ${siSummary}`,
     }
     if ((omFocus === "duplicates" || omFocus === "all") && omMons.length) {
       const urlMap = /* @__PURE__ */ new Map();
-      for (const m of omMons) {
-        const u = m["url"].toLowerCase();
-        urlMap.set(u, [...urlMap.get(u) ?? [], m]);
+      for (const m2 of omMons) {
+        const u = m2["url"].toLowerCase();
+        urlMap.set(u, [...urlMap.get(u) ?? [], m2]);
       }
       const dups = [...urlMap.entries()].filter(([, ms]) => ms.length > 1);
       omLines.push("DOUBLONS :");
-      if (dups.length) dups.forEach(([url, ms]) => omLines.push(`  \u26A0\uFE0F ${ms.length}\xD7 monitors pour ${url} : ${ms.map((m) => m["name"]).join(", ")}`));
+      if (dups.length) dups.forEach(([url, ms]) => omLines.push(`  \u26A0\uFE0F ${ms.length}\xD7 monitors pour ${url} : ${ms.map((m2) => m2["name"]).join(", ")}`));
       else omLines.push("  \u2705 Aucun doublon d\xE9tect\xE9");
       omLines.push("");
     }
@@ -99644,17 +99644,17 @@ ${siSummary}`,
       omLines.push("FAUX POSITIFS (incidents < 2min fr\xE9quents) :");
       if (highIncident.length) {
         for (const i of highIncident) {
-          const mon = omMons.find((m) => m["id"] === i["monitor_id"]);
+          const mon = omMons.find((m2) => m2["id"] === i["monitor_id"]);
           omLines.push(`  \u26A0\uFE0F ${mon?.["name"] ?? i["monitor_id"]} : ${i["incident_count"]} incidents/30j, dur\xE9e moy ${fmtDurationS(i["avg_duration"])} \u2014 envisager un seuil de tol\xE9rance`);
         }
       } else omLines.push("  \u2705 Aucun faux positif d\xE9tect\xE9");
       omLines.push("");
     }
     if (omFocus === "coverage" || omFocus === "all") {
-      const disabled = omMons.filter((m) => m["enabled"] === false);
+      const disabled = omMons.filter((m2) => m2["enabled"] === false);
       omLines.push("COUVERTURE :");
-      if (disabled.length) omLines.push(`  \u23F8\uFE0F ${disabled.length} monitor(s) suspendu(s) : ${disabled.map((m) => m["name"]).join(", ")}`);
-      omLines.push(`  \u{1F4CA} ${omMons.filter((m) => m["is_critical"]).length}/${omMons.length} monitors critiques`);
+      if (disabled.length) omLines.push(`  \u23F8\uFE0F ${disabled.length} monitor(s) suspendu(s) : ${disabled.map((m2) => m2["name"]).join(", ")}`);
+      omLines.push(`  \u{1F4CA} ${omMons.filter((m2) => m2["is_critical"]).length}/${omMons.length} monitors critiques`);
       omLines.push("");
     }
     omLines.push("\u2139\uFE0F Ces recommandations sont des propositions. Demandez-moi de configurer, suspendre ou supprimer un monitor pour les appliquer.");
@@ -101657,7 +101657,7 @@ var init_monitors = __esm({
           userId: req.orgContext?.userId || req.orgContext?.email,
           userName: req.orgContext?.name || req.orgContext?.email
         }).catch((err) => logger.error({ err }, "[monitors] logActivity failed"));
-        Promise.resolve().then(() => (init_usage_events(), usage_events_exports)).then((m) => m.recordUsageEvent(orgId3, "monitor_created")).catch(() => {
+        Promise.resolve().then(() => (init_usage_events(), usage_events_exports)).then((m2) => m2.recordUsageEvent(orgId3, "monitor_created")).catch(() => {
         });
         res.status(201).json(toPublic(row.rows[0]));
       } catch (err) {
@@ -101749,17 +101749,27 @@ var init_monitors = __esm({
     });
     router9.delete("/monitors/:id", canAdmin, async (req, res) => {
       const id = req.params["id"];
+      const _delOrgId = requireOrgId(req, res);
+      if (!_delOrgId) return;
       try {
-        const existing = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
-        if (existing.rowCount === 0) {
+        const existing = await req.orgDb(
+          `SELECT id FROM monitors WHERE id = $1 AND org_id::text = $2`,
+          [id, _delOrgId]
+        );
+        if (!existing.rows[0]) {
           res.status(404).json({ error: "Monitor not found" });
           return;
         }
-        const m = existing.rows[0];
-        const _delOrgId = String(m["org_id"] ?? req.orgId ?? "default");
         await req.orgDb(`DELETE FROM monitor_checks    WHERE monitor_id = $1`, [id]);
         await req.orgDb(`DELETE FROM monitor_incidents WHERE monitor_id = $1`, [id]);
-        await req.orgDb(`DELETE FROM monitors          WHERE id = $1 AND org_id::text = $2`, [id, _delOrgId]);
+        const del = await req.orgDb(
+          `DELETE FROM monitors WHERE id = $1 AND org_id::text = $2 RETURNING id`,
+          [id, _delOrgId]
+        );
+        if ((del.rowCount ?? 0) === 0) {
+          res.status(404).json({ error: "Monitor not found" });
+          return;
+        }
         store.logActivity({
           type: "monitor",
           label: `Monitor supprim\xE9 : ${String(m["name"])} (${String(m["url"])})`,
@@ -102286,9 +102296,9 @@ async function launchAudit(opts) {
         analyzePSI(url, "mobile", orgId3),
         analyzePSI(url, "desktop", orgId3)
       ]);
-      const m = mobile.status === "fulfilled" ? mobile.value : null;
+      const m2 = mobile.status === "fulfilled" ? mobile.value : null;
       const d = desktop.status === "fulfilled" ? desktop.value : null;
-      if (!m && !d) throw new Error("Both PSI requests failed");
+      if (!m2 && !d) throw new Error("Both PSI requests failed");
       const blend2 = (mv, dv, mw, dw) => {
         const mOk = typeof mv === "number" && Number.isFinite(mv);
         const dOk = typeof dv === "number" && Number.isFinite(dv);
@@ -102297,10 +102307,10 @@ async function launchAudit(opts) {
         if (dOk) return dv;
         return null;
       };
-      const weightedPerf = blend2(m?.scores.performance, d?.scores.performance, 0.6, 0.4);
-      const weightedSeo = blend2(m?.scores.seo, d?.scores.seo, 0.6, 0.4);
-      const weightedA11y = blend2(m?.scores.accessibility, d?.scores.accessibility, 0.5, 0.5);
-      const weightedBP = blend2(m?.scores.bestPractices, d?.scores.bestPractices, 0.5, 0.5);
+      const weightedPerf = blend2(m2?.scores.performance, d?.scores.performance, 0.6, 0.4);
+      const weightedSeo = blend2(m2?.scores.seo, d?.scores.seo, 0.6, 0.4);
+      const weightedA11y = blend2(m2?.scores.accessibility, d?.scores.accessibility, 0.5, 0.5);
+      const weightedBP = blend2(m2?.scores.bestPractices, d?.scores.bestPractices, 0.5, 0.5);
       const parts = [
         [weightedPerf, 0.4],
         [weightedSeo, 0.3],
@@ -102317,8 +102327,8 @@ async function launchAudit(opts) {
       if (weightTotal === 0) throw new Error("PSI returned no usable category scores");
       const score = Math.round(weightedSum / weightTotal);
       const status = score >= 70 ? "ok" : score >= 50 ? "warn" : "error";
-      const speed = d?.scores.performance ?? m?.scores.performance ?? 0;
-      const issues = (m?.criticalIssues.length ?? 0) + (d?.criticalIssues.length ?? 0);
+      const speed = d?.scores.performance ?? m2?.scores.performance ?? 0;
+      const issues = (m2?.criticalIssues.length ?? 0) + (d?.criticalIssues.length ?? 0);
       await pool2.query(
         `UPDATE audits SET score=$1, status=$2, speed=$3, issues=$4 WHERE id=$5 AND org_id=$6`,
         [score, status, speed, issues, auditId, orgId3]
@@ -102370,11 +102380,11 @@ __export(spreadsheet_parser_exports, {
 });
 async function loadExcelJS() {
   const mod = await import("exceljs");
-  const m = mod.default ?? mod;
-  if (typeof m?.Workbook !== "function") {
+  const m2 = mod.default ?? mod;
+  if (typeof m2?.Workbook !== "function") {
     throw new TypeError("exceljs: Workbook constructor not found");
   }
-  return m;
+  return m2;
 }
 function getCellText(value) {
   if (value === null || value === void 0) return "";
@@ -102469,11 +102479,11 @@ __export(docx_parser_exports, {
 });
 async function loadMammoth() {
   const mod = await import("mammoth");
-  const m = mod.default ?? mod;
-  if (typeof m?.extractRawText !== "function") {
+  const m2 = mod.default ?? mod;
+  if (typeof m2?.extractRawText !== "function") {
     throw new TypeError("mammoth: extractRawText is not a function");
   }
-  return m;
+  return m2;
 }
 async function parseDocxBuffer(buf, maxChars) {
   let mammoth;
@@ -107165,19 +107175,19 @@ router2.get("/events", (req, res) => {
         [orgId3]
       );
       const monitors = result.rows;
-      const down = monitors.filter((m) => m.status === "down").length;
+      const down = monitors.filter((m2) => m2.status === "down").length;
       res.write(
         `event: init
 data: ${JSON.stringify({
           type: "init",
           clientCount: orgSet.size,
-          monitors: monitors.map((m) => ({
-            id: m.id,
-            name: m.name,
-            status: m.status,
-            uptime: m.uptime,
-            latency: m.latency,
-            lastCheck: m.lastCheck
+          monitors: monitors.map((m2) => ({
+            id: m2.id,
+            name: m2.name,
+            status: m2.status,
+            uptime: m2.uptime,
+            latency: m2.latency,
+            lastCheck: m2.lastCheck
           })),
           summary: { total: monitors.length, down, up: monitors.length - down },
           ts: Date.now()
@@ -107215,13 +107225,13 @@ data: ${JSON.stringify({ ts: Date.now() })}
         `event: monitor_snapshot
 data: ${JSON.stringify({
           type: "monitor_snapshot",
-          monitors: monitors.map((m) => ({
-            id: m.id,
-            name: m.name,
-            status: m.status,
-            uptime: m.uptime,
-            latency: m.latency,
-            lastCheck: m.lastCheck
+          monitors: monitors.map((m2) => ({
+            id: m2.id,
+            name: m2.name,
+            status: m2.status,
+            uptime: m2.uptime,
+            latency: m2.latency,
+            lastCheck: m2.lastCheck
           })),
           ts: Date.now()
         })}
@@ -110074,7 +110084,7 @@ router6.patch("/me/prefs", async (req, res) => {
     if (settings && Object.keys(settings).length > 0) {
       const keys = Object.keys(settings).slice(0, 5).join(", ");
       const _settingsCtx = req.orgContext || {};
-      Promise.resolve().then(() => (init_store(), store_exports)).then((m) => m.store.logActivity({
+      Promise.resolve().then(() => (init_store(), store_exports)).then((m2) => m2.store.logActivity({
         type: "settings",
         label: `Param\xE8tres mis \xE0 jour : ${keys}`,
         orgId: orgId3,
@@ -110394,7 +110404,7 @@ router6.post("/settings/api-keys/regenerate", ownerOnly, async (req, res) => {
       res.json({ ok: true, key: publicKey, type: "public", createdAt });
     }
     const _apiKeyCtx = req.orgContext || {};
-    Promise.resolve().then(() => (init_store(), store_exports)).then((m) => m.store.logActivity({
+    Promise.resolve().then(() => (init_store(), store_exports)).then((m2) => m2.store.logActivity({
       type: "security",
       label: `Cl\xE9 API ${type === "secret" ? "secr\xE8te" : "publique"} r\xE9g\xE9n\xE9r\xE9e`,
       orgId: orgId3,
@@ -112564,15 +112574,15 @@ async function streamReportPdf(res, report, audit, meetingNotes, monitors = [], 
       });
       y += 18;
       doc.font("Helvetica").fontSize(8.5);
-      monitors.slice(0, 20).forEach((m, rowIdx) => {
+      monitors.slice(0, 20).forEach((m2, rowIdx) => {
         if (y > PAGE_H - FOOTER_H - 30) {
           doc.addPage();
           y = HEADER_H + 20;
         }
         if (rowIdx % 2 === 1) doc.rect(startX, y - 2, CONTENT_W, 16).fill("#f9fafb");
-        const statusColor = m.status === "up" ? GREEN : m.status === "down" ? RED : GRAY;
-        const uptimeTxt = m.uptime != null ? `${Number(m.uptime).toFixed(2)}%` : "\u2014";
-        const cols = [m.name || "\u2014", (m.url || "\u2014").slice(0, 30), m.status || "\u2014", uptimeTxt];
+        const statusColor = m2.status === "up" ? GREEN : m2.status === "down" ? RED : GRAY;
+        const uptimeTxt = m2.uptime != null ? `${Number(m2.uptime).toFixed(2)}%` : "\u2014";
+        const cols = [m2.name || "\u2014", (m2.url || "\u2014").slice(0, 30), m2.status || "\u2014", uptimeTxt];
         cols.forEach((col, i) => {
           const cx = startX + COL_W.slice(0, i).reduce((a, b) => a + b, 0);
           doc.fillColor(i === 2 ? statusColor : i === 1 ? GRAY : DARK).text(col, cx + 4, y, { width: COL_W[i] - 6, lineBreak: false });
@@ -112591,17 +112601,17 @@ async function streamReportPdf(res, report, audit, meetingNotes, monitors = [], 
     }
     sectionHeading(reportTemplate.label === "Rapport Ex\xE9cutif" ? "Actions et d\xE9cisions" : "Missions SEO");
     if (missions.length > 0) {
-      missions.slice(0, 15).forEach((m) => {
+      missions.slice(0, 15).forEach((m2) => {
         if (doc.y > PAGE_H - FOOTER_H - 50) {
           doc.addPage();
           doc.y = HEADER_H + 20;
         }
-        const statusColor = m.status === "done" || m.status === "completed" ? GREEN : m.status === "in_progress" ? BRAND2 : GRAY;
-        const prio = m.priority ? ` [${m.priority.toUpperCase()}]` : "";
-        doc.fontSize(8.5).font("Helvetica-Bold").fillColor(statusColor).text(`${(m.status ?? "todo").toUpperCase()}${prio}`, { continued: true });
-        doc.fillColor(DARK).text(`  ${m.title || "\u2014"}`);
-        if (m.dueDate) {
-          doc.fontSize(7.5).font("Helvetica").fillColor(GRAY).text(`\xC9ch\xE9ance : ${m.dueDate}`, MARGIN + 14, doc.y);
+        const statusColor = m2.status === "done" || m2.status === "completed" ? GREEN : m2.status === "in_progress" ? BRAND2 : GRAY;
+        const prio = m2.priority ? ` [${m2.priority.toUpperCase()}]` : "";
+        doc.fontSize(8.5).font("Helvetica-Bold").fillColor(statusColor).text(`${(m2.status ?? "todo").toUpperCase()}${prio}`, { continued: true });
+        doc.fillColor(DARK).text(`  ${m2.title || "\u2014"}`);
+        if (m2.dueDate) {
+          doc.fontSize(7.5).font("Helvetica").fillColor(GRAY).text(`\xC9ch\xE9ance : ${m2.dueDate}`, MARGIN + 14, doc.y);
         }
         doc.moveDown(0.5);
       });
@@ -112822,7 +112832,7 @@ router11.post("/reports", reportRateLimit, canWrite, async (req, res) => {
     const r = await db2(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [id, org(req)]);
     const report = r.rows[0] ?? { id, name };
     store.logActivity({ type: "report", label: `Rapport g\xE9n\xE9r\xE9 : ${reportName}`, targetId: id, targetType: "report", metadata: { name: reportName, format, templateKey: resolvedTemplate }, orgId: org(req), userId: req.orgContext?.userId || req.orgContext?.email, userName: req.orgContext?.name || req.orgContext?.email }).catch((err) => console.warn("[logActivity]", err?.message));
-    Promise.resolve().then(() => (init_usage_events(), usage_events_exports)).then((m) => m.recordUsageEvent(org(req), "report_created")).catch(() => {
+    Promise.resolve().then(() => (init_usage_events(), usage_events_exports)).then((m2) => m2.recordUsageEvent(org(req), "report_created")).catch(() => {
     });
     res.status(201).json(report);
     {
@@ -112933,7 +112943,7 @@ router11.get("/reports/:id/download", async (req, res) => {
     }
   } catch {
   }
-  Promise.resolve().then(() => (init_usage_events(), usage_events_exports)).then((m) => m.recordUsageEvent(orgId3, "pdf_export")).catch(() => {
+  Promise.resolve().then(() => (init_usage_events(), usage_events_exports)).then((m2) => m2.recordUsageEvent(orgId3, "pdf_export")).catch(() => {
   });
   await streamReportPdf(res, { ...report, whiteLabel: !!report.white_label }, audit, meetingNotes, monitors, missions, wlBranding);
 });
@@ -113481,17 +113491,17 @@ router12.get("/team", async (req, res) => {
       ),
       getSeatUsage(orgDb2(req), org16)
     ]);
-    const members = membersRes.rows.map((m) => ({
-      id: m.id,
-      email: m.email,
-      name: m.first_name && m.last_name ? `${m.first_name} ${m.last_name}`.trim() : m.first_name || m.name || m.email?.split("@")[0] || "",
-      firstName: m.first_name,
-      lastName: m.last_name,
-      role: m.role,
-      status: m.status,
-      userId: m.user_id,
-      joinedAt: m.joined_at ?? m.accepted_at ?? m.created_at,
-      createdAt: m.created_at
+    const members = membersRes.rows.map((m2) => ({
+      id: m2.id,
+      email: m2.email,
+      name: m2.first_name && m2.last_name ? `${m2.first_name} ${m2.last_name}`.trim() : m2.first_name || m2.name || m2.email?.split("@")[0] || "",
+      firstName: m2.first_name,
+      lastName: m2.last_name,
+      role: m2.role,
+      status: m2.status,
+      userId: m2.user_id,
+      joinedAt: m2.joined_at ?? m2.accepted_at ?? m2.created_at,
+      createdAt: m2.created_at
     }));
     try {
       const ownerRes = await db15(
@@ -113507,7 +113517,7 @@ router12.get("/team", async (req, res) => {
       const o = ownerRes.rows[0];
       const ownerEmail = String(o?.email ?? "").toLowerCase();
       if (ownerEmail) {
-        const ownerMemberIdx = members.findIndex((m) => String(m.email ?? "").toLowerCase() === ownerEmail || o?.user_id && String(m.userId ?? "") === String(o.user_id));
+        const ownerMemberIdx = members.findIndex((m2) => String(m2.email ?? "").toLowerCase() === ownerEmail || o?.user_id && String(m2.userId ?? "") === String(o.user_id));
         if (ownerMemberIdx !== -1) {
           members[ownerMemberIdx].role = "owner";
         } else {
@@ -113771,19 +113781,19 @@ router12.patch("/team/:id", canAdmin, async (req, res) => {
       res.status(404).json({ ok: false, error: "Member not found" });
       return;
     }
-    const m = r.rows[0];
+    const m2 = r.rows[0];
     pool2.query(
       `UPDATE organization_members om
        SET role = $1, updated_at = NOW()
        FROM users u
        WHERE u.id = om.user_id AND lower(u.email) = lower($2) AND om.organization_id = $3`,
-      [newRole, m.email, org16]
+      [newRole, m2.email, org16]
     ).catch((err) => logger.warn({ err: err.message }, "[team/patch] org_members dual-write failed (non-fatal)"));
-    updateSessionsRole(m.email, org16, newRole).catch(() => {
+    updateSessionsRole(m2.email, org16, newRole).catch(() => {
     });
     try {
       store.broadcast(
-        { type: "fp:role_updated", memberId, email: m.email, role: m.role },
+        { type: "fp:role_updated", memberId, email: m2.email, role: m2.role },
         org16
       );
     } catch (_) {
@@ -113791,11 +113801,11 @@ router12.patch("/team/:id", canAdmin, async (req, res) => {
     res.json({
       ok: true,
       member: {
-        id: m.id,
-        email: m.email,
-        name: m.email?.split("@")[0] ?? "",
-        role: m.role,
-        status: m.status
+        id: m2.id,
+        email: m2.email,
+        name: m2.email?.split("@")[0] ?? "",
+        role: m2.role,
+        status: m2.status
       }
     });
   } catch (err) {
@@ -115579,8 +115589,8 @@ function detectMime(buf) {
   return null;
 }
 function normalizeMime(mime) {
-  const m = mime.toLowerCase().trim();
-  return m === "image/jpg" ? "image/jpeg" : m;
+  const m2 = mime.toLowerCase().trim();
+  return m2 === "image/jpg" ? "image/jpeg" : m2;
 }
 function extractPngDimensions(buf) {
   if (buf.length < 24) return null;
@@ -116482,9 +116492,9 @@ async function callOpenAIWithTools(opts) {
   };
 }
 function multimodalToOpenAI(messages) {
-  return messages.map((m) => ({
-    role: m.role,
-    content: typeof m.content === "string" ? m.content : JSON.stringify(m.content)
+  return messages.map((m2) => ({
+    role: m2.role,
+    content: typeof m2.content === "string" ? m2.content : JSON.stringify(m2.content)
   }));
 }
 async function callAnthropicWithTools(opts) {
@@ -116530,15 +116540,15 @@ async function callAnthropicWithTools(opts) {
 }
 function multimodalToAnthropic(messages) {
   let system;
-  const msgs = messages.filter((m) => {
-    if (m.role === "system") {
-      system = typeof m.content === "string" ? m.content : void 0;
+  const msgs = messages.filter((m2) => {
+    if (m2.role === "system") {
+      system = typeof m2.content === "string" ? m2.content : void 0;
       return false;
     }
     return true;
-  }).map((m) => ({
-    role: m.role === "assistant" ? "assistant" : "user",
-    content: typeof m.content === "string" ? m.content : JSON.stringify(m.content)
+  }).map((m2) => ({
+    role: m2.role === "assistant" ? "assistant" : "user",
+    content: typeof m2.content === "string" ? m2.content : JSON.stringify(m2.content)
   }));
   return { system, messages: msgs };
 }
@@ -116600,17 +116610,17 @@ async function callGeminiWithTools(opts) {
 }
 function multimodalToGemini(messages) {
   let systemInstruction;
-  const conversationMsgs = messages.filter((m) => {
-    if (m.role === "system") {
-      systemInstruction = typeof m.content === "string" ? m.content : void 0;
+  const conversationMsgs = messages.filter((m2) => {
+    if (m2.role === "system") {
+      systemInstruction = typeof m2.content === "string" ? m2.content : void 0;
       return false;
     }
     return true;
   });
   const merged = [];
-  for (const m of conversationMsgs) {
-    const role = m.role === "assistant" ? "model" : "user";
-    const parts = [{ text: typeof m.content === "string" ? m.content : JSON.stringify(m.content) }];
+  for (const m2 of conversationMsgs) {
+    const role = m2.role === "assistant" ? "model" : "user";
+    const parts = [{ text: typeof m2.content === "string" ? m2.content : JSON.stringify(m2.content) }];
     const last = merged[merged.length - 1];
     if (last && last.role === role) {
       last.parts.push(...parts);
@@ -116984,10 +116994,10 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
     const stratDelClient = await pool2.connect();
     try {
       await stratDelClient.query("BEGIN");
-      for (const m of stratMissions) {
+      for (const m2 of stratMissions) {
         await stratDelClient.query(
           `DELETE FROM missions WHERE id = $1 AND org_id = $2`,
-          [m["id"], orgId3]
+          [m2["id"], orgId3]
         );
       }
       await stratDelClient.query("COMMIT");
@@ -117004,8 +117014,8 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
     const incDelClient = await pool2.connect();
     try {
       await incDelClient.query("BEGIN");
-      for (const m of incMissions) {
-        await incDelClient.query(`DELETE FROM missions WHERE id=$1 AND org_id=$2`, [m["id"], orgId3]);
+      for (const m2 of incMissions) {
+        await incDelClient.query(`DELETE FROM missions WHERE id=$1 AND org_id=$2`, [m2["id"], orgId3]);
       }
       await incDelClient.query("COMMIT");
     } catch (err) {
@@ -117021,10 +117031,10 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
     const delClient = await pool2.connect();
     try {
       await delClient.query("BEGIN");
-      for (const m of missions) {
+      for (const m2 of missions) {
         await delClient.query(
           `DELETE FROM missions WHERE id = $1 AND org_id = $2`,
-          [m["id"], orgId3]
+          [m2["id"], orgId3]
         );
       }
       await delClient.query("COMMIT");
@@ -117485,7 +117495,7 @@ async function buildFlowpointContext(extra, orgId3, contextFactor = 1) {
       }
     }
     const avgScore = audits.length > 0 ? Math.round(audits.reduce((s, a) => s + a.score, 0) / audits.length) : 0;
-    const downCount = monitors.filter((m) => m.status === "down").length;
+    const downCount = monitors.filter((m2) => m2.status === "down").length;
     const criticalAudits = audits.filter((a) => a.score < 50);
     const warningAudits = audits.filter((a) => a.score >= 50 && a.score < 75);
     const e = extra ?? {};
@@ -117509,7 +117519,7 @@ async function buildFlowpointContext(extra, orgId3, contextFactor = 1) {
       ).catch(() => ({ rows: [] }));
       topMissions = mRes.rows;
     }
-    const missAct = e["missionsActive"] ?? topMissions.filter((m) => m.status === "in_progress").length;
+    const missAct = e["missionsActive"] ?? topMissions.filter((m2) => m2.status === "in_progress").length;
     const missComp = e["missionsCompleted"] ?? 0;
     const activeAlerts = e["activeAlertsCount"] ?? 0;
     const aiCredits = e["aiCredits"] ?? null;
@@ -117568,7 +117578,7 @@ async function buildFlowpointContext(extra, orgId3, contextFactor = 1) {
       ``,
       `=== MONITORING ===`,
       `Monitors : ${monitors.length} total, ${downCount} DOWN, ${monitors.length - downCount} UP`,
-      downCount > 0 ? `\u26A0 Sites DOWN : ${monitors.filter((m) => m.status === "down").map((m) => `${m.url || m.name || "?"}`).join(", ")}` : `Tous les monitors sont UP`,
+      downCount > 0 ? `\u26A0 Sites DOWN : ${monitors.filter((m2) => m2.status === "down").map((m2) => `${m2.url || m2.name || "?"}`).join(", ")}` : `Tous les monitors sont UP`,
       ``,
       `=== CONNEXIONS GOOGLE ===`,
       `Google Search Console : ${gscConnected ? "\u2705 Connect\xE9" : "\u274C Non connect\xE9 \u2014 donn\xE9es de clics/impressions manquantes"}`,
@@ -117590,7 +117600,7 @@ async function buildFlowpointContext(extra, orgId3, contextFactor = 1) {
       `Mots-cl\xE9s suivis : ${nbKeywords} | Concurrents : ${nbCompetitors} | Rapports g\xE9n\xE9r\xE9s : ${nbReports}`,
       topMissions.length > 0 ? `Top missions prioritaires :
 ${topMissions.map(
-        (m) => `  - [${m.id}] "${m.title}" | statut: ${m.status} | priorit\xE9: ${m.priority} | cat\xE9gorie: ${m.category}${m.dueDate ? ` | \xE9ch\xE9ance: ${m.dueDate}` : ""}`
+        (m2) => `  - [${m2.id}] "${m2.title}" | statut: ${m2.status} | priorit\xE9: ${m2.priority} | cat\xE9gorie: ${m2.category}${m2.dueDate ? ` | \xE9ch\xE9ance: ${m2.dueDate}` : ""}`
       ).join("\n")}` : "Aucune mission active",
       topCroRecs.length > 0 ? `Recommandations CRO : ${topCroRecs.join(" / ")}` : "",
       revLeak > 0 ? `Fuites de revenus d\xE9tect\xE9es : ${revLeak}` : "",
@@ -117632,10 +117642,10 @@ ${topMissions.map(
           minute: "2-digit",
           hour12: false
         });
-        const m = localStr.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s+(\d{2}):(\d{2})/);
-        if (m) {
-          calLocalDate = `${m[3]}-${m[2]}-${m[1]}`;
-          calLocalHHMM = `${m[4]}:${m[5]}`;
+        const m2 = localStr.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s+(\d{2}):(\d{2})/);
+        if (m2) {
+          calLocalDate = `${m2[3]}-${m2[2]}-${m2[1]}`;
+          calLocalHHMM = `${m2[4]}:${m2[5]}`;
         }
       } catch {
       }
@@ -117720,8 +117730,8 @@ ${topMissions.map(
         ).catch(() => ({ rows: [{ cnt: 0 }] }));
         const seriesThisWeek = Number(seriesRes.rows[0]?.["cnt"] ?? 0);
         const busyToday = calTodayEvts.filter((e2) => e2["start_time"]).map((e2) => {
-          const [h, m] = String(e2["start_time"] ?? "00:00").split(":").map(Number);
-          const s = (h ?? 0) * 60 + (m ?? 0);
+          const [h, m2] = String(e2["start_time"] ?? "00:00").split(":").map(Number);
+          const s = (h ?? 0) * 60 + (m2 ?? 0);
           return { start: s, end: s + (Number(e2["duration"]) || 60) };
         });
         let freeSlotCount = 0;
@@ -117775,8 +117785,8 @@ ${topMissions.map(
       const recDismissed = recDismissedR.status === "fulfilled" ? Number(recDismissedR.value.rows[0]?.["cnt"] ?? 0) : 0;
       const recStrat = recStratR.status === "fulfilled" ? recStratR.value.rows : [];
       const topOpportunities = recActive.filter((r) => Number(r["priority"] ?? 0) >= 70).slice(0, 3).map((r) => {
-        const m = r["metadata"] ?? {};
-        return `${m["category"] ?? "SEO"} : ${r["title"]}`;
+        const m2 = r["metadata"] ?? {};
+        return `${m2["category"] ?? "SEO"} : ${r["title"]}`;
       });
       const criticalCount = recActive.filter((r) => Number(r["priority"] ?? 0) >= 90).length;
       lines.push(
@@ -117853,7 +117863,7 @@ ${topMissions.map(
         `Monitors : ${mhTotal} total | ${mhDownCnt} hors ligne \u{1F534} | ${mhPaused} suspendu(s) \u23F8\uFE0F`,
         `Uptime global moyen : ${mhAvgUp}% | Latence moy : ${mhAvgLat}ms`,
         mhIncs.length > 0 ? `Incidents actifs : ${mhIncs.length} \u{1F534} \u2014 ${mhIncs.map((i) => `${i["monitor_name"] ?? i["monitor_id"]} (depuis ${String(i["started_at"]).slice(0, 16)})`).join(", ")}` : `Incidents actifs : aucun \u2705`,
-        mhCrit.length > 0 ? `Monitors CRITIQUES hors ligne : ${mhCrit.map((m) => `${m["name"]} (${m["url"]})`).join(", ")}` : `Aucun monitor critique hors ligne \u2705`,
+        mhCrit.length > 0 ? `Monitors CRITIQUES hors ligne : ${mhCrit.map((m2) => `${m2["name"]} (${m2["url"]})`).join(", ")}` : `Aucun monitor critique hors ligne \u2705`,
         mhAlerts > 0 ? `Alertes non lues : ${mhAlerts} \u26A0\uFE0F` : `Alertes : toutes lues \u2705`,
         mhLastDown ? `Derni\xE8re panne : ${mhLastDown["monitor_name"]} (depuis ${String(mhLastDown["started_at"]).slice(0, 16)}) \u2014 ${mhLastDown["error"] ?? "cause inconnue"}` : `Aucune panne active`,
         mhLastRes ? `Dernier incident r\xE9solu : ${mhLastRes["monitor_name"]} (r\xE9solu ${String(mhLastRes["resolved_at"]).slice(0, 16)}, dur\xE9e ${typeof mhLastRes["duration_s"] === "number" ? `${Math.round(mhLastRes["duration_s"] / 60)}min` : "?"})` : `Aucun incident r\xE9solu r\xE9cemment`,
@@ -119151,9 +119161,9 @@ DONN\xC9ES MANQUANTES \u2014 r\xE8gle stricte :
   const messages = buildProviderMessages({
     provider: selectedProvider,
     systemPrompt: finalSystemPrompt,
-    history: history.slice(-historyLimit).map((m) => ({
-      role: m.role,
-      content: m.content
+    history: history.slice(-historyLimit).map((m2) => ({
+      role: m2.role,
+      content: m2.content
     })),
     userMessage: message,
     imageAttachments: parsedImageAttachments
@@ -119328,8 +119338,8 @@ DONN\xC9ES MANQUANTES \u2014 r\xE8gle stricte :
 `);
         res.end();
         const r0Latency = Date.now() - t0;
-        const r0EstIn = Math.ceil(messages.reduce((s, m) => {
-          const c = m.content;
+        const r0EstIn = Math.ceil(messages.reduce((s, m2) => {
+          const c = m2.content;
           if (typeof c === "string") return s + c.length;
           return s + c.reduce(
             (cs, b) => cs + (b.type === "text" ? b.text?.length ?? 0 : 50),
@@ -119428,8 +119438,8 @@ DONN\xC9ES MANQUANTES \u2014 r\xE8gle stricte :
 `);
       res.end();
       const latencyMs = Date.now() - t0;
-      const estTokensIn = Math.ceil(messages.reduce((s, m) => {
-        const c = m.content;
+      const estTokensIn = Math.ceil(messages.reduce((s, m2) => {
+        const c = m2.content;
         if (typeof c === "string") return s + c.length;
         return s + c.reduce((cs, b) => cs + (b.type === "text" ? b.text.length : 50), 0);
       }, 0) / 4);
@@ -123913,19 +123923,19 @@ R\xE9ponds UNIQUEMENT avec le JSON array.`;
         logger.warn("[mission-engine] AI returned empty missions array \u2014 treating as provider unavailable");
         return { missions: [], aiUnavailable: true };
       }
-      const missions = arr.map((m) => ({
-        title: String(m["title"] ?? "Mission SEO"),
-        category: String(m["category"] ?? "seo"),
-        type: String(m["type"] ?? "technical"),
-        priority: String(m["priority"] ?? "medium"),
-        impact: String(m["impact"] ?? "medium"),
-        effort: String(m["effort"] ?? "medium"),
-        estimatedTrafficImpact: typeof m["estimatedTrafficImpact"] === "number" ? m["estimatedTrafficImpact"] : String(m["impact"] ?? "") === "high" ? 15 : String(m["impact"] ?? "") === "medium" ? 8 : 3,
+      const missions = arr.map((m2) => ({
+        title: String(m2["title"] ?? "Mission SEO"),
+        category: String(m2["category"] ?? "seo"),
+        type: String(m2["type"] ?? "technical"),
+        priority: String(m2["priority"] ?? "medium"),
+        impact: String(m2["impact"] ?? "medium"),
+        effort: String(m2["effort"] ?? "medium"),
+        estimatedTrafficImpact: typeof m2["estimatedTrafficImpact"] === "number" ? m2["estimatedTrafficImpact"] : String(m2["impact"] ?? "") === "high" ? 15 : String(m2["impact"] ?? "") === "medium" ? 8 : 3,
         estimatedRevenueImpact: null,
-        aiExplanation: String(m["aiExplanation"] ?? ""),
-        aiActionSteps: Array.isArray(m["aiActionSteps"]) ? m["aiActionSteps"].map(String) : [],
-        aiQuickWin: Boolean(m["aiQuickWin"] ?? false),
-        priorityScore: Number(m["priorityScore"] ?? 70)
+        aiExplanation: String(m2["aiExplanation"] ?? ""),
+        aiActionSteps: Array.isArray(m2["aiActionSteps"]) ? m2["aiActionSteps"].map(String) : [],
+        aiQuickWin: Boolean(m2["aiQuickWin"] ?? false),
+        priorityScore: Number(m2["priorityScore"] ?? 70)
       }));
       return { missions, aiUnavailable: false };
     } catch (providerErr) {
@@ -124257,9 +124267,9 @@ router18.get("/missions/roadmap", async (req, res) => {
     const week = new Date(Date.now() + 7 * 864e5);
     const month = new Date(Date.now() + 30 * 864e5);
     res.json({
-      thisWeek: missions.filter((m) => m.dueDate && new Date(m.dueDate) <= week),
-      thisMonth: missions.filter((m) => m.dueDate && new Date(m.dueDate) > week && new Date(m.dueDate) <= month),
-      later: missions.filter((m) => !m.dueDate || new Date(m.dueDate) > month)
+      thisWeek: missions.filter((m2) => m2.dueDate && new Date(m2.dueDate) <= week),
+      thisMonth: missions.filter((m2) => m2.dueDate && new Date(m2.dueDate) > week && new Date(m2.dueDate) <= month),
+      later: missions.filter((m2) => !m2.dueDate || new Date(m2.dueDate) > month)
     });
   } catch {
     res.json({ thisWeek: [], thisMonth: [], later: [] });
@@ -124345,8 +124355,8 @@ router18.post("/missions/bulk-create", canWrite, async (req, res) => {
     }
     const created = [];
     const skipped = [];
-    for (const m of missionList) {
-      const title = m.title?.trim();
+    for (const m2 of missionList) {
+      const title = m2.title?.trim();
       if (!title) continue;
       const existing = await db15(
         `SELECT id FROM missions WHERE org_id = $1 AND LOWER(title) = LOWER($2) AND status != 'done'`,
@@ -124357,9 +124367,9 @@ router18.post("/missions/bulk-create", canWrite, async (req, res) => {
         continue;
       }
       const id = uid2();
-      const priority = m.priority || "medium";
+      const priority = m2.priority || "medium";
       const pScore = Number({ critical: 90, high: 75, medium: 50, low: 25 }[priority] ?? 50);
-      const stepsRaw = m.steps;
+      const stepsRaw = m2.steps;
       const stepsArr = Array.isArray(stepsRaw) ? stepsRaw.map((s, i) => ({
         id: `s${Date.now()}${i}`,
         text: typeof s === "string" ? s : s.text,
@@ -124376,14 +124386,14 @@ router18.post("/missions/bulk-create", canWrite, async (req, res) => {
         id,
         org16,
         title,
-        m.category || "SEO",
+        m2.category || "SEO",
         priority,
         pScore,
-        m.status || "todo",
-        m.impact || "Moyen",
-        m.effort || "Moyen",
+        m2.status || "todo",
+        m2.impact || "Moyen",
+        m2.effort || "Moyen",
         JSON.stringify(stepsArr),
-        m.source || "manual",
+        m2.source || "manual",
         bulkCreatedBy
       ]);
       const row = await db15(`SELECT * FROM missions WHERE id = $1`, [id]);
@@ -124966,11 +124976,11 @@ Utilise les mots-cl\xE9s EXACTEMENT tels qu'\xE9crits. Entre 2 et 8 clusters.`;
       const id = `cl_${stamp}_${idx}`;
       const name = String(c.name || `Cluster ${idx + 1}`).slice(0, 120);
       const intent = validIntents.has(String(c.intent)) ? String(c.intent) : "mixed";
-      const positions = members.map((m) => m.current_position).filter((p) => p != null && Number.isFinite(Number(p)));
+      const positions = members.map((m2) => m2.current_position).filter((p) => p != null && Number.isFinite(Number(p)));
       const avgPosition = positions.length ? Math.round(positions.reduce((a, b) => a + Number(b), 0) / positions.length * 10) / 10 : 0;
-      const totalVolume = members.reduce((a, m) => a + Number(m.search_volume || 0), 0);
+      const totalVolume = members.reduce((a, m2) => a + Number(m2.search_volume || 0), 0);
       const avgVolume = Math.round(totalVolume / members.length);
-      const avgDifficulty = Math.round(members.reduce((a, m) => a + Number(m.difficulty || 0), 0) / members.length);
+      const avgDifficulty = Math.round(members.reduce((a, m2) => a + Number(m2.difficulty || 0), 0) / members.length);
       const color = CLUSTER_COLORS[idx % CLUSTER_COLORS.length];
       await client.query(
         `INSERT INTO keyword_clusters
@@ -124983,7 +124993,7 @@ Utilise les mots-cl\xE9s EXACTEMENT tels qu'\xE9crits. Entre 2 et 8 clusters.`;
           name,
           String(c.description || "").slice(0, 500) || null,
           intent,
-          JSON.stringify(members.map((m) => m.keyword)),
+          JSON.stringify(members.map((m2) => m2.keyword)),
           members.length,
           avgPosition || null,
           avgVolume,
@@ -124994,7 +125004,7 @@ Utilise les mots-cl\xE9s EXACTEMENT tels qu'\xE9crits. Entre 2 et 8 clusters.`;
       );
       await client.query(
         `UPDATE tracked_keywords SET cluster_id=$1, updated_at=NOW() WHERE org_id=$2 AND id = ANY($3::text[])`,
-        [id, orgId3, members.map((m) => m.id)]
+        [id, orgId3, members.map((m2) => m2.id)]
       );
       out.push({ id, name, intent, keywords: members.length, avgPosition });
       idx++;
@@ -126449,20 +126459,20 @@ var requesterId = (req) => {
   return s || "user";
 };
 var normChannel = (c) => String(c ?? "general").trim().replace(/^#+/, "").toLowerCase() || "general";
-var mapMsg = (m, self = false) => ({
-  id: m["id"],
-  channel: m["channel"],
-  from: m["sender_name"],
-  text: m["content"],
+var mapMsg = (m2, self = false) => ({
+  id: m2["id"],
+  channel: m2["channel"],
+  from: m2["sender_name"],
+  text: m2["content"],
   self,
   read: true,
-  type: m["type"],
+  type: m2["type"],
   // Stable sender identity so each client can compute "self" locally
   // (SSE broadcast is org-wide — the server cannot know who each recipient is).
-  senderId: m["sender_id"] ?? null,
-  attachmentUrl: m["attachment_url"] ?? null,
-  attachmentName: m["attachment_name"] ?? null,
-  createdAt: m["created_at"]
+  senderId: m2["sender_id"] ?? null,
+  attachmentUrl: m2["attachment_url"] ?? null,
+  attachmentName: m2["attachment_name"] ?? null,
+  createdAt: m2["created_at"]
 });
 router22.get("/team/channels", async (req, res) => {
   try {
@@ -126543,7 +126553,7 @@ router22.get("/team/messages", async (req, res) => {
       params
     );
     const me = requesterId(req);
-    res.json(r.rows.reverse().map((m) => mapMsg(m, String(m["sender_id"] ?? "") === me)));
+    res.json(r.rows.reverse().map((m2) => mapMsg(m2, String(m2["sender_id"] ?? "") === me)));
   } catch (err) {
     console.error("[team-messages] GET failed:", err?.message);
     res.json([]);
@@ -126583,7 +126593,7 @@ router22.get("/team/messages/all", async (req, res) => {
           [org3(req), ch]
         );
         const me = requesterId(req);
-        results[ch] = r.rows.reverse().map((m) => mapMsg(m, String(m["sender_id"] ?? "") === me));
+        results[ch] = r.rows.reverse().map((m2) => mapMsg(m2, String(m2["sender_id"] ?? "") === me));
       } catch (err) {
         console.error(`[team-messages] GET-all channel ${ch} failed:`, err?.message);
         results[ch] = [];
@@ -126671,10 +126681,10 @@ router22.post("/team/messages", canWrite, async (req, res) => {
       const body = (text2 ?? attachmentName ?? "Pi\xE8ce jointe").slice(0, 300);
       const link = JSON.stringify({ route: "team", sub: "chat", channel, senderId });
       let n = 0;
-      for (const m of allRecipientRows) {
-        const rid = String(m["rid"] ?? "");
+      for (const m2 of allRecipientRows) {
+        const rid = String(m2["rid"] ?? "");
         if (!rid) continue;
-        if (rid === senderId || String(m["email"] ?? "") === senderId || String(m["user_id"] ?? "") === senderId || senderEmail && (rid === senderEmail || String(m["email"] ?? "") === senderEmail)) continue;
+        if (rid === senderId || String(m2["email"] ?? "") === senderId || String(m2["user_id"] ?? "") === senderId || senderEmail && (rid === senderEmail || String(m2["email"] ?? "") === senderEmail)) continue;
         await db4(req)(
           `INSERT INTO notifications (id, org_id, type, title, message, read, link, recipient_id, created_at)
            VALUES ($1, $2, 'chat', $3, $4, false, $5, $6, NOW())`,
@@ -130667,7 +130677,7 @@ async function getMarketDashboard(orgId3) {
         score: trends.rows.length > 0 ? Math.round(trends.rows.reduce((s, t) => s + Number(t["opportunity_score"] ?? 0), 0) / trends.rows.length) : 0,
         trendingUp: trends.rows.filter((t) => Number(t["growth"]) > 50).length,
         opportunities: opps.rows.length,
-        threats: movements.rows.filter((m) => m["type"] === "ranking_gain").length
+        threats: movements.rows.filter((m2) => m2["type"] === "ranking_gain").length
       }
     };
   } finally {
@@ -132669,13 +132679,13 @@ R\xC8GLES IMPORTANTES :
           0
         ]
       );
-      for (const m of missionTemplates) {
-        const mId = `agm_${Date.now()}_${m.priority}`;
+      for (const m2 of missionTemplates) {
+        const mId = `agm_${Date.now()}_${m2.priority}`;
         await client.query(
           `INSERT INTO ai_generated_missions (id, org_id, profile_id, title, category, priority, estimated_impact, estimated_effort, status)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending')
            ON CONFLICT (id) DO NOTHING`,
-          [mId, orgId3, profileId, m.title, m.category, m.priority, m.impact, m.effort]
+          [mId, orgId3, profileId, m2.title, m2.category, m2.priority, m2.impact, m2.effort]
         );
       }
       const logEntries = [
@@ -136240,18 +136250,18 @@ async function getMonitoringStats(orgId3) {
   const ms = monitors.status === "fulfilled" ? monitors.value : [];
   const inc = incidents.status === "fulfilled" ? incidents.value : [];
   const hbs = heartbeats.status === "fulfilled" ? heartbeats.value : [];
-  const activeMs = ms.filter((m) => !m.attributes.paused);
-  const uptimes = ms.map((m) => parseFloat(m.attributes.uptime_percentage || "100")).filter((u) => !isNaN(u));
-  const rts = ms.map((m) => m.attributes.avg_response_time || 0).filter((rt) => rt > 0);
-  const sslWarnings = ms.filter((m) => {
-    const days = m.attributes.ssl_expiration;
+  const activeMs = ms.filter((m2) => !m2.attributes.paused);
+  const uptimes = ms.map((m2) => parseFloat(m2.attributes.uptime_percentage || "100")).filter((u) => !isNaN(u));
+  const rts = ms.map((m2) => m2.attributes.avg_response_time || 0).filter((rt) => rt > 0);
+  const sslWarnings = ms.filter((m2) => {
+    const days = m2.attributes.ssl_expiration;
     return typeof days === "number" && days < 30;
   }).length;
   const stats = {
     totalMonitors: ms.length,
-    up: ms.filter((m) => m.attributes.status === "up").length,
-    down: ms.filter((m) => m.attributes.status === "down" || m.attributes.status === "seems_down").length,
-    paused: ms.filter((m) => m.attributes.paused).length,
+    up: ms.filter((m2) => m2.attributes.status === "up").length,
+    down: ms.filter((m2) => m2.attributes.status === "down" || m2.attributes.status === "seems_down").length,
+    paused: ms.filter((m2) => m2.attributes.paused).length,
     avgUptime: uptimes.length ? Math.round(uptimes.reduce((a, b) => a + b, 0) / uptimes.length * 10) / 10 : 100,
     avgResponseTime: rts.length ? Math.round(rts.reduce((a, b) => a + b, 0) / rts.length) : 0,
     sslWarnings,
@@ -136265,8 +136275,8 @@ async function getMonitoringStats(orgId3) {
 async function syncMonitorsToDB(monitors, orgId3) {
   const client = await pool2.connect();
   try {
-    for (const m of monitors) {
-      const a = m.attributes;
+    for (const m2 of monitors) {
+      const a = m2.attributes;
       const sslDays = typeof a.ssl_expiration === "number" ? a.ssl_expiration : null;
       await client.query(`
         INSERT INTO bs_monitors (
@@ -136284,9 +136294,9 @@ async function syncMonitorsToDB(monitors, orgId3) {
           synced_at = NOW(),
           updated_at = NOW()
       `, [
-        `bs_${m.id}`,
+        `bs_${m2.id}`,
         orgId3,
-        m.id,
+        m2.id,
         a.pronunciation_name || a.url || "Monitor",
         a.url,
         a.monitor_type,
@@ -137373,12 +137383,12 @@ router52.post("/admin/demo-seed", async (req, res) => {
       { id: "demo_m2", name: "Restaurant Le Soleil", url: "https://restaurant-lesoleil.com", status: "down", uptime: 97.2, latency: 0 },
       { id: "demo_m3", name: "Coiffeur Lyon", url: "https://coiffeur-lyon.com", status: "up", uptime: 99.5, latency: 98 }
     ];
-    for (const m of monitorRows) {
+    for (const m2 of monitorRows) {
       try {
         await client.query(
           `INSERT INTO monitors (id, name, url, status, uptime, latency, last_check, org_id, created_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW()) ON CONFLICT (id) DO NOTHING`,
-          [m.id, m.name, m.url, m.status, m.uptime, m.latency, (/* @__PURE__ */ new Date()).toISOString(), orgId3]
+          [m2.id, m2.name, m2.url, m2.status, m2.uptime, m2.latency, (/* @__PURE__ */ new Date()).toISOString(), orgId3]
         );
       } catch {
       }
@@ -137423,12 +137433,12 @@ router52.post("/admin/demo-seed", async (req, res) => {
       { id: "demo_ms2", title: "R\xE9pondre aux avis Google en attente (3 avis)", category: "GBP", priority: "high", status: "inprogress", source_type: "ai" },
       { id: "demo_ms3", title: "Cr\xE9er une page locale pour le 15e arrondissement", category: "Local SEO", priority: "medium", status: "todo", source_type: "ai" }
     ];
-    for (const m of missionRows) {
+    for (const m2 of missionRows) {
       try {
         await client.query(
           `INSERT INTO missions (id, title, category, priority, status, source_type, org_id, steps, created_at, updated_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,'[]'::jsonb,NOW(),NOW()) ON CONFLICT (id) DO NOTHING`,
-          [m.id, m.title, m.category, m.priority, m.status, m.source_type, orgId3]
+          [m2.id, m2.title, m2.category, m2.priority, m2.status, m2.source_type, orgId3]
         );
       } catch {
       }
