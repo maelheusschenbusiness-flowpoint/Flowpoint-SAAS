@@ -102,8 +102,9 @@ export async function recordCommission(opts: CommissionOpts): Promise<void> {
           stripe_subscription_id, stripe_checkout_session_id,
           stripe_invoice_id, stripe_payment_intent_id,
           plan, eligible_amount_cents, commission_rate_bps, commission_amount_cents,
-          currency, status, attribution_method, attributed_at, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',$14,NOW(),NOW())
+          currency, status, attribution_method, attributed_at, earned_at, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',$14,NOW(),
+               CASE WHEN $10 > 0 THEN NOW() ELSE NULL END,NOW())
        ON CONFLICT (org_id) DO NOTHING`,
       [
         opts.sellerId,
