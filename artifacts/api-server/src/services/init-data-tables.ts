@@ -3249,6 +3249,9 @@ export async function initDataTables(): Promise<void> {
     // Self-heal: add seller_id columns to existing tables
     await run(client, `ALTER TABLE pending_signups    ADD COLUMN IF NOT EXISTS seller_id TEXT`);
     await run(client, `ALTER TABLE organizations      ADD COLUMN IF NOT EXISTS seller_id TEXT`);
+    // Self-heal: add paid_by / notes to seller_commissions
+    await run(client, `ALTER TABLE seller_commissions ADD COLUMN IF NOT EXISTS paid_by TEXT`);
+    await run(client, `ALTER TABLE seller_commissions ADD COLUMN IF NOT EXISTS notes   TEXT`);
 
     logger.info("[init-data-tables] all tables, schema_migrations, missing-production-tables, P0-5 ALTERs, P1-2 type fixes done");
   } catch (err) {
