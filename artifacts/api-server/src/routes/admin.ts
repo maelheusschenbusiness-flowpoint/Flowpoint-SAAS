@@ -1469,6 +1469,27 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
         const r = await client.query(`DELETE FROM ${table} WHERE ${col}::text = ANY($1)`, [vals]);
         deleted[table] = r.rowCount ?? 0;
       };
+      // safeDeleteUUIDSP — like safeDeleteUUID but wraps each statement in a
+      // SAVEPOINT so that a missing table (42P01) or any other per-table error
+      // is fully rolled back at the savepoint level without poisoning the outer
+      // transaction (25P01 "current transaction is aborted").
+      // This is critical when the table list includes tables that may not exist
+      // in every deployment: a plain .catch() swallows the JS exception but the
+      // PostgreSQL transaction still enters ABORTED state, causing every
+      // subsequent query — including DELETE FROM organizations — to fail.
+      const safeDeleteUUIDSP = async (table: string, col: string, vals: string[]) => {
+        if (!vals.length) { deleted[table] = 0; return; }
+        const sp = `sp_${table}`;
+        await client.query(`SAVEPOINT ${sp}`);
+        try {
+          const r = await client.query(`DELETE FROM ${table} WHERE ${col}::text = ANY($1)`, [vals]);
+          deleted[table] = r.rowCount ?? 0;
+          await client.query(`RELEASE SAVEPOINT ${sp}`);
+        } catch {
+          await client.query(`ROLLBACK TO SAVEPOINT ${sp}`).catch(() => {});
+          deleted[table] = 0;
+        }
+      };
 
       // Sessions & tokens (by email)
       // Sessions & tokens (by email)
@@ -1535,16 +1556,24 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
         // Legacy org settings
         "org_settings",
       ] as const) {
-        await safeDeleteUUID(tbl, "org_id", orgIdsToDelete).catch(() => {});
+        await safeDeleteUUIDSP(tbl, "org_id", orgIdsToDelete);
       }
 
-      // organization_members uses `organization_id` (not `org_id`) — handle separately
+      // organization_members uses `organization_id` (not `org_id`) — handle separately.
+      // Also wrapped in a SAVEPOINT for the same 25P01-prevention reason.
       if (orgIdsToDelete.length > 0) {
-        const omR = await client.query(
-          `DELETE FROM organization_members WHERE organization_id::text = ANY($1)`,
-          [orgIdsToDelete]
-        ).catch(() => ({ rowCount: 0 }));
-        deleted["organization_members"] = omR.rowCount ?? 0;
+        await client.query(`SAVEPOINT sp_organization_members`);
+        try {
+          const omR = await client.query(
+            `DELETE FROM organization_members WHERE organization_id::text = ANY($1)`,
+            [orgIdsToDelete]
+          );
+          deleted["organization_members"] = omR.rowCount ?? 0;
+          await client.query(`RELEASE SAVEPOINT sp_organization_members`);
+        } catch {
+          await client.query(`ROLLBACK TO SAVEPOINT sp_organization_members`).catch(() => {});
+          deleted["organization_members"] = 0;
+        }
       }
 
       // Core identity tables

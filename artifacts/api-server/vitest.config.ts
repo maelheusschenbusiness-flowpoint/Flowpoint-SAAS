@@ -101,6 +101,8 @@ export default defineConfig({
       "src/tests/billing-legacy-customer.test.ts",
       // P0 pre-register customer reuse + trial anchor: Tests A-F
       "src/tests/billing-preregister-customer.test.ts",
+      // P0 admin purge — SAVEPOINT fix + 7 regression tests
+      "src/tests/admin-purge-all-clients.test.ts",
     ],
     environment: "node",
     globals:     false,
