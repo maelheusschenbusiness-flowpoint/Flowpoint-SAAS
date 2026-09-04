@@ -2490,6 +2490,127 @@ router.post("/admin/create-report-api", async (req: Request, res: Response): Pro
   }
 });
 
+// ── POST /api/admin/sellers — create a seller ─────────────────────────────────
+router.post("/admin/sellers", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { name, email, code: rawCode } = req.body as Record<string, string | undefined>;
+  try {
+    let sellerCode: string;
+    if (rawCode) {
+      sellerCode = String(rawCode).trim().toUpperCase();
+      if (!/^SELLER-[A-Z0-9]{1,20}$/.test(sellerCode)) {
+        res.status(400).json({ ok: false, error: "seller_code must match SELLER-[A-Z0-9]{1,20}" });
+        return;
+      }
+    } else {
+      // Auto-generate unique 8-char code
+      const ts  = Date.now().toString(36).toUpperCase().slice(-4);
+      const rnd = Math.random().toString(36).substring(2, 6).toUpperCase();
+      sellerCode = `SELLER-${ts}${rnd}`;
+    }
+    const r = await pool.query<{ id: string; seller_code: string; name: string | null; email: string | null; status: string; created_at: string }>(
+      `INSERT INTO sellers (seller_code, name, email, status, created_at, updated_at)
+       VALUES ($1, $2, $3, 'active', NOW(), NOW())
+       ON CONFLICT (seller_code) DO NOTHING
+       RETURNING id, seller_code, name, email, status, created_at`,
+      [sellerCode, name ?? null, email ?? null]
+    );
+    if (!r.rows[0]) {
+      res.status(409).json({ ok: false, error: "A seller with this code already exists" });
+      return;
+    }
+    res.status(201).json({
+      ok:     true,
+      seller: r.rows[0],
+      link:   `https://app.flowpoint.pro/pricing.html?ref=${r.rows[0].seller_code}`,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── GET /api/admin/sellers — list all sellers ──────────────────────────────────
+router.get("/admin/sellers", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  try {
+    const r = await pool.query(
+      `SELECT s.id, s.seller_code, s.name, s.email, s.status, s.created_at,
+              COUNT(DISTINCT o.id)::int                                                          AS org_count,
+              COUNT(sc.id)::int                                                                   AS commission_count,
+              COALESCE(SUM(sc.commission_amount_cents) FILTER (WHERE sc.status = 'paid'),   0)::int AS paid_cents,
+              COALESCE(SUM(sc.commission_amount_cents) FILTER (WHERE sc.status = 'pending'),0)::int AS pending_cents
+         FROM sellers s
+         LEFT JOIN organizations o ON o.seller_id = s.id
+         LEFT JOIN seller_commissions sc ON sc.seller_id = s.id
+        GROUP BY s.id
+        ORDER BY s.created_at DESC`
+    );
+    res.json({
+      ok:      true,
+      sellers: r.rows.map(s => ({
+        ...s,
+        link: `https://app.flowpoint.pro/pricing.html?ref=${s.seller_code}`,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── PATCH /api/admin/sellers/:code — update seller (name / email / status) ────
+router.patch("/admin/sellers/:code", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const code   = String(req.params["code"] ?? "").trim().toUpperCase();
+  const { name, email, status } = req.body as Record<string, string | undefined>;
+  if (status && !["active", "inactive"].includes(status)) {
+    res.status(400).json({ ok: false, error: "status must be 'active' or 'inactive'" });
+    return;
+  }
+  try {
+    const r = await pool.query(
+      `UPDATE sellers
+          SET name       = COALESCE($2, name),
+              email      = COALESCE($3, email),
+              status     = COALESCE($4, status),
+              updated_at = NOW()
+        WHERE seller_code = $1
+        RETURNING id, seller_code, name, email, status`,
+      [code, name ?? null, email ?? null, status ?? null]
+    );
+    if (!r.rows[0]) { res.status(404).json({ ok: false, error: "Seller not found" }); return; }
+    res.json({
+      ok:     true,
+      seller: r.rows[0],
+      link:   `https://app.flowpoint.pro/pricing.html?ref=${(r.rows[0] as { seller_code: string }).seller_code}`,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── POST /api/admin/seller-commissions/:id/mark-paid ─────────────────────────
+router.post("/admin/seller-commissions/:id/mark-paid", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { id } = req.params as { id: string };
+  const { paid_by, notes } = req.body as Record<string, string | undefined>;
+  try {
+    const r = await pool.query(
+      `UPDATE seller_commissions
+          SET status  = 'paid',
+              paid_at = COALESCE(paid_at, NOW()),
+              paid_by = COALESCE($2, paid_by),
+              notes   = COALESCE($3, notes)
+        WHERE id = $1
+        RETURNING id, status, commission_amount_cents, eligible_amount_cents, paid_at, paid_by, notes`,
+      [id, paid_by ?? null, notes ?? null]
+    );
+    if (!r.rows[0]) { res.status(404).json({ ok: false, error: "Commission not found" }); return; }
+    res.json({ ok: true, commission: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 // ── POST /admin/seller-attributions — manual fallback attribution ─────────────
 router.post("/admin/seller-attributions", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
@@ -2529,24 +2650,50 @@ router.post("/admin/seller-attributions", async (req: Request, res: Response): P
       return;
     }
 
-    // Update organizations.seller_id
-    await pool.query(
-      `UPDATE organizations SET seller_id = $1 WHERE id = $2`, [seller.id, org_id]
+    // Update organizations.seller_id (FIRST_TOUCH — do not overwrite existing)
+    const updR = await pool.query(
+      `UPDATE organizations SET seller_id = $1 WHERE id = $2 AND (seller_id IS NULL OR seller_id = '')
+       RETURNING id, stripe_customer_id, subscription_status`,
+      [seller.id, org_id]
     );
+    if (!updR.rows[0]) {
+      // Already has a seller — return existing without overwrite
+      const existOrg = await pool.query(`SELECT seller_id FROM organizations WHERE id = $1`, [org_id]);
+      const existSellerId = (existOrg.rows[0] as { seller_id: string | null } | undefined)?.seller_id;
+      res.json({ ok: true, action: "already_attributed_to_seller_id", existing_seller_id: existSellerId, seller, reason });
+      return;
+    }
+    const orgUpdated = updR.rows[0] as { id: string; stripe_customer_id: string | null; subscription_status: string | null };
 
-    // Record commission
-    const { recordCommission: _rcManual } = await import("../services/seller-attribution.js");
-    await _rcManual({
-      sellerId:             seller.id,
-      orgId:                org_id,
-      customerEmail:        org.owner_email,
-      plan:                 org.plan,
-      eligibleAmountCents:  0,
-      currency:             "eur",
-      attributionMethod:    "manual",
+    // Update Stripe Customer + Subscription metadata (fire-and-forget — additive only)
+    if (orgUpdated.stripe_customer_id) {
+      (async () => {
+        try {
+          const { getStripeKey, createStripeClient: _mkS } = await import("../services/stripe-factory.js");
+          const _sk = getStripeKey();
+          if (!_sk) return;
+          const _stripe = await _mkS(_sk);
+          const _meta = { seller_id: seller.seller_code, seller_attribution: "manual" };
+          await _stripe.customers.update(orgUpdated.stripe_customer_id!, { metadata: _meta });
+          // Also update active subscription metadata
+          const _subs = await _stripe.subscriptions.list({ customer: orgUpdated.stripe_customer_id!, status: "active", limit: 3 });
+          for (const _sub of _subs.data) {
+            await _stripe.subscriptions.update(_sub.id, { metadata: _meta });
+          }
+        } catch (_se) {
+          // Non-fatal
+        }
+      })().catch(() => {});
+    }
+
+    // NOTE: Commission NOT created here. It will be created automatically by
+    // invoice.payment_succeeded when the first real subscription payment is received.
+    // If the first payment already occurred before this attribution, admin must use
+    // POST /admin/seller-commissions/:id/mark-paid after manually inserting the commission.
+    res.json({
+      ok: true, action: "attributed", orgId: org_id, seller, reason,
+      note: "Commission will be created on the first real subscription payment received."
     });
-
-    res.json({ ok: true, action: "attributed", orgId: org_id, seller, reason });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   }
