@@ -156,3 +156,4 @@
 - [Local SEO history mode isolation](local-seo-history-mode.md) — selectedHistoryIds.size>0 = HISTORY mode; global markers must stay hidden even when merged.length===0; fpClearHistoryMarkers must call fpShow not fpHide; geocoder callbacks need generation guard
 - [DFS Google Maps item type filter](dfs-maps-item-type.md) — getGoogleMapsResults must filter type==="maps_search"||"local_pack"; bare "maps_search" returns 0 items when DFS returns local_pack type; log warn when mismatch
 - [Team contributions owner canonical](team-contrib-owner-canonical.md) — NULLIF(owner_user_id,'') in principal SQL; email as last-resort canonical_uid; team page lookup tries [userId, email]; backfill NULL created_by→owner in audits/missions/reports on startup
+- [Public billing Customer anchor](public-billing-auth-anchor.md) — public billing runs before orgContext; resolve authenticated sessions before creating Stripe intents and reuse organizations.stripe_customer_id

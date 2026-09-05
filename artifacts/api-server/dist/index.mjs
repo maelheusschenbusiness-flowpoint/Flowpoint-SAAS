@@ -140839,7 +140839,7 @@ router54.post("/public/payment-intent", publicCheckoutRateLimit, async (req, res
   if (addons === null) return;
   const preRegisterToken = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
   let _piReqOrgId = req.orgId;
-  if (!plan4 && !preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
+  if (!preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
     try {
       const _authHeader = req.headers["authorization"];
       const _cookieToken = req.cookies?.["fp_token"];
@@ -140860,6 +140860,9 @@ router54.post("/public/payment-intent", publicCheckoutRateLimit, async (req, res
     } catch (_piAuthErr) {
       logger.warn({ _piAuthErr }, "[PublicBilling] payment-intent: optional session resolution failed (non-fatal)");
     }
+  }
+  if (_piReqOrgId && _piReqOrgId !== "default") {
+    req.orgId = _piReqOrgId;
   }
   if (!plan4 && !preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
     const addonKeys = Object.keys(addons);
@@ -141092,7 +141095,7 @@ router54.post("/public/payment-intent", publicCheckoutRateLimit, async (req, res
       }
     }
     if (!preRegCustomerId && !preRegisterToken) {
-      const _authOrgId = req.orgId;
+      const _authOrgId = _piReqOrgId;
       if (_authOrgId && _authOrgId !== "default") {
         try {
           const { loadBillingContext: loadBillingContext2 } = await Promise.resolve().then(() => (init_billing_context(), billing_context_exports));
@@ -141584,6 +141587,7 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
       return;
     }
     let customerId = intentCustomerId;
+    let customerSource = intentCustomerId ? "payment_or_setup_intent.customer" : null;
     let hasSubscriptionHistory = false;
     if (customerId) {
       try {
@@ -141610,10 +141614,14 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
           if (_fcSubs.data.length > 0) {
             customerId = _fcEc2.id;
             hasSubscriptionHistory = true;
+            customerSource = "stripe_customer_email_search_with_subscription_history";
             logger.info({ customerId, email: _fcEmail }, "[PublicBilling] finalize: reusing Stripe customer (has history)");
             break;
           }
-          if (!customerId) customerId = _fcEc2.id;
+          if (!customerId) {
+            customerId = _fcEc2.id;
+            customerSource = "stripe_customer_email_search";
+          }
         }
       }
     }
@@ -141630,6 +141638,7 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
             );
             if (_fcPsR.rows[0]?.stripe_customer_id) {
               customerId = _fcPsR.rows[0].stripe_customer_id;
+              customerSource = "pending_signups.stripe_customer_id";
               logger.info({ customerId }, "[PublicBilling] finalize: found customer via pre_register_token");
             }
           } finally {
@@ -141648,6 +141657,15 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
       const persistentCustomer = anchor.rows[0]?.stripe_customer_id;
       const endedAccount = ["canceled", "ended", "expired"].includes(anchor.rows[0]?.subscription_status);
       if (!persistentCustomer && endedAccount || persistentCustomer && customerId && customerId !== persistentCustomer) {
+        logger.warn({
+          event: "billing_customer_mismatch",
+          orgId: _authenticatedOrgId,
+          canonicalCustomerId: persistentCustomer ?? null,
+          resolvedCustomerId: customerId,
+          resolvedCustomerSource: customerSource,
+          intentCustomerId,
+          pendingSignupCustomerId: customerSource === "pending_signups.stripe_customer_id" ? customerId : null
+        }, "[PublicBilling/finalize-checkout] canonical Stripe Customer mismatch");
         res.status(409).json({
           error: "billing_customer_mismatch",
           message: "Le compte de facturation n\xE9cessite une v\xE9rification. Contactez le support."
