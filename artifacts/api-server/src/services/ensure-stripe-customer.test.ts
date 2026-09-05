@@ -75,6 +75,10 @@ function makeFakeClient(queryLog: string[]) {
         return { rows: [], rowCount: 0 };
       }
 
+      if (/SELECT stripe_customer_id FROM organizations/i.test(sql)) {
+        const id = _orgAnchors.get(String(params?.[0]));
+        return { rows: id ? [{ stripe_customer_id: id }] : [], rowCount: id ? 1 : 0 };
+      }
       if (/INSERT INTO org_settings/i.test(sql)) {
         return { rows: [], rowCount: 0 };
       }
@@ -113,6 +117,7 @@ function makeFakeClient(queryLog: string[]) {
 
 // Shared DB state (simulates org_settings table)
 const _dbState = new Map<string, string | null>();
+const _orgAnchors = new Map<string, string>();
 
 // Mock the pool
 vi.mock("@workspace/db", () => {
@@ -175,6 +180,7 @@ const _mockStripeClient = {
 
 function resetMocks() {
   _dbState.clear();
+  _orgAnchors.clear();
   _lockHolder.clear();
   _lockQueue.clear();
   _createCallCount = 0;
@@ -230,7 +236,7 @@ describe("ensureStripeCustomer — v4", async () => {
       expect(_dbState.get(orgId)).toBe(_createdCustomerId);
     });
 
-    it("A3 — recreates customer when Stripe returns resource_missing", async () => {
+    it("A3 — preserves identity when Stripe returns resource_missing", async () => {
       const orgId = "a3@test.com";
       const staleId = "cus_STALE";
       _dbState.set(orgId, staleId);
@@ -240,28 +246,19 @@ describe("ensureStripeCustomer — v4", async () => {
         Object.assign(new Error("resource_missing"), { code: "resource_missing" }),
       );
 
-      const result = await ensureStripeCustomer(orgId, null, "sk_test_key");
-
-      expect(result).toBe(_createdCustomerId);
-      expect(_mockCreate).toHaveBeenCalledTimes(1);
-      // idempotency key uses last 12 chars of stale ID
-      expect(_mockCreate).toHaveBeenCalledWith(
-        expect.any(Object),
-        expect.objectContaining({ idempotencyKey: `fp-cust-${orgId}-rpl-${staleId.slice(-12)}` }),
-      );
+      await expect(ensureStripeCustomer(orgId, null, "sk_test_key")).rejects.toThrow();
+      expect(_mockCreate).not.toHaveBeenCalled();
     });
 
-    it("A4 — recreates customer when Stripe returns deleted:true", async () => {
+    it("A4 — refuses replacement of deleted Customer", async () => {
       const orgId = "a4@test.com";
       const deletedId = "cus_DELETED";
       _dbState.set(orgId, deletedId);
 
       _mockRetrieve = vi.fn().mockResolvedValue({ id: deletedId, deleted: true });
 
-      const result = await ensureStripeCustomer(orgId, null, "sk_test_key");
-
-      expect(result).toBe(_createdCustomerId);
-      expect(_mockCreate).toHaveBeenCalledTimes(1);
+      await expect(ensureStripeCustomer(orgId, null, "sk_test_key")).rejects.toThrow();
+      expect(_mockCreate).not.toHaveBeenCalled();
     });
 
     it("A5 — recovers orphan via metadata search when DB is null", async () => {
@@ -341,17 +338,25 @@ describe("ensureStripeCustomer — v4", async () => {
       }
     });
 
-    it("A10 — search errors do not propagate (index lag tolerance)", async () => {
+    it("A10 — search errors abort without creating duplicates", async () => {
       const orgId = "a10@test.com";
 
       _mockSearch = vi.fn().mockRejectedValue(new Error("Stripe search unavailable"));
 
-      const result = await ensureStripeCustomer(orgId, null, "sk_test_key");
-
-      // Should fall through to create
-      expect(result).toBe(_createdCustomerId);
-      expect(_mockCreate).toHaveBeenCalledTimes(1);
+      await expect(ensureStripeCustomer(orgId, null, "sk_test_key")).rejects.toThrow();
+      expect(_mockCreate).not.toHaveBeenCalled();
     });
+  });
+
+  it("UUID anchor overrides stale settings and hints without creating a Customer", async () => {
+    const orgId = "10000000-0000-4000-8000-000000000003";
+    _dbState.set(orgId, "cus_STALE");
+    _orgAnchors.set(orgId, "cus_PERSISTENT");
+    _mockRetrieve = vi.fn().mockResolvedValue({ id: "cus_PERSISTENT", deleted: false });
+    expect(await ensureStripeCustomer(orgId, null, "sk_test_key")).toBe("cus_PERSISTENT");
+    expect(_mockRetrieve).toHaveBeenCalledWith("cus_PERSISTENT");
+    expect(_mockCreate).not.toHaveBeenCalled();
+    expect(_dbState.get(orgId)).toBe("cus_PERSISTENT");
   });
 
   // ── B: Concurrency ─────────────────────────────────────────────────────────

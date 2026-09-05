@@ -858,6 +858,19 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
 
   const orgId = req.orgId ?? "default";
   const billingCtx = await loadBillingContext(orgId);
+  // Resolve the persistent UUID anchor before evaluating subscription state.
+  const { pool: billingPool } = await import("@workspace/db");
+  const anchor = await billingPool.query(
+    `SELECT stripe_customer_id FROM organizations WHERE id::text = $1 LIMIT 1`, [orgId]);
+  const anchoredCustomer = anchor.rows[0]?.stripe_customer_id;
+  if (anchoredCustomer) billingCtx.stripeCustomerId = anchoredCustomer;
+
+
+  if (["canceled", "ended", "expired"].includes(billingCtx.subscriptionStatus ?? "") && !billingCtx.stripeCustomerId) {
+    res.status(409).json({ error: "billing_customer_missing",
+      message: "Le compte de facturation doit être restauré. Contactez le support." });
+    return;
+  }
 
   // Guard: reject if target plan is already the active plan
   const currentPlan   = billingCtx.plan.toLowerCase();
@@ -912,7 +925,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
     //  B) Trialing subscription — same as A; Stripe shows "trialing".
     //
     //  C) Completely terminated — no active/trialing sub in Stripe. The billing
-    //     cycle is over. Downgrade → DB-only; upgrade → reactivation checkout.
+    //     cycle is over. Every selected plan requires a new subscription.
     //
     //  D) Orphaned customer — customer ID in DB no longer exists in Stripe. Clean
     //     it up and send user to fresh checkout.
@@ -939,23 +952,9 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         const stripeCode = (listErr as { code?: string })?.code;
         if (stripeCode !== "resource_missing") throw listErr;
 
-        // State D: orphaned customer — clear it from DB and redirect to fresh checkout.
-        logger.warn(
-          { orgId, stripeCustomerId: billingCtx.stripeCustomerId },
-          "[Billing] canceled-check: stripeCustomerId orphaned (resource_missing) — clearing",
-        );
-        try {
-          const { pool: cleanPool } = await import("@workspace/db");
-          await cleanPool.query(
-            `UPDATE org_settings SET stripe_customer_id = '' WHERE org_id = $1`, [orgId],
-          );
-          await cleanPool.query(
-            `UPDATE organizations SET stripe_customer_id = NULL WHERE id = $1`, [orgId],
-          ).catch(() => {});
-        } catch (cleanErr: unknown) {
-          logger.error({ cleanErr, orgId }, "[Billing] failed to clear orphaned stripeCustomerId");
-        }
-        res.json({ noSubscription: true, redirectTo: "/checkout.html", plan });
+        // A missing persisted Customer is an integrity error, never a signup retry.
+        res.status(409).json({ error: "billing_customer_missing",
+          message: "Le compte de facturation doit être restauré. Contactez le support." });
         return;
       }
 
@@ -969,20 +968,8 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           "[Billing] canceled-check: live sub found (cancel_at_period_end?) — routing through normal upgrade path",
         );
         // No return — fall through
-      } else if (isDowngrade) {
-        // State C + downgrade: no live billing cycle to honour → DB-only plan update.
-        try {
-          await persistOrgData(orgId, { plan });
-        } catch (persistErr) {
-          logger.error({ persistErr, orgId, plan, currentPlan }, "[Billing] canceled-sub downgrade: persistOrgData failed");
-          res.status(500).json({ error: "Échec de la mise à jour du plan — veuillez réessayer." });
-          return;
-        }
-        logger.info({ plan, orgId, currentPlan }, "[Billing] canceled-sub downgrade — plan updated in DB immediately");
-        res.json({ ok: true, plan, downgrade: true, effective: "now", noSubDowngrade: true });
-        return;
       } else {
-        // State C + upgrade: reactivation checkout — reuse the existing Stripe customer.
+        // State C: any selected plan starts a new subscription on the existing Customer.
         // The webhook (checkout.session.completed) is the sole source of truth; no DB
         // mutation happens here.
         const priceId = PLAN_PRICE_IDS[targetPlan];
@@ -1011,7 +998,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             mode:        "subscription",
             line_items:  [{ price: priceId, quantity: 1 }],
             success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url:  `${publicUrl}/pricing.html`,
+            cancel_url:  `${publicUrl}/dashboard.html#billing/plans`,
             metadata: {
               plan:         targetPlan,
               targetPlan,
@@ -1344,7 +1331,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
       // stripeCustomerId exists but no active/trialing Stripe sub found:
       // Treat as reactivation — create a checkout session reusing the existing customer.
       // This handles data inconsistencies (DB shows "active" but Stripe has no active sub).
-      if (!isDowngrade) {
+      {
         const _reactPriceId = PLAN_PRICE_IDS[targetPlan];
         if (!_reactPriceId) {
           res.status(400).json({ error: `Unknown plan: ${plan}` });
@@ -1372,7 +1359,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             mode:        "subscription",
             line_items:  [{ price: _reactPriceId, quantity: 1 }],
             success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url:  `${publicUrl}/pricing.html`,
+            cancel_url:  `${publicUrl}/dashboard.html#billing/plans`,
             metadata: {
               plan:         targetPlan,
               targetPlan,

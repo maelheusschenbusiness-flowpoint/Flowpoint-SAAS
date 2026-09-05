@@ -1020,10 +1020,10 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   // pricing plan screen when they should land on the dashboard.
   try {
     const _activeUser = await pool.query<{ id: string; status: string }>(
-      `SELECT id, status FROM users WHERE email = $1 LIMIT 1`,
+      `SELECT id, status FROM users WHERE lower(email) = $1 LIMIT 1`,
       [normalizedEmail]
     );
-    if (_activeUser.rows.length > 0 && _activeUser.rows[0]?.status === "active") {
+    if (_activeUser.rows.length > 0) {
       res.status(409).json({
         error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
         redirectTo: "/login.html",
@@ -1046,7 +1046,9 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       return;
     }
   } catch (_activeCheckErr) {
-    logger.warn({ err: _activeCheckErr, email: normalizedEmail }, "[Auth/PreRegister] active-user guard failed (non-fatal)");
+    logger.warn({ err: _activeCheckErr, email: normalizedEmail }, "[Auth/PreRegister] account guard failed");
+    res.status(503).json({ error: "Vérification du compte indisponible. Réessayez." });
+    return;
   }
 
   // ── Guard: reject if account already exists in org_settings (legacy) ──────
@@ -1055,26 +1057,21 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   // status is a stale pre-registration shell — it must not block a fresh attempt.
   try {
     const { loadOrgSettings: _dupCheck } = await import("../services/org-settings.js");
-    const _dup = await _dupCheck(normalizedEmail).catch(() => undefined);
+    const _dup = await _dupCheck(normalizedEmail);
     const _dupStatus = _dup?.subscriptionStatus ?? "";
-    const _isActiveAccount = ["active", "trialing", "past_due"].includes(_dupStatus);
-    if (_dup?.orgId && _isActiveAccount) {
-      res.status(409).json({
-        error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter sur /login.html.",
-        redirectTo: "/login.html",
-      });
+    const _isExistingAccount = !!_dup?.stripeCustomerId ||
+      ["active", "trialing", "past_due", "canceled", "ended", "expired", "unpaid"].includes(_dupStatus);
+    const ownedOrg = await pool.query(
+      `SELECT id FROM organizations WHERE lower(owner_email) = $1 LIMIT 1`, [normalizedEmail]);
+    if ((_dup?.orgId && _isExistingAccount) || ownedOrg.rows.length) {
+      res.status(409).json({ error: "Un compte existe déjà. Connectez-vous pour gérer votre abonnement.", redirectTo: "/login.html" });
       return;
     }
-    // Non-active org_settings shell (pending_billing / none / canceled / etc.) left by old
-    // server code or a failed activation — clean it up so it never blocks a fresh attempt.
-    if (_dup?.orgId && !_isActiveAccount) {
-      pool.query(
-        `DELETE FROM org_settings WHERE lower(org_id::text) = lower($1)`,
-        [normalizedEmail]
-      ).catch((e: unknown) => logger.warn({ e }, "[Auth/PreRegister] stale org_settings cleanup (guard) failed (non-fatal)"));
-    }
+    // Never erase billing identity as a side effect of public pre-registration.
   } catch (_dupErr) {
-    logger.warn({ err: _dupErr, email: normalizedEmail }, "[Auth/PreRegister] duplicate check failed (non-fatal)");
+    logger.warn({ err: _dupErr }, "[Auth/PreRegister] duplicate check unavailable");
+    res.status(503).json({ error: "Vérification du compte indisponible. Réessayez." });
+    return;
   }
 
   // ── Atomic cleanup + insert in a single serialized transaction ───────────────

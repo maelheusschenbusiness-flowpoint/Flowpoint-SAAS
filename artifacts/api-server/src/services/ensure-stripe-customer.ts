@@ -154,7 +154,7 @@ async function _runWithLock(
     // ── Step 1: Authoritative DB read inside the lock ──────────────────────
     // Any customer created by a competing process that committed BEFORE we
     // acquired the lock will be visible here.
-    const settings = await loadOrgSettings(orgId, client).catch(() => null);
+    const settings = await loadOrgSettings(orgId, client);
     logger.debug(
       { orgId, dbCustomerId: settings?.stripeCustomerId ?? null, ms: Date.now() - t0 },
       "[ESC][DEBUG] Step 1 — DB read complete",
@@ -175,28 +175,13 @@ async function _runWithLock(
     //   → Checkout → ESC → must reuse organizations.stripe_customer_id
     //
     // Invariant: 1 org UUID = 1 Stripe Customer for life.
-    if (!rawId?.trim()) {
-      try {
-        const orgRow = await client.query(
-          `SELECT stripe_customer_id FROM organizations WHERE id::text = $1 LIMIT 1`,
-          [orgId],
-        );
-        const orgCid = (orgRow.rows[0] as { stripe_customer_id?: string } | undefined)?.stripe_customer_id;
-        if (orgCid && orgCid.trim()) {
-          rawId = orgCid.trim();
-          logger.info(
-            { orgId, orgCid },
-            "[ESC] Step 1B: found Customer in organizations.stripe_customer_id — will persist to org_settings to prevent future misses",
-          );
-          // Persist to org_settings immediately so Step 1 finds it next time
-          // (fire-and-forget — non-fatal if this write fails)
-          await upsertOrgSettings(orgId, { stripeCustomerId: rawId }, client).catch((e) =>
-            logger.warn({ e, orgId }, "[ESC] Step 1B: org_settings mirror failed (non-fatal)"),
-          );
-        }
-      } catch (step1bErr) {
-        logger.warn({ step1bErr, orgId }, "[ESC] Step 1B: organizations lookup failed (non-fatal)");
-      }
+    const orgRow = await client.query(
+      `SELECT stripe_customer_id FROM organizations WHERE id::text = $1 LIMIT 1`, [orgId]);
+    const orgCid = orgRow.rows[0]?.stripe_customer_id?.trim();
+    // The UUID organization owns the persistent identity; stale hints cannot override it.
+    if (orgCid) {
+      rawId = orgCid;
+      await upsertOrgSettings(orgId, { stripeCustomerId: orgCid }, client);
     }
 
     // ── UUID orgId fallback (auth-migration v2) ───────────────────────────
@@ -221,7 +206,7 @@ async function _runWithLock(
         const ownerEmail = (orgEmailRow.rows[0] as { owner_email?: string } | undefined)?.owner_email;
         if (ownerEmail && ownerEmail !== orgId) {
           // ── A: legacy org_settings (original fallback) ────────────────────
-          const emailSettings = await loadOrgSettings(ownerEmail, client).catch(() => null);
+          const emailSettings = await loadOrgSettings(ownerEmail, client);
           const legacyId = emailSettings?.stripeCustomerId;
           if (legacyId && legacyId.trim()) {
             rawId = legacyId.trim();
@@ -330,36 +315,15 @@ async function _runWithLock(
           // not yet have a stripe_customer_id row.  Persist now inside this transaction
           // so the next call reads it from Step 1 (no fallback, no risk of re-creation).
           // The dual-write inside _persistStrict also updates organizations.stripe_customer_id.
-          if (_fromLegacyFallback || _fromPendingSignupsFallback) {
-            try {
-              await _persistStrict(orgId, candidateId, client, t0);
-              logger.info(
-                { orgId, customerId: candidateId },
-                "[ESC] UUID→email fallback: persisted legacy customer to UUID org key — future calls skip fallback",
-              );
-            } catch (persistErr) {
-              // Non-fatal: we can still return the correct customer. Log prominently.
-              logger.error(
-                { persistErr, orgId, customerId: candidateId },
-                "[ESC] UUID→email fallback: persistence failed (non-fatal, customer still valid but may duplicate on next call)",
-              );
-            }
-          }
+          await _persistStrict(orgId, candidateId, client, t0);
           return candidateId;
         }
-        logger.warn(
-          { orgId, candidateId, stripeMs: ms2 },
-          "[ESC][DEBUG] Step 2 — customer deleted in Stripe — will recreate",
-        );
+        throw new Error("[ensureStripeCustomer] Persisted Customer was deleted; explicit billing repair required");
       } catch (err: unknown) {
-        const stripeErr = err as { code?: string };
-        const ms2 = Date.now() - t2;
-        if (stripeErr?.code !== "resource_missing") throw err;
-        logger.warn(
-          { orgId, candidateId, stripeMs: ms2, code: "resource_missing" },
-          "[ESC][DEBUG] Step 2 — resource_missing (test key in live mode, or wrong account) — will recreate",
-        );
+        // Includes resource_missing: wrong Stripe account/key must never recreate an identity.
+        throw err;
       }
+
     } else {
       logger.debug({ orgId }, "[ESC][DEBUG] Step 2 — no candidate in DB, skipping retrieve");
     }
@@ -385,10 +349,7 @@ async function _runWithLock(
         "[ESC][DEBUG] Step 3 — metadata search complete",
       );
     } catch (searchErr) {
-      logger.debug(
-        { orgId, searchErr, stripeMs: Date.now() - t3 },
-        "[ESC][DEBUG] Step 3 — search failed (index lag or transient error) — proceeding to create",
-      );
+      throw searchErr;
     }
 
     if (orphan) {
@@ -633,13 +594,10 @@ async function _persistStrict(
           { orgId, customerId, rowCount, totalMs: Date.now() - t0 },
           "[ESC][DEBUG] Step 5 — DB write confirmed — customer persisted",
         );
-        // Dual-write: mirror stripe_customer_id to organizations (fire-and-forget, non-fatal)
-        // Uses a separate connection outside this transaction.
-        import("../services/org-data.js").then(({ persistOrgData }) => {
-          persistOrgData(orgId, { stripeCustomerId: customerId }).catch(mirrorErr => {
-            logger.warn({ mirrorErr, orgId }, "[ESC] organizations stripe_customer_id mirror failed (non-fatal)");
-          });
-        }).catch(() => {/* non-fatal */});
+        // Anchor both stores atomically under the same organization lock.
+        await client.query(
+          `UPDATE organizations SET stripe_customer_id = $1 WHERE id::text = $2`,
+          [customerId, orgId]);
         return;
       }
 

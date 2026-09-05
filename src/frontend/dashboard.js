@@ -15528,17 +15528,8 @@ async function fpGoToPricing(targetPlan) {
     showToast('Vous êtes déjà sur le plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + '.', 'info');
     return;
   }
-  // Existing active/trialing subscribers change plan via the dashboard Billing > Plans tab —
-  // never bounce them out to pricing.html.
-  if (_isSubscribed) {
-    window.fpGoToBillingPlans();
-    return;
-  }
-  // Non-subscribers: preserve the chosen plan in the cart so pricing visually preselects it.
-  showToast('Chargement du parcours de paiement…', 'loading');
-  const cart = { plan: plan, addons: {}, fromDashboard: true, upgradeFromDashboard: true };
-  try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
-  window.location.href = '/pricing.html?from=dashboard&plan=' + encodeURIComponent(plan);
+  // Every existing account manages its subscription in the authenticated dashboard.
+  window.fpGoToBillingPlans();
 }
 
 function navigate(route, subRoute) {

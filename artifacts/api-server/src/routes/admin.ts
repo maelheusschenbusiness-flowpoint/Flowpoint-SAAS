@@ -814,110 +814,64 @@ router.get("/admin/team-schema-check", async (req: Request, res: Response): Prom
 router.delete("/admin/purge-account", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
 
-  const { email } = req.body as { email?: string };
-  if (!email || typeof email !== "string" || !email.includes("@")) {
-    res.status(400).json({ ok: false, error: "email (string) required in body" });
-    return;
+  const { email, orgId, dryRun = true, confirmEmail } = req.body ?? {};
+  if ((typeof email !== "string" || !email.trim()) && (typeof orgId !== "string" || !orgId.trim())) {
+    res.status(400).json({ error: "Exact email or orgId required" }); return;
   }
-  const normalizedEmail = email.trim().toLowerCase();
-
-  const client = await pool.connect();
   try {
-    // ── Resolve all org IDs for this email ────────────────────────────────────
-    // 1. Legacy: org_settings keyed by email directly
-    const legacyOrg = await client.query<{ org_id: string }>(
-      `SELECT org_id FROM org_settings WHERE lower(org_id) = $1`, [normalizedEmail]
-    );
-    // 2. New: organizations keyed by owner_email, or via users+organization_members
-    const uuidOrgs = await client.query<{ id: string }>(
-      `SELECT DISTINCT o.id::text
-       FROM organizations o
-       LEFT JOIN users u ON lower(u.email) = $1
-       LEFT JOIN organization_members om ON om.user_id = u.id
-       WHERE lower(o.owner_email) = $1
-          OR o.id::text = om.organization_id`,
-      [normalizedEmail]
-    );
-
-    const orgIds: string[] = [
-      ...legacyOrg.rows.map(r => r.org_id),
-      ...uuidOrgs.rows.map(r => r.id),
-    ].filter(Boolean);
-
-    const orgTables = [
-      "audits","audit_schedules","reports","report_exports",
-      "monitors","monitor_checks","monitor_incidents",
-      "alert_rules","alert_events","tracked_keywords","calendar_events",
-      "team_members","team_invitations","team_messages","team_files",
-      "user_sessions","google_oauth_states",
-      "automation_integrations","automation_workflows","automation_runs",
-      "automation_logs","workflow_runs","incoming_webhooks",
-      "missions","mission_history","mission_ai_logs",
-      "psi_cache","seo_forecasts","funnels","funnel_steps",
-      "ga4_accounts","gsc_keyword_data","gsc_page_data","gsc_sync_logs",
-      "google_tokens","github_connections",
-      "behavior_events","behavior_sessions",
-      "traffic_sources","traffic_losses","cro_scores","cro_experiments","revenue_leaks",
-      "local_pack_history",
-      "org_addons","org_checklist","org_monitor_quota","org_secrets",
-      "org_quota_usage","checkout_post_tokens",
-      "overview_insights_cache","overview_insights_rl",
-      "activity_log","share_tokens","growth_objectives",
-      "ai_usage_logs","ai_monthly_usage","ai_credit_purchases",
-      "ai_recommendations","onboarding_sessions","ai_workspace_profiles",
-      "ai_generated_missions","ai_setup_logs",
-    ];
-
-    // Verify which tables actually exist (avoids aborting tx on missing tables)
-    const existCheck = await client.query<{ tablename: string }>(
-      `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
-      [orgTables]
-    );
-    const existingSet = new Set(existCheck.rows.map(r => r.tablename));
-
-    await client.query("BEGIN");
-
-    const deleted: Record<string, number> = {};
-
-    for (const orgId of orgIds) {
-      for (const table of orgTables) {
-        if (!existingSet.has(table)) continue;
-        // org_id::text handles both TEXT and UUID columns — avoids "invalid input syntax for uuid"
-        // when a legacy email-shaped orgId is compared against a UUID-typed org_id column.
-        const r = await client.query(`DELETE FROM ${table} WHERE org_id::text = $1`, [orgId]);
-        if ((r.rowCount ?? 0) > 0) deleted[table] = (deleted[table] ?? 0) + (r.rowCount ?? 0);
-      }
-      // Cast UUID orgId for organizations table
-      await client.query(`DELETE FROM organizations WHERE id::text = $1`, [orgId]);
-      await client.query(`DELETE FROM org_settings WHERE org_id = $1`, [orgId]);
+    const targets = await pool.query(
+      `SELECT id::text, owner_email, stripe_customer_id, is_internal_qa FROM organizations
+       WHERE ($1::text IS NOT NULL AND lower(owner_email) = $1)
+          OR ($2::text IS NOT NULL AND id::text = $2)`,
+      [typeof email === "string" ? email.trim().toLowerCase() : null, typeof orgId === "string" ? orgId.trim() : null]);
+    if (targets.rows.length !== 1) {
+      res.status(409).json({ error: "Exactly one owned organization must match; no deletion performed", matches: targets.rows.length }); return;
     }
-
-    // Email-keyed tables
-    await client.query(`DELETE FROM pending_signups   WHERE lower(email) = $1`, [normalizedEmail]);
-    await client.query(`DELETE FROM magic_link_tokens WHERE lower(email) = $1`, [normalizedEmail]);
-
-    // Auth tables (users + membership)
-    await client.query(
-      `DELETE FROM organization_members
-       WHERE user_id IN (SELECT id FROM users WHERE lower(email) = $1)`,
-      [normalizedEmail]
-    );
-    const usersResult = await client.query(`DELETE FROM users WHERE lower(email) = $1`, [normalizedEmail]);
-
-    await client.query("COMMIT");
-
-    res.json({
-      ok: true,
-      email: normalizedEmail,
-      orgIdsPurged: orgIds,
-      usersDeleted: usersResult.rowCount ?? 0,
-      tableDeleted: deleted,
-    });
+    const target = targets.rows[0];
+    const normalizedEmail = String(target.owner_email ?? "").trim().toLowerCase();
+    if ((email && normalizedEmail !== email.trim().toLowerCase()) || (orgId && target.id !== orgId.trim())) {
+      res.status(409).json({ error: "Email and orgId do not identify the same owner" }); return;
+    }
+    // Explicit allowlist, never infer QA status from an email prefix or canceled plan.
+    const allowed = new Set((process.env["QA_CLEANUP_EMAILS"] ?? "").split(",").map(v => v.trim().toLowerCase()).filter(Boolean));
+    if (normalizedEmail === "qa@flowpoint.pro" || (!target.is_internal_qa && !allowed.has(normalizedEmail))) {
+      res.status(403).json({ error: "Target is not an explicitly authorized disposable QA account" }); return;
+    }
+    const members = await pool.query(
+      `SELECT u.id::text, lower(u.email) AS email FROM organization_members m
+       JOIN users u ON u.id = m.user_id WHERE m.organization_id::text = $1`, [target.id]);
+    const shared = await pool.query(
+      `SELECT m.organization_id FROM organization_members m JOIN users u ON u.id = m.user_id
+       WHERE lower(u.email) = $1 AND m.organization_id::text <> $2 LIMIT 1`, [normalizedEmail, target.id]);
+    if (members.rows.some(m => m.email !== normalizedEmail) || shared.rows.length) {
+      res.status(409).json({ error: "Shared organization or multi-organization user; targeted QA cleanup refused" }); return;
+    }
+    const billingRows = await pool.query(
+      `SELECT stripe_customer_id FROM org_settings WHERE org_id::text = $1 OR lower(org_id::text) = $2`, [target.id, normalizedEmail]);
+    const customerIds = [...new Set([target.stripe_customer_id, ...billingRows.rows.map(r => r.stripe_customer_id)].filter(Boolean))];
+    if (customerIds.length > 1) {
+      res.status(409).json({ error: "Conflicting billing identities; manual QA review required" }); return;
+    }
+    target.stripe_customer_id = customerIds[0] ?? null;
+    if (target.stripe_customer_id) {
+      const otherOwner = await pool.query(
+        `SELECT id FROM organizations WHERE stripe_customer_id = $1 AND id::text <> $2 LIMIT 1`, [target.stripe_customer_id, target.id]);
+      if (otherOwner.rows.length) {
+        res.status(409).json({ error: "Customer linked to another organization; cleanup refused" }); return;
+      }
+    }
+    const preview = { email: normalizedEmail, orgId: target.id, userIds: members.rows.map(m => m.id), stripeCustomerId: target.stripe_customer_id };
+    if (dryRun !== false) { res.json({ ok: true, dryRun: true, target: preview }); return; }
+    if (confirmEmail !== normalizedEmail) {
+      res.status(400).json({ error: "confirmEmail must exactly match the dry-run owner email" }); return;
+    }
+    // Use the schema-aware, FK-ordered pipeline: sessions, Stripe, then atomic DB cleanup.
+    const { deleteAccount } = await import("../services/account-deletion.js");
+    const report = await deleteAccount({ orgId: target.id, email: normalizedEmail,
+      userId: members.rows[0]?.id, stripeCustomerId: target.stripe_customer_id });
+    res.json({ ok: report.committed && report.survivors.length === 0, target: preview, report });
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
-  } finally {
-    client.release();
   }
 });
 

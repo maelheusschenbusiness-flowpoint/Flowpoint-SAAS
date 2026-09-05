@@ -1770,6 +1770,22 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       }
     }
 
+    // Existing UUID organizations must recover their persistent Customer, never
+    // enter the new-signup fallback below when a lookup was incomplete.
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(_authenticatedOrgId || "")) {
+      const { pool: anchorPool } = await import("@workspace/db");
+      const anchor = await anchorPool.query(
+        `SELECT stripe_customer_id, subscription_status FROM organizations WHERE id::text = $1 LIMIT 1`, [_authenticatedOrgId]);
+      const persistentCustomer = anchor.rows[0]?.stripe_customer_id;
+      const endedAccount = ["canceled", "ended", "expired"].includes(anchor.rows[0]?.subscription_status);
+      if ((!persistentCustomer && endedAccount) || (persistentCustomer && customerId && customerId !== persistentCustomer)) {
+        res.status(409).json({ error: "billing_customer_mismatch",
+          message: "Le compte de facturation nécessite une vérification. Contactez le support." });
+        return;
+      }
+      if (persistentCustomer) customerId = persistentCustomer;
+    }
+
     if (!customerId) {
       // (d) last resort: create new customer
       const _fcPm2   = paymentMethodId ? await stripe.paymentMethods.retrieve(paymentMethodId).catch(() => null) : null;
