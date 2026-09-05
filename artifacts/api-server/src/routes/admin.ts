@@ -2684,4 +2684,123 @@ router.get("/admin/sellers/:code/report", async (req: Request, res: Response): P
   }
 });
 
+// ── POST /api/admin/reset-onboarding ─────────────────────────────────────────
+// Resets user_prefs.settings.onboardingCompletedAt to null for a single account,
+// so QA can re-trigger the first-login onboarding flow without creating a new account.
+//
+// Security:
+//   • Protected by ADMIN_KEY (≥32 chars).
+//   • Requires explicit email OR orgId — no global reset possible.
+//   • Targets exactly one organization (rejects ambiguous or missing matches).
+//   • dryRun:true by default — no DB write unless dryRun:false + confirmEmail match.
+//   • Touches ONLY user_prefs.settings.onboardingCompletedAt — nothing else.
+//   • Never touches Stripe, billing, sessions, plan, seller attribution, or permissions.
+//
+// Dry-run usage:
+//   POST /api/admin/reset-onboarding
+//   x-admin-key: <ADMIN_KEY>
+//   { "email": "qa@flowpoint.pro", "dryRun": true }
+//
+// Real reset:
+//   POST /api/admin/reset-onboarding
+//   x-admin-key: <ADMIN_KEY>
+//   { "email": "qa@flowpoint.pro", "confirmEmail": "qa@flowpoint.pro", "dryRun": false }
+router.post("/admin/reset-onboarding", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const { email, orgId, dryRun = true, confirmEmail } = req.body ?? {};
+
+  // ── 1. Require at least one explicit target ───────────────────────────────
+  const hasEmail = typeof email === "string" && email.trim().length > 0;
+  const hasOrgId = typeof orgId === "string" && orgId.trim().length > 0;
+  if (!hasEmail && !hasOrgId) {
+    res.status(400).json({ ok: false, error: "Explicit email or orgId is required" });
+    return;
+  }
+
+  try {
+    // ── 2. Resolve exactly one organization ──────────────────────────────────
+    const targetRes = await pool.query(
+      `SELECT o.id::text AS org_id, o.owner_email
+       FROM organizations o
+       WHERE ($1::text IS NOT NULL AND lower(o.owner_email) = lower($1))
+          OR ($2::text IS NOT NULL AND o.id::text = $2)
+       LIMIT 2`,
+      [hasEmail ? email.trim() : null, hasOrgId ? orgId.trim() : null]
+    );
+
+    if (targetRes.rows.length === 0) {
+      res.status(404).json({ ok: false, error: "No organization found for the given email/orgId" });
+      return;
+    }
+    if (targetRes.rows.length > 1) {
+      res.status(409).json({ ok: false, error: "Ambiguous target: multiple organizations matched — provide both email and orgId to narrow down" });
+      return;
+    }
+
+    const target = targetRes.rows[0];
+    const resolvedOrgId: string = target.org_id;
+    const resolvedEmail: string = String(target.owner_email ?? "").trim();
+
+    // ── 3. Read current onboardingCompletedAt ────────────────────────────────
+    const prefsRes = await pool.query(
+      `SELECT settings->>'onboardingCompletedAt' AS cat FROM user_prefs WHERE org_id = $1`,
+      [resolvedOrgId]
+    );
+    const currentOnboardingCompletedAt = prefsRes.rows[0]?.cat ?? null;
+
+    const preview = {
+      ok: true,
+      email: resolvedEmail,
+      orgId: resolvedOrgId,
+      currentOnboardingCompletedAt,
+      wouldReset: currentOnboardingCompletedAt !== null,
+    };
+
+    // ── 4. Dry-run: return preview without writing ───────────────────────────
+    if (dryRun !== false) {
+      res.json({ ...preview, dryRun: true });
+      return;
+    }
+
+    // ── 5. Real reset: require exact confirmEmail match ──────────────────────
+    if (typeof confirmEmail !== "string" || confirmEmail.trim().toLowerCase() !== resolvedEmail.toLowerCase()) {
+      res.status(400).json({
+        ok: false,
+        error: "confirmEmail must exactly match the resolved owner email (case-insensitive)",
+        resolvedEmail,
+      });
+      return;
+    }
+
+    // ── 6. Remove ONLY onboardingCompletedAt from settings ───────────────────
+    await pool.query(
+      `UPDATE user_prefs
+       SET settings = settings - 'onboardingCompletedAt',
+           updated_at = NOW()
+       WHERE org_id = $1`,
+      [resolvedOrgId]
+    );
+
+    // ── 7. Read back to confirm ───────────────────────────────────────────────
+    const afterRes = await pool.query(
+      `SELECT settings->>'onboardingCompletedAt' AS cat FROM user_prefs WHERE org_id = $1`,
+      [resolvedOrgId]
+    );
+    const onboardingCompletedAtAfter = afterRes.rows[0]?.cat ?? null;
+
+    res.json({
+      ok: true,
+      dryRun: false,
+      email: resolvedEmail,
+      orgId: resolvedOrgId,
+      onboardingCompletedAtBefore: currentOnboardingCompletedAt,
+      onboardingCompletedAtAfter,
+      reset: onboardingCompletedAtAfter === null,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 export default router;
