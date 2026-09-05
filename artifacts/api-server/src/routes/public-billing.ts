@@ -821,7 +821,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   // checkout-session does, so pricing.html fetches without explicit credentials
   // never produce a false 401.
   let _piReqOrgId = (req as Request & { orgId?: string }).orgId;
-  if (!plan && !preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
+  if (!preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
     // Manual session resolution — mirrors checkout-session logic at lines 415-449.
     try {
       const _authHeader  = req.headers["authorization"];
@@ -844,6 +844,13 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     } catch (_piAuthErr) {
       logger.warn({ _piAuthErr }, "[PublicBilling] payment-intent: optional session resolution failed (non-fatal)");
     }
+  }
+  // publicBillingRouter is registered before orgContext middleware, so an
+  // authenticated dashboard request can arrive here with req.orgId="default".
+  // Preserve the session-derived org for every downstream billing decision,
+  // especially the canonical Stripe Customer resolution below.
+  if (_piReqOrgId && _piReqOrgId !== "default") {
+    (req as Request & { orgId?: string }).orgId = _piReqOrgId;
   }
   if (!plan && !preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
     const addonKeys = Object.keys(addons as Record<string, unknown>);
@@ -1117,7 +1124,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     // but left the DB record intact). This prevents "No such customer" 500 errors during
     // checkout when the stored stripe_customer_id no longer exists in Stripe.
     if (!preRegCustomerId && !preRegisterToken) {
-      const _authOrgId = (req as Request & { orgId?: string }).orgId;
+      const _authOrgId = _piReqOrgId;
       if (_authOrgId && _authOrgId !== "default") {
         try {
           const { loadBillingContext } = await import("../services/billing-context.js");
@@ -1715,6 +1722,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
        > (d) last resort: create new.
     ──────────────────────────────────────────────────────────────────────────── */
     let customerId: string | null = intentCustomerId;
+    let customerSource: string | null = intentCustomerId ? "payment_or_setup_intent.customer" : null;
     let hasSubscriptionHistory    = false;
 
     if (customerId) {
@@ -1741,10 +1749,14 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           const _fcSubs = await stripe.subscriptions.list({ customer: _fcEc2.id, status: "all", limit: 1 });
           if (_fcSubs.data.length > 0) {
             customerId = _fcEc2.id; hasSubscriptionHistory = true;
+            customerSource = "stripe_customer_email_search_with_subscription_history";
             logger.info({ customerId, email: _fcEmail }, "[PublicBilling] finalize: reusing Stripe customer (has history)");
             break;
           }
-          if (!customerId) customerId = _fcEc2.id;
+          if (!customerId) {
+            customerId = _fcEc2.id;
+            customerSource = "stripe_customer_email_search";
+          }
         }
       }
     }
@@ -1763,6 +1775,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             );
             if (_fcPsR.rows[0]?.stripe_customer_id) {
               customerId = _fcPsR.rows[0].stripe_customer_id;
+              customerSource = "pending_signups.stripe_customer_id";
               logger.info({ customerId }, "[PublicBilling] finalize: found customer via pre_register_token");
             }
           } finally { _fcPsC.release(); }
@@ -1779,6 +1792,15 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       const persistentCustomer = anchor.rows[0]?.stripe_customer_id;
       const endedAccount = ["canceled", "ended", "expired"].includes(anchor.rows[0]?.subscription_status);
       if ((!persistentCustomer && endedAccount) || (persistentCustomer && customerId && customerId !== persistentCustomer)) {
+        logger.warn({
+          event: "billing_customer_mismatch",
+          orgId: _authenticatedOrgId,
+          canonicalCustomerId: persistentCustomer ?? null,
+          resolvedCustomerId: customerId,
+          resolvedCustomerSource: customerSource,
+          intentCustomerId,
+          pendingSignupCustomerId: customerSource === "pending_signups.stripe_customer_id" ? customerId : null,
+        }, "[PublicBilling/finalize-checkout] canonical Stripe Customer mismatch");
         res.status(409).json({ error: "billing_customer_mismatch",
           message: "Le compte de facturation nécessite une vérification. Contactez le support." });
         return;
