@@ -1377,26 +1377,66 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
       }
     }
 
-    // No existing sub:
-    // — Downgrade (e.g. Pro trial → Standard): no Stripe billing cycle to honour,
-    //   update plan in DB immediately and return the upgrade shape.
-    // — Upgrade or same level: redirect to checkout.html to start a fresh subscription.
-    if (isDowngrade) {
-      try {
-        await persistOrgData(orgId, { plan });
-      } catch (persistErr) {
-        logger.error({ persistErr, orgId, plan, currentPlan }, "[Billing] no-sub downgrade: persistOrgData failed");
-        res.status(500).json({ error: "Échec de la mise à jour du plan — veuillez réessayer." });
+    // No existing Stripe subscription (any plan direction) — create an authenticated Checkout Session.
+    // NEVER change the plan in DB before payment confirmation.
+    // NEVER redirect to the public signup flow.
+    // The webhook is the only source of truth for plan activation.
+    {
+      const _nsPriceId = PLAN_PRICE_IDS[targetPlan];
+      if (!_nsPriceId) {
+        res.status(400).json({ error: `Plan inconnu : ${plan}` });
         return;
       }
-      logger.info({ plan, orgId, currentPlan }, "[Billing] no-sub downgrade — plan updated in DB immediately");
-      res.json({ ok: true, plan, upgraded: true, effective: "now", noSubDowngrade: true });
+      // Reuse existing Stripe Customer or create one — one Customer per org invariant.
+      let _nsCustomerId: string;
+      try {
+        _nsCustomerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey);
+      } catch (custErr) {
+        logger.error({ custErr, orgId }, "[Billing] no-sub checkout: ensureStripeCustomer failed");
+        res.status(500).json({ error: "Impossible de créer ou retrouver le client Stripe. Réessayez." });
+        return;
+      }
+      const _nsBucket = Math.floor(Date.now() / (30 * 60 * 1000));
+      const _nsKey    = `fp-nosub-checkout-${orgId}-${targetPlan}-${_nsBucket}`;
+      // Idempotency: reuse an already-open session for the same plan in the same 30-min window.
+      const _nsOpenSess = await stripe.checkout.sessions.list({
+        customer: _nsCustomerId, status: "open", limit: 5,
+      });
+      const _nsExist = (_nsOpenSess.data ?? []).find(
+        (s: { metadata?: Record<string, string> | null; url?: string | null }) =>
+          s.metadata?.["targetPlan"] === targetPlan && s.url,
+      );
+      if (_nsExist) {
+        logger.info({ sessionId: _nsExist.id, orgId, targetPlan }, "[Billing] no-sub checkout: returning existing open session");
+        res.json({ reactivation: true, checkoutUrl: _nsExist.url, customerReused: true, targetPlan, idempotent: true });
+        return;
+      }
+      const _nsSess = await stripe.checkout.sessions.create(
+        {
+          customer:   _nsCustomerId,
+          mode:       "subscription",
+          line_items: [{ price: _nsPriceId, quantity: 1 }],
+          success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url:  `${publicUrl}/dashboard.html#billing/plans`,
+          metadata: {
+            plan:         targetPlan,
+            targetPlan,
+            orgId,
+            reactivation: "true",
+            userId:       String(req.userId ?? ""),
+          },
+          subscription_data: { metadata: { plan: targetPlan, orgId, reactivation: "true" } },
+        },
+        { idempotencyKey: _nsKey },
+      );
+      const _nsReused = !!billingCtx.stripeCustomerId;
+      logger.info(
+        { sessionId: _nsSess.id, orgId, targetPlan, customerId: _nsCustomerId, customerReused: _nsReused },
+        "[Billing] no-sub checkout session created",
+      );
+      res.json({ reactivation: true, checkoutUrl: _nsSess.url, customerReused: _nsReused, targetPlan });
       return;
     }
-
-    // No existing sub and not a downgrade — redirect to checkout.html to start a fresh subscription.
-    logger.info({ plan, orgId }, "[Billing] upgrade: no active subscription — redirecting to checkout.html");
-    res.json({ noSubscription: true, redirectTo: "/checkout.html", plan });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to upgrade");
     // Surface a specific, actionable message rather than a generic 500.
