@@ -110,6 +110,8 @@ export default defineConfig({
       "src/tests/p0-email-uuid-guard.test.ts",
       // Resubscription: existing org → canceled sub → same customer invariant
       "src/tests/billing-resubscription-same-customer.test.ts",
+      // finalize-checkout Path C: PI/SI metadata pre_register_token recovery
+      "src/tests/finalize-checkout-path-c.test.ts",
     ],
     environment: "node",
     globals:     false,

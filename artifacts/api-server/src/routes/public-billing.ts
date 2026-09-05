@@ -1224,7 +1224,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
   if (addons === null) return; // parseAddonsPub already sent 400
 
   const _fcPreRegRaw = body?.preRegisterToken;
-  const preRegisterToken = typeof _fcPreRegRaw === "string" ? _fcPreRegRaw.trim() : "";
+  let preRegisterToken = typeof _fcPreRegRaw === "string" ? _fcPreRegRaw.trim() : "";
   const stripeKey = getStripeKey();
 
   if (!stripeKey) {
@@ -1288,6 +1288,47 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       } finally { _fcBypassC.release(); }
     } catch (_fcBypassErr) {
       logger.warn({ _fcBypassErr }, "[PublicBilling/finalize-checkout] preRegisterToken lookup failed (non-fatal)");
+    }
+  }
+
+  // Path C: recover pre_register_token from Stripe intent metadata.
+  // Handles the case where sessionStorage was cleared during the Stripe redirect
+  // (full-page navigation to stripe.com, then back) and localStorage TTL expired.
+  // The token was embedded in the intent's metadata when /public/payment-intent
+  // created it, so we can always recover it as long as the PI/SI exists in Stripe.
+  // Intentionally non-fatal: any Stripe or DB error leaves _authenticatedOrgId null
+  // and the outer 401 gate fires normally.
+  if (!_authenticatedOrgId && intentId && (intentType === "payment" || intentType === "setup")) {
+    try {
+      const { getStripeKey: _gskC, createStripeClient: _cscC } = await import("../services/stripe-factory.js");
+      const _recKey = _gskC();
+      if (_recKey) {
+        const _recStripe = await _cscC(_recKey);
+        const _recRaw = intentType === "payment"
+          ? await _recStripe.paymentIntents.retrieve(String(intentId))
+          : await _recStripe.setupIntents.retrieve(String(intentId));
+        const _recMeta = (_recRaw.metadata ?? {}) as Record<string, string>;
+        const _recPrt  = _recMeta["pre_register_token"] ?? "";
+        if (_recPrt) {
+          const { pool: _recPool } = await import("@workspace/db");
+          const _recC = await _recPool.connect();
+          try {
+            const _recR = await _recC.query<{ email: string }>(
+              `SELECT email FROM pending_signups WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+              [_recPrt]
+            );
+            if (_recR.rows[0]?.email) {
+              _authenticatedOrgId = _recR.rows[0].email;
+              preRegisterToken    = _recPrt; // restore so activateNewSignup can use it
+              logger.info({ orgId: _authenticatedOrgId },
+                "[PublicBilling/finalize-checkout] Path C: authenticated via PI/SI metadata pre_register_token");
+            }
+          } finally { _recC.release(); }
+        }
+      }
+    } catch (_pathCErr) {
+      logger.warn({ _pathCErr },
+        "[PublicBilling/finalize-checkout] Path C: PI/SI metadata recovery failed (non-fatal)");
     }
   }
 
