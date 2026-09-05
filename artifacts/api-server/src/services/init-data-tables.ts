@@ -1226,6 +1226,7 @@ export async function initDataTables(): Promise<void> {
     // Only billing-context.ts reads this flag, and only for the fixed QA_ORG_UUID.
     // NEVER use this flag to bypass billing for any other org.
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS is_internal_qa BOOLEAN NOT NULL DEFAULT false;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS owner_email TEXT NOT NULL DEFAULT '';`);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_owner_idx ON organizations(owner_user_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_slug_idx  ON organizations(slug);`);
 

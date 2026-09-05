@@ -342,10 +342,12 @@ async function main() {
     await runCriticalStartupStep("init-rls-setup", initRlsSetup);
     await runCriticalStartupStep("app_user role probe", probeAppUserRole);
     await runCriticalStartupStep("rls-migration", runRlsMigrationIfNeeded);
+    // init-data-tables MUST run first: creates organizations, users, org_settings
+    // and all core tables that init-missions/automation/monitors depend on.
+    await runCriticalStartupStep("init-data-tables", initDataTables);
     await runCriticalStartupStep("init-missions",   initMissionsTables);
     await runCriticalStartupStep("init-automation", initAutomationTables);
     await runCriticalStartupStep("init-monitors",   initMonitorsTables);
-    await runCriticalStartupStep("init-data-tables", initDataTables);
     await runCriticalStartupStep("AI migration", initAiMigration);
 
     // Phase 1 — New user architecture (non-destructive, runs after full init)
