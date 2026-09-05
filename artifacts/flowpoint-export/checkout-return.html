@@ -52,17 +52,14 @@
        instead of checkout-complete (which is designed for new signups only).   */
     var isAlreadyLoggedIn = false;
     try {
-      isAlreadyLoggedIn = !!(
-        localStorage.getItem('fp_token') ||
-        sessionStorage.getItem('fp_token')
-      );
+      isAlreadyLoggedIn = !!sessionStorage.getItem('fp_session_token');
     } catch(e) {}
 
     /* ── Shared auth headers for authenticated requests ── */
     function authHeaders() {
       var h = { 'Content-Type': 'application/json' };
       try {
-        var t = localStorage.getItem('fp_token') || sessionStorage.getItem('fp_token');
+        var t = sessionStorage.getItem('fp_session_token');
         if (t) h['Authorization'] = 'Bearer ' + t;
       } catch(e) {}
       return h;
@@ -201,7 +198,9 @@
           } else {
             document.getElementById('fp-title').textContent = 'Erreur de finalisation';
             document.getElementById('fp-sub').textContent = res.data.error || 'Une erreur est survenue lors de la création de votre abonnement.';
-            document.getElementById('fp-sub').innerHTML += '<br><br><a href="/pricing.html" class="fp-btn">Réessayer</a>';
+            document.getElementById('fp-sub').innerHTML += isAlreadyLoggedIn
+              ? '<br><br><a href="/dashboard.html#billing/plans" class="fp-btn">Retour aux abonnements</a>'
+              : '<br><br><a href="/pricing.html" class="fp-btn">Réessayer</a>';
           }
         }
       })
@@ -215,7 +214,7 @@
 
     /* ── Case B: Stripe Checkout session_id ── */
     if (!sessionId) {
-      window.location.href = '/pricing.html';
+      window.location.href = isAlreadyLoggedIn ? '/dashboard.html#billing/plans' : '/pricing.html';
       return;
     }
 
@@ -270,7 +269,7 @@
             window.location.href = '/success.html?session_id=' + encodeURIComponent(sessionId);
           }
         } else if (status === 'expired' || status === 'canceled') {
-          window.location.href = '/cancel.html';
+          window.location.href = isAlreadyLoggedIn ? '/dashboard.html#billing/plans' : '/cancel.html';
         } else {
           /* Webhook still pending — show waiting state and redirect to dashboard.
              The subscription will be fully activated once the webhook fires.     */
@@ -289,7 +288,9 @@
       .catch(function() {
         document.getElementById('fp-title').textContent = 'Vérification impossible';
         document.getElementById('fp-sub').textContent = 'Rendez-vous sur le tableau de bord pour vérifier votre abonnement.';
-        setTimeout(function(){ window.location.href = '/dashboard.html'; }, 3000);
+        setTimeout(function(){
+          window.location.href = isAlreadyLoggedIn ? '/dashboard.html#billing/plans' : '/dashboard.html';
+        }, 3000);
       });
     }
 

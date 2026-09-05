@@ -42,6 +42,7 @@ export default defineConfig({
       "src/agent/ai-tool-gate.test.ts",
       "src/lib/plans.test.ts",
       "src/services/billing-quote.test.ts",
+      "src/services/billing-schedule.test.ts",
       "src/routes/white-label.test.ts",
       "src/services/addons-provisioning.test.ts",
       "src/routes/stripe-webhook-addon-reconcile.test.ts",
@@ -110,6 +111,8 @@ export default defineConfig({
       "src/tests/p0-email-uuid-guard.test.ts",
       // Resubscription: existing org → canceled sub → same customer invariant
       "src/tests/billing-resubscription-same-customer.test.ts",
+      // Browser account isolation + dashboard/Stripe reactivation source contracts
+      "src/tests/session-dashboard-billing-reactivation.test.ts",
       // finalize-checkout Path C: PI/SI metadata pre_register_token recovery
       "src/tests/finalize-checkout-path-c.test.ts",
     ],

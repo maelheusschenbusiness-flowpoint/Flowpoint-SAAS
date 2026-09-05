@@ -8,6 +8,7 @@ import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
 import { ensureStripeCustomer } from "../services/ensure-stripe-customer.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
+import { ensureStripeScheduleTarget } from "../services/billing-schedule.js";
 import {
   getUsageSummary, getMRRData, getSubscriptionAnalytics,
   startTrial, validateCoupon, getInvoices, trackBillingEvent,
@@ -872,18 +873,11 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
     return;
   }
 
-  // Guard: reject if target plan is already the active plan
+  // Same-plan requests cannot be rejected yet: an active/trialing Stripe
+  // subscription may have cancel_at_period_end=true. In that state choosing the
+  // current plan is a valid dashboard reactivation and must clear cancellation.
   const currentPlan   = billingCtx.plan.toLowerCase();
   const targetPlan    = plan.toLowerCase();
-  const upgradeStatus = billingCtx.subscriptionStatus;
-  if (targetPlan && targetPlan === currentPlan && (upgradeStatus === "active" || upgradeStatus === "trialing")) {
-    logger.warn({ currentPlan, targetPlan, orgId }, "[Billing] upgrade blocked — plan already active");
-    res.status(409).json({
-      error: "plan_already_active",
-      message: `Le plan ${plan} est déjà votre plan actuel.`,
-    });
-    return;
-  }
 
   const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
@@ -1026,6 +1020,15 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
 
       if (sub) {
         const isTrialing = sub.status === "trialing";
+        const isRenewalCanceled = sub.cancel_at_period_end === true;
+        if (targetPlan === currentPlan && !isRenewalCanceled) {
+          logger.warn({ currentPlan, targetPlan, orgId }, "[Billing] upgrade blocked — plan already active");
+          res.status(409).json({
+            error: "plan_already_active",
+            message: `Le plan ${plan} est déjà votre plan actuel.`,
+          });
+          return;
+        }
         const priceId    = PLAN_PRICE_IDS[targetPlan];
         if (!priceId) { res.status(400).json({ error: `Unknown plan: ${plan}` }); return; }
 
@@ -1078,6 +1081,18 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             ? new Date(_periodEndTs * 1000).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
             : "la prochaine échéance";
 
+          // A plan selection is also an explicit renewal decision. A scheduled
+          // downgrade does not automatically undo cancel_at_period_end, so clear
+          // it before returning success (including idempotent/race paths).
+          const clearPendingCancellation = async (): Promise<void> => {
+            if (!isRenewalCanceled) return;
+            await stripe.subscriptions.update(sub.id, { cancel_at_period_end: false });
+            logger.info(
+              { subId: sub.id, orgId, targetPlan },
+              "[Billing] cleared pending cancellation for scheduled plan change",
+            );
+          };
+
           // A downgrade schedule cannot be created without a concrete period end
           // (Stripe rejects phase 0 with no end_date). If we cannot determine one,
           // fail with a clear, actionable message instead of a generic 500.
@@ -1090,10 +1105,49 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             return;
           }
 
-          // ── Idempotency: if subscription already has an active schedule, skip ──
+          if (!currentPriceId) {
+            logger.error({ subId: sub.id, orgId, currentPlan }, "[Billing] downgrade: current Stripe price is unresolved");
+            res.status(422).json({
+              error: "Impossible d’identifier le tarif actuel de votre abonnement. Contactez le support.",
+              code: "downgrade_current_price_unresolved",
+            });
+            return;
+          }
+
+          const desiredFutureItems = [{ price: priceId, quantity: 1 }, ...nextAddonPrices];
+          const ensureScheduleTarget = async (
+            scheduleId: string,
+            knownSchedule?: unknown,
+          ): Promise<boolean> => {
+            const result = await ensureStripeScheduleTarget({
+              stripe,
+              scheduleId,
+              knownSchedule,
+              subscriptionStart: (sub as unknown as { start_date?: number }).start_date,
+              periodEnd: _periodEndTs,
+              currentItems: [
+                { price: currentPriceId, quantity: 1 },
+                ...currentAddonPrices,
+              ],
+              futureItems: desiredFutureItems,
+              targetPlan,
+              trialEnd: isTrialing ? sub.trial_end : undefined,
+            });
+            return result.alreadyTarget;
+          };
+
+          // ── Idempotency: verify an attached schedule before returning ────────
           if (sub.schedule) {
             const existingScheduleId = typeof sub.schedule === "string" ? sub.schedule : (sub.schedule as { id: string }).id;
-            logger.info({ scheduleId: existingScheduleId, orgId }, "[Billing] downgrade schedule already exists — idempotent return");
+            const alreadyTargetsSelection = await ensureScheduleTarget(existingScheduleId);
+            await clearPendingCancellation();
+            await persistOrgData(orgId, { pendingPlan: plan, pendingPlanDate: effectiveDate }).catch(() => {});
+            logger.info(
+              { scheduleId: existingScheduleId, orgId, targetPlan, alreadyTargetsSelection },
+              alreadyTargetsSelection
+                ? "[Billing] downgrade schedule already targets selection — idempotent return"
+                : "[Billing] existing downgrade schedule updated to new selection",
+            );
             res.json({
               ok:                   true,
               plan,
@@ -1102,44 +1156,16 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
               effectiveReason:       isTrialing ? "trial_end" : "period_end",
               effectiveDate,
               trialDowngrade:        isTrialing,
-              removedIncludedAddons: [],
-              idempotent:           true,
+              removedIncludedAddons: removedAddonKeys,
+              ...(alreadyTargetsSelection ? { idempotent: true } : { rescheduled: true }),
+              ...(isRenewalCanceled ? { reactivated: true } : {}),
             });
             return;
           }
 
-          let scheduleId: string;
           try {
             const schedule = await stripe.subscriptionSchedules.create({ from_subscription: sub.id });
-            scheduleId = schedule.id;
-            // The current (phase 0) start_date is fixed by Stripe when the schedule
-            // is created from the live subscription. Passing "now" is rejected with
-            // "You can not modify the start date of the current phase" — reuse the
-            // existing phase-0 start_date instead.
-            const _existingPhase0Start = (schedule as { phases?: Array<{ start_date?: number }> }).phases?.[0]?.start_date;
-            await stripe.subscriptionSchedules.update(scheduleId, {
-              end_behavior: "release",
-              phases: [
-                {
-                  start_date:         (_existingPhase0Start ?? ("now" as unknown as number)),
-                  end_date:           _periodEndTs,
-                  items:              [
-                    { price: currentPriceId ?? undefined, quantity: 1 },
-                    ...currentAddonPrices,
-                  ],
-                    ...(isTrialing && sub.trial_end ? { trial_end: sub.trial_end } : {}),
-                  proration_behavior: "none",
-                },
-                {
-                  items: [
-                    { price: priceId, quantity: 1 },
-                    ...nextAddonPrices,
-                  ],
-                    metadata: { plan: targetPlan },
-                  proration_behavior: "none",
-                },
-              ],
-            });
+            await ensureScheduleTarget(schedule.id, schedule);
           } catch (schedErr: unknown) {
             // Stripe can reject the create() when a schedule is already attached
             // to this subscription (race condition or duplicate request).
@@ -1167,9 +1193,14 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             const attachedId = typeof freshSub.schedule === "string"
               ? freshSub.schedule
               : (freshSub.schedule as { id: string }).id;
+            const alreadyTargetsSelection = await ensureScheduleTarget(attachedId);
+            await clearPendingCancellation();
+            await persistOrgData(orgId, { pendingPlan: plan, pendingPlanDate: effectiveDate }).catch(() => {});
             logger.warn(
-              { scheduleId: attachedId, subId: sub.id, orgId },
-              "[Billing] schedule already attached (race) — idempotent downgrade return",
+              { scheduleId: attachedId, subId: sub.id, orgId, targetPlan, alreadyTargetsSelection },
+              alreadyTargetsSelection
+                ? "[Billing] schedule already attached (race) — idempotent downgrade return"
+                : "[Billing] schedule race resolved by updating target selection",
             );
             res.json({
               ok:                   true,
@@ -1180,11 +1211,13 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
               effectiveDate,
               trialDowngrade:        isTrialing,
               removedIncludedAddons: removedAddonKeys,
-              idempotent:           true,
+              ...(alreadyTargetsSelection ? { idempotent: true } : { rescheduled: true }),
+              ...(isRenewalCanceled ? { reactivated: true } : {}),
             });
             return;
           }
 
+          await clearPendingCancellation();
           // Do NOT change organizations.plan now — the subscription is still
           // on the current (higher) plan until the scheduled effective date.
           // Only store the pending change so the dashboard can show it.
@@ -1202,6 +1235,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             effectiveDate,
             trialDowngrade:        isTrialing,
             removedIncludedAddons: removedAddonKeys,
+            ...(isRenewalCanceled ? { reactivated: true } : {}),
           });
           return;
         }
@@ -1232,6 +1266,10 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           ],
           proration_behavior: prorationBehavior,
           metadata: { plan },
+          // Selecting any plan from the dashboard is an explicit decision to
+          // continue billing. Clear a pending period-end cancellation in the
+          // same atomic Stripe update, including same-plan reactivation.
+          ...(isRenewalCanceled ? { cancel_at_period_end: false } : {}),
           // Explicitly pin the trial end date so Stripe never re-anchors it on plan change.
           // Without this, some Stripe price trial settings can silently extend the period.
           ...(isTrialing && sub.trial_end ? { trial_end: sub.trial_end } : {}),
@@ -1319,6 +1357,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         res.json({
           ok:                    true,
           plan,
+          ...(isRenewalCanceled ? { reactivated: true } : {}),
           ...(isDowngrade
             ? { downgrade: true, effective: "now" }
             : { upgraded:  true, effective: "now" }

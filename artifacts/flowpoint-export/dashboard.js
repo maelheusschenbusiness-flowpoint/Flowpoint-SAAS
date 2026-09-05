@@ -156,23 +156,19 @@ function _fpApplyRoleNav() {
 // Each org's localStorage data lives under fp:{orgId}:key so that
 // switching accounts never leaks settings/history from one org to another.
 // ─────────────────────────────────────────────────────────────────
-var _FP_ORG_NS = (function() {
-  try { return localStorage.getItem('fp:last-org-id') || ''; }
-  catch(_storageErr) {
-    // CRITICAL: localStorage unavailable — tenant isolation is disabled; all
-    // fpTenantKey() calls will use bare keys, risking cross-org data leaks.
-    console.error('[FP] CRITICAL: localStorage unavailable — tenant isolation disabled.', _storageErr);
-    return '';
-  }
-})();
+// Never bootstrap from fp:last-org-id: it belongs to the previous authenticated
+// browser session until /api/me proves the current account.
+var _FP_ORG_NS = '';
 function fpTenantKey(k) {
-  // Returns namespaced key fp:{orgId}:suffix, or bare key when namespace unknown.
+  // Unknown identity must never fall back to a bare shared key.
   var bare = k.replace(/^fp:/, '');
-  return _FP_ORG_NS ? 'fp:' + _FP_ORG_NS + ':' + bare : k;
+  return _FP_ORG_NS ? 'fp:' + _FP_ORG_NS + ':' + bare : '';
 }
 function fpTenantRead(k, def) {
   try {
-    var v = localStorage.getItem(fpTenantKey(k));
+    var key = fpTenantKey(k);
+    if (!key) return def !== undefined ? String(def) : null;
+    var v = localStorage.getItem(key);
     // No fallback to bare key — always use namespace or defaults.
     // Cross-org data must never bleed through a bare-key fallback.
     return v !== null ? v : (def !== undefined ? String(def) : null);
@@ -180,11 +176,16 @@ function fpTenantRead(k, def) {
 }
 function fpTenantWrite(k, v) {
   try {
-    localStorage.setItem(fpTenantKey(k), typeof v === 'string' ? v : JSON.stringify(v));
+    var key = fpTenantKey(k);
+    if (!key) return;
+    localStorage.setItem(key, typeof v === 'string' ? v : JSON.stringify(v));
   } catch(_) {}
 }
 function fpTenantRemove(k) {
-  try { localStorage.removeItem(fpTenantKey(k)); } catch(_) {}
+  try {
+    var key = fpTenantKey(k);
+    if (key) localStorage.removeItem(key);
+  } catch(_) {}
 }
 function fpUpdateTenantNs(orgId) {
   _FP_ORG_NS = orgId || '';
@@ -554,9 +555,45 @@ function getOverviewApiPath() {
 const _apiFetchInFlight = new Map();
 const _apiFetchCache    = new Map();
 const _API_CACHE_TTL    = 30_000;
+let _apiFetchIdentity   = '';
 
 function _fpCurrentSessionToken() {
   try { return sessionStorage.getItem('fp_session_token') || ''; } catch(_) { return ''; }
+}
+
+function _fpSessionFingerprint() {
+  const token = _fpCurrentSessionToken();
+  if (!token) return 'cookie-or-anonymous';
+  let hash = 2166136261;
+  for (let i = 0; i < token.length; i++) {
+    hash ^= token.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return 'session-' + (hash >>> 0).toString(36);
+}
+
+function _fpResetDashboardCaches() {
+  _apiFetchCache.clear();
+  _apiFetchInFlight.clear();
+  _apiFetchIdentity = _fpSessionFingerprint();
+  try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+}
+window.__fpResetDashboardCaches = _fpResetDashboardCaches;
+
+function _fpApiCacheKey(path) {
+  const identity = _fpSessionFingerprint();
+  if (_apiFetchIdentity !== identity) {
+    _apiFetchCache.clear();
+    _apiFetchInFlight.clear();
+    _apiFetchIdentity = identity;
+  }
+  return identity + '\n' + path;
+}
+
+function _fpDeleteApiCachePath(path) {
+  const suffix = '\n' + path;
+  for (const key of _apiFetchCache.keys()) if (key.endsWith(suffix)) _apiFetchCache.delete(key);
+  for (const key of _apiFetchInFlight.keys()) if (key.endsWith(suffix)) _apiFetchInFlight.delete(key);
 }
 
 function _fpSessionFetchOptions(options = {}) {
@@ -650,19 +687,19 @@ function _confirmSessionExpired() {
 }
 
 async function apiFetch(path, opts = {}) {
+  // The session coordinator must settle before selecting the cache partition.
+  if (window.__fpSessionReady) await window.__fpSessionReady;
   const isGet = !opts.method || opts.method === 'GET';
-  if (isGet && opts.force) { _apiFetchCache.delete(path); _apiFetchInFlight.delete(path); }
+  const _requestIdentity = _fpSessionFingerprint();
+  const _cacheKey = _fpApiCacheKey(path);
+  if (isGet && opts.force) { _apiFetchCache.delete(_cacheKey); _apiFetchInFlight.delete(_cacheKey); }
   if (isGet) {
-    const cached = _apiFetchCache.get(path);
+    const cached = _apiFetchCache.get(_cacheKey);
     if (cached && (Date.now() - cached.ts < _API_CACHE_TTL)) return cached.data;
-    const inflight = _apiFetchInFlight.get(path);
+    const inflight = _apiFetchInFlight.get(_cacheKey);
     if (inflight) return inflight;
   }
   const _promise = (async () => {
-    // fp-backend.js owns one page-wide session restore. Await it before every
-    // protected request so AUTH_UNKNOWN/BILLING_UNKNOWN never reaches the 401
-    // redirect branch merely because another bootstrap is still in flight.
-    if (window.__fpSessionReady) await window.__fpSessionReady;
     // Auth architecture (three-tier):
     //   Tier 1 — HttpOnly cookie: PRIMARY. Sent automatically by the browser via
     //            credentials:'include'. No JS access needed. Covers all normal sessions.
@@ -744,8 +781,8 @@ async function apiFetch(path, opts = {}) {
             if (_rd?.token) {
               try { sessionStorage.setItem('fp_session_token', _rd.token); } catch(_) {}
               // Clear caches so the retry picks up the new token.
-              _apiFetchCache.delete(path);
-              _apiFetchInFlight.delete(path);
+              _apiFetchCache.delete(_cacheKey);
+              _apiFetchInFlight.delete(_cacheKey);
               console.warn('[FP-AUTH]', _ts, 'Foreground 401 on', path, '— cookie recovery succeeded, retrying with refreshed token.');
               return apiFetch(path, { ...opts, _retryAfter401: true });
             }
@@ -771,7 +808,7 @@ async function apiFetch(path, opts = {}) {
           '— throwing (no global logout; session may still be valid).');
         const _err401 = new Error('Unauthorized');
         _err401.status = 401;
-        if (isGet) _apiFetchInFlight.delete(path);
+        if (isGet) _apiFetchInFlight.delete(_cacheKey);
         throw _err401;
       }
       // STRUCTURAL RULE: if STATE.me is already populated, the session was recently
@@ -788,7 +825,7 @@ async function apiFetch(path, opts = {}) {
         if (!_401ConfirmTimer) {
           _401ConfirmTimer = setTimeout(function() { _401ConfirmTimer = null; _confirmSessionExpired(); }, 800);
         }
-        if (isGet) _apiFetchInFlight.delete(path);
+        if (isGet) _apiFetchInFlight.delete(_cacheKey);
         const _deferErr = new Error('Unauthorized');
         _deferErr.status = 401;
         throw _deferErr;
@@ -810,7 +847,7 @@ async function apiFetch(path, opts = {}) {
     // Any successful foreground response resets the background 401 counter.
     if (!opts.backgroundPoll) { _401BackgroundCount = 0; }
     if (!res.ok) {
-      if (isGet) _apiFetchInFlight.delete(path);
+      if (isGet) _apiFetchInFlight.delete(_cacheKey);
       let detail = null;
       try { detail = await res.json(); } catch (_) {}
       // Prefer the user-facing `message` (always French prose) over `error`:
@@ -826,13 +863,20 @@ async function apiFetch(path, opts = {}) {
       throw err;
     }
     const data = await res.json();
+    // Ignore an old account's response if the per-tab session changed in flight.
+    if (_fpSessionFingerprint() !== _requestIdentity) {
+      if (isGet) _apiFetchInFlight.delete(_cacheKey);
+      const stale = new Error('stale_session_response');
+      stale.code = 'stale_session_response';
+      throw stale;
+    }
     if (isGet) {
-      _apiFetchCache.set(path, { data, ts: Date.now() });
-      _apiFetchInFlight.delete(path);
+      _apiFetchCache.set(_cacheKey, { data, ts: Date.now() });
+      _apiFetchInFlight.delete(_cacheKey);
     }
     return data;
   })();
-  if (isGet) _apiFetchInFlight.set(path, _promise);
+  if (isGet) _apiFetchInFlight.set(_cacheKey, _promise);
   return _promise;
 }
 
@@ -2325,7 +2369,7 @@ async function loadData(options = {}) {
   // ── Restore persisted PSI results from localStorage (survive page reload) ──
   try {
     if (!window.FP_DATA.pagespeed) {
-      var _psiSaved = localStorage.getItem('fp-psi-last');
+      var _psiSaved = fpTenantRead('fp:psi-last', '');
       if (_psiSaved) {
         var _psiParsed = JSON.parse(_psiSaved);
         // Accept cached PSI up to 7 days old
@@ -9702,7 +9746,8 @@ function renderBilling() {
     const _current = ((STATE.billing && STATE.billing.plan) || (STATE.me && STATE.me.plan) || '').toLowerCase();
     const _st0 = String(STATE.billing?.subscriptionStatus || STATE.billing?.status || STATE.me?.subscriptionStatus || '').toLowerCase();
     const _activeSub0 = _st0 === 'active' || _st0 === 'trialing';
-    if (_activeSub0 && _current === _target) {
+    const _renewalCanceled0 = !!STATE.billing?.cancelAtPeriodEnd;
+    if (_activeSub0 && !_renewalCanceled0 && _current === _target) {
       showToast('info', fpT('Vous êtes déjà sur ce plan.'));
       return;
     }
@@ -10160,7 +10205,8 @@ function renderBilling() {
       // cancel_at_period_end (status still 'active') is correctly caught here too.
       const _subStatUp = String(STATE.billing?.subscriptionStatus || STATE.billing?.status || STATE.me?.subscriptionStatus || '').toLowerCase();
       const _hasActiveSubUp = _subStatUp === 'active' || _subStatUp === 'trialing';
-      if (_hasActiveSubUp && _curPlan && _curPlan === _targetPlan) {
+      const _renewalCanceledUp = !!STATE.billing?.cancelAtPeriodEnd;
+      if (_hasActiveSubUp && !_renewalCanceledUp && _curPlan && _curPlan === _targetPlan) {
         showToast('info', 'Vous êtes déjà sur le plan ' + _targetPlan.charAt(0).toUpperCase() + _targetPlan.slice(1) + '.');
         return;
       }
@@ -15518,17 +15564,12 @@ function normalizeRoute(route, subRoute) {
 }
 
 async function fpGoToPricing(targetPlan) {
-  const plan = (targetPlan || 'pro').toLowerCase();
-  const currentPlan = ((STATE.billing && STATE.billing.plan) || (STATE.me && STATE.me.plan) || '').toLowerCase();
-  const _subStatus = String(STATE.billing?.subscriptionStatus || STATE.billing?.status || STATE.me?.subscriptionStatus || '').toLowerCase();
-  const _isSubscribed = ['active','trialing','past_due'].includes(_subStatus);
-  // Only block "already on this plan" when the subscription is actually active —
-  // canceled/expired users on the same plan MUST be allowed to re-subscribe.
-  if (_isSubscribed && currentPlan && currentPlan === plan) {
-    showToast('Vous êtes déjà sur le plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + '.', 'info');
+  // A CTA that names a plan must perform the authenticated plan operation
+  // directly. Generic locked-feature CTAs without a target open the plans tab.
+  if (targetPlan) {
+    changePlan(String(targetPlan).toLowerCase());
     return;
   }
-  // Every existing account manages its subscription in the authenticated dashboard.
   window.fpGoToBillingPlans();
 }
 
@@ -15688,15 +15729,19 @@ function changePlan(newPlan) {
   if (typeof window.fpUpgradeOrCheckout === 'function') {
     window.fpUpgradeOrCheckout(newPlan);
   } else {
-    // Fallback: direct API call if fpUpgradeOrCheckout not yet defined
-    const _status = window.getBillingStatus ? window.getBillingStatus() : (STATE.billing?.subscriptionStatus || '');
-    if (_status === 'active' || _status === 'trialing') {
-      apiAction('POST', '/api/billing/upgrade', { plan: newPlan.toLowerCase() })
-        .then(() => { showToast('success', fpT('Plan mis à jour')); loadData().then(() => { navigate('billing'); navigateSub('plans'); }); })
-        .catch((e) => showToast('error', (e && e.message) || 'Le changement de plan a échoué. Réessayez.'));
-    } else {
-      fpGoToPricing(newPlan.toLowerCase());
-    }
+    // Timing-safe fallback: all account states go through the same authenticated
+    // server state machine. Never route an existing account to public pricing.
+    apiAction('POST', '/api/billing/upgrade', { plan: newPlan.toLowerCase() })
+      .then((r) => {
+        if (r && r.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
+        if (r && (r.upgraded || r.downgrade || r.reactivated)) {
+          showToast('success', fpT('Plan mis à jour'));
+          loadData().then(() => { navigate('billing'); navigateSub('plans'); });
+          return;
+        }
+        throw new Error((r && (r.message || r.error)) || 'Le changement de plan a échoué.');
+      })
+      .catch((e) => showToast('error', (e && e.message) || 'Le changement de plan a échoué. Réessayez.'));
   }
 }
 
@@ -16341,8 +16386,7 @@ function bindSectionEvents() {
       try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
       // Force-clear overview cache using the same key loadData() will use
       var _ovPath = getOverviewApiPath();
-      _apiFetchCache.delete(_ovPath);
-      _apiFetchInFlight.delete(_ovPath);
+      _fpDeleteApiCachePath(_ovPath);
       loadData()
         .then(function() { render(); showToast('success', fpT('Données à jour ✓')); })
         .catch(function() { showToast('error', fpT('Erreur d\'actualisation')); })
@@ -18337,7 +18381,13 @@ function bindGlobalEvents() {
 
   // Logout — révocation session côté serveur avant redirection
   $('#fp-logout-btn')?.addEventListener('click', async () => {
-    try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+    try { if (typeof window.__fpCancelSessionRestore === 'function') window.__fpCancelSessionRestore(); } catch(_) {}
+    try { _fpResetDashboardCaches(); } catch(_) {}
+    try {
+      localStorage.removeItem('fp:last-org-id');
+      localStorage.removeItem('fp:last-account-id');
+      history.replaceState({}, '', window.location.pathname);
+    } catch(_) {}
     // Clear last-route so the next session (or a re-registration) always starts
     // at the overview, not at whatever page this account was last visiting.
     // Route keys are tenant-namespaced — next login reads the correct org's last route.
@@ -47768,21 +47818,11 @@ async function init() {
   // Apply free modules (compact mode, focus mode, etc.)
   applyFreeModules();
 
-  // Restore last route immediately so first render shows correct page.
-  // Guard: never restore billing/plans on page refresh — the plan-selection cards
-  // are visually identical to pricing.html and would flash before the live session
-  // is confirmed. Billing overview (no sub-tab) is safe because it shows usage
-  // metrics, not plan-selection UI.
+  // Route restoration is deferred until /api/me confirms the account. Reading a
+  // provisional namespace here can reopen account A's route for account B.
   window.__fpSessionConfirmed = false; // cleared after first live /api/me completes
-  try {
-    const savedRoute = fpTenantRead('fp:last-route', '');
-    const savedSub   = fpTenantRead('fp:last-sub', '');
-    if (savedRoute) STATE.route = savedRoute;
-    // Drop 'plans' sub-tab on restore — will be re-applied after session confirmed
-    if (savedSub && !(savedRoute === 'billing' && savedSub === 'plans')) {
-      STATE.subRoute = savedSub || null;
-    }
-  } catch(e) {}
+  STATE.route = 'overview';
+  STATE.subRoute = null;
 
   // P0.1: Hash wins over localStorage — resolve BEFORE loadData() so every render
   // during data loading (including the initial skeleton render) uses the correct route.
@@ -47829,28 +47869,47 @@ async function init() {
   // Critical: render() is only called after this block, so the stale data from
   // step 2 is never displayed. The STATE re-init here is the guarantee.
   try {
-    const _curOrgId = STATE.me && (STATE.me.orgId || STATE.me.id);
-    const _storedOrgId = localStorage.getItem('fp:last-org-id');
-    if (_curOrgId) {
-      const _orgChanged = _storedOrgId && _storedOrgId !== _curOrgId;
-      fpUpdateTenantNs(_curOrgId); // commit canonical namespace
-      if (_orgChanged) {
-        // Re-read tenant STATE fields from the new org's namespace.
-        // Ensures zero cross-org data survives in memory after a user switch.
-        const _defSettings = '{"themeAuto":true,"liveStatus":true,"hoverNotifs":true,"streaks":true,"aiTips":true,"newTab":false,"bgDashboard":false,"recentActivity":true,"confirmActions":true,"statusPageUrl":"","webhookUrl":"","smsPhone":""}';
-        const _defModules  = '{"compactMode":false,"dailyAI":true,"soundAlerts":false,"focusMode":false}';
-        STATE.pinned           = JSON.parse(fpTenantRead('fp:pinned',           '{}') || '{}');
-        STATE.settings         = JSON.parse(fpTenantRead('fp:settings',         _defSettings) || '{}');
-        STATE.overviewRange    = fpTenantRead('fp:overview-range', '7d') || '7d';
-        STATE.freeModules      = JSON.parse(fpTenantRead('fp:free-modules',     _defModules) || '{}');
-        STATE.streak           = parseInt(fpTenantRead('fp:streak',         '0') || '0', 10);
-        STATE.activityLastSeen = parseInt(fpTenantRead('fp:activity-last-seen','0') || '0', 10);
-        STATE.pushNotifEnabled = fpTenantRead('fp:push-notif', '') === '1';
-        STATE.searchHistory    = JSON.parse(fpTenantRead('fp:search-hist',      '[]') || '[]');
-        STATE.route    = 'overview';
+    const _curOrgId = STATE.me && (STATE.me.orgId || STATE.me.organizationId || STATE.me.org?.id || STATE.me.id);
+    const _curUserId = STATE.me && (STATE.me.userId || STATE.me.user?.id || STATE.me.email || STATE.me.id);
+    const _storedAccountId = localStorage.getItem('fp:last-account-id');
+    if (_curOrgId && _curUserId) {
+      const _curAccountId = String(_curOrgId) + '|' + String(_curUserId);
+      const _sameAccount = !!_storedAccountId && _storedAccountId === _curAccountId;
+      fpUpdateTenantNs(String(_curOrgId) + ':' + String(_curUserId));
+
+      // Hydrate account state only after the server-confirmed identity is known.
+      const _defSettings = '{"themeAuto":true,"liveStatus":true,"hoverNotifs":true,"streaks":true,"aiTips":true,"newTab":false,"bgDashboard":false,"recentActivity":true,"confirmActions":true,"statusPageUrl":"","webhookUrl":"","smsPhone":""}';
+      const _defModules  = '{"compactMode":false,"dailyAI":true,"soundAlerts":false,"focusMode":false}';
+      STATE.pinned           = JSON.parse(fpTenantRead('fp:pinned',           '{}') || '{}');
+      STATE.settings         = JSON.parse(fpTenantRead('fp:settings',         _defSettings) || '{}');
+      STATE.overviewRange    = fpTenantRead('fp:overview-range', '7d') || '7d';
+      STATE.freeModules      = JSON.parse(fpTenantRead('fp:free-modules',     _defModules) || '{}');
+      STATE.streak           = parseInt(fpTenantRead('fp:streak',         '0') || '0', 10);
+      STATE.activityLastSeen = parseInt(fpTenantRead('fp:activity-last-seen','0') || '0', 10);
+      STATE.pushNotifEnabled = fpTenantRead('fp:push-notif', '') === '1';
+      STATE.searchHistory    = JSON.parse(fpTenantRead('fp:search-hist',      '[]') || '[]');
+
+      if (_sameAccount) {
+        if (!window.location.hash.slice(1)) {
+          const savedRoute = fpTenantRead('fp:last-route', '');
+          const savedSub = fpTenantRead('fp:last-sub', '');
+          if (savedRoute) STATE.route = savedRoute;
+          STATE.subRoute = savedSub || null;
+        }
+      } else {
+        STATE.route = 'overview';
         STATE.subRoute = null;
+        _fpResetDashboardCaches();
+        try {
+          history.replaceState(
+            { route:'overview', subRoute:null },
+            '',
+            window.location.pathname + window.location.search + '#overview',
+          );
+        } catch(_) {}
       }
-      localStorage.setItem('fp:last-org-id', _curOrgId);
+      localStorage.setItem('fp:last-org-id', String(_curOrgId));
+      localStorage.setItem('fp:last-account-id', _curAccountId);
     }
   } catch(_orgChangeErr) {
     // CRITICAL: org-change reinitialization failure must NEVER silently leave
@@ -47873,8 +47932,8 @@ async function init() {
     // We retry at 8s and again at 20s to catch late webhook processing.
     const _addonRetry = async (label) => {
       try {
-        try { _apiFetchCache && _apiFetchCache.delete('/api/me'); } catch(_) {}
-        try { _apiFetchCache && _apiFetchCache.delete('/api/addons'); } catch(_) {}
+        try { _fpDeleteApiCachePath('/api/me'); } catch(_) {}
+        try { _fpDeleteApiCachePath('/api/addons'); } catch(_) {}
         const _freshMe = await apiFetch('/api/me').catch(() => null);
         if (_freshMe && _freshMe.addons) {
           // Check if any addon is now active that wasn't before
@@ -48415,8 +48474,10 @@ async function init() {
       }));
     } catch (_) { /* non-fatal — still clear local state */ }
     ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid',
-     'fp:last-route', 'fp:last-sub']
+     'fp:last-route', 'fp:last-sub', 'fp:last-org-id', 'fp:last-account-id']
       .forEach(function(k) { localStorage.removeItem(k); });
+    try { if (typeof window.__fpCancelSessionRestore === 'function') window.__fpCancelSessionRestore(); } catch(_) {}
+    try { _fpResetDashboardCaches(); } catch(_) {}
     sessionStorage.clear(); // also clears fp_session_token + fp_tab_uid
     showToast('success', fpT('Toutes les sessions fermées'));
     setTimeout(function() { window.location.replace('/login.html'); }, 1200);
@@ -65673,7 +65734,7 @@ function setPageSpeedResult(raw) {
   // ── Persist PSI results across sessions / tab restores ────────────────────
   try {
     if (normalized) {
-      localStorage.setItem('fp-psi-last', JSON.stringify({ data: normalized, _ts: Date.now() }));
+      fpTenantWrite('fp:psi-last', { data: normalized, _ts: Date.now() });
     }
   } catch(_) {}
   return normalized;
@@ -66805,10 +66866,10 @@ async function fpGetPSIAIReco() {
           window.FP_DATA.pagespeed.aiRecommendations = _reco;
           // Persist updated recommendations to localStorage
           try {
-            var _saved = JSON.parse(localStorage.getItem('fp-psi-last') || '{}');
+            var _saved = JSON.parse(fpTenantRead('fp:psi-last', '{}') || '{}');
             if (_saved && _saved.data) {
               _saved.data.aiRecommendations = _reco;
-              localStorage.setItem('fp-psi-last', JSON.stringify(_saved));
+              fpTenantWrite('fp:psi-last', _saved);
             }
           } catch(_) {}
         }

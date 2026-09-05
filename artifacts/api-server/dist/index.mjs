@@ -121229,6 +121229,45 @@ function createBillingQuote(selection) {
   };
 }
 
+// src/services/billing-schedule.ts
+function billingScheduleItemSignature(items) {
+  return items.map((item) => {
+    const priceId = typeof item.price === "string" ? item.price : item.price?.id;
+    return `${priceId ?? ""}:${item.quantity ?? 1}`;
+  }).filter((entry) => !entry.startsWith(":")).sort().join("|");
+}
+async function ensureStripeScheduleTarget(input) {
+  const client = input.stripe;
+  const schedule = input.knownSchedule ?? await client.subscriptionSchedules.retrieve(input.scheduleId);
+  const phases = schedule.phases ?? [];
+  const futurePhase = phases[phases.length - 1];
+  const desiredSignature = billingScheduleItemSignature(input.futureItems);
+  const alreadyTarget = !!futurePhase && billingScheduleItemSignature(futurePhase.items ?? []) === desiredSignature;
+  if (alreadyTarget) return { alreadyTarget: true };
+  const phase0Start = phases[0]?.start_date ?? schedule.current_phase?.start_date ?? input.subscriptionStart;
+  if (!phase0Start) {
+    throw new Error(`downgrade_schedule_start_unresolved:${input.scheduleId}`);
+  }
+  await client.subscriptionSchedules.update(input.scheduleId, {
+    end_behavior: "release",
+    phases: [
+      {
+        start_date: phase0Start,
+        end_date: input.periodEnd,
+        items: input.currentItems,
+        ...input.trialEnd ? { trial_end: input.trialEnd } : {},
+        proration_behavior: "none"
+      },
+      {
+        items: input.futureItems,
+        metadata: { plan: input.targetPlan },
+        proration_behavior: "none"
+      }
+    ]
+  });
+  return { alreadyTarget: false };
+}
+
 // src/routes/billing.ts
 init_billing_service();
 init_mailer();
@@ -121930,15 +121969,6 @@ router14.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (re
   }
   const currentPlan = billingCtx.plan.toLowerCase();
   const targetPlan = plan4.toLowerCase();
-  const upgradeStatus = billingCtx.subscriptionStatus;
-  if (targetPlan && targetPlan === currentPlan && (upgradeStatus === "active" || upgradeStatus === "trialing")) {
-    logger.warn({ currentPlan, targetPlan, orgId: orgId3 }, "[Billing] upgrade blocked \u2014 plan already active");
-    res.status(409).json({
-      error: "plan_already_active",
-      message: `Le plan ${plan4} est d\xE9j\xE0 votre plan actuel.`
-    });
-    return;
-  }
   const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
   if (!stripeKey) {
@@ -122031,6 +122061,15 @@ router14.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (re
       const sub = activeSubs.data[0] ?? trialingSubs.data[0];
       if (sub) {
         const isTrialing = sub.status === "trialing";
+        const isRenewalCanceled = sub.cancel_at_period_end === true;
+        if (targetPlan === currentPlan && !isRenewalCanceled) {
+          logger.warn({ currentPlan, targetPlan, orgId: orgId3 }, "[Billing] upgrade blocked \u2014 plan already active");
+          res.status(409).json({
+            error: "plan_already_active",
+            message: `Le plan ${plan4} est d\xE9j\xE0 votre plan actuel.`
+          });
+          return;
+        }
         const priceId = PLAN_PRICE_IDS[targetPlan];
         if (!priceId) {
           res.status(400).json({ error: `Unknown plan: ${plan4}` });
@@ -122055,6 +122094,14 @@ router14.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (re
           });
           const _periodEndTs = subPeriodEnd(sub) ?? (isTrialing ? sub.trial_end ?? void 0 : void 0);
           const effectiveDate = _periodEndTs ? new Date(_periodEndTs * 1e3).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }) : "la prochaine \xE9ch\xE9ance";
+          const clearPendingCancellation = async () => {
+            if (!isRenewalCanceled) return;
+            await stripe.subscriptions.update(sub.id, { cancel_at_period_end: false });
+            logger.info(
+              { subId: sub.id, orgId: orgId3, targetPlan },
+              "[Billing] cleared pending cancellation for scheduled plan change"
+            );
+          };
           if (!_periodEndTs) {
             logger.error({ subId: sub.id, orgId: orgId3, targetPlan }, "[Billing] downgrade: could not resolve subscription period end");
             res.status(422).json({
@@ -122063,9 +122110,42 @@ router14.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (re
             });
             return;
           }
+          if (!currentPriceId) {
+            logger.error({ subId: sub.id, orgId: orgId3, currentPlan }, "[Billing] downgrade: current Stripe price is unresolved");
+            res.status(422).json({
+              error: "Impossible d\u2019identifier le tarif actuel de votre abonnement. Contactez le support.",
+              code: "downgrade_current_price_unresolved"
+            });
+            return;
+          }
+          const desiredFutureItems = [{ price: priceId, quantity: 1 }, ...nextAddonPrices];
+          const ensureScheduleTarget = async (scheduleId, knownSchedule) => {
+            const result = await ensureStripeScheduleTarget({
+              stripe,
+              scheduleId,
+              knownSchedule,
+              subscriptionStart: sub.start_date,
+              periodEnd: _periodEndTs,
+              currentItems: [
+                { price: currentPriceId, quantity: 1 },
+                ...currentAddonPrices
+              ],
+              futureItems: desiredFutureItems,
+              targetPlan,
+              trialEnd: isTrialing ? sub.trial_end : void 0
+            });
+            return result.alreadyTarget;
+          };
           if (sub.schedule) {
             const existingScheduleId = typeof sub.schedule === "string" ? sub.schedule : sub.schedule.id;
-            logger.info({ scheduleId: existingScheduleId, orgId: orgId3 }, "[Billing] downgrade schedule already exists \u2014 idempotent return");
+            const alreadyTargetsSelection = await ensureScheduleTarget(existingScheduleId);
+            await clearPendingCancellation();
+            await persistOrgData(orgId3, { pendingPlan: plan4, pendingPlanDate: effectiveDate }).catch(() => {
+            });
+            logger.info(
+              { scheduleId: existingScheduleId, orgId: orgId3, targetPlan, alreadyTargetsSelection },
+              alreadyTargetsSelection ? "[Billing] downgrade schedule already targets selection \u2014 idempotent return" : "[Billing] existing downgrade schedule updated to new selection"
+            );
             res.json({
               ok: true,
               plan: plan4,
@@ -122074,39 +122154,15 @@ router14.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (re
               effectiveReason: isTrialing ? "trial_end" : "period_end",
               effectiveDate,
               trialDowngrade: isTrialing,
-              removedIncludedAddons: [],
-              idempotent: true
+              removedIncludedAddons: removedAddonKeys,
+              ...alreadyTargetsSelection ? { idempotent: true } : { rescheduled: true },
+              ...isRenewalCanceled ? { reactivated: true } : {}
             });
             return;
           }
-          let scheduleId;
           try {
             const schedule = await stripe.subscriptionSchedules.create({ from_subscription: sub.id });
-            scheduleId = schedule.id;
-            const _existingPhase0Start = schedule.phases?.[0]?.start_date;
-            await stripe.subscriptionSchedules.update(scheduleId, {
-              end_behavior: "release",
-              phases: [
-                {
-                  start_date: _existingPhase0Start ?? "now",
-                  end_date: _periodEndTs,
-                  items: [
-                    { price: currentPriceId ?? void 0, quantity: 1 },
-                    ...currentAddonPrices
-                  ],
-                  ...isTrialing && sub.trial_end ? { trial_end: sub.trial_end } : {},
-                  proration_behavior: "none"
-                },
-                {
-                  items: [
-                    { price: priceId, quantity: 1 },
-                    ...nextAddonPrices
-                  ],
-                  metadata: { plan: targetPlan },
-                  proration_behavior: "none"
-                }
-              ]
-            });
+            await ensureScheduleTarget(schedule.id, schedule);
           } catch (schedErr) {
             const isAlreadyAttached = (() => {
               if (!schedErr || typeof schedErr !== "object") return false;
@@ -122119,9 +122175,13 @@ router14.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (re
             const freshSub = await stripe.subscriptions.retrieve(sub.id, { expand: ["schedule"] });
             if (!freshSub.schedule) throw schedErr;
             const attachedId = typeof freshSub.schedule === "string" ? freshSub.schedule : freshSub.schedule.id;
+            const alreadyTargetsSelection = await ensureScheduleTarget(attachedId);
+            await clearPendingCancellation();
+            await persistOrgData(orgId3, { pendingPlan: plan4, pendingPlanDate: effectiveDate }).catch(() => {
+            });
             logger.warn(
-              { scheduleId: attachedId, subId: sub.id, orgId: orgId3 },
-              "[Billing] schedule already attached (race) \u2014 idempotent downgrade return"
+              { scheduleId: attachedId, subId: sub.id, orgId: orgId3, targetPlan, alreadyTargetsSelection },
+              alreadyTargetsSelection ? "[Billing] schedule already attached (race) \u2014 idempotent downgrade return" : "[Billing] schedule race resolved by updating target selection"
             );
             res.json({
               ok: true,
@@ -122132,10 +122192,12 @@ router14.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (re
               effectiveDate,
               trialDowngrade: isTrialing,
               removedIncludedAddons: removedAddonKeys,
-              idempotent: true
+              ...alreadyTargetsSelection ? { idempotent: true } : { rescheduled: true },
+              ...isRenewalCanceled ? { reactivated: true } : {}
             });
             return;
           }
+          await clearPendingCancellation();
           await persistOrgData(orgId3, { pendingPlan: plan4, pendingPlanDate: effectiveDate }).catch(() => {
           });
           logger.info(
@@ -122150,7 +122212,8 @@ router14.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (re
             effectiveReason: isTrialing ? "trial_end" : "period_end",
             effectiveDate,
             trialDowngrade: isTrialing,
-            removedIncludedAddons: removedAddonKeys
+            removedIncludedAddons: removedAddonKeys,
+            ...isRenewalCanceled ? { reactivated: true } : {}
           });
           return;
         }
@@ -122174,6 +122237,10 @@ router14.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (re
           ],
           proration_behavior: prorationBehavior,
           metadata: { plan: plan4 },
+          // Selecting any plan from the dashboard is an explicit decision to
+          // continue billing. Clear a pending period-end cancellation in the
+          // same atomic Stripe update, including same-plan reactivation.
+          ...isRenewalCanceled ? { cancel_at_period_end: false } : {},
           // Explicitly pin the trial end date so Stripe never re-anchors it on plan change.
           // Without this, some Stripe price trial settings can silently extend the period.
           ...isTrialing && sub.trial_end ? { trial_end: sub.trial_end } : {}
@@ -122255,6 +122322,7 @@ router14.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (re
         res.json({
           ok: true,
           plan: plan4,
+          ...isRenewalCanceled ? { reactivated: true } : {},
           ...isDowngrade ? { downgrade: true, effective: "now" } : { upgraded: true, effective: "now" },
           removedIncludedAddons: removedAddonKeys
         });

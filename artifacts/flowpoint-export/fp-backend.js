@@ -53,6 +53,16 @@ window.__fpPageLoadTs = Date.now();
   // they launch competing POST /api/auth/session-restore requests whose results
   // race each other (the last write to sessionStorage wins, which may be stale).
   var _fpRestoreInFlight = null;
+  var _fpSessionGeneration = 0;
+
+  function _resetTenantCaches() {
+    try { _fpCache = {}; _fpInFlight = {}; } catch (_) {}
+    try {
+      if (typeof window.__fpResetDashboardCaches === 'function') {
+        window.__fpResetDashboardCaches();
+      }
+    } catch (_) {}
+  }
 
   function _restoreSession(options) {
     var force = !!(options && options.force);
@@ -62,6 +72,8 @@ window.__fpPageLoadTs = Date.now();
       window.__fpSessionReady = _fpRestoreInFlight;
       return _fpRestoreInFlight;
     }
+    var restoreGeneration = ++_fpSessionGeneration;
+    _resetTenantCaches();
     var restore = (async function () {
       var _existingToken = _sessionToken();
       try {
@@ -74,7 +86,7 @@ window.__fpPageLoadTs = Date.now();
         });
         if (response.ok) {
           var data = await response.json().catch(function () { return null; });
-          if (data && data.token) {
+          if (data && data.token && restoreGeneration === _fpSessionGeneration) {
             sessionStorage.setItem('fp_session_token', data.token);
             if (!sessionStorage.getItem('fp_tab_uid')) {
               sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
@@ -98,6 +110,12 @@ window.__fpPageLoadTs = Date.now();
     return restore;
   }
   window.__fpRestoreSession = _restoreSession;
+  window.__fpCancelSessionRestore = function() {
+    _fpSessionGeneration++;
+    _fpRestoreInFlight = null;
+    window.__fpSessionReady = Promise.resolve(false);
+    _resetTenantCaches();
+  };
   var _sessionReady = _restoreSession();
 
   function _authHeaders() {
@@ -210,6 +228,8 @@ window.__fpPageLoadTs = Date.now();
   }
 
   function _clearAuth() {
+    _fpSessionGeneration++;
+    _fpRestoreInFlight = null;
     try {
       ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(function(k) {
         localStorage.removeItem(k);
@@ -221,17 +241,42 @@ window.__fpPageLoadTs = Date.now();
     // 30-second TTL window does not receive the previous user's /api/me response.
     // _fpCache is a page-scoped var and normally resets on page reload, but SPA
     // navigations and BFCache restores can keep it alive across user switches.
-    try { _fpCache = {}; _fpInFlight = {}; } catch (_) {}
+    _resetTenantCaches();
+  }
+
+  function _fpBackendCacheIdentity() {
+    var token = _sessionToken();
+    if (!token) return 'cookie-or-anonymous';
+    var hash = 2166136261;
+    for (var i = 0; i < token.length; i++) {
+      hash ^= token.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return 'session-' + (hash >>> 0).toString(36);
+  }
+
+  function _deleteBackendCachePath(path) {
+    var suffix = '\n' + path;
+    Object.keys(_fpCache).forEach(function(key) {
+      if (key.endsWith(suffix)) delete _fpCache[key];
+    });
+    Object.keys(_fpInFlight).forEach(function(key) {
+      if (key.endsWith(suffix)) delete _fpInFlight[key];
+    });
+    try {
+      if (typeof _fpDeleteApiCachePath === 'function') _fpDeleteApiCachePath(path);
+    } catch (_) {}
   }
 
   function apiFetchNow(path, opts) {
     var isGet = !opts || !opts.method || opts.method === 'GET';
+    var cacheKey = _fpBackendCacheIdentity() + '\n' + path;
 
     // ── GET cache (30 s TTL, same as dashboard.js) ────────────────────────────
     if (isGet) {
-      var cached = _fpCache[path];
+      var cached = _fpCache[cacheKey];
       if (cached && (Date.now() - cached.ts < _API_CACHE_TTL)) return Promise.resolve(cached.data);
-      if (_fpInFlight[path]) return _fpInFlight[path];
+      if (_fpInFlight[cacheKey]) return _fpInFlight[cacheKey];
     }
 
     // ── Cache-buster for GETs (same pattern as dashboard.js) ─────────────────
@@ -385,17 +430,17 @@ window.__fpPageLoadTs = Date.now();
       })
       .then(function (data) {
         if (isGet) {
-          _fpCache[path] = { data: data, ts: Date.now() };
-          delete _fpInFlight[path];
+          _fpCache[cacheKey] = { data: data, ts: Date.now() };
+          delete _fpInFlight[cacheKey];
         }
         return data;
       })
       .catch(function (err) {
-        if (isGet) delete _fpInFlight[path];
+        if (isGet) delete _fpInFlight[cacheKey];
         throw err;
       });
 
-    if (isGet) _fpInFlight[path] = promise;
+    if (isGet) _fpInFlight[cacheKey] = promise;
     return promise;
   }
 
@@ -476,12 +521,13 @@ window.__fpPageLoadTs = Date.now();
   // Appelé par les boutons inline "Passer Pro / Passer Ultra"
 
   window.upgradeCheckout = function (plan) {
+    if (typeof window.fpUpgradeOrCheckout === 'function') {
+      return window.fpUpgradeOrCheckout(plan);
+    }
     if (typeof window.FP_BILLING_API !== 'undefined') {
-      window.FP_BILLING_API.checkout(plan).catch(function () {
-        if (typeof window.navigate === 'function') window.navigate('billing');
-      });
+      return window.FP_BILLING_API.checkout(plan);
     } else {
-      if (typeof window.navigate === 'function') window.navigate('billing');
+      return apiAction('POST', '/api/billing/upgrade', { plan: plan });
     }
   };
 
@@ -803,15 +849,32 @@ window.__fpPageLoadTs = Date.now();
     checkout: async function (plan) {
       try {
         if (typeof window.showToast === 'function') {
-          window.showToast('info', 'Redirection vers le paiement ' + (plan === 'ultra' ? 'Ultra' : 'Pro') + '…');
+          window.showToast('info', 'Mise à jour du plan en cours…');
         }
-        var data = await apiAction('POST', '/api/billing/checkout', { plan: plan });
-        if (data.url) {
-          window.location.href = data.url;
+        // Dashboard plan CTAs all use the authenticated upgrade state machine.
+        // It reuses organizations.stripe_customer_id and returns checkoutUrl
+        // only when Stripe Checkout is genuinely required for reactivation.
+        var data = await apiAction('POST', '/api/billing/upgrade', { plan: plan });
+        var redirectUrl = data && (data.checkoutUrl || data.url);
+        if (redirectUrl) {
+          window.location.href = redirectUrl;
+          return data;
         }
+        if (data && (data.upgraded || data.downgrade || data.reactivated)) {
+          _resetTenantCaches();
+          if (typeof window.loadData === 'function') {
+            await window.loadData();
+          }
+          if (typeof window.navigate === 'function') window.navigate('billing');
+          if (typeof window.navigateSub === 'function') window.navigateSub('plans');
+        }
+        return data;
       } catch (e) {
-        console.warn('[FP] billing checkout error:', e.message);
-        if (typeof window.navigate === 'function') window.navigate('billing');
+        console.warn('[FP] billing upgrade error:', e.message);
+        if (typeof window.showToast === 'function') {
+          window.showToast('error', e.message || 'Le changement de plan a échoué.');
+        }
+        throw e;
       }
     },
   };
@@ -878,8 +941,7 @@ window.__fpPageLoadTs = Date.now();
       // all stay stale until a full /api/me refresh arrives.
       try {
         // Bust the cache so apiFetch doesn't return the old response
-        if (typeof _fpCache !== 'undefined') delete _fpCache['/api/me'];
-        if (typeof _apiFetchCache !== 'undefined') _apiFetchCache.delete('/api/me');
+        _deleteBackendCachePath('/api/me');
         var freshMe = await apiFetch('/api/me');
         if (freshMe && window.STATE) {
           window.STATE.me = freshMe;
@@ -3260,8 +3322,7 @@ window.__fpPageLoadTs = Date.now();
       if (data.type === 'addon:activated') {
         try { document.dispatchEvent(new CustomEvent('fp:addon:activated', { detail: data })); } catch(_) {}
         // Full /api/me refresh to update limits (e.g. monitors +10 after monitorsPack10)
-        if (typeof _fpCache !== 'undefined') { try { delete _fpCache['/api/me']; } catch(_) {} }
-        if (typeof _apiFetchCache !== 'undefined') { try { _apiFetchCache.delete('/api/me'); } catch(_) {} }
+        _deleteBackendCachePath('/api/me');
         apiFetch('/api/me').then(function(freshMe) {
           if (freshMe && window.STATE) {
             window.STATE.me = freshMe;
@@ -3271,8 +3332,7 @@ window.__fpPageLoadTs = Date.now();
       }
       if (data.type === 'addon:deactivated') {
         try { document.dispatchEvent(new CustomEvent('fp:addon:deactivated', { detail: data })); } catch(_) {}
-        if (typeof _fpCache !== 'undefined') { try { delete _fpCache['/api/me']; } catch(_) {} }
-        if (typeof _apiFetchCache !== 'undefined') { try { _apiFetchCache.delete('/api/me'); } catch(_) {} }
+        _deleteBackendCachePath('/api/me');
         apiFetch('/api/me').then(function(freshMe) {
           if (freshMe && window.STATE) {
             window.STATE.me = freshMe;
