@@ -2803,4 +2803,78 @@ router.post("/admin/reset-onboarding", async (req: Request, res: Response): Prom
   }
 });
 
+// ── POST /api/admin/provision-test-org ───────────────────────────────────────
+// Creates a minimal non-QA org (is_internal_qa=false, no Stripe customer)
+// for billing certification tests that require a real non-QA account.
+// Protected by ADMIN_KEY. Use /api/admin/purge-account to clean up afterwards.
+router.post("/admin/provision-test-org", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const { email, plan = "standard" } = req.body as { email?: string; plan?: string };
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    res.status(400).json({ ok: false, error: "Valid email required" });
+    return;
+  }
+  const { randomUUID } = await import("crypto");
+  const orgId   = randomUUID();
+  const userId  = randomUUID();
+  const sessId  = randomUUID();
+  const client  = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Create user
+    await client.query(`
+      INSERT INTO users (id, email, status, created_at, updated_at)
+      VALUES ($1, $2, 'active', now(), now())
+      ON CONFLICT (email) DO NOTHING
+    `, [userId, email]);
+
+    // Resolve actual userId (may have existed)
+    const uRow = await client.query<{ id: string }>(
+      `SELECT id FROM users WHERE lower(email)=lower($1) LIMIT 1`, [email]);
+    const realUserId = uRow.rows[0]?.id ?? userId;
+
+    // Create org (is_internal_qa=FALSE, no stripe_customer_id)
+    await client.query(`
+      INSERT INTO organizations (id, name, owner_email, plan, subscription_status, is_internal_qa, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, 'none', false, now(), now())
+      ON CONFLICT (id) DO NOTHING
+    `, [orgId, email.split("@")[0] + "-test", email, plan]);
+
+    // Create org_member
+    await client.query(`
+      INSERT INTO organization_members (id, org_id, user_id, role, status, created_at)
+      VALUES ($1, $2, $3, 'owner', 'active', now())
+      ON CONFLICT DO NOTHING
+    `, [randomUUID(), orgId, realUserId]);
+
+    // Create session
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2h
+    await client.query(`
+      INSERT INTO user_sessions (id, user_id, org_id, token, expires_at, created_at, is_active)
+      VALUES ($1, $2, $3, $4, $5, now(), true)
+    `, [sessId, realUserId, orgId, sessId, expiresAt]);
+
+    await client.query("COMMIT");
+
+    res.json({
+      ok: true,
+      orgId,
+      userId: realUserId,
+      sessionToken: sessId,
+      email,
+      plan,
+      isInternalQa: false,
+      expiresAt: expiresAt.toISOString(),
+      note: "Non-QA test org — run purge-account to clean up",
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
 export default router;
