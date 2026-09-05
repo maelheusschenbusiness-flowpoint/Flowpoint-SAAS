@@ -262,6 +262,12 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         canStartTrial:       _canStartTrial,
         hasPremiumAccess:    normStatus === "active" || normStatus === "trialing" || normStatus === "past_due",
         mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing" && normStatus !== "past_due",
+        onboardingCompletedAt: await (async () => {
+          try {
+            const _obr = await orgDb(req)(`SELECT settings->>'onboardingCompletedAt' AS cat FROM user_prefs WHERE org_id=$1`, [orgId]);
+            return (_obr.rows[0]?.cat as string | null) ?? null;
+          } catch { return null; }
+        })(),
         usage:              await (async () => {
           try {
             const now = new Date();

@@ -1728,6 +1728,8 @@ async function loadData(options = {}) {
   window.__fpSessionConfirmed = true;
   // Apply role-based nav filtering now that STATE.me is set
   try { _fpApplyRoleNav(); } catch(_) {}
+  // Trigger onboarding now that STATE.me is loaded (showOnboarding() was a no-op earlier).
+  showOnboarding();
   // Seed STATE.dfsStatus from /api/me on every page load so X/N quota survives F5.
   // FP_DATAFORSEO_API.loadStatus() will overwrite this with a fresh value from /api/seo/status
   // a few milliseconds later, but this prevents the initial render showing 0/50.
@@ -11678,6 +11680,21 @@ function renderSettings() {
           }).join('')}
         </div>
       </div>
+
+      <!-- VISITE GUIDÉE -->
+      <div class="fp-card">
+        <div class="fp-card-title">
+          ${svgIcon('play-circle').replace('stroke="currentColor"','stroke="#2563EB"')}
+          ${fpT('Visite guidée')}
+        </div>
+        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">
+          ${fpT('Revoyez la présentation vidéo de FlowPoint à tout moment, depuis le début.')}
+        </div>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="openOnboardingManually()" style="display:flex;align-items:center;gap:6px">
+          ${svgIcon('play').replace('width="14"','width="13"').replace('height="14"','height="13"').replace('stroke="currentColor"','stroke="currentColor"')}
+          ${fpT('Revoir la visite guidée')}
+        </button>
+      </div>
     `;
   }
 
@@ -18048,57 +18065,143 @@ function toggleTheme() {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// ONBOARDING TOUR
+// ONBOARDING BÊTA — Visite guidée vidéo (4 étapes)
 // ─────────────────────────────────────────────────────────────────
-const ONBOARDING_STEPS = [
-  { title:'Bienvenue dans FlowPoint !', desc:'Votre centre de contrôle SEO local. Commençons par découvrir les fonctionnalités clés en 5 étapes rapides.' },
-  { title:'Palette de commandes', desc:'Appuyez sur ⌘K (ou Ctrl+K) depuis n\'importe où pour accéder à toutes les sections, audits et actions en un instant.' },
-  { title:'Lancez votre premier audit', desc:'Entrez une URL dans la section Audits et cliquez sur "Lancer". Vous obtiendrez un score SEO complet en secondes.' },
-  { title:'Configurez un monitor', desc:'Les monitors surveillent la disponibilité de vos sites 24h/24. Créez-en un via le bouton + en bas à droite.' },
-  { title:'Invitez votre équipe', desc:'Ajoutez vos collaborateurs dans la section Équipe. Ils pourront voir et gérer les données selon leur rôle.' },
+// Configuration centralisée : remplacez videoUrl par l'URL finale de chaque vidéo.
+// null = placeholder "Vidéo bientôt disponible".
+// ESC ferme et marque la visite comme passée (même comportement que "Passer la visite").
+//
+const FP_ONBOARDING_STEPS = [
+  {
+    id: 'interface',
+    title: 'Découvrez votre espace FlowPoint',
+    desc:  'FlowPoint centralise les outils nécessaires pour analyser, surveiller et piloter la présence digitale de l\'entreprise depuis un seul espace.',
+    videoUrl: null
+  },
+  {
+    id: 'workflow',
+    title: 'Comment fonctionne FlowPoint ?',
+    desc:  'Observez, analysez, agissez, surveillez, mesurez et rapportez — le cycle complet de pilotage SEO en un seul outil.',
+    videoUrl: null
+  },
+  {
+    id: 'data',
+    title: 'Transformez vos données en décisions',
+    desc:  'FlowPoint ne sert pas uniquement à collecter des données. Il permet de les comprendre et de les transformer en actions et livrables exploitables.',
+    videoUrl: null
+  },
+  {
+    id: 'daily',
+    title: 'Votre espace de travail au quotidien',
+    desc:  'Vous connaissez maintenant les bases de FlowPoint. Découvrez les fonctions utilisées quotidiennement pour piloter votre présence digitale.',
+    videoUrl: null
+  }
 ];
-let onboardingStep = 0;
+let _fpOnboardingStepIdx = 0;
 
+// showOnboarding() — appelé dans init() et après chargement de STATE.me.
+// Retourne immédiatement si STATE.me n'est pas encore chargé (pas de flash).
 function showOnboarding() {
-  if (STATE.onboardingComplete) return;
+  if (!STATE.me) return;                              // attend que /api/me soit chargé
+  if (STATE.me.onboardingCompletedAt) { STATE.onboardingComplete = true; return; } // serveur = source de vérité
+  if (STATE.onboardingComplete) return;               // déjà fermé dans cette session
   const el = $('#fp-onboarding');
   if (!el) return;
+  _fpOnboardingStepIdx = 0;
+  _fpRenderOnboardingModal();
   el.removeAttribute('hidden');
-  renderOnboarding();
+  // Focus le premier bouton pour l'accessibilité clavier
+  setTimeout(function() { const b = el.querySelector('button'); if (b) b.focus(); }, 50);
 }
 
-function renderOnboarding() {
+// openOnboardingManually() — "Revoir la visite guidée" depuis les Paramètres.
+// N'altère PAS onboarding_completed_at : c'est une réouverture manuelle.
+function openOnboardingManually() {
   const el = $('#fp-onboarding');
   if (!el) return;
-  const step = ONBOARDING_STEPS[onboardingStep];
-  el.innerHTML = `
-    <div class="fp-onboarding-card">
-      <div class="fp-onboarding-step">Étape ${onboardingStep+1} sur ${ONBOARDING_STEPS.length}</div>
-      <div class="fp-onboarding-title">${step.title}</div>
-      <div class="fp-onboarding-desc">${step.desc}</div>
-      <div class="fp-onboarding-dots">
-        ${ONBOARDING_STEPS.map((_,i)=>`<div class="fp-onboarding-dot${i===onboardingStep?' active':''}"></div>`).join('')}
-      </div>
-      <div class="fp-onboarding-actions">
-        <button class="fp-btn fp-btn-ghost" id="onboarding-skip">Passer</button>
-        <button class="fp-btn fp-btn-primary" id="onboarding-next">${onboardingStep<ONBOARDING_STEPS.length-1?'Suivant →':'Commencer !'}</button>
-      </div>
-    </div>
-  `;
-  $('#onboarding-skip').addEventListener('click', completeOnboarding);
-  $('#onboarding-next').addEventListener('click', () => {
-    if (onboardingStep < ONBOARDING_STEPS.length - 1) { onboardingStep++; renderOnboarding(); }
-    else completeOnboarding();
-  });
+  _fpOnboardingStepIdx = 0;
+  _fpRenderOnboardingModal();
+  el.removeAttribute('hidden');
+  setTimeout(function() { const b = el.querySelector('button'); if (b) b.focus(); }, 50);
 }
 
-function completeOnboarding() {
-  STATE.onboardingComplete = true;
-  localStorage.setItem('fp:onboarded','1');
+function _fpRenderOnboardingModal() {
   const el = $('#fp-onboarding');
-  if (el) el.setAttribute('hidden','');
-  showToast('success', fpT('Bienvenue ! Votre dashboard est prêt 🎉'));
+  if (!el) return;
+  const total   = FP_ONBOARDING_STEPS.length;
+  const idx     = _fpOnboardingStepIdx;
+  const step    = FP_ONBOARDING_STEPS[idx];
+  const isFirst = idx === 0;
+  const isLast  = idx === total - 1;
+
+  const dots = FP_ONBOARDING_STEPS.map(function(_s, i) {
+    return '<button class="fp-ob-dot' + (i === idx ? ' active' : '') + '" aria-label="' + fpT('Étape') + ' ' + (i+1) + '" onclick="window._fpObGoTo(' + i + ')"></button>';
+  }).join('');
+
+  const videoHtml = step.videoUrl
+    ? '<video class="fp-ob-video" src="' + escHtml(step.videoUrl) + '" controls preload="none" aria-label="' + escHtml(step.title) + '" style="width:100%;aspect-ratio:16/9;border-radius:10px;background:#000;display:block"></video>'
+    : '<div class="fp-ob-video-placeholder" role="img" aria-label="' + fpT('Vidéo bientôt disponible') + '">' +
+        '<div class="fp-ob-video-icon"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>' +
+        '<div class="fp-ob-video-label">' + fpT('Vidéo bientôt disponible') + '</div>' +
+      '</div>';
+
+  const prevBtn = !isFirst
+    ? '<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpObGoTo(' + (idx-1) + ')" aria-label="' + fpT('Précédent') + '">' + fpT('Précédent') + '</button>'
+    : '';
+  const nextLabel = isLast ? fpT('Commencer à utiliser FlowPoint') : fpT('Suivant') + ' →';
+  const nextAction = isLast ? 'window._fpObComplete()' : 'window._fpObGoTo(' + (idx+1) + ')';
+
+  el.innerHTML =
+    '<div class="fp-ob-backdrop" role="presentation"></div>' +
+    '<div class="fp-ob-dialog" role="dialog" aria-modal="true" aria-label="' + fpT('Visite guidée FlowPoint') + '">' +
+      '<div class="fp-ob-header">' +
+        '<span class="fp-ob-welcome">' + fpT('Bienvenue sur FlowPoint') + '</span>' +
+        '<span class="fp-ob-progress">' + (idx+1) + ' / ' + total + '</span>' +
+      '</div>' +
+      '<div class="fp-ob-media">' + videoHtml + '</div>' +
+      '<div class="fp-ob-body">' +
+        '<div class="fp-ob-title">' + escHtml(step.title) + '</div>' +
+        '<div class="fp-ob-desc">' + escHtml(step.desc) + '</div>' +
+        '<div class="fp-ob-dots">' + dots + '</div>' +
+        '<div class="fp-ob-actions">' +
+          '<button class="fp-btn fp-btn-ghost fp-ob-skip" onclick="window._fpObSkip()" aria-label="' + fpT('Passer la visite') + '">' + fpT('Passer la visite') + '</button>' +
+          '<div style="display:flex;gap:8px;align-items:center">' + prevBtn +
+            '<button class="fp-btn fp-btn-primary fp-ob-next" onclick="' + nextAction + '" aria-label="' + escHtml(nextLabel) + '">' + escHtml(nextLabel) + '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 }
+
+window._fpObGoTo = function(idx) {
+  _fpOnboardingStepIdx = Math.max(0, Math.min(idx, FP_ONBOARDING_STEPS.length - 1));
+  _fpRenderOnboardingModal();
+};
+window._fpObSkip    = function() { _fpCloseOnboarding(true); };
+window._fpObComplete = function() { _fpCloseOnboarding(true); };
+
+function _fpCloseOnboarding(persist) {
+  STATE.onboardingComplete = true;
+  const el = $('#fp-onboarding');
+  if (el) el.setAttribute('hidden', '');
+  if (persist) {
+    // Fire-and-forget — ne bloque jamais l'utilisateur si le serveur est lent.
+    apiFetch('/api/onboarding/complete', { method: 'POST' }).catch(function() {});
+  }
+}
+
+// ESC = équivalent "Passer la visite" (ferme et marque comme terminé).
+(function() {
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    const el = $('#fp-onboarding');
+    if (el && !el.hasAttribute('hidden')) _fpCloseOnboarding(true);
+  });
+})();
+
+// Aliases de compatibilité (appelés depuis d'autres endroits du code)
+function renderOnboarding()  { _fpRenderOnboardingModal(); }
+function completeOnboarding() { _fpCloseOnboarding(true); }
 
 // ─────────────────────────────────────────────────────────────────
 // UTILITY
@@ -18473,6 +18576,18 @@ function bindGlobalEvents() {
     'Conversions': 'Conversions', 'Pages': 'Pages', 'Voir plus': 'See more', 'Voir moins': 'See less',
     'Tout sélectionner': 'Select all', 'Aucun résultat': 'No results', 'Réessayer': 'Retry',
     'Confirmer': 'Confirm', 'Retour': 'Back', 'Suivant': 'Next', 'Précédent': 'Previous',
+    'Bienvenue sur FlowPoint': 'Welcome to FlowPoint',
+    'Visite guidée FlowPoint': 'FlowPoint guided tour',
+    'Passer la visite': 'Skip tour',
+    'Vidéo bientôt disponible': 'Video coming soon',
+    'Commencer à utiliser FlowPoint': 'Start using FlowPoint',
+    'Revoir la visite guidée': 'Watch the guided tour again',
+    'Visite guidée': 'Guided tour',
+    'Revoyez la présentation vidéo de FlowPoint à tout moment, depuis le début.': 'Watch the FlowPoint video presentation again at any time, from the beginning.',
+    'Découvrez votre espace FlowPoint': 'Discover your FlowPoint workspace',
+    'Comment fonctionne FlowPoint ?': 'How does FlowPoint work?',
+    'Transformez vos données en décisions': 'Turn your data into decisions',
+    'Votre espace de travail au quotidien': 'Your daily workspace',
     'Nom': 'Name', 'Email': 'Email', 'Site web': 'Website', 'Description': 'Description',
     'Date': 'Date', 'Type': 'Type', 'Actions': 'Actions', 'Canaux': 'Channels',
     'Sécurité du compte': 'Account security', 'Mot de passe': 'Password', 'Se déconnecter': 'Log out',
