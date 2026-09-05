@@ -104085,6 +104085,58 @@ async function initDataTables() {
     await run(client, `CREATE POLICY "be_select" ON billing_events FOR SELECT USING (org_id = current_setting('app.current_org_id', true))`);
     await run(client, `DROP POLICY IF EXISTS "be_insert" ON billing_events`);
     await run(client, `DROP POLICY IF EXISTS "be_update" ON billing_events`);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS ai_usage_logs (
+        id               TEXT PRIMARY KEY,
+        org_id           TEXT NOT NULL DEFAULT 'default',
+        user_id          TEXT,
+        feature          TEXT NOT NULL DEFAULT '',
+        model            TEXT NOT NULL DEFAULT 'gpt-5-mini',
+        tokens_used      INTEGER NOT NULL DEFAULT 0,
+        credits_used     NUMERIC NOT NULL DEFAULT 0,
+        credits_debited  NUMERIC NOT NULL DEFAULT 0,
+        tokens_in        INTEGER NOT NULL DEFAULT 0,
+        tokens_out       INTEGER NOT NULL DEFAULT 0,
+        cached_tokens    INTEGER NOT NULL DEFAULT 0,
+        cost_eur         NUMERIC NOT NULL DEFAULT 0,
+        real_cost_eur    NUMERIC NOT NULL DEFAULT 0,
+        latency_ms       INTEGER NOT NULL DEFAULT 0,
+        duration_ms      INTEGER NOT NULL DEFAULT 0,
+        success          BOOLEAN NOT NULL DEFAULT true,
+        metadata         JSONB,
+        idempotency_key  TEXT,
+        provider         TEXT,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS ai_monthly_usage (
+        id             TEXT PRIMARY KEY,
+        org_id         TEXT NOT NULL DEFAULT 'default',
+        month          TEXT NOT NULL,
+        credits_used   NUMERIC NOT NULL DEFAULT 0,
+        credits_limit  INTEGER NOT NULL DEFAULT 100000,
+        credits_extra  INTEGER NOT NULL DEFAULT 0,
+        cost_eur       NUMERIC NOT NULL DEFAULT 0,
+        request_count  INTEGER NOT NULL DEFAULT 0,
+        tokens_used    BIGINT NOT NULL DEFAULT 0,
+        reset_at       TIMESTAMPTZ,
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (org_id, month)
+      );
+    `);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS ai_credit_purchases (
+        id                       TEXT PRIMARY KEY,
+        org_id                   TEXT NOT NULL DEFAULT 'default',
+        pack                     TEXT NOT NULL DEFAULT '',
+        credits                  INTEGER NOT NULL DEFAULT 0,
+        amount_eur_cents         INTEGER NOT NULL DEFAULT 0,
+        stripe_session_id        TEXT,
+        stripe_payment_intent    TEXT,
+        created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS provider TEXT;`);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS cached_tokens INTEGER NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS real_cost_eur REAL NOT NULL DEFAULT 0;`);
