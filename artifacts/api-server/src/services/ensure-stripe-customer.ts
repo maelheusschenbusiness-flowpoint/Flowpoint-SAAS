@@ -61,7 +61,7 @@
  */
 
 import { pool } from "@workspace/db";
-import { loadOrgSettings } from "./org-settings.js";
+import { loadOrgSettings, upsertOrgSettings } from "./org-settings.js";
 import { store } from "./store.js";
 import { logger } from "../lib/logger.js";
 
@@ -163,6 +163,41 @@ async function _runWithLock(
     // CRITICAL: normalise empty-string → null.
     // Some rows have stripe_customer_id='' (not NULL); `??` does NOT treat '' as nullish.
     let rawId = settings?.stripeCustomerId ?? hint?.stripeCustomerId ?? null;
+
+    // ── Step 1B: organizations.stripe_customer_id (resubscription invariant) ─
+    // org_settings[UUID] may be absent or stale if the customer was written only
+    // through the webhook path or a prior ESC run that updated organizations but
+    // not org_settings. Reading organizations directly here ensures that an
+    // existing customer is ALWAYS found and NEVER recreated — even if org_settings
+    // is empty. This is the primary guard for the resubscription scenario:
+    //
+    //   existing org (UUID) → canceled subscription → user picks new plan
+    //   → Checkout → ESC → must reuse organizations.stripe_customer_id
+    //
+    // Invariant: 1 org UUID = 1 Stripe Customer for life.
+    if (!rawId?.trim()) {
+      try {
+        const orgRow = await client.query(
+          `SELECT stripe_customer_id FROM organizations WHERE id::text = $1 LIMIT 1`,
+          [orgId],
+        );
+        const orgCid = (orgRow.rows[0] as { stripe_customer_id?: string } | undefined)?.stripe_customer_id;
+        if (orgCid && orgCid.trim()) {
+          rawId = orgCid.trim();
+          logger.info(
+            { orgId, orgCid },
+            "[ESC] Step 1B: found Customer in organizations.stripe_customer_id — will persist to org_settings to prevent future misses",
+          );
+          // Persist to org_settings immediately so Step 1 finds it next time
+          // (fire-and-forget — non-fatal if this write fails)
+          await upsertOrgSettings(orgId, { stripeCustomerId: rawId }, client).catch((e) =>
+            logger.warn({ e, orgId }, "[ESC] Step 1B: org_settings mirror failed (non-fatal)"),
+          );
+        }
+      } catch (step1bErr) {
+        logger.warn({ step1bErr, orgId }, "[ESC] Step 1B: organizations lookup failed (non-fatal)");
+      }
+    }
 
     // ── UUID orgId fallback (auth-migration v2) ───────────────────────────
     // After migration, orgId is a UUID but org_settings PK is still the owner

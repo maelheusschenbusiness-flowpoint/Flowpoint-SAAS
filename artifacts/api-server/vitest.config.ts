@@ -108,6 +108,8 @@ export default defineConfig({
       // P0 fixes: org_members legacy + email-as-UUID guard
       "src/tests/p0-org-members-legacy.test.ts",
       "src/tests/p0-email-uuid-guard.test.ts",
+      // Resubscription: existing org → canceled sub → same customer invariant
+      "src/tests/billing-resubscription-same-customer.test.ts",
     ],
     environment: "node",
     globals:     false,

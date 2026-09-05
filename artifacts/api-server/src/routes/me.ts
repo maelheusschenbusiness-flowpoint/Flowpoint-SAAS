@@ -13,6 +13,7 @@ import {
   BillingDataUnavailableError,
   BILLING_DATA_UNAVAILABLE_CODE,
 } from "./me-entitlement.js";
+import { isUUIDFormat } from "../lib/validate-org-id.js";
 
 const router = Router();
 
@@ -130,7 +131,6 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         // A legacy (email-shaped) orgId would throw "invalid input syntax for type uuid"
         // and pollute Supabase logs.  Skip the query when id is not a valid UUID;
         // the caller falls back to plan-included addons only.
-        const { isUUIDFormat } = await import("../lib/validate-org-id.js");
         if (!isUUIDFormat(id)) {
           return [];
         }
