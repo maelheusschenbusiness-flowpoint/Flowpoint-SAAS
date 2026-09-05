@@ -159,7 +159,7 @@ export async function getPermissionsStats(orgId: string): Promise<PermissionsSta
     const [rolesRes, logsRes, membersRes, topResourceRes] = await Promise.all([
       client.query(`SELECT COUNT(*) as c FROM roles WHERE org_id=$1`, [orgId]),
       client.query(`SELECT COUNT(*) as total, SUM(CASE WHEN allowed=false THEN 1 ELSE 0 END) as blocked FROM permission_logs WHERE org_id=$1 AND created_at > NOW()-INTERVAL '1 day'`, [orgId]),
-      client.query(`SELECT COUNT(*) as c FROM org_members WHERE org_id=$1`, [orgId]),
+      client.query(`SELECT COUNT(*) as c FROM organization_members WHERE organization_id=$1`, [orgId]),
       client.query(`SELECT resource, COUNT(*) as c FROM permission_logs WHERE org_id=$1 AND created_at > NOW()-INTERVAL '7 days' GROUP BY resource ORDER BY c DESC LIMIT 1`, [orgId]),
     ]);
     const totalChecks = Number(logsRes.rows[0]?.total ?? 0);

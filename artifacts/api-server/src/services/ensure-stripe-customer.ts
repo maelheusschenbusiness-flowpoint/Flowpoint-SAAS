@@ -176,6 +176,7 @@ async function _runWithLock(
     // Without this, every future call re-runs the fallback and, if org_settings
     // [email] is ever cleared, recreates the customer.
     let _fromLegacyFallback = false;
+    let _fromPendingSignupsFallback = false;
     if (!rawId?.trim()) {
       try {
         const orgEmailRow = await client.query(
@@ -184,6 +185,7 @@ async function _runWithLock(
         );
         const ownerEmail = (orgEmailRow.rows[0] as { owner_email?: string } | undefined)?.owner_email;
         if (ownerEmail && ownerEmail !== orgId) {
+          // ── A: legacy org_settings (original fallback) ────────────────────
           const emailSettings = await loadOrgSettings(ownerEmail, client).catch(() => null);
           const legacyId = emailSettings?.stripeCustomerId;
           if (legacyId && legacyId.trim()) {
@@ -194,9 +196,63 @@ async function _runWithLock(
               "[ESC] UUID→email fallback: found customer in legacy org_settings — will persist to UUID key to prevent future duplicates",
             );
           }
+
+          // ── B: pending_signups fallback (abandoned checkout recovery) ─────
+          // Covers the ONE_CUSTOMER_INVARIANT scenario:
+          //   1. pre-register → pending_signup created
+          //   2. payment-intent → Stripe Customer created + persisted in pending_signups.stripe_customer_id
+          //   3. checkout abandoned (consumed_at = NULL, session.completed never fires)
+          //   4. org UUID created separately (magic link / Google OAuth)
+          //   5. organizations.stripe_customer_id = NULL
+          //   6. user relaunches checkout → ESC must NOT create a second Customer
+          //
+          // Strategy: deterministic — only reuse a pending_signup Customer when:
+          //   (a) it matches by owner_email (same FlowPoint identity)
+          //   (b) it is NOT already anchored to a DIFFERENT UUID org
+          //   (c) it was created within 90 days (stale signups are excluded)
+          // NB: consumed_at IS NOT filtered — a consumed signup may still carry
+          //     a valid Customer that was never written to organizations.
+          if (!rawId?.trim()) {
+            const psRows = await client.query(
+              `SELECT stripe_customer_id
+               FROM   pending_signups
+               WHERE  lower(email) = lower($1)
+                 AND  stripe_customer_id IS NOT NULL
+                 AND  created_at > NOW() - INTERVAL '90 days'
+               ORDER BY created_at DESC
+               LIMIT 5`,
+              [ownerEmail],
+            );
+            for (const ps of psRows.rows) {
+              const cid = String(ps.stripe_customer_id);
+              // Safety gate: refuse to adopt a Customer already anchored to a different org.
+              // This prevents cross-tenant contamination when multiple accounts share an email domain.
+              const conflict = await client.query(
+                `SELECT 1 FROM organizations
+                 WHERE  stripe_customer_id = $1
+                   AND  id != $2::uuid
+                 LIMIT  1`,
+                [cid, orgId],
+              );
+              if (conflict.rows.length > 0) {
+                logger.warn(
+                  { orgId, cid },
+                  "[ESC] pending-signups fallback: Customer already anchored to a different org — skipping candidate",
+                );
+                continue;
+              }
+              rawId = cid;
+              _fromPendingSignupsFallback = true;
+              logger.info(
+                { orgId, ownerEmail, cid },
+                "[ESC] pending-signups fallback: found abandoned-checkout Customer — will persist to prevent duplicate creation",
+              );
+              break;
+            }
+          }
         }
       } catch (fallbackErr) {
-        logger.warn({ fallbackErr, orgId }, "[ESC] UUID→email fallback lookup failed (non-fatal)");
+        logger.warn({ fallbackErr, orgId }, "[ESC] UUID→email/pending-signups fallback lookup failed (non-fatal)");
       }
     }
 
@@ -234,12 +290,12 @@ async function _runWithLock(
               logger.warn({ orgId, customerId: candidateId, err: updErr instanceof Error ? updErr.message : String(updErr) }, "[ESC] company backfill failed (non-fatal)");
             });
           }
-          // ── Legacy fallback persistence (critical — prevents future duplicates) ──
-          // When the UUID→email fallback found this customer, org_settings[UUID] does
+          // ── Legacy / pending-signups fallback persistence ─────────────────
+          // When either fallback found this customer, org_settings[UUID] does
           // not yet have a stripe_customer_id row.  Persist now inside this transaction
           // so the next call reads it from Step 1 (no fallback, no risk of re-creation).
           // The dual-write inside _persistStrict also updates organizations.stripe_customer_id.
-          if (_fromLegacyFallback) {
+          if (_fromLegacyFallback || _fromPendingSignupsFallback) {
             try {
               await _persistStrict(orgId, candidateId, client, t0);
               logger.info(

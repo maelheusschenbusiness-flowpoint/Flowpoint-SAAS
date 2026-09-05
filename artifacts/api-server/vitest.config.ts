@@ -105,6 +105,9 @@ export default defineConfig({
       "src/tests/admin-purge-all-clients.test.ts",
       "src/tests/billing-checkout-session-dedup.test.ts",
       "src/tests/seller-attribution.test.ts",
+      // P0 fixes: org_members legacy + email-as-UUID guard
+      "src/tests/p0-org-members-legacy.test.ts",
+      "src/tests/p0-email-uuid-guard.test.ts",
     ],
     environment: "node",
     globals:     false,
