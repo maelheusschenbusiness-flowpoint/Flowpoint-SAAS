@@ -1,4 +1,1422 @@
-dy charged month 1
+import { Router, type Request, type Response } from "express";
+import { logger } from "../lib/logger.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, getAddonPriceId } from "../lib/plans.js";
+import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
+import { createRateLimit } from "../middlewares/rateLimiter.js";
+import type Stripe from "stripe";
+import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
+import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
+import { store } from "../services/store.js";
+
+const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
+
+const router = Router();
+
+// â”€â”€ GET /api/billing/plans â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Public endpoint â€” returns the full plan catalog + add-on catalog.
+// When an authenticated orgId is present on the request (set by auth middleware
+// that runs before this route), we load the org-specific billing context from DB.
+// Falls back to "standard" defaults for unauthenticated / public pricing page.
+router.get("/billing/plans", async (req: Request, res: Response): Promise<void> => {
+  const plans = Object.values(PLAN_CONFIG).map((p) => ({
+    ...p,
+    priceId: PLAN_PRICE_IDS[p.id] ?? "",
+  }));
+
+  const orgId = (req as Request & { orgId?: string }).orgId;
+  let current: string = "standard";
+  let subscriptionStatus: string | null = null;
+  let trialEndsAt: string | null = null;
+
+  if (orgId && orgId !== "default") {
+    try {
+      const { loadBillingContext } = await import("../services/billing-context.js");
+      const ctx = await loadBillingContext(orgId);
+      current = (ctx.plan || "standard").toLowerCase();
+      subscriptionStatus = ctx.subscriptionStatus ?? null;
+      trialEndsAt = ctx.trialEndsAt ?? null;
+    } catch (ctxErr) {
+      logger.warn({ ctxErr, orgId }, "[PublicBilling] billing-context load failed â€” using defaults");
+    }
+  }
+
+  res.json({
+    plans,
+    addons: ADDON_CATALOG,
+    current,
+    subscriptionStatus,
+    trialEndsAt,
+  });
+});
+
+/**
+ * Server-authoritative quote. This validates all customer selections and
+ * returns the exact price IDs and minor-unit totals later given to Stripe.
+ */
+router.post("/billing/quote", async (req: Request, res: Response): Promise<void> => {
+  const plan = parsePlanOrEmptyPub(req.body?.plan, res);
+  if (plan === null) return;
+  const addons = parseAddonsPub(req.body?.addons, res);
+  if (addons === null) return;
+  /* A quote is only truthful for the path that will collect the money, so the
+     caller declares it. Defaults to the Payment Element used by checkout. */
+  const mechanism = req.body?.mechanism === "checkout_session" ? "checkout_session" as const : "payment_intent" as const;
+  try {
+    const trialEligible = await resolveTrialEligibility(req);
+    const inclusionPlan = plan ? undefined : await resolveSubscriberPlan(req);
+    const quote = createBillingQuote({ plan, addons, trialEligible, mechanism, inclusionPlan });
+    if (!quote.lines.length) {
+      res.status(400).json({ error: "SÃ©lectionnez un plan ou un add-on facturable." });
+      return;
+    }
+    res.json({ quote });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "INVALID_SELECTION";
+    res.status(400).json({ error: "SÃ©lection non facturable.", code });
+  }
+});
+
+type AddonsMap = Record<string, boolean | number>;
+
+// â”€â”€ Input validation helpers (mirrors billing.ts) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const ALLOWED_PLANS_PUB    = new Set<string>(["standard", "pro", "ultra"]);
+const KNOWN_ADDON_KEYS_PUB = new Set<string>([...FLAG_ADDONS, ...QTY_ADDONS]);
+const MAX_ADDON_QTY_PUB    = 500;
+
+function parsePlanPub(raw: unknown, res: Response): string | null {
+  if (raw === undefined || raw === null || raw === "") {
+    res.status(400).json({ error: "plan requis â€” valeurs acceptÃ©es : standard, pro, ultra" });
+    return null;
+  }
+  if (typeof raw !== "string") {
+    const typ = Array.isArray(raw) ? "array" : typeof raw;
+    res.status(400).json({ error: `plan doit Ãªtre une chaÃ®ne de caractÃ¨res (reÃ§u : ${typ})` });
+    return null;
+  }
+  const p = raw.trim().toLowerCase();
+  if (!ALLOWED_PLANS_PUB.has(p)) {
+    res.status(400).json({ error: `Plan inconnu : "${raw}". Plans autorisÃ©s : standard, pro, ultra` });
+    return null;
+  }
+  return p;
+}
+
+function parseAddonsPub(raw: unknown, res: Response): AddonsMap | null {
+  if (raw === undefined || raw === null) return {};
+  if (Array.isArray(raw) || typeof raw !== "object") {
+    res.status(400).json({ error: 'addons doit Ãªtre un objet (ex: { "whiteLabel": true })' });
+    return null;
+  }
+  const obj = raw as Record<string, unknown>;
+  const result: AddonsMap = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (!KNOWN_ADDON_KEYS_PUB.has(key)) {
+      res.status(400).json({ error: `Add-on inconnu : "${key}"` });
+      return null;
+    }
+    if (typeof val === "boolean") {
+      // Flag add-ons: boolean true/false is fine; clamp to canonical 1
+      result[key] = val;
+      continue;
+    }
+    if (typeof val !== "number" || !Number.isFinite(val) || !Number.isInteger(val)) {
+      const typ = Array.isArray(val) ? "array" : typeof val;
+      res.status(400).json({ error: `QuantitÃ© invalide pour "${key}" : entier attendu (reÃ§u : ${typ})` });
+      return null;
+    }
+    if (val <= 0) { res.status(400).json({ error: `QuantitÃ© invalide pour "${key}" : doit Ãªtre > 0` }); return null; }
+    if (val > MAX_ADDON_QTY_PUB) { res.status(400).json({ error: `QuantitÃ© invalide pour "${key}" : maximum ${MAX_ADDON_QTY_PUB}` }); return null; }
+    // A2 â€” quantity:false add-ons (flag add-ons submitted as numbers) must be capped at 1.
+    // whiteLabel x500 â†’ 1; negative/float/string already rejected above.
+    if (ADDON_DEFINITIONS[key]?.quantity === false) {
+      result[key] = 1;
+      continue;
+    }
+    result[key] = val;
+  }
+  return result;
+}
+
+/** Like parsePlanPub but allows "" for addon/AI-credits-only flows. null/array/number still fail. */
+function parsePlanOrEmptyPub(raw: unknown, res: Response): string | null {
+  if (raw === undefined || raw === null || raw === "") return "";
+  if (typeof raw !== "string") {
+    const typ = Array.isArray(raw) ? "array" : typeof raw;
+    res.status(400).json({ error: `plan doit Ãªtre une chaÃ®ne de caractÃ¨res (reÃ§u : ${typ})` });
+    return null;
+  }
+  const p = raw.trim().toLowerCase();
+  if (p !== "" && !ALLOWED_PLANS_PUB.has(p)) {
+    res.status(400).json({ error: `Plan inconnu : "${raw}". Plans autorisÃ©s : standard, pro, ultra` });
+    return null;
+  }
+  return p;
+}
+
+/**
+ * Server-authoritative trial eligibility.
+ *
+ * An authenticated org is checked against its billing context; a brand-new
+ * signup has no subscription history and is therefore eligible. The lookup
+ * fails closed (no trial) so the "due today" amount can never understate what
+ * Stripe is about to take.
+ */
+async function resolveTrialEligibility(req: Request): Promise<boolean> {
+  const authOrgId = (req as Request & { orgId?: string }).orgId;
+  if (authOrgId && authOrgId !== "default") {
+    try {
+      const { loadBillingContext } = await import("../services/billing-context.js");
+      const ctx = await loadBillingContext(authOrgId);
+      return ctx.canStartTrial === true;
+    } catch (err) {
+      logger.warn({ err, orgId: authOrgId }, "[PublicBilling] trial eligibility lookup failed â€” quoting without trial");
+      return false;
+    }
+  }
+  /* Anonymous / pre-registration: a new account has no subscription history. */
+  return true;
+}
+
+/**
+ * Add-on-only carts (empty plan) from an authenticated subscriber: resolve the
+ * plan they already pay for so the quote honours plan-bundled inclusions.
+ * Server-side only â€” the browser never declares its own plan. Returns
+ * undefined for anonymous requests or lookup failures (quote then treats
+ * every add-on as payable, which can only over-charge an anonymous cart that
+ * should not exist in the first place â€” never under-charge).
+ */
+async function resolveSubscriberPlan(req: Request): Promise<string | undefined> {
+  const authOrgId = (req as Request & { orgId?: string }).orgId;
+  if (!authOrgId || authOrgId === "default") return undefined;
+  try {
+    const { loadBillingContext } = await import("../services/billing-context.js");
+    const ctx = await loadBillingContext(authOrgId);
+    const p = (ctx.plan || "").toLowerCase();
+    return ALLOWED_PLANS_PUB.has(p) ? p : undefined;
+  } catch (err) {
+    logger.warn({ err, orgId: authOrgId }, "[PublicBilling] subscriber plan lookup failed â€” quoting without inclusions");
+    return undefined;
+  }
+}
+
+/* Add-ons that are one-time purchases (not subscription items) */
+const AI_CREDIT_PACKS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
+
+/* PLAN_INCLUDED_ADDONS imported from plans.ts â€” do NOT duplicate here */
+
+function buildLineItems(
+  plan: string,
+  addons: AddonsMap,
+): {
+  subscriptionItems: Array<{ price: string; quantity: number }>;
+  oneTimeItems: Array<{ price: string; quantity: number }>;
+  checkoutType: string;
+} {
+  const included = PLAN_INCLUDED_ADDONS[plan.toLowerCase()] ?? new Set();
+  const subscriptionItems: Array<{ price: string; quantity: number }> = [];
+  const oneTimeItems: Array<{ price: string; quantity: number }> = [];
+
+  /* Plan */
+  const planPriceId = PLAN_PRICE_IDS[plan.toLowerCase()];
+  if (planPriceId) subscriptionItems.push({ price: planPriceId, quantity: 1 });
+
+  /* Resolve the Stripe key once so getAddonPriceId() can prefer test-mode overrides */
+  const _stripeKeyForPrices = (() => { try { return getStripeKey() ?? ""; } catch { return ""; } })();
+
+  /* Monthly flag add-ons */
+  for (const key of FLAG_ADDONS) {
+    if (!addons[key]) continue;
+    if (included.has(key)) continue; /* skip included */
+    if (AI_CREDIT_PACKS.has(key)) continue;
+    const priceId = getAddonPriceId(key, _stripeKeyForPrices) ?? ADDON_PRICE_IDS[key];
+    if (priceId) subscriptionItems.push({ price: priceId, quantity: 1 });
+  }
+
+  /* Qty add-ons */
+  for (const key of QTY_ADDONS) {
+    const qty = Number(addons[key] || 0);
+    if (qty <= 0) continue;
+    if (AI_CREDIT_PACKS.has(key)) {
+      /* One-time */
+      const priceId = getAddonPriceId(key, _stripeKeyForPrices) ?? ADDON_PRICE_IDS[key];
+      if (priceId) oneTimeItems.push({ price: priceId, quantity: qty });
+    } else {
+      const priceId = getAddonPriceId(key, _stripeKeyForPrices) ?? ADDON_PRICE_IDS[key];
+      if (priceId) subscriptionItems.push({ price: priceId, quantity: qty });
+    }
+  }
+
+  const hasPlan  = !!planPriceId;
+  const hasOneTime = oneTimeItems.length > 0;
+  const hasMonthly = subscriptionItems.filter(i => i.price !== planPriceId).length > 0;
+
+  let checkoutType: string;
+  if (hasPlan) checkoutType = "subscription";
+  else if (hasOneTime && !hasMonthly) checkoutType = "ai_credits_only";
+  else checkoutType = "addon_only";
+
+  return { subscriptionItems, oneTimeItems, checkoutType };
+}
+
+router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Request, res: Response) => {
+  // Validate types before any business logic â€” prevents .toLowerCase() crashes on null/array/number
+  const plan = parsePlanOrEmptyPub(req.body?.plan, res);
+  if (plan === null) return;
+  const addons = parseAddonsPub(req.body?.addons, res);
+  if (addons === null) return;
+  let quote: BillingQuote;
+  try {
+    const trialEligible = await resolveTrialEligibility(req);
+    const inclusionPlan = plan ? undefined : await resolveSubscriberPlan(req);
+    quote = createBillingQuote({ plan, addons, trialEligible, mechanism: "checkout_session", inclusionPlan });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "INVALID_SELECTION";
+    res.status(400).json({ error: "SÃ©lection non facturable.", code });
+    return;
+  }
+  const source           = typeof req.body?.source === "string" ? req.body.source : "checkout_html";
+  const embedded         = req.body?.embedded === true;
+  // preRegisterToken: optional â€” two documented modes:
+  //   A (token present)  â†’ New signup: creates Stripe Customer from pending_signups record.
+  //   B (token absent)   â†’ Authenticated or anonymous session: no customer pre-linked.
+  const preRegisterToken = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken : "";
+
+  const stripeKey = getStripeKey();
+  const publicUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+  const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
+
+  /* No key in dev â†’ mock */
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      res.status(503).json({ error: "Payment service not configured." });
+      return;
+    }
+    res.json({ url: `https://checkout.stripe.com/c/pay/test_mock_${plan}_${Date.now()}`, mock: true, quote });
+    return;
+  }
+
+  /* Require plan unless it's a pure addon/credits purchase */
+  const planKey     = plan.toLowerCase();
+  const hasPlan     = !!PLAN_PRICE_IDS[planKey];
+  const addonKeys   = Object.keys(addons).filter(k => addons[k]);
+  const hasOnlyAICr = addonKeys.length > 0 && addonKeys.every(k => AI_CREDIT_PACKS.has(k));
+
+  if (!hasPlan && !hasOnlyAICr && addonKeys.length === 0) {
+    res.status(400).json({ error: "SÃ©lectionnez un plan avant de continuer." });
+    return;
+  }
+
+  /* Diagnostic log */
+  const keyMode = stripeKey.startsWith("sk_live_") ? "live" : stripeKey.startsWith("sk_test_") ? "test" : "unknown";
+  logger.info({ plan, addonCount: addonKeys.length, source, keyMode, hasPreRegisterToken: !!preRegisterToken },
+    "[PublicBilling] checkout-session requested");
+
+  try {
+    const stripe = await createStripeClient(stripeKey);
+
+    /* â”€â”€ New signup flow: load pending_signups + create/find Stripe Customer â”€â”€ */
+    let stripeCustomerId: string | undefined;
+    let signupOrgId: string | undefined; // = email, used as orgId in FlowPoint
+    // Hoisted so seller-attribution block below can reference it outside the token guard.
+    let signupRow: {
+      email: string; first_name: string; last_name: string; company_name: string;
+      country: string | null; address: string | null; city: string | null;
+      postal_code: string | null; phone: string | null; vat: string | null;
+      stripe_customer_id: string | null;
+    } | null = null;
+
+    if (preRegisterToken) {
+      const { pool: pgPool } = await import("@workspace/db");
+      // Use a single client held open for the entire customer-resolution section.
+      // BEGIN + FOR UPDATE serialises concurrent payment-intent / checkout-session
+      // calls that share the same pre_register_token, preventing the race condition
+      // that caused one email to produce two Stripe Customers.
+      const dbClient = await pgPool.connect();
+      let _csLockTxOpen = false;
+
+      try {
+        await dbClient.query("BEGIN");
+        _csLockTxOpen = true;
+        const r = await dbClient.query(
+          `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, stripe_customer_id
+           FROM pending_signups WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL LIMIT 1 FOR UPDATE`,
+          [preRegisterToken]
+        );
+        if (r.rows.length > 0) signupRow = r.rows[0];
+        if (!signupRow) {
+          await dbClient.query("ROLLBACK");
+          _csLockTxOpen = false;
+          dbClient.release();
+          res.status(400).json({ error: "Session d'inscription expirÃ©e ou invalide. Veuillez recommencer." });
+          return;
+        }
+      } catch (_csLockErr) {
+        if (_csLockTxOpen) { await dbClient.query("ROLLBACK").catch(() => {}); }
+        dbClient.release();
+        throw _csLockErr;
+      }
+
+      signupOrgId = signupRow.email; // orgId = email in FlowPoint
+
+      // â”€â”€ Idempotent customer: reuse existing if a previous attempt already created one â”€â”€
+      if (signupRow.stripe_customer_id) {
+        try {
+          const existing = await stripe.customers.retrieve(signupRow.stripe_customer_id);
+          if (!(existing as { deleted?: boolean }).deleted) {
+            stripeCustomerId = signupRow.stripe_customer_id;
+            logger.info({ customerId: stripeCustomerId }, "[PublicBilling] checkout-session: reusing Stripe Customer from pending_signups");
+          }
+        } catch { /* deleted or unreachable â€” fall through to cross-token search */ }
+      }
+
+      // â”€â”€ All customer resolution runs inside the FOR UPDATE lock on dbClient â”€â”€
+      // Cross-token dedup: a sibling pending_signup for the same email may already
+      // have a Stripe Customer from a payment-intent or a previous checkout-session.
+      // These lookups use a *separate* read-only connection â€” they query different rows
+      // (not the locked one) so they don't require the same transaction client.
+      if (!stripeCustomerId) {
+        const { pool: _csCrossPool } = await import("@workspace/db");
+        const _csCrossC = await _csCrossPool.connect();
+        try {
+          const _csCrossR = await _csCrossC.query<{ stripe_customer_id: string }>(
+            `SELECT stripe_customer_id FROM pending_signups
+             WHERE lower(email) = lower($1)
+               AND consumed_at IS NULL
+               AND expires_at > NOW()
+               AND stripe_customer_id IS NOT NULL
+               AND token != $2
+             ORDER BY created_at DESC LIMIT 1`,
+            [signupRow.email, preRegisterToken]
+          );
+          if (_csCrossR.rows.length > 0) {
+            const _csCrossId = _csCrossR.rows[0]!.stripe_customer_id;
+            try {
+              const _csCrossEc = await stripe.customers.retrieve(_csCrossId);
+              if (!(_csCrossEc as { deleted?: boolean }).deleted) {
+                stripeCustomerId = _csCrossId;
+                logger.info(
+                  { customerId: stripeCustomerId, email: signupRow.email },
+                  "[PublicBilling] checkout-session: reusing Stripe Customer from sibling pending_signup (cross-token dedup)"
+                );
+              }
+            } catch { /* deleted or unreachable â€” fall through to Stripe email search */ }
+          }
+        } finally { _csCrossC.release(); }
+      }
+
+      // â”€â”€ Stripe email search fallback: catches customers created via payment-intent
+      // before this checkout-session was opened, or when the DB sibling lookup above
+      // found nothing. The FOR UPDATE lock on our token row ensures that if payment-intent
+      // is mid-creation on the same token, we wait for it to commit before reaching here.
+      if (!stripeCustomerId) {
+        const _csEmailList = await stripe.customers.list({ email: signupRow.email, limit: 5 });
+        for (const _csEmailEc of _csEmailList.data) {
+          if ((_csEmailEc as { deleted?: boolean }).deleted) continue;
+          stripeCustomerId = _csEmailEc.id;
+          logger.info(
+            { customerId: stripeCustomerId, email: signupRow.email },
+            "[PublicBilling] checkout-session: found existing Stripe Customer by email (cross-token fallback)"
+          );
+          break;
+        }
+      }
+
+      if (!stripeCustomerId) {
+        // Create Stripe Customer with full contact info (never empty)
+        const customerData: Stripe.CustomerCreateParams = {
+          email: signupRow.email,
+          // Real name from registration; fall back to local part of email (never use company_name as name)
+          name:  `${signupRow.first_name} ${signupRow.last_name}`.trim() || signupRow.email.split("@")[0],
+          // Only set description when company_name is a real company, not an email address
+          // (Google OAuth signup stores "" or the user's email as company_name placeholder)
+          ...(signupRow.company_name && !signupRow.company_name.includes("@") ? { description: signupRow.company_name } : {}),
+          metadata: {
+            flowpointOrgId:     signupRow.email,
+            flowpointUserId:    signupRow.email,
+            orgId:              signupRow.email,
+            companyName:        signupRow.company_name,
+            firstName:          signupRow.first_name,
+            lastName:           signupRow.last_name,
+            pre_register_token: preRegisterToken,
+            signup_source:      "new_signup_flow",
+            environment:        process.env["NODE_ENV"] === "production" ? "production" : "development",
+            ...(signupRow.vat ? { vat: signupRow.vat } : {}),
+          },
+        };
+        if (signupRow.address || signupRow.city || signupRow.country) {
+          customerData.address = {
+            line1:       signupRow.address  ?? "",
+            city:        signupRow.city     ?? "",
+            postal_code: signupRow.postal_code ?? "",
+            country:     signupRow.country  ?? "",
+          };
+        }
+        if (signupRow.phone) customerData.phone = signupRow.phone;
+
+        const stripeCustomer = await stripe.customers.create(customerData);
+        stripeCustomerId = stripeCustomer.id;
+        logger.info({ customerId: stripeCustomerId, orgId: signupOrgId },
+          "[PublicBilling] Stripe Customer created and stored in pending_signups");
+      }
+
+      // Persist inside the FOR UPDATE transaction â€” atomic write-back ensures any
+      // concurrent call that hits the lock after us reads the persisted customer.
+      try {
+        await dbClient.query(
+          `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
+          [stripeCustomerId, preRegisterToken]
+        );
+        await dbClient.query("COMMIT");
+        _csLockTxOpen = false;
+      } catch (_csCommitErr) {
+        await dbClient.query("ROLLBACK").catch(() => {});
+        _csLockTxOpen = false;
+        throw _csCommitErr;
+      } finally {
+        dbClient.release();
+      }
+    }
+
+    // For authenticated users (cookie/Bearer session, no preRegisterToken):
+    // The /public/ router has no requireAuth middleware, so req.orgId is never set here.
+    // We resolve the session manually from the Bearer token or fp_token cookie.
+    //
+    // â”€â”€ ARCHITECTURAL INVARIANT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Before stripe.checkout.sessions.create() is called for any authenticated user:
+    //   org UUID â†” canonical Stripe customer cus_...
+    // must already be resolved, created if absent, and persisted in DB.
+    // The webhook must never be the first writer of this binding.
+    //
+    // Implementation: ensureStripeCustomer (v4, two-layer deduplication):
+    //   Layer 1 â€” _inflight Map: concurrent requests in the same process share one Promise
+    //   Layer 2 â€” pg_advisory_xact_lock: cross-process/cross-instance DB-level serialisation
+    //   Steps: DB read â†’ Stripe retrieve â†’ metadata search (orphan recovery) â†’ create â†’
+    //          persist with strict confirmation (throws on failure) â†’ organisations mirror
+    //
+    // If ensureStripeCustomer throws (Stripe or DB unreachable): abort with 503.
+    // Do NOT create a Checkout Session without a confirmed orgâ†”customer binding â€”
+    // this would produce an orphan Stripe customer with no DB link.
+    if (!preRegisterToken) {
+      try {
+        const _authHeader  = req.headers["authorization"];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const _cookieToken = (req as any).cookies?.["fp_token"];
+        let _sessionToken: string | undefined;
+        if (typeof _authHeader === "string" && _authHeader.startsWith("Bearer ")) {
+          _sessionToken = _authHeader.slice(7).trim();
+        } else if (typeof _cookieToken === "string" && _cookieToken.trim()) {
+          _sessionToken = _cookieToken.trim();
+        }
+        if (_sessionToken) {
+          const { getSession } = await import("../services/sessions.js");
+          const _sess = await getSession(_sessionToken);
+          if (_sess?.orgId && _sess.orgId !== "default") {
+            signupOrgId = _sess.orgId; // included in session metadata.orgId below
+            try {
+              // Load billing context for the hint (avoids a duplicate DB read inside ESC).
+              const { loadBillingContext: _csLbc } = await import("../services/billing-context.js");
+              const _authCtx = await _csLbc(_sess.orgId);
+
+              // â”€â”€ Pre-register bridge (email â†’ UUID transition) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // When a new org is activated from a pre-register flow, the pre-register
+              // Customer (keyed by email) may not yet be persisted to the org's DB row.
+              // If we call ensureStripeCustomer without this bridge, it finds no customer
+              // and creates a second one â€” violating the ONE_CUSTOMER_INVARIANT.
+              // Fix: before ESC, look up pending_signups for this email and reuse any
+              // Customer already anchored to that signup, normalising its metadata to UUID.
+              if (!_authCtx.stripeCustomerId && _authCtx.email) {
+                try {
+                  const { pool: _csBridgePool } = await import("@workspace/db");
+                  const _csBridgeC = await _csBridgePool.connect();
+                  let _csBridgeCid: string | null = null;
+                  try {
+                    // P0-A ONE_CUSTOMER_INVARIANT: recover a Customer created during an
+                    // abandoned pre-register checkout.  Filters relaxed intentionally:
+                    //   â€¢ consumed_at IS NULL removed â€” a consumed signup may still carry a
+                    //     valid Customer that was never mirrored to organizations.
+                    //   â€¢ expires_at > NOW() removed â€” the Customer is Stripe-side permanent
+                    //     even when the pending_signup row has expired.
+                    //   â€¢ 90-day window keeps the lookup deterministic and bounded.
+                    // Safety: we validate in Stripe (below) and check cross-org anchor before use.
+                    const _csBridgeRows = await _csBridgeC.query<{ stripe_customer_id: string }>(
+                      `SELECT stripe_customer_id FROM pending_signups
+                       WHERE lower(email) = lower($1)
+                         AND stripe_customer_id IS NOT NULL
+                         AND created_at > NOW() - INTERVAL '90 days'
+                       ORDER BY created_at DESC LIMIT 5`,
+                      [_authCtx.email]
+                    );
+                    // Pick the first candidate not already anchored to a different org
+                    for (const _psRow of _csBridgeRows.rows) {
+                      const _psCid = _psRow.stripe_customer_id;
+                      // Verify not claimed by a different UUID org
+                      const { pool: _csAnchorPool } = await import("@workspace/db");
+                      const _csAnchorC = await _csAnchorPool.connect();
+                      let _isConflict = false;
+                      try {
+                        const _csConflict = await _csAnchorC.query(
+                          `SELECT 1 FROM organizations
+                           WHERE stripe_customer_id = $1 AND id != $2::uuid LIMIT 1`,
+                          [_psCid, _sess.orgId]
+                        );
+                        _isConflict = _csConflict.rows.length > 0;
+                      } finally { _csAnchorC.release(); }
+                      if (_isConflict) {
+                        logger.warn({ customerId: _psCid, orgId: _sess.orgId },
+                          "[PublicBilling] checkout-session: pending_signup Customer anchored to another org â€” skipping");
+                        continue;
+                      }
+                      _csBridgeCid = _psCid;
+                      break;
+                    }
+                  } finally { _csBridgeC.release(); }
+
+                  if (_csBridgeCid) {
+                    const _csBridgeEc = await stripe.customers.retrieve(_csBridgeCid);
+                    if (!(_csBridgeEc as { deleted?: boolean }).deleted) {
+                      // Normalise metadata from email-keyed orgId to UUID orgId
+                      await stripe.customers.update(_csBridgeCid, {
+                        metadata: {
+                          flowpointOrgId: _sess.orgId,
+                          orgId:          _sess.orgId,
+                          org_id:         _sess.orgId,
+                        },
+                      }).catch(() => {});
+                      stripeCustomerId = _csBridgeCid;
+                      // Persist immediately so ESC and future calls find it in DB
+                      const { persistOrgData: _csBridgePod } = await import("../services/org-data.js");
+                      await _csBridgePod(_sess.orgId, { stripeCustomerId: _csBridgeCid });
+                      logger.info(
+                        { customerId: _csBridgeCid, orgId: _sess.orgId, email: _authCtx.email },
+                        "[PublicBilling] checkout-session: pre-register Customer reused for UUID org â€” metadata normalised to UUID (emailâ†’UUID bridge)"
+                      );
+                    }
+                  }
+                } catch (_csBridgeErr) {
+                  logger.warn({ _csBridgeErr, orgId: _sess.orgId },
+                    "[PublicBilling] checkout-session: pre-register bridge lookup failed (non-fatal â€” falling through to ensureStripeCustomer)");
+                }
+              }
+
+              // ensureStripeCustomer guarantees exactly one canonical customer per org.
+              // Only called when the bridge above did not resolve a pre-register customer.
+              if (!stripeCustomerId) {
+                const { ensureStripeCustomer: _escFn } = await import("../services/ensure-stripe-customer.js");
+                const _escHint = {
+                  stripeCustomerId: _authCtx.stripeCustomerId,
+                  email:            _authCtx.email,
+                  firstName:        _authCtx.firstName,
+                  orgName:          _authCtx.orgName,
+                };
+                const _resolvedCustomerId = await _escFn(_sess.orgId, _escHint, stripeKey);
+                stripeCustomerId = _resolvedCustomerId;
+
+                // ESC writes to org_settings (primary) + fire-and-forget organisations mirror.
+                // We await persistOrgData explicitly so organisations.stripe_customer_id is
+                // committed before sessions.create â€” makes loadBillingContext deterministic
+                // on the next request, regardless of the fire-and-forget timing in ESC.
+                if (!_authCtx.stripeCustomerId || _authCtx.stripeCustomerId !== _resolvedCustomerId) {
+                  const { persistOrgData: _escPod } = await import("../services/org-data.js");
+                  await _escPod(_sess.orgId, { stripeCustomerId: _resolvedCustomerId });
+                }
+              }
+
+              logger.info(
+                { customerId: stripeCustomerId, orgId: _sess.orgId, wasNew: !_authCtx.stripeCustomerId },
+                "[PublicBilling] checkout-session: Stripe Customer guaranteed and persisted before checkout"
+              );
+            } catch (_escErr) {
+              // Hard failure: do NOT proceed to sessions.create without a confirmed binding.
+              logger.error({ _escErr, orgId: _sess.orgId },
+                "[PublicBilling] checkout-session: ensureStripeCustomer failed â€” aborting to prevent orphan customer");
+              res.status(503).json({
+                error: "Impossible d'initialiser votre compte de paiement. RÃ©essayez dans quelques instants.",
+                code: "STRIPE_CUSTOMER_INIT_FAILED",
+              });
+              return;
+            }
+          }
+        }
+      } catch (_optAuthErr) {
+        logger.warn({ _optAuthErr },
+          "[PublicBilling] checkout-session: session resolution failed (non-fatal for anonymous flow)");
+      }
+    }
+
+    const { subscriptionItems, oneTimeItems, checkoutType } = buildLineItems(planKey, addons);
+
+    const selectedAddonNames = addonKeys.join(",");
+    const included        = PLAN_INCLUDED_ADDONS[planKey] ?? new Set();
+    const immediateAddons = addonKeys.filter(k => !AI_CREDIT_PACKS.has(k) && !included.has(k));
+    const includedAddons  = addonKeys.filter(k => included.has(k));
+    const aiCredits       = addonKeys.filter(k => AI_CREDIT_PACKS.has(k));
+
+    const finalCheckoutType = (checkoutType === "subscription" && immediateAddons.length > 0)
+      ? "subscription_with_immediate_addons"
+      : checkoutType;
+
+    const metadata: Record<string, string> = {
+      flowpoint_checkout_type: finalCheckoutType,
+      selected_plan:           planKey || "",
+      selected_addons:         selectedAddonNames,
+      immediate_addons:        immediateAddons.join(","),
+      included_addons:         includedAddons.join(","),
+      ai_credits:              aiCredits.join(","),
+      trial_plan:              hasPlan ? "true" : "false",
+      addons_billed_now:       immediateAddons.length > 0 ? "true" : "false",
+      source,
+      flowpoint_cart:          "true",
+      // New signup fields â€” enable webhook + checkout-complete to create the account
+      ...(signupOrgId       ? { orgId: signupOrgId }                     : {}),
+      ...(preRegisterToken  ? { pre_register_token: preRegisterToken }    : {}),
+    };
+
+    // Seller attribution (beta): read seller_id from pending_signup â€” never from frontend.
+    // Additive only â€” does NOT modify pricing, trial, customer, or line_items.
+    let _csSellerCode: string | null = null;
+    if (signupRow) {
+      try {
+        const { resolveSellerIdFromToken: _rsit } = await import("../services/seller-attribution.js");
+        const _sid = await _rsit(preRegisterToken!);
+        if (_sid) {
+          const { pool: _csSelPool } = await import("@workspace/db");
+          const _sr = await _csSelPool.query<{ seller_code: string }>(
+            `SELECT seller_code FROM sellers WHERE id = $1 AND status = 'active' LIMIT 1`, [_sid]
+          );
+          _csSellerCode = _sr.rows[0]?.seller_code ?? null;
+          if (_csSellerCode) {
+            metadata["seller_id"]           = _csSellerCode;
+            metadata["seller_attribution"]  = "ref_link";
+          }
+        }
+      } catch (_sce) {
+        logger.warn({ _sce }, "[PublicBilling] checkout-session seller lookup failed (non-fatal)");
+      }
+    }
+
+    /* â”€â”€ Helper: build embedded vs redirect params, optionally pre-attach customer â”€â”€ */
+    const returnUrl  = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`;
+    const successUrl = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl  = `${publicUrl}/cancel.html`;
+
+    const customerParam = stripeCustomerId ? {
+      customer: stripeCustomerId,
+      // Automatically save any billing address / name the user provides during checkout
+      // back to the Stripe Customer object (only active when a customer is pre-attached)
+      customer_update: { address: "auto" as const, name: "auto" as const },
+    } : {};
+
+    function urlOrEmbedded(params: Record<string, unknown>) {
+      if (embedded) {
+        return { ...params, ...customerParam, ui_mode: "embedded_page", return_url: returnUrl };
+      }
+      return { ...params, ...customerParam, success_url: successUrl, cancel_url: cancelUrl };
+    }
+
+    function respond(session: { id: string; url: string | null; client_secret: string | null }) {
+      logger.info({ checkoutType, sessionId: session.id, embedded }, "[PublicBilling] Session created");
+      if (embedded) {
+        res.json({ clientSecret: session.client_secret, publishableKey, quote, sessionId: session.id });
+      } else {
+        res.json({ url: session.url, quote, sessionId: session.id });
+      }
+    }
+
+    /* â”€â”€ Case 1: subscription (plan Â± recurring add-ons, optional AI credit packs) â”€â”€ */
+    if (checkoutType === "subscription") {
+      if (subscriptionItems.length === 0) {
+        res.status(400).json({ error: "Plan invalide ou introuvable." });
+        return;
+      }
+
+      // Stripe checkout sessions support mixed line_items in mode:"subscription":
+      // recurring prices â†’ subscription items, one-time prices â†’ first invoice only.
+      // Do NOT use add_invoice_items (rejected by 2026-04-22.dahlia) nor
+      // invoiceItems.create() (pending items persist if checkout is abandoned).
+      // Built from the quote, so Stripe is never asked to charge something the
+      // customer was not shown (and never for a bundled add-on).
+      const allLineItems = quoteToStripeLineItems(quote);
+
+      const sessionParams = urlOrEmbedded({
+        mode: "subscription",
+        currency: "eur",
+        line_items: allLineItems,
+        subscription_data: {
+          /* Only grant the trial the server actually quoted. Hardcoding 14 here
+             gave an ineligible customer a free period the quote had already
+             charged them for â€” Stripe's invoice and our displayed total then
+             disagreed on day zero. */
+          ...(quote.trialEligible ? { trial_period_days: quote.trialDays } : {}),
+          metadata,
+        },
+        metadata,
+      }) as Parameters<typeof stripe.checkout.sessions.create>[0];
+
+      logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
+      const session = await stripe.checkout.sessions.create(sessionParams);
+      respond(session as { id: string; url: string | null; client_secret: string | null });
+      return;
+    }
+
+    /* â”€â”€ Case 2: AI credits only â†’ one-time payment â”€â”€ */
+    if (checkoutType === "ai_credits_only") {
+      if (oneTimeItems.length === 0) {
+        res.status(400).json({ error: "Aucun pack IA sÃ©lectionnÃ©." });
+        return;
+      }
+      const sessionParams = urlOrEmbedded({
+        mode: "payment",
+        line_items: quoteToStripeLineItems(quote),
+        metadata,
+      }) as Parameters<typeof stripe.checkout.sessions.create>[0];
+
+      logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
+      const session = await stripe.checkout.sessions.create(sessionParams);
+      respond(session as { id: string; url: string | null; client_secret: string | null });
+      return;
+    }
+
+    /* â”€â”€ Case 3: addon_only (client with active plan) â”€â”€ */
+    if (checkoutType === "addon_only") {
+      const allItems = quoteToStripeLineItems(quote);
+      if (allItems.length === 0) {
+        res.status(400).json({ error: "Aucun add-on valide sÃ©lectionnÃ©." });
+        return;
+      }
+      const sessionParams = urlOrEmbedded({
+        mode: "subscription",
+        line_items: allItems,
+        metadata,
+      }) as Parameters<typeof stripe.checkout.sessions.create>[0];
+
+      logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
+      const session = await stripe.checkout.sessions.create(sessionParams);
+      respond(session as { id: string; url: string | null; client_secret: string | null });
+      return;
+    }
+
+    res.status(400).json({ error: "SÃ©lection invalide." });
+  } catch (err) {
+    logger.error({ err }, "[PublicBilling] Failed to create checkout session");
+    res.status(500).json({ error: "Erreur lors de la crÃ©ation de la session. RÃ©essayez." });
+  }
+});
+
+/* â”€â”€â”€ POST /api/public/payment-intent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   Creates a PaymentIntent (immediate add-on charge) or a SetupIntent
+   (plan-only trial â€” no charge today, card saved for subscription).
+ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Request, res: Response) => {
+  const plan = parsePlanOrEmptyPub(req.body?.plan, res);
+  if (plan === null) return;
+  const addons = parseAddonsPub(req.body?.addons, res);
+  if (addons === null) return;
+  const preRegisterToken   = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
+
+  // A1 â€” Auth guard for addon-only carts (no new signup):
+  // If there's no plan and no preRegisterToken, the buyer must be an authenticated
+  // existing user. Without an orgId we cannot attribute the payment in the webhook.
+  // orgContext middleware populates req.orgId from Bearer/cookie globally,
+  // but as a safety net we also perform the same manual resolution that
+  // checkout-session does, so pricing.html fetches without explicit credentials
+  // never produce a false 401.
+  let _piReqOrgId = (req as Request & { orgId?: string }).orgId;
+  if (!plan && !preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
+    // Manual session resolution â€” mirrors checkout-session logic at lines 415-449.
+    try {
+      const _authHeader  = req.headers["authorization"];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const _cookieToken = (req as any).cookies?.["fp_token"];
+      let _piSessionToken: string | undefined;
+      if (typeof _authHeader === "string" && _authHeader.startsWith("Bearer ")) {
+        _piSessionToken = _authHeader.slice(7).trim();
+      } else if (typeof _cookieToken === "string" && _cookieToken.trim()) {
+        _piSessionToken = _cookieToken.trim();
+      }
+      if (_piSessionToken) {
+        const { getSession } = await import("../services/sessions.js");
+        const _piSess = await getSession(_piSessionToken);
+        if (_piSess?.orgId && _piSess.orgId !== "default") {
+          _piReqOrgId = _piSess.orgId;
+          logger.info({ orgId: _piReqOrgId }, "[PublicBilling] payment-intent: orgId resolved via manual session lookup");
+        }
+      }
+    } catch (_piAuthErr) {
+      logger.warn({ _piAuthErr }, "[PublicBilling] payment-intent: optional session resolution failed (non-fatal)");
+    }
+  }
+  if (!plan && !preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
+    const addonKeys = Object.keys(addons as Record<string, unknown>);
+    if (addonKeys.length > 0) {
+      logger.warn({ addonKeys }, "[PublicBilling] payment-intent: addon-only cart rejected â€” unauthenticated (no orgId)");
+      res.status(401).json({ error: "Authentification requise pour acheter des add-ons.", code: "UNAUTHENTICATED" });
+      return;
+    }
+  }
+  let quote: BillingQuote;
+  try {
+    const trialEligible = await resolveTrialEligibility(req);
+    const inclusionPlan = plan ? undefined : await resolveSubscriberPlan(req);
+    quote = createBillingQuote({ plan, addons, trialEligible, mechanism: "payment_intent", inclusionPlan });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "INVALID_SELECTION";
+    res.status(400).json({ error: "SÃ©lection non facturable.", code });
+    return;
+  }
+  /* Trial length comes from the server-validated quote â€” never from the browser,
+     so the "due today" figure shown to the customer always matches the charge. */
+  const trialDaysRemaining = quote.trialDays;
+  /* Billing address collected from the checkout-payment.html form */
+  const _rawAddr = req.body?.billingAddress && typeof req.body.billingAddress === "object" ? req.body.billingAddress : null;
+  const billingAddress = _rawAddr ? {
+    line1:       typeof _rawAddr.line1       === "string" ? _rawAddr.line1.trim()       : "",
+    line2:       typeof _rawAddr.line2       === "string" ? _rawAddr.line2.trim()       : "",
+    city:        typeof _rawAddr.city        === "string" ? _rawAddr.city.trim()        : "",
+    postal_code: typeof _rawAddr.postal_code === "string" ? _rawAddr.postal_code.trim() : "",
+    country:     typeof _rawAddr.country     === "string" ? _rawAddr.country.trim().toUpperCase() : "",
+  } : null;
+  const stripeKey      = getStripeKey();
+  const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
+
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      res.status(503).json({ error: "Payment service not configured." });
+      return;
+    }
+    res.json({ clientSecret: "seti_test_mock_secret", publishableKey: "pk_test_mock", mode: "setup", immediateAmount: 0, defaultValues: null, quote });
+    return;
+  }
+
+  const planKey  = plan.toLowerCase();
+  const hasPlan  = !!PLAN_PRICE_IDS[planKey];
+  /* NOT amountDueTodayMinor: the plan is due today when there is no trial, but
+     it is invoiced by its own subscription at creation. Collecting it here too
+     would debit the first month twice. Zero falls through to a SetupIntent. */
+  const immediateAmountCents = quote.paymentIntentAmountMinor;
+
+  // Derive orgId (= email) from pending_signups so the webhook can activate the account
+  let piOrgId: string | undefined;
+  if (preRegisterToken) {
+    try {
+      const { pool: pgPool } = await import("@workspace/db");
+      const lookupClient = await pgPool.connect();
+      try {
+        const r = await lookupClient.query<{ email: string }>(
+          `SELECT email FROM pending_signups WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL LIMIT 1`,
+          [preRegisterToken]
+        );
+        if (r.rows[0]?.email) piOrgId = r.rows[0].email;
+      } finally { lookupClient.release(); }
+    } catch (e) {
+      logger.warn({ e }, "[PublicBilling] Could not resolve orgId for payment-intent metadata");
+    }
+  }
+
+  const metadata: Record<string, string> = {
+    source:              "checkout_payment",
+    plan:                planKey,
+    addons:              JSON.stringify(addons),
+    flowpoint_cart:      "true",
+    ...(preRegisterToken   ? { pre_register_token:    preRegisterToken            } : {}),
+    ...(piOrgId            ? { orgId:                 piOrgId                     } : {}),
+    ...(trialDaysRemaining ? { trial_days_remaining:  String(trialDaysRemaining)  } : {}),
+  };
+
+  // Seller attribution (beta): read seller_id from pending_signup â€” additive metadata only.
+  // MUST NOT influence amount, customer resolution, trial, or line_items.
+  if (preRegisterToken) {
+    (async () => {
+      try {
+        const { resolveSellerIdFromToken: _rsit2 } = await import("../services/seller-attribution.js");
+        const _sid2 = await _rsit2(preRegisterToken);
+        if (_sid2) {
+          const _piPool = await import("@workspace/db");
+          const _sc2 = await _piPool.pool.query<{ seller_code: string }>(
+            `SELECT seller_code FROM sellers WHERE id = $1 AND status = 'active' LIMIT 1`, [_sid2]
+          );
+          const _piSC = _sc2.rows[0]?.seller_code ?? null;
+          if (_piSC) {
+            metadata["seller_id"]          = _piSC;
+            metadata["seller_attribution"] = "ref_link";
+          }
+        }
+      } catch (_pe) {
+        logger.warn({ _pe }, "[PublicBilling] payment-intent seller lookup failed (non-fatal)");
+      }
+    })().catch(() => {});
+  }
+
+  // â”€â”€ Closed-tab recovery: tag AI-credits-only PaymentIntents â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // If the user closes the browser before checkout-return.html calls
+  // /api/public/finalize-checkout, the payment_intent.succeeded webhook is the
+  // only remaining actor. Tagging the PI with type=ai_credits + pack + credits
+  // lets the webhook credit the org exactly once even without a browser callback.
+  const _piAddonKeys = Object.keys(addons as Record<string, unknown>);
+  const _piAIKeys = _piAddonKeys.filter(k => AI_CREDIT_PACKS.has(k));
+  if (_piAIKeys.length > 0 && _piAIKeys.length === _piAddonKeys.length && !preRegisterToken) {
+    const _CREDITS_PER_PACK: Record<string, number> = { aiCreditsPack50k: 50000, aiCreditsPack200k: 200000, aiCreditsPack500k: 500000 };
+    const _totalPICredits = _piAIKeys.reduce((s, k) => s + (_CREDITS_PER_PACK[k] ?? 0), 0);
+    metadata["type"]           = "ai_credits";
+    metadata["pack"]           = _piAIKeys.join(",");
+    metadata["credits"]        = String(_totalPICredits);
+    metadata["amountEurCents"] = String(immediateAmountCents);
+    // orgId added after customer resolution below â€” fall-through intentional
+  }
+
+  try {
+    const stripe = await createStripeClient(stripeKey);
+
+    // â”€â”€ Pre-registration: find or create Stripe Customer (1 email = 1 customer invariant) â”€â”€
+    // Prevents duplicate customers when user goes back and retries checkout with same token.
+    let preRegCustomerId: string | undefined;
+    /* defaultValues sent back to the frontend to pre-fill the Stripe Address Element */
+    let _piDefaultValues: { name: string; email: string; country: string } | null = null;
+    if (preRegisterToken) {
+      try {
+        const { pool: _piPool } = await import("@workspace/db");
+        // Hold a single client open for the entire customer-resolution section.
+        // BEGIN + FOR UPDATE serialises concurrent payment-intent / checkout-session
+        // calls for the same pre_register_token, preventing the race that produced
+        // two Stripe Customers from a single signup.
+        const _piC = await _piPool.connect();
+        let _piRow: { email: string; first_name: string; last_name: string; company_name: string; address: string | null; city: string | null; postal_code: string | null; country: string | null; stripe_customer_id: string | null } | null = null;
+        let _piTxOpen = false;
+        try {
+          await _piC.query("BEGIN");
+          _piTxOpen = true;
+          const _piR = await _piC.query(
+            `SELECT email, first_name, last_name, company_name,
+                    address, city, postal_code, country, stripe_customer_id
+             FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1 FOR UPDATE`,
+            [preRegisterToken]
+          );
+          _piRow = _piR.rows[0] ?? null;
+        } catch (_piLockErr) {
+          if (_piTxOpen) { await _piC.query("ROLLBACK").catch(() => {}); }
+          _piC.release();
+          throw _piLockErr;
+        }
+
+        if (!_piRow) {
+          await _piC.query("ROLLBACK").catch(() => {});
+          _piC.release();
+        } else {
+          const _piEmail = _piRow.email;
+          metadata["orgId"]  = _piEmail;
+          metadata["org_id"] = _piEmail;
+
+          /* Build full customer identity from pending_signups + submitted billingAddress */
+          const _piName = `${_piRow.first_name} ${_piRow.last_name}`.trim() || _piRow.company_name || _piEmail;
+          /* Expose to frontend for Address Element pre-fill */
+          _piDefaultValues = { name: _piName, email: _piEmail, country: _piRow.country || "FR" };
+          /* Merge: submitted form address takes priority over stored address */
+          const _piAddr = billingAddress?.line1 ? billingAddress : (
+            (_piRow.address || _piRow.city || _piRow.country) ? {
+              line1:       _piRow.address  ?? "",
+              line2:       "",
+              city:        _piRow.city     ?? "",
+              postal_code: _piRow.postal_code ?? "",
+              country:     _piRow.country  ?? "",
+            } : null
+          );
+          const _piCustomerData = {
+            email:              _piEmail,
+            name:               _piName,
+            ...(_piRow.company_name ? { description: _piRow.company_name } : {}),
+            preferred_locales:  ["fr"] as string[],
+            metadata: {
+              orgId: _piEmail, org_id: _piEmail, flowpointOrgId: _piEmail,
+              pre_register_token: preRegisterToken,
+              signup_source: "payment_intent",
+              ..._piRow.company_name ? { companyName: _piRow.company_name } : {},
+              environment: process.env["NODE_ENV"] === "production" ? "production" : "development",
+            },
+            ...(_piAddr?.line1 ? { address: {
+              line1:       _piAddr.line1,
+              line2:       _piAddr.line2 || undefined,
+              city:        _piAddr.city,
+              postal_code: _piAddr.postal_code,
+              country:     _piAddr.country,
+            } } : {}),
+          };
+
+          // 1. Reuse customer stored from a previous attempt (checkout-session or prior payment-intent)
+          if (_piRow.stripe_customer_id) {
+            try {
+              const _piEc = await stripe.customers.retrieve(_piRow.stripe_customer_id);
+              if (!(_piEc as { deleted?: boolean }).deleted) {
+                preRegCustomerId = _piRow.stripe_customer_id;
+                /* Patch missing fields on the existing customer */
+                const _piEcFull = _piEc as { name?: string | null; address?: unknown };
+                const _piEcFull2 = _piEc as { name?: string | null; address?: unknown; description?: string | null };
+                const _piNeedsUpdate = !_piEcFull.name || !_piEcFull.address || (!_piEcFull2.description && !!_piRow.company_name);
+                if (_piNeedsUpdate) {
+                  await stripe.customers.update(preRegCustomerId, {
+                    ...(!_piEcFull.name ? { name: _piCustomerData.name } : {}),
+                    ...(!_piEcFull2.description && _piRow.company_name ? { description: _piRow.company_name } : {}),
+                    preferred_locales: ["fr"],
+                    ...(_piAddr?.line1 && !_piEcFull.address && _piCustomerData.address
+                      ? { address: _piCustomerData.address as import("stripe").Stripe.AddressParam }
+                      : {}),
+                  }).catch(() => {});
+                }
+                logger.info({ customerId: preRegCustomerId }, "[PublicBilling] payment-intent: reusing stored Stripe Customer");
+              }
+            } catch { /* deleted or unreachable â€” fall through */ }
+          }
+
+          // 2. Search Stripe by email (catches checkout-session customer not yet stored in pending_signups)
+          if (!preRegCustomerId) {
+            const _piFound = await stripe.customers.list({ email: _piEmail, limit: 5 });
+            for (const _piFoundEc of _piFound.data) {
+              if ((_piFoundEc as { deleted?: boolean }).deleted) continue;
+              preRegCustomerId = _piFoundEc.id;
+              /* Patch missing fields */
+              const _piFoundFull = _piFoundEc as { name?: string | null; address?: unknown; description?: string | null };
+              await stripe.customers.update(preRegCustomerId, {
+                ...(!_piFoundFull.name ? { name: _piCustomerData.name } : {}),
+                ...(!_piFoundFull.description && _piRow.company_name ? { description: _piRow.company_name } : {}),
+                preferred_locales: ["fr"],
+                ...(_piAddr?.line1 && !_piFoundFull.address && _piCustomerData.address
+                  ? { address: _piCustomerData.address as import("stripe").Stripe.AddressParam }
+                  : {}),
+              }).catch(() => {});
+              logger.info({ customerId: preRegCustomerId, email: _piEmail }, "[PublicBilling] payment-intent: found existing customer by email");
+              break;
+            }
+          }
+
+          // 3. Create new customer with full data if none exists
+          if (!preRegCustomerId) {
+            const _piNewC = await stripe.customers.create(_piCustomerData);
+            preRegCustomerId = _piNewC.id;
+            logger.info({ customerId: preRegCustomerId }, "[PublicBilling] payment-intent: created Stripe Customer");
+          }
+
+          // Persist inside the FOR UPDATE transaction â€” atomic write-back ensures any
+          // concurrent checkout-session that hits the lock after us reads the persisted customer.
+          try {
+            await _piC.query(`UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`, [preRegCustomerId, preRegisterToken]);
+            await _piC.query("COMMIT");
+            _piTxOpen = false;
+          } catch (_piWriteErr) {
+            if (_piTxOpen) { await _piC.query("ROLLBACK").catch(() => {}); _piTxOpen = false; }
+            throw _piWriteErr;
+          } finally {
+            _piC.release();
+          }
+        }
+      } catch (_piLookupErr) {
+        logger.warn({ _piLookupErr }, "[PublicBilling] payment-intent: customer lookup failed (non-fatal â€” proceeding without customer)");
+      }
+    }
+
+    // For authenticated users (cookie session, no preRegisterToken): resolve the Stripe
+    // Customer from the org's billing context. Uses ensureStripeCustomer to recover from
+    // deleted-customer scenarios (e.g. after an ops purge that removed the Stripe customer
+    // but left the DB record intact). This prevents "No such customer" 500 errors during
+    // checkout when the stored stripe_customer_id no longer exists in Stripe.
+    if (!preRegCustomerId && !preRegisterToken) {
+      const _authOrgId = (req as Request & { orgId?: string }).orgId;
+      if (_authOrgId && _authOrgId !== "default") {
+        try {
+          const { loadBillingContext } = await import("../services/billing-context.js");
+          const _authCtx = await loadBillingContext(_authOrgId);
+          if (_authCtx.stripeCustomerId || _authCtx.email) {
+            // Use ensureStripeCustomer instead of raw stripeCustomerId so that a deleted
+            // Stripe customer is automatically recreated rather than causing a 500.
+            const { ensureStripeCustomer: _ensureForPI } = await import("../services/ensure-stripe-customer.js");
+            const _ensuredId = await _ensureForPI(_authOrgId, _authCtx, stripeKey);
+            if (_ensuredId) {
+              preRegCustomerId = _ensuredId;
+              logger.info({ customerId: preRegCustomerId, orgId: _authOrgId, hadOldId: _authCtx.stripeCustomerId },
+                "[PublicBilling] payment-intent: ensured Stripe Customer for authenticated org");
+            }
+          }
+        } catch (_authCtxErr) {
+          logger.warn({ _authCtxErr }, "[PublicBilling] payment-intent: billing-context/ensureStripeCustomer failed for authenticated org (non-fatal)");
+        }
+      }
+    }
+
+    // A0 â€” Closed-tab webhook recovery: inject orgId for ALL authenticated purchases.
+    // Previously only injected for AI-credit carts; now covers recurring add-ons too.
+    // The webhook reads metadata.orgId to activate add-ons even if the browser
+    // closes before finalize-checkout is called.
+    if (!metadata["orgId"]) {
+      const _piMetaOrgId = (req as Request & { orgId?: string }).orgId;
+      if (_piMetaOrgId && _piMetaOrgId !== "default") {
+        metadata["orgId"]   = _piMetaOrgId;
+        metadata["org_id"]  = _piMetaOrgId;
+      }
+    }
+
+    if (immediateAmountCents > 0) {
+      /* PaymentIntent â€” immediate charge for add-ons / credits */
+      const pi = await stripe.paymentIntents.create({
+        amount:   immediateAmountCents,
+        currency: "eur",
+        /* save PM for subscription after trial */
+        ...(hasPlan ? { setup_future_usage: "off_session" } : {}),
+        ...(preRegCustomerId ? { customer: preRegCustomerId } : {}),
+        /* allow_redirects:'never' keeps only non-redirect methods (card, SEPA);
+           removes Stripe Link and redirect-based wallets from the Payment Element */
+        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+        metadata,
+      });
+      logger.info({ plan: planKey, addonCount: quote.lines.filter(l => l.kind === "addon").length, immediateAmountCents }, "[PublicBilling] PaymentIntent created");
+      res.json({ clientSecret: pi.client_secret, publishableKey, mode: "payment", immediateAmount: immediateAmountCents, defaultValues: _piDefaultValues, quote, paymentIntentId: pi.id });
+      return;
+    }
+
+    if (hasPlan) {
+      /* SetupIntent â€” collect card for trial subscription, 0â‚¬ today */
+      const si = await stripe.setupIntents.create({
+        ...(preRegCustomerId ? { customer: preRegCustomerId } : {}),
+        /* allow_redirects:'never' keeps only non-redirect methods (card, SEPA);
+           removes Stripe Link and redirect-based wallets (Bancontact, PayPal, Klarna)
+           which cannot be saved for future off_session charges anyway */
+        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+        usage: "off_session",
+        metadata,
+      });
+      logger.info({ plan: planKey, hasCustomer: !!preRegCustomerId }, "[PublicBilling] SetupIntent created");
+      res.json({ clientSecret: si.client_secret, publishableKey, mode: "setup", immediateAmount: 0, defaultValues: _piDefaultValues, quote, setupIntentId: si.id });
+      return;
+    }
+
+    res.status(400).json({ error: "Panier invalide." });
+  } catch (err) {
+    logger.error({ err }, "[PublicBilling] payment-intent failed");
+    res.status(500).json({ error: "Erreur lors de la crÃ©ation du paiement." });
+  }
+});
+
+/* â”€â”€â”€ POST /api/public/finalize-checkout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   Called by checkout-return.html after Stripe redirects back.
+   Verifies the PaymentIntent / SetupIntent, creates a Stripe Customer,
+   attaches the payment method, and creates the subscription with 14-day
+   trial. Add-ons were already charged via the PaymentIntent.
+ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Request, res: Response) => {
+  // â”€â”€ P1-6: Payload validation (400 not 500 on bad input) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const body = req.body as Record<string, unknown>;
+
+  const intentId = body?.intentId;
+  if (!intentId || typeof intentId !== "string" || !intentId.trim()) {
+    res.status(400).json({ error: "intentId requis (pi_â€¦ ou seti_â€¦)" });
+    return;
+  }
+  const intentType = body?.intentType;
+  if (!intentType || typeof intentType !== "string" ||
+      !["payment", "setup", "checkout_session"].includes(intentType)) {
+    res.status(400).json({ error: 'intentType doit Ãªtre "payment", "setup" ou "checkout_session"' });
+    return;
+  }
+  const _rawPlan = body?.plan;
+  if (_rawPlan !== undefined && _rawPlan !== null && _rawPlan !== "" && typeof _rawPlan !== "string") {
+    const typ = Array.isArray(_rawPlan) ? "array" : typeof _rawPlan;
+    res.status(400).json({ error: `plan doit Ãªtre une chaÃ®ne de caractÃ¨res (reÃ§u : ${typ})` });
+    return;
+  }
+  const plan  = typeof _rawPlan === "string" ? _rawPlan.trim().toLowerCase() : "";
+  const addons = parseAddonsPub(body?.addons ?? {}, res);
+  if (addons === null) return; // parseAddonsPub already sent 400
+
+  const _fcPreRegRaw = body?.preRegisterToken;
+  const preRegisterToken = typeof _fcPreRegRaw === "string" ? _fcPreRegRaw.trim() : "";
+  const stripeKey = getStripeKey();
+
+  if (!stripeKey) {
+    res.status(503).json({ error: "Payment service not configured." });
+    return;
+  }
+
+  // â”€â”€ Authentication gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Two accepted paths:
+  //   A) fp_token session cookie  â†’ existing user (upgrade / add-on flow)
+  //   B) preRegisterToken in body â†’ new signup who just paid via checkout-payment.html;
+  //      validated against pending_signups (must exist and not yet expired).
+  //      The account may already be activated by the webhook â€” that's fine (idempotent).
+  // Accept both fp_token cookie AND Authorization: Bearer header (existing users
+  // arriving from checkout-return.html send Bearer from localStorage, not a cookie).
+  const _fckToken = (req.cookies as Record<string, string>)?.["fp_token"]
+    ?? (() => {
+      const ah = req.headers["authorization"];
+      if (typeof ah === "string" && ah.startsWith("Bearer ")) return ah.slice(7).trim();
+      return "";
+    })();
+  const _preRegToken = typeof (req.body as Record<string, unknown>)?.preRegisterToken === "string"
+    ? ((req.body as Record<string, unknown>).preRegisterToken as string).trim()
+    : "";
+  let _authenticatedOrgId: string | null = null;
+
+  if (_fckToken) {
+    try {
+      const { pool: _sp } = await import("@workspace/db");
+      const _sc = await _sp.connect();
+      try {
+        const _sr = await _sc.query<{ org_id: string }>(
+          `SELECT org_id FROM user_sessions WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+          [_fckToken]
+        );
+        if (_sr.rows[0]?.org_id && _sr.rows[0].org_id !== "default") {
+          _authenticatedOrgId = _sr.rows[0].org_id;
+        }
+      } finally { _sc.release(); }
+    } catch (sessionErr) {
+      logger.warn({ sessionErr }, "[PublicBilling/finalize-checkout] Session lookup failed (non-fatal)");
+    }
+  }
+
+  // Path B: new signup â€” validate preRegisterToken against pending_signups.
+  // Accept both unconsumed AND already-consumed tokens: the webhook may have activated
+  // the account before finalize-checkout is called â€” this path must be idempotent.
+  if (!_authenticatedOrgId && preRegisterToken) {
+    try {
+      const { pool: _fcBypassPool } = await import("@workspace/db");
+      const _fcBypassC = await _fcBypassPool.connect();
+      try {
+        const _fcBypassR = await _fcBypassC.query<{ email: string }>(
+          `SELECT email FROM pending_signups WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+          [preRegisterToken]
+        );
+        if (_fcBypassR.rows[0]?.email) {
+          _authenticatedOrgId = _fcBypassR.rows[0].email;
+          logger.info({ orgId: _authenticatedOrgId }, "[PublicBilling/finalize-checkout] Authenticated via preRegisterToken (new signup)");
+        }
+      } finally { _fcBypassC.release(); }
+    } catch (_fcBypassErr) {
+      logger.warn({ _fcBypassErr }, "[PublicBilling/finalize-checkout] preRegisterToken lookup failed (non-fatal)");
+    }
+  }
+
+  if (!_authenticatedOrgId) {
+    res.status(401).json({
+      error:      "auth_required",
+      message:    "Veuillez vous connecter ou crÃ©er un compte avant de finaliser votre abonnement.",
+      redirectTo: "/login.html",
+    });
+    return;
+  }
+
+  // â”€â”€ Body validation (after auth so unauthenticated callers don't learn schema) â”€â”€
+  if (!intentId || !intentType) {
+    res.status(400).json({ error: "Intent ID manquant." });
+    return;
+  }
+
+  // Derive trial eligibility from the authenticated org â€” never trust the client
+  const { loadBillingContext: _lbc } = await import("../services/billing-context.js").catch(() => ({ loadBillingContext: null }));
+  const _billingCtxForCheckout = _lbc ? await _lbc(_authenticatedOrgId).catch(() => null) : null;
+  const _checkoutCanStartTrial = _billingCtxForCheckout?.canStartTrial ?? false;
+  // Expose to the rest of the handler via locals (the handler reads from intent metadata + body)
+  (req as unknown as Record<string, unknown>)["_authenticatedOrgId"]    = _authenticatedOrgId;
+  (req as unknown as Record<string, unknown>)["_checkoutCanStartTrial"] = _checkoutCanStartTrial;
+
+  try {
+    const stripe = await createStripeClient(stripeKey);
+
+    /* â”€â”€ 0. checkout_session: Stripe-hosted subscription checkout (reactivation flow) â”€â”€
+         Early return â€” no PaymentIntent/SetupIntent involved, webhook is activation source. */
+    if (intentType === "checkout_session") {
+      try {
+        const _csSession = await stripe.checkout.sessions.retrieve(intentId);
+
+        if (_csSession.mode !== "subscription") {
+          res.status(400).json({ error: "Session de paiement non valide (mode attendu : subscription)." });
+          return;
+        }
+
+        // Verify the session belongs to the authenticated org
+        const _csMeta = (_csSession.metadata as Record<string, string> | null) ?? {};
+        const _csSessionOrgId = _csMeta["orgId"] ?? "";
+        if (_csSessionOrgId && _authenticatedOrgId && _csSessionOrgId !== _authenticatedOrgId) {
+          logger.warn({ csOrgId: _csSessionOrgId, authOrgId: _authenticatedOrgId },
+            "[PublicBilling/finalize-checkout] checkout_session orgId mismatch");
+          res.status(403).json({ error: "Cette session ne vous appartient pas." });
+          return;
+        }
+
+        // Verify payment status
+        const _csIsPaid = _csSession.payment_status === "paid" ||
+                          _csSession.payment_status === "no_payment_required";
+        if (!_csIsPaid) {
+          res.status(402).json({
+            error: "Paiement non finalisÃ©. RÃ©essayez dans quelques instants.",
+            awaitingWebhook: false,
+          });
+          return;
+        }
+
+        // Do NOT activate locally â€” the Stripe webhook is the sole activation gate.
+        const _csPlan = (_csMeta["plan"] ?? "").toLowerCase();
+        logger.info({ sessionId: intentId, orgId: _authenticatedOrgId, plan: _csPlan },
+          "[PublicBilling] checkout_session verified â€” awaiting webhook for activation");
+
+        res.json({ success: true, awaitingWebhook: true, plan: _csPlan });
+        return;
+      } catch (_csErr) {
+        const _csMsg = _csErr instanceof Error ? _csErr.message : String(_csErr);
+        const _csInvalid = _csMsg.includes("No such") || _csMsg.includes("resource_missing") ||
+                           _csMsg.includes("invalid_request");
+        if (_csInvalid) {
+          res.status(400).json({ error: "Session de paiement introuvable ou expirÃ©e." });
+          return;
+        }
+        throw _csErr; // let the outer catch handle unexpected errors
+      }
+    }
+
+    /* â”€â”€ 1. Verify intent & get payment method â”€â”€ */
+    let paymentMethodId: string | null = null;
+    let intentMeta: Record<string, string> = {};
+    let intentCustomerId: string | null = null;
+
+    if (intentType === "payment") {
+      const pi = await stripe.paymentIntents.retrieve(intentId);
+      if (pi.status !== "succeeded" && pi.status !== "processing") {
+        res.status(400).json({ error: "Paiement non confirmÃ© (statut: " + pi.status + ")." });
+        return;
+      }
+      paymentMethodId = (typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id) ?? null;
+      intentMeta = (pi.metadata || {}) as Record<string, string>;
+      const _rawPiCust = pi.customer;
+      intentCustomerId = _rawPiCust ? (typeof _rawPiCust === "string" ? _rawPiCust : (_rawPiCust as { id: string }).id) : null;
+    } else {
+      const si = await stripe.setupIntents.retrieve(intentId);
+      if (si.status !== "succeeded") {
+        res.status(400).json({ error: "Configuration non confirmÃ©e (statut: " + si.status + ")." });
+        return;
+      }
+      paymentMethodId = (typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id) ?? null;
+      intentMeta = (si.metadata || {}) as Record<string, string>;
+      const _rawSiCust = si.customer;
+      intentCustomerId = _rawSiCust ? (typeof _rawSiCust === "string" ? _rawSiCust : (_rawSiCust as { id: string }).id) : null;
+    }
+
+    if (!paymentMethodId) {
+      res.status(400).json({ error: "Moyen de paiement introuvable." });
+      return;
+    }
+
+    /* Resolve plan/addons (prefer request body, fallback to intent metadata) */
+    const planKey  = (plan || intentMeta["plan"] || "").toLowerCase();
+    const addonsResolved: AddonsMap = Object.keys(addons as AddonsMap).length
+      ? (addons as AddonsMap)
+      : (() => { try { return JSON.parse(intentMeta["addons"] || "{}"); } catch { return {}; } })();
+
+    // Read trial_days_remaining from intent metadata (set by checkout-payment.html via /api/public/payment-intent).
+    // Clamped 0â€“90. Defaults to 14 when the field is absent (legacy intents before this field existed).
+    const _rawIntentTrialDays = intentMeta["trial_days_remaining"];
+    const intentTrialDays: number = _rawIntentTrialDays !== undefined && Number.isFinite(Number(_rawIntentTrialDays))
+      ? Math.max(0, Math.min(90, Math.round(Number(_rawIntentTrialDays))))
+      : 14;
+
+    if (!PLAN_PRICE_IDS[planKey]) {
+      /* â”€â”€ Add-on-only / AI-credits-only cart (no plan change) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+         The dashboard sends subscribed users here with plan:"" â€” their existing
+         subscription is untouched. The PaymentIntent already charged month 1
          (or the one-time packs). What remains server-side:
            â€¢ AI credit packs  â†’ credit them (idempotent on the intent id).
            â€¢ Recurring add-ons â†’ create the recurring subscription starting at
@@ -400,4 +1818,667 @@ dy charged month 1
       const _fcPmBd   = (_fcPmFull?.billing_details ?? null) as {
         name?:    string | null;
         email?:   string | null;
-        address?: { line1?: string | null; line2?: string | nuldW'"Â7W7FöÖW$–BÒÂ%µV&Æ–4&–ÆÆ–æuÒf–æÆ—¦S¢ÖWFFFæ÷&ÖÆ—¦F–öâæöâÖfFÂ"“°¢Ğ ¢òò)H)H&R×&Vv—7G&F–öã¢7F—fFRæWrW6W"66÷VçBæBFVÆ—fW"Öv–2Æ–æ²)H)H)H)H ¢òò7V66W76gVÂf–æÆ—¦F–öâ×W7BæWfW"6Æ–ÒF†BÆöv–âVÖ–Âv26Vç@¢òò&Vf÷&RF†R66÷VçBÂFö¶VâæBFVÆ—fW'’†fRÆÂ6ö×ÆWFVB7V66W76gVÆÇ’à¢6öç7Böf47EFö¶VâÒ&U&Vv—7FW%Fö¶VâÇÂ–çFVçDÖWF²'&U÷&Vv—7FW%÷Fö¶Vâ%ÒÇÂ"#°¢ÆövvW"æ–æfò‡°¢7FW¢$d2Ó"À¢–çFVçD–C¢†–çFVçD–B27G&–ær“òç6Æ–6RƒÂ#’À¢–çFVçEG—RÀ¢Æä¶W’À¢†5&U&VuFö¶Vã¢öf47EFö¶VâÀ¢Fö¶Vå&Vf—ƒ¢öf47EFö¶Vãòç6Æ–6RƒÂ‚’ÇÂ"†æöæR’"À¢†56W76–öä6öö¶–S¢öf6µFö¶VâÀ¢WF†VçF–6FVD÷&t–C¢öWF†VçF–6FVD÷&t–Còç6Æ–6RƒÂ3’À¢ÒÂ%´d5Òf–æÆ—¦RÖ6†V6¶÷WB&V6†VB7F—fF–öâvFR"“° ¢–b…öf47EFö¶Vâ’°¢ÆWBöf47F—fF–öä6öÖÖ—GFVBÒfÇ6S°¢G'’°¢6öç7B²ööÃ¢öf47EööÂÒÒv—B–×÷'B‚$v÷&·76RöF""“°¢6öç7B²&æFöÔ'—FW3¢öf5&"ÒÒv—B–×÷'B‚&7'—Fò"“° ¢òò)H)H7FW¢Æöö²WVæF–æu÷6–vçW)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ¢ÆövvW"æ–æfò‡²7FW¢$d2Ó"ÂFö¶Vã¢öf47EFö¶Vâç6Æ–6RƒÂ‚’ÒÂ%´d5Ò7FWÓ¢VW'––ærVæF–æu÷6–vçW2"“°¢6öç7Böf47D3Òv—Böf47EööÂæ6öææV7B‚“°¢ÆWBöf56–vçW¢&V6÷&CÇ7G&–ærÂ7G&–ærÂçVÆÃâÂçVÆÂÒçVÆÃ°¢òòöf5VæF–æu&÷r—26fVB÷WG6–FRF†RG'’6òd2Ó×6¶—6â&VBF†RVÖ–À¢ÆWBöf5VæF–æu&÷s¢&V6÷&CÇ7G&–ærÂ7G&–ærÂçVÆÃâÂçVÆÂÒçVÆÃ°¢G'’°¢6öç7Böf47E#Òv—Böf47D3çVW'’€¢4TÄT5BVÖ–ÂÂf—'7EöæÖRÂÆ7EöæÖRÂ6ö×ç•öæÖRÂ6÷VçG'’ÂFG&W72Â6—G’À¢÷7FÅö6öFRÂ†öæRÂfBÂ6öç7VÖVEöBÂW‡—&W5ö@¢e$ôÒVæF–æu÷6–vçW0¢t„U$RFö¶VâÒCäBW‡—&W5öBâäõr‚’Ä”Ô•BÀ¢µöf47EFö¶VåĞ¢“°¢öf5VæF–æu&÷rÒöf47E#ç&÷w5³ÒóòçVÆÃ°¢ÆövvW"æ–æfò‡°¢7FW¢$d2Ó×&W7VÇB"À¢f÷VæC¢öf5VæF–æu&÷rÀ¢6öç7VÖVC¢öf5VæF–æu&÷ròöf5VæF–æu&÷u²&6öç7VÖVEöB%Ò¢çVÆÂÀ¢VÖ–Ã¢öf5VæF–æu&÷sòå²&VÖ–Â%ÒÀ¢W‡—&W3¢öf5VæF–æu&÷sòå²&W‡—&W5öB%ÒÀ¢ÒÂ%´d5Ò7FWÓ¢VæF–æu÷6–vçWÆöö·W&W7VÇB"“°¢öf56–vçWÒ…öf5VæF–æu&÷rbböf5VæF–æu&÷u²&6öç7VÖVEöB%Ò’òöf5VæF–æu&÷r¢çVÆÃ°¢Òf–æÆÇ’²öf47D3ç&VÆV6R‚“²Ğ ¢–b‚öf56–vçW’°¢òòFö¶VâÇ&VG’6öç7VÖVB‡vV&†öö²Ç&VG’7F—fFVBF†R66÷VçB’÷"æ÷Bf÷VæBà¢òòF†RvV&†öö²6†÷VÆB†fR6VçBF†RÖv–2Æ–æ²VÖ–ÂÂ'WB–b—Bf–ÆVBvR×W7@¢òò&R×6VæBæ÷r6òF†RW6W"—6âwBÆVgBv—F‚&Ææ²–æ&÷‚gFW"6VV–ær&6†V6²–÷W"VÖ–Â"à¢ÆövvW"æ–æfò‡²7FW¢$d2Ó×6¶—"ÂFö¶Vã¢öf47EFö¶Vâç6Æ–6RƒÂ‚’ÒÂ%´d5Ò7FWÓ¢Fö¶Vâ6öç7VÖVBöÖ—76–ær(	BGFV×F–ærVÖ–Â&R×6VæB"“°¢6öç7B÷6¶—VÖ–ÂÒöf5VæF–æu&÷sòå²&VÖ–Â%ÒóòçVÆÃ°¢–b…÷6¶—VÖ–Â’°¢òò)H)Hd2Ó×6¶—&W6VæC¢f–æBW†—7F–ærfÆ–BFö¶Vâ÷"Ö–çBg&W6‚öæR)H)H ¢6öç7B÷&U6VæD2Òv—Böf47EööÂæ6öææV7B‚“°¢ÆWB÷&U6VæDö²ÒfÇ6S°¢ÆWB÷&U6VæDVÖ–Ä–C¢7G&–ærÂVæFVf–æVC°¢G'’°¢6öç7BöW†—7EFö²Òv—B÷&U6VæD2çVW'“Ç²Fö¶Vã¢7G&–ærÓâ€¢4TÄT5BFö¶Vâe$ôÒÖv–5öÆ–æµ÷Fö¶Vç0¢t„U$RVÖ–ÂÒCäBW6VBÒdÅ4RäBW‡—&W5öBâäõr‚¢õ$DU"%’W‡—&W5öBDU42Ä”Ô•BÀ¢µ÷6¶—VÖ–ÅĞ¢“°¢ÆWB÷&UFö¶VâÒöW†—7EFö²ç&÷w5³ÓòçFö¶VâóòçVÆÃ°¢–b‚÷&UFö¶Vâ’°¢òòæòfÆ–BFö¶VâÆVgB(	BÖ–çBg&W6‚öæP¢÷&UFö¶VâÒöf5&"ƒ3"’çFõ7G&–ær‚&†W‚"“°¢v—B÷&U6VæD2çVW'’€¢”å4U%B”åDòÖv–5öÆ–æµ÷Fö¶Vç2‡Fö¶VâÂVÖ–ÂÂW‡—&W5öBÂW6VB¢dÅTU2‚CÂC"Âäõr‚’²”åDU%dÂs#B†÷W'2rÂdÅ4R¢ôâ4ôädÄ”5B‡Fö¶Vâ’DòäõD„”ävÀ¢µ÷&UFö¶VâÂ÷6¶—VÖ–ÅĞ¢“°¢ÆövvW"æ–æfò‡²7FW¢$d2Ó×6¶—ÖæWr×Fö¶Vâ"ÂFö¶Vå&Vf—ƒ¢÷&UFö¶Vâç6Æ–6RƒÂ‚’ÒÂ%´d5Òd2Ó×6¶—¢7&VFVBg&W6‚Öv–2Æ–æ²Fö¶Vâ"“°¢ÒVÇ6R°¢ÆövvW"æ–æfò‡²7FW¢$d2Ó×6¶—×&WW6R×Fö¶Vâ"ÂFö¶Vå&Vf—ƒ¢÷&UFö¶Vâç6Æ–6RƒÂ‚’ÒÂ%´d5Òd2Ó×6¶—¢&WW6–ærW†—7F–ærfÆ–BFö¶Vâ"“°¢Ğ¢6öç7B÷&UV%W&ÂÒ&ö6W72æVçe²%T$Ä”5õU$Â%ÒÇÂ&‡GG3¢òöæfÆ÷wö–çBç&ò#°¢6öç7B÷&TÖv–5W&ÂÒGµ÷&UV%W&ÇÒöÆöv–â×fW&–g’æ‡FÖÃ÷Fö¶VãÒGµ÷&UFö¶VçÖ°¢6öç7B²Ö–ÆW#¢÷&TÖ–ÆW"ÒÒv—B–×÷'B‚"ââ÷6W'f–6W2öÖ–ÆW"æ§2"’æ6F6‚‚‚’Óâ‡²Ö–ÆW#¢çVÆÂÒ’“°¢–b…÷&TÖ–ÆW"’°¢6öç7B÷&U&W7VÇBÒv—B÷&TÖ–ÆW"ç6VæD7F—fF–öäÖv–4Æ–æ²‡°¢Fó¢÷6¶—VÖ–ÂÀ¢æÖS¢öf5VæF–æu&÷sòå²&f—'7EöæÖR%ÒÇÂ÷6¶—VÖ–Âç7Æ—B‚$"•³ÒÀ¢Æã¢Æä¶W’À¢Öv–4Æ–æµW&Ã¢÷&TÖv–5W&ÂÀ¢—5G&–Ã¢w&çEG&–ÂÀ¢Ò’æ6F6‚‚†S¢Væ¶æ÷vâ’Óâ‡²ö³¢fÇ6R26öç7BÂW'&÷#¢7G&–ær†R’Ò’“°¢÷&U6VæDö²Ò÷&U&W7VÇCòæö³°¢÷&U6VæDVÖ–Ä–BÒ…÷&U&W7VÇB2²–Có¢7G&–ærÒ“òæ–C°¢ÆövvW"æ–æfò‡²7FW¢$d2Ó×6¶—ÖÖ–Â"Âö³¢÷&U6VæDö²ÂVÖ–Ä–C¢÷&U6VæDVÖ–Ä–BÂW'&÷#¢…÷&U&W7VÇB2²W'&÷#ó¢7G&–ærÒ“òæW'&÷"ÒÂ%´d5Òd2Ó×6¶—¢&R×6VæB&W7VÇB"“°¢ÒVÇ6R°¢ÆövvW"çv&â‡²7FW¢$d2Ó×6¶—ÖæòÖÖ–ÆW""ÒÂ%´d5Òd2Ó×6¶—¢Ö–ÆW"Væf–Æ&ÆR"“°¢Ğ¢Ò6F6‚…÷&U6VæDW'"’°¢ÆövvW"æW'&÷"‡²7FW¢$d2Ó×6¶—×&W6VæBÖW'""ÂW'#¢…÷&U6VæDW'"2W'&÷"’æÖW76vRÒÂ%´d5Òd2Ó×6¶—¢&R×6VæBF‡&Wr"“°¢Òf–æÆÇ’²÷&U6VæD2ç&VÆV6R‚“²Ğ ¢&W2æ§6öâ‡°¢7V66W73¢G'VRÀ¢7V'67&—F–öä–C¢Æå7V'67&—F–öãòæ–BÀ¢FFöå7V'67&—F–öä–BÀ¢7F—fF–öäVÖ–Å6VçC¢÷&U6VæDö²À¢âââ…÷&U6VæDö²ò·Ò¢²VÖ–Äf–ÆVC¢G'VRÒ’À¢Ò“°¢&WGW&ã°¢Ğ¢òòæòVÖ–Âf÷VæB–âVæF–æu÷6–vçW&÷r(	BFö¶Vâv2æWfW"–âD"†–çfÆ–B¢&W2æ§6öâ‡°¢7V66W73¢G'VRÀ¢7V'67&—F–öä–C¢Æå7V'67&—F–öãòæ–BÀ¢FFöå7V'67&—F–öä–BÀ¢7F—fF–öäVÖ–Å6VçC¢fÇ6RÀ¢VÖ–Äf–ÆVC¢G'VRÀ¢Ò“°¢&WGW&ã°¢Ğ ¢6öç7Böf4VÖ–ÂÒöf56–vçW²&VÖ–Â%ÒóòöWF†VçF–6FVD÷&t–C°¢6öç7B²&æFöÕUT”C¢öf5&æEUT”BÒÒv—B–×÷'B‚&7'—Fò"“°¢6öç7Böf4÷&t–BÒöf5&æEUT”B‚“°¢ÆövvW"æ–æfò‡²7FW¢$d2Ó""ÂVÖ–Ã¢öf4VÖ–ÂÂæWt÷&t–C¢öf4÷&t–BÂÆä¶W’Âw&çEG&–ÂÂ7W7FöÖW$–BÒÂ%´d5Ò7FWÓ#¢–FVçF–f–W'2&W6öÇfVB"“° ¢òò)H)H7FW3¢6VÆbÖ†VÂDDÂ†WFòÖ6öÖÖ—BÂ÷WG6–FRG&ç67F–öâ’)H)H)H)H ¢ÆövvW"æ–æfò‡²7FW¢$d2Ó2"ÒÂ%´d5Ò7FWÓ3¢'Vææ–ærDDÂ6VÆbÖ†VÇ2öâ—6öÆFVB6öææV7F–öâ"“°¢°¢6öç7Böf56VÆd†VÄ2Òv—Böf47EööÂæ6öææV7B‚“°¢G'’°¢6öç7B÷6…'VâÒ7–æ2‡7Ã¢7G&–ærÂÆ&VÃ¢7G&–ær’Óâ°¢G'’°¢v—Böf56VÆd†VÄ2çVW'’‡7Â“°¢ÆövvW"æ–æfò‡²7FW¢$d2Ó2"ÂÆ&VÂÂö³¢G'VRÒÂ%´d5Ò6VÆbÖ†VÂö²"“°¢Ò6F6‚†R’°¢ÆövvW"çv&â‡²7FW¢$d2Ó2"ÂÆ&VÂÂW'#¢†R2W'&÷"’æÖW76vRÂ6öFS¢†R2&V6÷&CÇ7G&–ærÇVæ¶æ÷vãâ•²&6öFR%ÒÒÂ%´d5Ò6VÆbÖ†VÂv&â†æöâÖfFÂ’"“°¢Ğ¢Ó°¢v—B÷6…'Vâ†ÅDU"D$ÄRW6W'2DB4ôÅTÔâ”bäõBU„•5E2f—'7EöæÖRDU…FÂ'W6W'2æf—'7EöæÖR"“°¢v—B÷6…'Vâ†ÅDU"D$ÄRW6W'2DB4ôÅTÔâ”bäõBU„•5E2Æ7EöæÖRDU…FÂ'W6W'2æÆ7EöæÖR"“°¢v—B÷6…'Vâ†ÅDU"D$ÄRW6W'2DB4ôÅTÔâ”bäõBU„•5E27FGW2DU…BäõBåTÄÂDTdTÅBwVæF–ærvÂ'W6W'2ç7FGW2"“°¢v—B÷6…'Vâ†ÅDU"D$ÄRW6W'2DB4ôÅTÔâ”bäõBU„•5E2VÖ–Å÷fW&–f–VB$ôôÄTâäõBåTÄÂDTdTÅBdÅ4VÂ'W6W'2æVÖ–Å÷fW&–f–VB"“°¢v—B÷6…'Vâ†ÅDU"D$ÄRW6W'2DB4ôÅTÔâ”bäõBU„•5E2WFFVEöBD”ÔU5DÕE¢DTdTÅBäõr‚–Â'W6W'2çWFFVEöB"“°¢v—B÷6…'Vâ†ÅDU"D$ÄR÷&væ—¦F–öç2DB4ôÅTÔâ”bäõBU„•5E2WFFVEöBD”ÔU5DÕE¢DTdTÅBäõr‚–Â&÷&w2çWFFVEöB"“°¢òò5$•D”4Ã¢ôâ4ôädÄ”5B†VÖ–Â’&WV—&W2Tä•TR–æFW‚à¢òò5$TDRD$ÄR”bäõBU„•5E2—2æòÖ÷öâW†—7F–ærF&ÆW2Â6òF†R–æÆ–æP¢òò4ôå5E$”åB—2æWfW"&WG&ö7F—fVÇ’Æ–VBFò&RÖW†—7F–ærF&ÆW2à¢v—B÷6…'Vâ†5$TDRTä•TR”äDU‚”bäõBU„•5E2W6W'5öVÖ–Å÷Væ—VRôâW6W'2†VÖ–Â–Â'W6W'5öVÖ–Å÷Væ—VR"“°¢Òf–æÆÇ’²öf56VÆd†VÄ2ç&VÆV6R‚“²Ğ¢Ğ ¢òò)H)H7FWC¢7F—fF–öâG&ç67F–öâ)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ¢ÆövvW"æ–æfò‡²7FW¢$d2ÓB"ÂVÖ–Ã¢öf4VÖ–ÂÂ÷&t–C¢öf4÷&t–BÂÆä¶W’Â7W7FöÖW$–BÒÂ%´d5Ò7FWÓC¢$Tt”â7F—fF–öâG&ç67F–öâ"“°¢6öç7Böf47EG„2Òv—Böf47EööÂæ6öææV7B‚“°¢G'’°¢v—Böf47EG„2çVW'’‚$$Tt”â"“° ¢òòF(	BW6W'BW6W ¢ÆövvW"æ–æfò‡²7FW¢$d2ÓF"ÂVÖ–Ã¢öf4VÖ–ÂÒÂ%´d5Ò7FWÓF¢”å4U%B”åDòW6W'2"“°¢6öç7Böf4æWuW6W$–BÒöf5&æEUT”B‚“°¢6öç7Böf5W7"Òv—Böf47EG„2çVW'“Ç²–C¢7G&–ærÓâ€¢”å4U%B”åDòW6W'2†–BÂVÖ–ÂÂf—'7EöæÖRÂÆ7EöæÖRÂWF…÷&÷f–FW"ÂVÖ–Å÷fW&–f–VBÂ7FGW2¢dÅTU2‚CBÂCÂC"ÂC2ÂvÖv–5öÆ–æ²rÅE%TRÂv7F—fRr¢ôâ4ôädÄ”5B†VÖ–Â’DòUDDP¢4UB7FGW3Òv7F—fRrÂVÖ–Å÷fW&–f–VCÕE%TRÀ¢f—'7EöæÖSÔ4ôÄU44R„U„4ÅTDTBæf—'7EöæÖRÇW6W'2æf—'7EöæÖR’ÂWFFVEöCÔäõr‚¢$UEU$ä”är–FÀ¢µöf4VÖ–ÂÂöf56–vçW²&f—'7EöæÖR%Òóò""Âöf56–vçW²&Æ7EöæÖR%Òóò""Âöf4æWuW6W$–EĞ¢“°¢6öç7Böf5W6W$–BÒöf5W7"ç&÷w5³Óòæ–C°¢ÆövvW"æ–æfò‡²7FW¢$d2ÓFÖö²"ÂW6W$–C¢öf5W6W$–BÒÂ%´d5Ò7FWÓF¢W6W"W6W'FVB"“°¢–b‚öf5W6W$–B’F‡&÷ræWrW'&÷"‚'W6W'BW6W"&WGW&æVBæò–Bf÷""²öf4VÖ–Â“° ¢òòF"(	BW6W'B÷&væ—¦F–öà¢ÆövvW"æ–æfò‡²7FW¢$d2ÓF""Â÷&t–C¢öf4÷&t–BÒÂ%´d5Ò7FWÓF#¢”å4U%B”åDò÷&væ—¦F–öç2"“°¢v—Böf47EG„2çVW'’€¢”å4U%B”åDò÷&væ—¦F–öç0¢†–BÆæÖRÇ6ÇVrÆ÷væW%÷W6W%ö–BÇ7FGW2ÇÆâÇ7V'67&—F–öå÷7FGW2Æ÷væW%öVÖ–ÂÇ7G&—Uö7W7FöÖW%ö–BÇG&–ÅöVæG5öB¢dÅTU2‚CÂC"ÂC2ÂCBÂv7F—fRrÂCRÂCbÂCrÂC‚ÂC’¢ôâ4ôädÄ”5B†–B’DòUDDP¢4UB7FGW3Òv7F—fRrÂÆãÔU„4ÅTDTBçÆâÂ7V'67&—F–öå÷7FGW3ÔU„4ÅTDTBç7V'67&—F–öå÷7FGW2À¢7G&—Uö7W7FöÖW%ö–CÔ4ôÄU44R„U„4ÅTDTBç7G&—Uö7W7FöÖW%ö–BÆ÷&væ—¦F–öç2ç7G&—Uö7W7FöÖW%ö–B’À¢WFFVEöCÔäõr‚–À¢°¢öf4÷&t–BÂöf56–vçW²&6ö×ç•öæÖR%Òóòöf4VÖ–ÂÀ¢öf4÷&t–Bç&WÆ6R‚õµæ×£Ó•Òöv’Â"Ò"’çFôÆ÷vW$66R‚’ç6Æ–6RƒÃc’À¢öf5W6W$–BÂÆä¶W’Âw&çEG&–Âò'G&–Æ–ær"¢&7F—fR"À¢öf4VÖ–ÂÂ7W7FöÖW$–BóòçVÆÂÀ¢G&–ÄVæEVæ—‚ÓÒVæFVf–æVBòæWrFFR‡G&–ÄVæEVæ—‚¢’çFô•4õ7G&–ær‚’¢çVÆÂÀ¢Ğ¢“°¢ÆövvW"æ–æfò‡²7FW¢$d2ÓF"Öö²"ÒÂ%´d5Ò7FWÓF#¢÷&væ—¦F–öâW6W'FVB"“° ¢òòF2(	BW6W'BÖVÖ&W'6†— ¢ÆövvW"æ–æfò‡²7FW¢$d2ÓF2"ÒÂ%´d5Ò7FWÓF3¢”å4U%B”åDò÷&væ—¦F–öåöÖVÖ&W'2"“°¢v—Böf47EG„2çVW'’€¢”å4U%B”åDò÷&væ—¦F–öåöÖVÖ&W'2†÷&væ—¦F–öåö–BÇW6W%ö–BÇ&öÆRÇ7FGW2¢dÅTU2‚CÂC"Âv÷væW"rÂv7F—fRr¢ôâ4ôädÄ”5B†÷&væ—¦F–öåö–BÇW6W%ö–B’DòUDDR4UB7FGW3Òv7F—fRrÇ&öÆSÒv÷væW"rÇWFFVEöCÔäõr‚–À¢µöf4÷&t–BÂöf5W6W$–EĞ¢“°¢ÆövvW"æ–æfò‡²7FW¢$d2ÓF2Öö²"ÒÂ%´d5Ò7FWÓF3¢÷&væ—¦F–öåöÖVÖ&W'2W6W'FVB"“° ¢òòFB(	B6öç7VÖRVæF–æu÷6–vçWFö¶Và¢ÆövvW"æ–æfò‡²7FW¢$d2ÓFB"ÒÂ%´d5Ò7FWÓFC¢UDDRVæF–æu÷6–vçW24UB6öç7VÖVEöB"“°¢v—Böf47EG„2çVW'’€¢UDDRVæF–æu÷6–vçW24UB6öç7VÖVEöCÔäõr‚’t„U$RFö¶VãÒCäB6öç7VÖVEöB•2åTÄÆÀ¢µöf47EFö¶VåĞ¢“°¢ÆövvW"æ–æfò‡²7FW¢$d2ÓFBÖö²"ÒÂ%´d5Ò7FWÓFC¢VæF–æu÷6–vçW6öç7VÖVB"“° ¢òòFR(	B6öÖÖ—@¢ÆövvW"æ–æfò‡²7FW¢$d2ÓFR"ÒÂ%´d5Ò7FWÓFS¢4ôÔÔ•B"“°¢v—Böf47EG„2çVW'’‚$4ôÔÔ•B"“°¢öf47F—fF–öä6öÖÖ—GFVBÒG'VS°¢ÆövvW"æ–æfò‡²7FW¢$d2ÓBÔ4ôÔÔ•EDTB"Â÷&t–C¢öf4÷&t–BÂW6W$–C¢öf5W6W$–BÂÆã¢Æä¶W’ÒÂ%´d5ÒE$å45D”ôâ4ôÔÔ•EDTB(	BW6W"²÷&r7F—fFVB"“° ¢òò)H)H7FWFc¢&÷vFR6–vçW6öçF7BöFG&W72–çFò÷&u÷6WGF–æw2)H)H ¢òò†æöâÖfFÂ(	B&öf–ÆRFFöæÇ’ÂæWfW"&–ÆÆ–ærFF’âv—F†÷WBF†—2À¢òò66÷VçG27F—fFVBf–f–æÆ—¦RÖ6†V6¶÷WB‡vV&†öö²Æ÷7B÷6Æ÷r’æWfW ¢òò6VRF†V—"6–vçWFG&W72–âv÷&·76Rõ6WGF–æw2ôÆö6Æ—6F–öâà¢G'’°¢6öç7B²W6W'D÷&u6WGF–æw3¢öf5W6W'D÷2ÂÆöD÷&u6WGF–æw3¢öf4ÆöD÷2ÒÒv—B–×÷'B‚"ââ÷6W'f–6W2ö÷&r×6WGF–æw2æ§2"“°¢6öç7Böf4÷4W†—7F–ærÒv—Böf4ÆöD÷2…öf4÷&t–B’æ6F6‚‚‚’ÓâçVÆÂ“°¢6öç7Böf4†4FG"Ò…öf56–vçW²&FG&W72%ÒÇÂöf56–vçW²&6—G’%ÒÇÂöf56–vçW²&6÷VçG'’%ÒÇÂöf56–vçW²'†öæR%Ò“°¢–b‚öf4÷4W†—7F–ær’°¢v—Böf5W6W'D÷2…öf4÷&t–BÂ°¢VÖ–Ã¢öf4VÖ–ÂÀ¢÷&tæÖS¢öf56–vçW²&6ö×ç•öæÖR%Òóò""À¢f—'7DæÖS¢öf56–vçW²&f—'7EöæÖR%Òóò""À¢Æ7DæÖS¢öf56–vçW²&Æ7EöæÖR%Òóò""À¢6÷VçG'“¢öf56–vçW²&6÷VçG'’%ÒóòçVÆÂÀ¢6—G“¢öf56–vçW²&6—G’%ÒóòçVÆÂÀ¢FG&W73¢öf56–vçW²&FG&W72%ÒóòçVÆÂÀ¢÷7FÄ6öFS¢öf56–vçW²'÷7FÅö6öFR%ÒóòçVÆÂÀ¢†öæS¢öf56–vçW²'†öæR%ÒóòçVÆÂÀ¢fC¢öf56–vçW²'fB%ÒóòçVÆÂÀ¢Æö6F–öä6öæf–wW&VC¢…öf56–vçW²&6—G’%ÒÇÂöf56–vçW²&FG&W72%Ò’À¢Æö6F–öå6÷W&6S¢&ÖçVÂ"À¢Ò“°¢ÆövvW"æ–æfò‡²7FW¢$d2ÓFb"Â÷&t–C¢öf4÷&t–BÒÂ%´d5Ò7FWÓFc¢÷&u÷6WGF–æw2&öf–ÆR&÷r7&VFVBg&öÒ6–vçWFF"“°¢ÒVÇ6R–b…öf4†4FG"bböf4÷4W†—7F–æræFG&W72bböf4÷4W†—7F–æræ6—G’’°¢òòW†—7F–ær&öf–ÆR&÷rv—F†÷WBç’FG&W72(	Bf–ÆÂF†RÖ—76–æp¢òò6öçF7Bf–VÆG2g&öÒF†R6–vçWf÷&Ò†æWfW"÷fW'w&—FRfÇVW2’à¢v—Böf5W6W'D÷2…öf4÷&t–BÂ°¢6÷VçG'“¢öf4÷4W†—7F–æræ6÷VçG'’óòöf56–vçW²&6÷VçG'’%ÒóòçVÆÂÀ¢6—G“¢öf56–vçW²&6—G’%ÒóòçVÆÂÀ¢FG&W73¢öf56–vçW²&FG&W72%ÒóòçVÆÂÀ¢÷7FÄ6öFS¢öf4÷4W†—7F–ærç÷7FÄ6öFRóòöf56–vçW²'÷7FÅö6öFR%ÒóòçVÆÂÀ¢†öæS¢öf4÷4W†—7F–ærç†öæRóòöf56–vçW²'†öæR%ÒóòçVÆÂÀ¢Æö6F–öä6öæf–wW&VC¢…öf56–vçW²&6—G’%ÒÇÂöf56–vçW²&FG&W72%Ò’À¢Æö6F–öå6÷W&6S¢&ÖçVÂ"À¢Ò“°¢ÆövvW"æ–æfò‡²7FW¢$d2ÓFb"Â÷&t–C¢öf4÷&t–BÒÂ%´d5Ò7FWÓFc¢÷&u÷6WGF–æw2FG&W726VÆbÖ†VÆVBg&öÒ6–vçWFF"“°¢Ğ¢Ò6F6‚…öf4÷4W'"’°¢ÆövvW"çv&â‡²7FW¢$d2ÓFb"ÂW'#¢…öf4÷4W'"2W'&÷"’æÖW76vRÒÂ%´d5Ò7FWÓFc¢÷&u÷6WGF–æw2&÷vF–öâf–ÆVB†æöâÖfFÂ’"“°¢Ğ ¢Ò6F6‚…öf47DW'"’°¢v—Böf47EG„2çVW'’‚%$ôÄÄ$4²"’æ6F6‚‚‚’Óâ·Ò“°¢òòÆörF†RgVÆÂ÷7Fw&U5ÂW'&÷"6òvR6â–FVçF–g’F†RW†7Bf–Æ–ær7FFVÖVç@¢6öç7B÷vRÒöf47DW'"2&V6÷&CÇ7G&–ærÂVæ¶æ÷vãã°¢ÆövvW"æW'&÷"‡°¢7FW¢$d2ÓBÔd”Â"À¢ÖW76vS¢÷vSòå²&ÖW76vR%ÒÀ¢6öFS¢÷vSòå²&6öFR%ÒÀ¢FWF–Ã¢÷vSòå²&FWF–Â%ÒÀ¢†–çC¢÷vSòå²&†–çB%ÒÀ¢6öç7G&–çC¢÷vSòå²&6öç7G&–çB%ÒÀ¢F&ÆS¢÷vSòå²'F&ÆR%ÒÀ¢6öÇVÖã¢÷vSòå²&6öÇVÖâ%ÒÀ¢66†VÖ¢÷vSòå²'66†VÖ%ÒÀ¢v†W&S¢÷vSòå²'v†W&R%ÒÀ¢&÷WF–æS¢÷vSòå²'&÷WF–æR%ÒÀ¢÷6—F–öã¢÷vSòå²'÷6—F–öâ%ÒÀ¢ÒÂ%´d5ÒE$å45D”ôâ$ôÄÄTB$4²(	BgVÆÂrW'&÷"&÷fR"“°¢F‡&÷röf47DW'#°¢Òf–æÆÇ’²öf47EG„2ç&VÆV6R‚“²Ğ ¢òò)H)HÔÂÓ¢vVæW&FRÖv–2Æ–æ²Fö¶Vâ)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ¢ÆövvW"æ–æfò‡²7FW¢$ÔÂÓ"ÂVÖ–Ã¢öf4VÖ–ÂÒÂ%´ÔÅÒ7FWÓ¢vVæW&F–ærÖv–2Æ–æ²Fö¶Vâ‡&æFöÔ'—FW23"’"“°¢6öç7Böf4Öv–5Fö¶VâÒöf5&"ƒ3"’çFõ7G&–ær‚&†W‚"“° ¢òò)H)HÔÂÓ#¢–ç6W'BFö¶Vâ–çFòD")H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ¢ÆövvW"æ–æfò‡²7FW¢$ÔÂÓ""ÂFö¶Vå&Vf—ƒ¢öf4Öv–5Fö¶Vâç6Æ–6RƒÂ‚’ÂVÖ–Ã¢öf4VÖ–ÂÒÂ%´ÔÅÒ7FWÓ#¢–ç6W'F–ærÖv–5öÆ–æµ÷Fö¶Vâ–çFòD""“°¢6öç7Böf5Fö´2Òv—Böf47EööÂæ6öææV7B‚“°¢ÆWBöÖÅFö´–ç6W'FVBÒfÇ6S°¢G'’°¢6öç7BöÖÅFöµ"Òv—Böf5Fö´2çVW'“Ç²Fö¶Vã¢7G&–ærÓâ€¢”å4U%B”åDòÖv–5öÆ–æµ÷Fö¶Vç2‡Fö¶VâÆVÖ–ÂÆW‡—&W5öBÇW6VB¢dÅTU2‚CÂC"Ääõr‚’´”åDU%dÂs#B†÷W'2rÄdÅ4R’ôâ4ôädÄ”5B‡Fö¶Vâ’DòäõD„”är$UEU$ä”ärFö¶VæÀ¢µöf4Öv–5Fö¶VâÂöf4VÖ–ÅĞ¢“°¢öÖÅFö´–ç6W'FVBÒ…öÖÅFöµ"ç&÷t6÷VçBóò’â°¢ÆövvW"æ–æfò‡²7FW¢$ÔÂÓ"Öö²"ÂFö¶Vå&Vf—ƒ¢öf4Öv–5Fö¶Vâç6Æ–6RƒÂ‚’Â–ç6W'FVC¢öÖÅFö´–ç6W'FVBÒÂ%´ÔÅÒ7FWÓ#¢Öv–5öÆ–æµ÷Fö¶VâD"&W7VÇB"“°¢Òf–æÆÇ’²öf5Fö´2ç&VÆV6R‚“²Ğ ¢òò)H)HÔÂÓS¢6ö×÷6RÖv–2Æ–æ²U$Â†ÆövvVB&Vf÷&RÔÂÓ2f÷"6Æ&—G’’)H ¢6öç7Böf5V%W&ÂÒ&ö6W72æVçe²%T$Ä”5õU$Â%ÒÇÂ&‡GG3¢òöæfÆ÷wö–çBç&ò#°¢6öç7Böf4Öv–4Æ–æµW&ÂÒGµöf5V%W&ÇÒöÆöv–â×fW&–g’æ‡FÖÃ÷Fö¶VãÒGµöf4Öv–5Fö¶VçÖ°¢ÆövvW"æ–æfò‡²7FW¢$ÔÂÓR"ÂW&ÄFöÖ–ã¢öf5V%W&ÂÂFö¶Vå&Vf—ƒ¢öf4Öv–5Fö¶Vâç6Æ–6RƒÂ‚’ÂFƒ¢"öÆöv–â×fW&–g’æ‡FÖÂ"ÒÂ%´ÔÅÒ7FWÓS¢Öv–2Æ–æ²U$Â6ö×÷6VB"“° ¢òò)H)HÔÂÓ"ãS¢&W6VæB7W&W76–öâÖÆ—7B&RÖ6†V6²)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ¢òò†&B&÷Væ6RWFòÖFG2F†RFG&W72Fò&W6VæBw27W&W76–öâÆ—7Bà¢òòç’7V'6WVVçB6VæBGFV×B—26–ÆVçFÇ’G&÷VB'’&W6VæB(	BF†R4D°¢òò&WGW&ç2ö³§G'VRv—F‚âVÖ–Ä–B'WBF†RVÖ–Â—2æWfW"FVÆ—fW&VBà¢òò6†V6²$Tdõ$R6ÆÆ–ærF†RÖ–ÆW"6òvR6â&WGW&âVÖ–Äf–ÆVC§G'VP¢òò–ÖÖVF–FVÇ’†æB6†÷rF†R&6öææV7BF—&V7FÇ’"T’’–ç7FVBöbfÇ6VÇ¢òò6Æ–Ö–ærF†RÆ–æ²v26VçBà¢6öç7B÷&W6VæD¶W”6†²Ò&ö6W72æVçe²%$U4TäEô•ô´U’%Ó°¢–b…÷&W6VæD¶W”6†²’°¢G'’°¢6öç7B÷7W&W7Òv—BfWF6‚€¢‡GG3¢òö’ç&W6VæBæ6öÒ÷7W&W76–öç2òG¶Væ6öFUU$”6ö×öæVçB…öf4VÖ–Â—ÖÀ¢²†VFW'3¢²WF†÷&—¦F–öã¢&V&W"Gµ÷&W6VæD¶W”6†·ÖÒĞ¢“°¢–b…÷7W&W7æö²’°¢6öç7B÷7WFFÒv—B÷7W&W7æ§6öâ‚’2²VÖ–Ãó¢7G&–æs²÷&–v–ãó¢7G&–ærÓ°¢–b…÷7WFFòæVÖ–Â’°¢òòFG&W72—27W&W76VB(	B6VæF–ærv÷VÆB&R6–ÆVçFÇ’–væ÷&V@¢ÆövvW"çv&â‡°¢7FW¢$ÔÂÓ"ãRÕ5U$U54TB"À¢VÖ–Ã¢öf4VÖ–ÂÀ¢÷&–v–ã¢÷7WFFæ÷&–v–âÀ¢Fö¶Vå&Vf—ƒ¢öf4Öv–5Fö¶Vâç6Æ–6RƒÂ‚’À¢ÒÂ%´ÔÅÒ7FWÓ"ãS¢VÖ–Â7W&W76VB(	BFVÆ—fW'’–×÷76–&ÆRÂ&WGW&æ–ærVÖ–Äf–ÆVB"“°¢&W2æ§6öâ‡°¢7V66W73¢G'VRÀ¢7V'67&—F–öä–C¢Æå7V'67&—F–öãòæ–BÀ¢FFöå7V'67&—F–öä–BÀ¢7F—fF–öäVÖ–Å6VçC¢fÇ6RÀ¢VÖ–Äf–ÆVC¢G'VRÀ¢VÖ–Äf–Å&V6öã¢'7W&W76VB"À¢Ò“°¢&WGW&ã°¢Ğ¢òò#v—F‚VÖ–Âf–VÆB&W6VçB(i"7W&W76VC²CB(i"æ÷B7W&W76VB†vööB¢ÆövvW"æ–æfò‡²7FW¢$ÔÂÓ"ãRÔô²"ÂVÖ–Ã¢öf4VÖ–ÂÒÂ%´ÔÅÒ7FWÓ"ãS¢FG&W72æ÷B7W&W76VB"“°¢Ğ¢òòæöâÓ#&W7öç6R÷"æWGv÷&²W'&÷"(i"&ö6VVBç—v’‡7W&W726†V6²—2&W7BÖVff÷'B¢Ò6F6‚…÷7WW'"’°¢ÆövvW"çv&â‡°¢7FW¢$ÔÂÓ"ãRÔU%""À¢W'#¢…÷7WW'"2W'&÷"’æÖW76vRÀ¢ÒÂ%´ÔÅÒ7FWÓ"ãS¢7W&W76–öâ6†V6²f–ÆVB†æöâÖfFÂÂ&ö6VVF–ærv—F‚6VæB’"“°¢Ğ¢Ğ ¢òò)H)HÔÂÓ2òÔÂÓB)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ¢òòÇv—26VæBF†R7F—fF–öâÖv–2Æ–æ²–ÖÖVF–FVÇ’(	Bf÷"&÷F‚G&–À¢òòæBæöâ×G&–Â6–vçW2âF†RG&–ÂFV×ÆFR†—5G&–Ã×G'VR’Ç&VG¢òò6'&–W2F†R&–v‡B7V&¦V7BòW–V'&÷r&FvR‚$W76’w&GV—BB¦÷W'2"’à¢òòFVÆVvF–ærFò7G&—RvV&†öö²‡6VæEG&–Å7F'FVDöæ6R’v2Vç&VÆ–&ÆS ¢òòç’vV&†öö²FVÆ’÷"f–ÇW&RÆVgBF†RW6W"v—F‚%l:—&–f–W¢f÷2VÖ–Ç2 ¢òòÖW76vRæBâV×G’–æ&÷‚à ¢òò)H)HÔÂÓ3¢6ÆÂÖ–ÆW"(	BÆörG&ç7÷'BG—R&Vf÷&RF†R6ÆÂ)H)H)H)H)H)H)H)H ¢6öç7BöÖÅG&ç7÷'BÒ&ö6W72æVçe²%$U4TäEô•ô´U’%Ğ¢ò'&W6VæB×6F² ¢¢‡&ö6W72æVçe²%4ÕEô„õ5B%Òò6×G¢G·&ö6W72æVçe²%4ÕEô„õ5B%×Ö¢&æöæR"“°¢ÆövvW"æ–æfò‡²7FW¢$ÔÂÓ2"ÂVÖ–Ã¢öf4VÖ–ÂÂG&ç7÷'C¢öÖÅG&ç7÷'BÂ—5G&–Ã¢w&çEG&–ÂÒÂ%´ÔÅÒ7FWÓ3¢6ÆÆ–ær6VæD7F—fF–öäÖv–4Æ–æ²"“°¢6öç7B²Ö–ÆW#¢öf4Ö–ÆW"ÒÒv—B–×÷'B‚"ââ÷6W'f–6W2öÖ–ÆW"æ§2"’æ6F6‚‚‚’Óâ‡²Ö–ÆW#¢çVÆÂÒ’“°¢–b‚öf4Ö–ÆW"’°¢F‡&÷ræWrW'&÷"‚$7F—fF–öâVÖ–Â6W'f–6RVæf–Æ&ÆR"“°¢Ğ¢6öç7Böf4Ö–Å&W7VÇBÒv—Böf4Ö–ÆW"ç6VæD7F—fF–öäÖv–4Æ–æ²‡°¢Fó¢öf4VÖ–ÂÀ¢æÖS¢öf56–vçW²&f—'7EöæÖR%ÒÇÂöf4VÖ–Âç7Æ—B‚$"•³ÒÀ¢Æã¢Æä¶W’À¢Öv–4Æ–æµW&Ã¢öf4Öv–4Æ–æµW&ÂÀ¢—5G&–Ã¢w&çEG&–ÂÀ¢Ò“° ¢òò)H)HÔÂÓC¢Ö–ÆW"&W7öç6R(	BÆörWfW'—F†–ær)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ¢ÆövvW"æ–æfò‡°¢7FW¢$ÔÂÓB"À¢ö³¢öf4Ö–Å&W7VÇCòæö²À¢VÖ–Ä–C¢öf4Ö–Å&W7VÇCòæ–BÀ¢W'&÷#¢öf4Ö–Å&W7VÇCòæW'&÷"À¢G&ç7÷'C¢öÖÅG&ç7÷'BÀ¢Fó¢öf4VÖ–ÂÀ¢ÒÂ%´ÔÅÒ7FWÓC¢6VæD7F—fF–öäÖv–4Æ–æ²&W7öç6R"“° ¢–b‚öf4Ö–Å&W7VÇCòæö²’°¢ÆövvW"çv&â‡²7FW¢$ÔÂÓBÔd”Â"ÂVÖ–Ã¢öf4VÖ–ÂÂW'&÷#¢öf4Ö–Å&W7VÇCòæW'&÷"ÂG&ç7÷'C¢öÖÅG&ç7÷'BÒÂ%´ÔÅÒ7FWÓC¢d”Â(	B7F—fF–öâVÖ–Âæ÷BFVÆ—fW&VB"“°¢&W2æ§6öâ‡°¢7V66W73¢G'VRÀ¢7V'67&—F–öä–C¢Æå7V'67&—F–öâæ–BÀ¢FFöå7V'67&—F–öä–BÀ¢7F—fF–öäVÖ–Å6VçC¢fÇ6RÀ¢VÖ–Äf–ÆVC¢G'VRÀ¢Ò“°¢&WGW&ã°¢Ğ¢ÆövvW"æ–æfò‡²7FW¢$ÔÂÓBÔô²"ÂVÖ–Ä–C¢öf4Ö–Å&W7VÇCòæ–BÂFó¢öf4VÖ–ÂÒÂ%´ÔÅÒ7FWÓC¢ô²(	B7F—fF–öâVÖ–Â66WFVB'’G&ç7÷'B"“° ¢Ò6F6‚…öf47EF÷W'"’°¢ÆövvW"æW'&÷"‡²7FW¢$d2ÕDõÔd”Â"ÂW'#¢…öf47EF÷W'"2W'&÷"“òæÖW76vRÒÂ%´d5ÒF÷ÖÆWfVÂ7F—fF–öâ6F6‚"“°¢–b…öf47F—fF–öä6öÖÖ—GFVB’°¢&W2æ§6öâ‡°¢7V66W73¢G'VRÀ¢7V'67&—F–öä–C¢Æå7V'67&—F–öâæ–BóòVæFVf–æVBÀ¢FFöå7V'67&—F–öä–BÀ¢7F—fF–öäVÖ–Å6VçC¢fÇ6RÀ¢VÖ–Äf–ÆVC¢G'VRÀ¢Ò“°¢ÒVÇ6R°¢&W2ç7FGW2ƒS"’æ§6öâ‡°¢W'&÷#¢%f÷G&R–VÖVçBW7B6öæf—&Ü:’ÂÖ—2Âv7F—fF–öâGR6ö×FR:–6†÷\:’â6öçF7FW¢ÆR7W÷'Bâ"À¢6öFS¢&7F—fF–öåöf–ÆVB"À¢Ò“°¢Ğ¢&WGW&ã°¢Ğ¢Ğ¢&W2æ§6öâ‡²7V66W73¢G'VRÂ7V'67&—F–öä–C¢Æå7V'67&—F–öâæ–BÂFFöå7V'67&—F–öä–BÂ7F—fF–öäVÖ–Å6VçC¢G'VRÒ“°¢Ò6F6‚†W'"’°¢ÆövvW"æW'&÷"‡²W'"ÒÂ%µV&Æ–4&–ÆÆ–æuÒf–æÆ—¦RÖ6†V6¶÷WBf–ÆVB"“°¢&W2ç7FGW2ƒS’æ§6öâ‡²W'&÷#¢$W'&WW"Æ÷'2FRÆf–æÆ—6F–öââ"Ò“°¢Ğ§Ò“° ¦W‡÷'BFVfVÇB&÷WFW#°
+        address?: { line1?: string | null; line2?: string | null; city?: string | null; postal_code?: string | null; country?: string | null; state?: string | null } | null;
+      } | null;
+      const _fcPmAddr = _fcPmBd?.address;
+
+      /* 2. Load signup row (name/email/company fallback) */
+      const _fcPrt2 = preRegisterToken || intentMeta["pre_register_token"] || "";
+      let _fcSignupName = "";
+      let _fcSignupEmail = "";
+      let _fcSignupCompany = "";
+      if (_fcPrt2) {
+        const { pool: _fcEnrichPool } = await import("@workspace/db");
+        const _fcEnrichC = await _fcEnrichPool.connect();
+        try {
+          const _fcER = await _fcEnrichC.query(
+            `SELECT email, first_name, last_name, company_name
+             FROM pending_signups WHERE token = $1 LIMIT 1`,
+            [_fcPrt2]
+          );
+          const _fcRow = _fcER.rows[0];
+          if (_fcRow) {
+            _fcSignupName    = `${_fcRow.first_name ?? ""} ${_fcRow.last_name ?? ""}`.trim() || _fcRow.company_name || "";
+            _fcSignupEmail   = _fcRow.email || "";
+            _fcSignupCompany = _fcRow.company_name || "";
+          }
+        } finally { _fcEnrichC.release(); }
+      }
+
+      /* 3. Merge: prefer signup for name/email, PM billing_details for address */
+      const _fcFinalName    = _fcSignupName    || _fcPmBd?.name  || "";
+      const _fcFinalEmail   = _fcSignupEmail   || _fcPmBd?.email || "";
+      const _fcHasPmAddr    = !!(_fcPmAddr?.line1 && _fcPmAddr?.country);
+
+      const _fcUpdate: Parameters<typeof stripe.customers.update>[1] = {
+        invoice_settings: { default_payment_method: paymentMethodId! },
+        preferred_locales: ["fr"],
+        ...(_fcFinalName    ? { name:        _fcFinalName    } : {}),
+        ...(_fcFinalEmail   ? { email:       _fcFinalEmail   } : {}),
+        ...(_fcSignupCompany ? { description: _fcSignupCompany } : {}),
+        ...(_fcHasPmAddr  ? {
+          address: {
+            line1:       _fcPmAddr!.line1  ?? "",
+            line2:       _fcPmAddr!.line2  ?? undefined,
+            city:        _fcPmAddr!.city   ?? "",
+            postal_code: _fcPmAddr!.postal_code ?? "",
+            country:     _fcPmAddr!.country ?? "",
+          }
+        } : {}),
+      };
+
+      await stripe.customers.update(customerId!, _fcUpdate);
+      logger.info({ customerId, hasPmAddr: _fcHasPmAddr, hasName: !!_fcFinalName },
+        "[PublicBilling] finalize: customer enriched (Address Element + signup data)");
+
+    } catch (_fcEnrichErr) {
+      logger.warn({ _fcEnrichErr }, "[PublicBilling] finalize: customer enrichment non-fatal â€” invoice_settings only");
+      await stripe.customers.update(customerId!, {
+        invoice_settings: { default_payment_method: paymentMethodId! },
+        preferred_locales: ["fr"],
+      }).catch(() => {});
+    }
+
+    /* â”€â”€ 3a. Plan subscription â€” trial only for confirmed first-time subscribers â”€â”€ */
+    const planPriceId = PLAN_PRICE_IDS[planKey];
+    if (!planPriceId) {
+      res.status(400).json({ error: "Plan introuvable dans Stripe." });
+      return;
+    }
+
+    // Grant trial when there is no prior subscription history AND the intent carries trial days > 0.
+    // When trial_days_remaining === 0 the user's trial has already expired â€” bill immediately.
+    const grantTrial = !hasSubscriptionHistory && intentTrialDays > 0;
+    const trialEndUnix = grantTrial ? Math.floor(Date.now() / 1000) + intentTrialDays * 86400 : undefined;
+    logger.info({ planKey, grantTrial, intentTrialDays, hasSubscriptionHistory, customerId }, "[PublicBilling] finalize: trial decision");
+
+    // â”€â”€ P1-5 + P0: Idempotence guard â€” prevent duplicate subscriptions on retry/refresh â”€â”€
+    // P0 fix (2026-08-16): the previous guard filtered by `price: planPriceId` only,
+    // which allowed a SECOND subscription to be created when the customer already had
+    // an active/trialing subscription for a DIFFERENT plan (e.g., a Pro trialing sub
+    // created 43 min earlier via another checkout session with the same pre_register_token).
+    // Now we check ALL active/trialing subscriptions for the customer and block with 409
+    // when a different-plan subscription exists, preventing a double billing scenario.
+    let planSubscription: Awaited<ReturnType<typeof stripe.subscriptions.create>>;
+    {
+      const _allSubs = await stripe.subscriptions.list({
+        customer: customerId!,
+        status:   "all",
+        limit:    10,
+      });
+      const _activeOrTrialing = _allSubs.data.filter(
+        (s: Stripe.Subscription) =>
+          (s.status === "active" || s.status === "trialing" || s.status === "past_due") &&
+          !s.cancel_at_period_end
+      );
+      const _samePlanReusable = _activeOrTrialing.find(
+        (s: Stripe.Subscription) => s.items.data.some((item: Stripe.SubscriptionItem) => item.price.id === planPriceId)
+      );
+
+      if (_samePlanReusable) {
+        // Reuse â€” avoid duplicate subscription on page refresh / double-click
+        logger.info({ subscriptionId: _samePlanReusable.id, planKey, customerId },
+          "[PublicBilling] finalize: reusing existing plan subscription (idempotent)");
+        planSubscription = _samePlanReusable as typeof planSubscription;
+      } else if (_activeOrTrialing.length > 0) {
+        // P0: customer already has an active/trialing subscription for a DIFFERENT plan.
+        // Creating a second subscription would charge the customer twice. Block immediately.
+        const _conflict = _activeOrTrialing[0]!;
+        logger.error(
+          {
+            conflictSubId:     _conflict.id,
+            conflictStatus:    _conflict.status,
+            conflictPriceId:   _conflict.items.data[0]?.price.id,
+            newPlan:           planKey,
+            customerId,
+            orgId:             _authenticatedOrgId,
+            preRegisterToken,
+          },
+          "[PublicBilling][P0] DUPLICATE SUBSCRIPTION BLOCKED â€” customer already has active/trialing subscription for a different plan"
+        );
+        res.status(409).json({
+          error:   "account_already_subscribed",
+          message: "Ce compte possÃ¨de dÃ©jÃ  un abonnement actif. Connectez-vous pour gÃ©rer votre plan.",
+        });
+        return;
+      } else {
+        planSubscription = await stripe.subscriptions.create({
+          customer:               customerId,
+          items:                  [{ price: planPriceId, quantity: 1 }],
+          ...(trialEndUnix !== undefined ? { trial_end: trialEndUnix } : {}),
+          default_payment_method: paymentMethodId,
+          metadata: {
+            plan:           planKey,
+            source:         "checkout_payment",
+            flowpoint_cart: "true",
+            org_id:         _authenticatedOrgId,
+            orgId:          _authenticatedOrgId,
+            ...(preRegisterToken || intentMeta["pre_register_token"]
+              ? { pre_register_token: preRegisterToken || intentMeta["pre_register_token"] }
+              : {}),
+          },
+        });
+      }
+    }
+
+    /* â”€â”€ 3b. Add-on subscription â€” independent of trial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+       Add-ons were already charged immediately via PaymentIntent (month 1).
+       We create a recurring subscription that starts billing at month 2
+       (trial_end = now + 30 days) so the customer is never double-charged.
+    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    const { subscriptionItems } = buildLineItems(planKey, addonsResolved);
+    const addonItems = subscriptionItems.filter(i => i.price !== planPriceId);
+
+    let addonSubscriptionId: string | null = null;
+    if (addonItems.length > 0) {
+      const thirtyDaysFromNow = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+      const addonSub = await stripe.subscriptions.create({
+        customer:               customerId,
+        items:                  addonItems,
+        trial_end:              thirtyDaysFromNow,   /* skip first 30d â€” already paid via PI */
+        default_payment_method: paymentMethodId,
+        metadata: {
+          plan:           planKey,
+          addons:         JSON.stringify(addonsResolved),
+          source:         "checkout_payment_addons",
+          flowpoint_cart: "true",
+        },
+      });
+      addonSubscriptionId = addonSub.id;
+    }
+
+    logger.info(
+      { plan: planKey, planSubscriptionId: planSubscription.id, addonSubscriptionId, customerId },
+      "[PublicBilling] finalize: subscriptions created"
+    );
+    // â”€â”€ Persist subscription to DB immediately (don't wait for webhook delay) â”€â”€
+    try {
+      const { persistOrgData: _fcPod } = await import("../services/org-data.js");
+      await _fcPod(_authenticatedOrgId, {
+        subscriptionStatus:   grantTrial ? "trialing" : "active",
+        stripeCustomerId:     customerId!,
+        stripeSubscriptionId: planSubscription.id,
+        plan:                 planKey,
+        ...(trialEndUnix !== undefined ? { trialEndsAt: new Date(trialEndUnix * 1000).toISOString() } : {}),
+        // Mark trial consumed so canStartTrial stays definitively false even if
+        // stripeSubscriptionId is later cleared (e.g. resource_missing reconciliation).
+        trialConsumedAt: new Date().toISOString(),
+      });
+      logger.info({ orgId: _authenticatedOrgId, planKey }, "[PublicBilling] finalize: subscription persisted to DB");
+    } catch (_fcPodErr) {
+      logger.warn({ _fcPodErr }, "[PublicBilling] finalize: persistOrgData non-fatal (webhook will sync)");
+    }
+
+    // P0 UUID anchor (full billing state): for pre-register flow (_authenticatedOrgId = email)
+    // all persists above went to org_settings[email]. Look up the UUID org (created by
+    // activateNewSignup from the PI.succeeded webhook) and anchor the full billing state so
+    // subsequent ESC calls find the canonical customer without creating a duplicate.
+    if (!_UUID_RE_FC.test(_authenticatedOrgId) && customerId) {
+      try {
+        const _fcAnchorUuid = _fcResolvedUuidEarly ?? await (async () => {
+          const { pool: _fcUuidFinalPool } = await import("@workspace/db");
+          const _fcUuidFinalC = await _fcUuidFinalPool.connect();
+          try {
+            const _r = await _fcUuidFinalC.query<{ id: string }>(
+              `SELECT id::text FROM organizations WHERE lower(owner_email) = lower($1) LIMIT 1`,
+              [_authenticatedOrgId]
+            );
+            return _r.rows[0]?.id ?? null;
+          } finally { _fcUuidFinalC.release(); }
+        })();
+
+        if (_fcAnchorUuid) {
+          const { persistOrgData: _fcPodFull } = await import("../services/org-data.js");
+          await _fcPodFull(_fcAnchorUuid, {
+            stripeCustomerId:     customerId!,
+            stripeSubscriptionId: planSubscription.id,
+            subscriptionStatus:   grantTrial ? "trialing" : "active",
+            plan:                 planKey,
+            trialConsumedAt:      new Date().toISOString(),
+            ...(trialEndUnix !== undefined ? { trialEndsAt: new Date(trialEndUnix * 1000).toISOString() } : {}),
+          });
+          logger.info({ orgId: _fcAnchorUuid, customerId, planKey }, "[PublicBilling] finalize: full billing state anchored to UUID org");
+        }
+      } catch (_fcAnchorErr) {
+        logger.warn({ _fcAnchorErr, orgId: _authenticatedOrgId }, "[PublicBilling] finalize: UUID org full anchor failed (non-fatal)");
+      }
+    }
+
+    // Normalize Stripe customer metadata to canonical orgId (UUID when known, email otherwise).
+    // This ensures ESC Step 3 (stripe.customers.search by metadata.orgId) finds the customer
+    // on re-subscription when the org UUID is already in place.
+    try {
+      const _metaNormOrgId = _UUID_RE_FC.test(_authenticatedOrgId)
+        ? _authenticatedOrgId
+        : (_fcResolvedUuidEarly ?? _authenticatedOrgId);
+      await stripe.customers.update(customerId!, {
+        metadata: { orgId: _metaNormOrgId, org_id: _metaNormOrgId, flowpointOrgId: _metaNormOrgId },
+      });
+      logger.info({ customerId, orgId: _metaNormOrgId }, "[PublicBilling] finalize: Stripe customer metadata normalized");
+    } catch (_metaNormErr) {
+      logger.warn({ _metaNormErr, customerId }, "[PublicBilling] finalize: metadata normalization non-fatal");
+    }
+
+    // â”€â”€ Pre-registration: activate new user account and deliver magic link â”€â”€â”€â”€
+    // A successful finalization must never claim that a login email was sent
+    // before the account, token and delivery have all completed successfully.
+    const _fcActToken = preRegisterToken || intentMeta["pre_register_token"] || "";
+    logger.info({
+      step: "FC-0",
+      intentId: (intentId as string)?.slice(0, 20),
+      intentType,
+      planKey,
+      hasPreRegToken: !!_fcActToken,
+      tokenPrefix:    _fcActToken?.slice(0, 8) || "(none)",
+      hasSessionCookie: !!_fckToken,
+      authenticatedOrgId: _authenticatedOrgId?.slice(0, 30),
+    }, "[FC] finalize-checkout reached activation gate");
+
+    if (_fcActToken) {
+      let _fcActivationCommitted = false;
+      try {
+          const { pool: _fcActPool } = await import("@workspace/db");
+          const { randomBytes: _fcRb } = await import("crypto");
+
+          // â”€â”€ Step 1: Look up pending_signup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          logger.info({ step: "FC-1", token: _fcActToken.slice(0, 8) }, "[FC] step-1: querying pending_signups");
+          const _fcActC0 = await _fcActPool.connect();
+          let _fcSignup: Record<string, string | null> | null = null;
+          // _fcPendingRow is saved outside the try so FC-1-skip can read the email
+          let _fcPendingRow: Record<string, string | null> | null = null;
+          try {
+            const _fcActR0 = await _fcActC0.query(
+              `SELECT email, first_name, last_name, company_name, country, address, city,
+                      postal_code, phone, vat, consumed_at, expires_at
+               FROM pending_signups
+               WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+              [_fcActToken]
+            );
+            _fcPendingRow = _fcActR0.rows[0] ?? null;
+            logger.info({
+              step: "FC-1-result",
+              found:    !!_fcPendingRow,
+              consumed: _fcPendingRow ? !!_fcPendingRow["consumed_at"] : null,
+              email:    _fcPendingRow?.["email"],
+              expires:  _fcPendingRow?.["expires_at"],
+            }, "[FC] step-1: pending_signup lookup result");
+            _fcSignup = (_fcPendingRow && !_fcPendingRow["consumed_at"]) ? _fcPendingRow : null;
+          } finally { _fcActC0.release(); }
+
+          if (!_fcSignup) {
+            // Token already consumed (webhook already activated the account) or not found.
+            // The webhook should have sent the magic link email, but if it failed we must
+            // re-send now so the user isn't left with a blank inbox after seeing "check your email".
+            logger.info({ step: "FC-1-skip", token: _fcActToken.slice(0, 8) }, "[FC] step-1: token consumed/missing â€” attempting email re-send");
+            const _skipEmail = _fcPendingRow?.["email"] ?? null;
+            if (_skipEmail) {
+              // â”€â”€ FC-1-skip resend: find existing valid token or mint a fresh one â”€â”€
+              const _reSendC = await _fcActPool.connect();
+              let _reSendOk = false;
+              let _reSendEmailId: string | undefined;
+              try {
+                const _existTok = await _reSendC.query<{ token: string }>(
+                  `SELECT token FROM magic_link_tokens
+                   WHERE email = $1 AND used = FALSE AND expires_at > NOW()
+                   ORDER BY expires_at DESC LIMIT 1`,
+                  [_skipEmail]
+                );
+                let _reToken = _existTok.rows[0]?.token ?? null;
+                if (!_reToken) {
+                  // No valid token left â€” mint a fresh one
+                  _reToken = _fcRb(32).toString("hex");
+                  await _reSendC.query(
+                    `INSERT INTO magic_link_tokens (token, email, expires_at, used)
+                     VALUES ($1, $2, NOW() + INTERVAL '24 hours', FALSE)
+                     ON CONFLICT (token) DO NOTHING`,
+                    [_reToken, _skipEmail]
+                  );
+                  logger.info({ step: "FC-1-skip-new-token", tokenPrefix: _reToken.slice(0, 8) }, "[FC] FC-1-skip: created fresh magic link token");
+                } else {
+                  logger.info({ step: "FC-1-skip-reuse-token", tokenPrefix: _reToken.slice(0, 8) }, "[FC] FC-1-skip: reusing existing valid token");
+                }
+                const _rePubUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+                const _reMagicUrl = `${_rePubUrl}/login-verify.html?token=${_reToken}`;
+                const { mailer: _reMailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
+                if (_reMailer) {
+                  const _reResult = await _reMailer.sendActivationMagicLink({
+                    to:           _skipEmail,
+                    name:         _fcPendingRow?.["first_name"] || _skipEmail.split("@")[0],
+                    plan:         planKey,
+                    magicLinkUrl: _reMagicUrl,
+                    isTrial:      grantTrial,
+                  }).catch((e: unknown) => ({ ok: false as const, error: String(e) }));
+                  _reSendOk      = !!_reResult?.ok;
+                  _reSendEmailId = (_reResult as { id?: string })?.id;
+                  logger.info({ step: "FC-1-skip-mail", ok: _reSendOk, emailId: _reSendEmailId, error: (_reResult as { error?: string })?.error }, "[FC] FC-1-skip: re-send result");
+                } else {
+                  logger.warn({ step: "FC-1-skip-no-mailer" }, "[FC] FC-1-skip: mailer unavailable");
+                }
+              } catch (_reSendErr) {
+                logger.error({ step: "FC-1-skip-resend-err", err: (_reSendErr as Error).message }, "[FC] FC-1-skip: re-send threw");
+              } finally { _reSendC.release(); }
+
+              res.json({
+                success: true,
+                subscriptionId: planSubscription?.id,
+                addonSubscriptionId,
+                activationEmailSent: _reSendOk,
+                ...(_reSendOk ? {} : { emailFailed: true }),
+              });
+              return;
+            }
+            // No email found in pending_signup row â€” token was never in DB (invalid)
+            res.json({
+              success: true,
+              subscriptionId: planSubscription?.id,
+              addonSubscriptionId,
+              activationEmailSent: false,
+              emailFailed: true,
+            });
+            return;
+          }
+
+          const _fcAEmail = _fcSignup["email"] ?? _authenticatedOrgId;
+          const { randomUUID: _fcRandUUID } = await import("crypto");
+          const _fcAOrgId = _fcRandUUID();
+          logger.info({ step: "FC-2", email: _fcAEmail, newOrgId: _fcAOrgId, planKey, grantTrial, customerId }, "[FC] step-2: identifiers resolved");
+
+          // â”€â”€ Step 3: Self-heal DDL (auto-commit, outside transaction) â”€â”€â”€â”€
+          logger.info({ step: "FC-3" }, "[FC] step-3: running DDL self-heals on isolated connection");
+          {
+            const _fcSelfHealC = await _fcActPool.connect();
+            try {
+              const _shRun = async (sql: string, label: string) => {
+                try {
+                  await _fcSelfHealC.query(sql);
+                  logger.info({ step: "FC-3", label, ok: true }, "[FC] self-heal ok");
+                } catch (e) {
+                  logger.warn({ step: "FC-3", label, err: (e as Error).message, code: (e as Record<string,unknown>)["code"] }, "[FC] self-heal warn (non-fatal)");
+                }
+              };
+              await _shRun(`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name     TEXT`, "users.first_name");
+              await _shRun(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name      TEXT`, "users.last_name");
+              await _shRun(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status         TEXT NOT NULL DEFAULT 'pending'`, "users.status");
+              await _shRun(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE`, "users.email_verified");
+              await _shRun(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at     TIMESTAMPTZ DEFAULT NOW()`, "users.updated_at");
+              await _shRun(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`, "orgs.updated_at");
+              // CRITICAL: ON CONFLICT (email) requires a UNIQUE index.
+              // CREATE TABLE IF NOT EXISTS is a no-op on existing tables, so the inline
+              // CONSTRAINT is never retroactively applied to pre-existing tables.
+              await _shRun(`CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email)`, "users_email_unique");
+            } finally { _fcSelfHealC.release(); }
+          }
+
+          // â”€â”€ Step 4: Activation transaction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          logger.info({ step: "FC-4", email: _fcAEmail, orgId: _fcAOrgId, planKey, customerId }, "[FC] step-4: BEGIN activation transaction");
+          const _fcActTxC = await _fcActPool.connect();
+          try {
+            await _fcActTxC.query("BEGIN");
+
+            // 4a â€” upsert user
+            logger.info({ step: "FC-4a", email: _fcAEmail }, "[FC] step-4a: INSERT INTO users");
+            const _fcNewUserId = _fcRandUUID();
+            const _fcUsr = await _fcActTxC.query<{ id: string }>(
+              `INSERT INTO users (id, email, first_name, last_name, auth_provider, email_verified, status)
+               VALUES ($4,$1,$2,$3,'magic_link',TRUE,'active')
+               ON CONFLICT (email) DO UPDATE
+                 SET status='active', email_verified=TRUE,
+                     first_name=COALESCE(EXCLUDED.first_name,users.first_name), updated_at=NOW()
+               RETURNING id`,
+              [_fcAEmail, _fcSignup["first_name"] ?? "", _fcSignup["last_name"] ?? "", _fcNewUserId]
+            );
+            const _fcUserId = _fcUsr.rows[0]?.id;
+            logger.info({ step: "FC-4a-ok", userId: _fcUserId }, "[FC] step-4a: user upserted");
+            if (!_fcUserId) throw new Error("upsert user returned no id for " + _fcAEmail);
+
+            // 4b â€” upsert organization
+            logger.info({ step: "FC-4b", orgId: _fcAOrgId }, "[FC] step-4b: INSERT INTO organizations");
+            await _fcActTxC.query(
+              `INSERT INTO organizations
+                 (id,name,slug,owner_user_id,status,plan,subscription_status,owner_email,stripe_customer_id,trial_ends_at)
+               VALUES($1,$2,$3,$4,'active',$5,$6,$7,$8,$9)
+               ON CONFLICT (id) DO UPDATE
+                 SET status='active', plan=EXCLUDED.plan, subscription_status=EXCLUDED.subscription_status,
+                     stripe_customer_id=COALESCE(EXCLUDED.stripe_customer_id,organizations.stripe_customer_id),
+                     updated_at=NOW()`,
+              [
+                _fcAOrgId, _fcSignup["company_name"] ?? _fcAEmail,
+                _fcAOrgId.replace(/[^a-z0-9]/gi,"-").toLowerCase().slice(0,60),
+                _fcUserId, planKey, grantTrial ? "trialing" : "active",
+                _fcAEmail, customerId ?? null,
+                trialEndUnix !== undefined ? new Date(trialEndUnix * 1000).toISOString() : null,
+              ]
+            );
+            logger.info({ step: "FC-4b-ok" }, "[FC] step-4b: organization upserted");
+
+            // 4c â€” upsert membership
+            logger.info({ step: "FC-4c" }, "[FC] step-4c: INSERT INTO organization_members");
+            await _fcActTxC.query(
+              `INSERT INTO organization_members (organization_id,user_id,role,status)
+               VALUES($1,$2,'owner','active')
+               ON CONFLICT(organization_id,user_id) DO UPDATE SET status='active',role='owner',updated_at=NOW()`,
+              [_fcAOrgId, _fcUserId]
+            );
+            logger.info({ step: "FC-4c-ok" }, "[FC] step-4c: organization_members upserted");
+
+            // 4d â€” consume pending_signup token
+            logger.info({ step: "FC-4d" }, "[FC] step-4d: UPDATE pending_signups SET consumed_at");
+            await _fcActTxC.query(
+              `UPDATE pending_signups SET consumed_at=NOW() WHERE token=$1 AND consumed_at IS NULL`,
+              [_fcActToken]
+            );
+            logger.info({ step: "FC-4d-ok" }, "[FC] step-4d: pending_signup consumed");
+
+            // 4e â€” commit
+            logger.info({ step: "FC-4e" }, "[FC] step-4e: COMMIT");
+            await _fcActTxC.query("COMMIT");
+            _fcActivationCommitted = true;
+            logger.info({ step: "FC-4-COMMITTED", orgId: _fcAOrgId, userId: _fcUserId, plan: planKey }, "[FC] TRANSACTION COMMITTED â€” user + org activated");
+
+            // â”€â”€ Step 4f: Propagate signup contact/address into org_settings â”€â”€
+            // (non-fatal â€” profile data only, never billing data). Without this,
+            // accounts activated via finalize-checkout (webhook lost/slow) never
+            // see their signup address in Workspace/Settings/Localisation.
+            try {
+              const { upsertOrgSettings: _fcUpsertOs, loadOrgSettings: _fcLoadOs } = await import("../services/org-settings.js");
+              const _fcOsExisting = await _fcLoadOs(_fcAOrgId).catch(() => null);
+              const _fcHasAddr = !!(_fcSignup["address"] || _fcSignup["city"] || _fcSignup["country"] || _fcSignup["phone"]);
+              if (!_fcOsExisting) {
+                await _fcUpsertOs(_fcAOrgId, {
+                  email:              _fcAEmail,
+                  orgName:            _fcSignup["company_name"] ?? "",
+                  firstName:          _fcSignup["first_name"]   ?? "",
+                  lastName:           _fcSignup["last_name"]    ?? "",
+                  country:            _fcSignup["country"]      ?? null,
+                  city:               _fcSignup["city"]         ?? null,
+                  address:            _fcSignup["address"]      ?? null,
+                  postalCode:         _fcSignup["postal_code"]  ?? null,
+                  phone:              _fcSignup["phone"]        ?? null,
+                  vat:                _fcSignup["vat"]          ?? null,
+                  locationConfigured: !!(_fcSignup["city"] || _fcSignup["address"]),
+                  locationSource:     "manual",
+                });
+                logger.info({ step: "FC-4f", orgId: _fcAOrgId }, "[FC] step-4f: org_settings profile row created from signup data");
+              } else if (_fcHasAddr && !_fcOsExisting.address && !_fcOsExisting.city) {
+                // Existing profile row without any address â€” fill the missing
+                // contact fields from the signup form (never overwrite values).
+                await _fcUpsertOs(_fcAOrgId, {
+                  country:            _fcOsExisting.country    ?? _fcSignup["country"]     ?? null,
+                  city:               _fcSignup["city"]        ?? null,
+                  address:            _fcSignup["address"]     ?? null,
+                  postalCode:         _fcOsExisting.postalCode ?? _fcSignup["postal_code"] ?? null,
+                  phone:              _fcOsExisting.phone      ?? _fcSignup["phone"]       ?? null,
+                  locationConfigured: !!(_fcSignup["city"] || _fcSignup["address"]),
+                  locationSource:     "manual",
+                });
+                logger.info({ step: "FC-4f", orgId: _fcAOrgId }, "[FC] step-4f: org_settings address self-healed from signup data");
+              }
+            } catch (_fcOsErr) {
+              logger.warn({ step: "FC-4f", err: (_fcOsErr as Error).message }, "[FC] step-4f: org_settings propagation failed (non-fatal)");
+            }
+
+          } catch (_fcActErr) {
+            await _fcActTxC.query("ROLLBACK").catch(() => {});
+            // Log the full PostgreSQL error so we can identify the exact failing statement
+            const _pge = _fcActErr as Record<string, unknown>;
+            logger.error({
+              step:       "FC-4-FAIL",
+              message:    _pge?.["message"],
+              code:       _pge?.["code"],
+              detail:     _pge?.["detail"],
+              hint:       _pge?.["hint"],
+              constraint: _pge?.["constraint"],
+              table:      _pge?.["table"],
+              column:     _pge?.["column"],
+              schema:     _pge?.["schema"],
+              where:      _pge?.["where"],
+              routine:    _pge?.["routine"],
+              position:   _pge?.["position"],
+            }, "[FC] TRANSACTION ROLLED BACK â€” full PG error above");
+            throw _fcActErr;
+          } finally { _fcActTxC.release(); }
+
+          // â”€â”€ ML-1: Generate magic link token â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          logger.info({ step: "ML-1", email: _fcAEmail }, "[ML] step-1: generating magic link token (randomBytes 32)");
+          const _fcMagicToken = _fcRb(32).toString("hex");
+
+          // â”€â”€ ML-2: Insert token into DB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          logger.info({ step: "ML-2", tokenPrefix: _fcMagicToken.slice(0, 8), email: _fcAEmail }, "[ML] step-2: inserting magic_link_token into DB");
+          const _fcTokC = await _fcActPool.connect();
+          let _mlTokInserted = false;
+          try {
+            const _mlTokR = await _fcTokC.query<{ token: string }>(
+              `INSERT INTO magic_link_tokens(token,email,expires_at,used)
+               VALUES($1,$2,NOW()+INTERVAL '24 hours',FALSE) ON CONFLICT(token) DO NOTHING RETURNING token`,
+              [_fcMagicToken, _fcAEmail]
+            );
+            _mlTokInserted = (_mlTokR.rowCount ?? 0) > 0;
+            logger.info({ step: "ML-2-ok", tokenPrefix: _fcMagicToken.slice(0, 8), inserted: _mlTokInserted }, "[ML] step-2: magic_link_token DB result");
+          } finally { _fcTokC.release(); }
+
+          // â”€â”€ ML-5: Compose magic link URL (logged before ML-3 for clarity) â”€
+          const _fcPubUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+          const _fcMagicLinkUrl = `${_fcPubUrl}/login-verify.html?token=${_fcMagicToken}`;
+          logger.info({ step: "ML-5", urlDomain: _fcPubUrl, tokenPrefix: _fcMagicToken.slice(0, 8), path: "/login-verify.html" }, "[ML] step-5: magic link URL composed");
+
+          // â”€â”€ ML-2.5: Resend suppression-list pre-check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // A hard bounce auto-adds the address to Resend's suppression list.
+          // Any subsequent send attempt is silently dropped by Resend â€” the SDK
+          // returns ok:true with an emailId but the email is never delivered.
+          // Check BEFORE calling the mailer so we can return emailFailed:true
+          // immediately (and show the "connect directly" UI) instead of falsely
+          // claiming the link was sent.
+          const _resendKeyChk = process.env["RESEND_API_KEY"];
+          if (_resendKeyChk) {
+            try {
+              const _supResp = await fetch(
+                `https://api.resend.com/suppressions/${encodeURIComponent(_fcAEmail)}`,
+                { headers: { Authorization: `Bearer ${_resendKeyChk}` } }
+              );
+              if (_supResp.ok) {
+                const _supData = await _supResp.json() as { email?: string; origin?: string };
+                if (_supData?.email) {
+                  // Address is suppressed â€” sending would be silently ignored
+                  logger.warn({
+                    step: "ML-2.5-SUPPRESSED",
+                    email: _fcAEmail,
+                    origin: _supData.origin,
+                    tokenPrefix: _fcMagicToken.slice(0, 8),
+                  }, "[ML] step-2.5: email suppressed â€” delivery impossible, returning emailFailed");
+                  res.json({
+                    success: true,
+                    subscriptionId: planSubscription?.id,
+                    addonSubscriptionId,
+                    activationEmailSent: false,
+                    emailFailed: true,
+                    emailFailReason: "suppressed",
+                  });
+                  return;
+                }
+                // 200 with email field present â†’ suppressed; 404 â†’ not suppressed (good)
+                logger.info({ step: "ML-2.5-OK", email: _fcAEmail }, "[ML] step-2.5: address not suppressed");
+              }
+              // Non-200 response or network error â†’ proceed anyway (suppress check is best-effort)
+            } catch (_supErr) {
+              logger.warn({
+                step: "ML-2.5-ERR",
+                err: (_supErr as Error).message,
+              }, "[ML] step-2.5: suppression check failed (non-fatal, proceeding with send)");
+            }
+          }
+
+          // â”€â”€ ML-3 / ML-4 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // Always send the activation magic link immediately â€” for both trial
+          // and non-trial signups.  The trial template (isTrial=true) already
+          // carries the right subject / eyebrow badge ("Essai gratuit 14 jours").
+          // Delegating to a Stripe webhook (sendTrialStartedOnce) was unreliable:
+          // any webhook delay or failure left the user with a "VÃ©rifiez vos emails"
+          // message and an empty inbox.
+
+          // â”€â”€ ML-3: Call mailer â€” log transport type before the call â”€â”€â”€â”€â”€â”€â”€â”€
+          const _mlTransport = process.env["RESEND_API_KEY"]
+            ? "resend-sdk"
+            : (process.env["SMTP_HOST"] ? `smtp:${process.env["SMTP_HOST"]}` : "none");
+          logger.info({ step: "ML-3", email: _fcAEmail, transport: _mlTransport, isTrial: grantTrial }, "[ML] step-3: calling sendActivationMagicLink");
+          const { mailer: _fcMailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
+          if (!_fcMailer) {
+            throw new Error("Activation email service unavailable");
+          }
+          const _fcMailResult = await _fcMailer.sendActivationMagicLink({
+              to:           _fcAEmail,
+              name:         _fcSignup["first_name"] || _fcAEmail.split("@")[0],
+              plan:         planKey,
+              magicLinkUrl: _fcMagicLinkUrl,
+              isTrial:      grantTrial,
+          });
+
+          // â”€â”€ ML-4: Mailer response â€” log everything â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          logger.info({
+            step:      "ML-4",
+            ok:        _fcMailResult?.ok,
+            emailId:   _fcMailResult?.id,
+            error:     _fcMailResult?.error,
+            transport: _mlTransport,
+            to:        _fcAEmail,
+          }, "[ML] step-4: sendActivationMagicLink response");
+
+          if (!_fcMailResult?.ok) {
+            logger.warn({ step: "ML-4-FAIL", email: _fcAEmail, error: _fcMailResult?.error, transport: _mlTransport }, "[ML] step-4: FAIL â€” activation email not delivered");
+            res.json({
+              success: true,
+              subscriptionId: planSubscription.id,
+              addonSubscriptionId,
+              activationEmailSent: false,
+              emailFailed: true,
+            });
+            return;
+          }
+          logger.info({ step: "ML-4-OK", emailId: _fcMailResult?.id, to: _fcAEmail }, "[ML] step-4: OK â€” activation email accepted by transport");
+
+      } catch (_fcActTopErr) {
+        logger.error({ step: "FC-TOP-FAIL", err: (_fcActTopErr as Error)?.message }, "[FC] top-level activation catch");
+        if (_fcActivationCommitted) {
+          res.json({
+            success: true,
+            subscriptionId: planSubscription.id ?? undefined,
+            addonSubscriptionId,
+            activationEmailSent: false,
+            emailFailed: true,
+          });
+        } else {
+          res.status(502).json({
+            error: "Votre paiement est confirmÃ©, mais l'activation du compte a Ã©chouÃ©. Contactez le support.",
+            code: "activation_failed",
+          });
+        }
+        return;
+      }
+    }
+    res.json({ success: true, subscriptionId: planSubscription.id, addonSubscriptionId, activationEmailSent: true });
+  } catch (err) {
+    logger.error({ err }, "[PublicBilling] finalize-checkout failed");
+    res.status(500).json({ error: "Erreur lors de la finalisation." });
+  }
+});
+
+export default router;
