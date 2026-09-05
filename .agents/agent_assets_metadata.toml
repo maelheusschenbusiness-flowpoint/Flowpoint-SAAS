@@ -137,3 +137,31 @@ type = "unspecified"
 title = "FlowPoint — archive complète, partie 10/10"
 description = "Partie 10 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
 logical_id = "84ded8de-f09e-46cf-9a5f-2eca72e13bac"
+
+[[outputs]]
+id = "-OFjZ2NA1-WbZz4QitScp"
+uri = "file://exports/flowpoint-project-backup-downloadable-2026-09-05.tar.gz"
+type = "unspecified"
+title = "Sauvegarde complète FlowPoint — téléchargement"
+description = "Archive tar.gz vérifiée et extractible contenant le code, les configurations assainies, la documentation, les scripts, les assets projet utiles et les 183 plans .local/tasks/. Taille : 7,560,569 octets. Les secrets, dépendances générées, caches, métadonnées Git et captures historiques volumineuses sont exclus."
+logical_id = "cf3de19d-c041-4a93-b3b4-9039d29de2a9"
+content_hash = "sha256:91c297e3c26eb6b5a2a4ae1c0f3c0ceae205898f48d0658a66b3b8d33c525544"
+size = 7560569
+mtime_ms = 1788646029756
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/cf3de19d-c041-4a93-b3b4-9039d29de2a9/dc36a47a-5b7f-4117-ae94-1a3364252df8"
+storage_version_token = "1788646068669021"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "bfp0oVsAX-fQwoYchQlNT"
+uri = "file://exports/flowpoint-project-backup-downloadable-2026-09-05.manifest.txt"
+type = "text"
+title = "Manifeste et empreinte de la sauvegarde"
+description = "Inventaire complet, exclusions explicites, contrôles de restauration et empreinte SHA-256 de l’archive téléchargeable."
+logical_id = "e9b3d63d-6896-488d-8b04-43d210288f3c"
+content_hash = "sha256:88be5adf9c5e5cae15df4c7333b5eec0651a8faf323157b138b8e28a46add39e"
+size = 79193
+mtime_ms = 1788646029931
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/e9b3d63d-6896-488d-8b04-43d210288f3c/b9179e6b-e6fb-4629-9866-813f82d8e7dd"
+storage_version_token = "1788646069385598"
+content_type = "text/plain"

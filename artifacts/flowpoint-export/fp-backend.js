@@ -3807,4 +3807,3 @@ window.__fpPageLoadTs = Date.now();
 
     console.log('[FP] v8d — render garanti + AI panel désactivé');
   })();
-
