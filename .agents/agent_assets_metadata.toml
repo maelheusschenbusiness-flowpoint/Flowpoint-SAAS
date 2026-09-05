@@ -165,3 +165,17 @@ mtime_ms = 1788646029931
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/e9b3d63d-6896-488d-8b04-43d210288f3c/b9179e6b-e6fb-4629-9866-813f82d8e7dd"
 storage_version_token = "1788646069385598"
 content_type = "text/plain"
+
+[[outputs]]
+id = "Nz-ilkMKSbfb2_Uo8O_A7"
+uri = "file://exports/flowpoint-project-complete-2026-09-06.tar.gz"
+type = "unspecified"
+title = "FlowPoint — archive complète du projet (06/09/2026)"
+description = "Archive à jour contenant le code source, backend, frontend, tests, scripts, documentation, configurations assainies et tâches. Les secrets, dépendances générées, caches, captures historiques et métadonnées Git sont exclus. SHA-256 : 2b3f9645b47ae194572bbda1877989a9685ac01ba04853bcdf577671a08ee9c8"
+logical_id = "82e853f2-d52f-4cfc-abcc-0fe9f5f2fb3c"
+content_hash = "sha256:2b3f9645b47ae194572bbda1877989a9685ac01ba04853bcdf577671a08ee9c8"
+size = 6434970
+mtime_ms = 1788647995553
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/82e853f2-d52f-4cfc-abcc-0fe9f5f2fb3c/d7f22746-7eaa-4a53-a09d-97f854ae4bf6"
+storage_version_token = "1788648002114794"
+content_type = "application/octet-stream"
