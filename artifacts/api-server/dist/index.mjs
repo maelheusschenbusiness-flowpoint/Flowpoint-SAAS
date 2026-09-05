@@ -106208,6 +106208,28 @@ async function initDataTables() {
     await run(client, `ALTER TABLE organizations      ADD COLUMN IF NOT EXISTS seller_id TEXT`);
     await run(client, `ALTER TABLE seller_commissions ADD COLUMN IF NOT EXISTS paid_by TEXT`);
     await run(client, `ALTER TABLE seller_commissions ADD COLUMN IF NOT EXISTS notes   TEXT`);
+    await run(client, `ALTER TABLE public.sellers ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE public.seller_commissions ENABLE ROW LEVEL SECURITY`);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_policies
+          WHERE schemaname='public' AND tablename='sellers' AND policyname='sellers_app_user_all'
+        ) THEN
+          CREATE POLICY sellers_app_user_all ON public.sellers
+            FOR ALL TO app_user USING (true) WITH CHECK (true);
+        END IF;
+      END $$`);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_policies
+          WHERE schemaname='public' AND tablename='seller_commissions' AND policyname='seller_commissions_app_user_all'
+        ) THEN
+          CREATE POLICY seller_commissions_app_user_all ON public.seller_commissions
+            FOR ALL TO app_user USING (true) WITH CHECK (true);
+        END IF;
+      END $$`);
     logger.info("[init-data-tables] all tables, schema_migrations, missing-production-tables, P0-5 ALTERs, P1-2 type fixes done");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
@@ -122282,20 +122304,61 @@ router14.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (re
         return;
       }
     }
-    if (isDowngrade) {
-      try {
-        await persistOrgData(orgId3, { plan: plan4 });
-      } catch (persistErr) {
-        logger.error({ persistErr, orgId: orgId3, plan: plan4, currentPlan }, "[Billing] no-sub downgrade: persistOrgData failed");
-        res.status(500).json({ error: "\xC9chec de la mise \xE0 jour du plan \u2014 veuillez r\xE9essayer." });
+    {
+      const _nsPriceId = PLAN_PRICE_IDS[targetPlan];
+      if (!_nsPriceId) {
+        res.status(400).json({ error: `Plan inconnu : ${plan4}` });
         return;
       }
-      logger.info({ plan: plan4, orgId: orgId3, currentPlan }, "[Billing] no-sub downgrade \u2014 plan updated in DB immediately");
-      res.json({ ok: true, plan: plan4, upgraded: true, effective: "now", noSubDowngrade: true });
+      let _nsCustomerId;
+      try {
+        _nsCustomerId = await ensureStripeCustomer(orgId3, billingCtx, stripeKey);
+      } catch (custErr) {
+        logger.error({ custErr, orgId: orgId3 }, "[Billing] no-sub checkout: ensureStripeCustomer failed");
+        res.status(500).json({ error: "Impossible de cr\xE9er ou retrouver le client Stripe. R\xE9essayez." });
+        return;
+      }
+      const _nsBucket = Math.floor(Date.now() / (30 * 60 * 1e3));
+      const _nsKey = `fp-nosub-checkout-${orgId3}-${targetPlan}-${_nsBucket}`;
+      const _nsOpenSess = await stripe.checkout.sessions.list({
+        customer: _nsCustomerId,
+        status: "open",
+        limit: 5
+      });
+      const _nsExist = (_nsOpenSess.data ?? []).find(
+        (s) => s.metadata?.["targetPlan"] === targetPlan && s.url
+      );
+      if (_nsExist) {
+        logger.info({ sessionId: _nsExist.id, orgId: orgId3, targetPlan }, "[Billing] no-sub checkout: returning existing open session");
+        res.json({ reactivation: true, checkoutUrl: _nsExist.url, customerReused: true, targetPlan, idempotent: true });
+        return;
+      }
+      const _nsSess = await stripe.checkout.sessions.create(
+        {
+          customer: _nsCustomerId,
+          mode: "subscription",
+          line_items: [{ price: _nsPriceId, quantity: 1 }],
+          success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${publicUrl}/dashboard.html#billing/plans`,
+          metadata: {
+            plan: targetPlan,
+            targetPlan,
+            orgId: orgId3,
+            reactivation: "true",
+            userId: String(req.userId ?? "")
+          },
+          subscription_data: { metadata: { plan: targetPlan, orgId: orgId3, reactivation: "true" } }
+        },
+        { idempotencyKey: _nsKey }
+      );
+      const _nsReused = !!billingCtx.stripeCustomerId;
+      logger.info(
+        { sessionId: _nsSess.id, orgId: orgId3, targetPlan, customerId: _nsCustomerId, customerReused: _nsReused },
+        "[Billing] no-sub checkout session created"
+      );
+      res.json({ reactivation: true, checkoutUrl: _nsSess.url, customerReused: _nsReused, targetPlan });
       return;
     }
-    logger.info({ plan: plan4, orgId: orgId3 }, "[Billing] upgrade: no active subscription \u2014 redirecting to checkout.html");
-    res.json({ noSubscription: true, redirectTo: "/checkout.html", plan: plan4 });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to upgrade");
     const _e = err;
@@ -137940,7 +138003,8 @@ router52.delete("/admin/purge-account", async (req, res) => {
       return;
     }
     const allowed = new Set((process.env["QA_CLEANUP_EMAILS"] ?? "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean));
-    if (normalizedEmail === "qa@flowpoint.pro" || !target.is_internal_qa && !allowed.has(normalizedEmail)) {
+    const isInternalTestDomain = normalizedEmail.endsWith("@flowpoint-internal.test");
+    if (normalizedEmail === "qa@flowpoint.pro" || !target.is_internal_qa && !isInternalTestDomain && !allowed.has(normalizedEmail)) {
       res.status(403).json({ error: "Target is not an explicitly authorized disposable QA account" });
       return;
     }
