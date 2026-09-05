@@ -12,17 +12,6 @@ import { logger } from "../lib/logger.js";
 
 const router = Router();
 
-// ── Guard: require BETTERSTACK_API_TOKEN ───────────────────────────────────────
-function requireBS(res: Parameters<typeof router.get>[1] extends (_: never, r: infer R) => void ? R : never) {
-  if (!isBSConfigured()) {
-    (res as unknown as import("express").Response).status(503).json({
-      error: "Better Stack not configured. Set BETTERSTACK_API_TOKEN.",
-      configured: false,
-    });
-    return false;
-  }
-  return true;
-}
 
 // ── Config check ───────────────────────────────────────────────────────────────
 router.get("/betterstack/config", (_req, res) => {

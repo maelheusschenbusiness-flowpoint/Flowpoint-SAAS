@@ -10,26 +10,9 @@ import {
   checkDistributedAiProviderRateLimit,
 } from "../middlewares/rateLimiter.js";
 import { isAiMigrationComplete } from "../services/init-ai-migration.js";
-import {
-  consumeAICredits,
-  checkAIQuota,
-  getAIUsageStats,
-  getOrCreateMonthlyUsage,
-  recordCompletedUsage,
-  recordCompletedUsageDeferred,
-  type AIFeature,
-  type AIModel,
-} from "../services/ai-engine.js";
-import {
-  loadOrgAIPrefs,
-  checkModuleEnabled,
-  moduleDisabledResponse,
-  selectOptimalModel,
-  resolveAIModel,
-  type AIModuleKey,
-  type OrgAIPrefs,
-} from "../services/ai-prefs.js";
-import { aiChat, aiStream, checkAllProviders, type AIProviderId } from "../services/ai-provider.js";
+import { checkAIQuota, getAIUsageStats, getOrCreateMonthlyUsage, recordCompletedUsage, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
+import { loadOrgAIPrefs, checkModuleEnabled, moduleDisabledResponse, selectOptimalModel } from "../services/ai-prefs.js";
+import { aiChat, aiStream, type AIProviderId } from "../services/ai-provider.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
 import { resolveIntensityConfig, isValidProvider, isModelValidForProvider, type AIIntensityMode } from "../services/ai-provider-matrix.js";
 import {
@@ -97,40 +80,7 @@ router.use("/ai", (req: Request, res: Response, next: () => void): void => {
   });
 });
 
-// ── Rate limiting ─────────────────────────────────────────────────────────────
-// Task #614: the former in-handler per-IP limiter (30 req/min per client IP)
-// was removed. It duplicated the plan-aware org limiter (aiChatRateLimit) with
-// the wrong key: /ai/chat runs post-auth, so abuse control belongs to the org
-// (plan-aware) — a shared office/NAT/proxy IP tripped 429 at 30/min even for
-// pro/ultra orgs whose own plan allowed more. Anti-abuse layers that remain:
-// aiChatRateLimit (per-org, plan-aware), the AI credit quota, and the per-
-// conversation execution lock.
 
-// gpt-5+ models don't support `max_tokens`/custom `temperature` — they require
-// `max_completion_tokens` and always run at temperature 1.
-// Every gpt-5 family model (including gpt-5-mini) can spend part of that
-// budget on internal reasoning tokens before writing visible output —
-// observed intermittently even on short prompts — which can silently return
-// an empty response. Force low reasoning effort and pad the budget so
-// there's always room left for the actual answer.
-function completionParams(model: string, maxTokens: number, temperature?: number): Record<string, unknown> {
-  if (/^gpt-5/.test(model)) {
-    return {
-      max_completion_tokens: maxTokens + 500,
-      reasoning_effort: "low",
-    };
-  }
-  return { max_tokens: maxTokens, ...(temperature !== undefined ? { temperature } : {}) };
-}
-
-// ── OpenAI client factory (legacy, kept for non-migrated paths) ────────────
-async function getOpenAI() {
-  const { resolveOpenAIConnection } = await import("../lib/openai-client.js");
-  const conn = resolveOpenAIConnection();
-  if (!conn) return null;
-  const { default: OpenAI } = await import("openai");
-  return new OpenAI({ apiKey: conn.apiKey, ...(conn.baseURL ? { baseURL: conn.baseURL } : {}) });
-}
 
 // ── Unified AI helper (replaces direct openai.chat.completions.create) ────────
 /** Call aiChat via the unified provider layer with task-based routing and fallback */

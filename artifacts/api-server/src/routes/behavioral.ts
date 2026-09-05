@@ -5,7 +5,7 @@ import {
   trackBehaviorEvent, upsertSession, generateBehaviorInsights, getBehaviorInsights,
 } from "../services/behavioral-service.js";
 import { db, behaviorSiteTokensTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { requireAddon } from "../middlewares/planGate.js";
 import { behavioralRateLimit } from "../middlewares/rateLimiter.js";
 
@@ -105,13 +105,6 @@ function issueSessionToken(siteUrl: string, origin: string, orgId: string): { to
   return { token, expiresAt: exp };
 }
 
-function validateSessionToken(token: string, siteUrl: string, origin: string): boolean {
-  const entry = _sessionTokens.get(token);
-  if (!entry) return false;
-  if (entry.exp < Date.now()) { _sessionTokens.delete(token); return false; }
-  if (entry.siteUrl !== siteUrl || entry.allowedOrigin !== origin) return false;
-  return true;
-}
 
 // ── POST /api/behavioral/token ────────────────────────────────────────────────
 publicBehavioralRouter.post("/behavioral/token", behavioralRateLimit("token"), async (req: Request, res: Response) => {

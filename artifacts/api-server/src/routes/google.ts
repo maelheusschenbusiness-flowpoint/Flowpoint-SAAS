@@ -14,22 +14,7 @@
 import { Router, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import crypto from "crypto";
-import {
-  isGoogleConfigured,
-  generateAuthUrl,
-  getTokensFromCode,
-  saveTokens,
-  getValidToken,
-  getAccounts,
-  getLocations,
-  getGBPStatus,
-  getPerformance,
-  publishGBPPost,
-  replyToReview,
-  generateAIReply,
-  encryptToken,
-  syncAll,
-} from "../services/google-service.js";
+import { isGoogleConfigured, generateAuthUrl, getTokensFromCode, saveTokens, getValidToken, getAccounts, getGBPStatus, getPerformance, publishGBPPost, replyToReview, generateAIReply, encryptToken, syncAll } from "../services/google-service.js";
 import { discoverAndStoreProperties } from "../services/ga4-service.js";
 import { discoverAndStoreSites } from "../services/gsc-service.js";
 import { store } from "../services/store.js";

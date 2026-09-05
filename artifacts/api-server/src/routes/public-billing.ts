@@ -83,23 +83,6 @@ const ALLOWED_PLANS_PUB    = new Set<string>(["standard", "pro", "ultra"]);
 const KNOWN_ADDON_KEYS_PUB = new Set<string>([...FLAG_ADDONS, ...QTY_ADDONS]);
 const MAX_ADDON_QTY_PUB    = 500;
 
-function parsePlanPub(raw: unknown, res: Response): string | null {
-  if (raw === undefined || raw === null || raw === "") {
-    res.status(400).json({ error: "plan requis — valeurs acceptées : standard, pro, ultra" });
-    return null;
-  }
-  if (typeof raw !== "string") {
-    const typ = Array.isArray(raw) ? "array" : typeof raw;
-    res.status(400).json({ error: `plan doit être une chaîne de caractères (reçu : ${typ})` });
-    return null;
-  }
-  const p = raw.trim().toLowerCase();
-  if (!ALLOWED_PLANS_PUB.has(p)) {
-    res.status(400).json({ error: `Plan inconnu : "${raw}". Plans autorisés : standard, pro, ultra` });
-    return null;
-  }
-  return p;
-}
 
 function parseAddonsPub(raw: unknown, res: Response): AddonsMap | null {
   if (raw === undefined || raw === null) return {};

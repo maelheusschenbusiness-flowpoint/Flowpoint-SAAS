@@ -1,6 +1,0 @@
-diff --git a/test.js b/test.js
---- a/test.js
-+++ b/test.js
-@@ -1 +1 @@
--old
-+try { _fpCache = {}; _fpInFlight = {}; } catch (_) {}

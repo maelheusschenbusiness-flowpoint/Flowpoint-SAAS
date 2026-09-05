@@ -1,9 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { createHash } from "crypto";
 
-function sha256hex(s: string): string {
-  return createHash("sha256").update(s).digest("hex");
-}
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { getPlanForPriceId, getAddonForPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";

@@ -42,49 +42,9 @@ export interface AddonSyncResult {
   reason: string;
 }
 
-// ── Internal helpers ──────────────────────────────────────────────────────────
-
-/** Return the stripe instance, or null when not configured. */
-async function getStripe() {
-  const key = getStripeKey();
-  if (!key) return null;
-  return createStripeClient(key);
-}
 
 type StripeSubItem = { id: string; price?: { id?: string }; quantity?: number };
 
-/**
- * Find the first active/trialing plan subscription for this org (not an add-on sub).
- * Returns null when the org has no live plan sub.
- */
-async function findPlanSubscription(
-  stripe: Awaited<ReturnType<typeof createStripeClient>>,
-  stripeCustomerId: string,
-  orgId: string,
-): Promise<{ id: string; items: { data: StripeSubItem[] } } | null> {
-  const subs = await stripe.subscriptions.list({
-    customer: stripeCustomerId,
-    status: "active",
-    limit: 10,
-    expand: ["data.items.data.price"],
-  });
-
-  type StripeSub = { id: string; metadata?: Record<string, string>; status: string; items?: { data?: StripeSubItem[] } };
-
-  const isFlowPointPlanSub = (s: StripeSub): boolean => {
-    if (s.metadata?.["addonSub"]) return false; // exclude addon subs
-    const items = s.items?.data ?? [];
-    return items.length > 0 && items.some(it => getPlanForPriceId(it.price?.id ?? "") !== null);
-  };
-
-  const planSub: StripeSub | undefined =
-    subs.data.find((s: StripeSub) => s.metadata?.["orgId"] === orgId && !s.metadata?.["addonSub"]) ??
-    subs.data.find((s: StripeSub) => isFlowPointPlanSub(s)) ??
-    subs.data.find((s: StripeSub) => !s.metadata?.["addonSub"] && (s.items?.data ?? []).length > 0);
-
-  if (!planSub) return null;
-  return planSub as { id: string; items: { data: StripeSubItem[] } };
-}
 
 /**
  * Find or create the org's dedicated add-on subscription.
