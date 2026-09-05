@@ -3254,6 +3254,34 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE seller_commissions ADD COLUMN IF NOT EXISTS paid_by TEXT`);
     await run(client, `ALTER TABLE seller_commissions ADD COLUMN IF NOT EXISTS notes   TEXT`);
 
+    // ── RLS: sellers + seller_commissions ────────────────────────────────────
+    // DDL must run outside any transaction (PgBouncer auto-commit rule).
+    // These statements are idempotent: IF NOT EXISTS / DO NOTHING equivalent
+    // handled by Postgres silently ignoring ENABLE on an already-enabled table
+    // and the IF NOT EXISTS on CREATE POLICY.
+    await run(client, `ALTER TABLE public.sellers ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE public.seller_commissions ENABLE ROW LEVEL SECURITY`);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_policies
+          WHERE schemaname='public' AND tablename='sellers' AND policyname='sellers_app_user_all'
+        ) THEN
+          CREATE POLICY sellers_app_user_all ON public.sellers
+            FOR ALL TO app_user USING (true) WITH CHECK (true);
+        END IF;
+      END $$`);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_policies
+          WHERE schemaname='public' AND tablename='seller_commissions' AND policyname='seller_commissions_app_user_all'
+        ) THEN
+          CREATE POLICY seller_commissions_app_user_all ON public.seller_commissions
+            FOR ALL TO app_user USING (true) WITH CHECK (true);
+        END IF;
+      END $$`);
+
     logger.info("[init-data-tables] all tables, schema_migrations, missing-production-tables, P0-5 ALTERs, P1-2 type fixes done");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
