@@ -139701,6 +139701,84 @@ router52.get("/admin/sellers/:code/report", async (req, res) => {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   }
 });
+router52.post("/admin/reset-onboarding", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { email, orgId: orgId3, dryRun = true, confirmEmail } = req.body ?? {};
+  const hasEmail = typeof email === "string" && email.trim().length > 0;
+  const hasOrgId = typeof orgId3 === "string" && orgId3.trim().length > 0;
+  if (!hasEmail && !hasOrgId) {
+    res.status(400).json({ ok: false, error: "Explicit email or orgId is required" });
+    return;
+  }
+  try {
+    const targetRes = await pool.query(
+      `SELECT o.id::text AS org_id, o.owner_email
+       FROM organizations o
+       WHERE ($1::text IS NOT NULL AND lower(o.owner_email) = lower($1))
+          OR ($2::text IS NOT NULL AND o.id::text = $2)
+       LIMIT 2`,
+      [hasEmail ? email.trim() : null, hasOrgId ? orgId3.trim() : null]
+    );
+    if (targetRes.rows.length === 0) {
+      res.status(404).json({ ok: false, error: "No organization found for the given email/orgId" });
+      return;
+    }
+    if (targetRes.rows.length > 1) {
+      res.status(409).json({ ok: false, error: "Ambiguous target: multiple organizations matched \u2014 provide both email and orgId to narrow down" });
+      return;
+    }
+    const target = targetRes.rows[0];
+    const resolvedOrgId = target.org_id;
+    const resolvedEmail = String(target.owner_email ?? "").trim();
+    const prefsRes = await pool.query(
+      `SELECT settings->>'onboardingCompletedAt' AS cat FROM user_prefs WHERE org_id = $1`,
+      [resolvedOrgId]
+    );
+    const currentOnboardingCompletedAt = prefsRes.rows[0]?.cat ?? null;
+    const preview = {
+      ok: true,
+      email: resolvedEmail,
+      orgId: resolvedOrgId,
+      currentOnboardingCompletedAt,
+      wouldReset: currentOnboardingCompletedAt !== null
+    };
+    if (dryRun !== false) {
+      res.json({ ...preview, dryRun: true });
+      return;
+    }
+    if (typeof confirmEmail !== "string" || confirmEmail.trim().toLowerCase() !== resolvedEmail.toLowerCase()) {
+      res.status(400).json({
+        ok: false,
+        error: "confirmEmail must exactly match the resolved owner email (case-insensitive)",
+        resolvedEmail
+      });
+      return;
+    }
+    await pool.query(
+      `UPDATE user_prefs
+       SET settings = settings - 'onboardingCompletedAt',
+           updated_at = NOW()
+       WHERE org_id = $1`,
+      [resolvedOrgId]
+    );
+    const afterRes = await pool.query(
+      `SELECT settings->>'onboardingCompletedAt' AS cat FROM user_prefs WHERE org_id = $1`,
+      [resolvedOrgId]
+    );
+    const onboardingCompletedAtAfter = afterRes.rows[0]?.cat ?? null;
+    res.json({
+      ok: true,
+      dryRun: false,
+      email: resolvedEmail,
+      orgId: resolvedOrgId,
+      onboardingCompletedAtBefore: currentOnboardingCompletedAt,
+      onboardingCompletedAtAfter,
+      reset: onboardingCompletedAtAfter === null
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
 var admin_default = router52;
 
 // src/routes/location.ts
