@@ -6,42 +6,49 @@ id = "z0XcdgFASiJ614rrqjGGD"
 uri = "file://dashboard-flowpoint.zip"
 type = "unspecified"
 title = "Dashboard FlowPoint (3 fichiers)"
+logical_id = "a7178fe2-4adf-46ba-8b9b-26ab9b7a35e3"
 
 [[outputs]]
 id = "fYKxoyz382CAySI3Ffyyb"
 uri = "file://flowpoint-complet.zip"
 type = "unspecified"
 title = "FlowPoint — Projet complet (155 fichiers)"
+logical_id = "ee875231-8f4a-4428-9bed-6b2720230b60"
 
 [[outputs]]
 id = "qMvFtads3bec0xf5MmlI1"
 uri = "file://flowpoint-dashboard-export.zip"
 type = "unspecified"
 title = "FlowPoint Dashboard — Frontend + Backend complets"
+logical_id = "b4baee4b-ac36-4389-96a9-fa98a98258df"
 
 [[outputs]]
 id = "mEdehkMQbYGYli_qGB2Id"
 uri = "file://ARCHITECTURE.md"
 type = "text"
 title = "FlowPoint — Documentation Technique Complète"
+logical_id = "2d962f9e-911a-4a33-8802-14d2353da5ba"
 
 [[outputs]]
 id = "OQnzCQsKKoUPF7Hpv3A-q"
 uri = "file://flowpoint-complete-project.zip"
 type = "unspecified"
 title = "FlowPoint — Projet Complet (backend + frontend)"
+logical_id = "8342debb-baea-4b23-bcf1-490978c62763"
 
 [[outputs]]
 id = "mJp8yqXAxRrbdgOKn9Mzv"
 uri = "file://flowpoint-full-export-20260723.zip"
 type = "unspecified"
 title = "FlowPoint — Export complet du projet (1.4 Mo)"
+logical_id = "97c783a9-1ff0-45cc-bb85-de1b08a33b9a"
 
 [[outputs]]
 id = "dddUdpwuEqXxZndz7g6Lx"
 uri = "file://billing-files.zip"
 type = "unspecified"
 title = "FlowPoint billing files — 12 fichiers ZIP (624 KB)"
+logical_id = "3aace4dd-27b0-45a7-b72f-248dca447cf7"
 
 [[outputs]]
 id = "OYQNUIJ3Wxr7amhuN-k8T"
@@ -49,6 +56,7 @@ uri = "file://flowpoint-source.tar.gz"
 type = "unspecified"
 title = "FlowPoint — code complet"
 description = "Archive téléchargeable de 11 Mo contenant le code source, backend, frontend, tests, scripts, documentation, configurations et tâches du projet. SHA-256 : bcf15fea28f19d3a850638c8f4dc6c7cde6e2899eb36faae93940d96ce9d48bc"
+logical_id = "6dbbf4b8-c293-43b8-9db2-e09dadbe1c13"
 
 [[outputs]]
 id = "-YoKIHB6IVFvTVppGbkhO"
@@ -56,6 +64,7 @@ uri = "file://flowpoint-project-part-00"
 type = "unspecified"
 title = "FlowPoint — archive complète, partie 01/10"
 description = "Partie 1 sur 10 de l’archive complète incluant les assets. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "ba4e56fd-8307-488c-974c-2eef2777fc89"
 
 [[outputs]]
 id = "j7XnfFAQCzAUfHjq73K3x"
@@ -63,6 +72,7 @@ uri = "file://flowpoint-project-part-01"
 type = "unspecified"
 title = "FlowPoint — archive complète, partie 02/10"
 description = "Partie 2 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "dc7bdee2-43be-474e-a94a-238417757205"
 
 [[outputs]]
 id = "MhbHg9_q8LmPHqz3tHUZK"
@@ -70,6 +80,7 @@ uri = "file://flowpoint-project-part-02"
 type = "unspecified"
 title = "FlowPoint — archive complète, partie 03/10"
 description = "Partie 3 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "fc72795e-8756-4373-8def-6c3fa6ec4577"
 
 [[outputs]]
 id = "wDt_da3zm_CEhBSHZtT8y"
@@ -77,6 +88,7 @@ uri = "file://flowpoint-project-part-03"
 type = "unspecified"
 title = "FlowPoint — archive complète, partie 04/10"
 description = "Partie 4 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "cd00f50f-5875-449b-be22-66bf3c5268d9"
 
 [[outputs]]
 id = "NykarPdu4RrzXBZMF2s9P"
@@ -84,6 +96,7 @@ uri = "file://flowpoint-project-part-04"
 type = "unspecified"
 title = "FlowPoint — archive complète, partie 05/10"
 description = "Partie 5 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "953526a6-4930-4557-8880-4460ed9ce693"
 
 [[outputs]]
 id = "zwldJnxMHnSiEUnd08iLb"
@@ -91,6 +104,7 @@ uri = "file://flowpoint-project-part-05"
 type = "unspecified"
 title = "FlowPoint — archive complète, partie 06/10"
 description = "Partie 6 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "1dc63eaa-4b6e-4cde-a563-64e501e693cc"
 
 [[outputs]]
 id = "8BXLmQsJ6GHDAEfcJoHSk"
@@ -98,6 +112,7 @@ uri = "file://flowpoint-project-part-06"
 type = "unspecified"
 title = "FlowPoint — archive complète, partie 07/10"
 description = "Partie 7 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "b951b8a0-e498-4125-a851-62c79504cdd6"
 
 [[outputs]]
 id = "TsaM9Q9bDzsFZZh2Qc5G8"
@@ -105,6 +120,7 @@ uri = "file://flowpoint-project-part-07"
 type = "unspecified"
 title = "FlowPoint — archive complète, partie 08/10"
 description = "Partie 8 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "46282bf1-3c28-4cd6-b0db-98f30ac4b4f6"
 
 [[outputs]]
 id = "zCT2LPXQk5BwUCo2JLVLt"
@@ -112,6 +128,7 @@ uri = "file://flowpoint-project-part-08"
 type = "unspecified"
 title = "FlowPoint — archive complète, partie 09/10"
 description = "Partie 9 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "78c261c4-1b91-45f8-b8f0-b767c585e249"
 
 [[outputs]]
 id = "25dZPzZCw-EYlgn9N_tVT"
@@ -119,3 +136,4 @@ uri = "file://flowpoint-project-part-09"
 type = "unspecified"
 title = "FlowPoint — archive complète, partie 10/10"
 description = "Partie 10 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "84ded8de-f09e-46cf-9a5f-2eca72e13bac"
