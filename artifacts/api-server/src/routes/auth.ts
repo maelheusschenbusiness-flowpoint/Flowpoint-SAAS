@@ -1,10 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { randomBytes, randomUUID, createHash, createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify } from "crypto";
 
-/** SHA-256 hex digest — used to hash checkout_post_tokens before DB storage. */
-function sha256hex(s: string): string {
-  return createHash("sha256").update(s).digest("hex");
-}
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 
@@ -228,41 +224,6 @@ async function resolveOrCreateLegacyOrg({
   }
 }
 
-/**
- * Atomically consume a magic-link token.
- *
- * Uses a single `UPDATE … WHERE token=$1 AND used=false AND expires_at>NOW() RETURNING email`
- * so that two concurrent requests for the same token cannot both succeed (TOCTOU eliminated).
- * If the UPDATE touches 0 rows, a follow-up SELECT distinguishes the reason.
- */
-async function atomicConsumeToken(token: string): Promise<
-  | { ok: true; email: string }
-  | { ok: false; reason: "not_found" | "already_used" | "expired" }
-> {
-  const client = await pool.connect();
-  try {
-    // Step 1 — atomic consume: only marks used when token is valid AND unused AND not expired.
-    const consumed = await client.query<{ email: string }>(
-      `UPDATE magic_link_tokens
-          SET used = true
-        WHERE token = $1 AND used = false AND expires_at > NOW()
-        RETURNING email`,
-      [token]
-    );
-    if (consumed.rows[0]) return { ok: true, email: consumed.rows[0].email as string };
-
-    // Step 2 — diagnose why: token may exist but be used or expired.
-    const check = await client.query<{ used: boolean }>(
-      `SELECT used FROM magic_link_tokens WHERE token = $1`,
-      [token]
-    );
-    if (!check.rows[0]) return { ok: false, reason: "not_found" };
-    if (check.rows[0].used) return { ok: false, reason: "already_used" };
-    return { ok: false, reason: "expired" };
-  } finally {
-    client.release();
-  }
-}
 
 /**
  * Read-only token peek — checks validity WITHOUT consuming.

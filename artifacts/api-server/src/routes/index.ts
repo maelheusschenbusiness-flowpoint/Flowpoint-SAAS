@@ -56,7 +56,7 @@ import publicBillingRouter from "./public-billing.js";
 import growthObjectivesRouter from "./growth-objectives.js";
 import plansRouter from "./plans.js";
 import securityRouter from "./security.js";
-import { qaFixturesRouter, publicQaRouter, isQaFixturesEnabled } from "./qa-fixtures.js";
+import { qaFixturesRouter, publicQaRouter } from "./qa-fixtures.js";
 import analyticsRouter from "./analytics.js";
 import trafficRouter from "./traffic.js";
 import campaignsRouter from "./campaigns.js";

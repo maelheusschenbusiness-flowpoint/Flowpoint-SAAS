@@ -15,7 +15,7 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
-import { TOOL_BY_NAME as _MISSION_TOOL_BY_NAME, TOOL_ARG_SCHEMAS as _MISSION_ARG_SCHEMAS, type AIToolCall, type AIToolCallResult } from "./mission-tools.js";
+import { TOOL_BY_NAME as _MISSION_TOOL_BY_NAME, TOOL_ARG_SCHEMAS as _MISSION_ARG_SCHEMAS, type AIToolCall } from "./mission-tools.js";
 import { CALENDAR_TOOL_BY_NAME, CALENDAR_ARG_SCHEMAS, snapCalendarEvent, detectCalendarConflicts, computeRecurrenceDates } from "./calendar-tools.js";
 import { AUDIT_TOOL_BY_NAME, AUDIT_ARG_SCHEMAS, snapAudit, fmtAuditStatus } from "./audit-tools.js";
 import { RECOMMENDATION_TOOL_BY_NAME, RECOMMENDATION_ARG_SCHEMAS, snapRecommendation, fmtRecommPriority, computeRecommPriorityScore, type RecommendationInput } from "./recommendation-tools.js";
@@ -25,7 +25,7 @@ import { WORKSPACE_TOOL_BY_NAME, WORKSPACE_ARG_SCHEMAS } from "./workspace-tools
 import { fetchUrlContent } from "../services/url-fetcher.js";
 import { crawlSite } from "../services/site-crawler.js";
 import { analyzePSI } from "../services/pagespeed-service.js";
-import { filterDestinations, validateNavAction } from "./destination-registry.js";
+import { validateNavAction } from "./destination-registry.js";
 import { createNavigationProposal, type ActionProposal } from "./proposals.js";
 import type { Permission } from "./permissions.js";
 

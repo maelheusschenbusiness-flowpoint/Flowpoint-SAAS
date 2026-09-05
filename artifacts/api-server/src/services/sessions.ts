@@ -1,4 +1,4 @@
-import { randomBytes, createHmac, timingSafeEqual } from "crypto";
+import { randomBytes, createHmac } from "crypto";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 

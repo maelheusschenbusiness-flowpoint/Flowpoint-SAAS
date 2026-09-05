@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
 import { requireOrgId } from "../lib/require-org-id.js";
-import { canAdmin, ownerOnly, canWrite } from "../middlewares/requireRole.js";
+import { canAdmin, ownerOnly } from "../middlewares/requireRole.js";
 
 import { PLAN_LIMITS, PLAN_INCLUDED_ADDONS, QTY_ADDON_GRANTS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";

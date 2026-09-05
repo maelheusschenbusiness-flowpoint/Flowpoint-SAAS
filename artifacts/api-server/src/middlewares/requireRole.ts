@@ -2,18 +2,6 @@ import { type Request, type Response, type NextFunction } from "express";
 import { logger } from "../lib/logger.js";
 
 /**
- * Role hierarchy (higher = more privileged).
- * service is the internal API_SECRET_KEY credential — always allowed.
- */
-const ROLE_RANK: Record<string, number> = {
-  service: 100,
-  owner:    80,
-  admin:    60,
-  member:   40,
-  viewer:   20,
-};
-
-/**
  * Returns a middleware that allows only callers whose role is in `allowedRoles`.
  *
  * Must be applied after requireAuth + orgContext (so req.orgContext.role is set).
