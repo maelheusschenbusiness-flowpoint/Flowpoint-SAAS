@@ -31759,7 +31759,7 @@ var require_dbcs_data = __commonJS({
   "../../node_modules/.pnpm/iconv-lite@0.7.2/node_modules/iconv-lite/encodings/dbcs-data.js"(exports, module) {
     "use strict";
     module.exports = {
-      // == Japanese/ShiftJIS ----------------------------------------------------
+      // == Japanese/ShiftJIS ====================================================
       // All japanese encodings are based on JIS X set of standards:
       // JIS X 0201 - Single-byte encoding of ASCII + ¥ + Kana chars at 0xA1-0xDF.
       // JIS X 0208 - Main set of 6879 characters, placed in 94x94 plane, to be encoded by 2 bytes.
@@ -31817,7 +31817,7 @@ var require_dbcs_data = __commonJS({
       // TODO: KDDI extension to Shift_JIS
       // TODO: IBM CCSID 942 = CP932, but F0-F9 custom chars and other char changes.
       // TODO: IBM CCSID 943 = Shift_JIS = CP932 with original Shift_JIS lower 128 chars.
-      // == Chinese/GBK ----------------------------------------------------------
+      // == Chinese/GBK ==========================================================
       // http://en.wikipedia.org/wiki/GBK
       // We mostly implement W3C recommendation: https://www.w3.org/TR/encoding/#gbk-encoder
       // Oldest GB2312 (1981, ~7600 chars) is a subset of CP936
@@ -31863,7 +31863,7 @@ var require_dbcs_data = __commonJS({
         encodeAdd: { "\u20AC": 41699 }
       },
       chinese: "gb18030",
-      // == Korean ---------------------------------------------------------------
+      // == Korean ===============================================================
       // EUC-KR, KS_C_5601 and KS X 1001 are exactly the same.
       windows949: "cp949",
       ms949: "cp949",
@@ -31882,7 +31882,7 @@ var require_dbcs_data = __commonJS({
       ksc56011987: "cp949",
       ksc56011989: "cp949",
       ksc5601: "cp949",
-      // == Big5/Taiwan/Hong Kong -----------------------------------------------
+      // == Big5/Taiwan/Hong Kong ================================================
       // There are lots of tables for Big5 and cp950. Please see the following links for history:
       // http://moztw.org/docs/big5/  http://www.haible.de/bruno/charsets/conversion-tables/Big5.html
       // Variations, in roughly number of defined chars:
