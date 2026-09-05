@@ -9706,20 +9706,20 @@ function renderBilling() {
       showToast('info', fpT('Vous êtes déjà sur ce plan.'));
       return;
     }
-    const _status = (typeof getBillingStatus === 'function'
-      ? getBillingStatus()
-      : (STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status))
-        || (STATE.me && STATE.me.subscriptionStatus) || '');
-    if (_status === 'active' || _status === 'trialing') {
-      if (typeof window._fpDoUpgrade === 'function') window._fpDoUpgrade(_target);
-      else {
-        apiAction('POST', '/api/billing/upgrade', { plan: _target })
-          .then(() => window.location.reload())
-          .catch((e) => showToast('error', (e && e.message) || 'Le changement de plan a échoué. Réessayez.'));
-      }
-      return;
-    }
-    fpGoToPricing(_target);
+    // Always delegate to the server — it handles all subscription states
+    // (active, trialing, canceled-with-customer → reactivation checkout, no-sub).
+    // FIX P0-A: removed the _status === 'active'|'trialing' gate that caused
+    // silent no-ops when getBillingStatus() returned 'pending_billing' or any
+    // other value due to a stale or not-yet-loaded STATE.billing.
+    if (typeof window._fpDoUpgrade === 'function') { window._fpDoUpgrade(_target); return; }
+    apiAction('POST', '/api/billing/upgrade', { plan: _target })
+      .then(function(r) {
+        if (r && r.reactivation && r.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
+        if (r && (r.upgraded || r.downgrade)) { loadData().then(function(){ navigate('billing'); navigateSub('plans'); }).catch(function(){ navigate('billing'); navigateSub('plans'); }); return; }
+        if (r && r.noSubscription) { showToast('info', fpT('Abonnement introuvable — redirection vers les plans\u2026')); navigate('billing'); setTimeout(function(){ navigateSub('plans'); }, 100); return; }
+        showToast('error', (r && (r.message || r.error)) || fpT('Le changement de plan a \u00e9chou\u00e9. R\u00e9essayez.'));
+      })
+      .catch(function(e) { showToast('error', (e && e.message) || fpT('Le changement de plan a \u00e9chou\u00e9. R\u00e9essayez.')); });
   };
 
   // ── Billing lifecycle modals — hoisted to renderBilling scope so the
