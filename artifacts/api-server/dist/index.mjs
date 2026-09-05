@@ -47550,27 +47550,27 @@ var require_router = __commonJS({
     var slice = Array.prototype.slice;
     var flatten = Array.prototype.flat;
     var methods = METHODS.map((method) => method.toLowerCase());
-    module.exports = Router69;
+    module.exports = Router70;
     module.exports.Route = Route;
-    function Router69(options) {
-      if (!(this instanceof Router69)) {
-        return new Router69(options);
+    function Router70(options) {
+      if (!(this instanceof Router70)) {
+        return new Router70(options);
       }
       const opts = options || {};
-      function router69(req, res, next) {
-        router69.handle(req, res, next);
+      function router70(req, res, next) {
+        router70.handle(req, res, next);
       }
-      Object.setPrototypeOf(router69, this);
-      router69.caseSensitive = opts.caseSensitive;
-      router69.mergeParams = opts.mergeParams;
-      router69.params = {};
-      router69.strict = opts.strict;
-      router69.stack = [];
-      return router69;
+      Object.setPrototypeOf(router70, this);
+      router70.caseSensitive = opts.caseSensitive;
+      router70.mergeParams = opts.mergeParams;
+      router70.params = {};
+      router70.strict = opts.strict;
+      router70.stack = [];
+      return router70;
     }
-    Router69.prototype = function() {
+    Router70.prototype = function() {
     };
-    Router69.prototype.param = function param(name, fn) {
+    Router70.prototype.param = function param(name, fn) {
       if (!name) {
         throw new TypeError("argument name is required");
       }
@@ -47590,7 +47590,7 @@ var require_router = __commonJS({
       params.push(fn);
       return this;
     };
-    Router69.prototype.handle = function handle(req, res, callback) {
+    Router70.prototype.handle = function handle(req, res, callback) {
       if (!callback) {
         throw new TypeError("argument callback is required");
       }
@@ -47717,7 +47717,7 @@ var require_router = __commonJS({
         }
       }
     };
-    Router69.prototype.use = function use(handler) {
+    Router70.prototype.use = function use(handler) {
       let offset = 0;
       let path8 = "/";
       if (typeof handler !== "function") {
@@ -47750,7 +47750,7 @@ var require_router = __commonJS({
       }
       return this;
     };
-    Router69.prototype.route = function route(path8) {
+    Router70.prototype.route = function route(path8) {
       const route2 = new Route(path8);
       const layer = new Layer(path8, {
         sensitive: this.caseSensitive,
@@ -47765,7 +47765,7 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      Router69.prototype[method] = function(path8) {
+      Router70.prototype[method] = function(path8) {
         const route = this.route(path8);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
@@ -47948,13 +47948,13 @@ var require_application = __commonJS({
     var compileTrust = require_utils3().compileTrust;
     var resolve4 = __require("node:path").resolve;
     var once = require_once();
-    var Router69 = require_router();
+    var Router70 = require_router();
     var slice = Array.prototype.slice;
     var flatten = Array.prototype.flat;
     var app2 = exports = module.exports = {};
     var trustProxyDefaultSymbol = "@@symbol:trust_proxy_default";
     app2.init = function init() {
-      var router69 = null;
+      var router70 = null;
       this.cache = /* @__PURE__ */ Object.create(null);
       this.engines = /* @__PURE__ */ Object.create(null);
       this.settings = /* @__PURE__ */ Object.create(null);
@@ -47963,13 +47963,13 @@ var require_application = __commonJS({
         configurable: true,
         enumerable: true,
         get: function getrouter() {
-          if (router69 === null) {
-            router69 = new Router69({
+          if (router70 === null) {
+            router70 = new Router70({
               caseSensitive: this.enabled("case sensitive routing"),
               strict: this.enabled("strict routing")
             });
           }
-          return router69;
+          return router70;
         }
       });
     };
@@ -48040,15 +48040,15 @@ var require_application = __commonJS({
       if (fns.length === 0) {
         throw new TypeError("app.use() requires a middleware function");
       }
-      var router69 = this.router;
+      var router70 = this.router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router69.use(path8, fn2);
+          return router70.use(path8, fn2);
         }
         debug(".use app under %s", path8);
         fn2.mountpath = path8;
         fn2.parent = this;
-        router69.use(path8, function mounted_app(req, res, next) {
+        router70.use(path8, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             Object.setPrototypeOf(req, orig.request);
@@ -50575,7 +50575,7 @@ var require_express = __commonJS({
     var EventEmitter2 = __require("node:events").EventEmitter;
     var mixin = require_merge_descriptors();
     var proto = require_application();
-    var Router69 = require_router();
+    var Router70 = require_router();
     var req = require_request();
     var res = require_response();
     exports = module.exports = createApplication;
@@ -50597,8 +50597,8 @@ var require_express = __commonJS({
     exports.application = proto;
     exports.request = req;
     exports.response = res;
-    exports.Route = Router69.Route;
-    exports.Router = Router69;
+    exports.Route = Router70.Route;
+    exports.Router = Router70;
     exports.json = bodyParser.json;
     exports.raw = bodyParser.raw;
     exports.static = require_serve_static();
@@ -56794,15 +56794,15 @@ var require_pg_pool = __commonJS({
       });
       return { callback: cb, result };
     }
-    function makeIdleListener(pool3, client) {
+    function makeIdleListener(pool2, client) {
       return function idleListener(err) {
         err.client = client;
         client.removeListener("error", idleListener);
         client.on("error", () => {
-          pool3.log("additional client error after disconnection due to error", err);
+          pool2.log("additional client error after disconnection due to error", err);
         });
-        pool3._remove(client);
-        pool3.emit("error", err, client);
+        pool2._remove(client);
+        pool2.emit("error", err, client);
       };
     }
     var Pool3 = class extends EventEmitter2 {
@@ -66050,7 +66050,7 @@ __export(src_exports, {
   monitorsTable: () => monitorsTable,
   notificationsTable: () => notificationsTable,
   orgAddonsTable: () => orgAddonsTable,
-  pool: () => pool2,
+  pool: () => pool,
   probeAppUserRole: () => probeAppUserRole,
   reportExportsTable: () => reportExportsTable,
   reportTemplatesTable: () => reportTemplatesTable,
@@ -66066,7 +66066,7 @@ __export(src_exports, {
   workflowRunsTable: () => workflowRunsTable
 });
 async function probeAppUserRole() {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   client.on("error", () => {
   });
   try {
@@ -66121,26 +66121,26 @@ async function withOrgDbClient(client, orgId3, callback) {
   }
 }
 async function withOrgDb(orgId3, callback) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     return await withOrgDbClient(client, orgId3, callback);
   } finally {
     client.release();
   }
 }
-var pool2, auditsTable, auditSchedulesTable, monitorsTable, monitorChecksTable, monitorIncidentsTable, reportsTable, shareTokensTable, competitorsTable, trackedKeywordsTable, alertRulesTable, teamMembersTable, teamMessagesTable, notificationsTable, connectorsTable, automationWorkflowsTable, workflowRunsTable, orgAddonsTable, behaviorEventsTable, behaviorSessionsTable, behaviorInsightsTable, behaviorSiteTokensTable, croRecommendationsTable, croScoresTable, croExperimentsTable, revenueLeaksTable, reportTemplatesTable, customDomainsTable, reportExportsTable, aiUsageLogsTable, aiMonthlyUsageTable, aiAlertsTable, magicLinkTokensTable, userSessionsTable, schema, db, missionsSchemaRef, _appUserRoleUnavailable;
+var pool, auditsTable, auditSchedulesTable, monitorsTable, monitorChecksTable, monitorIncidentsTable, reportsTable, shareTokensTable, competitorsTable, trackedKeywordsTable, alertRulesTable, teamMembersTable, teamMessagesTable, notificationsTable, connectorsTable, automationWorkflowsTable, workflowRunsTable, orgAddonsTable, behaviorEventsTable, behaviorSessionsTable, behaviorInsightsTable, behaviorSiteTokensTable, croRecommendationsTable, croScoresTable, croExperimentsTable, revenueLeaksTable, reportTemplatesTable, customDomainsTable, reportExportsTable, aiUsageLogsTable, aiMonthlyUsageTable, aiAlertsTable, magicLinkTokensTable, userSessionsTable, schema, db, missionsSchemaRef, _appUserRoleUnavailable;
 var init_src = __esm({
   "../../lib/db/src/index.ts"() {
     init_esm();
     init_node_postgres();
     init_pg_core();
-    pool2 = new Pool({
+    pool = new Pool({
       connectionString: process.env["DATABASE_URL"] ?? process.env["MONGO_URI"],
       max: 20,
       idleTimeoutMillis: 3e4,
       connectionTimeoutMillis: 5e3
     });
-    pool2.on("error", (err) => {
+    pool.on("error", (err) => {
       process.stderr.write(
         JSON.stringify({
           level: 50,
@@ -66591,7 +66591,7 @@ var init_src = __esm({
       magicLinkTokensTable,
       userSessionsTable
     };
-    db = drizzle(pool2, { schema });
+    db = drizzle(pool, { schema });
     missionsSchemaRef = {
       missions: "missions",
       missionHistory: "mission_history",
@@ -66629,7 +66629,7 @@ async function createSession(opts) {
   let lastErr;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const client = await pool2.connect();
+      const client = await pool.connect();
       try {
         const result = await client.query(
           `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2, ip_address, user_agent)
@@ -66669,7 +66669,7 @@ async function createSession(opts) {
 async function getSession(token) {
   if (!token) return null;
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const res = await client.query(
         `SELECT user_id, org_id, email, role, created_at, expires_at, user_id_v2
@@ -66697,7 +66697,7 @@ async function getSession(token) {
 }
 async function deleteSession(token) {
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       await client.query(`DELETE FROM user_sessions WHERE token = $1`, [token]);
     } finally {
@@ -66708,7 +66708,7 @@ async function deleteSession(token) {
 }
 async function invalidateAllSessions(userId) {
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       await client.query(`DELETE FROM user_sessions WHERE user_id = $1`, [userId]);
     } finally {
@@ -66719,7 +66719,7 @@ async function invalidateAllSessions(userId) {
 }
 async function updateSessionsRole(email, orgId3, newRole) {
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       await client.query(
         `UPDATE user_sessions
@@ -67545,7 +67545,7 @@ var init_store = __esm({
        */
       broadcastPlanUpdate(plan4, orgId3 = "default") {
         this.broadcast({ type: "billing:plan_updated", plan: plan4 }, orgId3);
-        pool2.connect().then(
+        pool.connect().then(
           (client) => client.query(
             `INSERT INTO org_settings (org_id, plan)
          VALUES ($1, $2)
@@ -67562,7 +67562,7 @@ var init_store = __esm({
       }
       async refresh(orgId3 = "default") {
         try {
-          const client = await pool2.connect();
+          const client = await pool.connect();
           try {
             const row = await client.query(
               `SELECT plan, email, name, trial_ends_at, subscription_status, stripe_customer_id
@@ -67596,7 +67596,7 @@ var init_store = __esm({
       async getFilteredActivity(opts) {
         const { limit: limit2, offset, type, orgId: orgId3 } = opts;
         try {
-          const client = await pool2.connect();
+          const client = await pool.connect();
           try {
             await client.query("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
             const values = [limit2, offset];
@@ -67653,7 +67653,7 @@ var init_store = __esm({
       async getFilteredActivityPage(opts) {
         const { limit: limit2, offset, type, orgId: orgId3 } = opts;
         try {
-          const client = await pool2.connect();
+          const client = await pool.connect();
           try {
             const values = [limit2, offset];
             const conditions = [];
@@ -67726,7 +67726,7 @@ var init_store = __esm({
       }
       async logActivity(opts) {
         try {
-          const client = await pool2.connect();
+          const client = await pool.connect();
           try {
             const id = `act_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
             await client.query(
@@ -74507,7 +74507,7 @@ __export(org_settings_exports, {
 });
 async function loadOrgSettings(orgId3 = "default", clientOverride) {
   const ownClient = !clientOverride;
-  const client = clientOverride ?? await pool2.connect();
+  const client = clientOverride ?? await pool.connect();
   try {
     const res = await client.query(
       `SELECT * FROM org_settings WHERE org_id = $1 LIMIT 1`,
@@ -74565,7 +74565,7 @@ async function loadOrgSettings(orgId3 = "default", clientOverride) {
 }
 async function upsertOrgSettings(orgId3, data, clientOverride) {
   const ownClient = !clientOverride;
-  const client = clientOverride ?? await pool2.connect();
+  const client = clientOverride ?? await pool.connect();
   try {
     await client.query(
       `INSERT INTO org_settings (org_id)
@@ -74689,7 +74689,7 @@ __export(org_data_exports, {
 async function loadOrgData(orgId3) {
   if (!orgId3 || orgId3 === "default") return null;
   if (UUID_RE.test(orgId3)) {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const r = await client.query(
         `SELECT plan, subscription_status, stripe_customer_id, stripe_subscription_id,
@@ -74855,7 +74855,7 @@ async function persistOrgData(orgId3, fields) {
   sets.push("updated_at = NOW()");
   if (orgIdIsUuid) {
     try {
-      const client = await pool2.connect();
+      const client = await pool.connect();
       try {
         const updateRes = await client.query(
           `UPDATE organizations SET ${sets.join(", ")} WHERE id = $1::uuid`,
@@ -74901,7 +74901,7 @@ async function persistOrgData(orgId3, fields) {
 }
 async function findOrgByStripeCustomer(stripeCustomerId) {
   if (!stripeCustomerId) return null;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const r = await client.query(
       `SELECT id FROM organizations WHERE stripe_customer_id = $1 LIMIT 1`,
@@ -75178,90 +75178,6 @@ var init_addons_service = __esm({
   }
 });
 
-// src/services/seller-attribution.ts
-var seller_attribution_exports = {};
-__export(seller_attribution_exports, {
-  recordCommission: () => recordCommission,
-  resolveSellerIdFromToken: () => resolveSellerIdFromToken,
-  validateSellerCode: () => validateSellerCode
-});
-async function validateSellerCode(code) {
-  if (!code || typeof code !== "string") return null;
-  const normalized = code.trim().toUpperCase();
-  if (!/^SELLER-[A-Z0-9]{1,20}$/.test(normalized)) return null;
-  try {
-    const r = await pool2.query(
-      `SELECT id, seller_code, name, email, status
-       FROM sellers WHERE seller_code = $1 AND status = 'active' LIMIT 1`,
-      [normalized]
-    );
-    return r.rows[0] ?? null;
-  } catch (err) {
-    logger.warn({ err, code }, "[SellerAttrib] validateSellerCode DB error (non-fatal)");
-    return null;
-  }
-}
-async function resolveSellerIdFromToken(token) {
-  if (!token) return null;
-  try {
-    const r = await pool2.query(
-      `SELECT seller_id FROM pending_signups WHERE token = $1 LIMIT 1`,
-      [token]
-    );
-    return r.rows[0]?.seller_id ?? null;
-  } catch (err) {
-    logger.warn({ err, token }, "[SellerAttrib] resolveSellerIdFromToken DB error (non-fatal)");
-    return null;
-  }
-}
-async function recordCommission(opts) {
-  const commissionAmountCents = Math.round(opts.eligibleAmountCents * COMMISSION_RATE_BPS / 1e4);
-  try {
-    await pool2.query(
-      `INSERT INTO seller_commissions
-         (seller_id, org_id, customer_email, stripe_customer_id,
-          stripe_subscription_id, stripe_checkout_session_id,
-          stripe_invoice_id, stripe_payment_intent_id,
-          plan, eligible_amount_cents, commission_rate_bps, commission_amount_cents,
-          currency, status, attribution_method, attributed_at, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',$14,NOW(),NOW())
-       ON CONFLICT (org_id) DO NOTHING`,
-      [
-        opts.sellerId,
-        opts.orgId,
-        opts.customerEmail,
-        opts.stripeCustomerId ?? null,
-        opts.stripeSubscriptionId ?? null,
-        opts.stripeCheckoutSessionId ?? null,
-        opts.stripeInvoiceId ?? null,
-        opts.stripePaymentIntentId ?? null,
-        opts.plan,
-        opts.eligibleAmountCents,
-        COMMISSION_RATE_BPS,
-        commissionAmountCents,
-        opts.currency,
-        opts.attributionMethod
-      ]
-    );
-    logger.info(
-      { orgId: opts.orgId, sellerId: opts.sellerId, commissionAmountCents },
-      "[SellerAttrib] Commission recorded (or already existed \u2014 idempotent)"
-    );
-  } catch (err) {
-    logger.error({ err, opts }, "[SellerAttrib] recordCommission failed (non-fatal)");
-    throw err;
-  }
-}
-var COMMISSION_RATE_BPS;
-var init_seller_attribution = __esm({
-  "src/services/seller-attribution.ts"() {
-    "use strict";
-    init_src();
-    init_logger();
-    COMMISSION_RATE_BPS = 3500;
-  }
-});
-
 // src/lib/subscription-state.ts
 var subscription_state_exports = {};
 __export(subscription_state_exports, {
@@ -75372,7 +75288,7 @@ async function loadBillingContext(orgId3) {
   const [orgData, addonsResult] = await Promise.all([
     loadOrgData(orgId3),
     (async () => {
-      const client = await pool2.connect();
+      const client = await pool.connect();
       try {
         return await client.query(
           `SELECT addon_key, active, quantity FROM org_addons WHERE org_id = $1`,
@@ -75516,7 +75432,29 @@ async function _runWithLock(orgId3, hint, stripeKeyOverride) {
       "[ESC][DEBUG] Step 1 \u2014 DB read complete"
     );
     let rawId = settings?.stripeCustomerId ?? hint?.stripeCustomerId ?? null;
+    if (!rawId?.trim()) {
+      try {
+        const orgRow = await client.query(
+          `SELECT stripe_customer_id FROM organizations WHERE id::text = $1 LIMIT 1`,
+          [orgId3]
+        );
+        const orgCid = orgRow.rows[0]?.stripe_customer_id;
+        if (orgCid && orgCid.trim()) {
+          rawId = orgCid.trim();
+          logger.info(
+            { orgId: orgId3, orgCid },
+            "[ESC] Step 1B: found Customer in organizations.stripe_customer_id \u2014 will persist to org_settings to prevent future misses"
+          );
+          await upsertOrgSettings(orgId3, { stripeCustomerId: rawId }, client).catch(
+            (e) => logger.warn({ e, orgId: orgId3 }, "[ESC] Step 1B: org_settings mirror failed (non-fatal)")
+          );
+        }
+      } catch (step1bErr) {
+        logger.warn({ step1bErr, orgId: orgId3 }, "[ESC] Step 1B: organizations lookup failed (non-fatal)");
+      }
+    }
     let _fromLegacyFallback = false;
+    let _fromPendingSignupsFallback = false;
     if (!rawId?.trim()) {
       try {
         const orgEmailRow = await client.query(
@@ -75535,9 +75473,45 @@ async function _runWithLock(orgId3, hint, stripeKeyOverride) {
               "[ESC] UUID\u2192email fallback: found customer in legacy org_settings \u2014 will persist to UUID key to prevent future duplicates"
             );
           }
+          if (!rawId?.trim()) {
+            const psRows = await client.query(
+              `SELECT stripe_customer_id
+               FROM   pending_signups
+               WHERE  lower(email) = lower($1)
+                 AND  stripe_customer_id IS NOT NULL
+                 AND  created_at > NOW() - INTERVAL '90 days'
+               ORDER BY created_at DESC
+               LIMIT 5`,
+              [ownerEmail]
+            );
+            for (const ps of psRows.rows) {
+              const cid = String(ps.stripe_customer_id);
+              const conflict = await client.query(
+                `SELECT 1 FROM organizations
+                 WHERE  stripe_customer_id = $1
+                   AND  id != $2::uuid
+                 LIMIT  1`,
+                [cid, orgId3]
+              );
+              if (conflict.rows.length > 0) {
+                logger.warn(
+                  { orgId: orgId3, cid },
+                  "[ESC] pending-signups fallback: Customer already anchored to a different org \u2014 skipping candidate"
+                );
+                continue;
+              }
+              rawId = cid;
+              _fromPendingSignupsFallback = true;
+              logger.info(
+                { orgId: orgId3, ownerEmail, cid },
+                "[ESC] pending-signups fallback: found abandoned-checkout Customer \u2014 will persist to prevent duplicate creation"
+              );
+              break;
+            }
+          }
         }
       } catch (fallbackErr) {
-        logger.warn({ fallbackErr, orgId: orgId3 }, "[ESC] UUID\u2192email fallback lookup failed (non-fatal)");
+        logger.warn({ fallbackErr, orgId: orgId3 }, "[ESC] UUID\u2192email/pending-signups fallback lookup failed (non-fatal)");
       }
     }
     const candidateId = rawId && rawId.trim() ? rawId.trim() : null;
@@ -75569,7 +75543,7 @@ async function _runWithLock(orgId3, hint, stripeKeyOverride) {
               logger.warn({ orgId: orgId3, customerId: candidateId, err: updErr instanceof Error ? updErr.message : String(updErr) }, "[ESC] company backfill failed (non-fatal)");
             });
           }
-          if (_fromLegacyFallback) {
+          if (_fromLegacyFallback || _fromPendingSignupsFallback) {
             try {
               await _persistStrict(orgId3, candidateId, client, t0);
               logger.info(
@@ -75695,7 +75669,7 @@ async function _runWithLock(orgId3, hint, stripeKeyOverride) {
 }
 async function _withPgLock(orgId3, fn) {
   const lockKey = _hashOrgId(orgId3);
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     logger.debug({ orgId: orgId3, lockKey }, "[ESC][DEBUG] BEGIN \u2014 acquiring pg_advisory_xact_lock");
     await client.query("BEGIN");
@@ -75880,7 +75854,7 @@ async function getUsageSummary(orgId3 = "default") {
   } else if (billingCtx.subscriptionStatus === "trialing" && billingCtx.trialEndsAt) {
     nextBillingDate = billingCtx.trialEndsAt;
   }
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const safeCount = async (query, params) => {
       try {
@@ -76026,7 +76000,7 @@ async function checkQuota(resource, orgId3) {
   };
 }
 async function trackBillingEvent(type, data, orgId3 = "default") {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(
       `INSERT INTO billing_events (org_id, type, amount, currency, plan, metadata, created_at)
@@ -76043,7 +76017,7 @@ async function getMRRData(orgId3 = "default") {
   const orgData = await loadOrgData(orgId3).catch(() => null);
   const plan4 = (orgData?.plan || "standard").toLowerCase();
   const currentMRR = PLAN_DEFINITIONS[plan4]?.priceEur ?? 0;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const rows = await client.query(`
       SELECT
@@ -76364,6 +76338,91 @@ var init_billing_service = __esm({
   }
 });
 
+// src/services/seller-attribution.ts
+var seller_attribution_exports = {};
+__export(seller_attribution_exports, {
+  recordCommission: () => recordCommission,
+  resolveSellerIdFromToken: () => resolveSellerIdFromToken,
+  validateSellerCode: () => validateSellerCode
+});
+async function validateSellerCode(code) {
+  if (!code || typeof code !== "string") return null;
+  const normalized = code.trim().toUpperCase();
+  if (!/^SELLER-[A-Z0-9]{1,20}$/.test(normalized)) return null;
+  try {
+    const r = await pool.query(
+      `SELECT id, seller_code, name, email, status
+       FROM sellers WHERE seller_code = $1 AND status = 'active' LIMIT 1`,
+      [normalized]
+    );
+    return r.rows[0] ?? null;
+  } catch (err) {
+    logger.warn({ err, code }, "[SellerAttrib] validateSellerCode DB error (non-fatal)");
+    return null;
+  }
+}
+async function resolveSellerIdFromToken(token) {
+  if (!token) return null;
+  try {
+    const r = await pool.query(
+      `SELECT seller_id FROM pending_signups WHERE token = $1 LIMIT 1`,
+      [token]
+    );
+    return r.rows[0]?.seller_id ?? null;
+  } catch (err) {
+    logger.warn({ err, token }, "[SellerAttrib] resolveSellerIdFromToken DB error (non-fatal)");
+    return null;
+  }
+}
+async function recordCommission(opts) {
+  const commissionAmountCents = Math.round(opts.eligibleAmountCents * COMMISSION_RATE_BPS / 1e4);
+  try {
+    await pool.query(
+      `INSERT INTO seller_commissions
+         (seller_id, org_id, customer_email, stripe_customer_id,
+          stripe_subscription_id, stripe_checkout_session_id,
+          stripe_invoice_id, stripe_payment_intent_id,
+          plan, eligible_amount_cents, commission_rate_bps, commission_amount_cents,
+          currency, status, attribution_method, attributed_at, earned_at, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',$14,NOW(),
+               CASE WHEN $10 > 0 THEN NOW() ELSE NULL END,NOW())
+       ON CONFLICT (org_id) DO NOTHING`,
+      [
+        opts.sellerId,
+        opts.orgId,
+        opts.customerEmail,
+        opts.stripeCustomerId ?? null,
+        opts.stripeSubscriptionId ?? null,
+        opts.stripeCheckoutSessionId ?? null,
+        opts.stripeInvoiceId ?? null,
+        opts.stripePaymentIntentId ?? null,
+        opts.plan,
+        opts.eligibleAmountCents,
+        COMMISSION_RATE_BPS,
+        commissionAmountCents,
+        opts.currency,
+        opts.attributionMethod
+      ]
+    );
+    logger.info(
+      { orgId: opts.orgId, sellerId: opts.sellerId, commissionAmountCents },
+      "[SellerAttrib] Commission recorded (or already existed \u2014 idempotent)"
+    );
+  } catch (err) {
+    logger.error({ err, opts }, "[SellerAttrib] recordCommission failed (non-fatal)");
+    throw err;
+  }
+}
+var COMMISSION_RATE_BPS;
+var init_seller_attribution = __esm({
+  "src/services/seller-attribution.ts"() {
+    "use strict";
+    init_src();
+    init_logger();
+    COMMISSION_RATE_BPS = 3500;
+  }
+});
+
 // src/routes/stripe-webhook.ts
 var stripe_webhook_exports = {};
 __export(stripe_webhook_exports, {
@@ -76630,18 +76689,18 @@ async function activateNewSignup(opts) {
   const { pool: pgPool } = await Promise.resolve().then(() => (init_src(), src_exports));
   const { randomBytes: randomBytes9, randomUUID: _wbRandUUID } = await import("crypto");
   const dbClient = await pgPool.connect();
-  let signupRow2 = null;
+  let signupRow = null;
   try {
     const r = await dbClient.query(
       `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id
        FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
       [preRegToken]
     );
-    if (r.rows.length > 0) signupRow2 = r.rows[0];
+    if (r.rows.length > 0) signupRow = r.rows[0];
   } finally {
     dbClient.release();
   }
-  if (!signupRow2) {
+  if (!signupRow) {
     const check = await pgPool.connect();
     try {
       const r = await check.query(
@@ -76658,8 +76717,8 @@ async function activateNewSignup(opts) {
     logger.warn({ preRegToken, orgId: orgId3 }, "[Webhook/activate] pending_signups row not found \u2014 skipping activation");
     return;
   }
-  const email = signupRow2["email"] ?? orgId3;
-  const firstName = signupRow2["first_name"] ?? "";
+  const email = signupRow["email"] ?? orgId3;
+  const firstName = signupRow["first_name"] ?? "";
   let _existingOrgUUID = null;
   {
     const orgCheck = await pgPool.connect();
@@ -76695,44 +76754,44 @@ async function activateNewSignup(opts) {
   if (!_existing) {
     await upsertOrgSettings2(orgId3, {
       email,
-      orgName: signupRow2["company_name"] ?? "",
+      orgName: signupRow["company_name"] ?? "",
       firstName,
-      lastName: signupRow2["last_name"] ?? "",
-      country: signupRow2["country"] ?? null,
-      city: signupRow2["city"] ?? null,
-      address: signupRow2["address"] ?? null,
-      postalCode: signupRow2["postal_code"] ?? null,
-      phone: signupRow2["phone"] ?? null,
-      vat: signupRow2["vat"] ?? null,
-      locationConfigured: !!(signupRow2["city"] || signupRow2["address"]),
+      lastName: signupRow["last_name"] ?? "",
+      country: signupRow["country"] ?? null,
+      city: signupRow["city"] ?? null,
+      address: signupRow["address"] ?? null,
+      postalCode: signupRow["postal_code"] ?? null,
+      phone: signupRow["phone"] ?? null,
+      vat: signupRow["vat"] ?? null,
+      locationConfigured: !!(signupRow["city"] || signupRow["address"]),
       locationSource: "manual"
     });
     logger.info({ orgId: orgId3 }, "[Webhook/activate] org_settings profile row created");
-    if (orgUUID !== orgId3 && (signupRow2["address"] || signupRow2["city"])) {
+    if (orgUUID !== orgId3 && (signupRow["address"] || signupRow["city"])) {
       await upsertOrgSettings2(orgUUID, {
         email,
-        orgName: signupRow2["company_name"] ?? "",
+        orgName: signupRow["company_name"] ?? "",
         firstName,
-        lastName: signupRow2["last_name"] ?? "",
-        country: signupRow2["country"] ?? null,
-        city: signupRow2["city"] ?? null,
-        address: signupRow2["address"] ?? null,
-        postalCode: signupRow2["postal_code"] ?? null,
-        phone: signupRow2["phone"] ?? null,
-        vat: signupRow2["vat"] ?? null,
-        locationConfigured: !!(signupRow2["city"] || signupRow2["address"]),
+        lastName: signupRow["last_name"] ?? "",
+        country: signupRow["country"] ?? null,
+        city: signupRow["city"] ?? null,
+        address: signupRow["address"] ?? null,
+        postalCode: signupRow["postal_code"] ?? null,
+        phone: signupRow["phone"] ?? null,
+        vat: signupRow["vat"] ?? null,
+        locationConfigured: !!(signupRow["city"] || signupRow["address"]),
         locationSource: "manual"
       }).catch((e) => logger.warn({ e, orgUUID }, "[Webhook/activate] UUID org_settings mirror failed (non-fatal)"));
       logger.info({ orgId: orgId3, orgUUID }, "[Webhook/activate] org_settings address mirrored to UUID key");
     }
-  } else if ((signupRow2["address"] || signupRow2["city"]) && !_existing.address && !_existing.city) {
+  } else if ((signupRow["address"] || signupRow["city"]) && !_existing.address && !_existing.city) {
     await upsertOrgSettings2(orgId3, {
-      country: _existing.country ?? signupRow2["country"] ?? null,
-      city: signupRow2["city"] ?? null,
-      address: signupRow2["address"] ?? null,
-      postalCode: _existing.postalCode ?? signupRow2["postal_code"] ?? null,
-      phone: _existing.phone ?? signupRow2["phone"] ?? null,
-      locationConfigured: !!(signupRow2["city"] || signupRow2["address"]),
+      country: _existing.country ?? signupRow["country"] ?? null,
+      city: signupRow["city"] ?? null,
+      address: signupRow["address"] ?? null,
+      postalCode: _existing.postalCode ?? signupRow["postal_code"] ?? null,
+      phone: _existing.phone ?? signupRow["phone"] ?? null,
+      locationConfigured: !!(signupRow["city"] || signupRow["address"]),
       locationSource: "manual"
     }).catch((e) => logger.warn({ e, orgId: orgId3 }, "[Webhook/activate] org_settings address self-heal failed (non-fatal)"));
     logger.info({ orgId: orgId3 }, "[Webhook/activate] org_settings address self-healed from signup data");
@@ -76752,12 +76811,12 @@ async function activateNewSignup(opts) {
              last_name      = COALESCE(EXCLUDED.last_name, users.last_name),
              updated_at     = NOW()
        RETURNING id`,
-      [email, firstName, signupRow2["last_name"] ?? "", _wbNewUserId]
+      [email, firstName, signupRow["last_name"] ?? "", _wbNewUserId]
     );
     const userId = upsertUser.rows[0]?.id;
     if (!userId) throw new Error(`Failed to upsert user for email=${email}`);
-    const newOrgSlug = (signupRow2["company_name"] ?? email).replace(/[^a-z0-9]/gi, "-").toLowerCase().slice(0, 60);
-    const _wbSellerId = signupRow2["seller_id"] ?? null;
+    const newOrgSlug = (signupRow["company_name"] ?? email).replace(/[^a-z0-9]/gi, "-").toLowerCase().slice(0, 60);
+    const _wbSellerId = signupRow["seller_id"] ?? null;
     const orgInsert = await activateClient.query(
       `INSERT INTO organizations
          (id, name, slug, owner_user_id, status, plan, subscription_status,
@@ -76773,7 +76832,7 @@ async function activateNewSignup(opts) {
        RETURNING id`,
       [
         orgUUID,
-        signupRow2["company_name"] ?? email,
+        signupRow["company_name"] ?? email,
         newOrgSlug,
         userId,
         selectedPlan,
@@ -76799,26 +76858,29 @@ async function activateNewSignup(opts) {
     );
     await activateClient.query("COMMIT");
     logger.info({ orgId: newOrgId, userId, email }, "[Webhook/activate] User + org + membership activated");
-    if (_wbSellerId) {
+    if (_wbSellerId && customerId) {
       (async () => {
         try {
-          const { recordCommission: _rc } = await Promise.resolve().then(() => (init_seller_attribution(), seller_attribution_exports));
-          await _rc({
-            sellerId: _wbSellerId,
-            orgId: newOrgId,
-            customerEmail: email,
-            stripeCustomerId: customerId ?? null,
-            stripeSubscriptionId: null,
-            // enriched by webhook if needed
-            stripeCheckoutSessionId: null,
-            plan: selectedPlan,
-            eligibleAmountCents: 0,
-            // enriched from invoice webhook; placeholder for now
-            currency: "eur",
-            attributionMethod: "ref_link"
-          });
-        } catch (_rcErr) {
-          logger.warn({ _rcErr, orgId: newOrgId, _wbSellerId }, "[Webhook/activate] Commission recording failed (non-fatal)");
+          const _sellerRow = await pgPool.query(
+            `SELECT seller_code FROM sellers WHERE id = $1 AND status = 'active' LIMIT 1`,
+            [_wbSellerId]
+          );
+          const _sellerCode = _sellerRow.rows[0]?.seller_code;
+          if (!_sellerCode) return;
+          const _stripeKey = getStripeKey();
+          if (!_stripeKey) return;
+          const { default: _StripeC } = await Promise.resolve().then(() => (init_stripe_esm_node(), stripe_esm_node_exports));
+          const _stripeS = new _StripeC(_stripeKey, { apiVersion: "2026-04-22.dahlia" });
+          const _smeta = { seller_id: _sellerCode, seller_attribution: "ref_link" };
+          await _stripeS.customers.update(customerId, { metadata: _smeta });
+          const _activeSubs = await _stripeS.subscriptions.list({ customer: customerId, status: "all", limit: 5 });
+          for (const _sub of _activeSubs.data) {
+            if (!_sub.metadata["addonSub"]) {
+              await _stripeS.subscriptions.update(_sub.id, { metadata: _smeta });
+            }
+          }
+        } catch (_smErr) {
+          logger.warn({ _smErr, orgId: newOrgId, _wbSellerId }, "[Webhook/activate] Stripe seller metadata update failed (non-fatal)");
         }
       })().catch(() => {
       });
@@ -77715,6 +77777,54 @@ async function handleStripeWebhook(req, res) {
           ).catch(() => {
           });
         }
+        const _invAmountPaid = Number(obj["amount_paid"] || 0);
+        const _invBillingReason = String(obj["billing_reason"] || "");
+        const _isFirstPaymentTrigger = (_invBillingReason === "subscription_create" || _invBillingReason === "subscription_cycle") && _invAmountPaid > 0;
+        if (_isFirstPaymentTrigger) {
+          (async () => {
+            try {
+              const _subDetails = obj["subscription_details"];
+              const _subMeta = _subDetails?.["metadata"] ?? {};
+              if (_subMeta["addonSub"] === "true") return;
+              const { pool: _commPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+              const _orgSellerR = await _commPool.query(
+                `SELECT seller_id, owner_email, plan FROM organizations WHERE id = $1 LIMIT 1`,
+                [orgId3]
+              );
+              const _orgRow = _orgSellerR.rows[0];
+              const _sellerUUID = _orgRow?.seller_id ?? null;
+              if (!_sellerUUID) return;
+              const _existComm = await _commPool.query(
+                `SELECT id FROM seller_commissions WHERE org_id = $1 LIMIT 1`,
+                [orgId3]
+              );
+              if (_existComm.rows[0]) return;
+              const _invId = obj["id"] ? String(obj["id"]) : null;
+              const _invSubId = obj["subscription"] ? String(obj["subscription"]) : null;
+              const _invCurrency = obj["currency"] ? String(obj["currency"]) : "eur";
+              const { recordCommission: _rcInv } = await Promise.resolve().then(() => (init_seller_attribution(), seller_attribution_exports));
+              await _rcInv({
+                sellerId: _sellerUUID,
+                orgId: orgId3,
+                customerEmail: _orgRow?.owner_email ?? "",
+                stripeCustomerId: obj["customer"] ? String(obj["customer"]) : null,
+                stripeSubscriptionId: _invSubId,
+                stripeInvoiceId: _invId,
+                plan: _orgRow?.plan ?? "standard",
+                eligibleAmountCents: _invAmountPaid,
+                currency: _invCurrency,
+                attributionMethod: "ref_link"
+              });
+              logger.info(
+                { orgId: orgId3, sellerId: _sellerUUID, amountCents: _invAmountPaid },
+                "[Webhook/seller] Commission recorded from first subscription payment"
+              );
+            } catch (_rcInvErr) {
+              logger.warn({ _rcInvErr, orgId: orgId3 }, "[Webhook/seller] Commission recording failed (non-fatal)");
+            }
+          })().catch(() => {
+          });
+        }
         const billingReason = String(obj["billing_reason"] || "");
         if (billingReason === "subscription_create") {
           logger.info({ orgId: orgId3, billingReason }, "[Webhook] invoice.payment_succeeded: subscription_create \u2014 activation email already sent, skipping duplicate");
@@ -77967,12 +78077,12 @@ __export(dataforseo_service_exports, {
 });
 async function getOrgCredentials(orgId3 = "default") {
   try {
-    const res = await pool2.query(
+    const res = await pool.query(
       `SELECT value FROM org_secrets WHERE org_id = $1 AND key = 'dataforseo_password'`,
       [orgId3]
     );
     const password = res.rows[0]?.value ?? "";
-    const loginRes = await pool2.query(
+    const loginRes = await pool.query(
       `SELECT value FROM org_secrets WHERE org_id = $1 AND key = 'dataforseo_login'`,
       [orgId3]
     );
@@ -78016,7 +78126,7 @@ function _quotaResetAt() {
   return d.toISOString();
 }
 async function _persistQuota(orgId3, today, used) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(
       `INSERT INTO dataforseo_quota (org_id, date, requests_used, created_at)
@@ -78051,7 +78161,7 @@ async function getQuotaUsageFromDB(orgId3 = "default", _plan) {
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const key = `${orgId3}:${today}`;
   if (!_quotaMemory.has(key)) {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const [qr, rh] = await Promise.all([
         client.query(
@@ -78452,7 +78562,7 @@ async function refreshAccessToken(refreshToken) {
   };
 }
 async function saveTokens(orgId3, tokens) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(
       `INSERT INTO google_tokens (org_id, account_id, access_token, refresh_token, expires_at, created_at)
@@ -78474,7 +78584,7 @@ async function saveTokens(orgId3, tokens) {
   }
 }
 async function getValidToken(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     let row;
     const r1 = await client.query(
@@ -78504,7 +78614,7 @@ async function getValidToken(orgId3) {
   }
 }
 async function hasGoogleConnection(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const r = await client.query(
       `SELECT 1 FROM google_tokens WHERE org_id=$1 LIMIT 1`,
@@ -78518,7 +78628,7 @@ async function hasGoogleConnection(orgId3) {
   }
 }
 async function getGBPStatus(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const [tokens, account, locs] = await Promise.all([
       client.query(`SELECT 1 FROM google_tokens WHERE org_id=$1 LIMIT 1`, [orgId3]),
@@ -78652,7 +78762,7 @@ async function syncAll(orgId3) {
     if (!accounts.length) return { accounts: 0, locations: 0, reviews: 0 };
     let totalLocations = 0;
     let totalReviews = 0;
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       for (const acc of accounts.slice(0, 3)) {
         const accId = acc["name"]?.split("/")[1] ?? "";
@@ -91179,7 +91289,7 @@ __export(ai_prefs_exports, {
   selectOptimalModel: () => selectOptimalModel
 });
 async function loadOrgAIPrefs(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const r = await client.query(
       `SELECT settings FROM user_prefs WHERE org_id = $1 LIMIT 1`,
@@ -91292,7 +91402,7 @@ async function resolveCanonicalOrgUuid(orgId3) {
   if (_canonOrgCache.has(orgId3)) return _canonOrgCache.get(orgId3) ?? null;
   let resolved = null;
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const r = await client.query(
         `SELECT id FROM organizations
@@ -91613,7 +91723,7 @@ function recordCompletedUsageDeferred(opts) {
 }
 async function ensureAiUsageOutboxTable() {
   if (_outboxTableReady) return;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS ai_usage_pending_writes (
@@ -91641,7 +91751,7 @@ async function ensureAiUsageOutboxTable() {
 }
 async function enqueueAiUsageOutbox(opts) {
   await ensureAiUsageOutboxTable();
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(
       `INSERT INTO ai_usage_pending_writes (id, request_id, org_id, payload)
@@ -91660,7 +91770,7 @@ async function enqueueAiUsageOutbox(opts) {
 }
 async function processAiUsageOutboxOnce(limit2 = 20) {
   await ensureAiUsageOutboxTable();
-  const client = await pool2.connect();
+  const client = await pool.connect();
   let recovered = 0;
   try {
     const due = await client.query(
@@ -91710,7 +91820,7 @@ async function triggerAIAlert(orgId3, type, current, limit2) {
     quota_90pct: `\u26A0\uFE0F 90% des AI Credits consomm\xE9s \u2014 pensez \xE0 recharger avant la fin du mois`,
     quota_100pct: `\u{1F6A8} AI Credits \xE9puis\xE9s \u2014 toutes les requ\xEAtes IA sont bloqu\xE9es`
   };
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const id = `aia_${Date.now()}_${type}`;
     await client.query(
@@ -91914,7 +92024,7 @@ async function analyzePSI(url, strategy, _orgId, _force, locale) {
 }
 async function cachePSIResult(url, strategy, result) {
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       await client.query(
         `INSERT INTO psi_cache (url, strategy, scores, metrics, critical_issues, opportunities, analyzed_at)
@@ -91938,7 +92048,7 @@ async function cachePSIResult(url, strategy, result) {
 }
 async function getPSIHistory(url, strategy = "mobile", _orgId, days = 30) {
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const res = await client.query(
         `SELECT * FROM psi_history WHERE url=$1 AND analyzed_at > NOW() - INTERVAL '${Math.min(days, 90)} days' ORDER BY analyzed_at DESC LIMIT 100`,
@@ -91962,7 +92072,7 @@ async function getPSIHistory(url, strategy = "mobile", _orgId, days = 30) {
 }
 async function getLatestPSIResult(url, strategy = "mobile", _orgId) {
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const res = await client.query(
         `SELECT * FROM psi_cache WHERE url=$1 AND strategy=$2 LIMIT 1`,
@@ -92024,7 +92134,7 @@ function evaluateCondition(value, operator, threshold) {
 }
 async function fireAlertEvent(opts) {
   const id = `ae_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     if (opts.dedupeKey) {
       await client.query(
@@ -92076,8 +92186,8 @@ async function fireAlertEvent(opts) {
         `SELECT ar.channels,
                 u.email AS org_email
          FROM   alert_rules ar
-         JOIN   org_members om ON om.org_id = ar.org_id AND om.role = 'owner'
-         JOIN   users       u  ON u.id = om.user_id
+         JOIN   organization_members om ON om.organization_id = ar.org_id AND om.role = 'owner'
+         JOIN   users                u  ON u.id = om.user_id
          WHERE  ar.id = $1 AND ar.org_id = $2
          LIMIT  1`,
         [opts.ruleId, opts.orgId]
@@ -92113,7 +92223,7 @@ async function fireAlertEvent(opts) {
   }
 }
 async function resolveAlertEvents(opts) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     if (opts.ruleId && opts.monitorId && opts.type) {
       await client.query(
@@ -92590,7 +92700,7 @@ function isKnownPermission(p) {
 async function resolveEffectivePermissions(userId, orgId3, role) {
   const bundle = new Set(ROLE_BUNDLES[role ?? "viewer"] ?? ROLE_BUNDLES["viewer"]);
   try {
-    const { rows } = await pool2.query(
+    const { rows } = await pool.query(
       `SELECT permission, mode FROM org_member_permissions WHERE org_id = $1 AND user_id = $2`,
       [orgId3, userId]
     );
@@ -93021,9 +93131,9 @@ var init_mission_tools = __esm({
 });
 
 // src/agent/calendar-tools.ts
-async function snapCalendarEvent(eventId, orgId3, pool3) {
+async function snapCalendarEvent(eventId, orgId3, pool2) {
   try {
-    const r = await pool3.query(
+    const r = await pool2.query(
       `SELECT id, title, site, type, date, start_time, duration, notes, client_name,
               priority, color, reminder, linked_mission_id, org_id, updated_at, created_at
        FROM calendar_events WHERE id = $1 AND org_id = $2`,
@@ -93562,9 +93672,9 @@ var init_calendar_tools = __esm({
 });
 
 // src/agent/audit-tools.ts
-async function snapAudit(auditId, orgId3, pool3) {
+async function snapAudit(auditId, orgId3, pool2) {
   try {
-    const r = await pool3.query(
+    const r = await pool2.query(
       `SELECT id, url, name, notes, score, status, speed, date, issues, origin, created_at
        FROM audits WHERE id = $1 AND org_id = $2`,
       [auditId, orgId3]
@@ -93825,9 +93935,9 @@ var init_audit_tools = __esm({
 });
 
 // src/agent/recommendation-tools.ts
-async function snapRecommendation(recommendationId, orgId3, pool3) {
+async function snapRecommendation(recommendationId, orgId3, pool2) {
   try {
-    const r = await pool3.query(
+    const r = await pool2.query(
       `SELECT id, type, title, description, priority, status, source, metadata, created_at, updated_at
        FROM ai_recommendations WHERE id = $1 AND org_id = $2`,
       [recommendationId, orgId3]
@@ -94125,9 +94235,9 @@ var init_recommendation_tools = __esm({
 });
 
 // src/agent/monitor-tools.ts
-async function snapMonitor(monitorId, orgId3, pool3) {
+async function snapMonitor(monitorId, orgId3, pool2) {
   try {
-    const r = await pool3.query(
+    const r = await pool2.query(
       `SELECT id, org_id, name, url, status, uptime, latency, last_check,
               alert_email, alert_phone, is_critical, frequency, enabled, created_at, updated_at
          FROM monitors WHERE id=$1 AND org_id=$2`,
@@ -94138,9 +94248,9 @@ async function snapMonitor(monitorId, orgId3, pool3) {
     return null;
   }
 }
-async function snapIncident(incidentId, orgId3, pool3) {
+async function snapIncident(incidentId, orgId3, pool2) {
   try {
-    const r = await pool3.query(
+    const r = await pool2.query(
       `SELECT id, monitor_id, org_id, started_at, resolved_at, duration_s, error
          FROM monitor_incidents WHERE id=$1 AND org_id=$2`,
       [incidentId, orgId3]
@@ -95617,7 +95727,7 @@ async function createNavigationProposal(opts) {
     openMode: a.openMode
   }));
   try {
-    await pool2.query(
+    await pool.query(
       `INSERT INTO ai_action_proposals
          (id, org_id, user_id, conversation_id, kind, payload, status, provider, model, created_at, expires_at)
        VALUES ($1,$2,$3,$4,'navigation',$5,'proposed',$6,$7,NOW(),$8)`,
@@ -95640,7 +95750,7 @@ async function createPendingToolProposal(opts) {
     previewText: opts.previewText
   };
   try {
-    await pool2.query(
+    await pool.query(
       `INSERT INTO ai_action_proposals
          (id, org_id, user_id, conversation_id, kind, payload, status, provider, model, created_at, expires_at)
        VALUES ($1,$2,$3,$4,'pending_tool_call',$5,'pending',$6,$7,NOW(),$8)`,
@@ -95681,7 +95791,7 @@ var init_proposals = __esm({
 // src/agent/tool-executor.ts
 async function snapMission(missionId, orgId3) {
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT id, title, description, status, priority, category, due_date, assigned_to, steps,
               completed_at, dismissed_at, updated_at, created_at, last_refreshed_at,
               source_type, priority_score
@@ -95698,7 +95808,7 @@ function uid(prefix = "al") {
 }
 async function logActionLog(opts) {
   try {
-    await pool2.query(
+    await pool.query(
       `INSERT INTO ai_action_logs
          (id, org_id, user_id, conversation_id, provider, model, tool, args,
           confirmation_level, result, error, undo_snapshot, version_after, created_at)
@@ -95846,7 +95956,7 @@ async function dispatchTool(name, args, ctx, logId, t0) {
     }
     sql2 += ` ORDER BY priority_score DESC, updated_at DESC LIMIT $${p}`;
     params.push(limit2);
-    const r = await pool2.query(sql2, params);
+    const r = await pool.query(sql2, params);
     const missions = r.rows;
     await logActionLog({
       id: logId,
@@ -95917,7 +96027,7 @@ ${list}`,
     }
     sql2 += ` ORDER BY priority_score DESC, updated_at DESC LIMIT $${p}`;
     params.push(limit2);
-    const r = await pool2.query(sql2, params);
+    const r = await pool.query(sql2, params);
     const missions = r.rows;
     await logActionLog({
       id: logId,
@@ -95958,7 +96068,7 @@ ${list}`,
   }
   if (name === "create_mission") {
     const title = args["title"];
-    const dup = await pool2.query(
+    const dup = await pool.query(
       `SELECT id FROM missions WHERE org_id = $1 AND LOWER(title) = LOWER($2) AND status != 'done' LIMIT 1`,
       [orgId3, title]
     );
@@ -95976,7 +96086,7 @@ ${list}`,
     const pScore = { critical: 90, high: 75, medium: 50, low: 25 }[priority] ?? 50;
     const stepsRaw = args["steps"];
     const stepsArr = stepsRaw?.map((text2, i) => ({ id: `s${Date.now()}${i}`, text: text2, done: false })) ?? [];
-    await pool2.query(`
+    await pool.query(`
       INSERT INTO missions (id, org_id, title, description, category, priority, priority_score,
         status, steps, due_date, assigned_to, source_type, created_by, created_at, updated_at, last_refreshed_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,'todo',$8,$9,$10,'ai',$11,NOW(),NOW(),NOW())
@@ -95993,7 +96103,7 @@ ${list}`,
       args["assignedTo"] ?? null,
       userId
     ]);
-    const row = await pool2.query(
+    const row = await pool.query(
       `SELECT * FROM missions WHERE id = $1 AND org_id = $2`,
       [id, orgId3]
     );
@@ -96082,7 +96192,7 @@ ${list}`,
     const newStatus = args["status"] ?? snapshot["status"];
     const isNowDone = newStatus === "done" && snapshot["status"] !== "done";
     const isNowDismissed = newStatus === "dismissed" && snapshot["status"] !== "dismissed";
-    await pool2.query(`
+    await pool.query(`
       UPDATE missions SET
         title       = COALESCE($1, title),
         description = COALESCE($2, description),
@@ -96106,7 +96216,7 @@ ${list}`,
       id,
       orgId3
     ]);
-    const updateVersionRow = await pool2.query(
+    const updateVersionRow = await pool.query(
       `SELECT updated_at FROM missions WHERE id = $1 AND org_id = $2`,
       [id, orgId3]
     );
@@ -96167,12 +96277,12 @@ ${list}`,
         actionLogId: logId
       };
     }
-    await pool2.query(
+    await pool.query(
       `UPDATE missions SET status = 'done', completed_at = NOW(), updated_at = NOW()
        WHERE id = $1 AND org_id = $2`,
       [id, orgId3]
     );
-    const completeVersionRow = await pool2.query(
+    const completeVersionRow = await pool.query(
       `SELECT updated_at FROM missions WHERE id = $1 AND org_id = $2`,
       [id, orgId3]
     );
@@ -96225,11 +96335,11 @@ ${list}`,
         actionLogId: logId
       };
     }
-    await pool2.query(
+    await pool.query(
       `UPDATE missions SET assigned_to = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
       [assignedTo, id, orgId3]
     );
-    const assignVersionRow = await pool2.query(
+    const assignVersionRow = await pool.query(
       `SELECT updated_at FROM missions WHERE id = $1 AND org_id = $2`,
       [id, orgId3]
     );
@@ -96281,8 +96391,8 @@ ${list}`,
         actionLogId: logId
       };
     }
-    await pool2.query(`DELETE FROM missions WHERE id = $1 AND org_id = $2`, [id, orgId3]);
-    await pool2.query(`DELETE FROM mission_history WHERE mission_id = $1`, [id]);
+    await pool.query(`DELETE FROM missions WHERE id = $1 AND org_id = $2`, [id, orgId3]);
+    await pool.query(`DELETE FROM mission_history WHERE mission_id = $1`, [id]);
     await store.logActivity({
       type: "report",
       label: `[IA] Mission supprim\xE9e : ${snapshot["title"]}`,
@@ -96406,7 +96516,7 @@ ${list}`,
     }
     sql2 += ` ORDER BY date ASC, start_time ASC LIMIT $${p}`;
     params.push(limit2);
-    const r = await pool2.query(sql2, params);
+    const r = await pool.query(sql2, params);
     const events = r.rows;
     await logActionLog({
       id: logId,
@@ -96450,7 +96560,7 @@ ${list}`,
     const startTime = args["startTime"] ?? "";
     const duration = args["duration"] ?? 60;
     if (startTime) {
-      const conflicts = await detectCalendarConflicts({ orgId: orgId3, date: date2, startTime, duration, pool: pool2 });
+      const conflicts = await detectCalendarConflicts({ orgId: orgId3, date: date2, startTime, duration, pool });
       if (conflicts.length > 0) {
         const msg = conflicts.map((c) => `"${c.title}" \xE0 ${c.start_time} (${c.duration} min)`).join(", ");
         return {
@@ -96463,7 +96573,7 @@ ${list}`,
       }
     }
     const id = `ce_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    await pool2.query(`
+    await pool.query(`
       INSERT INTO calendar_events
         (id, org_id, title, site, type, date, start_time, duration, notes, client_name,
          priority, color, reminder, linked_mission_id, created_at, updated_at)
@@ -96484,7 +96594,7 @@ ${list}`,
       args["reminder"] ?? 0,
       args["linkedMissionId"] ?? null
     ]);
-    const row = await pool2.query(`SELECT * FROM calendar_events WHERE id = $1`, [id]);
+    const row = await pool.query(`SELECT * FROM calendar_events WHERE id = $1`, [id]);
     const event = row.rows[0];
     if (!event) {
       await logActionLog({
@@ -96555,7 +96665,7 @@ ${list}`,
   }
   if (name === "update_calendar_event") {
     const id = args["id"];
-    const snap = await snapCalendarEvent(id, orgId3, pool2);
+    const snap = await snapCalendarEvent(id, orgId3, pool);
     if (!snap) {
       return {
         toolCallId: logId,
@@ -96575,7 +96685,7 @@ ${list}`,
         startTime: newStartTime,
         duration: newDuration,
         excludeId: id,
-        pool: pool2
+        pool
       });
       if (conflicts.length > 0) {
         const msg = conflicts.map((c) => `"${c.title}" \xE0 ${c.start_time}`).join(", ");
@@ -96588,7 +96698,7 @@ ${list}`,
         };
       }
     }
-    await pool2.query(`
+    await pool.query(`
       UPDATE calendar_events SET
         title             = COALESCE($1, title),
         site              = COALESCE($2, site),
@@ -96620,7 +96730,7 @@ ${list}`,
       id,
       orgId3
     ]);
-    const updRow = await pool2.query(
+    const updRow = await pool.query(
       `SELECT updated_at FROM calendar_events WHERE id = $1 AND org_id = $2`,
       [id, orgId3]
     );
@@ -96669,7 +96779,7 @@ ${list}`,
   }
   if (name === "move_calendar_event") {
     const id = args["id"];
-    const snap = await snapCalendarEvent(id, orgId3, pool2);
+    const snap = await snapCalendarEvent(id, orgId3, pool);
     if (!snap) {
       return {
         toolCallId: logId,
@@ -96689,7 +96799,7 @@ ${list}`,
         startTime: newStartTime,
         duration: newDuration,
         excludeId: id,
-        pool: pool2
+        pool
       });
       if (conflicts.length > 0) {
         const msg = conflicts.map((c) => `"${c.title}" \xE0 ${c.start_time}`).join(", ");
@@ -96702,7 +96812,7 @@ ${list}`,
         };
       }
     }
-    await pool2.query(`
+    await pool.query(`
       UPDATE calendar_events SET
         date       = $1,
         start_time = $2,
@@ -96710,7 +96820,7 @@ ${list}`,
         updated_at = NOW()
       WHERE id = $4 AND org_id = $5
     `, [newDate, newStartTime, newDuration, id, orgId3]);
-    const moveRow = await pool2.query(
+    const moveRow = await pool.query(
       `SELECT updated_at FROM calendar_events WHERE id = $1 AND org_id = $2`,
       [id, orgId3]
     );
@@ -96761,7 +96871,7 @@ ${list}`,
   }
   if (name === "delete_calendar_event") {
     const id = args["id"];
-    const snap = await snapCalendarEvent(id, orgId3, pool2);
+    const snap = await snapCalendarEvent(id, orgId3, pool);
     if (!snap) {
       return {
         toolCallId: logId,
@@ -96771,7 +96881,7 @@ ${list}`,
         actionLogId: logId
       };
     }
-    await pool2.query(`DELETE FROM calendar_events WHERE id = $1 AND org_id = $2`, [id, orgId3]);
+    await pool.query(`DELETE FROM calendar_events WHERE id = $1 AND org_id = $2`, [id, orgId3]);
     await store.logActivity({
       type: "report",
       label: `[IA] \xC9v\xE9nement supprim\xE9 : "${snap["title"]}" (${snap["date"]})`,
@@ -96841,7 +96951,7 @@ ${list}`,
     const limit2 = args["limit"] ?? 5;
     let orgTzFfs = "UTC";
     try {
-      const tzRow = await pool2.query(
+      const tzRow = await pool.query(
         `SELECT COALESCE(
            (SELECT timezone FROM organizations WHERE id = $1 AND timezone IS NOT NULL AND timezone != '' LIMIT 1),
            (SELECT timezone FROM org_settings  WHERE org_id = $1 AND timezone IS NOT NULL AND timezone != '' LIMIT 1),
@@ -96867,7 +96977,7 @@ ${list}`,
     const dayEnd = endHour * 60;
     for (const d of datesToScan) {
       if (freeSlots.length >= limit2) break;
-      const r = await pool2.query(
+      const r = await pool.query(
         `SELECT start_time, duration FROM calendar_events
          WHERE org_id = $1 AND date = $2 AND start_time != ''
          ORDER BY start_time ASC`,
@@ -96953,7 +97063,7 @@ ${list}`,
       params.push(eventIds);
     }
     sql2 += ` ORDER BY date ASC, start_time ASC`;
-    const eventsRes = await pool2.query(sql2, params);
+    const eventsRes = await pool.query(sql2, params);
     const events = eventsRes.rows;
     if (events.length === 0) {
       return {
@@ -96969,7 +97079,7 @@ ${list}`,
       updated_at: e["updated_at"] instanceof Date ? e["updated_at"].toISOString() : e["updated_at"]
     }));
     const postWriteVersions = {};
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       await client.query("BEGIN");
       for (const ev of events) {
@@ -97052,7 +97162,7 @@ ${list}`,
     const date2 = args["date"];
     const startHour = args["startHour"] ?? 9;
     const breakMinutes = args["breakMinutes"] ?? 15;
-    const evRes = await pool2.query(
+    const evRes = await pool.query(
       `SELECT id, title, date, start_time, duration, site, type, notes, client_name,
               priority, color, reminder, linked_mission_id, updated_at
        FROM calendar_events
@@ -97128,7 +97238,7 @@ ${list}`,
       };
     }
     const optPostWriteVersions = {};
-    const optClient = await pool2.connect();
+    const optClient = await pool.connect();
     try {
       await optClient.query("BEGIN");
       for (const u of updates) {
@@ -97219,7 +97329,7 @@ ${list}`,
     const createdIds = [];
     const createdSnaps = [];
     const seriesId = `ser_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const recClient = await pool2.connect();
+    const recClient = await pool.connect();
     try {
       await recClient.query("BEGIN");
       for (let i = 0; i < dates.length; i++) {
@@ -97334,7 +97444,7 @@ ${listDates}`,
         actionLogId: logId
       };
     }
-    const targetR = await pool2.query(
+    const targetR = await pool.query(
       `SELECT id, org_id, title, site, type, date, start_time, duration, notes,
               client_name, priority, color, reminder, linked_mission_id, rrule,
               series_id, updated_at, created_at
@@ -97359,7 +97469,7 @@ ${listDates}`,
       updated_at: targetRow["updated_at"] instanceof Date ? targetRow["updated_at"].toISOString() : String(targetRow["updated_at"] ?? "")
     }];
     if (scope === "all" && seriesId) {
-      const allOccs = await pool2.query(
+      const allOccs = await pool.query(
         `SELECT id, org_id, title, site, type, date, start_time, duration, notes,
                 client_name, priority, color, reminder, linked_mission_id, rrule,
                 series_id, updated_at, created_at
@@ -97375,7 +97485,7 @@ ${listDates}`,
     const setCols = Object.keys(updates).map((k, i) => `${k} = $${i + 1}`).join(", ");
     const setVals = Object.values(updates);
     const postWriteVersions = {};
-    const updClient = await pool2.connect();
+    const updClient = await pool.connect();
     try {
       await updClient.query("BEGIN");
       for (const eid of eventIds) {
@@ -97444,7 +97554,7 @@ ${listDates}`,
   if (name === "delete_recurring_series") {
     const eventId = args["eventId"];
     const scope = args["scope"] ?? "single";
-    const targetR2 = await pool2.query(
+    const targetR2 = await pool.query(
       `SELECT id, org_id, title, site, type, date, start_time, duration, notes,
               client_name, priority, color, reminder, linked_mission_id, rrule,
               series_id, updated_at, created_at
@@ -97468,7 +97578,7 @@ ${listDates}`,
       updated_at: targetRow2["updated_at"] instanceof Date ? targetRow2["updated_at"].toISOString() : String(targetRow2["updated_at"] ?? "")
     }];
     if (scope === "all" && seriesId2) {
-      const allOccs2 = await pool2.query(
+      const allOccs2 = await pool.query(
         `SELECT id, org_id, title, site, type, date, start_time, duration, notes,
                 client_name, priority, color, reminder, linked_mission_id, rrule,
                 series_id, updated_at, created_at
@@ -97480,7 +97590,7 @@ ${listDates}`,
         updated_at: r["updated_at"] instanceof Date ? r["updated_at"].toISOString() : String(r["updated_at"] ?? "")
       }));
     }
-    const delRClient = await pool2.connect();
+    const delRClient = await pool.connect();
     try {
       await delRClient.query("BEGIN");
       for (const e of eventsToDelete) {
@@ -97562,7 +97672,7 @@ ${listDates}`,
     }
     sql2 += ` ORDER BY created_at DESC LIMIT $${pi}`;
     params.push(limit2);
-    const r = await pool2.query(sql2, params);
+    const r = await pool.query(sql2, params);
     await logActionLog({
       id: logId,
       orgId: orgId3,
@@ -97644,7 +97754,7 @@ ${lines.join("\n")}`,
     }
     const forceRerun = !!args["force"];
     if (!forceRerun) {
-      const dupCheck = await pool2.query(
+      const dupCheck = await pool.query(
         `SELECT id, score, status FROM audits WHERE org_id=$1 AND url=$2 AND created_at > NOW() - INTERVAL '24 hours' ORDER BY created_at DESC LIMIT 1`,
         [orgId3, url]
       );
@@ -97670,7 +97780,7 @@ Si l'utilisateur souhaite relancer un nouvel audit, utilisez force=true.`,
     }
     const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     const auditId = `a${Date.now()}`;
-    await pool2.query(
+    await pool.query(
       `INSERT INTO audits (id, org_id, url, name, score, status, speed, date, issues, origin, created_at)
        VALUES ($1,$2,$3,$4,0,'processing',0,$5,0,$6,NOW())`,
       [auditId, orgId3, url, url, today, origin]
@@ -97684,7 +97794,7 @@ Si l'utilisateur souhaite relancer un nouvel audit, utilisez force=true.`,
         const mob = mobRes.status === "fulfilled" ? mobRes.value : null;
         const desk = deskRes.status === "fulfilled" ? deskRes.value : null;
         if (!mob && !desk) {
-          await pool2.query(`UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`, [auditId, orgId3]);
+          await pool.query(`UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`, [auditId, orgId3]);
           return;
         }
         const s = (src) => src ? {
@@ -97712,7 +97822,7 @@ Si l'utilisateur souhaite relancer un nouvel audit, utilisez force=true.`,
         const finalStatus = finalScore >= 70 ? "ok" : finalScore >= 50 ? "warn" : "error";
         const speed = desk ? desk.scores.performance : mob?.scores.performance ?? 0;
         const issues = (mob?.criticalIssues.length ?? 0) + (desk?.criticalIssues.length ?? 0);
-        await pool2.query(
+        await pool.query(
           `UPDATE audits SET score=$1, status=$2, speed=$3, issues=$4 WHERE id=$5 AND org_id=$6`,
           [finalScore, finalStatus, speed, issues, auditId, orgId3]
         );
@@ -97727,7 +97837,7 @@ Si l'utilisateur souhaite relancer un nouvel audit, utilisez force=true.`,
         });
       } catch (err) {
         logger.warn({ err, auditId, url }, "[audit-tool] PSI failed");
-        await pool2.query(`UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`, [auditId, orgId3]).catch(() => {
+        await pool.query(`UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`, [auditId, orgId3]).catch(() => {
         });
       }
     })();
@@ -97776,7 +97886,7 @@ Si l'utilisateur souhaite relancer un nouvel audit, utilisez force=true.`,
         actionLogId: logId
       };
     }
-    const fin = await pool2.query(`SELECT score, status FROM audits WHERE id=$1 AND org_id=$2`, [auditId, orgId3]);
+    const fin = await pool.query(`SELECT score, status FROM audits WHERE id=$1 AND org_id=$2`, [auditId, orgId3]);
     const finRow = fin.rows[0];
     const finScore = Number(finRow?.["score"] ?? 0);
     const finStatus = String(finRow?.["status"] ?? "error");
@@ -97810,7 +97920,7 @@ Demandez-moi le r\xE9sum\xE9 complet (probl\xE8mes critiques, recommandations, d
     try {
       while (Date.now() < deadline) {
         await new Promise((r2) => setTimeout(r2, 3e3));
-        const r = await pool2.query(`SELECT score, status FROM audits WHERE id=$1 AND org_id=$2`, [auditId, orgId4]);
+        const r = await pool.query(`SELECT score, status FROM audits WHERE id=$1 AND org_id=$2`, [auditId, orgId4]);
         row = r.rows[0];
         if (row && String(row["status"]) !== "processing") break;
       }
@@ -97845,7 +97955,7 @@ Demandez-moi le r\xE9sum\xE9 complet pour approfondir.`,
   }
   if (name === "rerun_audit") {
     const auditId = args["auditId"];
-    const existing = await snapAudit(auditId, orgId3, pool2);
+    const existing = await snapAudit(auditId, orgId3, pool);
     if (!existing) {
       return {
         toolCallId: logId,
@@ -97858,7 +97968,7 @@ Demandez-moi le r\xE9sum\xE9 complet pour approfondir.`,
     const url = existing["url"];
     const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     const newId = `a${Date.now()}`;
-    await pool2.query(
+    await pool.query(
       `INSERT INTO audits (id, org_id, url, name, score, status, speed, date, issues, origin, created_at)
        VALUES ($1,$2,$3,$4,0,'processing',0,$5,0,'agent',NOW())`,
       [newId, orgId3, url, url, today]
@@ -97872,7 +97982,7 @@ Demandez-moi le r\xE9sum\xE9 complet pour approfondir.`,
         const mob = mobRes.status === "fulfilled" ? mobRes.value : null;
         const desk = deskRes.status === "fulfilled" ? deskRes.value : null;
         if (!mob && !desk) {
-          await pool2.query(`UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`, [newId, orgId3]);
+          await pool.query(`UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`, [newId, orgId3]);
           return;
         }
         const blend2 = (mVal, dVal, wm = 0.6, wd = 0.4) => {
@@ -97892,13 +98002,13 @@ Demandez-moi le r\xE9sum\xE9 complet pour approfondir.`,
         const st = score >= 70 ? "ok" : score >= 50 ? "warn" : "error";
         const speed = desk?.scores.performance ?? mob?.scores.performance ?? 0;
         const issues = (mob?.criticalIssues.length ?? 0) + (desk?.criticalIssues.length ?? 0);
-        await pool2.query(
+        await pool.query(
           `UPDATE audits SET score=$1, status=$2, speed=$3, issues=$4 WHERE id=$5 AND org_id=$6`,
           [score, st, speed, issues, newId, orgId3]
         );
       } catch (err) {
         logger.warn({ err, newId }, "[audit-tool] rerun PSI failed");
-        await pool2.query(`UPDATE audits SET status='error' WHERE id=$1 AND org_id=$2`, [newId, orgId3]).catch(() => {
+        await pool.query(`UPDATE audits SET status='error' WHERE id=$1 AND org_id=$2`, [newId, orgId3]).catch(() => {
         });
       }
     })();
@@ -97947,7 +98057,7 @@ Demandez-moi le r\xE9sum\xE9 complet pour approfondir.`,
         actionLogId: logId
       };
     }
-    const rerunFin = await pool2.query(`SELECT score, status FROM audits WHERE id=$1 AND org_id=$2`, [newId, orgId3]);
+    const rerunFin = await pool.query(`SELECT score, status FROM audits WHERE id=$1 AND org_id=$2`, [newId, orgId3]);
     const rerunRow = rerunFin.rows[0];
     const rerunScore = Number(rerunRow?.["score"] ?? 0);
     const rerunStatus = String(rerunRow?.["status"] ?? "error");
@@ -97969,8 +98079,8 @@ Demandez-moi le r\xE9sum\xE9 complet pour approfondir.`,
     const idA = args["auditIdA"];
     const idB = args["auditIdB"];
     const [a, b] = await Promise.all([
-      snapAudit(idA, orgId3, pool2),
-      snapAudit(idB, orgId3, pool2)
+      snapAudit(idA, orgId3, pool),
+      snapAudit(idB, orgId3, pool)
     ]);
     if (!a) return { toolCallId: logId, toolName: name, ok: false, content: `Audit A (${idA}) introuvable.`, actionLogId: logId };
     if (!b) return { toolCallId: logId, toolName: name, ok: false, content: `Audit B (${idB}) introuvable.`, actionLogId: logId };
@@ -98012,7 +98122,7 @@ Demandez-moi le r\xE9sum\xE9 complet pour approfondir.`,
   }
   if (name === "summarize_audit") {
     const auditId = args["auditId"];
-    const audit = await snapAudit(auditId, orgId3, pool2);
+    const audit = await snapAudit(auditId, orgId3, pool);
     if (!audit) return {
       toolCallId: logId,
       toolName: name,
@@ -98020,7 +98130,7 @@ Demandez-moi le r\xE9sum\xE9 complet pour approfondir.`,
       content: `Audit ${auditId} introuvable.`,
       actionLogId: logId
     };
-    const psiR = await pool2.query(
+    const psiR = await pool.query(
       `SELECT scores, metrics, critical_issues, opportunities, analyzed_at
        FROM psi_cache WHERE url=$1 AND strategy='mobile' ORDER BY analyzed_at DESC LIMIT 1`,
       [audit["url"]]
@@ -98076,7 +98186,7 @@ M\xE9triques Web Vitals (mobile) :`);
   if (name === "explain_audit_issue") {
     const auditId = args["auditId"];
     const issueId = args["issueId"];
-    const audit = await snapAudit(auditId, orgId3, pool2);
+    const audit = await snapAudit(auditId, orgId3, pool);
     if (!audit) return {
       toolCallId: logId,
       toolName: name,
@@ -98084,7 +98194,7 @@ M\xE9triques Web Vitals (mobile) :`);
       content: `Audit ${auditId} introuvable.`,
       actionLogId: logId
     };
-    const psiR = await pool2.query(
+    const psiR = await pool.query(
       `SELECT critical_issues, opportunities FROM psi_cache WHERE url=$1 ORDER BY analyzed_at DESC LIMIT 1`,
       [audit["url"]]
     ).catch(() => ({ rows: [] }));
@@ -98139,7 +98249,7 @@ M\xE9triques Web Vitals (mobile) :`);
     const auditId = args["auditId"];
     const maxMiss = Math.min(args["maxMissions"] ?? 5, 10);
     const priority = args["priority"] ?? "high";
-    const audit = await snapAudit(auditId, orgId3, pool2);
+    const audit = await snapAudit(auditId, orgId3, pool);
     if (!audit) return {
       toolCallId: logId,
       toolName: name,
@@ -98154,7 +98264,7 @@ M\xE9triques Web Vitals (mobile) :`);
       content: `L'audit ${auditId} est encore en cours de traitement. Attendez quelques instants puis r\xE9essayez.`,
       actionLogId: logId
     };
-    const psiR = await pool2.query(
+    const psiR = await pool.query(
       `SELECT critical_issues, opportunities FROM psi_cache WHERE url=$1 ORDER BY analyzed_at DESC LIMIT 1`,
       [audit["url"]]
     ).catch(() => ({ rows: [] }));
@@ -98171,7 +98281,7 @@ M\xE9triques Web Vitals (mobile) :`);
     };
     const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     const createdMissions = [];
-    const mClient = await pool2.connect();
+    const mClient = await pool.connect();
     try {
       await mClient.query("BEGIN");
       for (const issue of candidates) {
@@ -98241,7 +98351,7 @@ M\xE9triques Web Vitals (mobile) :`);
   }
   if (name === "delete_audit") {
     const auditId = args["auditId"];
-    const snap = await snapAudit(auditId, orgId3, pool2);
+    const snap = await snapAudit(auditId, orgId3, pool);
     if (!snap) return {
       toolCallId: logId,
       toolName: name,
@@ -98249,7 +98359,7 @@ M\xE9triques Web Vitals (mobile) :`);
       content: `Audit ${auditId} introuvable.`,
       actionLogId: logId
     };
-    await pool2.query(`DELETE FROM audits WHERE id=$1 AND org_id=$2`, [auditId, orgId3]);
+    await pool.query(`DELETE FROM audits WHERE id=$1 AND org_id=$2`, [auditId, orgId3]);
     await logActionLog({
       id: logId,
       orgId: orgId3,
@@ -98292,7 +98402,7 @@ M\xE9triques Web Vitals (mobile) :`);
   }
   if (name === "export_audit") {
     const auditId = args["auditId"];
-    const audit = await snapAudit(auditId, orgId3, pool2);
+    const audit = await snapAudit(auditId, orgId3, pool);
     if (!audit) return {
       toolCallId: logId,
       toolName: name,
@@ -98300,7 +98410,7 @@ M\xE9triques Web Vitals (mobile) :`);
       content: `Audit ${auditId} introuvable.`,
       actionLogId: logId
     };
-    const psiR = await pool2.query(
+    const psiR = await pool.query(
       `SELECT scores, metrics, critical_issues, opportunities, analyzed_at, strategy
        FROM psi_cache WHERE url=$1 AND strategy='mobile' ORDER BY analyzed_at DESC LIMIT 1`,
       [audit["url"]]
@@ -98393,7 +98503,7 @@ M\xE9triques Web Vitals (mobile) :`);
     }
     sql2 += ` ORDER BY priority DESC, created_at DESC LIMIT $${pi}`;
     params.push(limitF);
-    const recRows = await pool2.query(sql2, params);
+    const recRows = await pool.query(sql2, params);
     await logActionLog({
       id: logId,
       orgId: orgId3,
@@ -98445,10 +98555,10 @@ ${recLines.join("\n")}`,
       return t[_gl] ?? en;
     };
     const [genAudits, genKw, genComp, genMon] = await Promise.allSettled([
-      pool2.query(`SELECT id, url, score, status, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 5`, [orgId3]),
-      pool2.query(`SELECT keyword, current_position, search_volume FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC LIMIT 10`, [orgId3]),
-      pool2.query(`SELECT name, domain_rating FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT 3`, [orgId3]),
-      pool2.query(`SELECT url, status FROM monitors WHERE org_id=$1 LIMIT 5`, [orgId3])
+      pool.query(`SELECT id, url, score, status, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 5`, [orgId3]),
+      pool.query(`SELECT keyword, current_position, search_volume FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC LIMIT 10`, [orgId3]),
+      pool.query(`SELECT name, domain_rating FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT 3`, [orgId3]),
+      pool.query(`SELECT url, status FROM monitors WHERE org_id=$1 LIMIT 5`, [orgId3])
     ]);
     const genAuditRows = genAudits.status === "fulfilled" ? genAudits.value.rows : [];
     const genKwRows = genKw.status === "fulfilled" ? genKw.value.rows : [];
@@ -98598,7 +98708,7 @@ ${recLines.join("\n")}`,
     const scored = candidates.map((c) => ({ ...c, score: computeRecommPriorityScore(c) })).filter((c) => !genUrgency || c.score >= 70).sort((a, b) => b.score - a.score).slice(0, genMaxResults);
     const genCreated = [];
     for (const rec of scored) {
-      const dupCheck = await pool2.query(
+      const dupCheck = await pool.query(
         `SELECT id FROM ai_recommendations
          WHERE org_id = $1 AND title = $2 AND status = 'active'
            AND (expires_at IS NULL OR expires_at > NOW())
@@ -98607,7 +98717,7 @@ ${recLines.join("\n")}`,
       );
       if (dupCheck.rows.length > 0) continue;
       const rId = `r${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      await pool2.query(
+      await pool.query(
         `INSERT INTO ai_recommendations (id, org_id, type, title, description, priority, status, source, metadata, created_at, updated_at)
          VALUES ($1,$2,'recommendation',$3,$4,$5,'active',$6,$7::jsonb,NOW(),NOW())
          ON CONFLICT (id) DO NOTHING`,
@@ -98678,7 +98788,7 @@ ${recLines.join("\n")}`,
   }
   if (name2 === "prioritize_recommendations") {
     const prioScope = args["scope"] ?? "all";
-    const prioR = await pool2.query(
+    const prioR = await pool.query(
       `SELECT id, title, priority, status, metadata FROM ai_recommendations
        WHERE org_id=$1 AND status='active' ORDER BY priority DESC LIMIT 25`,
       [orgId3]
@@ -98740,7 +98850,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
   }
   if (name2 === "explain_recommendation") {
     const expRecId = args["recommendationId"];
-    const expSnap = await snapRecommendation(expRecId, orgId3, pool2);
+    const expSnap = await snapRecommendation(expRecId, orgId3, pool);
     if (!expSnap) return {
       toolCallId: logId,
       toolName: name2,
@@ -98791,7 +98901,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
   if (name2 === "create_action_plan") {
     const planWeeks = Math.min(args["weeks"] ?? 4, 12);
     const planFocus = args["focus"]?.toLowerCase();
-    const planR = await pool2.query(
+    const planR = await pool.query(
       `SELECT id, title, priority, metadata FROM ai_recommendations
        WHERE org_id=$1 AND status='active' ORDER BY priority DESC LIMIT 20`,
       [orgId3]
@@ -98848,9 +98958,9 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
     const stratHorizon = args["horizon"] ?? "6months";
     const stratFocus = args["focus"] ?? "technique, contenu, local, backlinks, conversion";
     const [sAudits, sKw, sComp] = await Promise.allSettled([
-      pool2.query(`SELECT url, score, status FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 3`, [orgId3]),
-      pool2.query(`SELECT keyword, current_position FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC LIMIT 5`, [orgId3]),
-      pool2.query(`SELECT name, domain_rating FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT 3`, [orgId3])
+      pool.query(`SELECT url, score, status FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 3`, [orgId3]),
+      pool.query(`SELECT keyword, current_position FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC LIMIT 5`, [orgId3]),
+      pool.query(`SELECT name, domain_rating FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT 3`, [orgId3])
     ]);
     const sAuditRows = sAudits.status === "fulfilled" ? sAudits.value.rows : [];
     const sKwRows = sKw.status === "fulfilled" ? sKw.value.rows : [];
@@ -98861,7 +98971,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
     const stratTitle = `Strat\xE9gie SEO ${stratHorizonLabel} \u2014 ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`;
     const stratDesc = `Strat\xE9gie bas\xE9e sur ${sAuditRows.length} audit(s), ${sKwRows.length} mot(s)-cl\xE9, ${sCompRows.length} concurrent(s). Score moyen : ${sAvgScore}/100. Axes : ${stratFocus}. ${sKwTop10} mot(s)-cl\xE9 en Top 10.`;
     const stratId = `s${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    await pool2.query(
+    await pool.query(
       `INSERT INTO ai_recommendations (id, org_id, type, title, description, priority, status, source, metadata, created_at, updated_at)
        VALUES ($1,$2,'strategy',$3,$4,85,'active','agent',$5::jsonb,NOW(),NOW())
        ON CONFLICT (id) DO NOTHING`,
@@ -98932,7 +99042,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
   if (name2 === "compare_strategy") {
     const cmpA = args["strategyA"];
     const cmpB = args["strategyB"];
-    const cmpKwR = await pool2.query(
+    const cmpKwR = await pool.query(
       `SELECT keyword, current_position FROM tracked_keywords WHERE org_id=$1 AND active=true LIMIT 10`,
       [orgId3]
     ).catch(() => ({ rows: [] }));
@@ -98980,12 +99090,12 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
     const msPriority = args["priority"] ?? "high";
     let msSourceRecs = [];
     if (msStratId) {
-      const msStratCheck = await pool2.query(
+      const msStratCheck = await pool.query(
         `SELECT id FROM ai_recommendations WHERE id=$1 AND org_id=$2 LIMIT 1`,
         [msStratId, orgId3]
       );
       if (msStratCheck.rows.length > 0) {
-        const msRecR = await pool2.query(
+        const msRecR = await pool.query(
           `SELECT id, title, description, metadata FROM ai_recommendations
            WHERE org_id=$1 AND status='active' AND type='recommendation' ORDER BY priority DESC LIMIT $2`,
           [orgId3, msMaxMiss]
@@ -98994,7 +99104,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
       }
     }
     if (!msSourceRecs.length) {
-      const msRecR = await pool2.query(
+      const msRecR = await pool.query(
         `SELECT id, title, description, metadata FROM ai_recommendations
          WHERE org_id=$1 AND status='active' AND type='recommendation' ORDER BY priority DESC LIMIT $2`,
         [orgId3, msMaxMiss]
@@ -99003,8 +99113,8 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
     }
     if (!msSourceRecs.length) {
       const [fbAudits, fbKw] = await Promise.allSettled([
-        pool2.query(`SELECT url, score, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 3`, [orgId3]),
-        pool2.query(`SELECT keyword, current_position FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC LIMIT 5`, [orgId3])
+        pool.query(`SELECT url, score, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 3`, [orgId3]),
+        pool.query(`SELECT keyword, current_position FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC LIMIT 5`, [orgId3])
       ]);
       const fbAuditRows = fbAudits.status === "fulfilled" ? fbAudits.value.rows : [];
       const fbKwRows = fbKw.status === "fulfilled" ? fbKw.value.rows : [];
@@ -99023,7 +99133,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
     }
     const msToday = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     const msMissions = [];
-    const msClient = await pool2.connect();
+    const msClient = await pool.connect();
     try {
       await msClient.query("BEGIN");
       for (const rec of msSourceRecs.slice(0, msMaxMiss)) {
@@ -99092,7 +99202,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
   if (name2 === "dismiss_recommendation") {
     const dimRecId = args["recommendationId"];
     const dimReason = args["reason"] ?? null;
-    const dimSnap = await snapRecommendation(dimRecId, orgId3, pool2);
+    const dimSnap = await snapRecommendation(dimRecId, orgId3, pool);
     if (!dimSnap) return {
       toolCallId: logId,
       toolName: name2,
@@ -99109,7 +99219,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
     };
     const dimMetaOld = dimSnap["metadata"] ?? {};
     const dimMetaNew = { ...dimMetaOld, dismiss_reason: dimReason, dismissed_at: (/* @__PURE__ */ new Date()).toISOString() };
-    await pool2.query(
+    await pool.query(
       `UPDATE ai_recommendations SET status='dismissed', metadata=$1::jsonb, updated_at=NOW() WHERE id=$2 AND org_id=$3`,
       [JSON.stringify(dimMetaNew), dimRecId, orgId3]
     );
@@ -99139,7 +99249,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
   }
   if (name2 === "restore_recommendation") {
     const restRecId = args["recommendationId"];
-    const restSnap = await snapRecommendation(restRecId, orgId3, pool2);
+    const restSnap = await snapRecommendation(restRecId, orgId3, pool);
     if (!restSnap) return {
       toolCallId: logId,
       toolName: name2,
@@ -99154,7 +99264,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
       content: `La recommandation [${restRecId}] est d\xE9j\xE0 active.`,
       actionLogId: logId
     };
-    await pool2.query(
+    await pool.query(
       `UPDATE ai_recommendations SET status='active', updated_at=NOW() WHERE id=$1 AND org_id=$2`,
       [restRecId, orgId3]
     );
@@ -99225,7 +99335,7 @@ ${prioLabels[bucket] ?? bucket.toUpperCase()} (${items.length}) :`);
     }
     smSql += ` ORDER BY is_critical DESC, status DESC, name ASC LIMIT $${smP}`;
     smParams.push(smLimit);
-    const smRows = (await pool2.query(smSql, smParams)).rows;
+    const smRows = (await pool.query(smSql, smParams)).rows;
     if (!smRows.length) return {
       toolCallId: logId,
       toolName: name2,
@@ -99274,7 +99384,7 @@ ${smSummary}`,
     }
     siSql += ` ORDER BY mi.started_at DESC LIMIT $${siP}`;
     siParams.push(siLimit);
-    const siRows = (await pool2.query(siSql, siParams)).rows;
+    const siRows = (await pool.query(siSql, siParams)).rows;
     if (!siRows.length) return {
       toolCallId: logId,
       toolName: name2,
@@ -99298,7 +99408,7 @@ ${siSummary}`,
   }
   if (name2 === "explain_incident") {
     const eiId = args["incident_id"];
-    const eiSnap = await snapIncident(eiId, orgId3, pool2);
+    const eiSnap = await snapIncident(eiId, orgId3, pool);
     if (!eiSnap) return {
       toolCallId: logId,
       toolName: name2,
@@ -99307,15 +99417,15 @@ ${siSummary}`,
       actionLogId: logId
     };
     const [eiMon, eiChecks, eiAlerts] = await Promise.allSettled([
-      pool2.query(
+      pool.query(
         `SELECT id, name, url, status, uptime, latency, is_critical, frequency FROM monitors WHERE id=$1 AND org_id=$2`,
         [eiSnap["monitor_id"], orgId3]
       ),
-      pool2.query(
+      pool.query(
         `SELECT checked_at, ok, latency, status_code, error FROM monitor_checks WHERE monitor_id=$1 AND org_id=$2 AND checked_at BETWEEN $3 AND $4 ORDER BY checked_at ASC LIMIT 20`,
         [eiSnap["monitor_id"], orgId3, eiSnap["started_at"], eiSnap["resolved_at"] ?? (/* @__PURE__ */ new Date()).toISOString()]
       ),
-      pool2.query(
+      pool.query(
         `SELECT type, severity, message, triggered_at, read_at FROM alert_events WHERE monitor_id=$1 AND org_id=$2 AND triggered_at >= $3 ORDER BY triggered_at ASC LIMIT 10`,
         [eiSnap["monitor_id"], orgId3, eiSnap["started_at"]]
       )
@@ -99362,7 +99472,7 @@ ${siSummary}`,
     const ciIds = args["incident_ids"];
     const ciMetrics = args["metrics"] ?? ["duration", "frequency", "type", "causes", "impact"];
     const ciRows = await Promise.allSettled(
-      ciIds.map((id) => pool2.query(
+      ciIds.map((id) => pool.query(
         `SELECT mi.id, mi.monitor_id, mi.started_at, mi.resolved_at, mi.duration_s, mi.error,
                 m.name AS monitor_name, m.url, m.is_critical, m.uptime
            FROM monitor_incidents mi JOIN monitors m ON m.id=mi.monitor_id AND m.org_id=mi.org_id
@@ -99410,7 +99520,7 @@ ${siSummary}`,
   if (name2 === "acknowledge_incident") {
     const aiId = args["incident_id"];
     const aiNote = args["note"] ?? null;
-    const aiSnap = await snapIncident(aiId, orgId3, pool2);
+    const aiSnap = await snapIncident(aiId, orgId3, pool);
     if (!aiSnap) return {
       toolCallId: logId,
       toolName: name2,
@@ -99418,7 +99528,7 @@ ${siSummary}`,
       content: `Incident ${aiId} introuvable.`,
       actionLogId: logId
     };
-    const aiAckR = await pool2.query(
+    const aiAckR = await pool.query(
       `UPDATE alert_events SET read_at=NOW() WHERE org_id=$1 AND monitor_id=$2 AND triggered_at >= $3 AND read_at IS NULL`,
       [orgId3, aiSnap["monitor_id"], aiSnap["started_at"]]
     );
@@ -99459,7 +99569,7 @@ ${siSummary}`,
   if (name2 === "resolve_incident") {
     const riId = args["incident_id"];
     const riNote = args["resolution_note"] ?? null;
-    const riSnap = await snapIncident(riId, orgId3, pool2);
+    const riSnap = await snapIncident(riId, orgId3, pool);
     if (!riSnap) return {
       toolCallId: logId,
       toolName: name2,
@@ -99475,7 +99585,7 @@ ${siSummary}`,
       actionLogId: logId
     };
     const riDurationS = Math.round((Date.now() - new Date(riSnap["started_at"]).getTime()) / 1e3);
-    await pool2.query(
+    await pool.query(
       `UPDATE monitor_incidents SET resolved_at=NOW(), duration_s=$1 WHERE id=$2 AND org_id=$3`,
       [riDurationS, riId, orgId3]
     );
@@ -99519,7 +99629,7 @@ ${siSummary}`,
     const cmiId = args["incident_id"];
     const cmiTypes = args["mission_types"] ?? ["investigation", "correction", "verification", "suivi"];
     const cmiAssignee = args["assignee_id"] ?? null;
-    const cmiSnap = await snapIncident(cmiId, orgId3, pool2);
+    const cmiSnap = await snapIncident(cmiId, orgId3, pool);
     if (!cmiSnap) return {
       toolCallId: logId,
       toolName: name2,
@@ -99527,7 +99637,7 @@ ${siSummary}`,
       content: `Incident ${cmiId} introuvable.`,
       actionLogId: logId
     };
-    const cmiMonR = await pool2.query(`SELECT name, url FROM monitors WHERE id=$1 AND org_id=$2`, [cmiSnap["monitor_id"], orgId3]);
+    const cmiMonR = await pool.query(`SELECT name, url FROM monitors WHERE id=$1 AND org_id=$2`, [cmiSnap["monitor_id"], orgId3]);
     const cmiMon = cmiMonR.rows[0] ?? {};
     const cmiSite = cmiMon["name"] || cmiMon["url"] || "site";
     const cmiMissionDefs = {
@@ -99557,7 +99667,7 @@ ${siSummary}`,
       const def = cmiMissionDefs[mType];
       if (!def) continue;
       const mId = `m_inc${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      await pool2.query(
+      await pool.query(
         `INSERT INTO missions (id, org_id, title, description, status, priority, assigned_to, created_by, created_at, updated_at)
          VALUES ($1,$2,$3,$4,'pending',$5,$6,$7,NOW(),NOW()) ON CONFLICT (id) DO NOTHING`,
         [mId, orgId3, def.title, def.description, def.priority, cmiAssignee, userId]
@@ -99609,8 +99719,8 @@ ${siSummary}`,
   if (name2 === "optimize_monitors") {
     const omFocus = args["focus"] ?? "all";
     const [omMonitors, omIncidents] = await Promise.allSettled([
-      pool2.query(`SELECT id, name, url, status, uptime, latency, frequency, enabled, is_critical, last_check FROM monitors WHERE org_id=$1 ORDER BY frequency ASC`, [orgId3]),
-      pool2.query(`SELECT monitor_id, COUNT(*) AS incident_count, AVG(duration_s) AS avg_duration
+      pool.query(`SELECT id, name, url, status, uptime, latency, frequency, enabled, is_critical, last_check FROM monitors WHERE org_id=$1 ORDER BY frequency ASC`, [orgId3]),
+      pool.query(`SELECT monitor_id, COUNT(*) AS incident_count, AVG(duration_s) AS avg_duration
                     FROM monitor_incidents WHERE org_id=$1 AND started_at >= NOW() - '30 days'::interval
                    GROUP BY monitor_id`, [orgId3])
     ]);
@@ -99688,7 +99798,7 @@ ${siSummary}`,
     }
     let cfSnap = null;
     if (cfMonId) {
-      cfSnap = await snapMonitor(cfMonId, orgId3, pool2);
+      cfSnap = await snapMonitor(cfMonId, orgId3, pool);
       if (!cfSnap) return {
         toolCallId: logId,
         toolName: name2,
@@ -99735,12 +99845,12 @@ ${siSummary}`,
         actionLogId: logId
       };
       cfSets.push("updated_at=NOW()");
-      await pool2.query(`UPDATE monitors SET ${cfSets.join(", ")} WHERE org_id=$1 AND id=$2`, cfVals);
+      await pool.query(`UPDATE monitors SET ${cfSets.join(", ")} WHERE org_id=$1 AND id=$2`, cfVals);
       cfResultId = cfMonId;
       cfAction = "mis \xE0 jour";
     } else {
       cfResultId = `mon${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      const cfInsertResult = await pool2.query(
+      const cfInsertResult = await pool.query(
         `INSERT INTO monitors (id, org_id, name, url, status, uptime, latency, frequency, enabled, is_critical, alert_email, alert_phone, created_at, updated_at)
          VALUES ($1,$2,$3,$4,'unknown',100,0,$5,true,$6,$7,$8,NOW(),NOW())
          RETURNING id`,
@@ -99797,7 +99907,7 @@ ${siSummary}`,
   if (name2 === "suspend_monitor") {
     const susId = args["monitor_id"];
     const susReason = args["reason"] ?? null;
-    const susSnap = await snapMonitor(susId, orgId3, pool2);
+    const susSnap = await snapMonitor(susId, orgId3, pool);
     if (!susSnap) return {
       toolCallId: logId,
       toolName: name2,
@@ -99812,7 +99922,7 @@ ${siSummary}`,
       content: `Le monitor [${susId}] "${susSnap["name"]}" est d\xE9j\xE0 suspendu.`,
       actionLogId: logId
     };
-    await pool2.query(`UPDATE monitors SET enabled=false, updated_at=NOW() WHERE id=$1 AND org_id=$2`, [susId, orgId3]);
+    await pool.query(`UPDATE monitors SET enabled=false, updated_at=NOW() WHERE id=$1 AND org_id=$2`, [susId, orgId3]);
     await logActionLog({
       id: logId,
       orgId: orgId3,
@@ -99848,7 +99958,7 @@ ${siSummary}`,
   }
   if (name2 === "resume_monitor") {
     const resId = args["monitor_id"];
-    const resSnap = await snapMonitor(resId, orgId3, pool2);
+    const resSnap = await snapMonitor(resId, orgId3, pool);
     if (!resSnap) return {
       toolCallId: logId,
       toolName: name2,
@@ -99863,7 +99973,7 @@ ${siSummary}`,
       content: `Le monitor [${resId}] "${resSnap["name"]}" est d\xE9j\xE0 actif.`,
       actionLogId: logId
     };
-    await pool2.query(`UPDATE monitors SET enabled=true, updated_at=NOW() WHERE id=$1 AND org_id=$2`, [resId, orgId3]);
+    await pool.query(`UPDATE monitors SET enabled=true, updated_at=NOW() WHERE id=$1 AND org_id=$2`, [resId, orgId3]);
     await logActionLog({
       id: logId,
       orgId: orgId3,
@@ -99900,7 +100010,7 @@ ${siSummary}`,
   if (name2 === "delete_monitor") {
     const delId = args["monitor_id"];
     const delForce = args["force"] ?? false;
-    const delSnap = await snapMonitor(delId, orgId3, pool2);
+    const delSnap = await snapMonitor(delId, orgId3, pool);
     if (!delSnap) return {
       toolCallId: logId,
       toolName: name2,
@@ -99910,9 +100020,9 @@ ${siSummary}`,
     };
     if (!delForce) {
       const [delMissions, delAlerts, delActiveIncs] = await Promise.allSettled([
-        pool2.query(`SELECT COUNT(*) AS cnt FROM missions WHERE org_id=$1 AND title ILIKE $2`, [orgId3, `%${delId}%`]),
-        pool2.query(`SELECT COUNT(*) AS cnt FROM alert_events WHERE org_id=$1 AND monitor_id=$2 AND read_at IS NULL AND resolved_at IS NULL`, [orgId3, delId]),
-        pool2.query(`SELECT COUNT(*) AS cnt FROM monitor_incidents WHERE org_id=$1 AND monitor_id=$2 AND resolved_at IS NULL`, [orgId3, delId])
+        pool.query(`SELECT COUNT(*) AS cnt FROM missions WHERE org_id=$1 AND title ILIKE $2`, [orgId3, `%${delId}%`]),
+        pool.query(`SELECT COUNT(*) AS cnt FROM alert_events WHERE org_id=$1 AND monitor_id=$2 AND read_at IS NULL AND resolved_at IS NULL`, [orgId3, delId]),
+        pool.query(`SELECT COUNT(*) AS cnt FROM monitor_incidents WHERE org_id=$1 AND monitor_id=$2 AND resolved_at IS NULL`, [orgId3, delId])
       ]);
       const mCount = Number((delMissions.status === "fulfilled" ? delMissions.value.rows[0] : { cnt: 0 })?.["cnt"] ?? 0);
       const aCount = Number((delAlerts.status === "fulfilled" ? delAlerts.value.rows[0] : { cnt: 0 })?.["cnt"] ?? 0);
@@ -99929,7 +100039,7 @@ ${siSummary}`,
         actionLogId: logId
       };
     }
-    await pool2.query(`DELETE FROM monitors WHERE id=$1 AND org_id=$2`, [delId, orgId3]);
+    await pool.query(`DELETE FROM monitors WHERE id=$1 AND org_id=$2`, [delId, orgId3]);
     await logActionLog({
       id: logId,
       orgId: orgId3,
@@ -100114,7 +100224,7 @@ ${p.bodyText.slice(0, perPageBodyChars)}` : "(aucun contenu textuel)"
   }
   if (name === "list_competitors") {
     const limit2 = Math.min(args["limit"] ?? 10, 30);
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT id, name, url, domain_rating, keywords, threat_level, created_at
        FROM competitors WHERE org_id = $1 ORDER BY domain_rating DESC NULLS LAST LIMIT $2`,
       [orgId3, limit2]
@@ -100161,12 +100271,12 @@ ${list}`,
     const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
     const { randomUUID: randomUUID12 } = await import("node:crypto");
     const id = `comp_${randomUUID12()}`;
-    await pool2.query(
+    await pool.query(
       `INSERT INTO competitors (id, name, url, domain_rating, keywords, traffic, threat_level, delta, org_id, data_status, data_provider, created_at)
        VALUES ($1,$2,$3,0,0,0,$4,0,$5,'pending','AI',NOW())`,
       [id, rawName, url, threat, orgId3]
     );
-    const verify = await pool2.query(`SELECT id, name, url FROM competitors WHERE id = $1 AND org_id = $2`, [id, orgId3]);
+    const verify = await pool.query(`SELECT id, name, url FROM competitors WHERE id = $1 AND org_id = $2`, [id, orgId3]);
     if (!verify.rows[0]) {
       await logActionLog({
         id: logId,
@@ -100217,7 +100327,7 @@ ${list}`,
   }
   if (name === "delete_competitor") {
     const compId = args["id"].trim();
-    const snap = await pool2.query(`SELECT id, name FROM competitors WHERE id = $1 AND org_id = $2`, [compId, orgId3]);
+    const snap = await pool.query(`SELECT id, name FROM competitors WHERE id = $1 AND org_id = $2`, [compId, orgId3]);
     if (!snap.rows[0]) {
       return {
         toolCallId: logId,
@@ -100228,7 +100338,7 @@ ${list}`,
       };
     }
     const compName = String(snap.rows[0]["name"] ?? compId);
-    await pool2.query(`DELETE FROM competitors WHERE id = $1 AND org_id = $2`, [compId, orgId3]);
+    await pool.query(`DELETE FROM competitors WHERE id = $1 AND org_id = $2`, [compId, orgId3]);
     store.logActivity({ type: "alert", label: `[IA] Concurrent supprim\xE9 : ${compName}`, targetId: compId, targetType: "competitor", orgId: orgId3 }).catch(() => {
     });
     await logActionLog({
@@ -100271,7 +100381,7 @@ ${list}`,
     }
     sql2 += ` ORDER BY search_volume DESC NULLS LAST, current_position ASC NULLS LAST LIMIT $${p}`;
     params.push(limit2);
-    const r = await pool2.query(sql2, params);
+    const r = await pool.query(sql2, params);
     await logActionLog({
       id: logId,
       orgId: orgId3,
@@ -100311,7 +100421,7 @@ ${list}`,
     const keyword = args["keyword"].trim();
     const tag = args["tag"] ?? null;
     const kwId = "kw" + Date.now();
-    const r = await pool2.query(
+    const r = await pool.query(
       `INSERT INTO tracked_keywords
          (id, org_id, keyword, current_position, prev_position, search_volume, difficulty,
           tag, active, device, location, language, created_at, updated_at)
@@ -100322,7 +100432,7 @@ ${list}`,
     );
     let createdId = r.rows[0]?.["id"];
     if (!createdId) {
-      const existing = await pool2.query(
+      const existing = await pool.query(
         `SELECT id, keyword FROM tracked_keywords WHERE org_id = $1 AND keyword = $2 AND device='desktop' AND location='France' AND active=true LIMIT 1`,
         [orgId3, keyword]
       );
@@ -100396,7 +100506,7 @@ ${list}`,
   if (name === "remove_keyword") {
     const kwId = args["id"].trim();
     const kwLabel = args["keyword"] ?? kwId;
-    const snapKw = await pool2.query(`SELECT id, keyword FROM tracked_keywords WHERE id = $1 AND org_id = $2 AND active=true`, [kwId, orgId3]);
+    const snapKw = await pool.query(`SELECT id, keyword FROM tracked_keywords WHERE id = $1 AND org_id = $2 AND active=true`, [kwId, orgId3]);
     if (!snapKw.rows[0]) {
       return {
         toolCallId: logId,
@@ -100407,7 +100517,7 @@ ${list}`,
       };
     }
     const kwName = String(snapKw.rows[0]["keyword"] ?? kwLabel);
-    await pool2.query(`UPDATE tracked_keywords SET active=false, updated_at=NOW() WHERE id=$1 AND org_id=$2`, [kwId, orgId3]);
+    await pool.query(`UPDATE tracked_keywords SET active=false, updated_at=NOW() WHERE id=$1 AND org_id=$2`, [kwId, orgId3]);
     store.logActivity({ type: "audit", label: `[IA] Keyword retir\xE9 : ${kwName}`, targetId: kwId, targetType: "keyword", orgId: orgId3 }).catch(() => {
     });
     await logActionLog({
@@ -100434,7 +100544,7 @@ ${list}`,
   }
   if (name === "list_reports") {
     const limit2 = Math.min(args["limit"] ?? 10, 30);
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT id, name, type, date, pages, shared, created_at
        FROM reports WHERE org_id = $1 ORDER BY created_at DESC LIMIT $2`,
       [orgId3, limit2]
@@ -100600,7 +100710,7 @@ var init_qa_fixtures = __esm({
         return;
       }
       try {
-        const client = await pool2.connect();
+        const client = await pool.connect();
         try {
           const now = Date.now();
           for (let i = 0; i < checks.length; i++) {
@@ -100638,7 +100748,7 @@ var init_qa_fixtures = __esm({
         return;
       }
       try {
-        const client = await pool2.connect();
+        const client = await pool.connect();
         try {
           const r = await client.query(
             `DELETE FROM monitor_checks WHERE monitor_id = $1 AND org_id = $2 RETURNING id`,
@@ -100818,7 +100928,7 @@ __export(usage_events_exports, {
 });
 async function ensureTable() {
   if (_tableReady) return;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS usage_events (
@@ -100849,7 +100959,7 @@ async function recordUsageEvent(orgId3, kind) {
   if (!orgId3 || orgId3 === "default" || !USAGE_EVENT_KINDS.has(kind)) return;
   try {
     await ensureTable();
-    await pool2.query(`INSERT INTO usage_events (org_id, kind) VALUES ($1, $2)`, [orgId3, kind]);
+    await pool.query(`INSERT INTO usage_events (org_id, kind) VALUES ($1, $2)`, [orgId3, kind]);
   } catch (err) {
     logger.warn({ err, orgId: orgId3, kind }, "[UsageEvents] record failed (non-fatal)");
   }
@@ -100858,7 +100968,7 @@ async function getMonthlyUsageCounts(orgId3) {
   if (!orgId3) return {};
   try {
     await ensureTable();
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT kind, COUNT(*)::int AS n
        FROM usage_events
        WHERE org_id = $1 AND created_at >= date_trunc('month', now())
@@ -101063,7 +101173,7 @@ async function saveCheckResult(monitorId, orgId3, previousStatus, result) {
         const notifTitle = isDown ? `Monitor DOWN : ${String(mon.name)}` : `Monitor r\xE9tabli : ${String(mon.name)}`;
         const downDurationMin = isDown ? 0 : _notify.downDurationMin;
         const notifMessage = isDown ? `${String(mon.url)} est inaccessible.` : `${String(mon.url)} est de nouveau op\xE9rationnel (indisponible ${downDurationMin ?? 0} min).`;
-        const _notifClient = await pool2.connect();
+        const _notifClient = await pool.connect();
         try {
           await _notifClient.query(
             `INSERT INTO notifications (id, org_id, type, title, message, link, read, created_at)
@@ -101094,7 +101204,7 @@ async function saveCheckResult(monitorId, orgId3, previousStatus, result) {
         }).catch((err) => logger.error({ err }, "[monitors] logActivity failed"));
         let _orgAlertEmail = null;
         try {
-          const _prefRow = await pool2.query(
+          const _prefRow = await pool.query(
             `SELECT settings->>'alertEmail' AS alert_email FROM user_prefs WHERE org_id = $1`,
             [orgId3]
           );
@@ -101138,7 +101248,7 @@ async function saveCheckResult(monitorId, orgId3, previousStatus, result) {
         const { fireAlertEvent: fireAlertEvent2, resolveAlertEvents: resolveAlertEvents2 } = await Promise.resolve().then(() => (init_alert_events_service(), alert_events_service_exports));
         const monUrl = mon.url ?? "";
         if (isDown) {
-          const rClient = await pool2.connect();
+          const rClient = await pool.connect();
           try {
             const { rows: rules } = await rClient.query(
               `SELECT id, name, site_urls FROM alert_rules WHERE org_id=$1 AND type='monitor_down' AND enabled=true`,
@@ -101172,7 +101282,7 @@ async function saveCheckResult(monitorId, orgId3, previousStatus, result) {
           }
         } else {
           await resolveAlertEvents2({ orgId: orgId3, monitorId, type: "monitor_down" });
-          const rClient = await pool2.connect();
+          const rClient = await pool.connect();
           try {
             const { rows: rules } = await rClient.query(
               `SELECT id, name, site_urls FROM alert_rules WHERE org_id=$1 AND type='monitor_up' AND enabled=true`,
@@ -101210,9 +101320,9 @@ async function saveCheckResult(monitorId, orgId3, previousStatus, result) {
   (async () => {
     try {
       const { evaluateCondition: evaluateCondition2, fireAlertEvent: fireAE, resolveAlertEvents: resolveAE } = await Promise.resolve().then(() => (init_alert_events_service(), alert_events_service_exports));
-      const monUrlRes = await pool2.query(`SELECT url FROM monitors WHERE id = $1 AND org_id = $2 LIMIT 1`, [monitorId, orgId3]);
+      const monUrlRes = await pool.query(`SELECT url FROM monitors WHERE id = $1 AND org_id = $2 LIMIT 1`, [monitorId, orgId3]);
       const monUrl = monUrlRes.rows[0]?.["url"] ?? "";
-      const rClient2 = await pool2.connect();
+      const rClient2 = await pool.connect();
       try {
         const { rows: threshRules } = await rClient2.query(
           `SELECT id, name, type, operator, threshold, site_urls
@@ -101287,7 +101397,7 @@ async function handleCheck(req, res) {
         res.status(401).json({ error: "Unauthorized" });
         return;
       }
-      const client = await pool2.connect();
+      const client = await pool.connect();
       try {
         const monRow2 = await client.query(`SELECT * FROM monitors WHERE id = $1`, [id]);
         if (monRow2.rowCount === 0) {
@@ -101378,7 +101488,7 @@ async function handleCheck(req, res) {
 async function checkAllMonitorsDue() {
   let checked = 0;
   let errors = 0;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(
       `UPDATE monitors
@@ -101803,7 +101913,7 @@ __export(audit_schedule_cron_exports, {
 async function detectNumericColumns() {
   if (numericColumns !== null) return numericColumns;
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT data_type FROM information_schema.columns
        WHERE table_name='audit_schedules' AND column_name='next_run' LIMIT 1`
     );
@@ -101819,7 +101929,7 @@ async function toScheduleRunValue(d) {
 async function scheduleCreatedAtNowSql() {
   if (createdAtNumeric === null) {
     try {
-      const r = await pool2.query(
+      const r = await pool.query(
         `SELECT data_type FROM information_schema.columns
          WHERE table_name='audit_schedules' AND column_name='created_at' LIMIT 1`
       );
@@ -101844,7 +101954,7 @@ async function runScheduledAuditsTick() {
   inFlight = true;
   try {
     const numeric2 = await detectNumericColumns();
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT id, url, frequency, next_run, org_id FROM audit_schedules
        WHERE enabled = true ORDER BY next_run ASC NULLS LAST LIMIT 500`
     );
@@ -101866,7 +101976,7 @@ async function runScheduledAuditsTick() {
       const lastVal = numeric2 ? now : new Date(now);
       const url = normalizeAuditUrl(row["url"]);
       try {
-        const claim = await pool2.query(
+        const claim = await pool.query(
           `UPDATE audit_schedules SET next_run=$4 WHERE id=$1 AND ${nowPredicate} AND org_id=$3 RETURNING id`,
           [scheduleId, now, orgId3, nextVal]
         );
@@ -101881,7 +101991,7 @@ async function runScheduledAuditsTick() {
           continue;
         }
         await launchAudit({ orgId: orgId3, url, origin: "scheduled" });
-        await pool2.query(
+        await pool.query(
           `UPDATE audit_schedules SET last_run=$1 WHERE id=$2 AND org_id=$3`,
           [lastVal, scheduleId, orgId3]
         );
@@ -101923,7 +102033,7 @@ __export(monitor_cron_exports, {
 async function evaluateAlertRulesForAudit(url, score, orgId3) {
   if (!orgId3) return;
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const rules = await client.query(
         `SELECT ar.*, o.owner_email AS org_email
@@ -102012,7 +102122,7 @@ async function evaluateAlertRulesForAudit(url, score, orgId3) {
 }
 async function checkTrialEndingReminders() {
   logger.info("[trial-cron] Running trial-ending reminder check");
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const { rows } = await client.query(`
       WITH candidates AS (
@@ -102080,7 +102190,7 @@ async function checkTrialEndingReminders() {
   }
 }
 async function retryLifecycleEmails() {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const { rows } = await client.query(`
       SELECT id, owner_email, owner_first_name, plan, trial_ends_at,
@@ -102141,7 +102251,7 @@ async function retryLifecycleEmails() {
   }
 }
 async function checkCalendarReminders() {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const { rows } = await client.query(`
       SELECT
@@ -102259,7 +102369,7 @@ function normalizeAuditUrl(raw) {
   }
 }
 async function findAuditToday(orgId3, url) {
-  const dup = await pool2.query(
+  const dup = await pool.query(
     `SELECT id FROM audits WHERE org_id = $1 AND url = $2 AND created_at >= date_trunc('day', now()) LIMIT 1`,
     [orgId3, url]
   );
@@ -102272,7 +102382,7 @@ async function launchAudit(opts) {
   const name = opts.name ?? "";
   const createdBy = origin === "scheduled" ? null : opts.userId ?? null;
   if (!opts.preInsertedId) {
-    await pool2.query(
+    await pool.query(
       `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_by, created_at)
        VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,$7,NOW())`,
       [auditId, url, name, dateStr, origin, orgId3, createdBy]
@@ -102329,7 +102439,7 @@ async function launchAudit(opts) {
       const status = score >= 70 ? "ok" : score >= 50 ? "warn" : "error";
       const speed = d?.scores.performance ?? m2?.scores.performance ?? 0;
       const issues = (m2?.criticalIssues.length ?? 0) + (d?.criticalIssues.length ?? 0);
-      await pool2.query(
+      await pool.query(
         `UPDATE audits SET score=$1, status=$2, speed=$3, issues=$4 WHERE id=$5 AND org_id=$6`,
         [score, status, speed, issues, auditId, orgId3]
       );
@@ -102350,7 +102460,7 @@ async function launchAudit(opts) {
         userName: origin === "scheduled" ? "Scheduler" : opts.userName ?? "Syst\xE8me"
       }).catch((err) => logger.error({ err }, "[audit-runner] logActivity (complete) failed"));
     } catch {
-      await pool2.query(
+      await pool.query(
         `UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`,
         [auditId, orgId3]
       ).catch(() => {
@@ -102766,8 +102876,8 @@ async function cleanupStorage(orgId3, userIds) {
 }
 async function preKillSessions(opts) {
   const { orgId: orgId3, userId, email } = opts;
-  const { pool: pool3 } = await Promise.resolve().then(() => (init_src(), src_exports));
-  const client = await pool3.connect();
+  const { pool: pool2 } = await Promise.resolve().then(() => (init_src(), src_exports));
+  const client = await pool2.connect();
   try {
     const result = await client.query(
       `DELETE FROM user_sessions
@@ -102793,8 +102903,8 @@ async function deleteAccount(target) {
   logger.info({ orgId: orgId3, email }, "[AccountDeletion] Starting");
   await preKillSessions({ orgId: orgId3, userId: target.userId, email });
   const stripeReport = await cleanupStripe(target.stripeCustomerId, orgId3);
-  const { pool: pool3 } = await Promise.resolve().then(() => (init_src(), src_exports));
-  const client = await pool3.connect();
+  const { pool: pool2 } = await Promise.resolve().then(() => (init_src(), src_exports));
+  const client = await pool2.connect();
   const tableRecords = [];
   let membersFound = [];
   let fullyDeleted = [];
@@ -103107,8 +103217,8 @@ async function deleteAccount(target) {
   return report;
 }
 async function auditOrphans(orgId3, userIds) {
-  const { pool: pool3 } = await Promise.resolve().then(() => (init_src(), src_exports));
-  const client = await pool3.connect();
+  const { pool: pool2 } = await Promise.resolve().then(() => (init_src(), src_exports));
+  const client = await pool2.connect();
   const orphans = [];
   try {
     const res = await client.query(
@@ -103487,7 +103597,7 @@ async function run(client, sql2) {
   }
 }
 async function initDataTables() {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await run(client, `
       CREATE TABLE IF NOT EXISTS audits (
@@ -106134,6 +106244,8 @@ async function initDataTables() {
     `);
     await run(client, `ALTER TABLE pending_signups    ADD COLUMN IF NOT EXISTS seller_id TEXT`);
     await run(client, `ALTER TABLE organizations      ADD COLUMN IF NOT EXISTS seller_id TEXT`);
+    await run(client, `ALTER TABLE seller_commissions ADD COLUMN IF NOT EXISTS paid_by TEXT`);
+    await run(client, `ALTER TABLE seller_commissions ADD COLUMN IF NOT EXISTS notes   TEXT`);
     logger.info("[init-data-tables] all tables, schema_migrations, missing-production-tables, P0-5 ALTERs, P1-2 type fixes done");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
@@ -106232,7 +106344,7 @@ init_logger();
 init_stripe_factory();
 
 // src/app.ts
-var import_express69 = __toESM(require_express2(), 1);
+var import_express70 = __toESM(require_express2(), 1);
 var import_cors = __toESM(require_lib3(), 1);
 import { fileURLToPath } from "node:url";
 import path7 from "node:path";
@@ -106786,7 +106898,7 @@ var import_cookie_parser = __toESM(require_cookie_parser(), 1);
 var import_pino_http = __toESM(require_logger(), 1);
 
 // src/routes/index.ts
-var import_express68 = __toESM(require_express2(), 1);
+var import_express69 = __toESM(require_express2(), 1);
 
 // src/middlewares/requireAuth.ts
 init_sessions();
@@ -107033,7 +107145,7 @@ router.get("/healthz/deep", async (_req, res) => {
   const dbStart = Date.now();
   try {
     await Promise.race([
-      pool2.query("SELECT 1"),
+      pool.query("SELECT 1"),
       new Promise((_, reject) => setTimeout(() => reject(new Error("timed out after 3000ms")), 3e3))
     ]);
     checks.database = { status: "ok", latencyMs: Date.now() - dbStart, detail: "SELECT 1 succeeded" };
@@ -107267,7 +107379,7 @@ var import_express3 = __toESM(require_express2(), 1);
 init_src();
 var router3 = (0, import_express3.Router)();
 router3.get("/share/:token", async (req, res) => {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const result = await client.query(
       `SELECT token, org_id AS "orgId",
@@ -107332,7 +107444,7 @@ function generateToken() {
 }
 async function storeMagicToken(token, email) {
   const expiresAt = new Date(Date.now() + 60 * 6e4);
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(
       `INSERT INTO magic_link_tokens (token, email, expires_at, used)
@@ -107350,7 +107462,7 @@ async function resolveOrCreateLegacyOrg({
   orgSettings,
   authProvider = "magic_link"
 }) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query("BEGIN");
     let resolvedUserUuid = userUuid;
@@ -107463,7 +107575,7 @@ async function resolveOrCreateLegacyOrg({
   }
 }
 async function peekToken(token) {
-  const check = await pool2.query(
+  const check = await pool.query(
     `SELECT email, used, expires_at <= NOW() AS is_expired_sql
      FROM magic_link_tokens WHERE token = $1`,
     [token]
@@ -107475,7 +107587,7 @@ async function peekToken(token) {
   return { ok: true, email: row.email };
 }
 async function finalConsumeToken(token) {
-  const result = await pool2.query(
+  const result = await pool.query(
     `UPDATE magic_link_tokens SET used = true WHERE token = $1 AND used = false RETURNING email`,
     [token]
   );
@@ -108110,7 +108222,7 @@ router5.post("/auth/pre-register", authRateLimit, async (req, res) => {
     return;
   }
   try {
-    const _activeUser = await pool2.query(
+    const _activeUser = await pool.query(
       `SELECT id, status FROM users WHERE email = $1 LIMIT 1`,
       [normalizedEmail]
     );
@@ -108121,7 +108233,7 @@ router5.post("/auth/pre-register", authRateLimit, async (req, res) => {
       });
       return;
     }
-    const _activeMember = await pool2.query(
+    const _activeMember = await pool.query(
       `SELECT om.id FROM organization_members om
        JOIN users u ON u.id = om.user_id
        WHERE u.email = $1 AND om.status = 'active' LIMIT 1`,
@@ -108150,7 +108262,7 @@ router5.post("/auth/pre-register", authRateLimit, async (req, res) => {
       return;
     }
     if (_dup?.orgId && !_isActiveAccount) {
-      pool2.query(
+      pool.query(
         `DELETE FROM org_settings WHERE lower(org_id::text) = lower($1)`,
         [normalizedEmail]
       ).catch((e) => logger.warn({ e }, "[Auth/PreRegister] stale org_settings cleanup (guard) failed (non-fatal)"));
@@ -108159,7 +108271,7 @@ router5.post("/auth/pre-register", authRateLimit, async (req, res) => {
     logger.warn({ err: _dupErr, email: normalizedEmail }, "[Auth/PreRegister] duplicate check failed (non-fatal)");
   }
   const preToken = generateToken();
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const _cleaned = await client.query(
@@ -108481,7 +108593,7 @@ async function handleLoginVerify(tokenRaw, req, res) {
   try {
     let userRow;
     try {
-      userRow = await pool2.query(
+      userRow = await pool.query(
         `SELECT id, status, email_verified FROM users WHERE email = $1`,
         [email]
       );
@@ -108491,7 +108603,7 @@ async function handleLoginVerify(tokenRaw, req, res) {
     }
     let memberRow;
     try {
-      memberRow = await pool2.query(
+      memberRow = await pool.query(
         `SELECT om.organization_id, om.role, om.status AS member_status,
                 o.status AS org_status, o.subscription_status
          FROM organization_members om
@@ -108547,7 +108659,7 @@ async function handleLoginVerify(tokenRaw, req, res) {
         let s6GuestOrgId = null;
         let s6GuestRole = "member";
         try {
-          const tmRow = await pool2.query(
+          const tmRow = await pool.query(
             `SELECT org_id, COALESCE(role, 'member') AS role
              FROM team_members
              WHERE (LOWER(email) = LOWER($1) OR user_id = $2)
@@ -108569,7 +108681,7 @@ async function handleLoginVerify(tokenRaw, req, res) {
         }
         if (s6GuestOrgId) {
           try {
-            await pool2.query(
+            await pool.query(
               `INSERT INTO organization_members (id, organization_id, user_id, role, status, joined_at)
                VALUES (gen_random_uuid(), $1, $2::uuid, $3, 'active', NOW())
                ON CONFLICT (organization_id, user_id) DO NOTHING`,
@@ -108665,7 +108777,7 @@ async function handleLoginVerify(tokenRaw, req, res) {
     res.status(503).json({ error: "Erreur temporaire. Veuillez r\xE9essayer." });
     return;
   }
-  pool2.query(`UPDATE users SET last_login_at = NOW() WHERE email = $1`, [email]).catch((err) => logger.warn({ err: err instanceof Error ? err.message : String(err) }, "login-verify: last_login_at update failed"));
+  pool.query(`UPDATE users SET last_login_at = NOW() WHERE email = $1`, [email]).catch((err) => logger.warn({ err: err instanceof Error ? err.message : String(err) }, "login-verify: last_login_at update failed"));
   logger.info({ step: "ML-7", email, orgIdPrefix: sessionOrgId?.slice(0, 8), tokenPrefix: sessionToken.slice(0, 8) }, "[ML] step-7: session created successfully");
   const isProd2 = isDeployedProd();
   res.cookie("fp_token", sessionToken, {
@@ -108769,7 +108881,7 @@ router5.get("/auth/google/callback", async (req, res) => {
     }
     let googleIdentity;
     try {
-      const _googleOrgQuery = await pool2.query(
+      const _googleOrgQuery = await pool.query(
         `SELECT id, subscription_status FROM organizations
           WHERE owner_email = $1 AND status != 'deleted'
           LIMIT 1`,
@@ -108817,7 +108929,7 @@ router5.get("/auth/google/callback", async (req, res) => {
           const googleLastName = user.family_name ?? (user.name && user.name.includes(" ") ? user.name.split(" ").slice(1).join(" ") : "");
           let googlePreRegToken = "";
           try {
-            const _gpClient = await pool2.connect();
+            const _gpClient = await pool.connect();
             try {
               await _gpClient.query(
                 `UPDATE pending_signups SET consumed_at = NOW()
@@ -109400,6 +109512,12 @@ async function loadMeEntitlement(orgId3, deps) {
   };
 }
 
+// src/lib/validate-org-id.ts
+init_logger();
+function isUUIDFormat(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
 // src/routes/me.ts
 init_src();
 init_dataforseo_service();
@@ -109483,6 +109601,9 @@ router6.get("/me", async (req, res) => {
       loadOrgData,
       loadOrgSettings,
       loadAddons: async (id) => {
+        if (!isUUIDFormat(id)) {
+          return [];
+        }
         const r = await orgDb(req)(
           `SELECT addon_key, active, quantity FROM org_addons WHERE org_id=$1`,
           [id]
@@ -109584,6 +109705,14 @@ router6.get("/me", async (req, res) => {
         canStartTrial: _canStartTrial,
         hasPremiumAccess: normStatus === "active" || normStatus === "trialing" || normStatus === "past_due",
         mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing" && normStatus !== "past_due",
+        onboardingCompletedAt: await (async () => {
+          try {
+            const _obr = await orgDb(req)(`SELECT settings->>'onboardingCompletedAt' AS cat FROM user_prefs WHERE org_id=$1`, [orgId3]);
+            return _obr.rows[0]?.cat ?? null;
+          } catch {
+            return null;
+          }
+        })(),
         usage: await (async () => {
           try {
             const now = /* @__PURE__ */ new Date();
@@ -109868,7 +109997,7 @@ async function recordActivityDay(db15, orgId3, userId) {
   }
   if (!inserted) {
     try {
-      await pool2.query(
+      await pool.query(
         `INSERT INTO user_activity_days (org_id, user_id, day)
          VALUES ($1, $2, (NOW() AT TIME ZONE $3)::date)
          ON CONFLICT (org_id, user_id, day) DO NOTHING`,
@@ -109880,7 +110009,7 @@ async function recordActivityDay(db15, orgId3, userId) {
   const effectiveUserId = userId && !userId.startsWith("apikey:") ? userId : orgId3;
   if (effectiveUserId !== orgId3) {
     try {
-      await pool2.query(
+      await pool.query(
         `INSERT INTO member_activity_days (org_id, user_id, day)
          VALUES ($1, $2, (NOW() AT TIME ZONE $3)::date)
          ON CONFLICT (org_id, user_id, day) DO NOTHING`,
@@ -109901,7 +110030,7 @@ async function computeStreakFromTable(db15, orgId3, tz, userId) {
   ).catch(() => ({ rows: [] }));
   if (actRes.rows.length === 0) {
     try {
-      const poolRes = await pool2.query(
+      const poolRes = await pool.query(
         `SELECT day::text AS d FROM user_activity_days
          WHERE org_id=$1 ${userFilter} AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
          ORDER BY d DESC`,
@@ -110148,7 +110277,7 @@ router6.get("/me/dataforseo/status", async (req, res) => {
     const configured = await isDataForSEOConfigured(orgId3);
     let login = "";
     if (configured) {
-      const r = await pool2.query(
+      const r = await pool.query(
         `SELECT value FROM org_secrets WHERE org_id = $1 AND key = 'dataforseo_login'`,
         [orgId3]
       );
@@ -110168,7 +110297,7 @@ router6.post("/me/dataforseo/credentials", canAdmin, async (req, res) => {
     return;
   }
   try {
-    await pool2.query(
+    await pool.query(
       `INSERT INTO org_secrets (org_id, key, value, created_at)
        VALUES ($1, 'dataforseo_login',    $2, NOW()),
               ($1, 'dataforseo_password', $3, NOW())
@@ -110184,7 +110313,7 @@ router6.delete("/me/dataforseo/credentials", canAdmin, async (req, res) => {
   const orgId3 = requireOrgId(req, res);
   if (!orgId3) return;
   try {
-    await pool2.query(
+    await pool.query(
       `DELETE FROM org_secrets WHERE org_id = $1 AND key IN ('dataforseo_login','dataforseo_password')`,
       [orgId3]
     );
@@ -110512,15 +110641,15 @@ async function listGA4Properties(accountId, orgId3) {
 }
 async function getGA4ConnectionStatus(orgId3) {
   const [propertyResult, tokenResult, productResult] = await Promise.all([
-    pool2.query(
+    pool.query(
       `SELECT 1 FROM ga4_properties WHERE org_id=$1 AND is_active=true LIMIT 1`,
       [orgId3]
     ).catch(() => ({ rows: [] })),
-    pool2.query(
+    pool.query(
       `SELECT 1 FROM google_tokens WHERE org_id=$1 LIMIT 1`,
       [orgId3]
     ).catch(() => ({ rows: [] })),
-    pool2.query(
+    pool.query(
       `SELECT connected FROM google_product_connections
        WHERE org_id=$1 AND product='ga4' LIMIT 1`,
       [orgId3]
@@ -110540,7 +110669,7 @@ async function isGA4Connected(orgId3) {
   return connected && !discovering;
 }
 async function getStoredProperty(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT property_id, property_name FROM ga4_properties WHERE org_id=$1 AND is_active=true LIMIT 1`,
@@ -110556,7 +110685,7 @@ async function getStoredProperty(orgId3) {
   }
 }
 async function setStoredProperty(orgId3, propertyId, displayName) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(
       `INSERT INTO ga4_properties (id, org_id, property_id, property_name, is_active, created_at)
@@ -110941,7 +111070,7 @@ init_google_service();
 init_logger();
 var GSC_BASE = "https://searchconsole.googleapis.com/webmasters/v3/sites";
 async function getGSCStatus(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const [site, count] = await Promise.all([
       client.query(`SELECT site_url FROM gsc_sites WHERE org_id=$1 AND is_active=true LIMIT 1`, [orgId3]),
@@ -110959,7 +111088,7 @@ async function getGSCStatus(orgId3) {
   }
 }
 async function listGSCSites(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT * FROM gsc_sites WHERE org_id=$1 ORDER BY created_at DESC`,
@@ -110973,7 +111102,7 @@ async function listGSCSites(orgId3) {
   }
 }
 async function getActiveSite(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT site_url FROM gsc_sites WHERE org_id=$1 AND is_active=true LIMIT 1`,
@@ -110987,7 +111116,7 @@ async function getActiveSite(orgId3) {
   }
 }
 async function verifySiteOwnership(orgId3, siteUrl) {
-  const discovered = await pool2.query(
+  const discovered = await pool.query(
     `SELECT 1 FROM gsc_sites
      WHERE org_id=$1 AND site_url=$2
        AND permission_level IS NOT NULL
@@ -111009,7 +111138,7 @@ async function verifySiteOwnership(orgId3, siteUrl) {
       (s) => s.siteUrl === siteUrl && s.permissionLevel !== "siteUnverifiedUser"
     );
     if (!entry) return false;
-    await pool2.query(
+    await pool.query(
       `UPDATE gsc_sites SET permission_level=$3 WHERE org_id=$1 AND site_url=$2`,
       [orgId3, siteUrl, entry.permissionLevel]
     ).catch(() => {
@@ -111020,7 +111149,7 @@ async function verifySiteOwnership(orgId3, siteUrl) {
   }
 }
 async function getVerifiedActiveSite(orgId3) {
-  const r = await pool2.query(
+  const r = await pool.query(
     `SELECT site_url, permission_level FROM gsc_sites WHERE org_id=$1 AND is_active=true LIMIT 1`,
     [orgId3]
   ).catch(() => ({ rows: [] }));
@@ -111031,7 +111160,7 @@ async function getVerifiedActiveSite(orgId3) {
   }
   const owned = await verifySiteOwnership(orgId3, row.site_url);
   if (owned) return row.site_url;
-  await pool2.query(
+  await pool.query(
     `UPDATE gsc_sites SET is_active=false WHERE org_id=$1 AND site_url=$2`,
     [orgId3, row.site_url]
   ).catch(() => {
@@ -111040,7 +111169,7 @@ async function getVerifiedActiveSite(orgId3) {
   return null;
 }
 async function setActiveSite(orgId3, siteUrl, displayName) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   const id = `gsc_${orgId3}_${Buffer.from(siteUrl).toString("base64url").slice(0, 40)}`;
   try {
     await client.query(`UPDATE gsc_sites SET is_active=false WHERE org_id=$1`, [orgId3]);
@@ -111066,7 +111195,7 @@ async function discoverAndStoreSites(orgId3) {
     if (!res.ok) return 0;
     const data = await res.json();
     const sites = data.siteEntry ?? [];
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       for (const site of sites) {
         const siteId = `gsc_${orgId3}_${Buffer.from(site.siteUrl).toString("base64url").slice(0, 40)}`;
@@ -111138,7 +111267,7 @@ async function syncGSCData(orgId3) {
     );
     const pageData = pageRes.ok ? await pageRes.json() : { rows: [] };
     const pageRows = pageData.rows ?? [];
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       let inserted = 0;
       for (const row of rows) {
@@ -111190,7 +111319,7 @@ async function getTopKeywords(orgId3, siteUrlOrLimit, daysOrLimit, limitArg) {
     limit2 = siteUrlOrLimit ?? 20;
     days = daysOrLimit ?? 28;
   }
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT keyword,
@@ -111222,7 +111351,7 @@ async function getTopPages(orgId3, siteUrlOrLimit, daysOrLimit, limitArg) {
     limit2 = siteUrlOrLimit ?? 20;
     days = daysOrLimit ?? 28;
   }
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT page,
@@ -111246,7 +111375,7 @@ async function getTopPages(orgId3, siteUrlOrLimit, daysOrLimit, limitArg) {
 }
 async function getImpressionsOverTime(orgId3, siteUrlOrDays, daysArg) {
   const days = typeof siteUrlOrDays === "string" ? daysArg ?? 28 : siteUrlOrDays ?? 28;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT date::text,
@@ -111349,7 +111478,7 @@ async function getSitemaps(orgId3, siteUrlOverride) {
   }
 }
 async function getSyncLogs(orgId3, limit2 = 20) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT * FROM gsc_sync_logs WHERE org_id=$1 ORDER BY created_at DESC LIMIT $2`,
@@ -111396,14 +111525,14 @@ async function getOverviewMetrics(orgId3 = "default", range = 30, rangeLabel = "
       revLeakExistsQ
     ] = await Promise.allSettled([
       // Current period audit avg + count
-      pool2.query(
+      pool.query(
         `SELECT AVG(score) as avg_score, COUNT(*) as count
          FROM audits
          WHERE org_id = $1 AND created_at > NOW() - INTERVAL '1 day' * $2`,
         [orgId3, range]
       ),
       // Previous period for trend (same length as selected range, immediately prior)
-      pool2.query(
+      pool.query(
         `SELECT AVG(score) as prev_avg
          FROM audits
          WHERE org_id = $1
@@ -111411,7 +111540,7 @@ async function getOverviewMetrics(orgId3 = "default", range = 30, rangeLabel = "
         [orgId3, range * 2, range]
       ),
       // Real weekly audit score history (last 16 weeks)
-      pool2.query(
+      pool.query(
         `SELECT date_trunc('week', created_at)::date::text AS date,
                 ROUND(AVG(score))::int AS avg
          FROM audits
@@ -111421,14 +111550,14 @@ async function getOverviewMetrics(orgId3 = "default", range = 30, rangeLabel = "
          ORDER BY date_trunc('week', created_at) ASC`,
         [orgId3]
       ),
-      pool2.query(
+      pool.query(
         `SELECT status,
                 AVG(latency) as avg_latency,
                 AVG(uptime)  as avg_uptime
          FROM monitors WHERE org_id = $1 GROUP BY status`,
         [orgId3]
       ),
-      pool2.query(
+      pool.query(
         `SELECT COUNT(*) as total,
                 SUM(CASE WHEN current_position <= 3  THEN 1 ELSE 0 END) as top3,
                 SUM(CASE WHEN current_position <= 10 THEN 1 ELSE 0 END) as top10,
@@ -111437,47 +111566,47 @@ async function getOverviewMetrics(orgId3 = "default", range = 30, rangeLabel = "
          FROM tracked_keywords WHERE org_id=$1 AND active=true`,
         [orgId3]
       ),
-      pool2.query(
+      pool.query(
         `SELECT status, COUNT(*) as count FROM missions WHERE org_id=$1 GROUP BY status`,
         [orgId3]
       ),
-      pool2.query(
+      pool.query(
         `SELECT credits_used FROM ai_monthly_usage WHERE org_id=$1 ORDER BY month DESC LIMIT 1`,
         [orgId3]
       ),
-      pool2.query(
+      pool.query(
         `SELECT COUNT(*) as count, COALESCE(SUM(estimated_monthly_loss), 0) as total
          FROM revenue_leaks WHERE org_id=$1 AND status='active'`,
         [orgId3]
       ),
-      pool2.query(
+      pool.query(
         `SELECT 1 FROM connectors
          WHERE org_id=$1 AND provider IN ('ga4','google_analytics','matomo') AND status='active' LIMIT 1`,
         [orgId3]
       ),
-      pool2.query(`SELECT COUNT(*) as count FROM gbp_posts WHERE org_id=$1`, [orgId3]),
-      pool2.query(`SELECT COUNT(*) as count FROM competitors WHERE org_id=$1`, [orgId3]),
-      pool2.query(`SELECT plan, addons FROM org_settings WHERE org_id=$1 LIMIT 1`, [orgId3]),
+      pool.query(`SELECT COUNT(*) as count FROM gbp_posts WHERE org_id=$1`, [orgId3]),
+      pool.query(`SELECT COUNT(*) as count FROM competitors WHERE org_id=$1`, [orgId3]),
+      pool.query(`SELECT plan, addons FROM org_settings WHERE org_id=$1 LIMIT 1`, [orgId3]),
       getGA4Overview(orgId3, rangeAgo, today),
       getImpressionsOverTime(orgId3, range),
       // Unresolved alert events
-      pool2.query(
+      pool.query(
         `SELECT COUNT(*) as count FROM alert_events WHERE org_id=$1 AND resolved_at IS NULL`,
         [orgId3]
       ),
       // GBP profile data
-      pool2.query(
+      pool.query(
         `SELECT avg_rating, review_count, unanswered_count, completion_pct
          FROM gbp_profiles WHERE org_id=$1
          ORDER BY updated_at DESC NULLS LAST LIMIT 1`,
         [orgId3]
       ).catch(() => ({ rows: [] })),
       // GBP connected = google_tokens exists
-      pool2.query(`SELECT 1 FROM google_tokens WHERE org_id=$1 LIMIT 1`, [orgId3]),
+      pool.query(`SELECT 1 FROM google_tokens WHERE org_id=$1 LIMIT 1`, [orgId3]),
       // GA4 conversion time series (daily)
       getGA4ConversionHistory(orgId3, rangeAgo, today),
       // Local Pack position history (last 90 days, most recent first)
-      pool2.query(
+      pool.query(
         `SELECT recorded_date::text AS date, avg_position AS value
          FROM local_pack_history
          WHERE org_id=$1 AND avg_position IS NOT NULL
@@ -111485,7 +111614,7 @@ async function getOverviewMetrics(orgId3 = "default", range = 30, rangeLabel = "
         [orgId3]
       ).catch(() => ({ rows: [] })),
       // Revenue opportunity analyzed = any row exists in revenue_leaks (regardless of status)
-      pool2.query(
+      pool.query(
         `SELECT 1 FROM revenue_leaks WHERE org_id=$1 LIMIT 1`,
         [orgId3]
       ).catch(() => ({ rows: [] }))
@@ -111575,7 +111704,7 @@ async function getOverviewMetrics(orgId3 = "default", range = 30, rangeLabel = "
     const unresolvedAlerts = Number(alertEvRow?.count ?? 0);
     let lowScoreAudits = 0;
     try {
-      const lsQ = await pool2.query(
+      const lsQ = await pool.query(
         `SELECT COUNT(*) as count FROM audits
          WHERE org_id=$1 AND score < 50 AND created_at > NOW() - INTERVAL '1 day' * $2`,
         [orgId3, range]
@@ -111587,8 +111716,8 @@ async function getOverviewMetrics(orgId3 = "default", range = 30, rangeLabel = "
     let workspaceHealth = null;
     {
       const [alertRulesQ, reportsQ] = await Promise.allSettled([
-        pool2.query(`SELECT COUNT(*) as count FROM alert_rules WHERE org_id=$1 AND enabled=true`, [orgId3]).catch(() => ({ rows: [{ count: 0 }] })),
-        pool2.query(`SELECT COUNT(*) as count FROM report_exports WHERE org_id=$1 AND created_at > NOW() - INTERVAL '30 days'`, [orgId3]).catch(() => ({ rows: [{ count: 0 }] }))
+        pool.query(`SELECT COUNT(*) as count FROM alert_rules WHERE org_id=$1 AND enabled=true`, [orgId3]).catch(() => ({ rows: [{ count: 0 }] })),
+        pool.query(`SELECT COUNT(*) as count FROM report_exports WHERE org_id=$1 AND created_at > NOW() - INTERVAL '30 days'`, [orgId3]).catch(() => ({ rows: [{ count: 0 }] }))
       ]);
       const enabledRules = Number(alertRulesQ.status === "fulfilled" ? alertRulesQ.value.rows[0]?.count : 0);
       const recentReports = Number(reportsQ.status === "fulfilled" ? reportsQ.value.rows[0]?.count : 0);
@@ -111711,7 +111840,7 @@ router7.get("/overview", async (req, res) => {
 router7.get("/overview/checklist", async (req, res) => {
   try {
     const orgId3 = req.orgContext?.orgId ?? req.orgId ?? "default";
-    const result = await pool2.query(
+    const result = await pool.query(
       `SELECT items, extra FROM org_checklist WHERE org_id = $1`,
       [orgId3]
     );
@@ -111754,7 +111883,7 @@ router7.put("/overview/checklist", async (req, res) => {
         code: "CHECKLIST_INVALID_PAYLOAD"
       });
     }
-    const result = await pool2.query(
+    const result = await pool.query(
       `INSERT INTO org_checklist (org_id, items, extra, updated_at)
        VALUES (
          $1,
@@ -111787,7 +111916,7 @@ var INSIGHTS_GEN_TIMEOUT_S = 120;
 var INSIGHTS_COST_CREDITS = 500;
 var _insightsHot = /* @__PURE__ */ new Map();
 async function _acquireInsightsSlot(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   let txActive = false;
   try {
     await client.query("BEGIN");
@@ -111847,7 +111976,7 @@ async function _acquireInsightsSlot(orgId3) {
 }
 async function _releaseInsightsSlot(orgId3, succeeded) {
   try {
-    await pool2.query(
+    await pool.query(
       `UPDATE overview_insights_rl
        SET generating = false,
            gen_count  = gen_count + $2,
@@ -111862,33 +111991,33 @@ router7.get("/overview/insights", async (req, res) => {
   try {
     const orgId3 = req.orgContext?.orgId ?? req.orgId ?? "default";
     const [auditQ, kwnQ, monQ, msnQ, compQ, leakQ] = await Promise.allSettled([
-      pool2.query(
+      pool.query(
         `SELECT ROUND(AVG(score))::int AS avg, COUNT(*) AS cnt,
                 MIN(score)::int AS low, MAX(score)::int AS high
          FROM audits WHERE org_id=$1 AND created_at > NOW() - INTERVAL '30 days'`,
         [orgId3]
       ),
-      pool2.query(
+      pool.query(
         `SELECT COUNT(*) AS total,
                 SUM(CASE WHEN trend='up' THEN 1 ELSE 0 END) AS up,
                 SUM(CASE WHEN current_position<=10 THEN 1 ELSE 0 END) AS top10
          FROM tracked_keywords WHERE org_id=$1 AND active=true`,
         [orgId3]
       ),
-      pool2.query(
+      pool.query(
         `SELECT SUM(CASE WHEN status='down' THEN 1 ELSE 0 END) AS down,
                 COUNT(*) AS total
          FROM monitors WHERE org_id=$1`,
         [orgId3]
       ),
-      pool2.query(
+      pool.query(
         `SELECT COUNT(*) FILTER (WHERE status='done') AS done,
                 COUNT(*) AS total
          FROM missions WHERE org_id=$1`,
         [orgId3]
       ),
-      pool2.query(`SELECT COUNT(*) AS cnt FROM competitors WHERE org_id=$1`, [orgId3]),
-      pool2.query(
+      pool.query(`SELECT COUNT(*) AS cnt FROM competitors WHERE org_id=$1`, [orgId3]),
+      pool.query(
         `SELECT COALESCE(SUM(estimated_monthly_loss),0) AS total FROM revenue_leaks WHERE org_id=$1 AND status='active'`,
         [orgId3]
       )
@@ -111931,7 +112060,7 @@ router7.get("/overview/insights", async (req, res) => {
       return res.json(resp2);
     }
     try {
-      const pgRow = await pool2.query(
+      const pgRow = await pool.query(
         `SELECT content, context_hash, generated_at FROM overview_insights_cache
          WHERE org_id=$1 AND expires_at > NOW()`,
         [orgId3]
@@ -112000,7 +112129,7 @@ router7.get("/overview/insights", async (req, res) => {
     }
     const generatedAt = (/* @__PURE__ */ new Date()).toISOString();
     const expiresInMin = 5;
-    pool2.query(
+    pool.query(
       `INSERT INTO overview_insights_cache (org_id, content, context_hash, generated_at, expires_at)
        VALUES ($1, $2, $3, NOW(), NOW() + INTERVAL '${expiresInMin} minutes')
        ON CONFLICT (org_id) DO UPDATE
@@ -113152,7 +113281,7 @@ async function getSeatUsage(db15, orgId3) {
   return { used, limit: limit2, plan: plan4 };
 }
 async function reserveSeatAndCreateInvitation(input) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [input.orgId]);
@@ -113209,7 +113338,7 @@ publicTeamRouter.get("/team/invitations/validate", async (req, res) => {
   }
   const tHash = hashToken(raw);
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT id, org_id, email, role, status, expires_at
        FROM team_invitations
        WHERE token_hash = $1 LIMIT 1`,
@@ -113234,7 +113363,7 @@ publicTeamRouter.get("/team/invitations/validate", async (req, res) => {
     }
     let orgName = inv.org_id;
     try {
-      const orgR = await pool2.query(
+      const orgR = await pool.query(
         `SELECT COALESCE(NULLIF(name,''), id::text) AS org_name
          FROM organizations WHERE id = $1 LIMIT 1`,
         [inv.org_id]
@@ -113270,7 +113399,7 @@ publicTeamRouter.post("/team/invitations/accept", async (req, res) => {
   }
   const email = rawEmail.toLowerCase().trim();
   const tHash = hashToken(rawToken);
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const invR = await client.query(
@@ -113782,7 +113911,7 @@ router12.patch("/team/:id", canAdmin, async (req, res) => {
       return;
     }
     const m2 = r.rows[0];
-    pool2.query(
+    pool.query(
       `UPDATE organization_members om
        SET role = $1, updated_at = NOW()
        FROM users u
@@ -113819,7 +113948,7 @@ router12.delete("/team/:id", canAdmin, async (req, res) => {
   const callerEmail = req.orgContext?.email ?? "";
   const memberId = req.params.id;
   try {
-    const canonicalLookup = await pool2.query(
+    const canonicalLookup = await pool.query(
       `SELECT tm.user_id AS team_user_id, u.id AS canonical_user_id
        FROM team_members tm
        JOIN users u ON lower(u.email) = lower(tm.email)
@@ -113828,7 +113957,7 @@ router12.delete("/team/:id", canAdmin, async (req, res) => {
       [memberId, org16]
     );
     const lookup = canonicalLookup.rows[0];
-    const orgOwnerRes = await pool2.query(
+    const orgOwnerRes = await pool.query(
       `SELECT o.owner_email, u.id::text AS owner_user_id
          FROM organizations o
          LEFT JOIN users u ON lower(u.email) = lower(o.owner_email)
@@ -114029,7 +114158,7 @@ router12.get("/organizations", async (req, res) => {
   const callerEmail = req.orgContext?.email ?? "";
   const callerRole = req.orgContext?.role ?? "viewer";
   try {
-    const currentOrg = await pool2.query(
+    const currentOrg = await pool.query(
       `SELECT id, COALESCE(NULLIF(name,''), id::text) AS name, slug, plan
        FROM organizations WHERE id = $1 LIMIT 1`,
       [org16]
@@ -114046,7 +114175,7 @@ router12.get("/organizations", async (req, res) => {
       });
     }
     if (callerEmail) {
-      const otherOrgs = await pool2.query(
+      const otherOrgs = await pool.query(
         `SELECT tm.org_id, tm.role,
                 COALESCE(NULLIF(o.name,''), tm.org_id) AS org_name,
                 o.slug, o.plan
@@ -114090,18 +114219,18 @@ router12.post("/organizations/:id/switch", async (req, res) => {
   }
   try {
     const [memberRes, ownerRes, orgMemberRes] = await Promise.all([
-      pool2.query(
+      pool.query(
         `SELECT role FROM team_members
          WHERE org_id = $1 AND lower(email) = lower($2) AND status = 'active'
          LIMIT 1`,
         [targetOrgId, callerEmail]
       ),
-      pool2.query(
+      pool.query(
         `SELECT plan FROM organizations WHERE id::text = $1 AND owner_user_id = $2 LIMIT 1`,
         [targetOrgId, callerEmail]
       ),
       // Jalon 3: prefer organization_members as authoritative role source
-      pool2.query(
+      pool.query(
         `SELECT om.role FROM organization_members om
          JOIN users u ON u.id = om.user_id
          WHERE om.organization_id::text = $1 AND lower(u.email) = lower($2) AND om.status = 'active'
@@ -114142,7 +114271,7 @@ router12.get("/team/contributions", async (req, res) => {
   }
   try {
     try {
-      const diagRes = await pool2.query(
+      const diagRes = await pool.query(
         `WITH owner_info AS (
            SELECT LOWER(o.owner_email) AS owner_email,
                   o.owner_user_id::text AS owner_raw_uid,
@@ -114184,7 +114313,7 @@ router12.get("/team/contributions", async (req, res) => {
     } catch (diagErr) {
       logger.warn({ diagErr }, "[team/contributions] diag query failed (non-fatal)");
     }
-    const principalRes = await pool2.query(
+    const principalRes = await pool.query(
       `SELECT
          COALESCE(
            (SELECT u.id::text FROM users u WHERE u.id::text = tm.user_id LIMIT 1),
@@ -114227,7 +114356,7 @@ router12.get("/team/contributions", async (req, res) => {
       if (!byUser[uid3]) byUser[uid3] = { audits: 0, missions: 0, reports: 0, monitors: 0 };
     };
     try {
-      const auditCounts = await pool2.query(
+      const auditCounts = await pool.query(
         `SELECT created_by, COUNT(*)::int AS cnt
          FROM audits
          WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
@@ -114243,7 +114372,7 @@ router12.get("/team/contributions", async (req, res) => {
     } catch (_e) {
     }
     try {
-      const missionCounts = await pool2.query(
+      const missionCounts = await pool.query(
         `SELECT created_by, COUNT(*)::int AS cnt
          FROM missions
          WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
@@ -114259,7 +114388,7 @@ router12.get("/team/contributions", async (req, res) => {
     } catch (_e) {
     }
     try {
-      const reportCounts = await pool2.query(
+      const reportCounts = await pool.query(
         `SELECT created_by, COUNT(*)::int AS cnt
          FROM reports
          WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
@@ -114300,14 +114429,14 @@ router12.get("/team/streaks", async (req, res) => {
   try {
     const tz = await (async () => {
       try {
-        const r = await pool2.query(`SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`, [orgId3]);
+        const r = await pool.query(`SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`, [orgId3]);
         const s = r.rows[0]?.["settings"];
         return s && typeof s["timezone"] === "string" ? s["timezone"] : "Europe/Brussels";
       } catch {
         return "Europe/Brussels";
       }
     })();
-    let memberRes = await pool2.query(
+    let memberRes = await pool.query(
       `SELECT DISTINCT om.user_id::text AS user_id,
               COALESCE(u.email,'') AS email,
               COALESCE(u.first_name||' '||u.last_name, u.first_name, u.email, om.user_id::text) AS name,
@@ -114319,7 +114448,7 @@ router12.get("/team/streaks", async (req, res) => {
     );
     if (memberRes.rows.length === 0) {
       try {
-        memberRes = await pool2.query(
+        memberRes = await pool.query(
           `SELECT DISTINCT tm.user_id::text AS user_id,
                   COALESCE(u.email,'') AS email,
                   COALESCE(u.first_name||' '||u.last_name, u.first_name, u.email, tm.user_id::text) AS name,
@@ -114334,7 +114463,7 @@ router12.get("/team/streaks", async (req, res) => {
     }
     let ownerUserId = "";
     try {
-      const ownerQ = await pool2.query(
+      const ownerQ = await pool.query(
         `SELECT
            COALESCE(
              (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
@@ -114371,7 +114500,7 @@ router12.get("/team/streaks", async (req, res) => {
         const isCurrentOwner = uid3 === ownerUserId;
         const activityTable = isCurrentOwner ? "user_activity_days" : "member_activity_days";
         const identityClause = "AND user_id=$2";
-        const actRes = await pool2.query(
+        const actRes = await pool.query(
           `SELECT day::text AS d FROM ${activityTable}
            WHERE org_id=$1
               ${identityClause}
@@ -114385,7 +114514,7 @@ router12.get("/team/streaks", async (req, res) => {
         );
         if (actRes.rows.length === 0 && !isCurrentOwner) {
           try {
-            const fallbackRes = await pool2.query(
+            const fallbackRes = await pool.query(
               `SELECT day::text AS d FROM user_activity_days
                WHERE org_id=$1 AND user_id=$2
                  AND day >= (NOW() AT TIME ZONE $3)::date - INTERVAL '365 days'
@@ -114464,7 +114593,7 @@ function isAiMigrationComplete() {
   return aiMigrationComplete;
 }
 async function initAiMigration() {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const ctx = await client.query(
       `SELECT
@@ -115150,7 +115279,7 @@ function computeContextLimits(contextFactor) {
 }
 async function loadOrgEconomyThresholds(orgId3) {
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const { rows } = await client.query(
         `SELECT settings FROM user_prefs WHERE org_id = $1 LIMIT 1`,
@@ -115306,12 +115435,12 @@ function validateAttachmentReferences(input) {
   }
   return refs;
 }
-async function resolveAIAttachments(orgDb8, orgId3, references) {
+async function resolveAIAttachments(orgDb9, orgId3, references) {
   if (references.length === 0) return [];
   const ids = references.map((r) => r.fileId);
   let rows;
   try {
-    const result = await orgDb8(
+    const result = await orgDb9(
       `SELECT id, org_id, name, type, size, content
        FROM team_files
        WHERE id = ANY($1) AND org_id = $2`,
@@ -116158,7 +116287,7 @@ async function resolvePlanFromDB(req) {
       "[PlanGate] non-UUID orgId \u2014 routing to org_settings only (legacy session)"
     );
     try {
-      const client = await pool2.connect();
+      const client = await pool.connect();
       try {
         const legacy = await client.query(
           `SELECT plan FROM org_settings WHERE org_id = $1 LIMIT 1`,
@@ -116175,7 +116304,7 @@ async function resolvePlanFromDB(req) {
     }
   }
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const r = await client.query(
         `SELECT plan FROM organizations WHERE id = $1 LIMIT 1`,
@@ -116285,7 +116414,7 @@ function requireAddon(addonKey, label) {
         return;
       }
       try {
-        const client = await pool2.connect();
+        const client = await pool.connect();
         try {
           const r = await client.query(
             `SELECT active FROM org_addons WHERE org_id = $1 AND addon_key = $2 LIMIT 1`,
@@ -116646,7 +116775,7 @@ var UNDO_TTL_MINUTES = 30;
 async function undoAction(actionLogId, orgId3, userId) {
   let row;
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT id, org_id, tool, undo_snapshot, undone_at, result, created_at, version_after
        FROM ai_action_logs WHERE id = $1 AND org_id = $2`,
       [actionLogId, orgId3]
@@ -116724,7 +116853,7 @@ async function undoAction(actionLogId, orgId3, userId) {
       toolName: toolName2
     };
   }
-  await pool2.query(
+  await pool.query(
     `UPDATE ai_action_logs SET undone_at = NOW() WHERE id = $1`,
     [actionLogId]
   ).catch((err) => logger.warn({ err }, "[undo] mark undone_at failed"));
@@ -116774,7 +116903,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
     const batchType = snap["batchType"];
     const batchEvents = snap["events"];
     if (batchType === "create_recurring_event") {
-      const delClient = await pool2.connect();
+      const delClient = await pool.connect();
       try {
         await delClient.query("BEGIN");
         for (const e of batchEvents) {
@@ -116794,7 +116923,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
     }
     if (batchType === "reschedule_week" || batchType === "optimize_schedule") {
       const postWriteVersions = snap["postWriteVersions"];
-      const batchClient = await pool2.connect();
+      const batchClient = await pool.connect();
       try {
         await batchClient.query("BEGIN");
         for (const e of batchEvents) {
@@ -116865,7 +116994,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
       return;
     }
     if (batchType === "delete_recurring_series") {
-      const reinsertClient = await pool2.connect();
+      const reinsertClient = await pool.connect();
       try {
         await reinsertClient.query("BEGIN");
         for (const e of batchEvents) {
@@ -116908,7 +117037,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
     }
     if (batchType === "update_recurring_event") {
       const postWriteVersions = snap["postWriteVersions"];
-      const updUndoClient = await pool2.connect();
+      const updUndoClient = await pool.connect();
       try {
         await updUndoClient.query("BEGIN");
         for (const e of batchEvents) {
@@ -116991,7 +117120,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
   }
   if (snap["batchType"] === "create_missions_from_strategy" && Array.isArray(snap["missions"])) {
     const stratMissions = snap["missions"];
-    const stratDelClient = await pool2.connect();
+    const stratDelClient = await pool.connect();
     try {
       await stratDelClient.query("BEGIN");
       for (const m2 of stratMissions) {
@@ -117011,7 +117140,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
   }
   if (snap["batchType"] === "create_missions_from_incident" && Array.isArray(snap["missions"])) {
     const incMissions = snap["missions"];
-    const incDelClient = await pool2.connect();
+    const incDelClient = await pool.connect();
     try {
       await incDelClient.query("BEGIN");
       for (const m2 of incMissions) {
@@ -117028,7 +117157,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
   }
   if (snap["batchType"] === "create_missions_from_audit" && Array.isArray(snap["missions"])) {
     const missions = snap["missions"];
-    const delClient = await pool2.connect();
+    const delClient = await pool.connect();
     try {
       await delClient.query("BEGIN");
       for (const m2 of missions) {
@@ -117049,13 +117178,13 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
   const id = snap["id"];
   if (!id) throw new Error("Snapshot sans ID \u2014 impossible de restaurer.");
   if (toolName2 === "create_mission") {
-    await pool2.query(`DELETE FROM missions WHERE id = $1 AND org_id = $2`, [id, orgId3]);
+    await pool.query(`DELETE FROM missions WHERE id = $1 AND org_id = $2`, [id, orgId3]);
     return;
   }
   if (toolName2 === "delete_mission") {
     const priorityScore = snap["priority_score"] ?? snap["priorityScore"] ?? { critical: 90, high: 75, medium: 50, low: 25 }[snap["priority"] ?? "medium"] ?? 50;
     const sourceType = snap["source_type"] ?? snap["sourceType"] ?? "manual";
-    await pool2.query(`
+    await pool.query(`
       INSERT INTO missions (
         id, org_id, title, description, category, status, priority, due_date,
         assigned_to, steps, completed_at, dismissed_at, updated_at, created_at,
@@ -117087,7 +117216,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
     if (versionAfter === null || versionAfter === void 0) {
       return { versionUnavailable: true };
     }
-    const updateRes = await pool2.query(`
+    const updateRes = await pool.query(`
       UPDATE missions SET
         title        = $1,
         description  = $2,
@@ -117115,7 +117244,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
       versionAfter
     ]);
     if ((updateRes.rowCount ?? 0) === 0) {
-      const existsRow = await pool2.query(
+      const existsRow = await pool.query(
         `SELECT id FROM missions WHERE id = $1 AND org_id = $2`,
         [id, orgId3]
       );
@@ -117128,11 +117257,11 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
     return;
   }
   if (toolName2 === "create_calendar_event") {
-    await pool2.query(`DELETE FROM calendar_events WHERE id = $1 AND org_id = $2`, [id, orgId3]);
+    await pool.query(`DELETE FROM calendar_events WHERE id = $1 AND org_id = $2`, [id, orgId3]);
     return;
   }
   if (toolName2 === "delete_calendar_event") {
-    await pool2.query(`
+    await pool.query(`
       INSERT INTO calendar_events (
         id, org_id, title, site, type, date, start_time, duration, notes, client_name,
         priority, color, reminder, linked_mission_id, updated_at, created_at
@@ -117161,7 +117290,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
     if (versionAfter === null || versionAfter === void 0) {
       return { versionUnavailable: true };
     }
-    const calUpdateRes = await pool2.query(`
+    const calUpdateRes = await pool.query(`
       UPDATE calendar_events SET
         title             = $1,
         site              = $2,
@@ -117197,7 +117326,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
       versionAfter
     ]);
     if ((calUpdateRes.rowCount ?? 0) === 0) {
-      const existsRow = await pool2.query(
+      const existsRow = await pool.query(
         `SELECT id FROM calendar_events WHERE id = $1 AND org_id = $2`,
         [id, orgId3]
       );
@@ -117211,7 +117340,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
   if (toolName2 === "resolve_incident") {
     const riId = snap["id"];
     if (!riId) throw new Error("Snapshot resolve_incident sans ID.");
-    await pool2.query(
+    await pool.query(
       `UPDATE monitor_incidents SET resolved_at=NULL, duration_s=NULL WHERE id=$1 AND org_id=$2`,
       [riId, orgId3]
     );
@@ -117220,7 +117349,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
   if (toolName2 === "suspend_monitor") {
     const susId = snap["id"];
     if (!susId) throw new Error("Snapshot suspend_monitor sans ID.");
-    await pool2.query(
+    await pool.query(
       `UPDATE monitors SET enabled=true, updated_at=NOW() WHERE id=$1 AND org_id=$2`,
       [susId, orgId3]
     );
@@ -117229,7 +117358,7 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
   if (toolName2 === "delete_monitor") {
     const dm = snap;
     if (!dm["id"]) throw new Error("Snapshot delete_monitor sans ID.");
-    await pool2.query(
+    await pool.query(
       `INSERT INTO monitors (id, org_id, name, url, status, uptime, latency, last_check,
                              alert_email, alert_phone, is_critical, frequency, enabled, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
@@ -117257,11 +117386,11 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
     const cm = snap;
     if (cm["action"] === "create") {
       const newMonId = cm["id"];
-      if (newMonId) await pool2.query(`DELETE FROM monitors WHERE id=$1 AND org_id=$2`, [newMonId, orgId3]);
+      if (newMonId) await pool.query(`DELETE FROM monitors WHERE id=$1 AND org_id=$2`, [newMonId, orgId3]);
       return;
     }
     if (!cm["id"]) throw new Error("Snapshot configure_monitor sans ID.");
-    await pool2.query(
+    await pool.query(
       `UPDATE monitors SET name=$1, url=$2, frequency=$3, alert_email=$4, alert_phone=$5,
                            is_critical=$6, enabled=$7, updated_at=NOW()
          WHERE id=$8 AND org_id=$9`,
@@ -117281,21 +117410,21 @@ async function applySnapshot(toolName2, snap, orgId3, versionAfter) {
   }
   if (toolName2 === "dismiss_recommendation") {
     const prevStatus = snap["status"] ?? "active";
-    await pool2.query(
+    await pool.query(
       `UPDATE ai_recommendations SET status=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3`,
       [prevStatus, id, orgId3]
     );
     return;
   }
   if (toolName2 === "restore_recommendation") {
-    await pool2.query(
+    await pool.query(
       `UPDATE ai_recommendations SET status='dismissed', updated_at=NOW() WHERE id=$1 AND org_id=$2`,
       [id, orgId3]
     );
     return;
   }
   if (toolName2 === "generate_recommendations" || toolName2 === "generate_seo_strategy") {
-    await pool2.query(
+    await pool.query(
       `UPDATE ai_recommendations SET status='dismissed', updated_at=NOW() WHERE id=$1 AND org_id=$2`,
       [id, orgId3]
     );
@@ -117411,7 +117540,7 @@ async function buildFlowpointContext(extra, orgId3, contextFactor = 1) {
     let psiIssuesByUrl = /* @__PURE__ */ new Map();
     {
       const [kwRes, compRes, gbpRes, clientDrRes] = await Promise.allSettled([
-        pool2.query(
+        pool.query(
           `SELECT keyword, current_position, prev_position, position_change, search_volume, trend
            FROM tracked_keywords
            WHERE org_id=$1 AND active=true
@@ -117419,17 +117548,17 @@ async function buildFlowpointContext(extra, orgId3, contextFactor = 1) {
            LIMIT ${kwLimit}`,
           [oid]
         ),
-        pool2.query(
+        pool.query(
           `SELECT name, url, domain_rating, keywords AS kw_count
            FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT ${compLimit}`,
           [oid]
         ),
-        pool2.query(
+        pool.query(
           `SELECT id FROM google_tokens WHERE org_id=$1 LIMIT 1`,
           [oid]
         ),
         // Client's own domain authority from DataForSEO metrics cache (if available)
-        pool2.query(
+        pool.query(
           `SELECT domain, domain_authority, backlinks_count FROM seo_domain_metrics
            WHERE org_id=$1
            ORDER BY cached_at DESC LIMIT 1`,
@@ -117450,21 +117579,21 @@ async function buildFlowpointContext(extra, orgId3, contextFactor = 1) {
         if (r["domain"]) clientDomain = String(r["domain"]);
       }
       const [gscCheck, ga4Check] = await Promise.allSettled([
-        pool2.query(
+        pool.query(
           `SELECT COUNT(*) AS cnt FROM information_schema.tables
            WHERE table_schema='public' AND table_name='gsc_sites'`
         ),
-        pool2.query(
+        pool.query(
           `SELECT COUNT(*) AS cnt FROM information_schema.tables
            WHERE table_schema='public' AND table_name='ga4_properties'`
         )
       ]);
       if (gscCheck.status === "fulfilled" && Number(gscCheck.value.rows[0]["cnt"] ?? 0) > 0) {
-        const r = await pool2.query(`SELECT id FROM gsc_sites WHERE org_id=$1 LIMIT 1`, [oid]).catch(() => ({ rows: [] }));
+        const r = await pool.query(`SELECT id FROM gsc_sites WHERE org_id=$1 LIMIT 1`, [oid]).catch(() => ({ rows: [] }));
         gscConnected = r.rows.length > 0;
       }
       if (ga4Check.status === "fulfilled" && Number(ga4Check.value.rows[0]["cnt"] ?? 0) > 0) {
-        const r = await pool2.query(`SELECT id FROM ga4_properties WHERE org_id=$1 LIMIT 1`, [oid]).catch(() => ({ rows: [] }));
+        const r = await pool.query(`SELECT id FROM ga4_properties WHERE org_id=$1 LIMIT 1`, [oid]).catch(() => ({ rows: [] }));
         ga4Connected = r.rows.length > 0;
       }
     }
@@ -117474,7 +117603,7 @@ async function buildFlowpointContext(extra, orgId3, contextFactor = 1) {
     ]);
     if (audits.length > 0) {
       const urls = audits.slice(0, psiLimit).map((a) => a.url);
-      const psiRes = await pool2.query(
+      const psiRes = await pool.query(
         `SELECT DISTINCT ON (p.url) p.url, p.critical_issues
          FROM psi_cache p
          JOIN audits a ON a.url = p.url AND a.org_id = $2
@@ -117511,7 +117640,7 @@ async function buildFlowpointContext(extra, orgId3, contextFactor = 1) {
     const revLeak = e["revenueLeak"] ?? 0;
     let topMissions = [];
     {
-      const mRes = await pool2.query(
+      const mRes = await pool.query(
         `SELECT id, title, status, priority, category, due_date
          FROM missions WHERE org_id=$1 AND status NOT IN ('done','dismissed')
          ORDER BY priority_score DESC NULLS LAST LIMIT 10`,
@@ -117528,9 +117657,9 @@ async function buildFlowpointContext(extra, orgId3, contextFactor = 1) {
     let nbCompetitors = 0;
     try {
       const [rptR, kwR, compR] = await Promise.all([
-        pool2.query(`SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1`, [oid]).catch(() => ({ rows: [{ n: 0 }] })),
-        pool2.query(`SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`, [oid]).catch(() => ({ rows: [{ n: 0 }] })),
-        pool2.query(`SELECT COUNT(*)::int AS n FROM competitors WHERE org_id=$1`, [oid]).catch(() => ({ rows: [{ n: 0 }] }))
+        pool.query(`SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1`, [oid]).catch(() => ({ rows: [{ n: 0 }] })),
+        pool.query(`SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`, [oid]).catch(() => ({ rows: [{ n: 0 }] })),
+        pool.query(`SELECT COUNT(*)::int AS n FROM competitors WHERE org_id=$1`, [oid]).catch(() => ({ rows: [{ n: 0 }] }))
       ]);
       nbReports = rptR.rows[0]?.["n"] ?? 0;
       nbKeywords = kwR.rows[0]?.["n"] ?? 0;
@@ -117615,14 +117744,14 @@ ${topMissions.map(
       const calTimeHHMM = calNow.toISOString().slice(11, 16);
       let orgTimezone = "UTC";
       try {
-        const tzOrg = await pool2.query(
+        const tzOrg = await pool.query(
           `SELECT timezone FROM organizations WHERE id = $1 AND timezone IS NOT NULL AND timezone != '' LIMIT 1`,
           [oid]
         ).catch(() => ({ rows: [] }));
         if (tzOrg.rows[0]?.["timezone"]) {
           orgTimezone = String(tzOrg.rows[0]["timezone"]);
         } else {
-          const tzSet = await pool2.query(
+          const tzSet = await pool.query(
             `SELECT timezone FROM org_settings WHERE org_id = $1 AND timezone IS NOT NULL AND timezone != '' LIMIT 1`,
             [oid]
           ).catch(() => ({ rows: [] }));
@@ -117650,7 +117779,7 @@ ${topMissions.map(
       } catch {
       }
       const calWeekEnd = new Date(calNow.getTime() + 7 * 864e5).toISOString().slice(0, 10);
-      const calRes = await pool2.query(
+      const calRes = await pool.query(
         `SELECT id, title, date, start_time, duration, type, client_name, priority
          FROM calendar_events
          WHERE org_id = $1 AND date >= $2 AND date <= $3
@@ -117715,14 +117844,14 @@ ${topMissions.map(
             return "UTC";
           }
         })();
-        const recurringRes = await pool2.query(
+        const recurringRes = await pool.query(
           `SELECT COUNT(*) AS cnt FROM calendar_events
            WHERE org_id = $1 AND series_id IS NOT NULL
              AND date >= $2 AND date <= $3`,
           [oid, calToday, calWeekEnd]
         ).catch(() => ({ rows: [{ cnt: 0 }] }));
         const recurringThisWeek = Number(recurringRes.rows[0]?.["cnt"] ?? 0);
-        const seriesRes = await pool2.query(
+        const seriesRes = await pool.query(
           `SELECT COUNT(DISTINCT series_id) AS cnt FROM calendar_events
            WHERE org_id = $1 AND series_id IS NOT NULL
              AND date >= $2 AND date <= $3`,
@@ -117746,7 +117875,7 @@ ${topMissions.map(
             freeCursor = (busyToday.find((b) => freeCursor < b.end && end > b.start)?.end ?? freeCursor) + 1;
           }
         }
-        const linkedRes = await pool2.query(
+        const linkedRes = await pool.query(
           `SELECT COUNT(*) AS cnt FROM calendar_events
            WHERE org_id = $1 AND linked_mission_id IS NOT NULL
              AND date >= $2 AND date <= $3`,
@@ -117766,16 +117895,16 @@ ${topMissions.map(
     }
     try {
       const [recActiveR, recDismissedR, recStratR] = await Promise.allSettled([
-        pool2.query(
+        pool.query(
           `SELECT id, title, priority, metadata FROM ai_recommendations
            WHERE org_id=$1 AND status='active' ORDER BY priority DESC LIMIT 5`,
           [oid]
         ),
-        pool2.query(
+        pool.query(
           `SELECT COUNT(*) AS cnt FROM ai_recommendations WHERE org_id=$1 AND status='dismissed'`,
           [oid]
         ),
-        pool2.query(
+        pool.query(
           `SELECT id, title, created_at FROM ai_recommendations
            WHERE org_id=$1 AND type='strategy' AND status='active' ORDER BY created_at DESC LIMIT 1`,
           [oid]
@@ -117812,34 +117941,34 @@ ${topMissions.map(
     }
     try {
       const [mhGlobal, mhCritical, mhActiveInc, mhUnreadAlerts, mhRecentDown, mhLastResolved] = await Promise.allSettled([
-        pool2.query(
+        pool.query(
           `SELECT COUNT(*) AS total, AVG(uptime) AS avg_uptime, AVG(latency) AS avg_latency,
                   SUM(CASE WHEN status='down' THEN 1 ELSE 0 END) AS down_count,
                   SUM(CASE WHEN enabled=false THEN 1 ELSE 0 END) AS paused_count
            FROM monitors WHERE org_id=$1`,
           [oid]
         ),
-        pool2.query(
+        pool.query(
           `SELECT id, name, url, status, uptime FROM monitors WHERE org_id=$1 AND is_critical=true AND status='down' LIMIT 5`,
           [oid]
         ),
-        pool2.query(
+        pool.query(
           `SELECT mi.id, mi.monitor_id, mi.started_at, mi.error, m.name AS monitor_name
            FROM monitor_incidents mi JOIN monitors m ON m.id=mi.monitor_id AND m.org_id=mi.org_id
            WHERE mi.org_id=$1 AND mi.resolved_at IS NULL ORDER BY mi.started_at ASC LIMIT 5`,
           [oid]
         ),
-        pool2.query(
+        pool.query(
           `SELECT COUNT(*) AS cnt FROM alert_events WHERE org_id=$1 AND read_at IS NULL`,
           [oid]
         ),
-        pool2.query(
+        pool.query(
           `SELECT mi.id, mi.started_at, mi.error, m.name AS monitor_name
            FROM monitor_incidents mi JOIN monitors m ON m.id=mi.monitor_id AND m.org_id=mi.org_id
            WHERE mi.org_id=$1 AND mi.resolved_at IS NULL ORDER BY mi.started_at ASC LIMIT 1`,
           [oid]
         ),
-        pool2.query(
+        pool.query(
           `SELECT mi.id, mi.started_at, mi.resolved_at, mi.duration_s, m.name AS monitor_name
            FROM monitor_incidents mi JOIN monitors m ON m.id=mi.monitor_id AND m.org_id=mi.org_id
            WHERE mi.org_id=$1 AND mi.resolved_at IS NOT NULL ORDER BY mi.resolved_at DESC LIMIT 1`,
@@ -118077,7 +118206,7 @@ Les sc\xE9narios hypoth\xE9tiques introduits par l'utilisateur ("si mon score \x
 `;
 async function persistChatMessage(opts) {
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const id = `ach_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       await client.query(`
@@ -118094,7 +118223,7 @@ router13.get("/ai/history", async (req, res) => {
   const orgId3 = req.orgId ?? "default";
   const limit2 = Math.min(Number(req.query["limit"] ?? 50), 100);
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const { rows } = await client.query(`
         SELECT id, role, content, feature, model, created_at
@@ -118128,7 +118257,7 @@ router13.patch("/ai/config", async (req, res) => {
   const orgId3 = req.orgId ?? "default";
   const { provider, intensity } = req.body;
   try {
-    const { rows } = await pool2.query(
+    const { rows } = await pool.query(
       `SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`,
       [orgId3]
     );
@@ -118136,7 +118265,7 @@ router13.patch("/ai/config", async (req, res) => {
     const updated = { ...current };
     if (provider) updated["preferredProvider"] = provider;
     if (intensity) updated["aiIntensity"] = intensity;
-    await pool2.query(
+    await pool.query(
       `INSERT INTO user_prefs (org_id, settings, updated_at)
        VALUES ($1,$2,NOW())
        ON CONFLICT (org_id) DO UPDATE SET settings=$2, updated_at=NOW()`,
@@ -118929,7 +119058,7 @@ async function chatHandler(req, res) {
   let _langCode = typeof language === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(language.trim()) ? language.trim().toLowerCase() : "fr";
   if (_langCode === "fr") {
     try {
-      const _langRow = await pool2.query(
+      const _langRow = await pool.query(
         `SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`,
         [orgId3]
       );
@@ -119557,7 +119686,7 @@ router13.post("/ai/conversations/:id/cancel", async (req, res) => {
 router13.get("/ai/actions", async (req, res) => {
   const orgId3 = req.orgId ?? "default";
   try {
-    const { rows } = await pool2.query(
+    const { rows } = await pool.query(
       `SELECT id, conversation_id, tool, args, confirmation_level, result, error,
               undo_snapshot IS NOT NULL AS can_undo, undone_at, created_at
        FROM ai_action_logs WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`,
@@ -119600,7 +119729,7 @@ router13.post("/ai/conversations/:id/confirm", async (req, res) => {
   let requestedLanguage = typeof req.body?.language === "string" && req.body.language ? req.body.language : "";
   if (!requestedLanguage || requestedLanguage === "fr") {
     try {
-      const { rows: _lpRows } = await pool2.query(
+      const { rows: _lpRows } = await pool.query(
         `SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`,
         [orgId3]
       );
@@ -119620,7 +119749,7 @@ router13.post("/ai/conversations/:id/confirm", async (req, res) => {
     return;
   }
   try {
-    const { rows } = await pool2.query(
+    const { rows } = await pool.query(
       `UPDATE ai_action_proposals
        SET status='claimed'
        WHERE id=$1 AND org_id=$2 AND conversation_id=$3
@@ -119632,7 +119761,7 @@ router13.post("/ai/conversations/:id/confirm", async (req, res) => {
     );
     const prop = rows[0];
     if (!prop) {
-      const { rows: check } = await pool2.query(
+      const { rows: check } = await pool.query(
         `SELECT status, expires_at FROM ai_action_proposals WHERE id=$1 AND org_id=$2`,
         [proposalId, orgId3]
       );
@@ -119674,7 +119803,7 @@ router13.post("/ai/conversations/:id/confirm", async (req, res) => {
       { traceId, proposalId, orgId: orgId3, toolName: toolName2, ok: execResult.ok, content: execResult.content?.slice(0, 120) },
       "[agent/confirm] tool execution complete"
     );
-    await pool2.query(
+    await pool.query(
       `UPDATE ai_action_proposals SET status='confirmed' WHERE id=$1`,
       [proposalId]
     ).catch(() => {
@@ -119682,7 +119811,7 @@ router13.post("/ai/conversations/:id/confirm", async (req, res) => {
     let synthesisContent;
     if (execResult.ok) {
       try {
-        const { rows: histRows } = await pool2.query(
+        const { rows: histRows } = await pool.query(
           `SELECT role, content FROM ai_chat_history
            WHERE org_id = $1 AND conversation_id = $2
            ORDER BY created_at DESC LIMIT 8`,
@@ -119824,17 +119953,17 @@ router13.get("/ai/conversations/:id/timeline", async (req, res) => {
   }
   try {
     const [msgs, props, logs] = await Promise.all([
-      pool2.query(
+      pool.query(
         `SELECT id, role, content, model, created_at FROM ai_chat_history
          WHERE org_id = $1 AND conversation_id = $2 ORDER BY created_at ASC LIMIT 200`,
         [orgId3, convId]
       ),
-      pool2.query(
+      pool.query(
         `SELECT id, kind, payload, status, provider, model, created_at, expires_at FROM ai_action_proposals
          WHERE org_id = $1 AND conversation_id = $2 ORDER BY created_at ASC LIMIT 100`,
         [orgId3, convId]
       ),
-      pool2.query(
+      pool.query(
         `SELECT id, proposal_id, tool, args, result, error, undone_at, created_at FROM ai_action_logs
          WHERE org_id = $1 AND conversation_id = $2 ORDER BY created_at ASC LIMIT 100`,
         [orgId3, convId]
@@ -119870,8 +119999,8 @@ router13.post("/ai/audit", aiRateLimit, async (req, res) => {
   let prevScore = null;
   try {
     const [auditRes, psiRes, prevRes] = await Promise.allSettled([
-      pool2.query(`SELECT * FROM audits WHERE url=$1 AND org_id=$2 ORDER BY created_at DESC LIMIT 1`, [url, orgId3]),
-      pool2.query(
+      pool.query(`SELECT * FROM audits WHERE url=$1 AND org_id=$2 ORDER BY created_at DESC LIMIT 1`, [url, orgId3]),
+      pool.query(
         `SELECT p.critical_issues, p.opportunities
          FROM psi_cache p
          JOIN audits a ON a.url = p.url AND a.org_id = $2
@@ -119879,7 +120008,7 @@ router13.post("/ai/audit", aiRateLimit, async (req, res) => {
          ORDER BY p.analyzed_at DESC LIMIT 1`,
         [url, orgId3]
       ),
-      pool2.query(
+      pool.query(
         `SELECT score FROM audits WHERE url=$1 AND org_id=$2 ORDER BY created_at DESC LIMIT 1 OFFSET 1`,
         [url, orgId3]
       )
@@ -119993,15 +120122,15 @@ router13.post("/ai/seo", aiRateLimit, async (req, res) => {
   let dbKeywords = [];
   try {
     const [auditRes, psiRes, kwRes] = await Promise.allSettled([
-      pool2.query(`SELECT score, speed, issues FROM audits WHERE url=$1 AND org_id=$2 ORDER BY created_at DESC LIMIT 1`, [url, orgId3]),
-      pool2.query(
+      pool.query(`SELECT score, speed, issues FROM audits WHERE url=$1 AND org_id=$2 ORDER BY created_at DESC LIMIT 1`, [url, orgId3]),
+      pool.query(
         `SELECT p.critical_issues FROM psi_cache p
          JOIN audits a ON a.url = p.url AND a.org_id = $2
          WHERE p.url=$1 AND p.strategy='mobile'
          ORDER BY p.analyzed_at DESC LIMIT 1`,
         [url, orgId3]
       ),
-      pool2.query(`SELECT keyword, current_position, prev_position, position_change, search_volume FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC NULLS LAST LIMIT 10`, [orgId3])
+      pool.query(`SELECT keyword, current_position, prev_position, position_change, search_volume FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC NULLS LAST LIMIT 10`, [orgId3])
     ]);
     if (auditRes.status === "fulfilled" && auditRes.value.rows[0]) {
       const r = auditRes.value.rows[0];
@@ -120327,7 +120456,7 @@ router13.post("/ai/reports", aiRateLimit, async (req, res) => {
   const prevPeriodStart = prevMonth.toISOString().slice(0, 10);
   let scoreEvolution = "";
   try {
-    const evoRes = await pool2.query(
+    const evoRes = await pool.query(
       `SELECT
          (SELECT ROUND(AVG(score)) FROM audits
           WHERE org_id=$1
@@ -120766,7 +120895,7 @@ async function recommendationsHandler(req, res) {
       } catch (err) {
         providerPreflightError = err instanceof Error ? err : new Error(String(err));
       }
-      const client = await pool2.connect();
+      const client = await pool.connect();
       const lockKey = `ai:recommendation-translation:${orgId3}:${requestedLanguage}`;
       let lockHeld = false;
       try {
@@ -123849,11 +123978,11 @@ async function generateDataDrivenMissions(orgId3, auditData) {
     const { aiChat: aiChat2 } = await Promise.resolve().then(() => (init_ai_provider(), ai_provider_exports));
     try {
       const [kwRes, compRes] = await Promise.allSettled([
-        pool2.query(
+        pool.query(
           `SELECT keyword, current_position FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC NULLS LAST LIMIT 8`,
           [orgId3]
         ),
-        pool2.query(
+        pool.query(
           `SELECT name, domain_rating FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT 3`,
           [orgId3]
         )
@@ -123948,7 +124077,7 @@ R\xE9ponds UNIQUEMENT avec le JSON array.`;
   }
 }
 async function runMissionEngine(orgId3 = "default", _trigger) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const existing = await client.query(
       `SELECT COUNT(*) as count FROM missions WHERE org_id = $1 AND status != 'done'`,
@@ -124106,7 +124235,7 @@ async function runMissionEngine(orgId3 = "default", _trigger) {
   }
 }
 async function getMissionsStats(orgId3 = "default") {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT
@@ -124227,7 +124356,7 @@ router18.get("/missions", async (req, res) => {
     }
     query += ` ORDER BY priority_score DESC, created_at DESC LIMIT $${p++} OFFSET $${p++}`;
     params.push(parseInt(limit2) || 100, parseInt(offset) || 0);
-    const result = await pool2.query(query, params);
+    const result = await pool.query(query, params);
     const ms = Date.now() - _t0;
     logger.info({ org: org16, rows: result.rows.length, ms }, "[MISSIONS] API end");
     res.json(result.rows.map(rowToMission));
@@ -124727,7 +124856,7 @@ function getKeywordLimit(plan4) {
   return limits[plan4.toLowerCase()] ?? 500;
 }
 async function trackKeyword(orgId3, keyword, opts) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const loc = opts.location ?? "France";
     const device = opts.device ?? "desktop";
@@ -124764,7 +124893,7 @@ async function syncOrgRankings(orgId3) {
     logger.warn({ orgId: orgId3 }, "[keyword-engine] DataForSEO not configured \u2014 skipping rank sync");
     return { configured: false, synced: 0 };
   }
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const settingsRes = await client.query(
       `SELECT website FROM org_settings WHERE org_id=$1 LIMIT 1`,
@@ -124857,7 +124986,7 @@ async function syncOrgRankings(orgId3) {
   }
 }
 async function getRankingHistory(orgId3, keywordId, days = 30) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT recorded_at AS date, position, search_volume AS volume
@@ -124876,7 +125005,7 @@ async function getRankingHistory(orgId3, keywordId, days = 30) {
   }
 }
 async function getKeywordStats(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT
@@ -124913,7 +125042,7 @@ async function getKeywordStats(orgId3) {
 }
 var CLUSTER_COLORS = ["#2563EB", "#8b5cf6", "#22c55e", "#f59e0b", "#ef4444", "#06b6d4", "#ec4899", "#84cc16"];
 async function generateClusters(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const kwRes = await client.query(
       `SELECT id, keyword, intent, current_position,
@@ -125025,7 +125154,7 @@ Utilise les mots-cl\xE9s EXACTEMENT tels qu'\xE9crits. Entre 2 et 8 clusters.`;
   }
 }
 async function generateOpportunities(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT id, keyword, current_position AS position, search_volume AS volume, difficulty, intent
@@ -125684,9 +125813,9 @@ function rowToAnalysis(row) {
     updated_at: String(row["updated_at"] ?? "")
   };
 }
-async function getCompetitorAnalysis(competitorId, orgId3, orgDb8) {
+async function getCompetitorAnalysis(competitorId, orgId3, orgDb9) {
   try {
-    const r = await orgDb8(
+    const r = await orgDb9(
       `SELECT * FROM competitor_analysis WHERE competitor_id=$1 AND org_id=$2 LIMIT 1`,
       [competitorId, orgId3]
     );
@@ -125696,7 +125825,7 @@ async function getCompetitorAnalysis(competitorId, orgId3, orgDb8) {
   }
 }
 async function runFullCompetitorAnalysis(opts) {
-  const { competitorId, competitorName, competitorUrl, orgId: orgId3, userId = "system", orgDb: orgDb8, orgContext: orgContext2 = {} } = opts;
+  const { competitorId, competitorName, competitorUrl, orgId: orgId3, userId = "system", orgDb: orgDb9, orgContext: orgContext2 = {} } = opts;
   try {
     const { pages, anyOk } = await scrapeCompetitor(competitorUrl);
     if (!anyOk) {
@@ -125707,7 +125836,7 @@ ${p.content}`).join("\n\n");
     const contentHash = hashStr(combinedContent);
     let previous = null;
     try {
-      const pr = await orgDb8(
+      const pr = await orgDb9(
         `SELECT pricing, trial, value_prop, features, plans FROM competitor_analysis WHERE competitor_id=$1 AND org_id=$2 LIMIT 1`,
         [competitorId, orgId3]
       );
@@ -125820,7 +125949,7 @@ R\xE8gles critiques :
     };
     const changesDetected = detectChanges(previous, analysis);
     const id = `ca_${randomUUID6()}`;
-    await orgDb8(
+    await orgDb9(
       `INSERT INTO competitor_analysis (
         id, org_id, competitor_id, url_fetched,
         value_prop, target_audience, products, arguments, differentiators,
@@ -125871,7 +126000,7 @@ R\xE8gles critiques :
         aiAvailable
       ]
     );
-    const saved = await orgDb8(
+    const saved = await orgDb9(
       `SELECT * FROM competitor_analysis WHERE competitor_id=$1 AND org_id=$2 LIMIT 1`,
       [competitorId, orgId3]
     );
@@ -126312,14 +126441,6 @@ var competitors_default = router20;
 // src/routes/notifications.ts
 var import_express21 = __toESM(require_express2(), 1);
 init_logger();
-
-// src/lib/validate-org-id.ts
-init_logger();
-function isUUIDFormat(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-}
-
-// src/routes/notifications.ts
 init_requireRole();
 var router21 = (0, import_express21.Router)();
 function getOrg3(req) {
@@ -126940,12 +127061,12 @@ router24.get("/connectors", async (req, res) => {
     const hasOrg = !!orgId3 && orgId3 !== "default";
     const [connectors, googleTok, ga4Prop, gscSite, gbpFlag, ga4Flag, gscFlag] = await Promise.allSettled([
       db.select().from(connectorsTable).limit(100),
-      hasOrg ? pool2.query(`SELECT 1 FROM google_tokens WHERE org_id=$1 LIMIT 1`, [orgId3]) : Promise.resolve({ rows: [] }),
-      hasOrg ? pool2.query(`SELECT 1 FROM ga4_properties WHERE org_id=$1 AND is_active=true LIMIT 1`, [orgId3]) : Promise.resolve({ rows: [] }),
-      hasOrg ? pool2.query(`SELECT 1 FROM gsc_sites WHERE org_id=$1 AND is_active=true LIMIT 1`, [orgId3]) : Promise.resolve({ rows: [] }),
-      hasOrg ? pool2.query(`SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='gbp' LIMIT 1`, [orgId3]) : Promise.resolve({ rows: [] }),
-      hasOrg ? pool2.query(`SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='ga4' LIMIT 1`, [orgId3]) : Promise.resolve({ rows: [] }),
-      hasOrg ? pool2.query(`SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='gsc' LIMIT 1`, [orgId3]) : Promise.resolve({ rows: [] })
+      hasOrg ? pool.query(`SELECT 1 FROM google_tokens WHERE org_id=$1 LIMIT 1`, [orgId3]) : Promise.resolve({ rows: [] }),
+      hasOrg ? pool.query(`SELECT 1 FROM ga4_properties WHERE org_id=$1 AND is_active=true LIMIT 1`, [orgId3]) : Promise.resolve({ rows: [] }),
+      hasOrg ? pool.query(`SELECT 1 FROM gsc_sites WHERE org_id=$1 AND is_active=true LIMIT 1`, [orgId3]) : Promise.resolve({ rows: [] }),
+      hasOrg ? pool.query(`SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='gbp' LIMIT 1`, [orgId3]) : Promise.resolve({ rows: [] }),
+      hasOrg ? pool.query(`SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='ga4' LIMIT 1`, [orgId3]) : Promise.resolve({ rows: [] }),
+      hasOrg ? pool.query(`SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='gsc' LIMIT 1`, [orgId3]) : Promise.resolve({ rows: [] })
     ]);
     const connList = connectors.status === "fulfilled" ? connectors.value : SEED2;
     if (connectors.status === "rejected") {
@@ -127307,8 +127428,8 @@ router25.post("/addons/:key/deactivate", ownerOnly, async (req, res) => {
   }
   let priorQuantity = 1;
   try {
-    const { pool: pool3 } = await Promise.resolve().then(() => (init_src(), src_exports));
-    const q = await pool3.query(
+    const { pool: pool2 } = await Promise.resolve().then(() => (init_src(), src_exports));
+    const q = await pool2.query(
       `SELECT quantity FROM org_addons WHERE org_id = $1 AND addon_key = $2`,
       [orgId3, key]
     );
@@ -128465,7 +128586,7 @@ var EMPTY_FORECAST = {
 async function getForecastData({ orgId: orgId3, siteUrl }) {
   const url = siteUrl ?? "default";
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const res = await client.query(
         `SELECT * FROM seo_forecasts
@@ -128515,7 +128636,7 @@ async function getForecastData({ orgId: orgId3, siteUrl }) {
   return { ...EMPTY_FORECAST, siteUrl: url, generatedAt: (/* @__PURE__ */ new Date()).toISOString() };
 }
 async function generateForecasts(orgId3, siteUrl) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const activeSite = await client.query(
       `SELECT site_url FROM gsc_sites WHERE org_id=$1 AND is_active=true LIMIT 1`,
@@ -128792,7 +128913,7 @@ async function executeAction(type, params, orgId3) {
     }
     case "run_audit": {
       try {
-        const client = await pool2.connect();
+        const client = await pool.connect();
         let targetUrl = "";
         try {
           const r = await client.query(`SELECT url FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [orgId3 ?? "default"]);
@@ -128817,7 +128938,7 @@ async function executeAction(type, params, orgId3) {
     case "generate_recommendations": {
       try {
         const o = orgId3 ?? "default";
-        const client = await pool2.connect();
+        const client = await pool.connect();
         let auditData = null;
         try {
           const r = await client.query(`SELECT url, score, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [o]);
@@ -128831,7 +128952,7 @@ async function executeAction(type, params, orgId3) {
         }
         let _autoLang = "fr";
         try {
-          const _langRow = await pool2.query(
+          const _langRow = await pool.query(
             `SELECT settings FROM user_prefs WHERE org_id = $1 LIMIT 1`,
             [o]
           );
@@ -128868,7 +128989,7 @@ async function executeAction(type, params, orgId3) {
     case "generate_report": {
       try {
         const o = orgId3 ?? "default";
-        const client = await pool2.connect();
+        const client = await pool.connect();
         let auditData = null;
         try {
           const r = await client.query(`SELECT url, score, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [o]);
@@ -128910,7 +129031,7 @@ async function executeAction(type, params, orgId3) {
     case "analyze_competitors": {
       try {
         const o = orgId3 ?? "default";
-        const client = await pool2.connect();
+        const client = await pool.connect();
         let auditData = null;
         try {
           const r = await client.query(`SELECT url, score, speed FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [o]);
@@ -128959,7 +129080,7 @@ async function executeAction(type, params, orgId3) {
     case "export_all_data": {
       try {
         const o = orgId3 ?? "default";
-        const client = await pool2.connect();
+        const client = await pool.connect();
         let counts = {};
         try {
           for (const table of ["audits", "monitors", "tracked_keywords", "psi_cache", "missions", "workflow_runs"]) {
@@ -128988,8 +129109,8 @@ async function executeAction(type, params, orgId3) {
 async function getWorkflowsData(orgId3 = "default") {
   try {
     await ensureDefaultWorkflows(orgId3);
-    const { pool: pool3 } = await Promise.resolve().then(() => (init_src(), src_exports));
-    const pgClient = await pool3.connect();
+    const { pool: pool2 } = await Promise.resolve().then(() => (init_src(), src_exports));
+    const pgClient = await pool2.connect();
     let runs = [];
     try {
       const runsRes = await pgClient.query(
@@ -129232,7 +129353,7 @@ function getIntegrationLimit(plan4) {
 }
 async function createIntegration(orgId3, plan4, data) {
   const limit2 = getIntegrationLimit(plan4);
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const countRes = await client.query(
       `SELECT COUNT(*) AS cnt FROM automation_integrations WHERE org_id=$1 AND active=true`,
@@ -129535,7 +129656,7 @@ async function getIntegrationStats(orgId3) {
   });
 }
 async function processIncomingWebhook(token, body) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT org_id FROM incoming_webhooks WHERE token=$1 AND active=true LIMIT 1`,
@@ -129642,7 +129763,7 @@ router32.get("/integrations/stats", async (req, res) => {
 });
 router32.get("/integrations/templates", async (_req, res) => {
   try {
-    const r = await pool2.query(`SELECT * FROM automation_templates WHERE active=true ORDER BY popularity DESC`);
+    const r = await pool.query(`SELECT * FROM automation_templates WHERE active=true ORDER BY popularity DESC`);
     res.json({ templates: r.rows, count: r.rows.length });
   } catch {
     res.json({ templates: [], count: 0 });
@@ -130062,7 +130183,7 @@ function getCrmLimit(plan4) {
   return def ? def.limits.workspaces : 1;
 }
 async function getCrmStatus(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const r = await client.query(`SELECT * FROM crm_integrations WHERE org_id=$1 ORDER BY created_at DESC`, [orgId3]);
     const connected = r.rows.filter((i) => i.status === "connected").length;
@@ -130091,7 +130212,7 @@ async function getCrmStatus(orgId3) {
   }
 }
 async function connectCrm(orgId3, plan4, provider, data) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const limit2 = getCrmLimit(plan4);
     const count = await client.query(`SELECT COUNT(*) FROM crm_integrations WHERE org_id=$1 AND status='connected'`, [orgId3]);
@@ -130124,7 +130245,7 @@ async function connectCrm(orgId3, plan4, provider, data) {
   }
 }
 async function disconnectCrm(orgId3, provider) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(`UPDATE crm_integrations SET status='disconnected', access_token=null, refresh_token=null, updated_at=now() WHERE org_id=$1 AND provider=$2`, [orgId3, provider]);
   } finally {
@@ -130133,7 +130254,7 @@ async function disconnectCrm(orgId3, provider) {
 }
 async function syncCrm(orgId3, provider, entityType = "contacts") {
   const logId = `csl_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   let integrationId = null;
   const start = Date.now();
   try {
@@ -130171,7 +130292,7 @@ async function syncCrm(orgId3, provider, entityType = "contacts") {
   }
 }
 async function getSyncLogs2(orgId3, limit2 = 50) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const r = await client.query(`SELECT csl.*, ci.provider, ci.name as integration_name FROM crm_sync_logs csl LEFT JOIN crm_integrations ci ON ci.id=csl.crm_integration_id WHERE csl.org_id=$1 ORDER BY csl.started_at DESC LIMIT $2`, [orgId3, limit2]);
     return r.rows;
@@ -130180,7 +130301,7 @@ async function getSyncLogs2(orgId3, limit2 = 50) {
   }
 }
 async function getFieldMappings(orgId3, crmId) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const r = await client.query(`SELECT * FROM crm_field_mappings WHERE crm_integration_id IN (SELECT id FROM crm_integrations WHERE org_id=$1 AND id=$2)`, [orgId3, crmId]);
     return r.rows;
@@ -130190,7 +130311,7 @@ async function getFieldMappings(orgId3, crmId) {
 }
 async function upsertFieldMapping(orgId3, crmId, entityType, fpField, crmField) {
   const id = `fm_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(
       `INSERT INTO crm_field_mappings (id,crm_integration_id,entity_type,flowpoint_field,crm_field) SELECT $1,id,$2,$3,$4 FROM crm_integrations WHERE org_id=$5 AND id=$6 ON CONFLICT DO NOTHING`,
@@ -130399,7 +130520,7 @@ var SYSTEM_ROLES = [
   }
 ];
 async function getRoles(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(`SELECT * FROM roles WHERE org_id=$1 ORDER BY created_at ASC`, [orgId3]);
     if (res.rows.length > 0) return res.rows;
@@ -130412,7 +130533,7 @@ async function getRoles(orgId3) {
 }
 async function createRole(orgId3, planOrData, data) {
   const resolvedData = typeof planOrData === "object" && planOrData !== null ? planOrData : data ?? {};
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const id = `role_${orgId3}_${Date.now()}`;
     await client.query(
@@ -130427,7 +130548,7 @@ async function createRole(orgId3, planOrData, data) {
   }
 }
 async function updateRole(orgId3, id, data = {}) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     if (data.name) {
       const r = await client.query(`UPDATE roles SET name=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3`, [data.name, id, orgId3]);
@@ -130445,7 +130566,7 @@ async function updateRole(orgId3, id, data = {}) {
   }
 }
 async function deleteRole(orgId3, id) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const r = await client.query(`DELETE FROM roles WHERE id=$1 AND org_id=$2 AND is_system=false`, [id, orgId3]);
     if (r.rowCount === 0) throw Object.assign(new Error("Role not found"), { statusCode: 404 });
@@ -130454,7 +130575,7 @@ async function deleteRole(orgId3, id) {
   }
 }
 async function assignRole(orgId3, userId, roleId, _grantedBy) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     if (!roleId.startsWith("role_admin") && !roleId.startsWith("role_member") && !roleId.startsWith("role_viewer")) {
       const owns = await client.query(`SELECT 1 FROM roles WHERE id=$1 AND org_id=$2`, [roleId, orgId3]);
@@ -130467,7 +130588,7 @@ async function assignRole(orgId3, userId, roleId, _grantedBy) {
   }
 }
 async function getPermissionLogs(orgId3, limit2 = 50) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT * FROM permission_logs WHERE org_id=$1 ORDER BY created_at DESC LIMIT $2`,
@@ -130490,7 +130611,7 @@ async function logAccess(optsOrOrgId, userId, action, resource, _metadata) {
   const resolvedResource = typeof optsOrOrgId === "string" ? resource ?? "" : optsOrOrgId.resource;
   const allowed = typeof optsOrOrgId === "string" ? true : optsOrOrgId.allowed;
   const reason = typeof optsOrOrgId === "string" ? null : optsOrOrgId.reason ?? null;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const id = `perm_${Date.now()}_${Math.random().toString(36).slice(2, 4)}`;
     await client.query(
@@ -130505,12 +130626,12 @@ async function logAccess(optsOrOrgId, userId, action, resource, _metadata) {
   }
 }
 async function getPermissionsStats(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const [rolesRes, logsRes, membersRes, topResourceRes] = await Promise.all([
       client.query(`SELECT COUNT(*) as c FROM roles WHERE org_id=$1`, [orgId3]),
       client.query(`SELECT COUNT(*) as total, SUM(CASE WHEN allowed=false THEN 1 ELSE 0 END) as blocked FROM permission_logs WHERE org_id=$1 AND created_at > NOW()-INTERVAL '1 day'`, [orgId3]),
-      client.query(`SELECT COUNT(*) as c FROM org_members WHERE org_id=$1`, [orgId3]),
+      client.query(`SELECT COUNT(*) as c FROM organization_members WHERE organization_id=$1`, [orgId3]),
       client.query(`SELECT resource, COUNT(*) as c FROM permission_logs WHERE org_id=$1 AND created_at > NOW()-INTERVAL '7 days' GROUP BY resource ORDER BY c DESC LIMIT 1`, [orgId3])
     ]);
     const totalChecks = Number(logsRes.rows[0]?.total ?? 0);
@@ -130635,7 +130756,7 @@ var TREND_SEEDS = [
 ];
 var OPP_SEEDS = [];
 async function seedMarketData(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const ex = await client.query(`SELECT COUNT(*) as c FROM market_trends WHERE org_id=$1`, [orgId3]);
     if (Number(ex.rows[0]?.c ?? 0) > 0) return;
@@ -130660,7 +130781,7 @@ async function seedMarketData(orgId3) {
   }
 }
 async function getMarketDashboard(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const [trends, opps, signals, movements] = await Promise.all([
       client.query(`SELECT * FROM market_trends WHERE org_id=$1 ORDER BY opportunity_score DESC LIMIT 20`, [orgId3]),
@@ -130687,7 +130808,7 @@ async function getMarketDashboard(orgId3) {
 async function generateMarketReport(orgId3) {
   const dashboard = await getMarketDashboard(orgId3);
   const id = `mr_${orgId3}_${Date.now()}`;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(
       `INSERT INTO ai_market_reports (id, org_id, title, summary, data, generated_at)
@@ -130840,7 +130961,7 @@ var SAMPLE_REVIEWS = [
   { id: "rv4", author: "Pierre D.", rating: 2, text: "R\xE9sultats d\xE9cevants par rapport aux promesses. Peu de communication sur l'avancement.", sentiment: "negative", platform: "google", replied: false, date: new Date(Date.now() - 30 * 24 * 36e5).toISOString(), aiSuggestedReply: "Bonjour Pierre, votre satisfaction est notre priorit\xE9. Nous sommes d\xE9sol\xE9s que l'exp\xE9rience n'ait pas r\xE9pondu \xE0 vos attentes. Contactez-nous directement pour qu'on puisse corriger la situation." }
 ];
 async function getReputationDashboard(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const [reviewsRes, googleReviewsRes] = await Promise.allSettled([
       client.query(`SELECT * FROM reviews WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`, [orgId3]),
@@ -131040,7 +131161,7 @@ async function syncReviewsFromGBP(orgId3, _locationId) {
     logger.info({ orgId: orgId3 }, "[review-intel] syncReviewsFromGBP: no Google token, skipping");
     return { synced: 0 };
   }
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const result = await client.query(
       `INSERT INTO reviews (id, org_id, author, rating, text, sentiment, platform, replied, created_at)
@@ -131131,7 +131252,7 @@ router36.post("/review-intelligence/analyze", canWrite, async (req, res) => {
       language,
       location_id: locationId
     });
-    pool2.query(
+    pool.query(
       `INSERT INTO reviews (id, org_id, author, rating, text, sentiment, platform, replied, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,'manual',false,NOW())
        ON CONFLICT (id) DO UPDATE SET sentiment=$6, text=$5`,
@@ -131229,7 +131350,7 @@ var import_express37 = __toESM(require_express2(), 1);
 // src/services/gbp-posting-service.ts
 init_src();
 async function getPostsDashboard(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT * FROM gbp_posts WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`,
@@ -131257,7 +131378,7 @@ async function getPostsDashboard(orgId3) {
   }
 }
 async function createPost(orgId3, data) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const id = `gp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const status = data.scheduledAt ? "scheduled" : "draft";
@@ -131314,7 +131435,7 @@ async function generateAiPost(orgId3, data) {
   return { type: postType, content: parsed2.content, callToAction: parsed2.callToAction || ctaByType[postType] || "En savoir plus" };
 }
 async function publishPost(_orgId, postId) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     await client.query(
@@ -131327,7 +131448,7 @@ async function publishPost(_orgId, postId) {
   }
 }
 async function deletePost(_orgId, postId) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(`DELETE FROM gbp_posts WHERE id=$1`, [postId]);
   } finally {
@@ -131335,7 +131456,7 @@ async function deletePost(_orgId, postId) {
   }
 }
 async function getScheduledPosts(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT * FROM gbp_posts WHERE org_id=$1 AND status='scheduled' AND scheduled_at > NOW() ORDER BY scheduled_at ASC LIMIT 50`,
@@ -131593,7 +131714,7 @@ async function geocodeAddress(address) {
   return null;
 }
 async function getBusinessPoint(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const r = await client.query(
       `SELECT address, city, latitude, longitude FROM org_settings WHERE org_id=$1 LIMIT 1`,
@@ -131655,7 +131776,7 @@ async function getMapsDashboard(orgId3) {
   };
 }
 async function getHeatmaps(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT * FROM local_heatmaps WHERE org_id=$1 ORDER BY created_at DESC LIMIT 50`,
@@ -131669,7 +131790,7 @@ async function getHeatmaps(orgId3) {
   }
 }
 async function getHeatmapDetail(orgId3, id) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(`SELECT * FROM local_heatmaps WHERE id=$1 AND org_id=$2 LIMIT 1`, [id, orgId3]);
     return res.rows[0] ?? null;
@@ -131680,7 +131801,7 @@ async function getHeatmapDetail(orgId3, id) {
   }
 }
 async function createHeatmap(orgId3, data) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const id = `hm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     await client.query(
@@ -131757,7 +131878,7 @@ router38.post("/local-maps/heatmaps", canWrite, async (req, res) => {
   }
 });
 router38.delete("/local-maps/heatmaps/:id", canWrite, async (req, res) => {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(`DELETE FROM local_heatmaps WHERE id=$1 AND org_id=$2`, [req.params.id, org11(req)]);
     res.json({ ok: true });
@@ -131767,7 +131888,7 @@ router38.delete("/local-maps/heatmaps/:id", canWrite, async (req, res) => {
 });
 router38.get("/local-maps/competitors", async (req, res) => {
   const { min_authority, in_pack, limit: lim = "20" } = req.query;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const orgId3 = org11(req);
     let q = `SELECT * FROM competitor_map_results WHERE org_id=$1`;
@@ -131811,7 +131932,7 @@ router38.post("/local-maps/competitors/discover", canWrite, async (req, res) => 
       return;
     }
     const results = lookup.results;
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       for (const [idx, item] of results.entries()) {
         const placeId = item.placeId || `result_${idx}_${Buffer.from(`${item.name}|${item.address}|${item.rank}`).toString("base64url")}`;
@@ -131827,7 +131948,7 @@ router38.post("/local-maps/competitors/discover", canWrite, async (req, res) => 
     } finally {
       client.release();
     }
-    const persisted = await pool2.query(
+    const persisted = await pool.query(
       `SELECT * FROM competitor_map_results WHERE org_id=$1 AND keyword=$2 AND location=$3 ORDER BY rank ASC NULLS LAST, review_count DESC`,
       [orgId3, normalizedKeyword, normalizedLocation]
     );
@@ -131838,7 +131959,7 @@ router38.post("/local-maps/competitors/discover", canWrite, async (req, res) => 
 });
 router38.post("/local-maps/competitors/:id/add", canWrite, async (req, res) => {
   const orgId3 = org11(req);
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const found = await client.query(`SELECT * FROM competitor_map_results WHERE id=$1 AND org_id=$2 LIMIT 1`, [req.params.id, orgId3]);
     const item = found.rows[0];
@@ -131863,7 +131984,7 @@ router38.post("/local-maps/competitors/:id/add", canWrite, async (req, res) => {
   }
 });
 router38.get("/local-maps/opportunities", async (req, res) => {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const orgId3 = org11(req);
     const r = await client.query(`SELECT * FROM local_opportunities WHERE org_id=$1 ORDER BY score DESC LIMIT 20`, [orgId3]);
@@ -131873,7 +131994,7 @@ router38.get("/local-maps/opportunities", async (req, res) => {
   }
 });
 router38.get("/local-maps/visibility-scores", async (req, res) => {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const r = await client.query(`SELECT * FROM local_visibility_scores WHERE org_id=$1 ORDER BY created_at DESC LIMIT 20`, [org11(req)]);
     res.json({ scores: r.rows, count: r.rows.length });
@@ -131899,7 +132020,7 @@ init_src();
 init_logger();
 var SSO_PROVIDER_TYPES = ["google_workspace", "github", "saml", "okta", "azure_ad"];
 async function getSSODashboard(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const [provRes, cfgRes, auditRes] = await Promise.all([
       client.query(`SELECT * FROM sso_providers WHERE org_id=$1 ORDER BY created_at DESC`, [orgId3]),
@@ -131925,7 +132046,7 @@ async function getSSODashboard(orgId3) {
 }
 async function createSSOProvider(orgId3, planOrData, data) {
   const resolvedData = typeof planOrData === "object" && planOrData !== null ? planOrData : data ?? {};
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const provType = resolvedData.type ?? resolvedData.providerType;
     const id = `sso_${orgId3}_${provType ?? "unknown"}_${Date.now()}`;
@@ -131941,7 +132062,7 @@ async function createSSOProvider(orgId3, planOrData, data) {
   }
 }
 async function updateSSOProvider(orgId3, id, data = {}) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     if (data.name !== void 0) {
       const r = await client.query(`UPDATE sso_providers SET name=$1 WHERE id=$2 AND org_id=$3`, [data.name, id, orgId3]);
@@ -131963,7 +132084,7 @@ async function updateSSOProvider(orgId3, id, data = {}) {
   }
 }
 async function deleteSSOProvider(orgId3, id) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const r = await client.query(`DELETE FROM sso_providers WHERE id=$1 AND org_id=$2`, [id, orgId3]);
     if (r.rowCount === 0) throw Object.assign(new Error("SSO provider not found"), { statusCode: 404 });
@@ -131972,7 +132093,7 @@ async function deleteSSOProvider(orgId3, id) {
   }
 }
 async function getOrgAuthConfig(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(`SELECT * FROM org_auth_config WHERE org_id=$1 LIMIT 1`, [orgId3]);
     return res.rows[0] ?? null;
@@ -131981,7 +132102,7 @@ async function getOrgAuthConfig(orgId3) {
   }
 }
 async function upsertOrgAuthConfig(orgId3, data) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(
       `INSERT INTO org_auth_config (org_id, sso_required, allow_magic_link, allow_password, session_ttl_hours, mfa_enabled, allowed_domains)
@@ -132012,7 +132133,7 @@ async function logLoginAttempt(optsOrOrgId, opts) {
   const resolvedOpts = typeof optsOrOrgId === "string" ? opts ?? {} : optsOrOrgId;
   const orgId3 = typeof optsOrOrgId === "string" ? optsOrOrgId : resolvedOpts.orgId ?? "default";
   const method = resolvedOpts.method ?? resolvedOpts.provider ?? "email";
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const id = `audit_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     await client.query(
@@ -132027,7 +132148,7 @@ async function logLoginAttempt(optsOrOrgId, opts) {
   }
 }
 async function invalidateSession2(orgId3, token) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(`DELETE FROM user_sessions WHERE token=$1 AND org_id=$2`, [token, orgId3]);
   } finally {
@@ -132035,7 +132156,7 @@ async function invalidateSession2(orgId3, token) {
   }
 }
 async function getLoginAudits(orgId3, limit2 = 50) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT * FROM login_audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT $2`,
@@ -132549,7 +132670,7 @@ router41.post("/ai-workspace-launch", async (req, res) => {
     const now = /* @__PURE__ */ new Date();
     const sessionId = `ows_${Date.now()}`;
     const profileId = `awp_${Date.now()}`;
-    const client = await pool2.connect();
+    const client = await pool.connect();
     const requestId2 = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     let roadmap = DEFAULT_ROADMAP;
     let missionTemplates = DEFAULT_MISSIONS;
@@ -132749,7 +132870,7 @@ router41.get("/ai-workspace-launch/:sessionId", async (req, res) => {
        WHERE s.id = $1 AND s.org_id = $2`;
   const params = [sessionId, orgId3];
   logger.info({ orgId: orgId3, sessionId, sql: sql2.replace(/\s+/g, " ").trim(), params }, "[AWL-GET] executing query");
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const sess = await client.query(sql2, params);
     logger.info({ orgId: orgId3, sessionId, rowCount: sess.rows.length }, "[AWL-GET] query returned");
@@ -132797,17 +132918,17 @@ function resolveOrgId(req) {
 
 // src/routes/google.ts
 async function registerOAuthState(state, orgId3) {
-  await pool2.query(
+  await pool.query(
     `INSERT INTO google_oauth_states (state, org_id, expires_at)
      VALUES ($1, $2, now() + interval '10 minutes')
      ON CONFLICT (state) DO NOTHING`,
     [state, orgId3]
   );
-  pool2.query(`DELETE FROM google_oauth_states WHERE expires_at < now()`).catch(() => {
+  pool.query(`DELETE FROM google_oauth_states WHERE expires_at < now()`).catch(() => {
   });
 }
 async function consumeOAuthState(state) {
-  const r = await pool2.query(
+  const r = await pool.query(
     `DELETE FROM google_oauth_states
      WHERE state = $1 AND expires_at > now()
      RETURNING org_id`,
@@ -132845,7 +132966,7 @@ async function handleGoogleCallback(req, res) {
       signal: AbortSignal.timeout(8e3)
     }).then((r) => r.json());
     await saveTokens(orgId3, { ...tokens, email: userInfo.email, name: userInfo.name });
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       await client.query(
         `INSERT INTO google_accounts (id, org_id, google_id, email, access_token, refresh_token, token_expiry, scopes, connected_at)
@@ -132878,14 +132999,14 @@ async function handleGoogleCallback(req, res) {
       userId: req.orgContext?.userId || userInfo.email || null,
       userName: req.orgContext?.name || userInfo.email || null
     });
-    pool2.query(
+    pool.query(
       `INSERT INTO connectors (id, org_id, provider, status, connected, last_sync, sync_status, created_at)
        VALUES ($1, $2, 'google', 'connected', true, NOW(), 'ok', NOW())
        ON CONFLICT (id) DO UPDATE
          SET status='connected', connected=true, last_sync=NOW(), sync_status='ok'`,
       [`conn-google-${orgId3}`, orgId3]
     ).catch((e) => logger.warn({ e }, "[google] Failed to update connectors table"));
-    pool2.query(
+    pool.query(
       `INSERT INTO google_product_connections (org_id, product, connected, updated_at)
          VALUES ($1, 'gbp', true, NOW()), ($1, 'ga4', true, NOW()), ($1, 'gsc', true, NOW())
        ON CONFLICT (org_id, product) DO UPDATE SET connected = true, updated_at = NOW()`,
@@ -132962,7 +133083,7 @@ router42.get("/google/status", async (req, res) => {
   }
   try {
     const status = await getGBPStatus(orgId3);
-    const productRow = await pool2.query(
+    const productRow = await pool.query(
       `SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='gbp' LIMIT 1`,
       [orgId3]
     ).catch(() => ({ rows: [] }));
@@ -132981,7 +133102,7 @@ router42.post("/google/disconnect", async (req, res) => {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
   }
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(`DELETE FROM google_accounts WHERE org_id=$1`, [orgId3]);
     await client.query(`DELETE FROM google_tokens   WHERE org_id=$1`, [orgId3]);
@@ -133026,7 +133147,7 @@ router42.get("/google/accounts", async (req, res) => {
   }
 });
 router42.get("/google/locations", async (req, res) => {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const rows = await client.query(
       `SELECT id, name, primary_category, rating, reviews_count, phone, website, lat, lng, last_sync_at
@@ -133041,7 +133162,7 @@ router42.get("/google/locations", async (req, res) => {
   }
 });
 router42.get("/google/reviews/:locationId", async (req, res) => {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const rows = await client.query(
       `SELECT id, reviewer_name, reviewer_photo, rating, comment, create_time, update_time, reply_comment, reply_updated_at
@@ -133056,7 +133177,7 @@ router42.get("/google/reviews/:locationId", async (req, res) => {
   }
 });
 router42.get("/google/reviews", async (req, res) => {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const rows = await client.query(
       `SELECT id, location_id, reviewer_name, reviewer_photo, rating, comment, create_time, update_time, reply_comment,
@@ -133092,7 +133213,7 @@ router42.get("/google/performance", async (req, res) => {
     return;
   }
   try {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     let locationName = locationId ?? "";
     try {
       if (!locationName) {
@@ -133133,7 +133254,7 @@ router42.post("/google/post", async (req, res) => {
   }
   let locationName = locationId ?? "";
   if (!locationName) {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const locs = await client.query(
         `SELECT raw_data FROM google_locations WHERE org_id=$1 LIMIT 1`,
@@ -133180,13 +133301,13 @@ router42.post("/google/reviews", async (req, res) => {
       return;
     }
     const reviewId = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    await pool2.query(`ALTER TABLE google_reviews ADD COLUMN IF NOT EXISTS sentiment TEXT`).catch(() => {
+    await pool.query(`ALTER TABLE google_reviews ADD COLUMN IF NOT EXISTS sentiment TEXT`).catch(() => {
     });
-    await pool2.query(`ALTER TABLE google_reviews ADD COLUMN IF NOT EXISTS ai_reply TEXT`).catch(() => {
+    await pool.query(`ALTER TABLE google_reviews ADD COLUMN IF NOT EXISTS ai_reply TEXT`).catch(() => {
     });
-    await pool2.query(`ALTER TABLE google_reviews ADD COLUMN IF NOT EXISTS source TEXT`).catch(() => {
+    await pool.query(`ALTER TABLE google_reviews ADD COLUMN IF NOT EXISTS source TEXT`).catch(() => {
     });
-    await pool2.query(`
+    await pool.query(`
       INSERT INTO google_reviews
         (id, org_id, review_id, location_id, reviewer_name, rating, comment, create_time, sentiment, ai_reply, source)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
@@ -133219,8 +133340,8 @@ router42.delete("/google/reviews/:id", async (req, res) => {
     res.status(400).json({ ok: false, error: "id required" });
     return;
   }
-  const { pool: pool3 } = await Promise.resolve().then(() => (init_src(), src_exports));
-  const client = await pool3.connect();
+  const { pool: pool2 } = await Promise.resolve().then(() => (init_src(), src_exports));
+  const client = await pool2.connect();
   try {
     const r = await client.query(
       `DELETE FROM google_reviews WHERE org_id=$1 AND (id::text=$2 OR review_id=$2)`,
@@ -133244,7 +133365,7 @@ router42.post("/google/reply", async (req, res) => {
     res.status(400).json({ ok: false, error: "reviewId is required" });
     return;
   }
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     let finalComment = comment ?? "";
     if (useAI || !finalComment) {
@@ -133302,7 +133423,7 @@ router42.post("/google/ai-reply-preview", async (req, res) => {
     res.status(400).json({ ok: false, error: "reviewId required" });
     return;
   }
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const rev = await client.query(
       `SELECT reviewer_name, rating, comment FROM google_reviews
@@ -133330,7 +133451,7 @@ router42.post("/google/posts", async (req, res) => {
   }
   let locationName = locationId ?? "";
   if (!locationName) {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const locs = await client.query(
         `SELECT raw_data FROM google_locations WHERE org_id=$1 LIMIT 1`,
@@ -133408,7 +133529,7 @@ init_logger();
 var router43 = (0, import_express43.Router)();
 async function getRankingUsage(orgId3) {
   const { limit: limit2 } = getQuotaUsage(orgId3);
-  const r = await pool2.query(
+  const r = await pool.query(
     `SELECT COUNT(*)::int AS n
      FROM local_seo_ranking_history
      WHERE org_id=$1 AND searched_at::date = (NOW())::date`,
@@ -133419,7 +133540,7 @@ async function getRankingUsage(orgId3) {
 }
 async function reserveRankingSearch(orgId3, id, keyword, location) {
   const { limit: limit2 } = getQuotaUsage(orgId3);
-  const client = await pool2.connect();
+  const client = await pool.connect();
   let txActive = false;
   try {
     await client.query("BEGIN");
@@ -133459,7 +133580,7 @@ async function reserveRankingSearch(orgId3, id, keyword, location) {
   }
 }
 async function finalizeRankingSearch(orgId3, id, rankings) {
-  const result = await pool2.query(
+  const result = await pool.query(
     `UPDATE local_seo_ranking_history
      SET results=$3::jsonb
      WHERE id=$1 AND org_id=$2
@@ -133472,7 +133593,7 @@ async function finalizeRankingSearch(orgId3, id, rankings) {
   }
 }
 async function releaseRankingSearch(orgId3, id) {
-  await pool2.query(
+  await pool.query(
     `DELETE FROM local_seo_ranking_history
      WHERE id=$1 AND org_id=$2
        AND jsonb_typeof(results)='object'
@@ -133813,7 +133934,7 @@ router43.post("/local-seo/rankings", canWrite, async (req, res) => {
 router43.get("/local-seo/rankings/history", async (req, res) => {
   const orgId3 = req["orgId"] ?? "default";
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT id, keyword, location, results, searched_at
        FROM local_seo_ranking_history
        WHERE org_id=$1 AND jsonb_typeof(results)='array'
@@ -133850,7 +133971,7 @@ router43.delete("/local-seo/rankings/history/:id", canWrite, async (req, res) =>
     return;
   }
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `DELETE FROM local_seo_ranking_history WHERE id = $1 AND org_id = $2 RETURNING id`,
       [id, orgId3]
     );
@@ -134337,7 +134458,7 @@ router45.post("/ga4/property", async (req, res) => {
       return;
     }
     await setStoredProperty(orgId3, propertyId.trim(), propertyName || propertyId.trim());
-    pool2.query(
+    pool.query(
       `INSERT INTO google_product_connections (org_id, product, connected, updated_at)
        VALUES ($1,'ga4',true,NOW())
        ON CONFLICT (org_id, product) DO UPDATE SET connected=true, updated_at=NOW()`,
@@ -134564,8 +134685,8 @@ router45.get("/ga4/export", async (req, res) => {
 router45.post("/ga4/disconnect", async (req, res) => {
   try {
     const orgId3 = getOrgId3(req);
-    await pool2.query(`UPDATE ga4_properties SET is_active=false WHERE org_id=$1`, [orgId3]);
-    await pool2.query(
+    await pool.query(`UPDATE ga4_properties SET is_active=false WHERE org_id=$1`, [orgId3]);
+    await pool.query(
       `INSERT INTO google_product_connections (org_id, product, connected, updated_at)
        VALUES ($1,'ga4',false,NOW())
        ON CONFLICT (org_id, product) DO UPDATE SET connected=false, updated_at=NOW()`,
@@ -134673,7 +134794,7 @@ function validateLookbackDays(raw) {
 }
 async function assertSiteOwnership3(orgId3, siteUrl) {
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT 1 FROM behavior_site_tokens WHERE org_id = $1 AND site_url = $2 LIMIT 1`,
       [orgId3, siteUrl]
     );
@@ -135382,7 +135503,7 @@ async function analyzeRepo(token, owner, repo) {
   };
 }
 async function getAnalysis(orgId3, repoFullName) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT * FROM github_analyses WHERE org_id=$1 AND repo_full_name=$2 ORDER BY created_at DESC LIMIT 1`,
@@ -135396,7 +135517,7 @@ async function getAnalysis(orgId3, repoFullName) {
   }
 }
 async function saveConnection(orgId3, data) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(
       `INSERT INTO github_connections
@@ -135421,7 +135542,7 @@ async function saveConnection(orgId3, data) {
   }
 }
 async function getConnection(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const res = await client.query(
       `SELECT org_id, github_user_id, login, name, email, avatar_url, access_token, scope, connected_at
@@ -135448,7 +135569,7 @@ async function getConnection(orgId3) {
   }
 }
 async function disconnectGitHub(orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(`DELETE FROM github_connections WHERE org_id=$1`, [orgId3]);
   } finally {
@@ -135718,7 +135839,7 @@ async function resolveSiteForOrg(orgId3, requested) {
   const override = requested?.trim() || null;
   const target = override ?? await getActiveSite(orgId3);
   if (!target) return { ok: true, siteUrl: null };
-  const r = await pool2.query(
+  const r = await pool.query(
     `SELECT permission_level FROM gsc_sites WHERE org_id=$1 AND site_url=$2 LIMIT 1`,
     [orgId3, target]
   ).catch(() => ({ rows: [] }));
@@ -135728,7 +135849,7 @@ async function resolveSiteForOrg(orgId3, requested) {
   if (verifiedProvenance) return { ok: true, siteUrl: target };
   const owned = await verifySiteOwnership(orgId3, target);
   if (owned) return { ok: true, siteUrl: target };
-  await pool2.query(
+  await pool.query(
     `UPDATE gsc_sites SET is_active=false WHERE org_id=$1 AND site_url=$2`,
     [orgId3, target]
   ).catch(() => {
@@ -135747,7 +135868,7 @@ router49.get("/gsc/status", async (req, res) => {
   try {
     const status = await getGSCStatus(orgId3);
     const hasToken = await hasGoogleConnection(orgId3);
-    const productRow = await pool2.query(
+    const productRow = await pool.query(
       `SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='gsc' LIMIT 1`,
       [orgId3]
     ).catch(() => ({ rows: [] }));
@@ -135796,7 +135917,7 @@ router49.post("/gsc/site", async (req, res) => {
       return;
     }
     await setActiveSite(orgId3, siteUrl.trim(), displayName);
-    pool2.query(
+    pool.query(
       `INSERT INTO google_product_connections (org_id, product, connected, updated_at)
        VALUES ($1,'gsc',true,NOW())
        ON CONFLICT (org_id, product) DO UPDATE SET connected=true, updated_at=NOW()`,
@@ -136032,7 +136153,7 @@ router49.post("/gsc/disconnect", async (req, res) => {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
   }
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(`UPDATE gsc_sites SET is_active=false WHERE org_id=$1`, [orgId3]);
     await client.query(
@@ -136273,7 +136394,7 @@ async function getMonitoringStats(orgId3) {
   return stats;
 }
 async function syncMonitorsToDB(monitors, orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     for (const m2 of monitors) {
       const a = m2.attributes;
@@ -136321,7 +136442,7 @@ async function syncMonitorsToDB(monitors, orgId3) {
   }
 }
 async function syncIncidentsToDB(incidents, orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     for (const inc of incidents) {
       const a = inc.attributes;
@@ -136362,7 +136483,7 @@ async function syncIncidentsToDB(incidents, orgId3) {
   }
 }
 async function syncHeartbeatsToDB(hbs, orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     for (const hb of hbs) {
       const a = hb.attributes;
@@ -136397,7 +136518,7 @@ async function syncHeartbeatsToDB(hbs, orgId3) {
   }
 }
 async function syncStatusPagesToDB(pages, orgId3) {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     for (const p of pages) {
       const a = p.attributes;
@@ -136723,7 +136844,7 @@ router51.get("/diagnostics", async (_req, res) => {
   const t = (start) => Date.now() - start;
   const dbStart = Date.now();
   try {
-    const r = await pool2.query("SELECT NOW() AS now");
+    const r = await pool.query("SELECT NOW() AS now");
     checks["database"] = { ok: true, detail: `Connected \xB7 ${r.rows[0]?.now}`, ms: t(dbStart) };
   } catch (err) {
     checks["database"] = { ok: false, detail: String(err.message), ms: t(dbStart) };
@@ -136752,10 +136873,10 @@ router51.get("/diagnostics", async (_req, res) => {
   let indexCount = 0;
   try {
     const [tableRes, indexRes] = await Promise.all([
-      pool2.query(
+      pool.query(
         `SELECT count(*)::int AS cnt FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`
       ),
-      pool2.query(
+      pool.query(
         `SELECT count(*)::int AS cnt FROM pg_indexes WHERE schemaname = 'public'`
       )
     ]);
@@ -136771,7 +136892,7 @@ router51.get("/diagnostics", async (_req, res) => {
   const sessStart = Date.now();
   let activeSessions = 0;
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT count(*)::int AS cnt FROM sessions WHERE expires_at > $1`,
       [Date.now()]
     );
@@ -136851,11 +136972,11 @@ router51.get("/diagnostics/workers", async (_req, res) => {
   const workerList = cronResult.jobs ?? [];
   const now = Date.now();
   const [historyResult, failuresResult] = await Promise.allSettled([
-    pool2.query(
+    pool.query(
       `SELECT job_name, status, duration_ms, error, ran_at
          FROM cron_history ORDER BY ran_at DESC LIMIT 50`
     ),
-    pool2.query(
+    pool.query(
       `SELECT worker_name, error, failed_at
          FROM worker_failures ORDER BY failed_at DESC LIMIT 20`
     )
@@ -136893,7 +137014,7 @@ router51.get("/diagnostics/workers", async (_req, res) => {
 router51.get("/diagnostics/integrations", async (_req, res) => {
   let connectorRows = [];
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT provider, status, org_id FROM connectors ORDER BY provider`
     );
     connectorRows = r.rows;
@@ -137096,7 +137217,7 @@ router51.get("/diagnostics/billing", async (_req, res) => {
   const webhookRenderPresent = !!process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
   let lastBillingEvent = null;
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT type, created_at FROM billing_events ORDER BY created_at DESC LIMIT 1`
     );
     if (r.rows[0]) lastBillingEvent = { type: r.rows[0].type, createdAt: r.rows[0].created_at };
@@ -137134,7 +137255,7 @@ router51.get("/diagnostics/billing", async (_req, res) => {
 router51.get("/diagnostics/database", async (_req, res) => {
   const result = {};
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT count(*)::int AS cnt FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`
     );
     result["tableCount"] = r.rows[0]?.cnt ?? 0;
@@ -137142,7 +137263,7 @@ router51.get("/diagnostics/database", async (_req, res) => {
     result["tableCount"] = null;
   }
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT count(*)::int AS cnt FROM pg_indexes WHERE schemaname = 'public'`
     );
     result["indexCount"] = r.rows[0]?.cnt ?? 0;
@@ -137150,7 +137271,7 @@ router51.get("/diagnostics/database", async (_req, res) => {
     result["indexCount"] = null;
   }
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT count(*)::int AS cnt FROM information_schema.table_constraints WHERE constraint_schema='public' AND constraint_type='FOREIGN KEY'`
     );
     result["fkCount"] = r.rows[0]?.cnt ?? 0;
@@ -137158,7 +137279,7 @@ router51.get("/diagnostics/database", async (_req, res) => {
     result["fkCount"] = null;
   }
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT count(*)::int AS cnt FROM sessions WHERE expires_at > $1`,
       [Date.now()]
     );
@@ -137180,7 +137301,7 @@ router51.get("/diagnostics/database", async (_req, res) => {
   await Promise.allSettled(
     TABLE_COUNTS.map(async (tbl) => {
       try {
-        const r = await pool2.query(`SELECT count(*)::int AS cnt FROM ${tbl}`);
+        const r = await pool.query(`SELECT count(*)::int AS cnt FROM ${tbl}`);
         counts[tbl] = r.rows[0]?.cnt ?? 0;
       } catch {
         counts[tbl] = null;
@@ -137189,7 +137310,7 @@ router51.get("/diagnostics/database", async (_req, res) => {
   );
   result["rowCounts"] = counts;
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT tablename, pg_size_pretty(pg_total_relation_size(quote_ident(tablename))) AS size
          FROM pg_tables WHERE schemaname='public' ORDER BY tablename`
     );
@@ -137229,7 +137350,7 @@ function requireAdminKey(req, res) {
 }
 router52.get("/admin/stats", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
-  const safe3 = (sql2) => pool2.query(sql2).catch(() => ({ rows: [{ count: 0 }] }));
+  const safe3 = (sql2) => pool.query(sql2).catch(() => ({ rows: [{ count: 0 }] }));
   try {
     const [usersR, sessionsR, auditsR, monitorsR, kwardsR] = await Promise.all([
       safe3("SELECT COUNT(*)::int AS count FROM team_members"),
@@ -137254,7 +137375,7 @@ router52.get("/admin/stats", async (req, res) => {
 });
 router52.get("/admin/users", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const { rows } = await client.query(`
       SELECT
@@ -137286,7 +137407,7 @@ router52.post("/admin/user/block", async (req, res) => {
     res.status(400).json({ ok: false, error: "email is required" });
     return;
   }
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const { rowCount: rowCount2 } = await client.query(
       "DELETE FROM user_sessions WHERE email = $1",
@@ -137308,7 +137429,7 @@ router52.post("/admin/user/reset-usage", async (req, res) => {
     exports: { used: 0, limit: 30 },
     monitor: { used: 0, limit: 3 }
   };
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const { rowCount: rowCount2 } = await client.query(
       "UPDATE org_settings SET usage = $1::jsonb, updated_at = now() WHERE org_id = $2",
@@ -137332,7 +137453,7 @@ router52.post("/admin/user/set-plan", async (req, res) => {
     res.status(400).json({ ok: false, error: "plan must be one of: standard, pro, ultra" });
     return;
   }
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(
       "UPDATE org_settings SET plan = $1, updated_at = now() WHERE org_id = $2",
@@ -137348,15 +137469,15 @@ router52.post("/admin/user/set-plan", async (req, res) => {
 router52.post("/admin/demo-seed", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
   const { orgId: orgId3 = "default", clear = false } = req.body;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     if (clear) {
       await Promise.allSettled([
-        pool2.query("DELETE FROM audits WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId3]),
-        pool2.query("DELETE FROM monitors WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId3]),
-        pool2.query("DELETE FROM missions WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId3]),
-        pool2.query("DELETE FROM competitors WHERE id LIKE 'demo_%'"),
-        pool2.query("DELETE FROM tracked_keywords WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId3])
+        pool.query("DELETE FROM audits WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId3]),
+        pool.query("DELETE FROM monitors WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId3]),
+        pool.query("DELETE FROM missions WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId3]),
+        pool.query("DELETE FROM competitors WHERE id LIKE 'demo_%'"),
+        pool.query("DELETE FROM tracked_keywords WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId3])
       ]);
     }
     const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -137457,7 +137578,7 @@ router52.post("/admin/demo-seed", async (req, res) => {
 });
 router52.delete("/admin/sessions/expired", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const { rowCount: rowCount2 } = await client.query("DELETE FROM user_sessions WHERE expires_at <= now()");
     res.json({ ok: true, deletedCount: rowCount2 ?? 0 });
@@ -137471,12 +137592,12 @@ router52.get("/admin/db-check", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
   try {
     const [dbR, roleR, rlsR, tableR] = await Promise.all([
-      pool2.query(`SELECT current_database() AS db, version() AS pg_version,
+      pool.query(`SELECT current_database() AS db, version() AS pg_version,
                          inet_server_addr()::text AS host, inet_server_port() AS port`),
-      pool2.query(`SELECT rolname, rolsuper, rolbypassrls
+      pool.query(`SELECT rolname, rolsuper, rolbypassrls
                   FROM pg_roles WHERE rolname = 'app_user'`),
-      pool2.query(`SELECT COUNT(*)::int AS policy_count FROM pg_policies WHERE schemaname='public'`),
-      pool2.query(`SELECT COUNT(*)::int AS rls_tables
+      pool.query(`SELECT COUNT(*)::int AS policy_count FROM pg_policies WHERE schemaname='public'`),
+      pool.query(`SELECT COUNT(*)::int AS rls_tables
                   FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
                   WHERE n.nspname='public' AND c.relkind='r' AND c.relrowsecurity=true`)
     ]);
@@ -137507,7 +137628,7 @@ router52.post("/admin/test-session", async (req, res) => {
   const { orgId: orgId3 = "default", ttlMinutes = 60, role: rawRole = "admin" } = req.body;
   const VALID_ROLES = ["owner", "admin", "member", "viewer"];
   const role = VALID_ROLES.includes(rawRole) ? rawRole : "admin";
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId3)) {
       await client.query(
@@ -137573,7 +137694,7 @@ router52.post("/admin/provision-qa-account", async (req, res) => {
     return;
   }
   const callerUa = req.headers["user-agent"] ?? "unknown";
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query("BEGIN");
     await client.query(
@@ -137669,13 +137790,13 @@ router52.post("/admin/ai-usage-seed", async (req, res) => {
     return;
   }
   try {
-    await pool2.query(
+    await pool.query(
       `INSERT INTO organizations (id, name, slug, owner_user_id, status, plan)
        VALUES ($1::uuid, 'Test Org', 'test-org-' || left($1::text, 8), 'test-admin', 'active', 'pro')
        ON CONFLICT (id) DO NOTHING`,
       [orgId3]
     );
-    await pool2.query(
+    await pool.query(
       `INSERT INTO ai_monthly_usage (id, org_id, month, credits_used, cost_eur, request_count, tokens_used, reset_at, updated_at)
        VALUES ($1, $2, $3, $4, 0, 0, 0, $5, NOW())
        ON CONFLICT (org_id, month) DO UPDATE SET credits_used = EXCLUDED.credits_used, updated_at = NOW()`,
@@ -137690,19 +137811,19 @@ router52.get("/admin/rls", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
   try {
     const [coverage, unprotected, policies] = await Promise.all([
-      pool2.query(`
+      pool.query(`
         SELECT 
           (SELECT COUNT(*)::int FROM pg_tables WHERE schemaname='public') AS total_tables,
           (SELECT COUNT(*)::int FROM pg_tables WHERE schemaname='public' AND rowsecurity=true) AS rls_tables,
           (SELECT COUNT(*)::int FROM pg_policies WHERE schemaname='public') AS total_policies,
           (SELECT COUNT(*)::int FROM information_schema.columns WHERE table_schema='public' AND column_name='org_id') AS org_id_columns
       `),
-      pool2.query(`
+      pool.query(`
         SELECT tablename FROM pg_tables 
         WHERE schemaname='public' AND rowsecurity=false 
         ORDER BY tablename
       `),
-      pool2.query(`
+      pool.query(`
         SELECT tablename, COUNT(*)::int AS policy_count 
         FROM pg_policies WHERE schemaname='public' 
         GROUP BY tablename ORDER BY tablename LIMIT 30
@@ -137735,18 +137856,18 @@ router52.get("/admin/team-schema-check", async (req, res) => {
   }
   try {
     const [columnsR, constraintsR, indexesR] = await Promise.all([
-      pool2.query(`
+      pool.query(`
         SELECT column_name, is_nullable, column_default, data_type
         FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'team_members'
         ORDER BY ordinal_position
       `),
-      pool2.query(`
+      pool.query(`
         SELECT conname, contype, pg_get_constraintdef(oid) AS definition
         FROM pg_constraint
         WHERE conrelid = 'public.team_members'::regclass
       `),
-      pool2.query(`
+      pool.query(`
         SELECT indexname, indexdef
         FROM pg_indexes
         WHERE schemaname = 'public' AND tablename = 'team_members'
@@ -137777,7 +137898,7 @@ router52.get("/admin/team-schema-check", async (req, res) => {
       testExpires
     ];
     let poolProbe = { ok: false };
-    const pc = await pool2.connect();
+    const pc = await pool.connect();
     try {
       await pc.query("BEGIN");
       await pc.query(PROBE_SQL, PROBE_PARAMS);
@@ -137853,7 +137974,7 @@ router52.delete("/admin/purge-account", async (req, res) => {
     return;
   }
   const normalizedEmail = email.trim().toLowerCase();
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const legacyOrg = await client.query(
       `SELECT org_id FROM org_settings WHERE lower(org_id) = $1`,
@@ -137980,7 +138101,7 @@ router52.delete("/admin/purge-account", async (req, res) => {
 router52.post("/admin/purge-ghost-accounts", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
   const dry_run = req.body?.dry_run !== false;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const ghostOrgSettings = await client.query(`
       SELECT os.org_id::text AS ghost_email, os.created_at::date::text AS os_created
@@ -138198,7 +138319,7 @@ router52.post("/admin/purge-all-clients", async (req, res) => {
   }));
   const userExempt = Array.isArray(exempt_emails) ? exempt_emails.map((e) => e.trim().toLowerCase()).filter(Boolean) : [];
   const normalizedExempt = [.../* @__PURE__ */ new Set([...PURGE_SYSTEM_EMAILS, ...userExempt])];
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const usersToDelete = await client.query(
       `SELECT DISTINCT email FROM users
@@ -138665,7 +138786,7 @@ router52.post("/admin/reconcile-org-addons", async (req, res) => {
   const steps = [];
   try {
     if (resolvedOrgId.includes("@")) {
-      const uuidRes = await pool2.query(
+      const uuidRes = await pool.query(
         `SELECT id::text AS org_uuid FROM organizations WHERE lower(owner_email) = lower($1) LIMIT 1`,
         [resolvedOrgId]
       ).catch(() => ({ rows: [] }));
@@ -138682,7 +138803,7 @@ router52.post("/admin/reconcile-org-addons", async (req, res) => {
     }
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedOrgId);
     if (!customerId && isUuid) {
-      const r = await pool2.query(
+      const r = await pool.query(
         `SELECT COALESCE(stripe_customer_id, '') AS cid FROM organizations WHERE id = $1::uuid LIMIT 1`,
         [resolvedOrgId]
       ).catch((e) => {
@@ -138693,7 +138814,7 @@ router52.post("/admin/reconcile-org-addons", async (req, res) => {
       steps.push(`orgs_lookup:${customerId || "empty"}`);
     }
     if (!customerId) {
-      const r = await pool2.query(
+      const r = await pool.query(
         `SELECT COALESCE(stripe_customer_id, '') AS cid FROM org_settings
           WHERE (org_id = $1 OR lower(org_id::text) = lower($2))
             AND stripe_customer_id IS NOT NULL AND stripe_customer_id::text <> ''
@@ -138807,7 +138928,7 @@ router52.post("/admin/adopt-canonical-stripe-customer", async (req, res) => {
     return;
   }
   try {
-    const orgRow = await pool2.query(
+    const orgRow = await pool.query(
       `SELECT id::text, stripe_customer_id FROM organizations WHERE id = $1::uuid LIMIT 1`,
       [rawOrgId]
     );
@@ -138832,7 +138953,7 @@ router52.post("/admin/adopt-canonical-stripe-customer", async (req, res) => {
       res.status(400).json({ ok: false, error: `Customer ${canonicalCustomerId} is deleted in Stripe` });
       return;
     }
-    const client = await pool2.connect();
+    const client = await pool.connect();
     let legacyUpdated = false;
     try {
       await client.query("BEGIN");
@@ -138916,7 +139037,7 @@ router52.post("/admin/activate-addon-direct", async (req, res) => {
       res.status(400).json({ ok: false, error: "orgId must be a valid UUID" });
       return;
     }
-    const orgCheck = await pool2.query(`SELECT id::text FROM organizations WHERE id = $1::uuid LIMIT 1`, [rawOrgId]);
+    const orgCheck = await pool.query(`SELECT id::text FROM organizations WHERE id = $1::uuid LIMIT 1`, [rawOrgId]);
     if (!orgCheck.rows[0]) {
       res.status(404).json({ ok: false, error: `Org ${rawOrgId} not found in organizations` });
       return;
@@ -138926,7 +139047,7 @@ router52.post("/admin/activate-addon-direct", async (req, res) => {
     const rawHash = createHash9("sha1").update(`${canonicalOrgId}:${addonKey}`).digest("hex");
     const deterministicId = `${rawHash.slice(0, 8)}-${rawHash.slice(8, 12)}-5${rawHash.slice(13, 16)}-${rawHash.slice(16, 20)}-${rawHash.slice(20, 32)}`;
     const metaJson = JSON.stringify({ source: "admin_reconcile", piId: piId || null });
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       await client.query(
         `INSERT INTO org_addons (id, org_id, addon_key, active, quantity, activated_at, metadata)
@@ -138966,13 +139087,13 @@ router52.post("/admin/deactivate-addon-direct", async (req, res) => {
     return;
   }
   try {
-    const orgCheck = await pool2.query(`SELECT id::text FROM organizations WHERE id = $1::uuid LIMIT 1`, [rawOrgId]);
+    const orgCheck = await pool.query(`SELECT id::text FROM organizations WHERE id = $1::uuid LIMIT 1`, [rawOrgId]);
     if (!orgCheck.rows[0]) {
       res.status(404).json({ ok: false, error: `Org ${rawOrgId} not found in organizations` });
       return;
     }
     const canonicalOrgId = orgCheck.rows[0].id;
-    const client = await pool2.connect();
+    const client = await pool.connect();
     let rowCount2 = 0;
     try {
       const result = await client.query(
@@ -139019,7 +139140,7 @@ router52.post("/admin/test-activate-addon", async (req, res) => {
     const expectedId = `${_raw.slice(0, 8)}-${_raw.slice(8, 12)}-5${_raw.slice(13, 16)}-${_raw.slice(16, 20)}-${_raw.slice(20, 32)}`;
     const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
     const quotaBefore = await checkQuota2("monitors", rawOrgId);
-    const snapBefore = await pool2.query(
+    const snapBefore = await pool.query(
       `SELECT id, active::text, quantity FROM org_addons WHERE org_id=$1::uuid AND addon_key=$2 LIMIT 1`,
       [rawOrgId, addonKey]
     );
@@ -139032,13 +139153,13 @@ router52.post("/admin/test-activate-addon", async (req, res) => {
     } catch (err) {
       activateError = err?.message?.slice(0, 400) ?? String(err);
     }
-    const snapAfter = await pool2.query(
+    const snapAfter = await pool.query(
       `SELECT id, active::text, quantity FROM org_addons WHERE org_id=$1::uuid AND addon_key=$2 LIMIT 1`,
       [rawOrgId, addonKey]
     );
     const rowAfter = snapAfter.rows[0] ?? null;
     const quotaAfter = await checkQuota2("monitors", rawOrgId);
-    await pool2.query(
+    await pool.query(
       `UPDATE org_addons SET active=false, updated_at=NOW() WHERE org_id=$1::uuid AND addon_key=$2`,
       [rawOrgId, addonKey]
     );
@@ -139087,7 +139208,7 @@ router52.get("/admin/org-monitors", async (req, res) => {
     return;
   }
   try {
-    const r = await pool2.query(`SELECT id, name, url FROM monitors WHERE org_id=$1 ORDER BY created_at`, [orgId3]);
+    const r = await pool.query(`SELECT id, name, url FROM monitors WHERE org_id=$1 ORDER BY created_at`, [orgId3]);
     res.json({ monitors: r.rows });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
@@ -139103,7 +139224,7 @@ router52.post("/admin/create-monitor-api", async (req, res) => {
   try {
     const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
     const quota = await checkQuota2("monitors", orgId3);
-    const _cl = await pool2.connect();
+    const _cl = await pool.connect();
     try {
       await _cl.query("BEGIN");
       await _cl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${orgId3}:monitors`]);
@@ -139146,7 +139267,7 @@ router52.post("/admin/delete-monitor", async (req, res) => {
     return;
   }
   try {
-    const r = await pool2.query(`DELETE FROM monitors WHERE id=$1 AND org_id=$2`, [monitorId, orgId3]);
+    const r = await pool.query(`DELETE FROM monitors WHERE id=$1 AND org_id=$2`, [monitorId, orgId3]);
     res.json({ ok: true, rowCount: r.rowCount ?? 0 });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
@@ -139160,7 +139281,7 @@ router52.post("/admin/monitors-reset", async (req, res) => {
     return;
   }
   try {
-    const r = await pool2.query(`DELETE FROM monitors WHERE org_id=$1`, [orgId3]);
+    const r = await pool.query(`DELETE FROM monitors WHERE org_id=$1`, [orgId3]);
     res.json({ ok: true, deleted: r.rowCount ?? 0 });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
@@ -139174,7 +139295,7 @@ router52.post("/admin/audits-reset", async (req, res) => {
     return;
   }
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `DELETE FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
       [orgId3]
     );
@@ -139191,7 +139312,7 @@ router52.post("/admin/reports-reset", async (req, res) => {
     return;
   }
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `DELETE FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
       [orgId3]
     );
@@ -139213,8 +139334,8 @@ router52.post("/admin/set-plan", async (req, res) => {
     return;
   }
   try {
-    await pool2.query(`UPDATE organizations SET plan=$2 WHERE id=$1::uuid`, [orgId3, plan4.toLowerCase()]);
-    await pool2.query(`UPDATE org_settings SET plan=$2 WHERE org_id=$1`, [orgId3, plan4.toLowerCase()]);
+    await pool.query(`UPDATE organizations SET plan=$2 WHERE id=$1::uuid`, [orgId3, plan4.toLowerCase()]);
+    await pool.query(`UPDATE org_settings SET plan=$2 WHERE org_id=$1`, [orgId3, plan4.toLowerCase()]);
     res.json({ ok: true, orgId: orgId3, plan: plan4.toLowerCase() });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
@@ -139229,12 +139350,12 @@ router52.post("/admin/create-qa-org", async (req, res) => {
     const newUserId = randomUUID12();
     const email = `qa-${newOrgId.slice(0, 8)}@flowpoint-test.internal`;
     const slug = `qa-${newOrgId.slice(0, 8)}`;
-    await pool2.query(`
+    await pool.query(`
       INSERT INTO organizations (id, name, slug, owner_user_id, status, plan, created_at, updated_at)
       VALUES ($1, $2, $3, $4, 'active', $5, NOW(), NOW())
     `, [newOrgId, `QA ${label}`, slug, newUserId, plan4.toLowerCase()]);
     try {
-      await pool2.query(`
+      await pool.query(`
         INSERT INTO users (id, email, created_at, updated_at)
         VALUES ($1, $2, NOW(), NOW())
         ON CONFLICT (id) DO NOTHING
@@ -139242,7 +139363,7 @@ router52.post("/admin/create-qa-org", async (req, res) => {
     } catch {
     }
     try {
-      await pool2.query(`
+      await pool.query(`
         INSERT INTO org_settings (org_id, plan, stripe_customer_id, created_at, updated_at)
         VALUES ($1, $2, '', NOW(), NOW())
         ON CONFLICT (org_id) DO NOTHING
@@ -139263,7 +139384,7 @@ router52.post("/admin/delete-qa-org", async (req, res) => {
     return;
   }
   try {
-    const orgCheck = await pool2.query(
+    const orgCheck = await pool.query(
       `SELECT o.id::text,
               COALESCE(u.email, o.owner_email) AS email
          FROM organizations o
@@ -139280,7 +139401,7 @@ router52.post("/admin/delete-qa-org", async (req, res) => {
       res.status(403).json({ ok: false, error: "Not a QA org \u2014 only orgs with @flowpoint-test.internal email can be deleted via this endpoint" });
       return;
     }
-    const ownerRes = await pool2.query(`SELECT owner_user_id FROM organizations WHERE id=$1::uuid LIMIT 1`, [orgId3]);
+    const ownerRes = await pool.query(`SELECT owner_user_id FROM organizations WHERE id=$1::uuid LIMIT 1`, [orgId3]);
     const ownerUserId = ownerRes.rows[0]?.owner_user_id ?? null;
     const tables = [
       "monitors",
@@ -139301,14 +139422,14 @@ router52.post("/admin/delete-qa-org", async (req, res) => {
     let totalDeleted = 0;
     for (const t of tables) {
       try {
-        const r = await pool2.query(`DELETE FROM ${t} WHERE org_id=$1`, [orgId3]);
+        const r = await pool.query(`DELETE FROM ${t} WHERE org_id=$1`, [orgId3]);
         totalDeleted += r.rowCount ?? 0;
       } catch {
       }
     }
-    await pool2.query(`DELETE FROM organizations WHERE id=$1::uuid`, [orgId3]);
+    await pool.query(`DELETE FROM organizations WHERE id=$1::uuid`, [orgId3]);
     if (ownerUserId) {
-      await pool2.query(
+      await pool.query(
         `DELETE FROM users WHERE id=$1 AND (email LIKE '%@flowpoint-test.internal' OR email IS NULL)`,
         [ownerUserId]
       ).catch(() => {
@@ -139335,7 +139456,7 @@ router52.post("/admin/fast-fill", async (req, res) => {
       try {
         if (resource === "monitors") {
           const id = `m${ts}_${i}`;
-          await pool2.query(
+          await pool.query(
             `INSERT INTO monitors (id, org_id, name, url, status, uptime, latency, frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
              VALUES ($1,$2,$3,$4,'up',100,NULL,'5min','','',false,NULL,NOW(),NOW())
              ON CONFLICT (id) DO NOTHING`,
@@ -139343,7 +139464,7 @@ router52.post("/admin/fast-fill", async (req, res) => {
           );
         } else if (resource === "audits") {
           const id = `a_ff_${ts}_${i}`;
-          await pool2.query(
+          await pool.query(
             `INSERT INTO audits (id, org_id, url, status, score, speed, issues, name, date, origin, created_at)
              VALUES ($1,$2,$3,'completed',50,0,0,'FF Audit',to_char(NOW(),'YYYY-MM-DD'),'admin',NOW())
              ON CONFLICT (id) DO NOTHING`,
@@ -139351,7 +139472,7 @@ router52.post("/admin/fast-fill", async (req, res) => {
           );
         } else if (resource === "reports") {
           const id = `r_ff_${ts}_${i}`;
-          await pool2.query(
+          await pool.query(
             `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end)
              VALUES ($1,$2,$3,'PDF','seo',NOW(),0,false,'',false,true,'[]','','')
              ON CONFLICT (id) DO NOTHING`,
@@ -139380,7 +139501,7 @@ router52.post("/admin/create-audit-api", async (req, res) => {
   try {
     const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
     const _auLockKey = `${orgId3}:audits`;
-    const _auLockClient = await pool2.connect();
+    const _auLockClient = await pool.connect();
     try {
       await _auLockClient.query("BEGIN");
       await _auLockClient.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [_auLockKey]);
@@ -139419,7 +139540,7 @@ router52.post("/admin/create-report-api", async (req, res) => {
   try {
     const { checkQuota: checkQuota2 } = await Promise.resolve().then(() => (init_billing_service(), billing_service_exports));
     const { randomBytes: randomBytes9 } = await import("crypto");
-    const _cl = await pool2.connect();
+    const _cl = await pool.connect();
     try {
       await _cl.query("BEGIN");
       await _cl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${orgId3}:reports`]);
@@ -139448,15 +139569,135 @@ router52.post("/admin/create-report-api", async (req, res) => {
     if (!res.headersSent) res.status(500).json({ ok: false, error: safeErrMsg(err) });
   }
 });
-router52.post("/admin/seller-attributions", async (req, res) => {
+router52.post("/admin/sellers", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
-  const { org_id, seller_id: sellerCode, reason } = req.body;
-  if (!org_id || !sellerCode || !reason) {
-    res.status(400).json({ ok: false, error: "org_id, seller_id (seller_code), and reason are required" });
+  const { name, email, code: rawCode } = req.body;
+  try {
+    let sellerCode;
+    if (rawCode) {
+      sellerCode = String(rawCode).trim().toUpperCase();
+      if (!/^SELLER-[A-Z0-9]{1,20}$/.test(sellerCode)) {
+        res.status(400).json({ ok: false, error: "seller_code must match SELLER-[A-Z0-9]{1,20}" });
+        return;
+      }
+    } else {
+      const ts = Date.now().toString(36).toUpperCase().slice(-4);
+      const rnd = Math.random().toString(36).substring(2, 6).toUpperCase();
+      sellerCode = `SELLER-${ts}${rnd}`;
+    }
+    const r = await pool.query(
+      `INSERT INTO sellers (seller_code, name, email, status, created_at, updated_at)
+       VALUES ($1, $2, $3, 'active', NOW(), NOW())
+       ON CONFLICT (seller_code) DO NOTHING
+       RETURNING id, seller_code, name, email, status, created_at`,
+      [sellerCode, name ?? null, email ?? null]
+    );
+    if (!r.rows[0]) {
+      res.status(409).json({ ok: false, error: "A seller with this code already exists" });
+      return;
+    }
+    res.status(201).json({
+      ok: true,
+      seller: r.rows[0],
+      link: `https://app.flowpoint.pro/pricing.html?ref=${r.rows[0].seller_code}`
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.get("/admin/sellers", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  try {
+    const r = await pool.query(
+      `SELECT s.id, s.seller_code, s.name, s.email, s.status, s.created_at,
+              COUNT(DISTINCT o.id)::int                                                          AS org_count,
+              COUNT(sc.id)::int                                                                   AS commission_count,
+              COALESCE(SUM(sc.commission_amount_cents) FILTER (WHERE sc.status = 'paid'),   0)::int AS paid_cents,
+              COALESCE(SUM(sc.commission_amount_cents) FILTER (WHERE sc.status = 'pending'),0)::int AS pending_cents
+         FROM sellers s
+         LEFT JOIN organizations o ON o.seller_id = s.id
+         LEFT JOIN seller_commissions sc ON sc.seller_id = s.id
+        GROUP BY s.id
+        ORDER BY s.created_at DESC`
+    );
+    res.json({
+      ok: true,
+      sellers: r.rows.map((s) => ({
+        ...s,
+        link: `https://app.flowpoint.pro/pricing.html?ref=${s.seller_code}`
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.patch("/admin/sellers/:code", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const code = String(req.params["code"] ?? "").trim().toUpperCase();
+  const { name, email, status } = req.body;
+  if (status && !["active", "inactive"].includes(status)) {
+    res.status(400).json({ ok: false, error: "status must be 'active' or 'inactive'" });
     return;
   }
   try {
-    const orgR = await pool2.query(
+    const r = await pool.query(
+      `UPDATE sellers
+          SET name       = COALESCE($2, name),
+              email      = COALESCE($3, email),
+              status     = COALESCE($4, status),
+              updated_at = NOW()
+        WHERE seller_code = $1
+        RETURNING id, seller_code, name, email, status`,
+      [code, name ?? null, email ?? null, status ?? null]
+    );
+    if (!r.rows[0]) {
+      res.status(404).json({ ok: false, error: "Seller not found" });
+      return;
+    }
+    res.json({
+      ok: true,
+      seller: r.rows[0],
+      link: `https://app.flowpoint.pro/pricing.html?ref=${r.rows[0].seller_code}`
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/seller-commissions/:id/mark-paid", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const { id } = req.params;
+  const { paid_by, notes } = req.body;
+  try {
+    const r = await pool.query(
+      `UPDATE seller_commissions
+          SET status  = 'paid',
+              paid_at = COALESCE(paid_at, NOW()),
+              paid_by = COALESCE($2, paid_by),
+              notes   = COALESCE($3, notes)
+        WHERE id = $1
+        RETURNING id, status, commission_amount_cents, eligible_amount_cents, paid_at, paid_by, notes`,
+      [id, paid_by ?? null, notes ?? null]
+    );
+    if (!r.rows[0]) {
+      res.status(404).json({ ok: false, error: "Commission not found" });
+      return;
+    }
+    res.json({ ok: true, commission: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+router52.post("/admin/seller-attributions", async (req, res) => {
+  if (!requireAdminKey(req, res)) return;
+  const body = req.body;
+  const sellerCode = body["seller_code"] ?? body["seller_id"];
+  const { org_id, reason } = body;
+  if (!org_id || !sellerCode || !reason) {
+    res.status(400).json({ ok: false, error: "org_id, seller_code (or seller_id), and reason are required" });
+    return;
+  }
+  try {
+    const orgR = await pool.query(
       `SELECT id, owner_email, plan FROM organizations WHERE id = $1 LIMIT 1`,
       [org_id]
     );
@@ -139465,7 +139706,7 @@ router52.post("/admin/seller-attributions", async (req, res) => {
       return;
     }
     const org16 = orgR.rows[0];
-    const sellerR = await pool2.query(
+    const sellerR = await pool.query(
       `SELECT id, seller_code, name, status FROM sellers WHERE seller_code = $1 AND status = 'active' LIMIT 1`,
       [String(sellerCode).trim().toUpperCase()]
     );
@@ -139474,7 +139715,7 @@ router52.post("/admin/seller-attributions", async (req, res) => {
       return;
     }
     const seller = sellerR.rows[0];
-    const existingComm = await pool2.query(
+    const existingComm = await pool.query(
       `SELECT id, status, attribution_method FROM seller_commissions WHERE org_id = $1 LIMIT 1`,
       [org_id]
     );
@@ -139487,21 +139728,44 @@ router52.post("/admin/seller-attributions", async (req, res) => {
       res.json({ ok: true, action: "already_attributed", commission: ec, seller });
       return;
     }
-    await pool2.query(
-      `UPDATE organizations SET seller_id = $1 WHERE id = $2`,
+    const updR = await pool.query(
+      `UPDATE organizations SET seller_id = $1 WHERE id = $2 AND (seller_id IS NULL OR seller_id = '')
+       RETURNING id, stripe_customer_id, subscription_status`,
       [seller.id, org_id]
     );
-    const { recordCommission: _rcManual } = await Promise.resolve().then(() => (init_seller_attribution(), seller_attribution_exports));
-    await _rcManual({
-      sellerId: seller.id,
+    if (!updR.rows[0]) {
+      const existOrg = await pool.query(`SELECT seller_id FROM organizations WHERE id = $1`, [org_id]);
+      const existSellerId = existOrg.rows[0]?.seller_id;
+      res.json({ ok: true, action: "already_attributed_to_seller_id", existing_seller_id: existSellerId, seller, reason });
+      return;
+    }
+    const orgUpdated = updR.rows[0];
+    if (orgUpdated.stripe_customer_id) {
+      (async () => {
+        try {
+          const { getStripeKey: getStripeKey2, createStripeClient: _mkS } = await Promise.resolve().then(() => (init_stripe_factory(), stripe_factory_exports));
+          const _sk = getStripeKey2();
+          if (!_sk) return;
+          const _stripe = await _mkS(_sk);
+          const _meta = { seller_id: seller.seller_code, seller_attribution: "manual" };
+          await _stripe.customers.update(orgUpdated.stripe_customer_id, { metadata: _meta });
+          const _subs = await _stripe.subscriptions.list({ customer: orgUpdated.stripe_customer_id, status: "active", limit: 3 });
+          for (const _sub of _subs.data) {
+            await _stripe.subscriptions.update(_sub.id, { metadata: _meta });
+          }
+        } catch (_se) {
+        }
+      })().catch(() => {
+      });
+    }
+    res.json({
+      ok: true,
+      action: "attributed",
       orgId: org_id,
-      customerEmail: org16.owner_email,
-      plan: org16.plan,
-      eligibleAmountCents: 0,
-      currency: "eur",
-      attributionMethod: "manual"
+      seller,
+      reason,
+      note: "Commission will be created on the first real subscription payment received."
     });
-    res.json({ ok: true, action: "attributed", orgId: org_id, seller, reason });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   }
@@ -139510,7 +139774,7 @@ router52.get("/admin/sellers/:code/report", async (req, res) => {
   if (!requireAdminKey(req, res)) return;
   const code = String(req.params["code"] ?? "").trim().toUpperCase();
   try {
-    const sellerR = await pool2.query(
+    const sellerR = await pool.query(
       `SELECT id, seller_code, name, email, status, created_at FROM sellers WHERE seller_code = $1 LIMIT 1`,
       [code]
     );
@@ -139519,12 +139783,12 @@ router52.get("/admin/sellers/:code/report", async (req, res) => {
       return;
     }
     const seller = sellerR.rows[0];
-    const orgs = await pool2.query(
+    const orgs = await pool.query(
       `SELECT o.id, o.owner_email, o.plan, o.subscription_status, o.created_at
        FROM organizations o WHERE o.seller_id = $1 ORDER BY o.created_at DESC`,
       [seller.id]
     );
-    const comms = await pool2.query(
+    const comms = await pool.query(
       `SELECT sc.id, sc.org_id, sc.customer_email, sc.plan,
               sc.eligible_amount_cents, sc.commission_rate_bps, sc.commission_amount_cents,
               sc.currency, sc.status, sc.attribution_method, sc.attributed_at, sc.earned_at, sc.paid_at
@@ -139725,8 +139989,8 @@ router53.post("/org/geocode", async (req, res) => {
 router53.post("/org/location/sync-gbp", async (req, res) => {
   const orgId3 = req.orgContext?.orgId ?? "default";
   try {
-    const { pool: pool3 } = await Promise.resolve().then(() => (init_src(), src_exports));
-    const client = await pool3.connect();
+    const { pool: pool2 } = await Promise.resolve().then(() => (init_src(), src_exports));
+    const client = await pool2.connect();
     let tokenRow = null;
     try {
       const r = await client.query(
@@ -140148,30 +140412,41 @@ router54.post("/public/checkout-session", publicCheckoutRateLimit, async (req, r
     const stripe = await createStripeClient(stripeKey);
     let stripeCustomerId;
     let signupOrgId;
+    let signupRow = null;
     if (preRegisterToken) {
       const { pool: pgPool } = await Promise.resolve().then(() => (init_src(), src_exports));
       const dbClient = await pgPool.connect();
-      let signupRow2 = null;
+      let _csLockTxOpen = false;
       try {
+        await dbClient.query("BEGIN");
+        _csLockTxOpen = true;
         const r = await dbClient.query(
           `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, stripe_customer_id
-           FROM pending_signups WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL LIMIT 1`,
+           FROM pending_signups WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL LIMIT 1 FOR UPDATE`,
           [preRegisterToken]
         );
-        if (r.rows.length > 0) signupRow2 = r.rows[0];
-      } finally {
+        if (r.rows.length > 0) signupRow = r.rows[0];
+        if (!signupRow) {
+          await dbClient.query("ROLLBACK");
+          _csLockTxOpen = false;
+          dbClient.release();
+          res.status(400).json({ error: "Session d'inscription expir\xE9e ou invalide. Veuillez recommencer." });
+          return;
+        }
+      } catch (_csLockErr) {
+        if (_csLockTxOpen) {
+          await dbClient.query("ROLLBACK").catch(() => {
+          });
+        }
         dbClient.release();
+        throw _csLockErr;
       }
-      if (!signupRow2) {
-        res.status(400).json({ error: "Session d'inscription expir\xE9e ou invalide. Veuillez recommencer." });
-        return;
-      }
-      signupOrgId = signupRow2.email;
-      if (signupRow2.stripe_customer_id) {
+      signupOrgId = signupRow.email;
+      if (signupRow.stripe_customer_id) {
         try {
-          const existing = await stripe.customers.retrieve(signupRow2.stripe_customer_id);
+          const existing = await stripe.customers.retrieve(signupRow.stripe_customer_id);
           if (!existing.deleted) {
-            stripeCustomerId = signupRow2.stripe_customer_id;
+            stripeCustomerId = signupRow.stripe_customer_id;
             logger.info({ customerId: stripeCustomerId }, "[PublicBilling] checkout-session: reusing Stripe Customer from pending_signups");
           }
         } catch {
@@ -140189,7 +140464,7 @@ router54.post("/public/checkout-session", publicCheckoutRateLimit, async (req, r
                AND stripe_customer_id IS NOT NULL
                AND token != $2
              ORDER BY created_at DESC LIMIT 1`,
-            [signupRow2.email, preRegisterToken]
+            [signupRow.email, preRegisterToken]
           );
           if (_csCrossR.rows.length > 0) {
             const _csCrossId = _csCrossR.rows[0].stripe_customer_id;
@@ -140197,12 +140472,8 @@ router54.post("/public/checkout-session", publicCheckoutRateLimit, async (req, r
               const _csCrossEc = await stripe.customers.retrieve(_csCrossId);
               if (!_csCrossEc.deleted) {
                 stripeCustomerId = _csCrossId;
-                await _csCrossC.query(
-                  `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
-                  [stripeCustomerId, preRegisterToken]
-                );
                 logger.info(
-                  { customerId: stripeCustomerId, email: signupRow2.email },
+                  { customerId: stripeCustomerId, email: signupRow.email },
                   "[PublicBilling] checkout-session: reusing Stripe Customer from sibling pending_signup (cross-token dedup)"
                 );
               }
@@ -140214,22 +140485,12 @@ router54.post("/public/checkout-session", publicCheckoutRateLimit, async (req, r
         }
       }
       if (!stripeCustomerId) {
-        const _csEmailList = await stripe.customers.list({ email: signupRow2.email, limit: 5 });
+        const _csEmailList = await stripe.customers.list({ email: signupRow.email, limit: 5 });
         for (const _csEmailEc of _csEmailList.data) {
           if (_csEmailEc.deleted) continue;
           stripeCustomerId = _csEmailEc.id;
-          const { pool: _csFbPool } = await Promise.resolve().then(() => (init_src(), src_exports));
-          const _csFbC = await _csFbPool.connect();
-          try {
-            await _csFbC.query(
-              `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
-              [stripeCustomerId, preRegisterToken]
-            );
-          } finally {
-            _csFbC.release();
-          }
           logger.info(
-            { customerId: stripeCustomerId, email: signupRow2.email },
+            { customerId: stripeCustomerId, email: signupRow.email },
             "[PublicBilling] checkout-session: found existing Stripe Customer by email (cross-token fallback)"
           );
           break;
@@ -140237,50 +140498,55 @@ router54.post("/public/checkout-session", publicCheckoutRateLimit, async (req, r
       }
       if (!stripeCustomerId) {
         const customerData = {
-          email: signupRow2.email,
+          email: signupRow.email,
           // Real name from registration; fall back to local part of email (never use company_name as name)
-          name: `${signupRow2.first_name} ${signupRow2.last_name}`.trim() || signupRow2.email.split("@")[0],
+          name: `${signupRow.first_name} ${signupRow.last_name}`.trim() || signupRow.email.split("@")[0],
           // Only set description when company_name is a real company, not an email address
           // (Google OAuth signup stores "" or the user's email as company_name placeholder)
-          ...signupRow2.company_name && !signupRow2.company_name.includes("@") ? { description: signupRow2.company_name } : {},
+          ...signupRow.company_name && !signupRow.company_name.includes("@") ? { description: signupRow.company_name } : {},
           metadata: {
-            flowpointOrgId: signupRow2.email,
-            flowpointUserId: signupRow2.email,
-            orgId: signupRow2.email,
-            companyName: signupRow2.company_name,
-            firstName: signupRow2.first_name,
-            lastName: signupRow2.last_name,
+            flowpointOrgId: signupRow.email,
+            flowpointUserId: signupRow.email,
+            orgId: signupRow.email,
+            companyName: signupRow.company_name,
+            firstName: signupRow.first_name,
+            lastName: signupRow.last_name,
             pre_register_token: preRegisterToken,
             signup_source: "new_signup_flow",
             environment: process.env["NODE_ENV"] === "production" ? "production" : "development",
-            ...signupRow2.vat ? { vat: signupRow2.vat } : {}
+            ...signupRow.vat ? { vat: signupRow.vat } : {}
           }
         };
-        if (signupRow2.address || signupRow2.city || signupRow2.country) {
+        if (signupRow.address || signupRow.city || signupRow.country) {
           customerData.address = {
-            line1: signupRow2.address ?? "",
-            city: signupRow2.city ?? "",
-            postal_code: signupRow2.postal_code ?? "",
-            country: signupRow2.country ?? ""
+            line1: signupRow.address ?? "",
+            city: signupRow.city ?? "",
+            postal_code: signupRow.postal_code ?? "",
+            country: signupRow.country ?? ""
           };
         }
-        if (signupRow2.phone) customerData.phone = signupRow2.phone;
+        if (signupRow.phone) customerData.phone = signupRow.phone;
         const stripeCustomer = await stripe.customers.create(customerData);
         stripeCustomerId = stripeCustomer.id;
-        const { pool: _csStorePool } = await Promise.resolve().then(() => (init_src(), src_exports));
-        const _csStoreC = await _csStorePool.connect();
-        try {
-          await _csStoreC.query(
-            `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
-            [stripeCustomerId, preRegisterToken]
-          );
-        } finally {
-          _csStoreC.release();
-        }
         logger.info(
           { customerId: stripeCustomerId, orgId: signupOrgId },
           "[PublicBilling] Stripe Customer created and stored in pending_signups"
         );
+      }
+      try {
+        await dbClient.query(
+          `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
+          [stripeCustomerId, preRegisterToken]
+        );
+        await dbClient.query("COMMIT");
+        _csLockTxOpen = false;
+      } catch (_csCommitErr) {
+        await dbClient.query("ROLLBACK").catch(() => {
+        });
+        _csLockTxOpen = false;
+        throw _csCommitErr;
+      } finally {
+        dbClient.release();
       }
     }
     if (!preRegisterToken) {
@@ -140301,18 +140567,89 @@ router54.post("/public/checkout-session", publicCheckoutRateLimit, async (req, r
             try {
               const { loadBillingContext: _csLbc } = await Promise.resolve().then(() => (init_billing_context(), billing_context_exports));
               const _authCtx = await _csLbc(_sess.orgId);
-              const { ensureStripeCustomer: _escFn } = await Promise.resolve().then(() => (init_ensure_stripe_customer(), ensure_stripe_customer_exports));
-              const _escHint = {
-                stripeCustomerId: _authCtx.stripeCustomerId,
-                email: _authCtx.email,
-                firstName: _authCtx.firstName,
-                orgName: _authCtx.orgName
-              };
-              const _resolvedCustomerId = await _escFn(_sess.orgId, _escHint, stripeKey);
-              stripeCustomerId = _resolvedCustomerId;
-              if (!_authCtx.stripeCustomerId || _authCtx.stripeCustomerId !== _resolvedCustomerId) {
-                const { persistOrgData: _escPod } = await Promise.resolve().then(() => (init_org_data(), org_data_exports));
-                await _escPod(_sess.orgId, { stripeCustomerId: _resolvedCustomerId });
+              if (!_authCtx.stripeCustomerId && _authCtx.email) {
+                try {
+                  const { pool: _csBridgePool } = await Promise.resolve().then(() => (init_src(), src_exports));
+                  const _csBridgeC = await _csBridgePool.connect();
+                  let _csBridgeCid = null;
+                  try {
+                    const _csBridgeRows = await _csBridgeC.query(
+                      `SELECT stripe_customer_id FROM pending_signups
+                       WHERE lower(email) = lower($1)
+                         AND stripe_customer_id IS NOT NULL
+                         AND created_at > NOW() - INTERVAL '90 days'
+                       ORDER BY created_at DESC LIMIT 5`,
+                      [_authCtx.email]
+                    );
+                    for (const _psRow of _csBridgeRows.rows) {
+                      const _psCid = _psRow.stripe_customer_id;
+                      const { pool: _csAnchorPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+                      const _csAnchorC = await _csAnchorPool.connect();
+                      let _isConflict = false;
+                      try {
+                        const _csConflict = await _csAnchorC.query(
+                          `SELECT 1 FROM organizations
+                           WHERE stripe_customer_id = $1 AND id != $2::uuid LIMIT 1`,
+                          [_psCid, _sess.orgId]
+                        );
+                        _isConflict = _csConflict.rows.length > 0;
+                      } finally {
+                        _csAnchorC.release();
+                      }
+                      if (_isConflict) {
+                        logger.warn(
+                          { customerId: _psCid, orgId: _sess.orgId },
+                          "[PublicBilling] checkout-session: pending_signup Customer anchored to another org \u2014 skipping"
+                        );
+                        continue;
+                      }
+                      _csBridgeCid = _psCid;
+                      break;
+                    }
+                  } finally {
+                    _csBridgeC.release();
+                  }
+                  if (_csBridgeCid) {
+                    const _csBridgeEc = await stripe.customers.retrieve(_csBridgeCid);
+                    if (!_csBridgeEc.deleted) {
+                      await stripe.customers.update(_csBridgeCid, {
+                        metadata: {
+                          flowpointOrgId: _sess.orgId,
+                          orgId: _sess.orgId,
+                          org_id: _sess.orgId
+                        }
+                      }).catch(() => {
+                      });
+                      stripeCustomerId = _csBridgeCid;
+                      const { persistOrgData: _csBridgePod } = await Promise.resolve().then(() => (init_org_data(), org_data_exports));
+                      await _csBridgePod(_sess.orgId, { stripeCustomerId: _csBridgeCid });
+                      logger.info(
+                        { customerId: _csBridgeCid, orgId: _sess.orgId, email: _authCtx.email },
+                        "[PublicBilling] checkout-session: pre-register Customer reused for UUID org \u2014 metadata normalised to UUID (email\u2192UUID bridge)"
+                      );
+                    }
+                  }
+                } catch (_csBridgeErr) {
+                  logger.warn(
+                    { _csBridgeErr, orgId: _sess.orgId },
+                    "[PublicBilling] checkout-session: pre-register bridge lookup failed (non-fatal \u2014 falling through to ensureStripeCustomer)"
+                  );
+                }
+              }
+              if (!stripeCustomerId) {
+                const { ensureStripeCustomer: _escFn } = await Promise.resolve().then(() => (init_ensure_stripe_customer(), ensure_stripe_customer_exports));
+                const _escHint = {
+                  stripeCustomerId: _authCtx.stripeCustomerId,
+                  email: _authCtx.email,
+                  firstName: _authCtx.firstName,
+                  orgName: _authCtx.orgName
+                };
+                const _resolvedCustomerId = await _escFn(_sess.orgId, _escHint, stripeKey);
+                stripeCustomerId = _resolvedCustomerId;
+                if (!_authCtx.stripeCustomerId || _authCtx.stripeCustomerId !== _resolvedCustomerId) {
+                  const { persistOrgData: _escPod } = await Promise.resolve().then(() => (init_org_data(), org_data_exports));
+                  await _escPod(_sess.orgId, { stripeCustomerId: _resolvedCustomerId });
+                }
               }
               logger.info(
                 { customerId: stripeCustomerId, orgId: _sess.orgId, wasNew: !_authCtx.stripeCustomerId },
@@ -140366,7 +140703,8 @@ router54.post("/public/checkout-session", publicCheckoutRateLimit, async (req, r
         const { resolveSellerIdFromToken: _rsit } = await Promise.resolve().then(() => (init_seller_attribution(), seller_attribution_exports));
         const _sid = await _rsit(preRegisterToken);
         if (_sid) {
-          const _sr = await pool.query(
+          const { pool: _csSelPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+          const _sr = await _csSelPool.query(
             `SELECT seller_code FROM sellers WHERE id = $1 AND status = 'active' LIMIT 1`,
             [_sid]
           );
@@ -140589,18 +140927,30 @@ router54.post("/public/payment-intent", publicCheckoutRateLimit, async (req, res
         const { pool: _piPool } = await Promise.resolve().then(() => (init_src(), src_exports));
         const _piC = await _piPool.connect();
         let _piRow = null;
+        let _piTxOpen = false;
         try {
+          await _piC.query("BEGIN");
+          _piTxOpen = true;
           const _piR = await _piC.query(
             `SELECT email, first_name, last_name, company_name,
                     address, city, postal_code, country, stripe_customer_id
-             FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
+             FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1 FOR UPDATE`,
             [preRegisterToken]
           );
           _piRow = _piR.rows[0] ?? null;
-        } finally {
+        } catch (_piLockErr) {
+          if (_piTxOpen) {
+            await _piC.query("ROLLBACK").catch(() => {
+            });
+          }
           _piC.release();
+          throw _piLockErr;
         }
-        if (_piRow) {
+        if (!_piRow) {
+          await _piC.query("ROLLBACK").catch(() => {
+          });
+          _piC.release();
+        } else {
           const _piEmail = _piRow.email;
           metadata["orgId"] = _piEmail;
           metadata["org_id"] = _piEmail;
@@ -140679,12 +141029,19 @@ router54.post("/public/payment-intent", publicCheckoutRateLimit, async (req, res
             preRegCustomerId = _piNewC.id;
             logger.info({ customerId: preRegCustomerId }, "[PublicBilling] payment-intent: created Stripe Customer");
           }
-          const { pool: _piStorePool } = await Promise.resolve().then(() => (init_src(), src_exports));
-          const _piSc = await _piStorePool.connect();
           try {
-            await _piSc.query(`UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`, [preRegCustomerId, preRegisterToken]);
+            await _piC.query(`UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`, [preRegCustomerId, preRegisterToken]);
+            await _piC.query("COMMIT");
+            _piTxOpen = false;
+          } catch (_piWriteErr) {
+            if (_piTxOpen) {
+              await _piC.query("ROLLBACK").catch(() => {
+              });
+              _piTxOpen = false;
+            }
+            throw _piWriteErr;
           } finally {
-            _piSc.release();
+            _piC.release();
           }
         }
       } catch (_piLookupErr) {
@@ -140778,7 +141135,7 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
   const addons = parseAddonsPub(body?.addons ?? {}, res);
   if (addons === null) return;
   const _fcPreRegRaw = body?.preRegisterToken;
-  const preRegisterToken = typeof _fcPreRegRaw === "string" ? _fcPreRegRaw.trim() : "";
+  let preRegisterToken = typeof _fcPreRegRaw === "string" ? _fcPreRegRaw.trim() : "";
   const stripeKey = getStripeKey();
   if (!stripeKey) {
     res.status(503).json({ error: "Payment service not configured." });
@@ -140828,6 +141185,43 @@ router54.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req, 
       }
     } catch (_fcBypassErr) {
       logger.warn({ _fcBypassErr }, "[PublicBilling/finalize-checkout] preRegisterToken lookup failed (non-fatal)");
+    }
+  }
+  if (!_authenticatedOrgId && intentId && (intentType === "payment" || intentType === "setup")) {
+    try {
+      const { getStripeKey: _gskC, createStripeClient: _cscC } = await Promise.resolve().then(() => (init_stripe_factory(), stripe_factory_exports));
+      const _recKey = _gskC();
+      if (_recKey) {
+        const _recStripe = await _cscC(_recKey);
+        const _recRaw = intentType === "payment" ? await _recStripe.paymentIntents.retrieve(String(intentId)) : await _recStripe.setupIntents.retrieve(String(intentId));
+        const _recMeta = _recRaw.metadata ?? {};
+        const _recPrt = _recMeta["pre_register_token"] ?? "";
+        if (_recPrt) {
+          const { pool: _recPool } = await Promise.resolve().then(() => (init_src(), src_exports));
+          const _recC = await _recPool.connect();
+          try {
+            const _recR = await _recC.query(
+              `SELECT email FROM pending_signups WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+              [_recPrt]
+            );
+            if (_recR.rows[0]?.email) {
+              _authenticatedOrgId = _recR.rows[0].email;
+              preRegisterToken = _recPrt;
+              logger.info(
+                { orgId: _authenticatedOrgId },
+                "[PublicBilling/finalize-checkout] Path C: authenticated via PI/SI metadata pre_register_token"
+              );
+            }
+          } finally {
+            _recC.release();
+          }
+        }
+      }
+    } catch (_pathCErr) {
+      logger.warn(
+        { _pathCErr },
+        "[PublicBilling/finalize-checkout] Path C: PI/SI metadata recovery failed (non-fatal)"
+      );
     }
   }
   if (!_authenticatedOrgId) {
@@ -142125,8 +142519,8 @@ router57.get("/data/storage", async (req, res) => {
   const orgId3 = requireOrgId(req, res);
   if (!orgId3) return;
   try {
-    const { pool: pool3 } = await Promise.resolve().then(() => (init_src(), src_exports));
-    const client = await pool3.connect();
+    const { pool: pool2 } = await Promise.resolve().then(() => (init_src(), src_exports));
+    const client = await pool2.connect();
     try {
       const counts = await Promise.all([
         client.query(`SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1`, [orgId3]).catch(() => ({ rows: [{ n: 0 }] })),
@@ -143066,7 +143460,7 @@ async function queryGSCPages(orgId3, opts) {
 async function queryAudits(orgId3, opts) {
   const days = opts.days ?? 90;
   let rows = [];
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const since = new Date(Date.now() - days * 864e5).toISOString();
     const result = await client.query(
@@ -143093,7 +143487,7 @@ async function queryAudits(orgId3, opts) {
 }
 async function queryMonitors(orgId3, opts) {
   let rows = [];
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const result = await client.query(
       `SELECT id, name, url, status, uptime, response_time, created_at FROM monitors WHERE org_id=$1 ORDER BY name LIMIT 500`,
@@ -143122,7 +143516,7 @@ async function queryMonitors(orgId3, opts) {
 async function queryMissions(orgId3, opts) {
   const days = opts.days ?? 90;
   let rows = [];
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const since = new Date(Date.now() - days * 864e5).toISOString();
     const result = await client.query(
@@ -143293,7 +143687,7 @@ router64.get("/export", async (req, res) => {
 router64.get("/dashboards", async (req, res) => {
   const orgId3 = org14(req);
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `SELECT id, name, description, widgets, icon, color, created_at, updated_at
        FROM custom_dashboards WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`,
       [orgId3]
@@ -143314,7 +143708,7 @@ router64.post("/dashboards", async (req, res) => {
   const id = randomBytes8(12).toString("hex");
   const now = (/* @__PURE__ */ new Date()).toISOString();
   try {
-    await pool2.query(
+    await pool.query(
       `INSERT INTO custom_dashboards (id, org_id, name, description, icon, color, widgets, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [
@@ -143341,7 +143735,7 @@ router64.post("/dashboards", async (req, res) => {
 router64.delete("/dashboards/:id", async (req, res) => {
   const orgId3 = org14(req);
   try {
-    const r = await pool2.query(
+    const r = await pool.query(
       `DELETE FROM custom_dashboards WHERE id=$1 AND org_id=$2 RETURNING id`,
       [req.params["id"], orgId3]
     );
@@ -143379,7 +143773,7 @@ async function selfHealDataTables2() {
 async function getClientStatus(orgId3) {
   let plan4 = null;
   let siteCount = 0;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const r = await client.query(`SELECT plan FROM organizations WHERE id=$1 LIMIT 1`, [orgId3]);
     plan4 = r.rows?.[0]?.plan ? String(r.rows[0].plan) : null;
@@ -143419,7 +143813,7 @@ async function getClientKPIs(orgId3) {
   let missionsTotal = 0;
   let missionsDone = 0;
   let gbpRating = null;
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const ar = await client.query(`SELECT COUNT(*) as c, AVG(score) as avg FROM audits WHERE org_id=$1`, [orgId3]);
     auditCount = Number(ar.rows?.[0]?.c ?? 0);
@@ -143482,7 +143876,7 @@ async function getClientReports(orgId3) {
        WHERE r.org_id=$1 AND r.shared=true
        ORDER BY r.date DESC LIMIT 50`;
   const runQuery = async () => {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const r = await client.query(sql2, [orgId3]);
       return (r.rows ?? []).map((row) => ({
@@ -143512,7 +143906,7 @@ async function getClientReports(orgId3) {
 async function getClientAudits(orgId3, limit2 = 20) {
   const sql2 = `SELECT id, url, score, created_at, status FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT $2`;
   const runQuery = async () => {
-    const client = await pool2.connect();
+    const client = await pool.connect();
     try {
       const r = await client.query(sql2, [orgId3, limit2]);
       return (r.rows ?? []).map((row) => ({
@@ -143590,7 +143984,7 @@ router65.post("/reports/:reportId/send", async (req, res) => {
   let reportName = "Rapport client";
   let reportUrl;
   try {
-    const rr = await pool2.query(
+    const rr = await pool.query(
       `SELECT id, name, title FROM reports WHERE id=$1 AND org_id=$2 LIMIT 1`,
       [reportId, orgId3]
     );
@@ -143984,7 +144378,7 @@ router67.get("/settings/data-export", async (req, res) => {
   } catch (_qErr) {
     logger.warn({ err: _qErr, orgId: orgId3 }, "[data-export] quota check failed \u2014 allowing export");
   }
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     const organizationRows = await querySection(client, "organizations", `
       SELECT id, name, website, plan, subscription_status, trial_ends_at,
@@ -144213,25 +144607,64 @@ router67.get("/settings/data-export", async (req, res) => {
 });
 var org_data_export_default = router67;
 
-// src/routes/index.ts
+// src/routes/onboarding.ts
+var import_express68 = __toESM(require_express2(), 1);
+init_require_org_id();
+init_logger();
+var orgDb8 = (req) => req.orgDb.bind(req);
 var router68 = (0, import_express68.Router)();
-router68.use(health_default);
-router68.use(share_default);
-router68.use(stripe_webhook_default);
-router68.use(auth_default);
-router68.get("/billing/config", (_req, res) => {
+router68.get("/onboarding/status", async (req, res) => {
+  const orgId3 = requireOrgId(req, res);
+  if (!orgId3) return;
+  try {
+    const r = await orgDb8(req)(`SELECT settings->>'onboardingCompletedAt' AS cat FROM user_prefs WHERE org_id=$1`, [orgId3]);
+    const completedAt = r.rows[0]?.["cat"] ?? null;
+    res.json({ completed: !!completedAt, completedAt });
+  } catch (err) {
+    logger.warn({ err }, "[onboarding] status check failed \u2014 returning not-completed");
+    res.json({ completed: false, completedAt: null });
+  }
+});
+router68.post("/onboarding/complete", async (req, res) => {
+  const orgId3 = requireOrgId(req, res);
+  if (!orgId3) return;
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  try {
+    await orgDb8(req)(`
+      INSERT INTO user_prefs (org_id, settings, updated_at)
+      VALUES ($1, jsonb_build_object('onboardingCompletedAt', $2::text), now())
+      ON CONFLICT (org_id) DO UPDATE
+        SET settings    = COALESCE(user_prefs.settings, '{}'::jsonb)
+                          || jsonb_build_object('onboardingCompletedAt', $2::text),
+            updated_at  = now()
+    `, [orgId3, now]);
+    res.json({ ok: true, completedAt: now });
+  } catch (err) {
+    logger.warn({ err }, "[onboarding] failed to persist completion \u2014 client continues");
+    res.json({ ok: false });
+  }
+});
+var onboarding_default = router68;
+
+// src/routes/index.ts
+var router69 = (0, import_express69.Router)();
+router69.use(health_default);
+router69.use(share_default);
+router69.use(stripe_webhook_default);
+router69.use(auth_default);
+router69.get("/billing/config", (_req, res) => {
   res.json({ publishableKey: process.env["STRIPE_PUBLISHABLE_KEY"] ?? process.env["PUBLIC_STRIPE_API_KEY"] ?? "" });
 });
-router68.use(googlePublicRouter);
-router68.use(admin_default);
-router68.use(publicBehavioralRouter);
-router68.use(publicSsoRouter);
-router68.use(public_billing_default);
-router68.use(plans_default);
-router68.use(publicQaRouter);
-router68.use(publicTeamRouter);
-router68.use(requireAuth);
-router68.use((req, res, next) => {
+router69.use(googlePublicRouter);
+router69.use(admin_default);
+router69.use(publicBehavioralRouter);
+router69.use(publicSsoRouter);
+router69.use(public_billing_default);
+router69.use(plans_default);
+router69.use(publicQaRouter);
+router69.use(publicTeamRouter);
+router69.use(requireAuth);
+router69.use((req, res, next) => {
   const serviceSecret = process.env["API_SECRET_KEY"];
   const isProduction2 = process.env["NODE_ENV"] === "production";
   if (!serviceSecret && !isProduction2) {
@@ -144261,67 +144694,68 @@ router68.use((req, res, next) => {
   }
   next();
 });
-router68.use(me_default);
-router68.use(org_data_export_default);
-router68.use(overview_default);
-router68.use(audits_default);
-router68.use(monitors_default);
-router68.use(reports_default);
-router68.use(team_default);
-router68.use(ai_default);
-router68.use(billing_default);
-router68.use(alert_rules_default);
-router68.use(router8);
-router68.use(activity_default);
-router68.use(events_default);
-router68.use(calendar_events_default);
-router68.use(missions_default);
-router68.use(keywords_default);
-router68.use(competitors_default);
-router68.use(notifications_default);
-router68.use(team_messages_default);
-router68.use(team_files_default);
-router68.use(connectors_default);
-router68.use(addons_default);
-router68.use(ai_credits_default);
-router68.use(behavioral_default);
-router68.use(cro_default);
-router68.use(revenue_leak_default);
-router68.use(forecast_default);
-router68.use(automation_default);
-router68.use(integrations_default);
-router68.use(crm_default);
-router68.use(permissions_default);
-router68.use(market_intelligence_default);
-router68.use(review_intelligence_default);
-router68.use(gbp_posts_default);
-router68.use(local_maps_default);
-router68.use(sso_default);
-router68.use(white_label_default);
-router68.use(ai_workspace_launch_default);
-router68.use(google_default);
-router68.use(seo_default);
-router68.use(maps_default);
-router68.use(ga4_default);
-router68.use(funnels_default);
-router68.use(pagespeed_default);
-router68.use(github_default);
-router68.use(gsc_default);
-router68.use(betterstack_default);
-router68.use(diagnostics_default);
-router68.use(location_default);
-router68.use(security_default);
-router68.use(growth_objectives_default);
-router68.use("/analytics", analytics_default);
-router68.use("/traffic", traffic_default);
-router68.use("/campaigns", campaigns_default);
-router68.use("/audience", audience_default);
-router68.use("/live", live_default);
-router68.use("/conversion", conversion_default);
-router68.use("/data-explorer", data_explorer_default);
-router68.use("/client-mode", client_mode_default);
-router68.use(progression_default);
-var routes_default = router68;
+router69.use(me_default);
+router69.use(onboarding_default);
+router69.use(org_data_export_default);
+router69.use(overview_default);
+router69.use(audits_default);
+router69.use(monitors_default);
+router69.use(reports_default);
+router69.use(team_default);
+router69.use(ai_default);
+router69.use(billing_default);
+router69.use(alert_rules_default);
+router69.use(router8);
+router69.use(activity_default);
+router69.use(events_default);
+router69.use(calendar_events_default);
+router69.use(missions_default);
+router69.use(keywords_default);
+router69.use(competitors_default);
+router69.use(notifications_default);
+router69.use(team_messages_default);
+router69.use(team_files_default);
+router69.use(connectors_default);
+router69.use(addons_default);
+router69.use(ai_credits_default);
+router69.use(behavioral_default);
+router69.use(cro_default);
+router69.use(revenue_leak_default);
+router69.use(forecast_default);
+router69.use(automation_default);
+router69.use(integrations_default);
+router69.use(crm_default);
+router69.use(permissions_default);
+router69.use(market_intelligence_default);
+router69.use(review_intelligence_default);
+router69.use(gbp_posts_default);
+router69.use(local_maps_default);
+router69.use(sso_default);
+router69.use(white_label_default);
+router69.use(ai_workspace_launch_default);
+router69.use(google_default);
+router69.use(seo_default);
+router69.use(maps_default);
+router69.use(ga4_default);
+router69.use(funnels_default);
+router69.use(pagespeed_default);
+router69.use(github_default);
+router69.use(gsc_default);
+router69.use(betterstack_default);
+router69.use(diagnostics_default);
+router69.use(location_default);
+router69.use(security_default);
+router69.use(growth_objectives_default);
+router69.use("/analytics", analytics_default);
+router69.use("/traffic", traffic_default);
+router69.use("/campaigns", campaigns_default);
+router69.use("/audience", audience_default);
+router69.use("/live", live_default);
+router69.use("/conversion", conversion_default);
+router69.use("/data-explorer", data_explorer_default);
+router69.use("/client-mode", client_mode_default);
+router69.use(progression_default);
+var routes_default = router69;
 
 // src/app.ts
 init_logger();
@@ -144470,7 +144904,7 @@ async function _orgContext(req, res, next) {
       const isSecret = token.startsWith("fp_sec_");
       const field = isSecret ? "secretApiKey" : "publicApiKey";
       try {
-        const result = await pool2.query(
+        const result = await pool.query(
           `SELECT org_id FROM user_prefs WHERE settings->>'${field}' = $1 LIMIT 1`,
           [token]
         );
@@ -144512,7 +144946,7 @@ function dbContext(req, _res, next) {
 // src/app.ts
 init_rateLimiter();
 var __dirname2 = path7.dirname(fileURLToPath(import.meta.url));
-var app = (0, import_express69.default)();
+var app = (0, import_express70.default)();
 app.set("trust proxy", 1);
 app.use(
   (0, import_compression.default)({
@@ -144617,15 +145051,15 @@ app.use((req, res, next) => {
 for (const webhookPath of ["/api/webhooks/stripe", "/api/billing/webhook"]) {
   app.use(
     webhookPath,
-    import_express69.default.raw({ type: "application/json" }),
+    import_express70.default.raw({ type: "application/json" }),
     (req, _res, next) => {
       req.rawBody = req.body;
       next();
     }
   );
 }
-app.use(import_express69.default.json({ limit: "2mb" }));
-app.use(import_express69.default.urlencoded({ extended: true }));
+app.use(import_express70.default.json({ limit: "2mb" }));
+app.use(import_express70.default.urlencoded({ extended: true }));
 app.use((0, import_cookie_parser.default)());
 app.use(orgContext);
 app.use(dbContext);
@@ -144814,7 +145248,7 @@ app.get("/.well-known/security.txt", (_req, res) => {
 app.get(["/api/dashboard", "/api/dashboard/", "/api/dashboard/dashboard.html"], (_req, res) => {
   res.redirect(301, "/dashboard.html");
 });
-app.use("/", staticCache, import_express69.default.static(dashboardDir, { index: false }));
+app.use("/", staticCache, import_express70.default.static(dashboardDir, { index: false }));
 app.use("/api", routes_default);
 app.use((req, res) => {
   res.status(404).json({
@@ -144834,7 +145268,7 @@ init_src();
 init_src();
 init_logger();
 async function initMissionsTables() {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS missions (
@@ -144956,7 +145390,7 @@ async function initMissionsTables() {
 init_src();
 init_logger();
 async function initAutomationTables() {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS automation_workflows (
@@ -145109,7 +145543,7 @@ async function initAutomationTables() {
 init_src();
 init_logger();
 async function initMonitorsTables() {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS monitors (
@@ -145306,7 +145740,7 @@ init_init_data_tables();
 init_src();
 init_logger();
 async function initRlsSetup() {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   client.on("error", (err) => {
     logger.warn({ err }, "[init-rls-setup] client error event absorbed (connection terminated by server)");
   });
@@ -145340,7 +145774,7 @@ async function initRlsSetup() {
     if (membershipGranted) {
       let probeClient = null;
       try {
-        probeClient = await pool2.connect();
+        probeClient = await pool.connect();
         probeClient.on("error", () => {
         });
         await probeClient.query("SET ROLE app_user");
@@ -145513,7 +145947,7 @@ var BACKEND_ONLY_TABLES = [
   "schema_migrations"
 ];
 async function runRlsMigrationIfNeeded() {
-  const sentinelRes = await pool2.query(`
+  const sentinelRes = await pool.query(`
     SELECT COUNT(*)::int AS missing
     FROM pg_tables
     WHERE schemaname = 'public' AND rowsecurity = false
@@ -145522,7 +145956,7 @@ async function runRlsMigrationIfNeeded() {
   let policyGaps = 0;
   let forceGaps = 0;
   if (missingRls === 0) {
-    const gapRes = await pool2.query(`
+    const gapRes = await pool.query(`
       SELECT
         (SELECT COUNT(*)::int
          FROM (
@@ -145573,7 +146007,7 @@ async function runRlsMigrationIfNeeded() {
   } else {
     logger.info(`${LOG2} RLS enabled everywhere but ${policyGaps} tenant table(s) lack full policies \u2014 patching`);
   }
-  const client = await pool2.connect();
+  const client = await pool.connect();
   let ok = 0;
   let fail = 0;
   const run3 = async (sql2) => {
@@ -145777,7 +146211,7 @@ async function run2(client, sql2) {
   }
 }
 async function initPhase1Users() {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await run2(client, `
       CREATE TABLE IF NOT EXISTS users (
@@ -146008,7 +146442,7 @@ async function tenantPolicies(client, table) {
   }
 }
 async function initAgentTables() {
-  const client = await pool2.connect();
+  const client = await pool.connect();
   try {
     await runa(client, "ai_chat_history ensure", `
       CREATE TABLE IF NOT EXISTS ai_chat_history (
@@ -146199,7 +146633,7 @@ async function runCriticalStartupStep(label, operation, options) {
 var PORT = env.PORT;
 async function schemaAlreadyMigrated() {
   try {
-    const { rows } = await pool2.query(
+    const { rows } = await pool.query(
       `SELECT to_regclass('public.audits') IS NOT NULL AS exists`
     );
     return rows[0]?.exists === true;
@@ -146245,7 +146679,7 @@ async function main() {
     );
   }
   await runCriticalStartupStep("database connection", async () => {
-    await pool2.query("SELECT 1");
+    await pool.query("SELECT 1");
     logger.info("Database connection OK");
   });
   const migrated = await schemaAlreadyMigrated();
@@ -146258,7 +146692,7 @@ async function main() {
       logger.warn({ err: _p1Err }, "[startup] phase1-users on fast-path failed (non-fatal)");
     }
     await runCriticalStartupStep("billing-trial-columns", async () => {
-      const client = await pool2.connect();
+      const client = await pool.connect();
       try {
         await client.query(`ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_consumed_at TIMESTAMPTZ`);
         await client.query(`ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_started_at  TIMESTAMPTZ`);
@@ -146272,7 +146706,7 @@ async function main() {
       logger.warn({ err }, "[startup] billing-trial-columns step failed (non-fatal \u2014 columns may already exist)");
     });
     await runCriticalStartupStep("new-signup-schema", async () => {
-      const client = await pool2.connect();
+      const client = await pool.connect();
       try {
         await client.query(`ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS postal_code TEXT`);
         await client.query(`ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS vat         TEXT`);
@@ -146394,7 +146828,7 @@ async function main() {
       logger.error({ err }, "[startup] AI migration FAILED \u2014 AI endpoints disabled (503 AI_SCHEMA_NOT_READY) until schema is repaired");
     });
     await runCriticalStartupStep("calendar-phase3-columns", async () => {
-      const client = await pool2.connect();
+      const client = await pool.connect();
       try {
         await client.query(`ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
         await client.query(`ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS priority         TEXT        NOT NULL DEFAULT 'normal'`);
@@ -146465,7 +146899,7 @@ async function main() {
     startMonitorCron();
     Promise.resolve().then(() => (init_ai_engine(), ai_engine_exports)).then(({ startAiUsageOutboxWorker: startAiUsageOutboxWorker2 }) => startAiUsageOutboxWorker2()).catch((err) => logger.warn({ err }, "[AI] usage outbox worker not started"));
     setInterval(async () => {
-      const client = await pool2.connect();
+      const client = await pool.connect();
       try {
         const ps = await client.query(
           `DELETE FROM pending_signups WHERE expires_at < NOW() - INTERVAL '1 hour' RETURNING token`
@@ -146490,7 +146924,7 @@ async function main() {
     logger.info({ signal }, "Shutdown signal received");
     server.close(async () => {
       try {
-        await pool2.end();
+        await pool.end();
       } catch {
       }
       logger.info("Server closed");
