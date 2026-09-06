@@ -48,9 +48,11 @@ router.post("/onboarding/complete", async (req: Request, res: Response): Promise
     `, [orgId, now]);
     res.json({ ok: true, completedAt: now });
   } catch (err) {
-    // Never block the user — graceful failure; client still closes the modal.
-    logger.warn({ err }, "[onboarding] failed to persist completion — client continues");
-    res.json({ ok: false });
+    // The client must not treat an unpersisted completion as successful: otherwise
+    // the modal disappears for the current tab and immediately returns on the
+    // next login. Return a retryable error so the UI can keep the tour open.
+    logger.warn({ err }, "[onboarding] failed to persist completion — retry required");
+    res.status(503).json({ ok: false, error: "onboarding_persistence_unavailable" });
   }
 });
 

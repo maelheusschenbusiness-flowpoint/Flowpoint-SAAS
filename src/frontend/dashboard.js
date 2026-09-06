@@ -243,7 +243,7 @@ const STATE = {
   historySiteUrl: null,
   monitorsFilter: '',
   monitorsSummary: {},
-  onboardingComplete: true,
+  onboardingComplete: false,
   cmdOpen: false,
   cmdQuery: '',
   cmdSel: 0,
@@ -18216,13 +18216,23 @@ window._fpObSkip    = function() { _fpCloseOnboarding(true); };
 window._fpObComplete = function() { _fpCloseOnboarding(true); };
 
 function _fpCloseOnboarding(persist) {
-  STATE.onboardingComplete = true;
   const el = $('#fp-onboarding');
-  if (el) el.setAttribute('hidden', '');
-  if (persist) {
-    // Fire-and-forget — ne bloque jamais l'utilisateur si le serveur est lent.
-    apiFetch('/api/onboarding/complete', { method: 'POST' }).catch(function() {});
+  if (!persist) {
+    STATE.onboardingComplete = true;
+    if (el) el.setAttribute('hidden', '');
+    return;
   }
+  // Keep the modal visible until the server confirms the durable write. This
+  // prevents a transient DB outage from looking like a successful completion.
+  apiFetch('/api/onboarding/complete', { method: 'POST' }).then(function(result) {
+    if (!result || result.ok !== true) throw new Error('onboarding_persistence_failed');
+    STATE.onboardingComplete = true;
+    if (el) el.setAttribute('hidden', '');
+  }).catch(function() {
+    STATE.onboardingComplete = false;
+    if (el) el.removeAttribute('hidden');
+    showToast('error', fpT('Erreur lors de la mise à jour'));
+  });
 }
 
 // ESC = équivalent "Passer la visite" (ferme et marque comme terminé).

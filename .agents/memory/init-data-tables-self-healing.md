@@ -23,3 +23,15 @@ actually self-heals prod on next deploy/boot, without needing raw DB credentials
 manual migration run. Always match column names exactly to what the route/service code
 reads and writes (check `ON CONFLICT` targets too — they imply UNIQUE constraints that
 must also exist).
+
+When a table is created by this bootstrap and uses RLS, create its tenant policies in
+the same block as the table. The standalone RLS pass can run before late-created tables,
+leaving RLS enabled but no INSERT/UPDATE policy and producing false 503s.
+
+**Why:** The reset database was missing auth sessions, user preferences, and add-on
+entitlements; creating them without inline policies made onboarding completion fail
+closed even though `/api/me` worked.
+
+**How to apply:** For newly bootstrapped tenant tables, pair `CREATE TABLE IF NOT
+EXISTS` with `ENABLE RLS`, the four `tenant_*` policies, and indexes/unique constraints
+required by active routes.

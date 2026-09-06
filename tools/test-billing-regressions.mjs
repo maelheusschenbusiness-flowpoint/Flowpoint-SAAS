@@ -27,10 +27,10 @@ let handler = billing.slice(billing.indexOf('router.post("/billing/upgrade"'), b
 handler = handler.replace('await import("@workspace/db")', '({pool: billingPoolMock})');
 handler = ts.transpileModule(handler, {compilerOptions: {target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext}}).outputText;
 for (const status of ['canceled', 'ended']) for (const plan of ['standard', 'pro', 'ultra']) {
-  let route, result, created;
+  let route, result, created, customerCreateCalls = 0;
   const stripe = {subscriptions: {list: async () => ({data: []})}, checkout: {sessions: {
     list: async () => ({data: []}), create: async params => { created = params; return {id: 'cs_QA', url: 'https://checkout.stripe.com/test'}; }
-  }}};
+  }}, customers: {create: async () => { customerCreateCalls++; return {id: 'cus_UNEXPECTED'}; }}};
   const context = vm.createContext({router: {post(_path, ...fns) { route = fns.at(-1); }}, billingCheckoutRateLimit() {}, ownerOnly() {},
     parsePlan: x => x, loadBillingContext: async () => ({plan: 'ultra', subscriptionStatus: status, stripeCustomerId: 'cus_STALE'}),
     billingPoolMock: {query: async () => ({rows: [{stripe_customer_id: 'cus_EXISTING'}]})},
@@ -44,8 +44,13 @@ for (const status of ['canceled', 'ended']) for (const plan of ['standard', 'pro
   assert.equal(result.reactivation, true, JSON.stringify(result));
   assert.equal(created.customer, 'cus_EXISTING');
   assert.equal(created.mode, 'subscription');
+  assert.equal(created.line_items.length, 1);
+  assert.equal(created.subscription_data.trial_period_days, undefined);
+  assert.equal(created.subscription_data.trial_end, undefined);
+  assert.equal(created.metadata.userId, 'qa-user');
   assert.equal(created.cancel_url, 'https://example.test/dashboard.html#billing/plans');
   assert.equal(created.subscription_data.metadata.orgId, '10000000-0000-4000-8000-000000000003');
+  assert.equal(customerCreateCalls, 0);
 }
 let shown = 0;
 const onboarding = dashboard.slice(dashboard.indexOf('function showOnboarding()'), dashboard.indexOf('// openOnboardingManually()', dashboard.indexOf('function showOnboarding()')));

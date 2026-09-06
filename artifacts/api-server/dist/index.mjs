@@ -104503,6 +104503,63 @@ async function initDataTables() {
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_owner_idx ON organizations(owner_user_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_slug_idx  ON organizations(slug);`);
     await run(client, `
+      CREATE TABLE IF NOT EXISTS user_prefs (
+        org_id     TEXT PRIMARY KEY DEFAULT 'default',
+        streak     INTEGER NOT NULL DEFAULT 0,
+        pinned     JSONB NOT NULL DEFAULT '{}',
+        checklist  JSONB,
+        settings   JSONB NOT NULL DEFAULT '{}',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS streak INTEGER NOT NULL DEFAULT 0`);
+    await run(client, `ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS pinned JSONB NOT NULL DEFAULT '{}'`);
+    await run(client, `ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS checklist JSONB`);
+    await run(client, `ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'`);
+    await run(client, `ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await run(client, `CREATE INDEX IF NOT EXISTS user_prefs_org_idx ON user_prefs(org_id)`);
+    await run(client, `ALTER TABLE user_prefs ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE user_prefs NO FORCE ROW LEVEL SECURITY`);
+    for (const op of ["select", "insert", "update", "delete"]) {
+      await run(client, `DROP POLICY IF EXISTS "tenant_${op}" ON user_prefs`);
+    }
+    await run(client, `CREATE POLICY "tenant_select" ON user_prefs FOR SELECT USING (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_insert" ON user_prefs FOR INSERT WITH CHECK (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_update" ON user_prefs FOR UPDATE USING (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_delete" ON user_prefs FOR DELETE USING (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS org_addons (
+        id           TEXT PRIMARY KEY,
+        org_id       TEXT NOT NULL DEFAULT 'default',
+        addon_key    TEXT NOT NULL,
+        active       BOOLEAN NOT NULL DEFAULT false,
+        quantity     INTEGER NOT NULL DEFAULT 1,
+        activated_at TIMESTAMPTZ,
+        metadata     JSONB NOT NULL DEFAULT '{}',
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default'`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS addon_key TEXT NOT NULL DEFAULT ''`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT false`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await run(client, `CREATE INDEX IF NOT EXISTS org_addons_org_idx ON org_addons(org_id)`);
+    await run(client, `CREATE INDEX IF NOT EXISTS org_addons_key_idx ON org_addons(org_id, addon_key)`);
+    await run(client, `ALTER TABLE org_addons ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE org_addons NO FORCE ROW LEVEL SECURITY`);
+    for (const op of ["select", "insert", "update", "delete"]) {
+      await run(client, `DROP POLICY IF EXISTS "tenant_${op}" ON org_addons`);
+    }
+    await run(client, `CREATE POLICY "tenant_select" ON org_addons FOR SELECT USING (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_insert" ON org_addons FOR INSERT WITH CHECK (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_update" ON org_addons FOR UPDATE USING (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_delete" ON org_addons FOR DELETE USING (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `
       CREATE TABLE IF NOT EXISTS team_invitations (
         id                 TEXT        NOT NULL PRIMARY KEY,
         org_id             TEXT        NOT NULL DEFAULT 'default',
@@ -105032,6 +105089,25 @@ async function initDataTables() {
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS user_name TEXT`);
     await run(client, `ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY`);
     await run(client, `ALTER TABLE activity_logs NO FORCE ROW LEVEL SECURITY`);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        token       TEXT PRIMARY KEY,
+        user_id     TEXT NOT NULL,
+        org_id      TEXT NOT NULL DEFAULT 'default',
+        email       TEXT NOT NULL,
+        role        TEXT NOT NULL DEFAULT 'member',
+        expires_at  TIMESTAMPTZ NOT NULL,
+        created_at  TIMESTAMPTZ DEFAULT NOW(),
+        user_id_v2  UUID,
+        ip_address  TEXT,
+        user_agent  TEXT
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS user_sessions_org_idx ON user_sessions(org_id)`);
+    await run(client, `CREATE INDEX IF NOT EXISTS user_sessions_expiry_idx ON user_sessions(expires_at)`);
+    await run(client, `ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE user_sessions NO FORCE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_id_v2 UUID`);
     await run(client, `ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS ip_address TEXT`);
     await run(client, `ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_agent TEXT`);
     await run(client, `
@@ -144842,8 +144918,8 @@ router68.post("/onboarding/complete", async (req, res) => {
     `, [orgId3, now]);
     res.json({ ok: true, completedAt: now });
   } catch (err) {
-    logger.warn({ err }, "[onboarding] failed to persist completion \u2014 client continues");
-    res.json({ ok: false });
+    logger.warn({ err }, "[onboarding] failed to persist completion \u2014 retry required");
+    res.status(503).json({ ok: false, error: "onboarding_persistence_unavailable" });
   }
 });
 var onboarding_default = router68;

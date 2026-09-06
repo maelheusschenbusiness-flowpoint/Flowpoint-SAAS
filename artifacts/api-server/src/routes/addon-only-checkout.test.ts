@@ -40,6 +40,14 @@ const loadBillingContext = vi.fn(async (_orgId: string) => ({
 vi.mock("../services/billing-context.js", () => ({
   loadBillingContext: (orgId: string) => loadBillingContext(orgId),
 }));
+vi.mock("../services/sessions.js", () => ({
+  getSession: vi.fn(async (token: string) =>
+    token === "tok-subscriber" ? { orgId: "org-uuid-1", userId: "user-1" } :
+    token === "tok-uuid-subscriber"
+      ? { orgId: "10000000-0000-4000-8000-000000000003", userId: "user-1" }
+      : null
+  ),
+}));
 vi.mock("../services/ensure-stripe-customer.js", () => ({
   ensureStripeCustomer: vi.fn(async () => "cus_test_sub"),
 }));
@@ -51,13 +59,18 @@ vi.mock("../middlewares/rateLimiter.js", () => ({
 
 // DB pool used by finalize-checkout (session lookup + AI credit insert).
 const dbQueries: Array<{ sql: string; values: unknown[] }> = [];
+let canonicalAnchorCustomer: string | null = null;
 vi.mock("@workspace/db", () => ({
   pool: {
     connect: async () => ({
       query: async (sql: string, values: unknown[] = []) => {
         dbQueries.push({ sql, values });
         if (/FROM user_sessions/.test(sql)) {
-          return values[0] === "tok-subscriber" ? { rows: [{ org_id: "org-uuid-1" }] } : { rows: [] };
+          return values[0] === "tok-subscriber"
+            ? { rows: [{ org_id: "org-uuid-1" }] }
+            : values[0] === "tok-uuid-subscriber"
+              ? { rows: [{ org_id: "10000000-0000-4000-8000-000000000003" }] }
+              : { rows: [] };
         }
         return { rows: [] };
       },
@@ -65,6 +78,11 @@ vi.mock("@workspace/db", () => ({
     }),
     query: async (sql: string, values: unknown[] = []) => {
       dbQueries.push({ sql, values });
+      if (/FROM organizations WHERE id::text/.test(sql)) {
+        return canonicalAnchorCustomer
+          ? { rows: [{ stripe_customer_id: canonicalAnchorCustomer, subscription_status: "active" }] }
+          : { rows: [] };
+      }
       return { rows: [] };
     },
   },
@@ -95,8 +113,13 @@ function makeApp(orgId?: string, cookieToken?: string) {
 }
 
 /** Recording fake Stripe client — no network. */
-function makeFakeStripe(opts?: { existingPlanSubId?: string }) {
+function makeFakeStripe(opts?: {
+  existingPlanSubId?: string;
+  intentCustomerId?: string;
+  intentMetadata?: Record<string, string>;
+}) {
   const created: any[] = [];
+  const setupCreated: any[] = [];
   const subsCreated: any[] = [];
   const subsItemsCreated: any[] = [];
   const existingSubData = opts?.existingPlanSubId
@@ -110,6 +133,7 @@ function makeFakeStripe(opts?: { existingPlanSubId?: string }) {
     : [];
   return {
     created,
+    setupCreated,
     subsCreated,
     subsItemsCreated,
     paymentIntents: {
@@ -121,12 +145,15 @@ function makeFakeStripe(opts?: { existingPlanSubId?: string }) {
         id,
         status: "succeeded",
         payment_method: "pm_fake_1",
-        customer: "cus_test_sub",
-        metadata: {},
+        customer: opts?.intentCustomerId ?? "cus_test_sub",
+        metadata: opts?.intentMetadata ?? {},
       })),
     },
     setupIntents: {
-      create: vi.fn(async (params: any) => ({ id: "seti_fake_1", client_secret: "seti_fake_1_secret", ...params })),
+      create: vi.fn(async (params: any) => {
+        setupCreated.push(params);
+        return { id: "seti_fake_1", client_secret: "seti_fake_1_secret", ...params };
+      }),
     },
     subscriptions: {
       list: vi.fn(async () => ({ data: existingSubData })),
@@ -168,10 +195,12 @@ beforeEach(() => {
   // prod; here we are in vitest, so force a test env for the injection).
   process.env["NODE_ENV"] = "test";
   process.env["STRIPE_SECRET_KEY"] ||= "sk_live_dummy_for_tests";
+  canonicalAnchorCustomer = null;
   setStripeForTesting(makeFakeStripe());
 });
 afterEach(() => {
   setStripeForTesting(null);
+  canonicalAnchorCustomer = null;
   if (PREV_NODE_ENV === undefined) delete process.env["NODE_ENV"];
   else process.env["NODE_ENV"] = PREV_NODE_ENV;
 });
@@ -254,6 +283,54 @@ describe("active subscriber — payment initiation (checkout.html path)", () => 
     // Nothing to collect and no plan → the route must not mint a bogus 0€ PI.
     expect(fake.created).toHaveLength(0);
     expect(r.status).toBe(400);
+  });
+
+  it("resolves an authenticated Bearer session before creating a plan SetupIntent", async () => {
+    const fake = makeFakeStripe();
+    setStripeForTesting(fake);
+    const r = await request(makeApp())
+      .post("/api/public/payment-intent")
+      .set("Authorization", "Bearer tok-subscriber")
+      .send({ plan: "pro", addons: {} });
+
+    expect(r.status).toBe(200);
+    expect(r.body.mode).toBe("setup");
+    expect(fake.setupCreated).toHaveLength(1);
+    expect(fake.setupCreated[0].customer).toBe("cus_test_sub");
+    expect(fake.setupCreated[0].metadata.orgId).toBe("org-uuid-1");
+  });
+});
+
+describe("authenticated plan finalize — canonical Customer invariant", () => {
+  it("accepts the payment return when intent and organization share the same Customer", async () => {
+    canonicalAnchorCustomer = "cus_test_sub";
+    const fake = makeFakeStripe({ intentCustomerId: "cus_test_sub" });
+    setStripeForTesting(fake);
+
+    const r = await request(makeApp(undefined, "tok-uuid-subscriber"))
+      .post("/api/public/finalize-checkout")
+      .send({ intentId: "pi_same_customer", intentType: "payment", plan: "pro", addons: {} });
+
+    expect(r.status).toBe(200);
+    expect(r.body.success).toBe(true);
+    expect(fake.customers.create).not.toHaveBeenCalled();
+    expect(fake.subsCreated).toHaveLength(1);
+    expect(fake.subsCreated[0].customer).toBe("cus_test_sub");
+  });
+
+  it("fails closed instead of attaching a different Customer to the organization", async () => {
+    canonicalAnchorCustomer = "cus_test_sub";
+    const fake = makeFakeStripe({ intentCustomerId: "cus_other" });
+    setStripeForTesting(fake);
+
+    const r = await request(makeApp(undefined, "tok-uuid-subscriber"))
+      .post("/api/public/finalize-checkout")
+      .send({ intentId: "pi_other_customer", intentType: "payment", plan: "pro", addons: {} });
+
+    expect(r.status).toBe(409);
+    expect(r.body.error).toBe("billing_customer_mismatch");
+    expect(fake.customers.create).not.toHaveBeenCalled();
+    expect(fake.subsCreated).toHaveLength(0);
   });
 });
 

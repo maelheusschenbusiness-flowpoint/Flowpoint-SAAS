@@ -55,6 +55,7 @@ export default defineConfig({
       "src/routes/chat-notifications.test.ts",
       "src/routes/team-chat-reliability.test.ts",
       "src/routes/addon-only-checkout.test.ts",
+      "src/routes/onboarding.test.ts",
       "src/routes/billing-period-end.test.ts",
       "src/routes/team-invite-accept.test.ts",
       "src/services/seat-entitlement.test.ts",
@@ -116,6 +117,7 @@ export default defineConfig({
       "src/tests/session-dashboard-billing-reactivation.test.ts",
       // finalize-checkout Path C: PI/SI metadata pre_register_token recovery
       "src/tests/finalize-checkout-path-c.test.ts",
+      "src/tests/onboarding-frontend.test.ts",
     ],
     environment: "node",
     globals:     false,
