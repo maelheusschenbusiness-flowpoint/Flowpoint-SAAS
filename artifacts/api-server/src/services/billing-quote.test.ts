@@ -139,7 +139,10 @@ describe("billing quote — hosted Checkout Session path", () => {
 describe("billing quote — inclusions", () => {
   it("never charges an add-on the plan already bundles, in either mechanism", () => {
     for (const planId of Object.keys(PLAN_DEFINITIONS)) {
-      const included = [...(PLAN_INCLUDED_ADDONS[planId] ?? [])];
+      // Roadmap keys may remain in historical inclusion metadata, but the
+      // commercial guard must reject them before quote construction.
+      const included = [...(PLAN_INCLUDED_ADDONS[planId] ?? [])]
+        .filter(k => !COMING_SOON_ADDONS.has(k) && !REMOVED_ADDONS.has(k));
       if (!included.length) continue;
       const addons = Object.fromEntries(included.map(k => [k, true]));
 
@@ -160,7 +163,9 @@ describe("billing quote — inclusions", () => {
     const planId = Object.keys(PLAN_INCLUDED_ADDONS).find(
       p => (PLAN_INCLUDED_ADDONS[p]?.size ?? 0) > 0,
     )!;
-    const includedKey = [...PLAN_INCLUDED_ADDONS[planId]!][0]!;
+    const includedKey = [...PLAN_INCLUDED_ADDONS[planId]!]
+      .find(k => !COMING_SOON_ADDONS.has(k) && !REMOVED_ADDONS.has(k))!;
+    expect(includedKey).toBeTruthy();
 
     const q = createBillingQuote({ plan: planId, addons: { [includedKey]: true } });
     const items = quoteToStripeLineItems(q);

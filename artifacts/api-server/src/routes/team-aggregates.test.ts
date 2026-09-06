@@ -74,12 +74,15 @@ describe("GET /api/team/contributions — real per-member counts", () => {
     const capturedOrg: unknown[] = [];
     queryHandler = async (sql, values) => {
       capturedOrg.push(values?.[0]);
-      if (/canonical_activity/.test(sql)) {
+      if (/canonical_uid/.test(sql) && /FROM team_members tm/.test(sql)) {
         return { rows: [
-          { user_id: "u-1", audits: 4, missions: 2, reports: 0, monitors: 1 },
-          { user_id: "u-2", audits: 0, missions: 0, reports: 1, monitors: 0 },
+          { canonical_uid: "u-1", email: "alice@example.com" },
+          { canonical_uid: "u-2", email: "bob@example.com" },
         ] };
       }
+      if (/FROM audits/.test(sql)) return { rows: [{ created_by: "u-1", cnt: 4 }] };
+      if (/FROM missions/.test(sql)) return { rows: [{ created_by: "u-1", cnt: 2 }] };
+      if (/FROM reports/.test(sql)) return { rows: [{ created_by: "u-2", cnt: 1 }] };
       return { rows: [] };
     };
 
@@ -87,7 +90,7 @@ describe("GET /api/team/contributions — real per-member counts", () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     // canonical user_id key
-    expect(res.body.contributions["u-1"]).toEqual({ audits: 4, missions: 2, reports: 0, monitors: 1 });
+    expect(res.body.contributions["u-1"]).toEqual({ audits: 4, missions: 2, reports: 0, monitors: 0 });
     expect(res.body.contributions["u-2"]).toEqual({ audits: 0, missions: 0, reports: 1, monitors: 0 });
     expect(res.body.contributions["alice@example.com"]).toBeUndefined();
     expect(res.body.contributions[ORG_ID]).toBeUndefined();

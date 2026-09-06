@@ -103565,6 +103565,93 @@ async function initDataTables() {
   const client = await pool.connect();
   try {
     await run(client, `
+      CREATE TABLE IF NOT EXISTS org_settings (
+        org_id                 TEXT PRIMARY KEY DEFAULT 'default',
+        plan                   TEXT NOT NULL DEFAULT 'standard',
+        email                  TEXT,
+        first_name             TEXT,
+        last_name              TEXT,
+        name                   TEXT,
+        org_name               TEXT,
+        website                TEXT,
+        logo_url               TEXT,
+        timezone               TEXT NOT NULL DEFAULT 'Europe/Paris',
+        language               TEXT NOT NULL DEFAULT 'fr',
+        currency               TEXT NOT NULL DEFAULT 'EUR',
+        date_format            TEXT,
+        time_format            TEXT,
+        monthly_budget         NUMERIC,
+        primary_site           TEXT,
+        industry               TEXT,
+        company_size           TEXT,
+        billing_email          TEXT,
+        stripe_customer_id    TEXT,
+        stripe_subscription_id TEXT,
+        subscription_status    TEXT,
+        trial_ends_at          TIMESTAMPTZ,
+        trial_consumed_at      TIMESTAMPTZ,
+        trial_started_at       TIMESTAMPTZ,
+        pending_plan           TEXT,
+        pending_plan_date      TEXT,
+        addons                 JSONB NOT NULL DEFAULT '{}'::jsonb,
+        usage                  JSONB NOT NULL DEFAULT '{}'::jsonb,
+        address                TEXT,
+        city                   TEXT,
+        postal_code            TEXT,
+        country                TEXT,
+        region                 TEXT,
+        phone                  TEXT,
+        vat                    TEXT,
+        latitude               NUMERIC,
+        longitude              NUMERIC,
+        service_area           JSONB NOT NULL DEFAULT '[]'::jsonb,
+        location_configured    BOOLEAN NOT NULL DEFAULT false,
+        location_source        TEXT,
+        created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    for (const sql2 of [
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS first_name TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS last_name TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS org_name TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS website TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS date_format TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS time_format TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS subscription_status TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_consumed_at TIMESTAMPTZ`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS pending_plan TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS pending_plan_date TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS addons JSONB NOT NULL DEFAULT '{}'::jsonb`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS usage JSONB NOT NULL DEFAULT '{}'::jsonb`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS address TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS city TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS postal_code TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS country TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS region TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS phone TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS vat TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS latitude NUMERIC`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS longitude NUMERIC`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS service_area JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS location_configured BOOLEAN NOT NULL DEFAULT false`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS location_source TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+    ]) {
+      await run(client, sql2);
+    }
+    await run(client, `CREATE INDEX IF NOT EXISTS idx_org_settings_city ON org_settings(city)`);
+    await run(client, `CREATE INDEX IF NOT EXISTS idx_org_settings_country ON org_settings(country)`);
+    await run(client, `
+      INSERT INTO org_settings (org_id, plan)
+      VALUES ('default', 'standard')
+      ON CONFLICT (org_id) DO NOTHING
+    `);
+    await run(client, `
       CREATE TABLE IF NOT EXISTS audits (
         id         TEXT PRIMARY KEY,
         url        TEXT NOT NULL,
@@ -105149,6 +105236,7 @@ async function initDataTables() {
         await run(client, `CREATE POLICY           "tenant_${op}" ON "${t}" ${cmd}`);
       }
     };
+    await applyTenantRls("org_settings");
     if (!await hasMigration("missing-production-tables-v3")) {
       await run(client, `DELETE FROM schema_migrations WHERE migration_id IN ('missing-production-tables-v1','missing-production-tables-v2')`);
       await run(client, `
@@ -105703,7 +105791,24 @@ async function initDataTables() {
     await run(client, `ALTER TABLE automation_templates ALTER COLUMN platform      SET DEFAULT 'custom'`);
     await run(client, `ALTER TABLE automation_templates ALTER COLUMN trigger_event SET DEFAULT ''`);
     await run(client, `ALTER TABLE automation_templates ALTER COLUMN action_type   SET DEFAULT ''`);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS sso_providers (
+        id            TEXT PRIMARY KEY,
+        org_id        TEXT NOT NULL DEFAULT 'default',
+        provider_type TEXT,
+        type          TEXT NOT NULL DEFAULT 'saml',
+        name          TEXT,
+        client_id     TEXT,
+        issuer        TEXT,
+        enabled       BOOLEAN NOT NULL DEFAULT true,
+        default_role  TEXT NOT NULL DEFAULT 'member',
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS sso_providers_org_idx ON sso_providers(org_id)`);
+    await applyTenantRls("sso_providers");
     await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS type         TEXT NOT NULL DEFAULT 'saml'`);
+    await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS provider_type TEXT`);
     await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS name         TEXT`);
     await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS client_id    TEXT`);
     await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS issuer       TEXT`);

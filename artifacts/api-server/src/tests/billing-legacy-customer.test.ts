@@ -161,7 +161,9 @@ describe("TEST_B — modern customer reuse", () => {
     mockPool.connect.mockResolvedValue(buildPgClient());
 
     // Step 1 UUID lookup → already has the customer
-    mockLoadOrgSettings.mockResolvedValueOnce({ stripeCustomerId: CUS_NEW });
+    mockLoadOrgSettings
+      .mockResolvedValueOnce({ stripeCustomerId: CUS_NEW }) // Step 1 canonical mirror
+      .mockResolvedValueOnce({ stripeCustomerId: CUS_NEW }); // _persistStrict confirm
 
     const stripe = makeStripeStub({
       retrieveResult: { id: CUS_NEW, deleted: false },
@@ -183,37 +185,31 @@ describe("TEST_B — modern customer reuse", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TEST C — Legacy customer is deleted/resource_missing → new customer created
+// TEST C — Deleted legacy customer is rejected without creating a second one
 // ─────────────────────────────────────────────────────────────────────────────
 describe("TEST_C — deleted legacy customer", () => {
-  it("creates exactly ONE new customer when legacy is resource_missing", async () => {
+  it("rejects resource_missing and never creates a replacement customer", async () => {
     mockPool.connect.mockResolvedValue(buildPgClient());
-
-    const FRESH_ID = "cus_created_fresh";
 
     mockLoadOrgSettings
       .mockResolvedValueOnce(null)                                 // Step 1 UUID lookup
       .mockResolvedValueOnce({ stripeCustomerId: CUS_OLD, email: EMAIL_ORG }) // legacy
-      .mockResolvedValueOnce(null)                                 // Step 3 search (internal to ESC, no org_settings call expected here)
-      .mockResolvedValueOnce({ stripeCustomerId: FRESH_ID });      // _persistStrict confirm
 
     const stripe = makeStripeStub({
       retrieveReject: { code: "resource_missing" },
-      searchResults:  [],   // Step 3: no orphan in metadata search
-      createId:       FRESH_ID,
+      searchResults:  [],   // Step 3 is never reached after a persisted ID fails
     });
     _setStripeForTest(stripe);
 
     const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
-    const result = await ensureStripeCustomer(UUID_ORG, {
+    await expect(ensureStripeCustomer(UUID_ORG, {
       stripeCustomerId: null,
       email: EMAIL_ORG,
       firstName: null,
       orgName:   null,
-    }, "sk_live_test");
+    }, "sk_live_test")).rejects.toMatchObject({ code: "resource_missing" });
 
-    expect(result).toBe(FRESH_ID);
-    expect(stripe.customers.create).toHaveBeenCalledTimes(1);
+    expect(stripe.customers.create).not.toHaveBeenCalled();
   });
 });
 
