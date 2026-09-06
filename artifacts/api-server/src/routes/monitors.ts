@@ -976,28 +976,38 @@ router.delete("/monitors/:id", canAdmin, async (req: Request, res: Response) => 
   const _delOrgId = requireOrgId(req, res);
   if (!_delOrgId) return;
   try {
-    // Ownership guard FIRST — confirm the monitor belongs to the caller's org.
-    // No child data is touched until this passes.
-    const existing = await req.orgDb(
-      `SELECT id FROM monitors WHERE id = $1 AND org_id::text = $2`, [id, _delOrgId]
-    );
-    if (!existing.rows[0]) { res.status(404).json({ error: "Monitor not found" }); return; }
+    // Keep the ownership check, child cleanup, and monitor delete in one
+    // transaction. The snapshot is also the source for the activity event;
+    // never read monitor fields from an undefined post-delete variable.
+    const deletedMonitor = await withOrgDb(_delOrgId, async (client) => {
+      const existing = await client.query<Record<string, unknown>>(
+        `SELECT * FROM monitors WHERE id = $1 AND org_id::text = $2 FOR UPDATE`,
+        [id, _delOrgId],
+      );
+      const monitor = existing.rows[0];
+      if (!monitor) return null;
 
-    // Ownership confirmed — now safe to cascade-delete children.
-    await req.orgDb(`DELETE FROM monitor_checks    WHERE monitor_id = $1`, [id]);
-    await req.orgDb(`DELETE FROM monitor_incidents WHERE monitor_id = $1`, [id]);
-    const del = await req.orgDb(
-      `DELETE FROM monitors WHERE id = $1 AND org_id::text = $2 RETURNING id`, [id, _delOrgId]
-    );
-    if ((del.rowCount ?? 0) === 0) { res.status(404).json({ error: "Monitor not found" }); return; }
+      await client.query(`DELETE FROM monitor_checks WHERE monitor_id = $1 AND org_id::text = $2`, [id, _delOrgId]);
+      await client.query(`DELETE FROM monitor_incidents WHERE monitor_id = $1 AND org_id::text = $2`, [id, _delOrgId]);
+      const del = await client.query(
+        `DELETE FROM monitors WHERE id = $1 AND org_id::text = $2 RETURNING id`,
+        [id, _delOrgId],
+      );
+      if ((del.rowCount ?? 0) === 0) {
+        throw new Error("MONITOR_DELETE_CONFLICT");
+      }
+      return monitor;
+    });
+    if (!deletedMonitor) { res.status(404).json({ error: "Monitor not found" }); return; }
 
     store.logActivity({
       type: "monitor",
-      label: `Monitor supprimé : ${String(m["name"])} (${String(m["url"])})`,
+      label: `Monitor supprimé : ${String(deletedMonitor["name"])} (${String(deletedMonitor["url"])})`,
       targetId: id, targetType: "monitor",
-      metadata: { url: m["url"], name: m["name"] },
-      orgId: String(m["org_id"] ?? (req as unknown as Record<string, unknown>)["orgId"] ?? "default"),
-      actionKey: "activity.monitor.deleted", actionParams: { name: String(m["name"]), url: String(m["url"]) },
+      metadata: { url: deletedMonitor["url"], name: deletedMonitor["name"] },
+      orgId: _delOrgId,
+      actionKey: "activity.monitor.deleted",
+      actionParams: { name: String(deletedMonitor["name"]), url: String(deletedMonitor["url"]) },
       userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
       userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));

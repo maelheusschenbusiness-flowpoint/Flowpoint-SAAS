@@ -164,7 +164,8 @@ describe("Non-regression — various invalid Bearer + valid cookie", () => {
     // Empty string after trim → bearerToken = undefined in actual code
     // (authHeader.startsWith("Bearer ") + slice(7).trim() → "")
     // We simulate: bearerToken = "" which our resolve fn treats as falsy
-    const { session, via } = await resolveSession("" || undefined, validCookieA, mockGetSession);
+    const emptyBearer = String("");
+    const { session, via } = await resolveSession(emptyBearer || undefined, validCookieA, mockGetSession);
     expect(session?.orgId).toBe("org-a");
     expect(via).toBe("cookie-only");
   });

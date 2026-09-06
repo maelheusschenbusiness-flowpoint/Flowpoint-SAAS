@@ -740,8 +740,8 @@ router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
     // Fall back to legacy activity_logs, then to stored value.
     // [FIX] Pass canonical userId — streak is personal, not org-wide.
     // Without userId, computeStreakFromTable returns the org aggregate (all members combined).
-    const userId = (req as Record<string, unknown>)["orgContext"] && typeof ((req as Record<string, unknown>)["orgContext"] as Record<string, unknown>)["userId"] === "string"
-      ? ((req as Record<string, unknown>)["orgContext"] as Record<string, unknown>)["userId"] as string
+    const userId = typeof req.orgContext?.userId === "string"
+      ? req.orgContext.userId
       : undefined;
     let finalStreak: number;
     let querySucceeded = false;

@@ -60,6 +60,7 @@ export default defineConfig({
       "src/services/seat-entitlement.test.ts",
       "src/routes/team-seat-gate.test.ts",
       "src/routes/team-list-owner.test.ts",
+      "src/routes/monitors-delete.test.ts",
        "src/routes/team-member-removal-security.test.ts",
       // Account deletion — early session revocation (preKillSessions) patch
       "src/services/account-deletion-session-kill.test.ts",

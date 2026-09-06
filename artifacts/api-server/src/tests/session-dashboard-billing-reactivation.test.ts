@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const apiRoot = process.cwd();
 const dashboardSource = readFileSync(resolve(apiRoot, "../../src/frontend/dashboard.js"), "utf8");
 const dashboardExport = readFileSync(resolve(apiRoot, "../flowpoint-export/dashboard.js"), "utf8");
+const backendSource = readFileSync(resolve(apiRoot, "../../src/frontend/fp-backend.js"), "utf8");
 const backend = readFileSync(resolve(apiRoot, "../flowpoint-export/fp-backend.js"), "utf8");
 const config = readFileSync(resolve(apiRoot, "../flowpoint-export/fp-config.js"), "utf8");
 const checkoutReturn = readFileSync(resolve(apiRoot, "../flowpoint-export/checkout-return.html"), "utf8");
@@ -13,6 +14,10 @@ const billing = readFileSync(resolve(apiRoot, "src/routes/billing.ts"), "utf8");
 describe("dashboard account/session isolation contracts", () => {
   it("ships the same dashboard source that production export serves", () => {
     expect(dashboardExport).toBe(dashboardSource);
+  });
+
+  it("ships the same backend source that production export serves", () => {
+    expect(backend).toBe(backendSource);
   });
 
   it("fails closed before /api/me confirms the account namespace", () => {

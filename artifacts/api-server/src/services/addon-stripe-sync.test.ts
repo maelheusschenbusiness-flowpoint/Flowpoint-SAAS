@@ -59,6 +59,8 @@ const calls: {
 let mockPlanSubItems: Array<{ id: string; price: { id: string }; quantity: number }> = [];
 let mockAddonSub: null | {
   id: string;
+  metadata: Record<string, string>;
+  status: string;
   items: { data: Array<{ id: string; price: { id: string }; quantity: number }> };
 } = null;
 let mockAddonSubAfterDel: { items: { data: Array<unknown> } } | null = null;
@@ -133,10 +135,10 @@ function mockStripeClient() {
         if (mockStripeListThrows) throw new Error("stripe_timeout");
         calls.subscriptionsList.push(params);
         // Return plan sub + optionally the addon sub
-        const data: Array<{
+      const data: Array<{
           id: string;
-          metadata: Record<string, string>;
-          status: string;
+           metadata?: Record<string, string>;
+           status?: string;
           items: { data: Array<{ id: string; price: { id: string }; quantity: number }> };
         }> = [
           {
@@ -545,13 +547,13 @@ describe("P0-B — syncAddonWithStripe() certification", () => {
     // Stripe.subscriptions.list returns no plan sub (only shows addon filter)
     // Override list to return empty
     const { createStripeClient } = await import("../services/stripe-factory.js");
-    vi.mocked(createStripeClient).mockReturnValueOnce({
+    vi.mocked(createStripeClient).mockResolvedValueOnce({
       ...mockStripeClient(),
       subscriptions: {
         ...mockStripeClient().subscriptions,
         list: vi.fn(async () => ({ data: [] })),
       },
-    } as ReturnType<typeof mockStripeClient>);
+    } as Awaited<ReturnType<typeof createStripeClient>>);
 
     const result = await sync("activate", 1);
 

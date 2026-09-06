@@ -9,10 +9,17 @@ assert.equal(dashboard, read('src/frontend/dashboard.js'));
 const goToPricing = dashboard.slice(dashboard.indexOf('async function fpGoToPricing('), dashboard.indexOf('\nfunction navigate(', dashboard.indexOf('async function fpGoToPricing(')));
 for (const status of ['canceled', 'ended', 'expired', 'none', '']) {
   let visited = false;
-  const context = vm.createContext({STATE: {billing: {plan: 'ultra', subscriptionStatus: status}}, window: {fpGoToBillingPlans() { visited = true; }}, showToast() {}});
+  let changedPlan = null;
+  const context = vm.createContext({
+    STATE: {billing: {plan: 'ultra', subscriptionStatus: status}},
+    window: {fpGoToBillingPlans() { visited = true; }},
+    changePlan(plan) { changedPlan = plan; visited = true; },
+    showToast() {},
+  });
   vm.runInContext(goToPricing, context);
   await context.fpGoToPricing('standard');
   assert.equal(visited, true);
+  assert.equal(changedPlan, 'standard');
 }
 // Execute the production handler, transpiled only to remove TypeScript syntax.
 let billing = read('artifacts/api-server/src/routes/billing.ts');
