@@ -121,6 +121,8 @@ export default defineConfig({
       "src/tests/onboarding-frontend.test.ts",
       // Smart billing upgrade routing: server-side reactivation vs Checkout
       "src/tests/billing-upgrade-reactivation.test.ts",
+      // Checkout abandonné — gardes contre les mutations prématurées
+      "src/tests/checkout-abandon-guards.test.ts",
     ],
     environment: "node",
     globals:     false,
