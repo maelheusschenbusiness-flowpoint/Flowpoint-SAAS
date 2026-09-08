@@ -849,6 +849,55 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
   }
 });
 
+// ── Server-side reactivation helper ──────────────────────────────────────────
+// Tries to create a Stripe subscription directly, without a Checkout Session,
+// when the customer already has a reusable default payment method.
+//
+// Returns the new subscription `{ id, status }` on success.
+// Returns `null` when Checkout is required (no PM, card declined, or 3DS).
+//
+// Uses `payment_behavior: "error_if_incomplete"` so Stripe never creates a
+// dangling incomplete subscription — on any payment failure the call throws and
+// we fall through to Checkout cleanly.
+async function attemptServerSideReactivation(
+  stripe: Awaited<ReturnType<typeof createStripeClient>>,
+  customerId: string,
+  priceId:    string,
+  orgId:      string,
+  targetPlan: string,
+): Promise<{ id: string; status: string } | null> {
+  try {
+    const customer = await stripe.customers.retrieve(customerId, {
+      expand: ["invoice_settings.default_payment_method"],
+    }) as { deleted?: boolean; invoice_settings?: { default_payment_method?: { id: string } | string | null } };
+
+    if (customer.deleted) return null;
+
+    const rawPm = customer.invoice_settings?.default_payment_method;
+    const pmId  = typeof rawPm === "string" ? rawPm : (rawPm as { id?: string } | null)?.id;
+    if (!pmId) return null; // No reusable payment method — Checkout required
+
+    const newSub = await stripe.subscriptions.create({
+      customer:             customerId,
+      items:                [{ price: priceId, quantity: 1 }],
+      default_payment_method: pmId,
+      payment_behavior:     "error_if_incomplete" as const,
+      off_session:          true,
+      metadata: { plan: targetPlan, orgId, reactivation: "true" },
+    });
+    return { id: newSub.id, status: newSub.status };
+  } catch (err) {
+    const se = err as { type?: string; code?: string };
+    const isPaymentFailure =
+      se.type === "card_error" ||
+      ["card_declined", "authentication_required", "insufficient_funds",
+       "expired_card", "incorrect_cvc", "payment_intent_authentication_failure",
+       "payment_method_customer_subscription_declined"].includes(se.code ?? "");
+    if (isPaymentFailure) return null; // Fall through to Checkout
+    throw err; // Genuine Stripe error — let the outer catch send a 500
+  }
+}
+
 // ── POST /billing/upgrade ─────────────────────────────────────────────────────
 // Handles: upgrade (immediate + prorations), downgrade (scheduled to the end
 // of the current trial or paid period via a Stripe subscription schedule).
@@ -963,15 +1012,37 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         );
         // No return — fall through
       } else {
-        // State C: any selected plan starts a new subscription on the existing Customer.
-        // The webhook (checkout.session.completed) is the sole source of truth; no DB
-        // mutation happens here.
+        // State C: subscription truly ended. Try server-side reactivation first
+        // (customer has a reusable PM → no Checkout required). Fall through to
+        // Checkout only when Checkout is genuinely necessary.
         const priceId = PLAN_PRICE_IDS[targetPlan];
         if (!priceId) {
           res.status(400).json({ error: `Unknown plan: ${plan}` });
           return;
         }
 
+        // ── CAS 2: try server-side subscription create if PM available ──────
+        const serverReact = await attemptServerSideReactivation(
+          stripe, billingCtx.stripeCustomerId!, priceId, orgId, targetPlan,
+        );
+        if (serverReact) {
+          try {
+            await persistOrgData(orgId, {
+              plan: targetPlan,
+              subscriptionStatus: serverReact.status,
+              stripeSubscriptionId: serverReact.id,
+              trialConsumedAt: new Date().toISOString(),
+            });
+          } catch (persistErr) {
+            logger.error({ persistErr, orgId, targetPlan }, "[Billing] server-side reactivation: persistOrgData failed (non-fatal)");
+          }
+          try { store.broadcastPlanUpdate(targetPlan, orgId); } catch (_) { /* non-fatal */ }
+          logger.info({ subId: serverReact.id, orgId, targetPlan }, "[Billing] server-side reactivation (canceled state) succeeded");
+          res.json({ ok: true, reactivated: true, upgraded: true, plan: targetPlan });
+          return;
+        }
+
+        // ── No PM or payment failed → Checkout Session (CAS 4) ─────────────
         const existingSession = openSessions.find(
           (s) =>
             s.metadata?.["reactivation"] === "true" &&
@@ -1367,15 +1438,37 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         return;
       }
 
-      // stripeCustomerId exists but no active/trialing Stripe sub found:
-      // Treat as reactivation — create a checkout session reusing the existing customer.
-      // This handles data inconsistencies (DB shows "active" but Stripe has no active sub).
+      // stripeCustomerId exists but no active/trialing Stripe sub found.
+      // CAS 2: try server-side reactivation if customer has a reusable PM.
       {
         const _reactPriceId = PLAN_PRICE_IDS[targetPlan];
         if (!_reactPriceId) {
           res.status(400).json({ error: `Unknown plan: ${plan}` });
           return;
         }
+
+        // ── Try server-side subscription create (no Checkout) ───────────────
+        const _serverReact2 = await attemptServerSideReactivation(
+          stripe, billingCtx.stripeCustomerId!, _reactPriceId, orgId, targetPlan,
+        );
+        if (_serverReact2) {
+          try {
+            await persistOrgData(orgId, {
+              plan: targetPlan,
+              subscriptionStatus: _serverReact2.status,
+              stripeSubscriptionId: _serverReact2.id,
+              trialConsumedAt: new Date().toISOString(),
+            });
+          } catch (persistErr) {
+            logger.error({ persistErr, orgId, targetPlan }, "[Billing] server-side reactivation (no-active-sub): persistOrgData failed (non-fatal)");
+          }
+          try { store.broadcastPlanUpdate(targetPlan, orgId); } catch (_) { /* non-fatal */ }
+          logger.info({ subId: _serverReact2.id, orgId, targetPlan }, "[Billing] server-side reactivation (no-active-sub) succeeded");
+          res.json({ ok: true, reactivated: true, upgraded: true, plan: targetPlan });
+          return;
+        }
+
+        // ── No PM or payment failed → Checkout Session (CAS 4) ─────────────
         const _reactBucket = Math.floor(Date.now() / (30 * 60 * 1000));
         const _reactKey    = `fp-reactivation-${orgId}-${targetPlan}-${_reactBucket}`;
         const _openSess = await stripe.checkout.sessions.list({

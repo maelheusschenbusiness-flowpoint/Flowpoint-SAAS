@@ -119,6 +119,8 @@ export default defineConfig({
       // finalize-checkout Path C: PI/SI metadata pre_register_token recovery
       "src/tests/finalize-checkout-path-c.test.ts",
       "src/tests/onboarding-frontend.test.ts",
+      // Smart billing upgrade routing: server-side reactivation vs Checkout
+      "src/tests/billing-upgrade-reactivation.test.ts",
     ],
     environment: "node",
     globals:     false,

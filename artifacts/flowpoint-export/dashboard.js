@@ -9872,7 +9872,9 @@ function renderBilling() {
         }
         if (r && r.upgraded) {
           const _planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
-          const _msg = r.noSubDowngrade ? 'Plan changé vers ' + _planLabel + ' ✓' : 'Plan mis à jour → ' + _planLabel + ' ✓';
+          const _msg = r.reactivated
+            ? 'Abonnement repris → ' + _planLabel + ' ✓'
+            : r.noSubDowngrade ? 'Plan changé vers ' + _planLabel + ' ✓' : 'Plan mis à jour → ' + _planLabel + ' ✓';
           showToast('success', _msg);
           // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
           if (STATE.me) STATE.me.plan = _planLabel;
@@ -10243,9 +10245,11 @@ function renderBilling() {
         if (r && r.upgraded) {
           const _planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
           // noSubDowngrade = immediate DB-only downgrade (trial, no Stripe sub)
-          const _msg = r.noSubDowngrade
-            ? 'Plan changé vers ' + _planLabel + ' ✓'
-            : 'Plan mis à jour → ' + _planLabel + ' ✓';
+          const _msg = r.reactivated
+            ? 'Abonnement repris → ' + _planLabel + ' ✓'
+            : r.noSubDowngrade
+              ? 'Plan changé vers ' + _planLabel + ' ✓'
+              : 'Plan mis à jour → ' + _planLabel + ' ✓';
           showToast('success', _msg);
           // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
           // ── Immediate optimistic STATE update (before loadData completes) ──
@@ -18151,14 +18155,16 @@ function showOnboarding() {
 
 // openOnboardingManually() — "Revoir la visite guidée" depuis les Paramètres.
 // N'altère PAS onboarding_completed_at : c'est une réouverture manuelle.
-function openOnboardingManually() {
+// Exposé sur window car le bouton Settings est injecté via innerHTML et utilise
+// un attribut onclick="openOnboardingManually()" qui résout dans le scope global.
+window.openOnboardingManually = function openOnboardingManually() {
   const el = $('#fp-onboarding');
   if (!el) return;
   _fpOnboardingStepIdx = 0;
   _fpRenderOnboardingModal();
   el.removeAttribute('hidden');
   setTimeout(function() { const b = el.querySelector('button'); if (b) b.focus(); }, 50);
-}
+};
 
 function _fpRenderOnboardingModal() {
   const el = $('#fp-onboarding');
