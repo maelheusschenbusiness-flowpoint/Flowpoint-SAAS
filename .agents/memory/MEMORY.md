@@ -157,3 +157,4 @@
 - [Team contributions owner canonical](team-contrib-owner-canonical.md) — NULLIF(owner_user_id,'') in principal SQL; email as last-resort canonical_uid; team page lookup tries [userId, email]; backfill NULL created_by→owner in audits/missions/reports on startup
 - [Public billing Customer anchor](public-billing-auth-anchor.md) — public billing runs before orgContext; resolve authenticated sessions before creating Stripe intents and reuse organizations.stripe_customer_id
 - [Clean reset AI schema bootstrap](clean-reset-ai-schema.md) — AI billing tables must be created before strict migration checks or a fresh database cannot boot
+- [Render/Stripe historical purge boundary](render-stripe-historical-purge.md) — app.flowpoint.pro may use a separate Render DB; scan deleted Stripe Customers through subscription metadata, not only current DB links
