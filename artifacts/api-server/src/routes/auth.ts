@@ -146,17 +146,42 @@ async function resolveOrCreateLegacyOrg({
     if (guestMember.rows.length > 0) {
       const guestOrgId = guestMember.rows[0].org_id;
       const guestRole  = guestMember.rows[0].role;
-      // Back-fill organization_members so the canonical path works next login.
+
+      // ── Stale-row guard: verify the org actually exists and is not deleted ──
+      // A purged account leaves team_members rows pointing to a UUID that no
+      // longer exists in organizations.  Using that ghost UUID as sessionOrgId
+      // causes /api/me to return 503 BILLING_DATA_UNAVAILABLE on every login.
+      // If the org is absent, fall through to Step B (organizations check by
+      // owner_email) which will find or create the correct UUID org.
+      let _guestOrgValid = false;
       try {
-        await client.query(
-          `INSERT INTO organization_members (id, organization_id, user_id, role, status, joined_at)
-           VALUES (gen_random_uuid(), $1, $2::uuid, $3, 'active', NOW())
-           ON CONFLICT (organization_id, user_id) DO NOTHING`,
-          [guestOrgId, resolvedUserUuid, guestRole]
+        const _orgCheck = await client.query<{ exists: number }>(
+          `SELECT 1 AS exists FROM organizations
+           WHERE id::text = $1 AND status != 'deleted' LIMIT 1`,
+          [guestOrgId],
         );
-      } catch { /* non-fatal */ }
-      await client.query("COMMIT");
-      return { orgId: guestOrgId, userUuid: resolvedUserUuid! };
+        _guestOrgValid = _orgCheck.rows.length > 0;
+      } catch { /* non-fatal — treat as invalid */ }
+
+      if (!_guestOrgValid) {
+        // Ghost team_members row — org doesn't exist.  Log and fall through.
+        logger.warn(
+          { guestOrgId, email, resolvedUserUuid },
+          "[Auth] resolveOrCreateLegacyOrg — team_members org_id not found in organizations (stale row after purge), falling through to owner check",
+        );
+      } else {
+        // Org exists — back-fill organization_members and return.
+        try {
+          await client.query(
+            `INSERT INTO organization_members (id, organization_id, user_id, role, status, joined_at)
+             VALUES (gen_random_uuid(), $1, $2::uuid, $3, 'active', NOW())
+             ON CONFLICT (organization_id, user_id) DO NOTHING`,
+            [guestOrgId, resolvedUserUuid, guestRole],
+          );
+        } catch { /* non-fatal */ }
+        await client.query("COMMIT");
+        return { orgId: guestOrgId, userUuid: resolvedUserUuid! };
+      }
     }
 
     // ── Step B: look for an existing UUID org keyed by owner_email ───────────
@@ -1644,6 +1669,31 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
           }
         } catch (_tmErr) {
           logger.warn({ err: String(_tmErr) }, "login-verify: S6-team-members lookup failed (non-fatal)");
+        }
+
+        // ── Stale-row guard (mirrors resolveOrCreateLegacyOrg Step A2) ──────────
+        // A purged account leaves a team_members row pointing to an org UUID
+        // that no longer exists in organizations.  Using that ghost UUID as
+        // sessionOrgId causes /api/me → 503 BILLING_DATA_UNAVAILABLE.
+        // If the org is absent, fall through to the org_settings path below.
+        if (s6GuestOrgId) {
+          let _s6OrgValid = false;
+          try {
+            const _s6OrgCheck = await pool.query<{ exists: number }>(
+              `SELECT 1 AS exists FROM organizations
+               WHERE id::text = $1 AND status != 'deleted' LIMIT 1`,
+              [s6GuestOrgId],
+            );
+            _s6OrgValid = _s6OrgCheck.rows.length > 0;
+          } catch { /* non-fatal — treat as invalid */ }
+
+          if (!_s6OrgValid) {
+            logger.warn(
+              { s6GuestOrgId, email, userId: user.id },
+              "[AUTH] S6: team_members org_id not in organizations (stale after purge) — falling through to org_settings",
+            );
+            s6GuestOrgId = null; // clear so we fall through to org_settings below
+          }
         }
 
         if (s6GuestOrgId) {
