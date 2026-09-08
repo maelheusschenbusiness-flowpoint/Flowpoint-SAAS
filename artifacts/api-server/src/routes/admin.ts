@@ -909,7 +909,79 @@ router.delete("/admin/force-delete-account", async (req: Request, res: Response)
     }
     const { deleteAccount } = await import("../services/account-deletion.js");
     const report = await deleteAccount({ orgId: org.id, email: normalized, userId: userId ?? undefined, stripeCustomerId: org.stripe_customer_id });
-    res.json({ ok: report.committed && report.survivors.length === 0, preview, report });
+    // After the main pipeline, purge any ghost organization_members + team_members
+    // that may have been preserved because they point to a non-existent org (c143bc00-…).
+    const residualCleanup: string[] = [];
+    if (userId) {
+      try {
+        const ghostOm = await pool.query(
+          `DELETE FROM organization_members om
+           WHERE om.user_id = $1::uuid
+             AND NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id::text = om.organization_id::text AND o.status != 'deleted')
+           RETURNING organization_id::text`,
+          [userId]
+        );
+        if (ghostOm.rowCount && ghostOm.rowCount > 0) residualCleanup.push(`ghost org_members: ${ghostOm.rowCount}`);
+        const ghostTm = await pool.query(
+          `DELETE FROM team_members WHERE lower(email) = $1 RETURNING id`, [normalized]
+        );
+        if (ghostTm.rowCount && ghostTm.rowCount > 0) residualCleanup.push(`team_members: ${ghostTm.rowCount}`);
+        // Now safe to delete the users row (no surviving org memberships)
+        const remainingMemberships = await pool.query(
+          `SELECT 1 FROM organization_members WHERE user_id = $1::uuid AND status = 'active' LIMIT 1`, [userId]
+        );
+        if (remainingMemberships.rows.length === 0) {
+          const delUser = await pool.query(`DELETE FROM users WHERE id = $1::uuid RETURNING email`, [userId]);
+          if (delUser.rowCount && delUser.rowCount > 0) residualCleanup.push(`users: ${delUser.rowCount}`);
+        }
+      } catch (cleanupErr) {
+        residualCleanup.push(`cleanup_error: ${safeErrMsg(cleanupErr)}`);
+      }
+    }
+    res.json({ ok: report.committed && report.survivors.length === 0, preview, report, residualCleanup });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── DELETE /api/admin/force-delete-residuals ──────────────────────────────────
+// Purges leftover ghost rows for an already-deleted account (no active org needed).
+// Removes: ghost organization_members, team_members, and users rows for the email.
+// Auth: x-admin-key + confirmEmail.
+router.delete("/admin/force-delete-residuals", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { email, confirmEmail } = req.body ?? {};
+  if (typeof email !== "string" || !email.trim()) { res.status(400).json({ error: "email required" }); return; }
+  const normalized = email.trim().toLowerCase();
+  if (confirmEmail !== normalized) { res.status(400).json({ error: "confirmEmail must match email" }); return; }
+  try {
+    const userRow = await pool.query<{ id: string }>(`SELECT id::text FROM users WHERE lower(email) = $1 LIMIT 1`, [normalized]);
+    const userId = userRow.rows[0]?.id ?? null;
+    const deleted: Record<string, number> = {};
+    if (userId) {
+      const r1 = await pool.query(
+        `DELETE FROM organization_members WHERE user_id = $1::uuid
+         AND NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id::text = organization_id::text AND o.status != 'deleted')`,
+        [userId]
+      );
+      deleted["ghost_organization_members"] = r1.rowCount ?? 0;
+    }
+    const r2 = await pool.query(`DELETE FROM team_members WHERE lower(email) = $1`, [normalized]);
+    deleted["team_members"] = r2.rowCount ?? 0;
+    const r3 = await pool.query(`DELETE FROM magic_link_tokens WHERE lower(email) = $1`, [normalized]);
+    deleted["magic_link_tokens"] = r3.rowCount ?? 0;
+    const r4 = await pool.query(`DELETE FROM pending_signups WHERE lower(email) = $1`, [normalized]);
+    deleted["pending_signups"] = r4.rowCount ?? 0;
+    if (userId) {
+      const remaining = await pool.query(`SELECT 1 FROM organization_members WHERE user_id = $1::uuid AND status = 'active' LIMIT 1`, [userId]);
+      if (remaining.rows.length === 0) {
+        const r5 = await pool.query(`DELETE FROM users WHERE id = $1::uuid`, [userId]);
+        deleted["users"] = r5.rowCount ?? 0;
+      } else {
+        deleted["users"] = 0; // still member of another org
+      }
+    }
+    res.json({ ok: true, email: normalized, userId, deleted });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   }
