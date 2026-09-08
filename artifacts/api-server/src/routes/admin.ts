@@ -2804,4 +2804,142 @@ router.post("/admin/reset-onboarding", async (req: Request, res: Response): Prom
   }
 });
 
+// ── GET /api/admin/account-state — read-only diagnostic (never mutates) ───────
+// Returns full account state (users, sessions, organizations, org_settings,
+// organization_members, team_members) for a given email so we can compare
+// session.org_id vs organizations.id without guessing.
+// Protected by x-admin-key. Read-only — no side effects.
+router.get("/admin/account-state", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const email = (req.query["email"] as string | undefined)?.trim().toLowerCase();
+  if (!email) {
+    res.status(400).json({ ok: false, error: "email query param required" });
+    return;
+  }
+
+  try {
+    const [usersR, teamMembersR, orgsR, orgSettingsR, sessionsR] = await Promise.all([
+      pool.query(
+        `SELECT id, email, status, email_verified, auth_provider, created_at
+         FROM users WHERE LOWER(email) = $1 LIMIT 5`,
+        [email]
+      ),
+      pool.query(
+        `SELECT id, email, org_id, role, status, created_at
+         FROM team_members WHERE LOWER(email) = $1 LIMIT 5`,
+        [email]
+      ),
+      pool.query(
+        `SELECT id::text, name, owner_email, owner_user_id, status, plan,
+                subscription_status, stripe_customer_id, created_at
+         FROM organizations WHERE LOWER(owner_email) = $1 ORDER BY created_at DESC LIMIT 5`,
+        [email]
+      ),
+      pool.query(
+        `SELECT org_id, email, plan, subscription_status, stripe_customer_id, created_at
+         FROM org_settings WHERE LOWER(org_id) = $1 OR LOWER(email) = $1
+         ORDER BY created_at DESC LIMIT 5`,
+        [email]
+      ),
+      pool.query(
+        `SELECT token, user_id, org_id, email, role, created_at, expires_at,
+                (expires_at > NOW()) AS is_valid
+         FROM user_sessions WHERE LOWER(email) = $1
+         ORDER BY created_at DESC LIMIT 10`,
+        [email]
+      ),
+    ]);
+
+    // For each session org_id, check if it resolves in organizations + org_settings
+    const sessionOrgChecks: Record<string, unknown>[] = [];
+    for (const sess of sessionsR.rows) {
+      const orgId: string = sess.org_id ?? "";
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId);
+      let orgInOrganizations = null;
+      let orgInOrgSettings = null;
+      try {
+        if (isUuid) {
+          const r = await pool.query(
+            `SELECT id::text, status, plan, subscription_status FROM organizations WHERE id = $1 LIMIT 1`,
+            [orgId]
+          );
+          orgInOrganizations = r.rows[0] ?? null;
+        }
+        const r2 = await pool.query(
+          `SELECT org_id, plan, subscription_status FROM org_settings WHERE org_id = $1 LIMIT 1`,
+          [orgId]
+        );
+        orgInOrgSettings = r2.rows[0] ?? null;
+      } catch { /* non-fatal */ }
+      sessionOrgChecks.push({
+        token_prefix: String(sess.token ?? "").slice(0, 12),
+        org_id: orgId,
+        org_id_is_uuid: isUuid,
+        is_valid: sess.is_valid,
+        created_at: sess.created_at,
+        expires_at: sess.expires_at,
+        org_in_organizations: orgInOrganizations,
+        org_in_org_settings: orgInOrgSettings,
+        resolves: !!(orgInOrganizations || orgInOrgSettings),
+      });
+    }
+
+    // organization_members for each user found
+    const memberRows: Record<string, unknown>[] = [];
+    for (const u of usersR.rows) {
+      try {
+        const r = await pool.query(
+          `SELECT om.organization_id, om.role, om.status, o.status AS org_status,
+                  o.subscription_status, o.plan
+           FROM organization_members om
+           LEFT JOIN organizations o ON o.id::text = om.organization_id
+           WHERE om.user_id = $1::uuid AND om.status = 'active'
+           LIMIT 5`,
+          [u.id]
+        );
+        for (const row of r.rows) {
+          memberRows.push({ user_id: u.id, ...row });
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // pending_signups (not yet consumed)
+    let pendingSignups: unknown[] = [];
+    try {
+      const r = await pool.query(
+        `SELECT token, email, consumed_at, expires_at, created_at
+         FROM pending_signups WHERE LOWER(email) = $1
+         ORDER BY created_at DESC LIMIT 3`,
+        [email]
+      );
+      pendingSignups = r.rows;
+    } catch { /* table might not exist */ }
+
+    res.json({
+      ok: true,
+      email,
+      users: usersR.rows,
+      team_members: teamMembersR.rows,
+      organizations: orgsR.rows,
+      org_settings: orgSettingsR.rows,
+      sessions: sessionsR.rows.map(s => ({
+        token_prefix: String(s.token ?? "").slice(0, 12),
+        user_id: s.user_id,
+        org_id: s.org_id,
+        email: s.email,
+        role: s.role,
+        created_at: s.created_at,
+        expires_at: s.expires_at,
+        is_valid: s.is_valid,
+      })),
+      session_org_checks: sessionOrgChecks,
+      organization_members: memberRows,
+      pending_signups: pendingSignups,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 export default router;
