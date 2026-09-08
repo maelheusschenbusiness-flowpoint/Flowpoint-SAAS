@@ -876,6 +876,45 @@ router.delete("/admin/purge-account", async (req: Request, res: Response): Promi
   }
 });
 
+// ── DELETE /api/admin/force-delete-account ───────────────────────────────────
+// Admin-only hard deletion for any account (including real clients).
+// Unlike purge-account this is NOT limited to QA accounts.
+// Requires x-admin-key + confirmEmail matching the owner email.
+// Dry-run by default (dryRun: false to execute).
+router.delete("/admin/force-delete-account", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { email, dryRun = true, confirmEmail } = req.body ?? {};
+  if (typeof email !== "string" || !email.trim()) {
+    res.status(400).json({ error: "email required" }); return;
+  }
+  const normalized = email.trim().toLowerCase();
+  try {
+    const row = await pool.query<{ id: string; owner_email: string; stripe_customer_id: string }>(
+      `SELECT id::text, owner_email, stripe_customer_id FROM organizations
+       WHERE lower(owner_email) = $1 AND status != 'deleted' LIMIT 1`,
+      [normalized]
+    );
+    if (row.rows.length === 0) {
+      res.status(404).json({ error: "No active organization found for this email" }); return;
+    }
+    const org = row.rows[0];
+    const userRow = await pool.query<{ id: string }>(
+      `SELECT id::text FROM users WHERE lower(email) = $1 LIMIT 1`, [normalized]
+    );
+    const userId = userRow.rows[0]?.id ?? null;
+    const preview = { email: normalized, orgId: org.id, userId, stripeCustomerId: org.stripe_customer_id };
+    if (dryRun !== false) { res.json({ ok: true, dryRun: true, preview }); return; }
+    if (confirmEmail !== normalized) {
+      res.status(400).json({ error: "confirmEmail must exactly match the owner email" }); return;
+    }
+    const { deleteAccount } = await import("../services/account-deletion.js");
+    const report = await deleteAccount({ orgId: org.id, email: normalized, userId: userId ?? undefined, stripeCustomerId: org.stripe_customer_id });
+    res.json({ ok: report.committed && report.survivors.length === 0, preview, report });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 // ── POST /api/admin/purge-ghost-accounts ─────────────────────────────────────
 // Finds and permanently removes every "ghost" account that survived a failed
 // deletion (the bug: email=null caused org_settings + magic_link_tokens cleanup
