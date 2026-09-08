@@ -11728,7 +11728,7 @@ function renderSettings() {
       </div>
 
       <!-- VISITE GUIDÉE -->
-      <div class="fp-card">
+      <div class="fp-card" style="margin-top:24px">
         <div class="fp-card-title">
           ${svgIcon('play-circle').replace('stroke="currentColor"','stroke="#2563EB"')}
           ${fpT('Visite guidée')}
