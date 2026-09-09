@@ -7464,7 +7464,7 @@ function renderLibCard(t) {
   if (alreadyAdded) {
     return `
       <div class="fp-lib-card" style="opacity:0.5;cursor:default">
-        <button class="fp-lib-add-btn" disabled style="background:rgba(34,197,94,0.15);color:#22c55e;border-color:rgba(34,197,94,0.3);cursor:default">✓</button>
+        <button class="fp-lib-add-btn" disabled style="background:rgba(34,197,94,0.15);color:#22c55e;border-color:rgba(34,197,94,0.3);cursor:default" aria-label="Mission déjà ajoutée">✓</button>
         <div class="fp-lib-card-title" style="text-decoration:line-through;opacity:0.7">${escHtml(t.title)}</div>
         <div class="fp-lib-card-meta">
           <span style="font-size:11px;color:#22c55e;font-weight:600">${fpT('Déjà ajoutée')}</span>
@@ -12685,7 +12685,7 @@ function renderSettings() {
                             <div style="display:flex;gap:4px;justify-content:center">
                               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._testWebhook('${escHtml(i.id)}','${escHtml(i.name)}')">🧪 Test</button>
                               <button class="fp-toggle${i.active?' on':''}" onclick="window._toggleWebhook('${escHtml(i.id)}',${!i.active})" style="transform:scale(0.8)"></button>
-                              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window._deleteWebhook('${escHtml(i.id)}')">✕</button>
+                              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window._deleteWebhook('${escHtml(i.id)}')" aria-label="Supprimer ce webhook">✕</button>
                             </div>
                           </td>
                         </tr>
@@ -52252,12 +52252,12 @@ function renderMonitorsConfig() {
             <!-- Email -->
             <div style="display:flex;gap:6px;align-items:center;padding-right:12px">
               <input class="fp-input monitor-cfg-email" data-monitor-id="${m.id}" placeholder="alerte@email.com" value="${escHtml(m.alertEmail || '')}" style="flex:1;height:28px;font-size:11px;min-width:0"/>
-              <button class="fp-btn fp-btn-primary fp-btn-sm monitor-cfg-save" data-monitor-id="${m.id}" style="flex-shrink:0;height:28px;padding:0 10px">✓</button>
+              <button class="fp-btn fp-btn-primary fp-btn-sm monitor-cfg-save" data-monitor-id="${m.id}" style="flex-shrink:0;height:28px;padding:0 10px" aria-label="Enregistrer l'email d'alerte">✓</button>
             </div>
             <!-- SMS — Bientôt disponible (disabled, not wired) -->
             <div style="display:flex;gap:6px;align-items:center;padding-right:12px;opacity:0.45" title="${fpT('Alertes SMS — bientôt disponible')}">
               <input class="fp-input" placeholder="+33 6…" value="${escHtml(m.alertPhone || '')}" style="flex:1;height:28px;font-size:11px;min-width:0" disabled/>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="flex-shrink:0;height:28px;padding:0 10px;cursor:not-allowed">✓</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="flex-shrink:0;height:28px;padding:0 10px;cursor:not-allowed" aria-label="Alertes SMS bientôt disponibles">✓</button>
             </div>
             <!-- Status badge -->
             <div style="display:flex;justify-content:center">
@@ -53664,7 +53664,7 @@ function renderGrowthObjectives() {
               '<div style="font-size:11px;color:var(--fp-text-faint)">📅 '+dl+'</div>' +
               (o.next ? '<div style="font-size:10px;color:var(--fp-text-muted);margin-top:2px">→ '+escHtml(o.next)+'</div>' : '') +
             '</div>' +
-            '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444" data-goal-id="'+escHtml(String(o.id||''))+'" onclick="(async function(b){var gid=b.dataset.goalId;if(!gid)return;window._fpDelGoal&&window._fpDelGoal(gid);})(this)">✕</button>' +
+            '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444" data-goal-id="'+escHtml(String(o.id||''))+'" onclick="(async function(b){var gid=b.dataset.goalId;if(!gid)return;window._fpDelGoal&&window._fpDelGoal(gid);})(this)" aria-label="Supprimer cet objectif">✕</button>' +
           '</div>';
         }).join('')}
       </div>
@@ -61203,7 +61203,7 @@ function renderGrowthKeywords() {
                     <td class="fp-col-hide-sm" style="text-align:center">
                       <div style="display:flex;gap:5px;justify-content:center">
                         <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._kwHistory('${escHtml(k.id||'')}','${escHtml(k.keyword||k.kw||'')}')">📈 Historique</button>
-                        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window._kwDelete('${escHtml(k.id||'')}')">✕</button>
+                        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window._kwDelete('${escHtml(k.id||'')}')" aria-label="Supprimer ce mot-clé">✕</button>
                       </div>
                     </td>
                   </tr>
@@ -64007,7 +64007,7 @@ function _fpFunnelStepRow(idx, step) {
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
       <span style="font-size:12px;font-weight:700;color:var(--fp-text-muted);width:22px;text-align:center">${pos}</span>
       <input class="fp-input" style="flex:1" placeholder="Nom de l'étape" value="${_fpFunnelEsc(name)}" data-field="step-name-${idx}">
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;flex-shrink:0" onclick="window._fpFunnelRemoveStep(this)" data-idx="${idx}">✕</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;flex-shrink:0" onclick="window._fpFunnelRemoveStep(this)" data-idx="${idx}" aria-label="Supprimer cette étape">✕</button>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <select class="fp-input" style="width:auto;font-size:12px" data-field="step-ctype-${idx}" onchange="window._fpFunnelToggleCtype(this)">
