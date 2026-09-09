@@ -126,7 +126,7 @@ describe("CA-3 — finalize-checkout (payment_intent) rejette les PI non confirm
 describe("CA-4 — billing/upgrade ne persiste rien d'activable avant la Checkout Session", () => {
   /* On cherche entre le debut du handler upgrade et le premier checkout.sessions.create()
      que les seules écritures autorisées sont :
-       • stripe_customer_id (ensureStripeCustomer / anchoredCustomer) — acceptable
+       • lecture de stripe_customer_id via anchoredCustomer
        • subscriptionStatus: "canceled" (annulation d'une sub existante — gated sur Stripe)
      Sont interdites AVANT create() : plan=X activé, subscriptionStatus="active",
      stripeSubscriptionId, entitlement.                                            */
@@ -147,8 +147,14 @@ describe("CA-4 — billing/upgrade ne persiste rien d'activable avant la Checkou
     expect(preCreate).not.toMatch(/subscriptionStatus:\s*["']active["']/);
   });
 
-  it("ensureStripeCustomer est appelé dans le handler upgrade (Customer canonique — acceptable avant create)", () => {
-    expect(billingTs).toMatch(/ensureStripeCustomer\(/);
+  it("le premier Checkout authentifié ne pré-crée aucun Customer Stripe", () => {
+    const markerStart = billingTs.indexOf("// No existing Stripe subscription");
+    const markerEnd = billingTs.indexOf("// ── GET /billing/subscription", markerStart);
+    const noSubBlock = billingTs.slice(markerStart, markerEnd > markerStart ? markerEnd : undefined);
+    expect(markerStart, "bloc no-sub absent").toBeGreaterThan(0);
+    expect(noSubBlock).not.toContain("ensureStripeCustomer(");
+    expect(noSubBlock).not.toMatch(/\bcustomer:\s*_nsCustomerId/);
+    expect(noSubBlock).toContain("customer_email");
   });
 
   it("après create(), au moins un persistOrgData est présent (activation post-paiement)", () => {
@@ -167,18 +173,17 @@ describe("CA-4 — billing/upgrade ne persiste rien d'activable avant la Checkou
 
 /* ── CA-5 : Checkout abandonné puis nouvelle tentative — pas de doublon Customer ── */
 describe("CA-5 — pas de Customer Stripe parasite sur tentative après abandon", () => {
-  it("billing/upgrade résout le Customer via anchoredCustomer (organisations DB) avant ensureStripeCustomer dans le handler upgrade", () => {
+  it("billing/upgrade réutilise uniquement le Customer ancré pour une réactivation", () => {
     // Scoper la recherche au handler upgrade uniquement
     const upgradeStart = billingTs.indexOf("router.post(\"/billing/upgrade\"");
     const upgradeEnd   = billingTs.indexOf("\nrouter.", upgradeStart + 1);
     const upgradeBlock = billingTs.slice(upgradeStart, upgradeEnd > 0 ? upgradeEnd : undefined);
 
-    // anchoredCustomer (lecture depuis DB) doit précéder ensureStripeCustomer (fallback)
+    // L'ancre organizations est lue, et aucun fallback de création n'existe dans upgrade.
     const anchorIdx = upgradeBlock.indexOf("anchoredCustomer");
     const ensureIdx = upgradeBlock.indexOf("await ensureStripeCustomer(");
     expect(anchorIdx, "anchoredCustomer absent du handler upgrade").toBeGreaterThan(0);
-    expect(ensureIdx, "ensureStripeCustomer absent du handler upgrade").toBeGreaterThan(0);
-    expect(anchorIdx, "anchoredCustomer doit précéder ensureStripeCustomer dans upgrade").toBeLessThan(ensureIdx);
+    expect(ensureIdx, "ensureStripeCustomer ne doit pas être appelé dans upgrade").toBe(-1);
   });
 
   it("ensureStripeCustomer est DB-first (cherche un customer existant avant d'en créer un)", () => {

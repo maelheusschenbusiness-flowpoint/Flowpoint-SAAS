@@ -10,7 +10,7 @@
  *            → creates subscription server-side, no Checkout
  *
  *   CAS 2b — canceled + customer has PM but payment fails (card_error)
- *            → falls back to Checkout Session
+ *            → stays on dashboard; never auto-redirects to Checkout
  *
  *   CAS 3  — active + different plan (upgrade)
  *            → updates subscription with new price, no Checkout
@@ -219,7 +219,7 @@ describe("CAS 1 — active + cancel_at_period_end=true + same plan", () => {
       checkout:      { sessions: { list: vi.fn().mockResolvedValue({ data: [] }), create: sessionCreate } },
     };
 
-    const { req, res, json } = makeReqRes({ plan: "standard" });
+    const { req, res, json, status } = makeReqRes({ plan: "standard" });
     const handler = await getUpgradeHandler();
     await handler(req, res, vi.fn());
 
@@ -241,11 +241,12 @@ describe("CAS 1 — active + cancel_at_period_end=true + same plan", () => {
 // CAS 2a — canceled + customer has reusable PM → server-side subscription
 // ─────────────────────────────────────────────────────────────────────────────
 describe("CAS 2a — canceled + customer has PM → server-side subscription, no Checkout", () => {
-  it("creates subscription directly without redirecting to Checkout", async () => {
+  it("creates subscription directly and preserves the original future trial_end", async () => {
     mockLoadBillingContext.mockResolvedValue({
       plan:               "standard",
       subscriptionStatus: "canceled",
       stripeCustomerId:   CUS_ID,
+      stripeSubscriptionId: "sub_canceled_with_trial_history",
     });
 
     const customerRetrieve = vi.fn().mockResolvedValue({
@@ -253,17 +254,46 @@ describe("CAS 2a — canceled + customer has PM → server-side subscription, no
       deleted: false,
       invoice_settings: { default_payment_method: { id: PM_ID } },
     });
-    const subCreate    = vi.fn().mockResolvedValue({ id: NEW_SUB, status: "active" });
-    const subsList     = vi.fn().mockResolvedValue({ data: [] });
+    const originalTrialEnd = Math.floor(Date.now() / 1000) + (10 * 24 * 60 * 60);
+    const canceledSub = {
+      id: "sub_canceled_with_trial_history",
+      status: "canceled",
+      customer: CUS_ID,
+      trial_end: originalTrialEnd,
+      default_payment_method: PM_ID,
+      items: { data: [{ current_period_end: originalTrialEnd }] },
+    };
+    const newerCanceledSub = {
+      id: "sub_newer_without_trial",
+      status: "canceled",
+      customer: CUS_ID,
+      trial_end: null,
+      default_payment_method: PM_ID,
+      items: { data: [{ current_period_end: originalTrialEnd - 100 }] },
+    };
+    const subCreate    = vi.fn().mockResolvedValue({
+      id: NEW_SUB,
+      status: "trialing",
+      trial_end: originalTrialEnd,
+      items: { data: [{ current_period_end: originalTrialEnd }] },
+    });
+    const subsList     = vi.fn().mockImplementation(({ status }: { status: string }) =>
+      Promise.resolve({ data: status === "canceled" ? [newerCanceledSub, canceledSub] : [] }),
+    );
     const sessionCreate = vi.fn();
 
     _stripeMock = {
       customers:     { retrieve: customerRetrieve, create: vi.fn() },
-      subscriptions: { list: subsList, create: subCreate, update: vi.fn() },
+      subscriptions: {
+        list: subsList,
+        retrieve: vi.fn().mockResolvedValue(canceledSub),
+        create: subCreate,
+        update: vi.fn(),
+      },
       checkout:      { sessions: { list: vi.fn().mockResolvedValue({ data: [] }), create: sessionCreate } },
     };
 
-    const { req, res, json } = makeReqRes({ plan: "standard" });
+    const { req, res, json, status } = makeReqRes({ plan: "standard" });
     const handler = await getUpgradeHandler();
     await handler(req, res, vi.fn());
 
@@ -271,20 +301,32 @@ describe("CAS 2a — canceled + customer has PM → server-side subscription, no
     expect(sessionCreate).not.toHaveBeenCalled();
     // Must create subscription with existing customer (no new customer created)
     expect(subCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ customer: CUS_ID, default_payment_method: PM_ID }),
+      expect.objectContaining({
+        customer: CUS_ID,
+        default_payment_method: PM_ID,
+        trial_end: originalTrialEnd,
+      }),
     );
     // Response must carry ok + reactivated
     expect(json).toHaveBeenCalledWith(
-      expect.objectContaining({ ok: true, reactivated: true, upgraded: true }),
+      expect.objectContaining({
+        ok: true,
+        reactivated: true,
+        upgraded: true,
+        subscriptionStatus: "trialing",
+        trialEndsAt: new Date(originalTrialEnd * 1000).toISOString(),
+        currentPeriodEnd: new Date(originalTrialEnd * 1000).toISOString(),
+        customerReused: true,
+      }),
     );
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CAS 2b — canceled + PM exists but payment fails → Checkout fallback
+// CAS 2b — canceled + PM exists but payment fails → stay on dashboard
 // ─────────────────────────────────────────────────────────────────────────────
-describe("CAS 2b — canceled + PM but payment fails → Checkout Session", () => {
-  it("falls back to Checkout when subscription.create throws card_error", async () => {
+describe("CAS 2b — canceled + PM but payment fails → no automatic Checkout", () => {
+  it("returns a typed payment action error when subscription.create throws card_error", async () => {
     mockLoadBillingContext.mockResolvedValue({
       plan:               "standard",
       subscriptionStatus: "canceled",
@@ -309,15 +351,200 @@ describe("CAS 2b — canceled + PM but payment fails → Checkout Session", () =
       checkout:      { sessions: { list: vi.fn().mockResolvedValue({ data: [] }), create: sessionCreate } },
     };
 
-    const { req, res, json } = makeReqRes({ plan: "standard" });
+    const { req, res, json, status } = makeReqRes({ plan: "standard" });
     const handler = await getUpgradeHandler();
     await handler(req, res, vi.fn());
 
-    // Must create a Checkout Session as fallback
-    expect(sessionCreate).toHaveBeenCalled();
-    // Response must carry reactivation + checkoutUrl
+    // A reusable PM was found: never create or auto-redirect to Checkout.
+    expect(sessionCreate).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(409);
     expect(json).toHaveBeenCalledWith(
-      expect.objectContaining({ reactivation: true, checkoutUrl: "https://checkout.stripe.com/fallback" }),
+      expect.objectContaining({
+        ok: false,
+        reactivation: true,
+        requiresPaymentAction: true,
+        error: "payment_method_reactivation_failed",
+      }),
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CAS 2c — exact history anchor remains usable when canceled-history list fails
+// ─────────────────────────────────────────────────────────────────────────────
+describe("CAS 2c — anchored historical trial survives a history-list outage", () => {
+  it("uses the verified anchored subscription trial_end instead of charging immediately", async () => {
+    const originalTrialEnd = Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60);
+    mockLoadBillingContext.mockResolvedValue({
+      plan: "standard",
+      subscriptionStatus: "canceled",
+      stripeCustomerId: CUS_ID,
+      stripeSubscriptionId: "sub_anchored_history",
+      trialEndsAt: new Date(originalTrialEnd * 1000).toISOString(),
+    });
+    const anchoredSub = {
+      id: "sub_anchored_history",
+      status: "canceled",
+      customer: CUS_ID,
+      trial_end: originalTrialEnd,
+      default_payment_method: PM_ID,
+      items: { data: [{ current_period_end: originalTrialEnd }] },
+    };
+    const subCreate = vi.fn().mockResolvedValue({
+      id: NEW_SUB,
+      status: "trialing",
+      trial_end: originalTrialEnd,
+      items: { data: [{ current_period_end: originalTrialEnd }] },
+    });
+    const sessionCreate = vi.fn();
+    _stripeMock = {
+      customers: {
+        retrieve: vi.fn().mockResolvedValue({
+          id: CUS_ID,
+          deleted: false,
+          invoice_settings: { default_payment_method: PM_ID },
+        }),
+      },
+      subscriptions: {
+        retrieve: vi.fn().mockResolvedValue(anchoredSub),
+        list: vi.fn().mockImplementation(({ status }: { status: string }) =>
+          status === "canceled"
+            ? Promise.reject(new Error("temporary Stripe list outage"))
+            : Promise.resolve({ data: [] }),
+        ),
+        create: subCreate,
+        update: vi.fn(),
+      },
+      checkout: { sessions: { list: vi.fn().mockResolvedValue({ data: [] }), create: sessionCreate } },
+    };
+
+    const { req, res, json } = makeReqRes({ plan: "standard" });
+    await (await getUpgradeHandler())(req, res, vi.fn());
+
+    expect(sessionCreate).not.toHaveBeenCalled();
+    expect(subCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ customer: CUS_ID, trial_end: originalTrialEnd }),
+    );
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ok: true,
+        trialEndsAt: new Date(originalTrialEnd * 1000).toISOString(),
+      }),
+    );
+  });
+});
+
+describe("CAS 2d — partial attached-PM lookup failure", () => {
+  it("uses a card result even when the SEPA lookup fails", async () => {
+    const originalTrialEnd = Math.floor(Date.now() / 1000) + (5 * 24 * 60 * 60);
+    mockLoadBillingContext.mockResolvedValue({
+      plan: "standard",
+      subscriptionStatus: "canceled",
+      stripeCustomerId: CUS_ID,
+      stripeSubscriptionId: "sub_without_default_pm",
+    });
+    const anchoredSub = {
+      id: "sub_without_default_pm",
+      status: "canceled",
+      customer: CUS_ID,
+      trial_end: originalTrialEnd,
+      default_payment_method: null,
+      items: { data: [{ current_period_end: originalTrialEnd }] },
+    };
+    const subCreate = vi.fn().mockResolvedValue({
+      id: NEW_SUB,
+      status: "trialing",
+      trial_end: originalTrialEnd,
+      items: { data: [{ current_period_end: originalTrialEnd }] },
+    });
+    const sessionCreate = vi.fn();
+    _stripeMock = {
+      customers: {
+        retrieve: vi.fn().mockResolvedValue({
+          id: CUS_ID,
+          deleted: false,
+          invoice_settings: { default_payment_method: null },
+        }),
+      },
+      subscriptions: {
+        retrieve: vi.fn().mockResolvedValue(anchoredSub),
+        list: vi.fn().mockImplementation(({ status }: { status: string }) =>
+          Promise.resolve({ data: status === "canceled" ? [anchoredSub] : [] }),
+        ),
+        create: subCreate,
+        update: vi.fn(),
+      },
+      paymentMethods: {
+        list: vi.fn().mockImplementation(({ type }: { type: string }) =>
+          type === "card"
+            ? Promise.resolve({ data: [{ id: PM_ID }] })
+            : Promise.reject(new Error("SEPA lookup unavailable")),
+        ),
+      },
+      checkout: { sessions: { list: vi.fn().mockResolvedValue({ data: [] }), create: sessionCreate } },
+    };
+
+    const { req, res } = makeReqRes({ plan: "standard" });
+    await (await getUpgradeHandler())(req, res, vi.fn());
+
+    expect(sessionCreate).not.toHaveBeenCalled();
+    expect(subCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ default_payment_method: PM_ID, trial_end: originalTrialEnd }),
+    );
+  });
+});
+
+describe("CAS 2e — less than 48 hours remain and no PM exists", () => {
+  it("stays on the dashboard instead of creating an invalid Checkout subscription", async () => {
+    const originalTrialEnd = Math.floor(Date.now() / 1000) + (24 * 60 * 60);
+    mockLoadBillingContext.mockResolvedValue({
+      plan: "standard",
+      subscriptionStatus: "canceled",
+      stripeCustomerId: CUS_ID,
+      stripeSubscriptionId: "sub_short_trial",
+    });
+    const anchoredSub = {
+      id: "sub_short_trial",
+      status: "canceled",
+      customer: CUS_ID,
+      trial_end: originalTrialEnd,
+      default_payment_method: null,
+      items: { data: [{ current_period_end: originalTrialEnd }] },
+    };
+    const sessionCreate = vi.fn();
+    const subCreate = vi.fn();
+    _stripeMock = {
+      customers: {
+        retrieve: vi.fn().mockResolvedValue({
+          id: CUS_ID,
+          deleted: false,
+          invoice_settings: { default_payment_method: null },
+        }),
+      },
+      subscriptions: {
+        retrieve: vi.fn().mockResolvedValue(anchoredSub),
+        list: vi.fn().mockImplementation(({ status }: { status: string }) =>
+          Promise.resolve({ data: status === "canceled" ? [anchoredSub] : [] }),
+        ),
+        create: subCreate,
+        update: vi.fn(),
+      },
+      paymentMethods: { list: vi.fn().mockResolvedValue({ data: [] }) },
+      checkout: { sessions: { list: vi.fn().mockResolvedValue({ data: [] }), create: sessionCreate } },
+    };
+
+    const { req, res, json, status } = makeReqRes({ plan: "standard" });
+    await (await getUpgradeHandler())(req, res, vi.fn());
+
+    expect(subCreate).not.toHaveBeenCalled();
+    expect(sessionCreate).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(409);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reactivation: true,
+        requiresPaymentAction: true,
+        error: "payment_method_required_before_reactivation",
+      }),
     );
   });
 });
@@ -383,6 +610,7 @@ describe("CAS 4 — canceled + no default PM → Checkout Session", () => {
     _stripeMock = {
       customers:     { retrieve: customerRetrieve },
       subscriptions: { list: vi.fn().mockResolvedValue({ data: [] }), create: subCreate, update: vi.fn() },
+      paymentMethods: { list: vi.fn().mockResolvedValue({ data: [] }) },
       checkout:      { sessions: { list: vi.fn().mockResolvedValue({ data: [] }), create: sessionCreate } },
     };
 

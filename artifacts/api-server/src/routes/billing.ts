@@ -853,8 +853,9 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
 // Tries to create a Stripe subscription directly, without a Checkout Session,
 // when the customer already has a reusable default payment method.
 //
-// Returns the new subscription `{ id, status }` on success.
-// Returns `null` when Checkout is required (no PM, card declined, or 3DS).
+// Returns a typed result so callers can distinguish "no payment method" from a
+// payment failure. A reusable PM must never be silently converted into an
+// automatic Checkout redirect.
 //
 // Uses `payment_behavior: "error_if_incomplete"` so Stripe never creates a
 // dangling incomplete subscription — on any payment failure the call throws and
@@ -868,15 +869,48 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
 // Case A (cancel_at_period_end=true): caller routes to the active-sub upgrade
 //   path — this function is only called when the subscription is truly canceled.
 // Case B: PM found  → server-side subscriptions.create(), no Checkout.
-// Case C: no PM or authentication_required → return null → Checkout fallback.
-// Case D: Stripe throws 3DS/action_required → return null → Checkout fallback.
+// Case C: no PM → Checkout may be offered explicitly.
+// Case D: Stripe throws 3DS/action_required → stay on dashboard and surface the
+//   payment failure; never auto-redirect.
+type ServerSideReactivationResult =
+  | {
+      ok: true;
+      id: string;
+      status: string;
+      originalTrialEnd: number | null;
+      trialEnd: number | null;
+      currentPeriodEnd: number | null;
+    }
+  | {
+      ok: false;
+      reason:
+        | "no_payment_method"
+        | "payment_failed"
+        | "customer_missing"
+        | "history_lookup_failed"
+        | "payment_method_lookup_failed"
+        | "short_trial_payment_method_required";
+      originalTrialEnd: number | null;
+      currentPeriodEnd: number | null;
+      code?: string;
+    };
+
 async function attemptServerSideReactivation(
   stripe: Awaited<ReturnType<typeof createStripeClient>>,
   customerId: string,
   priceId:    string,
   orgId:      string,
   targetPlan: string,
-): Promise<{ id: string; status: string } | null> {
+  historicalSubscriptionId?: string | null,
+  persistedTrialEndsAt?: string | null,
+): Promise<ServerSideReactivationResult> {
+  const persistedTrialEndMs = persistedTrialEndsAt ? Date.parse(persistedTrialEndsAt) : Number.NaN;
+  const persistedTrialEnd =
+    Number.isFinite(persistedTrialEndMs) && persistedTrialEndMs > Date.now()
+      ? Math.floor(persistedTrialEndMs / 1000)
+      : null;
+  let originalTrialEnd: number | null = persistedTrialEnd;
+  let historicalPeriodEnd: number | null = null;
   try {
     // ── Layer 1: customer.invoice_settings.default_payment_method ──────────
     const customer = await stripe.customers.retrieve(customerId, {
@@ -886,43 +920,140 @@ async function attemptServerSideReactivation(
       invoice_settings?: { default_payment_method?: { id: string } | string | null };
     };
 
-    if (customer.deleted) return null;
+    if (customer.deleted) {
+      return { ok: false, reason: "customer_missing", originalTrialEnd, currentPeriodEnd: historicalPeriodEnd };
+    }
 
     let pmId: string | undefined;
+    type HistoricalSubscription = {
+      id?: string;
+      status?: string;
+      customer?: { id?: string } | string | null;
+      trial_end?: number | null;
+      default_payment_method?: { id?: string } | string | null;
+      items?: { data?: Array<{ current_period_end?: number | null }> };
+    };
+    let canceledSubs: HistoricalSubscription[] = [];
+    let anchoredHistoricalSub: HistoricalSubscription | null = null;
+    let historyResolved = false;
 
     const rawPm = customer.invoice_settings?.default_payment_method;
     pmId = typeof rawPm === "string" ? rawPm : (rawPm as { id?: string } | null)?.id;
 
+    // Prefer the exact historical subscription persisted for this organization.
+    // This prevents another, more recently canceled subscription from hiding
+    // the original future trial deadline.
+    if (historicalSubscriptionId) {
+      try {
+        const anchored = await stripe.subscriptions.retrieve(historicalSubscriptionId);
+        const anchoredCustomer =
+          typeof anchored.customer === "string"
+            ? anchored.customer
+            : (anchored.customer as { id?: string } | null)?.id;
+        if (anchored.status === "canceled" && anchoredCustomer === customerId) {
+          anchoredHistoricalSub = anchored as HistoricalSubscription;
+          historyResolved = true;
+          const nowEpoch = Math.floor(Date.now() / 1000);
+          originalTrialEnd =
+            anchored.trial_end && anchored.trial_end > nowEpoch
+              ? anchored.trial_end
+              : null;
+          historicalPeriodEnd =
+            (anchored.items?.data?.[0] as { current_period_end?: number | null } | undefined)?.current_period_end
+            ?? null;
+          if (!pmId) {
+            const anchoredPm = anchored.default_payment_method;
+            pmId = typeof anchoredPm === "string"
+              ? anchoredPm
+              : (anchoredPm as { id?: string } | null)?.id;
+          }
+        }
+      } catch {
+        // Fall back to deterministic canceled-history scanning below.
+      }
+    }
+
+    // Load canceled history even when layer 1 already found a PM.
+    try {
+      const canceled = await stripe.subscriptions.list({
+        customer: customerId,
+        status:   "canceled",
+        limit:    10,
+      });
+      canceledSubs = canceled.data as typeof canceledSubs;
+      historyResolved = true;
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      const historical =
+        anchoredHistoricalSub
+        ?? canceledSubs.find((sub) => Boolean(sub.trial_end && sub.trial_end > nowEpoch))
+        ?? canceledSubs[0];
+      if (historical?.trial_end && historical.trial_end > nowEpoch) {
+        originalTrialEnd = historical.trial_end;
+      }
+      historicalPeriodEnd = historical?.items?.data?.[0]?.current_period_end ?? null;
+    } catch {
+      // A verified anchor or persisted future trial remains usable. Otherwise
+      // fail closed: unknown history must never become an immediate charge.
+    }
+
+    if (!historyResolved && !persistedTrialEnd) {
+      logger.warn({ customerId, orgId }, "[Billing] attemptServerSideReactivation: subscription history unavailable");
+      return {
+        ok: false,
+        reason: "history_lookup_failed",
+        originalTrialEnd,
+        currentPeriodEnd: historicalPeriodEnd,
+      };
+    }
+
     // ── Layer 2: last canceled subscription's default_payment_method ────────
     if (!pmId) {
-      try {
-        const canceledSubs = await stripe.subscriptions.list({
-          customer: customerId,
-          status:   "canceled",
-          limit:    3,
-        });
-        for (const cs of canceledSubs.data) {
+      for (const cs of canceledSubs) {
           const subPmRaw = cs.default_payment_method;
           const subPmId  = typeof subPmRaw === "string" ? subPmRaw : (subPmRaw as { id?: string } | null)?.id;
           if (subPmId) { pmId = subPmId; break; }
-        }
-      } catch { /* non-fatal — fall through to layer 3 */ }
+      }
     }
 
     // ── Layer 3: first card/sepa attached to the customer ───────────────────
     if (!pmId) {
+      let pmLookupFailed = false;
       try {
-        const [cards, sepas] = await Promise.all([
+        const [cardsResult, sepasResult] = await Promise.allSettled([
           stripe.paymentMethods.list({ customer: customerId, type: "card",      limit: 1 }),
           stripe.paymentMethods.list({ customer: customerId, type: "sepa_debit", limit: 1 }),
         ]);
-        pmId = cards.data[0]?.id ?? sepas.data[0]?.id;
-      } catch { /* non-fatal */ }
+        const cards = cardsResult.status === "fulfilled" ? cardsResult.value.data : [];
+        const sepas = sepasResult.status === "fulfilled" ? sepasResult.value.data : [];
+        pmLookupFailed = cardsResult.status === "rejected" || sepasResult.status === "rejected";
+        pmId = cards[0]?.id ?? sepas[0]?.id;
+      } catch {
+        pmLookupFailed = true;
+      }
+      if (!pmId && pmLookupFailed) {
+        logger.warn({ customerId, orgId }, "[Billing] attemptServerSideReactivation: payment method lookup unavailable");
+        return {
+          ok: false,
+          reason: "payment_method_lookup_failed",
+          originalTrialEnd,
+          currentPeriodEnd: historicalPeriodEnd,
+        };
+      }
     }
 
     if (!pmId) {
+      const minCheckoutTrialEnd = Math.floor(Date.now() / 1000) + (48 * 60 * 60);
+      if (originalTrialEnd && originalTrialEnd < minCheckoutTrialEnd) {
+        logger.info({ customerId, orgId }, "[Billing] attemptServerSideReactivation: short remaining trial requires an attached PM");
+        return {
+          ok: false,
+          reason: "short_trial_payment_method_required",
+          originalTrialEnd,
+          currentPeriodEnd: historicalPeriodEnd,
+        };
+      }
       logger.info({ customerId, orgId }, "[Billing] attemptServerSideReactivation: no reusable PM found — Checkout required");
-      return null;
+      return { ok: false, reason: "no_payment_method", originalTrialEnd, currentPeriodEnd: historicalPeriodEnd };
     }
 
     logger.info({ customerId, orgId, pmId, targetPlan }, "[Billing] attemptServerSideReactivation: PM found — creating subscription server-side");
@@ -933,9 +1064,21 @@ async function attemptServerSideReactivation(
       default_payment_method: pmId,
       payment_behavior:       "error_if_incomplete" as const,
       off_session:            true,
+      ...(originalTrialEnd ? { trial_end: originalTrialEnd } : {}),
       metadata: { plan: targetPlan, orgId, reactivation: "true" },
     });
-    return { id: newSub.id, status: newSub.status };
+    const trialEnd = newSub.trial_end ?? null;
+    const currentPeriodEnd =
+      (newSub.items?.data?.[0] as { current_period_end?: number | null } | undefined)?.current_period_end
+      ?? trialEnd;
+    return {
+      ok: true,
+      id: newSub.id,
+      status: newSub.status,
+      originalTrialEnd,
+      trialEnd,
+      currentPeriodEnd,
+    };
   } catch (err) {
     const se = err as { type?: string; code?: string };
     const isPaymentFailure =
@@ -944,8 +1087,14 @@ async function attemptServerSideReactivation(
        "expired_card", "incorrect_cvc", "payment_intent_authentication_failure",
        "payment_method_customer_subscription_declined"].includes(se.code ?? "");
     if (isPaymentFailure) {
-      logger.info({ customerId, orgId, code: se.code }, "[Billing] attemptServerSideReactivation: payment failed — falling back to Checkout");
-      return null;
+      logger.info({ customerId, orgId, code: se.code }, "[Billing] attemptServerSideReactivation: reusable PM failed — staying on dashboard");
+      return {
+        ok: false,
+        reason: "payment_failed",
+        originalTrialEnd,
+        currentPeriodEnd: historicalPeriodEnd,
+        code: se.code,
+      };
     }
     throw err; // Genuine Stripe error — let the outer catch send a 500
   }
@@ -1077,13 +1226,18 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         // ── CAS 2: try server-side subscription create if PM available ──────
         const serverReact = await attemptServerSideReactivation(
           stripe, billingCtx.stripeCustomerId!, priceId, orgId, targetPlan,
+          billingCtx.stripeSubscriptionId, billingCtx.trialEndsAt,
         );
-        if (serverReact) {
+        if (serverReact.ok) {
+          const trialEndsAt = serverReact.trialEnd
+            ? new Date(serverReact.trialEnd * 1000).toISOString()
+            : null;
           try {
             await persistOrgData(orgId, {
               plan: targetPlan,
               subscriptionStatus: serverReact.status,
               stripeSubscriptionId: serverReact.id,
+              trialEndsAt,
               trialConsumedAt: new Date().toISOString(),
             });
           } catch (persistErr) {
@@ -1091,15 +1245,64 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           }
           try { store.broadcastPlanUpdate(targetPlan, orgId); } catch (_) { /* non-fatal */ }
           logger.info({ subId: serverReact.id, orgId, targetPlan }, "[Billing] server-side reactivation (canceled state) succeeded");
-          res.json({ ok: true, reactivated: true, upgraded: true, plan: targetPlan });
+          res.json({
+            ok: true,
+            reactivated: true,
+            upgraded: true,
+            plan: targetPlan,
+            subscriptionStatus: serverReact.status,
+            trialEndsAt,
+            currentPeriodEnd: serverReact.currentPeriodEnd
+              ? new Date(serverReact.currentPeriodEnd * 1000).toISOString()
+              : null,
+            customerReused: true,
+          });
           return;
         }
 
-        // ── No PM or payment failed → Checkout Session (CAS 4) ─────────────
+        if (serverReact.reason === "payment_failed") {
+          res.status(409).json({
+            ok: false,
+            reactivation: true,
+            requiresPaymentAction: true,
+            error: "payment_method_reactivation_failed",
+            code: serverReact.code,
+            customerReused: true,
+            targetPlan,
+          });
+          return;
+        }
+        if (serverReact.reason === "customer_missing") {
+          res.status(409).json({ ok: false, error: "billing_customer_missing" });
+          return;
+        }
+        if (serverReact.reason === "history_lookup_failed" ||
+            serverReact.reason === "payment_method_lookup_failed") {
+          res.status(503).json({
+            ok: false,
+            reactivation: true,
+            retryable: true,
+            error: serverReact.reason,
+          });
+          return;
+        }
+        if (serverReact.reason === "short_trial_payment_method_required") {
+          res.status(409).json({
+            ok: false,
+            reactivation: true,
+            requiresPaymentAction: true,
+            error: "payment_method_required_before_reactivation",
+          });
+          return;
+        }
+
+        // ── No PM → Checkout is the only remaining path (CAS 4) ────────────
         const existingSession = openSessions.find(
           (s) =>
             s.metadata?.["reactivation"] === "true" &&
             s.metadata?.["targetPlan"]   === targetPlan &&
+            (!serverReact.originalTrialEnd ||
+              s.metadata?.["originalTrialEnd"] === String(serverReact.originalTrialEnd)) &&
             s.url,
         );
         if (existingSession) {
@@ -1123,8 +1326,14 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
               orgId,
               reactivation: "true",
               userId:       String(req.userId ?? ""),
+              ...(serverReact.originalTrialEnd
+                ? { originalTrialEnd: String(serverReact.originalTrialEnd) }
+                : {}),
             },
-            subscription_data: { metadata: { plan: targetPlan, orgId, reactivation: "true" } },
+            subscription_data: {
+              metadata: { plan: targetPlan, orgId, reactivation: "true" },
+              ...(serverReact.originalTrialEnd ? { trial_end: serverReact.originalTrialEnd } : {}),
+            },
           },
           { idempotencyKey },
         );
@@ -1503,13 +1712,18 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         // ── Try server-side subscription create (no Checkout) ───────────────
         const _serverReact2 = await attemptServerSideReactivation(
           stripe, billingCtx.stripeCustomerId!, _reactPriceId, orgId, targetPlan,
+          billingCtx.stripeSubscriptionId, billingCtx.trialEndsAt,
         );
-        if (_serverReact2) {
+        if (_serverReact2.ok) {
+          const trialEndsAt = _serverReact2.trialEnd
+            ? new Date(_serverReact2.trialEnd * 1000).toISOString()
+            : null;
           try {
             await persistOrgData(orgId, {
               plan: targetPlan,
               subscriptionStatus: _serverReact2.status,
               stripeSubscriptionId: _serverReact2.id,
+              trialEndsAt,
               trialConsumedAt: new Date().toISOString(),
             });
           } catch (persistErr) {
@@ -1517,11 +1731,58 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           }
           try { store.broadcastPlanUpdate(targetPlan, orgId); } catch (_) { /* non-fatal */ }
           logger.info({ subId: _serverReact2.id, orgId, targetPlan }, "[Billing] server-side reactivation (no-active-sub) succeeded");
-          res.json({ ok: true, reactivated: true, upgraded: true, plan: targetPlan });
+          res.json({
+            ok: true,
+            reactivated: true,
+            upgraded: true,
+            plan: targetPlan,
+            subscriptionStatus: _serverReact2.status,
+            trialEndsAt,
+            currentPeriodEnd: _serverReact2.currentPeriodEnd
+              ? new Date(_serverReact2.currentPeriodEnd * 1000).toISOString()
+              : null,
+            customerReused: true,
+          });
           return;
         }
 
-        // ── No PM or payment failed → Checkout Session (CAS 4) ─────────────
+        if (_serverReact2.reason === "payment_failed") {
+          res.status(409).json({
+            ok: false,
+            reactivation: true,
+            requiresPaymentAction: true,
+            error: "payment_method_reactivation_failed",
+            code: _serverReact2.code,
+            customerReused: true,
+            targetPlan,
+          });
+          return;
+        }
+        if (_serverReact2.reason === "customer_missing") {
+          res.status(409).json({ ok: false, error: "billing_customer_missing" });
+          return;
+        }
+        if (_serverReact2.reason === "history_lookup_failed" ||
+            _serverReact2.reason === "payment_method_lookup_failed") {
+          res.status(503).json({
+            ok: false,
+            reactivation: true,
+            retryable: true,
+            error: _serverReact2.reason,
+          });
+          return;
+        }
+        if (_serverReact2.reason === "short_trial_payment_method_required") {
+          res.status(409).json({
+            ok: false,
+            reactivation: true,
+            requiresPaymentAction: true,
+            error: "payment_method_required_before_reactivation",
+          });
+          return;
+        }
+
+        // ── No PM → Checkout is the only remaining path (CAS 4) ────────────
         const _reactBucket = Math.floor(Date.now() / (30 * 60 * 1000));
         const _reactKey    = `fp-reactivation-${orgId}-${targetPlan}-${_reactBucket}`;
         const _openSess = await stripe.checkout.sessions.list({
@@ -1531,7 +1792,11 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         });
         const _existSess = (_openSess.data ?? []).find(
           (s: { metadata?: Record<string, string> | null; url?: string | null; id?: string }) =>
-            s.metadata?.["reactivation"] === "true" && s.metadata?.["targetPlan"] === targetPlan && s.url,
+            s.metadata?.["reactivation"] === "true" &&
+            s.metadata?.["targetPlan"] === targetPlan &&
+            (!_serverReact2.originalTrialEnd ||
+              s.metadata?.["originalTrialEnd"] === String(_serverReact2.originalTrialEnd)) &&
+            s.url,
         );
         if (_existSess) {
           logger.info({ sessionId: _existSess.id, orgId, targetPlan }, "[Billing] reactivation (no-active-sub): returning existing open session");
@@ -1551,8 +1816,14 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
               orgId,
               reactivation: "true",
               userId:       String(req.userId ?? ""),
+              ...(_serverReact2.originalTrialEnd
+                ? { originalTrialEnd: String(_serverReact2.originalTrialEnd) }
+                : {}),
             },
-            subscription_data: { metadata: { plan: targetPlan, orgId, reactivation: "true" } },
+            subscription_data: {
+              metadata: { plan: targetPlan, orgId, reactivation: "true" },
+              ...(_serverReact2.originalTrialEnd ? { trial_end: _serverReact2.originalTrialEnd } : {}),
+            },
           },
           { idempotencyKey: _reactKey },
         );
@@ -1572,35 +1843,16 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         res.status(400).json({ error: `Plan inconnu : ${plan}` });
         return;
       }
-      // Reuse existing Stripe Customer or create one — one Customer per org invariant.
-      let _nsCustomerId: string;
-      try {
-        _nsCustomerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey);
-      } catch (custErr) {
-        logger.error({ custErr, orgId }, "[Billing] no-sub checkout: ensureStripeCustomer failed");
-        res.status(500).json({ error: "Impossible de créer ou retrouver le client Stripe. Réessayez." });
-        return;
-      }
+      // First Checkout: do not pre-create a Stripe Customer. In subscription
+      // mode Stripe creates it only when Checkout completes; the webhook then
+      // anchors session.customer to the organization.
       const _nsBucket = Math.floor(Date.now() / (30 * 60 * 1000));
       const _nsKey    = `fp-nosub-checkout-${orgId}-${targetPlan}-${_nsBucket}`;
-      // Idempotency: reuse an already-open session for the same plan in the same 30-min window.
-      const _nsOpenSess = await stripe.checkout.sessions.list({
-        customer: _nsCustomerId, status: "open", limit: 5,
-      });
-      const _nsExist = (_nsOpenSess.data ?? []).find(
-        (s: { metadata?: Record<string, string> | null; url?: string | null }) =>
-          s.metadata?.["targetPlan"] === targetPlan && s.url,
-      );
-      if (_nsExist) {
-        logger.info({ sessionId: _nsExist.id, orgId, targetPlan }, "[Billing] no-sub checkout: returning existing open session");
-        res.json({ reactivation: true, checkoutUrl: _nsExist.url, customerReused: true, targetPlan, idempotent: true });
-        return;
-      }
       const _nsSess = await stripe.checkout.sessions.create(
         {
-          customer:   _nsCustomerId,
           mode:       "subscription",
           line_items: [{ price: _nsPriceId, quantity: 1 }],
+          ...(billingCtx.email ? { customer_email: billingCtx.email } : {}),
           success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url:  `${publicUrl}/dashboard.html#billing/plans`,
           metadata: {
@@ -1614,12 +1866,11 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         },
         { idempotencyKey: _nsKey },
       );
-      const _nsReused = !!billingCtx.stripeCustomerId;
       logger.info(
-        { sessionId: _nsSess.id, orgId, targetPlan, customerId: _nsCustomerId, customerReused: _nsReused },
+        { sessionId: _nsSess.id, orgId, targetPlan, customerReused: false },
         "[Billing] no-sub checkout session created",
       );
-      res.json({ reactivation: true, checkoutUrl: _nsSess.url, customerReused: _nsReused, targetPlan });
+      res.json({ reactivation: true, checkoutUrl: _nsSess.url, customerReused: false, targetPlan });
       return;
     }
   } catch (err) {

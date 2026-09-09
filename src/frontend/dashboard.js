@@ -9803,7 +9803,12 @@ function renderBilling() {
       if (r && r.ok) {
         showToast('success', fpT('Abonnement réactivé — renouvellement automatique rétabli'));
         if (STATE.billing) STATE.billing.cancelAtPeriodEnd = false;
-        setTimeout(()=>navigateSub('plans'), 700);
+        try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+        _apiFetchCache.clear();
+        _apiFetchInFlight.clear();
+        await loadData().catch(function(){});
+        navigate('billing');
+        navigateSub('plans');
       } else { showToast('error', (r && r.error) || 'Erreur lors de la réactivation'); }
     } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'réactivation impossible')); }
   };
