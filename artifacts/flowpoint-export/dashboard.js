@@ -18111,7 +18111,7 @@ function toggleTheme() {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// ONBOARDING BÊTA — Visite guidée vidéo (4 étapes)
+// ONBOARDING — Visite guidée vidéo (6 étapes)
 // ─────────────────────────────────────────────────────────────────
 // Configuration centralisée : remplacez videoUrl par l'URL finale de chaque vidéo.
 // null = placeholder "Vidéo bientôt disponible".
@@ -18120,27 +18120,39 @@ function toggleTheme() {
 const FP_ONBOARDING_STEPS = [
   {
     id: 'interface',
-    title: 'Découvrez votre espace FlowPoint',
-    desc:  'FlowPoint centralise les outils nécessaires pour analyser, surveiller et piloter la présence digitale de l\'entreprise depuis un seul espace.',
+    title: 'Prenez vos repères',
+    desc:  'Visualisez la santé de votre portefeuille et accédez rapidement aux fonctions principales depuis un espace unique.',
     videoUrl: '/onboarding/step1-interface.mp4'
   },
   {
-    id: 'workflow',
-    title: 'Comment fonctionne FlowPoint ?',
-    desc:  'Observez, analysez, agissez, surveillez, mesurez et rapportez — le cycle complet de pilotage SEO en un seul outil.',
-    videoUrl: '/onboarding/step2-workflow.mp4'
+    id: 'audit-actions',
+    title: 'Passez du diagnostic à l\'action',
+    desc:  'Lancez un audit SEO, identifiez les problèmes prioritaires puis transformez les recommandations en missions suivies.',
+    videoUrl: '/onboarding/step2-audit-actions.mp4'
   },
   {
-    id: 'data',
-    title: 'Transformez vos données en décisions',
-    desc:  'FlowPoint ne sert pas uniquement à collecter des données. Il permet de les comprendre et de les transformer en actions et livrables exploitables.',
-    videoUrl: '/onboarding/step3-data.mp4'
+    id: 'monitoring-alerts',
+    title: 'Surveillez et soyez alerté',
+    desc:  'Contrôlez la disponibilité et la latence de vos sites, puis centralisez les incidents et alertes critiques.',
+    videoUrl: '/onboarding/step3-monitoring-alerts.mp4'
+  },
+  {
+    id: 'local-competition',
+    title: 'Pilotez votre visibilité locale',
+    desc:  'Repérez vos opportunités Google Maps et comparez votre présence locale avec celle de vos concurrents.',
+    videoUrl: '/onboarding/step4-local-competition.mp4'
+  },
+  {
+    id: 'ai-reports',
+    title: 'Accélérez avec le Copilot',
+    desc:  'Interrogez l\'Assistant IA avec le contexte de votre workspace, puis générez des rapports prêts à partager.',
+    videoUrl: '/onboarding/step5-ai-reports.mp4'
   },
   {
     id: 'daily',
-    title: 'Votre espace de travail au quotidien',
-    desc:  'Vous connaissez maintenant les bases de FlowPoint. Découvrez les fonctions utilisées quotidiennement pour piloter votre présence digitale.',
-    videoUrl: '/onboarding/step4-daily.mp4'
+    title: 'Gardez le cap chaque jour',
+    desc:  'Consultez les événements, traitez les actions prioritaires et mesurez régulièrement la progression de vos indicateurs.',
+    videoUrl: '/onboarding/step6-daily.mp4'
   }
 ];
 let _fpOnboardingStepIdx = 0;
