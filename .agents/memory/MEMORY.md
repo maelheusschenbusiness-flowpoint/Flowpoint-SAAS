@@ -94,7 +94,7 @@
 - [Account deletion — email self-heal](account-deletion-email-selfheal.md) — email=null skips magic_link_tokens+legacy org_settings cleanup → deleted user can re-login; fix: let email, self-heal from users+organizations inside tx
 - [Full tenant purge — two account layers](prod-full-tenant-purge.md) — deleting all customers needs UUID orgs + legacy email-keyed org_settings + an independent Stripe sweep; verify via login-request 404
 - [Google OAuth scope allowlist](google-oauth-scope-allowlist.md) — one canonical GOOGLE_INTEGRATION_SCOPES list; analytics read-only only; unit test + src/dist/frontend grep guard
-- [Production test session via PostgREST](prod-test-session-uuid.md) — prod sessions need UUID org_id + organizations/users rows; email-shaped org_id → 401 legacy_session
+- [Production test sessions](prod-test-session-uuid.md) — UUID org_id required; admin test-session works for APIs but browser bootstrap also requires a real-backed user identity
 - [dashboard.js global onclick scope](dashboard-global-onclick-scope.md) — window.* handlers used by >1 page must be at IIFE global scope; `window.fn && window.fn()` guards hide dead UI
 - [Add-on catalogue single source](addon-catalog-single-source.md) — ADDON_DEFINITIONS in lib/plans.ts is the only place a name/price may live; parallel tables drift into displayed-X/charged-Y bugs
 - [esbuild does not typecheck](esbuild-no-typecheck.md) — a green build can ship a ReferenceError from a missing import; run tsc --noEmit and grep for the files you touched
