@@ -14,7 +14,7 @@ export async function geocodeAddress(address: string): Promise<{
   if (!apiKey) throw new Error("Google Maps API key not configured");
 
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
   const data = await res.json() as Record<string, unknown>;
   const results = (data["results"] as unknown[]) ?? [];
   if (!results.length) return null;
@@ -49,7 +49,7 @@ export async function getNearbyPlaces(lat: number, lng: number, type: string, ra
       url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}${kw}&key=${apiKey}`;
     }
 
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
     const data = await res.json() as Record<string, unknown>;
     const pageResults = (data["results"] as unknown[]) ?? [];
     allResults.push(...pageResults);
@@ -68,7 +68,7 @@ export async function getDistanceMatrix(origins: string[], destinations: string[
   const apiKey = getMapsApiKey();
   if (!apiKey) throw new Error("Google Maps API key not configured");
   const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origins.join("|")}&destinations=${destinations.join("|")}&key=${apiKey}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
   return res.json();
 }
 
@@ -229,7 +229,7 @@ export async function getPlaceDetails(placeId: string): Promise<Record<string, u
     "formatted_phone_number", "website", "opening_hours", "photos", "types", "url",
   ].join(",");
   const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=${fields}&language=fr&key=${apiKey}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
   const data = await res.json() as Record<string, unknown>;
   const r = data["result"] as Record<string, unknown> | undefined;
   if (!r) return null;
@@ -255,7 +255,7 @@ export async function fetchPlacePhoto(photoRef: string, maxWidth = 400): Promise
   const apiKey = getMapsApiKey();
   if (!apiKey) throw new Error("Google Maps API key not configured");
   const url = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${encodeURIComponent(photoRef)}&key=${apiKey}`;
-  const res = await fetch(url, { redirect: "follow" });
+  const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(15_000) });
   if (!res.ok) return null;
   const contentType = res.headers.get("content-type") || "image/jpeg";
   if (!contentType.startsWith("image/")) return null;
