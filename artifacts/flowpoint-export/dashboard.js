@@ -9874,7 +9874,9 @@ function renderBilling() {
           const _planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
           const _msg = r.reactivated
             ? 'Abonnement repris → ' + _planLabel + ' ✓'
-            : r.noSubDowngrade ? 'Plan changé vers ' + _planLabel + ' ✓' : 'Plan mis à jour → ' + _planLabel + ' ✓';
+            : r.noSubDowngrade
+              ? 'Plan changé vers ' + _planLabel + ' ✓'
+              : 'Plan mis à jour → ' + _planLabel + ' ✓';
           showToast('success', _msg);
           // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
           if (STATE.me) STATE.me.plan = _planLabel;
@@ -18115,25 +18117,25 @@ const FP_ONBOARDING_STEPS = [
     id: 'interface',
     title: 'Découvrez votre espace FlowPoint',
     desc:  'FlowPoint centralise les outils nécessaires pour analyser, surveiller et piloter la présence digitale de l\'entreprise depuis un seul espace.',
-    videoUrl: null
+    videoUrl: '/onboarding/step1-interface.mp4'
   },
   {
     id: 'workflow',
     title: 'Comment fonctionne FlowPoint ?',
     desc:  'Observez, analysez, agissez, surveillez, mesurez et rapportez — le cycle complet de pilotage SEO en un seul outil.',
-    videoUrl: null
+    videoUrl: '/onboarding/step2-workflow.mp4'
   },
   {
     id: 'data',
     title: 'Transformez vos données en décisions',
     desc:  'FlowPoint ne sert pas uniquement à collecter des données. Il permet de les comprendre et de les transformer en actions et livrables exploitables.',
-    videoUrl: null
+    videoUrl: '/onboarding/step3-data.mp4'
   },
   {
     id: 'daily',
     title: 'Votre espace de travail au quotidien',
     desc:  'Vous connaissez maintenant les bases de FlowPoint. Découvrez les fonctions utilisées quotidiennement pour piloter votre présence digitale.',
-    videoUrl: null
+    videoUrl: '/onboarding/step4-daily.mp4'
   }
 ];
 let _fpOnboardingStepIdx = 0;

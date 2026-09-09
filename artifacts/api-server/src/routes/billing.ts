@@ -859,6 +859,17 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
 // Uses `payment_behavior: "error_if_incomplete"` so Stripe never creates a
 // dangling incomplete subscription — on any payment failure the call throws and
 // we fall through to Checkout cleanly.
+//
+// PM resolution order (three layers):
+//   1. customer.invoice_settings.default_payment_method  (set by Checkout sessions)
+//   2. last canceled subscription's default_payment_method  (set on the sub itself)
+//   3. first card/sepa_debit payment method attached to the customer
+//
+// Case A (cancel_at_period_end=true): caller routes to the active-sub upgrade
+//   path — this function is only called when the subscription is truly canceled.
+// Case B: PM found  → server-side subscriptions.create(), no Checkout.
+// Case C: no PM or authentication_required → return null → Checkout fallback.
+// Case D: Stripe throws 3DS/action_required → return null → Checkout fallback.
 async function attemptServerSideReactivation(
   stripe: Awaited<ReturnType<typeof createStripeClient>>,
   customerId: string,
@@ -867,22 +878,61 @@ async function attemptServerSideReactivation(
   targetPlan: string,
 ): Promise<{ id: string; status: string } | null> {
   try {
+    // ── Layer 1: customer.invoice_settings.default_payment_method ──────────
     const customer = await stripe.customers.retrieve(customerId, {
       expand: ["invoice_settings.default_payment_method"],
-    }) as { deleted?: boolean; invoice_settings?: { default_payment_method?: { id: string } | string | null } };
+    }) as {
+      deleted?: boolean;
+      invoice_settings?: { default_payment_method?: { id: string } | string | null };
+    };
 
     if (customer.deleted) return null;
 
+    let pmId: string | undefined;
+
     const rawPm = customer.invoice_settings?.default_payment_method;
-    const pmId  = typeof rawPm === "string" ? rawPm : (rawPm as { id?: string } | null)?.id;
-    if (!pmId) return null; // No reusable payment method — Checkout required
+    pmId = typeof rawPm === "string" ? rawPm : (rawPm as { id?: string } | null)?.id;
+
+    // ── Layer 2: last canceled subscription's default_payment_method ────────
+    if (!pmId) {
+      try {
+        const canceledSubs = await stripe.subscriptions.list({
+          customer: customerId,
+          status:   "canceled",
+          limit:    3,
+        });
+        for (const cs of canceledSubs.data) {
+          const subPmRaw = cs.default_payment_method;
+          const subPmId  = typeof subPmRaw === "string" ? subPmRaw : (subPmRaw as { id?: string } | null)?.id;
+          if (subPmId) { pmId = subPmId; break; }
+        }
+      } catch { /* non-fatal — fall through to layer 3 */ }
+    }
+
+    // ── Layer 3: first card/sepa attached to the customer ───────────────────
+    if (!pmId) {
+      try {
+        const [cards, sepas] = await Promise.all([
+          stripe.paymentMethods.list({ customer: customerId, type: "card",      limit: 1 }),
+          stripe.paymentMethods.list({ customer: customerId, type: "sepa_debit", limit: 1 }),
+        ]);
+        pmId = cards.data[0]?.id ?? sepas.data[0]?.id;
+      } catch { /* non-fatal */ }
+    }
+
+    if (!pmId) {
+      logger.info({ customerId, orgId }, "[Billing] attemptServerSideReactivation: no reusable PM found — Checkout required");
+      return null;
+    }
+
+    logger.info({ customerId, orgId, pmId, targetPlan }, "[Billing] attemptServerSideReactivation: PM found — creating subscription server-side");
 
     const newSub = await stripe.subscriptions.create({
-      customer:             customerId,
-      items:                [{ price: priceId, quantity: 1 }],
+      customer:               customerId,
+      items:                  [{ price: priceId, quantity: 1 }],
       default_payment_method: pmId,
-      payment_behavior:     "error_if_incomplete" as const,
-      off_session:          true,
+      payment_behavior:       "error_if_incomplete" as const,
+      off_session:            true,
       metadata: { plan: targetPlan, orgId, reactivation: "true" },
     });
     return { id: newSub.id, status: newSub.status };
@@ -893,7 +943,10 @@ async function attemptServerSideReactivation(
       ["card_declined", "authentication_required", "insufficient_funds",
        "expired_card", "incorrect_cvc", "payment_intent_authentication_failure",
        "payment_method_customer_subscription_declined"].includes(se.code ?? "");
-    if (isPaymentFailure) return null; // Fall through to Checkout
+    if (isPaymentFailure) {
+      logger.info({ customerId, orgId, code: se.code }, "[Billing] attemptServerSideReactivation: payment failed — falling back to Checkout");
+      return null;
+    }
     throw err; // Genuine Stripe error — let the outer catch send a 500
   }
 }

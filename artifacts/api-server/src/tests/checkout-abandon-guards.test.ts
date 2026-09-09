@@ -202,6 +202,61 @@ describe("CA-5 — pas de Customer Stripe parasite sur tentative après abandon"
   });
 });
 
+/* ── CA-7 : ONE_CUSTOMER_INVARIANT — checkout-session ne pré-crée pas de Customer ── */
+describe("CA-7 — checkout-session (nouveau signup) ne crée pas de Customer avant le paiement", () => {
+  it("customers.create() absent du bloc preRegisterToken de checkout-session", () => {
+    // Le bloc preRegisterToken s'étend de ONE_CUSTOMER_INVARIANT jusqu'à "No canonical Customer found".
+    const invariantStart = publicBillingTs.indexOf("ONE_CUSTOMER_INVARIANT (checkout-session");
+    const invariantEnd   = publicBillingTs.indexOf("No canonical Customer found", invariantStart);
+    expect(invariantStart, "marqueur ONE_CUSTOMER_INVARIANT absent de public-billing.ts").toBeGreaterThan(0);
+    expect(invariantEnd,   "marqueur 'No canonical Customer found' absent").toBeGreaterThan(invariantStart);
+
+    const zone = publicBillingTs.slice(invariantStart, invariantEnd + 200);
+    // Strip comment lines before checking: a comment can say "do NOT call customers.create()"
+    // without that being an actual call.
+    const zoneNoComments = zone.split("\n").filter(l => !l.trimStart().startsWith("//")).join("\n");
+    // Ne doit pas créer de Customer — seulement en réutiliser un existant ancré par webhook
+    expect(zoneNoComments).not.toContain("customers.create(");
+  });
+
+  it("customers.list() email-search absent du bloc preRegisterToken de checkout-session (évite les faux positifs)", () => {
+    const invariantStart = publicBillingTs.indexOf("ONE_CUSTOMER_INVARIANT (checkout-session");
+    const invariantEnd   = publicBillingTs.indexOf("No canonical Customer found", invariantStart);
+    const zone = publicBillingTs.slice(invariantStart, invariantEnd + 200);
+    const zoneNoComments = zone.split("\n").filter(l => !l.trimStart().startsWith("//")).join("\n");
+    // Un email-search retournerait des Customers orphelins (Checkout abandonné) — interdit
+    expect(zoneNoComments).not.toMatch(/customers\.list\(\s*\{\s*email/);
+  });
+
+  it("customer_email est passé à checkout.sessions.create pour les nouveaux signups sans Customer canonique", () => {
+    // La prop customer_email doit être présente dans le bloc customerParam
+    expect(publicBillingTs).toContain("customer_email: signupRow.email");
+  });
+
+  it("reuse uniquement depuis consumed_at (paiement passé réussi), pas depuis un token ouvert", () => {
+    // La requête de réutilisation doit filtrer sur consumed_at IS NOT NULL
+    // (pas sur expires_at > NOW() AND consumed_at IS NULL comme avant)
+    const reuseBlock = publicBillingTs.slice(
+      publicBillingTs.indexOf("ONE_CUSTOMER_INVARIANT (checkout-session"),
+      publicBillingTs.indexOf("No canonical Customer found")
+    );
+    expect(reuseBlock).toContain("consumed_at IS NOT NULL");
+    expect(reuseBlock).not.toMatch(/consumed_at IS NULL[\s\S]{0,200}stripe_customer_id/);
+  });
+
+  it("webhook checkout.session.completed ancre le Customer dans pending_signups", () => {
+    const webhookSrc = fs.readFileSync(
+      path.join(DIR, "../routes/stripe-webhook.ts"), "utf8"
+    );
+    // Le webhook doit écrire stripe_customer_id dans pending_signups
+    expect(webhookSrc).toMatch(/UPDATE pending_signups SET stripe_customer_id/);
+    // Seulement si le Customer n'existe pas encore (idempotent)
+    expect(webhookSrc).toMatch(/stripe_customer_id IS NULL OR stripe_customer_id = ''/);
+    // La condition sur le token doit utiliser pre_register_token de meta
+    expect(webhookSrc).toMatch(/preRegTokenFromMeta|pre_register_token/);
+  });
+});
+
 /* ── CA-6 : checkout-return.html — Case B (session_id) n'appelle pas finalize-checkout ── */
 describe("CA-6 — checkout-return.html Case B (session_id) utilise billing/verify, pas finalize-checkout", () => {
   it("checkout-return.html existe", () => {

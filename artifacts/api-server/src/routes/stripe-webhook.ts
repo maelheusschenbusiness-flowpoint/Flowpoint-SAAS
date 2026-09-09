@@ -1051,8 +1051,34 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         );
       }
 
+      // ── ONE_CUSTOMER_INVARIANT: anchor Customer in pending_signups ────────────
+      // checkout-session endpoint no longer pre-creates a Customer before payment.
+      // For new signups, Stripe creates the Customer on first successful payment.
+      // We anchor it here — the FIRST place we learn the Customer ID — so that
+      // any subsequent checkout attempt for the same email reuses this Customer.
+      const preRegTokenFromMeta = meta["pre_register_token"] ?? "";
+      if (customerId && preRegTokenFromMeta) {
+        (async () => {
+          try {
+            const { pool: _anchorPool } = await import("@workspace/db");
+            await _anchorPool.query(
+              `UPDATE pending_signups SET stripe_customer_id = $1
+               WHERE token = $2 AND (stripe_customer_id IS NULL OR stripe_customer_id = '')`,
+              [customerId, preRegTokenFromMeta]
+            );
+            logger.info(
+              { customerId, preRegToken: preRegTokenFromMeta },
+              "[Webhook] checkout.session.completed: Customer anchored in pending_signups"
+            );
+          } catch (_anchorErr) {
+            logger.warn({ _anchorErr, customerId, preRegToken: preRegTokenFromMeta },
+              "[Webhook] Failed to anchor Customer in pending_signups (non-blocking)");
+          }
+        })().catch(() => {});
+      }
+
       // ── New signup flow: activate account + send magic link after Stripe validates ──
-      const preRegToken  = meta["pre_register_token"] ?? "";
+      const preRegToken  = preRegTokenFromMeta;
       const selectedPlan = meta["selected_plan"] || planNorm || "standard";
       const isTrial      = meta["trial_plan"] === "true";
 

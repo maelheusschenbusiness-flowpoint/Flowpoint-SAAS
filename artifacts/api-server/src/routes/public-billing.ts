@@ -358,22 +358,37 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
       signupOrgId = signupRow.email; // orgId = email in FlowPoint
 
-      // ── Idempotent customer: reuse existing if a previous attempt already created one ──
+      // ── ONE_CUSTOMER_INVARIANT (checkout-session, new signup) ──────────────
+      // A Stripe Customer MUST NOT be created by simply opening a Checkout page.
+      // Customer creation is deferred to Stripe during successful payment.
+      // After checkout.session.completed the webhook anchors session.customer as
+      // the canonical Customer and persists stripe_customer_id for the first time.
+      //
+      // We ONLY reuse a Customer that was previously anchored by a SUCCESSFUL
+      // payment (payment-intent.succeeded or checkout.session.completed).
+      // That Customer lives in pending_signups.stripe_customer_id.
+      //
+      // We do NOT call customers.create() here for new signups without an
+      // existing canonical Customer, and we do NOT perform a customers.list()
+      // email search (would pick up Customers from abandoned sessions).
+
+      // ── Reuse: canonical Customer from a previous SUCCESSFUL checkout ──────
       if (signupRow.stripe_customer_id) {
         try {
           const existing = await stripe.customers.retrieve(signupRow.stripe_customer_id);
           if (!(existing as { deleted?: boolean }).deleted) {
             stripeCustomerId = signupRow.stripe_customer_id;
-            logger.info({ customerId: stripeCustomerId }, "[PublicBilling] checkout-session: reusing Stripe Customer from pending_signups");
+            logger.info(
+              { customerId: stripeCustomerId, email: signupRow.email },
+              "[PublicBilling] checkout-session: reusing canonical Stripe Customer from pending_signups (previous successful payment)"
+            );
           }
-        } catch { /* deleted or unreachable — fall through to cross-token search */ }
+        } catch { /* deleted or unreachable — fall through: no canonical customer */ }
       }
 
-      // ── All customer resolution runs inside the FOR UPDATE lock on dbClient ──
-      // Cross-token dedup: a sibling pending_signup for the same email may already
-      // have a Stripe Customer from a payment-intent or a previous checkout-session.
-      // These lookups use a *separate* read-only connection — they query different rows
-      // (not the locked one) so they don't require the same transaction client.
+      // ── Reuse: canonical Customer from a sibling token (same email, already paid) ──
+      // Only looks at consumed tokens — a consumed pending_signup means the payment
+      // succeeded and the Customer was anchored by the webhook.
       if (!stripeCustomerId) {
         const { pool: _csCrossPool } = await import("@workspace/db");
         const _csCrossC = await _csCrossPool.connect();
@@ -381,11 +396,10 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
           const _csCrossR = await _csCrossC.query<{ stripe_customer_id: string }>(
             `SELECT stripe_customer_id FROM pending_signups
              WHERE lower(email) = lower($1)
-               AND consumed_at IS NULL
-               AND expires_at > NOW()
                AND stripe_customer_id IS NOT NULL
+               AND consumed_at IS NOT NULL
                AND token != $2
-             ORDER BY created_at DESC LIMIT 1`,
+             ORDER BY consumed_at DESC LIMIT 1`,
             [signupRow.email, preRegisterToken]
           );
           if (_csCrossR.rows.length > 0) {
@@ -396,76 +410,19 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
                 stripeCustomerId = _csCrossId;
                 logger.info(
                   { customerId: stripeCustomerId, email: signupRow.email },
-                  "[PublicBilling] checkout-session: reusing Stripe Customer from sibling pending_signup (cross-token dedup)"
+                  "[PublicBilling] checkout-session: reusing canonical Customer from consumed sibling token"
                 );
               }
-            } catch { /* deleted or unreachable — fall through to Stripe email search */ }
+            } catch { /* deleted — no canonical customer */ }
           }
         } finally { _csCrossC.release(); }
       }
 
-      // ── Stripe email search fallback: catches customers created via payment-intent
-      // before this checkout-session was opened, or when the DB sibling lookup above
-      // found nothing. The FOR UPDATE lock on our token row ensures that if payment-intent
-      // is mid-creation on the same token, we wait for it to commit before reaching here.
-      if (!stripeCustomerId) {
-        const _csEmailList = await stripe.customers.list({ email: signupRow.email, limit: 5 });
-        for (const _csEmailEc of _csEmailList.data) {
-          if ((_csEmailEc as { deleted?: boolean }).deleted) continue;
-          stripeCustomerId = _csEmailEc.id;
-          logger.info(
-            { customerId: stripeCustomerId, email: signupRow.email },
-            "[PublicBilling] checkout-session: found existing Stripe Customer by email (cross-token fallback)"
-          );
-          break;
-        }
-      }
-
-      if (!stripeCustomerId) {
-        // Create Stripe Customer with full contact info (never empty)
-        const customerData: Stripe.CustomerCreateParams = {
-          email: signupRow.email,
-          // Real name from registration; fall back to local part of email (never use company_name as name)
-          name:  `${signupRow.first_name} ${signupRow.last_name}`.trim() || signupRow.email.split("@")[0],
-          // Only set description when company_name is a real company, not an email address
-          // (Google OAuth signup stores "" or the user's email as company_name placeholder)
-          ...(signupRow.company_name && !signupRow.company_name.includes("@") ? { description: signupRow.company_name } : {}),
-          metadata: {
-            flowpointOrgId:     signupRow.email,
-            flowpointUserId:    signupRow.email,
-            orgId:              signupRow.email,
-            companyName:        signupRow.company_name,
-            firstName:          signupRow.first_name,
-            lastName:           signupRow.last_name,
-            pre_register_token: preRegisterToken,
-            signup_source:      "new_signup_flow",
-            environment:        process.env["NODE_ENV"] === "production" ? "production" : "development",
-            ...(signupRow.vat ? { vat: signupRow.vat } : {}),
-          },
-        };
-        if (signupRow.address || signupRow.city || signupRow.country) {
-          customerData.address = {
-            line1:       signupRow.address  ?? "",
-            city:        signupRow.city     ?? "",
-            postal_code: signupRow.postal_code ?? "",
-            country:     signupRow.country  ?? "",
-          };
-        }
-        if (signupRow.phone) customerData.phone = signupRow.phone;
-
-        const stripeCustomer = await stripe.customers.create(customerData);
-        stripeCustomerId = stripeCustomer.id;
-        logger.info({ customerId: stripeCustomerId, orgId: signupOrgId },
-          "[PublicBilling] Stripe Customer created and stored in pending_signups");
-      }
-
-      // Persist inside the FOR UPDATE transaction — atomic write-back ensures any
-      // concurrent call that hits the lock after us reads the persisted customer.
+      // No canonical Customer found: close the DB lock transaction immediately.
+      // Stripe will create the Customer when the user successfully pays.
+      // The checkout.session.completed webhook persists session.customer as
+      // the canonical stripe_customer_id — never before.
       try {
-        await dbClient.query(
-          `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
-          [stripeCustomerId, preRegisterToken]
-        );
         await dbClient.query("COMMIT");
         _csLockTxOpen = false;
       } catch (_csCommitErr) {
@@ -474,6 +431,13 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         throw _csCommitErr;
       } finally {
         dbClient.release();
+      }
+
+      if (!stripeCustomerId) {
+        logger.info(
+          { email: signupRow.email, preRegisterToken },
+          "[PublicBilling] checkout-session: no canonical Customer — Stripe will create one on successful payment"
+        );
       }
     }
 
@@ -704,6 +668,11 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       // Automatically save any billing address / name the user provides during checkout
       // back to the Stripe Customer object (only active when a customer is pre-attached)
       customer_update: { address: "auto" as const, name: "auto" as const },
+    } : signupRow?.email ? {
+      // New signup without canonical Customer: pass the email so Stripe pre-fills
+      // the Checkout form and can find or create exactly one Customer on payment.
+      // We do NOT pass `customer` — Stripe creates the Customer only if payment succeeds.
+      customer_email: signupRow.email,
     } : {};
 
     function urlOrEmbedded(params: Record<string, unknown>) {
