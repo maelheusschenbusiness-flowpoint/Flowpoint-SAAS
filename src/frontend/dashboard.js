@@ -8475,6 +8475,7 @@ function renderReports() {
       <div class="fp-grid-2">
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">🎯 Performance CTA</div>
+          <div style="overflow-x:auto">
           <table class="fp-data-table">
             <thead><tr>
               <th>CTA</th>
@@ -8494,6 +8495,7 @@ function renderReports() {
               }).join('')}
             </tbody>
           </table>
+          </div>
         </div>
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">💸 Revenue Leaks detectees</div>
@@ -55948,6 +55950,7 @@ function renderConversion() {
       <div class="fp-grid-2 fp-mb-20">
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">📱 Mobile vs 💻 Desktop</div>
+          <div style="overflow-x:auto">
           <table class="fp-data-table">
             <thead><tr>
               <th>Étape</th>
@@ -55967,6 +55970,7 @@ function renderConversion() {
               }).join("")}
             </tbody>
           </table>
+          </div>
         </div>
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">⚡ Points de friction détectés</div>
@@ -58947,6 +58951,7 @@ function renderDataExplorer() {
         </div>
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">📄 Engagement par type de page</div>
+          <div style="overflow-x:auto">
           <table class="fp-data-table">
             <thead><tr>
               <th>Page</th>
@@ -58965,6 +58970,7 @@ function renderDataExplorer() {
               </tr>`).join('')}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     `;
