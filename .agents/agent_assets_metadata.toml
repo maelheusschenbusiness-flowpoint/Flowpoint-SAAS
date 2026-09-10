@@ -179,3 +179,59 @@ mtime_ms = 1788648519904
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/82e853f2-d52f-4cfc-abcc-0fe9f5f2fb3c/7d006f73-9ffd-4811-bd77-e52d4e2080f5"
 storage_version_token = "1788648528926598"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "9qDcT_jIvV4obRLrz7tuE"
+uri = "file://artifacts/flowpoint-export/onboarding/step1-interface.mp4"
+type = "video"
+title = "Onboarding 1 — Interface FlowPoint"
+description = "Vidéo réelle de l’interface FlowPoint."
+logical_id = "5c5c3a5d-321f-4d42-a418-9f0014cffddf"
+content_hash = "sha256:5b36110024f27289e4468c55ac7713008ebcd79d9ea93f52f744aaadd1c5739b"
+size = 565111
+mtime_ms = 1788973624077
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/5c5c3a5d-321f-4d42-a418-9f0014cffddf/ae2f9fab-ff45-47d0-b3b9-90f0e093a871"
+storage_version_token = "1788977033221647"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "bCj9Owgr4NLdh6z2xnyqH"
+uri = "file://artifacts/flowpoint-export/onboarding/step2-workflow.mp4"
+type = "video"
+title = "Onboarding 2 — Workflow FlowPoint"
+description = "Vidéo réelle de l’interface FlowPoint."
+logical_id = "26478669-5d0c-444c-bfab-3710e3b5a717"
+content_hash = "sha256:c54b13e7890fcd81fe32a666dbd31aa76614f7ed8387127c381439a3d13f46af"
+size = 922725
+mtime_ms = 1788973626841
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/26478669-5d0c-444c-bfab-3710e3b5a717/ecb73f2b-4826-4d74-b2b8-7f25a682f4ef"
+storage_version_token = "1788977035296908"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "CS16R9EsMjtEcnZt0Hr8_"
+uri = "file://artifacts/flowpoint-export/onboarding/step3-data.mp4"
+type = "video"
+title = "Onboarding 3 — Données FlowPoint"
+description = "Vidéo réelle de l’interface FlowPoint."
+logical_id = "d4409d07-467e-4611-986f-44c3f98762bb"
+content_hash = "sha256:cafec1f3c71a5b8d7f8b6e0289436ce861e55aa51de5b162660c726a4937facb"
+size = 1011016
+mtime_ms = 1788973629677
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/d4409d07-467e-4611-986f-44c3f98762bb/9bf531fc-4017-403b-bf8d-f56affd1acfc"
+storage_version_token = "1788977037138996"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "sryiFqo3X_ivK_jwbffra"
+uri = "file://artifacts/flowpoint-export/onboarding/step4-daily.mp4"
+type = "video"
+title = "Onboarding 4 — Usage quotidien FlowPoint"
+description = "Vidéo réelle de l’interface FlowPoint."
+logical_id = "ae96f023-379d-44c6-a24b-b63b8506432c"
+content_hash = "sha256:a550a7682986548d78d57f75be827e89ff4e3b22f0f6b825a4060e9616ab538d"
+size = 1172826
+mtime_ms = 1788973632697
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/ae96f023-379d-44c6-a24b-b63b8506432c/3f2294c2-4df2-4bf2-9bc2-d94f2316006e"
+storage_version_token = "1788977038864551"
+content_type = "video/mp4"
